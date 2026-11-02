@@ -55,7 +55,7 @@ func TestAppServerShellWakesLogicalWait(t *testing.T) {
 					appServerTestMessage(t, u, ack)
 					synctest.Wait()
 				}
-				if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, t.Context(), false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+				if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
 					t.Fatal(err)
 				}
 				continuation := appServerOneRequest(t, wire, "turn/start", "")

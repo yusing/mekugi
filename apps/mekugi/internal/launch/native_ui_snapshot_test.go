@@ -34,7 +34,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			// An idle session avoids wall-clock durations and status animation.
-			u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+			u.attached.presentation.Status.Text, u.settings.Model, u.settings.Effort = "Ready", "snapshot-model", "high"
 			u.attached.cwd = "/workspace/project"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
@@ -66,7 +66,7 @@ func TestUISnapshotPreparedChildReadOnly(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }
 	u.Startup.Prepared = &sessioncontrol.PreparedThread{Parent: "parent"}
-	u.attached.presentation.Status.Text, u.model = "Ready", "child-model"
+	u.attached.presentation.Status.Text, u.settings.Model = "Ready", "child-model"
 	u.Text = "retained draft"
 	var rows []string
 	for _, thread := range []string{"", "child"} {
@@ -119,7 +119,7 @@ func TestUISnapshotShellComposer(t *testing.T) {
 				u.CursorBack = len(u.Text) - strings.Index(u.Text, "$HOME")
 				rows, _ := u.testMainFrame(width, 12, 0)
 				rows = append(rows, "plain after shell")
-				deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, 1)
+				u.nativeSession.deleteDraftRange(&u.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, 0, 1)
 				normal, _ := u.testMainFrame(width, 12, 0)
 				rows = append(rows, normal...)
 				rows = append(rows, "plain after prompt")
@@ -152,7 +152,7 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 				{ID: "empty", Workspace: "/workspace", Branch: "main", Updated: now.Add(-48 * time.Hour).Unix()},
 			}
 			u.resumePicker = &appServerResumePicker{ResumeChooser: chooser}
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			u.shell.Main.Resume.Selected = 1
 			assertNativeUISnapshot(t, tc.name, u.resumePickerFrame(tc.width, 11))
 		})
@@ -259,7 +259,7 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 				{Name: "internal/ui/activity/snapshot_test.go", Path: "internal/ui/activity/snapshot_test.go"},
 				{Name: "internal/ui/diffview/snapshot_test.go", Path: "internal/ui/diffview/snapshot_test.go"},
 			}}
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			u.shell.Main.Menu.Selected = 1
 			assertNativeUISnapshot(t, fmt.Sprintf("native-file-picker-%d", width), u.renderPicker(width, 7))
 		})

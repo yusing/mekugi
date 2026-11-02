@@ -4,14 +4,13 @@ import (
 	"bytes"
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -111,7 +110,7 @@ func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 	u.review.Projection.Data = &changepresentation.Snapshot{Publication: saved}
 	u.review.Projection.Workspace = u.attached.cwd
 	publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
-	u.model, u.reasoningEffort, u.serviceTier = "chosen", "high", "priority"
+	u.settings.Model, u.settings.Effort, u.settings.Tier = "chosen", "high", "priority"
 	appServerTestUserMessage(t, u, "old-user", "", "old transcript")
 	appServerTestKeys(t, u, "/clear\r")
 	var req struct {
@@ -195,7 +194,7 @@ func TestAppServerClearKeepsThreadCommandsUntilNewSessionReady(t *testing.T) {
 			if strings.TrimSpace(u.Text) != command || u.Settings.Pending() || u.attached.conversation.Shell.Text != "" || u.side != nil || len(appServerTurnRequests(t, w)) != 0 {
 				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.Text, u.Settings.Pending(), u.attached.conversation.Shell.Text, u.side)
 			}
-			if accepted, err := updateSettings(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, u.restoring != nil, u.clock, map[string]any{"effort": "high"}); err != nil || accepted || w.Len() != 0 {
+			if accepted, err := updateSettings(&u.attached, u.shell, &u.Client, u.settings, &u.serviceTiers, u.panes, u.restoring != nil, u.clock, map[string]any{"effort": "high"}); err != nil || accepted || w.Len() != 0 {
 				t.Fatalf("shortcut bypassed clear gate: accepted=%v err=%v wire=%s", accepted, err, w.String())
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/tmp"}}}`, r.ID))

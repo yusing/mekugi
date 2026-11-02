@@ -4,17 +4,17 @@ import (
 	"bytes"
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 
@@ -31,7 +31,7 @@ func TestSideForkWaitsForEffectiveCatalog(t *testing.T) {
 	u.Requests.InheritedEffort = driver.InheritedEffort
 	u.Requests.CaptureConfiguredCatalog = driver.CaptureConfiguredCatalog
 	u.Requests.CatalogPending = true
-	u.model, u.reasoningEffort = "selected", "ultra"
+	u.settings.Model, u.settings.Effort = "selected", "ultra"
 	appServerTestRequest(t, u, "42", "config/read")
 	appServerTestKeys(t, u, "/side\r")
 	if wire.Len() != 0 {
@@ -108,7 +108,7 @@ func TestAppServerBTWInheritsInvocationTransport(t *testing.T) {
 	for _, effort := range []string{"", "high"} {
 		t.Run(effort, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.statusConfig.Provider, u.reasoningEffort = "mekugi_wrap", effort
+			u.statusConfig.Provider, u.settings.Effort = "mekugi_wrap", effort
 			appServerTestKeys(t, u, "/btw question\r")
 			r := btwTestRequest(t, w, "thread/fork", "main")
 			if _, ok := r.Params.Config["model_providers.mekugi_wrap.supports_websockets"]; ok {
@@ -119,7 +119,7 @@ func TestAppServerBTWInheritsInvocationTransport(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "Main stays independent\r")
 			main := btwTestRequest(t, w, "turn/start", "main")
-			if len(main.Params.Config) != 0 || u.statusConfig.Provider != "mekugi_wrap" || u.reasoningEffort != effort {
+			if len(main.Params.Config) != 0 || u.statusConfig.Provider != "mekugi_wrap" || u.settings.Effort != effort {
 				t.Fatal("side override mutated Main settings")
 			}
 		})
@@ -464,7 +464,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 func selectSideThread(t *testing.T, u *appServerUI, thread sessionpresentation.Thread) {
 	t.Helper()
 	v := u.attached.presentation.View()
-	if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, sessionpresentation.DisplayIntent{Version: v.Version, Thread: thread}) {
+	if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, sessionpresentation.DisplayIntent{Version: v.Version, Thread: thread}) {
 		t.Fatal("display rejected")
 	}
 }
@@ -763,7 +763,7 @@ func TestForeignSideDisplayPreservesReplaceMenu(t *testing.T) {
 	if u.picker.Kind != sessionpresentation.MenuSideReplace {
 		t.Fatal("fixture menu absent")
 	}
-	if displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, stale) {
+	if displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, stale) {
 		t.Fatal("stale display accepted")
 	}
 	if !u.picker.Open || u.picker.Kind != sessionpresentation.MenuSideReplace {
@@ -773,7 +773,7 @@ func TestForeignSideDisplayPreservesReplaceMenu(t *testing.T) {
 
 func TestSideMainForkReplacementCleanup(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	u.reasoningEffort = "high"
+	u.settings.Effort = "high"
 	appServerTestKeys(t, u, "/side\r")
 	sideFork := btwTestRequest(t, w, "thread/fork", "main")
 	selectSideThread(t, u, u.attached.presentation.View().Main)

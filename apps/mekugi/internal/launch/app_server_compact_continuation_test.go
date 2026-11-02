@@ -12,7 +12,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -47,7 +46,7 @@ func TestAppServerCompactContinuationSurvivesDeferredAdmission(t *testing.T) {
 		}
 		close(admission)
 		flush := func() {
-			if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -91,7 +90,7 @@ func nativeTestCancel(t *testing.T, u *appServerUI) *nativeClient {
 		}
 		if intent.Mode == sessioncontrol.RestoreWaiting && cancelQueuedCompact(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock) {
 			u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			continue
 		}
 		if err := u.applyInput(u.shell, func(yield func(terminalsession.InputEffect) bool) {
@@ -115,8 +114,8 @@ func TestAppServerCompactQueuedContinuesOnceAfterAckAndTurn(t *testing.T) {
 	for _, beforeAck := range []bool{false, true} {
 		t.Run(fmt.Sprint("turnBeforeAck=", beforeAck), func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.model = "gpt-6.1-sol"
-			u.serviceTiers = inferencegateway.NewTiers(map[string]string{u.model: "priority"})
+			u.settings.Model = "gpt-6.1-sol"
+			u.serviceTiers = inferencegateway.NewTiers(map[string]string{u.settings.Model: "priority"})
 			appServerTestKeys(t, u, "/tier default\r")
 			r := queueBusyCompact(t, u, w)
 			ack := fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID)
@@ -348,7 +347,7 @@ func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.shell.Transcript.Clock = u.clock
-	u.model, u.reasoningEffort = "snapshot-model", "high"
+	u.settings.Model, u.settings.Effort = "snapshot-model", "high"
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\t")
 	rows, _ := u.testMainFrame(80, 16, 0)
@@ -442,7 +441,7 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.shell.Transcript.Clock = u.clock
-	u.model, u.reasoningEffort = "snapshot-model", "high"
+	u.settings.Model, u.settings.Effort = "snapshot-model", "high"
 	r := queueBusyCompact(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestTurn(t, u, "compact-turn")
@@ -591,7 +590,7 @@ func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.shell.Transcript.Clock = u.clock
-	u.model, u.reasoningEffort = "snapshot-model", "high"
+	u.settings.Model, u.settings.Effort = "snapshot-model", "high"
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\r")
 	appServerOneRequest(t, w, "turn/interrupt", "")

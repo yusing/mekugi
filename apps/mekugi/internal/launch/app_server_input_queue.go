@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
@@ -49,8 +47,8 @@ func restoreDrafts(attached *attachedPresentation, terminal *terminalsession.Att
 }
 
 func applyInputRestoration(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, restored conversationmodel.InputRestoration) {
-	if attached.restoreInput != nil && len(restored.Detached) > 0 {
-		attached.restoreInput(attached.executionPresentation, restored.Detached)
+	if len(restored.Detached) > 0 {
+		attached.hooks.restoreInput(attached.executionPresentation, restored.Detached)
 	}
 	for _, id := range restored.Rejected {
 		for _, call := range questions.calls() {
@@ -84,31 +82,31 @@ func editQueued(attached *attachedPresentation, terminal *terminalsession.Attach
 
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
-func flushInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, editor **composer.Editor, parent context.Context, restoring bool, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt) error {
+func (session *nativeSession) flushInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, clock func() time.Time, editor **composer.Editor, parent context.Context) error {
 	attached.conversation.Unsent = pendingQuestionReplies(attached.conversation.Unsent)
 	attached.conversation.Queued = pendingQuestionReplies(attached.conversation.Queued)
-	if restoring || !control.AcceptsInput() {
+	if session.restoring != nil || !session.Client.AcceptsInput() {
 		return nil
 	}
 	if len(attached.conversation.Unsent)+len(attached.conversation.Queued) > 0 {
-		if ready, err := hook.check(control, attached); !ready || err != nil {
+		if ready, err := session.guardHookCheck.check(&session.Client, attached); !ready || err != nil {
 			return err
 		}
 	}
-	emitting := observations != nil && observations.EmittingToolInput(attached.cwd, control.Thread)
-	next := attached.presentation.NextInput(&control.Live, attached.conversation, emitting)
+	emitting := session.controlObservations != nil && session.controlObservations.EmittingToolInput(attached.cwd, session.Client.Thread)
+	next := attached.presentation.NextInput(&session.Client.Live, attached.conversation, emitting)
 	if next.Interrupt {
-		return applyInterruption(attached, terminal, control, picker, editor, questions, approvals, clock, reviewOwner, receipts, control.Interrupt())
+		return applyInterruption(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, session.Client.Interrupt())
 	}
 	if len(next.Batch.Parts) == 0 && !next.Continue {
 		return nil
 	}
 	childInput := attached.threadInput != nil && attached.threadInput.caller != "" && attached.threadInput.caller != "/root"
 	compacting := len(next.Batch.Parts) == 1 && next.Batch.Parts[0].Compact != nil
-	if !compacting && (!next.Steer || control.LocalStop != "" || childInput) {
-		ready, err := attached.threadInput.prepare(parent, control.Thread, control.Requests)
+	if !compacting && (!next.Steer || session.Client.LocalStop != "" || childInput) {
+		ready, err := attached.threadInput.prepare(parent, session.Client.Thread, session.Client.Requests)
 		if err != nil {
-			restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, next.Batch.Parts...)
+			restoreDrafts(attached, terminal, &session.questions, &session.approvals, picker, session.Client.Turn, clock, next.Batch.Parts...)
 			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 			return nil
 		}
@@ -117,12 +115,12 @@ func flushInput(attached *attachedPresentation, terminal *terminalsession.Attach
 			return nil
 		}
 	}
-	if picker.waitForSkillBindings(attached, terminal, clock, control.Requests, next.Batch.Parts) {
+	if picker.waitForSkillBindings(attached, terminal, clock, session.Client.Requests, next.Batch.Parts) {
 		attached.conversation.ReturnBatch(next.Batch)
-		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
+		picker.refreshPicker(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
 		return nil
 	}
-	return sendConversationInput(attached, terminal, control, picker, questions, approvals, clock, model, tiers, environment, owned, hook, next.Batch.Parts, next.Steer)
+	return sendConversationInput(attached, terminal, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings.Model, session.serviceTiers, session.skillEnvironment, session.ownedImages, &session.guardHookCheck, next.Batch.Parts, next.Steer)
 }
 
 func sendConversationInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, parts []conversationmodel.Input, steer bool) error {

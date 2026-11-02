@@ -10,8 +10,6 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
@@ -511,15 +509,15 @@ func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 }
 
 func (u *appServerUI) resumePickerKey(key string) error {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.Key(key))
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	return u.nativeSession.applyResumeAction(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, &u.quitRequested, u.shell.Main.Resume.Key(key))
 }
 func (u *appServerUI) fillResumePicker() error {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.PageDemand())
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	return u.nativeSession.applyResumeAction(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, &u.quitRequested, u.shell.Main.Resume.PageDemand())
 }
 func (u *appServerUI) resumePickerFrame(width, height int) []string {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.shell.Main.Resume.Render(&u.shell.Transcript.Painter.Painter, width, height, terminalsession.SelectionStyle(&u.shell.Transcript.Painter.Painter))
 }
 

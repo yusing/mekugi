@@ -566,7 +566,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			waitCodex, err = startNativeSession(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdout, &control, usage, audience, review, windows, nativeTrace, retained, changeSource, checkpoints, recovered, review.Publish, issues.AddThreadNotice, guardServer, guards, reportObserver, skillsManagerAvailable, issues, resumeThread, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals, provider.OpenAI, api, options.ChildReplySummary, threads)
+			waitCodex, err = (&nativeSession{terminalViews: terminalViews, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals}).start(prefs, cmd, stdout, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
 		} else {
 			err = cmd.Start()
 			waitCodex = cmd.Wait

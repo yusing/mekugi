@@ -76,13 +76,13 @@ func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	info := binding.ThreadInfo{ID: "main", CreatedAt: 100, UpdatedAt: 900}
-	restoreMainHistory(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, info.Turns, nil, nil)
+	u.nativeSession.restoreMainHistory(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, info.Turns, nil, nil)
 	agent := u.attached.session.Agent("/root")
 	if !agent.Started.IsZero() || !agent.LastResponse.IsZero() {
 		t.Fatal("empty restored thread started timer")
 	}
 	info.Turns = []binding.HistoryTurn{{ID: "a", StartedAt: 200, CompletedAt: 250}, {ID: "b", StartedAt: 300, CompletedAt: 350}}
-	restoreMainHistory(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, info.Turns, nil, nil)
+	u.nativeSession.restoreMainHistory(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, info.Turns, nil, nil)
 	if !agent.Started.Equal(historyTime(200)) || !agent.LastResponse.Equal(historyTime(350)) {
 		t.Fatalf("restored timer used metadata instead of turns: %+v", agent)
 	}

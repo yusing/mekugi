@@ -4,10 +4,6 @@ import (
 	"encoding/json/jsontext"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -321,34 +317,34 @@ func approvalRecord(attached *attachedPresentation, approvals *nativeApprovalDoc
 	return entry, true
 }
 
-func decideApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, intent sessionpresentation.ApprovalIntent) error {
+func (session *nativeSession) decideApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, intent sessionpresentation.ApprovalIntent) error {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
-	record, choice, err := attached.presentation.Approval(intent, approvals.Approvals)
+	record, choice, err := attached.presentation.Approval(intent, session.approvals.Approvals)
 	if err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
-	return applyApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, observations, attached.grants, approvals.handles[record], choice, intent.Reason)
+	return session.applyApproval(attached, terminal, picker, editor, clock, attached.grants, session.approvals.handles[record], choice, intent.Reason)
 }
 
 // applyApproval also settles decisions covered by an existing exact-command
 // grant; those carry their admitted authority rather than a new renderer intent.
-func applyApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, grants sessioncontrol.ApprovalGrants, a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
-	outcome, delivered, err := a.Decide(choice, reason, grants, control.Requests, observations)
+func (session *nativeSession) applyApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, grants sessioncontrol.ApprovalGrants, a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
+	outcome, delivered, err := a.Decide(choice, reason, grants, session.Client.Requests, session.controlObservations)
 	if err != nil {
 		return err
 	}
 	if !delivered {
-		expireApprovals(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts)
+		expireApprovals(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts)
 		return nil
 	}
-	endApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, outcome)
+	endApproval(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts, a, outcome)
 	if a.Guard != nil && choice.Approve && choice.Session {
-		for _, pending := range slices.Clone(approvals.calls()) {
+		for _, pending := range slices.Clone(session.approvals.calls()) {
 			if a.SameCommand(pending) {
-				if err := applyApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, observations, grants, pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
+				if err := session.applyApproval(attached, terminal, picker, editor, clock, grants, pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
 					return err
 				}
 			}

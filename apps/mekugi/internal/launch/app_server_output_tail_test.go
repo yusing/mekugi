@@ -118,7 +118,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 		t.Fatalf("output rendered before its frame:\n%s", got)
 	}
 	canonical := u.attached.source.Model.Publish().Entries[0]
-	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
+	u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 	if got := main(); !strings.Contains(got, "┆ ok 1") || strings.Contains(got, "ok 2") {
 		t.Fatalf("burst jumped to its tail instead of rolling:\n%s", got)
 	}
@@ -305,7 +305,7 @@ func TestAppServerAdjacentReadOutputsStayWithInvocation(t *testing.T) {
 // and held completions have followed.
 func rollCommandOutput(u *appServerUI) {
 	for range activityui.OutputPendingLines {
-		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
+		u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 	}
 }
 
@@ -350,7 +350,7 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 		}
 		completed[view] = entry
 	}
-	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
+	u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 	if got := main(); !strings.Contains(got, "Running") || strings.Contains(got, "ok 19") || strings.Contains(got, "exit 1") {
 		t.Fatalf("completion replaced the output before it rolled:\n%s", got)
 	}
@@ -379,7 +379,7 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "delta": output})
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
+	u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 	view := u.testActivity(u.shell.Transcript)
 	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 	if !view.MarkUnreturned("main", "cmd") {
@@ -568,7 +568,7 @@ func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 	item := map[string]any{"id": "read", "type": "commandExecution", "command": "rg -n line internal", "status": "inProgress"}
 	notify("item/started", map[string]any{"item": item})
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "read", "delta": output.String()})
-	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
+	u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 	if got := main(); !strings.Contains(got, "┆ line 19") || strings.Contains(got, "line 14") {
 		t.Fatalf("a search's output rolled instead of showing its tail at once:\n%s", got)
 	}
@@ -584,7 +584,7 @@ func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 	run := map[string]any{"id": "run", "type": "commandExecution", "command": "go test ./...", "status": "inProgress"}
 	notify("item/started", map[string]any{"item": run})
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "run", "delta": output.String()})
-	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
+	u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 	if got := main(); strings.Contains(got[strings.Index(got, "Running"):], "line 19") {
 		t.Fatalf("a command's burst jumped to its tail:\n%s", got)
 	}

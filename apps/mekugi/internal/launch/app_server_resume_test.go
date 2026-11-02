@@ -3,6 +3,7 @@ package launch
 import (
 	"bytes"
 	"encoding/json/jsontext"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -60,7 +61,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":4,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":5,"result":{"data":[],"nextCursor":null}}`)
-	if u.Thread != "saved" || !u.HasUserTurn || u.attached.presentation.Status.Text != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.attached.source.Entries) != 2 || u.attached.source.Entries[0].Source.Text != "Saved question" || u.attached.source.Entries[1].Source.Text != "Saved answer" {
+	if u.Thread != "saved" || !u.HasUserTurn || u.attached.presentation.Status.Text != "Ready" || u.settings.Model != "model" || u.settings.Effort != "high" || len(u.attached.source.Entries) != 2 || u.attached.source.Entries[0].Source.Text != "Saved question" || u.attached.source.Entries[1].Source.Text != "Saved answer" {
 		t.Fatalf("resume state: %+v, entries=%+v", u, u.attached.source.Entries)
 	}
 	if got := activityui.ContextWindowLabel(testActivityAgent(*u.attached.session.Agent("/root"))); got != "120K/400K • 30%" {

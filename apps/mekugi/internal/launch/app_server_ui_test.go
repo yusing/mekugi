@@ -6,12 +6,11 @@ import (
 	"encoding/json/jsontext"
 	"os"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/yusing/mekugi/modules/activity"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
@@ -80,7 +79,7 @@ func (*appServerTestInput) Close() error { return nil }
 func newAppServerTestUI(views ...terminalsession.Views) (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}, views...)
+	u := appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}}, views...)
 	u.approvals.guards = testGuards()
 	u.attached.grants = sessioncontrol.NewApprovalGrants(u.approvals.guards)
 	u.approvals.allows = u.attached.grants.Allows
@@ -457,7 +456,12 @@ func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appS
 		u.attached.executionPresentation = new(executionPresentation)
 	}
 	source, child, workspace := u.attached.source, u.attached.childSource, u.attached.cwd
-	u.attached = newAttachedPresentation(context.Background(), u.presentationState, u.conversationState, &observations)
+	api := sessionapi.NewLive()
+	native := newNativeViews(context.Background(), api.Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	hooks := new(executionHooks)
+	hooks.bind(native, api, u.nativeSession.compactionReader)
+	u.dispatch = u.message
+	u.attached = newAttachedPresentation(context.Background(), u.presentationState, u.conversationState, &observations, hooks)
 	if source != nil {
 		u.attached.session.Activity().Main = *source.Model
 		source.Model = u.attached.source.Model
@@ -470,7 +474,7 @@ func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appS
 	}
 	u.attached.cwd = workspace
 	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u
 }
 
@@ -515,7 +519,7 @@ func replaceAppServerTestSession(t *testing.T, u *appServerUI, thread string) {
 		"id": "replacement-test",
 		"result": map[string]any{
 			"thread": map[string]any{"id": thread, "cwd": u.attached.cwd},
-			"model":  u.model, "reasoningEffort": u.reasoningEffort, "serviceTier": u.serviceTier,
+			"model":  u.settings.Model, "reasoningEffort": u.settings.Effort, "serviceTier": u.settings.Tier,
 		},
 	})
 	if err != nil {

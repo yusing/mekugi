@@ -139,7 +139,7 @@ func TestNativePermissionSelectionRetiresWithView(t *testing.T) {
 	publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	editor := new(composer.Editor)
 	editor.Text = "/permissions"
-	if handled, err := settingsCommand(&v.attached, v.shell, &u.Client, &v.picker, &editor, preferences.Applied{}, &u.serviceTiers, "", "", false, nil, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, nil, false, editor.Text); !handled || err != nil {
+	if handled, err := u.nativeSession.settingsCommand(&v.attached, v.shell, &v.picker, &editor, nil, u.clock, false, editor.Text); !handled || err != nil {
 		t.Fatalf("permission selection handled=%v err=%v", handled, err)
 	}
 	request := btwTestRequest(t, wire, "permissionProfile/list", "")

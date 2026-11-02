@@ -82,7 +82,7 @@ func TestClaudeApprovalProducerDockAndAPI(t *testing.T) {
 				t.Fatalf("dock changed native request identity: %+v", view)
 			}
 			approval := u.approvals.handles[request.Approval]
-			if err := applyApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, u.attached.grants, approval, approval.Choices[tc.choice], tc.reason); err != nil {
+			if err := u.nativeSession.applyApproval(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, u.attached.grants, approval, approval.Choices[tc.choice], tc.reason); err != nil {
 				t.Fatal(err)
 			}
 			got := <-result

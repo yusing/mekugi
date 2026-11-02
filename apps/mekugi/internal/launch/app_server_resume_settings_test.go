@@ -226,7 +226,7 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 				t.Fatal("acknowledgement claimed settings applied")
 			}
 			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "saved", "threadSettings": map[string]any{"model": "saved", "effort": nil, "serviceTier": nil}})
-			if u.Settings.Pending() || u.reasoningEffort != "" {
+			if u.Settings.Pending() || u.settings.Effort != "" {
 				t.Fatal("saved default did not apply")
 			}
 		})

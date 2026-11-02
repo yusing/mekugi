@@ -3,10 +3,11 @@ package launch
 import (
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/charmbracelet/x/ansi"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -35,7 +36,7 @@ func TestUISnapshotOutputDeduplicationAttachments(t *testing.T) {
 		u, w := newAppServerTestUI()
 		frames := append(composer.FileFrames("/workspace/file.txt", body), composer.SkillFrames("guide", "", skill)...)
 		draft := conversationmodel.Input{Text: "review snapshots", Attachments: []string{attachments.Encode(frames)}}
-		if err := sendConversationInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{draft}, false); err != nil {
+		if err := sendConversationInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{draft}, false); err != nil {
 			t.Fatal(err)
 		}
 		sent := appServerTurnRequests(t, w)

@@ -264,7 +264,7 @@ func TestNativeRestorationCopiesImagesBeforeReceipt(t *testing.T) {
 func TestNativeTrackedDeliveriesReleaseClientPacing(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
 	var effects nativeViewEffects
-	u.attached.deliverActivity = func(_ *executionPresentation, deliveries []sessionpresentation.ActivityDelivery) {
+	u.attached.hooks.deliverActivity = func(_ *executionPresentation, deliveries []sessionpresentation.ActivityDelivery) {
 		effects.deliver("main", deliveries)
 	}
 	script := "echo first; echo second"
@@ -298,7 +298,7 @@ func TestNativeTrackedDeliveriesReleaseClientPacing(t *testing.T) {
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "first\nsecond\n"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	serverCLIAwait(t, func() bool {
-		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues)
+		u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 		return u.attached.session.Commands()[[3]string{"main", "t", "cmd"}] == nil
 	})
 	publish()
@@ -321,7 +321,7 @@ func TestNativeActivityBurstPreservesAttachment(t *testing.T) {
 		t.Fatal(refusal)
 	}
 	view := n.views["view"]
-	u.attached.deliverActivity = n.deliverActivity
+	u.attached.hooks.deliverActivity = n.deliverActivity
 	appServerTestTurn(t, u, "turn")
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "burst", "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})

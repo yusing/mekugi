@@ -113,9 +113,9 @@ func TestUISnapshotGrokLaunchModelPicker(t *testing.T) {
 			for _, entry := range catalog.Models {
 				u.models = append(u.models, appServerModel{Model: entry.Slug})
 			}
-			u.model = "grok-4.7"
+			u.settings.Model = "grok-4.7"
 			if !unprefixed {
-				u.model = "grok:" + u.model
+				u.settings.Model = "grok:" + u.settings.Model
 			}
 			appServerTestKeys(t, u, "/model\r")
 			assertNativeUISnapshot(t, "model-picker-"+name, u.renderPicker(80, 8))

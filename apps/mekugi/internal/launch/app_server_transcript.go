@@ -4,8 +4,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -80,16 +78,16 @@ func observeMessageQuestions(attached *attachedPresentation, terminal *terminals
 	return changes.Suppress
 }
 
-func messageTranscript(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, questions *nativeQuestionDock, editor **composer.Editor, picker *composerPicker, overlay bool, notifications *nativeNotifications, text observation.TextEvent, item observation.Item, main bool) bool {
-	if observeMessageQuestions(attached, terminal, control, approvals, clock, questions, editor, picker, overlay, notifications, text, item, false) {
+func (session *nativeSession) messageTranscript(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, editor **composer.Editor, picker *composerPicker, overlay bool, text observation.TextEvent, item observation.Item, main bool) bool {
+	if observeMessageQuestions(attached, terminal, &session.Client, &session.approvals, clock, &session.questions, editor, picker, overlay, session.notifications, text, item, false) {
 		return true
 	}
 	deliveries := sessionpresentation.ProjectMessage(&attached.session, attached.source, attached.childSource, attached.transcript, main, sessionpresentation.ObservationInput{
-		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: control.Thread, Workspace: attached.cwd,
+		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: session.Client.Thread, Workspace: attached.cwd,
 	})
-	streams.Deliver(deliveries, terminal.Transcript, terminal.Agents)
+	session.streams.Deliver(deliveries, terminal.Transcript, terminal.Agents)
 	if !main || len(deliveries) > 0 {
-		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, nil, nil)
+		applyActivity(attached, &session.approvals, terminal, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, nil)
 	}
 	return false
 }

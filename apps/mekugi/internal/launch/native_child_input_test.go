@@ -31,8 +31,8 @@ func TestUISnapshotNativeChildRuntimeInput(t *testing.T) {
 	child.Thread = "child"
 	main.startSession("main", t.TempDir())
 	child.startSession("child", t.TempDir())
-	main.model, main.reasoningEffort, main.serviceTier = "parent-only-model", "high", "priority"
-	child.model, child.reasoningEffort, child.serviceTier = "child-model", "low", "flex"
+	main.settings.Model, main.settings.Effort, main.settings.Tier = "parent-only-model", "high", "priority"
+	child.settings.Model, child.settings.Effort, child.settings.Tier = "child-model", "low", "flex"
 	child.Startup.Prepared = &sessioncontrol.PreparedThread{Parent: "main"}
 	child.attached.threadInput = &threadInput{admitted: true, caller: "/root/worker", role: "worker"}
 	captures := changes.Publication{}.With(changes.GroupCaptures([]changes.Chunk{{Key: "child-change", Workspace: child.attached.cwd, CaptureOrder: 1,

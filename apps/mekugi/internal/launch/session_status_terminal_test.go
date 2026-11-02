@@ -6,30 +6,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 )
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
-	return terminalsession.PaintSessionStatus(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Session, now, u.shell.Transcript.Painter.Colors)
+	return terminalsession.PaintSessionStatus(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Session, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) stateLabel(now time.Time) string {
-	return terminalsession.PaintMainStatus(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status, now, u.shell.Transcript.Painter.Colors)
+	return terminalsession.PaintMainStatus(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) composerErrorText() string {
-	return terminalsession.MainStatusDetails(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status)
+	return terminalsession.MainStatusDetails(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status)
 }
 
 // testMainFrame settles directly configured fixture state before rendering.
 func (u *appServerUI) testMainFrame(width, height, dock int) ([]string, terminalsession.Rect) {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.mainFrame(width, height, dock)
 }
 
 // testPaint delivers an explicitly settled fixture through the real renderer.
 func (u *appServerUI) testPaint(out io.Writer, width, height int) error {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return paintSession(&u.attached, u.shell, &u.detailFiles, u.ctx, presentationTime(u.clock), out, width, height)
 }
 
@@ -52,7 +50,7 @@ func (u *appServerUI) recallInput(backward bool) {
 	if u.Editor.Recall(backward) {
 		u.shell.Main.CursorColumn = nil
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.nativeImages)
+		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.hooks.nativeImages)
 	}
 }
 
@@ -86,7 +84,7 @@ func (u *terminalUI) paintSelection(rows []string) {
 
 func (u *appServerUI) testDeliveredMainFrame(t *testing.T, width, height, dock int) ([]string, terminalsession.NoticeReceipt) {
 	t.Helper()
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	frame := u.renderMainFrame(width, height, dock)
 	var delivered terminalsession.Frame
 	if err := delivered.Write(io.Discard, terminalsession.RenderedFrame{Rows: frame.Rows, Notices: frame.Notices}, width, true); err != nil {
@@ -96,24 +94,24 @@ func (u *appServerUI) testDeliveredMainFrame(t *testing.T, width, height, dock i
 }
 
 func (u *appServerUI) applyComposerKey(key string) (bool, error) {
-	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	return u.applyComposerInput(u.shell.Main.ComposerKey(key, u.shell.Prompts, transcriptView(u.attached.presentation, u.shell)))
 }
 func (u *appServerUI) approvalKey(key string) (bool, error) {
-	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	input := u.shell.Main.PromptKey(key, u.shell.Prompts)
 	if input == nil {
 		return false, nil
 	}
-	return applyApprovalInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, *input)
+	return u.nativeSession.applyApprovalInput(&u.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, *input)
 }
 func (u *appServerUI) questionKey(key string) (bool, error) {
-	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	input := u.shell.Main.PromptKey(key, u.shell.Prompts)
 	if input == nil {
 		return false, nil
 	}
-	return applyQuestionInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, &u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, *input)
+	return u.nativeSession.applyQuestionInput(&u.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, *input)
 }
 
 func paintSession(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, ctx context.Context, at time.Time, out io.Writer, width, height int) error {

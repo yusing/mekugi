@@ -20,7 +20,7 @@ func TestUISnapshotNativeSocketMainComposer(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-			u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+			u.attached.presentation.Status.Text, u.settings.Model, u.settings.Effort = "Ready", "snapshot-model", "high"
 			u.attached.cwd = "/workspace/project"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return now }

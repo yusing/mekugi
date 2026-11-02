@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -96,7 +94,7 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
 
-	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
+	u.settings.Model, u.settings.Effort, u.settings.Tier = "gpt-6-sol", "high", "priority"
 	u.Turn, u.attached.presentation.Status.Text = "active", "Working"
 	u.statusConfig.Provider = "openai"
 	u.statusConfig.Approval = jsontext.Value(`"never"`)
@@ -135,11 +133,11 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 
 func TestAppServerStatusIndependentSnapshotsAndFailure(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.model = "first"
+	u.settings.Model = "first"
 	appServerTestKeys(t, u, "/status\r")
 	firstPanel := u.statusPanel
 	u.statusPanelKey("\x1b")
-	u.model = "second"
+	u.settings.Model = "second"
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":2,"result":{"account":{"type":"apiKey"}}}`)
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"offline"}}`)
@@ -289,7 +287,7 @@ func statusReportText(p *appServerStatusReport) string {
 
 func TestAppServerStatusPanelVisual(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
+	u.settings.Model, u.settings.Effort, u.settings.Tier = "gpt-6-sol", "high", "priority"
 	u.startSession("main", "/home/yusing/projects/mekugi")
 	u.statusConfig.Provider = "openai"
 	u.statusConfig.Approval = jsontext.Value(`"never"`)
@@ -392,7 +390,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 	for _, action := range []byte{'c', 3} {
 		t.Run(fmt.Sprintf("key=%d", action), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.model = "gpt-6-sol"
+			u.settings.Model = "gpt-6-sol"
 			u.Turn = "active"
 			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
 			appServerTestKeys(t, u, "/status\r")
@@ -469,11 +467,11 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 
 // Fixtures publish source transitions before driving the actual terminal owner.
 func (u *appServerUI) statusPanelFrame(width, height int) []string {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.shell.Main.Panel.Render(&u.shell.Transcript.Painter.Painter, width, height)
 }
 func (u *appServerUI) statusPanelKey(key string) bool {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	if !u.shell.Main.Panel.Open() {
 		return false
 	}
@@ -483,6 +481,6 @@ func (u *appServerUI) statusPanelKey(key string) bool {
 	}
 	applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, action)
 	u.dirty = true
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return true
 }

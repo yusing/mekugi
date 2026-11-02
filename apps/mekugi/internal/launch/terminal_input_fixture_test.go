@@ -5,23 +5,8 @@ import (
 	"iter"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/contracts/scope"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
-	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -30,41 +15,41 @@ import (
 
 // applyInput binds terminal effects. Each effect settles before the terminal
 // resumes interpretation; no application key or pointer switch remains here.
-func applyInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, quit *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, surface *terminalsession.Attachment, effects iter.Seq[terminalsession.InputEffect]) error {
+func (session *nativeSession) applyInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, dirty *bool, files *detailFiles, quit *bool, surface *terminalsession.Attachment, effects iter.Seq[terminalsession.InputEffect]) error {
 	if attached != nil {
-		publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side))
+		publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
 		publishActivity(attached, terminal)
 		defer func() {
-			settlePresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
+			settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
 		}()
 	}
 	for effect := range effects {
-		more, err := applyEffect(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, notifications, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, activityService, segments, restoredSegments, files, statusConfig, capture, debugDirectory, quit, dispatch, resumePending, panes, models, modelsLoading, surface, effect)
+		more, err := session.applyEffect(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, dirty, files, quit, surface, effect)
 		if err != nil || !more {
 			return err
 		}
 		if attached != nil {
-			publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side))
+			publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
 		}
 	}
 	return nil
 }
 
-func applyEffect(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, quit *bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, surface *terminalsession.Attachment, effect terminalsession.InputEffect) (bool, error) {
+func (session *nativeSession) applyEffect(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, dirty *bool, files *detailFiles, quit *bool, surface *terminalsession.Attachment, effect terminalsession.InputEffect) (bool, error) {
 	switch {
 	case effect.Focused != nil:
-		if attached != nil && notifications != nil {
-			notifications.focused = *effect.Focused
+		if attached != nil && session.notifications != nil {
+			session.notifications.focused = *effect.Focused
 		}
 	case effect.Paste != nil:
-		_, err := input(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, notifications, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, *effect.Paste)
+		_, err := session.input(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, dirty, files, *effect.Paste)
 		return false, err
 	case effect.Main != nil:
-		shouldQuit, err := applyMainKey(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, notifications, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, *effect.Main)
+		shouldQuit, err := session.applyMainKey(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, dirty, files, *effect.Main)
 		(*quit) = (*quit) || shouldQuit
 		return false, err
 	case effect.Prompt != nil:
-		handled, err := applyPromptInput(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, notifications, *effect.Prompt)
+		handled, err := session.applyPromptInput(attached, terminal, picker, editor, clock, side, session.overlayOpen(*panel, *resumePicker), parent, *effect.Prompt)
 		return !handled, err
 	case effect.PendingPrompt != nil:
 		if effect.PendingPrompt.Version != attached.presentation.View().Version {
@@ -76,29 +61,29 @@ func applyEffect(attached *attachedPresentation, terminal *terminalsession.Attac
 			_ = attached.presentation.Display(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main})
 			*editor = &attached.conversation.Editor
 		}
-		if !effect.PendingPrompt.ApprovalsFirst || !openApprovals(approvals, questions, attached.conversation, terminal, picker, editor, control.Thread) {
-			openQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread)
+		if !effect.PendingPrompt.ApprovalsFirst || !openApprovals(&session.approvals, &session.questions, attached.conversation, terminal, picker, editor, session.Client.Thread) {
+			openQuestions(attached, terminal, picker, editor, &session.questions, &session.approvals, session.Client.Thread)
 		}
 	case effect.Panel != nil:
-		applyPanelAction(attached, terminal, clock, panel, capture, *effect.Panel)
+		applyPanelAction(attached, terminal, clock, panel, session.sessionCapture, *effect.Panel)
 		(*dirty) = true
 	case effect.Resume != nil:
-		return false, applyResumeAction(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, approvalMode, quit, *effect.Resume)
+		return false, session.applyResumeAction(attached, terminal, picker, editor, clock, side, panel, resumePicker, quit, *effect.Resume)
 	case effect.Menu != nil:
-		handled := applyMenuResult(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, side, clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, parent, environment, *effect.Menu)
-		dispatchRewind(attached, terminal, control, picker, clock, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
+		handled := session.applyMenuResult(attached, terminal, picker, editor, side, clock, session.overlayOpen(*panel, *resumePicker), parent, *effect.Menu)
+		session.dispatchRewind(attached, terminal, picker, clock, parent)
 		return !handled, nil
 	case effect.Side != nil:
-		return false, applyCloseSide(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, *effect.Side)
+		return false, applyCloseSide(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, session.overlayOpen(*panel, *resumePicker), &session.ownedImages, *effect.Side)
 	case effect.BTW != nil:
 		view := attached.presentation.View()
 		if effect.BTW.Version == view.Version && view.BTW != nil && effect.BTW.Exchange == view.BTW.ID {
-			return false, closeBTWQuestion(attached, control)
+			return false, closeBTWQuestion(attached, &session.Client)
 		}
 	case effect.Dialog != nil:
-		outputIntent(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, environment, parent, files, surface, *effect.Dialog)
+		session.outputIntent(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, files, surface, *effect.Dialog)
 	case effect.Reference != nil:
-		return referenceInput(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), restoring, side, panel, resumePicker, owned, environment, parent, *effect.Reference), nil
+		return session.referenceInput(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, *effect.Reference), nil
 	case effect.Selection != nil:
 		result := effect.Selection
 		if len(result.Demands) > 0 {
@@ -109,15 +94,15 @@ func applyEffect(attached *attachedPresentation, terminal *terminalsession.Attac
 			}
 			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))
 		} else {
-			openSelectionTarget(attached, terminal, clock, reviewSource, files, surface, result.Target)
+			openSelectionTarget(attached, terminal, clock, session.reviewSource, files, surface, result.Target)
 		}
 
 	case effect.Display != nil:
-		displaySession(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, *effect.Display)
+		displaySession(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker), *effect.Display)
 	case effect.Roster != nil:
 		intent := effect.Roster
 		target := attached.presentation.ActivityTarget(intent.Caller, attached.childSource)
-		if displaySession(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, sessionpresentation.DisplayIntent{Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision}, Thread: target}) && target.Caller != "/root" {
+		if displaySession(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker), sessionpresentation.DisplayIntent{Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision}, Thread: target}) && target.Caller != "/root" {
 			surface.Agents.Selected = target.Caller
 		}
 	case effect.Details != nil:
@@ -151,7 +136,7 @@ func applyEffect(attached *attachedPresentation, terminal *terminalsession.Attac
 	case effect.Clipboard != nil:
 		setNotice(&attached.feedback, terminal, presentationTime(clock), effect.Clipboard.Text, effect.Clipboard.Alert)
 	case effect.Interrupt != nil:
-		return false, interruptSession(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, (*reviewOwner), receipts, *effect.Interrupt)
+		return false, session.interruptSession(attached, terminal, picker, editor, clock, side, session.overlayOpen(*panel, *resumePicker), *effect.Interrupt)
 	case effect.Locked:
 		lockNotice(attached, terminal, clock)
 	case effect.EditorPath != "":

@@ -3,7 +3,6 @@ package launch
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	json "encoding/json/v2"
 	"errors"
@@ -272,7 +271,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				if u.Text != "held" || !u.Settings.RestoreEffort || u.Settings.Pending() || w.Len() != 0 {
 					t.Fatal("rejected restoration ran input or lost its recovery draft")
 				}
-				if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil || w.Len() != 0 {
+				if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil || w.Len() != 0 {
 					t.Fatal("rejected restoration released input on a later event")
 				}
 				after, err := u.panes.read("/workspace", "saved")
@@ -286,7 +285,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				if !fresh.ResumeEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "saved-model"}) {
 					t.Fatal("fresh retry promoted transient resume defaults over saved null intent")
 				}
-				if _, err := updateSettings(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, u.restoring != nil, u.clock, map[string]any{"effort": effort}); err != nil {
+				if _, err := updateSettings(&u.attached, u.shell, &u.Client, u.settings, &u.serviceTiers, u.panes, u.restoring != nil, u.clock, map[string]any{"effort": effort}); err != nil {
 					t.Fatal(err)
 				}
 				if effort == "medium" {
@@ -364,7 +363,7 @@ func TestAppServerAppliedSettingsStorageFailurePreservesHostResult(t *testing.T)
 	} else {
 		u.dirty = paneError(u.attached.source, err) || u.dirty
 	}
-	if u.model != "applied" || u.reasoningEffort != "high" || u.serviceTier != "priority" || len(u.attached.source.Entries) == 0 {
+	if u.settings.Model != "applied" || u.settings.Effort != "high" || u.settings.Tier != "priority" || len(u.attached.source.Entries) == 0 {
 		t.Fatal("storage failure hid the applied host settings or its warning")
 	}
 }
@@ -426,7 +425,7 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
-	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.attached.presentation.Status.Text, u.settings.Model, u.settings.Effort = "Ready", "snapshot-model", "high"
 	u.dirty = paneError(u.attached.source, errors.New("session preferences storage unavailable")) || u.dirty
 	u.attached.source.Entries[len(u.attached.source.Entries)-1].Source.Observed = now
 	rows, _ := u.testMainFrame(100, 14, 0)
@@ -438,7 +437,7 @@ func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	resumeTestMembers(t, u, "saved")
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
+	u.attached.presentation.Status.Text, u.settings.Model, u.settings.Effort = "Ready", "saved-model", "high"
 	u.Settings.RestoreEffort = true
 	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
 	appServerTestRequest(t, u, "1", "thread/settings/update")

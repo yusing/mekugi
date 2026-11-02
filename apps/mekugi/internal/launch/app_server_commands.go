@@ -4,10 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
@@ -59,71 +56,71 @@ var nativeCommands = []completion.Choice{
 // Clear starts a fresh host thread.
 // Compact uses its native RPC after acknowledged interruption, never a
 // turn/steer text payload. Tab can explicitly queue it instead.
-func sessionCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, provider string, approvalMode bool, command string) error {
-	if control.Thread == "" || restoring || control.Replacement.Pending() {
+func (session *nativeSession) sessionCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, provider string, command string) error {
+	if session.Client.Thread == "" || session.restoring != nil || session.Client.Replacement.Pending() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
 		return nil
 	}
 	if command == "/compact" {
-		return submitCompact(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, restoring, owned, environment, hook, observations, parent, reviewOwner, receipts, false)
+		return session.submitCompact(attached, terminal, picker, editor, clock, parent, false)
 	}
-	if sessionBusy(&control.Live, attached.conversation) {
+	if sessionBusy(&session.Client.Live, attached.conversation) {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), command+" is disabled while a task is in progress", true)
 		return nil
 	}
 	if command == "/rewind" {
-		if !control.HasUserTurn {
+		if !session.Client.HasUserTurn {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "/rewind is disabled before the first user turn", false)
 			return nil
 		}
-		showRewindPicker(control, picker, reviewOwner)
+		showRewindPicker(&session.Client, picker, session.review)
 		(*editor).Take()
 		return nil
 	}
-	prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
+	prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, (*editor).Take())
 	if command == "/fork" {
-		if err := control.Requests.Fork(&control.Startup, &control.Live, settings, provider, approvalMode); err != nil {
+		if err := session.Client.Requests.Fork(&session.Client.Startup, &session.Client.Live, session.settings, provider, session.approvalMode); err != nil {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not fork session: "+err.Error(), true)
 			return nil
 		}
 		attached.presentation.Status.SetText("Forking session…")
 		return nil
 	}
-	control.Replacement.Clear()
+	session.Client.Replacement.Clear()
 	attached.presentation.Status.SetText("Starting new session…")
-	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, approvalMode)
+	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, session.approvalMode)
 	if attached.cwd != "" {
 		params["cwd"] = attached.cwd
 	}
-	if settings.Model != "" {
-		params["model"] = settings.Model
+	if session.settings.Model != "" {
+		params["model"] = session.settings.Model
 	}
 	if provider != "" {
 		params["modelProvider"] = provider
 	}
-	if settings.Effort != "" {
-		params["config"] = map[string]any{"model_reasoning_effort": settings.Effort}
+	if session.settings.Effort != "" {
+		params["config"] = map[string]any{"model_reasoning_effort": session.settings.Effort}
 	}
-	if settings.Tier != "" {
-		params["serviceTier"] = settings.Tier
+	if session.settings.Tier != "" {
+		params["serviceTier"] = session.settings.Tier
 	}
-	if err := control.Request("thread/start", params); err != nil {
-		control.Replacement.Finish()
+	if err := session.Client.Request("thread/start", params); err != nil {
+		session.Client.Replacement.Finish()
 		return err
 	}
 	return nil
 }
 
-func submitCompact(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, queue bool) error {
-	if control.Thread == "" || restoring || control.Replacement.Pending() {
+func (session *nativeSession) submitCompact(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, queue bool) error {
+	if session.Client.Thread == "" || session.restoring != nil || session.Client.Replacement.Pending() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
 		return nil
 	}
-	draft := prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
+	draft := prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, (*editor).Take())
 	draft.Text = "/compact"
-	draft.Compact = &conversationmodel.CompactIntent{WaitForIdle: queue, Continue: control.Turn != "" || control.Starting()}
+	draft.Compact = &conversationmodel.CompactIntent{WaitForIdle: queue, Continue: session.Client.Turn != "" || session.Client.Starting()}
 	attached.conversation.Unsent = append(attached.conversation.Unsent, draft)
-	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
+	return session.flushInput(attached, terminal, picker, clock, editor, parent)
 }
 
 // sessionBusy reports work that leaving the current thread would strand.

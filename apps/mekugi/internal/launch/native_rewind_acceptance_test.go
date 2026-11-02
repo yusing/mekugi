@@ -86,7 +86,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 				defer streams.Close()
 				conversation := new(conversationmodel.Service)
 				observations := conversationbinding.Codex.Observation(conversation)
-				wait, err := startNativeSession(u.terminalViews, u.reviewSource, testPresentation(), conversation, u.activity, testHistory(), testPreferences(), testReports(), runtimeContext, cmd, streams, u.controlObservations, u.usage, u.audience, u.review, u.execWindows, u.nativeTrace, u.review.Projection.Retained, u.review.Projection.Changes, u.snapshots, u.recovered, u.publishChanges, u.captureNotice, nil, nil, u.execTrack, false, nil, "", nil, nil, nil, "", nil, &observations, false, nil, api, false, nil)
+				wait, err := (&nativeSession{terminalViews: u.terminalViews, reviewSource: u.reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: u.activity, history: testHistory(), segments: testReports(), ctx: runtimeContext, controlObservations: u.controlObservations, usage: u.usage, audience: u.audience, review: u.review, execWindows: u.execWindows, nativeTrace: u.nativeTrace, retained: u.review.Projection.Retained, changeSource: u.review.Projection.Changes, snapshots: u.snapshots, recovered: u.recovered, publishChanges: u.publishChanges, captureNotice: u.captureNotice, execTrack: u.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, streams, nil, nil, false, "", nil, api, false, nil)
 				if err != nil {
 					return err
 				}

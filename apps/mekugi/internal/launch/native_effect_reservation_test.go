@@ -22,11 +22,11 @@ func TestNativeShellReservationSurvivesHostAcknowledgement(t *testing.T) {
 			}
 			view := n.views["view"]
 			u.attached, u.shell, u.picker = view.attached, view.shell, view.picker
-			u.attached.restoreShell = n.restoreShell
+			u.attached.hooks.restoreShell = n.restoreShell
 			reservation := view.effects.reserve(1)
 			view.effects.current = reservation
 			u.Editor = &composer.Editor{Text: "!pwd"}
-			if err := submitShell(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, u.restoring != nil, u.skillEnvironment, u.ctx, u.review, &u.shellEdits, u.retained, u.retainedSession, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, u.reviewSource, u.preparePane); err != nil {
+			if err := u.nativeSession.submitShell(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			view.effects.current = nil

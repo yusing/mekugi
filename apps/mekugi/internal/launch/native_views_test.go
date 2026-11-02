@@ -137,7 +137,7 @@ func nativeSideSettingsTest(t *testing.T) (*appServerUI, *appServerTestInput, *n
 	t.Helper()
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	u.model, u.reasoningEffort = "test", "low"
+	u.settings.Model, u.settings.Effort = "test", "low"
 	appServerTestKeys(t, u, "/side\r")
 	fork := btwTestRequest(t, wire, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
@@ -149,7 +149,7 @@ func nativeSideSettingsTest(t *testing.T) (*appServerUI, *appServerTestInput, *n
 		t.Fatal(refusal)
 	}
 	view := n.views["view"]
-	publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, u.serviceTiers, "", "", false, u.side, true)
+	publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{Model: u.settings.Model, Effort: u.settings.Effort}, u.serviceTiers, "", "", false, u.side, true)
 	display := sessionpresentation.DisplayIntent{Version: view.attached.presentation.View().Version, Thread: view.attached.presentation.View().SideThread}
 	if refusal := view.applyView(sessionapi.NativeOperation{Display: &display}); refusal != "" {
 		t.Fatal(refusal)
@@ -164,7 +164,7 @@ func TestNativeSideReasoningWaitsForCatalog(t *testing.T) {
 	u, wire, view := nativeSideSettingsTest(t)
 	u.modelsLoading = true
 	appServerTestRequest(t, u, "99", "model/list")
-	if err := stepReasoning(&view.attached, view.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
+	if err := stepReasoning(&view.attached, view.shell, &u.Client, preferences.Applied{Model: u.settings.Model, Effort: u.settings.Effort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
 		t.Fatal(err)
 	}
 	appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}}`)
@@ -179,7 +179,7 @@ func TestNativeSidePickerWaitsForCatalog(t *testing.T) {
 	appServerTestRequest(t, u, "99", "model/list")
 	requestEditor := new(composer.Editor)
 	requestEditor.Text = "/model"
-	if handled, err := settingsCommand(&view.attached, view.shell, &u.Client, &view.picker, &requestEditor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, &u.serviceTiers, u.title, u.backendVersion, false, u.side, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, u.models, u.modelsLoading, "/model"); err != nil || !handled {
+	if handled, err := u.nativeSession.settingsCommand(&view.attached, view.shell, &view.picker, &requestEditor, u.side, u.clock, false, "/model"); err != nil || !handled {
 		t.Fatalf("settings command handled=%v err=%v", handled, err)
 	}
 	appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}}`)
@@ -209,7 +209,7 @@ func TestSettingsCommandRetainsInputThread(t *testing.T) {
 
 func TestDeferredSideReasoningRetainsTurn(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.model, u.reasoningEffort = "test", "low"
+	u.settings.Model, u.settings.Effort = "test", "low"
 	appServerTestKeys(t, u, "/side\r")
 	fork := btwTestRequest(t, wire, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)

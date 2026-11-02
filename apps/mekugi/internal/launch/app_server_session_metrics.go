@@ -3,12 +3,9 @@ package launch
 import (
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
@@ -19,13 +16,13 @@ type sessionMetricsPanel struct {
 	refreshed time.Time
 }
 
-func showSessionMetrics(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, capture *transportcapture.Recorder, debugDirectory string) {
-	(*panel) = newStatusReport(attached.presentation, debugDirectory)
+func (session *nativeSession) showSessionMetrics(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) {
+	(*panel) = newStatusReport(attached.presentation, session.replayDebugDirectory)
 	(*panel).Workspace = attached.cwd
 	(*panel).metrics = new(sessionMetricsPanel)
 	(*panel).Metrics = new(transportcapture.MetricsSnapshot)
-	deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
-	refreshSessionMetrics((*panel), capture, presentationTime(clock), true)
+	session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
+	refreshSessionMetrics((*panel), session.sessionCapture, presentationTime(clock), true)
 }
 func refreshSessionMetrics(p *appServerStatusReport, capture *transportcapture.Recorder, at time.Time, force bool) bool {
 	if p == nil || p.metrics == nil {

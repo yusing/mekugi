@@ -11,6 +11,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -24,7 +25,7 @@ import (
 
 func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 	const width = 40
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), model: "model", shell: &terminalsession.Attachment{Transcript: activityui.NewView()}})
+	u := appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, settings: preferences.Applied{Model: "model"}}})
 	frame, _ := u.testMainFrame(width, 3, 0)
 	rows := []string{
 		terminalui.PaneRule("┌", "┐", "─", terminalui.PaneTitle(2, "Diff", "", false), terminalui.Dim+"metadata"+terminalui.Undim, width, terminalui.PaneBorder(false)),
@@ -45,7 +46,7 @@ func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 
 func TestNativeUISubtleForeground(t *testing.T) {
 	p := activityui.Painter{}
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), model: "x", shell: &terminalsession.Attachment{Transcript: activityui.NewView()}})
+	u := appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, settings: preferences.Applied{Model: "x"}}})
 	frame, _ := u.testMainFrame(40, 3, 0)
 	v := newActivityAdapter()
 	metrics := activityui.RosterColumns([][activityui.MetricParts]string{activityui.RosterMetricParts(v.View, testActivityAgent(sessionpresentation.ActivityAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}), time.Now())}, 200)[0]

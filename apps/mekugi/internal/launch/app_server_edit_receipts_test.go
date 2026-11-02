@@ -435,7 +435,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}
-	got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{executionPresentation: &executionPresentation{source: v.ActivitySource}}}), 100)
+	got := mainFeed(appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{executionPresentation: &executionPresentation{source: v.ActivitySource}}}}), 100)
 	if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "git cherry-pick · exit 1") {
 		t.Fatalf("receipt changed rendered failure ownership:\n%s", got)
 	}

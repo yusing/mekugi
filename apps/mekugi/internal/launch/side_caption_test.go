@@ -20,7 +20,7 @@ func TestUISnapshotSideComposerMetrics(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				u, w := newAppServerTestUI()
 				u.startSession("main", "/workspace")
-				u.model, u.reasoningEffort, u.serviceTier = "main-model", "high", "priority"
+				u.settings.Model, u.settings.Effort, u.settings.Tier = "main-model", "high", "priority"
 				u.usage = accounting.New()
 				t.Cleanup(u.usage.Close)
 				u.clock = func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.Local) }

@@ -1,11 +1,12 @@
 package launch
 
 import (
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/backends/codex/appserver"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -61,7 +62,7 @@ func TestAppServerInputHistoryAttachmentsRemainUsable(t *testing.T) {
 	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
 	appServerTestKeys(t, u, "\x1b[A")
 	u.UndoDrafts = nil
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.nativeImages)
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.hooks.nativeImages)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("live draft image pruned: %v", err)
 	}

@@ -35,7 +35,7 @@ func TestAppServerContextWindow(t *testing.T) {
 	if root.ContextTokens != 100000 || root.InputTokens != 900000 {
 		t.Fatalf("context conflated with cumulative usage: %+v", root)
 	}
-	u.model, u.reasoningEffort = "actual-model", "high"
+	u.settings.Model, u.settings.Effort = "actual-model", "high"
 	for _, width := range []int{12, 32, 80, 160} {
 		frame, _ := u.testMainFrame(width, 12, 0)
 		for _, line := range frame {

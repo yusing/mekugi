@@ -6,12 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -74,7 +71,7 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 }
 
 // Apply each menu effect and publish before a continuation can derive another intent.
-func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, parent context.Context, environment []string, result terminalsession.MenuResult) bool {
+func (session *nativeSession) applyMenuResult(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side **sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, result terminalsession.MenuResult) bool {
 	if result.Action.Kind == sessionpresentation.MenuNoAction {
 		return result.Handled
 	}
@@ -93,31 +90,31 @@ func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.A
 			oneoff := picker.sideTask != nil
 			sourceEditor := *editor
 			if oneoff {
-				pending = prepareDraft(picker, terminal, attached.cwd, environment, sideTaskDraft(*picker.sideTask))
+				pending = prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, sideTaskDraft(*picker.sideTask))
 				pending.Origin = attached.view
 				pending.Delivery = picker.sideTaskDelivery
 			}
-			err := closeSide(attached, terminal, control, editor, questions, approvals, side, &owned)
+			err := closeSide(attached, terminal, &session.Client, editor, &session.questions, &session.approvals, side, &session.ownedImages)
 			if err == nil {
 				if oneoff {
 					sourceEditor.Take()
 				}
-				err = openFreshSide(attached, terminal, control, editor, side, applied, presentationTime(clock), oneoff, pending)
+				err = openFreshSide(attached, terminal, &session.Client, editor, side, session.settings, presentationTime(clock), oneoff, pending)
 			}
 			if err != nil {
 				setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 			}
 		}
 		picker.sideTask = nil
-		settlePresentation(attached, terminal, control, picker, editor, applied, *tiers, title, backend, restoring, *side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, *side, clock, &session.questions, &session.approvals, overlay)
 		return true
 	}
-	accepted := applyMenuAction(attached, terminal, control, picker, editor, applied, tiers, title, backend, restoring, *side, clock, questions, approvals, overlay, owned, panes, parent, environment, result.Action)
-	picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
-	settlePresentation(attached, terminal, control, picker, editor, applied, (*tiers), title, backend, restoring, *side, clock, questions, approvals, overlay)
+	accepted := session.applyMenuAction(attached, terminal, picker, editor, *side, clock, overlay, parent, result.Action)
+	picker.refreshPicker(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
+	settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, *side, clock, &session.questions, &session.approvals, overlay)
 	return result.Handled && !(accepted && result.Submit)
 }
-func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, parent context.Context, environment []string, action sessionpresentation.MenuAction) bool {
+func (session *nativeSession) applyMenuAction(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, action sessionpresentation.MenuAction) bool {
 	if err := attached.presentation.AdmitMenu(action); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
@@ -157,22 +154,22 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 		}
 		choice := p.Choices[index]
 		if p.presets != nil {
-			return choosePreset(attached, control, p, action, choice, restoring)
+			return choosePreset(attached, &session.Client, p, action, choice, session.restoring != nil)
 		}
 		switch p.Kind {
 		case "menu":
-			picker.chooseSkillsAction(attached, (*editor), terminal, clock, owned, questions, approvals, side, choice)
+			picker.chooseSkillsAction(attached, (*editor), terminal, clock, session.ownedImages, &session.questions, &session.approvals, side, choice)
 		case "manage":
-			toggleSkill(picker, control.Requests, attached.cwd, choice)
+			toggleSkill(picker, session.Client.Requests, attached.cwd, choice)
 		case "rewind", "rewind-edits":
-			chooseRewind(attached, terminal, control, picker, restoring, clock, choice, parent)
+			chooseRewind(attached, terminal, &session.Client, picker, session.restoring != nil, clock, choice, parent)
 		case "archive":
-			chooseArchive(picker, control, &attached.feedback, terminal, clock, choice.ID == archiveConfirmChoice)
+			chooseArchive(picker, &session.Client, &attached.feedback, terminal, clock, choice.ID == archiveConfirmChoice)
 		case "settings":
-			chooseSetting(attached, terminal, control, applied, tiers, panes, restoring, clock, picker, choice)
+			chooseSetting(attached, terminal, &session.Client, session.settings, &session.serviceTiers, session.panes, session.restoring != nil, clock, picker, choice)
 		case "copy":
 			if attached.effects != nil {
-				attached.effects.add(sessionapi.NativeEffect{Thread: control.Thread, Clipboard: new(p.CopyTexts[index])})
+				attached.effects.add(sessionapi.NativeEffect{Thread: session.Client.Thread, Clipboard: new(p.CopyTexts[index])})
 			} else if terminal == nil {
 				setNotice(&attached.feedback, terminal, presentationTime(clock), "Terminal clipboard unavailable", true)
 			} else {
@@ -180,7 +177,7 @@ func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.A
 			}
 			p.Kind, p.Open, p.Choices, p.CopyTexts = "", false, nil, nil
 		default:
-			return acceptCompletion(attached, terminal, control, picker, editor, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, parent, environment, choice)
+			return session.acceptCompletion(attached, terminal, picker, editor, side, clock, overlay, parent, choice)
 		}
 		return true
 	}

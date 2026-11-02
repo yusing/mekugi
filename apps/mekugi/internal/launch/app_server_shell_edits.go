@@ -4,12 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/contracts/scope"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
@@ -29,11 +23,11 @@ type appServerShellEdits struct {
 	running map[[2]string]*executionobservation.ShellOperation
 }
 
-func captureShellEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], parent context.Context, reviewOwner *sessionreview.Review, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), command string) *executionobservation.ShellOperation {
-	if retained.Store == nil {
+func (session *nativeSession) captureShellEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, parent context.Context, command string) *executionobservation.ShellOperation {
+	if session.retained.Store == nil {
 		return nil
 	}
-	ctx := retainedSession.Context
+	ctx := session.retainedSession.Context
 	if ctx == nil {
 		ctx = parent
 	}
@@ -41,23 +35,23 @@ func captureShellEdit(attached *attachedPresentation, terminal *terminalsession.
 	// Resolve its durable family namespace at admission, while retaining the
 	// selected thread as the shell operation's author.
 	var namespace string
-	if err := retained.Store.Transaction(ctx, nil, func(*history.Transaction) error {
+	if err := session.retained.Store.Transaction(ctx, nil, func(*history.Transaction) error {
 		var err error
-		namespace, err = retained.Store.NamespaceForThread(control.Thread)
+		namespace, err = session.retained.Store.NamespaceForThread(session.Client.Thread)
 		return err
 	}); err != nil {
 		setNotice(&attached.feedback, terminal, time.Now(), "Shell change capture failed: "+err.Error(), true)
 		return nil
 	}
-	edit := executionobservation.PrepareShell(ctx, retained, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, executionobservation.ShellInput{
-		Thread: control.Thread, Turn: control.Turn, Namespace: namespace,
-		Workspace: attached.cwd, Caller: attached.session.Caller(control.Thread), Command: command, Shell: shellEdits.shell,
+	edit := executionobservation.PrepareShell(ctx, session.retained, session.changeSource, session.snapshots, session.recovered, session.publishChanges, session.execWindows, session.audience, session.captureNotice, executionobservation.ShellInput{
+		Thread: session.Client.Thread, Turn: session.Client.Turn, Namespace: namespace,
+		Workspace: attached.cwd, Caller: attached.session.Caller(session.Client.Thread), Command: command, Shell: session.shellEdits.shell,
 	})
 	if edit == nil {
 		return nil
 	}
-	restoreDiffThread(attached, terminal, reviewOwner, reviewSource, preparePane, binding.ThreadInfo{ID: control.Thread, Cwd: attached.cwd})
-	edit.Begin(reviewOwner)
+	restoreDiffThread(attached, terminal, session.review, session.reviewSource, session.preparePane, binding.ThreadInfo{ID: session.Client.Thread, Cwd: attached.cwd})
+	edit.Begin(session.review)
 	return edit
 }
 

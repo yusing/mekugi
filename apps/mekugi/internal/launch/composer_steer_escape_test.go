@@ -234,7 +234,7 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 		t.Fatal("Escape bypassed pending settings")
 	}
 	u.Settings = sessioncontrol.Settings{}
-	if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+	if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 		t.Fatal(err)
 	}
 	appServerOneRequest(t, wire, "turn/start", "first")

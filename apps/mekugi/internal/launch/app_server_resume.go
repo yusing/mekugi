@@ -4,13 +4,7 @@ import (
 	"cmp"
 	"context"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
-	"github.com/yusing/mekugi/modules/commandsegments/reports"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
@@ -41,17 +35,17 @@ import (
 
 func openSession(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time, resumePicker **appServerResumePicker, approvalMode bool) error {
 	thread := cmp.Or(control.Replacement.Target, control.Startup.Thread)
-	if attached.reserveThread != nil && thread != "" && thread != "--last" && thread != sessioncontrol.ResumePicker {
-		if err := attached.reserveThread(thread); err != nil {
+	if thread != "" && thread != "--last" && thread != sessioncontrol.ResumePicker {
+		if err := attached.hooks.reserveThread(thread); err != nil {
 			return err
 		}
 	}
 	opening, err := control.Requests.OpenSession(&control.Startup, &control.Live, approvalMode, appServerRequest{label: "resume/settings"})
 	attached.presentation.BeginOpening(opening)
 	if err != nil {
-		if attached.reserveThread != nil {
-			_ = attached.reserveThread("")
-		}
+
+		_ = attached.hooks.reserveThread("")
+
 		return err
 	}
 	if opening == sessioncontrol.OpeningPicker {
@@ -192,9 +186,9 @@ func appServerResumeConfig(args, resumeArgv []string) map[string]any {
 // processes or child agents. restoreMainHistory
 // also places restored evidence the host's history omits among Main's items: at its rollout anchor, or by time for evidence from
 // another thread. itemAt holds the root's retained item completion times.
-func restoreMainHistory(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retained changes.Scope, retainedSession history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, turns []binding.HistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
-	previousSegments := (*restoredSegments)
-	defer func() { (*restoredSegments) = previousSegments }()
+func (session *nativeSession) restoreMainHistory(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, turns []binding.HistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
+	previousSegments := session.restoredSegments
+	defer func() { session.restoredSegments = previousSegments }()
 	positions := historyPositions(turns, itemAt)
 	byTurn := make(map[int][]*restoredPlacement)
 	for _, p := range placements {
@@ -207,7 +201,7 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 		}
 	}
 	for index, turn := range turns {
-		(*restoredSegments) = prepareCommandSegments(parent, retained, segments, control.Thread, attached.cwd, turn)
+		session.restoredSegments = prepareCommandSegments(parent, session.retained, session.segments, session.Client.Thread, attached.cwd, turn)
 		placements := byTurn[index]
 		slots := positions[index].Slots(restoredPositions(placements))
 		place := func(indices []int) {
@@ -224,7 +218,7 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 				// Linked audiences must receive the retained time at admission.
 				itemClock = func() time.Time { return at }
 			}
-			restoreHistoryItem(attached, terminal, control, picker, editor, questions, approvals, itemClock, panel, resumePicker, parent, notifications, retained, retainedSession, activityService, segments, restoredSegments, turn, item)
+			session.restoreHistoryItem(attached, terminal, picker, editor, itemClock, panel, resumePicker, parent, turn, item)
 			if !at.IsZero() {
 				for j := len(attached.source.Entries) - 1; j >= 0 && attached.source.Entries[j].Source.Seq > before; j-- {
 					attached.source.Model.Mutate(j, func(record *sessionpresentation.ActivityRecord) { record.Source.Observed = at })
@@ -242,15 +236,15 @@ func restoreMainHistory(attached *attachedPresentation, terminal *terminalsessio
 				Observed: historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt))}}})
 		}
 		if turn.Status == "inProgress" {
-			control.Turn = turn.ID
+			session.Client.Turn = turn.ID
 			attached.presentation.Status.Started = presentationTime(clock)
 			attached.presentation.Status.SetText("Working")
 		}
 	}
-	attached.session.Lifecycle(control.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), control.Turn != "")
+	attached.session.Lifecycle(session.Client.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), session.Client.Turn != "")
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
 	attached.session.Activity().AdvanceSequence(attached.source.LastSeq)
-	applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, nil, attached.session.Roster())
+	applyActivity(attached, &session.approvals, terminal, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, attached.session.Roster())
 }
 
 func applyRestoredMain(attached *attachedPresentation, placements []*restoredPlacement) {
@@ -270,13 +264,13 @@ func applyRestoredMain(attached *attachedPresentation, placements []*restoredPla
 	}
 }
 
-func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, notifications *nativeNotifications, retained changes.Scope, retainedSession history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, turn binding.HistoryTurn, item binding.ThreadItem) {
+func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, turn binding.HistoryTurn, item binding.ThreadItem) {
 	if item.Type == "userMessage" {
-		control.HasUserTurn = true
+		session.Client.HasUserTurn = true
 	}
 	facts := item.Observation()
-	text := observation.TextEvent{Kind: observation.ItemCompleted, Item: transcriptItem(item, control.Thread, turn.ID, item.ID)}
-	if observeMessageQuestions(attached, terminal, control, approvals, clock, questions, editor, picker, (*panel) != nil || (*resumePicker) != nil, notifications, text, facts, true) {
+	text := observation.TextEvent{Kind: observation.ItemCompleted, Item: transcriptItem(item, session.Client.Thread, turn.ID, item.ID)}
+	if observeMessageQuestions(attached, terminal, &session.Client, &session.approvals, clock, &session.questions, editor, picker, session.overlayOpen(*panel, *resumePicker), session.notifications, text, facts, true) {
 		return
 	}
 	if item.Type == "userMessage" {
@@ -303,7 +297,7 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 			draft.Selections = composer.RestoreSelections(draft.Text, attachmentFrames)
 			draft.Skills = conversationbinding.SkillBindings(draft.Text, conversationbinding.ContentSkills(content), spans)
 			if attached.inputHistory != nil && len(binding.QuestionReplies(draft.Text)) == 0 {
-				attached.conversation.Editor.RestoreHistory(control.Thread, draft.Draft)
+				attached.conversation.Editor.RestoreHistory(session.Client.Thread, draft.Draft)
 			} else {
 				rememberInput(attached.conversation, draft)
 			}
@@ -318,12 +312,12 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 		if item.Status != "inProgress" {
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 				Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "compaction", Text: cmp.Or(item.Text, "Compaction summary unavailable."), Observed: presentationTime(clock),
-				Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: "item/completed"},
+				Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: "item/completed"},
 			}}})
 		}
 	case "mcpToolCall":
-		entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Agent: attached.session.Caller(control.Thread), CallID: item.ID, Observed: presentationTime(clock),
-			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Status: item.Status, Duration: sessionpresentation.ItemDuration(facts)}}
+		entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Agent: attached.session.Caller(session.Client.Thread), CallID: item.ID, Observed: presentationTime(clock),
+			Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Status: item.Status, Duration: sessionpresentation.ItemDuration(facts)}}
 		entry = attached.session.CoordinationEntry(entry, facts)
 		sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 	case "imageView", "imageGeneration":
@@ -332,7 +326,7 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 			return
 		}
 		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: presentationTime(clock),
-			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Images: images}}
+			Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Images: images}}
 		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
 		text := sessionpresentation.ToolText(facts, attached.cwd)
@@ -340,13 +334,13 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 			text = activitypresentation.HostEditText(facts, attached.cwd)
 		}
 		entry := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			Native: &sessionpresentation.NativeItem{Thread: control.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: sessionpresentation.CommandDirectory(facts, attached.cwd), Status: item.Status, Duration: sessionpresentation.ItemDuration(facts), SearchResults: sessionpresentation.SearchResults(facts), Workdir: sessionpresentation.CommandWorkdir(facts, attached.cwd)}}
+			Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: sessionpresentation.CommandDirectory(facts, attached.cwd), Status: item.Status, Duration: sessionpresentation.ItemDuration(facts), SearchResults: sessionpresentation.SearchResults(facts), Workdir: sessionpresentation.CommandWorkdir(facts, attached.cwd)}}
 		if item.Type == "fileChange" {
 			entry.Native.EditPages = activitypresentation.HostEditPages(facts, attached.cwd, method)
 		}
-		attached.session.CompleteCommand(entry.Native, facts, activityService.Outputs(attached.session.Scope()))
+		attached.session.CompleteCommand(entry.Native, facts, session.activity.Outputs(attached.session.Scope()))
 		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
-		restoreCommandSegments(parent, retained, segments, attached, activityService, (*restoredSegments), &entry, item, attached.cwd)
+		restoreCommandSegments(parent, session.retained, session.segments, attached, session.activity, session.restoredSegments, &entry, item, attached.cwd)
 		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
@@ -354,9 +348,9 @@ func restoreHistoryItem(attached *attachedPresentation, terminal *terminalsessio
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{exit}})
 		}
 	default:
-		if update, ok := historicalTranscript([]binding.ThreadItem{item}, control.Thread, turn.ID, true, false, presentationTime(clock))[item.ID]; ok {
+		if update, ok := historicalTranscript([]binding.ThreadItem{item}, session.Client.Thread, turn.ID, true, false, presentationTime(clock))[item.ID]; ok {
 			update.Phase = method
-			attached.source.ApplyTranscript(update, item.Content, attached.cwd, control.Thread, item.Type == "userMessage")
+			attached.source.ApplyTranscript(update, item.Content, attached.cwd, session.Client.Thread, item.Type == "userMessage")
 		}
 	}
 }

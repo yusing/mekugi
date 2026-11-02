@@ -213,7 +213,7 @@ func stepReasoningForTurn(attached *attachedPresentation, terminal *terminalsess
 }
 
 // Slash controls work while a turn runs and do not submit conversation input.
-func settingsCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, models []appServerModel, loading bool, text string) (bool, error) {
+func (session *nativeSession) settingsCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, text string) (bool, error) {
 	fields := strings.Fields(text)
 	if len(fields) == 0 {
 		return false, nil
@@ -222,7 +222,7 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" && command != "/permissions" && command != "/live" {
 		return false, nil
 	}
-	if control.Replacement.Pending() {
+	if session.Client.Replacement.Pending() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the new session · draft kept", false)
 		return true, nil
 	}
@@ -238,31 +238,30 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /live, /live on, or /live off", true)
 			return true, nil
 		}
-		recordDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side)
+		recordDraft(attached, (*editor), terminal, clock, session.ownedImages, &session.questions, &session.approvals, side)
 		(*editor).Text, (*editor).CursorBack, (*editor).Images = "", 0, nil
 		(*editor).Changed()
 		setLivePane(&attached.feedback, terminal, clock, value)
 		return true, nil
 	}
-	target, selected := selectedSettings(attached, control.Requests, applied)
-	applied = selected
+	target, selected := selectedSettings(attached, session.Client.Requests, session.settings)
 	if command == "/permissions" && (target != nil || attached.presentation.DisplayingSide()) {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Return to Main to change permissions", false)
 		return true, nil
 	}
-	if command == "/permissions" && control.Settings.Pending() {
+	if command == "/permissions" && session.Client.Settings.Pending() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update pending", false)
 		return true, nil
 	}
-	choices, current := settingsChoices(command, models, applied, *tiers, control.Thread)
+	choices, current := settingsChoices(command, session.models, selected, session.serviceTiers, session.Client.Thread)
 	if len(fields) == 1 {
-		deleteDraftRange(attached, terminal, control, picker, editor, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, 0, len((*editor).Text))
-		picker.showSettingsPicker(loading, command, choices, current)
+		session.deleteDraftRange(attached, terminal, picker, editor, side, clock, overlay, 0, len((*editor).Text))
+		picker.showSettingsPicker(session.modelsLoading, command, choices, current)
 		picker.settingThread = attached.presentation.View().Input.ID
 		if command == "/permissions" {
-			picker.permissionSelection = control.Settings.BeginPermissionSelection()
+			picker.permissionSelection = session.Client.Settings.BeginPermissionSelection()
 			picker.Loading, picker.Problem = true, ""
-			if err := picker.requestPermissions(attached, control, ""); err != nil {
+			if err := picker.requestPermissions(attached, &session.Client, ""); err != nil {
 				picker.Loading, picker.Problem = false, "Permission choices unavailable: "+err.Error()
 			}
 		}
@@ -272,7 +271,7 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Use "+command+" or "+command+" VALUE", true)
 		return true, nil
 	}
-	if target == nil && control.Settings.Pending() || target != nil && target.Settings.Pending() {
+	if target == nil && session.Client.Settings.Pending() || target != nil && target.Settings.Pending() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update pending", false)
 		return true, nil
 	}
@@ -305,10 +304,10 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 		}
 	}
 	// The host validates explicit values, including custom models and tiers.
-	accepted, err := updateSettings(attached, terminal, control, applied, tiers, panes, restoring, clock, change)
+	accepted, err := updateSettings(attached, terminal, &session.Client, selected, &session.serviceTiers, session.panes, session.restoring != nil, clock, change)
 	if accepted {
 		notice, alert := attached.feedback.Text, attached.feedback.Alert
-		recordDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side)
+		recordDraft(attached, (*editor), terminal, clock, session.ownedImages, &session.questions, &session.approvals, side)
 		(*editor).Text, (*editor).CursorBack, (*editor).Images = "", 0, nil
 		(*editor).Changed()
 		setNotice(&attached.feedback, terminal, presentationTime(clock), notice, alert)
@@ -316,15 +315,15 @@ func settingsCommand(attached *attachedPresentation, terminal *terminalsession.A
 	return true, err
 }
 
-func settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, model *string, effort *string, tier *string, models *[]appServerModel, loading *bool, status *appServerStatusConfig, method string, m appserver.Message) (bool, error) {
+func (session *nativeSession) settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, method string, m appserver.Message) (bool, error) {
 	if method == "model/list" {
 		if m.Error != nil {
-			(*loading) = false
+			session.modelsLoading = false
 			problem := "Model choices unavailable · Esc to close; use an explicit VALUE"
-			refreshSettingsPicker(picker, attached.presentation.View().Input.ID, nil, preferences.Applied{}, *tiers, problem)
-			if attached.modelsReady != nil {
-				attached.modelsReady(nil, preferences.Applied{}, *tiers, problem)
-			}
+			refreshSettingsPicker(picker, attached.presentation.View().Input.ID, nil, preferences.Applied{}, session.serviceTiers, problem)
+
+			attached.hooks.modelsReady(nil, preferences.Applied{}, session.serviceTiers, problem)
+
 			if pending := attached.reasoning; pending != nil && pending.attached.executionPresentation == attached.executionPresentation {
 				setNotice(&pending.attached.feedback, pending.terminal, presentationTime(clock), problem, true)
 			}
@@ -339,17 +338,17 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 		if err := json.Unmarshal(m.Result, &result); err != nil {
 			return true, err
 		}
-		(*models) = append((*models), result.Data...)
+		session.models = append(session.models, result.Data...)
 		if result.NextCursor != "" {
-			return true, control.Request("model/list", map[string]any{"cursor": result.NextCursor, "includeHidden": true})
+			return true, session.Client.Request("model/list", map[string]any{"cursor": result.NextCursor, "includeHidden": true})
 		}
-		(*loading) = false
-		applied := preferences.Applied{Model: *model, Effort: *effort, Tier: *tier}
-		_, selected := selectedSettings(attached, control.Requests, applied)
-		refreshSettingsPicker(picker, attached.presentation.View().Input.ID, *models, selected, *tiers, "")
-		if attached.modelsReady != nil {
-			attached.modelsReady(*models, applied, *tiers, "")
-		}
+		session.modelsLoading = false
+		applied := session.settings
+		_, selected := selectedSettings(attached, session.Client.Requests, applied)
+		refreshSettingsPicker(picker, attached.presentation.View().Input.ID, session.models, selected, session.serviceTiers, "")
+
+		attached.hooks.modelsReady(session.models, applied, session.serviceTiers, "")
+
 		if pending := attached.reasoning; pending != nil {
 			attached.reasoning = nil
 			if pending.attached.executionPresentation != attached.executionPresentation || pending.attached.presentation == nil {
@@ -359,12 +358,12 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 				setNotice(&pending.attached.feedback, pending.terminal, presentationTime(clock), "Settings target changed · retry the reasoning control", false)
 				return true, nil
 			}
-			return true, stepReasoningForTurn(pending.attached, pending.terminal, control, applied, tiers, panes, restoring, clock, *models, pending.up, &pending.turn)
+			return true, stepReasoningForTurn(pending.attached, pending.terminal, &session.Client, applied, &session.serviceTiers, session.panes, session.restoring != nil, clock, session.models, pending.up, &pending.turn)
 		}
 		return true, nil
 	}
 	if method == "thread/settings/update" || method == "turn/settings/update" {
-		ack, err := control.Settings.Acknowledge(method, m.Result, m.Error != nil)
+		ack, err := session.Client.Settings.Acknowledge(method, m.Result, m.Error != nil)
 		if err != nil {
 			return true, err
 		}
@@ -372,7 +371,7 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 		if m.Error != nil {
 			failure = m.Error.Message
 		}
-		applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.SettingsAcknowledged(attached.conversation, method, failure, ack))
+		applyInputEffects(attached, terminal, &session.questions, &session.approvals, picker, session.Client.Turn, clock, attached.presentation.SettingsAcknowledged(attached.conversation, method, failure, ack))
 		return true, nil
 	}
 	if m.Method != "thread/settings/updated" {
@@ -396,8 +395,8 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 	if err := json.Unmarshal(m.Params, &event); err != nil {
 		return true, fmt.Errorf("thread settings: %w", err)
 	}
-	if event.ThreadID != control.Thread {
-		if attached.session.KnownCaller(control.Thread) != "" && event.ThreadID != "" {
+	if event.ThreadID != session.Client.Thread {
+		if attached.session.KnownCaller(session.Client.Thread) != "" && event.ThreadID != "" {
 			agent := attached.session.Agent(attached.session.Caller(event.ThreadID))
 			agent.Settings = preferences.Evidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
 			agent.SettingsLive = true
@@ -405,39 +404,39 @@ func settingsMessage(attached *attachedPresentation, terminal *terminalsession.A
 		return true, nil
 	}
 	if event.Settings.Provider != "" {
-		status.Provider = event.Settings.Provider
+		session.statusConfig.Provider = event.Settings.Provider
 	}
 	if len(event.Settings.Approval) > 0 {
-		status.Approval = event.Settings.Approval
+		session.statusConfig.Approval = event.Settings.Approval
 		if err := json.Unmarshal(event.Settings.Approval, &event.Settings.PermissionState.Approval); err != nil {
 			return true, err
 		}
 	}
 	if event.Settings.Sandbox != nil {
-		status.Sandbox.Type = event.Settings.Sandbox.Type
+		session.statusConfig.Sandbox.Type = event.Settings.Sandbox.Type
 	}
 	if event.Settings.Cwd != "" {
 		attached.cwd = event.Settings.Cwd
 	}
-	(*model), (*effort), (*tier) = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
-	control.Settings.Permissions = event.Settings.PermissionState
-	confirmation := control.Settings.Confirmed(control.Turn, (*effort))
+	session.settings.Model, session.settings.Effort, session.settings.Tier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
+	session.Client.Settings.Permissions = event.Settings.PermissionState
+	confirmation := session.Client.Settings.Confirmed(session.Client.Turn, session.settings.Effort)
 	if confirmation.ChooseTier {
-		(*tiers) = chooseServiceTier((*tiers), (*model), control.Thread, (*tier))
+		session.serviceTiers = chooseServiceTier(session.serviceTiers, session.settings.Model, session.Client.Thread, session.settings.Tier)
 	}
-	paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)}))
+	paneError(attached.source, session.panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: session.Client.Thread}, session.Client.Settings.RestoreEffort, preferences.Applied{Model: session.settings.Model, Effort: session.settings.Effort, Tier: session.settings.Tier, Observed: presentationTime(clock)}))
 	if !confirmation.Requested {
 		return true, nil
 	}
 	decision := confirmation.Update
 	if decision.Action == sessioncontrol.SettingsTurn {
-		if err := control.Requests.ApplySettings(&control.Live, decision); err != nil {
+		if err := session.Client.Requests.ApplySettings(&session.Client.Live, decision); err != nil {
 			return true, err
 		}
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings saved · updating active turn…", false)
 	} else {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings saved for next turn", false)
-		if control.Settings.RestoreEffort {
+		if session.Client.Settings.RestoreEffort {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Default reasoning still needs restoration · choose /effort VALUE or restart resume", true)
 		}
 	}

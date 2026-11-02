@@ -5,16 +5,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 // Sent calls remain in the inventory until authoritative resolution so the
@@ -133,16 +129,16 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 // Only accepted ordinary answer values enter the authoritative Call. Secret
 // answers are borrowed solely for the existing response/password authority and
 // discarded before the next event or publication.
-func applyNativeAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, input sessionapi.NativeAnswers, prepared *sessionapi.PreparedInput, requestContext context.Context, remoteHuman bool) (string, error) {
-	handle, trial, secrets, refusal := prepareNativeAnswers(questions, control, input, remoteHuman)
+func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, input sessionapi.NativeAnswers, prepared *sessionapi.PreparedInput, requestContext context.Context, remoteHuman bool) (string, error) {
+	handle, trial, secrets, refusal := prepareNativeAnswers(&session.questions, &session.Client, input, remoteHuman)
 	if refusal != "" {
 		return refusal, nil
 	}
-	if requestContext != nil && requestContext.Err() != nil || prepared != nil && !prepared.Admit(requestContext, owned) {
+	if requestContext != nil && requestContext.Err() != nil || prepared != nil && !prepared.Admit(requestContext, session.ownedImages) {
 		return "The native answer was canceled before admission.", nil
 	}
-	if questions.Active == handle.Call {
-		*editor = hideQuestionEditor(questions, attached.conversation, terminal, *editor, control.Thread)
+	if session.questions.Active == handle.Call {
+		*editor = hideQuestionEditor(&session.questions, attached.conversation, terminal, *editor, session.Client.Thread)
 	}
 	previous := handle.Questions
 	handle.Questions = trial.Questions
@@ -158,9 +154,9 @@ func applyNativeAnswers(attached *attachedPresentation, terminal *terminalsessio
 		secretEditors[index] = composer.State{Snapshot: composer.Undo{Draft: draft}}
 	}
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
-	err := submitQuestionAnswers(attached, terminal, control, picker, editor, settings, tiers, restoring, side, clock, questions, approvals, overlay, environment, owned, hook, parent, observations, reviewOwner, receipts, handle, secretEditors, secrets)
+	err := session.submitQuestionAnswers(attached, terminal, picker, editor, side, clock, overlay, parent, handle, secretEditors, secrets)
 	if !handle.Sent && !handle.Resolved {
 		handle.Questions = previous
 		if err == nil {

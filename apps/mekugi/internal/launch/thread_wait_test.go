@@ -4,14 +4,15 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -62,7 +63,7 @@ func logicalWaitRunningUI(t *testing.T, timeout *int64) (*appServerUI, *threadEx
 		check(service.EffectAcknowledged(t.Context(), "main", spawn.ID, control.Receipt{Phase: phase, Thread: "child", Session: "child-session", Turn: "child-turn"}))
 	}
 	u, at := newActiveWorkTestUI(t)
-	u.model, u.reasoningEffort = "test-model", "high"
+	u.settings.Model, u.settings.Effort = "test-model", "high"
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
 	caller.Call = "wait"
@@ -128,7 +129,7 @@ func TestUISnapshotUsageLimitWaiting(t *testing.T) {
 	for _, timed := range []bool{true, false} {
 		t.Run(fmt.Sprint(timed), func(t *testing.T) {
 			u, at := newActiveWorkTestUI(t)
-			u.model, u.reasoningEffort = "test-model", "high"
+			u.settings.Model, u.settings.Effort = "test-model", "high"
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
 			retained, err := history.NewService(control.RecordKinds())
@@ -325,7 +326,7 @@ func TestRecoveryInputRetriesWithoutAnotherHostMessage(t *testing.T) {
 			if !u.attached.threadInput.preparing() {
 				t.Fatal("deferred input lost its tick retry")
 			}
-			if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			synctest.Wait()
@@ -393,7 +394,7 @@ func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 		u.attached.threadInput = &threadInput{driver: threads.driver, caller: "/root/worker", admitted: true}
 		u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "/compact", Compact: new(conversationmodel.CompactIntent{})}}
 		for range 2 {
-			if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, t.Context(), false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
 				t.Fatal(err)
 			}
 			synctest.Wait()

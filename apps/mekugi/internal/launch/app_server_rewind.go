@@ -10,22 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/commandargs"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func showRewindPicker(control *sessioncontrol.Client[appServerRequest], picker *composerPicker, review *sessionreview.Review) {
@@ -295,14 +289,14 @@ func finishRewindRevert(attached *attachedPresentation, terminal *terminalsessio
 	attached.presentation.Status.SetText("Rewinding before selected turn…")
 }
 
-func dispatchRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time, parent context.Context, reviewOwner *sessionreview.Review, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store)) {
-	r := control.Rewind
+func (session *nativeSession) dispatchRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, clock func() time.Time, parent context.Context) {
+	r := session.Client.Rewind
 	if r == nil || r.Sent {
 		return
 	}
 	selection := picker.rewind
-	if selection == nil || reviewOwner == nil || reviewOwner.Failure != "" || reviewOwner.Restoring() || reviewOwner.Projection.Data != selection.snapshot || !maps.EqualFunc(reviewOwner.Scope().Workspaces, selection.scope.Workspaces, maps.Equal[map[string]bool, map[string]bool]) {
-		control.Rewind = nil
+	if selection == nil || session.review == nil || session.review.Failure != "" || session.review.Restoring() || session.review.Projection.Data != selection.snapshot || !maps.EqualFunc(session.review.Scope().Workspaces, selection.scope.Workspaces, maps.Equal[map[string]bool, map[string]bool]) {
+		session.Client.Rewind = nil
 		picker.openMenu("rewind-edits")
 		picker.Loading = false
 		picker.Choices = []completion.Choice{{ID: 1, Name: "Keep edits"}}
@@ -313,12 +307,12 @@ func dispatchRewind(attached *attachedPresentation, terminal *terminalsession.At
 		return
 	}
 	command := r.Command
-	if err := dispatchShell(attached, terminal, control, clock, parent, reviewOwner, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, command); err != nil {
-		control.Rewind = nil
+	if err := session.dispatchShell(attached, terminal, clock, parent, command); err != nil {
+		session.Client.Rewind = nil
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not revert edits: "+err.Error(), true)
 		return
 	}
 	r.Sent = true
-	control.Replacement.Rewind()
+	session.Client.Replacement.Rewind()
 	attached.presentation.Status.SetText("Reverting captured edits…")
 }

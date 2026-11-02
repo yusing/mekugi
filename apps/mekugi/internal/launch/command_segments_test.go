@@ -22,7 +22,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
@@ -173,11 +172,11 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 		u.commandSegmentPending++
 		commandSegmentRetained(&u.commandSegmentPending, u.issues, commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
 	}
-	if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); delivery != nil || len(u.attached.source.Entries) != 0 {
+	if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, u.settings, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); delivery != nil || len(u.attached.source.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")
 	}
 	u.Thread = "main"
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
+	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, u.settings, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 
 	if delivery == nil || len(u.attached.source.Entries) != 0 || !u.attached.feedback.Alert {
 		t.Fatal("retention errors missed the composer")
@@ -189,7 +188,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	}
 	before := u.attached.feedback.Text
 	delivery.finish(terminalsession.NoticeReceipt{})
-	if retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
+	if retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, u.settings, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
 		_, receipt := u.testDeliveredMainFrame(t, 100, 12, 0)

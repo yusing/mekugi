@@ -4,12 +4,9 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -54,7 +51,7 @@ type appServerStatusConfig struct {
 	Instructions []string `json:"instructionSources"`
 }
 
-func showStatus(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, statusConfig appServerStatusConfig, debugDirectory string) error {
+func (session *nativeSession) showStatus(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) error {
 	var rows []sessionpresentation.StatusField
 	group := "Model"
 	add := func(label, value string) {
@@ -62,17 +59,17 @@ func showStatus(attached *attachedPresentation, terminal *terminalsession.Attach
 			rows = append(rows, sessionpresentation.StatusField{Group: group, Label: label, Value: value})
 		}
 	}
-	add("Model", settings.Model)
-	add("Reasoning", settings.Effort)
-	add("Service tier", tiers.Effective(settings.Model, settings.Tier, control.Thread))
-	add("Model provider", statusConfig.Provider)
+	add("Model", session.settings.Model)
+	add("Reasoning", session.settings.Effort)
+	add("Service tier", session.serviceTiers.Effective(session.settings.Model, session.settings.Tier, session.Client.Thread))
+	add("Model provider", session.statusConfig.Provider)
 	group = "Session"
 	add("Directory", attached.cwd)
-	add("Session", control.Thread)
+	add("Session", session.Client.Thread)
 	var approval string
-	if len(statusConfig.Approval) != 0 {
-		if json.Unmarshal(statusConfig.Approval, &approval) != nil {
-			approval = string(statusConfig.Approval)
+	if len(session.statusConfig.Approval) != 0 {
+		if json.Unmarshal(session.statusConfig.Approval, &approval) != nil {
+			approval = string(session.statusConfig.Approval)
 		}
 		if approval == "null" {
 			approval = ""
@@ -80,12 +77,12 @@ func showStatus(attached *attachedPresentation, terminal *terminalsession.Attach
 	}
 	group = "Permissions"
 	add("Approvals", approval)
-	add("Sandbox", statusConfig.Sandbox.Type)
-	if len(statusConfig.Instructions) > 0 {
+	add("Sandbox", session.statusConfig.Sandbox.Type)
+	if len(session.statusConfig.Instructions) > 0 {
 		group = "Session"
-		add("Agents.md", strings.Join(statusConfig.Instructions, ", "))
+		add("Agents.md", strings.Join(session.statusConfig.Instructions, ", "))
 	}
-	report := newStatusReport(attached.presentation, debugDirectory)
+	report := newStatusReport(attached.presentation, session.replayDebugDirectory)
 	report.view = attached.view
 	for _, agent := range attached.session.Roster() {
 		if agent.Name != "/root" {
@@ -103,8 +100,8 @@ func showStatus(attached *attachedPresentation, terminal *terminalsession.Attach
 	(*panel) = report
 	report.Render(statusNotice("Loading account…"))
 
-	deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
-	return requestStatus(control.Requests, "account/read", map[string]any{"refreshToken": false}, report)
+	session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
+	return requestStatus(session.Client.Requests, "account/read", map[string]any{"refreshToken": false}, report)
 }
 
 func requestStatus(requests *sessioncontrol.Requests[appServerRequest], method string, params any, report *appServerStatusReport) error {

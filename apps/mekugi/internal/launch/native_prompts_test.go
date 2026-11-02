@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 func nativeTestAnswers(t *testing.T, u *appServerUI, input sessionapi.NativeAnswers, preparations ...*sessionapi.PreparedInput) string {
@@ -22,7 +21,7 @@ func nativeTestAnswers(t *testing.T, u *appServerUI, input sessionapi.NativeAnsw
 	if len(preparations) > 0 {
 		prepared = preparations[0]
 	}
-	refusal, err := applyNativeAnswers(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, input, prepared, t.Context(), false)
+	refusal, err := u.nativeSession.applyNativeAnswers(&u.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, input, prepared, t.Context(), false)
 	if err != nil {
 		t.Fatal(err)
 	}

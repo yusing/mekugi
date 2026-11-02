@@ -50,7 +50,7 @@ func TestNativeViewMenuRechecksTargetAfterStatusProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, nil, nil, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
+	u.nativeSession.applyMenuResult(&v.attached, v.shell, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
 	if strings.TrimSpace(editor.Text) != "/status" {
 		t.Fatal("admitted menu did not use existing command completion")
 	}
@@ -141,7 +141,7 @@ func TestNativeViewRestorationUsesOriginatingEditorLifetime(t *testing.T) {
 			t.Fatal(refusal)
 		}
 	}
-	u.attached.restoreInput = n.restore
+	u.attached.hooks.restoreInput = n.restore
 	u.Editor.Text = "legacy draft"
 	first, second := n.views["first"], n.views["second"]
 	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, "", u.clock,
@@ -319,7 +319,7 @@ func TestNativeViewResumeUsesExistingExecutionOwner(t *testing.T) {
 	}
 	v := n.views["view"]
 	u.attached, u.shell, u.picker = v.attached, v.shell, v.picker
-	u.attached.activeThread = func(id string) bool { return id == "other" }
+	u.attached.hooks.activeThread = func(id string) bool { return id == "other" }
 	u.Editor = &composer.Editor{Text: "/resume other"}
 	view := publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	if _, err := u.applyComposerInput(terminalsession.ComposerInput{Command: sessionpresentation.ComposerIntent{Version: view.Version, Thread: "main", Operation: sessionpresentation.SubmitComposer}}); err != nil {
@@ -334,7 +334,7 @@ func TestNativeViewResumeUsesExistingExecutionOwner(t *testing.T) {
 	u.resumePicker.Append([]sessionpresentation.ResumeRow{{ID: "other", Workspace: "/other"}}, "", 1)
 	view = publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	before, picker := wire.Len(), u.resumePicker
-	if err := applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, false, &u.quitRequested, sessionpresentation.ResumeAction{Version: view.Version, Picker: view.Resume.ID, Kind: sessionpresentation.ResumeChoose, Thread: "other"}); err != nil {
+	if err := u.nativeSession.applyResumeAction(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, &u.quitRequested, sessionpresentation.ResumeAction{Version: view.Version, Picker: view.Resume.ID, Kind: sessionpresentation.ResumeChoose, Thread: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	if wire.Len() != before || u.Replacement.Pending() || u.resumePicker != picker || len(v.effects.pending) != 2 || *v.effects.pending[1].Reattach != "other" {

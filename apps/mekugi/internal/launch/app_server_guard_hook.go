@@ -5,12 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -49,18 +45,18 @@ func (check *approvalHookCheck) checkThread(requests *sessioncontrol.Requests[ap
 	return false, nil
 }
 
-func guardHookResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, message appserver.Message) error {
-	thread := hook.pendingThread
-	hook.pendingThread = ""
-	side := control.Requests.Side(thread)
-	if thread != control.Thread && !control.Requests.WorkSide(thread) {
-		return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
+func (session *nativeSession) guardHookResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, message appserver.Message) error {
+	thread := session.guardHookCheck.pendingThread
+	session.guardHookCheck.pendingThread = ""
+	side := session.Client.Requests.Side(thread)
+	if thread != session.Client.Thread && !session.Client.Requests.WorkSide(thread) {
+		return session.flushInput(attached, terminal, picker, clock, editor, parent)
 	}
 	var err error
 	if message.Error != nil {
 		err = fmt.Errorf("read approval hook: %s", message.Error.Message)
 	} else {
-		err = shellhook.Validate(message.Result, attached.cwd, hook.hash)
+		err = shellhook.Validate(message.Result, attached.cwd, session.guardHookCheck.hash)
 	}
 	if side != nil && side.OneOff {
 		if err != nil {
@@ -87,16 +83,16 @@ func guardHookResponse(attached *attachedPresentation, terminal *terminalsession
 			setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell guard: "+err.Error(), true)
 			return nil
 		}
-		hook.readyThread = thread
+		session.guardHookCheck.readyThread = thread
 		return nil
 	}
 	if err != nil {
-		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, append(attached.conversation.Unsent, attached.conversation.Queued...)...)
+		restoreDrafts(attached, terminal, &session.questions, &session.approvals, picker, session.Client.Turn, clock, append(attached.conversation.Unsent, attached.conversation.Queued...)...)
 		attached.conversation.Unsent, attached.conversation.Queued = nil, nil
 		attached.presentation.Status.SetText("Ready")
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell guard: "+err.Error(), true)
 		return nil
 	}
-	hook.readyThread = thread
-	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
+	session.guardHookCheck.readyThread = thread
+	return session.flushInput(attached, terminal, picker, clock, editor, parent)
 }

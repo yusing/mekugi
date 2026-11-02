@@ -24,7 +24,7 @@ func draftSnapshot(editor *composer.Editor) conversationmodel.Input {
 func recordDraft(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side) {
 	editor.Record()
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
+	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.hooks.nativeImages)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file

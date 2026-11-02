@@ -149,6 +149,6 @@ func TestUISnapshotSkillSavePresentationOwnership(t *testing.T) {
 	u.pickerKey("\x1b")
 	appServerTestKeys(t, u, "@f")
 	uisnapshot.Assert(t, "testdata/snapshots/skill_save_unrelated_file.txt", strings.Join(u.renderPicker(72, 4), "\n")+"\n")
-	u.picker.showSettingsPicker(u.modelsLoading, "/model", []string{"one", "two"}, u.model)
+	u.picker.showSettingsPicker(u.modelsLoading, "/model", []string{"one", "two"}, u.settings.Model)
 	uisnapshot.Assert(t, "testdata/snapshots/skill_save_unrelated_settings.txt", strings.Join(u.renderPicker(72, 5), "\n")+"\n")
 }

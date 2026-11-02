@@ -3,23 +3,20 @@ package launch
 import (
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
-func interruptSession(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessionpresentation.InterruptIntent) error {
+func (session *nativeSession) interruptSession(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, overlay bool, intent sessionpresentation.InterruptIntent) error {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, overlay)
 	}()
 	unsent := attached.conversation.Unsent
-	active, err := attached.presentation.ResolveInterrupt(intent, &control.Live, &attached.session)
+	active, err := attached.presentation.ResolveInterrupt(intent, &session.Client.Live, &attached.session)
 	if err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
@@ -28,10 +25,10 @@ func interruptSession(attached *attachedPresentation, terminal *terminalsession.
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Original work already ended.", false)
 		return nil
 	}
-	decision := control.RequestInterrupt(intent.Mode, len(unsent) > 0 && unsent[0].Compact == nil)
-	err = applyInterruption(attached, terminal, control, picker, editor, questions, approvals, clock, reviewOwner, receipts, decision)
+	decision := session.Client.RequestInterrupt(intent.Mode, len(unsent) > 0 && unsent[0].Compact == nil)
+	err = applyInterruption(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, decision)
 	if err != nil && intent.Mode == sessioncontrol.ExpediteSteers {
-		control.SendSteersAfterInterrupt = false
+		session.Client.SendSteersAfterInterrupt = false
 	}
 	return err
 }

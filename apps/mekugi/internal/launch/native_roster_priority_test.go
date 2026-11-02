@@ -19,7 +19,7 @@ func TestUISnapshotNativeRosterActivePriority(t *testing.T) {
 			u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local) }
 			u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
 			u.shell.Transcript.Painter.Theme, u.shell.Agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
-			u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+			u.attached.presentation.Status.Text, u.settings.Model, u.settings.Effort = "Ready", "snapshot-model", "high"
 			u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{
 				{Name: "/root"},
 				{Name: "/root/done-a", Final: true},

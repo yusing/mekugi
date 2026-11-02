@@ -3,14 +3,15 @@ package launch
 import (
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -23,7 +24,7 @@ func TestUISnapshotNativeFork(t *testing.T) {
 	u.controlObservations = new(sessioncontrol.Observations)
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local) }
-	u.model, u.reasoningEffort, u.serviceTier = "model", "high", "priority"
+	u.settings.Model, u.settings.Effort, u.settings.Tier = "model", "high", "priority"
 	appServerTestKeys(t, u, "/fork\r")
 	fork := resumeTestOne(t, w, "thread/fork")
 	if fork.Params.ThreadID != "main" || !u.Replacement.Forking() {
@@ -37,7 +38,7 @@ func TestUISnapshotNativeFork(t *testing.T) {
 	if u.controlObservations.ContextRevision("branch") != 1 {
 		t.Fatal("accepted fork did not refresh context")
 	}
-	if u.Thread != "branch" || u.Text != "next draft" || u.Replacement.Pending() || u.model != "model" || u.reasoningEffort != "high" || u.serviceTier != "priority" {
+	if u.Thread != "branch" || u.Text != "next draft" || u.Replacement.Pending() || u.settings.Model != "model" || u.settings.Effort != "high" || u.settings.Tier != "priority" {
 		t.Fatalf("fork state: %s %q %+v", u.Thread, u.Text, u.Live)
 	}
 	for _, method := range methods {
@@ -112,7 +113,7 @@ func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
 	u.startSession("main", workspace)
 	gate := &forkTestChanges{Service: store.changes, entered: make(chan struct{}), release: make(chan struct{})}
 	u.retained, u.changeSource = store.changeScope(), gate
-	u.reasoningEffort = "high"
+	u.settings.Effort = "high"
 	appServerTestKeys(t, u, "/fork\r")
 	fork := resumeTestOne(t, w, "thread/fork")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"branch","cwd":%q}}}`, fork.ID, workspace))
@@ -228,7 +229,7 @@ func TestAppServerForkDefaultEffortAdmission(t *testing.T) {
 	for _, outcome := range []string{"ack first", "confirmation first", "rejected", "mode unavailable"} {
 		t.Run(outcome, func(t *testing.T) {
 			u, w := newResumeSessionTestUI(t)
-			u.model, u.reasoningEffort = "model", ""
+			u.settings.Model, u.settings.Effort = "model", ""
 			appServerTestKeys(t, u, "/fork\r")
 			fork := resumeTestOne(t, w, "thread/fork")
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"branch","cwd":"/work"}}}`, fork.ID))
@@ -307,8 +308,8 @@ func TestAppServerForkDefaultEffortAdmission(t *testing.T) {
 					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[],"nextCursor":null}}`, request.ID))
 				}
 			}
-			if u.Thread != "branch" || u.reasoningEffort != "" || u.Settings.BlocksInput() || !started || u.Text != "newer" {
-				t.Fatalf("default fork did not settle: %s effort=%s pending=%v started=%v draft=%q", u.Thread, u.reasoningEffort, u.Settings.BlocksInput(), started, u.Text)
+			if u.Thread != "branch" || u.settings.Effort != "" || u.Settings.BlocksInput() || !started || u.Text != "newer" {
+				t.Fatalf("default fork did not settle: %s effort=%s pending=%v started=%v draft=%q", u.Thread, u.settings.Effort, u.Settings.BlocksInput(), started, u.Text)
 			}
 		})
 	}
@@ -316,7 +317,7 @@ func TestAppServerForkDefaultEffortAdmission(t *testing.T) {
 
 func TestAppServerForkRetiresFailedCorrection(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	u.model, u.reasoningEffort = "model", ""
+	u.settings.Model, u.settings.Effort = "model", ""
 	prepare := func(branch string) resumeTestRequest {
 		appServerTestKeys(t, u, "/fork\r")
 		fork := resumeTestOne(t, w, "thread/fork")

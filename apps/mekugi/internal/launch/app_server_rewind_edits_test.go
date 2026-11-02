@@ -89,7 +89,7 @@ func TestAppServerRewindRevertGates(t *testing.T) {
 	for _, outcome := range []string{"success", "late-ack", "conflict", "rejected", "cancel", "keep"} {
 		t.Run(outcome, func(t *testing.T) {
 			u, w := rewindEditsFixture(t)
-			u.reasoningEffort = "high"
+			u.settings.Effort = "high"
 			if outcome == "cancel" || outcome == "keep" {
 				if outcome == "keep" {
 					appServerTestKeys(t, u, "\r")
@@ -225,7 +225,7 @@ func TestAppServerRewindFailureRetiresPendingCapture(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			u := newShellEditTestUI(t)
 			w := u.Host.Input.(*appServerTestInput)
-			if err := dispatchShell(&u.attached, u.shell, &u.Client, u.clock, u.ctx, u.review, &u.shellEdits, u.retained, u.retainedSession, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, u.reviewSource, u.preparePane, "printf after > captured.txt"); err != nil {
+			if err := u.nativeSession.dispatchShell(&u.attached, u.shell, u.clock, u.ctx, "printf after > captured.txt"); err != nil {
 				t.Fatal(err)
 			}
 			if u.shellEdits.pending == nil {

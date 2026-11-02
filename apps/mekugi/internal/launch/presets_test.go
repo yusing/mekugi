@@ -46,7 +46,7 @@ func TestPresetNativeViewPersistenceRecallAndAdmission(t *testing.T) {
 	}
 	choice := v.picker.Choices[0]
 	action := sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: choice.Identity()}
-	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, nil, nil, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
+	u.nativeSession.applyMenuResult(&v.attached, v.shell, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
 	if editor.Text != "ordinary draft" || len(v.effects.pending) != 1 || v.effects.pending[0].Recall == nil || *v.effects.pending[0].Recall != "/clear" {
 		t.Fatal("recall changed draft or lost input")
 	}

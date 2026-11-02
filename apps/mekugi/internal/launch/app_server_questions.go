@@ -8,11 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -283,58 +280,58 @@ func endSyncQuestions(attached *attachedPresentation, terminal *terminalsession.
 	}
 }
 
-func answerQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, intent sessionpresentation.AnswerIntent) bool {
+func (session *nativeSession) answerQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, intent sessionpresentation.AnswerIntent) bool {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
-	q, err := attached.presentation.AnswerQuestion(intent, questions.Questions)
+	q, err := attached.presentation.AnswerQuestion(intent, session.questions.Questions)
 	if err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
 	}
-	if q == questions.Current() {
-		(*editor) = resumeQuestion(questions, attached.conversation, terminal, control.Thread, q)
+	if q == session.questions.Current() {
+		(*editor) = resumeQuestion(&session.questions, attached.conversation, terminal, session.Client.Thread, q)
 	}
 	return true
 }
 
-func submitQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessionpresentation.QuestionSubmitIntent) error {
+func (session *nativeSession) submitQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, intent sessionpresentation.QuestionSubmitIntent) error {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
-	record, err := attached.presentation.SubmitQuestions(intent, questions.Questions)
+	record, err := attached.presentation.SubmitQuestions(intent, session.questions.Questions)
 	if err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
-	c := questions.handles[record]
+	c := session.questions.handles[record]
 	secrets := terminal.Prompts.SecretState(c.ID)
-	return submitQuestionAnswers(attached, terminal, control, picker, editor, settings, tiers, restoring, side, clock, questions, approvals, overlay, environment, owned, hook, parent, observations, reviewOwner, receipts, c, secrets.Editors, secrets.Answers)
+	return session.submitQuestionAnswers(attached, terminal, picker, editor, side, clock, overlay, parent, c, secrets.Editors, secrets.Answers)
 }
 
 // submitQuestionAnswers delivers admitted final values through the existing host
 // authority. Secret inputs are transient arguments, never server editor state.
-func submitQuestionAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, c *sessioncontrol.Question, secretEditors map[int]composer.State, secretAnswers map[int][]string) error {
+func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, c *sessioncontrol.Question, secretEditors map[int]composer.State, secretAnswers map[int][]string) error {
 	defer func() {
-		pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
-		questions.AutoOpen = true
-		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+		pruneDraftImages(session.ownedImages, (*editor), attached.conversation, &session.questions, &session.approvals, terminal.Prompts, side, attached.hooks.nativeImages)
+		session.questions.AutoOpen = true
+		autoOpenQuestions(attached, terminal, picker, editor, &session.questions, &session.approvals, session.Client.Thread, overlay)
 	}()
 	if c.Sudo != nil {
-		return submitSudoPassword(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts, c, secretAnswers)
+		return session.submitSudoPassword(attached, terminal, picker, clock, editor, parent, c, secretAnswers)
 	}
 	answerDraft := questionAnswerAttachments(c.Call, secretEditors, secretAnswers)
 	if len(c.RequestID) > 0 {
-		if err := c.Answer(control.Requests, secretAnswers); err != nil {
+		if err := c.Answer(session.Client.Requests, secretAnswers); err != nil {
 			return err
 		}
-		if questions.Active == c.Call {
-			(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+		if session.questions.Active == c.Call {
+			(*editor) = hideQuestionEditor(&session.questions, attached.conversation, terminal, (*editor), session.Client.Thread)
 		}
 		c.Submitted()
 		clear(secretEditors)
 		clear(secretAnswers)
-		renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
+		renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
 		if len(answerDraft.AnswerImages) > 0 || len(answerDraft.Attachments) > 0 {
 			d := conversationmodel.Input{Draft: answerDraft}
 			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c.Call, true
@@ -345,37 +342,37 @@ func submitQuestionAnswers(attached *attachedPresentation, terminal *terminalses
 				d.Images = append(d.Images, composer.Token{Start: start, End: start + len(label), Path: path})
 			}
 			d.AnswerImages = nil
-			if control.Requests.WorkSide(c.Thread) {
-				target := control.Requests.Side(c.Thread)
+			if session.Client.Requests.WorkSide(c.Thread) {
+				target := session.Client.Requests.Side(c.Thread)
 				target.Drafts.Unsent = append(target.Drafts.Unsent, d)
-				return flushBTW(attached, terminal, control, picker, questions, approvals, clock, settings, &target, &owned, environment, hook, observations)
+				return flushBTW(attached, terminal, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
 			}
 			attached.conversation.Unsent = append(attached.conversation.Unsent, d)
-			return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts)
+			return session.flushInput(attached, terminal, picker, clock, editor, parent)
 		}
 		return nil
 	}
 	reply := conversationbinding.QuestionReplies(c.Call)
-	if questions.Active == c.Call {
-		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+	if session.questions.Active == c.Call {
+		(*editor) = hideQuestionEditor(&session.questions, attached.conversation, terminal, (*editor), session.Client.Thread)
 	}
 	c.Submitted()
 	if reply == "" {
 		c.Resolved = true
-		renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
+		renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
 		return nil
 	}
 	answerDraft.Text, answerDraft.InHistory = reply, true
-	if control.Requests.WorkSide(c.Thread) {
-		target := control.Requests.Side(c.Thread)
+	if session.Client.Requests.WorkSide(c.Thread) {
+		target := session.Client.Requests.Side(c.Thread)
 		input := conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))}
 
 		target.Drafts.Unsent = append(target.Drafts.Unsent, input)
-		return flushBTW(attached, terminal, control, picker, questions, approvals, clock, settings, &target, &owned, environment, hook, observations)
+		return flushBTW(attached, terminal, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
 	}
 	attached.conversation.Unsent = append(attached.conversation.Unsent, conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
-	renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
-	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts)
+	renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
+	return session.flushInput(attached, terminal, picker, clock, editor, parent)
 }
 
 // Answers use composer attachment snapshots. Keep the async reply envelope

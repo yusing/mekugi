@@ -151,7 +151,7 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 		}
 	})
 	n.views[request.Attachment] = v
-	execution.modelsReady = n.refreshSettings
+	execution.hooks.modelsReady = n.refreshSettings
 	return ""
 }
 

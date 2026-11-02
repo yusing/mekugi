@@ -4,8 +4,6 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -102,7 +100,7 @@ func TestNativeUIPreview(t *testing.T) {
 				settled = p.ui.testActivity(p.ui.shell.Agents).testPace(now) || settled
 				settled = p.ui.dirty || settled // Includes keys drained by this tick.
 				p.ui.dirty = false
-				flushStreamOutput(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.execTrack, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, p.ui.retained, p.ui.segments, &p.ui.commandSegmentWrites, &p.ui.commandSegmentPending, p.ui.issues) // Rolls output bursts, as each real frame does.
+				p.ui.nativeSession.flushStreamOutput(&p.ui.attached, p.ui.shell, p.ui.clock, p.ui.ctx) // Rolls output bursts, as each real frame does.
 				settled = p.ui.dirty || settled
 				noticeExpired := expireNotice(&p.ui.attached.feedback, p.ui.shell, now)
 				if p.pump(0) {
@@ -123,7 +121,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, preferences.Applied{Model: p.ui.model, Effort: p.ui.reasoningEffort, Tier: p.ui.serviceTier}, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, p.ui.settings, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -505,7 +503,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.usage = usage
 	u.audience.Observe("main", "", "/root", false)
 	u.audience.Attach("main")
-	u.model, u.reasoningEffort = "gpt-6-luna", "medium"
+	u.settings.Model, u.settings.Effort = "gpt-6-luna", "medium"
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6-luna","defaultReasoningEffort":"medium","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"}],"serviceTiers":[{"id":"priority"}]}]`), &u.models); err != nil {
 		t.Fatal(err)
 	}
@@ -757,7 +755,7 @@ func (p *nativePreview) pump(wait time.Duration) bool {
 		p.finishCommand(live.thread, live.item, *event.exit)
 		p.live = nil
 	}
-	flushStreamOutput(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.streams, p.ui.execTrack, p.ui.review, &p.ui.approvals, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, p.ui.retained, p.ui.segments, &p.ui.commandSegmentWrites, &p.ui.commandSegmentPending, p.ui.issues)
+	p.ui.nativeSession.flushStreamOutput(&p.ui.attached, p.ui.shell, p.ui.clock, p.ui.ctx)
 	return true
 }
 
@@ -1123,9 +1121,9 @@ func (p *nativePreview) serve() {
 			clear(p.active)
 			p.clears++
 			result["thread"] = map[string]any{"id": fmt.Sprintf("preview-clear-%d", p.clears), "cwd": p.workspace}
-			result["model"] = p.ui.model
-			result["reasoningEffort"] = p.ui.reasoningEffort
-			result["serviceTier"] = p.ui.serviceTier
+			result["model"] = p.ui.settings.Model
+			result["reasoningEffort"] = p.ui.settings.Effort
+			result["serviceTier"] = p.ui.settings.Tier
 		case "skills/list":
 			result["data"] = []any{map[string]any{"cwd": p.ui.attached.cwd, "skills": []any{
 				map[string]any{"name": "code-review", "description": "Review a change for correctness", "path": filepath.Join(p.ui.attached.cwd, "skills/code-review/SKILL.md"), "enabled": true},
@@ -1160,7 +1158,7 @@ func (p *nativePreview) serve() {
 			p.notify("item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": item})
 			p.notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn, "status": "completed"}})
 		case "thread/settings/update":
-			model, effort, tier := p.ui.model, p.ui.reasoningEffort, p.ui.serviceTier
+			model, effort, tier := p.ui.settings.Model, p.ui.settings.Effort, p.ui.settings.Tier
 			if request.Params.Model != "" {
 				model = request.Params.Model
 			}

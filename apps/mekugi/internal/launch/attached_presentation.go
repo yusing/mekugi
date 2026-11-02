@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -18,28 +19,41 @@ import (
 // actual owner; its feature scopes, transcript and input queues are never copied.
 type executionPresentation struct {
 	ctx                 context.Context
-	compaction          func(thread, item string) func(context.Context) (string, error)
+	hooks               *executionHooks
 	inputHistory        *appServerInputHistory
 	session             sessionpresentation.Attachment
 	source, childSource *sessionpresentation.ActivitySource
 	transcript          observation.Transcript
 	cwd                 string
 	conversation        *conversationmodel.Session
-	restoreInput        func(*executionPresentation, []conversationmodel.Input)
-	restoreShell        func(*executionPresentation, conversationmodel.Input)
-	restoreSide         func(*executionPresentation, conversationmodel.Input, string)
-	deliverActivity     func(*executionPresentation, []sessionpresentation.ActivityDelivery)
-	activeThread        func(string) bool
-	reserveThread       func(string) error
-	nativeImages        func(func(string))
 	interruptWait       func(string, string)
 	threadInput         *threadInput
 	sideInputs          map[*sessioncontrol.Side]*threadInput
 	reasoning           *pendingReasoning
-	modelsReady         func([]appServerModel, preferences.Applied, *inferencegateway.Tiers, string)
 
 	// Progress notice rows belong to the shared Main transcript, not to a view.
 	noticeProgress noticepresentation.Progress
+}
+
+// executionHooks are bound once before the owner loop starts and survive presentation replacement.
+type executionHooks struct {
+	compaction      func(thread, item string) func(context.Context) (string, error)
+	restoreInput    func(*executionPresentation, []conversationmodel.Input)
+	restoreShell    func(*executionPresentation, conversationmodel.Input)
+	restoreSide     func(*executionPresentation, conversationmodel.Input, string)
+	deliverActivity func(*executionPresentation, []sessionpresentation.ActivityDelivery)
+	activeThread    func(string) bool
+	reserveThread   func(string) error
+	nativeImages    func(func(string))
+	modelsReady     func([]appServerModel, preferences.Applied, *inferencegateway.Tiers, string)
+}
+
+func (hooks *executionHooks) bind(native *nativeViews, api *sessionapi.Server, compaction func(string, string) func(context.Context) (string, error)) {
+	hooks.compaction = compaction
+	hooks.restoreInput, hooks.restoreShell, hooks.restoreSide = native.restore, native.restoreShell, native.restoreSide
+	hooks.deliverActivity = native.deliverActivity
+	hooks.activeThread, hooks.reserveThread = api.ActiveThread, api.ReserveThread
+	hooks.nativeImages, hooks.modelsReady = native.imageClaims, native.refreshSettings
 }
 
 // attachedPresentation combines a borrowed execution attachment with one view's
@@ -53,9 +67,9 @@ type attachedPresentation struct {
 	grants       sessioncontrol.ApprovalGrants
 }
 
-func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation) attachedPresentation {
+func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, hooks *executionHooks) attachedPresentation {
 	a := attachedPresentation{executionPresentation: new(executionPresentation)}
-	a.ctx = ctx
+	a.ctx, a.hooks = ctx, hooks
 	store := a.session.Scope()
 	a.presentation = views.Session(store)
 	a.conversation = conversation.Session(store)

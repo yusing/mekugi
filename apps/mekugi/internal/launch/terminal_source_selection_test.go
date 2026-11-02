@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -61,7 +59,7 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						u.main.shell.Agents = u.Agents
 						u.main.testActivity(u.Agents).setDisplayFilter(true, "/root/worker")
 					}
-					publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
+					publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, u.main.settings, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
 					if x < 0 {
 						t.Fatal("no cell")
 					}

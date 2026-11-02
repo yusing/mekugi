@@ -41,7 +41,7 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 	for i := range 2 {
 		frames := append(composer.FileFrames("/workspace/file.txt", file), composer.SkillFrames("guide", "", skill)...)
 		draft := conversation.Input{Text: "inspect snapshots", Attachments: []string{attachments.Encode(frames)}}
-		if err := sendConversationInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversation.Input{draft}, false); err != nil {
+		if err := sendConversationInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversation.Input{draft}, false); err != nil {
 			t.Fatal(err)
 		}
 		sent := appServerTurnRequests(t, writer)

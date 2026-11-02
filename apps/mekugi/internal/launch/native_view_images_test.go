@@ -25,7 +25,7 @@ func TestNativeViewQueuedImageClaimsEndAtReceiptOrDisconnect(t *testing.T) {
 			if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 				t.Fatal(refusal)
 			}
-			u.attached.nativeImages, u.attached.restoreInput = n.imageClaims, n.restore
+			u.attached.hooks.nativeImages, u.attached.hooks.restoreInput = n.imageClaims, n.restore
 			prune := func() {
 				pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
 			}
@@ -71,7 +71,7 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 		t.Fatal(refusal)
 	}
 	v := n.views["view"]
-	u.attached.nativeImages = n.imageClaims
+	u.attached.hooks.nativeImages = n.imageClaims
 	u.side = &sessioncontrol.Side{SideAnswer: &conversation.SideAnswer{Key: "existing"}, Thread: "side"}
 	u.attached.conversation.Side = u.side.SideAnswer
 	file, image := filepath.Join(workspace, "source.txt"), pasteTestImage(t)
@@ -95,7 +95,7 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 		t.Helper()
 		editor := new(composer.Editor)
 		editor.Replace(prepared.Draft)
-		if err := submitBTW(&v.attached, v.shell, &u.Client, &v.picker, &editor, &u.questions, &u.approvals, u.clock, preferences.Applied{}, u.serviceTiers, "", "", false, &u.side, false, &u.ownedImages, nil, &u.guardHookCheck, u.controlObservations, &composerPreparation{ctx: t.Context(), input: prepared}); err != nil {
+		if err := u.nativeSession.submitBTW(&v.attached, v.shell, &v.picker, &editor, u.clock, &u.side, false, &composerPreparation{ctx: t.Context(), input: prepared}); err != nil {
 			t.Fatal(err)
 		}
 		return editor
@@ -130,7 +130,7 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	}
 	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, true)
 	action := sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: view.Menu.Choices[0].Identity()}
-	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
+	u.nativeSession.applyMenuResult(&v.attached, v.shell, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
 	if v.picker.sideTask != nil {
 		t.Fatal("cancel kept pending replacement state")
@@ -149,7 +149,7 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	previous := u.side
 	view = publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, true)
 	action = sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: view.Menu.Choices[1].Identity()}
-	applyMenuResult(&v.attached, v.shell, &u.Client, &v.picker, &editor, preferences.Applied{}, &u.serviceTiers, "", "", false, &u.side, u.clock, &u.questions, &u.approvals, false, u.ownedImages, u.panes, t.Context(), nil, terminalsession.MenuResult{Action: action, Handled: true})
+	u.nativeSession.applyMenuResult(&v.attached, v.shell, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
 	if u.side == previous || u.side.Pending.Origin != "view" || v.picker.sideTask != nil || strings.Contains(strings.Join(u.side.Pending.Attachments, ""), "changed after replacement preparation") {
 		t.Fatal("confirmed replacement lost origin or re-acquired its snapshot")

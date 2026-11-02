@@ -8,7 +8,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
@@ -118,7 +117,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	if rows := testQuestionRows(u, 80, 10); len(rows) != 0 {
 		t.Fatalf("answered question still has a dock: %q", rows)
 	}
-	if preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
+	if preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
 		t.Fatalf("uncommitted answer has no pending preview: %q", preview)
 	}
 	out.Reset()

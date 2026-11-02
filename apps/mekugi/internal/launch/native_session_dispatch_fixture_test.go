@@ -7,50 +7,36 @@ import (
 	"iter"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/nativetrace"
-	"github.com/yusing/mekugi/contracts/scope"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
-	"github.com/yusing/mekugi/modules/commandsegments/reports"
-	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
-	return dispatchHostMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.model, &u.reasoningEffort, &u.serviceTier, &u.serviceTiers, &u.title, &u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, &u.review, &u.pendingEditReceipts, u.notifications, &u.shellEdits, u.retained, &u.retainedSession, u.changeSource, u.execWindows, u.audience, u.reviewSource, u.preparePane, u.approvalMode, u.titleGenerator, u.activity, &u.streams, u.execTrack, u.nativeTrace, u.usage, &u.exitUsage, u.segments, &u.restoredSegments, u.presentationState, &u.detailFiles, &u.statusConfig, u.issues, &u.quitRequested, u.message, &u.resumePending, &u.commits, u.terminalViews, u.conversationState, u.observations, u.history, u.panes, &u.models, &u.modelsLoading, &u.archived, m)
+	return u.nativeSession.dispatchHostMessage(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, u.ctx, &u.detailFiles, m)
 }
 
 func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, error) {
-	return applyMainKey(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.model, &u.reasoningEffort, &u.serviceTier, &u.serviceTiers, &u.title, &u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, &u.review, &u.pendingEditReceipts, u.notifications, &u.shellEdits, u.retained, &u.retainedSession, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, u.reviewSource, u.preparePane, u.approvalMode, u.titleGenerator, &u.dirty, &u.detailFiles, &u.statusConfig, u.sessionCapture, u.replayDebugDirectory, u.panes, &u.models, &u.modelsLoading, next)
+	return u.nativeSession.applyMainKey(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, u.ctx, &u.dirty, &u.detailFiles, next)
 }
 
 func (u *appServerUI) applyInput(surface *terminalsession.Attachment, effects iter.Seq[terminalsession.InputEffect]) error {
 	if u == nil {
-		return applyInput(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, changes.Scope{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil, nil, nil, nil, nil, "", nil, nil, nil, nil, nil, nil, surface, effects)
+		return (*nativeSession)(nil).applyInput(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, surface, effects)
 	}
-	return applyInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.model, &u.reasoningEffort, &u.serviceTier, &u.serviceTiers, &u.title, &u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, &u.review, &u.pendingEditReceipts, u.notifications, &u.shellEdits, u.retained, &u.retainedSession, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, u.reviewSource, u.preparePane, u.approvalMode, u.titleGenerator, &u.dirty, u.activity, u.segments, &u.restoredSegments, &u.detailFiles, &u.statusConfig, u.sessionCapture, u.replayDebugDirectory, &u.quitRequested, u.message, &u.resumePending, u.panes, &u.models, &u.modelsLoading, surface, effects)
+	return u.nativeSession.applyInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, u.ctx, &u.dirty, &u.detailFiles, &u.quitRequested, surface, effects)
 }
 
 func (u *appServerUI) finishRestoredContent() error {
@@ -58,108 +44,40 @@ func (u *appServerUI) finishRestoredContent() error {
 }
 
 func (u *appServerUI) drainKeys(keys <-chan byte) error {
-	return drainKeys(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.model, &u.reasoningEffort, &u.serviceTier, &u.serviceTiers, &u.title, &u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, &u.review, &u.pendingEditReceipts, u.notifications, &u.shellEdits, u.retained, &u.retainedSession, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, u.reviewSource, u.preparePane, u.approvalMode, u.titleGenerator, &u.dirty, u.activity, u.segments, &u.restoredSegments, &u.detailFiles, &u.statusConfig, u.sessionCapture, u.replayDebugDirectory, &u.quitRequested, u.message, &u.resumePending, u.panes, &u.models, &u.modelsLoading, keys)
+	return u.nativeSession.drainKeys(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, u.ctx, &u.dirty, &u.detailFiles, &u.quitRequested, keys)
 }
 
 func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
-	return input(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.model, &u.reasoningEffort, &u.serviceTier, &u.serviceTiers, &u.title, &u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, &u.review, &u.pendingEditReceipts, u.notifications, &u.shellEdits, u.retained, &u.retainedSession, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, u.reviewSource, u.preparePane, u.approvalMode, u.titleGenerator, &u.dirty, &u.detailFiles, &u.statusConfig, u.sessionCapture, u.replayDebugDirectory, u.panes, &u.models, &u.modelsLoading, event)
+	return u.nativeSession.input(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, u.ctx, &u.dirty, &u.detailFiles, event)
 }
 
 func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (bool, error) {
-	return applyComposerInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.model, &u.reasoningEffort, &u.serviceTier, &u.serviceTiers, &u.title, &u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, &u.review, &u.pendingEditReceipts, &u.shellEdits, u.retained, &u.retainedSession, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, u.reviewSource, u.preparePane, u.approvalMode, u.titleGenerator, &u.dirty, &u.detailFiles, &u.statusConfig, u.sessionCapture, u.replayDebugDirectory, u.panes, &u.models, &u.modelsLoading, input)
+	return u.nativeSession.applyComposerInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, u.ctx, &u.dirty, &u.detailFiles, input)
 }
 
 // appServerUI assembles independently owned collaborators for native-session tests.
 type appServerUI struct {
-	attached      attachedPresentation
-	terminalViews terminalsession.Views
-	preparePane   func(*scope.Store)
-	reviewSource  *changecapture.Service
-	*composer.Editor
-	history  *history.Service
-	segments *reports.Service
-	sessioncontrol.Client[appServerRequest]
-	conversationState     *conversationmodel.Service
-	resumePending         []appserver.Message
-	clock                 func() time.Time // Optional deterministic presentation clock.
-	backendVersion        string
-	title                 string // Host-confirmed thread name, independent of naming work.
-	titleGenerator        *sessionNaming
-	titleUpdates          <-chan sessionTitleUpdate
-	side                  *sessioncontrol.Side
-	notifications         *nativeNotifications
-	questions             nativeQuestionDock
-	approvals             nativeApprovalDock
-	approvalMode          bool // Codex's configured policy applies, not --yolo's.
-	guardHookCheck        approvalHookCheck
-	statusPanel           *appServerStatusReport
-	sessionCapture        *transportcapture.Recorder
-	resumePicker          *appServerResumePicker
-	statusConfig          appServerStatusConfig
-	picker                composerPicker
-	skillEnvironment      []string
-	commits               *activitypresentation.CommitReader // Attached Activity enrichment owner.
-	commandSegmentWrites  chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
-	commandSegmentPending int
-	restoredSegments      map[string]*reports.Report // Turn-local, validated and adopted history.
-	controlObservations   *sessioncontrol.Observations
-	usage                 *accounting.Service
-	audience              *sessioncontrol.Audience
-	review                *sessionreview.Review
-	execWindows           *executionobservation.Windows
-	nativeTrace           *nativetrace.Reader
-	retained              changes.Scope
-	changeSource          changes.Service
-	snapshots             *changecapture.Workspaces
-	recovered             *recovery.Service
-	publishChanges        func([]changes.Update)
-	captureNotice         func(string, string, string, string)
-	execTrack             *commandsegments.Observer // Per-segment command reports; nil when not tracking.
-	shellEdits            appServerShellEdits
-	pendingEditReceipts   []*changepresentation.Receipt // Observed edits can precede their host Activity item.
-	issues                *requestexecution.Failures
-	shell                 *terminalsession.Attachment
-	detailFiles
-	streams                terminalsession.Streams
-	activity               *activitymodel.Service
-	observations           *binding.Observation
-	retainedSession        history.Session
-	ctx                    context.Context
-	quitRequested          bool
-	archived               bool
-	exitUsage              binding.TokenUsage
-	resumeArgv             []string
-	replayDebugDirectory   string
-	model, reasoningEffort string
-	serviceTier            string
-	serviceTiers           *inferencegateway.Tiers // Invocation defaults and confirmed thread/model choices.
-	models                 []appServerModel
-	modelsLoading          bool
-
-	ownedImages       map[string]bool
-	dirty             bool
-	panes             *nativePreferences
-	restoring         *appServerActivityRestore
-	presentationState *sessionpresentation.Service
+	nativeSession
+	dirty bool
 }
 
 // applyMainKey settles typed Main effects before resuming terminal interpretation.
-func applyMainKey(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, next terminalsession.KeyContinuation) (bool, error) {
+func (session *nativeSession) applyMainKey(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, dirty *bool, files *detailFiles, next terminalsession.KeyContinuation) (bool, error) {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
 	}()
-	if !prepareComposerInput(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side), clock, questions, approvals) {
+	if !prepareComposerInput(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals) {
 		return false, nil
 	}
 	// Acquisition stays application-owned; interpretation consumes its publication.
 	if picker.Open && picker.Kind == "" && picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()) != picker.Target {
-		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
+		picker.refreshPicker(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
 	}
-	publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side))
+	publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
 	refresh := false
 	defer func() {
 		if refresh {
-			picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
+			picker.refreshPicker(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
 		}
 	}()
 	focused := terminal == nil || terminal.Focus == 0
@@ -168,48 +86,48 @@ func applyMainKey(attached *attachedPresentation, terminal *terminalsession.Atta
 		refresh = refresh || input.Regular
 		switch {
 		case input.Prompt != nil:
-			if handled, err := applyPromptInput(attached, terminal, control, picker, editor, questions, approvals, clock, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, side, (*panel) != nil || (*resumePicker) != nil, owned, environment, hook, observations, parent, (*reviewOwner), receipts, notifications, *input.Prompt); handled || err != nil {
+			if handled, err := session.applyPromptInput(attached, terminal, picker, editor, clock, side, session.overlayOpen(*panel, *resumePicker), parent, *input.Prompt); handled || err != nil {
 				return false, err
 			}
 		case input.Panel != nil:
 			if input.ClearSelection && terminal != nil {
 				terminal.Selection = nil
 			}
-			applyPanelAction(attached, terminal, clock, panel, capture, *input.Panel)
+			applyPanelAction(attached, terminal, clock, panel, session.sessionCapture, *input.Panel)
 			(*dirty) = true
 		case input.Menu != nil:
-			handled := applyMenuResult(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, (*title), (*backend), (*restoring) != nil, side, clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), panes, parent, environment, *input.Menu)
-			dispatchRewind(attached, terminal, control, picker, clock, parent, (*reviewOwner), shellEdits, retained, (*retainedSession), changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane)
+			handled := session.applyMenuResult(attached, terminal, picker, editor, side, clock, session.overlayOpen(*panel, *resumePicker), parent, *input.Menu)
+			session.dispatchRewind(attached, terminal, picker, clock, parent)
 			if handled {
 				return false, nil
 			}
 		case input.Composer != nil:
-			return applyComposerInput(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, dirty, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, *input.Composer)
+			return session.applyComposerInput(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, dirty, files, *input.Composer)
 		}
 		if input.Next == nil {
 			return false, nil
 		}
-		publishPresentation(attached, terminal, control, picker, editor, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, (*tiers), (*title), (*backend), (*restoring) != nil, (*side))
+		publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
 		input = terminal.Main.ContinueKey(*input.Next, terminal.Prompts, transcriptView(attached.presentation, terminal), focused)
 	}
 }
 
-func applyApprovalInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, input terminalsession.PromptInput) (bool, error) {
+func (session *nativeSession) applyApprovalInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, input terminalsession.PromptInput) (bool, error) {
 	keyInput := input.PromptKey
-	if err := attached.presentation.ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: input.Version, ApprovalInput: keyInput.Approval}, approvals.Approvals); err != nil {
+	if err := attached.presentation.ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: input.Version, ApprovalInput: keyInput.Approval}, session.approvals.Approvals); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return true, nil
 	}
-	a := approvals.handles[approvals.Pending[0]]
+	a := session.approvals.handles[session.approvals.Pending[0]]
 	switch keyInput.Action {
 	case conversationui.PromptPass:
 		return false, nil
 	case conversationui.PromptHide:
-		hideApprovals(approvals, terminal, &attached.conversation.PromptEditor, (*editor))
-		approvals.AutoOpen = false
+		hideApprovals(&session.approvals, terminal, &attached.conversation.PromptEditor, (*editor))
+		session.approvals.AutoOpen = false
 	case conversationui.PromptSubmit:
 		view := attached.presentation.View()
-		return true, decideApproval(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, notifications, reviewOwner, receipts, observations, sessionpresentation.ApprovalIntent{Version: view.Version, Request: a.ID, Choice: a.Choices[a.Selected].ID, Reason: (*editor).Text})
+		return true, session.decideApproval(attached, terminal, picker, editor, side, clock, overlay, sessionpresentation.ApprovalIntent{Version: view.Version, Request: a.ID, Choice: a.Choices[a.Selected].ID, Reason: (*editor).Text})
 	}
 	return true, nil
 }
@@ -289,7 +207,7 @@ func insertImage(attached *attachedPresentation, terminal *terminalsession.Attac
 	(*editor).InsertImage(path)
 	terminal.Main.CursorColumn = nil
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
+	pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side, attached.hooks.nativeImages)
 }
 
 // Herdr's Codex detector consumes the same OSC 0 activity markers as Codex.
@@ -308,49 +226,49 @@ func moveQuestion(questions *nativeQuestionDock, conversation *conversationmodel
 	*editor = resumeQuestion(questions, conversation, terminal, main, questions.Current())
 }
 
-func applyQuestionInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned *map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, input terminalsession.PromptInput) (bool, error) {
+func (session *nativeSession) applyQuestionInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, input terminalsession.PromptInput) (bool, error) {
 	keyInput := input.PromptKey
-	if err := attached.presentation.QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, questions.Questions); err != nil {
+	if err := attached.presentation.QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, session.questions.Questions); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return true, nil
 	}
-	q, c := questions.Current(), questions.activeCall()
+	q, c := session.questions.Current(), session.questions.activeCall()
 	action := keyInput.Action
 	switch action {
 	case conversationui.PromptPass:
 		return false, nil
 	case conversationui.PromptHide:
-		questions.AutoOpen = false
-		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+		session.questions.AutoOpen = false
+		(*editor) = hideQuestionEditor(&session.questions, attached.conversation, terminal, (*editor), session.Client.Thread)
 	case conversationui.PromptCursor:
 		return false, nil
 	case conversationui.PromptPrevious:
-		moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, -1)
+		moveQuestion(&session.questions, attached.conversation, terminal, editor, session.Client.Thread, -1)
 	case conversationui.PromptNext:
-		moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, 1)
+		moveQuestion(&session.questions, attached.conversation, terminal, editor, session.Client.Thread, 1)
 	case conversationui.PromptSubmit:
-		return true, submitQuestions(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, environment, (*owned), hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: c.ID, Incomplete: true})
+		return true, session.submitQuestions(attached, terminal, picker, editor, side, clock, overlay, parent, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: c.ID, Incomplete: true})
 	case conversationui.PromptAnswer, conversationui.PromptSkip:
-		parkQuestion(questions, terminal, (*editor), control.Thread, q)
+		parkQuestion(&session.questions, terminal, (*editor), session.Client.Thread, q)
 		if q.IsSecret {
 			answer := *q
 			if !answer.Complete((*editor).Text, c.Sync, action == conversationui.PromptSkip) {
 				return true, nil
 			}
 			q.Done, q.Skipped = answer.Done, answer.Skipped
-			terminal.Prompts.Secrets(c.ID).Answers[questions.Index] = answer.Answer
+			terminal.Prompts.Secrets(c.ID).Answers[session.questions.Index] = answer.Answer
 		} else {
 			view := attached.presentation.View()
-			if !answerQuestion(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, sessionpresentation.AnswerIntent{Version: view.Version,
-				Call: c.ID, Question: view.Questions.Call.Questions[questions.Index].ID,
+			if !session.answerQuestion(attached, terminal, picker, editor, side, clock, overlay, sessionpresentation.AnswerIntent{Version: view.Version,
+				Call: c.ID, Question: view.Questions.Call.Questions[session.questions.Index].ID,
 				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip}) {
 				return true, nil
 			}
 		}
-		if step, submit := questions.Advance(); step != 0 {
-			moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, step)
+		if step, submit := session.questions.Advance(); step != 0 {
+			moveQuestion(&session.questions, attached.conversation, terminal, editor, session.Client.Thread, step)
 		} else if submit {
-			return true, submitQuestions(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, environment, (*owned), hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: c.ID})
+			return true, session.submitQuestions(attached, terminal, picker, editor, side, clock, overlay, parent, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: c.ID})
 		}
 	}
 	return true, nil
@@ -406,14 +324,14 @@ func openOutput(attached *attachedPresentation, terminal *terminalsession.Attach
 	return true
 }
 
-func outputIntent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, parent context.Context, files *detailFiles, surface *terminalsession.Attachment, intent terminalsession.DialogIntent) {
+func (session *nativeSession) outputIntent(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, files *detailFiles, surface *terminalsession.Attachment, intent terminalsession.DialogIntent) {
 	switch intent.Action {
 	case terminalsession.DialogClose:
 		files.closeOutput(surface)
 	case terminalsession.DialogCopy:
 		copyText(&attached.feedback, terminal, clock, surface, intent.Text)
 	case terminalsession.DialogReference:
-		if !referenceInput(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, parent, terminal.Main.Reference("dialog", intent.Text, "")) {
+		if !session.referenceInput(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, terminal.Main.Reference("dialog", intent.Text, "")) {
 			return
 		}
 		surface.Focus = 0
@@ -425,13 +343,13 @@ func outputIntent(attached *attachedPresentation, terminal *terminalsession.Atta
 
 // applyComposerInput resolves terminal output through the current owners. Every
 // semantic action retains the publication and editor target it came from.
-func applyComposerInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model *string, effort *string, tier *string, tiers **inferencegateway.Tiers, title *string, backend *string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner **sessionreview.Review, receipts *[]*changepresentation.Receipt, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession *history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), approvalMode bool, generator *sessionNaming, dirty *bool, files *detailFiles, statusConfig *appServerStatusConfig, capture *transportcapture.Recorder, debugDirectory string, panes *nativePreferences, models *[]appServerModel, modelsLoading *bool, input terminalsession.ComposerInput) (bool, error) {
+func (session *nativeSession) applyComposerInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, dirty *bool, files *detailFiles, input terminalsession.ComposerInput) (bool, error) {
 	if input.Err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), input.Err.Error(), true)
 		return false, nil
 	}
 	if input.Command.Operation != sessionpresentation.NoComposerOperation {
-		return applyComposerCommand(attached, terminal, control, picker, editor, questions, approvals, clock, model, effort, tier, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, hook, observations, parent, reviewOwner, receipts, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, approvalMode, generator, files, statusConfig, capture, debugDirectory, panes, models, modelsLoading, input.Command, nil)
+		return session.applyComposerCommand(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, files, input.Command, nil)
 	}
 	kind, changed := input.LocalEdit, input.Changed
 	if input.Editor.Action.Kind != composer.NoAction {
@@ -458,16 +376,16 @@ func applyComposerInput(attached *attachedPresentation, terminal *terminalsessio
 	}
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	if kind != composer.UndoAction && kind != composer.RedoAction {
-		pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.nativeImages)
+		pruneDraftImages(session.ownedImages, (*editor), attached.conversation, &session.questions, &session.approvals, terminal.Prompts, (*side), attached.hooks.nativeImages)
 	}
 	return false, nil
 }
 
-func applyPromptInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, input terminalsession.PromptInput) (bool, error) {
+func (session *nativeSession) applyPromptInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, overlay bool, parent context.Context, input terminalsession.PromptInput) (bool, error) {
 	if input.Approval.Request != "" {
-		return applyApprovalInput(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, notifications, reviewOwner, receipts, observations, input)
+		return session.applyApprovalInput(attached, terminal, picker, editor, (*side), clock, overlay, input)
 	}
-	return applyQuestionInput(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, environment, owned, hook, parent, observations, reviewOwner, receipts, input)
+	return session.applyQuestionInput(attached, terminal, picker, editor, (*side), clock, overlay, parent, input)
 }
 
 // displaySession accepts detached targets without consulting terminal state.
@@ -494,7 +412,7 @@ func displaySession(attached *attachedPresentation, terminal *terminalsession.At
 }
 
 func (u *appServerUI) restoreContent(root binding.ThreadInfo) error {
-	return restorePaneContent(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.restoring, &u.statusPanel, &u.resumePicker, u.ctx, &u.review, &u.pendingEditReceipts, u.notifications, u.retained, &u.retainedSession, u.activity, u.segments, &u.restoredSegments, u.reviewSource, u.preparePane, root, u.message, &u.resumePending)
+	return u.nativeSession.restorePaneContent(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, root)
 }
 
 func registerThread(session *sessionpresentation.Attachment, info binding.ThreadInfo) {

@@ -3,7 +3,6 @@ package launch
 import (
 	"errors"
 	"fmt"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"io"
 	"net/http"
 	"reflect"
@@ -11,6 +10,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -592,7 +593,7 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 				}
 				for range 2 {
 					synctest.Wait()
-					if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, t.Context(), false, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+					if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
 						t.Fatal(err)
 					}
 				}

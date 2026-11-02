@@ -3,9 +3,6 @@ package launch
 import (
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -16,10 +13,10 @@ func insertDraft(attached *attachedPresentation, editor *composer.Editor, termin
 	terminal.Main.CursorColumn = nil
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	editor.Insert(text)
-	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
+	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.hooks.nativeImages)
 }
 
-func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, start, end int) {
+func (session *nativeSession) deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, start int, end int) {
 	if attached.view != "" {
 		(*editor).Delete(start, end, composer.NoRun)
 		return
@@ -28,13 +25,13 @@ func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.
 		(*editor).Run = composer.NoRun
 		return
 	}
-	if questions.Current() != nil || approvals.Open {
-		removeDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side, start, end, composer.NoRun)
+	if session.questions.Current() != nil || session.approvals.Open {
+		removeDraft(attached, (*editor), terminal, clock, session.ownedImages, &session.questions, &session.approvals, side, start, end, composer.NoRun)
 		return
 	}
-	view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side)
+	view := publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side)
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
 	if _, err := attached.presentation.ApplyEditor(sessionpresentation.EditorIntent{Version: view.Version, Target: view.EditorTarget(), Action: composer.Action{Kind: composer.DeleteAction, Start: start, End: end}}, attached.conversation); err != nil {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
@@ -42,7 +39,7 @@ func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.
 	}
 	terminal.Main.CursorColumn = nil
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	pruneDraftImages(owned, *editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
+	pruneDraftImages(session.ownedImages, *editor, attached.conversation, &session.questions, &session.approvals, terminal.Prompts, side, attached.hooks.nativeImages)
 }
 
 func removeDraft(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side, start, end int, run composer.Run) {
@@ -52,5 +49,5 @@ func removeDraft(attached *attachedPresentation, editor *composer.Editor, termin
 	}
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	terminal.Main.CursorColumn = nil
-	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.nativeImages)
+	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.hooks.nativeImages)
 }

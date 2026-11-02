@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -249,7 +248,7 @@ func TestAppServerSessionTitleEmptyAndCommandBoundaries(t *testing.T) {
 	if u.attached.feedback.Text != "Usage: /title <title>" || u.Text != "/title " || wire.Len() != 0 {
 		t.Fatalf("empty title: draft=%q notice=%q wire=%q", u.Text, u.attached.feedback.Text, wire.String())
 	}
-	if titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, "/titles wrong") || titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, "prompt /title wrong") {
+	if u.nativeSession.titleCommand(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, "/titles wrong") || u.nativeSession.titleCommand(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, "prompt /title wrong") {
 		t.Fatal("non-command interpreted as a rename")
 	}
 	nativeTestCancel(t, u)
@@ -356,7 +355,7 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-			u.attached.presentation.Status.Text, u.model, u.title = "Ready", "snapshot-model", tc.title
+			u.attached.presentation.Status.Text, u.settings.Model, u.title = "Ready", "snapshot-model", tc.title
 			if tc.name == "idle-save-failure" {
 				u.Host.Input = new(sessionTitleFailInput)
 				persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, sessionTitleUpdate{thread: "main", name: "Candidate"})

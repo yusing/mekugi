@@ -80,11 +80,11 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 	case sessionapi.NativeSkillDetails:
 		openSkills(&v.attached, v.shell, &v.files, v.shell, terminal, request.Caller)
 	case sessionapi.NativeEntryDetails:
-		if len(request.Sources) == 0 && request.Path == "" && v.attached.compaction != nil {
+		if len(request.Sources) == 0 && request.Path == "" {
 			for _, entry := range activitySource(&v.attached, v.shell, terminal).Entries {
 				n := entry.Source.Native
 				if entry.Source.Seq == request.Source && entry.Source.Kind == "compaction" && n != nil && n.SummaryPending {
-					read := v.attached.compaction(n.Thread, n.Item)
+					read := v.attached.hooks.compaction(n.Thread, n.Item)
 					v.files.openCompactionSummary(&v.attached.session, v.attached.presentation, v.attached.cwd, v.shell, terminal, read)
 					v.detailDemand = nil
 					return ""

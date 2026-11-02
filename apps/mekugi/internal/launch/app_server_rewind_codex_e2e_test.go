@@ -113,7 +113,7 @@ func TestAppServerRewindBoundaryNativeCodex(t *testing.T) {
 	u, wire := newResumeSessionTestUI(t)
 	u.startSession(thread, workspace)
 	u.Thread, u.Startup.Thread = thread, thread
-	u.model, u.reasoningEffort = "gpt-6-astra", "high"
+	u.settings.Model, u.settings.Effort = "gpt-6-astra", "high"
 	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":%q,"item":{"type":"userMessage","id":"seed","content":[{"type":"text","text":"User request 0"}]}}}`, thread, turns[0]))
 	relay := func(method string) appserver.Message {
 		t.Helper()

@@ -5,12 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/conversation/completion"
@@ -24,12 +21,12 @@ import (
 
 // Source: codex-rs/tui/src/chatwidget/copy_picker.rs:10:105@1cc7e236.
 // Reuse the transcript and OSC 52 owner rather than a second clipboard backend.
-func showCopyPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool) {
-	deleteDraftRange(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
+func (session *nativeSession) showCopyPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) {
+	session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
 	var response string
 	var answerOwner *sessioncontrol.Side
 	if attached.presentation.View().BTW != nil {
-		answerOwner = control.BTW
+		answerOwner = session.Client.BTW
 	}
 	if answerOwner == nil && attached.presentation.DisplayingSide() && *side != nil && !(*side).OneOff {
 		answerOwner = *side
@@ -49,7 +46,7 @@ func showCopyPicker(attached *attachedPresentation, terminal *terminalsession.At
 			}
 		}
 	} else {
-		source, thread, agent := attached.source, control.Thread, "Main"
+		source, thread, agent := attached.source, session.Client.Thread, "Main"
 		if attached.presentation.DisplayingSide() {
 			source, thread, agent = attached.childSource, (*side).Thread, (*side).Caller()
 		}

@@ -4,18 +4,7 @@ import (
 	"cmp"
 	"context"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/backends/codex/nativetrace"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
-	"github.com/yusing/mekugi/modules/commandsegments/reports"
-	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
@@ -51,51 +40,51 @@ func restoreThreadSettings(session *sessionpresentation.Attachment, info binding
 }
 
 // sessionEvent owns live enrichment and effects around shared presentation.
-func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, tracker *commandsegments.Observer, activity *activitymodel.Service, usage *accounting.Service, trace *nativetrace.Reader, windows *executionobservation.Windows, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, retainedSession history.Session, exitUsage *binding.TokenUsage, clock func() time.Time, method string, p binding.Notification) (bool, error) {
+func (session *nativeSession) sessionEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, method string, p binding.Notification) (bool, error) {
 	s := &attached.session
-	if s.KnownCaller(control.Thread) == "" {
+	if s.KnownCaller(session.Client.Thread) == "" {
 		return false, nil
 	}
-	if p.ThreadID == control.Thread && p.TurnID != "" && p.Item.Type == "userMessage" && (method == "item/started" || method == "item/completed") {
-		control.HasUserTurn = true
+	if p.ThreadID == session.Client.Thread && p.TurnID != "" && p.Item.Type == "userMessage" && (method == "item/started" || method == "item/completed") {
+		session.Client.HasUserTurn = true
 	}
-	if p.ThreadID != "" && p.ThreadID != control.Thread {
+	if p.ThreadID != "" && p.ThreadID != session.Client.Thread {
 		s.Caller(p.ThreadID)
 		agent := s.Activity().Agent(p.ThreadID)
-		if control.Requests.WorkSide(p.ThreadID) {
+		if session.Client.Requests.WorkSide(p.ThreadID) {
 			agent.Isolated, agent.AudiencePending = true, false
 		} else if side := attached.conversation.Side; side != nil && side.OneOff && agent.ParentThread == "" {
 			agent.AudiencePending = true
 		}
 	}
 	if method == "hook/started" || method == "hook/completed" {
-		return true, hookEvent(attached, terminal, control, activity, reviewOwner, approvals, receipts, retainedSession, clock, method, p)
+		return true, hookEvent(attached, terminal, &session.Client, session.activity, session.review, &session.approvals, &session.pendingEditReceipts, session.retainedSession, clock, method, p)
 	}
 	if method == "item/started" {
-		observeShellItem(&control.Shell, control.Thread, p.ThreadID, p.Item)
+		observeShellItem(&session.Client.Shell, session.Client.Thread, p.ThreadID, p.Item)
 	}
 	if command := p.Command; command != nil {
 		key := command.Key
 		if method == "item/completed" {
-			tracker.Completed(key)
+			session.execTrack.Completed(key)
 		}
 		switch {
 		case method == "item/started":
 			if script, ok := shellinstrumentation.CommandScript(command.Command); ok {
-				tracker.Start(key, script)
+				session.execTrack.Start(key, script)
 			}
-		case method == "item/completed" && (attached.session.Commands()[key] == nil || !tracker.Tracking(key)):
-			tracker.Forget(key)
+		case method == "item/completed" && (attached.session.Commands()[key] == nil || !session.execTrack.Tracking(key)):
+			session.execTrack.Forget(key)
 		}
 	}
 
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
 	event := p.Observation(method, presentationTime(clock))
 
-	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: control.Thread, Selected: control.Turn, Start: control.InterruptTarget().Start, Workspace: attached.cwd, Tracked: tracker.Tracking(key)}
-	facts.AuxiliaryTurn = p.ThreadID == control.Thread && control.AuxiliaryTurn(p.Turn.ID)
-	if p.Item.Type == "commandExecution" && trace != nil {
-		if ms, known := trace.CommandTimeout(p.ThreadID, key[2]); known {
+	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: session.Client.Thread, Selected: session.Client.Turn, Start: session.Client.InterruptTarget().Start, Workspace: attached.cwd, Tracked: session.execTrack.Tracking(key)}
+	facts.AuxiliaryTurn = p.ThreadID == session.Client.Thread && session.Client.AuxiliaryTurn(p.Turn.ID)
+	if p.Item.Type == "commandExecution" && session.nativeTrace != nil {
+		if ms, known := session.nativeTrace.CommandTimeout(p.ThreadID, key[2]); known {
 			facts.CommandTimeout = strconv.FormatUint(ms/1000, 10)
 			if fraction := ms % 1000; fraction != 0 {
 				facts.CommandTimeout += "." + strings.TrimRight(fmt.Sprintf("%03d", fraction), "0")
@@ -104,27 +93,27 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 		}
 	}
 	if method == "turn/completed" {
-		endTurnPreviews(windows, reviewOwner, attached.cwd, terminal, presentationTime(clock), p.ThreadID, p.Turn.ID)
+		endTurnPreviews(session.execWindows, session.review, attached.cwd, terminal, presentationTime(clock), p.ThreadID, p.Turn.ID)
 	}
-	result := sessionpresentation.ReduceObservation(s, attached.presentation, attached.source, attached.childSource, attached.transcript, activity.Outputs(s.Scope()), facts)
-	if result.Started && reviewOwner != nil {
-		reviewOwner.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
+	result := sessionpresentation.ReduceObservation(s, attached.presentation, attached.source, attached.childSource, attached.transcript, session.activity.Outputs(s.Scope()), facts)
+	if result.Started && session.review != nil {
+		session.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 	}
-	if method == "thread/started" && p.Thread.ID != "" && p.Thread.ID != control.Thread {
+	if method == "thread/started" && p.Thread.ID != "" && p.Thread.ID != session.Client.Thread {
 		restoreThreadSettings(&attached.session, p.Thread)
 	}
 	if method == "thread/tokenUsage/updated" || method == "turn/completed" {
-		if method == "thread/tokenUsage/updated" && p.ThreadID == control.Thread {
-			(*exitUsage) = p.TokenUsage.Total
+		if method == "thread/tokenUsage/updated" && p.ThreadID == session.Client.Thread {
+			session.exitUsage = p.TokenUsage.Total
 		}
-		observeCost(usage, p.ThreadID, s.Agent(s.Caller(p.ThreadID)))
+		observeCost(session.usage, p.ThreadID, s.Agent(s.Caller(p.ThreadID)))
 	}
 	if result.Publish {
-		streams.Deliver(result.Deliveries, terminal.Transcript, terminal.Agents)
-		if attached.deliverActivity != nil {
-			attached.deliverActivity(attached.executionPresentation, result.Deliveries)
-		}
-		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, nil, nil)
+		session.streams.Deliver(result.Deliveries, terminal.Transcript, terminal.Agents)
+
+		attached.hooks.deliverActivity(attached.executionPresentation, result.Deliveries)
+
+		applyActivity(attached, &session.approvals, terminal, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, nil)
 	}
 	return result.Handled, nil
 }
@@ -132,17 +121,17 @@ func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Atta
 // flushStreamOutput advances terminal frames and admits changed segment facts.
 // Reveal-only updates never replace neutral command records. Late output cannot
 // reopen a completed invocation.
-func flushStreamOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, tracker *commandsegments.Observer, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures) {
-	streams.AdvanceReasoning(presentationTime(clock), terminal.Transcript, terminal.Agents)
+func (session *nativeSession) flushStreamOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, parent context.Context) {
+	session.streams.AdvanceReasoning(presentationTime(clock), terminal.Transcript, terminal.Agents)
 	s := &attached.session
 	var entries []sessionpresentation.ActivityEntry
 	handled := make(map[[3]string]bool)
 	for key, run := range attached.session.Commands() {
-		tracked, trackedCommand := flushTrackedCommand(attached, terminal, streams, tracker, clock, parent, retained, segments, writes, pending, issues, key, run)
+		tracked, trackedCommand := flushTrackedCommand(attached, terminal, &session.streams, session.execTrack, clock, parent, session.retained, session.segments, &session.commandSegmentWrites, &session.commandSegmentPending, session.issues, key, run)
 		entries = append(entries, tracked...)
 		handled[key] = trackedCommand
 	}
-	streams.AdvanceCommands(presentationTime(clock), handled, terminal.Transcript, terminal.Agents)
+	session.streams.AdvanceCommands(presentationTime(clock), handled, terminal.Transcript, terminal.Agents)
 
 	if len(entries) == 0 {
 		return
@@ -151,7 +140,7 @@ func flushStreamOutput(attached *attachedPresentation, terminal *terminalsession
 	for i := range entries {
 		entries[i].Seq = s.Activity().NextSequence()
 	}
-	applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, entries, nil)
+	applyActivity(attached, &session.approvals, terminal, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, entries, nil)
 }
 
 // observeCost reads all consumption metrics from the same canonical owner.

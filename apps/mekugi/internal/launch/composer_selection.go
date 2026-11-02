@@ -6,28 +6,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-func referenceInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, parent context.Context, intent sessionpresentation.ReferenceIntent) bool {
+func (session *nativeSession) referenceInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, intent sessionpresentation.ReferenceIntent) bool {
 	defer func() {
-		settlePresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
+		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
 	}()
 	if attached.effects != nil {
 		if err := attached.presentation.ClientReference(intent); err != nil {
 			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 			return false
 		}
-		pending := slices.Concat(attached.conversation.Submitted[control.Submission().ID].Parts, attached.conversation.Unsent, attached.conversation.Queued, attached.conversation.Parts(control.Steers()))
+		pending := slices.Concat(attached.conversation.Submitted[session.Client.Submission().ID].Parts, attached.conversation.Unsent, attached.conversation.Queued, attached.conversation.Parts(session.Client.Steers()))
 		// Selection labels only depend on pending text, never its attachment
 		// snapshots. Keep those payloads with their actual input owners.
 		drafts := make([]composer.Draft, len(pending))
@@ -57,8 +54,8 @@ func referenceInput(attached *attachedPresentation, terminal *terminalsession.At
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
 	}
-	insertSelection(attached, terminal, control, editor, questions, approvals, clock, side, owned, intent.Description, intent.Text, intent.Source)
-	picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
+	insertSelection(attached, terminal, &session.Client, editor, &session.questions, &session.approvals, clock, side, &session.ownedImages, intent.Description, intent.Text, intent.Source)
+	picker.refreshPicker(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
 	(*editor).Run = composer.NoRun
 	return true
 }
@@ -93,7 +90,7 @@ func insertSelection(attached *attachedPresentation, terminal *terminalsession.A
 	}
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
 	terminal.Main.CursorColumn = nil
-	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.nativeImages)
+	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.hooks.nativeImages)
 	if q := questions.Current(); q != nil {
 		q.Edit(!q.Note)
 	}

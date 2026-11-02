@@ -148,7 +148,7 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u.main.shell.Agents = u.Agents
 	u.main.Text = "draft "
 	u.main.testActivity(u.main.shell.Agents).setDisplayFilter(true, "/root/reader")
-	publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
+	publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, u.main.settings, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
 	u.main.shell.Agents.FeedLeft, u.main.shell.Agents.FeedTop = 1, 1
 	u.main.shell.Agents.FeedRight, u.main.shell.Agents.FeedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
@@ -160,7 +160,7 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 
 func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.model, u.reasoningEffort, u.serviceTier = "parent-model", "high", "priority"
+	u.settings.Model, u.settings.Effort, u.settings.Tier = "parent-model", "high", "priority"
 
 	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/reader")
 	caption := func() string {
@@ -187,7 +187,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 		t.Fatalf("child tier ignored model routing: %s", got)
 	}
 	u.serviceTiers.Confirm("live-model", info.ID, "flex")
-	publication := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	publication := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Caption.Role != "reviewer" || publication.Status.Composer.Text != "Read-only" {
 		t.Fatalf("detached child caption lost confirmed thread settings: %+v", publication)
 	}
@@ -209,7 +209,7 @@ func TestUISnapshotNativeChildComposerSettings(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
-	u.model, u.reasoningEffort = "parent-model", "high"
+	u.settings.Model, u.settings.Effort = "parent-model", "high"
 	u.Text = "retained parent draft"
 	info := resumeSettingsRollout(t, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-child","reasoning_effort":"medium","service_tier":"flex"}}}`, "")
 	info.AgentNickname, info.AgentRole = "reader", "reviewer"

@@ -4,43 +4,41 @@ import (
 	"context"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 // dispatchViewResponse is the single response binding for presentation-owned
 // acquisitions. The sole request ledger attributes each reply before this call.
-func dispatchViewResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, approvalMode bool, quit *bool, parent context.Context, environment []string, response sessioncontrol.Request[appServerRequest], m appserver.Message) (bool, error) {
+func (session *nativeSession) dispatchViewResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, quit *bool, parent context.Context, response sessioncontrol.Request[appServerRequest], m appserver.Message) (bool, error) {
 	method := response.Method
 	if method == "permissionProfile/list" {
-		return true, picker.permissionsResponse(attached, control, response.Owner, m)
+		return true, picker.permissionsResponse(attached, &session.Client, response.Owner, m)
 	}
 	if response.Owner.label != "" {
 		method = response.Owner.label
 	}
 	if method == "rewind/turns" {
-		rewindTurnsResponse(control, picker, response.Owner, m)
+		rewindTurnsResponse(&session.Client, picker, response.Owner, m)
 		return true, nil
 	}
 	if method == "rewind/page" {
-		rewindPageResponse(control, picker, response.Owner, m)
+		rewindPageResponse(&session.Client, picker, response.Owner, m)
 		return true, nil
 	}
 	if method == "rewind/source" {
-		rewindSourceResponse(control, picker, parent, response.Owner, m)
+		rewindSourceResponse(&session.Client, picker, parent, response.Owner, m)
 		return true, nil
 	}
 	if method == resumePickerList {
-		return true, resumePickerResponse(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, title, backend, restoring, side, panel, resumePicker, approvalMode, quit, m)
+		return true, session.resumePickerResponse(attached, terminal, picker, editor, clock, side, panel, resumePicker, quit, m)
 	}
-	if handled, err := statusMessage(control.Requests, (*panel), method, m, response.Owner.status); handled {
+	if handled, err := statusMessage(session.Client.Requests, (*panel), method, m, response.Owner.status); handled {
 		return true, err
 	}
-	if picker.pickerMessage(attached, terminal, clock, control.Requests, (*editor), parent, environment, method, m) {
+	if picker.pickerMessage(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment, method, m) {
 		return true, nil
 	}
 

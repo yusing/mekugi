@@ -6,15 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -47,16 +40,16 @@ func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live,
 // Source: codex-rs/tui/src/chatwidget/input_submission.rs:36:67@1cc7e236.
 // Codex owns execution, cancellation and history: active shell results inject
 // into the running turn; standalone results wait in history for the next input.
-func submitShell(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, restoring bool, environment []string, parent context.Context, reviewOwner *sessionreview.Review, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store)) error {
+func (session *nativeSession) submitShell(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context) error {
 	command := strings.TrimSpace(strings.TrimPrefix((*editor).Text, "!"))
 	if command == "" {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Type a shell command after !", false)
 		return nil
 	}
-	if control.Thread == "" || restoring {
+	if session.Client.Thread == "" || session.restoring != nil {
 		return nil
 	}
-	if !control.AcceptsShell() {
+	if !session.Client.AcceptsShell() {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Waiting for the pending request · press Enter again when ready", false)
 		return nil
 	}
@@ -65,28 +58,28 @@ func submitShell(attached *attachedPresentation, terminal *terminalsession.Attac
 		return nil
 	}
 	delivery := attached.effects.input()
-	if err := dispatchShell(attached, terminal, control, clock, parent, reviewOwner, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, command); err != nil {
+	if err := session.dispatchShell(attached, terminal, clock, parent, command); err != nil {
 		return err
 	}
-	attached.conversation.Shell = prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
+	attached.conversation.Shell = prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, (*editor).Take())
 	attached.conversation.Shell.Origin = attached.view
 	attached.conversation.Shell.Delivery = delivery
 	attached.conversation.ShellFromEditor = true
 	return nil
 }
 
-func dispatchShell(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], clock func() time.Time, parent context.Context, reviewOwner *sessionreview.Review, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), command string) error {
-	shellEdits.pending.Discard()
-	shellEdits.pending = nil
-	edit := captureShellEdit(attached, terminal, control, parent, reviewOwner, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, command)
-	if err := control.Request("thread/shellCommand", map[string]any{"threadId": control.Thread, "command": command}); err != nil {
+func (session *nativeSession) dispatchShell(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, parent context.Context, command string) error {
+	session.shellEdits.pending.Discard()
+	session.shellEdits.pending = nil
+	edit := session.captureShellEdit(attached, terminal, parent, command)
+	if err := session.Client.Request("thread/shellCommand", map[string]any{"threadId": session.Client.Thread, "command": command}); err != nil {
 		edit.Discard()
 		return err // Keep the draft when transport submission fails.
 	}
-	shellEdits.pending = edit
-	control.Shell.Begin(control.Turn)
-	if control.LocalStop != "" {
-		control.Shell.WakeAfterSettlement()
+	session.shellEdits.pending = edit
+	session.Client.Shell.Begin(session.Client.Turn)
+	if session.Client.LocalStop != "" {
+		session.Client.Shell.WakeAfterSettlement()
 	}
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell command submitted", false)
 	terminal.Transcript.Follow()
@@ -114,8 +107,8 @@ func shellResponse(attached *attachedPresentation, terminal *terminalsession.Att
 		shellEdits.pending.Discard()
 		shellEdits.pending = nil
 		hint := ""
-		if draft.Origin != "" && attached.restoreShell != nil {
-			attached.restoreShell(attached.executionPresentation, draft)
+		if draft.Origin != "" {
+			attached.hooks.restoreShell(attached.executionPresentation, draft)
 			rememberInput(attached.conversation, draft)
 		} else if fromEditor && (*editor).Text == "" {
 			(*editor).Replace(draft.Draft)
@@ -147,21 +140,21 @@ func observeShellItem(shell *sessioncontrol.Shell, main string, thread string, i
 
 // submitAPIShell borrows native shell dispatch without consuming the terminal's
 // editor. Host acknowledgment and execution use the existing shell lifecycle.
-func submitAPIShell(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time, restoring bool, environment []string, parent context.Context, reviewOwner *sessionreview.Review, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), command string) (string, error) {
+func (session *nativeSession) submitAPIShell(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, clock func() time.Time, parent context.Context, command string) (string, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return "Type a shell command.", nil
 	}
-	if reason := apiInputRefusal(attached, control, restoring); reason != "" {
+	if reason := apiInputRefusal(attached, &session.Client, session.restoring != nil); reason != "" {
 		return reason, nil
 	}
-	if !control.AcceptsShell() {
+	if !session.Client.AcceptsShell() {
 		return "Wait for the pending request before submitting a shell command.", nil
 	}
-	if err := dispatchShell(attached, terminal, control, clock, parent, reviewOwner, shellEdits, retained, retainedSession, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, reviewSource, preparePane, command); err != nil {
+	if err := session.dispatchShell(attached, terminal, clock, parent, command); err != nil {
 		return "", err
 	}
-	attached.conversation.Shell = prepareDraft(picker, terminal, attached.cwd, environment, composer.Draft{Text: "!" + command})
+	attached.conversation.Shell = prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, composer.Draft{Text: "!" + command})
 	attached.conversation.ShellFromEditor = false
 	return "", nil
 }

@@ -76,7 +76,7 @@ func TestAppServerSettingsReasoningKeys(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.model, u.reasoningEffort, u.Text = "test", tt.effort, "keep draft"
+			u.settings.Model, u.settings.Effort, u.Text = "test", tt.effort, "keep draft"
 			if err := json.Unmarshal([]byte(`[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]`), &u.models); err != nil {
 				t.Fatal(err)
 			}
@@ -88,7 +88,7 @@ func TestAppServerSettingsReasoningKeys(t *testing.T) {
 			} else {
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", "effort": tt.want})
 			}
-			if u.Text != "keep draft" || u.reasoningEffort != tt.effort {
+			if u.Text != "keep draft" || u.settings.Effort != tt.effort {
 				t.Fatal("shortcut changed draft or authoritative effort optimistically")
 			}
 		})
@@ -99,7 +99,7 @@ func TestAppServerSideSettings(t *testing.T) {
 	for _, command := range []string{"/side", "/oneoff task"} {
 		t.Run(command, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.model, u.reasoningEffort = "main-model", "high"
+			u.settings.Model, u.settings.Effort = "main-model", "high"
 			if err := json.Unmarshal([]byte(`[{"model":"side-model","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]`), &u.models); err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +122,7 @@ func TestAppServerSideSettings(t *testing.T) {
 				assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "side", "turnId": "side-turn", "effort": "low"})
 				appServerTestMessage(t, u, `{"id":4,"result":{"status":"applied"}}`)
 			}
-			if u.side.Effort != "low" || u.reasoningEffort != "high" || u.model != "main-model" {
+			if u.side.Effort != "low" || u.settings.Effort != "high" || u.settings.Model != "main-model" {
 				t.Fatal("host-confirmed side settings leaked into Main or remained pending")
 			}
 			selectSideThread(t, u, u.attached.presentation.View().SideThread)
@@ -159,10 +159,10 @@ func TestAppServerSettingsSlashControls(t *testing.T) {
 		for _, turn := range []string{"", "active"} {
 			t.Run(tt.command+"/"+turn, func(t *testing.T) {
 				u, w := newAppServerTestUI()
-				u.Turn, u.model, u.reasoningEffort, u.serviceTier = turn, "original", "low", "flex"
+				u.Turn, u.settings.Model, u.settings.Effort, u.settings.Tier = turn, "original", "low", "flex"
 				appServerTestKeys(t, u, tt.command+"\r")
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", tt.field: tt.value})
-				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.attached.conversation.Submitted[u.Submission().ID].Text != "" || !u.Settings.Pending() {
+				if u.settings.Model != "original" || u.settings.Effort != "low" || u.settings.Tier != "flex" || u.attached.conversation.Submitted[u.Submission().ID].Text != "" || !u.Settings.Pending() {
 					t.Fatal("command submitted conversation or changed metadata before notification")
 				}
 				appServerTestKeys(t, u, "next prompt\r")
@@ -182,25 +182,25 @@ func TestAppServerSettingsAuthoritativeLiveUpdate(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.Turn, u.model, u.reasoningEffort = "active", "old", "low"
+			u.Turn, u.settings.Model, u.settings.Effort = "active", "old", "low"
 			appServerTestKeys(t, u, "/reasoning high\r")
 			assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", "effort": "high"})
 			appServerTestMessage(t, u, `{"id":1,"result":{}}`)
-			if !u.Settings.Pending() || u.reasoningEffort != "low" || w.Len() != 0 {
+			if !u.Settings.Pending() || u.settings.Effort != "low" || w.Len() != 0 {
 				t.Fatal("enqueue acknowledgement was treated as applied settings")
 			}
 			appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"other","threadSettings":{"model":"foreign","effort":"high","serviceTier":"priority"}}}`)
-			if u.model != "old" || u.reasoningEffort != "low" || w.Len() != 0 {
+			if u.settings.Model != "old" || u.settings.Effort != "low" || w.Len() != 0 {
 				t.Fatal("foreign settings notification affected selected thread")
 			}
 			appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"model":"host-model","effort":"high","serviceTier":"priority"}}}`)
-			if u.model != "host-model" || u.reasoningEffort != "high" || u.serviceTier != "priority" {
+			if u.settings.Model != "host-model" || u.settings.Effort != "high" || u.settings.Tier != "priority" {
 				t.Fatal("authoritative metadata not adopted")
 			}
 			assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "main", "turnId": "active", "effort": "high"})
 			appServerTestMessage(t, u, tt.response)
-			if u.Settings.Pending() || !strings.Contains(u.attached.feedback.Text, tt.notice) || u.reasoningEffort != "high" {
-				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.Settings.Pending(), u.reasoningEffort, u.attached.feedback.Text)
+			if u.Settings.Pending() || !strings.Contains(u.attached.feedback.Text, tt.notice) || u.settings.Effort != "high" {
+				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.Settings.Pending(), u.settings.Effort, u.attached.feedback.Text)
 			}
 			if w.Len() != 0 || u.attached.conversation.Submitted[u.Submission().ID].Text != "" {
 				t.Fatal("live settings response submitted conversation")
@@ -217,17 +217,17 @@ func TestAppServerSettingsFinishedTargetAndThreadError(t *testing.T) {
 		w.Reset()
 		u.Turn = "new-turn"
 		appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"model":"next","effort":null,"serviceTier":null}}}`)
-		if w.Len() != 0 || u.Settings.Pending() || u.model != "next" {
+		if w.Len() != 0 || u.Settings.Pending() || u.settings.Model != "next" {
 			t.Fatal("settings retargeted another turn or stayed pending")
 		}
 	})
 	t.Run("thread rejected", func(t *testing.T) {
 		u, w := newAppServerTestUI()
-		u.model = "old"
+		u.settings.Model = "old"
 		appServerTestKeys(t, u, "/model next\r")
 		w.Reset()
 		appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"invalid model"}}`)
-		if w.Len() != 0 || u.Settings.Pending() || u.model != "old" || !strings.Contains(u.attached.feedback.Text, "invalid model") {
+		if w.Len() != 0 || u.Settings.Pending() || u.settings.Model != "old" || !strings.Contains(u.attached.feedback.Text, "invalid model") {
 			t.Fatal("thread error changed metadata, emitted live RPC, or left pending guard")
 		}
 	})
@@ -260,11 +260,11 @@ func TestAppServerSettingsModelListPagination(t *testing.T) {
 
 func TestAppServerSettingsReasoningWaitsForCatalog(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.model, u.reasoningEffort, u.modelsLoading = "test", "low", true
+	u.settings.Model, u.settings.Effort, u.modelsLoading = "test", "low", true
 	appServerTestRequest(t, u, "99", "model/list")
 	// Native views borrow execution while retaining their own presentation value.
 	view := u.attached
-	if err := stepReasoning(&view, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
+	if err := stepReasoning(&view, u.shell, &u.Client, preferences.Applied{Model: u.settings.Model, Effort: u.settings.Effort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
 		t.Fatal(err)
 	}
 	if w.Len() != 0 || u.attached.reasoning == nil {
@@ -280,7 +280,7 @@ func TestAppServerSettingsReasoningWaitsForCatalog(t *testing.T) {
 func TestAppServerSettingsUnchangedDoesNotWaitForNotification(t *testing.T) {
 	for _, turn := range []string{"", "active"} {
 		u, w := newAppServerTestUI()
-		u.model, u.reasoningEffort, u.Turn = "model", "high", turn
+		u.settings.Model, u.settings.Effort, u.Turn = "model", "high", turn
 		appServerTestKeys(t, u, "/reasoning high\r")
 		if turn != "" {
 			assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "main", "turnId": "active", "effort": "high"})
@@ -317,7 +317,7 @@ func TestAppServerSettingsChoicesRenderedInPicker(t *testing.T) {
 func TestAppServerSettingsTierAliasNoop(t *testing.T) {
 	for _, turn := range []string{"", "active"} {
 		u, w := newAppServerTestUI()
-		u.serviceTier, u.Turn = "priority", turn
+		u.settings.Tier, u.Turn = "priority", turn
 		appServerTestKeys(t, u, "/tier fast\r")
 		if turn != "" {
 			assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "main", "turnId": "active", "serviceTier": "fast"})
@@ -337,7 +337,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 		for _, turn := range []string{"", "active"} {
 			t.Run(command+turn, func(t *testing.T) {
 				u, w := newAppServerTestUI()
-				u.model, u.reasoningEffort, u.serviceTier, u.Turn = "one", "low", "priority", turn
+				u.settings.Model, u.settings.Effort, u.settings.Tier, u.Turn = "one", "low", "priority", turn
 				if err := json.Unmarshal([]byte(`[{"model":"one","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}],"serviceTiers":[{"id":"priority"}]},{"model":"two"},{"model":"hidden","hidden":true}]`), &u.models); err != nil {
 					t.Fatal(err)
 				}
@@ -354,7 +354,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					field, value = "serviceTier", nil
 				}
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", field: value})
-				if u.picker.Open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.attached.source.Entries) != 0 || len(u.InputHistory) != 0 || u.attached.conversation.Submitted[u.Submission().ID].Text != "" {
+				if u.picker.Open || u.settings.Model != "one" || u.settings.Effort != "low" || u.settings.Tier != "priority" || len(u.attached.source.Entries) != 0 || len(u.InputHistory) != 0 || u.attached.conversation.Submitted[u.Submission().ID].Text != "" {
 					t.Fatal("selection polluted transcript or changed confirmed settings")
 				}
 			})

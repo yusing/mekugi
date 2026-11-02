@@ -16,11 +16,11 @@ func TestAppServerInlineModelSettings(t *testing.T) {
 	} {
 		t.Run(test.command, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.Turn, u.model, u.reasoningEffort, u.serviceTier = "active", "old", "low", "priority"
+			u.Turn, u.settings.Model, u.settings.Effort, u.settings.Tier = "active", "old", "low", "priority"
 			appServerTestKeys(t, u, test.command+"\r")
 			test.change["threadId"] = "main"
 			assertAppServerSettingsRequest(t, wire, "thread/settings/update", test.change)
-			if u.model != "old" || u.reasoningEffort != "low" || u.serviceTier != "priority" || u.Text != "" || !u.Settings.Pending() {
+			if u.settings.Model != "old" || u.settings.Effort != "low" || u.settings.Tier != "priority" || u.Text != "" || !u.Settings.Pending() {
 				t.Fatal("combined intent changed confirmed values or failed to clear its draft")
 			}
 			appServerTestKeys(t, u, "dependent prompt\r")

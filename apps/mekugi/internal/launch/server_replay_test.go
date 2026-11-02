@@ -127,7 +127,7 @@ func TestServerReplayNativeSwitchReservation(t *testing.T) {
 	u, wire := newResumeSessionTestUI(t)
 	reserved := ""
 	refused := errors.New("That thread is already running.")
-	u.attached.reserveThread = func(thread string) error {
+	u.attached.hooks.reserveThread = func(thread string) error {
 		if thread == "blocked" {
 			return refused
 		}

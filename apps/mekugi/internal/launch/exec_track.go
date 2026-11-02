@@ -48,18 +48,18 @@ func commandReportView(attached *attachedPresentation, observer *commandsegments
 	stream := streams.Command(key, run.Entry.Text)
 	state := sessionpresentation.ObserveCommandReport(run.Entry.Native.Invocation, report, final)
 	snapshot := state.Snapshot
-	if attached.deliverActivity != nil {
-		output := slices.ContainsFunc(report.Segments, func(segment activitypresentation.SegmentObservation) bool { return segment.Output != "" })
-		if state.Changed || output || final {
-			detached := snapshot
-			detached.Segments = slices.Clone(snapshot.Segments)
-			for i := range detached.Segments {
-				detached.Segments[i].Raw = ""
-				detached.Segments[i].Output = nil
-			}
-			attached.deliverActivity(attached.executionPresentation, []sessionpresentation.ActivityDelivery{{Report: &sessionpresentation.CommandReportDelivery{Key: key, Text: run.Entry.Text, MainSequence: attached.source.EntrySeq(run.Entry), ChildSequence: attached.childSource.EntrySeq(run.Entry), Report: report, Snapshot: detached, Version: track.Version, Final: final}}})
+
+	output := slices.ContainsFunc(report.Segments, func(segment activitypresentation.SegmentObservation) bool { return segment.Output != "" })
+	if state.Changed || output || final {
+		detached := snapshot
+		detached.Segments = slices.Clone(snapshot.Segments)
+		for i := range detached.Segments {
+			detached.Segments[i].Raw = ""
+			detached.Segments[i].Output = nil
 		}
+		attached.hooks.deliverActivity(attached.executionPresentation, []sessionpresentation.ActivityDelivery{{Report: &sessionpresentation.CommandReportDelivery{Key: key, Text: run.Entry.Text, MainSequence: attached.source.EntrySeq(run.Entry), ChildSequence: attached.childSource.EntrySeq(run.Entry), Report: report, Snapshot: detached, Version: track.Version, Final: final}}})
 	}
+
 	frames, changed := stream.RevealSegments(report, snapshot, track.Version, final)
 	view := execTrackView{output: snapshot.SeparateOutput, ended: snapshot.Ended, complete: snapshot.Complete, code: snapshot.ExitCode, semantic: state.Changed, release: state.Release, segments: state.Segments}
 	for index, segment := range snapshot.Segments {

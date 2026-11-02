@@ -69,7 +69,7 @@ func TestUISnapshotNativeRewind(t *testing.T) {
 			u, w := newResumeSessionTestUI(t)
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local) }
-			u.model, u.reasoningEffort, u.serviceTier = "model", "high", "priority"
+			u.settings.Model, u.settings.Effort, u.settings.Tier = "model", "high", "priority"
 			rewindTestTurns(t, u, w)
 			rows, _ := u.testMainFrame(width, 18, 0)
 			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-rewind-picker-%d.txt", width), rows, width)
@@ -84,7 +84,7 @@ func TestUISnapshotNativeRewind(t *testing.T) {
 			appServerTestKeys(t, u, "preserved draft")
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work","turns":[{"id":"first","status":"completed","items":[{"type":"agentMessage","id":"answer","text":"Parser implemented"}]}]}}}`, rewind.ID))
 			resumeTestSettle(t, u, w)
-			if u.Thread != "main" || u.Text != "preserved draft" || u.Replacement.Pending() || u.picker.Kind != "" || u.HasUserTurn || u.model != "model" || u.reasoningEffort != "high" || u.serviceTier != "priority" {
+			if u.Thread != "main" || u.Text != "preserved draft" || u.Replacement.Pending() || u.picker.Kind != "" || u.HasUserTurn || u.settings.Model != "model" || u.settings.Effort != "high" || u.settings.Tier != "priority" {
 				t.Fatalf("rewind lost session or draft: %s %q %+v", u.Thread, u.Text, u.Live)
 			}
 			rows, _ = u.testMainFrame(width, 18, 0)
@@ -160,8 +160,9 @@ func TestAppServerRewindReloadFailureKeepsSession(t *testing.T) {
 func TestAppServerRewindPreservesExecutionReaders(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	models, summaries := 0, 0
-	u.attached.modelsReady = func([]appServerModel, preferences.Applied, *inferencegateway.Tiers, string) { models++ }
-	u.attached.compaction = func(string, string) func(context.Context) (string, error) {
+	hooks := u.attached.hooks
+	u.attached.hooks.modelsReady = func([]appServerModel, preferences.Applied, *inferencegateway.Tiers, string) { models++ }
+	u.attached.hooks.compaction = func(string, string) func(context.Context) (string, error) {
 		return func(context.Context) (string, error) { summaries++; return "retained summary", nil }
 	}
 	side, input := new(sessioncontrol.Side), &threadInput{ready: true}
@@ -169,15 +170,21 @@ func TestAppServerRewindPreservesExecutionReaders(t *testing.T) {
 	rewindTestTurns(t, u, w)
 	appServerTestKeys(t, u, "\r\r")
 	rewind := resumeTestOne(t, w, "thread/revert")
+	mainInput := &threadInput{ready: true}
+	u.attached.threadInput = mainInput
+	u.attached.interruptWait = func(string, string) { t.Fatal("retired interrupt reader called") }
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work"}}}`, rewind.ID))
 	resumeTestSettle(t, u, w)
-	if models == 0 || u.attached.compaction == nil {
+	if u.attached.hooks != hooks || u.attached.threadInput == mainInput || u.attached.interruptWait != nil {
+		t.Fatal("rewind copied hooks or retained Main input/interrupt state")
+	}
+	if models == 0 || u.attached.hooks.compaction == nil {
 		t.Fatal("rewind detached model or compaction readers")
 	}
 	if u.attached.sideInputs[side] != input || !input.ready {
 		t.Fatal("Main rewind retired an independent Side input admission")
 	}
-	text, err := u.attached.compaction("main", "summary")(t.Context())
+	text, err := u.attached.hooks.compaction("main", "summary")(t.Context())
 	if err != nil || text != "retained summary" || summaries != 1 {
 		t.Fatal("retained summary reader lost its owner")
 	}

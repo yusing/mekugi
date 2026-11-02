@@ -16,7 +16,7 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 		t.Run(map[bool]string{false: "preview", true: "retained"}[retained], func(t *testing.T) {
 			r := sessionreview.New(t.Context(), nil, nil)
 			defer r.Close()
-			u := &appServerUI{review: r, reviewSource: new(changecapture.Service)}
+			u := &appServerUI{nativeSession: nativeSession{review: r, reviewSource: new(changecapture.Service)}}
 			u.attached.executionPresentation = new(executionPresentation)
 			for _, target := range []**sessionpresentation.ActivitySource{&u.attached.source, &u.attached.childSource} {
 				*target = &sessionpresentation.ActivitySource{Model: new(activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent])}

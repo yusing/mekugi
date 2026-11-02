@@ -8,7 +8,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 func oneoffTestChild(t *testing.T, u *appServerUI) {
@@ -220,7 +219,7 @@ func TestOneoffAnswerDuringToolInput(t *testing.T) {
 		t.Fatalf("ordinary steering did not pass the waiting companion: %+v", steer)
 	}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.function_call_arguments.done", "item_id": "emitting"})
-	if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+	if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
 		t.Fatal(err)
 	}
 	_ = btwTestRequest(t, wire, "turn/steer", "oneoff")

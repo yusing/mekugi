@@ -12,8 +12,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/charmbracelet/x/ansi"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -292,7 +290,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
 			u.attached.session.Lifecycle(u.Thread).RestoreFinal(true)
-			u.attached.presentation.Status.Text, u.model = "Ready", "gpt-6-sol"
+			u.attached.presentation.Status.Text, u.settings.Model = "Ready", "gpt-6-sol"
 			rows, _ := u.testMainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
 			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{*root,
@@ -347,10 +345,10 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 				u.activity = nil
 			}
 
-			u.model = "main-model"
+			u.settings.Model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 			u.attached.session.Agent("/root").OutputThroughput = rate
-			before := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+			before := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 			frame, _ := u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)

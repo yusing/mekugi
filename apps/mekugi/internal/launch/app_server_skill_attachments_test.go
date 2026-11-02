@@ -206,7 +206,7 @@ func TestSkillAttachmentQueuedLookupIndependentOfForegroundPicker(t *testing.T) 
 	u.attached.cwd = "/work"
 	u.attached.conversation.Queued = []conversationmodel.Input{{Text: "use $review please"}}
 	appServerTestKeys(t, u, "@foo")
-	if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+	if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 		t.Fatal(err)
 	}
 	requests := pickerRequests(t, wire)

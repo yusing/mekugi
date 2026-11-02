@@ -249,7 +249,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](client)})
+	u := appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](client)}})
 	if err := u.Request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 			t.Fatal(ctx.Err())
 		}
 	}
-	if len(effortChoices(u.models, u.model)) == 0 {
-		t.Fatalf("model=%q catalog=%+v notice=%q", u.model, u.models, u.attached.feedback.Text)
+	if len(effortChoices(u.models, u.settings.Model)) == 0 {
+		t.Fatalf("model=%q catalog=%+v notice=%q", u.settings.Model, u.models, u.attached.feedback.Text)
 	}
 }

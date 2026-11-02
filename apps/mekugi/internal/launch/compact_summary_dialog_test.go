@@ -43,15 +43,28 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 		)
 	}
 	path := replayTestWrite(t, t.TempDir(), "rollout-main.jsonl", records...)
-	for _, mode := range []string{"live", "restore", "replay"} {
+	for _, mode := range []string{"live", "replacement", "restore", "replay"} {
 		t.Run(mode, func(t *testing.T) {
-			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.retainedSession = history.Session{Store: p.retained.Store, Thread: "main", Context: t.Context()}
-			u.RolloutPath = path
-			u.attached.compaction = func(thread, item string) func(context.Context) (string, error) {
-				return compactionSummaryReader(u.retainedSession, u.RolloutPath, thread, item)
+			var u *appServerUI
+			if mode == "replacement" {
+				var wire *appServerTestInput
+				u, wire = newResumeSessionTestUI(t)
+				u.retained = p.retained
+				u.retainedSession = history.Session{Thread: "old", Context: t.Context()}
+				hooks := u.attached.hooks
+				appServerTestKeys(t, u, "/clear\r")
+				start := resumeTestOne(t, wire, "thread/start")
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work","path":%q}}}`, start.ID, path))
+				resumeTestSettle(t, u, wire)
+				if u.attached.hooks != hooks || u.retainedSession.Thread != "main" {
+					t.Fatal("replacement lost the hooks or current retained session")
+				}
+			} else {
+				u = newAppServerSessionTestUI(t, t.TempDir())
+				u.retainedSession = history.Session{Store: p.retained.Store, Thread: "main", Context: t.Context()}
+				u.RolloutPath = path
 			}
-			if mode == "live" {
+			if mode == "live" || mode == "replacement" {
 				for i, id := range []string{"first", "second"} {
 					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": []string{"one", "two"}[i], "item": binding.ThreadItem{ID: id, Type: "contextCompaction"}})
 				}
@@ -108,7 +121,7 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 				if failure := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: block.Source}); failure != "" {
 					t.Fatal(failure)
 				}
-				if mode == "live" {
+				if mode == "live" || mode == "replacement" {
 					result := <-view.files.fileReads
 					view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, view.attached.cwd, view.shell, result)
 				}
@@ -144,7 +157,7 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 func TestCompactionSummaryReadLeavesInputResponsiveAndRejectsStaleResult(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	u.attached.compaction = func(thread, item string) func(context.Context) (string, error) {
+	u.attached.hooks.compaction = func(thread, item string) func(context.Context) (string, error) {
 		return func(ctx context.Context) (string, error) {
 			close(started)
 			defer close(done)

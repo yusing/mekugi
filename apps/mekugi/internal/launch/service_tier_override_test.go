@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
@@ -83,7 +81,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 			}
 			u.statusPanelKey("\x1b")
 			setTestAppServerIntegration(u, proxy)
-			if u.serviceTier != tc.requested || u.model != tc.model {
+			if u.settings.Tier != tc.requested || u.settings.Model != tc.model {
 				t.Fatal("presentation replaced host settings")
 			}
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = tc.model, tc.requested })
@@ -107,7 +105,7 @@ func newServiceTierPickerTestUI(t *testing.T, model, tier string, overrides map[
 	t.Helper()
 	u, input := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.model, u.serviceTier = model, tier
+	u.settings.Model, u.settings.Tier = model, tier
 	u.serviceTiers = inferencegateway.NewTiers(overrides)
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6.1-sol","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"gpt-5.6-terra","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"unconfigured","serviceTiers":[{"id":"priority"},{"id":"flex"}]}]`), &u.models); err != nil {
@@ -130,11 +128,11 @@ func TestUISnapshotNativeTierPicker(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%d", tc.name, width), func(t *testing.T) {
 				u, input := newServiceTierPickerTestUI(t, tc.model, tc.hostTier, tc.overrides)
 				appServerTestKeys(t, u, "/tier\r")
-				settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+				settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 				if !u.picker.Open || u.picker.Setting != "/tier" || u.shell.Main.Menu.Selected != tc.selected {
 					t.Fatalf("picker did not select effective tier: %+v", u.picker)
 				}
-				if input.Len() != 0 || u.serviceTier != tc.hostTier || u.model != tc.model {
+				if input.Len() != 0 || u.settings.Tier != tc.hostTier || u.settings.Model != tc.model {
 					t.Fatal("opening picker changed host settings")
 				}
 				assertNativeUISnapshot(t, fmt.Sprintf("native-tier-%s-%d", tc.name, width), u.renderPicker(width, 7))
@@ -149,9 +147,9 @@ func TestUISnapshotNativeTierPickerModelSwitch(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b")
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "unconfigured", "effort": "high", "serviceTier": "priority"}})
 	appServerTestKeys(t, u, "/tier\r")
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	if u.picker.Problem != "" || u.shell.Main.Menu.Selected != 1 || u.serviceTier != "priority" || u.model != "unconfigured" {
-		t.Fatalf("model switch retained override or lost host settings: picker=%+v model=%s tier=%s", u.picker, u.model, u.serviceTier)
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	if u.picker.Problem != "" || u.shell.Main.Menu.Selected != 1 || u.settings.Tier != "priority" || u.settings.Model != "unconfigured" {
+		t.Fatalf("model switch retained override or lost host settings: picker=%+v model=%s tier=%s", u.picker, u.settings.Model, u.settings.Tier)
 	}
 	assertNativeUISnapshot(t, "native-tier-model-switch-100", u.renderPicker(100, 7))
 }
@@ -193,7 +191,7 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			appServerTestKeys(t, u, "/tier\r"+tc.keys)
 			if tc.initial != tc.applied {
 				assertAppServerSettingsRequest(t, input, "thread/settings/update", map[string]any{"threadId": "main", "serviceTier": tc.want})
-				if u.picker.Open || !u.Settings.Pending() || u.serviceTier != tc.initial {
+				if u.picker.Open || !u.Settings.Pending() || u.settings.Tier != tc.initial {
 					t.Fatal("selection replaced host settings before confirmation")
 				}
 				appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "gpt-6.1-sol", "effort": "high", "serviceTier": tc.want}})
@@ -204,10 +202,12 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			if want == "" {
 				want = "default"
 			}
-			if u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread) != want || u.serviceTiers.Effective(u.model, "default", "unrelated") != "priority" {
+			if u.serviceTiers.Effective(u.settings.Model, u.settings.Tier, u.Thread) != want || u.serviceTiers.Effective(u.settings.Model, "default", "unrelated") != "priority" {
 				t.Fatal("selection did not replace effective tier or changed configuration")
 			}
-			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = u.model, u.serviceTier })
+			request := serverRequest(t, func(fields map[string]any) {
+				fields["model"], fields["service_tier"] = u.settings.Model, u.settings.Tier
+			})
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 			executor := requestexecution.Executor{Provider: provider, Output: &bytes.Buffer{}, ServiceTiers: u.serviceTiers}
 			headers := serverMetadataHeaders(t, "turn", nil)

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
@@ -31,7 +29,7 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") || strings.Contains(rows, "main asks 2 questions") {
 		t.Fatalf("question dock counted the sent answer: %q", rows)
 	}
-	preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n")
+	preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n")
 	if !strings.Contains(preview, "Steering after the next tool call") || !strings.Contains(preview, "Answering 1 question(s)") || strings.Contains(preview, binding.QuestionReplyStart) {
 		t.Fatalf("queued answer was not shown truthfully: %q", preview)
 	}
@@ -43,13 +41,13 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 		t.Fatal("sent answer remained actionable after the other question was answered")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"turn"}}`, request.ID))
-	if u.questions.calls()[0].Resolved || !strings.Contains(strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n"), "Answering 1 question(s)") {
+	if u.questions.calls()[0].Resolved || !strings.Contains(strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n"), "Answering 1 question(s)") {
 		t.Fatal("steer acknowledgment incorrectly completed or hid the uncommitted answer")
 	}
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "answer", "clientId": request.Params.ClientUserMessageID, "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": request.text()}},
 	}})
-	if !u.questions.calls()[0].Resolved || strings.Contains(strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n"), "Answering 1 question(s)") {
+	if !u.questions.calls()[0].Resolved || strings.Contains(strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n"), "Answering 1 question(s)") {
 		t.Fatal("committed answer was not settled")
 	}
 }
@@ -164,7 +162,7 @@ func TestQuestionQueuedBatchDropsExternallyResolvedReplies(t *testing.T) {
 			if strings.Contains(input.String(), "turn/steer") {
 				t.Fatal("question batch escaped while sync request blocked turn")
 			}
-			preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n")
+			preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n")
 			if strings.Contains(preview, binding.QuestionReplyStart) || !strings.Contains(preview, "Answering 2 question(s)") {
 				t.Fatalf("pending preview exposed reply framing or omitted batch: %q", preview)
 			}
@@ -226,7 +224,7 @@ func TestQuestionNewPromptSupersedesUnsentAnswer(t *testing.T) {
 	appServerTestKeys(t, u, "3Local draft\r")
 	lifecycleUserMessage(t, u, "ordinary-new-turn", "new-prompt", "Do something else")
 	u.AwaitingTurn = false
-	if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
+	if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 		t.Fatal(err)
 	}
 	if w.Len() != 0 || u.questions.calls()[0].Questions[0].Outcome != "superseded" {
