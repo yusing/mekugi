@@ -10,6 +10,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestSideForkUsesOwningNativeRuntime(t *testing.T) {
@@ -18,11 +19,13 @@ func TestSideForkUsesOwningNativeRuntime(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			workspace := installAPIRuntimeHost(t)
+			execution := &threadExecution{shared: control.New()}
 			launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
-				_, err := runServerSession(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, api, start.Workspace, nil)
+				_, err := runServerSession(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, api, start.Workspace, execution)
 				return err
 			}, prepare: prepareAPIInput}
 			hub := sessionapi.NewHub(t.Context(), launcher)
+			execution.hub = hub
 			defer hub.Close()
 			endpoint := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 			defer endpoint.Close()
@@ -42,7 +45,7 @@ func TestSideForkUsesOwningNativeRuntime(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			execution := &threadExecution{hub: hub}
+			execution = &threadExecution{hub: hub}
 			if _, err := execution.Runtime("side"); err == nil {
 				t.Fatal("unadmitted side acquired a runtime")
 			}

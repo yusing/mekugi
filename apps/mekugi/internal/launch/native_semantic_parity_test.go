@@ -175,7 +175,7 @@ func TestNativeBTWControlSocket(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-			hub := sessionapi.NewHub(t.Context(), &serverLauncher{})
+			hub := newTestServerHub(t.Context())
 			defer hub.Close()
 			dir, err := os.MkdirTemp("", "mekugi-parity-")
 			if err != nil {

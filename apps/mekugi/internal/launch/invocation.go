@@ -233,7 +233,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		axReadOutput = debug.ReadLogPath()
 	}
 	var workers *frontends.WorkerImage
-	if threads != nil {
+	if appUI {
 		workers = threads.workers
 	}
 	registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: workers})
@@ -257,7 +257,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	retained.Writes = writes
 	retained.Limits = history.Limits{Total: history.DefaultStorageBytes, Kinds: map[string]int64{"commentary": 16 << 20}}
-	if threads != nil {
+	if appUI {
 		threads.retained = retained
 	}
 	if !options.DeduplicateOutput {
@@ -266,7 +266,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	calls = service.Calls()
 	audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
 	windows = &executionobservation.Windows{}
-	if threads != nil {
+	if appUI {
 		if threads.windows == nil {
 			threads.windows = windows
 		}
@@ -288,7 +288,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	defer review.Close()
 	var driver *threadbinding.Driver
 	var inspect func(context.Context, string) (threadcontrol.SessionDetails, error)
-	if threads != nil {
+	if appUI {
 		driver = threads.driver
 		inspect = func(ctx context.Context, thread string) (threadcontrol.SessionDetails, error) {
 			runtime, err := threads.Runtime(thread)
@@ -352,14 +352,14 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	}
 	var observeCatalog func([]byte)
-	if threads != nil {
+	if appUI {
 		observeCatalog = threads.driver.CaptureCatalog
 	}
 	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog, observeCatalog))
 	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
 	executor := requestexecution.Executor{Provider: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
-	if threads != nil {
+	if appUI {
 		executor.ThreadControl = threads.shared
 		executor.ReasoningChoices = threads.driver.ReasoningChoices
 	}
@@ -438,7 +438,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		if err != nil {
 			return stopFailedStartup(err)
 		}
-		if threads != nil {
+		if appUI {
 			catalog, err := os.ReadFile(catalogPath)
 			if err != nil {
 				return stopFailedStartup(err)
@@ -448,7 +448,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 
 	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, args, skillsManagerAvailable, !provider.ThirdPartyOnly)...)
-	if threads != nil {
+	if appUI {
 		self, err := os.Executable()
 		if err != nil {
 			return stopFailedStartup(err)
@@ -471,7 +471,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if debug != nil {
 		cmd.Env = append(cmd.Env, evidence.AXReadOutputEnvironment+"="+debug.ReadLogPath())
 	}
-	if !appUI || threads != nil && threads.headless != nil {
+	if !appUI || threads.headless != nil {
 		guards = nil
 	}
 	guard := len(guards) != 0
@@ -566,7 +566,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			waitCodex, err = (&nativeSession{terminalViews: terminalViews, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals}).start(prefs, cmd, stdout, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
+			waitCodex, err = (&nativeSession{terminalViews: terminalViews, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals}).start(prefs, cmd, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
 		} else {
 			err = cmd.Start()
 			waitCodex = cmd.Wait

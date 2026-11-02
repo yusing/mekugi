@@ -29,6 +29,8 @@ import (
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -88,8 +90,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		}
 		defer listener.Close()
 		serverContext, stopServer := context.WithCancel(ctx)
-		launcher := nativeFixtureLauncher{run: func(runtimeContext context.Context, api *sessionapi.Server) error {
-			wait, err := (&nativeSession{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments, ctx: runtimeContext, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: generator, observations: observations, approvalMode: approvals}).start(prefs, cmd, stdout, integration.guard, integration.guards, integration.skillsManager, resumeThread, nil, api, false, nil)
+		launcher := nativeFixtureLauncher{run: func(runtimeContext context.Context, api *sessionapi.Server, threads *threadExecution) error {
+			wait, err := (&nativeSession{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments, ctx: runtimeContext, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: generator, observations: observations, approvalMode: approvals}).start(prefs, cmd, integration.guard, integration.guards, integration.skillsManager, resumeThread, nil, api, false, threads)
 			if err != nil {
 				return err
 			}
@@ -99,6 +101,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			return wait()
 		}}
 		hub := sessionapi.NewHub(serverContext, &launcher)
+		launcher.hub = hub
 		if integration.nativeHub != nil {
 			integration.nativeHub(hub)
 		}
@@ -127,9 +130,27 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 // socket, runtime admission and native renderer. The fixture owns server teardown.
 type nativeFixtureLauncher struct {
 	serverLauncher
-	run func(context.Context, *sessionapi.Server) error
+	run func(context.Context, *sessionapi.Server, *threadExecution) error
 }
 
 func (l *nativeFixtureLauncher) Run(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
-	return l.run(ctx, api)
+	threads := &threadExecution{hub: l.hub, shared: control.New(), setup: &threadSetup{}}
+	var err error
+	threads.driver, err = threadbinding.NewDriver(threads.shared)
+	if err != nil {
+		return err
+	}
+	if err := threads.driver.Start(ctx); err != nil {
+		return err
+	}
+	defer threads.driver.Stop(context.WithoutCancel(ctx))
+	return l.run(ctx, api, threads)
+}
+
+// Real server fixtures use the same admitted owners as production startup.
+func newTestServerHub(ctx context.Context) *sessionapi.Hub {
+	launcher := &serverLauncher{threads: control.New()}
+	hub := sessionapi.NewHub(ctx, launcher)
+	launcher.hub = hub
+	return hub
 }

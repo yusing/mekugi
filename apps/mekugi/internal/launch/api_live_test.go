@@ -25,6 +25,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
@@ -48,7 +49,7 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 	setLiveScope(live, preview.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	live.Update(preview.Preview{ID: "edit", Thread: "main", Workspace: workspace, Caller: "/root", Status: "streaming", Files: []diffmodel.ReviewFile{file}}, false)
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
-		publisher := apiLive{server: api, started: time.Now()}
+		publisher := apiLive{server: api, coordination: control.New(), started: time.Now()}
 		publisher.publish(&u.attached, u.shell, &u.Client, testReview(live), u.reviewSource, false, false, time.Now())
 		<-ctx.Done()
 		return ctx.Err()
@@ -118,7 +119,7 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	child := changepresentation.ReviewView{Revision: 1, Workspace: workspace, Publication: capture("child1", "/root/worker", "one\nparent\n", "one\nchild\n", 2)}
 	refresh := make(chan chan struct{})
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
-		publisher := apiLive{server: api, threads: threads, started: time.Now()}
+		publisher := apiLive{server: api, coordination: threads.shared, started: time.Now()}
 		now := time.Now()
 		publisher.publish(&u.attached, u.shell, &u.Client, nil, u.reviewSource, false, false, now)
 		for {

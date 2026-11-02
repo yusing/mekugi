@@ -25,7 +25,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -39,7 +38,7 @@ import (
 )
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, stdout *os.File, guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, skillsManager bool, resumeThread string, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution) (func() error, error) {
+func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, skillsManager bool, resumeThread string, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution) (func() error, error) {
 	if api == nil {
 		return nil, errors.New("server session requires a control API")
 	}
@@ -107,22 +106,19 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 	session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
 	api.BindRequests(session.Client.Requests)
 	api.BindSideThreads(session.Client.Requests.HasSideThread)
-	var threadChanges <-chan struct{}
-	if threads != nil {
-		session.Client.Requests.Coordination, session.Client.Requests.InterruptWait = threads.shared, threads.driver.Interrupt
-		session.Client.Requests.InheritedEffort = threads.driver.InheritedEffort
-		session.Client.Requests.CaptureConfiguredCatalog = threads.driver.CaptureConfiguredCatalog
-		api.BindChildAttachment(threads.AttachChild)
-		policy := binding.ThreadAdmissionPolicy{}
-		session.Client.Requests.ThreadPolicy = &policy
-		session.Client.Startup.Prepared = threads.start
-		if err := threads.driver.Connect(threads, session.audience); err != nil {
-			c.Close()
-			<-c.Done
-			return nil, err
-		}
-		threadChanges = threads.driver.Changed()
+	session.Client.Requests.Coordination, session.Client.Requests.InterruptWait = threads.shared, threads.driver.Interrupt
+	session.Client.Requests.InheritedEffort = threads.driver.InheritedEffort
+	session.Client.Requests.CaptureConfiguredCatalog = threads.driver.CaptureConfiguredCatalog
+	api.BindChildAttachment(threads.AttachChild)
+	policy := binding.ThreadAdmissionPolicy{}
+	session.Client.Requests.ThreadPolicy = &policy
+	session.Client.Startup.Prepared = threads.start
+	if err := threads.driver.Connect(threads, session.audience); err != nil {
+		c.Close()
+		<-c.Done
+		return nil, err
 	}
+	threadChanges := threads.driver.Changed()
 	session.notifications = new(nativeNotifications)
 	session.Client.Startup.Workspace = resumeCwd
 	if prefs != nil {
@@ -142,7 +138,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 	session.approvals.allows = native.allowsApproval
 	hooks.bind(native, api, session.compactionReader)
 	native.diagnostics = &c.Diagnostics
-	native.threads = threads
+	native.hub = threads.hub
 	syncPredictions := func() error {
 		predictions.supported = sessioncontrol.PredictionForkSupported(session.backendVersion)
 		focused, disabled, available := native.predictionEligibility(&session.attached)
@@ -194,17 +190,15 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 			}
 			return nil
 		}
-		if threads != nil {
-			syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
-			if observe {
-				reduced, err := observeLogicalHost(threads.driver, &session.Client.Live, m)
-				if err != nil {
-					return err
-				}
-				deferred, err := deferLogicalCompletion(&session.attached, &session.Client.Live, m, reduced, session.Client.Requests)
-				if err != nil || deferred {
-					return err
-				}
+		syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
+		if observe {
+			reduced, err := observeLogicalHost(threads.driver, &session.Client.Live, m)
+			if err != nil {
+				return err
+			}
+			deferred, err := deferLogicalCompletion(&session.attached, &session.Client.Live, m, reduced, session.Client.Requests)
+			if err != nil || deferred {
+				return err
 			}
 		}
 		if m.Method == "" {
@@ -265,18 +259,18 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 		}
 		err := session.dispatchHostMessage(&session.attached, session.shell, &session.picker, &session.Editor, session.clock, &session.side, &session.statusPanel, &session.resumePicker, session.ctx, &session.detailFiles, m)
 		adoptStartupChooser()
-		if err == nil && threads != nil && session.retainedSession.Thread != "" && session.retainedSession.Thread != restoredCoordination {
+		if err == nil && session.retainedSession.Thread != "" && session.retainedSession.Thread != restoredCoordination {
 			restoredCoordination = session.retainedSession.Thread
 			syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
 			session.attached.threadInput.restoration = threads.driver.Restore(session.retainedSession)
 		}
 		predictions.observe(m, session.Client.Thread)
-		if err == nil && threads != nil && threads.headless != nil && correlated && m.Method == "" && m.Error != nil && (response.Method == "turn/start" || response.Method == "turn/steer") {
+		if err == nil && threads.headless != nil && correlated && m.Method == "" && m.Error != nil && (response.Method == "turn/start" || response.Method == "turn/steer") {
 			return fmt.Errorf("%s: %s", response.Method, m.Error.Message)
 		}
 		return err
 	}
-	live := &apiLive{server: api, threads: threads, started: time.Now()}
+	live := &apiLive{server: api, coordination: threads.shared, started: time.Now()}
 	session.notifications.relay = func(event, message string) { native.notify(session.attached.executionPresentation, event, message) }
 	nativeRequests, nativeClosed := api.Native().Requests(), native.closed
 	intents := api.Intents()
@@ -628,13 +622,10 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 		}
 		return "", err
 	}
-	var delegateApprovals *sessioncontrol.DelegateApprovals
-	if threads != nil {
-		delegateApprovals = sessioncontrol.NewDelegateApprovals(session.ctx)
-		threads.approvals = delegateApprovals
-	}
+	delegateApprovals := sessioncontrol.NewDelegateApprovals(session.ctx)
+	threads.approvals = delegateApprovals
 	return func() (runErr error) {
-		if threads != nil && threads.headless != nil {
+		if threads.headless != nil {
 			defer func() {
 				if runErr != nil && !errors.Is(runErr, context.Canceled) {
 					threads.headless.Fail(runErr)
@@ -679,7 +670,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 			tick := time.NewTicker(33 * time.Millisecond)
 			defer tick.Stop()
 			for {
-				if threads != nil && threads.headless != nil {
+				if threads.headless != nil {
 					if session.questions.Count(session.Client.Thread) > 0 || len(session.approvals.Pending) > 0 {
 						return errors.New("headless cannot answer pending questions or approvals; continue interactively")
 					}
@@ -804,7 +795,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 						exited = true
 						return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
 					}
-					if threads != nil && threads.headless != nil {
+					if threads.headless != nil {
 						if err := threads.headless.Observe(message); err != nil {
 							return err
 						}
@@ -883,10 +874,8 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 						return intentErr
 					}
 				case <-tick.C:
-					if threads != nil {
-						syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
-						threads.driver.Tick(presentationTime(session.clock))
-					}
+					syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
+					threads.driver.Tick(presentationTime(session.clock))
 					if len(session.attached.sideInputs) > 0 || session.side != nil && len(session.side.Drafts.Unsent) > 0 {
 						if err := flushBTW(&session.attached, session.shell, &session.Client, &session.picker, &session.questions, &session.approvals, session.clock, session.settings, &session.side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations); err != nil {
 							return err
@@ -948,9 +937,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 			err = errors.Join(err, session.Client.Requests.ArchiveSides(cleanup, c.Messages, session.side, session.Client.BTW))
 			cancel()
 		}
-		if saveErr := session.panes.savePrepared(presentationTime(session.clock), true); saveErr != nil {
-			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", textsanitize.Safe(saveErr.Error(), false))
-		}
+		_ = session.panes.savePrepared(presentationTime(session.clock), true)
 		if session.panes != nil {
 			err = errors.Join(err, session.panes.writer.close(session.panes.attachment, presentationTime(session.clock)))
 		}
@@ -974,30 +961,13 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, s
 		session.Editor = hideQuestionEditor(&session.questions, session.attached.conversation, session.shell, session.Editor, session.Client.Thread)
 		hideApprovals(&session.approvals, session.shell, &session.attached.conversation.PromptEditor, &session.attached.conversation.Editor)
 		inputHistory.saveDraft(session.attached.conversation, session.Editor)
-		if historyErr := inputHistory.close(); historyErr != nil {
-			fmt.Fprintln(stdout, "Input history could not be saved:", textsanitize.Safe(historyErr.Error(), false))
-		}
-		if unsent := conversationmodel.Join(slices.Concat(session.attached.conversation.Unsent, session.attached.conversation.Queued, []conversationmodel.Input{draftSnapshot(session.Editor)})...); unsent.Text != "" {
-			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.Text, false))
-		}
-		unknown := slices.Clone(session.Client.Steers())
-		if !session.Client.Submission().Committed {
-			unknown = append(unknown, session.Client.Submission().ID)
-		}
-		if unknown := conversationmodel.Join(session.attached.conversation.Parts(unknown)...); unknown.Text != "" {
-			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+textsanitize.Safe(unknown.Text, false))
-		}
-		if session.attached.conversation.Shell.Text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(session.attached.conversation.Shell.Text, false))
-		}
+		_ = inputHistory.close()
 		session.attached.releaseSideInputs()
 		session.attached.session.Retire()
 		if err != nil {
 			if diagnostic := c.Diagnostics.Snapshot(); diagnostic != "" {
-				if threads != nil && threads.headless != nil {
+				if threads.headless != nil {
 					err = fmt.Errorf("%w\nCodex: %s", err, diagnostic)
-				} else {
-					fmt.Fprintln(stdout, diagnostic)
 				}
 			}
 		}

@@ -114,7 +114,7 @@ func (e *threadExecution) startClaude(ctx context.Context, parent, resume string
 }
 
 func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server, parent string, resume bool, settings control.Settings, info control.ThreadInfo, fork *claudeFork) (runErr error) {
-	if e.retained.Store == nil || e.setup == nil || e.driver == nil {
+	if e.retained.Store == nil || e.driver == nil {
 		return errors.New("Claude runtime has no admitted retained execution owners")
 	}
 	defer e.windows.Retire()

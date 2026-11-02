@@ -16,12 +16,13 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // apiLive publishes the owned runtime independently of attached viewers.
 type apiLive struct {
 	server       *sessionapi.Server
-	threads      *threadExecution
+	coordination *control.Service
 	main, agents commandFeed
 	attachment   uint64
 	started      time.Time
@@ -62,9 +63,7 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 
 			ChildReplySummary: childSummary,
 		}
-		if w.threads != nil && w.threads.shared != nil {
-			frame.FamilyRoot, frame.Members = w.threads.shared.Family(control.Thread)
-		}
+		frame.FamilyRoot, frame.Members = w.coordination.Family(control.Thread)
 		if review != nil {
 			frame.LiveScope = review.Scope()
 			if previews := review.Preview(); previews != nil {

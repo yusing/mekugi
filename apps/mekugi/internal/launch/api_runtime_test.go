@@ -20,6 +20,8 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // This exercises the actual invocation acquisition, host pipes and owner loop.
@@ -41,6 +43,7 @@ func TestServerSessionNoTerminal(t *testing.T) {
 			close(releasePreparation)
 		}
 	}()
+	execution := &threadExecution{shared: control.New()}
 	launcher := &nativeReattachLauncher{prepare: func(ctx context.Context, workspace string, input sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
 		if input.NativeDraft != nil && input.NativeDraft.Text == "@message.txt" {
 			close(preparing)
@@ -54,11 +57,12 @@ func TestServerSessionNoTerminal(t *testing.T) {
 	}}
 	done := make(chan error, 1)
 	launcher.run = func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
-		_, err := runServerSession(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, api, start.Workspace, nil)
+		_, err := runServerSession(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, api, start.Workspace, execution)
 		done <- err
 		return err
 	}
 	hub := sessionapi.NewHub(ctx, launcher)
+	execution.hub = hub
 	defer hub.Close()
 	joined := false
 	defer func() {
@@ -84,6 +88,13 @@ func TestServerSessionNoTerminal(t *testing.T) {
 	}
 	if err := json.Unmarshal(serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "fixture"}), &started); err != nil || started.ID != "main" {
 		t.Fatalf("runtime start: %+v, %v", started, err)
+	}
+	directory, err := history.ReplayDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.setup == nil || execution.driver == nil || execution.retained.Store == nil || execution.retained.Store.Directory() != directory || execution.retained.Limits.Total != history.DefaultStorageBytes || execution.retained.Limits.Kinds["commentary"] != 16<<20 {
+		t.Fatalf("server invocation did not capture retained child execution owners: %+v", execution)
 	}
 	events := serverRPCSubscribe(t, rpc, started.ID)
 	await := func(predicate func([]byte) bool) {
@@ -431,8 +442,9 @@ func (l *nativeRuntimeTestLauncher) Run(ctx context.Context, start sessionapi.St
 
 func TestNativeStartupChooserDisconnectJoinsUnconfirmedHost(t *testing.T) {
 	workspace := installAPIRuntimeHost(t)
-	launcher := &nativeRuntimeTestLauncher{joined: make(chan error, 1)}
+	launcher := &nativeRuntimeTestLauncher{serverLauncher: serverLauncher{threads: control.New()}, joined: make(chan error, 1)}
 	hub := sessionapi.NewHub(t.Context(), launcher)
+	launcher.hub = hub
 	defer hub.Close()
 	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 	defer server.Close()
@@ -468,8 +480,9 @@ func TestNativeStartupChooserDisconnectJoinsUnconfirmedHost(t *testing.T) {
 
 func TestNativeArchiveJoinsOwningRuntime(t *testing.T) {
 	workspace := installAPIRuntimeHost(t)
-	launcher := &nativeRuntimeTestLauncher{joined: make(chan error, 1)}
+	launcher := &nativeRuntimeTestLauncher{serverLauncher: serverLauncher{threads: control.New()}, joined: make(chan error, 1)}
 	hub := sessionapi.NewHub(t.Context(), launcher)
+	launcher.hub = hub
 	defer hub.Close()
 	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 	defer server.Close()

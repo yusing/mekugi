@@ -114,12 +114,6 @@ func TestClaudeModelDiscovery(t *testing.T) {
 
 func TestClaudeModelDiscoveryUnavailable(t *testing.T) {
 	e, driver, caller, _ := claudeDiscoveryFixture(t)
-	setup := e.setup
-	e.setup = nil
-	if _, err := driver.Call(t.Context(), caller, "list_models", jsontext.Value(`{}`)); err == nil || !strings.Contains(err.Error(), "captured invocation owners") {
-		t.Fatalf("missing owners = %v", err)
-	}
-	e.setup = setup
 	t.Setenv("PATH", t.TempDir())
 	if _, err := driver.Call(t.Context(), caller, "list_models", jsontext.Value(`{}`)); err == nil || !strings.Contains(err.Error(), "Bun runtime") {
 		t.Fatalf("missing runtime = %v", err)

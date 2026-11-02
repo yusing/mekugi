@@ -168,10 +168,7 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	if start.Replay != nil {
 		return runServerReplay(ctx, *start.Replay, api)
 	}
-	var execution *threadExecution
-	if l.hub != nil {
-		execution = &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers, headless: l.headless}
-	}
+	execution := &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers, headless: l.headless}
 	if start.Native != nil {
 		code, err := runServerSession(ctx, start.Native.RouterArgs, start.Native.Args, api, start.Workspace, execution)
 		if l.headless != nil {

@@ -9,6 +9,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"image"
 	"image/color"
 	"image/png"
@@ -119,12 +120,13 @@ func TestWebUISemanticBrowser(t *testing.T) {
 
 	socket := filepath.Join(directory, "control.sock")
 	serverContext, stopServer := context.WithCancel(ctx)
-	launcher := &webUISemanticLauncher{serverLauncher: new(serverLauncher), failures: make(chan error, 4)}
+	launcher := &webUISemanticLauncher{serverLauncher: &serverLauncher{threads: control.New()}, failures: make(chan error, 4)}
 	suggestionRoot := t.TempDir()
 	for i := range 37 {
 		launcher.workspaces = append(launcher.workspaces, filepath.Join(suggestionRoot, fmt.Sprintf("suggestion-%02d", i)))
 	}
 	hub := sessionapi.NewHub(serverContext, launcher)
+	launcher.hub = hub
 	listener, err := sessionapi.ListenControl(socket)
 	if err != nil {
 		t.Fatal(err)

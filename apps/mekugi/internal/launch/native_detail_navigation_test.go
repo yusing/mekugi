@@ -211,7 +211,7 @@ func TestNativeDetailWorkspaceAdmissionAndLocalFiles(t *testing.T) {
 		t.Fatal("child runtime was not published in its ordinary family")
 	}
 	n, view, _ := nativeDetailTestViews(t, parent)
-	n.threads = &threadExecution{hub: hub}
+	n.hub = hub
 	target := sessionpresentation.Thread{ID: "child", Caller: "/root/child"}
 	operation := sessionapi.NativeOperation{Details: &sessionapi.NativeDetailRequest{Kind: sessionapi.NativeFileDetails, Displayed: target, Agent: true, Path: "same.go"}}
 	for _, displayed := range []bool{false, true} {

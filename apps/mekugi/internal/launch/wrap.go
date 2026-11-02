@@ -104,6 +104,10 @@ func runServerSession(ctx context.Context, routerArgs, args []string, api *sessi
 }
 
 func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
+	appUI := api != nil
+	if appUI && (threads == nil || threads.shared == nil || threads.start != nil && threads.setup == nil) {
+		return 1, errors.New("server session requires thread execution, shared coordination and child preparation")
+	}
 	suppliedArgs := slices.Clone(args)
 	args = expandReasoningShortcuts(args)
 	if err := validateCodexArgs(args); err != nil {
@@ -114,7 +118,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		return 2, err
 	}
 	var settings launchoptions.Settings
-	if threads != nil && threads.setup != nil {
+	if appUI && threads.setup != nil {
 		options, settings = threads.setup.options, threads.setup.settings
 	} else {
 		settings, err = launchoptions.LoadSettings(options.ThirdParty)
@@ -123,29 +127,26 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		}
 	}
 	options = options.ResolveFeatures(settings.Features)
-	appUI := api != nil
 	var resumeThread string
 	var resumeArgv []string
 	approvals := false
-	if appUI && (threads == nil || threads.start == nil) {
+	if appUI && threads.start == nil {
 		var err error
 		var yolo bool
 		args, resumeThread, yolo, err = appServerArgs(args)
 		if err != nil {
 			return 2, err
 		}
-		approvals = appUI && !yolo
-		if appUI {
-			resumeArgv = appServerResumeArgv(os.Args[0], routerArgs, suppliedArgs)
-			if resumeThread != "" && resumeThread != "--last" && resumeThread != sessioncontrol.ResumePicker {
-				if err := api.ReserveThread(resumeThread); err != nil {
-					return 1, err
-				}
+		approvals = !yolo
+		resumeArgv = appServerResumeArgv(os.Args[0], routerArgs, suppliedArgs)
+		if resumeThread != "" && resumeThread != "--last" && resumeThread != sessioncontrol.ResumePicker {
+			if err := api.ReserveThread(resumeThread); err != nil {
+				return 1, err
 			}
 		}
 	}
 	var executable string
-	if threads != nil && threads.setup != nil {
+	if appUI && threads.setup != nil {
 		executable, args, approvals = threads.setup.executable, slices.Clone(threads.setup.args), threads.setup.approvals
 	} else {
 		executable, err = exec.LookPath("codex")
@@ -167,23 +168,16 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	}
 	stdin, stdout := os.Stdin, os.Stdout
 	environment := os.Environ()
-	if threads != nil && threads.setup != nil {
+	if appUI && threads.setup != nil {
 		environment = slices.Clone(threads.setup.environment)
 	}
-	if threads != nil && threads.start != nil {
+	if appUI && threads.start != nil {
 		options, environment, err = threads.setup.childOutputs()
 		if err != nil {
 			return 1, err
 		}
 	}
 	if api != nil {
-		// Shared startup APIs take files; this is an inert sink, never a hosted TTY.
-		streams, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
-		if err != nil {
-			return 1, err
-		}
-		defer streams.Close()
-		stdin, stdout = streams, streams
 		environment = serverEnvironment(environment)
 	}
 	captureDirectory, err := history.ReplayDirectory()
@@ -191,7 +185,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		return 1, fmt.Errorf("initialize replay storage: %w", err)
 	}
 	var shared *threadcontrol.Service
-	if threads != nil {
+	if appUI {
 		shared = threads.shared
 		if threads.setup == nil {
 			threads.setup = &threadSetup{options: options, settings: settings, executable: executable, args: slices.Clone(args), environment: slices.Clone(environment), approvals: approvals}
@@ -201,7 +195,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	if err != nil {
 		return 1, err
 	}
-	if threads != nil {
+	if appUI {
 		threads.driver, threads.tools = frontends.Threads, frontends.MCP
 	}
 	issues := requestexecution.NewFailures(frontends.Notifications)

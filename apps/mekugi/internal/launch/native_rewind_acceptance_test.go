@@ -76,23 +76,19 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
-			launcher := &nativeFixtureLauncher{run: func(runtimeContext context.Context, api *sessionapi.Server) error {
+			launcher := &nativeFixtureLauncher{run: func(runtimeContext context.Context, api *sessionapi.Server, threads *threadExecution) error {
 				cmd := exec.CommandContext(runtimeContext, executable, "app-server")
 				cmd.Dir = u.attached.cwd
-				streams, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
-				if err != nil {
-					return err
-				}
-				defer streams.Close()
 				conversation := new(conversationmodel.Service)
 				observations := conversationbinding.Codex.Observation(conversation)
-				wait, err := (&nativeSession{terminalViews: u.terminalViews, reviewSource: u.reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: u.activity, history: testHistory(), segments: testReports(), ctx: runtimeContext, controlObservations: u.controlObservations, usage: u.usage, audience: u.audience, review: u.review, execWindows: u.execWindows, nativeTrace: u.nativeTrace, retained: u.review.Projection.Retained, changeSource: u.review.Projection.Changes, snapshots: u.snapshots, recovered: u.recovered, publishChanges: u.publishChanges, captureNotice: u.captureNotice, execTrack: u.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, streams, nil, nil, false, "", nil, api, false, nil)
+				wait, err := (&nativeSession{terminalViews: u.terminalViews, reviewSource: u.reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: u.activity, history: testHistory(), segments: testReports(), ctx: runtimeContext, controlObservations: u.controlObservations, usage: u.usage, audience: u.audience, review: u.review, execWindows: u.execWindows, nativeTrace: u.nativeTrace, retained: u.review.Projection.Retained, changeSource: u.review.Projection.Changes, snapshots: u.snapshots, recovered: u.recovered, publishChanges: u.publishChanges, captureNotice: u.captureNotice, execTrack: u.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, nil, nil, false, "", nil, api, false, threads)
 				if err != nil {
 					return err
 				}
 				return wait()
 			}}
 			hub := sessionapi.NewHub(ctx, launcher)
+			launcher.hub = hub
 			defer hub.Close()
 			listener, err := sessionapi.ListenControl(filepath.Join(directory, "s"))
 			if err != nil {

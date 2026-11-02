@@ -34,7 +34,7 @@ func TestNativeProcessControlPublication(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	hub := sessionapi.NewHub(ctx, &serverLauncher{})
+	hub := newTestServerHub(ctx)
 	defer hub.Close()
 	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 	defer server.Close()

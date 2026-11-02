@@ -18,47 +18,15 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
-
-func TestClaudeInvocationRetainedOwners(t *testing.T) {
-	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR"} {
-		t.Setenv(key, t.TempDir())
-	}
-	options, err := launchoptions.Parse([]string{"--ansi-faint=off", "--shell-guard=false"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	executable := filepath.Join(t.TempDir(), "codex")
-	if err := os.WriteFile(executable, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	threads := &threadExecution{shared: control.New(), setup: &threadSetup{options: options, executable: executable, environment: os.Environ()}}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	if code, err := runOwnedInvocation(ctx, nil, nil, nil, t.TempDir(), threads); err != nil || code != 0 {
-		t.Fatalf("invocation: code=%d error=%v", code, err)
-	}
-	directory, err := history.ReplayDirectory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if threads.retained.Store == nil {
-		t.Fatal("invocation did not supply retained execution owners for Claude delegates")
-	}
-	if threads.retained.Store.Directory() != directory || threads.retained.Limits.Total != history.DefaultStorageBytes || threads.retained.Limits.Kinds["commentary"] != 16<<20 {
-		t.Fatalf("delegate retained scope differs from invocation storage: %+v", threads.retained)
-	}
-}
 
 type claudeNativeParent struct {
 	control.Runtime

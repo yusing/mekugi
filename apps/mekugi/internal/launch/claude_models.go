@@ -17,9 +17,6 @@ func (e *threadExecution) DiscoverModels(ctx context.Context, caller control.Ide
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if e == nil || e.shared == nil || e.setup == nil {
-		return nil, errors.New("Claude model discovery requires captured invocation owners")
-	}
 	member, err := e.shared.Caller(caller)
 	if err != nil {
 		return nil, err

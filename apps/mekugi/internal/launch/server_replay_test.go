@@ -40,7 +40,7 @@ func TestServerReplayOwnedRuntime(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	hub := sessionapi.NewHub(ctx, &serverLauncher{})
+	hub := newTestServerHub(ctx)
 	host := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 	defer func() { cancel(); hub.Close(); host.Close() }()
 	connect := func() *sessionapi.RPCClient {

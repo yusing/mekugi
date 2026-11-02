@@ -59,21 +59,16 @@ func TestAPIShellServerOwnedNativeCodex(t *testing.T) {
 	startup := filepath.Join(t.TempDir(), "frontends.bash")
 	writeTestFile(t, startup, "export PATH="+quoteShellWord(f.registry.FrontendDirectory)+":\"$PATH\"\n")
 	environment = append(environment, routerTestWorkerEnvironment+"=1", "PATH="+f.registry.FrontendDirectory+string(os.PathListSeparator)+execTrackPath(), "BASH_ENV="+startup, "NO_PROXY=*")
-	streams, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer streams.Close()
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
 	reviewSource := new(changecapture.Service)
 	integration := testAppServerIntegration(proxy)
 	var cmd *exec.Cmd
 	done := make(chan error, 1)
-	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+	launcher := &nativeFixtureLauncher{run: func(ctx context.Context, api *sessionapi.Server, threads *threadExecution) error {
 		cmd = exec.CommandContext(ctx, codex, commandArgs...)
-		cmd.Dir, cmd.Env = start.Workspace, environment
-		wait, err := (&nativeSession{terminalViews: testTerminalViews(reviewSource), reviewSource: reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: new(activitymodel.Service), history: testHistory(), segments: testReports(), ctx: ctx, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, streams, integration.guard, integration.guards, integration.skillsManager, "", nil, api, false, nil)
+		cmd.Dir, cmd.Env = workspace, environment
+		wait, err := (&nativeSession{terminalViews: testTerminalViews(reviewSource), reviewSource: reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: new(activitymodel.Service), history: testHistory(), segments: testReports(), ctx: ctx, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, integration.guard, integration.guards, integration.skillsManager, "", nil, api, false, threads)
 		if err == nil {
 			err = wait()
 		}
@@ -81,6 +76,7 @@ func TestAPIShellServerOwnedNativeCodex(t *testing.T) {
 		return err
 	}}
 	hub := sessionapi.NewHub(ctx, launcher)
+	launcher.hub = hub
 	defer hub.Close()
 	joined := false
 	defer func() {

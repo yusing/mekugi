@@ -17,6 +17,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -29,6 +33,19 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
+
+func TestServerInvocationRequiresExecutionOwners(t *testing.T) {
+	for _, execution := range []*threadExecution{
+		nil,
+		{},
+		{shared: control.New(), start: &sessioncontrol.PreparedThread{}},
+	} {
+		code, err := runOwnedInvocation(t.Context(), nil, nil, sessionapi.NewLive(), t.TempDir(), execution)
+		if code != 1 || err == nil {
+			t.Fatalf("incomplete server owners admitted: code=%d error=%v", code, err)
+		}
+	}
+}
 
 func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
 	// Codex folds feature toggles after -c overrides, with disables last.

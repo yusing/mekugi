@@ -31,7 +31,7 @@ import (
 type nativeViews struct {
 	guards      []binding.ShellApproval
 	diagnostics *appserver.Diagnostics
-	threads     *threadExecution
+	hub         *sessionapi.Hub
 	activity    *activitymodel.Service
 	api         *sessionapi.Native
 	requests    *sessioncontrol.Requests[appServerRequest]
@@ -200,8 +200,8 @@ func (n *nativeViews) admit(request sessionapi.NativeRequest, execution *attache
 			}
 			destination = agent.Thread
 		}
-		if destination != current.Main.ID && destination != current.SideThread.ID && n.threads != nil && n.threads.hub != nil {
-			if family, _ := n.threads.hub.Family(thread); family != nil && slices.Contains(family.Threads, destination) {
+		if destination != current.Main.ID && destination != current.SideThread.ID && n.hub != nil {
+			if family, _ := n.hub.Family(thread); family != nil && slices.Contains(family.Threads, destination) {
 				return nil, "Select the session before opening its details."
 			}
 		}
@@ -406,9 +406,9 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			}
 		}
 		v.publishDetails(&frame)
-		if n.threads != nil && n.threads.hub != nil {
+		if n.hub != nil {
 			var familyReview *changepresentation.ReviewView
-			frame.Family, familyReview = n.threads.hub.Family(control.Thread)
+			frame.Family, familyReview = n.hub.Family(control.Thread)
 			if frame.Family != nil && control.Thread == frame.Family.Root {
 				frame.Live, frame.LiveScope = frame.Family.Live, frame.Family.LiveScope
 			}

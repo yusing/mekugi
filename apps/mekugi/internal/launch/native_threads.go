@@ -73,7 +73,7 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 		return runtime, nil
 	}
 	member, ok := e.shared.Member(thread)
-	if !ok || member.Parent == "" || e.setup == nil {
+	if !ok || member.Parent == "" {
 		return nil, errors.New("retained child execution is unavailable")
 	}
 	if strings.HasPrefix(member.Settings.Model, "claude:") {
@@ -120,9 +120,6 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 }
 
 func (e *threadExecution) Create(ctx context.Context, parent, importPath string, settings control.Settings) (control.Receipt, error) {
-	if e.setup == nil {
-		return control.Receipt{}, &binding.DispatchError{Outcome: binding.NotDispatched, Cause: errors.New("child execution has no captured preparation")}
-	}
 	if strings.HasPrefix(settings.Model, "claude:") {
 		return e.createClaude(ctx, parent, importPath, settings)
 	}
