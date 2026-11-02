@@ -13,7 +13,7 @@ func TestPreparedPreferenceWriteRetainsItsSnapshot(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	service := newPreferences(t)
 	scope := preferences.Scope{Workspace: t.TempDir(), Thread: "main"}
-	owner, err := service.Attach(scope, "terminal", jsontext.Value(`{"focus":0}`))
+	owner, err := service.Attach(scope, jsontext.Value(`{"focus":0}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,14 +31,14 @@ func TestPreparedPreferenceWriteRetainsItsSnapshot(t *testing.T) {
 	if err := write.Publish(); err != nil {
 		t.Fatal(err)
 	}
-	saved, err := service.Read(scope, "terminal")
+	saved, err := service.Read(scope)
 	if err != nil || string(saved.Presentation) != `{"focus":1}` {
 		t.Fatalf("prepared write changed: %s, %v", saved.Presentation, err)
 	}
 	if err := savePreferences(owner, time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
-	saved, err = service.Read(scope, "terminal")
+	saved, err = service.Read(scope)
 	if err != nil || string(saved.Presentation) != `{"focus":2}` {
 		t.Fatalf("later stage or detached snapshot changed: %s, %v", saved.Presentation, err)
 	}

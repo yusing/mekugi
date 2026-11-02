@@ -43,10 +43,7 @@ type record struct {
 	Snapshot
 }
 
-func recordPath(scope Scope, renderer string) (string, error) {
-	if renderer != "terminal" {
-		return "", fmt.Errorf("unsupported preference renderer %q", renderer)
-	}
+func recordPath(scope Scope) (string, error) {
 	if !filepath.IsAbs(scope.Workspace) || scope.Thread == "" {
 		return "", errors.New("session preferences require a host workspace and thread")
 	}
@@ -60,8 +57,8 @@ func recordPath(scope Scope, renderer string) (string, error) {
 
 // Read never retargets an attachment or creates files. The renderer must validate
 // Presentation before accepting any part of the snapshot.
-func (s *Service) Read(scope Scope, renderer string) (Snapshot, error) {
-	path, err := recordPath(scope, renderer)
+func (s *Service) Read(scope Scope) (Snapshot, error) {
+	path, err := recordPath(scope)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -114,8 +111,8 @@ type Attachment struct {
 	due         time.Time
 }
 
-func (s *Service) Attach(scope Scope, renderer string, initial jsontext.Value) (*Attachment, error) {
-	path, err := recordPath(scope, renderer)
+func (s *Service) Attach(scope Scope, initial jsontext.Value) (*Attachment, error) {
+	path, err := recordPath(scope)
 	if err != nil {
 		return nil, err
 	}

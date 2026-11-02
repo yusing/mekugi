@@ -108,7 +108,7 @@ func TestNativePreferenceWriterRetainsOutgoingOwnersInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for thread, want := range map[string]int{"first": 73, "second": 42} {
-		saved, err := p.service.Read(preferences.Scope{Workspace: workspace, Thread: thread}, "terminal")
+		saved, err := p.service.Read(preferences.Scope{Workspace: workspace, Thread: thread})
 		if err != nil {
 			t.Fatal(err)
 		}

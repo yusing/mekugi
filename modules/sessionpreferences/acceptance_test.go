@@ -48,22 +48,16 @@ func TestPreferencesEffectFreeReadsKeepAttachedScope(t *testing.T) {
 	service := newPreferences(t)
 	scope := preferences.Scope{Workspace: t.TempDir(), Thread: "main"}
 	initial := jsontext.Value(`{"focus":0}`)
-	owner, err := service.Attach(scope, "terminal", initial)
+	owner, err := service.Attach(scope, initial)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := savePreferences(owner, time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
-	got, err := service.Read(scope, "terminal")
+	got, err := service.Read(scope)
 	if err != nil || !reflect.DeepEqual(got, preferences.Snapshot{}) {
 		t.Fatalf("missing scope read=%+v err=%v", got, err)
-	}
-	if _, err := service.Read(scope, "web"); err == nil {
-		t.Fatal("unsupported renderer read accepted")
-	}
-	if _, err := service.Attach(scope, "web", initial); err == nil {
-		t.Fatal("unsupported renderer writer accepted")
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil || len(entries) != 0 {
@@ -76,7 +70,7 @@ func TestPreferencesEffectFreeReadsKeepAttachedScope(t *testing.T) {
 	if err := savePreferences(owner, now, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Read(preferences.Scope{Workspace: scope.Workspace, Thread: "other"}, "terminal"); err != nil {
+	if _, err := service.Read(preferences.Scope{Workspace: scope.Workspace, Thread: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	layout[9] = '2' // Caller-owned bytes must not mutate the pending snapshot.
@@ -84,7 +78,7 @@ func TestPreferencesEffectFreeReadsKeepAttachedScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := newPreferences(t)
-	got, err = restarted.Read(scope, "terminal")
+	got, err = restarted.Read(scope)
 	if err != nil || !reflect.DeepEqual(decodePresentation(t, got.Presentation), expected) || owner.Scope() != scope {
 		t.Fatalf("attached target changed: scope=%+v read=%+v err=%v", owner.Scope(), got, err)
 	}
@@ -105,7 +99,7 @@ func TestPreferencesFlatV1RecoveryAndConfirmation(t *testing.T) {
 	scope := preferences.Scope{Workspace: t.TempDir(), Thread: "retained"}
 	writePreference(t, scope, `{"version":1,"focus":1,"split":63,"diffOpen":true,"navigatorColumns":22,"futureTerminalField":{"value":3},"settings":{"model":"retained","effort":"","tier":"fast","observed":"2026-10-01T00:00:00Z"}}`)
 	service := newPreferences(t)
-	state, err := service.Read(scope, "terminal")
+	state, err := service.Read(scope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +119,7 @@ func TestPreferencesFlatV1RecoveryAndConfirmation(t *testing.T) {
 	if explicitDefault != (preferences.Evidence{Model: "latest", TierKnown: true}) {
 		t.Fatalf("explicit host defaults lost: %+v", explicitDefault)
 	}
-	owner, err := service.Attach(scope, "terminal", state.Presentation)
+	owner, err := service.Attach(scope, state.Presentation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +140,7 @@ func TestPreferencesFlatV1RecoveryAndConfirmation(t *testing.T) {
 	if err := savePreferences(owner, checkpoint, true); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := newPreferences(t).Read(scope, "terminal")
+	restored, err := newPreferences(t).Read(scope)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +156,7 @@ func TestPreferencesFlatV1RecoveryAndConfirmation(t *testing.T) {
 	if err := savePreferences(owner, confirmed.Observed, true); err != nil {
 		t.Fatal(err)
 	}
-	restored, err = newPreferences(t).Read(scope, "terminal")
+	restored, err = newPreferences(t).Read(scope)
 	if err != nil || restored.Settings != confirmed || !restored.ResumeObserved.IsZero() || restored.ResumeEvidence != (preferences.Evidence{}) {
 		t.Fatalf("confirmation=%+v err=%v", restored, err)
 	}
@@ -188,7 +182,7 @@ func TestPreferencesAtomicReplacementPreservesLinkReferent(t *testing.T) {
 	if err := os.Symlink(referent, path); err != nil {
 		t.Fatal(err)
 	}
-	owner, err := service.Attach(scope, "terminal", jsontext.Value(`{"focus":0}`))
+	owner, err := service.Attach(scope, jsontext.Value(`{"focus":0}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +202,7 @@ func TestPreferencesAtomicReplacementPreservesLinkReferent(t *testing.T) {
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("publication left artifacts: %v %v", entries, err)
 	}
-	state, err := newPreferences(t).Read(scope, "terminal")
+	state, err := newPreferences(t).Read(scope)
 	if err != nil || decodePresentation(t, state.Presentation)["focus"] != float64(1) {
 		t.Fatalf("replacement unreadable: %+v %v", state, err)
 	}
@@ -220,7 +214,7 @@ func TestPreferencesRejectUnavailableRecords(t *testing.T) {
 	scope := preferences.Scope{Workspace: t.TempDir(), Thread: "main"}
 	for _, body := range []string{`{"version":1,"settings":{"model":"missing-time"}}`, `{"version":1,"settings":{"observed":"2026-10-01T00:00:00Z"}}`} {
 		writePreference(t, scope, body)
-		if got, err := service.Read(scope, "terminal"); err == nil || !reflect.DeepEqual(got, preferences.Snapshot{}) {
+		if got, err := service.Read(scope); err == nil || !reflect.DeepEqual(got, preferences.Snapshot{}) {
 			t.Fatalf("invalid record accepted: %+v err=%v", got, err)
 		}
 	}
@@ -228,11 +222,11 @@ func TestPreferencesRejectUnavailableRecords(t *testing.T) {
 	if err := os.Mkdir(preferencePath(t, directoryScope), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Read(directoryScope, "terminal"); err == nil {
+	if _, err := service.Read(directoryScope); err == nil {
 		t.Fatal("directory record accepted")
 	}
 	for _, bad := range []preferences.Scope{{Workspace: "relative", Thread: "main"}, {Workspace: scope.Workspace}} {
-		if _, err := service.Read(bad, "terminal"); err == nil {
+		if _, err := service.Read(bad); err == nil {
 			t.Fatalf("invalid scope accepted: %+v", bad)
 		}
 	}

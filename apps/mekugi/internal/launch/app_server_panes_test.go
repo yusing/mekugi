@@ -155,7 +155,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(testPanePath(t, p)), 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{"{", `{"version":2}`, `{"version":1,"focus":99,"settings":{"model":"invalid-layout","observed":"2026-10-01T00:00:00Z"}}`, `{"version":1,"focus":1,"diffOpen":false}`, strings.Repeat("x", 4097)} {
+	for _, body := range []string{"{", `{"version":2}`, `{"version":1,"focus":99,"settings":{"model":"invalid-layout","observed":"2026-10-01T00:00:00Z"}}`, `{"version":1,"focus":1,"diffOpen":false}`, `{"version":1,"padding":"` + strings.Repeat("x", 4097) + `"}`} {
 		if err := os.WriteFile(testPanePath(t, p), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}

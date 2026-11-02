@@ -44,10 +44,9 @@ corrective host request, its admission gate and rejection behavior.
 
 ### Renderer preferences
 
-Presentation payloads carry a renderer identity and remain opaque to the module.
-The terminal adapter validates and applies its own layout schema; other renderers
-cannot interpret or overwrite terminal preferences. Reads of another namespace
-never retarget an attached writer. New threads and other workspaces do not borrow
+Presentation payloads retain terminal preferences and remain opaque to the module.
+The terminal adapter validates and applies its own layout schema. Reads never
+retarget an attached writer. New threads and other workspaces do not borrow
 settings or layout.
 
 Layout changes coalesce over 250 milliseconds and flush on orderly exit or
@@ -94,7 +93,7 @@ record link replaces the link, not its referent.
 Invalid, unavailable or incomplete records produce a presentation notice without
 failing host resume or changing an applied setting. Reads never submit input.
 Publication failure cannot claim that a setting or recovery checkpoint was saved.
-Unsupported record versions and renderer identities remain explicit errors.
+Unsupported record versions remain explicit errors.
 
 ## Acceptance
 

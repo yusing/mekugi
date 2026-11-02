@@ -34,7 +34,7 @@ func (p *nativePreferences) read(workspace, thread string) (nativePreferenceSnap
 	if retained != nil && retained.Scope() == scope {
 		state = retained.Snapshot()
 	} else {
-		state, err = p.service.Read(scope, "terminal")
+		state, err = p.service.Read(scope)
 	}
 	if err != nil {
 		return nativePreferenceSnapshot{}, err
@@ -59,7 +59,7 @@ func (p *nativePreferences) open(shell *terminalsession.Shell, main *terminalses
 	if err != nil {
 		return err
 	}
-	p.attachment, err = p.service.Attach(preferences.Scope{Workspace: workspace, Thread: thread}, "terminal", initial)
+	p.attachment, err = p.service.Attach(preferences.Scope{Workspace: workspace, Thread: thread}, initial)
 	if err != nil || !resume {
 		return err
 	}
