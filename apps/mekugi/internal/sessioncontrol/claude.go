@@ -90,7 +90,6 @@ type ClaudeRuntime struct {
 	changed      chan struct{}
 	turn         string
 	running      bool
-	model        string
 	answer       string
 	active       map[string]bool
 	closed       error
@@ -162,7 +161,6 @@ func NewClaudeRuntime(ctx context.Context, selected history.Session, info contro
 	if err != nil {
 		return nil, err
 	}
-	r.model = r.ledger.Model
 	if r.ledger.Metrics == nil {
 		r.ledger.Metrics = &claudeMetrics{BaselineSet: info.Fork == nil, Partial: !fresh, CompactionsKnown: fresh && info.Fork == nil}
 	}
@@ -241,9 +239,9 @@ func (r *ClaudeRuntime) Inspect(_ context.Context, thread string) (control.Sessi
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var details control.SessionDetails
-	if r.model != "" {
+	if r.ledger.Model != "" {
 		details = r.ledger.Metrics.inspection()
-		details.Model = new(r.model)
+		details.Model = new(r.ledger.Model)
 	}
 	return details, r.identity(thread)
 }
@@ -844,7 +842,6 @@ func (r *ClaudeRuntime) HandleEvent(ctx context.Context, raw jsontext.Value) (Cl
 			}
 			r.ledger = updated
 		}
-		r.model = event.Model
 		return result, nil
 	}
 	if event.Type == "command_lifecycle" && event.State == "started" {
