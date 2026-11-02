@@ -288,6 +288,11 @@ claimed. A committed stop may precede host settlement; stopped waiting still own
 logical work. A queued wake is undispatched; dispatching or uncertain wakes remain
 host-owned until confirmed or reconciled.
 
+The request executor can also commit a stop for a recognized provider usage-limit
+rejection. Its wait selects provider timing rather than descendants. A deadline
+permits continuation after host settlement; absent timing retains waiting until
+human input or interruption supersedes it.
+
 | Host event | Executing, no committed stop | Committed stop / stopped waiting | Queued or host-owned wake |
 | --- | --- | --- | --- |
 | Successful host completion | Defer normal completion while active descendants remain; otherwise complete with that turn's ordinary answers. | Checkpoint waiting and keep the reservation, subscription and answers; do not publish a final result. | A matching committed stop still checkpoints; a host-owned wake keeps its dispatch identity through terminal settlement. |
@@ -395,8 +400,10 @@ ordinary retained wait delivery. Fresh terminal outcomes of captured transitive
 work also wake through a terminal coordinator without consuming that coordinator's
 input. Already-stopped targets alone cannot trigger recovery, and each notification
 is claimed once. An in-flight preceding wake retains its dispatch identity until
-settlement before the recovery wait can dispatch. Authentication, quota, invalid
-requests, interruption and unknown errors remain terminal. Recovery adds neither
+settlement before the recovery wait can dispatch. Authentication, invalid
+requests, interruption and unknown errors remain terminal. Recognized provider
+usage-limit rejections use the provider-timed wait above; other quota failures
+remain terminal. Recovery adds neither
 timer retries nor model switching; host-owned request retries remain unchanged.
 
 Ordinary successful terminal work first retains its completed nonempty ordinary answers

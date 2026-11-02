@@ -17,6 +17,7 @@ import (
 // executionPresentation owns one admitted execution attachment. Views borrow this
 // actual owner; its feature scopes, transcript and input queues are never copied.
 type executionPresentation struct {
+	ctx                 context.Context
 	compaction          func(thread, item string) func(context.Context) (string, error)
 	inputHistory        *appServerInputHistory
 	session             sessionpresentation.Attachment
@@ -33,6 +34,7 @@ type executionPresentation struct {
 	nativeImages        func(func(string))
 	interruptWait       func(string, string)
 	threadInput         *threadInput
+	sideInputs          map[*sessioncontrol.Side]*threadInput
 	reasoning           *pendingReasoning
 	modelsReady         func([]appServerModel, preferences.Applied, *inferencegateway.Tiers, string)
 
@@ -50,8 +52,9 @@ type attachedPresentation struct {
 	effects      *nativeViewEffects
 }
 
-func newAttachedPresentation(views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation) attachedPresentation {
+func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation) attachedPresentation {
 	a := attachedPresentation{executionPresentation: new(executionPresentation)}
+	a.ctx = ctx
 	store := a.session.Scope()
 	a.presentation = views.Session(store)
 	a.conversation = conversation.Session(store)

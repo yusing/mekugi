@@ -88,6 +88,7 @@ type SideUpdate struct {
 type SideMain struct {
 	Thread, Model, Effort, Tier string
 	Blocked, Replacing          bool
+	Input                       *InputRequest
 }
 
 func (s *Side) fail(message string) SideUpdate {
@@ -95,13 +96,18 @@ func (s *Side) fail(message string) SideUpdate {
 	return SideUpdate{Handled: true, Side: s, Restore: s.SideAnswer.Fail(message, s.Closed)}
 }
 
-func (r *Requests[T]) sendSide(s *Side, method string, params any) error {
+func (r *Requests[T]) sendSide(s *Side, method string, params any, input *InputRequest) error {
 	var owner T
 	id, err := r.Send(method, params, "", owner)
 	if err == nil {
 		request := r.pending[id]
 		request.Side = s
+		if input != nil && input.Settled != nil {
+			request.input = input
+		}
 		r.pending[id] = request
+	} else if input != nil && input.Settled != nil {
+		input.Settled("", &binding.DispatchError{Outcome: binding.Uncertain, Method: method, Cause: err})
 	}
 	return err
 }
@@ -115,7 +121,7 @@ func (r *Requests[T]) ApplySideSettings(s *Side, plan SettingsPlan) error {
 		if plan.Action == SettingsTurn {
 			method, params["turnId"] = "turn/settings/update", plan.Turn
 		}
-		if err := r.sendSide(s, method, params); err != nil {
+		if err := r.sendSide(s, method, params, nil); err != nil {
 			return err
 		}
 	}
@@ -129,7 +135,7 @@ const SideThreadSource = "mekugi_side"
 // StartSide receives acquired Conversation input and uses the one request ledger.
 // Source: apps/mekugi/internal/router/app_server_btw.go:68:128@0d7819f3.
 func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpdate, error) {
-	if !s.Ready(main.Replacing) {
+	if !s.Ready(main.Replacing) && (main.Input == nil || main.Replacing || s.Closed || s.Unloaded || s.Starting || s.Settings.Pending()) {
 		return SideUpdate{}, nil
 	}
 	if s.Thread == "" {
@@ -169,7 +175,7 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 		if main.Tier != "" {
 			params["serviceTier"] = main.Tier
 		}
-		return SideUpdate{}, r.sendSide(s, "thread/fork", params)
+		return SideUpdate{}, r.sendSide(s, "thread/fork", params, nil)
 	}
 	if s.Pending.Text == "" {
 		return SideUpdate{}, nil
@@ -178,18 +184,33 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 	if s.OneOff {
 		s.Status = "Working"
 	}
-	input, err := s.prepareInput(&s.Pending.Draft, rand.Text(), true)
+	id, turn := rand.Text(), ""
+	if main.Input != nil {
+		id, turn = main.Input.ID, main.Input.Turn
+	}
+	input, err := s.prepareInput(&s.Pending.Draft, id, turn == "")
 	if err != nil {
 		return s.fail(err.Error()), nil
 	}
 	params := map[string]any{"threadId": s.Thread, "input": input}
-	if !s.OneOff {
+	method := "turn/start"
+	if main.Input != nil {
+		params["clientUserMessageId"] = id
+	}
+	if turn != "" {
+		method, params["expectedTurnId"] = "turn/steer", turn
+		s.Turn, s.Starting = turn, false
+	}
+	if !s.OneOff && turn == "" {
 		params["environments"] = []any{}
 	}
-	return SideUpdate{TurnRequested: true}, r.sendSide(s, "turn/start", params)
+	return SideUpdate{TurnRequested: true}, r.sendSide(s, method, params, main.Input)
 }
 
 func (r *Requests[T]) ReleaseSide(s *Side) error {
+	if s.Closed {
+		r.interruptSideUsageWaits(s)
+	}
 	if s.Archived {
 		if s.Closed {
 			r.CloseSide(s.Thread)
@@ -204,7 +225,18 @@ func (r *Requests[T]) ReleaseSide(s *Side) error {
 	if method == "turn/interrupt" {
 		params["turnId"] = s.Turn
 	}
-	return r.sendSide(s, method, params)
+	return r.sendSide(s, method, params, nil)
+}
+
+func (r *Requests[T]) interruptSideUsageWaits(s *Side) {
+	if r.Coordination == nil || r.InterruptWait == nil {
+		return
+	}
+	for _, thread := range r.SideThreads(s) {
+		if wait := r.Coordination.WaitPublication(thread); wait != nil && wait.UsageLimit && wait.Stop == "committed" {
+			r.InterruptWait(thread, wait.ID)
+		}
+	}
 }
 
 // ObserveSide runs before Main's filtering. Closed docks retain their original
@@ -384,6 +416,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		update.ClosedThread = thread
 		observations.SetSideThread(thread, false)
 		s.Unloaded = true
+		r.interruptSideUsageWaits(s)
 		if m.Method == "thread/archived" {
 			s.Archived = true
 		}
@@ -430,8 +463,21 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			update.Notice, update.Flush = "Settings saved for next turn", true
 		}
 	case "turn/started":
+		if s.Waiting != "" && !s.Closed {
+			s.Waiting, s.Busy, s.Alert, s.Status = "", true, false, "Answering"
+			if s.OneOff {
+				s.Status = "Working"
+			}
+		}
 		s.Turn = p.Turn.ID
 	case "turn/completed":
+		if p.Turn.Status == "completed" && !s.Closed && r.Coordination != nil && (s.Turn == "" || s.Turn == p.Turn.ID) {
+			if wait := r.Coordination.WaitPublication(thread); wait != nil && wait.UsageLimit && wait.Turn == p.Turn.ID && wait.Stop == "committed" {
+				s.Turn, s.Waiting, s.Busy, s.Starting = "", wait.ID, true, false
+				s.Status, s.Alert = wait.StatusText(), false
+				return update, nil
+			}
+		}
 		if !s.Complete(p.Turn.ID) {
 			return update, nil
 		}

@@ -100,6 +100,7 @@ type Wait struct {
 	Terminal                 *Event
 	Compaction               *Effect
 	Standalone               bool
+	UsageLimit               bool
 }
 
 // View exposes wait state without checkpoint settings or effect payloads.
@@ -189,6 +190,8 @@ type WaitResult struct {
 	Turn         string                    `json:"-"`
 	Stop         string                    `json:"-"`
 	Standalone   bool                      `json:"-"`
+	UsageLimit   bool                      `json:"-"`
+	Timed        bool                      `json:"-"`
 	All          bool                      `json:"-"`
 	State        string                    `json:"state"`
 	Mode         WaitMode                  `json:"wait_mode,omitempty"`

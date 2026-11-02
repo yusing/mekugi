@@ -1,6 +1,7 @@
 package sessioncontrol
 
 import (
+	"context"
 	json "encoding/json/v2"
 	"errors"
 	"os/exec"
@@ -35,6 +36,11 @@ func (u *Client[T]) Calls() <-chan *HostCall {
 // composer starts. The request ledger still owns issuance and acknowledgement.
 func (u *Client[T]) Dispatch(call *HostCall) {
 	if call.phase.Load() != callQueued {
+		return
+	}
+	if _, retired := u.retired[call.scope]; retired && call.method == "turn/start" {
+		call.phase.Store(callCanceled)
+		call.result <- hostCallResult{err: &binding.DispatchError{Outcome: binding.NotDispatched, Method: call.method, Cause: context.Canceled}}
 		return
 	}
 	if call.method == "thread/compact/start" {

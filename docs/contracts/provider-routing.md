@@ -17,8 +17,10 @@ provider metadata independently of that startup projection. Disabled or wrong-mo
 routes fail locally before inference. Enabling a third-party route does not change ordinary OpenAI request
 projection. OpenAI-only WebSocket connections establish the provider handshake
 before accepting the host connection, preserving the provider's
-`x-reasoning-included` signal, including its absence. Failed upgrades retain the
-provider's HTTP status and bounded error body. Setup obeys cancellation and the
+`x-reasoning-included` signal, including its absence. Recognized usage-limit
+upgrade rejections enter ordinary request delivery for the
+[executor's logical waiting](../../apps/mekugi/internal/requestexecution/SPEC.md).
+Other failed upgrades retain the provider's HTTP status and bounded error body. Setup obeys cancellation and the
 configured response-start timeout and generates no inference.
 
 Mixed-provider connections retain deferred provider selection and cannot relay
@@ -90,7 +92,8 @@ Codex credentials and internal account/thread headers are excluded unless a prov
 contract defines a sanitized replacement. Third-party credentials never reach
 OpenAI. Incoming requests retain the ordinary Codex authentication boundary.
 
-Rejected inference preserves the actual provider HTTP status and error details in
+Recognized usage-limit rejections use the executor's cancellable, provider-timed
+logical wait instead of terminal errors. Other rejected inference preserves the actual provider HTTP status and error details in
 HTTP/WebSocket errors, terminal failures and notices. Reads are bounded to 8 KiB
 and five seconds; unreadable or oversized bodies say so. JSON failures retain
 available name, type or code alongside the buffered payload; other failures retain

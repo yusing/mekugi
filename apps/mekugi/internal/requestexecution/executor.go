@@ -83,6 +83,7 @@ type requestAttempt struct {
 	streamResponse    bool
 	responseTransform codexresponses.Transformer
 	finishUsage       bool
+	usageLimited      bool
 }
 
 // ExecuteHTTP binds an admitted HTTP exchange to the shared request lifecycle.
@@ -173,6 +174,9 @@ func (a *requestAttempt) run() error {
 		return err
 	}
 	if err := a.forward(); err != nil {
+		return err
+	}
+	if handled, err := a.completeUsageLimit(); handled || err != nil {
 		return err
 	}
 	if err := a.prepareResponse(); err != nil {
@@ -448,6 +452,7 @@ func (a *requestAttempt) prepareResponse() error {
 			return fmt.Errorf("record mekugi request overhead: %w", err)
 		}
 	}
+	a.responseTransform = codexresponses.Compose(usageLimitResponse{a}, a.responseTransform)
 	a.hooks.OnUsage = func(counts inference.Usage) {
 		if a.usageTracker != nil {
 			a.usageTracker.ReceivedAt = a.hooks.ReceivedAt
@@ -537,6 +542,9 @@ func (a *requestAttempt) deliver() error {
 			a.finalization.classifyCopyError(err)
 			return fmt.Errorf("execute request: %w", err)
 		}
+	}
+	if a.usageLimited {
+		a.finalization.upstreamTerminalState = responses.TerminalCompleted
 	}
 	a.observeTitleSuccess()
 

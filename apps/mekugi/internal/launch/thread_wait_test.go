@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	json "encoding/json/v2"
+	"fmt"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"net/http/httptest"
@@ -121,6 +122,61 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 		t.Fatal("paused work revived")
 	}
 	assertNativeUISnapshot(t, "logical-wait-paused", rows)
+}
+
+func TestUISnapshotUsageLimitWaiting(t *testing.T) {
+	for _, timed := range []bool{true, false} {
+		t.Run(fmt.Sprint(timed), func(t *testing.T) {
+			u, at := newActiveWorkTestUI(t)
+			u.model, u.reasoningEffort = "test-model", "high"
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
+			retained, err := history.NewService(control.RecordKinds())
+			if err != nil {
+				t.Fatal(err)
+			}
+			store, err := retained.Open(t.Context(), t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "main")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			service := control.New()
+			if err := service.AdmitRoot(t.Context(), session, &control.Member{Thread: "main", Session: "session", Task: "/root", Turn: "first", Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true}); err != nil {
+				t.Fatal(err)
+			}
+			driver, err := threadbinding.NewDriver(service)
+			if err != nil {
+				t.Fatal(err)
+			}
+			threads := &threadExecution{shared: service, driver: driver}
+			*at = at.Add(2 * time.Second)
+			u.attached.cwd = "/workspace"
+			var deadline *time.Time
+			if timed {
+				deadline = new(at.Add(time.Hour))
+			}
+			if _, err := threads.shared.WaitForUsageLimit(t.Context(), "main", "first", deadline); err != nil {
+				t.Fatal(err)
+			}
+			if err := threads.shared.HostCompleted(t.Context(), "main", "first", control.Completed, control.HostFailure{}); err != nil {
+				t.Fatal(err)
+			}
+			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "completed"}})
+			rows, _ := u.testMainFrame(80, 8, 0)
+			view := u.attached.presentation.View()
+			if !view.InterruptAvailable || !view.Status.Session.Running || view.Status.Feedback.Alert || view.Status.Session.CompletionKnown {
+				t.Fatalf("lost virtual wait: %+v", view)
+			}
+			assertNativeUISnapshot(t, fmt.Sprintf("usage-limit-waiting-%t", timed), rows)
+			u.testActivity(u.shell.Agents).publishActivity()
+			assertNativeUISnapshot(t, fmt.Sprintf("usage-limit-roster-%t", timed), u.shell.Agents.NativeRoster(80, 5, *at, true))
+		})
+	}
 }
 
 func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {

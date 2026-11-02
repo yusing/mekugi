@@ -92,7 +92,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	// Temporary migration scaffolding: semantic adapters still borrow native
 	// presentation scratch state. Server execution never attaches or paints it.
 	shell, preparePane := terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
-	attached := newAttachedPresentation(views, conversation, observations)
+	attached := newAttachedPresentation(ctx, views, conversation, observations)
 	processCwd, _ := filepath.Abs(cmd.Dir)
 	attached.cwd = processCwd
 	inputHistory := newInputHistory(cmd.Environ(), processCwd)
@@ -155,6 +155,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 	api.BindSideThreads(control.Requests.HasSideThread)
 	var threadChanges <-chan struct{}
 	if threads != nil {
+		control.Requests.Coordination, control.Requests.InterruptWait = threads.shared, threads.driver.Interrupt
 		control.Requests.InheritedEffort = threads.driver.InheritedEffort
 		control.Requests.CaptureConfiguredCatalog = threads.driver.CaptureConfiguredCatalog
 		api.BindChildAttachment(threads.AttachChild)
@@ -246,7 +247,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 				if err != nil {
 					return err
 				}
-				deferred, err := deferLogicalCompletion(&attached, &control.Live, m, reduced)
+				deferred, err := deferLogicalCompletion(&attached, &control.Live, m, reduced, control.Requests)
 				if err != nil || deferred {
 					return err
 				}
@@ -939,7 +940,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 						syncLogicalWork(&attached, &control.Live, threads, presentationTime(clock))
 						threads.driver.Tick(presentationTime(clock))
 					}
-					if side != nil && len(side.Drafts.Unsent) > 0 {
+					if len(attached.sideInputs) > 0 || side != nil && len(side.Drafts.Unsent) > 0 {
 						if err := flushBTW(&attached, shell, &control, &picker, &questions, &approvalDock, clock, preferences.Applied{Model: model, Effort: effort, Tier: tier}, &side, &ownedImages, environment, &guardHook, observationInputs); err != nil {
 							return err
 						}
@@ -1042,6 +1043,7 @@ func startNativeSession(terminalViews terminalsession.Views, reviewSource *chang
 		if attached.conversation.Shell.Text != "" {
 			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(attached.conversation.Shell.Text, false))
 		}
+		attached.releaseSideInputs()
 		attached.session.Retire()
 		if err != nil {
 			if diagnostic := c.Diagnostics.Snapshot(); diagnostic != "" {
@@ -1362,6 +1364,7 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 				releaseSegmentOutputs(attached, tracker)
 				waiting := attached.conversation
+				sideInputs := attached.sideInputs
 				attached.session.Retire()
 				workspace := attached.cwd
 				compaction, modelsReady := attached.compaction, attached.modelsReady
@@ -1373,7 +1376,8 @@ func dispatchHostMessage(attached *attachedPresentation, terminal *terminalsessi
 				activeThread := attached.activeThread
 				reserveThread := attached.reserveThread
 				nativeImages := attached.nativeImages
-				(*attached) = newAttachedPresentation(views, conversationState, bindings)
+				(*attached) = newAttachedPresentation(parent, views, conversationState, bindings)
+				attached.sideInputs = sideInputs
 				attached.compaction, attached.modelsReady = compaction, modelsReady
 				attached.restoreInput = restoreInput
 				attached.restoreShell = restoreShell

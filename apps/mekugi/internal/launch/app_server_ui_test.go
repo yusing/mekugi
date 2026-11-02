@@ -2,6 +2,7 @@ package launch
 
 import (
 	"bytes"
+	"context"
 	"encoding/json/jsontext"
 	"os"
 
@@ -454,7 +455,7 @@ func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appS
 		u.attached.executionPresentation = new(executionPresentation)
 	}
 	source, child, workspace := u.attached.source, u.attached.childSource, u.attached.cwd
-	u.attached = newAttachedPresentation(u.presentationState, u.conversationState, &observations)
+	u.attached = newAttachedPresentation(context.Background(), u.presentationState, u.conversationState, &observations)
 	if source != nil {
 		u.attached.session.Activity().Main = *source.Model
 		source.Model = u.attached.source.Model

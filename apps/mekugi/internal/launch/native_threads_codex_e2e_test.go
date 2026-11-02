@@ -51,6 +51,9 @@ type nativeThreadsProvider struct {
 	attachChanges                           bool
 	recoverFailure                          bool
 	multipleAnswers                         bool
+	usageLimit                              bool
+	temporaryUsage                          bool
+	limited                                 map[string]bool
 	calls                                   map[string]int
 	users                                   int
 	waiting, mailbox                        chan struct{}
@@ -102,6 +105,15 @@ func (p *nativeThreadsProvider) serveSocket(t *testing.T, w http.ResponseWriter,
 		response := httptest.NewRecorder()
 		p.serve(t, response, request)
 		if response.Code != http.StatusOK {
+			if response.Code == http.StatusTooManyRequests {
+				var rejection map[string]any
+				if json.Unmarshal(response.Body.Bytes(), &rejection) == nil {
+					rejection["type"], rejection["status"] = "error", response.Code
+					if providerSocketWrite(r.Context(), conn, rejection) == nil {
+						continue
+					}
+				}
+			}
 			_ = providerSocketWrite(r.Context(), conn, map[string]any{"type": "error", "error": map[string]string{"type": "server_error", "message": "managed-thread fixture rejected request"}})
 			return
 		}
@@ -150,6 +162,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		http.Error(w, "missing host identity", 500)
 		return
 	}
+	if p.temporaryUsage {
+		p.serveTemporaryUsage(t, w, metadata.ThreadID, body)
+		return
+	}
 	p.mu.Lock()
 	resumedParent := !p.earlyCompletion && metadata.ThreadID == p.parent && p.calls[p.parent] >= 5
 	p.mu.Unlock()
@@ -171,6 +187,14 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	p.mu.Lock()
 	if p.parent == "" {
 		p.parent = metadata.ThreadID
+	}
+	if p.usageLimit && !p.limited[metadata.ThreadID] {
+		p.limited[metadata.ThreadID] = true
+		p.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprintf(w, `{"error":{"type":"usage_limit_reached","resets_at":%d}}`, time.Now().Add(3*time.Second).Unix())
+		return
 	}
 	compacting := bytes.Contains(body, []byte("At the end of your handover emit exactly one"))
 	if compacting && metadata.ThreadID == p.parent && (bytes.Contains(body, []byte("You are `/root`, the primary agent")) || bytes.Contains(body, []byte("addressed as to=/root")) || !bytes.Contains(body, []byte("Your logical task is agent:main."))) {
@@ -516,10 +540,67 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 }
 
+func (p *nativeThreadsProvider) serveTemporaryUsage(t *testing.T, w http.ResponseWriter, thread string, body []byte) {
+	t.Helper()
+	p.mu.Lock()
+	if p.parent == "" {
+		p.parent = thread
+	}
+	parent := thread == p.parent
+	limited := !parent && !p.limited[thread]
+	if limited {
+		p.limited[thread] = true
+	}
+	p.calls[thread]++
+	step := p.calls[thread]
+	p.mu.Unlock()
+	if limited {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"type":"usage_limit_reached"}}`)
+		return
+	}
+	answer := "MAIN_SEEDED"
+	if !parent {
+		if !bytes.Contains(body, []byte("explicit follow-up")) {
+			t.Error("temporary thread retried without explicit input")
+		}
+		answer = "TEMPORARY_INPUT_ACCEPTED"
+	}
+	id := fmt.Sprintf("temporary-%s-%d", thread, step)
+	item := map[string]any{"type": "message", "id": id, "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": answer}}}
+	w.Header().Set("Content-Type", "text/event-stream")
+	for _, event := range []map[string]any{
+		{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}},
+		{"type": "response.output_item.added", "output_index": 0, "item": item},
+		{"type": "response.output_item.done", "output_index": 0, "item": item},
+		{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{item}}},
+	} {
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		fmt.Fprintf(w, "data: %s\n\n", encoded)
+	}
+}
+
+func TestNativeTemporaryUsageLimitInputServerOwnedCodex(t *testing.T) {
+	for _, command := range []string{"/btw initial question", "/side", "/oneoff initial question"} {
+		t.Run(strings.Fields(command)[0][1:], func(t *testing.T) {
+			testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{temporaryUsageCommand: command})
+		})
+	}
+}
+
 // The public server owns both installed host processes; this client uses native
 // semantic controls without a terminal renderer or live provider credentials.
 func TestNativeThreadsServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{multipleAnswers: true})
+}
+
+func TestNativeThreadsUsageLimitServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{usageLimit: true})
 }
 
 func TestNativeThreadsRecoverableParentServerOwnedCodex(t *testing.T) {
@@ -575,7 +656,8 @@ func TestNativeThreadsRewindServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
-	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind, headless, attachChanges bool
+	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind, headless, attachChanges, usageLimit bool
+	temporaryUsageCommand                                                                                                                                             string
 }
 
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
@@ -667,7 +749,8 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
-	fixture := &nativeThreadsProvider{attachChanges: scenario.attachChanges, multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture := &nativeThreadsProvider{usageLimit: scenario.usageLimit, limited: make(map[string]bool), attachChanges: scenario.attachChanges, multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -882,8 +965,74 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			t.Fatal("root native readiness:", err)
 		}
 	}
+	if command := scenario.temporaryUsageCommand; command != "" {
+		await := func(ready func() bool) {
+			t.Helper()
+			for !ready() {
+				event, err = connection.Next()
+				if err != nil {
+					t.Fatal("temporary conversation publication:", err)
+				}
+			}
+		}
+		submit := func(text string) {
+			t.Helper()
+			_, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
+				Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: event.Frame.View.Input.ID, Operation: sessionpresentation.SubmitComposer},
+				Draft:  composer.Draft{Text: text},
+			}})
+			if err != nil {
+				t.Fatal("temporary conversation input:", err)
+			}
+		}
+		contains := func(text string) bool {
+			body, err := json.Marshal(event.Frame, jsonv1.FormatDurationAsNano(true))
+			if err != nil {
+				t.Fatal(err)
+			}
+			return bytes.Contains(body, []byte(text))
+		}
+		submit("seed main")
+		await(func() bool { return !event.Frame.Facts.Busy && contains("MAIN_SEEDED") })
+		if _, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Command: &command}); err != nil {
+			t.Fatal("temporary conversation command:", err)
+		}
+		if command == "/side" {
+			await(func() bool {
+				return event.Frame.View.SideThread.ID != "" && event.Frame.View.Displayed == event.Frame.View.SideThread &&
+					!event.Frame.View.Status.Composer.Running && event.Frame.View.Loading == ""
+			})
+			submit("initial question")
+		}
+		await(func() bool { return contains("Usage limit") })
+		if strings.HasPrefix(command, "/btw") {
+			command = "/btw explicit follow-up"
+			if _, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Command: &command}); err != nil {
+				t.Fatal("explicit BTW input:", err)
+			}
+		} else {
+			submit("explicit follow-up")
+		}
+		// No synthetic flush or unrelated input wakes the pending admission.
+		await(func() bool { return contains("TEMPORARY_INPUT_ACCEPTED") })
+		fixture.mu.Lock()
+		defer fixture.mu.Unlock()
+		if len(fixture.calls) != 2 || len(fixture.limited) != 1 {
+			t.Fatalf("temporary usage request identities: calls=%v limited=%v", fixture.calls, fixture.limited)
+		}
+		for thread, count := range fixture.calls {
+			want := 2
+			if thread == fixture.parent {
+				want = 1
+			}
+			if count != want {
+				t.Fatalf("temporary usage inference count for %s: got %d, want %d", thread, count, want)
+			}
+		}
+		return
+	}
 	waitingObserved, compactObserved, childReleased := false, false, false
-	failureObserved := false
+	failureObserved, usageWaitingObserved := false, false
 	root := event.Frame.View.Main.ID
 	_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
 		Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
@@ -920,6 +1069,12 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 				}
 			}
 		}
+		if scenario.usageLimit && strings.Contains(event.Frame.View.Status.Composer.Text, "usage limit") {
+			usageWaitingObserved = true
+			if !event.Frame.Facts.Busy || !event.Frame.View.InterruptAvailable || event.Frame.View.Status.Feedback.Alert {
+				t.Fatal("usage wait lost cancellation or showed an error")
+			}
+		}
 		if scenario.compactWait && waitingObserved && !childReleased {
 			fixture.mu.Lock()
 			waitTurn := fixture.waitTurn
@@ -952,6 +1107,9 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if scenario.recoverFailure && !failureObserved {
 		t.Fatal("recovery hid the provider failure")
 	}
+	if scenario.usageLimit && !usageWaitingObserved {
+		t.Fatal("native usage limit never published its virtual wait")
+	}
 	if shellWait {
 		fixture.mu.Lock()
 		calls := fixture.calls[root]
@@ -977,6 +1135,9 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		t.Fatalf("delivered delegate traffic missing from Main transcript: final=%t message=%t", childReply, childMessage)
 	}
 	fixture.mu.Lock()
+	if scenario.usageLimit && len(fixture.limited) != 2 {
+		t.Errorf("usage limits did not cover Main and child: %v", fixture.limited)
+	}
 	parent, child := fixture.parent, fixture.child
 	counts := make(map[string]int, len(fixture.calls))
 	for id, n := range fixture.calls {
@@ -1126,7 +1287,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		}
 		return
 	}
-	if scenario.preload || scenario.compactWait || scenario.earlyCompletion || scenario.recoverFailure {
+	if scenario.preload || scenario.compactWait || scenario.earlyCompletion || scenario.recoverFailure || scenario.usageLimit {
 		return // Acquisition and prompt projection acceptance finish before cold recovery.
 	}
 

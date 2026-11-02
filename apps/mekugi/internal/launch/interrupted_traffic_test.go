@@ -226,7 +226,7 @@ func TestCompletionGuardWaitsForExactReduction(t *testing.T) {
 			trafficCheck(t, err)
 			message := appserver.Message{Method: "turn/completed", Params: params}
 			reduced := make(chan error, 1)
-			deferred, err := deferLogicalCompletion(&f.ui.attached, &f.ui.Live, message, reduced)
+			deferred, err := deferLogicalCompletion(&f.ui.attached, &f.ui.Live, message, reduced, f.ui.Requests)
 			trafficCheck(t, err)
 			if !deferred {
 				t.Fatal("completion bypassed its pending logical reduction")
@@ -296,7 +296,7 @@ func TestCompletionDeferralPreservesExplicitHostOutcomes(t *testing.T) {
 			params, err := json.Marshal(map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": status}})
 			trafficCheck(t, err)
 			message := appserver.Message{Method: "turn/completed", Params: params}
-			deferred, err := deferLogicalCompletion(&f.ui.attached, &f.ui.Live, message, make(chan error, 1))
+			deferred, err := deferLogicalCompletion(&f.ui.attached, &f.ui.Live, message, make(chan error, 1), f.ui.Requests)
 			trafficCheck(t, err)
 			if deferred {
 				t.Fatal("explicit terminal outcome was deferred")
@@ -316,7 +316,7 @@ func TestFailedCompletionReductionDoesNotPublishSuccess(t *testing.T) {
 	params, err := json.Marshal(map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "completed"}})
 	trafficCheck(t, err)
 	reduced := make(chan error, 1)
-	deferred, err := deferLogicalCompletion(&f.ui.attached, &f.ui.Live, appserver.Message{Method: "turn/completed", Params: params}, reduced)
+	deferred, err := deferLogicalCompletion(&f.ui.attached, &f.ui.Live, appserver.Message{Method: "turn/completed", Params: params}, reduced, f.ui.Requests)
 	trafficCheck(t, err)
 	if !deferred {
 		t.Fatal("completion was not deferred")

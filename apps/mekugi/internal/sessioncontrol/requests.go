@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
@@ -44,6 +45,8 @@ type Request[T any] struct {
 // owner serializes issuance and response delivery; it does not execute host work.
 type Requests[T any] struct {
 	ThreadPolicy             *binding.ThreadAdmissionPolicy
+	Coordination             *control.Service
+	InterruptWait            func(thread, wait string)
 	InheritedEffort          func(model, effort string) (string, error)
 	CaptureConfiguredCatalog func([]byte)
 	CatalogPending           bool

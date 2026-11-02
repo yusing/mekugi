@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -163,6 +164,8 @@ func TestAppServerRewindPreservesExecutionReaders(t *testing.T) {
 	u.attached.compaction = func(string, string) func(context.Context) (string, error) {
 		return func(context.Context) (string, error) { summaries++; return "retained summary", nil }
 	}
+	side, input := new(sessioncontrol.Side), &threadInput{ready: true}
+	u.attached.sideInputs = map[*sessioncontrol.Side]*threadInput{side: input}
 	rewindTestTurns(t, u, w)
 	appServerTestKeys(t, u, "\r\r")
 	rewind := resumeTestOne(t, w, "thread/revert")
@@ -170,6 +173,9 @@ func TestAppServerRewindPreservesExecutionReaders(t *testing.T) {
 	resumeTestSettle(t, u, w)
 	if models == 0 || u.attached.compaction == nil {
 		t.Fatal("rewind detached model or compaction readers")
+	}
+	if u.attached.sideInputs[side] != input || !input.ready {
+		t.Fatal("Main rewind retired an independent Side input admission")
 	}
 	text, err := u.attached.compaction("main", "summary")(t.Context())
 	if err != nil || text != "retained summary" || summaries != 1 {

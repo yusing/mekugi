@@ -171,6 +171,9 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 		text := "Working"
 		if in.Control.Waiting != "" {
 			text = "Waiting for agents"
+			if in.Control.WaitLabel != "" {
+				text = in.Control.WaitLabel
+			}
 		}
 		v.Status.Session = Label{Text: text, Running: true, Animation: Pulse, Started: state.Started}
 	}

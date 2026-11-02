@@ -7,6 +7,7 @@ type Live struct {
 	RolloutPath              string // Host-selected source, replaced with the admitted thread.
 	Thread, Turn             string
 	Waiting, LocalStop       string // Detached logical wait and stopped host-turn identities.
+	WaitLabel                string
 	HasUserTurn              bool
 	Rewind                   *RewindOperation
 	Compaction               Compaction

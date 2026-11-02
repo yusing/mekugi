@@ -296,7 +296,7 @@ func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
 	terminalTest(u).outputKey("\x1b")
 	u.attached.session.Retire()
 	source := u.attached.source
-	u.attached = newAttachedPresentation(u.presentationState, u.conversationState, u.observations)
+	u.attached = newAttachedPresentation(t.Context(), u.presentationState, u.conversationState, u.observations)
 	u.attached.source = source // Keep the old target to test scope admission, not absence.
 	if terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "scope.go") || terminalTest(u).Dialog != nil {
 		t.Fatal("new attachment inherited the prior captured-detail publication")

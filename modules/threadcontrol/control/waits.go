@@ -83,8 +83,9 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, Standalone: wait.Standalone, All: wait.All, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
-	if wait.Standalone {
+	result := &WaitResult{ID: wait.ID, Standalone: wait.Standalone, UsageLimit: wait.UsageLimit, All: wait.All, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
+	result.Timed = wait.Deadline != nil
+	if wait.Standalone || wait.UsageLimit {
 		result.Mode = ""
 	}
 	if compact := wait.Compaction; compact != nil {
@@ -112,6 +113,17 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 		}
 	}
 	return result
+}
+
+// StatusText is shared by ordinary and temporary conversation publications.
+func (wait *WaitResult) StatusText() string {
+	if !wait.UsageLimit {
+		return "Waiting for agents"
+	}
+	if !wait.Timed {
+		return "Usage limit · paused"
+	}
+	return "Waiting for usage limit reset"
 }
 
 // Prefer ordered delivered events. A stopped target still settles a wait when
@@ -300,11 +312,38 @@ func (s *Service) PrepareWake(ctx context.Context, thread string, now time.Time)
 		if wait.CompactionPending() {
 			return unchanged
 		}
+		if wait.UsageLimit && (wait.Deadline == nil || now.Before(*wait.Deadline)) {
+			return unchanged
+		}
 		if !wait.Standalone && !tree.selectWaitOutcome(wait) && (wait.Deadline == nil || now.Before(*wait.Deadline)) {
 			return unchanged
 		}
 		wait.State = "queued"
 		result = new(wait.Effect)
+		return nil
+	})
+	return
+}
+
+// WaitForUsageLimit checkpoints rejected inference through the ordinary logical
+// stop. Only provider timing can release it; human input and interruption retain
+// their existing supersession rules.
+func (s *Service) WaitForUsageLimit(ctx context.Context, thread, turn string, deadline *time.Time) (result *LocalStop, err error) {
+	err = s.update(ctx, thread, func(tree *Tree, member *Member) error {
+		if !member.HostRunning || member.Turn != turn {
+			return errors.New("usage limit does not belong to the running host turn")
+		}
+		id := fmt.Sprintf("%s:%d:%s:usage-limit", thread, member.Generation, turn)
+		wait := &Wait{Effect: Effect{ID: id, Caller: thread, Target: thread, Generation: member.Generation, Turn: turn, CallerTurn: turn, Kind: "wake", State: "registered"}, Stop: "committed", UsageLimit: true, Deadline: deadline}
+		if member.Wait != nil && hostOwned(member.Wait.State) {
+			member.RecoveryWait = wait
+		} else {
+			cancelSubscription(tree, member)
+			member.Wait = wait
+		}
+		member.Stop = &LocalStop{Generation: member.Generation, Turn: turn, Wait: id}
+		member.Status = Waiting
+		result = new(*member.Stop)
 		return nil
 	})
 	return
@@ -331,7 +370,7 @@ func cancelSubscription(tree *Tree, member *Member) {
 func (tree *Tree) wakeResult(wait *Wait) *WaitResult {
 	result := tree.waitResult(wait)
 	result.State = "timeout"
-	if wait.Standalone || result.Event != nil || len(result.Events) != 0 {
+	if wait.Standalone || wait.UsageLimit || result.Event != nil || len(result.Events) != 0 {
 		result.State = "completed"
 	}
 	return result

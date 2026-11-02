@@ -18,6 +18,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -50,7 +51,7 @@ func (*lifecyclePreparation) Close()                         {}
 
 func TestLifecycleCaptureProviderDecision(t *testing.T) {
 	for _, transport := range []string{"http", "websocket"} {
-		for _, kind := range []string{"local_wait", "context_reload", "provider"} {
+		for _, kind := range []string{"local_wait", "context_reload", "provider", "usage_limit", "usage_limit_paused"} {
 			t.Run(transport+"/"+kind, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()
@@ -67,8 +68,9 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				defer recorder.Close()
 				preparation := new(lifecyclePreparation)
 				thread, session, turn := "root", "root-session", "root-turn"
-				executor := Executor{Observations: preparation}
-				if kind == "local_wait" {
+				limited := strings.HasPrefix(kind, "usage_limit")
+				executor := Executor{Observations: preparation, Issues: testCriticalErrors()}
+				if kind == "local_wait" || limited {
 					retained, err := history.NewService(control.RecordKinds())
 					check(err)
 					store, err := retained.Open(ctx, t.TempDir())
@@ -78,24 +80,35 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 					defer selected.Close()
 					executor.ThreadControl = control.New()
 					check(executor.ThreadControl.AdmitRoot(ctx, selected, &control.Member{Thread: thread, Session: session, Task: "/root", Turn: turn, Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true}))
-					caller := control.Identity{Thread: thread, Session: session, Turn: turn, Call: "wait", Item: "exec"}
-					spawn, err := executor.ThreadControl.ReserveSpawn(ctx, caller, control.SpawnRequest{Name: "worker", Message: "work", Settings: control.Settings{Workspace: t.TempDir()}})
-					check(err)
-					for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
-						_, err := executor.ThreadControl.ClaimEffect(ctx, thread, spawn.ID)
+					if !limited {
+						caller := control.Identity{Thread: thread, Session: session, Turn: turn, Call: "wait", Item: "exec"}
+						spawn, err := executor.ThreadControl.ReserveSpawn(ctx, caller, control.SpawnRequest{Name: "worker", Message: "work", Settings: control.Settings{Workspace: t.TempDir()}})
 						check(err)
-						check(executor.ThreadControl.EffectAcknowledged(ctx, thread, spawn.ID, control.Receipt{Phase: phase, Thread: "child", Session: "child-session", Turn: "child-turn"}))
+						for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
+							_, err := executor.ThreadControl.ClaimEffect(ctx, thread, spawn.ID)
+							check(err)
+							check(executor.ThreadControl.EffectAcknowledged(ctx, thread, spawn.ID, control.Receipt{Phase: phase, Thread: "child", Session: "child-session", Turn: "child-turn"}))
+						}
+						_, err = executor.ThreadControl.RegisterWait(ctx, caller, []string{"child"}, false, "", nil, time.Now())
+						check(err)
+						check(executor.ThreadControl.Execution(ctx, thread, turn, caller.Item, "", true))
+						preparation.localWait = caller.Item
 					}
-					_, err = executor.ThreadControl.RegisterWait(ctx, caller, []string{"child"}, false, "", nil, time.Now())
-					check(err)
-					check(executor.ThreadControl.Execution(ctx, thread, turn, caller.Item, "", true))
-					preparation.localWait = caller.Item
 				} else if kind == "context_reload" {
 					thread, session, turn = "child", "child-session", "child-turn"
 					preparation.reload = jsontext.Value(`{"type":"custom_tool_call","id":"reload","call_id":"reload-call","name":"exec","input":"reload"}`)
 				}
 				providerCalls := make(chan struct{}, 2)
 				terminal := []byte(`{"type":"response.completed","response":{"id":"provider-response","status":"completed","output":[],"usage":{"input_tokens":12,"output_tokens":3,"input_tokens_details":{"cached_tokens":2},"output_tokens_details":{"reasoning_tokens":1}}}}`)
+				reset := time.Now().Add(time.Hour).Truncate(time.Second)
+				rejection := map[string]any{"type": "usage_limit_reached"}
+				if kind == "usage_limit" {
+					rejection["resets_at"] = reset.Unix()
+				}
+				if limited {
+					terminal = responses.MustMarshalJSON(map[string]any{"type": "error", "status": 429, "error": rejection, "headers": map[string]any{"x-codex-primary-window-minutes": 15}})
+				}
+
 				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == http.MethodGet {
 						conn, err := websocket.Accept(w, r, nil)
@@ -118,6 +131,12 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 						return
 					}
 					providerCalls <- struct{}{}
+					if limited {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusTooManyRequests)
+						_, _ = w.Write(responses.MustMarshalJSON(map[string]any{"error": rejection}))
+						return
+					}
 					w.Header().Set("Content-Type", "text/event-stream")
 					_, _ = w.Write(append(append([]byte("data: "), terminal...), '\n', '\n'))
 				}))
@@ -176,13 +195,38 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				}
 				snapshot := recorder.Snapshot()
 				wantAttempts := 0
-				if kind == "provider" {
+				if kind == "provider" || limited {
 					wantAttempts = 1
 				}
 				// OpenAI WebSockets establish a handshake even for local responses;
 				// the captured provider attempt, rather than the dial, proves inference.
 				if len(providerCalls) != wantAttempts {
 					t.Fatalf("provider invocations = %d, want %d", len(providerCalls), wantAttempts)
+				}
+
+				if limited {
+					member, _ := executor.ThreadControl.Member(thread)
+					if member.Stop == nil || member.Wait == nil || !member.Wait.UsageLimit || member.Status != control.Waiting || len(executor.Issues.Notices.Pending()) != 0 {
+						t.Fatalf("usage limit did not become a silent logical stop: %+v", member)
+					}
+					check(executor.ThreadControl.HostCompleted(ctx, thread, turn, control.Completed, control.HostFailure{}))
+					wake, err := executor.ThreadControl.PrepareWake(ctx, thread, reset.Add(-time.Second))
+					check(err)
+					if wake != nil {
+						t.Fatal("usage limit resumed before provider reset")
+					}
+					wake, err = executor.ThreadControl.PrepareWake(ctx, thread, reset)
+					check(err)
+					if (wake != nil) != (kind == "usage_limit") {
+						t.Fatalf("provider timing: wake=%+v", wake)
+					}
+					_, err = executor.ThreadControl.HumanInterrupt(ctx, thread, member.Stop.Wait)
+					check(err)
+					wake, err = executor.ThreadControl.PrepareWake(ctx, thread, reset.Add(time.Hour))
+					check(err)
+					if wake != nil {
+						t.Fatal("canceled usage wait resumed")
+					}
 				}
 				if snapshot.Requests.Logical != 1 || snapshot.Requests.Completed != 1 || int(snapshot.Requests.ProviderAttempts) != wantAttempts || snapshot.Capture.MissingProvider != 0 {
 					t.Fatalf("lifecycle capture = %+v", snapshot)
@@ -196,12 +240,12 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				for line := range bytes.SplitSeq(bytes.TrimSpace(raw), []byte("\n")) {
 					check(json.Unmarshal(line, &front))
 				}
-				if front.Boundary != "codex" || (kind != "provider" && (front.ProviderExpected == nil || *front.ProviderExpected)) || (kind == "provider" && front.ProviderExpected != nil) {
+				if front.Boundary != "codex" || (wantAttempts == 0 && (front.ProviderExpected == nil || *front.ProviderExpected)) || (wantAttempts != 0 && front.ProviderExpected != nil) {
 					t.Fatalf("provider decision = %+v", front)
 				}
 				var metrics bytes.Buffer
 				check(recorder.WriteMetrics(&metrics))
-				if kind != "provider" && !bytes.Contains(metrics.Bytes(), []byte(`"provider_attempts":[]`)) {
+				if wantAttempts == 0 && !bytes.Contains(metrics.Bytes(), []byte(`"provider_attempts":[]`)) {
 					t.Fatalf("missing empty provider attempt array: %s", &metrics)
 				}
 				// Optional artifacts let the independent family analyzer consume

@@ -1,7 +1,9 @@
 package sessioncontrol
 
 import (
+	"context"
 	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"testing"
 	"testing/synctest"
@@ -9,6 +11,21 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func TestNativeDeliveryCannotRestartRetiredSide(t *testing.T) {
+	transport := &requestTransport{id: "native"}
+	u := Client[struct{}]{Requests: NewRequests[struct{}](transport)}
+	u.RetireThreads("side")
+	done := make(chan error, 1)
+	go func() {
+		_, err := u.Requests.Input(t.Context(), control.NativeInput{Thread: "side", ID: "wake", Run: true, Wake: &control.WaitResult{State: "completed", UsageLimit: true}})
+		done <- err
+	}()
+	u.Dispatch(<-u.Requests.Calls())
+	if err := <-done; !errors.Is(err, context.Canceled) || len(transport.sends) != 0 {
+		t.Fatalf("retired side started: sends=%v err=%v", transport.sends, err)
+	}
+}
 
 func TestNativeDeliveryWaitsForAuxiliarySettlement(t *testing.T) {
 	for _, compact := range []bool{false, true} {

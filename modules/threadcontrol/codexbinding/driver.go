@@ -173,7 +173,11 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 		receipt.Uncertain = !known || failure.Outcome == binding.Uncertain
 	}
 	receipt.Phase = effect.Phase
-	return errors.Join(callErr, d.control.EffectAcknowledged(context.WithoutCancel(ctx), effect.Caller, effect.ID, receipt))
+	acknowledged := d.control.EffectAcknowledged(context.WithoutCancel(ctx), effect.Caller, effect.ID, receipt)
+	if failure, ok := errors.AsType[*binding.DispatchError](callErr); ok && failure.Outcome == binding.NotDispatched && errors.Is(callErr, context.Canceled) && ctx.Err() == nil && acknowledged == nil {
+		return nil
+	}
+	return errors.Join(callErr, acknowledged)
 }
 
 func (d *Driver) Wake(ctx context.Context, thread string, now time.Time) error {

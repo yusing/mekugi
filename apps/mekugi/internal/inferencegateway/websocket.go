@@ -64,25 +64,32 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 				body := attempt.HTTPErrorBody(response.Body, response.StatusCode, response.Header.Get("Content-Type"), response.Header.Get("Content-Encoding"))
 				payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 				_ = body.Close()
-				for _, name := range []string{"Content-Type", "Content-Encoding", "Retry-After", "X-Request-Id"} {
-					for _, value := range response.Header.Values(name) {
-						w.Header().Add(name, value)
+				_, limited := UsageLimit(payload, response.Header, time.Now())
+				if response.StatusCode == http.StatusTooManyRequests && limited {
+					s.upstreamRejection = &http.Response{StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}
+				} else {
+					for _, name := range []string{"Content-Type", "Content-Encoding", "Retry-After", "X-Request-Id"} {
+						for _, value := range response.Header.Values(name) {
+							w.Header().Add(name, value)
+						}
 					}
+					w.WriteHeader(response.StatusCode)
+					_, _ = w.Write(payload)
+					return
 				}
-				w.WriteHeader(response.StatusCode)
-				_, _ = w.Write(payload)
-				return
 			}
-			if err != nil {
+			if err != nil && s.upstreamRejection == nil {
 				http.Error(w, "connect provider WebSocket: "+err.Error(), http.StatusBadGateway)
 				return
 			}
 			stopStart()
-			s.upstream = upstream
-			upstream.SetReadLimit(codexresponses.MaxResponseBytes)
-			s.upstreamHandshake, s.upstreamResponseHeaders = handshake, response.Header.Clone()
-			for _, value := range response.Header.Values("x-reasoning-included") {
-				w.Header().Add("x-reasoning-included", value)
+			if upstream != nil {
+				s.upstream = upstream
+				upstream.SetReadLimit(codexresponses.MaxResponseBytes)
+				s.upstreamHandshake, s.upstreamResponseHeaders = handshake, response.Header.Clone()
+				for _, value := range response.Header.Values("x-reasoning-included") {
+					w.Header().Add("x-reasoning-included", value)
+				}
 			}
 		}
 		conn, err := websocket.Accept(w, r, nil)
@@ -255,6 +262,7 @@ type responsesWebSocket struct {
 	providerMessages        <-chan webSocketMessage
 	upstreamHandshake       http.Header
 	upstreamResponseHeaders http.Header
+	upstreamRejection       *http.Response
 	timeout                 time.Duration
 	dispatch                Execute
 	queuedCreate            []byte
@@ -429,15 +437,20 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 	if err != nil {
 		return nil, err
 	}
+	if string(fields["generate"]) == "false" && (IsThirdPartyModel(responseevents.StringField(fields, "model")) || s.upstreamRejection != nil) {
+		// Chat Completions has no non-generating transport warmup. Preserve Codex's
+		// prewarm/history handshake without running and discarding inference.
+		response := map[string]any{"id": "resp_mekugi_warm_" + rand.Text(), "status": "completed", "output": []any{}}
+		payload := responseevents.MustMarshalJSON(map[string]any{"type": responseevents.Completed, "response": response})
+		return &Response{Response: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
+			Body: io.NopCloser(bytes.NewReader(append(append([]byte("data: "), payload...), '\n', '\n')))}, Transport: "unknown"}, nil
+	}
+	if s.upstreamRejection != nil {
+		response := s.upstreamRejection
+		s.upstreamRejection = nil
+		return &Response{Response: response, Transport: "websocket"}, nil
+	}
 	if IsThirdPartyModel(responseevents.StringField(fields, "model")) {
-		if string(fields["generate"]) == "false" {
-			// Chat Completions has no non-generating transport warmup. Preserve Codex's
-			// prewarm/history handshake without running and discarding inference.
-			response := map[string]any{"id": "resp_mekugi_warm_" + rand.Text(), "status": "completed", "output": []any{}}
-			payload := responseevents.MustMarshalJSON(map[string]any{"type": responseevents.Completed, "response": response})
-			return &Response{Response: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
-				Body: io.NopCloser(bytes.NewReader(append(append([]byte("data: "), payload...), '\n', '\n')))}, Transport: "unknown"}, nil
-		}
 		return s.provider.ForwardExecution(startCtx, responseCtx, native, headers, cacheKey)
 	}
 	payload, handshake, err := openAIWebSocketRequest(native, headers, cacheKey)
@@ -465,6 +478,9 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 			// by Codex for authentication recovery or rate-limit handling.
 			payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 			_ = body.Close()
+			if _, limited := UsageLimit(payload, rejected.Header, time.Now()); rejected.StatusCode == http.StatusTooManyRequests && limited {
+				return &Response{Response: &http.Response{StatusCode: rejected.StatusCode, Header: rejected.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}, Transport: "websocket"}, nil
+			}
 			return nil, &WebSocketStatusError{Status: rejected.StatusCode, body: payload}
 		}
 		if dialErr != nil {

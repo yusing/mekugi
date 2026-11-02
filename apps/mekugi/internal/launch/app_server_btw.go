@@ -94,7 +94,7 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
-	if (*owner) != nil && ((*owner).Starting || (*owner).Busy && (command || (*owner).Turn == "")) {
+	if (*owner) != nil && ((*owner).Starting || attached.sideInputs[*owner] != nil || (*owner).Busy && (*owner).Waiting == "" && (command || (*owner).Turn == "")) {
 		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side answer still running · wait for it or Esc to close", false)
 		return nil
 	}
@@ -131,7 +131,13 @@ func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachm
 	pending := prepareDraft(picker, terminal, attached.cwd, environment, preparation.take(*editor))
 	pending.Origin = attached.view
 	pending.Delivery = attached.effects.input()
-	if b.Busy || len(b.Drafts.Unsent) > 0 {
+	if b.Waiting != "" {
+		if attached.sideInputs == nil {
+			attached.sideInputs = make(map[*sessioncontrol.Side]*threadInput)
+		}
+		attached.sideInputs[b] = &threadInput{driver: attached.threadInput.driver}
+		b.Begin(question, pending)
+	} else if b.Busy || len(b.Drafts.Unsent) > 0 {
 		b.Drafts.Unsent = append(b.Drafts.Unsent, pending)
 	} else {
 		b.Begin(question, pending)
@@ -153,9 +159,31 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 	if b != nil && b.Settings.Pending() {
 		return nil
 	}
+	admission := attached.sideInputs[b]
+	if admission != nil && !b.Closed && !b.Unloaded {
+		ready, err := admission.prepare(attached.ctx, b.Thread, control.Requests)
+		if err != nil {
+			attached.releaseSideInput(b)
+			applySideUpdate(attached, terminal, control, clock, sessioncontrol.SideUpdate{Side: b, Restore: b.Pending, Notice: err.Error(), NoticeError: true})
+			b.Pending = conversationmodel.Input{}
+			return nil
+		}
+		if ready {
+			b.Waiting = ""
+		}
+	}
 	if b != nil && !b.LowReasoning && !b.Closed && !b.Unloaded && !b.Starting {
-		for len(b.Drafts.Unsent) > 0 && (b.Turn != "" || b.Pending.Text == "") {
-			input := b.Drafts.Unsent[0]
+		for len(b.Drafts.Unsent) > 0 && (b.Waiting != "" || b.Turn != "" || b.Pending.Text == "") {
+			next := 0
+			if b.Waiting != "" {
+				next = slices.IndexFunc(b.Drafts.Unsent, func(input conversationmodel.Input) bool {
+					return input.Question != nil && input.Question.Thread != b.Thread
+				})
+				if next < 0 {
+					break
+				}
+			}
+			input := b.Drafts.Unsent[next]
 			thread, turn := b.Thread, b.Turn
 			if input.Question != nil && input.Question.Thread != b.Thread {
 				thread = input.Question.Thread
@@ -168,14 +196,14 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 			if input.Question == nil && turn == "" {
 				b.Begin(input.Text, input)
 				b.Busy = true
-				b.Drafts.Unsent = b.Drafts.Unsent[1:]
+				b.Drafts.Unsent = slices.Delete(b.Drafts.Unsent, next, next+1)
 				break
 			}
 			if control.Requests.SideReplyStarting(thread) {
 				return nil
 			}
 			if input.Question != nil && observations != nil && observations.EmittingToolInput(attached.cwd, thread) {
-				if b.Drafts.AdvancePrompt() {
+				if b.Waiting == "" && b.Drafts.AdvancePrompt() {
 					continue
 				}
 				return nil
@@ -196,7 +224,7 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 			if err != nil {
 				return err
 			}
-			b.Drafts.Unsent = b.Drafts.Unsent[1:]
+			b.Drafts.Unsent = slices.Delete(b.Drafts.Unsent, next, next+1)
 			if update.Handled {
 				applySideUpdate(attached, terminal, control, clock, update)
 				return nil
@@ -213,7 +241,7 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 			}
 		}
 	}
-	if !b.Ready(control.Replacement.Pending()) {
+	if !b.Ready(control.Replacement.Pending()) && (admission == nil || !admission.ready) {
 		return nil
 	}
 	if b.OneOff && b.Thread != "" && b.Pending.Text != "" {
@@ -228,10 +256,28 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 	picker.bindSkills(attached.cwd, &parts[0], true)
 	snapshotDraftSkills(attached.cwd, environment, &parts[0])
 	b.Pending = parts[0]
-	update, err := control.Requests.StartSide(b, sessioncontrol.SideMain{
+	main := sessioncontrol.SideMain{
 		Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier,
 		Blocked: control.SideForkBlocked(), Replacing: control.Replacement.Pending(),
-	}, presentationTime(clock))
+	}
+	if admission != nil && admission.ready {
+		main.Input = &sessioncontrol.InputRequest{Thread: b.Thread, ID: admission.id}
+		if member, ok := control.Requests.Coordination.Member(b.Thread); ok && member.HostRunning {
+			main.Input.Turn = member.Turn
+		}
+		if effect := admission.effect; effect != nil {
+			main.Input.Turn = effect.Turn
+			driver := admission.driver
+			main.Input.Settled = func(turn string, err error) { driver.HumanInputAcknowledged(effect.Target, effect.ID, turn, err) }
+		}
+	}
+	update, err := control.Requests.StartSide(b, main, presentationTime(clock))
+	if admission != nil && admission.ready && (update.TurnRequested || update.Handled || err != nil) {
+		if update.TurnRequested {
+			admission.effect = nil // The ordinary request ledger now owns settlement.
+		}
+		attached.releaseSideInput(b)
+	}
 	if update.TurnRequested {
 		if b.OneOff {
 			hook.readyThread = ""
@@ -246,7 +292,11 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 
 func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], clock func() time.Time, update sessioncontrol.SideUpdate) {
 	if update.ClosedThread != "" {
+		attached.releaseSideInput(update.Side)
 		forgetSideActivity(attached, update.ClosedThread)
+		if update.Side != nil && update.Side.Unloaded {
+			control.RetireThreads(update.ClosedThread, control.Requests.SideThreads(update.Side)...)
+		}
 	}
 	if update.ReplyThread != "" && attached.session.Transcript(update.ReplyThread, update.ReplyTurn).Turn != nil {
 		attached.session.Caller(update.ReplyThread)
@@ -289,6 +339,7 @@ func closeBTWQuestion(attached *attachedPresentation, control *sessioncontrol.Cl
 		return nil
 	}
 	control.BTW, attached.conversation.BTW = nil, nil
+	attached.releaseSideInput(question)
 	question.Close()
 	return control.Requests.ReleaseSide(question)
 }
@@ -299,6 +350,7 @@ func closeSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 		return nil
 	}
 	(*side) = nil
+	attached.releaseSideInput(b)
 	b.Close()
 	if b.Thread != "" {
 		threads := control.Requests.SideThreads(b)

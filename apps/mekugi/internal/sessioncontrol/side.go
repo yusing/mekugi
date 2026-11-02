@@ -11,6 +11,7 @@ import (
 type Side struct {
 	*conversationmodel.SideAnswer
 	Thread, Turn                string
+	Waiting                     string // Detached logical-stop identity; the feature owns its lifetime.
 	Source, Model, Effort, Tier string
 	ForkPending                 bool
 	Busy, Starting, Closed      bool
@@ -27,7 +28,7 @@ func (s *Side) PrepareSettings(change map[string]any) SettingsPlan {
 }
 
 func (s *Side) Ready(replacing bool) bool {
-	return s != nil && !s.Closed && !s.Unloaded && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
+	return s != nil && !s.Closed && !s.Unloaded && s.Waiting == "" && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
 }
 
 func (s *Side) Close() {

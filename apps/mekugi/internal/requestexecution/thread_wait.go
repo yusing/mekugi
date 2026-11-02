@@ -8,6 +8,7 @@ import (
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -26,9 +27,13 @@ func (a *requestAttempt) completeLocalWait() (bool, error) {
 		return false, err
 	}
 	transportcapture.ObserveLocalResponse(a.startCtx)
+	return true, a.writeStoppedWait(stop)
+}
+
+func (a *requestAttempt) writeStoppedWait(stop *control.LocalStop) error {
 	if a.prepared != nil {
 		if err := a.prepared.Finish(false); err != nil {
-			return true, err
+			return err
 		}
 	}
 	id := fmt.Sprintf("mekugi_wait_%x", sha256.Sum256([]byte(a.threadID+"\x00"+stop.Turn+"\x00"+stop.Wait)))
@@ -48,23 +53,23 @@ func (a *requestAttempt) completeLocalWait() (bool, error) {
 		for _, event := range []map[string]any{{"type": "response.created", "response": created}, {"type": "response.completed", "response": response}} {
 			data, err := json.Marshal(event)
 			if err != nil {
-				return true, err
+				return err
 			}
 			if err := codexresponses.WriteEvent(a.executor.Output, data); err != nil {
-				return true, err
+				return err
 			}
 			a.hooks.Delivered(data)
 		}
 	} else {
 		data, err := json.Marshal(response)
 		if err != nil {
-			return true, err
+			return err
 		}
 		if _, err := a.executor.Output.Write(data); err != nil {
-			return true, err
+			return err
 		}
 	}
 	a.finalization.failurePhase = ""
 	a.finalization.outcome = requestOutcomeCompleted
-	return true, nil
+	return nil
 }

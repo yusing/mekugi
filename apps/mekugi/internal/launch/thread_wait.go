@@ -20,7 +20,7 @@ import (
 
 // Defer only successful logical completions. Other host facts, including
 // interruption/failure and auxiliary turns, keep their ordinary presentation.
-func deferLogicalCompletion(attached *attachedPresentation, live *sessioncontrol.Live, message appserver.Message, reduced <-chan error) (bool, error) {
+func deferLogicalCompletion(attached *attachedPresentation, live *sessioncontrol.Live, message appserver.Message, reduced <-chan error, requests *sessioncontrol.Requests[appServerRequest]) (bool, error) {
 	if reduced == nil || message.Method != "turn/completed" {
 		return false, nil
 	}
@@ -28,7 +28,9 @@ func deferLogicalCompletion(attached *attachedPresentation, live *sessioncontrol
 	if err != nil {
 		return false, err
 	}
-	if p.ThreadID != live.Thread || p.Turn.ID != live.Turn || p.Turn.Status != "completed" || live.AuxiliaryTurn(p.Turn.ID) {
+	main := p.ThreadID == live.Thread
+	side := requests != nil && requests.Side(p.ThreadID) != nil
+	if !main && !side || p.Turn.Status != "completed" || main && (p.Turn.ID != live.Turn || live.AuxiliaryTurn(p.Turn.ID)) {
 		return false, nil
 	}
 	attached.threadInput.completions = append(attached.threadInput.completions, logicalCompletion{message, reduced})
@@ -95,7 +97,7 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 		live.Shell.ConsumeContinuation()
 	}
 	stopped := live.LocalStop
-	live.LocalStop, live.Waiting = "", ""
+	live.LocalStop, live.Waiting, live.WaitLabel = "", "", ""
 	// A continuation acknowledgement can precede its turn/started notification.
 	// Keep the confirmed stop until presentation has observed that next turn.
 	if stop := member.Stop; stop != nil && (stop.Turn == member.Turn || stop.Turn == live.Turn || live.Turn == "" && stop.Turn == stopped) && stop.Generation == member.Generation && (member.Status == threadcontrol.Working || member.Status == threadcontrol.Waiting) {
@@ -117,6 +119,13 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 	lifecycle.WaitingFor = ""
 	if !lifecycle.Waiting || wait == nil {
 		lifecycle.Wait = nil
+	}
+	if wait != nil && wait.UsageLimit && live.Waiting != "" {
+		live.WaitLabel = wait.StatusText()
+		if lifecycle.Wait == nil || lifecycle.Wait.Body != live.WaitLabel {
+			lifecycle.Wait = &activity.Value{Kind: "progress", Body: live.WaitLabel, Live: true}
+		}
+		wait = nil
 	}
 	if wait != nil {
 		if wait.All {
@@ -217,6 +226,19 @@ type threadInput struct {
 type humanInputAdmission struct {
 	effect *threadcontrol.Effect
 	err    error
+}
+
+func (p *executionPresentation) releaseSideInput(side *sessioncontrol.Side) {
+	if input := p.sideInputs[side]; input != nil {
+		input.reset()
+		delete(p.sideInputs, side)
+	}
+}
+
+func (p *executionPresentation) releaseSideInputs() {
+	for side := range p.sideInputs {
+		p.releaseSideInput(side)
+	}
 }
 
 func (p *threadInput) preparing() bool {
