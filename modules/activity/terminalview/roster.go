@@ -126,12 +126,12 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	if v.RosterSelected != selectedCaller {
 		v.RosterManual = false
 	}
-	if v.RosterManual {
+	if focused && v.RosterManual {
 		start = min(v.RosterOffset, len(rows)-count)
 	}
 	end := start + count
 	visible := rows[start:end]
-	if !focused && !v.RosterManual {
+	if !focused {
 		visible = compact
 	}
 	hidden := len(rows) - len(visible)

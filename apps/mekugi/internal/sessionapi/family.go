@@ -409,7 +409,7 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 		row := &publication.Roster[rows[member.Thread]]
 		row.Agent.NonAttachable = member.NonAttachable
 		row.Agent.Responding = member.Status == threadcontrol.Working || member.Status == threadcontrol.Pending
-		row.Agent.Waiting = member.Status == threadcontrol.Waiting
+		row.Agent.Waiting = member.Status == threadcontrol.Waiting || row.Agent.Compacting
 		row.Agent.Paused = member.Status == threadcontrol.Paused || member.Status == threadcontrol.Uncertain
 		row.Agent.Final = member.Status == threadcontrol.Completed
 		if member.Status == threadcontrol.Failed {

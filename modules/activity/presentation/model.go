@@ -40,6 +40,7 @@ type AgentFacts struct {
 	WaitingFor                                   string
 	Wait                                         *Value
 	Responding, Final, Waiting, Paused           bool
+	Compacting                                   bool
 	Started, LastResponse                        time.Time
 	WorkElapsed                                  time.Duration
 	WorkSince                                    time.Time

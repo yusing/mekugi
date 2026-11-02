@@ -483,8 +483,8 @@ clipping; legacy envelopes never enter provider output.
 ### Public reasoning and disclosure
 
 Only host public summaries appear, including restored or completion-only summaries.
-Empty items create no row; late deltas cannot reopen completed items. Short one-row
-bodies and heading-only summaries stay directly visible. Longer summaries split
+Empty items create no row; late deltas cannot reopen completed items. Within one
+item, short one-row bodies and heading-only summaries stay directly visible. Longer summaries split
 at Markdown/bold titles or short plain titles, never inside fences; rendering,
 section detection and source copy share fence boundaries. Body text retains
 Markdown and uniform faint/italic styling. Untitled sections use Thinking/Thought;
@@ -494,9 +494,10 @@ preview longer streams, paced like command output.
 Earlier sections fold as a new one starts. Completion first drains queued text,
 then leaves the latest completed item open until later activity and a five-second
 quiet period shared with successful command output across Main and children.
-Restored long summaries start folded. Consecutive collapsed reasoning items share
-one row with their observed durations combined; sections of one item count its
-duration once.
+Restored long summaries start folded. Consecutive completed reasoning items share
+one collapsed row immediately, including short and heading-only items, with their
+observed durations combined; sections of one item count its duration once. Live
+reasoning stays separate, and expanded presentation retains every section.
 Dialogs retain each section's full body and source as pages. Observed durations
 appear only from one second onward, on the final section rather than per section.
 Completed timed headings and short summaries lead with `Thought for Ns`, followed
@@ -604,6 +605,9 @@ selection displays `all`. Named lists show
 two targets followed by `N more`; the existing disclosure opens the complete
 selection. A waiting roster row uses the transcript's wait text,
 canonical target colors and muted optional timeout, rather than a names-only label.
+Observed current compaction temporarily shows `Compacting context` instead of
+that wait in Main, child and family roster views. Settlement restores the logical
+wait or working state; historical compaction does not revive live progress.
 Interrupt acknowledgement reports the request, not task
 completion. Its settled interruption event remains visible; an interrupted result
 does not replay the agent's earlier message as a new reply.
@@ -650,8 +654,10 @@ edit and usage metrics when visible; names never collapse into a comma-joined
 summary. The unfocused roster grows to show active agents within terminal bounds.
 The displayed child and Main take priority as capacity permits. Errors remain
 in counts and ordinary browsing without keeping the unfocused roster open;
-finished children are hidden first. Overflow counts include every omitted row, including
-rows before selection. The viewport moves only when selection leaves it.
+finished children are hidden first. Manual browsing applies only while the roster
+is focused; leaving it restores these compact priorities. Overflow counts include
+every omitted row, including rows before selection. In focused browsing, selection
+moves the viewport only when it leaves the visible rows.
 Hover emphasizes the name; selection shades the row. Returning to Main brings
 its roster row into view and clears the previous child highlight. Remembering a
 child for toggling does not present it as the displayed transcript.
@@ -665,7 +671,7 @@ its tab lives beside Main in the shared tab bar, outside the roster counts.
 Its editable destination follows
 [Conversation’s side contract](../conversation/SPEC.md#side-questions).
 Arrows/k/j stop at either end; n/Tab/p also navigate, a toggles Main/current child.
-Roster wheel scrolling changes neither selection nor transcript follow. Transcript
+Focused roster wheel scrolling changes neither selection nor transcript follow. Transcript
 page/wheel scrolling pauses follow and Esc resumes it; frozen selections retain
 their own navigation. Running headers scroll normally; the composer process count
 and `/ps` dialog follow [running processes](#running-processes).

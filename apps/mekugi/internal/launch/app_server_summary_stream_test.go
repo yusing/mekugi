@@ -69,7 +69,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 				opened := false
 				for _, snippet := range feed.Snippets {
 					block, ok := view.SnippetBlock(snippet)
-					if !ok || block.Source != view.Entries[0].Source.Seq || len(block.Members) != 2 {
+					if !ok || block.Source != view.Entries[0].Source.Seq || len(block.Members) != 3 {
 						continue
 					}
 					if !terminalTest(u).openOutput(view.bind(terminalTest(u)), snippet) {

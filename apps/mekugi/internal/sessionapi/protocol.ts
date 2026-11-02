@@ -1697,6 +1697,7 @@ export type AgentFacts = {
   "Final": boolean;
   "Waiting": boolean;
   "Paused": boolean;
+  "Compacting": boolean;
   "Started": string;
   "LastResponse": string;
   "WorkElapsed": number;

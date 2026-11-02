@@ -46,6 +46,7 @@ type ActivityAgent struct {
 	Name            string
 	Role            string `json:",omitzero"`
 	NonAttachable   bool   `json:",omitzero"`
+	Compacting      bool   `json:"-"` // Derived from this thread's observed compaction.
 	// Provider requests forwarded for the agent, shown as T+N.
 	Roundtrips  uint64  `json:",omitzero"`
 	Cost        float64 `json:",omitzero"`
@@ -114,7 +115,7 @@ func (agent ActivityAgent) ActivityAgent() activitypresentation.AgentFacts {
 	return activitypresentation.AgentFacts{
 		NonAttachable: agent.NonAttachable,
 		Name:          agent.Name, Role: agent.Role, Thread: agent.Thread, Responding: agent.Responding, Final: agent.Final, Waiting: agent.Waiting, WaitingFor: agent.WaitingFor, Paused: agent.Paused,
-		Wait:    agent.Wait,
+		Wait: agent.Wait, Compacting: agent.Compacting,
 		Started: agent.Started, LastResponse: agent.LastResponse,
 		WorkElapsed: time.Duration(agent.WorkTimer.ElapsedNS), WorkSince: agent.WorkTimer.Since, WorkKnown: agent.WorkTimer.Known,
 		Turns: agent.Turns, Roundtrips: agent.Roundtrips, Cost: agent.Cost, CostKnown: agent.CostKnown, CostPartial: agent.CostPartial,

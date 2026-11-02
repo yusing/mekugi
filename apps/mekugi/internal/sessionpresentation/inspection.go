@@ -2,6 +2,7 @@ package sessionpresentation
 
 import (
 	"github.com/yusing/mekugi/contracts/scope"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -9,6 +10,7 @@ type compactionMetrics struct {
 	completed map[string]struct{}
 	known     bool
 	started   string
+	progress  *activity.Value
 }
 
 var compactionMetricKey scope.Key[compactionMetrics]
@@ -40,6 +42,7 @@ func (s *Attachment) ObserveCompactionStart(thread, id string) {
 		return
 	}
 	state.started = id
+	state.progress = &activity.Value{Kind: "progress", Body: "Compacting context", Live: true}
 	if name := s.KnownCaller(thread); name != "" {
 		s.Agent(name).ContextKnown = false
 	}
@@ -55,6 +58,16 @@ func (s *Attachment) ObserveCompaction(thread, id string) {
 		state.completed = make(map[string]struct{})
 	}
 	state.completed[id] = struct{}{}
+	s.finishCompaction(thread, id)
+}
+
+func (s *Attachment) finishCompaction(thread, id string) {
+	if store := s.FindThread(thread); store != nil {
+		state := compactionMetricKey.Value(store)
+		if state.started == id {
+			state.progress = nil
+		}
+	}
 }
 
 func (s *Attachment) InspectionMetrics(thread string) control.SessionMetrics {

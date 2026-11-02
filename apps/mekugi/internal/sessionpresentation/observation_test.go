@@ -6,10 +6,79 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/transcript"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestUISnapshotCompactionOverridesRosterWait(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		t.Run(thread, func(t *testing.T) {
+			var attached Attachment
+			attached.Start("main")
+			attached.RegisterThread(observation.Thread{ID: thread, Path: "/root/" + thread})
+			feeds := attached.Activity()
+			main := &ActivitySource{Model: &feeds.Main, Audience: MainAudience}
+			child := &ActivitySource{Model: &feeds.Children, Audience: ChildAudience}
+			model := new(Model)
+			model.Attach(Thread{ID: "main", Caller: "/root/main"}, false)
+			var text transcript.State
+			var outputs feed.Retention
+			at := time.Unix(100, 0)
+			lifecycle := attached.Lifecycle(thread)
+			lifecycle.SetWaiting(true, at)
+			if thread == "child" {
+				lifecycle.Wait = &activity.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activity.WaitTarget{{Name: "/root/worker"}}, Live: true}
+			}
+			turn := "turn"
+			reduce := func(kind observation.Kind, item observation.Item) {
+				in := ObservationInput{Main: "main", Selected: turn, AuxiliaryTurn: true, Event: observation.Event{Kind: kind, ThreadID: thread, TurnID: turn, ItemID: item.ID, Item: item, TurnStatus: "interrupted", At: at}}
+				ReduceObservation(&attached, model, main, child, &text, &outputs, in)
+			}
+			view := terminalview.NewView()
+			view.Painter.Theme = diffrender.DarkTheme
+			view.Clock = func() time.Time { return at }
+			view.Painter.Clock = view.Clock
+			var frames []string
+			for _, outcome := range []string{"completed", "failed", "interrupted", "turn-ended"} {
+				turn = outcome
+				reduce(observation.TurnStarted, observation.Item{})
+				item := observation.Item{ID: outcome, Type: "contextCompaction", Status: "inProgress"}
+				reduce(observation.ItemStarted, item)
+				publication := child.Publication(model, nil)
+				agent := publication.Roster[0].Agent
+				if agent.Wait == nil || !agent.Compacting || !agent.Waiting || agent.Wait.Body != "Compacting context" || agent.Status != "waiting" {
+					t.Fatalf("compaction did not override stale wait: %+v", agent)
+				}
+				if attached.Roster()[0].Wait != agent.Wait {
+					t.Fatal("unchanged compaction reallocated its progress value")
+				}
+				view.Update(publication, terminalview.Display{})
+				if outcome == "completed" {
+					frames = append(frames, view.NativeRoster(80, 4, at, false)...)
+				}
+				if outcome == "turn-ended" {
+					reduce(observation.TurnCompleted, observation.Item{})
+				} else {
+					item.Status = outcome
+					reduce(observation.ItemCompleted, item)
+				}
+				settled := child.Publication(model, nil).Roster[0].Agent
+				if settled.Compacting || settled.Wait != lifecycle.Wait || !lifecycle.Waiting {
+					t.Fatal("compaction settlement changed logical wait lifecycle or retained progress")
+				}
+			}
+			attached.RestoreCompactions(thread, []string{"historical"})
+			if attached.Roster()[0].Wait != lifecycle.Wait {
+				t.Fatal("restored compaction revived live progress")
+			}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/compaction-roster-"+thread+".txt", append(frames, "plain after roster"), 80)
+		})
+	}
+}
 
 func TestObservationReductionWithoutTerminal(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
@@ -68,6 +137,57 @@ func TestObservationReductionWithoutTerminal(t *testing.T) {
 			attachment.Retire()
 			if result := reduce(observation.ItemStarted, item, ""); result.Publish || source.Revision != before {
 				t.Fatal("retired attachment accepted an observation")
+			}
+		})
+	}
+}
+
+func TestCompactionAdmissionKeepsCurrentRoster(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		t.Run(thread, func(t *testing.T) {
+			var attached Attachment
+			attached.Start("main")
+			attached.RegisterThread(observation.Thread{ID: thread, Path: "/root/" + thread})
+			attached.RestoreCompactions(thread, nil)
+			feeds := attached.Activity()
+			main := &ActivitySource{Model: &feeds.Main, Audience: MainAudience}
+			child := &ActivitySource{Model: &feeds.Children, Audience: ChildAudience}
+			model := new(Model)
+			model.Attach(Thread{ID: "main", Caller: "/root/main"}, false)
+			var text transcript.State
+			var outputs feed.Retention
+			reduce := func(kind observation.Kind, turn string, item observation.Item) {
+				ReduceObservation(&attached, model, main, child, &text, &outputs, ObservationInput{
+					Main: "main", Selected: "new", Event: observation.Event{Kind: kind, ThreadID: thread, TurnID: turn, ItemID: item.ID, Item: item, At: time.Unix(100, 0)},
+				})
+			}
+			reduce(observation.TurnStarted, "old", observation.Item{})
+			reduce(observation.TurnStarted, "new", observation.Item{})
+			current := observation.Item{ID: "current", Type: "contextCompaction", Status: "inProgress"}
+			reduce(observation.ItemStarted, "new", current)
+			progress := child.Publication(model, nil).Roster[0].Agent.Wait
+			if progress == nil {
+				t.Fatal("current compaction was not admitted")
+			}
+			stale := observation.Item{ID: "stale", Type: "contextCompaction", Status: "inProgress"}
+			reduce(observation.ItemStarted, "old", stale)
+			reduce(observation.TurnCompleted, "old", observation.Item{})
+			reduce(observation.ItemStarted, "old", stale)
+			stale.Status = "completed"
+			reduce(observation.ItemCompleted, "old", stale)
+			if got := child.Publication(model, nil).Roster[0].Agent; !got.Compacting || got.Wait != progress {
+				t.Fatal("stale start or nonmatching completion replaced current compaction")
+			}
+			if count := attached.InspectionMetrics(thread).Compactions; count == nil || *count != 1 {
+				t.Fatal("stale progress admission suppressed independent completion accounting")
+			}
+			current.Status = "completed"
+			reduce(observation.ItemCompleted, "new", current)
+			reduce(observation.TurnCompleted, "new", observation.Item{})
+			reduce(observation.ItemStarted, "old", observation.Item{ID: "late-old", Type: "contextCompaction"})
+			reduce(observation.ItemStarted, "new", observation.Item{ID: "late-new", Type: "contextCompaction"})
+			if got := child.Publication(model, nil).Roster[0].Agent; got.Compacting || got.Wait != nil {
+				t.Fatal("closed turn revived compaction progress")
 			}
 		})
 	}

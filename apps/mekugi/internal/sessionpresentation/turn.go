@@ -41,6 +41,7 @@ func (a *Attachment) ObserveTurn(models TurnModels, e TurnObservation) TurnUpdat
 		if !result.Admitted {
 			return result
 		}
+		compactionMetricKey.Value(a.Thread(e.Thread)).progress = nil
 		key := [2]string{e.Thread, e.Turn}
 		record := a.turns[key]
 		if record.start == "" && models.Start != "" && (models.Selected == "" || models.Selected == e.Turn) {
@@ -58,6 +59,9 @@ func (a *Attachment) ObserveTurn(models TurnModels, e TurnObservation) TurnUpdat
 		}
 		if result.Current && !models.Auxiliary {
 			models.Agent.TurnCompleted(e.Status == "completed", e.At)
+		}
+		if result.Current {
+			compactionMetricKey.Value(a.Thread(e.Thread)).progress = nil
 		}
 	}
 	return result

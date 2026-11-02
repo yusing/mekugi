@@ -108,34 +108,30 @@ func TestUISnapshotNativeRosterOneRow(t *testing.T) {
 }
 
 func TestUISnapshotNativeRosterScroll(t *testing.T) {
-	for _, focused := range []bool{false, true} {
-		t.Run(fmt.Sprint(focused), func(t *testing.T) {
-			v := NewView()
-			v.Painter.Theme = diffrender.DarkTheme
-			publication := &presentation.Publication{}
-			for _, name := range []string{"/root", "/root/a", "/root/b", "/root/c", "/root/d", "/root/e"} {
-				publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name}}})
-			}
-			v.Update(publication, Display{Caller: "/root"})
-			v.NativeRoster(64, 3, time.Unix(100, 0), focused)
-			var frames []string
-			for _, step := range []int{1, 1, 100, -1, -100} {
-				v.ScrollRoster(step)
-				rows := v.NativeRoster(64, 3, time.Unix(100, 0), focused)
-				if step == 1 && v.Hits[0].Agent == "/root" || step == 100 && v.Hits[len(v.Hits)-1].Agent != "/root/e" || step == -100 && v.Hits[0].Agent != "/root" {
-					t.Fatalf("scroll %d ignored: %+v", step, v.Hits)
-				}
-				frames = append(frames, rows...)
-			}
-			v.Update(publication, Display{Caller: "/root/e"})
-			rows := v.NativeRoster(64, 3, time.Unix(100, 0), focused)
-			if v.RosterManual || v.Hits[len(v.Hits)-1].Agent != "/root/e" {
-				t.Fatalf("selection did not reveal its row: %+v", v.Hits)
-			}
-			frames = append(frames, rows...)
-			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-roster-scroll-%t.txt", focused), frames, 64)
-		})
+	v := NewView()
+	v.Painter.Theme = diffrender.DarkTheme
+	publication := &presentation.Publication{}
+	for _, name := range []string{"/root", "/root/a", "/root/b", "/root/c", "/root/d", "/root/e"} {
+		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name}}})
 	}
+	v.Update(publication, Display{Caller: "/root"})
+	v.NativeRoster(64, 3, time.Unix(100, 0), true)
+	var frames []string
+	for _, step := range []int{1, 1, 100, -1, -100} {
+		v.ScrollRoster(step)
+		rows := v.NativeRoster(64, 3, time.Unix(100, 0), true)
+		if step == 1 && v.Hits[0].Agent == "/root" || step == 100 && v.Hits[len(v.Hits)-1].Agent != "/root/e" || step == -100 && v.Hits[0].Agent != "/root" {
+			t.Fatalf("scroll %d ignored: %+v", step, v.Hits)
+		}
+		frames = append(frames, rows...)
+	}
+	v.Update(publication, Display{Caller: "/root/e"})
+	rows := v.NativeRoster(64, 3, time.Unix(100, 0), true)
+	if v.RosterManual || v.Hits[len(v.Hits)-1].Agent != "/root/e" {
+		t.Fatalf("selection did not reveal its row: %+v", v.Hits)
+	}
+	frames = append(frames, rows...)
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-roster-scroll-true.txt", frames, 64)
 }
 
 func TestNativeRosterKeepsSelectedFinishedChild(t *testing.T) {
@@ -150,6 +146,7 @@ func TestNativeRosterKeepsSelectedFinishedChild(t *testing.T) {
 	}
 	for _, caller := range []string{"/root/done-b", "/root"} {
 		v.Update(publication, Display{Caller: caller})
+		v.RosterManual = true
 		rows := v.NativeRoster(100, 20, time.Unix(100, 0), false)
 		found := false
 		for _, hit := range v.Hits {
@@ -169,8 +166,9 @@ func TestNativeRosterKeepsSelectedFinishedChild(t *testing.T) {
 	}
 }
 
-func TestNativeRosterWheelKeepsCompactHeight(t *testing.T) {
+func TestUISnapshotNativeRosterActiveAfterBrowsing(t *testing.T) {
 	v := NewView()
+	v.Painter.Theme = diffrender.DarkTheme
 	publication := &presentation.Publication{}
 	for i := range 8 {
 		name := fmt.Sprintf("/root/done-%d", i)
@@ -179,26 +177,27 @@ func TestNativeRosterWheelKeepsCompactHeight(t *testing.T) {
 		}
 		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name, Final: i > 0}, Status: "answered"}})
 	}
+	publication.Roster[0].Agent.Status = ""
+	publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: "/root/working", Responding: true}, Status: "responding"}})
 	v.Update(publication, Display{Caller: "/root"})
-	before := v.NativeRoster(80, 14, time.Unix(100, 0), false)
-	if !strings.Contains(strings.Join(before, "\n"), "+5 more") {
-		t.Fatal("fixture did not collapse finished agents")
+	var frames []string
+	// Browse completed history, then leave the roster while work is active.
+	v.NativeRoster(80, 4, time.Unix(100, 0), true)
+	v.ScrollRoster(4)
+	frames = append(frames, v.NativeRoster(80, 4, time.Unix(100, 0), true)...)
+	if v.Hits[0].Agent != "/root/done-4" {
+		t.Fatalf("focused browsing lost its viewport: %+v", v.Hits)
 	}
-	for range 7 {
-		v.ScrollRoster(1)
-		rows := v.NativeRoster(80, 14, time.Unix(100, 0), false)
-		if len(rows) != len(before) || len(v.Hits) != 3 {
-			t.Fatalf("wheel expanded the compact roster: %+v", v.Hits)
-		}
+	frames = append(frames, v.NativeRoster(80, 4, time.Unix(100, 0), false)...)
+	if v.Hits[0].Agent != "/root" || v.Hits[2].Agent != "/root/working" {
+		t.Fatalf("manual viewport displaced active priority: %+v", v.Hits)
 	}
-	if v.Hits[2].Agent != "/root/done-7" {
-		t.Fatalf("scrolling did not reach the final finished agent: %+v", v.Hits)
+	hit := v.Hits[2]
+	v.PointAgent('\r', hit.Row, hit.First)
+	if v.DisplayRequest == nil || v.DisplayRequest.Caller != "/root/working" {
+		t.Fatal("compacted row lost its canonical navigation target")
 	}
-	v.ScrollRoster(-100)
-	v.NativeRoster(80, 14, time.Unix(100, 0), false)
-	if v.Hits[0].Agent != "/root" {
-		t.Fatal("upward scrolling did not return to Main")
-	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-roster-active-after-browsing.txt", append(frames, "plain after roster"), 80)
 }
 
 func TestUISnapshotNativeRosterUnpinnedErrorsAndHiddenParents(t *testing.T) {
@@ -229,8 +228,8 @@ func TestUISnapshotNativeRosterUnpinnedErrorsAndHiddenParents(t *testing.T) {
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-roster-unpinned-errors.txt", append(rows, "plain after roster"), 100)
 	v.ScrollRoster(1)
-	v.NativeRoster(100, 8, time.Unix(100, 0), false)
-	if !strings.Contains(v.Hits[0].Agent, "error-") {
+	v.NativeRoster(100, 8, time.Unix(100, 0), true)
+	if !slices.ContainsFunc(v.Hits, func(hit Hit) bool { return strings.Contains(hit.Agent, "error-") }) {
 		t.Fatalf("error unavailable through ordinary browsing: %+v", v.Hits)
 	}
 	v.Update(publication, Display{Caller: "/root/reviewer/error-b"})

@@ -6,11 +6,42 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/contracts/observation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/activity/terminalview"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestFamilyRosterKeepsObservedCompaction(t *testing.T) {
+	var attached sessionpresentation.Attachment
+	attached.Start("root")
+	attached.RegisterThread(observation.Thread{ID: "root", Path: "/root"})
+	source := sessionpresentation.ActivitySource{Model: &attached.Activity().Children}
+	model := new(sessionpresentation.Model)
+	model.Attach(sessionpresentation.Thread{ID: "root", Caller: "/root"}, false)
+	h := NewHub(t.Context(), nil)
+	frame := Frame{Session: Session{Thread: "root", Caller: "/root"}, Members: []threadcontrol.Participant{{Thread: "root", Task: "/root", Status: threadcontrol.Working}}}
+	attached.ObserveCompactionStart("root", "compact")
+	source.Apply(sessionpresentation.ActivityEvent{Agents: attached.Roster()})
+	frame.Agents = source.Publication(model, nil)
+	runtime := familyRuntime(h, nil, frame)
+	family, _ := h.Family("root")
+	got := projectRoster(family.Agents, "/root").Agents[0]
+	if got.State != "waiting" || got.Wait == nil || got.Wait.Body != "Compacting context" {
+		t.Fatalf("logical working status hid observed compaction: %+v", got)
+	}
+	attached.ObserveCompaction("root", "compact")
+	source.Apply(sessionpresentation.ActivityEvent{Agents: attached.Roster()})
+	frame.Agents = source.Publication(model, nil)
+	runtime.server.frame.Store(new(frame))
+	family, _ = h.Family("root")
+	got = projectRoster(family.Agents, "/root").Agents[0]
+	if got.State != "working" || got.Wait != nil {
+		t.Fatalf("completed compaction hid logical working status: %+v", got)
+	}
+}
 
 func TestUISnapshotFamilyRosterResumedDelegates(t *testing.T) {
 	h := NewHub(t.Context(), nil)
@@ -34,12 +65,6 @@ func TestUISnapshotFamilyRosterResumedDelegates(t *testing.T) {
 		t.Fatalf("finished delegates expanded on resume: %q", rows)
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/family-roster-resumed.txt", rows, 80)
-	v.ScrollRoster(1)
-	scrolled := v.NativeRoster(80, 40, time.Unix(100, 0), false)
-	if len(scrolled) != len(rows) || len(v.Hits) != 4 || v.Hits[0].Agent == "/root" {
-		t.Fatalf("scrolling expanded the resumed roster: %q", scrolled)
-	}
-	uisnapshot.AssertTerminal(t, "testdata/snapshots/family-roster-resumed-scrolled.txt", scrolled, 80)
 	selected := frame.Members[len(frame.Members)-1].Task
 	v.Update(family.Agents, terminalview.Display{Caller: selected})
 	v.NativeRoster(80, 20, time.Unix(100, 0), false)

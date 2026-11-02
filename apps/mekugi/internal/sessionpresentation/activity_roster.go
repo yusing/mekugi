@@ -105,6 +105,9 @@ func (a *Attachment) Roster() []ActivityAgent {
 	agents := a.Activity().Agents()
 	for i := range agents {
 		agents[i].AgentLifecycle = *a.Lifecycle(agents[i].Thread)
+		if progress := compactionMetricKey.Value(a.Thread(agents[i].Thread)).progress; progress != nil {
+			agents[i].Compacting, agents[i].Waiting, agents[i].Wait = true, true, progress
+		}
 	}
 	return agents
 }

@@ -14,27 +14,41 @@ import (
 // streams, following grok-build's truncated thinking blocks.
 const ThinkingTailRows = 3
 
-// CompactReasoning joins consecutive collapsed reasoning without changing the
+// CompactReasoning joins consecutive completed reasoning without changing the
 // source blocks used by expanded presentation or the dialog's section pages.
 func CompactReasoning(blocks []Block) []Block {
 	var out []Block
 	for i := 0; i < len(blocks); {
-		block := blocks[i]
-		j := i + 1
-		if block.Kind == "summary" && block.Collapsed && !block.Live {
-			for j < len(blocks) && blocks[j].Kind == "summary" && blocks[j].Collapsed && !blocks[j].Live {
-				j++
+		end, multipleSources := i+1, false
+		if blocks[i].Kind == "summary" && !blocks[i].Live {
+			for end < len(blocks) && blocks[end].Kind == "summary" && !blocks[end].Live {
+				multipleSources = multipleSources || blocks[end].Source != blocks[i].Source
+				end++
 			}
 		}
-		if j > i+1 {
-			values := make([]presentation.Value, j-i)
-			for k, b := range blocks[i:j] {
-				values[k] = b.Value
+		for i < end {
+			block, j := blocks[i], end
+			// One item's sections keep their automatic disclosure. Separate
+			// completed items share a compact row before the quiet period.
+			if !multipleSources {
+				j = i + 1
+				if block.Collapsed {
+					for j < end && blocks[j].Collapsed {
+						j++
+					}
+				}
 			}
-			block.Value = presentation.Reasoning(values)
+			if j > i+1 {
+				values := make([]presentation.Value, j-i)
+				for k, b := range blocks[i:j] {
+					values[k] = b.Value
+				}
+				block.Value = presentation.Reasoning(values)
+				block.Collapsed = true
+			}
+			out = append(out, block)
+			i = j
 		}
-		out = append(out, block)
-		i = j
 	}
 	return out
 }
