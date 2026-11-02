@@ -124,8 +124,8 @@ examples remain unchanged; Codex still owns its selection and execution.
 
 ## Environment snapshot
 
-Agent Guidance supplements Codex's native environment context with data-only platform and
-OS identity/version, kernel release, the current user's home directory, and an explicitly observed
+Agent Guidance supplements Codex's native environment context with a snapshot-reuse hint,
+platform and OS identity/version, kernel release, the current user's home directory, and an explicitly observed
 Git snapshot. The home directory comes from the platform's user-home environment and remains
 explicitly unavailable when it cannot be resolved; it does not depend on workspace or Git discovery.
 Compact labeled text omits duplicate native workspace paths and empty collection diagnostics.

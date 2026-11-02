@@ -24,7 +24,7 @@ func projectEnvironment(ctx context.Context, input binding.InstructionInput, adm
 	body := html.EscapeString(facts.Text(admitted.Workspace))
 	// Keep snapshots in the owned base layer, outside native conversation history.
 	// Refresh replaces inherited copies without changing tool/result boundaries.
-	updated, err := replaceSection(text, environmentStart+"\n"+body+"\n"+environmentEnd, environmentStart, environmentEnd, false, false)
+	updated, err := replaceSection(text, environmentStart+"\nThese facts are a snapshot, not live state. Reuse them while current; refresh only missing or changed facts.\n"+body+"\n"+environmentEnd, environmentStart, environmentEnd, false, false)
 	if err != nil {
 		return result, err
 	}
