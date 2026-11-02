@@ -53,6 +53,8 @@ type mchangesNestedCodexProvider struct {
 	trace                     *nativetrace.Reader
 	store                     *mekugiReplayStore
 	workspace                 string
+	overlapProgram            string
+	overlapCell               string
 }
 
 func (p *mchangesNestedCodexProvider) ForwardExecution(
@@ -118,6 +120,10 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 			break
 		}
 		result := binding.DecodeExecutionResult("exec", item.Output)
+		if p.overlapCell != "" && p.waitCall == p.callID+"-overlap" && result.Terminal {
+			p.waitCall = "nested-overlap-wait"
+			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": p.overlapCell, "yield_time_ms": 10000}))}), nil)
+		}
 		if result.Terminal && p.expectProcess && !p.sawPending {
 			evidence := p.trace.ReadCell(p.threadID, p.callID, p.program)
 			calls := evidence.Calls()
@@ -154,6 +160,14 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 					return nil, fmt.Errorf("yielded edits finalized prematurely: %q, %v", list, err)
 				}
 				p.sawPending = true
+			}
+			if p.overlapProgram != "" && p.overlapCell == "" {
+				if !strings.Contains(result.Text, "formatter-no-op") {
+					return nil, fmt.Errorf("formatter comparison did not complete before overlap: %s", result.Text)
+				}
+				p.overlapCell = cell
+				p.waitCall = p.callID + "-overlap"
+				return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "custom_tool_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "exec", "status": "completed", "input": p.overlapProgram}), nil)
 			}
 			p.waitCall = fmt.Sprintf("nested-wait-%d", p.turns)
 			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil)
@@ -193,6 +207,75 @@ func mchangesNestedCodexResponse(turn int, item map[string]any) *http.Response {
 	result := serverHTTPResponse(wire.String())
 	result.Header.Set("Content-Type", "text/event-stream")
 	return result
+}
+
+func TestMChangesNoOpFormatterOverlapNativeCodexE2E(t *testing.T) {
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv(routerTestWorkerEnvironment, "1")
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal("installed Codex is required for formatter overlap acceptance")
+	}
+	registry, err := buildToolRegistryForTest(t, t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	store, err := openMekugiReplayStore(registry.ReplayDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	setCodexFrontendLoginEnvironment(t, filepath.Dir(registry.Frontends["mrun"]))
+	for name, content := range map[string]string{
+		"first_test.go":  "package fixture\n\nconst Value = 1\n",
+		"second_test.go": "package fixture\n\nconst Other = 1\n",
+	} {
+		writeTestFile(t, filepath.Join(workspace, name), content)
+		writeTestFile(t, filepath.Join(workspace, name+".expected"), content)
+	}
+	writeTestFile(t, filepath.Join(workspace, "Makefile"), ".PHONY: test\ntest:\n\t@i=0; while ! grep -q 'Value = 2' first_test.go; do i=$$((i+1)); test $$i -lt 400 || exit 1; sleep 0.05; done\n\t@sleep 1; printf 'check-passed\\n'\n")
+	command := "gofmt -w first_test.go second_test.go && cmp first_test.go first_test.go.expected && cmp second_test.go second_test.go.expected && printf 'formatter-no-op\\n' && mrun --max-tokens 2000 make test"
+	program := "// @exec: {\"yield_time_ms\": 2000}\nconst started = await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + ", yield_time_ms: 1000});\ntext(started.output);\nif (typeof started.session_id !== 'number') throw new Error('check did not yield');\nconst ended = await tools.write_stdin({session_id: started.session_id, chars: '', yield_time_ms: 10000});\ntext(ended.output);\nif (ended.exit_code !== 0) throw new Error('check failed');"
+	patch := "*** Begin Patch\n*** Update File: first_test.go\n@@\n-const Value = 1\n+const Value = 2\n*** End Patch\n"
+	provider := &mchangesNestedCodexProvider{
+		program: program, callID: "formatter-check", finalMessage: "formatter overlap completed", expectPending: true,
+		store: store, workspace: workspace, overlapProgram: "await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + ");",
+	}
+	thread := runMChangesNestedCodexCell(t, codex, registry, store, workspace, provider)
+	ctx, release, err := store.beginSession(t.Context(), thread, "formatter-overlap-read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	writer, found, err := store.scoped(ctx).lookup(ctx, workspace, legacycall.ExecCallID(provider.callID, true))
+	if err != nil || !found || writer.ExecOutcome == nil {
+		t.Fatalf("formatter terminal capture: found=%t error=%v history=%+v", found, err, writer)
+	}
+	t.Logf("formatter capture: change_id=%q coverage=%q scope_reason=%q files=%d", writer.ChangeID, writer.ExecOutcome.Coverage, writer.ExecOutcome.ScopeReason, len(writer.ReviewFiles))
+	if writer.ChangeID != "" || len(writer.ReviewFiles) != 0 || writer.ExecOutcome.Coverage != changecapture.CoverageExact || writer.ExecOutcome.Exit == nil || *writer.ExecOutcome.Exit != 0 {
+		t.Fatalf("no-op formatter captured overlapping edit or partial effects: %+v", writer)
+	}
+	edited, found, err := store.scoped(ctx).lookup(ctx, workspace, legacycall.PatchCallID(provider.callID+"-overlap", 0))
+	if err != nil || !found || edited.ChangeID == "" {
+		t.Fatalf("overlapping patch capture: found=%t error=%v history=%+v", found, err, edited)
+	}
+	net := runMChangesNestedShell(t, registry, workspace, thread, "mchanges "+edited.ChangeID)
+	history := runMChangesNestedShell(t, registry, workspace, thread, "mchanges "+edited.ChangeID+" --history")
+	t.Logf("patch %s: net_status=%d net_stderr=%q\n%s", edited.ChangeID, net.status, net.stderr, net.stdout)
+	if net.status != 0 || net.stderr != "" || !strings.Contains(net.stdout, "-const Value = 1\n+const Value = 2") || history.status != 0 || history.stderr != "" || strings.Contains(history.stdout, "overlapping writer endpoint unavailable") {
+		t.Fatalf("overlapping patch lost complete evidence: net=%+v history=%+v", net, history)
+	}
 }
 
 func TestMChangesNestedNativeCodexE2E(t *testing.T) {

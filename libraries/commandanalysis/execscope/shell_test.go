@@ -212,6 +212,40 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 	}
 }
 
+func TestClassifyMRunWrappers(t *testing.T) {
+	const workdir = "/work"
+	for _, pair := range [][2]string{
+		{"mrun -n 20 rm target", "rm target"},
+		{"mrun --max-tokens=2000 --tail -- cat target", "cat target"},
+		{"env -u BASH_ENV mrun --tail -n 20 -- rm target", "rm target"},
+		{"rtk proxy mrun -n 20 rm target", "rm target"},
+		{"mrun -n 20 env MODE=x rm target", "rm target"},
+		{"mrun -n 20 mrun --max-tokens 100 cat target", "cat target"},
+		{"mrun -n 20 gofmt -w target.go", "gofmt -w target.go"},
+		{"mrun -n 20 make test", "make test"},
+		{`mrun -n 20 rm "$TARGET"`, `rm "$TARGET"`},
+		{"mrun -n 20 ./rm target", "./rm target"},
+		{"mrun -n 20 cat source > target", "cat source > target"},
+		{"rm() { :; }; mrun -n 20 rm target", "rm target"},
+	} {
+		plan, child := classifyExecShell(pair[0], workdir, "bash"), classifyExecShell(pair[1], workdir, "bash")
+		if plan.Class != child.Class || plan.Reason != child.Reason || !slices.Equal(execPlanScope(plan, workdir), execPlanScope(child, workdir)) || !slices.Equal(plan.Programs, child.Programs) {
+			t.Errorf("wrapped %q: %+v, want child scope %+v", pair[0], plan, child)
+		}
+	}
+	for _, command := range []string{
+		"mrun rm target", "mrun -n 0 rm target", "mrun --help rm target",
+		"mrun -n 20 -n 30 rm target", "mrun --max-tokens 100 --max-tokens 200 rm target",
+		`mrun -n "$LIMIT" rm target`, `mrun -n 20 "$COMMAND" target`,
+		"./mrun -n 20 rm target", "/usr/bin/mrun -n 20 rm target",
+		"mrun() { command cat \"$@\"; }; mrun -n 20 rm target",
+	} {
+		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != Opaque || len(plan.Scope) != 0 {
+			t.Errorf("invalid or shadowed wrapper %q: %+v, want opaque without named targets", command, plan)
+		}
+	}
+}
+
 func TestClassifyReadCommandFormsWithoutFalseWriters(t *testing.T) {
 	for _, command := range []string{
 		`rg -n 'editPages|nativeStatus\(' internal/router/{app_server_events.go,live_activity_view.go,terminal_ui.go,native_shell.go,native_edit_navigation.go}`,

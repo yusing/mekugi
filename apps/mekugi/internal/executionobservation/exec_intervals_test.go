@@ -39,8 +39,10 @@ func TestExecCompletionOrderingSkipsUninterruptedHistory(t *testing.T) {
 }
 
 func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
-	for _, scenario := range []string{"completed", "failed", "no-continuation", "missing-boundary", "missing-prefix", "no-effect", "exec-overlap", "gofmt-cell-yield", "writer-first-command", "writer-first-patch"} {
+	for _, scenario := range []string{"completed", "failed", "no-continuation", "missing-boundary", "missing-prefix", "no-effect", "exec-overlap", "gofmt-cell-yield", "gofmt-mrun-no-effect", "writer-first-command", "writer-first-patch"} {
 		t.Run(scenario, func(t *testing.T) {
+			noEffect := scenario == "no-effect" || scenario == "gofmt-mrun-no-effect"
+			cellYield := scenario == "gofmt-cell-yield" || scenario == "gofmt-mrun-no-effect"
 			execOverlap := scenario == "exec-overlap" || scenario == "writer-first-command"
 			writerFirst := strings.HasPrefix(scenario, "writer-first-")
 			proxy := newManagedMekugiProxy(t)
@@ -51,7 +53,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			transform.sessionShell = "bash"
 			path := filepath.Join(workspace, "file.txt")
 			initial := "A\n"
-			if scenario == "no-effect" {
+			if noEffect {
 				initial = "B\n"
 			}
 			writeTestFile(t, path, initial)
@@ -86,6 +88,8 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			writerCommand := "printf 'B\\n' > file.txt"
 			if scenario == "gofmt-cell-yield" {
 				writerCommand = "gofmt -w file.txt; go test ./..."
+			} else if scenario == "gofmt-mrun-no-effect" {
+				writerCommand = "gofmt -w file.txt; mrun --max-tokens 2000 make test"
 			} else if scenario == "writer-first-command" || scenario == "no-continuation" {
 				writerCommand = "printf 'B\\n' > file.txt; gofmt -w file.txt; go test ./..."
 			}
@@ -98,7 +102,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			trace.end("thread-1", "writer-runtime")
 			writeTestFile(t, path, "B\n")
 			items = []any{writer, output("writer")}
-			if scenario == "gofmt-cell-yield" {
+			if cellYield {
 				items[1] = map[string]any{"type": "custom_tool_call_output", "call_id": "writer", "output": "Script running with cell ID writer-cell\nWall time 0.1 seconds\nOutput:\n"}
 			}
 			reconcile(proxy)
@@ -253,7 +257,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			}
 			var pendingPath string
 			var pendingIndex []byte
-			if scenario == "no-effect" {
+			if noEffect {
 				deps, err := store.changes.Dependencies(store.scoped(transform.ctx).changeScope(), workspace, []string{prefix.ChangeID}, false)
 				if err != nil {
 					t.Fatal(err)
@@ -269,7 +273,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 				}
 			}
 			last := "D"
-			if scenario == "no-continuation" || scenario == "no-effect" {
+			if scenario == "no-continuation" || noEffect {
 				last = "C"
 			}
 			writeTestFile(t, path, last+"\n")
@@ -281,7 +285,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			if scenario == "no-continuation" {
 				items = append(items, map[string]any{"type": "function_call", "call_id": "writer-stdin", "name": "write_stdin", "arguments": `{"session_id":101,"chars":""}`}, map[string]any{"type": "function_call_output", "call_id": "writer-stdin", "output": nativeExecOutput("Process exited with code 0")})
 			}
-			if scenario == "gofmt-cell-yield" {
+			if cellYield {
 				items = append(items, map[string]any{"type": "function_call", "call_id": "writer-wait", "name": "wait", "arguments": `{"cell_id":"writer-cell"}`}, map[string]any{"type": "function_call_output", "call_id": "writer-wait", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n"})
 			}
 			reconcile(proxy)
@@ -289,7 +293,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 			if terminal.ExecOutcome == nil || terminal.ExecOutcome.Exit == nil || *terminal.ExecOutcome.Exit != exit {
 				t.Fatalf("writer terminal identity/outcome: %+v", terminal)
 			}
-			if scenario == "no-effect" {
+			if noEffect {
 				if terminal.ChangeID != "" || len(terminal.ReviewFiles) != 0 {
 					t.Fatalf("no-effect writer kept a change: %+v", terminal)
 				}

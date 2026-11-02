@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
@@ -700,6 +701,27 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 	args := call.Args[1:]
 	for {
 		switch shellsyntax.InterpreterIdentity(name) {
+		case "mrun":
+			if name != "mrun" || slices.Contains(w.functions, name) {
+				break
+			}
+			values := make([]string, len(args))
+			for i, word := range args {
+				values[i], _ = shellsyntax.Literal(word)
+			}
+			_, child, err := commandargs.ParseRunOptions(values)
+			if err != nil {
+				break
+			}
+			// Keep the child's original words, including dynamic operands.
+			args = args[len(args)-len(child):]
+			// mrun starts an external process, outside the parent shell's
+			// functions, directory changes and option state.
+			inner := *w
+			inner.functions = nil
+			inner.call(&syntax.CallExpr{Args: args})
+			w.program, w.vcsOrigin = inner.program, inner.vcsOrigin
+			return
 		case "rtk":
 			// Only unwrap the known CLI, not a path-qualified replacement or a
 			// shell function. RTK itself must never become a file's author.

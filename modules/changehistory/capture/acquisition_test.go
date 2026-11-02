@@ -11,19 +11,22 @@ import (
 )
 
 func TestCapturePreviewAndNeutralCommandsSkipCheckpoints(t *testing.T) {
-	for _, preview := range []bool{false, true} {
-		t.Run(map[bool]string{false: "neutral", true: "preview"}[preview], func(t *testing.T) {
+	for _, scenario := range []struct {
+		name, command string
+		preview       bool
+	}{
+		{"neutral", "cat source.txt", false},
+		{"bounded-neutral", "mrun --max-tokens 100 cat source.txt", false},
+		{"preview", "printf after > source.txt", true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
 			workspace := t.TempDir()
-			command := "cat source.txt"
-			if preview {
-				command = "printf after > source.txt"
-			}
 			writeTestFile(t, filepath.Join(workspace, "source.txt"), "before\n")
 			snapshots := newWorkspaces(t.Context(), t.TempDir())
 			t.Cleanup(snapshots.Close)
-			observation, observed := Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false,
-				Options{Directory: workspace, Workspaces: snapshots, PreviewOnly: preview})
-			if observed != preview || len(snapshots.repos) != 0 || observation != nil && observation.Tree != "" {
+			observation, observed := Capture(t.Context(), []commandanalysis.Command{{Command: scenario.command, Workdir: workspace, Shell: "bash"}}, false, false,
+				Options{Directory: workspace, Workspaces: snapshots, PreviewOnly: scenario.preview})
+			if observed != scenario.preview || len(snapshots.repos) != 0 || observation != nil && observation.Tree != "" {
 				t.Fatalf("unexpected checkpoint: observed=%v observation=%+v repositories=%d", observed, observation, len(snapshots.repos))
 			}
 		})

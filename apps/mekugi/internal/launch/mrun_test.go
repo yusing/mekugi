@@ -11,8 +11,42 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
+
+func TestMRunChildPreservesCaptureShellState(t *testing.T) {
+	f := newMChangesSliceFixture(t, "mrun-child-scope")
+	git := exec.Command("git", "init", "--quiet", f.workspace)
+	git.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	if output, err := git.CombinedOutput(); err != nil {
+		t.Fatalf("initialize ignored-file fixture: %v: %s", err, output)
+	}
+	writeTestFile(t, filepath.Join(f.workspace, ".gitignore"), "*.go\n.state/\n.runtime/\n")
+	for _, name := range []string{"one.go", "two.go"} {
+		writeTestFile(t, filepath.Join(f.workspace, name), "package fixture;const Value=1\n")
+	}
+	source := "mrun -n 20 set +B; gofmt -w {one,two}.go"
+	before, observed := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: source, Workdir: f.workspace, Shell: "bash"}}, false, false,
+		changecapture.Options{Directory: f.workspace, Workspaces: f.store.snapshots})
+	if !observed || before == nil {
+		t.Fatal("missing formatter observation")
+	}
+	stdout, stderr, status := f.run(t, source)
+	if status != 0 {
+		t.Fatalf("formatter execution: status=%d stdout=%q stderr=%q", status, stdout, stderr)
+	}
+	result := changecapture.Reconcile(f.ctx, *before, changecapture.Comparison{Workspace: f.workspace, Workspaces: f.store.snapshots})
+	if !result.Complete || result.Coverage != changecapture.CoverageExact || len(result.Files) != 2 {
+		t.Fatalf("external child lost ignored formatter targets: %+v", result)
+	}
+	for _, file := range result.Files {
+		if !strings.Contains(file.Diff, "+const Value = 1") {
+			t.Fatalf("missing formatted file evidence: %+v", file)
+		}
+	}
+}
 
 func TestMRunFrontendPreservesHostStdinContinuation(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
