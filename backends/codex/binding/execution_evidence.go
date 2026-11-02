@@ -49,11 +49,9 @@ type RetainedExecution struct {
 
 // ExecutionCall describes recognized protocol evidence, not execution or success.
 type ExecutionCall struct {
-	CodeMode      bool
-	Native        bool
-	NativePayload bool
-	CellID        string
-	ResumeHandle  string
+	CodeMode     bool
+	Native       bool
+	ResumeHandle string
 }
 
 // ExecutionResumeHandle recognizes only literal host continuation arguments.
@@ -117,19 +115,9 @@ func ClassifyExecutionCall(item map[string]jsonv1.RawMessage, retained *Retained
 	}
 	name := strings.TrimPrefix(responses.StringField(item, "name"), "functions.")
 	call := ExecutionCall{ResumeHandle: ExecutionResumeHandle(item, execName)}
-	if after, ok := strings.CutPrefix(call.ResumeHandle, "cell:"); ok {
-		call.CellID = after
-	}
 	if retained != nil {
 		call.CodeMode = retained.CarrierKind == "custom"
 		call.Native = retained.CarrierKind == "function"
-		call.NativePayload = retained.ToolName == "exec_command"
-		if call.CodeMode && retained.ToolName == "exec" {
-			if nested, ok := SingleExecutionCall(retained.Script, true); ok {
-				name := responses.StringField(nested, "name")
-				call.NativePayload = name == "exec_command" || name == "write_stdin"
-			}
-		}
 		if call.CodeMode || call.Native {
 			return call
 		}
@@ -139,15 +127,12 @@ func ClassifyExecutionCall(item map[string]jsonv1.RawMessage, retained *Retained
 		call.Native = true
 	case strings.TrimPrefix(execName, "functions."):
 		call.CodeMode = true
-		if nested, ok := SingleExecutionCall(responses.StringField(item, "input"), true); ok {
-			call.NativePayload = responses.StringField(nested, "name") == "exec_command" || responses.StringField(nested, "name") == "write_stdin"
-		}
+
 	case "wait":
 		var args struct {
 			CellID string `json:"cell_id"`
 		}
 		if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args, jsonv1.DefaultOptionsV1()) == nil {
-			call.CellID = args.CellID
 			call.CodeMode = args.CellID != ""
 		}
 	}

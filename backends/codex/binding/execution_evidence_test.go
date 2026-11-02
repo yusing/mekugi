@@ -33,11 +33,11 @@ func TestExecutionEvidenceClassification(t *testing.T) {
 		want     ExecutionCall
 	}{
 		{"original native", map[string]string{"name": "functions.exec_command"}, nil, ExecutionCall{Native: true}},
-		{"original custom", map[string]string{"name": "functions.exec", "input": `text(await tools.exec_command({cmd:"pwd"}));`}, nil, ExecutionCall{CodeMode: true, NativePayload: true}},
+		{"original custom", map[string]string{"name": "functions.exec", "input": `text(await tools.exec_command({cmd:"pwd"}));`}, nil, ExecutionCall{CodeMode: true}},
 		{"missing retained opaque", map[string]string{"name": "exec", "input": `text("Process running with session ID 42");`}, nil, ExecutionCall{CodeMode: true}},
 		{"unknown retained fallback", map[string]string{"name": "exec_command"}, &RetainedExecution{CarrierKind: "unknown"}, ExecutionCall{Native: true}},
-		{"normalized retained native", map[string]string{"name": "unrecognized"}, &RetainedExecution{CarrierKind: "function", ToolName: "exec_command"}, ExecutionCall{Native: true, NativePayload: true}},
-		{"retained overrides original", map[string]string{"name": "exec_command"}, &RetainedExecution{CarrierKind: "custom", ToolName: "exec", Script: `text(await tools.write_stdin({session_id:42}));`}, ExecutionCall{CodeMode: true, NativePayload: true}},
+		{"normalized retained native", map[string]string{"name": "unrecognized"}, &RetainedExecution{CarrierKind: "function", ToolName: "exec_command"}, ExecutionCall{Native: true}},
+		{"retained overrides original", map[string]string{"name": "exec_command"}, &RetainedExecution{CarrierKind: "custom", ToolName: "exec", Script: `text(await tools.write_stdin({session_id:42}));`}, ExecutionCall{CodeMode: true}},
 		{"retained output lacks metadata", map[string]string{"name": "exec_command"}, &RetainedExecution{CarrierKind: "custom", ToolName: "exec", Script: `text((await tools.exec_command({cmd:"pwd"})).output);`}, ExecutionCall{CodeMode: true}},
 		{"foreign namespace", map[string]string{"namespace": "other", "name": "exec_command"}, &RetainedExecution{CarrierKind: "function", ToolName: "exec_command"}, ExecutionCall{}},
 	} {
@@ -55,14 +55,14 @@ func TestExecutionEvidenceResumeAndMetadata(t *testing.T) {
 		name, tool, args, source, handle string
 		want                             ExecutionCall
 	}{
-		{"wait", "functions.wait", `{"cell_id":"abc"}`, "", "cell:abc", ExecutionCall{CodeMode: true, CellID: "abc", ResumeHandle: "cell:abc"}},
+		{"wait", "functions.wait", `{"cell_id":"abc"}`, "", "cell:abc", ExecutionCall{CodeMode: true, ResumeHandle: "cell:abc"}},
 		{"native resume", "write_stdin", `{"session_id":42}`, "", "session:42", ExecutionCall{Native: true, ResumeHandle: "session:42"}},
 		{"output projection retains resume only", "exec", "", `const r = await tools.write_stdin({session_id:42}); text(r.output);`, "session:42", ExecutionCall{CodeMode: true, ResumeHandle: "session:42"}},
-		{"full result retains metadata", "exec", "", `const r = await tools.write_stdin({session_id:42}); text(r);`, "session:42", ExecutionCall{CodeMode: true, NativePayload: true, ResumeHandle: "session:42"}},
+		{"full result retains resume", "exec", "", `const r = await tools.write_stdin({session_id:42}); text(r);`, "session:42", ExecutionCall{CodeMode: true, ResumeHandle: "session:42"}},
 		{"printed handle is opaque", "exec", "", `text("session:42");`, "", ExecutionCall{CodeMode: true}},
 		{"invalid session", "write_stdin", `{"session_id":0}`, "", "", ExecutionCall{Native: true}},
 		{"malformed arguments", "wait", `{`, "", "", ExecutionCall{}},
-		{"v1 case insensitive and duplicate fields", "wait", `{"CELL_ID":"old","cell_id":"abc"}`, "", "cell:abc", ExecutionCall{CodeMode: true, CellID: "abc", ResumeHandle: "cell:abc"}},
+		{"v1 case insensitive and duplicate fields", "wait", `{"CELL_ID":"old","cell_id":"abc"}`, "", "cell:abc", ExecutionCall{CodeMode: true, ResumeHandle: "cell:abc"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			item := executionEvidenceItem(t, map[string]string{"name": tc.tool, "arguments": tc.args, "input": tc.source})
