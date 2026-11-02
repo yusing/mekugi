@@ -2,9 +2,11 @@ package launch
 
 import (
 	json "encoding/json/v2"
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/libraries/outputbudget"
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 	"os"
@@ -155,6 +157,65 @@ func TestContextChangesPreloadCompleteComposition(t *testing.T) {
 	if err != nil || !strings.Contains(claude, final) || !strings.Contains(claude, "mchanges:"+second+" "+first) {
 		t.Fatalf("Claude context lost change source: %v", err)
 	}
+	t.Run("bounded-completion", func(t *testing.T) {
+		completionSelection, _ := json.Marshal(map[string]any{"sources": []compact.Source{
+			{Changes: []string{second, first}}, {Changes: []string{first + ".." + second}}, {Changes: []string{first + "..100"}},
+		}})
+		retained, err := store.recovery.AttachStore(selected.Store, selected.Namespace, selected.Thread, store.retentionLimits(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		captured, err := executionobservation.ReadCompletion(t.Context(), string(completionSelection), caller, reader, retained)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if captured.Selection != string(completionSelection) || captured.Completion == nil || len(captured.Sources) != 0 {
+			t.Fatal("bounded completion lost selection or duplicated full sources")
+		}
+		result := captured.Completion
+		counter := outputbudget.Budget{}
+		tokens, err := counter.Count(result.Text())
+		if err != nil || tokens > executionobservation.CompletionTokens || result.ExitCode == 0 {
+			t.Fatalf("aggregate completion bound/status: %d tokens, exit %d, %v", tokens, result.ExitCode, err)
+		}
+		_, next, ok := strings.Cut(result.Stderr, "next_call: ")
+		args := strings.Fields(next)
+		if !ok || len(args) != 4 || args[0] != "mread" {
+			t.Fatalf("missing exact recovery: %q", result.Stderr)
+		}
+		// Reopen the recovery owner and follow its ordinary consuming interface.
+		reopened := testRecovery()
+		var recovered strings.Builder
+		for {
+			page, err := reopened.Execute(t.Context(), command.Request{Args: args[1:], Scope: scope.Retained{Directory: selected.Store.Directory(), Namespace: selected.Namespace, Thread: selected.Thread}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			recovered.WriteString(page.Stdout)
+			if page.ExitCode == 0 {
+				break
+			}
+			_, next, ok := strings.Cut(page.Stderr, "next_call: ")
+			if !ok || page.Stdout == "" {
+				t.Fatalf("recovery failed to advance: %s", page.Stderr)
+			}
+			args = strings.Fields(next)
+		}
+		var full strings.Builder
+		for _, source := range sources[:3] {
+			full.WriteString(source.Text())
+			full.WriteByte('\n')
+		}
+		if result.Stdout+recovered.String() != full.String() {
+			t.Fatal("continuation lost or repeated selected diff bytes or diagnostics")
+		}
+		if _, err := executionobservation.ReadCompletion(t.Context(), string(completionSelection), caller, reader, nil); err == nil {
+			t.Fatal("oversized completion exposed output without recovery")
+		}
+		if _, err := executionobservation.ReadCompletion(t.Context(), `{"sources":[{"path":"selected.txt"}]}`, caller, reader, retained); err == nil {
+			t.Fatal("completion acquired non-change source")
+		}
+	})
 	liveDiffScopeCapture(t, store, authored, "author", "inconsistent", path, "unwitnessed", "later")
 	latest, err := store.changes.Inspect(selected, authored)
 	if err != nil {

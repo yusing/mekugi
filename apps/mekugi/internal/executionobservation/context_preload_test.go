@@ -132,7 +132,12 @@ func testContextReload(t *testing.T, completion bool) {
 	if completion {
 		sources = []compact.CapturedSource{{Command: "mchanges amber1..3", Stdout: "complete body\ncomposed retained diff", Stderr: "permission denied", ExitCode: 1}}
 	}
-	result := compactTestSnapshot(t, p, compact.Snapshot{Selection: selection, Sources: sources})
+	snapshot := compact.Snapshot{Selection: selection, Sources: sources}
+	if completion {
+		snapshot.Completion = &sources[0]
+		snapshot.Sources = nil
+	}
+	result := compactTestSnapshot(t, p, snapshot)
 	items := []map[string]jsontext.Value{assignment, reader, {"type": mustTestJSON(t, "custom_tool_call_output"), "call_id": reader["call_id"], "output": mustTestJSON(t, result)}}
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": items, "tools": []any{}}))
 	if err != nil {
@@ -146,6 +151,64 @@ func testContextReload(t *testing.T, completion bool) {
 	visible := request.Fields["input"]
 	if !bytes.Contains(visible, []byte("complete body")) || !bytes.Contains(visible, []byte("permission denied")) || !bytes.Contains(visible, []byte("composed retained diff")) || bytes.Contains(visible, []byte(compact.SnapshotPrefix)) || !bytes.Equal(request.OriginalField("input"), mustTestJSON(t, items)) {
 		t.Fatalf("lost preload context or original history: %s", visible)
+	}
+	if completion {
+		mixed := snapshot
+		mixed.Sources = append(sources, sources[0])
+		mixedItems := append([]map[string]jsontext.Value{}, items...)
+		mixedItems[2] = map[string]jsontext.Value{"type": mustTestJSON(t, "custom_tool_call_output"), "call_id": reader["call_id"], "output": mustTestJSON(t, compactTestSnapshot(t, p, mixed))}
+		invalid, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": mixedItems, "tools": []any{}}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.prepareModelRequest(t.Context(), &invalid, "routing", "root", meta, true, false); err == nil {
+			t.Fatal("mixed completion/source snapshot accepted")
+		}
+		other := maps.Clone(assignment)
+		otherID := control.MessageItemID("second-child:final")
+		other["id"] = mustTestJSON(t, otherID)
+		raw, _, err := compactReaderCall(compact.Record{Reference: otherID, Selection: selection}, nil, "root")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var otherReader map[string]jsontext.Value
+		if err := json.Unmarshal(raw, &otherReader); err != nil {
+			t.Fatal(err)
+		}
+		multiple := append(append([]map[string]jsontext.Value{}, items...), other, otherReader, map[string]jsontext.Value{"type": mustTestJSON(t, "custom_tool_call_output"), "call_id": otherReader["call_id"], "output": mustTestJSON(t, result)})
+		for range 2 {
+			repeated, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": multiple, "tools": testExecResponsesTools()}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pending, _, _, err := p.preparePreloadInput(&repeated, "routing", "root", meta, false)
+			if err != nil || len(pending) != 0 {
+				t.Fatalf("completed readers reacquired: %s, %v", pending, err)
+			}
+			repeated.Fields["tools"] = mustTestJSON(t, []any{})
+			if _, err := p.prepareModelRequest(t.Context(), &repeated, "routing", "root", meta, true, false); err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Count(repeated.Fields["input"], []byte("composed retained diff")) != 2 {
+				t.Fatal("multiple completion attachments duplicated or lost")
+			}
+		}
+		for range 2 {
+			ref, err := p.StoreCompact(t.Context(), "root", "completed handoffs retained by summary", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			compacted, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": []any{map[string]string{"type": "compaction", "encrypted_content": ref}}, "tools": []any{}}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.prepareModelRequest(t.Context(), &compacted, "routing", "root", meta, true, false); err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(compacted.Fields["input"], []byte("composed retained diff")) {
+				t.Fatal("compaction replayed retired completion attachments")
+			}
+		}
 	}
 	for _, mode := range []string{"completed", "yielded", "foreign", "changed-program"} {
 		t.Run("ordinary-fork-"+mode, func(t *testing.T) {

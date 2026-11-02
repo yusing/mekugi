@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -255,11 +256,15 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 			if err := compact.CompletionSources(selection); err != nil {
 				return "Completion changes unavailable: " + err.Error(), nil
 			}
-			body, err := claudePreload(ctx, selection, settings.Workspace, environment, compact.ChangeReader{Service: owners.Changes.Service, Scope: e.retained})
+			retained, err := owners.Recovery.AttachStore(selected.Store, selected.Namespace, selected.Thread, selected.Limits, selected.Writes)
 			if err != nil {
 				return "Completion changes unavailable: " + err.Error(), nil
 			}
-			return body, nil
+			snapshot, err := executionobservation.ReadCompletion(ctx, selection, settings.Workspace, compact.ChangeReader{Service: owners.Changes.Service, Scope: e.retained}, retained)
+			if err != nil {
+				return "Completion changes unavailable: " + err.Error(), nil
+			}
+			return snapshot.Completion.Text(), nil
 		}
 		// Inherited full-session context already belongs to the SDK transcript.
 		// Acquire only this child's selected initial sources, once in its ledger.

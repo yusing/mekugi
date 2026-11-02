@@ -23,8 +23,9 @@ const SnapshotPrefix = "Reload snapshot: mread "
 func CaptureCommand(selection string) string { return "mreload " + commandargs.Quote(selection) }
 
 type Snapshot struct {
-	Selection string
-	Sources   []CapturedSource
+	Selection  string
+	Sources    []CapturedSource
+	Completion *CapturedSource `json:",omitempty"`
 }
 
 type CapturedSource struct {
@@ -32,6 +33,17 @@ type CapturedSource struct {
 	Stdout   string
 	Stderr   string
 	ExitCode int
+}
+
+func (s CapturedSource) Text() string {
+	body := s.Stdout
+	if s.Command != "" {
+		body = fmt.Sprintf("%s: exit_code=%d\n%s", s.Command, s.ExitCode, body)
+	}
+	if s.Stderr != "" {
+		body += "\n" + s.Stderr
+	}
+	return body
 }
 
 func Capture(ctx context.Context, request command.Request, changes ChangeReader) (command.Output, error) {

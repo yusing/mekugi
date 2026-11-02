@@ -459,7 +459,10 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		if err != nil {
 			return nil, err
 		}
-		if len(selected) != len(captured.Sources) {
+		if captured.Completion != nil && len(captured.Sources) != 0 {
+			return nil, errors.New("reload snapshot mixes completion and source results")
+		}
+		if captured.Completion == nil && len(selected) != len(captured.Sources) {
 			return nil, errors.New("reload snapshot source count mismatch")
 		}
 		if inherited {
@@ -475,16 +478,20 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		command := compact.CaptureCommand(captured.Selection)
 		var reloads []activity.ReloadSource
 		var parts []map[string]string
+		if captured.Completion != nil {
+			parts = append(parts, map[string]string{"type": "input_text", "text": captured.Completion.Text()})
+			var changes []string
+			for _, source := range selected {
+				changes = append(changes, source.Changes...)
+			}
+			reloads = append(reloads, activity.ReloadSource{Command: command, Changes: strings.Join(changes, " "), ExitCode: new(captured.Completion.ExitCode), Preload: true})
+		}
 		for i, source := range captured.Sources {
 			if selected[i].HostLoaded() {
 				continue
 			}
 			reloads = append(reloads, activity.ReloadSource{Command: command, Path: selected[i].Path, Skill: selected[i].Skill, Changes: strings.Join(selected[i].Changes, " "), ExitCode: new(source.ExitCode), Preload: assignment != ""})
-			body := fmt.Sprintf("%s: exit_code=%d\n%s", source.Command, source.ExitCode, source.Stdout)
-			if source.Stderr != "" {
-				body += "\n" + source.Stderr
-			}
-			parts = append(parts, map[string]string{"type": "input_text", "text": body})
+			parts = append(parts, map[string]string{"type": "input_text", "text": source.Text()})
 		}
 		outputs[id] = responses.MustMarshalJSON(parts)
 		if !prewarm && metadata.RequestKind == responses.Turn {
