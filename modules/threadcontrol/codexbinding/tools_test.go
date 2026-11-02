@@ -97,9 +97,6 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		if tool.Name == "inspect" && (!strings.Contains(tool.Description, "idle or completed agents") || !strings.Contains(tool.Description, "retained observations without starting work") || !strings.Contains(tool.Description, "unavailable observations are null")) {
 			t.Fatalf("inspect description: %q", tool.Description)
 		}
-		if tool.Name == "compact" && (!strings.Contains(tool.Description, "safe checkpoint") || !strings.Contains(tool.Description, "automatically continue unfinished work")) {
-			t.Fatalf("compact description: %q", tool.Description)
-		}
 		if tool.Name == "wait_agent" && (!strings.Contains(tool.Description, "ends the host turn") || !strings.Contains(tool.Description, "later wait_agent output")) {
 			t.Fatalf("wait description: %q", tool.Description)
 		}

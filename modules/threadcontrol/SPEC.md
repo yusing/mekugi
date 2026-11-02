@@ -94,7 +94,9 @@ native request metadata remains unchanged on the provider wire.
   observations without starting work or restoring an inactive runtime.
 - `compact` schedules an authenticated self-directed context checkpoint and then
   continues unfinished work once. Context-usage reminders appear starting at 50%;
-  agents choose safe checkpoints rather than compacting at an automatic threshold.
+  agents choose safe checkpoints where discarding obsolete context materially
+  reduces what remaining work must carry. Small steps, preloads and waiting
+  transitions alone do not call for compaction; notices are not automatic triggers.
 - `wait_agent` accepts `target?: string[] | "all"`, `wait_mode?: "any" | "all"`,
   `timeout_ms?: integer`, and `compact?: boolean`. Omitted target means `"all"`;
   omitted mode means `"any"`; omitted compaction means false.
