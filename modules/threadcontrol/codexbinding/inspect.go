@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"strings"
 
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -17,7 +18,20 @@ func (d *Driver) inspectAgent(ctx context.Context, caller control.Identity, raw 
 	}
 	target, err := d.control.Target(caller, args.Target)
 	if err != nil {
-		return nil, err
+		peer, err := d.peer(caller, args.Target)
+		if err != nil {
+			return nil, err
+		}
+		details, err := peer.Runtime.Inspect(ctx, peer.Target.Thread)
+		if err != nil {
+			return nil, err
+		}
+		return struct {
+			Thread  string `json:"thread_id"`
+			Task    string `json:"task_name"`
+			Session string `json:"session_id"`
+			control.SessionDetails
+		}{peer.Target.Thread, peer.Target.Task, peer.Target.Session, details}, nil
 	}
 	details, err := d.native().Inspect(ctx, target.Thread)
 	if err != nil {
@@ -42,6 +56,13 @@ func (d *Driver) waitMetrics(ctx context.Context, thread string, result *control
 	result.Metrics = make(map[string]control.SessionMetrics, len(result.Targets))
 	for _, target := range result.Targets {
 		result.Metrics[target] = control.SessionMetrics{}
+		if !strings.HasPrefix(target, "/") {
+			if owner, err := d.native().Runtime(target); err == nil {
+				if details, err := owner.Inspect(ctx, target); err == nil {
+					result.Metrics[target] = details.SessionMetrics
+				}
+			}
+		}
 	}
 	for _, member := range d.control.Descendants(thread) {
 		if _, selected := result.Metrics[member.Task]; selected {

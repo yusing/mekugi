@@ -318,6 +318,9 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			}
 		case "message":
 			effect.Outcome = tree.Members[effect.Caller].Status
+			if effect.Origin != nil {
+				effect.Outcome = effect.Origin.Status
+			}
 		}
 		if effect.Kind == "create" && effect.State == "pending" && member != nil && member.Status == Paused {
 			effect.State = "paused"
@@ -356,6 +359,9 @@ func (effect Effect) delivered() bool {
 
 func (tree *Tree) event(effect Effect) *Event {
 	event := &Event{ID: effect.Caller + ":" + effect.ID + ":event", Recipient: effect.Target, Source: effect.Caller, Task: tree.Members[effect.Caller].Task, Turn: effect.CallerTurn, Generation: effect.CallerGeneration, Kind: string(effect.Outcome), Status: effect.Outcome}
+	if effect.Origin != nil {
+		event.Source, event.Task, event.Session = effect.Origin.Thread, effect.Origin.Sender(), effect.Origin.Session
+	}
 	if effect.Kind == "message" {
 		event.Kind, event.Message = "message", effect.Message
 	}

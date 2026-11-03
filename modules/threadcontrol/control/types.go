@@ -3,8 +3,10 @@ package control
 
 import (
 	"encoding/json/jsontext"
-	"github.com/yusing/mekugi/contracts/guidance"
+	"maps"
 	"time"
+
+	"github.com/yusing/mekugi/contracts/guidance"
 )
 
 type Status string
@@ -93,6 +95,7 @@ type Wait struct {
 	Metrics                  map[string]SessionMetrics
 	Item, Stop, ResumeHandle string
 	Targets                  []string
+	Foreign                  map[string]RemoteTarget `json:",omitzero"`
 	All                      bool
 	Mode                     WaitMode
 	Terminals                []Event
@@ -119,6 +122,7 @@ func (wait *Wait) View(tree *Tree) map[string]any {
 }
 
 type Event struct {
+	Session    string `json:"session_id,omitempty"`
 	ID         string `json:"id"`
 	Recipient  string `json:"recipient"`
 	Source     string `json:"source"`
@@ -144,6 +148,7 @@ type Effect struct {
 	CallerGeneration, Generation                                                        uint64
 	Consumed                                                                            bool
 	PreviousStatus, Outcome                                                             Status
+	Origin                                                                              *Origin `json:",omitzero"`
 	Child                                                                               *Child
 	Wake                                                                                *WaitResult `json:"-"`
 }
@@ -243,6 +248,7 @@ func (tree *Tree) edit(thread string) *Member {
 		member := *current
 		if current.Wait != nil {
 			member.Wait = new(*current.Wait)
+			member.Wait.Foreign = maps.Clone(current.Wait.Foreign)
 			if current.Wait.Compaction != nil {
 				member.Wait.Compaction = new(*current.Wait.Compaction)
 			}

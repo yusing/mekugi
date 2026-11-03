@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -77,7 +78,7 @@ func descendants(tree *Tree, caller *Member, targets []string, all bool) ([]stri
 func selectedEvent(tree *Tree, wait *Wait) *Effect {
 	for i := range tree.Effects {
 		effect := &tree.Effects[i]
-		if effect.delivered() && !effect.Consumed && effect.Target == wait.Caller && effect.ClaimedBy == "" && slices.Contains(wait.Targets, effect.Caller) {
+		if effect.delivered() && !effect.Consumed && effect.Target == wait.Caller && effect.ClaimedBy == "" && slices.Contains(wait.Targets, effect.source()) {
 			return effect
 		}
 	}
@@ -100,7 +101,7 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 		result.Event = new(*wait.Terminal)
 	}
 	for _, target := range wait.Targets {
-		if member := tree.Members[target]; member != nil {
+		if member := tree.waitMember(wait, target); member != nil {
 			result.Targets = append(result.Targets, member.Task)
 		}
 	}
@@ -161,7 +162,7 @@ func (tree *Tree) selectWaitOutcome(wait *Wait) bool {
 		return false // Only captured active work can supply a terminal-outcome wake.
 	}
 	for _, id := range wait.Targets {
-		member := tree.Members[id]
+		member := tree.waitMember(wait, id)
 		if member == nil || member.HostRunning || member.Status != Completed && member.Status != Failed && member.Status != Interrupted && member.Status != Paused {
 			continue
 		}
@@ -175,7 +176,7 @@ func (tree *Tree) selectWaitOutcome(wait *Wait) bool {
 		if pending {
 			continue
 		}
-		wait.Terminal = &Event{ID: wait.ID + ":stopped:" + id, Recipient: wait.Caller, Source: id, Task: member.Task, Turn: member.Turn, Generation: member.Generation, Kind: string(member.Status), Status: member.Status}
+		wait.Terminal = tree.stoppedEvent(wait, member)
 		return true
 	}
 	return false
@@ -192,7 +193,7 @@ func (tree *Tree) selectAllWaitOutcomes(wait *Wait) bool {
 	pending := make(map[string]bool)
 	for i := range tree.Effects {
 		effect := &tree.Effects[i]
-		if effect.Target != wait.Caller || !selected[effect.Caller] {
+		if effect.Target != wait.Caller || !selected[effect.source()] {
 			continue
 		}
 		if effect.Kind == "message" && effect.delivered() && !effect.Consumed && effect.ClaimedBy == "" {
@@ -211,7 +212,7 @@ func (tree *Tree) selectAllWaitOutcomes(wait *Wait) bool {
 		}
 	}
 	for _, id := range wait.Targets {
-		member := tree.Members[id]
+		member := tree.waitMember(wait, id)
 		if member == nil || member.HostRunning || member.Status != Completed && member.Status != Failed && member.Status != Interrupted && member.Status != Paused || pending[id] {
 			return false
 		}
@@ -220,23 +221,27 @@ func (tree *Tree) selectAllWaitOutcomes(wait *Wait) bool {
 		if effect := outcomes[id]; effect != nil {
 			effect.ClaimedBy = wait.ID
 		} else {
-			member := tree.Members[id]
-			wait.Terminals = append(wait.Terminals, Event{ID: wait.ID + ":stopped:" + id, Recipient: wait.Caller, Source: id, Task: member.Task, Turn: member.Turn, Generation: member.Generation, Kind: string(member.Status), Status: member.Status})
+			member := tree.waitMember(wait, id)
+			wait.Terminals = append(wait.Terminals, *tree.stoppedEvent(wait, member))
 		}
 	}
 	return true
 }
 
+func (s *Service) RegisterForeignWait(ctx context.Context, caller Identity, targets []string, mode WaitMode, timeout *int64, now time.Time, compact bool, foreign map[string]RemoteTarget) (WaitResult, error) {
+	return s.registerWait(ctx, caller, targets, false, mode, timeout, now, compact, false, foreign)
+}
+
 func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time) (result WaitResult, err error) {
-	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, false, false)
+	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, false, false, nil)
 }
 
 // RegisterCompaction registers the checkpoint and optional wait in one transaction.
 func (s *Service) RegisterCompaction(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, standalone bool) (WaitResult, error) {
-	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, true, standalone)
+	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, true, standalone, nil)
 }
 
-func (s *Service) registerWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, compact, standalone bool) (result WaitResult, err error) {
+func (s *Service) registerWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, compact, standalone bool, foreign map[string]RemoteTarget) (result WaitResult, err error) {
 	if mode == "" {
 		mode = WaitAny
 	}
@@ -268,7 +273,26 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, targets []s
 		var selected []string
 		if !standalone {
 			var err error
-			selected, err = descendants(tree, member, targets, all)
+			if len(foreign) == 0 {
+				selected, err = descendants(tree, member, targets, all)
+			} else {
+				for _, target := range targets {
+					if _, ok := foreign[target]; ok {
+						if !slices.Contains(selected, target) {
+							selected = append(selected, target)
+						}
+					} else {
+						var local []string
+						local, err = descendants(tree, member, []string{target}, false)
+						if err != nil {
+							break
+						}
+						if !slices.Contains(selected, local[0]) {
+							selected = append(selected, local[0])
+						}
+					}
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -280,6 +304,7 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, targets []s
 			return err
 		}
 		wait := &Wait{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered", Item: caller.Item, Targets: selected, All: all, Mode: mode}
+		wait.Foreign = maps.Clone(foreign)
 		wait.Standalone = standalone
 		if compact {
 			wait.Compaction = &Effect{ID: caller.Call + ":compact", Caller: caller.Thread, Target: caller.Thread, CallerTurn: caller.Turn, Generation: member.Generation, Kind: "compact", State: "registered"}

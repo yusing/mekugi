@@ -122,37 +122,39 @@ type Server struct {
 	family        func() (*Family, *changes.ReviewView)
 	questionOwner func(string) *Server
 
-	mu              sync.Mutex
-	requests        threadcontrol.Runtime
-	sideThreads     func(string) bool
-	childAttachment func(context.Context, string, string) error
-	childAttach     sync.Mutex
-	published       bool
-	attachment      uint64
-	readAttachment  string
-	contentVersions map[string]uint64
-	sharedDeferred  map[string]bool
-	session         Session
-	playback        *Playback
-	input           *Input
-	prompts         jsontext.Value
-	status          jsontext.Value
-	main            feed
-	agents          feed
-	roster          jsontext.Value
-	rosterSource    *activitypresentation.Publication
-	rosterValue     *roster
-	rosterRevision  uint64
-	review          jsontext.Value
-	reviewRevision  uint64
-	reviewWorkspace string
-	reviewSource    *changes.ReviewView
-	livePreviews    jsontext.Value
-	subscribers     map[chan publication]struct{}
-	identity        Summary
-	frame           atomic.Pointer[Frame] // Raw local input; family projections never feed back here.
-	summary         []byte                // The latest summary event.
-	summaryChanged  chan struct{}
+	mu                  sync.Mutex
+	requests            threadcontrol.Runtime
+	coordination        *threadcontrol.Service
+	deliverCoordination func(context.Context, string) error
+	sideThreads         func(string) bool
+	childAttachment     func(context.Context, string, string) error
+	childAttach         sync.Mutex
+	published           bool
+	attachment          uint64
+	readAttachment      string
+	contentVersions     map[string]uint64
+	sharedDeferred      map[string]bool
+	session             Session
+	playback            *Playback
+	input               *Input
+	prompts             jsontext.Value
+	status              jsontext.Value
+	main                feed
+	agents              feed
+	roster              jsontext.Value
+	rosterSource        *activitypresentation.Publication
+	rosterValue         *roster
+	rosterRevision      uint64
+	review              jsontext.Value
+	reviewRevision      uint64
+	reviewWorkspace     string
+	reviewSource        *changes.ReviewView
+	livePreviews        jsontext.Value
+	subscribers         map[chan publication]struct{}
+	identity            Summary
+	frame               atomic.Pointer[Frame] // Raw local input; family projections never feed back here.
+	summary             []byte                // The latest summary event.
+	summaryChanged      chan struct{}
 }
 
 // ActiveThread queries the supplied execution registry. It grants no ownership

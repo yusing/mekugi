@@ -48,6 +48,10 @@ type threadSetup struct {
 	approvals   bool
 }
 
+func (e *threadExecution) Peer(caller control.Identity, target string) (control.Peer, error) {
+	return e.hub.Peer(caller, target)
+}
+
 func (e *threadExecution) Runtime(thread string) (control.Runtime, error) {
 	return e.hub.Requests(thread)
 }

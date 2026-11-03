@@ -78,6 +78,9 @@ type Action struct {
 
 func (tree *Tree) action(effect Effect) (Action, error) {
 	action := Action{Effect: effect, Sender: tree.Members[effect.Caller].Task, Recipient: tree.Members[effect.Target].Task}
+	if effect.Origin != nil {
+		action.Sender = effect.Origin.Sender()
+	}
 	if effectStep(effect) == "initial" {
 		settings, err := detach(tree.Members[effect.Target].Settings)
 		if err != nil {

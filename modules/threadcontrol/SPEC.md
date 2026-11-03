@@ -8,6 +8,11 @@ cancel the wait. Compact-and-wait is atomic: compaction failure retains the wait
 reports failure with the eventual outcome. Independent delegate questions do not replace
 assignments or ordinary messages/follow-ups.
 
+Active Mekugi sessions can exchange messages, including independent side questions,
+and inspect, list or wait for agents across session boundaries. Foreign recipients
+receive the authenticated source session and sender identity. Communication within
+one session retains its existing behavior and receipt format.
+
 Checkpoint layout, native admission phases, transport, identifiers and dispatch
 machinery below are current design.
 
@@ -86,7 +91,8 @@ native request metadata remains unchanged on the provider wire.
   one cancels its wait and settles interrupted, retaining the thread for later work.
   Request acknowledgement alone is not completion.
 - `list_agents` reads admitted tree state, including pending, paused and uncertain
-  work/delivery identities, with the existing `path_prefix` filter.
+  work/delivery identities, with the existing `path_prefix` filter. Optional
+  `session_id` selects another active Mekugi session by exact session/thread ID.
 - `inspect` reads an admitted agent by `target`, including `agent:main` and idle
   or completed agents. It reports applied model, reasoning effort and service tier, context
   usage/window, and completed compactions. Unavailable observations are `null`,
@@ -103,7 +109,7 @@ native request metadata remains unchanged on the provider wire.
 
 Follow-up acknowledgements include the target's current context and compaction
 metrics. Immediate wait results and resumed wait outputs include those same metrics
-for each selected target, keyed by visible agent name. Unavailable observations
+for each selected target, keyed by visible agent name or foreign thread ID. Unavailable observations
 are `null` without failing an otherwise successful coordination operation.
 Dispatched wait metrics freeze with that wait's existing checkpoint so a resumed
 runtime can confirm the exact retained continuation without replacing its facts.
@@ -112,6 +118,29 @@ Host MCP thread/session/turn/call/item metadata binds each call to admitted owne
 Task labels and tool arguments confer no authority. Members communicate with
 admitted peers/ancestors and control non-root targets in their tree. Human/session
 control retains root authority. Foreign, retired or conflicting callers reject.
+
+### Active-session coordination
+
+Same-tree names resolve first. `send_message`, `inspect` and explicit `wait_agent`
+selections also accept exact thread IDs owned by another active Mekugi session.
+`list_agents.session_id` selects that session's admitted tree and retains its
+prefix filter. A registered runtime authenticates both source ownership and target
+availability; aliases never cross session boundaries. Unavailable runtimes fail
+without being resumed. Foreign message and inspection receipts identify the target
+session. Ordinary input carries the source root session and sender as delivery
+metadata; side questions prefix those identities to the question text.
+
+Foreign waits can mix local descendants and foreign threads in either selection
+mode. Foreign status references remain outside the caller's logical tree and its
+completion guards. Addressed messages use the recipient's ordinary retained
+delivery and wait lifecycle. Runtime termination settles a pending foreign target
+as unavailable. Compaction, enclosing-execution completion and new-input
+supersession retain the ordinary wait semantics. Omitted targets and `"all"`
+continue to select only local descendants.
+
+Cross-session coordination does not grant spawn, follow-up, interruption or
+compaction authority over the foreign tree. It does not import another product's
+sessions or provide cross-product resume compatibility.
 
 Codex retains execution admission and resource failures; Mekugi imposes no
 thread-count cap. Effective Codex V2 configuration supplies timeout bounds.
@@ -330,9 +359,10 @@ registered or queued wait; a child turn requires its retained work reservation.
 Observed attributed items in admitted model input consume only their exact
 unclaimed notifications, so reading input does not generate a later duplicate wake.
 
-Selection resolves once to immutable visible descendant identities. `"all"`
-snapshots that set; empty, unknown, ambiguous, foreign, self and ancestor selections
-reject. In `any` mode, a selected queued event returns immediately, leaving others queued.
+Selection resolves once to local descendant identities or exact active foreign
+thread IDs. `"all"` snapshots local descendants; empty, unknown, ambiguous, local
+self and ancestor selections reject. In `any` mode, a selected queued event
+returns immediately, leaving others queued.
 In `all` mode, every selected agent must settle before completion; failures and
 interruptions count as settled. Pending result deliveries finish before the wait
 returns all selected outcomes in `events`. A selected addressed message wakes either

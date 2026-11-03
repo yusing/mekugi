@@ -281,6 +281,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		return err
 	}
 	api.BindRequests(runtime)
+	api.BindCoordination(e.shared, e.driver.DeliverMessages)
 	api.BindChildAttachment(e.AttachChild)
 	projection := sessionreview.Projection{Changes: owners.Changes.Service, Retained: e.retained}
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{settings.Workspace: {info.Thread: true}}}

@@ -105,6 +105,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	session.resumeArgv = slices.Clone(session.resumeArgv)
 	session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
 	api.BindRequests(session.Client.Requests)
+	api.BindCoordination(threads.shared, threads.driver.DeliverMessages)
 	if session.preparer != nil {
 		session.Client.Requests.PrepareCompletion = session.preparer.PrepareCompletion
 	}

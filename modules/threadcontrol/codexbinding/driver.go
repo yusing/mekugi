@@ -13,21 +13,22 @@ import (
 )
 
 type Driver struct {
-	control      *control.Service
-	mu           sync.RWMutex
-	host         control.Native
-	audience     ChildAudience
-	models       []Model
-	catalogError error
-	lifecycle    context.Context
-	cancel       context.CancelFunc
-	thread       string
-	pending      []hostObservation
-	wake         chan struct{}
-	failures     map[string]error
-	changed      chan struct{}
-	stopped      chan struct{}
-	auxiliary    sync.WaitGroup
+	control        *control.Service
+	mu             sync.RWMutex
+	host           control.Native
+	audience       ChildAudience
+	models         []Model
+	catalogError   error
+	lifecycle      context.Context
+	cancel         context.CancelFunc
+	thread         string
+	pending        []hostObservation
+	wake           chan struct{}
+	failures       map[string]error
+	changed        chan struct{}
+	stopped        chan struct{}
+	auxiliary      sync.WaitGroup
+	foreignWatches map[string]bool
 }
 
 func NewDriver(service *control.Service) (*Driver, error) {
@@ -145,7 +146,11 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 			return err
 		}
 		var owner control.Runtime
-		owner, callErr = d.native().Resume(ctx, effect.Target)
+		if effect.Origin != nil {
+			owner, callErr = d.native().Runtime(effect.Target)
+		} else {
+			owner, callErr = d.native().Resume(ctx, effect.Target)
+		}
 		if callErr != nil {
 			callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: callErr}
 		}

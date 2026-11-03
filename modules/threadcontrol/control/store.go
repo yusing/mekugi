@@ -32,6 +32,7 @@ type treeOwner struct {
 	session  history.Session
 	mutation sync.Mutex
 	state    atomic.Pointer[Tree]
+	changed  chan struct{}
 }
 
 const checkpointVersion = 4
@@ -113,7 +114,7 @@ func (s *Service) admitRoot(ctx context.Context, session history.Session, root *
 		s.mu.Unlock()
 		return errors.New("thread-control root is already admitted")
 	}
-	owner := &treeOwner{session: session}
+	owner := &treeOwner{session: session, changed: make(chan struct{})}
 	s.trees[session.Thread] = owner
 	s.mu.Unlock()
 	defer func() {
@@ -223,6 +224,10 @@ func (o *treeOwner) publish(ctx context.Context, state *Tree) error {
 	})
 	if err == nil {
 		o.state.Store(state)
+		if o.changed != nil {
+			close(o.changed)
+		}
+		o.changed = make(chan struct{})
 	}
 	return err
 }
