@@ -723,7 +723,7 @@ func agentTimer(agent activitypresentation.Agent, now time.Time) string {
 		return ""
 	}
 	elapsed := agent.WorkElapsed
-	duration := FormatDuration(elapsed)
+	duration := activitypresentation.FormatDuration(elapsed)
 	if !agent.WorkSince.IsZero() {
 		elapsed += max(0, now.Sub(agent.WorkSince))
 		duration = FormatLiveDuration(elapsed)
@@ -1033,7 +1033,7 @@ func Last(last, now time.Time) string {
 	if age < 2*time.Second {
 		return "just now"
 	}
-	return FormatDuration(age) + " ago"
+	return activitypresentation.FormatDuration(age) + " ago"
 }
 
 // MetricTable reserves stable timer, input/output, cost, and turn slots even

@@ -96,6 +96,11 @@ func (session *nativeSession) sessionEvent(attached *attachedPresentation, termi
 		endTurnPreviews(session.execWindows, session.review, attached.cwd, terminal, presentationTime(clock), p.ThreadID, p.Turn.ID)
 	}
 	result := sessionpresentation.ReduceObservation(s, attached.presentation, attached.source, attached.childSource, attached.transcript, session.activity.Outputs(s.Scope()), facts)
+	if result.Compaction != nil {
+		if err := retainCompaction(session.retainedSession, *result.Compaction); err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Compaction measurements could not be retained: "+err.Error(), true)
+		}
+	}
 	if result.Started && session.review != nil {
 		session.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 	}

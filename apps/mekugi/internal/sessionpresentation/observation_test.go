@@ -263,3 +263,80 @@ func TestCommandReportCountLimitsPreserveAttribution(t *testing.T) {
 		t.Fatalf("count limit affected sibling results: %+v", values)
 	}
 }
+
+func TestUISnapshotCompactionMeasurements(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		t.Run(thread, func(t *testing.T) {
+			var attached Attachment
+			attached.Start("main")
+			attached.RegisterThread(observation.Thread{ID: thread, Path: "/root/" + thread})
+			feeds := attached.Activity()
+			main := &ActivitySource{Model: &feeds.Main, Audience: MainAudience}
+			child := &ActivitySource{Model: &feeds.Children, Audience: ChildAudience}
+			model := new(Model)
+			model.Attach(Thread{ID: "main", Caller: "/root/main"}, false)
+			var text transcript.State
+			var outputs feed.Retention
+			at := time.Unix(100, 0)
+			reduce := func(kind observation.Kind, item observation.Item) {
+				in := ObservationInput{Main: "main", Selected: "turn", Event: observation.Event{Kind: kind, ThreadID: thread, TurnID: "turn", ItemID: item.ID, Item: item, At: at}}
+				ReduceObservation(&attached, model, main, child, &text, &outputs, in)
+			}
+			reduce(observation.TurnStarted, observation.Item{})
+			agent := attached.Agent(attached.KnownCaller(thread))
+			agent.ContextKnown, agent.ContextTokens, agent.ContextWindow = true, 171300, 285000
+			item := observation.Item{ID: "compact", Type: "contextCompaction", Status: "inProgress"}
+			reduce(observation.ItemStarted, item)
+			if agent.ContextKnown {
+				t.Fatal("start did not invalidate context")
+			}
+			at = at.Add(time.Second)
+			agent.ContextKnown, agent.ContextTokens = true, 4000
+			reduce(observation.ItemStarted, item)
+			at = at.Add(64 * time.Second)
+			item.Status = "completed"
+			reduce(observation.ItemCompleted, item)
+			reduce(observation.ItemCompleted, item)
+			var value activity.Value
+			for _, record := range child.Entries {
+				if record.Source.Kind == "compaction" {
+					value = record.Values[0]
+				}
+			}
+			if value.Label != "Context compacted at 171300 tokens (60%) • 1m5s" {
+				t.Fatalf("start measurement or timing changed: %+v", value)
+			}
+			view := terminalview.NewView()
+			view.Painter.Theme = diffrender.DarkTheme
+			rows := view.Painter.Block(terminalview.Block{Value: value}, 100)
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/compaction-measurements.txt", append(rows, "plain after compaction"), 100)
+		})
+	}
+}
+
+func TestCompactionUnknownAndRetainedMeasurements(t *testing.T) {
+	for _, test := range []struct {
+		context *observation.Context
+		elapsed *int64
+		want    string
+	}{
+		{want: "Context compacted"},
+		{context: &observation.Context{Known: true}, elapsed: new(int64(0)), want: "Context compacted at 0 tokens • 0s"},
+		{context: &observation.Context{Known: true, Tokens: 1200, Window: 2000}, elapsed: new(int64(900)), want: "Context compacted at 1200 tokens (60%) • 900ms"},
+	} {
+		var attached Attachment
+		attached.Start("main")
+		attached.RegisterThread(observation.Thread{ID: "main", Path: "/root"})
+		feeds := attached.Activity()
+		main := &ActivitySource{Model: &feeds.Main, Audience: MainAudience}
+		child := &ActivitySource{Model: &feeds.Children, Audience: ChildAudience}
+		model := new(Model)
+		var text transcript.State
+		var outputs feed.Retention
+		item := observation.Item{ID: "historic", Type: "contextCompaction", Status: "completed", CompactionContext: test.context, DurationMS: test.elapsed}
+		ReduceObservation(&attached, model, main, child, &text, &outputs, ObservationInput{Main: "main", Event: observation.Event{Kind: observation.ItemCompleted, ThreadID: "main", TurnID: "turn", Item: item, At: time.Unix(100, 0)}})
+		if got := main.Entries[0].Values[0].Label; got != test.want {
+			t.Fatalf("got %q, want %q", got, test.want)
+		}
+	}
+}

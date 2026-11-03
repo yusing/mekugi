@@ -2,9 +2,12 @@ package presentation
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/contracts/observation"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 )
@@ -23,7 +26,10 @@ type ItemContent struct {
 type DirectedContent struct{ From, To, Text string }
 
 type ItemDetails struct {
-	ToolDetail                            string `json:",omitempty"`
+	CompactionContext                     *observation.Context `json:"-"`
+	CompactionElapsed                     time.Duration        `json:"-"`
+	CompactionTimed                       bool                 `json:"-"`
+	ToolDetail                            string               `json:",omitempty"`
 	Reload                                []ReloadSource
 	CommandText, Status, Timeout, Workdir string
 	ReasoningLive, WaitLive               bool
@@ -180,7 +186,19 @@ func (entry ItemContent) Values() (blocks []Value) {
 		}
 		return []Value{{Kind: "error", Body: text, Label: entry.Agent, Owner: entry.Agent}}
 	case "compaction":
-		return []Value{{Kind: "compaction", Label: "Context compacted", Body: source}}
+		label := "Context compacted"
+		if n := entry.Details; n != nil {
+			if c := n.CompactionContext; c != nil && c.Known {
+				label += fmt.Sprintf(" at %d tokens", c.Tokens)
+				if c.Window > 0 {
+					label += fmt.Sprintf(" (%.0f%%)", 100*float64(c.Tokens)/float64(c.Window))
+				}
+			}
+			if n.CompactionTimed {
+				label += " • " + FormatDuration(n.CompactionElapsed)
+			}
+		}
+		return []Value{{Kind: "compaction", Label: label, Body: source}}
 	case "tool":
 		if n := entry.Details; n != nil && len(n.Reload) != 0 {
 			for _, source := range n.Reload {

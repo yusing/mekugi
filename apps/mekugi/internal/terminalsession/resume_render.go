@@ -6,7 +6,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 	"strings"
 	"time"
 )
@@ -19,7 +19,7 @@ func resumePickerAge(now time.Time, updated int64) string {
 	if d < time.Second {
 		return "now"
 	}
-	return activityui.FormatDuration(d) + " ago"
+	return presentation.FormatDuration(d) + " ago"
 }
 
 // The picker replaces Main, as the stock resume screen replaces the chat.

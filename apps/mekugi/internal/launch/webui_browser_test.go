@@ -545,7 +545,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	// Source semantics reach both the compact feed and its retained disclosures.
 	shell := activitypresentation.ItemContent{Seq: 92, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e\nset -u\nset -o pipefail\nplane comment ITEM --body - <<'EOF'\nA retained comment.\nEOF\nplane update ITEM", "")}
 	single := activitypresentation.ItemContent{Seq: 91, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e; plane update ITEM", "")}
-	compaction := activitypresentation.ItemContent{Seq: 94, Agent: "Main", Kind: "compaction", Text: "Retained compacted summary."}
+	compaction := activitypresentation.ItemContent{Seq: 94, Agent: "Main", Kind: "compaction", Text: "Retained compacted summary.", Details: &activitypresentation.ItemDetails{CompactionContext: &observation.Context{Known: true, Tokens: 171300, Window: 285000}, CompactionElapsed: 65 * time.Second, CompactionTimed: true}}
 	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
 		{Facts: single.Facts, Values: single.Values(), Revision: 1},
 		{Facts: shell.Facts, Values: shell.Values(), Revision: 1},
@@ -555,7 +555,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if err := alpha.publishFrame(previewFrame); err != nil {
 		t.Fatal(err)
 	}
-	run("wait", "--text", "Context compacted")
+	run("wait", "--text", compaction.Values()[0].Label)
 	if run("eval", `(() => { const shell = document.querySelector('[data-entry="92"]'); const wait = document.querySelector('[data-entry="93"]'); return shell?.querySelector('code')?.textContent.includes('plane comment ITEM') && !shell.innerText.includes('set -e') && wait?.innerText.split('completed').length === 2 && !document.body.innerText.includes('Retained compacted summary.'); })()`) != "true\n" {
 		t.Fatal("activity previews lost their shared source semantics")
 	}
@@ -578,7 +578,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--text", "set -e")
 	button("Script: 1 line")
 	run("wait", "--fn", `document.querySelector('[data-entry="91"]').innerText.includes('set -e; plane update ITEM')`)
-	button("Context compacted")
+	button(compaction.Values()[0].Label)
 	run("wait", "--text", "Retained compacted summary.")
 	button("Close details")
 	run("wait", "--fn", `!document.querySelector('[aria-labelledby="details-heading"]')`)

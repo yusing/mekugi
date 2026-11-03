@@ -65,6 +65,7 @@ func (session *nativeSession) restorePaneContent(attached *attachedPresentation,
 		placements = append(placements, &restoredPlacement{entry: entry, turn: event.turn, anchor: event.anchor, at: event.at})
 	}
 	session.restoreMainHistory(attached, terminal, picker, editor, clock, panel, resumePicker, parent, root.Turns, placements, retainedRollout.itemAt)
+	restoreCompactionObservations(attached, session.retainedSession, r)
 	r.rendered = true
 	for _, notice := range r.notices {
 		restoreHistoryNotice(attached, r, notice.message, notice.incomplete)

@@ -136,6 +136,9 @@ retained source, output, dialog pages, copies and navigation keep the original p
 One live invocation's multiple operations reveal at 80 ms intervals in Main, children and
 roster summaries; restored history appears immediately. A completed child
 compaction is an event and latest activity; attempts and failures do not imply it.
+Its label includes known start-context tokens, the percentage of a known context
+window, and elapsed duration. Unknown fields stay absent in live, restored and
+replayed events.
 Clicking `Context compacted` opens that boundary's retained summary in the shared
 content dialog, including after restoration and in replay. Missing or unauthorized
 summary evidence is explicit. Opening a summary starts no model request or reload.

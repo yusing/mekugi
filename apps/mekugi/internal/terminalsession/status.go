@@ -9,13 +9,14 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func StatusText(label sessionpresentation.Label) string {
 	text := label.Text
 	if label.CompletionKnown {
-		text += " in " + activityui.FormatDuration(label.Completion)
+		text += " in " + presentation.FormatDuration(label.Completion)
 	}
 	if label.FailureKnown {
 		text += ": " + label.Failure

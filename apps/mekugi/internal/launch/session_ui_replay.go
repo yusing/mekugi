@@ -28,6 +28,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/contracts/observation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -408,7 +409,7 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 	if err = p.Bounds(*from, *until); err != nil {
 		return fail(err)
 	}
-	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream.\n", source.Thread, source.Items, len(source.Events), source.Providers, activityui.FormatDuration(duration), *speed, *seed)
+	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream.\n", source.Thread, source.Items, len(source.Events), source.Providers, presentation.FormatDuration(duration), *speed, *seed)
 	if len(source.Missing) > 0 || len(source.Unsupported) > 0 {
 		fmt.Fprintf(stderr, "Coverage: %d missing child rollouts; unsupported item kinds: %v\n", len(source.Missing), source.Unsupported)
 	}

@@ -1,6 +1,9 @@
 package sessionpresentation
 
 import (
+	"time"
+
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -11,6 +14,8 @@ type compactionMetrics struct {
 	known     bool
 	started   string
 	progress  *activity.Value
+	context   *observation.Context
+	at        time.Time
 }
 
 var compactionMetricKey scope.Key[compactionMetrics]
@@ -42,9 +47,28 @@ func (s *Attachment) ObserveCompactionStart(thread, id string) {
 		return
 	}
 	state.started = id
+	state.at = time.Time{}
+	state.context = nil
 	state.progress = &activity.Value{Kind: "progress", Body: "Compacting context", Live: true}
 	if name := s.KnownCaller(thread); name != "" {
-		s.Agent(name).ContextKnown = false
+		agent := s.Agent(name)
+		if agent.ContextKnown {
+			state.context = &observation.Context{Tokens: agent.ContextTokens, Window: agent.ContextWindow, Known: true}
+		}
+		agent.ContextKnown = false
+	}
+}
+
+func (s *Attachment) compactionDetails(thread, id string, now time.Time, native *NativeItem) {
+	state := compactionMetricKey.Value(s.Thread(thread))
+	if state.started == id {
+		if state.context != nil {
+			native.CompactionContext = state.context
+		}
+		if !native.CompactionTimed && !state.at.IsZero() {
+			native.Duration = max(0, now.Sub(state.at))
+			native.CompactionTimed = true
+		}
 	}
 }
 

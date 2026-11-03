@@ -19,6 +19,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -397,7 +398,7 @@ func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
 		block := parseLiveActivity(entry)[0]
 		got := ""
 		if block.Thought >= time.Second {
-			got = activityui.FormatDuration(block.Thought)
+			got = presentation.FormatDuration(block.Thought)
 		}
 		if got != want {
 			t.Errorf("thought %v: elapsed %q, want %q", thought, got, want)

@@ -26,6 +26,7 @@ type ObservationInput struct {
 type ObservationResult struct {
 	Handled, Publish, Started bool
 	Deliveries                []ActivityDelivery
+	Compaction                *ActivityEntry // Newly completed boundary, for measurement retention.
 }
 
 // ActivityDelivery is a closed ordered set of detached terminal consequences.
@@ -198,10 +199,18 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 				}
 				if (active == "" || active == p.TurnID) && s.Transcript(p.ThreadID, p.TurnID).Turn != nil {
 					s.ObserveCompactionStart(p.ThreadID, id)
+					state := compactionMetricKey.Value(s.Thread(p.ThreadID))
+					if state.started == id && state.at.IsZero() {
+						state.at = now
+					}
 				}
 			}
 			if method == "item/completed" {
+				_, completed := compactionMetricKey.Value(s.Thread(p.ThreadID)).completed[id]
 				if CompletedCompaction(item.Status) {
+					native.CompactionContext = item.CompactionContext
+					native.CompactionTimed = item.DurationMS != nil
+					s.compactionDetails(p.ThreadID, id, now, native)
 					s.ObserveCompaction(p.ThreadID, id)
 				} else {
 					s.finishCompaction(p.ThreadID, id)
@@ -212,7 +221,11 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 				if summary == "" {
 					summary = "Compaction summary unavailable."
 				}
-				entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "compaction", Text: summary, Observed: now, Native: native})
+				entry := ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "compaction", Text: summary, Observed: now, Native: native}
+				entries = append(entries, entry)
+				if !completed {
+					result.Compaction = new(entry)
+				}
 			}
 		case "reasoning":
 			entries = append(entries, textEntries(s.ObserveText(transcript, text, main), true)...)

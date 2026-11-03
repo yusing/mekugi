@@ -22,6 +22,7 @@ var Module = module.Descriptor[Deps, *history.Service, module.NoBindings, module
 	// enter through the same contribution slot as these built-in host records.
 	Contributes: module.Contributions[*history.Service]{RecordKinds: []recordkind.Spec{
 		history.HookRecord,
+		history.CompactionRecord,
 		{ID: "call", Match: func(name string) bool { return legacycall.ValidName(name, false) }, Dependencies: func(record recordkind.Record) ([]string, error) {
 			return legacycall.Dependencies(record.Name, record.Data)
 		}},

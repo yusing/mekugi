@@ -461,7 +461,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			// both while streaming and after completion.
 			text := rows[0]
 			if !block.Live && block.Thought >= time.Second {
-				text = reasoningFor(text, FormatDuration(block.Thought))
+				text = reasoningFor(text, presentation.FormatDuration(block.Thought))
 			}
 			rows = terminalui.Hang("• ", text, width)
 			for i, row := range rows {
@@ -654,7 +654,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return lines
 	case "compaction":
-		label := "◉ Context compacted"
+		label := "◉ " + block.Label
 		if block.Hovered {
 			label = Underline(label)
 		}
@@ -1346,7 +1346,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		}
 		return terminalui.Green + "▶ Started" + terminalui.Reset + " " + strings.TrimSpace(label)
 	case "compaction":
-		return terminalui.Amber + "◉ Context compacted" + terminalui.Reset
+		return terminalui.Amber + "◉ " + block.Label + terminalui.Reset
 	case "error":
 		return terminalui.Red + "✗ " + ErrorPreview(block.Body) + terminalui.Reset
 	}
@@ -1441,7 +1441,7 @@ func RunElapsed(block Block, now time.Time) string {
 	if block.Running {
 		return FormatLiveDuration(elapsed)
 	}
-	return FormatDuration(elapsed)
+	return presentation.FormatDuration(elapsed)
 }
 
 // FormatLiveDuration hides live elapsed counters until their first whole second.
@@ -1449,7 +1449,7 @@ func FormatLiveDuration(elapsed time.Duration) string {
 	if elapsed < time.Second {
 		return ""
 	}
-	return FormatDuration(elapsed)
+	return presentation.FormatDuration(elapsed)
 }
 
 func formatTimeout(value string) string {
@@ -1460,38 +1460,15 @@ func formatTimeout(value string) string {
 	if before, ok := strings.CutSuffix(value, "d"); ok {
 		value = before + "h"
 		if duration, err := time.ParseDuration(value); err == nil && duration <= time.Duration(1<<63-1)/24 {
-			return FormatDuration(duration * 24)
+			return presentation.FormatDuration(duration * 24)
 		}
 	} else {
 		if last := value[len(value)-1]; last >= '0' && last <= '9' || last == '.' {
 			value += "s"
 		}
 		if duration, err := time.ParseDuration(value); err == nil {
-			return FormatDuration(duration)
+			return presentation.FormatDuration(duration)
 		}
 	}
 	return original
-}
-
-// FormatDuration uses milliseconds below one second and whole seconds thereafter.
-// Trailing zero units are omitted. Negative durations display as zero.
-func FormatDuration(elapsed time.Duration) string {
-	elapsed = max(0, elapsed)
-	if elapsed == 0 {
-		return "0s"
-	}
-	var text string
-	if elapsed < time.Second {
-		text = elapsed.Truncate(time.Millisecond).String()
-	} else {
-		elapsed = elapsed.Truncate(time.Second)
-		text = elapsed.String()
-		if elapsed >= time.Minute && elapsed%time.Minute == 0 {
-			text = strings.TrimSuffix(text, "0s")
-			if elapsed%time.Hour == 0 {
-				text = strings.TrimSuffix(text, "0m")
-			}
-		}
-	}
-	return text
 }

@@ -312,7 +312,7 @@ func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation,
 		if sessionpresentation.CompletedCompaction(item.Status) {
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
 				Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "compaction", Text: cmp.Or(item.Text, "Compaction summary unavailable."), Observed: presentationTime(clock),
-				Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: "item/completed"},
+				Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: "item/completed", Duration: sessionpresentation.ItemDuration(facts), CompactionTimed: facts.DurationMS != nil},
 			}}})
 		}
 	case "mcpToolCall":

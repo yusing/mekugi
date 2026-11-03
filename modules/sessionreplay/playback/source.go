@@ -138,6 +138,14 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 			if e.Kind == observation.ItemCompleted {
 				r.Items++
 				if e.Item.Type == "contextCompaction" {
+					measurement, size, measurementErr := store.ReadCompaction(thread, e.Item.ID)
+					totalBytes += size
+					if measurement != nil {
+						e.Item.CompactionContext = measurement.Context
+						if measurement.ElapsedNS != nil {
+							e.Item.DurationMS = new(time.Duration(*measurement.ElapsedNS).Milliseconds())
+						}
+					}
 					summary, size, err := compact.ReadSummary(store, thread, e.Item.CompactionReference)
 					totalBytes += size
 					if totalBytes > 256<<20 {
@@ -145,6 +153,9 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 					}
 					if err != nil {
 						summary = "Compaction summary unavailable: " + err.Error()
+					}
+					if measurementErr != nil {
+						summary += "\n\nCompaction measurements unavailable: " + measurementErr.Error()
 					}
 					e.Item.Text = summary
 				}

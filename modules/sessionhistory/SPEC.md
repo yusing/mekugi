@@ -165,6 +165,10 @@ completed status, provider passthrough metadata and generated-commentary identit
 Other conflicting payload changes fail. Capture consumers decide whether a new
 record needs an order; this owner allocates and preserves it under publication.
 
+Compaction measurements bind exact thread and native boundary identity,
+preserving start-context usage and observed elapsed time across restoration and
+replay. Missing historical measurements remain unknown.
+
 Hook records bind exact workspace and thread identity, preserve recorded output
 and outcomes, and disclose dropped earlier observations. Read-only attachment
 neither creates storage nor revives unfinished hooks. The live hook schema belongs

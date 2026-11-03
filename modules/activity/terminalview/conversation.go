@@ -759,7 +759,7 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 // long the agent took rather than a second clock time.
 func threadHeading(lead, detail string, entry, previous activitypresentation.Entry, reply bool, width int) string {
 	if reply && !entry.Observed.IsZero() && !previous.Observed.IsZero() {
-		detail = strings.TrimPrefix(detail+" · "+FormatDuration(entry.Observed.Sub(previous.Observed)), " · ")
+		detail = strings.TrimPrefix(detail+" · "+activitypresentation.FormatDuration(entry.Observed.Sub(previous.Observed)), " · ")
 	}
 	head := lead
 	if detail != "" {

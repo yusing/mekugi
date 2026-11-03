@@ -47,6 +47,11 @@ thread; unavailable or dropped history is disclosed. Unfinished hook observation
 show an unknown outcome without becoming running work. Private/raw reasoning,
 original keystrokes, resize events and live diff previews are absent.
 
+Retained compaction measurements use the exact native thread and boundary identity,
+including children observed from a different workspace. Unreadable measurements
+leave their fields unknown and disclose the failure in that boundary's details
+without preventing rollout playback.
+
 The corpus is bounded to 256 MiB across decoded rollouts and retained hook/compaction input,
 128 threads and 500,000 generated item/hook events. Source admission and individual
 record bounds belong to the backend. Playback duration is at most 24 hours.

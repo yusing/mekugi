@@ -47,7 +47,7 @@ func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
 		label = presentation.ReasoningSections(block.Body)[0].Label
 	}
 	if !block.Live && block.Thought >= time.Second {
-		label = reasoningFor(p.Inline(label), FormatDuration(block.Thought))
+		label = reasoningFor(p.Inline(label), presentation.FormatDuration(block.Thought))
 	} else if label == "" && block.Live {
 		label = "Thinking…"
 	} else if label == "" {

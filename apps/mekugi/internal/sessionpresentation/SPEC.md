@@ -394,8 +394,12 @@ boundaries are counted once per thread, restored from full admitted native histo
 on resume and fork, and retired with that thread's attachment. An unavailable
 history baseline remains unknown rather than reporting zero completed compactions.
 
-Compaction replaces Working with `Compacting context`, then emits `Context compacted`
-on success. Its elapsed time starts at the first matching progress observation;
+Compaction replaces Working with `Compacting context`, then emits
+`Context compacted at <tokens> tokens (<percent>%) • <elapsed>` on success.
+The count and percentage use the measured context at compaction start; absent
+measurements or window capacity omit their corresponding fields. Historical
+boundaries retain known measurements and timing, never invented zeros.
+Its elapsed time starts at the first matching progress observation;
 duplicate starts preserve it, while logical-work elapsed remains unchanged.
 Turn termination clears unfinished progress without claiming success;
 child compaction does not replace Main status. Empty-stdin polling uses `Still running`
