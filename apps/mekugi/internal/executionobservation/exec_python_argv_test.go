@@ -90,6 +90,30 @@ func TestPythonLocalTextReplacementHasNoFileCapture(t *testing.T) {
 	}
 }
 
+func TestPythonSubprocessTextReplacementCapturesOnlyWriteTarget(t *testing.T) {
+	python, binary := interpreterForTest("python3", "python")
+	if binary == "" {
+		t.Skip("Python runtime unavailable")
+	}
+	prose := strings.Repeat("Long replacement prose, not a filesystem operand. ", 20)
+	workspace := newExecVCSTestRepo(t, map[string]string{"target.go": prose + "\nold body\n"})
+	source := "from pathlib import Path\nimport subprocess\np = Path('target.go')\n" +
+		"s = subprocess.check_output(['git', 'show', ':target.go'], text=True)\n" +
+		"old = " + strconv.Quote(prose) + "; new = 'updated'\n" +
+		"s = s.replace(old, new)\nold = 'old body'; new = 'new body'\np.write_text(s.replace(old, new))\n"
+	command := python + " -c " + commandargs.QuoteArgument(source)
+	observation := captureInterpreterTestObservation(t, workspace, command)
+	assertInterpreterBaselinePaths(t, workspace, observation, []string{"target.go"})
+	host := exec.Command("bash", "-c", command)
+	host.Dir = workspace
+	if output, err := host.CombinedOutput(); err != nil {
+		t.Fatalf("Python subprocess text rewrite: %v: %s", err, output)
+	}
+	assertExactInterpreterReviews(t, workspace, observation, map[string][]string{
+		"target.go": {"-" + prose, "+updated\n+new body\n"},
+	})
+}
+
 func TestPythonFilesystemReplacementExternalEvidence(t *testing.T) {
 	python, binary := interpreterForTest("python3", "python")
 	if binary == "" {
