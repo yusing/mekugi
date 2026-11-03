@@ -708,10 +708,44 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", "!document.querySelector('[aria-label=\"Side answer\"]')")
 	message("/side")
 	run("wait", "--fn", `document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]').length === 2`)
-	// Phone conversation tabs keep their touch height, with Close side centred on its tab.
-	viewport("390", "844")
-	if run("eval", `(() => { const tabs = [...document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]')].map(tab => tab.getBoundingClientRect()); const close = document.querySelector('button[aria-label="Close side"]').getBoundingClientRect(); return tabs.every(r => r.height >= 44) && Math.abs(close.top + close.bottom - tabs[1].top - tabs[1].bottom) < 2; })()`) != "true\n" {
-		t.Fatal("phone conversation tabs lost their touch height or Close side left its tab's centre")
+	// Selection and closing retain separate hit targets and keyboard focus.
+	for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"phone", "390", "844"}} {
+		viewport(size.width, size.height)
+		for _, theme := range []string{"dark", "light"} {
+			run("set", "media", theme)
+			waitAction(`document.querySelector('button[aria-label="Close side"]')`)
+			geometry := run("eval", `(() => {
+				const tabs = [...document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]')];
+				const close = document.querySelector('button[aria-label="Close side"]');
+				const [main, side] = tabs.map(tab => tab.getBoundingClientRect()), c = close.getBoundingClientRect();
+				const hit = document.elementFromPoint(side.left + 22, side.top + side.height / 2);
+				return {
+					valid: tabs.length === 2 && (innerWidth > 640 ? c.width === 24 && c.height === 24 : [main, side, c].every(r => r.height >= 44) && c.width >= 44 && c.left - side.left >= 44) &&
+						Math.abs(c.top + c.bottom - side.top - side.bottom) < 2 && c.left >= side.left && c.right <= side.right && c.top >= side.top && c.bottom <= side.bottom && tabs[1].contains(hit),
+					close: {width:c.width, height:c.height}, selection: {width:c.left-side.left, height:side.height}
+				};
+			})()`)
+			t.Logf("conversation targets %s %s: %s", size.name, theme, geometry)
+			if !strings.Contains(geometry, `"valid": true`) {
+				t.Fatalf("%s %s: conversation selection and close targets overlap or lost their responsive size", size.name, theme)
+			}
+			run("find", "role", "tab", "click", "--name", "Main", "--exact")
+			run("wait", "--fn", `document.querySelector('[aria-label="Conversation"] [role=tab]')?.getAttribute('aria-selected') === 'true'`)
+			waitAction(`document.querySelector('[aria-label="Conversation"] span [role=tab]')`)
+			run("click", `[aria-label="Conversation"] span [role=tab]`)
+			run("wait", "--fn", `document.querySelector('[aria-label="Conversation"] span [role=tab]')?.getAttribute('aria-selected') === 'true' && !!document.querySelector('button[aria-label="Close side"]')`)
+			waitAction(`document.querySelector('button[aria-label="Close side"]')`)
+			run("focus", `[aria-label="Conversation"] span [role=tab]`)
+			run("press", "Tab")
+			run("wait", "--fn", `(() => { const close = document.querySelector('button[aria-label="Close side"]'); return document.activeElement === close && close.matches(':focus-visible') && getComputedStyle(close).outlineStyle !== 'none'; })()`)
+			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+				run("screenshot", filepath.Join(artifacts, "conversation-targets-"+size.name+"-"+theme+".png"))
+			}
+			run("press", "Enter")
+			run("wait", "--fn", `!document.querySelector('[role=tablist][aria-label=Conversation]')`)
+			message("/side")
+			run("wait", "--fn", `document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]').length === 2`)
+		}
 	}
 	viewport("1280", "720")
 	// The fork retains the authored response and user input in its native

@@ -609,7 +609,7 @@
               <button
                 type="button"
                 role="tab"
-                class="{segment} w-full pr-8"
+                class="{segment} w-full pr-8 max-sm:pr-12"
                 aria-selected={side}
                 disabled={semantic.pending > 0 || !sview.Side}
                 onclick={() =>
@@ -619,7 +619,7 @@
               >
               {#if sview.Side}<button
                   type="button"
-                  class="absolute top-1/2 right-[3px] flex size-6 -translate-y-1/2 items-center justify-center rounded-chip text-muted hover:bg-active hover:text-ink"
+                  class="absolute top-1/2 right-[3px] flex size-6 -translate-y-1/2 items-center justify-center rounded-chip text-muted hover:bg-active hover:text-ink max-sm:size-11"
                   aria-label="Close side"
                   title="Close side"
                   disabled={semantic.pending > 0}
