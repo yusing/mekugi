@@ -335,7 +335,9 @@ func (p *Painter) DetailDocument(detail presentation.DetailPage, output *activit
 		}
 		view := activitymodel.OutputView{Done: true}
 		if detail.Prepared.Text != "" {
-			view.Lines = strings.Split(detail.Prepared.Text, "\n")
+			// Prepared text bypasses feed normalization. Keep controls out of
+			// painting and geometry while preserving the exact text for copy.
+			view.Lines = strings.Split(textsanitize.Safe(detail.Prepared.Text, false), "\n")
 		}
 		page := p.DialogPage(Block{Value: value, OutputSnapshot: &view}, width)
 		page.Title = "Model-visible"

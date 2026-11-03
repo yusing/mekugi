@@ -6,10 +6,59 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestUISnapshotModelVisibleControlOutput(t *testing.T) {
+	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.DarkTheme, diffrender.LightTheme} {
+		for _, width := range []int{50, 100} {
+			t.Run(fmt.Sprintf("%d/%d", theme, width), func(t *testing.T) {
+				const height = 16
+				// Untyped output above the syntax detection limit takes the plain
+				// fallback, which must still expand tabs before measuring rows.
+				prepared := "Script completed\n\tif ready {\n\t\t" + strings.Repeat("long source ", 750) + "\n\t}\n"
+				d := ContentDialog{View: activityui.NewView()}
+				d.View.Painter.Theme = theme
+				d.Pages = []sessionpresentation.DetailItem{{ID: "command", Kind: "op", Verb: "Run", Code: "original",
+					Prepared: &activity.PreparedContent{ID: "cell", Text: prepared, Altered: true, Cell: true}}}
+				d.Update(sessionpresentation.DetailView{Pages: d.Pages})
+				screen := vt.NewEmulator(width, height)
+				defer screen.Close()
+				var frame Frame
+				for _, variant := range []string{"original", "model", "original"} {
+					rows := make([]string, height)
+					for i := range rows {
+						rows[i] = strings.Repeat("x", width)
+					}
+					d.Paint(rows, width, height)
+					if err := frame.Write(screen, RenderedFrame{Rows: rows}, width, true); err != nil {
+						t.Fatal(err)
+					}
+					if variant == "model" {
+						painted := strings.Split(screen.Render(), "\n")
+						if !strings.Contains(ansi.Strip(screen.Render()), "2 ┆     if ready {") {
+							t.Fatal("tab indentation did not overwrite the underlying pane")
+						}
+						if copied := d.Key("y"); copied.Text != prepared {
+							t.Fatal("painting changed model-visible copy bytes")
+						}
+						uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/model-visible-controls-%d-%d.txt", theme, width), painted, width)
+					} else if copied := d.Key("y"); copied.Text != "original" {
+						t.Fatal("toggle did not restore original copy")
+					}
+					d.Key("o")
+				}
+			})
+		}
+	}
+}
 
 func TestContentDialogQueuedNavigation(t *testing.T) {
 	for _, pointer := range []bool{false, true} {
