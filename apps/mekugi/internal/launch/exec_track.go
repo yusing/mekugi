@@ -153,7 +153,7 @@ func reconcileTrackedCommand(attached *attachedPresentation, streams *terminalse
 	retainCommandSegments(parent, retained, segments, attached, writes, pending, issues, entry, item, view)
 	for i := range native.Segments {
 		// A commit reads its object from the directory the host ran it in.
-		if segment := &native.Segments[i]; segment.Raw != "" && segment.Changes == nil {
+		if segment := &native.Segments[i]; !segment.Running && !segment.Pending && !segment.Skipped && segment.Exit == 0 && segment.Raw != "" && segment.Changes == nil {
 			segment.Changes, segment.Commit = activitypresentation.VCSOutputRows(frontends.ShellDisplaySource(sessionpresentation.DisplayCommand(segment.Source)), vcsSegmentCwd(item.Cwd, native.Segments[:i]), segment.Raw)
 		}
 	}

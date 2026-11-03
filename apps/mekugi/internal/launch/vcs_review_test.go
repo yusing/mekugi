@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,9 +41,38 @@ func TestVCSUnsupportedFormatsKeepLiteralOutput(t *testing.T) {
 		if !strings.HasPrefix(text, "Run") {
 			t.Fatalf("unsupported format classified: %s: %s", command, text)
 		}
-		rows, _ := sessionpresentation.CommandOutputRows((binding.ThreadItem{Command: command, Cwd: g.dir, AggregatedOutput: &output}).Observation())
+		rows, _ := sessionpresentation.CommandOutputRows((binding.ThreadItem{Command: command, Cwd: g.dir, AggregatedOutput: &output, ExitCode: new(0)}).Observation())
 		if len(rows) != 0 {
 			t.Fatalf("metadata became file rows for %s: %+v", command, rows)
+		}
+	}
+}
+
+func TestVCSFailedOutputKeepsDiagnostics(t *testing.T) {
+	const patch = "--- \"a.go\"\n+++ \"a.go\"\n@@ -1 +1 @@\n-old\n+new\n"
+	const diagnostic = "mchanges: retained output unavailable"
+	for _, command := range []string{"git diff", "mchanges amber1"} {
+		for _, outcome := range []struct {
+			code      int
+			malformed bool
+		}{{0, false}, {1, false}, {0, true}} {
+			t.Run(fmt.Sprintf("%s/exit=%d/malformed=%t", command, outcome.code, outcome.malformed), func(t *testing.T) {
+				u := vcsCommandUI(t, t.TempDir())
+				output := patch + diagnostic + "\n"
+				if outcome.malformed {
+					output = patch + "--- \"broken.go\"\n+++ \"broken.go" + diagnostic + "\n"
+				}
+				item := binding.ThreadItem{ID: "diff", Type: "commandExecution", Command: command, Status: "completed", ExitCode: new(outcome.code), AggregatedOutput: &output}
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+				got := mainFeed(u, 100)
+				if outcome.code == 0 && !outcome.malformed {
+					if !strings.Contains(got, "M  a.go") {
+						t.Fatalf("successful diff lost parsed file rows: %s", got)
+					}
+				} else if strings.Contains(got, "M  a.go") || !strings.Contains(got, diagnostic) || outcome.code != 0 && !strings.Contains(got, "exit 1") {
+					t.Fatalf("failed diff hid diagnostics in file rows: %s", got)
+				}
+			})
 		}
 	}
 }
@@ -70,7 +100,7 @@ func TestVCSCumulativeDirectoriesPreserveSymlinkResolution(t *testing.T) {
 
 func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 	g, output := vcsCommitFixture(t, "directory")
-	for _, prior := range []string{"git add a.go", "cd other", "eval 'cd other'"} {
+	for _, prior := range []string{"git add a.go", "git diff", "cd other", "eval 'cd other'"} {
 		t.Run(prior, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, g.dir)
 			store, err := openMekugiReplayStore(t.TempDir())
@@ -84,8 +114,12 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			hub.ui, u.execTrack = u, hub.Observer
 			u.attached.session.Commands()[key] = &sessionpresentation.CommandOperation{Entry: sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, u.activity.Outputs(u.attached.session.Scope()))}}}
 			report := hub.begin(t, key, prior+"; "+command)
+			priorCode, priorOutput := 0, ""
+			if prior == "git diff" {
+				priorCode, priorOutput = 1, "--- a/file.go\n+++ b/file.go\n@@ -1 +1 @@\n-old\n+new\nfatal: diff failed\n"
+			}
 			report.send(
-				segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
+				segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: priorOutput}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: &priorCode},
 				segmenttransport.Message{Type: segmenttransport.Begin, Index: 1}, segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: output}, segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)},
 				segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed},
 			)
@@ -107,7 +141,10 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 					t.Fatalf("segments missing: %+v", candidate.Native.Segments)
 				}
 				commit := candidate.Native.Segments[1].Commit
-				if prior == "git add a.go" {
+				if prior == "git diff" && (candidate.Native.Segments[0].Exit != 1 || len(candidate.Native.Segments[0].Changes) != 0 || !strings.Contains(strings.Join(candidate.Native.Segments[0].Tail, "\n"), "fatal: diff failed")) {
+					t.Fatalf("failed segment lost diagnostic output: %+v", candidate.Native.Segments[0])
+				}
+				if prior == "git add a.go" || prior == "git diff" {
 					if commit.Directory != g.dir || commit.Hash == "" {
 						t.Fatalf("known directory lost: %+v", commit)
 					}

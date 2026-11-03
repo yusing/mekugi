@@ -235,11 +235,19 @@ func patchRows(lines []string) []ChangeRow {
 				start(false)
 			}
 			file.old = true
-			file.from = patchPath(strings.TrimPrefix(line, "--- "), file.git)
+			path, valid := patchPath(strings.TrimPrefix(line, "--- "), file.git)
+			if !valid {
+				return nil
+			}
+			file.from = path
 			file.created = file.created || file.from == ""
 		case file == nil:
 		case strings.HasPrefix(line, "+++ "):
-			file.to = patchPath(strings.TrimPrefix(line, "+++ "), file.git)
+			path, valid := patchPath(strings.TrimPrefix(line, "+++ "), file.git)
+			if !valid {
+				return nil
+			}
+			file.to = path
 			file.deleted = file.deleted || file.to == ""
 		case strings.HasPrefix(line, "new file mode"):
 			file.created = true
@@ -325,7 +333,12 @@ func gitHeaderPaths(header string) (from, to string) {
 		if err != nil {
 			return "", ""
 		}
-		return patchPath(quoted, true), patchPath(strings.TrimPrefix(header[len(quoted):], " "), true)
+		from, fromOK := patchPath(quoted, true)
+		to, toOK := patchPath(strings.TrimPrefix(header[len(quoted):], " "), true)
+		if !fromOK || !toOK {
+			return "", ""
+		}
+		return from, to
 	}
 	if half := (len(header) - 1) / 2; len(header)%2 == 1 && header[half] == ' ' && strings.HasPrefix(header, "a/") &&
 		strings.HasPrefix(header[half+1:], "b/") && header[2:half] == header[half+3:] {
@@ -337,19 +350,21 @@ func gitHeaderPaths(header string) (from, to string) {
 
 // patchPath reads a --- or +++ path: /dev/null is an absent side, a tab ends
 // the path before a timestamp or revision, and quoted paths unquote.
-func patchPath(path string, git bool) string {
+func patchPath(path string, git bool) (string, bool) {
 	if strings.HasPrefix(path, `"`) {
-		if unquoted, err := strconv.Unquote(path); err == nil {
-			path = unquoted
+		unquoted, err := strconv.Unquote(path)
+		if err != nil {
+			return "", false
 		}
+		path = unquoted
 	} else if before, after, found := strings.Cut(path, "\t"); found {
 		// svn marks an absent side (nonexistent) after the path.
 		if path = before; after == "(nonexistent)" {
-			return ""
+			return "", true
 		}
 	}
 	if path == "/dev/null" {
-		return ""
+		return "", true
 	}
 	if git {
 		if trimmed, ok := strings.CutPrefix(path, "a/"); ok {
@@ -358,7 +373,7 @@ func patchPath(path string, git bool) string {
 			path = trimmed
 		}
 	}
-	return vcsPath(path)
+	return vcsPath(path), true
 }
 
 // vcsPath is a displayed path: unquoted when git quoted it, and sanitized.

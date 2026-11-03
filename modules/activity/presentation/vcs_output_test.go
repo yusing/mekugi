@@ -117,6 +117,18 @@ func TestVCSDiffRowsCountEachHunk(t *testing.T) {
 	}
 }
 
+func TestVCSPatchMalformedQuotedPathsKeepOrdinaryOutput(t *testing.T) {
+	for _, header := range []string{"---", "+++"} {
+		const valid = "--- \"a.go\"\n+++ \"a.go\"\n@@ -1 +1 @@\n-x\n+y\n"
+		for _, prefix := range []string{"", valid} {
+			output := prefix + strings.Replace(valid, header+" \"a.go\"", header+" \"a.gomread: error: output unavailable", 1)
+			if rows, _ := VCSOutputRows("mchanges amber1", "", output); rows != nil {
+				t.Fatalf("malformed %s header hid diagnostics behind file rows: %+v", header, rows)
+			}
+		}
+	}
+}
+
 func TestVCSStatRows(t *testing.T) {
 	for _, tc := range []struct {
 		command, output string

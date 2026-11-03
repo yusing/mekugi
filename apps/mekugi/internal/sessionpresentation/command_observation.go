@@ -164,6 +164,9 @@ func ItemDuration(item observation.Item) time.Duration {
 // CommandOutputRows adapts observed change-history or VCS output, retaining the
 // immutable commit key whose files can complete the output-observed rows.
 func CommandOutputRows(item observation.Item) ([]activitypresentation.ChangeRow, activitypresentation.CommitKey) {
+	if item.Status == "failed" || item.Status == "interrupted" || item.ExitCode == nil || *item.ExitCode != 0 {
+		return nil, activitypresentation.CommitKey{}
+	}
 	if rows := activitypresentation.MChangesOutputRows(DisplayCommand(item.Command), item.AggregatedOutput); rows != nil || item.AggregatedOutput == nil {
 		return rows, activitypresentation.CommitKey{}
 	}
