@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,33 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 	unlock := p.Windows.lockIntervals(refs)
 	defer unlock()
 	windowFiles := changecapture.PatchWindowFiles(history.NativePatches)
+	// A later patch whose paths are wholly owned by an earlier observation
+	// has no separate window diff. Its host row must join that earlier receipt
+	// too, or native Create/Delete summaries survive beside the net Edit.
+	sharedResults := make(map[int][]binding.ToolResult)
+	for index, observation := range history.NativePatches {
+		if len(windowFiles[index]) != 0 {
+			continue
+		}
+		paths, _ := changecapture.PatchTargets(observation.Input, workspace)
+		for owner := 0; owner < index; owner++ {
+			if !slices.ContainsFunc(windowFiles[owner], func(file changecapture.PatchFile) bool {
+				return slices.Contains(paths, file.BeforePath) || slices.Contains(paths, file.AfterPath)
+			}) {
+				continue
+			}
+			occurrence := 0
+			for _, prior := range history.NativePatches[:index] {
+				if prior.Input == observation.Input {
+					occurrence++
+				}
+			}
+			if result, confirmed := history.nativeCell.Patch(observation.Input, occurrence); confirmed && result.Status == "completed" {
+				sharedResults[owner] = append(sharedResults[owner], result)
+			}
+			break
+		}
+	}
 	attempts := make(map[string]mekugiHistory)
 	var receipts []string
 	var endpoints []changecapture.File
@@ -106,6 +134,9 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 		}
 		if confirmed {
 			attempt.HostResults = []binding.ToolResult{nested}
+			if nested.Status == "completed" {
+				attempt.HostResults = append(attempt.HostResults, sharedResults[index]...)
+			}
 			if nested.Status != "completed" {
 				attempt.TranslationError = "host tool " + nested.CallID + " " + nested.Tool + ": " + nested.Status
 				if nested.ExitCode != nil {

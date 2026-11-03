@@ -52,7 +52,7 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 		})
 		item, _, _ := strings.Cut(history.CorrelationID, "\x00")
 		attempt := presentation.Attempt{AttemptIdentity: identity, Operation: activitydetail.Operation{Thread: cmp.Or(history.ExecutingThread, event.Thread), Item: item}}
-		if history.ExecOutcome != nil && history.ExecutingThread != "" {
+		if (history.ExecOutcome != nil || history.ToolName == "apply_patch" && len(history.HostResults) > 1) && history.ExecutingThread != "" {
 			attempt.Receipt = CapturedReceipt(event.Workspace, history, files)
 		} else if writer, interval := strings.CutSuffix(history.CorrelationID, "\x00exec"); interval && history.ExecObservation != nil {
 			// A writer interval becomes visible only with its terminal membership.
@@ -128,10 +128,13 @@ func reconcileReview(ctx context.Context, retained changes.Scope, service change
 // CapturedReceipt correlates retained command identity for live annotations and
 // restored review publications before producing feature presentation.
 func CapturedReceipt(workspace string, value legacycall.History, files []diffmodel.ReviewFile) *presentation.Receipt {
-	if value.ExecOutcome == nil {
+	if value.ExecOutcome == nil && value.ToolName != "apply_patch" {
 		return nil
 	}
-	evidence := presentation.ReceiptEvidence{Files: files, Source: binding.EditReceiptSource(value.ToolName, value.Source), ChangeID: value.ChangeID, Labels: value.ExecOutcome.Labels, DeletedDirectories: value.ExecOutcome.DeletedDirectories}
+	evidence := presentation.ReceiptEvidence{Files: files, Source: binding.EditReceiptSource(value.ToolName, value.Source), ChangeID: value.ChangeID}
+	if value.ExecOutcome != nil {
+		evidence.Labels, evidence.DeletedDirectories = value.ExecOutcome.Labels, value.ExecOutcome.DeletedDirectories
+	}
 	receipt := presentation.NewReceipt(workspace, evidence)
 	receipt.Thread = value.ExecutingThread
 	for _, result := range value.HostResults {
@@ -139,7 +142,10 @@ func CapturedReceipt(workspace string, value legacycall.History, files []diffmod
 			receipt.Calls = append(receipt.Calls, result.CallID)
 		}
 	}
-	if len(receipt.Calls) == 0 && !value.ExecOutcome.CodeMode {
+	if value.ToolName == "apply_patch" && len(receipt.Calls) == 0 {
+		return nil // Keep the retained operation identity when no host join was witnessed.
+	}
+	if len(receipt.Calls) == 0 && value.ExecOutcome != nil && !value.ExecOutcome.CodeMode {
 		if call, ok := strings.CutSuffix(value.CorrelationID, "\x00exec"); ok {
 			receipt.Calls = append(receipt.Calls, call)
 		}

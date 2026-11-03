@@ -383,6 +383,33 @@ func assertCapturedCommand(t *testing.T, view *activityAdapter, thread, item, ve
 	t.Fatalf("missing native command %s", item)
 }
 
+func TestAppServerPatchWindowReceiptReplacesDeleteAndRecreateRows(t *testing.T) {
+	items := []binding.ThreadItem{{ID: "patch-0", Type: "fileChange", Status: "completed"}, {ID: "patch-1", Type: "fileChange", Status: "completed"}}
+	for i, kind := range []string{"delete", "add"} {
+		change := binding.FileChange{Path: "/workspace/provider.js", Diff: "line\n"}
+		change.Kind.Type = kind
+		items[i].Changes = []binding.FileChange{change}
+	}
+	for _, restored := range []bool{false, true} {
+		u := newAppServerSessionTestUI(t, "/workspace")
+		u.review.Projection.Data = reviewReceiptSnapshot(t, []*presentation.Receipt{{Thread: "main", Calls: []string{"patch-0", "patch-1"}, Text: "Edit `provider.js` · +1 −1 · apply_patch"}})
+		if restored {
+			publishFixtureReview(t, u)
+			u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: items}})
+		} else {
+			for _, item := range items {
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			}
+		}
+		applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
+		view := u.testActivity(u.shell.Transcript)
+		feed := ansi.Strip(strings.Join(view.RenderFeed(120, 30).Lines, "\n"))
+		if strings.Count(feed, "provider.js") != 1 || strings.Contains(feed, "Created") || strings.Contains(feed, "Deleted") {
+			t.Fatalf("restored=%v duplicated patch-window effects:\n%s", restored, feed)
+		}
+	}
+}
+
 func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "cat > a.go <<'EOF'\nnew\nEOF"}

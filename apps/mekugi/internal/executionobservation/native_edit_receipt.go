@@ -9,7 +9,6 @@ import (
 	sessionhistory "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -61,16 +60,9 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 				history.ReviewFiles = append(history.ReviewFiles, legacyHistory(part.History).ReviewFiles...)
 			}
 			receipt := sessionreview.CapturedReceipt(workspace, record.History, history.ReviewFiles)
-			if history.ToolName == applyPatchToolName {
-				receipt = &changepresentation.Receipt{Text: changepresentation.ReceiptText(workspace, receiptEvidence(history))}
-				for _, result := range history.HostResults {
-					if result.Tool == applyPatchToolName {
-						receipt.Calls = append(receipt.Calls, result.CallID)
-					}
-				}
-				if len(receipt.Calls) == 0 && displayID != "" {
-					receipt.Calls = []string{displayID}
-				}
+			if receipt == nil && history.ToolName == applyPatchToolName && displayID != "" {
+				receipt = changepresentation.NewReceipt(workspace, receiptEvidence(history))
+				receipt.Calls = []string{displayID}
 			}
 			if receipt != nil && receipt.Text != "" {
 				activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "edit-receipt\x00" + workspace + "\x00" + callID, Kind: activitypresentation.SupplementEditReceipt, Text: receipt.Text, Calls: receipt.Calls})

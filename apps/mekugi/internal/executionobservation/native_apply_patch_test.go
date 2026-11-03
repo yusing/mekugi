@@ -10,6 +10,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/activitydetail"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
@@ -21,6 +22,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func prepareNativeStockTransform(t *testing.T, proxy *Preparer, workspace, session string) *mekugiResponseTransform {
@@ -249,11 +251,13 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 	for _, test := range []struct {
 		name, first, second, finalPath string
+		failedFirst                    bool
 	}{
-		{"updates", "*** Update File: file.txt\n@@\n-old\n+middle", "*** Update File: file.txt\n@@\n-middle\n+final", "file.txt"},
-		{"move then update", "*** Update File: file.txt\n*** Move to: moved.txt\n@@\n-old\n+middle", "*** Update File: moved.txt\n@@\n-middle\n+final", "moved.txt"},
-		{"update then move", "*** Update File: file.txt\n@@\n-old\n+middle", "*** Update File: file.txt\n*** Move to: moved.txt\n@@\n-middle\n+final", "moved.txt"},
-		{"delete then recreate", "*** Delete File: file.txt", "*** Add File: file.txt\n+final", "file.txt"},
+		{"updates", "*** Update File: file.txt\n@@\n-old\n+middle", "*** Update File: file.txt\n@@\n-middle\n+final", "file.txt", false},
+		{"move then update", "*** Update File: file.txt\n*** Move to: moved.txt\n@@\n-old\n+middle", "*** Update File: moved.txt\n@@\n-middle\n+final", "moved.txt", false},
+		{"update then move", "*** Update File: file.txt\n@@\n-old\n+middle", "*** Update File: file.txt\n*** Move to: moved.txt\n@@\n-middle\n+final", "moved.txt", false},
+		{"delete then recreate", "*** Delete File: file.txt", "*** Add File: file.txt\n+final", "file.txt", false},
+		{"failed delete then recreate", "*** Delete File: file.txt", "*** Add File: file.txt\n+final", "file.txt", true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -276,7 +280,11 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 			for index, observation := range history.NativePatches {
 				id := fmt.Sprintf("patch-%d", index)
 				trace.tool("thread", "runtime", id, applyPatchToolName, observation.Input)
-				trace.result("thread", id, "completed", nil)
+				status := "completed"
+				if index == 0 && test.failedFirst {
+					status = "failed"
+				}
+				trace.result("thread", id, status, nil)
 			}
 			trace.end("thread", "runtime")
 			history.nativeCell = nativetrace.NewWithNotice(trace.root, nil).ReadCell("thread", "cell", source.String())
@@ -308,7 +316,15 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 				if err != nil || !found || attempt.Script != history.NativePatches[index].Input || attempt.AlreadySatisfied {
 					t.Fatalf("lost or misreported attempt: %+v, %v", attempt, err)
 				}
-				if len(attempt.HostResults) != 1 || attempt.HostResults[0].Status != "completed" {
+				wantResults := 1
+				if index == 0 && test.name != "update then move" && !test.failedFirst {
+					wantResults = 2
+				}
+				wantStatus := "completed"
+				if index == 0 && test.failedFirst {
+					wantStatus = "failed"
+				}
+				if len(attempt.HostResults) != wantResults || attempt.HostResults[0].Status != wantStatus {
 					t.Fatalf("missing confirmed nested success: %+v", attempt.HostResults)
 				}
 				if attempt.ChangeID != "" {
@@ -331,13 +347,28 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 				t.Fatalf("completed patch receipts = %+v, want %d", receipts, len(ids))
 			}
 			for _, receipt := range receipts {
-				if receipt.Kind != activitypresentation.SupplementEditReceipt || len(receipt.Calls) != 1 || !strings.HasPrefix(receipt.Calls[0], "patch-") {
+				wantCalls := 2
+				if test.name == "update then move" || test.failedFirst {
+					wantCalls = 1
+				}
+				if receipt.Kind != activitypresentation.SupplementEditReceipt || len(receipt.Calls) != wantCalls || !strings.HasPrefix(receipt.Calls[0], "patch-") || wantCalls == 2 && (receipt.Calls[0] != "patch-0" || receipt.Calls[1] != "patch-1") {
 					t.Fatalf("receipt lost native patch identity: %+v", receipt)
 				}
 			}
 			net, err := testProxyStore(proxy).changes.Read(t.Context(), testProxyStore(proxy).scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000})
 			if err != nil || strings.Count(net, "-old\n") != 1 || strings.Count(net, "+final\n") != 1 || strings.Contains(net, "middle") {
 				t.Fatalf("cell-window net = %q, %v", net, err)
+			}
+			if test.name != "update then move" && !test.failedFirst {
+				snapshot, err := testProxyStore(proxy).liveDiffSnapshot(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+				if err != nil || len(snapshot.Receipts()) != 1 || len(snapshot.Receipts()[0].Calls) != 2 {
+					t.Fatalf("restored shared-window receipt = %+v, %v", snapshot, err)
+				}
+				for _, call := range []string{"patch-0", "patch-1"} {
+					if detail := snapshot.ActivityDetail(activitydetail.Request{Thread: "thread", Item: call}); len(detail.Pages) == 0 {
+						t.Fatalf("restored window lost %s navigation: %+v", call, detail)
+					}
+				}
 			}
 		})
 	}

@@ -29,3 +29,10 @@ func TestCapturedReceiptUsesHostIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestCapturedPatchReceiptRetainsWindowHostIdentities(t *testing.T) {
+	receipt := CapturedReceipt(t.TempDir(), legacycall.History{ToolName: "apply_patch", ExecutingThread: "thread", HostResults: []legacycall.HostResult{{Tool: "apply_patch", CallID: "delete"}, {Tool: "apply_patch", CallID: "recreate"}}}, nil)
+	if receipt == nil || receipt.Thread != "thread" || !slices.Equal(receipt.Calls, []string{"delete", "recreate"}) {
+		t.Fatalf("restored patch window lost host identities: %+v", receipt)
+	}
+}
