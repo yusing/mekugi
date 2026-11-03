@@ -41,12 +41,44 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 	if p.body.Metrics != nil {
 		labelLimit, valueColumn = 26, 28
 	}
-	type line struct{ label, text string }
+	type line struct {
+		label, text string
+		heading     bool // The label is a group title beside its column headings.
+	}
 	var lines []line
 	appendText := func(text string) {
 		for _, part := range panelWrap(text, contentWidth) {
 			lines = append(lines, line{text: part})
 		}
+	}
+	// Comparison cells align across the whole panel, so columns stay fixed
+	// while scrolling. Rows keep the label column when the cells fit beside it.
+	var cellWidths []int
+	compareLabel := 0
+	for _, field := range p.Fields {
+		if len(field.Values) == 0 {
+			continue
+		}
+		for len(cellWidths) < len(field.Values) {
+			cellWidths = append(cellWidths, 0)
+		}
+		for i, value := range field.Values {
+			cellWidths[i] = max(cellWidths[i], ansi.StringWidth(panelText(value)))
+		}
+		compareLabel = max(compareLabel, ansi.StringWidth(panelText(cmp.Or(field.Label, field.Group))))
+	}
+	cellsWidth := 0
+	for _, width := range cellWidths {
+		cellsWidth += width + 2
+	}
+	compareInline := contentWidth >= compareLabel+cellsWidth
+	cells := func(values []string) string {
+		parts := make([]string, len(values))
+		for i, value := range values {
+			value = panelText(value)
+			parts[i] = strings.Repeat(" ", max(0, cellWidths[i]-ansi.StringWidth(value))) + value
+		}
+		return strings.Join(parts, "  ")
 	}
 	groups := p.Groups
 	if groups == nil {
@@ -56,6 +88,19 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 		started := false
 		for index, field := range p.Fields {
 			if field.Group != group {
+				continue
+			}
+			if field.Heading {
+				if len(lines) > 0 {
+					lines = append(lines, line{})
+				}
+				started = true
+				if compareInline {
+					lines = append(lines, line{label: group, text: dim + cells(field.Values) + reset, heading: true})
+				} else {
+					appendText(bold + accent + group + reset)
+					appendText(dim + cells(field.Values) + reset)
+				}
 				continue
 			}
 			if !started {
@@ -68,6 +113,15 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 				started = true
 			}
 			label, value, detail := panelText(field.Label), panelText(field.Value), panelText(field.Detail)
+			if len(field.Values) > 0 {
+				if compareInline {
+					lines = append(lines, line{label: label, text: cells(field.Values)})
+				} else {
+					appendText(dim + label + reset)
+					appendText(cells(field.Values))
+				}
+				continue
+			}
 			if field.Path {
 				value = terminalui.StyledPath(value)
 			}
@@ -171,7 +225,9 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 	}
 	for i, row := range visible {
 		text := row.text
-		if row.label != "" {
+		if row.heading {
+			text = bold + accent + pad(row.label, labelWidth) + reset + "  " + text
+		} else if row.label != "" {
 			prefix := dim + pad(strings.TrimSpace(row.label), labelWidth) + reset + "  "
 			if label := strings.TrimSpace(row.label); label != "" {
 				_, spans := terminalui.ExtractCopy(text)

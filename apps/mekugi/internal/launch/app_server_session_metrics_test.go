@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
@@ -22,6 +23,8 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/persistence"
 
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -242,8 +245,10 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		debug                   string
 	}{
 		{name: "overview", width: 90, height: 65},
-		{name: "deduplication", width: 90, height: 25},
-		{name: "deduplication-narrow", width: 35, height: 22},
+		{name: "features", tab: 3, width: 90, height: 42},
+		{name: "features-narrow", tab: 3, width: 35, height: 50},
+		{name: "features-missing", tab: 3, width: 80, height: 40, missing: true},
+		{name: "features-unavailable", tab: 3, width: 80, height: 14},
 		{name: "storage", width: 90, height: 24},
 		{name: "storage-narrow", width: 35, height: 18},
 		{name: "throughput-narrow", width: 36, height: 22, top: 18},
@@ -273,8 +278,8 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			if !tc.missing {
 				*m = sessionMetricsFixture(t)
 			}
-			if strings.HasPrefix(tc.name, "deduplication") {
-				m.OutputDeduplication = transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}
+			if strings.HasPrefix(tc.name, "features") && tc.name != "features-unavailable" {
+				u.statusPanel.Features = featureMetricsFixture()
 			}
 			if strings.HasPrefix(tc.name, "storage") {
 				m.StorageWrites = &persistence.Snapshot{Bytes: 12345, Scope: new(persistence.Counter).Snapshot().Scope}
@@ -328,5 +333,50 @@ func TestUISnapshotNativeSessionShortcuts(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			assertNativeUISnapshot(t, fmt.Sprintf("native-session-shortcuts-%d", width), terminalsession.Keybindings(width, 40))
 		})
+	}
+}
+
+func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	driver, err := threadbinding.NewDriver(control.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.preparer = &executionobservation.Preparer{Config: executionobservation.Config{ThreadControl: driver}}
+	thread := u.attached.presentation.DisplayedThread()
+	if thread == "" {
+		t.Fatal("fixture has no displayed thread")
+	}
+	coordination := driver.Coordination()
+	coordination.ObserveFeature(thread, control.FeatureWaitAll)
+	coordination.ObserveFeature("other-thread", control.FeatureWaitAll)
+	appServerTestKeys(t, u, "/session\r")
+	p := u.statusPanel
+	if p.Features == nil || p.Features.Self.AllWaits != 1 {
+		t.Fatalf("opened features = %+v", p.Features)
+	}
+	coordination.ObserveFeature(thread, control.FeatureWaitAll)
+	applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelRefresh})
+	applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: 3})
+	if p.MetricTab != 3 {
+		t.Fatal("Features view was rejected")
+	}
+	for _, field := range p.Fields {
+		if field.Group == "Waits" && field.Label == "All mode" {
+			if len(field.Values) != 2 || field.Values[0] != "2" {
+				t.Fatalf("refreshed self count = %v", field.Values)
+			}
+			return
+		}
+	}
+	t.Fatalf("Features fields missing: %+v", p.Fields)
+}
+
+// featureMetricsFixture distinguishes every count so misplaced cells show.
+func featureMetricsFixture() *sessionpresentation.FeatureMetrics {
+	return &sessionpresentation.FeatureMetrics{
+		Thread: "Main", Agents: 3,
+		Self: sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 3, SelfCompactions: 2, Spawns: 4, SpawnPreloads: 3, PreloadRejections: 1, Messages: 6, SideQuestions: 1, SideQuestionRejections: 1, Waits: 5, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}},
+		Descendants: sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 7, SelfCompactions: 4, CompactionPreloads: 2, Spawns: 1, Finals: 8, CompletionChanges: 5, Messages: 2, SideQuestions: 2, SideQuestionFailures: 1, Waits: 3}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 2, Occurrences: 4, SavedTokens: -20, Unmeasured: 1}},
 	}
 }

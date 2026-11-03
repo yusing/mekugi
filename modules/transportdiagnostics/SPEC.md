@@ -55,7 +55,8 @@ framing produce equivalent observations without rewriting delivered bytes.
 Raw content is discarded after observation.
 
 Deduplication totals aggregate supplied repetition and savings receipts across
-all threads and requests in the invocation. Negative savings and unmeasured
+all threads and requests in the invocation; receipts from requests with a thread
+identity are also totaled per thread. Negative savings and unmeasured
 projections remain explicit. These estimates are separate from provider usage
 and billing and are not restored on resume.
 

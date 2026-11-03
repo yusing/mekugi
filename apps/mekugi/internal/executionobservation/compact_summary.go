@@ -20,6 +20,7 @@ import (
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // Native reviewers borrow only immutable compaction context. They do not publish
@@ -139,6 +140,13 @@ func (p *Preparer) StoreCompact(ctx context.Context, thread, summary, reload str
 	})
 	if err != nil {
 		return "", err
+	}
+	if p.ThreadControl != nil {
+		features := []control.Feature{control.FeatureCompaction}
+		if sources, _ := compact.ReloadSources(reload); len(sources) > 0 {
+			features = append(features, control.FeatureCompactionPreload)
+		}
+		p.ThreadControl.Coordination().ObserveFeature(thread, features...)
 	}
 	return reference, nil
 }

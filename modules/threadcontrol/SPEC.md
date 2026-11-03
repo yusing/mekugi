@@ -522,6 +522,30 @@ before publishing execution evidence. Client disconnection releases only the
 view; explicit root end cancels its owned tree, and server shutdown joins all
 owned runtimes before draining client connections.
 
+## Feature use
+
+The service counts model-facing uses per thread for the
+[session Features view](../../apps/mekugi/internal/sessionpresentation/SPEC.md#session-metrics).
+Totals and their subsets:
+
+- **Compactions:** every retained compaction summary, whoever initiated it; newly
+  registered `compact` or `wait_agent` compactions; summaries with nonempty reload
+  sources. Self-initiated requests count at registration, so one whose summary is
+  never retained can exceed the total.
+- **Spawns:** admitted children; those with nonempty preload sources; spawn calls
+  whose preload selection is rejected.
+- **Delegate finals:** completed final answers; those selecting captured changes.
+- **Messages:** dispatched `send_message` calls; those with `btw:true`; `btw` calls an
+  authenticated caller makes that are rejected before dispatch; dispatched `btw` calls
+  whose answer fails or whose target generation changes.
+- **Waits:** newly registered `wait_agent` waits; those with `wait_mode:"all"`.
+
+Spawns and final answers count when their effect is confirmed, immediately or by
+reconciliation, so each counts once. Repeated calls that reuse a registration, spawn
+or action count once, and empty selections count no preload. Each use counts for the
+thread that made it; a descendant sum covers admitted descendants, including settled
+ones. Counts are invocation-local and never checkpointed, resumed or inherited by forks.
+
 ## Acceptance
 
 Focused composed checks and deterministic installed-host fixtures establish native

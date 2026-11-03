@@ -115,7 +115,8 @@ component libraries, typography, geometry and interaction mechanics are means.
 - Session metrics use compact, grouped label/value tables. Measurements align
   with tabular numerals; explanatory prose spans the section instead of leaving
   an empty label column. Preserve zero values, units, paths and server-provided
-  details, with long content wrapping on phones.
+  details, with long content wrapping on phones. A comparison group puts its
+  title in the column-heading row and right-aligns its value columns.
 
 ## Content from the server
 

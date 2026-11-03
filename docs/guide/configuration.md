@@ -69,12 +69,16 @@ The boolean defaults above apply when no matching [feature setting](#mekugi-sett
 Use `--ansi-faint=off` if a multiplexer hides mosh.
 
 With output deduplication enabled, transcript rows mark replaced output as
-`repeated` or `N lines repeated`, and `/session` shows occurrences and estimated
-saved tokens. See the [projection contract](../../modules/outputdeduplication/SPEC.md).
+`repeated` or `N lines repeated`, and the `/session` Features tab shows occurrences and
+estimated saved tokens. See the [projection contract](../../modules/outputdeduplication/SPEC.md).
 
 ## Metrics
 
 `/session` shows launch-wide usage/retries/coverage/throughput/cache/transport.
+Its Features tab compares the displayed thread's use of model-facing features with the
+sum over all of its descendant agents. Each family lists its total beside the uses and
+failed attempts within it: compactions, spawns and their preloads, delegate final-answer
+edit ranges, `send_message` and `btw`, `wait_agent` all mode and output deduplication.
 Left/Right or Tab switches tabs; Up/Down/PgUp/PgDn scrolls, `[`/`]` selects exchanges,
 `r` refreshes, Esc closes. Launch totals do not restore; the roster retains thread
 usage. Throughput divides authoritative output tokens (including reasoning) by measured

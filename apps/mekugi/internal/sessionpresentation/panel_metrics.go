@@ -4,8 +4,92 @@ import (
 	"cmp"
 	"fmt"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	usagepresentation "github.com/yusing/mekugi/modules/usage/presentation"
 )
+
+// MetricViews names the /session views in tab order.
+var MetricViews = []string{"Overview", "Transport", "Exchanges", "Features"}
+
+const metricFeatures = 3
+
+// FeatureCounts are model-facing feature uses and counted attempts in this launch.
+type FeatureCounts struct {
+	control.FeatureUse
+	OutputDeduplication transportcapture.OutputDeduplicationMetrics
+}
+
+// FeatureMetrics separates the selected thread from the sum of all of its
+// admitted descendants, including settled ones.
+type FeatureMetrics struct {
+	Self, Descendants FeatureCounts
+	// Thread names Self for display; Agents counts the summed descendants.
+	Thread string
+	Agents int
+	// DeduplicationOff distinguishes a disabled feature from zero receipts.
+	DeduplicationOff bool
+}
+
+// NewFeatureMetrics joins coordination-owned counts with capture-owned
+// deduplication receipts for the same threads. A nil owner contributes nothing.
+func NewFeatureMetrics(thread string, coordination *control.Service, snapshot *transportcapture.MetricsSnapshot, deduplicate bool) *FeatureMetrics {
+	metrics := FeatureMetrics{DeduplicationOff: !deduplicate}
+	var descendants []string
+	if coordination != nil {
+		metrics.Self.FeatureUse, metrics.Descendants.FeatureUse, descendants = coordination.FeatureUse(thread)
+		if member, ok := coordination.Member(thread); ok {
+			metrics.Thread = pathdisplay.AgentDisplayName(member.Task)
+			if member.Parent == "" {
+				metrics.Thread = "Main"
+			}
+		}
+	}
+	metrics.Agents = len(descendants)
+	if snapshot != nil {
+		metrics.Self.OutputDeduplication = snapshot.OutputDeduplicationThreads[thread]
+		for _, id := range descendants {
+			metrics.Descendants.OutputDeduplication.Add(snapshot.OutputDeduplicationThreads[id])
+		}
+	}
+	return &metrics
+}
+
+// featureFields compares Self with Descendants in one table per feature family.
+// Each family's first row is its total; later rows count subsets or failed attempts.
+func featureFields(f *FeatureMetrics, captured bool) (fields []StatusField) {
+	if f == nil {
+		return []StatusField{{Group: "Features", Value: "Feature use is unavailable for this frontend. Live launch counts are not restored from saved sessions."}}
+	}
+	fields = append(fields, StatusField{Group: "Features", Value: fmt.Sprintf("Self is %s; Descendants sums its admitted agents (%d), including completed ones. Counts cover this launch and are not restored on resume.", cmp.Or(f.Thread, "the displayed thread"), f.Agents)})
+	type row struct {
+		label             string
+		self, descendants any
+	}
+	table := func(group string, rows ...row) {
+		fields = append(fields, StatusField{Group: group, Heading: true, Values: []string{"Self", "Descendants"}})
+		for _, r := range rows {
+			fields = append(fields, StatusField{Group: group, Label: r.label, Values: []string{fmt.Sprint(r.self), fmt.Sprint(r.descendants)}})
+		}
+	}
+	self, desc := f.Self, f.Descendants
+	table("Compaction", row{"Total", self.Compactions, desc.Compactions}, row{"Self-initiated", self.SelfCompactions, desc.SelfCompactions}, row{"With preload", self.CompactionPreloads, desc.CompactionPreloads})
+	table("Spawns", row{"Total", self.Spawns, desc.Spawns}, row{"With preload", self.SpawnPreloads, desc.SpawnPreloads}, row{"Preload rejected", self.PreloadRejections, desc.PreloadRejections})
+	table("Delegate finals", row{"Completed", self.Finals, desc.Finals}, row{"With edit ranges", self.CompletionChanges, desc.CompletionChanges})
+	table("Messages", row{"Sent", self.Messages, desc.Messages}, row{"With btw", self.SideQuestions, desc.SideQuestions}, row{"btw rejected", self.SideQuestionRejections, desc.SideQuestionRejections}, row{"btw failed", self.SideQuestionFailures, desc.SideQuestionFailures})
+	table("Waits", row{"Registered", self.Waits, desc.Waits}, row{"All mode", self.AllWaits, desc.AllWaits})
+	switch {
+	case f.DeduplicationOff:
+		fields = append(fields, StatusField{Group: "Output deduplication", Value: "Off for this launch."})
+	case !captured:
+		fields = append(fields, StatusField{Group: "Output deduplication", Value: "Unavailable for this frontend."})
+	default:
+		s, d := self.OutputDeduplication, desc.OutputDeduplication
+		table("Output deduplication", row{"Occurrences", s.Occurrences, d.Occurrences}, row{"Saved tokens (est.)", s.SavedTokens, d.SavedTokens}, row{"Unmeasured", s.Unmeasured, d.Unmeasured})
+		fields = append(fields, StatusField{Group: "Output deduplication", Value: "Occurrences count receipts per request projection, including repeated history. Saved tokens are a net local estimate after reference overhead, negative when references cost more than the output they replace, and not provider billing savings. Unmeasured counts projections whose savings could not be estimated; they are excluded from saved tokens."})
+	}
+	return fields
+}
 
 // MetricFields projects the same session metrics for terminal and browser panels.
 // Source: apps/mekugi/internal/terminalsession/panel_metrics.go@a90c7860.
@@ -36,15 +120,13 @@ func MetricFields(body *PanelView, tab, exchange int) (fields []StatusField) {
 		}
 	}
 	s := *body.Metrics
+	if tab == metricFeatures {
+		fields = featureFields(body.Features, s.Schema != "")
+		return
+	}
 	if tab == 0 && body.DebugDirectory != "" {
 		add("Debug", "Directory", pathdisplay.ForWorkspace(body.Workspace, body.DebugDirectory))
 		fields[len(fields)-1].Path = true
-	}
-	if tab == 0 && s.OutputDeduplication.Projections > 0 {
-		add("Output deduplication", "Occurrences", s.OutputDeduplication.Occurrences)
-		add("Output deduplication", "Saved tokens (estimated)", s.OutputDeduplication.SavedTokens)
-		add("Output deduplication", "Unmeasured projections", s.OutputDeduplication.Unmeasured)
-		add("Output deduplication", "", "Launch totals per request projection, including repeated history. Net local estimate includes reference overhead; not provider billing savings.")
 	}
 	if tab == 0 && s.StorageWrites != nil {
 		add("Storage writes", "Application bytes", s.StorageWrites.Bytes)

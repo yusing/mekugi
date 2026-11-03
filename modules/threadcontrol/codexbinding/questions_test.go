@@ -65,6 +65,9 @@ func TestSideQuestionKeepsLogicalStateAndOrdinaryDelivery(t *testing.T) {
 			if !reflect.DeepEqual(before, after) || inputs != len(host.inputs) || confirmations != len(host.confirmed) || resumes != host.resumes || calls != 1 {
 				t.Fatal("side question changed logical work or ordinary host delivery")
 			}
+			if self, _, _ := driver.control.FeatureUse(caller.Thread); self.Messages != 1 || self.SideQuestions != 1 || self.SideQuestionRejections+self.SideQuestionFailures != 0 {
+				t.Fatalf("accepted side question counted %+v", self)
+			}
 		})
 	}
 	for _, option := range []string{"", `,"btw":false`} {
@@ -80,6 +83,12 @@ func TestSideQuestionKeepsLogicalStateAndOrdinaryDelivery(t *testing.T) {
 		}
 		if len(host.inputs) != before+1 || host.inputs[len(host.inputs)-1].Message != "message" {
 			t.Fatal("ordinary attributed delivery changed")
+		}
+		if _, err := driver.Call(t.Context(), caller, "send_message", jsontext.Value(`{"target":"child","message":"message"`+option+`}`)); err != nil {
+			t.Fatal(err)
+		}
+		if self, _, _ := driver.control.FeatureUse(caller.Thread); self.Messages != 1 || self.SideQuestions+self.SideQuestionRejections+self.SideQuestionFailures != 0 {
+			t.Fatalf("ordinary message counted %+v; a repeated call must reuse its send", self)
 		}
 	}
 }
@@ -116,6 +125,9 @@ func TestSideQuestionFailuresNeverFallBackToInput(t *testing.T) {
 	if calls != 1 || len(host.inputs) != before || host.resumes != resumes {
 		t.Fatal("question failure changed target input or resumed the target")
 	}
+	if self, _, _ := driver.control.FeatureUse(caller.Thread); self.SideQuestions != 1 || self.Messages != 1 || self.SideQuestionFailures != 1 || self.SideQuestionRejections != 1 {
+		t.Fatalf("btw counts must separate the dispatched failure from the rejected runtime call, excluding the foreign caller: %+v", self)
+	}
 	// A question cannot return an answer under a newer logical work generation.
 	host.ask = func(ctx context.Context, target *control.Member, _ string) (string, error) {
 		if err := driver.control.HostCompleted(ctx, target.Thread, "child-turn", control.Completed, control.HostFailure{}); err != nil {
@@ -128,5 +140,8 @@ func TestSideQuestionFailuresNeverFallBackToInput(t *testing.T) {
 	}
 	if _, err := driver.Call(t.Context(), caller, "send_message", args); err == nil {
 		t.Fatal("changed target generation accepted stale answer")
+	}
+	if self, _, _ := driver.control.FeatureUse(caller.Thread); self.SideQuestions != 2 || self.SideQuestionFailures != 2 {
+		t.Fatalf("discarded answer lost its accepted btw call or failure: %+v", self)
 	}
 }

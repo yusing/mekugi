@@ -46,6 +46,9 @@ type PreparedChild struct {
 
 // prepareChild translates the selected invocation's values, leaving execution
 // and final settings validation with the independent native runtime.
+// errContextPreload marks a rejected spawn preload selection.
+var errContextPreload = errors.New("context preload")
+
 func prepareChild(settings control.Settings, limits control.Limits, options SpawnOptions, models []Model, layers []ConfigLayer, defaults [3]*string) (PreparedChild, error) {
 	result := PreparedChild{Settings: settings, Limits: limits, TaskName: options.TaskName, Message: options.Message, FullHistory: true}
 	if strings.TrimSpace(options.Message) == "" {
@@ -65,10 +68,10 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	}
 	if len(options.Preload) > 0 {
 		if result.FullHistory {
-			return result, errors.New("context preload requires fork_turns=none")
+			return result, fmt.Errorf("%w requires fork_turns=none", errContextPreload)
 		}
 		if _, err := compact.Sources(string(options.Preload)); err != nil {
-			return result, fmt.Errorf("context preload: %w", err)
+			return result, fmt.Errorf("%w: %w", errContextPreload, err)
 		}
 		result.Preload = string(options.Preload)
 	}

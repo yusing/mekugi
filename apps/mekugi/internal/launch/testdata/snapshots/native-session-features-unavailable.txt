@@ -1,0 +1,14 @@
+
+
+
+  ╭ Session · Features ─────────────────────────────────────────── Esc close ╮
+  │                                                                          │
+  │  Features  ────────────────────────────────────────────────────────────  │
+  │  Feature use is unavailable for this frontend. Live launch counts are    │
+  │  not restored from saved sessions.                                       │
+  │                                                                          │
+  ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ───────────────────────────╯
+
+
+
+

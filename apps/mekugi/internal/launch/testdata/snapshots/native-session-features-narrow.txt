@@ -1,0 +1,50 @@
+╭ Session · Features ─────────────╮
+│                                 │
+│  Features  ───────────────────  │
+│  Self is Main; Descendants      │
+│  sums its admitted agents (3),  │
+│  including completed ones.      │
+│  Counts cover this launch and   │
+│  are not restored on resume.    │
+│                                 │
+│  Compaction                     │
+│  Self  Descendants              │
+│  Total                          │
+│     3            7              │
+│  Self-initiated                 │
+│     2            4              │
+│  With preload                   │
+│     0            2              │
+│                                 │
+│  Spawns                         │
+│  Self  Descendants              │
+│  Total                          │
+│     4            1              │
+│  With preload                   │
+│     3            0              │
+│  Preload rejected               │
+│     1            0              │
+│                                 │
+│  Delegate finals                │
+│  Self  Descendants              │
+│  Completed                      │
+│     0            8              │
+│  With edit ranges               │
+│     0            5              │
+│                                 │
+│  Messages                       │
+│  Self  Descendants              │
+│  Sent                           │
+│     6            2              │
+│  With btw                       │
+│     1            2              │
+│  btw rejected                   │
+│     1            0              │
+│  btw failed                     │
+│     0            1              │
+│                                 │
+│  Waits                          │
+│  Self  Descendants              │
+│  Registered                     │
+│                                 │
+╰─ ←→ views  ↑↓ scroll  Esc ──────╯

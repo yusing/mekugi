@@ -11,6 +11,8 @@ import (
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 )
 
 func TestCompactRecoveryAuthorityAndPrewarm(t *testing.T) {
@@ -148,5 +150,23 @@ func TestCompactHostInstructionsSkipAcquisitionButRecognizeHistory(t *testing.T)
 	items := []map[string]jsontext.Value{call, {"type": mustTestJSON(t, "custom_tool_call_output"), "call_id": call["call_id"], "output": mustTestJSON(t, "Script completed\nWall time 0.1 seconds\nOutput:\n")}}
 	if pending, calls, err := compactReaderCall(record, items, "root"); err != nil || len(pending) != 0 || len(calls) != 1 {
 		t.Fatalf("host-only retained acquisition lost identity: %s, %v, %v", pending, calls, err)
+	}
+}
+
+func TestCompactCountsNonemptyReloadSelections(t *testing.T) {
+	p := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, p)
+	driver, err := threadbinding.NewDriver(control.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.ThreadControl = driver
+	for _, selection := range []string{`{"sources":[{"path":"selected.txt"}]}`, "", `{"sources":[]}`, `{"sources":[{"path":"AGENTS.md"}]}`} {
+		if _, err := p.StoreCompact(t.Context(), "root", "handover", selection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if self, _, _ := driver.Coordination().FeatureUse("root"); self.CompactionPreloads != 1 || self.Compactions != 4 {
+		t.Fatalf("compactions = %d with %d preloads, want 4 with only the nonempty selection", self.Compactions, self.CompactionPreloads)
 	}
 }

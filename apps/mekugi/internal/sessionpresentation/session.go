@@ -224,6 +224,9 @@ func cloneView(v View) View {
 			metrics := panel.Metrics.Clone()
 			panel.Metrics = &metrics
 		}
+		if panel.Features != nil {
+			panel.Features = new(*panel.Features)
+		}
 		v.Panel = &panel
 	}
 

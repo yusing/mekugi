@@ -37,6 +37,7 @@ func (s *Service) Target(caller Identity, target string) (*Member, error) {
 }
 
 func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, kind, message string) (result Effect, err error) {
+	created := false // A repeated call reuses its action.
 	err = s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
 		if _, err := admitted(tree, caller); err != nil {
 			return err
@@ -96,8 +97,12 @@ func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, ki
 		}
 		result = Effect{ID: caller.Call, Caller: caller.Thread, CallerTurn: caller.Turn, CallerGeneration: member.Generation, Target: receiver.Thread, Kind: kind, Message: message, State: "pending", Generation: receiver.Generation, PreviousStatus: receiver.Status}
 		tree.Effects = append(tree.Effects, result)
+		created = true
 		return nil
 	})
+	if err == nil && created && kind == "message" {
+		s.ObserveFeature(caller.Thread, FeatureMessage)
+	}
 	return
 }
 
@@ -222,7 +227,8 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 }
 
 func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, receipt Receipt) error {
-	return s.update(ctx, caller, func(tree *Tree, _ *Member) error {
+	var features []Feature
+	err := s.update(ctx, caller, func(tree *Tree, _ *Member) error {
 		effect := tree.Effect(caller, id)
 		if effect == nil {
 			return errors.New("unknown effect acknowledgement")
@@ -272,6 +278,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			return nil
 		}
 		effect.State = "confirmed"
+		features = confirmedFeatures(step, *effect)
 		switch step {
 		case "compact":
 			effect.State = "completed"
@@ -320,6 +327,10 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 		}
 		return nil
 	})
+	if err == nil {
+		s.ObserveFeature(caller, features...)
+	}
+	return err
 }
 
 func (member *Member) settleRecovery() {

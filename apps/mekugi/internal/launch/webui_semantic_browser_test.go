@@ -436,6 +436,9 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--text", "Provider requests")
 	button("Exchanges")
 	run("wait", "--fn", `!!document.querySelector('[aria-label="Retained exchange"]') || document.body.textContent.includes("No completed exchanges yet")`)
+	button("Features")
+	run("wait", "--fn", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')?.textContent.includes("Self-initiated")`)
+	capture("session-features-live")
 	closeDialog()
 	message("/status")
 	run("wait", "--text", "Session status")
@@ -474,6 +477,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 				metricsUI.attached.presentation.Attach(sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}, false)
 				appServerTestKeys(t, metricsUI, "/session\r")
 				*metricsUI.statusPanel.Metrics = sessionMetricsFixture(t)
+				metricsUI.statusPanel.Features = featureMetricsFixture()
 				metricsUI.statusPanel.RenderMetrics()
 			} else if action := request.Operation.Panel; action != nil {
 				if action.Kind == sessionpresentation.PanelRefresh {
@@ -512,6 +516,9 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		button("Refresh")
 		run("wait", "--text", "3 of 3")
 		capture("session-exchanges")
+		button("Features")
+		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 2 4') && rows.includes('With edit ranges 0 5') && rows.includes('Saved tokens (est.) 1234 -20'); })()`)
+		capture("session-features")
 		if strings.Contains(run("eval", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').textContent`), "[ older") {
 			t.Fatal("browser metrics advertise terminal shortcuts")
 		}

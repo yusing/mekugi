@@ -290,7 +290,7 @@ func applyPanelAction(attached *attachedPresentation, terminal *terminalsession.
 		(*panel) = nil
 		attached.presentation.ClosePanel()
 	case sessionpresentation.PanelMetrics:
-		if (*panel).Metrics == nil || action.Tab < 0 || action.Tab > 2 {
+		if (*panel).Metrics == nil || action.Tab < 0 || action.Tab >= len(sessionpresentation.MetricViews) {
 			return
 		}
 		exchanges := (*panel).Metrics.Exchanges

@@ -454,13 +454,29 @@ reset redemption are outside the panel's scope.
 
 `/session` uses the same temporary panel, consuming a detached
 [transport-diagnostics snapshot](../../../../modules/transportdiagnostics/SPEC.md)
-without its own counters. Left/Right and Tab/Shift-Tab cycle Overview, Transport
-and Exchanges; ordinary panel controls scroll, select and close. Overview groups
+without its own counters. Left/Right and Tab/Shift-Tab cycle Overview, Transport,
+Exchanges and Features, an order the panel publishes to both renderers; ordinary panel
+controls scroll, select and close. Overview groups
 settled requests/retries, provider-usage coverage, cache rate and capture health.
 Transport includes all four control-message directions. Exchanges retains each
 attempt's telemetry, returned service tier, timing, status/errors, cache-prefix
 diagnostics and validated request kind. Missing usage differs from zero; local
 deduplication estimates remain separate from provider evidence.
+
+Features compares model-facing feature use by the thread displayed when the panel
+opened (Self) with the sum over all of its admitted descendants, including completed
+agents (Descendants). Its intro names Self and counts those agents. Each family is a
+comparison table whose first row is its total, followed by subsets and failed
+attempts: compactions (self-initiated, with preload), spawns (with preload, rejected
+preload), completed delegate final answers (with edit ranges), `send_message` sends
+(with `btw`, rejected and failed `btw`), `wait_agent` registrations (all mode) and
+output deduplication. Comparison rows carry one value per heading column, and both
+renderers align them; the terminal stacks labels above values when the columns do not
+fit beside them. [Thread control](../../../../modules/threadcontrol/SPEC.md#feature-use)
+owns the counts and descendant set; deduplication uses the capture snapshot's
+per-thread receipts and reads off, rather than zero, when the launch disables it.
+Counts cover the current launch and are unavailable rather than zero when their owner
+is absent.
 
 Snapshots refresh once per second only while open, or immediately with `r`.
 `[`/`]` selects retained exchanges; newest follows, older selection stays fixed

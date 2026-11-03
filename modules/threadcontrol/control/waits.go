@@ -243,6 +243,21 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, targets []s
 	if mode != WaitAny && mode != WaitAll {
 		return result, errors.New("wait_mode must be any or all")
 	}
+	registered := false
+	defer func() {
+		// Repeated calls from the same enclosing execution reuse the wait.
+		if err == nil && registered {
+			if compact {
+				s.ObserveFeature(caller.Thread, FeatureSelfCompaction)
+			}
+			if !standalone {
+				s.ObserveFeature(caller.Thread, FeatureWait)
+			}
+			if !standalone && mode == WaitAll {
+				s.ObserveFeature(caller.Thread, FeatureWaitAll)
+			}
+		}
+	}()
 	err = s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
 		if _, err := admitted(tree, caller); err != nil {
 			return err
@@ -286,6 +301,7 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, targets []s
 		}
 		member.Wait = wait
 		result = *tree.waitResult(wait)
+		registered = true
 		return nil
 	})
 	return

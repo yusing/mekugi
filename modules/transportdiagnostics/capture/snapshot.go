@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"io"
+	"maps"
 	"net/http"
 	"slices"
 
@@ -121,6 +122,8 @@ type exchangeMetrics struct {
 // MetricsSnapshot is a detached, capture-owned metrics view.
 type MetricsSnapshot struct {
 	OutputDeduplication OutputDeduplicationMetrics `json:"output_deduplication,omitzero"`
+	// OutputDeduplicationThreads attributes the same receipts to their request thread.
+	OutputDeduplicationThreads map[string]OutputDeduplicationMetrics `json:"output_deduplication_threads,omitempty"`
 	StorageWrites       *persistence.Snapshot      `json:"storage_writes,omitempty"`
 	Schema              string                     `json:"schema"`
 	Mode                string                     `json:"mode"`
@@ -244,6 +247,7 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 // Clone isolates consumers of an already detached snapshot.
 func (source MetricsSnapshot) Clone() MetricsSnapshot {
 	clone := source
+	clone.OutputDeduplicationThreads = maps.Clone(source.OutputDeduplicationThreads)
 	if source.StorageWrites != nil {
 		clone.StorageWrites = new(*source.StorageWrites)
 	}

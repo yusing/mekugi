@@ -8,11 +8,14 @@ import (
 
 // PanelView contains source values, never layout or a request handle.
 type PanelView struct {
+	// MetricViews names the metric tabs in order for renderers; empty outside /session.
+	MetricViews               []string
 	MetricTab, MetricIndex    int
 	MetricExchange            uint64
 	ID                        uint64
 	Fields                    []StatusField
 	Metrics                   *transportcapture.MetricsSnapshot
+	Features                  *FeatureMetrics
 	Workspace, DebugDirectory string
 }
 
@@ -21,6 +24,10 @@ type StatusField struct {
 	Group, Label, Value, Detail string
 	Remaining                   *float64
 	Alert, Path                 bool
+	// Values replaces Value with one cell per column of a comparison group.
+	// The group's Heading field names those columns.
+	Values  []string
+	Heading bool
 }
 
 type PanelActionKind uint8
@@ -90,5 +97,6 @@ func (p *PanelState) RenderMetrics() {
 			break
 		}
 	}
+	p.MetricViews = MetricViews
 	p.Fields = MetricFields(&p.PanelView, p.MetricTab, p.MetricIndex)
 }

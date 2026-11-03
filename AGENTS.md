@@ -13,6 +13,11 @@ Session resume is product-local: Mekugi resumes Mekugi sessions, and stock Codex
 resumes stock Codex sessions. Cross-product resume compatibility is unsupported
 in both directions; do not design or retain compatibility machinery for it.
 
+Record current-launch usage of self-initiated compaction, agent-to-agent `btw`,
+delegate and compaction preloads, delegate final edit-range supply, `wait_agent`
+all mode, and output deduplication. Expose separate selected-thread and
+all-descendant totals on the `/session` Features page.
+
 Do not create report/summary Markdown unless requested. Record observed Mekugi friction as a
 Plane work item in the MEKUGI project's FIXME state, with impact and a concrete next step. Distinguish current failures from fixed history
 and do not equate investigation time with waste.

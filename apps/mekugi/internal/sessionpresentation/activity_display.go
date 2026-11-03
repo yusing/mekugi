@@ -6,6 +6,8 @@ func (m *Model) DisplayingChild() bool {
 	return m.view.Displayed.ID != m.view.Main.ID
 }
 
+func (m *Model) DisplayedThread() string { return m.view.Displayed.ID }
+
 // Source: apps/mekugi/internal/router/session_presentation.go:88:103@e596fd5f.
 // Roster keys and hit targets resolve to stable thread identities before
 // admission. The highlighted row remains renderer-local.

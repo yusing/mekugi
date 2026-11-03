@@ -354,7 +354,7 @@
   >
     {#if panel.Metrics}
       <div class="{segments} mb-4 flex flex-wrap" role="group" aria-label="Session metrics view">
-        {#each ["Overview", "Transport", "Exchanges"] as tab, i (tab)}
+        {#each panel.MetricViews as tab, i (tab)}
           <button
             type="button"
             class={segment}
@@ -406,36 +406,66 @@
       {/if}
     {/if}
     <!-- Each group is a compact table; a field without a label is a note
-         that spans it. Rows keep no separators. -->
+         that spans it. A Heading field turns the group into a comparison
+         table whose cells come from each row's Values. Rows keep no separators. -->
     {#each groups as [group, fields] (group)}
+      {@const heading = fields.find((field) => field.Heading)}
+      {@const span = 1 + (heading?.Values.length || 1)}
       <section class="not-first:mt-4">
-        {#if group}<h3 class="mb-1.5 px-2 text-xs font-medium text-muted-foreground">
+        {#if group && !heading}<h3 class="mb-1.5 px-2 text-xs font-medium text-muted-foreground">
             {group}
           </h3>{/if}
         <div class="p-1">
           <Table.Root class="table-fixed">
-            <colgroup><col class="w-2/5 max-sm:w-[38%]" /><col /></colgroup>
+            {#if heading}
+              <colgroup
+                ><col />{#each heading.Values as _, i (i)}<col
+                    class="w-28 max-sm:w-24"
+                  />{/each}</colgroup
+              >
+              <!-- The group title shares the column-heading row. -->
+              <Table.Header class="[&_tr]:border-0">
+                <Table.Row class="border-0 hover:bg-transparent">
+                  <Table.Head scope="col" class="h-auto px-1 pb-1.5 text-xs text-muted-foreground"
+                    >{group}</Table.Head
+                  >
+                  {#each heading.Values as column, i (i)}<Table.Head
+                      scope="col"
+                      class="h-auto pb-1.5 text-right text-xs font-medium text-muted-foreground"
+                      >{column}</Table.Head
+                    >{/each}
+                </Table.Row>
+              </Table.Header>
+            {:else}
+              <colgroup><col class="w-2/5 max-sm:w-[38%]" /><col /></colgroup>
+            {/if}
             <Table.Body>
-              {#each fields as field, i (i)}
+              {#each fields.filter((field) => !field.Heading) as field, i (i)}
                 <Table.Row class="border-0 hover:bg-transparent">
                   {#if field.Label}<Table.Head
                       scope="row"
                       class="h-auto py-1.5 align-top font-normal whitespace-normal text-muted-foreground"
                       >{field.Label}</Table.Head
                     >{/if}
-                  <Table.Cell
-                    colspan={field.Label ? undefined : 2}
-                    class={[
-                      "py-1.5 align-top whitespace-normal tabular-nums wrap-anywhere",
-                      !field.Label && "text-muted-foreground",
-                      field.Alert && "text-negative",
-                    ]}
-                  >
-                    <span class={["block", field.Path && "font-mono"]}>{field.Value}</span>
-                    {#if field.Detail}<span class="mt-0.5 block text-small text-muted"
-                        >{field.Detail}</span
-                      >{/if}
-                  </Table.Cell>
+                  {#if field.Values.length}
+                    {#each field.Values as value, j (j)}<Table.Cell
+                        class="py-1.5 text-right align-top tabular-nums">{value}</Table.Cell
+                      >{/each}
+                  {:else}
+                    <Table.Cell
+                      colspan={field.Label ? span - 1 : span}
+                      class={[
+                        "py-1.5 align-top whitespace-normal tabular-nums wrap-anywhere",
+                        !field.Label && "text-muted-foreground",
+                        field.Alert && "text-negative",
+                      ]}
+                    >
+                      <span class={["block", field.Path && "font-mono"]}>{field.Value}</span>
+                      {#if field.Detail}<span class="mt-0.5 block text-small text-muted"
+                          >{field.Detail}</span
+                        >{/if}
+                    </Table.Cell>
+                  {/if}
                 </Table.Row>
               {/each}
             </Table.Body>

@@ -42,9 +42,9 @@ func (p *StatusPanel) Key(key string) (action sessionpresentation.PanelAction, c
 		switched := true
 		switch key {
 		case "\x1b[C", "\t":
-			p.Tab = (p.Tab + 1) % len(metricViews)
+			p.Tab = (p.Tab + 1) % len(sessionpresentation.MetricViews)
 		case "\x1b[D", "\x1b[Z":
-			p.Tab = (p.Tab + len(metricViews) - 1) % len(metricViews)
+			p.Tab = (p.Tab + len(sessionpresentation.MetricViews) - 1) % len(sessionpresentation.MetricViews)
 		case "[", "]":
 			exchanges := p.body.Metrics.Exchanges
 			if p.Tab != 2 || len(exchanges) == 0 {

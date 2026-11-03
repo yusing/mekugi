@@ -5,11 +5,9 @@ import (
 	"slices"
 )
 
-var metricViews = []string{"Overview", "Transport", "Exchanges"}
-
 // Source: apps/mekugi/internal/router/app_server_session_metrics.go:97:299@630ce384.
 func (p *StatusPanel) renderMetrics() {
-	p.Title = "Session · " + metricViews[p.Tab]
+	p.Title = "Session · " + sessionpresentation.MetricViews[p.Tab]
 	p.Controls = "←→ views · ↑↓ scroll · r refresh · Esc close"
 	if p.Tab == 2 {
 		p.Controls = "←→ views · [ older / ] newer · ↑↓ scroll · Esc close"

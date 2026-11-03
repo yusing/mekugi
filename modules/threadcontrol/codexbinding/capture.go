@@ -27,6 +27,9 @@ func (d *Driver) PrepareSpawn(ctx context.Context, caller binding.MCPIdentity, o
 		return PreparedChild{}, errors.New("host MCP metadata and invoking runtime settings disagree")
 	}
 	prepared, err := prepareChild(settings, member.Limits, options, models, config.Layers, [3]*string{config.Config.Agents.Model, config.Config.Agents.Effort, config.Config.Features.MultiAgent.ChildInstructions})
+	if errors.Is(err, errContextPreload) {
+		d.control.ObserveFeature(caller.Thread, control.FeaturePreloadRejection)
+	}
 	if err != nil {
 		return prepared, err
 	}

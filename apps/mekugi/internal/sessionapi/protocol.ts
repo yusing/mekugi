@@ -1127,12 +1127,14 @@ export type SideView = {
 };
 
 export type PanelView = {
+  "MetricViews": Array<string>;
   "MetricTab": number;
   "MetricIndex": number;
   "MetricExchange": number;
   "ID": number;
   "Fields": Array<StatusField>;
   "Metrics": (MetricsSnapshot | null);
+  "Features": (FeatureMetrics | null);
   "Workspace": string;
   "DebugDirectory": string;
 };
@@ -1312,10 +1314,13 @@ export type StatusField = {
   "Remaining": (number | null);
   "Alert": boolean;
   "Path": boolean;
+  "Values": Array<string>;
+  "Heading": boolean;
 };
 
 export type MetricsSnapshot = {
   "output_deduplication"?: OutputDeduplicationMetrics;
+  "output_deduplication_threads"?: Record<string, OutputDeduplicationMetrics>;
   "storage_writes"?: (Snapshot | null);
   "schema": string;
   "mode": string;
@@ -1325,6 +1330,14 @@ export type MetricsSnapshot = {
   "transport": transportMetrics;
   "exchanges": Array<exchangeMetrics>;
   "capture": captureHealth;
+};
+
+export type FeatureMetrics = {
+  "Self": FeatureCounts;
+  "Descendants": FeatureCounts;
+  "Thread": string;
+  "Agents": number;
+  "DeduplicationOff": boolean;
 };
 
 export type Facts = {
@@ -1583,6 +1596,10 @@ export type captureHealth = {
   "dropped_exchange_details": number;
 };
 
+export type FeatureCounts = {
+  "OutputDeduplication": OutputDeduplicationMetrics;
+} & Omit<FeatureUse, "OutputDeduplication">;
+
 export type ItemRef = {
   "ThreadID": string;
   "TurnID": string;
@@ -1789,6 +1806,23 @@ export type providerAttemptMetrics = {
 
 export type payloadMetrics = {
   "bytes": number;
+};
+
+export type FeatureUse = {
+  "Compactions": number;
+  "SelfCompactions": number;
+  "CompactionPreloads": number;
+  "Spawns": number;
+  "SpawnPreloads": number;
+  "PreloadRejections": number;
+  "Finals": number;
+  "CompletionChanges": number;
+  "Messages": number;
+  "SideQuestions": number;
+  "SideQuestionRejections": number;
+  "SideQuestionFailures": number;
+  "Waits": number;
+  "AllWaits": number;
 };
 
 export type Read = {

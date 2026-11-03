@@ -214,6 +214,21 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	if err := json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err != nil {
 		return nil, err
 	}
+	dispatched := false
+	if kind == "message" && args.BTW != nil && *args.BTW {
+		defer func() {
+			switch {
+			case err == nil:
+			case dispatched: // The answer failed or its target generation changed.
+				d.control.ObserveFeature(caller.Thread, control.FeatureSideQuestionFailure)
+			default:
+				// Unauthenticated callers are not attributed to the thread they name.
+				if _, callerErr := d.control.Caller(caller); callerErr == nil {
+					d.control.ObserveFeature(caller.Thread, control.FeatureSideQuestionRejection)
+				}
+			}
+		}()
+	}
 	if kind == "interrupt" && args.Message != nil {
 		return nil, errors.New("interrupt_agent accepts only target")
 	}
@@ -236,6 +251,8 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 		if err != nil {
 			return nil, fmt.Errorf("btw needs the target's live runtime: %w", err)
 		}
+		d.control.ObserveFeature(caller.Thread, control.FeatureMessage, control.FeatureSideQuestion)
+		dispatched = true
 		answer, err := owner.SideQuestion(ctx, target, message)
 		if err != nil {
 			return nil, err
