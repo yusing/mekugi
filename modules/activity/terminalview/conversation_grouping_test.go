@@ -88,10 +88,39 @@ func TestUISnapshotConversationReasoningAndEdits(t *testing.T) {
 				t.Fatal("completed grouping hid the live reasoning stream")
 			}
 			for _, run := range v.Runs {
-				if len(run.Blocks) != 2 || !run.Blocks[1].Live || len(presentation.DetailPages(Values(run.Blocks))) != 3 {
+				if len(run.Blocks) != 1 || !run.Blocks[0].Live || len(presentation.DetailPages(Values(run.Blocks))) != 3 {
 					t.Fatalf("grouping lost live disclosure or original pages: %+v", run.Blocks)
 				}
 			}
 		})
+	}
+}
+
+func TestConversationSameItemReasoningHeadingsShareOneRow(t *testing.T) {
+	const body = "**Reviewing stats persistence scope**\n\n**Reviewing handoff recovery**\n\n**Inspecting read-only retrieval**"
+	for _, live := range []bool{false, true} {
+		for _, restored := range []bool{false, true} {
+			v := NewView()
+			v.Conversation = true
+			values := presentation.ReasoningSections(body)
+			values[len(values)-1].Live = live
+			values[len(values)-1].Thought = 2 * time.Second
+			v.Update(&presentation.Publication{Entries: []presentation.Entry{{Seq: 1, Agent: "Main", Kind: "reasoning", Restored: restored, Live: !restored, ItemComplete: !live, Values: values}}}, Display{})
+			feed := v.RenderConversation(80)
+			if len(feed.Lines) != 1 || !strings.Contains(feed.Lines[0], "Inspecting read-only retrieval") {
+				t.Fatalf("live=%t restored=%t: headings did not collapse: %v", live, restored, feed.Lines)
+			}
+			var blocks []Block
+			for _, run := range v.Runs {
+				blocks = append(blocks, run.Blocks...)
+			}
+			if len(blocks) != 1 || blocks[0].Live != live || blocks[0].Thought != 2*time.Second || len(presentation.DetailPages(Values(blocks))) != 3 {
+				t.Fatalf("group lost lifecycle, timing or original pages: %+v", blocks)
+			}
+			v.Expansion = 1
+			if expanded := v.RenderConversation(80); len(expanded.Lines) != 3 {
+				t.Fatalf("expanded headings lost: %v", expanded.Lines)
+			}
+		}
 	}
 }

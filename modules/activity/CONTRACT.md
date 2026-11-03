@@ -483,21 +483,22 @@ clipping; legacy envelopes never enter provider output.
 ### Public reasoning and disclosure
 
 Only host public summaries appear, including restored or completion-only summaries.
-Empty items create no row; late deltas cannot reopen completed items. Within one
-item, short one-row bodies and heading-only summaries stay directly visible. Longer summaries split
+Empty items create no row; late deltas cannot reopen completed items. A single
+section's short one-row body or heading-only summary stays directly visible. Longer summaries split
 at Markdown/bold titles or short plain titles, never inside fences; rendering,
 section detection and source copy share fence boundaries. Body text retains
 Markdown and uniform faint/italic styling. Untitled sections use Thinking/Thought;
 titled sections keep their titles. The latest three body rows and omitted-row count
 preview longer streams, paced like command output.
 
-Earlier sections fold as a new one starts. Completion first drains queued text,
-then leaves the latest completed item open until later activity and a five-second
-quiet period shared with successful command output across Main and children.
-Restored long summaries start folded. Consecutive completed reasoning items share
-one collapsed row immediately, including short and heading-only items, with their
-observed durations combined; sections of one item count its duration once. Live
-reasoning stays separate, and expanded presentation retains every section.
+Consecutive reasoning sections from the same agent share one collapsed row
+immediately, within and across items, including live, short and heading-only
+sections. The row shows the latest section's headline and live state; observed
+completed durations combine, counting each item's duration once. Expanded
+presentation retains every section. Completion first drains queued text. A lone
+completed section stays open until later activity and a five-second quiet period
+shared with successful command output across Main and children; restored long
+summaries start folded.
 Dialogs retain each section's full body and source as pages. Observed durations
 appear only from one second onward, on the final section rather than per section.
 Completed timed headings and short summaries lead with `Thought for Ns`, followed

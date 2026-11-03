@@ -119,22 +119,17 @@ func MergeReads(values []Value, counts []int) Value {
 func Reasoning(values []Value) Value {
 	value := Group(values[0], values)
 	value.Thought = 0
-	var labels, bodies []string
 	for i, section := range values {
-		label := section.Label
-		if body := strings.TrimSpace(ReasoningSummaryBody(section.Body)); label == "" && !strings.ContainsAny(body, "\r\n") {
-			label = body
-		}
-		if label == "" {
-			label = "Thought"
-		}
-		labels, bodies = append(labels, label), append(bodies, section.Body)
 		// Each item's final section owns its observed duration.
 		if i+1 == len(values) || section.Source != values[i+1].Source {
 			value.Thought += section.Thought
 		}
 	}
-	value.Label, value.Body = strings.Join(labels, " • "), strings.Join(bodies, "\n\n")
+	latest := values[len(values)-1]
+	value.Label, value.Body, value.Live = latest.Label, latest.Body, latest.Live
+	if body := strings.TrimSpace(ReasoningSummaryBody(latest.Body)); value.Label == "" && !strings.ContainsAny(body, "\r\n") {
+		value.Label = body
+	}
 	return value
 }
 

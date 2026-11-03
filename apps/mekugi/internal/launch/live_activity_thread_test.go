@@ -213,7 +213,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 		}
 		feed := v.RenderFeed(80, 40)
 		got := strings.Join(threadPlain(feed), "\n")
-		if !strings.Contains(got, "Thought for 36s • First • Second • Latest body") || strings.Contains(got, "Old body") || strings.Contains(got, "Second body") {
+		if !strings.Contains(got, "Thought for 36s • Latest body") || strings.Contains(got, "Old body") || strings.Contains(got, "Second body") {
 			t.Fatalf("consecutive folded items: %s", got)
 		}
 		shell := &terminalUI{Attachment: &terminalsession.Attachment{}}

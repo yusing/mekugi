@@ -61,7 +61,7 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	// A reused item ID in a new turn must not replace earlier summaries.
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
 	main = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
-	if !strings.Contains(main, "• Complete") || !strings.Contains(main, "Next public summary.") || u.attached.source.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
+	if !strings.Contains(main, "Next public summary.") || u.attached.source.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
 		t.Fatalf("turn identity lost: %q", main)
 	}
 }
@@ -346,7 +346,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 	}
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought") != 1 || strings.Count(got, "• Interrupted thought.") != 1 {
+	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Interrupted thought.") != 1 {
 		t.Fatalf("turn end left thinking live: %q", got)
 	}
 }
@@ -370,11 +370,11 @@ func TestAppServerThinkingFolds(t *testing.T) {
 			render := func() activityui.Feed { return view.RenderFeed(90, 40) }
 			plain := func(feed activityui.Feed) string { return ansi.Strip(strings.Join(feed.Lines, "\n")) }
 			feed := render()
-			if got := plain(feed); !strings.Contains(got, "• Reviewing") || strings.Contains(got, "Alpha.") {
+			if got := plain(feed); !strings.Contains(got, "• Next step") || strings.Contains(got, "Alpha.") {
 				t.Fatalf("finished thinking did not fold: %q", got)
 			}
 			row := slices.IndexFunc(feed.Snippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })
-			if row < 0 || !strings.Contains(ansi.Strip(feed.Lines[row]), "Reviewing") {
+			if row < 0 || !strings.Contains(ansi.Strip(feed.Lines[row]), "Next step") {
 				t.Fatal("folded thinking cannot expand")
 			}
 			if !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[row]) {
@@ -543,7 +543,7 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				if got := view.Entries[0].Source; got.Text != want || got.Native.Thought != 3*time.Second || got.Observed != original.Observed || got.Completed != original.Completed {
 					t.Errorf("refreshed completion lost content or original timing: text=%q thought=%v observed=%v completed=%v", got.Text, got.Native.Thought, got.Observed, got.Completed)
 				}
-				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, strings.TrimSuffix(want, ".")) || !strings.Contains(got, "Thinking") {
+				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") || strings.Contains(got, strings.TrimSuffix(want, ".")) {
 					t.Fatalf("duplicate completion removed next provider thinking: %q", got)
 				}
 				*at = at.Add(4 * time.Second)
@@ -583,7 +583,7 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 				nextEvent(t, u, thread)
 				settleActivity(time.Now().Add(time.Minute), view)
 				feed := view.RenderFeed(90, 40)
-				if got := ansi.Strip(strings.Join(feed.Lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || strings.Contains(got, "Started public body.") {
+				if got := ansi.Strip(strings.Join(feed.Lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Next step") || strings.Contains(got, "Started public body.") {
 					t.Fatalf("started summary did not settle: %s", got)
 				}
 				row := slices.IndexFunc(feed.Snippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })

@@ -1,6 +1,2 @@
 ● worker                                                                08:00:00
-│ • Finalizing execution checks
-│   First retained paragraph.
-│ 
 │ • Thought for 2s • Preparing final renderings
-│   Last retained paragraph.

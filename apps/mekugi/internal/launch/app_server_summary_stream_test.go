@@ -54,8 +54,13 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			snapshot("rolling")
 			rollCommandOutput(u)
 			snapshot("done")
-			if view.blocks(0)[0].Collapsed || view.blocks(0)[1].Collapsed || settleActivity(at.Add(time.Minute), view) {
-				t.Fatal("latest completed reasoning did not stay open")
+			feed := view.RenderFeed(80, 40)
+			wantRows := 1
+			if thread == "child" {
+				wantRows++ // The child retains its agent heading.
+			}
+			if len(feed.Lines) != wantRows || !strings.Contains(strings.Join(feed.Lines, "\n"), "Checking completion") {
+				t.Fatal("completed sections did not share their latest headline")
 			}
 			if len(view.blocks(0)) != 2 || view.blocks(0)[0].Live || view.blocks(0)[1].Live || view.blocks(0)[0].Thought != 0 || view.blocks(0)[1].Thought != 2*time.Second {
 				t.Fatalf("section completion or item duration lost: %+v", view.Entries)
@@ -64,7 +69,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			nextEvent(t, u, thread)
 			settleActivity(at.Add(time.Minute), view)
 			snapshot("collapsed")
-			feed := view.RenderFeed(80, 40)
+			feed = view.RenderFeed(80, 40)
 			for i := range 2 {
 				opened := false
 				for _, snippet := range feed.Snippets {

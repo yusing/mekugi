@@ -40,7 +40,7 @@ func TestCanonicalMembershipAcrossGroups(t *testing.T) {
 		t.Fatal("group mutated its input")
 	}
 	reasoning := Reasoning([]Value{{Kind: "summary", Source: 14, Section: 0, Body: "first"}, {Kind: "summary", Source: 14, Section: 1, Body: "second"}})
-	if reasoning.Members[0].Section != 0 || reasoning.Members[1].Section != 1 || reasoning.Body != "first\n\nsecond" {
+	if reasoning.Members[0].Section != 0 || reasoning.Members[1].Section != 1 || reasoning.Body != "second" {
 		t.Fatal("reasoning lost section identity")
 	}
 }

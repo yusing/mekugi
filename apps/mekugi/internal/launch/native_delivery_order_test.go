@@ -48,8 +48,8 @@ func TestNativeMessageVisibleBeforeWaitContinuation(t *testing.T) {
 	}
 	rollCommandOutput(u)
 	text := ansi.Strip(strings.Join(view.testRenderConversation(100).Lines, "\n"))
-	message, finished, reasoning := strings.Index(text, "Ready to continue."), strings.Index(text, "Finished waiting"), strings.Index(text, "First subsequent reasoning")
-	if message < 0 || finished <= message || reasoning <= finished || strings.Index(text, "Second subsequent reasoning") <= reasoning || strings.Count(text, "Ready to continue.") != 1 {
+	message, finished, reasoning := strings.Index(text, "Ready to continue."), strings.Index(text, "Finished waiting"), strings.Index(text, "Second subsequent reasoning")
+	if message < 0 || finished <= message || reasoning <= finished || strings.Count(text, "Ready to continue.") != 1 {
 		t.Fatalf("delivery was delayed behind its continuation:\n%s", text)
 	}
 	for _, entry := range u.attached.source.Entries {

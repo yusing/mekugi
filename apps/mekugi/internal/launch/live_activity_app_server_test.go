@@ -202,10 +202,11 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 		{Seq: 4, Agent: "/root", Kind: "reasoning", CallID: "main-summary", Text: "Main only summary"},
 	}})
 	retained := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 30).Lines, "\n"))
-	if !strings.Contains(retained, "Updated public summary") || !strings.Contains(retained, "Later public summary") || strings.Contains(retained, "Main only summary") {
-		t.Fatalf("Activity lost earlier reasoning or included Main: %q", retained)
+	if !strings.Contains(retained, "Later public summary") || strings.Contains(retained, "Main only summary") {
+		t.Fatalf("Activity lost latest reasoning or included Main: %q", retained)
 	}
 	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/reviewer")
+	u.shell.Agents.Expansion = 1
 	detail := strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n")
 	if !strings.Contains(detail, "Updated public summary") || strings.Contains(detail, "Reasoning summary") {
 		t.Fatal("detailed summary must remain visible, not a labelled card")

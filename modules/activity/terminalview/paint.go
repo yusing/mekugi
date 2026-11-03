@@ -456,7 +456,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		header, headingElided := p.thinkingHeader(block, width-2)
 		rows, short, titleOnly := p.reasoningContent(block, width)
-		if short {
+		if short && len(block.Members) <= 1 {
 			// Short summaries stay visible, including heading-only summaries,
 			// both while streaming and after completion.
 			text := rows[0]

@@ -1,8 +1,2 @@
 ● worker                                                                08:00:02
-│ • Inspecting layout
-│   First checkpoint.
-│   Second checkpoint.
-│ 
 │ • Thought for 2s • Checking completion
-│   Third checkpoint.
-│   Fourth checkpoint.

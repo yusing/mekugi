@@ -14,41 +14,28 @@ import (
 // streams, following grok-build's truncated thinking blocks.
 const ThinkingTailRows = 3
 
-// CompactReasoning joins consecutive completed reasoning without changing the
+// CompactReasoning joins consecutive reasoning without changing the
 // source blocks used by expanded presentation or the dialog's section pages.
 func CompactReasoning(blocks []Block) []Block {
 	var out []Block
 	for i := 0; i < len(blocks); {
-		end, multipleSources := i+1, false
-		if blocks[i].Kind == "summary" && !blocks[i].Live {
-			for end < len(blocks) && blocks[end].Kind == "summary" && !blocks[end].Live {
-				multipleSources = multipleSources || blocks[end].Source != blocks[i].Source
+		end := i + 1
+		if blocks[i].Kind == "summary" {
+			for end < len(blocks) && blocks[end].Kind == "summary" {
 				end++
 			}
 		}
-		for i < end {
-			block, j := blocks[i], end
-			// One item's sections keep their automatic disclosure. Separate
-			// completed items share a compact row before the quiet period.
-			if !multipleSources {
-				j = i + 1
-				if block.Collapsed {
-					for j < end && blocks[j].Collapsed {
-						j++
-					}
-				}
+		block := blocks[i]
+		if end > i+1 {
+			values := make([]presentation.Value, end-i)
+			for k, b := range blocks[i:end] {
+				values[k] = b.Value
 			}
-			if j > i+1 {
-				values := make([]presentation.Value, j-i)
-				for k, b := range blocks[i:j] {
-					values[k] = b.Value
-				}
-				block.Value = presentation.Reasoning(values)
-				block.Collapsed = true
-			}
-			out = append(out, block)
-			i = j
+			block.Value = presentation.Reasoning(values)
+			block.Collapsed = true
 		}
+		out = append(out, block)
+		i = end
 	}
 	return out
 }
@@ -110,6 +97,9 @@ func reasoningRow(row string) string {
 // ReasoningElided uses the same wrapped body and short-summary rule as the
 // renderer. A settled one-line summary is not a collapsed detail view.
 func (p *Painter) ReasoningElided(block Block, width int) bool {
+	if len(block.Members) > 1 {
+		return true
+	}
 	width = max(8, width)
 	rows, short, titleOnly := p.reasoningContent(block, width)
 	_, headingElided := p.thinkingHeader(block, width-2)
