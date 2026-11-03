@@ -83,7 +83,9 @@ its write targets before either command runs. Other newly created scripts retain
 the selected-workspace fallback, without learning before-state after execution.
 Recursive operations may name trees. Tracked Bash/sh commands report paths
 created by `mktemp`; capture compares only those paths and their contents, never
-the temporary parent. Dry-run, help, version and failed invocations establish no
+the temporary parent. Large temporary directory trees retain a bounded coverage
+gap instead of their contents; independently named writes remain eligible.
+Dry-run, help, version and failed invocations establish no
 creation. Recorded creation followed by deletion cancels in the net view.
 
 Patches within one JavaScript `exec` cell share a pre-cell/post-cell window.

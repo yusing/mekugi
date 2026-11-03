@@ -5,6 +5,8 @@ package capture
 import (
 	"cmp"
 	"context"
+	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -117,18 +119,65 @@ type Observation struct {
 	Tree string `json:",omitempty"`
 }
 
-// A successful mktemp report supplies the ordinary absent endpoint and empty
-// destination listing. Reconciliation reads only that path and its contents,
-// which are authored like any named operand.
+// A successful mktemp report supplies an absent endpoint. Large temporary
+// trees retain one coverage gap instead of acquiring their extracted contents;
+// independently named writes remain eligible.
 func (o *Observation) AddCreatedPath(path string, tree bool) {
 	// Observation copies may share backing arrays with a running preview.
 	o.Files, o.Listings = slices.Clip(o.Files), slices.Clip(o.Listings)
+	if tree {
+		err := boundTemporaryTree(path, time.Now().Add(execCaptureHold))
+		if err != nil && !os.IsNotExist(err) {
+			o.Omitted = append(slices.Clip(o.Omitted), Omission{Path: path, Reason: "temporary directory contents omitted: bounded tree acquisition"})
+			return
+		}
+	}
 	if !slices.ContainsFunc(o.Files, func(file File) bool { return file.Path == path }) {
 		o.Files = append(o.Files, File{Path: path})
 	}
 	if tree && !slices.ContainsFunc(o.Listings, func(listing Listing) bool { return listing.Root == path }) {
 		o.Listings = append(o.Listings, Listing{Root: path})
 	}
+}
+
+// ReadDir batches cap directory enumeration too: WalkDir reads and sorts every
+// child of a wide directory before its visitor can enforce an entry budget.
+func boundTemporaryTree(root string, deadline time.Time) error {
+	const limit = 256
+	entries := 1
+	directories := []string{root}
+	for len(directories) != 0 {
+		if entries > limit || time.Now().After(deadline) {
+			return fs.ErrInvalid
+		}
+		directory := directories[len(directories)-1]
+		directories = directories[:len(directories)-1]
+		file, err := os.Open(directory)
+		if err != nil {
+			return err
+		}
+		for {
+			children, err := file.ReadDir(min(32, limit+1-entries))
+			entries += len(children)
+			if entries > limit || time.Now().After(deadline) {
+				_ = file.Close()
+				return fs.ErrInvalid
+			}
+			for _, child := range children {
+				if child.IsDir() {
+					directories = append(directories, filepath.Join(directory, child.Name()))
+				}
+			}
+			if err != nil {
+				_ = file.Close()
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Member carries the original admission sequence independently of display order.
