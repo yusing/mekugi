@@ -2,16 +2,19 @@
 package main
 
 import (
+	"bufio"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -33,7 +36,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("expected check, docs-check, index-write, index-check or run COMMAND [ARGS]; @workspace expands to member package patterns")
+		return errors.New("expected check, docs-check, index-write, index-check, run or test COMMAND [ARGS]; @workspace expands to member package patterns")
 	}
 	if args[0] == "docs-check" {
 		if len(args) != 1 {
@@ -54,8 +57,8 @@ func run(args []string) error {
 		}
 		return moduleIndex(members, args[0] == "index-check")
 	}
-	if args[0] != "run" || len(args) < 2 {
-		return errors.New("expected check, docs-check, index-write, index-check or run COMMAND [ARGS]")
+	if (args[0] != "run" && args[0] != "test") || len(args) < 2 {
+		return errors.New("expected check, docs-check, index-write, index-check, run or test COMMAND [ARGS]")
 	}
 	expanded, err := expand(args[2:], members)
 	if err != nil {
@@ -63,7 +66,57 @@ func run(args []string) error {
 	}
 	command := exec.Command(args[1], expanded...)
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if args[0] == "test" {
+		return compactTests(command)
+	}
 	return command.Run()
+}
+
+// compactTests consumes non-verbose Go output, which suppresses passing test logs
+// and successful package stdout. Stream diagnostics without a cap or log file.
+func compactTests(command *exec.Cmd) error {
+	command.Stdout = nil
+	output, err := command.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := command.Start(); err != nil {
+		return err
+	}
+	reader := bufio.NewReader(output)
+	packagePass := regexp.MustCompile(`^ok  \t` + regexp.QuoteMeta(prefix) +
+		`/[^\t\r\n]+\t([0-9]+\.[0-9]+s|\(cached\))( \[no tests to run\])?\n$`)
+	passed, empty := 0, 0
+	var outcomes []string
+	for {
+		line, err := reader.ReadString('\n')
+		switch {
+		case packagePass.MatchString(line):
+			passed++
+			outcomes = append(outcomes, line)
+		case strings.HasPrefix(line, "?   \t"+prefix+"/") && strings.HasSuffix(line, "\t[no test files]\n"):
+			empty++
+			outcomes = append(outcomes, line)
+		default:
+			fmt.Fprint(os.Stdout, line)
+		}
+		if err != nil {
+			if err != io.EOF {
+				return errors.Join(command.Wait(), err)
+			}
+			break
+		}
+	}
+	err = command.Wait()
+	if err != nil {
+		// Failed tests can print text resembling package outcomes. Preserve it.
+		for _, line := range outcomes {
+			fmt.Fprint(os.Stdout, line)
+		}
+		return err
+	}
+	fmt.Fprintf(os.Stdout, "Go packages: %d passed, %d without tests\n", passed, empty)
+	return nil
 }
 
 func workspaceMembers() ([]member, error) {

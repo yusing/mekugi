@@ -14,8 +14,8 @@ applicable coverage below.
 
 ## Runner
 
-Test recipes use RTK when available to compact Go test output while preserving
-failure diagnostics and exit status. Set `RTK=` for Go's native package outcomes.
+Test recipes summarize successful Go packages when RTK is enabled, stream failure
+diagnostics, and preserve native exit status. Set `RTK=` for Go's native package outcomes.
 Apply command-output bounds at the invocation when needed.
 
 Use `make test`; the root has no Go module. Default `TEST_PACKAGES=@workspace` expands

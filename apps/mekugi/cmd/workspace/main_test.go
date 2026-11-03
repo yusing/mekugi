@@ -104,7 +104,7 @@ func TestExpandWorkspaceArguments(t *testing.T) {
 
 func TestWorkspaceRunErrors(t *testing.T) {
 	workspaceFixture(t, []string{"./apps/mekugi"}, map[string]string{"apps/mekugi": prefix + "/apps/mekugi"})
-	for _, args := range [][]string{nil, {"unknown"}, {"run"}, {"run", filepath.Join(t.TempDir(), "missing-command")}} {
+	for _, args := range [][]string{nil, {"unknown"}, {"run"}, {"test"}, {"run", filepath.Join(t.TempDir(), "missing-command")}, {"test", filepath.Join(t.TempDir(), "missing-command")}} {
 		if err := run(args); err == nil {
 			t.Fatalf("run(%q) succeeded", args)
 		}
@@ -114,9 +114,11 @@ func TestWorkspaceRunErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("MEKUGI_WORKSPACE_EXIT_FIXTURE", "1")
-	err = run([]string{"run", executable, "-test.run=^TestWorkspaceRunnerExitFixture$"})
-	if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 7 {
-		t.Fatalf("child error=%v, want exit 7", err)
+	for _, mode := range []string{"run", "test"} {
+		err = run([]string{mode, executable, "-test.run=^TestWorkspaceRunnerExitFixture$"})
+		if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 7 {
+			t.Fatalf("%s child error=%v, want exit 7", mode, err)
+		}
 	}
 }
 

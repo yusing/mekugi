@@ -8,6 +8,8 @@ TOOL_OUTPUT = $(if $(RTK),$(RTK) err)
 TEST_OUTPUT = $(if $(RTK),$(RTK) test)
 # Native rtk Go filters invoke go from PATH; preserve custom GO commands raw.
 GO_OUTPUT = $(if $(filter-out go,$(GO)),,$(RTK)) $(GO)
+# Go suppresses passing logs before the workspace runner compacts package rows.
+GO_TEST_RUN = $(WORKSPACE) $(if $(RTK),test,run) $(GO) test
 # Reuse compiled packages across implementation, review, and staged checkouts.
 GO_BUILD_FLAGS ?= -trimpath
 .PHONY: build build-binaries claude-worker claude-worker-check webui webui-check webui-fmt generate check-generated workspace-check docs-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
@@ -107,7 +109,7 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
-	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
 
 # Installed Codex, isolated local mocks, no installation or live model requests.
 test-host:
@@ -123,7 +125,7 @@ test-host:
 	$(MAKE) --no-print-directory test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN="$$pattern" TEST_FLAGS='-tags=codex_e2e -count=1 -v'
 
 lint: workspace-check
-	env -u BASH_ENV $(WORKSPACE) run $(RTK) golangci-lint run @workspace
+	env -u BASH_ENV $(WORKSPACE) run golangci-lint run --allow-serial-runners @workspace
 	@set -e; findings="$$(env -u BASH_ENV $(WORKSPACE) run deadcode -f='{{range .Funcs}}{{printf "%s.%s\n" $$.Path .Name}}{{end}}' @workspace)"; \
 	findings="$$(printf '%s\n' "$$findings" | awk 'NR == FNR { allowed[$$0] = 1; next } /^github.com\/yusing\/mekugi\/testsupport\// { next } NF && !($$0 in allowed)' .deadcode-allowlist -)"; \
 	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi
@@ -132,8 +134,8 @@ lint: workspace-check
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO_TEST_RUN) $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
 
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:
-	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(WORKSPACE) run $(GO_OUTPUT) test $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1

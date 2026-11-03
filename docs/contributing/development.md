@@ -14,8 +14,9 @@ make lint
 make docs-check
 ```
 
-Recipes suppress command echoes and use RTK when available to compact tool output.
-Set `RTK=` to keep tool output raw.
+Recipes suppress command echoes and compact tool output when RTK is enabled.
+Go tests summarize successful packages and stream failure diagnostics; lint keeps
+native diagnostics and exit status. Set `RTK=` for native Go package outcomes.
 
 `make webui` builds the pinned Svelte application for embedding; `make build-binaries`
 and release recipes include it. Plain `make build` checks the Go workspace.
