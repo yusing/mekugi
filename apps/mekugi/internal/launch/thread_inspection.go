@@ -22,7 +22,7 @@ func restoreCompactionMetrics(session *sessionpresentation.Attachment, info bind
 	var completed []string
 	for _, turn := range info.Turns {
 		for _, item := range turn.Items {
-			if item.Type == "contextCompaction" && item.Status != "inProgress" && item.Status != "failed" && item.Status != "interrupted" {
+			if item.Type == "contextCompaction" && sessionpresentation.CompletedCompaction(item.Status) {
 				completed = append(completed, item.ID)
 			}
 		}

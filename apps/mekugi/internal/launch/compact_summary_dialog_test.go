@@ -154,6 +154,58 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 	}
 }
 
+func TestCompactionUnsuccessfulCompletionHasNoSuccessRow(t *testing.T) {
+	for _, mode := range []string{"main", "child", "restore", "replay"} {
+		t.Run(mode, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			items := []binding.ThreadItem{
+				{ID: "success", Type: "contextCompaction", Status: "completed"},
+				{ID: "failure", Type: "contextCompaction", Status: "failed"},
+				{ID: "interruption", Type: "contextCompaction", Status: "interrupted"},
+			}
+			view := u.testActivity(u.shell.Transcript).View
+			if mode == "restore" {
+				if err := u.restoreContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd, Turns: []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: items}}}); err != nil {
+					t.Fatal(err)
+				}
+			} else if mode == "replay" {
+				records := []map[string]any{replayTestMeta("main")}
+				for i, item := range items {
+					records = append(records, replayTestItem("main", "turn", replayTestEpoch, replayTestEpoch+int64(i+1)*1000, map[string]any{"id": item.ID, "type": "ContextCompaction", "status": item.Status}))
+				}
+				path := replayTestWrite(t, t.TempDir(), "rollout.jsonl", records...)
+				source, err := replayTestService(t, nil).Read(t.Context(), playback.ReadOptions{Path: path, Seed: 1})
+				if err != nil {
+					t.Fatal(err)
+				}
+				replay := newTestUIReplayPlayback(u.activity, t.Context(), source, 1)
+				defer replay.close()
+				if err := replay.seek(replay.Until); err != nil {
+					t.Fatal(err)
+				}
+				replay.publish()
+				view = replay.ui.view
+			} else {
+				if mode == "child" {
+					appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+					child := u.testActivity(u.shell.Agents)
+					child.setDisplayFilter(false, "/root/worker")
+					view = child.View
+				}
+				for _, item := range items {
+					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": mode, "turnId": "turn", "item": item})
+				}
+			}
+			if mode != "replay" {
+				u.testActivity(view).publishActivity()
+			}
+			if rendered := strings.Join(view.RenderConversation(80).Lines, "\n"); strings.Count(rendered, "Context compacted") != 1 {
+				t.Fatalf("successful boundary was not rendered exactly once: %s", rendered)
+			}
+		})
+	}
+}
+
 func TestCompactionSummaryReadLeavesInputResponsiveAndRejectsStaleResult(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})

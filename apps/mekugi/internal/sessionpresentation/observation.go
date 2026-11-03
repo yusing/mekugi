@@ -201,10 +201,11 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 				}
 			}
 			if method == "item/completed" {
-				if item.Status != "failed" && item.Status != "interrupted" {
+				if CompletedCompaction(item.Status) {
 					s.ObserveCompaction(p.ThreadID, id)
 				} else {
 					s.finishCompaction(p.ThreadID, id)
+					break
 				}
 				summary := item.Text
 				native.SummaryPending = summary == ""
