@@ -347,64 +347,66 @@
       >{/if}
   </Dialog>
 {:else if panel && view}
+  <!-- Metrics views and exchanges stay reachable while long content scrolls. -->
+  {#snippet metricsNav()}
+    <div class="{segments} flex flex-wrap" role="group" aria-label="Session metrics view">
+      {#each panel.MetricViews as tab, i (tab)}
+        <button
+          type="button"
+          class={segment}
+          aria-pressed={panel.MetricTab === i}
+          {disabled}
+          onclick={() =>
+            semantic.send({
+              panel: {
+                Version: view.Version,
+                Panel: panel.ID,
+                Kind: 3,
+                Tab: i,
+                Exchange: panel.MetricExchange,
+              },
+            })}>{tab}</button
+        >
+      {/each}
+    </div>
+    {#if panel.MetricTab === 2 && metricCount > 0}
+      <div class="mt-3 flex flex-wrap items-center gap-2" aria-label="Retained exchange">
+        <Button
+          disabled={disabled || panel.MetricIndex === 0}
+          onclick={() =>
+            semantic.send({
+              panel: {
+                Version: view.Version,
+                Panel: panel.ID,
+                Kind: 3,
+                Tab: 2,
+                Exchange: panel.Metrics!.exchanges[panel.MetricIndex - 1].sequence,
+              },
+            })}>Older</Button
+        >
+        <span class="text-small text-muted">{panel.MetricIndex + 1} of {metricCount}</span>
+        <Button
+          disabled={disabled || panel.MetricIndex >= metricCount - 1}
+          onclick={() =>
+            semantic.send({
+              panel: {
+                Version: view.Version,
+                Panel: panel.ID,
+                Kind: 3,
+                Tab: 2,
+                Exchange: panel.Metrics!.exchanges[panel.MetricIndex + 1].sequence,
+              },
+            })}>Newer</Button
+        >
+      </div>
+    {/if}
+  {/snippet}
   <Dialog
     title={panel.Metrics ? "Session metrics" : "Session status"}
     wide
+    nav={panel.Metrics ? metricsNav : undefined}
     onclose={() => semantic.send({ panel: { Version: view.Version, Panel: panel.ID, Kind: 1 } })}
   >
-    {#if panel.Metrics}
-      <div class="{segments} mb-4 flex flex-wrap" role="group" aria-label="Session metrics view">
-        {#each panel.MetricViews as tab, i (tab)}
-          <button
-            type="button"
-            class={segment}
-            aria-pressed={panel.MetricTab === i}
-            {disabled}
-            onclick={() =>
-              semantic.send({
-                panel: {
-                  Version: view.Version,
-                  Panel: panel.ID,
-                  Kind: 3,
-                  Tab: i,
-                  Exchange: panel.MetricExchange,
-                },
-              })}>{tab}</button
-          >
-        {/each}
-      </div>
-      {#if panel.MetricTab === 2 && metricCount > 0}
-        <div class="mb-3 flex flex-wrap items-center gap-2" aria-label="Retained exchange">
-          <Button
-            disabled={disabled || panel.MetricIndex === 0}
-            onclick={() =>
-              semantic.send({
-                panel: {
-                  Version: view.Version,
-                  Panel: panel.ID,
-                  Kind: 3,
-                  Tab: 2,
-                  Exchange: panel.Metrics!.exchanges[panel.MetricIndex - 1].sequence,
-                },
-              })}>Older</Button
-          >
-          <span class="text-small text-muted">{panel.MetricIndex + 1} of {metricCount}</span>
-          <Button
-            disabled={disabled || panel.MetricIndex >= metricCount - 1}
-            onclick={() =>
-              semantic.send({
-                panel: {
-                  Version: view.Version,
-                  Panel: panel.ID,
-                  Kind: 3,
-                  Tab: 2,
-                  Exchange: panel.Metrics!.exchanges[panel.MetricIndex + 1].sequence,
-                },
-              })}>Newer</Button
-          >
-        </div>
-      {/if}
-    {/if}
     <!-- Each group is a compact table; a field without a label is a note
          that spans it. A Heading field turns the group into a comparison
          table whose cells come from each row's Values. Rows keep no separators. -->

@@ -516,6 +516,35 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		button("Refresh")
 		run("wait", "--text", "3 of 3")
 		capture("session-exchanges")
+		// Long metrics scroll beneath the pinned title and navigation, which cover
+		// the dialog's top edge and keep phone touch targets; a view switched
+		// while scrolled stays reachable.
+		pinned := `((long) => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); d.scrollTop = d.scrollHeight; const r = d.getBoundingClientRect(); const nav = [...d.querySelectorAll('button[aria-label="Close dialog"], [aria-label="Session metrics view"] button, [aria-label="Retained exchange"] button')]; const last = [...d.querySelectorAll('button')].at(-1).getBoundingClientRect(); const strip = document.elementFromPoint(r.left + r.width / 2, r.top + 4); return (!long || d.scrollTop > 0) && !!strip && nav[0].closest('header').parentElement.contains(strip) && nav.length >= 5 && last.bottom <= r.bottom && nav.every(b => { const x = b.getBoundingClientRect(); return x.top >= r.top && x.bottom <= r.bottom && (hit => !!hit && (b.contains(hit) || (b.disabled && b.parentElement.contains(hit))))(document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)) && (innerWidth > 640 || x.height >= 44); }); })`
+		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "720"}, {"phone", "390", "844"}} {
+			run("set", "viewport", size.width, size.height)
+			for _, theme := range []string{"dark", "light"} {
+				run("set", "media", theme)
+				for _, tab := range []struct {
+					name, text string
+					long       bool
+				}{{"Exchanges", "of 3", true}, {"Transport", "Provider requests", false}} {
+					run("eval", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').scrollTop = 1e6`)
+					button(tab.name)
+					run("wait", "--text", tab.text)
+					if strings.TrimSpace(run("eval", pinned+"("+strconv.FormatBool(tab.long)+")")) != "true" {
+						t.Fatalf("%s %s %s: metrics navigation scrolled away or lost its touch target: %s", tab.name, size.name, theme, run("eval", `(() => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); return {dialog: d.getBoundingClientRect().toJSON(), scroll: d.scrollTop, height: d.scrollHeight, buttons: [...d.querySelectorAll('button')].map(b => { const x = b.getBoundingClientRect(); return [b.textContent.trim() || b.ariaLabel, Math.round(x.top), Math.round(x.bottom), document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)?.closest('button') === b]; })}; })()`))
+					}
+					if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+						run("screenshot", filepath.Join(artifacts, "session-metrics-scrolled-"+strings.ToLower(tab.name)+"-"+size.name+"-"+theme+".png"))
+					}
+				}
+			}
+		}
+		// Keyboard focus reaches the pinned views and switches them.
+		run("focus", `[aria-label="Session metrics view"] button:nth-child(3)`)
+		run("press", "Enter")
+		run("wait", "--text", "of 3")
+		run("set", "viewport", "1280", "720")
 		button("Features")
 		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 2 4') && rows.includes('With edit ranges 0 5') && rows.includes('Saved tokens (est.) 1234 -20'); })()`)
 		capture("session-features")
