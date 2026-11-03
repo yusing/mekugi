@@ -3,6 +3,7 @@ package launch
 import (
 	"fmt"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -70,7 +71,42 @@ func activityEditPages(attached *attachedPresentation, terminal *terminalsession
 				return withPreparedSource(pages), page.ID
 			}
 		}
-		return nil, ""
+		// An observed shell edit can have no captured changes, for example a
+		// temporary checkpoint. Its painted target still names a real operation.
+		// Admit only a path in that operation, then show its original command
+		// rather than treating missing diff evidence as a stale source identity.
+		if len(pages) > 0 {
+			return nil, ""
+		}
+		matched := false
+		for _, value := range entry.Values {
+			for _, original := range activitypresentation.Originals(value) {
+				matched = matched || original.EditOperation() && original.EditPath() == path
+			}
+		}
+		if !matched {
+			return nil, ""
+		}
+		command := sessionpresentation.CommandPresentation(entry.Source)
+		if command.Script == "" {
+			return nil, ""
+		}
+		values := command.DetailValues()
+		if len(values) == 0 {
+			detail := activitypresentation.Value{Source: seq, Kind: "op", Verb: "Run", Code: command.Display, Lang: "bash", Fenced: true,
+				Body: "No captured diff is available for this operation."}
+			if command.Output != nil {
+				detail.Output = 1
+			}
+			values = []activitypresentation.Value{detail}
+		}
+		pages = activitypresentation.DetailPages(values)
+		for _, page := range pages {
+			if page.EditOperation() && page.EditPath() == path {
+				return pages, page.ID
+			}
+		}
+		return pages, pages[0].ID
 	}
 	return nil, ""
 }
