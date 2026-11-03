@@ -30,13 +30,13 @@ func TestComposerFileTokenHistoryAndRejectedSubmission(t *testing.T) {
 		t.Fatalf("submission lost file binding: submitted=%+v draft=%+v", u.attached.conversation.Submitted[u.Submission().ID].Files, u.Files)
 	}
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"rejected"}}`)
-	if u.Text != `@"file name.go" ` || len(u.Files) != 1 || u.Files[0].Path != "file name.go" {
+	if u.Text != `@"file name.go"` || len(u.Files) != 1 || u.Files[0].Path != "file name.go" {
 		t.Fatalf("rejection lost file token: %q %+v", u.Text, u.Files)
 	}
 	rememberInput(u.attached.conversation, draftSnapshot(u.Editor))
 	u.Text, u.Files = "temporary", nil
 	u.recallInput(true)
-	if u.Text != `@"file name.go" ` || len(u.Files) != 1 {
+	if u.Text != `@"file name.go"` || len(u.Files) != 1 {
 		t.Fatalf("history lost file token: %q %+v", u.Text, u.Files)
 	}
 }

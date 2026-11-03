@@ -127,7 +127,7 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, terminal
 	if prefix > 0 {
 		session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, overlay, 0, prefix)
 	}
-	pending := prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, preparation.take(*editor))
+	pending := prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, preparation.take(*editor).Trimmed())
 	pending.Origin = attached.view
 	pending.Delivery = attached.effects.input()
 	if b.Waiting != "" {
@@ -423,9 +423,7 @@ func sideCommand(text string) string {
 func sideTaskDraft(draft composer.Draft) composer.Draft {
 	local := composer.Editor{Draft: draft}
 	local.Apply(composer.Action{Kind: composer.DeleteAction, Start: 0, End: strings.Index(local.Text, "/oneoff") + len("/oneoff")})
-	result := local.Draft.Clone()
-	result.CursorBack = 0
-	return result
+	return local.Draft.Trimmed()
 }
 
 // forgetSideActivity retires presentation only, not processes or retained evidence.

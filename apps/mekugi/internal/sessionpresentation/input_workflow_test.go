@@ -24,6 +24,37 @@ type inputTransport struct {
 	err      error
 }
 
+func TestQueuedInputTrimsDraftAndPreservesBindings(t *testing.T) {
+	for _, mode := range []sessioncontrol.InputMode{sessioncontrol.SendInput, sessioncontrol.QueueNextTurn} {
+		t.Run(strconv.Itoa(int(mode)), func(t *testing.T) {
+			var store scope.Store
+			var presentation sessionpresentation.Service
+			m := presentation.Session(&store)
+			m.Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, false)
+			c := new(conversationmodel.Session)
+			control := sessioncontrol.Live{Thread: "main", Turn: "active"}
+			text := "\u2003 \t@file  [Image 1]\n "
+			start := len("\u2003 \t")
+			c.Editor.Replace(composer.Draft{Text: text, Files: []composer.Token{{Start: start, End: start + len("@file"), Path: "file"}}, Images: []composer.Token{{Start: start + len("@file  "), End: start + len("@file  [Image 1]"), Path: "image"}}})
+			draft, plan, err := m.TakeInput(sessionpresentation.SubmitIntent{Version: m.View().Version, Revision: c.Editor.Revision(), Mode: mode}, &control, c, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.QueueInput(conversationmodel.Input{Draft: draft}, plan.Queued)
+			draft = c.TakeBatch(false).Parts[0].Draft
+			if draft.Text != "@file  [Image 1]" || draft.Files[0].Start != 0 || draft.Files[0].Path != "file" || draft.Images[0].Start != len("@file  ") || draft.Images[0].Path != "image" {
+				t.Fatalf("trimmed draft: %+v", draft)
+			}
+			c.Submitted = map[string]conversationmodel.Submission{"input": {Parts: []conversationmodel.Input{{Draft: draft}}}}
+			c.Acknowledged("input")
+			c.Editor.Recall(true)
+			if c.Editor.Text != draft.Text {
+				t.Fatalf("recall: %q", c.Editor.Text)
+			}
+		})
+	}
+}
+
 func TestCompactionSelectionUsesIntentInsteadOfMessageText(t *testing.T) {
 	for _, command := range []bool{false, true} {
 		var store scope.Store

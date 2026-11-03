@@ -155,7 +155,7 @@ func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 		t.Fatalf("requests=%+v", requests)
 	}
 	input := conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)
-	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.attached.conversation.Submitted[u.Submission().ID].Selections) != 1 || u.attached.conversation.Submitted[u.Submission().ID].Selections[0].Text != "exact quote" || u.attached.conversation.Submitted[u.Submission().ID].Text != "[Image 1][Selected message] \n[Image 2]" {
+	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.attached.conversation.Submitted[u.Submission().ID].Selections) != 1 || u.attached.conversation.Submitted[u.Submission().ID].Selections[0].Text != "exact quote" || u.attached.conversation.Submitted[u.Submission().ID].Text != "[Image 1][Selected message]\n[Image 2]" {
 		t.Fatalf("expedite corrupted attachments: %+v draft=%+v", input, u.attached.conversation.Submitted[u.Submission().ID].Draft)
 	}
 }

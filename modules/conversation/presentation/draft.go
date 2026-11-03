@@ -69,7 +69,7 @@ func (m *Session) TakeDraft(revision uint64) (composer.Draft, error) {
 	if !m.ordinaryEditor() || revision != m.Editor.Revision() {
 		return composer.Draft{}, ErrDraftChanged
 	}
-	return m.Editor.Take(), nil
+	return m.Editor.Take().Trimmed(), nil
 }
 
 // EditorTarget distinguishes ordinary input from the current non-secret prompt.

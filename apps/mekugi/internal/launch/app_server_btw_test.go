@@ -174,7 +174,7 @@ func TestAppServerBTWBusyRetainsDraft(t *testing.T) {
 }
 
 func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff question"} {
+	for _, command := range []string{"/side", "/oneoff  question  "} {
 		t.Run(command, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.Turn = "main-turn"
@@ -182,9 +182,12 @@ func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
 			if command == "/side" {
-				appServerTestKeys(t, u, "question\r")
+				appServerTestKeys(t, u, "  question  \r")
 			}
 			start := btwTestRequest(t, w, "turn/start", "work-side")
+			if got := start.Params.Input; len(got) != 2 || got[1].Text != "question" {
+				t.Fatalf("start input = %+v", got)
+			}
 			appServerTestKeys(t, u, "start draft\r")
 			if u.Text != "start draft" || w.Len() != 0 {
 				t.Fatal("start admission consumed the draft")
@@ -192,7 +195,7 @@ func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
 			u.Editor.Take()
 			btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
 			appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"work-side","turnId":"side-turn","itemId":"answer","delta":"partial"}}`)
-			appServerTestKeys(t, u, "change direction\r")
+			appServerTestKeys(t, u, "  change direction  \r")
 			steer := btwTestRequest(t, w, "turn/steer", "work-side")
 			if steer.Params.ExpectedTurnID != "side-turn" || u.Text != "" || u.Turn != "main-turn" {
 				t.Fatalf("wrong steering target or draft: %+v, %q", steer, u.Text)

@@ -124,7 +124,7 @@ func TestNativeProgressAdmitsEffortAndReferenceAtOwner(t *testing.T) {
 		t.Fatal("Side shell command was converted into conversation input")
 	}
 	send(event.Target(), sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: event.Frame.View.Version, Thread: event.Frame.View.Main}})
-	send(event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: "main", Operation: sessionpresentation.SubmitComposer}, Draft: composer.Draft{Text: "original input"}}})
+	send(event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: "main", Operation: sessionpresentation.SubmitComposer}, Draft: composer.Draft{Text: "  original input \n"}}})
 	await(func() bool { return event.Frame.View.Interrupt.Turn == "original" && !event.Frame.PendingEffects })
 	original := event
 	acknowledge := func() {
@@ -137,7 +137,7 @@ func TestNativeProgressAdmitsEffortAndReferenceAtOwner(t *testing.T) {
 		await(func() bool { return len(event.Frame.Effects) == 0 })
 	}
 	acknowledge()
-	send(event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: "main", Operation: sessionpresentation.QueueComposer}, Draft: composer.Draft{Text: "waiting input"}}})
+	send(event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: "main", Operation: sessionpresentation.QueueComposer}, Draft: composer.Draft{Text: "  waiting input \n"}}})
 	for range nativeSemanticEffects - 1 {
 		send(event.Target(), sessionapi.NativeOperation{Reference: &sessionpresentation.ReferenceIntent{Version: event.Frame.View.Version, Thread: "main", Displayed: event.Frame.View.Main, Text: "retained selection"}})
 	}
@@ -211,6 +211,14 @@ func serveNativeProgressHost(t *testing.T) {
 		case "thread/fork":
 			result["thread"] = map[string]any{"id": "side"}
 		case "turn/start":
+			var params struct {
+				Input []struct {
+					Text string `json:"text"`
+				} `json:"input"`
+			}
+			if err := json.Unmarshal(request.Params, &params); err != nil || len(params.Input) != 1 || params.Input[0].Text != "original input" {
+				t.Fatalf("untrimmed host input: %+v, %v", params.Input, err)
+			}
 			result["turn"] = map[string]any{"id": "original"}
 		case "turn/interrupt":
 			t.Fatal("completed original action reached host interruption")

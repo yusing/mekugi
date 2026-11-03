@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -54,6 +55,17 @@ func (d Draft) Clone() Draft {
 	d.Selections = slices.Clone(d.Selections)
 	d.AnswerImages = slices.Clone(d.AnswerImages)
 	d.Attachments = slices.Clone(d.Attachments)
+	return d
+}
+
+// Trimmed returns a submission draft with surrounding whitespace removed.
+func (d Draft) Trimmed() Draft {
+	d = d.Clone()
+	trimmed := strings.TrimSpace(d.Text)
+	start := len(d.Text) - len(strings.TrimLeftFunc(d.Text, unicode.IsSpace))
+	d.Remove(start+len(trimmed), len(d.Text))
+	d.Remove(0, start)
+	d.CursorBack = 0
 	return d
 }
 

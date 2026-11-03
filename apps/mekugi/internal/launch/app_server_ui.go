@@ -507,7 +507,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 						if !request.Prepared.Admit(request.Context, session.ownedImages) {
 							return "The prepared input was canceled before admission.", nil
 						}
-						input := conversationmodel.Input{Draft: request.Prepared.Draft, Origin: view.attached.view, Delivery: view.effects.input()}
+						input := conversationmodel.Input{Draft: request.Prepared.Draft.Trimmed(), Origin: view.attached.view, Delivery: view.effects.input()}
 						session.attached.conversation.QueueInput(input, plan.Queued)
 						if input.AttachmentNotice != "" {
 							setNotice(&view.attached.feedback, view.shell, presentationTime(session.clock), input.AttachmentNotice, true)

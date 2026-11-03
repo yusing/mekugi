@@ -128,7 +128,7 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 		t.Fatalf("skill contents or source path missing: %+v", frames)
 	}
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"rejected"}}`)
-	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path {
+	if u.Text != "$quiet" || len(u.Skills) != 1 || u.Skills[0].Path != path {
 		t.Fatalf("rejected submission lost skill: draft=%q skills=%+v", u.Text, u.Skills)
 	}
 }
