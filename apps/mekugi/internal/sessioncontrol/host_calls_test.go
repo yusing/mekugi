@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 	"testing/synctest"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -254,6 +257,125 @@ func TestPreparedNativeAdmissionRetainsCanonicalAuthority(t *testing.T) {
 		if _, err := retained.Confirm(foreign); err == nil {
 			t.Fatal("resume accepted a different retained session")
 		}
+	}
+}
+
+type tierPreparationHost struct {
+	control.Native
+	threadbinding.ChildAudience
+	owner control.Runtime
+}
+
+type tierPreparationRuntime struct {
+	control.Runtime
+	info   control.ThreadInfo
+	config jsontext.Value
+}
+
+func (h tierPreparationHost) Runtime(string) (control.Runtime, error) { return h.owner, nil }
+func (h tierPreparationRuntime) Thread(context.Context, string) (control.ThreadInfo, error) {
+	return h.info, nil
+}
+func (h tierPreparationRuntime) Configuration(context.Context, string, string) (jsontext.Value, error) {
+	return h.config, nil
+}
+
+func TestPreparedRoleTierNativeAdmission(t *testing.T) {
+	for _, tc := range []struct {
+		name, role, features string
+		inherited, want      *string
+	}{
+		{"disabled priority", "priority", `{"fast_mode":false}`, nil, nil},
+		{"legacy fast", "fast", `{}`, nil, new("priority")},
+		{"disabled legacy fast", "fast", `{"fast_mode":false}`, nil, nil},
+		{"enabled priority", "priority", `{}`, nil, new("priority")},
+		{"disabled ultrafast", "ultrafast", `{"ultrafast_mode":false}`, nil, nil},
+		{"independent ultrafast", "ultrafast", `{"fast_mode":false}`, nil, new("ultrafast")},
+		{"independent priority", "priority", `{"ultrafast_mode":false}`, nil, new("priority")},
+		{"independent flex", "flex", `{"fast_mode":false,"ultrafast_mode":false}`, nil, new("flex")},
+		{"enabled default", "default", `{}`, nil, new("default")},
+		{"disabled default", "default", `{"fast_mode":false}`, nil, nil},
+		{"unsupported role tier", "unlisted", `{}`, nil, nil},
+		{"session wins", "priority", `{}`, new("flex"), new("flex")},
+		{"cleared session does not fall back", "flex", `{"fast_mode":false}`, new("priority"), nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			rolePath := filepath.Join(workspace, "worker.toml")
+			if err := os.WriteFile(rolePath, fmt.Appendf(nil, "model = 'selected'\nservice_tier = %q\n", tc.role), 0600); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(workspace, "parent.jsonl")
+			parent := binding.AdmissionSettings{Model: "parent", Provider: "provider", Workspace: workspace, Tier: tc.inherited, PermissionProfile: jsontext.Value(`{"type":"disabled"}`), ApprovalPolicy: jsontext.Value(`"never"`)}
+			writeSettings := func(thread string, settings binding.AdmissionSettings) {
+				t.Helper()
+				record, err := json.Marshal(map[string]any{"type": "event_msg", "payload": map[string]any{"type": "thread_settings_applied", "thread_id": thread, "thread_settings": settings}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				data := fmt.Appendf(nil, "{\"type\":\"session_meta\",\"payload\":{\"id\":%q}}\n%s\n", thread, record)
+				data = fmt.Appendf(data, "{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"turn\",\"model\":%q,\"cwd\":%q,\"permission_profile\":{\"type\":\"disabled\"},\"approval_policy\":\"never\"}}\n", settings.Model, workspace)
+				if err := os.WriteFile(path, data, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			writeSettings("parent", parent)
+			retained, err := history.NewService(control.RecordKinds())
+			if err != nil {
+				t.Fatal(err)
+			}
+			store, err := retained.Open(t.Context(), t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "parent")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(session.Close)
+			driver, err := threadbinding.NewDriver(control.New())
+			if err != nil {
+				t.Fatal(err)
+			}
+			host := tierPreparationHost{owner: tierPreparationRuntime{info: control.ThreadInfo{Thread: "parent", Session: "session", Path: path}, config: fmt.Appendf(nil, `{"layers":[{"name":{},"config":{"agents":{"worker":{"config_file":%q}}}}],"config":{"features":%s}}`, rolePath, tc.features)}}
+			if err := driver.Connect(host, host); err != nil {
+				t.Fatal(err)
+			}
+			caller := control.Identity{Thread: "parent", Session: "session", Turn: "turn", Call: "spawn", Item: "exec"}
+			if err := driver.AdmitRequest(t.Context(), session, caller, true); err != nil {
+				t.Fatal(err)
+			}
+			child, err := driver.PrepareSpawn(t.Context(), binding.MCPIdentity{Thread: caller.Thread, Session: caller.Session, Turn: caller.Turn, Call: caller.Call, Item: caller.Item, Model: "parent"}, threadbinding.SpawnOptions{TaskName: "worker", Message: "assignment", AgentType: new("worker"), ForkTurns: new("none")}, []threadbinding.Model{{Name: "selected", ServiceTiers: []string{"priority", "ultrafast"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			transport := &requestTransport{id: "start"}
+			requests := NewRequests[struct{}](transport)
+			prepared := &PreparedThread{Parent: "parent", Settings: child.Settings}
+			if _, err := requests.OpenSession(&Startup{Prepared: prepared}, &Live{}, false, struct{}{}); err != nil {
+				t.Fatal(err)
+			}
+			params := transport.sends[0].params.(map[string]any)
+			if tc.want == nil && params["serviceTier"] != nil || tc.want != nil && params["serviceTier"] != *tc.want {
+				t.Fatalf("native startup tier=%v, want %v", params["serviceTier"], tc.want)
+			}
+			// Native configuration/session gating produces this canonical tier.
+			// Compare it through the admission consumer, not a relaxed tier match.
+			canonical := parent
+			canonical.Model, canonical.Tier = "selected", tc.want
+			writeSettings("child", canonical)
+			if err := confirmNativeSettings("child", path, child.Settings); err != nil {
+				t.Fatalf("prepared role tier conflicts with native authority: %v", err)
+			}
+			if !reflect.DeepEqual(child.Settings.Tier, tc.want) {
+				t.Fatalf("tier=%v, want %v", child.Settings.Tier, tc.want)
+			}
+			canonical.Tier = new("different")
+			writeSettings("child", canonical)
+			if err := confirmNativeSettings("child", path, child.Settings); err == nil {
+				t.Fatal("tier mismatch bypassed strict authority comparison")
+			}
+		})
 	}
 }
 
