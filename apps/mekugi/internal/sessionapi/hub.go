@@ -309,6 +309,46 @@ func (h *Hub) run(ctx context.Context, m *managedSession) {
 		m.resume = thread
 		return nil
 	}
+	ready := false
+	registrationFailure := make(chan error, 1)
+	m.server.registerSummary = func(summary Summary) error {
+		if summary.Thread == "" {
+			return nil
+		}
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if h.stopping || ctx.Err() != nil {
+			return context.Canceled
+		}
+		conflict := false
+		for current := range h.running {
+			conflict = conflict || current != m && current.resume == summary.Thread
+		}
+		if current := h.sessions[summary.Thread]; conflict || current != nil && current.runtime != m {
+			select {
+			case registrationFailure <- errThreadOwned:
+			default:
+			}
+			return errThreadOwned
+		}
+		if m.id != "" && m.id != summary.Thread {
+			delete(h.sessions, m.id)
+		}
+		m.id = summary.Thread
+		if m.resume == summary.Thread {
+			m.resume = ""
+		}
+		entry := projectSummary(summary)
+		entry.ParentThread = m.parentThread
+		entry.ID = m.id
+		h.sessions[m.id] = &listedSession{entry: entry, server: m.server, runtime: m}
+		h.publishList()
+		if summary.Ready && !ready {
+			m.ready <- m.id
+			ready = true
+		}
+		return nil
+	}
 	result := make(chan error, 1)
 	go func() {
 		result <- m.run(ctx, m.server)
@@ -340,7 +380,6 @@ func (h *Hub) run(ctx context.Context, m *managedSession) {
 		h.mu.Unlock()
 		close(m.done)
 	}()
-	ready := false
 	for {
 		select {
 		case m.err = <-result:
@@ -349,42 +388,10 @@ func (h *Hub) run(ctx context.Context, m *managedSession) {
 			m.cancel()
 			m.err = <-result
 			return
-		case <-m.server.summaryChanged:
-			m.server.mu.Lock()
-			summary := m.server.identity
-			m.server.mu.Unlock()
-			if summary.Thread == "" {
-				continue
-			}
-			h.mu.Lock()
-			conflict := false
-			for current := range h.running {
-				conflict = conflict || current != m && current.resume == summary.Thread
-			}
-			if current := h.sessions[summary.Thread]; conflict || current != nil && current.runtime != m {
-				h.mu.Unlock()
-				m.cancel()
-				<-result
-				m.err = errThreadOwned
-				return
-			}
-			if m.id != "" && m.id != summary.Thread {
-				delete(h.sessions, m.id)
-			}
-			m.id = summary.Thread
-			if m.resume == summary.Thread {
-				m.resume = ""
-			}
-			entry := projectSummary(summary)
-			entry.ParentThread = m.parentThread
-			entry.ID = m.id
-			h.sessions[m.id] = &listedSession{entry: entry, server: m.server, runtime: m}
-			h.publishList()
-			h.mu.Unlock()
-			if summary.Ready && !ready {
-				m.ready <- m.id
-				ready = true
-			}
+		case m.err = <-registrationFailure:
+			m.cancel()
+			<-result
+			return
 		}
 	}
 }

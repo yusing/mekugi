@@ -33,11 +33,11 @@ func (l *managedLauncher) PrepareInput(_ context.Context, _ string, input InputR
 func (l *managedLauncher) Run(ctx context.Context, start Start, s *Server) error {
 	n := l.count.Add(1)
 	l.started <- s
+	defer func() { l.stopped <- struct{}{} }()
 	if l.ready != nil {
 		select {
 		case <-l.ready:
 		case <-ctx.Done():
-			l.stopped <- struct{}{}
 			return ctx.Err()
 		}
 	}
@@ -51,7 +51,6 @@ func (l *managedLauncher) Run(ctx context.Context, start Start, s *Server) error
 	if err := s.Publish(Frame{Session: Session{Thread: id, Workspace: start.Workspace}}); err != nil {
 		return err
 	}
-	defer func() { l.stopped <- struct{}{} }()
 	for {
 		select {
 		case <-ctx.Done():

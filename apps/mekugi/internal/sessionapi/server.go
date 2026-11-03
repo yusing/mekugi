@@ -112,15 +112,16 @@ var encoding = jsontext.AllowInvalidUTF8(true)
 // Server serves one session to any number of viewers. Publish and SetSummary
 // are called by the session's owner goroutine, which also receives Intents.
 type Server struct {
-	live          bool
-	native        *Native
-	intents       chan Intent
-	prepare       func(context.Context, string, InputRequest) (*PreparedInput, error)
-	preparations  chan struct{} // Shared by the admitted lifetime family, not unrelated sessions.
-	activeThread  func(string) bool
-	reserveThread func(string) error
-	family        func() (*Family, *changes.ReviewView)
-	questionOwner func(string) *Server
+	live            bool
+	native          *Native
+	intents         chan Intent
+	prepare         func(context.Context, string, InputRequest) (*PreparedInput, error)
+	preparations    chan struct{} // Shared by the admitted lifetime family, not unrelated sessions.
+	activeThread    func(string) bool
+	reserveThread   func(string) error
+	registerSummary func(Summary) error
+	family          func() (*Family, *changes.ReviewView)
+	questionOwner   func(string) *Server
 
 	mu                  sync.Mutex
 	requests            threadcontrol.Runtime
@@ -151,10 +152,8 @@ type Server struct {
 	reviewSource        *changes.ReviewView
 	livePreviews        jsontext.Value
 	subscribers         map[chan publication]struct{}
-	identity            Summary
 	frame               atomic.Pointer[Frame] // Raw local input; family projections never feed back here.
 	summary             []byte                // The latest summary event.
-	summaryChanged      chan struct{}
 }
 
 // ActiveThread queries the supplied execution registry. It grants no ownership
@@ -222,14 +221,14 @@ type message struct {
 
 // New serves a replay, whose viewers request playback.
 func New() *Server {
-	return &Server{intents: make(chan Intent, 16), preparations: make(chan struct{}, preparationLimit), subscribers: make(map[chan publication]struct{}), summaryChanged: make(chan struct{}, 1)}
+	return &Server{intents: make(chan Intent, 16), preparations: make(chan struct{}, preparationLimit), subscribers: make(map[chan publication]struct{})}
 }
 
 // NewLive serves a live session, whose viewers send input and interrupt it.
 // Its intents are unbuffered: one is received only when the owner is ready
 // to apply it.
 func NewLive() *Server {
-	return &Server{live: true, intents: make(chan Intent), preparations: make(chan struct{}, preparationLimit), subscribers: make(map[chan publication]struct{}), summaryChanged: make(chan struct{}, 1)}
+	return &Server{live: true, intents: make(chan Intent), preparations: make(chan struct{}, preparationLimit), subscribers: make(map[chan publication]struct{})}
 }
 
 // NewPreparedLive binds acquisition to the execution owner. Preparation runs
@@ -243,7 +242,8 @@ func NewPreparedLive(prepare func(context.Context, string, InputRequest) (*Prepa
 // Intents delivers viewer requests to the owner goroutine.
 func (s *Server) Intents() <-chan Intent { return s.intents }
 
-// SetSummary records the session's list entry and notifies its runtime owner.
+// SetSummary registers the session's list entry before its owner can publish a
+// native frame addressing that thread.
 func (s *Server) SetSummary(summary Summary) error {
 	data, err := json.Marshal(struct {
 		listed
@@ -253,16 +253,19 @@ func (s *Server) SetSummary(summary Summary) error {
 		return err
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if bytes.Equal(data, s.summary) {
+	unchanged := bytes.Equal(data, s.summary)
+	s.mu.Unlock()
+	if unchanged {
 		return nil
 	}
-	s.identity = summary
-	s.summary = data
-	select {
-	case s.summaryChanged <- struct{}{}:
-	default:
+	if s.registerSummary != nil {
+		if err := s.registerSummary(summary); err != nil {
+			return err
+		}
 	}
+	s.mu.Lock()
+	s.summary = data
+	s.mu.Unlock()
 	return nil
 }
 

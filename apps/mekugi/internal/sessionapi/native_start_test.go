@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 )
 
 type nativeStartupLauncher struct {
@@ -33,6 +34,90 @@ func TestNativeStartupReportsInitializationFailure(t *testing.T) {
 	if !ok || outcome.Code != 2 || outcome.Message != "The selected invocation option is unavailable." {
 		t.Fatalf("startup outcome disappeared before attachment: %v", err)
 	}
+}
+
+func TestNativeStartupRegistersBeforePublishingConfirmedTarget(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		registering, release, published := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		launcher := &nativeStartupLauncher{run: func(ctx context.Context, start Start, server *Server) error {
+			register := server.registerSummary
+			server.registerSummary = func(summary Summary) error {
+				close(registering)
+				<-release
+				return register(summary)
+			}
+			request := <-server.Native().Requests()
+			frame := nativeTestFrame("", 1)
+			frame.View.Info.Workspace = start.Workspace
+			if err := server.Native().Publish(request.Attachment, frame); err != nil {
+				return err
+			}
+			request.Reply <- ""
+			if err := server.SetSummary(Summary{Thread: "confirmed", Workspace: start.Workspace, Ready: true}); err != nil {
+				return err
+			}
+			close(published)
+			frame.View.Main.ID = "confirmed"
+			frame.Switch = &NativeSwitch{To: "confirmed", Origin: request.Attachment}
+			if err := server.Native().Publish(request.Attachment, frame); err != nil {
+				return err
+			}
+			for {
+				select {
+				case request := <-server.Native().Requests():
+					if request.Thread != "confirmed" || request.Startup != "" || request.Operation.Command == nil || *request.Operation.Command != "/rewind" {
+						request.Reply <- "mutation lost its confirmed destination"
+					} else {
+						request.Reply <- ""
+					}
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		}}
+		hub := NewHub(t.Context(), launcher)
+		defer hub.Close()
+		conn := pipeControl(t, hub)
+		controlInitialize(t, conn)
+		controlWrite(t, conn, string(testJSON(t, map[string]any{"jsonrpc": "2.0", "id": "start", "method": "native/start", "params": RPCParams{Subscription: "view", Body: testJSON(t, NativeStart{Workspace: t.TempDir()})}})))
+		if reply := controlRead(t, conn); reply.Error != nil {
+			t.Fatal(reply.Error)
+		}
+		readFrame := func(previous NativeEvent) NativeEvent {
+			t.Helper()
+			message := controlRead(t, conn)
+			var publication RPCEvent
+			if message.Method != "subscription/event" || decodeBody(message.Params, &publication) != nil {
+				t.Fatalf("expected native publication: %+v", message)
+			}
+			event, err := decodeNativeEvent(publication.Kind, publication.Data, previous)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return event
+		}
+		startup := readFrame(NativeEvent{})
+		<-registering
+		synctest.Wait()
+		select {
+		case <-published:
+			t.Error("SetSummary returned before target registration completed")
+		default:
+		}
+		close(release)
+		confirmed := readFrame(startup)
+		if confirmed.Target().Thread != "confirmed" || confirmed.Startup != "" || confirmed.Frame.Switch == nil {
+			t.Fatalf("startup did not explicitly confirm its target: %+v", confirmed)
+		}
+		for _, target := range []NativeTarget{confirmed.Target(), startup.Target(), {Thread: "foreign", Attachment: confirmed.Attachment, Version: confirmed.Frame.View.Version}} {
+			mutation := NativeMutation{Attachment: target.Attachment, Version: target.Version, Operation: NativeOperation{Command: new("/rewind")}}
+			controlWrite(t, conn, string(testJSON(t, map[string]any{"jsonrpc": "2.0", "id": "intent", "method": "view/intent", "params": RPCParams{Thread: target.Thread, Startup: target.Startup, Body: testJSON(t, mutation)}})))
+			reply := controlRead(t, conn)
+			if target.Thread == "confirmed" && reply.Error != nil || target.Thread != "confirmed" && reply.Error == nil {
+				t.Fatalf("confirmed/stale/foreign target admission: target=%+v reply=%+v", target, reply)
+			}
+		}
+	})
 }
 
 func TestNativeStartupDisconnectAndJoinedOutcome(t *testing.T) {
