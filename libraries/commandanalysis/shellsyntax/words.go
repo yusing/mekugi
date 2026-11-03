@@ -12,7 +12,30 @@ func Literal(word *syntax.Word) (string, bool) {
 	if word == nil || !LiteralParts(word.Parts, false) {
 		return "", false
 	}
-	value, err := expand.Literal(&expand.Config{}, word)
+	return literalArgument(word)
+}
+
+// Literal's assignment expansion leaves unquoted backslashes intact. Decode
+// those fragments as arguments, retaining brace policy at Operand/BraceArgs.
+func literalArgument(word *syntax.Word) (string, bool) {
+	copy := *word
+	copy.Parts = slices.Clone(word.Parts)
+	for index, part := range copy.Parts {
+		literal, ok := part.(*syntax.Lit)
+		if !ok || !strings.Contains(literal.Value, `\`) {
+			continue
+		}
+		fragment := &syntax.Word{Parts: []syntax.WordPart{part}}
+		if syntax.SplitBraces(fragment) {
+			return "", false
+		}
+		values, err := expand.Fields(&expand.Config{}, fragment)
+		if err != nil || len(values) != 1 {
+			return "", false
+		}
+		copy.Parts[index] = &syntax.SglQuoted{Value: values[0]}
+	}
+	value, err := expand.Literal(&expand.Config{}, &copy)
 	return value, err == nil
 }
 
@@ -97,10 +120,11 @@ func Operand(word *syntax.Word) (value string, glob bool, ok bool) {
 	for index, part := range word.Parts {
 		switch part := part.(type) {
 		case *syntax.SglQuoted:
-			if part.Dollar {
+			text, err := expand.Literal(&expand.Config{}, &syntax.Word{Parts: []syntax.WordPart{part}})
+			if err != nil {
 				return "", false, false
 			}
-			escape(part.Value)
+			escape(text)
 		case *syntax.DblQuoted:
 			for _, inner := range part.Parts {
 				literal, isLiteral := inner.(*syntax.Lit)
@@ -131,8 +155,8 @@ func Operand(word *syntax.Word) (value string, glob bool, ok bool) {
 				pattern.WriteString(strings.ReplaceAll(text, "[!", "[^"))
 				continue
 			}
-			literal, err := expand.Literal(&expand.Config{}, &syntax.Word{Parts: []syntax.WordPart{part}})
-			if err != nil {
+			literal, ok := literalArgument(&syntax.Word{Parts: []syntax.WordPart{part}})
+			if !ok {
 				return "", false, false
 			}
 			escape(literal)
@@ -143,11 +167,8 @@ func Operand(word *syntax.Word) (value string, glob bool, ok bool) {
 	if glob {
 		return pattern.String(), true, true
 	}
-	literal, err := expand.Literal(&expand.Config{}, word)
-	if err != nil {
-		return "", false, false
-	}
-	return literal, false, true
+	literal, ok := literalArgument(word)
+	return literal, false, ok
 }
 
 func Args(words []*syntax.Word) ([]string, bool) {

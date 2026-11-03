@@ -4,7 +4,41 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/commandargs"
+	"mvdan.cc/sh/v3/syntax"
 )
+
+func TestLiteralArgumentQuotes(t *testing.T) {
+	for _, value := range []string{"", "can't", "line one\nline 'two'\t\\", "$HOME $(exit 1) *?[", "a\"b"} {
+		for _, quote := range []func(string) string{commandargs.Quote, commandargs.QuoteArgument} {
+			program, err := syntax.NewParser().Parse(strings.NewReader("cmd "+quote(value)), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			word := program.Stmts[0].Cmd.(*syntax.CallExpr).Args[1]
+			if got, ok := Literal(word); !ok || got != value {
+				t.Errorf("Literal(%s) = %q, %v; want %q", quote(value), got, ok, value)
+			}
+			if got, ok := Args([]*syntax.Word{word}); !ok || len(got) != 1 || got[0] != value {
+				t.Errorf("Args(%s) = %q, %v; want %q", quote(value), got, ok, value)
+			}
+		}
+	}
+	for _, source := range []string{"$HOME", "$(exit 1)", "`exit 1`", "\"$HOME\"", "~user"} {
+		program, err := syntax.NewParser().Parse(strings.NewReader("cmd "+source), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		word := program.Stmts[0].Cmd.(*syntax.CallExpr).Args[1]
+		if value, ok := Literal(word); ok {
+			t.Errorf("dynamic Literal(%s) = %q", source, value)
+		}
+		if value, ok := Args([]*syntax.Word{word}); ok {
+			t.Errorf("dynamic Args(%s) = %q", source, value)
+		}
+	}
+}
 
 func TestParse(t *testing.T) {
 	parsed, err := Parse("#!/usr/bin/env -S python3 -u\r\n#!params={\"tty\":true}\r\nprint('ok')\r\n")

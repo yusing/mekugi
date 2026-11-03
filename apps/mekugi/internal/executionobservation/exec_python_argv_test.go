@@ -22,7 +22,7 @@ func TestPythonArgvExternalEditsAndCreations(t *testing.T) {
 	if binary == "" {
 		t.Skip("Python runtime unavailable")
 	}
-	for _, form := range []string{"heredoc", "command", "script"} {
+	for _, form := range []string{"heredoc", "command", "escaped quotes", "ANSI-C quotes", "script"} {
 		t.Run(form, func(t *testing.T) {
 			workspace, external := t.TempDir(), t.TempDir()
 			writeTestFile(t, filepath.Join(external, "state.json"), "before\n")
@@ -31,9 +31,14 @@ func TestPythonArgvExternalEditsAndCreations(t *testing.T) {
 				value = `__import__("sys").argv[1]`
 			}
 			source := "import sys, pathlib\nroot = pathlib.Path(" + value + ")\n(root/\"state.json\").write_text(\"after\\n\")\n(root/\"created.json\").write_text(\"created\\n\")\n"
+			if form == "escaped quotes" || form == "ANSI-C quotes" {
+				source = "import sys, pathlib\nroot = pathlib.Path(sys.argv[1])\n(root/'state.json').write_text('after\\n')\n(root/'created.json').write_text('created\\n')\n"
+			}
 			command := python + " - " + commandargs.QuoteArgument(external) + " <<'PY'\n" + source + "PY"
-			if form == "command" {
+			if form == "command" || form == "escaped quotes" {
 				command = python + " -c " + commandargs.Quote(source) + " " + commandargs.QuoteArgument(external)
+			} else if form == "ANSI-C quotes" {
+				command = python + " -c " + commandargs.QuoteArgument(source) + " " + commandargs.QuoteArgument(external)
 			} else if form == "script" {
 				writeTestFile(t, filepath.Join(workspace, "edit.py"), source)
 				command = python + " edit.py " + commandargs.QuoteArgument(external)
