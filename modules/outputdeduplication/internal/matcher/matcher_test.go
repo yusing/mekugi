@@ -73,6 +73,52 @@ func TestMatcherThreshold(t *testing.T) {
 	}
 }
 
+func TestMatcherRepeatedSeeds(t *testing.T) {
+	for _, pattern := range []string{"Measured output from an admitted child request.\n", "repeated first row\nrepeated second row\n", "\n{\n}\nrepeated seed row\n"} {
+		t.Run(pattern, func(t *testing.T) {
+			idx := New()
+			defer idx.Close()
+			body := strings.Repeat(pattern, 32)
+			// Separate verbatim sources exercise newest-source ties as well as
+			// retaining early positions despite many equal row hashes.
+			original := idx.Project("source heading\n" + body + "source tail\n")
+			for source := range 8 {
+				idx.Add(source+1, original, nil)
+			}
+			want := []Span{{0, len(body), 8, 2, rowCount(body) + 1, false}}
+			if got := idx.Project(body).Spans; !reflect.DeepEqual(got, want) {
+				t.Fatalf("repeated run = %+v, want %+v", got, want)
+			}
+			for _, groups := range idx.seeds {
+				for _, pos := range groups.first {
+					if pos.piece < 5 {
+						t.Fatalf("candidate retained an older piece: %+v", pos)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestMatcherRepeatedSeedEviction(t *testing.T) {
+	idx := New()
+	defer idx.Close()
+	pattern := "repeated first row\nrepeated second row\n"
+	body := strings.Repeat(pattern, WindowBytes/len(pattern))
+	idx.Add(1, idx.Project(body), nil)
+	// Evict half the repeated source, without introducing new seed candidates.
+	skip := len(pattern) * (strings.Count(body, pattern) / 2)
+	idx.Add(2, idx.Project(strings.Repeat("\n", WindowBytes-len(body)+skip)), nil)
+	want := []Span{{0, len(body) - skip, 1, rowCount(body[:skip]) + 1, rowCount(body), false}}
+	if got := idx.Project(body[skip:]).Spans; !reflect.DeepEqual(got, want) {
+		t.Fatalf("retained repeated suffix = %+v, want %+v", got, want)
+	}
+	idx.Add(3, idx.Project(strings.Repeat("\n", WindowBytes)), nil)
+	if len(idx.seeds) != 0 || len(idx.Project(body).Spans) != 0 {
+		t.Fatal("evicted repeated source is still referenceable")
+	}
+}
+
 func TestMatcherRejectedSourcesAdvanceWindow(t *testing.T) {
 	idx := New()
 	defer idx.Close()

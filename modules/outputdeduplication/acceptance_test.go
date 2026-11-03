@@ -111,6 +111,50 @@ func TestAcceptanceOriginalPartBounds(t *testing.T) {
 	}
 }
 
+func TestAcceptanceRepeatedMultilineOutput(t *testing.T) {
+	p := registeredProjection(t)
+	body := strings.Repeat("Measured output from an admitted child request.\n", 32)
+	for _, multipart := range []bool{false, true} {
+		t.Run(fmt.Sprintf("multipart=%v", multipart), func(t *testing.T) {
+			output := func(text string) any {
+				if multipart {
+					return []item{textPart(text)}
+				}
+				return text
+			}
+			input := encode(t, []item{
+				{"type": "function_call_output", "call_id": "source", "output": output(body)},
+				{"type": "custom_tool_call_output", "call_id": "repeat", "output": output(body)},
+			})
+			evidence := bytes.Clone(input)
+			result := p.Prepare(input)(input)
+			want := encode(t, []item{
+				{"type": "function_call_output", "call_id": "source", "output": output("O1:\n" + body)},
+				{"type": "custom_tool_call_output", "call_id": "repeat", "output": output("See O1\n")},
+			})
+			if !reflect.DeepEqual(decode(t, result.Input), decode(t, want)) || !bytes.Equal(input, evidence) {
+				t.Fatalf("projection = %s, want %s; evidence preserved = %v", result.Input, want, bytes.Equal(input, evidence))
+			}
+			if result.Receipt == nil || result.Receipt.OutputRepetitions != 1 ||
+				result.Receipt.RepeatedCalls["repeat"] != "repeated" || result.Receipt.SavedTokens <= 0 {
+				t.Fatalf("receipt = %+v", result.Receipt)
+			}
+		})
+	}
+}
+
+func TestAcceptanceInteriorRepeatedSeed(t *testing.T) {
+	p := registeredProjection(t)
+	line := strings.Repeat("Measured output from an admitted child request. ", 8) + "\n"
+	source, target := line+"one\n"+line+"two\n"+line, "one\n"+line+"two\n"
+	input := encode(t, []item{tool("source", source), tool("target", target)})
+	result := p.Prepare(input)(input)
+	if got := decode(t, result.Input)[1]["output"]; got != "See O1:2-4\n" ||
+		result.Receipt == nil || result.Receipt.RepeatedCalls["target"] != "repeated" {
+		t.Fatalf("interior repeated seed = %q, receipt = %+v", got, result.Receipt)
+	}
+}
+
 func TestAcceptanceDurableAttachmentBodies(t *testing.T) {
 	p := registeredProjection(t)
 	body := block("submitted snapshot")

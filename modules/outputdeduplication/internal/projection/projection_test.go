@@ -77,6 +77,19 @@ func TestSourceGateKeepsUnmeasuredAndLowValueText(t *testing.T) {
 	}
 }
 
+func TestRepeatedMultilineOutput(t *testing.T) {
+	var savings Savings
+	pass := (Service{}).NewPass(&savings)
+	defer pass.Close()
+	body := strings.Repeat("Measured output from an admitted child request.\n", 32)
+	expect.Equal(t, pass.Text("", body).Text, "O1:\n"+body)
+	got := pass.Text("execution header\n", body)
+	expect.Equal(t, got.Text, "execution header\nSee O1\n")
+	expect.Equal(t, got.Occurrences, uint64(1))
+	expect.Equal(t, got.RepeatedBytes, len(body))
+	expect.Equal(t, got.RepeatedLines, 32)
+}
+
 func TestSourceGateIncludesAnchorAndReference(t *testing.T) {
 	for _, source := range []int{1, 10000} {
 		for _, ending := range []string{"\n", "\r\n", ""} {

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"hash/maphash"
+	"slices"
 	"strings"
 
 	"github.com/yusing/goutils/synk"
@@ -36,8 +37,9 @@ type Projection struct {
 
 // A piece is one uninterrupted visible run. Text and sparse seed metadata use
 // separate buffers to avoid crossing a pool size tier for a few seed bytes.
-// Each seed uses a uint32 byte offset and uint64 delivered row.
-const seedBytes = 12
+// Each seed uses a uint32 byte offset, uint64 delivered row, and uint32 next
+// equal-hash seed (plus one, reserving zero for the end of the chain).
+const seedBytes = 16
 
 type piece struct {
 	text, seeds      []byte
@@ -60,19 +62,26 @@ type position struct {
 	seed  int
 }
 
+// Keep recent positions and the first occurrence in each of the newest four
+// pieces. Dense rows must not displace every early seed, while interior recent
+// occurrences must still compete with both ends of a repetitive piece.
+type candidates struct {
+	recent, first [4]position
+}
+
 // Index retains at most WindowBytes of referenceable text, plus seed metadata.
 // It is not concurrent-safe. Seedless text advances the window without storage.
 // Call Close after the forward pass to return its buffers to the pool.
 type Index struct {
 	seed       maphash.Seed
-	seeds      map[uint64][4]position
+	seeds      map[uint64]candidates
 	pieces     []*piece
 	firstPiece uint64
 	bytes      uint64
 }
 
 func New() *Index {
-	return &Index{seed: maphash.MakeSeed(), seeds: make(map[uint64][4]position), firstPiece: 1}
+	return &Index{seed: maphash.MakeSeed(), seeds: make(map[uint64]candidates), firstPiece: 1}
 }
 
 // Close clears indexed text before returning buffers. It is safe to call repeatedly.
@@ -172,8 +181,12 @@ func (idx *Index) Project(text string) Projection {
 		}
 		var best Span
 		var latest uint64
-		for _, pos := range idx.seeds[hashText(idx.seed, text[at:next])] {
-			if pos.piece == 0 {
+		positions := idx.seeds[hashText(idx.seed, text[at:next])]
+		for n, pos := range [8]position{
+			positions.recent[0], positions.recent[1], positions.recent[2], positions.recent[3],
+			positions.first[0], positions.first[1], positions.first[2], positions.first[3],
+		} {
+			if pos.piece == 0 || (n >= 4 && slices.Contains(positions.recent[:], pos)) {
 				continue
 			}
 			p := idx.pieces[pos.piece-idx.firstPiece]
@@ -332,8 +345,16 @@ func (idx *Index) addRun(source, rows int, text string, firstRow, skip int, acce
 			binary.LittleEndian.PutUint64(b[4:], uint64(row))
 			hash := hashText(idx.seed, text[at:end])
 			positions := idx.seeds[hash]
-			copy(positions[1:], positions[:3])
-			positions[0] = position{id, seed}
+			if positions.recent[0].piece == id {
+				previous := positions.recent[0].seed
+				binary.LittleEndian.PutUint32(p.seeds[previous*seedBytes+12:], uint32(seed+1))
+			} else {
+				copy(positions.first[1:], positions.first[:3])
+				positions.first[0] = position{id, seed}
+			}
+			copy(positions.recent[1:], positions.recent[:3])
+			positions.recent[0] = position{id, seed}
+			binary.LittleEndian.PutUint32(b[12:], 0)
 			idx.seeds[hash] = positions
 			seed++
 		}
@@ -373,14 +394,21 @@ func (idx *Index) evict() {
 			}
 			hash := maphash.Bytes(idx.seed, content)
 			positions := idx.seeds[hash]
-			for i, pos := range positions {
-				if pos.piece == idx.firstPiece && pos.seed == p.firstSeed {
-					copy(positions[i:], positions[i+1:])
-					positions[3] = position{}
-					break
+			for _, list := range []*[4]position{&positions.recent, &positions.first} {
+				for i, pos := range list {
+					if pos.piece == idx.firstPiece && pos.seed == p.firstSeed {
+						next := binary.LittleEndian.Uint32(p.seeds[p.firstSeed*seedBytes+12:])
+						if list == &positions.first && next != 0 {
+							list[i].seed = int(next) - 1
+						} else {
+							copy(list[i:], list[i+1:])
+							list[3] = position{}
+						}
+						break
+					}
 				}
 			}
-			if positions[0].piece == 0 {
+			if positions.recent[0].piece == 0 {
 				delete(idx.seeds, hash)
 			} else {
 				idx.seeds[hash] = positions

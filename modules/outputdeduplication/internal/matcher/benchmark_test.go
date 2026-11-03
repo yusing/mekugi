@@ -95,3 +95,23 @@ func BenchmarkDuplicateOutputProjection(b *testing.B) {
 		}
 	})
 }
+
+func BenchmarkRepeatedSeedProjection(b *testing.B) {
+	for _, size := range []int{8 << 10, 64 << 10, WindowBytes} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			const pattern = "repeated first row\nrepeated second row\n"
+			text := strings.Repeat(pattern, size/len(pattern))
+			idx := New()
+			defer idx.Close()
+			idx.Add(1, idx.Project(text), nil)
+			b.ReportAllocs()
+			b.SetBytes(int64(len(text)))
+			for b.Loop() {
+				got := idx.Project(text).Spans
+				if len(got) != 1 || !got[0].Whole {
+					b.Fatal("expected one complete repeated run")
+				}
+			}
+		})
+	}
+}
