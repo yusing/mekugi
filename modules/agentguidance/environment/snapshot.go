@@ -35,6 +35,8 @@ type Git struct {
 	Branch        string
 	Head          string
 	DefaultBranch string
+	HeadRemotes   []string
+	HooksPath     string
 	Status        []string
 	Recent        []Commit
 }
@@ -134,6 +136,23 @@ func Acquire(ctx context.Context, workspace string) Snapshot {
 		}
 	}
 	if headOK {
+		if refs, ok := git("head_remotes", "for-each-ref", "--contains=HEAD", "--format=%(refname:strip=2)%00%(symref)", "refs/remotes"); ok {
+			for row := range strings.SplitSeq(refs, "\n") {
+				ref, target, found := strings.Cut(row, "\x00")
+				if !found || ref == "" || target != "" {
+					continue
+				}
+				if len(s.Git.HeadRemotes) == 16 {
+					s.Incomplete = append(s.Incomplete, "head_remotes truncated")
+					break
+				}
+				if len(ref) > 512 {
+					ref = validPrefix(ref, 512)
+					s.Incomplete = append(s.Incomplete, "head_remotes entry truncated")
+				}
+				s.Git.HeadRemotes = append(s.Git.HeadRemotes, ref)
+			}
+		}
 		if log, ok := git("recent_commits", "log", "-5", "--abbrev=9", "--format=%h%x00%s%x00", "--no-decorate"); ok {
 			for row := range strings.SplitSeq(log, "\x00\n") {
 				id, subject, found := strings.Cut(strings.TrimSuffix(row, "\x00"), "\x00")
@@ -148,7 +167,29 @@ func Acquire(ctx context.Context, workspace string) Snapshot {
 			}
 		}
 	}
+	value, truncated, err := commandWithConfig(ctx, workspace, true, "git", "--no-lazy-fetch", "--no-optional-locks", "config", "--get", "core.hooksPath")
+	switch {
+	case err == nil:
+		value = strings.TrimSuffix(value, "\n")
+		if len(value) > 512 {
+			value, truncated = validPrefix(value, 512), true
+		}
+		s.Git.HooksPath = strconv.Quote(value)
+		if truncated {
+			s.Incomplete = append(s.Incomplete, "hooks_path truncated")
+		}
+	case isUnsetConfig(err):
+		s.Git.HooksPath = "unset (Git default)"
+	default:
+		s.Git.HooksPath = "unavailable"
+		s.Incomplete = append(s.Incomplete, "hooks_path unavailable")
+	}
 	return s
+}
+
+func isUnsetConfig(err error) bool {
+	exit, ok := err.(*exec.ExitError)
+	return ok && exit.ExitCode() == 1 && len(exit.Stderr) == 0
 }
 
 func validPrefix(value string, limit int) string {
@@ -174,13 +215,25 @@ func (w *boundedOutput) Write(p []byte) (int, error) {
 }
 
 func command(ctx context.Context, workspace, name string, args ...string) (string, bool, error) {
+	return commandWithConfig(ctx, workspace, false, name, args...)
+}
+
+// Only the narrow hooksPath read uses effective configuration; other facts stay
+// independent of account configuration. Repository-routing variables stay out.
+func commandWithConfig(ctx context.Context, workspace string, effectiveConfig bool, name string, args ...string) (string, bool, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workspace
 	cmd.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		key, _, _ := strings.Cut(entry, "=")
+		if effectiveConfig && (key == "GIT_CONFIG_GLOBAL" || key == "GIT_CONFIG_SYSTEM" || key == "GIT_CONFIG_NOSYSTEM" || key == "GIT_CONFIG_COUNT" || key == "GIT_CONFIG_PARAMETERS" || strings.HasPrefix(key, "GIT_CONFIG_KEY_") || strings.HasPrefix(key, "GIT_CONFIG_VALUE_")) {
+			return false
+		}
 		return strings.HasPrefix(key, "GIT_")
 	})
-	cmd.Env = append(cmd.Env, "LC_ALL=C", "GIT_NO_LAZY_FETCH=1", "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	cmd.Env = append(cmd.Env, "LC_ALL=C", "GIT_NO_LAZY_FETCH=1", "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
+	if !effectiveConfig {
+		cmd.Env = append(cmd.Env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	}
 	var output, stderr boundedOutput
 	cmd.Stdout = &output
 	cmd.Stderr = &stderr
@@ -214,7 +267,17 @@ func (s Snapshot) Text(workspace string) string {
 		if s.Git.Linked {
 			out.WriteString("Linked worktree: true\n")
 		}
-		fmt.Fprintf(&out, "Branch: %s\nHEAD: %s\nDefault branch: %s\nStatus:\n", s.Git.Branch, s.Git.Head, s.Git.DefaultBranch)
+		fmt.Fprintf(&out, "Branch: %s\nHEAD: %s\nDefault branch: %s\n", s.Git.Branch, s.Git.Head, s.Git.DefaultBranch)
+		if s.Git.Head != "unborn" && s.Git.Head != "" {
+			remotes := "none"
+			if slices.Contains(s.Incomplete, "head_remotes unavailable") {
+				remotes = "unavailable"
+			} else if len(s.Git.HeadRemotes) != 0 {
+				remotes = strings.Join(s.Git.HeadRemotes, ", ")
+			}
+			fmt.Fprintf(&out, "HEAD in local remote-tracking branches: %s\n", remotes)
+		}
+		fmt.Fprintf(&out, "Git hooks path: %s\nStatus:\n", s.Git.HooksPath)
 		if len(s.Git.Status) == 0 && !slices.Contains(s.Incomplete, "status unavailable") {
 			out.WriteString("clean\n")
 		}

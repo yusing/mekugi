@@ -26,9 +26,81 @@ func git(t *testing.T, workspace string, args ...string) string {
 
 func repository(t *testing.T) string {
 	t.Helper()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_COUNT", "0")
+	t.Setenv("GIT_CONFIG_PARAMETERS", "")
 	workspace := t.TempDir()
 	git(t, workspace, "init", "-q", "-b", "topic")
 	return workspace
+}
+
+func TestSnapshotHeadRemoteContainment(t *testing.T) {
+	workspace := repository(t)
+	git(t, workspace, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "base")
+	base := git(t, workspace, "rev-parse", "HEAD")
+	git(t, workspace, "update-ref", "refs/remotes/origin/behind", base)
+	git(t, workspace, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "new")
+	head := git(t, workspace, "rev-parse", "HEAD")
+	git(t, workspace, "update-ref", "refs/remotes/origin/main", head)
+	git(t, workspace, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	git(t, workspace, "checkout", "--detach", "-q", base)
+	snapshot := Acquire(t.Context(), workspace)
+	if !slices.Equal(snapshot.Git.HeadRemotes, []string{"origin/behind", "origin/main"}) || !strings.Contains(snapshot.Text(workspace), "HEAD in local remote-tracking branches: origin/behind, origin/main") {
+		t.Fatalf("detached ancestor containment: %+v", snapshot)
+	}
+	git(t, workspace, "checkout", "-q", "topic")
+	for n := range 20 {
+		git(t, workspace, "update-ref", fmt.Sprintf("refs/remotes/many/%02d", n), head)
+	}
+	snapshot = Acquire(t.Context(), workspace)
+	if len(snapshot.Git.HeadRemotes) != 16 || !slices.Contains(snapshot.Incomplete, "head_remotes truncated") {
+		t.Fatalf("remote bound: %+v", snapshot)
+	}
+}
+
+func TestSnapshotEffectiveHooksPath(t *testing.T) {
+	workspace := repository(t)
+	for _, scope := range []string{"SYSTEM", "GLOBAL"} {
+		path := filepath.Join(t.TempDir(), "config")
+		if err := os.WriteFile(path, []byte("[core]\n hooksPath = "+strings.ToLower(scope)+"-hooks\n[user]\n email = private@invalid\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("GIT_CONFIG_"+scope, path)
+		if scope == "SYSTEM" {
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
+		}
+		snapshot := Acquire(t.Context(), workspace)
+		if snapshot.Git.HooksPath != strconv.Quote(strings.ToLower(scope)+"-hooks") || strings.Contains(snapshot.Text(workspace), "private@invalid") {
+			t.Fatalf("effective %s config: %+v", scope, snapshot)
+		}
+	}
+	git(t, workspace, "config", "core.hooksPath", ".hooks\nquoted\"path")
+	snapshot := Acquire(t.Context(), workspace)
+	if snapshot.Git.HooksPath != strconv.Quote(".hooks\nquoted\"path") {
+		t.Fatalf("local override: %+v", snapshot)
+	}
+	git(t, workspace, "config", "core.hooksPath", strings.Repeat("界", 300))
+	snapshot = Acquire(t.Context(), workspace)
+	if len(snapshot.Git.HooksPath) > 514 || !slices.Contains(snapshot.Incomplete, "hooks_path truncated") {
+		t.Fatalf("hooks bound: %+v", snapshot)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(workspace, "missing"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	git(t, workspace, "config", "--unset", "core.hooksPath")
+	snapshot = Acquire(t.Context(), workspace)
+	if snapshot.Git.HooksPath != "unset (Git default)" {
+		t.Fatalf("unset hooks: %+v", snapshot)
+	}
+	invalid := filepath.Join(t.TempDir(), "invalid")
+	if err := os.WriteFile(invalid, []byte("[invalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", invalid)
+	snapshot = Acquire(t.Context(), workspace)
+	if snapshot.Git.HooksPath != "unavailable" || !slices.Contains(snapshot.Incomplete, "hooks_path unavailable") || snapshot.Git.State != "repository" {
+		t.Fatalf("optional config failure: %+v", snapshot)
+	}
 }
 
 func TestSnapshotsGitStatesAndIsolation(t *testing.T) {

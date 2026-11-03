@@ -135,7 +135,9 @@ SVN facts remain owned by the existing project hook.
 Linux identifies its distribution from the host OS release metadata; macOS includes its product
 version. Unavailable OS identity remains explicit. Repository/worktree membership,
 branch and HEAD (including detached and unborn states), locally known symbolic default branch,
-bounded status and five recent abbreviated commit IDs/subjects are included. Git account identity, email and
+bounded HEAD containment in local remote-tracking branches, effective `core.hooksPath`,
+bounded status and five recent abbreviated commit IDs/subjects are included. Hooks configuration
+uses the applicable Git configuration scopes; other facts remain configuration-isolated. Git account identity, email and
 remote URLs are excluded. Unavailable facts and truncation are explicit; acquisition neither
 fetches nor mutates a repository and optional failures do not block inference.
 The supplement is replaced in the owned base-instruction layer, preserving native
