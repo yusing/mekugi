@@ -2,9 +2,56 @@ package execscope
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
+
+func TestPythonReplacementOperationProvenance(t *testing.T) {
+	for _, tc := range []struct {
+		source string
+		write  bool
+	}{
+		{"def replace(old, new):\n    return old + new\nreplace('a', 'b')", false},
+		{"def rename(old, new):\n    pass\nrename('a', 'b')", false},
+		{`text = 'a'; text.replace('a', 'b')`, false},
+		{`unknown.replace('a', 'b')`, false},
+		{"from os import replace\ndef replace(old, new):\n    pass\nreplace('a', 'b')", false},
+		{`import os; os = unknown; os.replace('a', 'b')`, false},
+		{`from other import replace; replace('a', 'b')`, false},
+		{`import os; os.replace('a', 'b')`, true},
+		{`import os.path; os.replace('a', 'b')`, true},
+		{"import os\ndef helper(os):\n    pass\nos.replace('a', 'b')", true},
+		{"import os\ndef helper():\n    os = None\nos.replace('a', 'b')", true},
+		{"from os import replace\ndef helper():\n    def replace(old, new):\n        pass\nreplace('a', 'b')", true},
+		{"import os\nclass Helper:\n    os = None\nos.replace('a', 'b')", true},
+		{`import os; helper = lambda os: None; os.replace('a', 'b')`, true},
+		{`import os as files; files.rename('a', 'b')`, true},
+		{`from os import replace as swap; swap('a', 'b')`, true},
+		{`import shutil; shutil.move('a', 'b')`, true},
+		{`import pathlib; pathlib.Path('a').replace('b')`, true},
+		{`from pathlib import Path as P; p = P('a'); p.rename('b')`, true},
+	} {
+		t.Run(tc.source, func(t *testing.T) {
+			directory := t.TempDir()
+			result := execPythonScope(execProviderInput{identity: "python3", cwd: directory,
+				args: []string{"-c", tc.source}, deadline: time.Now().Add(Budget), authoredOnly: true})
+			var paths []string
+			for _, entry := range result.scope {
+				for _, operand := range entry.Operands {
+					paths = append(paths, operand.Path)
+				}
+			}
+			var want []string
+			if tc.write {
+				want = []string{filepath.Join(directory, "a"), filepath.Join(directory, "b")}
+			}
+			if result.open || !slices.Equal(paths, want) {
+				t.Fatalf("replacement scope = %q, open=%v; want %q", paths, result.open, want)
+			}
+		})
+	}
+}
 
 func TestPythonOpenModesPreserveWriteScope(t *testing.T) {
 	for _, tc := range []struct {

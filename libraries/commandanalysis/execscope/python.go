@@ -48,6 +48,7 @@ func (s *execSourceScope) clearPythonLoopBindings(node *sitter.Node, depth int) 
 			delete(s.state.Paths, name)
 			delete(s.state.Segments, name)
 			delete(s.pythonItems, name)
+			delete(s.pythonNames, name)
 		}
 	}
 	for i := range node.NamedChildCount() {
@@ -180,6 +181,64 @@ func execPythonScope(input execProviderInput) execProviderResult {
 	return inspectExecSource(input, source, script, sourceparse.Python, true)
 }
 
+// Keep imported operation provenance separate from basename aliases used for
+// path derivation. A local function called replace is not os.replace.
+func (s *execSourceScope) pythonName(node *sitter.Node) string {
+	if node == nil {
+		return ""
+	}
+	if node.Kind() == "identifier" {
+		return s.pythonNames[s.text(node)]
+	}
+	if node.Kind() == "attribute" {
+		if module := s.pythonNames[s.text(node.ChildByFieldName("object"))]; module != "" {
+			return module + "." + s.text(node.ChildByFieldName("attribute"))
+		}
+	}
+	return ""
+}
+
+func (s *execSourceScope) bindPythonNames(node *sitter.Node) {
+	if s.pythonNames == nil {
+		s.pythonNames = make(map[string]string)
+	}
+	switch node.Kind() {
+	case "import_statement", "import_from_statement":
+		moduleNode := node.ChildByFieldName("module_name")
+		module := s.text(moduleNode)
+		for i := range node.NamedChildCount() {
+			child := node.NamedChild(uint(i))
+			if child.Kind() != "dotted_name" && child.Kind() != "aliased_import" || moduleNode != nil && child.Id() == moduleNode.Id() {
+				continue
+			}
+			name, alias := s.text(child), s.text(child)
+			if child.Kind() == "aliased_import" {
+				name, alias = s.text(child.ChildByFieldName("name")), s.text(child.ChildByFieldName("alias"))
+			} else if module == "" {
+				name, _, _ = strings.Cut(name, ".")
+				alias = name
+			}
+			if module != "" {
+				name = module + "." + name
+			}
+			s.pythonNames[alias] = name
+		}
+	case "assignment":
+		left := node.ChildByFieldName("left")
+		if left != nil && left.Kind() == "identifier" {
+			s.pythonNames[s.text(left)] = s.pythonName(node.ChildByFieldName("right"))
+		}
+	case "function_definition", "class_definition", "named_expression":
+		delete(s.pythonNames, s.text(node.ChildByFieldName("name")))
+	case "augmented_assignment", "for_statement":
+		delete(s.pythonNames, s.text(node.ChildByFieldName("left")))
+	case "parameters", "lambda_parameters":
+		for i := range node.NamedChildCount() {
+			delete(s.pythonNames, s.text(node.NamedChild(uint(i))))
+		}
+	}
+}
+
 func (s *execSourceScope) pythonCall(function *sitter.Node, base string, args []*sitter.Node) {
 	arg := func(index int) *sitter.Node {
 		if index < len(args) {
@@ -241,13 +300,11 @@ func (s *execSourceScope) pythonCall(function *sitter.Node, base string, args []
 	case "remove", "makedirs", "rmtree":
 		s.add(arg(0), true)
 	case "rename", "replace", "move":
-		if base == "replace" && s.pythonText(object, 0) {
-			return
-		}
-		if module {
+		operation := s.pythonName(function)
+		if operation == "os.rename" || operation == "os.replace" || operation == "shutil.move" {
 			s.add(arg(0), true)
 			s.add(arg(1), true)
-		} else {
+		} else if object != nil && !s.pythonText(object, 0) && len(s.paths(object)) != 0 {
 			s.add(object, true)
 			s.add(arg(0), true)
 		}

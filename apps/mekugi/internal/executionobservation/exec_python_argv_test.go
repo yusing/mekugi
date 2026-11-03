@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -62,6 +63,64 @@ func TestPythonArgvExternalEditsAndCreations(t *testing.T) {
 			assertExactInterpreterReviews(t, workspace, observation, map[string][]string{
 				filepath.Join(relative, "state.json"):   {"-before\n+after\n"},
 				filepath.Join(relative, "created.json"): {"+created\n"},
+			})
+		})
+	}
+}
+
+func TestPythonLocalTextReplacementHasNoFileCapture(t *testing.T) {
+	python, binary := interpreterForTest("python3", "python")
+	if binary == "" {
+		t.Skip("Python runtime unavailable")
+	}
+	workspace := t.TempDir()
+	prose := strings.Repeat("Long in-memory description, not a filesystem operand. ", 20)
+	source := "text = " + strconv.Quote(prose) + "\ndef replace(old, new):\n    global text\n    text = text.replace(old, new)\nreplace(" + strconv.Quote(prose) + ", 'updated')\nassert text == 'updated'\n"
+	command := python + " -c " + commandargs.QuoteArgument(source)
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{
+		Command: command, Workdir: workspace, Shell: "bash",
+	}}, false, false, changecapture.Options{Directory: workspace})
+	if observed || observation != nil {
+		t.Fatalf("text replacement acquired filesystem targets: %+v", observation)
+	}
+	host := exec.Command("bash", "-c", command)
+	host.Dir = workspace
+	if output, err := host.CombinedOutput(); err != nil {
+		t.Fatalf("Python replacement helper: %v: %s", err, output)
+	}
+}
+
+func TestPythonFilesystemReplacementExternalEvidence(t *testing.T) {
+	python, binary := interpreterForTest("python3", "python")
+	if binary == "" {
+		t.Skip("Python runtime unavailable")
+	}
+	for _, tc := range []struct{ imports, operation string }{
+		{"import os, sys\n", "os.replace(root/'old', root/'new')"},
+		{"import sys\n", "(root/'old').replace(root/'new')"},
+		{"import os.path, sys\nfrom os import replace\ndef helper(os):\n    os = None\n    def replace(old, new):\n        pass\n", "os.replace(root/'old', root/'new')"},
+	} {
+		t.Run(tc.imports+tc.operation, func(t *testing.T) {
+			workspace, external := t.TempDir(), t.TempDir()
+			writeTestFile(t, filepath.Join(external, "old"), "source\n")
+			writeTestFile(t, filepath.Join(external, "new"), "before\n")
+			source := tc.imports + "from pathlib import Path\nroot = Path(sys.argv[1])\n" + tc.operation
+			command := python + " -c " + commandargs.QuoteArgument(source) + " " + commandargs.QuoteArgument(external)
+			observation := captureInterpreterTestObservation(t, workspace, command)
+			assertCapturedExecVCSTestFile(t, observation, filepath.Join(external, "old"), "source\n")
+			assertCapturedExecVCSTestFile(t, observation, filepath.Join(external, "new"), "before\n")
+			host := exec.Command("bash", "-c", command)
+			host.Dir = workspace
+			if output, err := host.CombinedOutput(); err != nil {
+				t.Fatalf("Python filesystem replacement: %v: %s", err, output)
+			}
+			relative, err := filepath.Rel(workspace, external)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertExactInterpreterReviews(t, workspace, observation, map[string][]string{
+				filepath.Join(relative, "old"): {"-source\n"},
+				filepath.Join(relative, "new"): {"-before\n+source\n"},
 			})
 		})
 	}

@@ -2,6 +2,7 @@ package execscope
 
 import (
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -26,6 +27,7 @@ type execSourceScope struct {
 	script                      string
 	python                      bool
 	pythonItems                 map[string][2]execPythonValues
+	pythonNames                 map[string]string
 	pythonSys, pythonShadow     map[string]bool
 	pythonArgvSafe              bool
 	pythonArgvSeen              bool
@@ -483,6 +485,14 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 	if time.Now().After(s.input.deadline) {
 		s.result.open = true
 		return
+	}
+	if s.python {
+		s.bindPythonNames(node)
+		if node.Kind() == "function_definition" || node.Kind() == "class_definition" || node.Kind() == "lambda" {
+			outer := s.pythonNames
+			s.pythonNames = maps.Clone(outer)
+			defer func() { s.pythonNames = outer }()
+		}
 	}
 	if node.Kind() == "import_specifier" || node.Kind() == "aliased_import" {
 		name, alias := node.ChildByFieldName("name"), node.ChildByFieldName("alias")
