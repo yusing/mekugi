@@ -56,7 +56,9 @@ Raw content is discarded after observation.
 
 Deduplication totals aggregate supplied repetition and savings receipts across
 all threads and requests in the invocation; receipts from requests with a thread
-identity are also totaled per thread. Negative savings and unmeasured
+identity are also totaled per thread across independent runtimes in the launch
+family, including completed descendants. Other transport totals and artifacts
+remain scoped to their runtime recorder. Negative savings and unmeasured
 projections remain explicit. These estimates are separate from provider usage
 and billing and are not restored on resume.
 

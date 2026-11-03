@@ -51,6 +51,7 @@ type nativeThreadsProvider struct {
 	attachChanges                           bool
 	recoverFailure                          bool
 	multipleAnswers                         bool
+	deduplication                           bool
 	usageLimit                              bool
 	temporaryUsage                          bool
 	limited                                 map[string]bool
@@ -520,6 +521,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	items := []any{item}
+	if p.deduplication && !parent && step == 1 {
+		print := "text(" + strconv.Quote(strings.Repeat("Measured output from an admitted child request. ", 32)+"\n") + ");"
+		item["input"] = program + print
+		items = append(items, map[string]any{"type": "custom_tool_call", "id": id + "-repeat", "call_id": id + "-repeat-call", "name": "exec", "namespace": "functions", "input": print, "status": "completed"})
+	}
 	if p.multipleAnswers && !parent && step == 2 {
 		for index, text := range []string{"LATER_CHILD_FINAL", ""} {
 			items = append(items, map[string]any{"type": "message", "id": fmt.Sprintf("%s-final-%d", id, index), "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": text}}})
@@ -599,6 +605,10 @@ func TestNativeThreadsServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{multipleAnswers: true})
 }
 
+func TestNativeThreadsOutputDeduplicationServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{deduplication: true})
+}
+
 func TestNativeThreadsUsageLimitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{usageLimit: true})
 }
@@ -656,6 +666,7 @@ func TestNativeThreadsRewindServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
+	deduplication                                                                                                                                                     bool
 	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind, headless, attachChanges, usageLimit bool
 	temporaryUsageCommand                                                                                                                                             string
 }
@@ -751,6 +762,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	fixture := &nativeThreadsProvider{usageLimit: scenario.usageLimit, limited: make(map[string]bool), attachChanges: scenario.attachChanges, multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
+	fixture.deduplication = scenario.deduplication
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -1167,6 +1179,36 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	childEvent, err := childView.Next()
 	if err != nil || childEvent.Frame.View.Main.ID != child || childEvent.Attachment == event.Attachment {
 		t.Fatalf("independent child runtime publication: child=%q attachment=%q error=%v", childEvent.Frame.View.Main.ID, childEvent.Attachment, err)
+	}
+	if scenario.deduplication {
+		features := func(connection *sessionapi.NativeConnection, event *sessionapi.NativeEvent) *sessionpresentation.FeatureMetrics {
+			t.Helper()
+			for !event.Frame.View.Admission.Submit {
+				*event, err = connection.Next()
+				if err != nil {
+					t.Fatal("completed thread admission:", err)
+				}
+			}
+			_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
+				Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: event.Frame.View.Input.ID, Operation: sessionpresentation.SubmitComposer},
+				Draft:  composer.Draft{Text: "/session"},
+			}})
+			if err != nil {
+				t.Fatal("open Features consumer:", err)
+			}
+			for event.Frame.View.Panel == nil || event.Frame.View.Panel.Features == nil {
+				*event, err = connection.Next()
+				if err != nil {
+					t.Fatal("Features publication:", err)
+				}
+			}
+			return event.Frame.View.Panel.Features
+		}
+		parentFeatures, childFeatures := features(connection, &event), features(childView, &childEvent)
+		self, descendants := parentFeatures.Self.OutputDeduplication, parentFeatures.Descendants.OutputDeduplication
+		if childFeatures.Self.OutputDeduplication.Occurrences == 0 || descendants != childFeatures.Self.OutputDeduplication || self.Occurrences != 0 || childFeatures.Descendants.OutputDeduplication != (transportcapture.OutputDeduplicationMetrics{}) {
+			t.Fatalf("completed admitted child's request receipts lost or mixed in Features: parent=%+v child=%+v", parentFeatures, childFeatures)
+		}
 	}
 	if scenario.preload {
 		attached, failed, internal := false, false, false

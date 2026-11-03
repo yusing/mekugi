@@ -1,7 +1,25 @@
 // Source: capturer/output_dedupe.go@b5162407.
 package capture
 
-import "context"
+import (
+	"context"
+	"maps"
+	"sync"
+)
+
+// OutputDeduplicationTotals retains launch-local thread receipts across independent
+// runtime recorders. Its zero value is ready for use; closing a recorder retains
+// the receipts until the owning launch family is released.
+type OutputDeduplicationTotals struct {
+	mu      sync.Mutex
+	threads map[string]OutputDeduplicationMetrics
+}
+
+func (totals *OutputDeduplicationTotals) snapshot() map[string]OutputDeduplicationMetrics {
+	totals.mu.Lock()
+	defer totals.mu.Unlock()
+	return maps.Clone(totals.threads)
+}
 
 // OutputDeduplicationMetrics counts request projections in this launch.
 // SavedTokens is a local net content estimate, including source anchors.
@@ -25,12 +43,15 @@ func ObserveOutputDeduplication(ctx context.Context, occurrences uint64, savedTo
 	if state.threadID == "" {
 		return
 	}
-	if r.metrics.OutputDeduplicationThreads == nil {
-		r.metrics.OutputDeduplicationThreads = make(map[string]OutputDeduplicationMetrics)
+	totals := r.deduplication
+	totals.mu.Lock()
+	defer totals.mu.Unlock()
+	if totals.threads == nil {
+		totals.threads = make(map[string]OutputDeduplicationMetrics)
 	}
-	thread := r.metrics.OutputDeduplicationThreads[state.threadID]
+	thread := totals.threads[state.threadID]
 	thread.add(occurrences, savedTokens, measured)
-	r.metrics.OutputDeduplicationThreads[state.threadID] = thread
+	totals.threads[state.threadID] = thread
 }
 
 func (m *OutputDeduplicationMetrics) add(occurrences uint64, savedTokens int64, measured bool) {

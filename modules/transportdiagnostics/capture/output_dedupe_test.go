@@ -2,6 +2,7 @@ package capture
 
 import (
 	"context"
+	"net/http"
 	"testing"
 )
 
@@ -44,5 +45,37 @@ func TestOutputDeduplicationThreadAttribution(t *testing.T) {
 	threads["child"] = OutputDeduplicationMetrics{}
 	if r.Snapshot().OutputDeduplicationThreads["child"].Projections != 2 {
 		t.Fatal("snapshot shares the recorder's thread map")
+	}
+}
+
+func TestOutputDeduplicationRuntimeFamily(t *testing.T) {
+	family := new(OutputDeduplicationTotals)
+	open := func(totals *OutputDeduplicationTotals) *Recorder {
+		t.Helper()
+		r, err := new(Service).Open(Config{Deduplication: totals})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = r.Close() })
+		return r
+	}
+	parent, child := open(family), open(family)
+	ctx := context.WithValue(t.Context(), captureKey{}, child.beginRequest(http.Header{"Thread-Id": {"child"}}))
+	ObserveOutputDeduplication(ctx, 2, -3, true)
+	ObserveOutputDeduplication(ctx, 1, 100, false)
+	if err := child.Close(); err != nil {
+		t.Fatal(err)
+	}
+	want := OutputDeduplicationMetrics{Projections: 2, Occurrences: 3, SavedTokens: -3, Unmeasured: 1}
+	snapshot := parent.Snapshot()
+	if snapshot.OutputDeduplicationThreads["child"] != want || snapshot.OutputDeduplication != (OutputDeduplicationMetrics{}) {
+		t.Fatalf("settled child's receipts or runtime-local total: %+v", snapshot)
+	}
+	delete(snapshot.OutputDeduplicationThreads, "child")
+	if parent.Snapshot().OutputDeduplicationThreads["child"] != want {
+		t.Fatal("family snapshot shares its thread map")
+	}
+	if fresh := open(nil).Snapshot(); fresh.OutputDeduplicationThreads != nil {
+		t.Fatal("a new launch inherited family receipts")
 	}
 }

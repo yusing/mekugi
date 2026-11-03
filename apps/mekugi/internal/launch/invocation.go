@@ -165,7 +165,14 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	var capture *transportcapture.Recorder
 	if diagnostics != nil {
-		capture, err = diagnostics.Open(transportcapture.Config{Output: capturePath, Mode: "mekugi", Writes: writes})
+		captureConfig := transportcapture.Config{Output: capturePath, Mode: "mekugi", Writes: writes}
+		if threads != nil {
+			if threads.deduplication == nil {
+				threads.deduplication = new(transportcapture.OutputDeduplicationTotals)
+			}
+			captureConfig.Deduplication = threads.deduplication
+		}
+		capture, err = diagnostics.Open(captureConfig)
 		if err != nil {
 			return 1, fmt.Errorf("initialize capture: %w", err)
 		}

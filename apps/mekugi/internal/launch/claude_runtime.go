@@ -85,7 +85,7 @@ func (e *threadExecution) resumeClaude(ctx context.Context, member *control.Memb
 }
 
 func (e *threadExecution) startClaude(ctx context.Context, parent, resume string, settings control.Settings, info control.ThreadInfo, fork *claudeFork) (control.Receipt, error) {
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, driver: e.driver, approvals: e.approvals, retained: e.retained, windows: e.windows.ForRuntime()}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, setup: e.setup, driver: e.driver, approvals: e.approvals, retained: e.retained, windows: e.windows.ForRuntime(), deduplication: e.deduplication}
 	id, err := e.hub.StartPrepared(ctx, parent, resume, settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		return child.runClaude(runtime, api, parent, resume != "", settings, info, fork)
 	})

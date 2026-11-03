@@ -122,7 +122,8 @@ type exchangeMetrics struct {
 // MetricsSnapshot is a detached, capture-owned metrics view.
 type MetricsSnapshot struct {
 	OutputDeduplication OutputDeduplicationMetrics `json:"output_deduplication,omitzero"`
-	// OutputDeduplicationThreads attributes the same receipts to their request thread.
+	// OutputDeduplicationThreads attributes receipts to their request thread across
+	// the launch family when recorders share totals; other metrics stay runtime-local.
 	OutputDeduplicationThreads map[string]OutputDeduplicationMetrics `json:"output_deduplication_threads,omitempty"`
 	StorageWrites       *persistence.Snapshot      `json:"storage_writes,omitempty"`
 	Schema              string                     `json:"schema"`
@@ -157,6 +158,7 @@ func (r *Recorder) snapshot() MetricsSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	snapshot := r.metrics.Clone()
+	snapshot.OutputDeduplicationThreads = r.deduplication.snapshot()
 	snapshot.StorageWrites = r.writes.Snapshot()
 	diagnoseCacheExchanges(snapshot.Exchanges)
 	return snapshot

@@ -47,6 +47,9 @@ type Config struct {
 	Writes *persistence.Counter
 	Output string
 	Mode   string
+	// Deduplication shares only per-thread receipts with this launch's runtimes.
+	// Nil keeps them local to the recorder.
+	Deduplication *OutputDeduplicationTotals
 }
 
 // ProviderUsage is the provider-authoritative token count parsed from one
@@ -99,6 +102,7 @@ type captureRecord struct {
 // Recorder owns correlation, sanitized measurement, durable capture, and
 // derived metrics for one router process.
 type Recorder struct {
+	deduplication       *OutputDeduplicationTotals
 	writes              *persistence.Counter
 	lastRequestSequence map[string]uint64
 	fingerprintKey      [32]byte
@@ -208,8 +212,13 @@ func (*Service) Open(config Config) (*Recorder, error) {
 	}
 	var fingerprintKey [32]byte
 	rand.Read(fingerprintKey[:])
+	deduplication := config.Deduplication
+	if deduplication == nil {
+		deduplication = new(OutputDeduplicationTotals)
+	}
 	return &Recorder{
-		writes: config.Writes, fingerprintKey: fingerprintKey, file: file, mode: config.Mode,
+		deduplication: deduplication,
+		writes:        config.Writes, fingerprintKey: fingerprintKey, file: file, mode: config.Mode,
 		lastRequestSequence: make(map[string]uint64),
 		metrics:             newMetricsSnapshot(config.Mode),
 	}, nil

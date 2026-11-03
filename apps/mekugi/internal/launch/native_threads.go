@@ -19,22 +19,24 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 // threadExecution joins the supplied runtime registry and feature owner. It owns
 // no process registry, request ledger, or retained thread state.
 type threadExecution struct {
-	headless  *headless.Stream
-	workers   *frontends.WorkerImage
-	hub       *sessionapi.Hub
-	shared    *control.Service
-	driver    *threadbinding.Driver
-	approvals *sessioncontrol.DelegateApprovals
-	retained  changes.Scope
-	windows   *executionobservation.Windows
-	tools     []binding.MCPServer
-	setup     *threadSetup
-	start     *sessioncontrol.PreparedThread
+	headless      *headless.Stream
+	workers       *frontends.WorkerImage
+	hub           *sessionapi.Hub
+	shared        *control.Service
+	driver        *threadbinding.Driver
+	approvals     *sessioncontrol.DelegateApprovals
+	retained      changes.Scope
+	windows       *executionobservation.Windows
+	deduplication *transportcapture.OutputDeduplicationTotals
+	tools         []binding.MCPServer
+	setup         *threadSetup
+	start         *sessioncontrol.PreparedThread
 }
 
 // The invoking runtime freezes configuration before child admission. Descendants
@@ -104,7 +106,7 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 		}
 		parent = ancestor.Parent
 	}
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), start: &sessioncontrol.PreparedThread{Parent: member.Parent, Settings: settings, Resume: &control.ThreadInfo{Thread: thread, Session: member.Session, Path: member.Path}}}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), deduplication: e.deduplication, start: &sessioncontrol.PreparedThread{Parent: member.Parent, Settings: settings, Resume: &control.ThreadInfo{Thread: thread, Session: member.Session, Path: member.Path}}}
 	id, err := e.hub.StartPrepared(ctx, parent, thread, settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
 		return err
@@ -127,7 +129,7 @@ func (e *threadExecution) Create(ctx context.Context, parent, importPath string,
 	if strings.HasPrefix(settings.Model, "claude:") {
 		return e.createClaude(ctx, parent, importPath, settings)
 	}
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), deduplication: e.deduplication, start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
 	id, err := e.hub.StartPrepared(ctx, parent, "", settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
 		return err
