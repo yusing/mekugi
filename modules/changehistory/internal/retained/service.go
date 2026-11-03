@@ -115,7 +115,9 @@ func (service *service) Execute(ctx context.Context, request command.Request) (c
 	}
 	selected, err := selectReadPage(ctx, text, options.maxTokens)
 	if err != nil {
-		return fail(err)
+		output, _ := fail(err)
+		output.Stderr = diagnostics + output.Stderr
+		return output, nil
 	}
 	execution := command.Output{Stdout: selected, Stderr: diagnostics}
 	if diagnostics != "" {

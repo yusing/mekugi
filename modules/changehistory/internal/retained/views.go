@@ -155,6 +155,12 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 	matched := len(options.paths) == 0
 	chains := make(map[string]*diffmodel.ReviewComposition)
 	var ordered []*diffmodel.ReviewComposition
+	type binaryEvidence struct {
+		count int
+		paths []string
+	}
+	binaries := make(map[string]*binaryEvidence)
+	var binaryIDs []string
 	for _, capture := range captures {
 		for _, file := range capture.files {
 			matched = matched || changePathMatches(options, file.BeforePath) || changePathMatches(options, file.AfterPath)
@@ -165,7 +171,20 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 		}
 		for _, file := range capture.files {
 			if file.Binary {
-				failures = append(failures, fmt.Errorf("change %s includes binary evidence that cannot be composed; use --history to inspect it", capture.id))
+				evidence := binaries[capture.id]
+				if evidence == nil {
+					evidence = new(binaryEvidence)
+					binaries[capture.id] = evidence
+					binaryIDs = append(binaryIDs, capture.id)
+				}
+				evidence.count++
+				if len(evidence.paths) < 3 {
+					path := file.AfterPath
+					if path == "" {
+						path = file.BeforePath
+					}
+					evidence.paths = append(evidence.paths, fmt.Sprintf("%.160q", pathdisplay.ForWorkspace(index.workspaceFor(capture.id), path)))
+				}
 				continue
 			}
 			key := file.BeforePath
@@ -187,6 +206,10 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 			}
 			chains[key] = chain
 		}
+	}
+	for _, id := range binaryIDs {
+		evidence := binaries[id]
+		failures = append(failures, fmt.Errorf("change %s includes %d binary files that cannot be composed (examples: %s); use mchanges %s --history to inspect them", id, evidence.count, strings.Join(evidence.paths, ", "), id))
 	}
 	var output strings.Builder
 	for _, chain := range ordered {

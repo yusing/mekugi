@@ -104,6 +104,37 @@ func review(path, before, after string) legacycall.ReviewFile {
 	return legacycall.ReviewFile{BeforePath: path, AfterPath: path, Diff: fmt.Sprintf("@@ -1 +1 @@\n-%s\n+%s\n", before, after)}
 }
 
+func TestComposedBinaryDiagnosticsAndRecovery(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	id := f.reserve(t, "owner", "mixed")
+	files := []legacycall.ReviewFile{review(filepath.Join(f.workspace, "text.txt"), strings.Repeat("old", 100), strings.Repeat("new", 100))}
+	for i := range 50 {
+		path := filepath.Join(f.workspace, fmt.Sprintf("image-%02d.png", i))
+		files = append(files, legacycall.ReviewFile{AfterPath: path, Binary: true})
+	}
+	f.publish(t, id, "mixed", "mixed-call", "owner", files)
+	full := f.execute(t, "owner", id)
+	if full.ExitCode != 1 || !strings.Contains(full.Stdout, "+"+strings.Repeat("new", 100)) || strings.Count(full.Stderr, "binary files that cannot be composed") != 1 || !strings.Contains(full.Stderr, "50 binary files") || !strings.Contains(full.Stderr, "image-00.png") || strings.Contains(full.Stderr, "image-49.png") || !strings.Contains(full.Stderr, "mchanges "+id+" --history") {
+		t.Fatalf("mixed composed read: %+v", full)
+	}
+	scoped := f.execute(t, "owner", id, "text.txt")
+	if scoped.ExitCode != 0 || !strings.Contains(scoped.Stdout, "text.txt") {
+		t.Fatalf("scoped text read: %+v", scoped)
+	}
+	paged := f.execute(t, "owner", id, "--max-tokens", "10")
+	if paged.ExitCode != 1 || paged.OmittedOutput == nil {
+		t.Fatalf("missing partial read recovery: %+v", paged)
+	}
+	if paged.Stdout+paged.OmittedOutput.Stdout != full.Stdout || strings.Count(paged.Stderr+paged.OmittedOutput.Stderr, "binary files that cannot be composed") != 1 {
+		t.Fatalf("recovered read: %+v, omitted: %+v", paged, paged.OmittedOutput)
+	}
+	tiny := f.execute(t, "owner", id, "--max-tokens", "1")
+	if tiny.ExitCode != 1 || !strings.Contains(tiny.Stderr, "mchanges "+id+" --history") || !strings.Contains(tiny.Stderr, "token budget") {
+		t.Fatalf("page admission diagnostics: %+v", tiny)
+	}
+}
+
 func TestModulePublicationScopedReadAndFrozenRecovery(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

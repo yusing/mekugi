@@ -666,8 +666,8 @@ func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 	assertRejected := func(id string) {
 		t.Helper()
 		stdout, stderr, status := f.run(t, "mchanges "+id)
-		if status == 0 || stdout != "" || !strings.Contains(stderr, "binary evidence that cannot be composed") ||
-			!strings.Contains(stderr, "use --history to inspect") {
+		if status == 0 || stdout != "" || !strings.Contains(stderr, "binary files that cannot be composed") ||
+			!strings.Contains(stderr, "mchanges "+id+" --history") {
 			t.Errorf("binary net evidence was not rejected with a review hint: %q, %q, %d", stdout, stderr, status)
 		}
 		stdout, stderr, status = f.run(t, "mchanges --history "+id)
@@ -694,7 +694,7 @@ func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 		},
 	})
 	stdout, stderr, status := f.run(t, "mchanges "+mixed)
-	if status != 1 || !strings.Contains(stdout, "text.txt") || !strings.Contains(stdout, "+after") || strings.Contains(stdout, "mixed.dat") || !strings.Contains(stderr, "binary evidence that cannot be composed") {
+	if status != 1 || !strings.Contains(stdout, "text.txt") || !strings.Contains(stdout, "+after") || strings.Contains(stdout, "mixed.dat") || !strings.Contains(stderr, "binary files that cannot be composed") {
 		t.Fatalf("mixed net evidence: %q, %q, %d", stdout, stderr, status)
 	}
 }
