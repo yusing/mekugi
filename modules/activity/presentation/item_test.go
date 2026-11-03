@@ -1,11 +1,85 @@
 package presentation
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/modules/activity/feed"
 )
+
+func TestCatWriteRequiresObservedOutcome(t *testing.T) {
+	for _, source := range []string{"cat > file <<'EOF'\nbody\nEOF", `cat >> "$fixture_dir/main.js"`, `env X=1 cat > file`, `bash -c 'cat > file'`, `timeout 5 cat > file`, `mrun -n 5 cat > file`} {
+		for _, tracked := range []bool{false, true} {
+			for _, state := range []string{"pending", "running", "completed", "failed", "captured"} {
+				t.Run(source+"/"+state+fmt.Sprint(tracked), func(t *testing.T) {
+					text := ShellSource(source, "")
+					if text != "" {
+						t.Fatalf("source created an operation before execution: %q", text)
+					}
+					command := Command{Source: 1, Script: source, Display: source, Text: text, Running: state == "running", Exited: state == "completed" || state == "failed" || state == "captured"}
+					if state == "failed" {
+						command.ExitCode, command.Tail = 1, []string{"write failed"}
+					}
+					if tracked {
+						command.Segments = []CommandSegment{{Source: source, Display: source, Text: text, Running: command.Running, Pending: state == "pending", ExitCode: command.ExitCode, Tail: command.Tail, Writer: true}}
+					}
+					if state == "captured" {
+						command.Captured, command.CaptureText = true, "Create `file` · +1 -0 · cat"
+					}
+					item := ItemContent{Seq: 1, Kind: "tool", Text: text, Command: command, Details: &ItemDetails{CommandText: source}}
+					values := item.Values()
+					if state == "pending" || state == "running" {
+						if len(values) != 0 {
+							t.Fatalf("interim cat row: %+v", values)
+						}
+						return
+					}
+					if state == "captured" && tracked && len(values) == 2 && values[0].Exited && !values[0].Running {
+						values = values[1:] // Settled source action retains capture details.
+					}
+					if len(values) != 1 || values[0].Verb == "Run" || values[0].Requested || strings.Contains(values[0].EditSource, "requested") {
+						t.Fatalf("completed cat row: %+v", values)
+					}
+					if state == "failed" && (!values[0].Exited || values[0].ExitCode != 1 || len(values[0].Tail) == 0) {
+						t.Fatalf("lost failure: %+v", values)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestTrackedCatRetainedOutputDoesNotCreateInterimRun(t *testing.T) {
+	source := CommandSource{Script: "cat > file <<'EOF'\nbody\nEOF", Display: "cat > file <<'EOF'\nbody\nEOF"}
+	invocation := NewInvocation(source, time.Unix(100, 0), new(feed.Retention))
+	segment := SegmentObservation{Source: source.Script, Analysis: source.Display, Text: ShellSource(source.Script, ""), Began: true}
+	values := func() []Value {
+		command := invocation.Snapshot()
+		command.Source, command.Text = 1, ShellSource(source.Script, "")
+		for _, segment := range invocation.ReportSnapshot(false).Segments {
+			command.Segments = append(command.Segments, segment.CommandSegment)
+		}
+		return (ItemContent{Seq: 1, Kind: "tool", Text: command.Text, Command: command, Details: &ItemDetails{CommandText: source.Script}}).Values()
+	}
+	invocation.ObserveSegments(SegmentReport{Segments: []SegmentObservation{segment}})
+	for _, output := range []string{"", "cat: write failed\n"} {
+		invocation.Write(output)
+		if got := values(); len(got) != 0 {
+			t.Fatalf("retained output created an interim cat row: %+v", got)
+		}
+	}
+	segment.Finished, segment.ExitCode = true, 1
+	invocation.ObserveSegments(SegmentReport{Ended: true, Done: true, Closed: true, ExitCode: 1, Segments: []SegmentObservation{segment}})
+	invocation.Complete(CommandCompletion{Source: source, Exit: new(1), Aggregate: new("cat: write failed\n")})
+	if got := values(); len(got) != 1 || got[0].Verb != "Edit" || got[0].EditOutcome != "failed" || got[0].Output != 1 || got[0].ExitCode != 1 {
+		t.Fatalf("completed cat lost failure or retained output: %+v", got)
+	}
+	if got := strings.Join(invocation.Output().View().Lines, "\n"); got != "cat: write failed" {
+		t.Fatalf("suppression discarded output: %q", got)
+	}
+}
 
 func TestOrderEditDetailsMoveAndDirectory(t *testing.T) {
 	for _, tc := range []struct {

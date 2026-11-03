@@ -78,12 +78,12 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame := nextFrame()
-	for _, want := range []string{"Edit", "a.go", "b.go", "requested", "Running", "go test"} {
+	for _, want := range []string{"Edit", "b.go", "requested", "Running", "go test"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("requested edit missing %q from terminal frame:\n%s", want, frame)
 		}
 	}
-	if strings.Contains(frame, "PRIVATE_CAT_BODY") || !strings.Contains(frame, "PRIVATE_PY_BODY") || !strings.Contains(frame, "via python3") || strings.Contains(frame, "python3 - <<") {
+	if strings.Contains(frame, "a.go") || strings.Contains(frame, "PRIVATE_CAT_BODY") || !strings.Contains(frame, "PRIVATE_PY_BODY") || !strings.Contains(frame, "via python3") || strings.Contains(frame, "python3 - <<") {
 		t.Fatalf("terminal lost inline source or exposed the non-interpreter edit body:\n%s", frame)
 	}
 	history := legacycall.History{ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: "c1",
@@ -107,7 +107,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	for i := range u.attached.source.Entries {
 		if native := u.attached.source.Entries[i].Source.Native; native != nil && native.Item == "cmd" {
 			native.Segments = []sessionpresentation.ActivitySegment{
-				{Source: "cat >> a.go", Text: "Edit `a.go` · cat (requested)"},
+				{Source: "cat >> a.go"},
 				{Source: "python3", Text: "Edit `b.go` · python3 (requested)"},
 				{Source: "go test ./internal/router", Text: "Run `go test ./internal/router`", Running: true},
 			}

@@ -226,12 +226,16 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 				}
 				return got, history, ctx
 			}
-			created, creation, _ := run("create", `root=$(mktemp`+flag+`); printf 'entry\n' > "`+target+`"; printf '%s' "$root"`)
+			created, creation, _ := run("create", `root=$(mktemp`+flag+"); cat > \""+target+"\" <<'EOF'\nentry\nEOF\nprintf '%s' \"$root\"")
 			if filepath.Dir(created.stdout) != parent {
 				t.Fatalf("mktemp result: %+v", created)
 			}
 			if file := creation.ReviewFiles[0]; file.BeforePath != "" || !strings.HasPrefix(file.AfterPath, created.stdout) {
 				t.Fatalf("creation endpoint: %+v", file)
+			}
+			receipt := testCapturedEditActivity(workspace, creation)
+			if receipt == nil || !strings.Contains(receipt.Text, "+1") || strings.Contains(receipt.Text, "requested") {
+				t.Fatalf("cat capture did not publish its actual effect: %+v", receipt)
 			}
 			_, deletion, next := run("delete", "rm -r "+quoteShellWord(created.stdout))
 			if file := deletion.ReviewFiles[0]; file.AfterPath != "" || !strings.HasPrefix(file.BeforePath, created.stdout) {

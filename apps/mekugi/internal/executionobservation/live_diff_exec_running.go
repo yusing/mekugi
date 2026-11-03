@@ -75,7 +75,6 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Se
 	if state.completed <= c.completed || time.Now().Before(c.next) {
 		return
 	}
-	c.next = time.Now().Add(500 * time.Millisecond)
 	view := c.registry.view([]string{c.ref}, false)
 	comparison := changecapture.Comparison{Excluded: view.excluded, Workspace: preview.Workspace, Claims: view.claims}
 	// Only unnamed effects require an isolated workspace snapshot. A sibling
@@ -92,6 +91,7 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Se
 	scope.RepeatedPaths = false
 	result := changecapture.Reconcile(ctx, scope, comparison)
 	if result.SnapshotError != nil {
+		c.next = time.Now().Add(500 * time.Millisecond)
 		return
 	} // Keep the boundary pending for retry.
 	files, complete := result.Files, result.Complete
@@ -109,6 +109,9 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Se
 	}
 	if complete {
 		c.completed = state.completed
+		c.next = time.Time{}
+	} else {
+		c.next = time.Now().Add(500 * time.Millisecond)
 	}
 }
 
@@ -119,18 +122,17 @@ func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, obse
 	defer ticker.Stop()
 	for {
 		state := tracking.state()
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		case <-state.changed:
-		}
-		state = tracking.state()
 		if capture != nil && tracking != nil {
 			capture.update(ctx, broker, endpoint.View(), tracking, state)
 		}
 		if endpoint.Advance(ctx, state.settled) && (capture == nil || tracking == nil) {
 			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		case <-state.changed:
 		}
 	}
 }

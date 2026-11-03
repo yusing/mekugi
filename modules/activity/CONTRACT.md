@@ -53,7 +53,8 @@ Adjacent confirmed edits from the same source and outcome share a verb cell and
 branch. Past-tense verbs distinguish observed effects from intent. The first row
 names non-stock sources after `via`, with an invocation count when grouped;
 comma-separated sources retain independent shell highlighting. Requested edits
-remain amber and say `requested`, without treating that marker as source.
+remain amber and say `requested`, without treating that marker as source. Cat
+writes appear only from observed command outcomes or captured effects.
 Observed differences replace intent even while later commands run, but do not
 complete the host invocation or publish a change reference. Later observations
 replace earlier counts, including removing counts after a return to baseline;

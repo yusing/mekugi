@@ -243,6 +243,7 @@ func commandSources(source string, preview bool) ([]Value, bool) {
 // Source: apps/mekugi/internal/router/live_activity_blocks.go:309:421@6d403a5a.
 func (c Command) SegmentValues(detail bool) []Value {
 	var values []Value
+	awaitingCat := false
 	_, classified := ClassifyShell(c.Script, "")
 	for segmentIndex, segment := range c.Segments {
 		if segment.Text == "" && hiddenCommandSource(cmp.Or(segment.Display, segment.Source)) {
@@ -258,6 +259,22 @@ func (c Command) SegmentValues(detail bool) []Value {
 			}
 		}
 		operations := Operations(textsanitize.Safe(segment.Text, false))
+		cat := completedCatSource(cmp.Or(segment.Display, segment.Source))
+		if cat != "" {
+			if segment.Running || segment.Pending {
+				awaitingCat = true
+				continue
+			}
+			operations = Operations(cat)
+			for i := range operations {
+				operations[i].EditOutcome = "ran"
+				if segment.Skipped {
+					operations[i].EditOutcome = "skipped"
+				} else if segment.ExitCode != 0 {
+					operations[i].EditOutcome = "failed"
+				}
+			}
+		}
 		retainSource := segment.Pending || c.CaptureText != "" && len(c.Segments) == 1 && (len(operations) > 1 || segment.Writer)
 		if c.Captured && !segment.Running && !segment.Skipped && !segment.Pending && segment.ExitCode == 0 {
 			removedTarget := false
@@ -271,7 +288,7 @@ func (c Command) SegmentValues(detail bool) []Value {
 			timed := segment.Duration != 0 || !segment.Started.IsZero() || !segment.Ended.IsZero()
 			retainSource = retainSource || len(operations) == 0 && (detail && (removedTarget || segment.Writer) || timed || len(segment.Tail) > 0 || segment.TailOmitted > 0 || hasOutput(segment.Output, segment.OutputContent) || c.CaptureText != "" && len(c.Segments) == 1)
 		}
-		if retainSource {
+		if retainSource && (cat == "" || c.Captured) {
 			operations = []Value{commandRun(cmp.Or(segment.Display, segment.Source), !detail)}
 		}
 		for i := range operations {
@@ -319,7 +336,9 @@ func (c Command) SegmentValues(detail bool) []Value {
 		return !segment.Skipped && !segment.Pending && segment.Output == nil
 	})
 	combined := combinedOutput || len(c.Tail) > 0 || c.TailOmitted > 0 || len(values) == 0 && hasOutput(c.Output, c.OutputContent)
-	if combined {
+	// Retain the aggregate stream without manufacturing a source row for a cat
+	// whose outcome has not arrived. Completion attaches that same output.
+	if combined && (len(values) > 0 || !awaitingCat) {
 		if len(values) == 0 {
 			values = append(values, commandRun(cmp.Or(c.Display, c.Script), c.Captured && !detail))
 		}
@@ -369,7 +388,7 @@ func (c Command) DetailValues() []Value {
 	var values []Value
 	if !separate {
 		operations := Operations(c.Text)
-		if c.CaptureText == "" && len(c.Segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) {
+		if c.CaptureText == "" && len(c.Segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) && !c.Compound(operations) {
 			return nil
 		}
 		values = []Value{{Source: c.Source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: c.Display, Lang: "bash", Output: outputID(c.Output, 1), Tail: c.Tail, TailOmitted: c.TailOmitted, TailClipped: c.TailClipped, Running: c.Running, Body: "Per-command output boundaries were not retained for this invocation."}}

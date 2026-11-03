@@ -2,6 +2,7 @@ package launch
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -44,19 +45,19 @@ func TestShellEditIntentClassification(t *testing.T) {
 		},
 		{
 			name: "variable heredoc and neighbors", command: "tmpdir=$(mktemp -d)\nartifact=\"$tmpdir/findings.txt\"\ncat >\"$artifact\" <<'EOF'\nPRIVATE_CAT_SOURCE\nEOF\nprintf '%s\\n' \"$artifact\"",
-			wantVerbs: []string{"Run", "Run", "Edit", "Run"}, wantPaths: []string{`"$artifact"`}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
+			wantVerbs: []string{"Run", "Run", "Run"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
 		},
 		{
 			name: "cat append and test", command: "cat >> a.go <<'EOF'\nPRIVATE_CAT_SOURCE\nEOF\ngo test ./internal/router",
-			wantVerbs: []string{"Edit", "Run"}, wantPaths: []string{"a.go"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
+			wantVerbs: []string{"Run"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
 		},
 		{
 			name: "cat same line heredoc neighbor", command: "cat >> a.go <<'EOF'; printf done\nPRIVATE_CAT_SOURCE\nEOF",
-			wantVerbs: []string{"Edit", "Run"}, wantPaths: []string{"a.go"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
+			wantVerbs: []string{"Run"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
 		},
 		{
 			name: "cat and test", command: "cat > a.go <<'EOF' && go test ./internal/router\nPRIVATE_CAT_SOURCE\nEOF",
-			wantVerbs: []string{"Edit", "Run"}, wantPaths: []string{"a.go"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
+			wantVerbs: []string{"Run"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
 		},
 		{
 			name: "python batch and test", command: "python3 - <<'PY'\nfrom pathlib import Path\na=Path('a.go'); a.write_text(a.read_text().replace('old', 'PRIVATE_PY_SOURCE'))\nb=Path('b.go'); b.write_text('new')\nPY\ngo test ./internal/router",
@@ -121,10 +122,10 @@ func TestShellEditIntentKeepsUnknownHeredocNeighbor(t *testing.T) {
 	command := "cat >> a.go <<'EDIT'; unknown-tool <<'UNKNOWN'\nPRIVATE_EDIT_SOURCE\nEDIT\nPRIVATE_UNKNOWN_BODY\nUNKNOWN"
 	got := toolActivityShell(command)
 	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: got})
-	if len(blocks) != 2 || blocks[0].Verb != "Edit" || blocks[1].Verb != "Run" ||
-		!strings.Contains(got, "Edit `a.go` · cat (requested)") ||
+	if len(blocks) != 1 || blocks[0].Verb != "Run" ||
+		strings.Contains(got, "cat") ||
 		strings.Contains(got, "PRIVATE_EDIT_SOURCE") || !strings.Contains(got, "PRIVATE_UNKNOWN_BODY") ||
-		!strings.Contains(blocks[1].Code, "unknown-tool <<'UNKNOWN'") {
+		!strings.Contains(blocks[0].Code, "unknown-tool <<'UNKNOWN'") {
 		t.Fatalf("mixed heredoc bodies were misattached: %q, blocks %+v", got, blocks)
 	}
 }
@@ -251,7 +252,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 				if entry.Source.Native == nil || entry.Source.Native.Item != "cmd" {
 					continue
 				}
-				if !strings.Contains(entry.Source.Text, "Edit `a.go` · cat (requested)") || strings.Contains(entry.Source.Text, "PRIVATE_NATIVE_SOURCE") || !strings.Contains(entry.Source.Text, "Run `go test ./internal/router`") {
+				if strings.Contains(entry.Source.Text, "cat") || strings.Contains(entry.Source.Text, "PRIVATE_NATIVE_SOURCE") || !strings.Contains(entry.Source.Text, "Run `go test ./internal/router`") {
 					t.Fatalf("native edit intent display = %q", entry.Source.Text)
 				}
 			}
@@ -261,5 +262,83 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 				assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "main", "cmd", "Move", 0)
 			}
 		})
+	}
+}
+
+func TestUISnapshotCatWriteWithoutCapture(t *testing.T) {
+	const source = "fixture_dir=$(mktemp -d) || exit 1\ntrap 'rm -f \"$fixture_dir/main.js\"; rmdir \"$fixture_dir\"' EXIT\ncat >\"$fixture_dir/main.js\" <<'EOF'\nPRIVATE_CAT_BODY\nEOF\ncheck \"$fixture_dir\""
+	for _, restored := range []bool{false, true} {
+		u := newAppServerSessionTestUI(t, t.TempDir())
+		item := binding.ThreadItem{ID: "cat", Type: "commandExecution", Command: source, Status: "completed", ExitCode: new(1), AggregatedOutput: new("check failed\n")}
+		if restored {
+			u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
+		} else {
+			started := item
+			started.Status, started.ExitCode, started.AggregatedOutput = "inProgress", nil, nil
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": started})
+			for _, value := range u.testActivity(u.shell.Transcript).SourceValues(0) {
+				if value.EditOperation() || value.Verb == "Run" && strings.HasPrefix(value.Code, "cat ") {
+					t.Fatalf("source-only cat operation: %+v", value)
+				}
+			}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+		}
+		view := u.testActivity(u.shell.Transcript)
+		finishPacing(view)
+		rows := view.RenderFeed(100, 30).Lines
+		frame := strings.Join(rows, "\n")
+		if strings.Contains(frame, "requested") || strings.Contains(frame, "Edited") || strings.Contains(frame, "PRIVATE_CAT_BODY") || !strings.Contains(frame, "exit 1") && !strings.Contains(frame, "1 failed command") {
+			t.Fatalf("unobserved cat outcome or lost aggregate failure:\n%s", frame)
+		}
+		if view.Entries[0].Source.Native.Command != source {
+			t.Fatal("original command source was lost")
+		}
+		name := "cat-write-completed"
+		if restored {
+			name = "cat-write-restored"
+		}
+		assertNativeUISnapshot(t, name, rows)
+	}
+}
+
+func TestCatOnlyCompoundRetainsUntimedHostOutcome(t *testing.T) {
+	const source = "cat > a; cat > b"
+	for _, restored := range []bool{false, true} {
+		for _, exit := range []int{0, 1} {
+			t.Run(fmt.Sprintf("restored=%t/exit=%d", restored, exit), func(t *testing.T) {
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				output := "completed output\n"
+				if exit != 0 {
+					output = "cat: b: Permission denied\n"
+				}
+				item := binding.ThreadItem{ID: "cat", Type: "commandExecution", Command: source, Status: "completed", ExitCode: new(exit), AggregatedOutput: new(output)}
+				// Completion without a start has no measured duration, as restored
+				// host items and independently delivered terminal observations can.
+				if restored {
+					u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
+				} else {
+					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+				}
+				view := u.testActivity(u.shell.Transcript)
+				finishPacing(view)
+				values := view.SourceValues(0)
+				if len(values) != 1 || !values[0].BatchExit || !values[0].Exited || values[0].ExitCode != exit || values[0].Code != source || values[0].EditOperation() {
+					t.Fatalf("lost enclosing outcome or invented individual write: %+v", values)
+				}
+				retained := view.RetainedOutput(values[0].Source, values[0].Output)
+				if retained == nil || strings.Join(retained.View().Lines, "\n") != strings.TrimSpace(output) {
+					t.Fatal("lost enclosing output")
+				}
+				frame := strings.Join(view.RenderFeed(100, 30).Lines, "\n")
+				if !strings.Contains(frame, "Ran") || exit != 0 && (!strings.Contains(frame, "Permission denied") || !strings.Contains(frame, "exit 1")) {
+					t.Fatalf("completed compound outcome was hidden: %q", frame)
+				}
+			})
+		}
+	}
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cat", Type: "commandExecution", Command: source, Status: "inProgress"}})
+	if got := u.testActivity(u.shell.Transcript).SourceValues(0); len(got) != 0 {
+		t.Fatalf("source-only compound created interim rows: %+v", got)
 	}
 }

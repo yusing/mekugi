@@ -44,6 +44,9 @@ func (source CommandSource) WritesFiles() bool {
 			if _, declaration := node.(*syntax.FuncDecl); declaration {
 				return false
 			}
+			if statement, ok := node.(*syntax.Stmt); ok && sourceCatEdit(statement) != "" {
+				writes = true
+			}
 			if call, ok := node.(*syntax.CallExpr); ok {
 				args := call.Args
 				for len(args) > 0 {

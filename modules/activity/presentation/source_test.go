@@ -529,7 +529,7 @@ func TestHeredocHeadingChainsKeepOperationsAndBody(t *testing.T) {
 
 func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
-		{"cat a\ncat b > c", "Read `a`\n\nEdit `c` · cat (requested)"},
+		{"cat a\ncat b > c", "Read `a`"},
 		{"cat a; git diff --check; git diff --stat;", "Read `a`\n\nCheck `working tree` · git diff --check\n\nDiff `working tree` · git --stat"},
 		{"cat a; git log --oneline;", "Read `a`\n\nRun `git log --oneline`"},
 		{"cat a\ncat b && echo done", "Read `a`\n\nRead `b`\n\nRun `echo done`"},

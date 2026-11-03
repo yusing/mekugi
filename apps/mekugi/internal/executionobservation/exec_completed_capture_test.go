@@ -25,13 +25,17 @@ import (
 )
 
 func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
-	for _, scenario := range []string{"parallel writer", "snapshot retry", "return to baseline", "unrelated overlap", "sequential hosts"} {
+	for _, scenario := range []string{"parallel writer", "snapshot retry", "return to baseline", "unrelated overlap", "sequential hosts", "temporary cat"} {
 		t.Run(scenario, func(t *testing.T) {
 			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "a.go")
 			writeTestFile(t, path, "before\n")
 			commands := []commandanalysis.Command{{Command: "python3 z.py; read -r answer", Workdir: workspace}}
+			if scenario == "temporary cat" {
+				commands[0].Command = "cat >\"$fixture_dir/main.js\" <<'EOF'\nafter\nEOF\nread -r answer"
+				path = filepath.Join(t.TempDir(), "main.js")
+			}
 			if scenario == "sequential hosts" {
 				commands[0].Command = "printf ready; printf again; python3 z.py; read -r answer"
 			}
@@ -68,11 +72,17 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			observation := changecapture.Observation{Commands: commands, Files: []changecapture.File{changecapture.ReadFile(path, &budget)}, Labels: []string{"python3"}, RepeatedPaths: true}
 			registry := &Windows{}
 			registry.open(&execWindow{ref: "cell", thread: "main", turn: "turn", roots: []string{workspace}})
+			registry.find("cell").tracking = tracking
 			defer registry.close("cell")
 			broker := newLivePreview(t.Context())
 			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := testReview(broker).Subscribe()
 			capture := &execPreviewCapture{registry: registry, ref: "cell", observation: observation}
+			if scenario == "temporary cat" {
+				capture.observation.Files, capture.observation.Labels = nil, []string{"cat"}
+				reports[0].send(segmenttransport.Message{Type: segmenttransport.Created, Data: filepath.Dir(path), Tree: true})
+				hub.await(t, [3]string{"main", "turn", "edit"}, func(view segments.Report) bool { return len(view.Created) == 1 })
+			}
 			preview := previewmodel.Preview{Workspace: workspace, Thread: "main", Turn: "turn"}
 			if scenario == "snapshot retry" || scenario == "unrelated overlap" {
 				capture.snapshots = testCaptureWorkspaces(t)
@@ -111,7 +121,11 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			}
 			capture.next = time.Time{}
 			capture.update(t.Context(), broker, preview, tracking, tracking.state())
-			if !strings.Contains(capture.text, "+1 -1") {
+			counts := "+1 -1"
+			if scenario == "temporary cat" {
+				counts = "+1 -0"
+			}
+			if !strings.Contains(capture.text, counts) {
 				t.Fatal("completed edit lacks counts", capture.text)
 			}
 			delivered := false
@@ -131,7 +145,6 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 				reports[1].send(segmenttransport.Message{Type: segmenttransport.End, Code: new(0)})
 				hub.await(t, [3]string{"main", "turn", "sibling"}, func(view segments.Report) bool { return (view.LastStarted()+1) == 1 && view.Segments[0].Ended })
 				writeTestFile(t, path, "second\nline\n")
-				capture.next = time.Time{}
 				capture.update(t.Context(), broker, preview, tracking, tracking.state())
 				if capture.completed <= previous || !strings.Contains(capture.text, "+2 -1") || !slices.Equal(capture.calls, []string{"edit", "sibling"}) {
 					t.Fatalf("later receipt lost counts or host order: %+v", capture)
@@ -141,7 +154,6 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 				writeTestFile(t, path, "before\n")
 				reports[0].send(segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)})
 				hub.await(t, [3]string{"main", "turn", "edit"}, func(view segments.Report) bool { return (view.LastStarted()+1) == 2 && view.Segments[1].Ended })
-				capture.next = time.Time{}
 				capture.update(t.Context(), broker, preview, tracking, tracking.state())
 				withdrawn := false
 				for _, event := range testReview(broker).TakePreviews(sub) {

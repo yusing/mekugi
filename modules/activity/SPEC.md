@@ -191,8 +191,11 @@ public-summary disclosure and terminal pacing.
 
 ### Edit evidence
 
-Statically scoped `sed -i`, `cat` redirections, `rm`, `mv`, and supported Python or
+Statically scoped `sed -i`, `rm`, `mv`, and supported Python or
 JavaScript writes show requested Edit/Delete/Move intent without applied counts.
+Cat writes have no source-only row. Observed command completion can establish that
+the writer ran or failed; captured endpoints establish effects and counts. An
+enclosing script's outcome does not establish its individual writers' outcomes.
 Variable redirection targets stay unevaluated; heredoc bodies stay out of Run cards.
 Moves into explicit directories name each requested destination; other destinations
 remain as requested until captured evidence establishes the resulting paths.

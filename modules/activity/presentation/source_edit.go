@@ -57,23 +57,10 @@ func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 		}
 		return strings.Join(paths, "\n\n"), true
 	}
-	if command == "cat" {
-		var paths []string
-		for _, redirect := range statement.Redirs {
-			if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || redirect.N != nil && redirect.N.Value != "1" {
-				continue
-			}
-			path, literal := shellsyntax.Literal(redirect.Word)
-			if !literal && shellsyntax.PatternWord(redirect.Word) {
-				path = shellWords([]*syntax.Word{redirect.Word})
-			}
-			if path != "" && !strings.HasPrefix(path, "/dev/") {
-				paths = append(paths, "Edit "+SourceCode(path)+" · cat (requested)")
-			}
-		}
-		if len(paths) != 0 {
-			return strings.Join(paths, "\n\n"), true
-		}
+	if sourceCatEdit(statement) != "" {
+		// A cat write has no source-only operation. Execution boundaries and
+		// captured endpoints publish its outcome without an interim intent row.
+		return "", true
 	}
 	languageName := sourceLanguage(command)
 	if languageName != "python" && languageName != "javascript" {
@@ -134,4 +121,43 @@ func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 		displays = append(displays, display)
 	}
 	return strings.Join(displays, "\n\n"), true
+}
+
+func sourceCatEdit(statement *syntax.Stmt) string {
+	call, ok := statement.Cmd.(*syntax.CallExpr)
+	if !ok || statement.Background || statement.Negated || statement.Coprocess || statement.Disown || len(call.Assigns) != 0 || len(call.Args) == 0 {
+		return ""
+	}
+	command, literal := shellsyntax.Literal(call.Args[0])
+	if !literal || command != "cat" {
+		return ""
+	}
+	var paths []string
+	for _, redirect := range statement.Redirs {
+		if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || redirect.N != nil && redirect.N.Value != "1" {
+			continue
+		}
+		path, literal := shellsyntax.Literal(redirect.Word)
+		if !literal && shellsyntax.PatternWord(redirect.Word) {
+			path = shellWords([]*syntax.Word{redirect.Word})
+		}
+		if path != "" && !strings.HasPrefix(path, "/dev/") {
+			paths = append(paths, "Edit "+SourceCode(path)+" · cat")
+		}
+	}
+	return strings.Join(paths, "\n\n")
+}
+
+// Only a single command's completion can establish that this writer ran.
+// An enclosing script's exit cannot establish individual statement outcomes.
+func completedCatSource(script string) string {
+	program, err := syntax.NewParser().Parse(strings.NewReader(script), "")
+	if err != nil || len(program.Stmts) != 1 {
+		return ""
+	}
+	statement := sourceUnwrapCommand(program.Stmts[0])
+	if body, ok := shellsyntax.ShellScript(statement); ok {
+		return completedCatSource(body)
+	}
+	return sourceCatEdit(statement)
 }

@@ -50,12 +50,14 @@ func (entry ItemContent) Values() (blocks []Value) {
 	}
 	defer func() {
 		defer func() { Identify(blocks, entry.Seq) }()
+		batchObserved := len(blocks) > 0 && (command.Running || command.Duration > 0) ||
+			len(blocks) == 0 && !command.Running && (command.Exited || command.Duration > 0 || !command.Ended.IsZero())
 		compoundApproval := command.Approval != "" && (len(command.Segments) > 1 && !command.UserShell ||
 			len(blocks) > 1 && slices.ContainsFunc(blocks[1:], func(b Value) bool { return !b.Effect }))
 		// An unsupported batch has one host clock, not a clock per classified
 		// operation. Keep that total visible and its output on one explicit row.
 		if n := entry.Details; entry.Kind == "tool" && n != nil && n.CommandText != "" && len(n.Reload) == 0 &&
-			(len(entry.Command.Segments) == 0 && (entry.Command.Running || entry.Command.Duration > 0) && command.Compound(blocks) || compoundApproval) &&
+			(len(entry.Command.Segments) == 0 && batchObserved && command.Compound(blocks) || compoundApproval) &&
 			!slices.ContainsFunc(blocks, func(b Value) bool { return b.BatchExit }) {
 			source, omitted := previewSource(cmp.Or(command.Display, command.Script, n.CommandText))
 			batch := Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true,
@@ -222,6 +224,24 @@ func (entry ItemContent) Values() (blocks []Value) {
 		if entry.Details != nil && len(entry.Command.Segments) > 0 {
 			command.Results = entry.Details.SearchResults
 			return GroupOperations(command.SegmentValues(false))
+		}
+		if cat := completedCatSource(cmp.Or(command.Display, command.Script)); cat != "" && (command.CaptureText == "" || command.Running || command.Duration == 0 && command.ExitCode == 0 && len(command.Tail) == 0 && !hasOutput(command.Output, command.OutputContent)) {
+			if !command.Running && command.Exited && (command.CaptureText == "" || command.ExitCode != 0 || len(command.Tail) > 0 || hasOutput(command.Output, command.OutputContent)) {
+				blocks = Operations(cat)
+				for i := range blocks {
+					blocks[i].EditOutcome = "ran"
+					if command.ExitCode != 0 {
+						blocks[i].EditOutcome = "failed"
+					}
+				}
+				last := &blocks[len(blocks)-1]
+				last.Output, last.Tail, last.TailOmitted, last.TailClipped = outputID(command.Output, 1), command.Tail, command.TailOmitted, command.TailClipped
+			}
+			effects := command.Effects()
+			for i := range effects {
+				effects[i].Effect = len(blocks) > 0
+			}
+			return GroupOperations(append(blocks, effects...))
 		}
 		if command.CaptureText != "" && command.Display != "" &&
 			(command.Running || command.Duration > 0 || command.ExitCode != 0 || len(command.Tail) > 0 || hasOutput(command.Output, command.OutputContent)) {
