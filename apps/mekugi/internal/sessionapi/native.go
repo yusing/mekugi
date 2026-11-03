@@ -141,6 +141,8 @@ type NativePreferenceUpdate struct {
 // preference, notification and accounting owners. Clients retain no new ledger.
 type NativeSessionFacts struct {
 	History                          []composer.HistoryEntry
+	SideHistory                      []composer.HistoryEntry
+	SideHistoryThread                string
 	Preferences                      jsontext.Value `json:"preferences,omitzero"`
 	Usage                            NativeUsage
 	DebugDirectory                   string

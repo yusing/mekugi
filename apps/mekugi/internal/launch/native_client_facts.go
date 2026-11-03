@@ -28,13 +28,21 @@ func (c *nativeClient) acceptFacts(previous string) {
 	if previous != c.event.Frame.View.Main.ID && c.notifications.focused {
 		c.enqueue(sessionapi.NativeOperation{Focused: new(c.notifications.focused)}, nil, nil)
 	}
-	history := make([]composer.HistoryEntry, len(facts.History))
-	for i, entry := range facts.History {
-		history[i] = entry
-		history[i].Draft = entry.Draft.Clone()
-		history[i].Restored = true
+	for _, source := range []struct {
+		key     string
+		entries []composer.HistoryEntry
+	}{{"main", facts.History}, {"side:" + facts.SideHistoryThread, facts.SideHistory}} {
+		if source.key == "side:" {
+			continue
+		}
+		history := make([]composer.HistoryEntry, len(source.entries))
+		for i, entry := range source.entries {
+			history[i] = entry
+			history[i].Draft = entry.Draft.Clone()
+			history[i].Restored = true
+		}
+		c.editor(source.key).PrependHistory(history)
 	}
-	c.editor("main").PrependHistory(history)
 	n := &c.notifications
 	n.ready, n.settings.Events, n.settings.Method, n.settings.Condition = facts.Notifications.Ready, facts.Notifications.Events, facts.Notifications.Method, facts.Notifications.Condition
 	if c.event.Frame.View.Main.ID != "" && (!c.preferenceReady || previous != c.event.Frame.View.Main.ID) && facts.Preferences != nil && facts.Preferences.Kind() != 'n' {

@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,9 +10,85 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
+
+func TestSideInputHistoryAcknowledgedAndPublished(t *testing.T) {
+	for _, command := range []string{"/side", "/oneoff first"} {
+		t.Run(command, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			appServerTestKeys(t, u, command+"\r")
+			btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
+			if command == "/side" {
+				appServerTestKeys(t, u, "first\r")
+			}
+			start := btwTestRequest(t, wire, "turn/start", "side")
+			if len(u.Editor.InputHistory) != 0 {
+				t.Fatal("unacknowledged Side input entered history")
+			}
+			btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
+			appServerTestKeys(t, u, "second\r")
+			btwTestReply(t, u, btwTestRequest(t, wire, "turn/steer", "side"), `{}`)
+			appServerTestKeys(t, u, "draft\x1b[D\x1b[A")
+			if u.Text != "second" {
+				t.Fatalf("Side recall = %q", u.Text)
+			}
+			appServerTestKeys(t, u, "\x1b[A\x1b[B\x1b[B")
+			if u.Text != "draft" || u.CursorBack != 1 {
+				t.Fatal("Side recall lost the current draft or caret")
+			}
+			client := nativeTestPromptClient(u)
+			client.editor("main").Remember(composer.Draft{Text: "main input"})
+			for range 2 {
+				client.event.Frame.Facts = nativePublicationFacts(&u.attached, nil, binding.TokenUsage{}, "", false, nil, "main", nil)
+				client.acceptFacts("main")
+			}
+			side := client.editor("side:side")
+			if len(side.InputHistory) != 2 || !side.Recall(true) || side.Text != "second" {
+				t.Fatalf("native Side recall = %+v", side)
+			}
+			if len(client.editor("main").InputHistory) != 1 || len(u.attached.conversation.Editor.InputHistory) != 0 {
+				t.Fatal("Side history mixed into Main")
+			}
+		})
+	}
+}
+
+func TestSideInputHistoryRejectAndRetry(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	appServerTestKeys(t, u, "/side\r")
+	btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"old-side"}}`)
+	appServerTestKeys(t, u, "rejected\r")
+	start := btwTestRequest(t, wire, "turn/start", "old-side")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"rejected"}}`, start.ID))
+	if u.Text != "rejected" || len(u.Editor.InputHistory) != 0 {
+		t.Fatal("rejected Side input was remembered or lost")
+	}
+	appServerTestKeys(t, u, "\r")
+	btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "old-side"), `{"turn":{"id":"old-turn"}}`)
+	if len(u.Editor.InputHistory) != 1 || u.Editor.InputHistory[0].Text != "rejected" {
+		t.Fatal("accepted retry did not enter Side history once")
+	}
+}
+
+func TestSideInputHistoryRolloverKeepsAttachmentIdentity(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	appServerTestKeys(t, u, "/side\r")
+	btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
+	client := nativeTestPromptClient(u)
+	for i := range 101 {
+		draft := composer.Draft{Text: "[Image 1]", Images: []composer.Token{{Start: 0, End: 9, Path: fmt.Sprintf("/image-%d.png", i)}}}
+		u.side.AcknowledgeInput(conversationmodel.Input{Draft: draft})
+		client.event.Frame.Facts = nativePublicationFacts(&u.attached, nil, binding.TokenUsage{}, "", false, nil, "main", nil)
+		client.acceptFacts("main")
+	}
+	editor := client.editor("side:side")
+	if len(editor.InputHistory) != 100 || !editor.Recall(true) || editor.Images[0].Path != "/image-100.png" {
+		t.Fatal("bounded native history recalled another occurrence's image")
+	}
+}
 
 func TestAppServerInputHistoryAcknowledgedAndDraftRestored(t *testing.T) {
 	u, _ := newAppServerTestUI()

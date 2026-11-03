@@ -102,6 +102,10 @@ func (r *Requests[T]) sendSide(s *Side, method string, params any, input *InputR
 	if err == nil {
 		request := r.pending[id]
 		request.Side = s
+		if method == "turn/start" || method == "turn/steer" {
+			draft := s.Pending.Draft.Clone()
+			request.SideDraft = &draft
+		}
 		if input != nil && input.Settled != nil {
 			request.input = input
 		}
@@ -342,6 +346,9 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 					}
 				}
 			}
+			if m.Error == nil && !s.Closed {
+				s.AcknowledgeInput(*input)
+			}
 			if s.Closed {
 				return update, r.ReleaseSide(s)
 			}
@@ -385,6 +392,9 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				update = s.fail("Codex returned no side-turn identity")
 			}
 			s.StartAcknowledged(result.Turn.ID)
+		}
+		if !s.Closed && response.SideDraft != nil && (method == "turn/steer" || method == "turn/start" && result.Turn.ID != "") {
+			s.AcknowledgeInput(conversationmodel.Input{Draft: *response.SideDraft})
 		}
 		if s.Closed {
 			return update, r.ReleaseSide(s)

@@ -80,6 +80,10 @@ ordinary input and the ordinary exit draft join that history when Codex history
 persistence is enabled. Persisted recall is text-only, not automatic draft
 restoration; attachment bindings and answer drafts remain process-local.
 
+Accepted Side input joins only Side's local editor history, including its live
+attachment bindings. Main history and shared persisted recall remain separate.
+Replacing Side starts a fresh editor history; rejected input remains a draft.
+
 Joining drafts preserves send order, separates nonempty entries with newlines,
 retains immutable attachment snapshots and keeps the last entry's caret. Rejected
 or withdrawn input can return before newly typed text without losing attachment

@@ -66,6 +66,16 @@ func (s *SideAnswer) Begin(question string, pending Input) {
 	s.bound()
 }
 
+// AcknowledgeInput gives each accepted occurrence a stable reconciliation identity,
+// even when identical text with different attachments fills the bounded history.
+func (s *SideAnswer) AcknowledgeInput(input Input) {
+	if input.Question != nil || input.ReplyCount != 0 || input.Text == "" {
+		return
+	}
+	s.Drafts.Editor.Remember(input.Draft)
+	s.Drafts.Editor.InputHistory[len(s.Drafts.Editor.InputHistory)-1].Source = rand.Text()
+}
+
 func (s *SideAnswer) Fail(message string, closed bool) Input {
 	s.Alert, s.Status = true, message
 	pending := s.Pending

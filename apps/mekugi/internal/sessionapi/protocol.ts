@@ -824,6 +824,8 @@ export type NativeSwitch = {
 
 export type NativeSessionFacts = {
   "History": Array<HistoryEntry>;
+  "SideHistory": Array<HistoryEntry>;
+  "SideHistoryThread": string;
   "preferences"?: unknown;
   "Usage": NativeUsage;
   "DebugDirectory": string;

@@ -11,6 +11,10 @@ import (
 // transport makes the publication detached before it reaches another goroutine.
 func nativePublicationFacts(attached *attachedPresentation, panes *nativePreferences, usage binding.TokenUsage, debugDirectory string, archived bool, notifications *nativeNotifications, main string, predictions *composerPredictions) sessionapi.NativeSessionFacts {
 	facts := sessionapi.NativeSessionFacts{History: attached.conversation.Editor.InputHistory, Usage: sessionapi.NativeUsage(usage), DebugDirectory: debugDirectory, Archived: archived}
+	if side := attached.conversation.Side; side != nil {
+		facts.SideHistory = side.Drafts.Editor.InputHistory
+		facts.SideHistoryThread = attached.presentation.View().SideThread.ID
+	}
 	if panes != nil && panes.attachment != nil {
 		facts.Preferences = panes.attachment.Snapshot().Presentation
 	}

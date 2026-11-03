@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -34,6 +35,7 @@ type Request[T any] struct {
 	Owner         T
 	Side          *Side
 	SideInput     *conversationmodel.Input
+	SideDraft     *composer.Draft
 	SideExchange  uint64
 	Prediction    *Prediction
 	call          *HostCall

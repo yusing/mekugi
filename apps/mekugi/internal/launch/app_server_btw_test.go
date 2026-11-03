@@ -525,6 +525,9 @@ func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 	if u.side.Thread != "second-side" || u.Thread != "main" || u.attached.conversation.Editor.Text != "" {
 		t.Fatal("late cleanup crossed identity")
 	}
+	if len(u.side.Drafts.Editor.InputHistory) != 0 {
+		t.Fatal("replacement inherited old Side history")
+	}
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	if u.Text != "" {
 		t.Fatal("Main command draft not consumed")

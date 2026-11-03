@@ -202,6 +202,32 @@ func TestArchiveSidesDrainsDismissedPendingFork(t *testing.T) {
 	}
 }
 
+func TestSideReplyHistoryAdmission(t *testing.T) {
+	for _, result := range []string{`{"turn":{"id":"turn"}}`, `{}`} {
+		for _, replies := range []int{0, 1} {
+			t.Run(fmt.Sprintf("result=%s/replies=%d", result, replies), func(t *testing.T) {
+				requests := NewRequests[struct{}](&requestTransport{id: "reply"})
+				side := &Side{SideAnswer: new(conversationmodel.SideAnswer), Thread: "side"}
+				input := conversationmodel.Input{Text: "input", ReplyCount: replies}
+				if _, err := requests.ReplySide(side, "side", "", input); err != nil {
+					t.Fatal(err)
+				}
+				response, _ := requests.Take("reply")
+				if _, err := requests.ObserveSide(appserver.Message{Result: []byte(result)}, response, "main"); err != nil {
+					t.Fatal(err)
+				}
+				want := 0
+				if result != `{}` && replies == 0 {
+					want = 1
+				}
+				if len(side.Drafts.Editor.InputHistory) != want {
+					t.Fatalf("history = %+v", side.Drafts.Editor.InputHistory)
+				}
+			})
+		}
+	}
+}
+
 func TestSideWorkflowWithoutRenderer(t *testing.T) {
 	for _, closed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "open", true: "closed during fork"}[closed], func(t *testing.T) {
