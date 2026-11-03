@@ -93,6 +93,7 @@ type Observation struct {
 	Class          string
 	Labels         []string `json:",omitempty"`
 	Reason         string   `json:",omitempty"`
+	Unresolved     bool     `json:",omitzero"`
 	Files          []File
 	Omitted        []Omission          `json:",omitempty"`
 	Listings       []Listing           `json:",omitempty"`
@@ -165,6 +166,7 @@ func Merge(members []Member) Observation {
 		other := member.Observation
 		merged.CodeMode = merged.CodeMode || other.CodeMode
 		merged.RepeatedPaths = merged.RepeatedPaths || other.RepeatedPaths
+		merged.Unresolved = merged.Unresolved || other.Unresolved
 		merged.Commands = append(merged.Commands, other.Commands...)
 		merged.CommandClasses = append(merged.CommandClasses, other.CommandClassesForCalls()...)
 		if classRank(other.Class) > classRank(merged.Class) {
@@ -331,6 +333,7 @@ func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, c
 	for _, command := range commands {
 		plan := execscope.Classify(execscope.Input{Command: command.Command, Directory: command.Workdir, Shell: command.Shell, Deadline: started.Add(execscope.Budget), Changes: env.Changes, AuthoredOnly: !env.PreviewOnly})
 		observation.CommandClasses = append(observation.CommandClasses, plan.Class.String())
+		observation.Unresolved = observation.Unresolved || plan.Unresolved
 		if plan.Class > class {
 			class = plan.Class
 		}

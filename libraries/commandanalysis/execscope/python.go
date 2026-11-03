@@ -172,10 +172,11 @@ func (s *execSourceScope) pythonText(node *sitter.Node, depth int) bool {
 }
 
 func execPythonScope(input execProviderInput) execProviderResult {
-	source, script, reason := execProgramSource(input)
+	source, script, argv, reason := execProgramSource(input)
 	if reason != "" {
 		return execProviderResult{open: true, reason: reason}
 	}
+	input.pythonArgv = argv
 	return inspectExecSource(input, source, script, sourceparse.Python, true)
 }
 

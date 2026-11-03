@@ -29,13 +29,15 @@ type execProviderInput struct {
 	stdin                        string
 	deadline                     time.Time
 	changes                      ChangeResolver
+	pythonArgv                   []string
 }
 
 type execProviderResult struct {
-	programs  []Program
-	unhandled bool
-	scope     []Entry
-	open      bool
+	programs   []Program
+	unhandled  bool
+	scope      []Entry
+	open       bool
+	unresolved bool
 	// opaque preserves named scope while admitting additional unknown effects.
 	opaque bool
 	reason string
@@ -69,7 +71,7 @@ func execInlineShellScope(input execProviderInput) execProviderResult {
 	for i, arg := range input.args {
 		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, "c") && i+1 < len(input.args) {
 			plan := classifyExecShellSource(input.args[i+1], input.cwd, input.identity, input.deadline, input.depth+1, input.changes, input.authoredOnly)
-			return execProviderResult{scope: plan.Scope, open: plan.Class == Opaque, reason: plan.Reason, programs: plan.Programs}
+			return execProviderResult{scope: plan.Scope, open: plan.Class == Opaque, unresolved: plan.Unresolved, reason: plan.Reason, programs: plan.Programs}
 		}
 	}
 	return execProviderResult{open: true, reason: "shell source is not literal"}
@@ -126,6 +128,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 	if result.unhandled {
 		return false
 	}
+	w.plan.Unresolved = w.plan.Unresolved || result.unresolved
 	if time.Now().After(w.deadline) {
 		w.opaque("scope provider deadline")
 		return true
@@ -147,62 +150,74 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 	return true
 }
 
-// execProgramSource selects literal eval/stdin/script input without evaluating it.
+// ReadSource selects literal eval/stdin/script input without evaluating it.
 func ReadSource(input Interpreter) (source, script, reason string) {
-	return readSource(input, func(path string) (string, string) {
-		file, err := sourceparse.Open(path)
-		if err != nil {
-			return "", "interpreter source unavailable"
-		}
-		defer file.Close()
-		info, err := file.Stat()
-		if err != nil || !info.Mode().IsRegular() {
-			return "", "interpreter source is not regular"
-		}
-		data, err := io.ReadAll(io.LimitReader(file, SourceLimit+1))
-		if err != nil || len(data) > SourceLimit {
-			return "", "interpreter source exceeds capture bound"
-		}
-		return string(data), ""
-	})
+	source, script, _, reason = readSource(input, readInterpreterFile)
+	return
 }
 
-func readSource(input Interpreter, read func(string) (string, string)) (source, script, reason string) {
+func readInterpreterFile(path string) (string, string) {
+	file, err := sourceparse.Open(path)
+	if err != nil {
+		return "", "interpreter source unavailable"
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return "", "interpreter source is not regular"
+	}
+	data, err := io.ReadAll(io.LimitReader(file, SourceLimit+1))
+	if err != nil || len(data) > SourceLimit {
+		return "", "interpreter source exceeds capture bound"
+	}
+	return string(data), ""
+}
+
+func readSource(input Interpreter, read func(string) (string, string)) (source, script string, argv []string, reason string) {
 	python := strings.HasPrefix(input.Identity, "python")
+	options := true
 	for i := 0; i < len(input.Arguments); i++ {
 		arg := input.Arguments[i]
-		if arg == "-c" && python || !python && (arg == "-e" || arg == "--eval" || arg == "-p" || arg == "--print") {
+		if options && (arg == "-c" && python || !python && (arg == "-e" || arg == "--eval" || arg == "-p" || arg == "--print")) {
 			if i+1 < len(input.Arguments) {
-				return input.Arguments[i+1], "", ""
+				return input.Arguments[i+1], "", append([]string{"-c"}, input.Arguments[i+2:]...), ""
 			}
-			return "", "", "missing interpreter source"
+			return "", "", nil, "missing interpreter source"
 		}
-		if !python && (strings.HasPrefix(arg, "--eval=") || strings.HasPrefix(arg, "--print=")) {
+		if options && !python && (strings.HasPrefix(arg, "--eval=") || strings.HasPrefix(arg, "--print=")) {
 			_, value, _ := strings.Cut(arg, "=")
-			return value, "", ""
+			return value, "", nil, ""
 		}
-		if arg == "-m" && python || arg == "--require" || arg == "-r" || arg == "--import" || arg == "--loader" {
-			return "", "", "interpreter loader is not inspected"
+		if options && (arg == "-m" && python || arg == "--require" || arg == "-r" || arg == "--import" || arg == "--loader") {
+			return "", "", nil, "interpreter loader is not inspected"
 		}
 		if arg == "-" {
-			return input.Stdin, "", ""
+			return input.Stdin, "", append([]string{"-"}, input.Arguments[i+1:]...), ""
 		}
-		if strings.HasPrefix(arg, "-") || (input.Identity == "deno" || input.Identity == "bun") && arg == "run" {
+		if python && options && arg == "--" {
+			options = false
+			continue
+		}
+		if python && options && (arg == "-W" || arg == "-X" || arg == "--check-hash-based-pycs") {
+			i++ // These interpreter options consume a value, not a script name.
+			continue
+		}
+		if options && (strings.HasPrefix(arg, "-") || (input.Identity == "deno" || input.Identity == "bun") && arg == "run") {
 			continue
 		}
 		if !filepath.IsAbs(arg) {
 			if !filepath.IsAbs(input.Directory) {
-				return "", "", "interpreter working directory unavailable"
+				return "", "", nil, "interpreter working directory unavailable"
 			}
 			arg = filepath.Join(input.Directory, arg)
 		}
 		source, reason = read(arg)
-		return source, arg, reason
+		return source, arg, input.Arguments[i:], reason
 	}
 	if input.Stdin != "" {
-		return input.Stdin, "", ""
+		return input.Stdin, "", []string{""}, ""
 	}
-	return "", "", "interpreter source is not literal"
+	return "", "", nil, "interpreter source is not literal"
 }
 
 func execProviderFiles(paths []string, tree bool) Entry {

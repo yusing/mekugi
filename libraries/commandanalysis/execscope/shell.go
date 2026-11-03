@@ -89,6 +89,8 @@ type Result struct {
 	Labels []string
 	Scope  []Entry
 	Reason string
+	// Unresolved marks interpreter effects outside the derived named scope.
+	Unresolved bool
 	// Programs are the statements whose effects are not derived, in order.
 	Programs []Program
 }
@@ -773,6 +775,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 					plan := classifyExecShellSource(source, w.cwd, "sh", w.deadline, w.depth+1, w.changes, w.authoredOnly)
 					w.plan.Scope = append(w.plan.Scope, plan.Scope...)
 					w.plan.Programs = append(w.plan.Programs, plan.Programs...)
+					w.plan.Unresolved = w.plan.Unresolved || plan.Unresolved
 					for _, label := range plan.Labels {
 						w.plan.label(label)
 					}

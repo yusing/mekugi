@@ -10,7 +10,7 @@ import (
 )
 
 func execJavaScriptScope(input execProviderInput) execProviderResult {
-	source, script, reason := execProgramSource(input)
+	source, script, _, reason := execProgramSource(input)
 	if reason != "" {
 		return execProviderResult{open: true, reason: reason}
 	}

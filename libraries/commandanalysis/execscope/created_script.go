@@ -59,7 +59,7 @@ func CreatedScript(source string, statement *syntax.Stmt, directory string) (con
 		if !filepath.IsAbs(target) {
 			target = filepath.Join(directory, target)
 		}
-		content, path, reason := readSource(Interpreter{Identity: identity, Arguments: args[1:], Directory: directory}, func(path string) (string, string) {
+		content, path, _, reason := readSource(Interpreter{Identity: identity, Arguments: args[1:], Directory: directory}, func(path string) (string, string) {
 			if filepath.Clean(path) == filepath.Clean(target) {
 				return body, ""
 			}

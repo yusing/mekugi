@@ -26,6 +26,10 @@ type execSourceScope struct {
 	script                      string
 	python                      bool
 	pythonItems                 map[string][2]execPythonValues
+	pythonSys, pythonShadow     map[string]bool
+	pythonArgvSafe              bool
+	pythonArgvSeen              bool
+	pythonArgvRoots             []string
 	result                      execProviderResult
 	iterations                  []string
 	intentOnly                  bool              // Display classification: no filesystem or nested provider inspection.
@@ -52,6 +56,10 @@ func inspectExecSource(input execProviderInput, source, script string, language 
 		return execProviderResult{open: true, reason: "interpreter source could not be parsed"}
 	}
 	scan := execSourceScope{input: input, source: data, script: script, python: python, state: newBindingState(), assigned: make(map[string]int), texts: make(map[string]bool)}
+	argvSource := python && len(input.pythonArgv) != 0 && strings.Contains(source, "argv")
+	if argvSource {
+		scan.inspectPythonArgv(tree.RootNode())
+	}
 	scan.walk(tree.RootNode())
 	// The command names its script. Retaining that bounded baseline also
 	// distinguishes an unchanged source at the filesystem clock boundary.
@@ -65,12 +73,16 @@ func inspectExecSource(input execProviderInput, source, script string, language 
 	}
 	if scan.result.open {
 		scan.result.reason = "unresolved interpreter targets"
+		// Existing opaque programs retain workspace-fallback semantics. An
+		// inspected argv writer can name external paths, so unresolved targets
+		// in that source must keep the operation's coverage explicitly partial.
+		scan.result.unresolved = scan.result.unresolved || scan.pythonArgvSeen && scan.writes
 	}
 	if input.created {
 		// A failed redirection may leave an older script executable by the
 		// following statement. Preserve its named candidates as well.
 		input.created = false
-		if previous, previousPath, reason := execProgramSource(input); reason == "" && previous != source {
+		if previous, previousPath, _, reason := execProgramSource(input); reason == "" && previous != source {
 			prior := inspectExecSource(input, previous, previousPath, language, python)
 			for _, entry := range prior.scope {
 				entry.Operands = slices.DeleteFunc(entry.Operands, func(operand Operand) bool {
@@ -84,6 +96,7 @@ func inspectExecSource(input execProviderInput, source, script string, language 
 			}
 			scan.result.programs = append(scan.result.programs, prior.programs...)
 			scan.result.open = scan.result.open || prior.open
+			scan.result.unresolved = scan.result.unresolved || prior.unresolved
 			if scan.result.reason == "" {
 				scan.result.reason = prior.reason
 			}
@@ -175,6 +188,15 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 			return []string{value}
 		}
 		return []string{sourceparse.Path(s.input.cwd, value)}
+	}
+	if s.python {
+		if value, ok := s.pythonArgument(node); ok {
+			path := sourceparse.Path(s.input.cwd, value)
+			if path != "" && !slices.Contains(s.pythonArgvRoots, path) {
+				s.pythonArgvRoots = append(s.pythonArgvRoots, path)
+			}
+			return []string{path}
+		}
 	}
 	if node.Kind() == "identifier" {
 		if s.text(node) == "__dirname" && s.script != "" {
@@ -286,6 +308,11 @@ func (s *execSourceScope) literalSegments(node *sitter.Node, depth int) []string
 	if value, ok := s.literal(node); ok {
 		return []string{value}
 	}
+	if s.python {
+		if value, ok := s.pythonArgument(node); ok {
+			return []string{value}
+		}
+	}
 	if node.Kind() == "identifier" {
 		return s.state.Segments[s.text(node)]
 	}
@@ -367,6 +394,20 @@ func (s *execSourceScope) add(node *sitter.Node, tree bool) {
 	paths := s.paths(node)
 	if len(paths) == 0 || slices.Contains(paths, "") {
 		s.result.open = true
+		// A computed leaf can escape this root, so coverage stays open. The
+		// existing bounded tree capture still retains edits and new siblings
+		// beneath a root that the write expression explicitly names.
+		for node != nil && node.Kind() == "parenthesized_expression" && node.NamedChildCount() == 1 {
+			node = node.NamedChild(0)
+		}
+		if !s.intentOnly && node != nil && node.Kind() == "binary_operator" && s.text(node.ChildByFieldName("operator")) == "/" {
+			roots := slices.DeleteFunc(slices.Clone(s.paths(node.ChildByFieldName("left"))), func(root string) bool {
+				return !slices.Contains(s.pythonArgvRoots, root)
+			})
+			if len(roots) != 0 {
+				s.result.scope = append(s.result.scope, execProviderFiles(roots, true))
+			}
+		}
 		return
 	}
 	if s.intentOnly && len(s.temporaryEnv) != 0 {
@@ -484,8 +525,8 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 			statement := node.Parent()
 			straightLine := s.python && statement != nil && statement.Kind() == "expression_statement" &&
 				statement.Parent() != nil && statement.Parent().Kind() == "module"
+			text := s.python && s.pythonText(right, 0)
 			if s.assigned[name] == 1 || straightLine {
-				text := s.python && s.pythonText(right, 0)
 				segments := s.literalSegments(right, 0)
 				paths := s.paths(right)
 				if s.state.Segments == nil {
@@ -505,7 +546,7 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 				}
 			} else {
 				delete(s.state.Paths, name)
-				delete(s.texts, name)
+				s.texts[name] = text
 				delete(s.state.Segments, name)
 				delete(s.pythonItems, name)
 			}
@@ -685,6 +726,7 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 	plan := classifyExecShellSource(command, s.input.cwd, "bash", s.input.deadline, s.input.depth+1, s.input.changes, s.input.authoredOnly)
 	s.result.scope = append(s.result.scope, plan.Scope...)
 	s.result.programs = append(s.result.programs, plan.Programs...)
+	s.result.unresolved = s.result.unresolved || plan.Unresolved
 	s.result.open = s.result.open || plan.Class == Opaque || plan.Reason != ""
 	s.writes = s.writes || plan.Class != Neutral
 }

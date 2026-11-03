@@ -8,9 +8,10 @@ type Interpreter struct {
 	Stdin     string
 }
 
-func execProgramSource(input execProviderInput) (string, string, string) {
+func execProgramSource(input execProviderInput) (string, string, []string, string) {
+	read := readInterpreterFile
 	if input.created {
-		return input.createdSource, input.createdScript, ""
+		read = func(string) (string, string) { return input.createdSource, "" }
 	}
-	return ReadSource(Interpreter{Identity: input.identity, Arguments: input.args, Directory: input.cwd, Stdin: input.stdin})
+	return readSource(Interpreter{Identity: input.identity, Arguments: input.args, Directory: input.cwd, Stdin: input.stdin}, read)
 }

@@ -125,6 +125,7 @@ type Observation struct {
 	Class          string
 	Labels         []string `json:",omitempty"`
 	Reason         string   `json:",omitempty"`
+	Unresolved     bool     `json:",omitzero"`
 	Files          []File
 	Omitted        []Omission `json:",omitempty"`
 	Listings       []Listing  `json:",omitempty"`

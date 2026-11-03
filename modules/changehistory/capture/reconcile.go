@@ -59,6 +59,9 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 		interval.RepeatedPaths = false
 	}
 	result.Files, result.Complete, result.Coverage, result.Endpoints = reconcile(interval, comparison.Excluded, snapshot)
+	if observation.Unresolved {
+		result.Complete, result.Coverage = false, CoveragePartial
+	}
 	if result.SnapshotError != nil && result.Coverage == CoverageExact {
 		result.Coverage = CoveragePartial
 	}
