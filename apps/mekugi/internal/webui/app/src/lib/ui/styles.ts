@@ -40,7 +40,7 @@ export const menuRule = "mx-1.5 my-1 h-px bg-rule";
 // whether the track fills its row.
 export const segments = "gap-1 rounded-card bg-raised p-0.5";
 export const segment =
-  "min-h-[30px] min-w-0 truncate rounded-control px-3 font-medium text-muted disabled:cursor-default aria-pressed:bg-surface aria-pressed:text-ink aria-selected:bg-surface aria-selected:text-ink";
+  "min-h-[30px] min-w-0 truncate rounded-control px-3 font-medium text-muted disabled:cursor-default aria-pressed:bg-surface aria-pressed:text-ink aria-selected:bg-surface aria-selected:text-ink max-sm:min-h-11";
 
 // A transcript row's action in the gutter to its right; callers place it and
 // choose when it shows, usually with revealed.

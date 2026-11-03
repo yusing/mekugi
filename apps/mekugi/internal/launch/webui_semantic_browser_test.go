@@ -624,6 +624,12 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", "!document.querySelector('[aria-label=\"Side answer\"]')")
 	message("/side")
 	run("wait", "--fn", `document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]').length === 2`)
+	// Phone conversation tabs keep their touch height, with Close side centred on its tab.
+	run("set", "viewport", "390", "844")
+	if run("eval", `(() => { const tabs = [...document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]')].map(tab => tab.getBoundingClientRect()); const close = document.querySelector('button[aria-label="Close side"]').getBoundingClientRect(); return tabs.every(r => r.height >= 44) && Math.abs(close.top + close.bottom - tabs[1].top - tabs[1].bottom) < 2; })()`) != "true\n" {
+		t.Fatal("phone conversation tabs lost their touch height or Close side left its tab's centre")
+	}
+	run("set", "viewport", "1280", "720")
 	// The fork retains the authored response and user input in its native
 	// transcript. Only the response receives a copy action.
 	run("wait", "--text", "Browser host answer 1")

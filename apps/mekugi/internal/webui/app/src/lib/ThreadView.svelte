@@ -619,7 +619,7 @@
               >
               {#if sview.Side}<button
                   type="button"
-                  class="absolute top-[3px] right-[3px] flex size-6 items-center justify-center rounded-chip text-muted hover:bg-active hover:text-ink"
+                  class="absolute top-1/2 right-[3px] flex size-6 -translate-y-1/2 items-center justify-center rounded-chip text-muted hover:bg-active hover:text-ink"
                   aria-label="Close side"
                   title="Close side"
                   disabled={semantic.pending > 0}
