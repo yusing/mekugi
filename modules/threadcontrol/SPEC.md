@@ -221,7 +221,9 @@ Configured roles precede built-ins; role files
 and their resolved values are frozen before dispatch. Fresh children apply the
 default role; full-history children apply an explicitly selected role or preserve
 stock inheritance. Explicit model/effort arguments still require a fresh child.
-Stock tier precedence remains unchanged. Roles may reduce supported
+An applied parent session tier takes precedence; otherwise a configured role tier
+is used. The selected tier follows native alias normalization and routing feature
+gates before final-model support filtering. Roles may reduce supported
 capabilities, not widen authority or replace provider credentials.
 
 Fresh children accept optional `preload:{"sources":[...]}` with the same source
