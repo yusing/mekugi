@@ -23,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
+	"github.com/yusing/mekugi/providers/opencode"
 )
 
 // The preparer selects an admitted lifecycle result; the executor, coordination
@@ -51,7 +52,7 @@ func (*lifecyclePreparation) Close()                         {}
 
 func TestLifecycleCaptureProviderDecision(t *testing.T) {
 	for _, transport := range []string{"http", "websocket"} {
-		for _, kind := range []string{"local_wait", "context_reload", "provider", "usage_limit", "usage_limit_paused"} {
+		for _, kind := range []string{"local_wait", "context_reload", "provider", "usage_limit", "usage_limit_paused", "capacity", "overloaded", "capacity_stream", "third_party", "third_party_stream"} {
 			t.Run(transport+"/"+kind, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()
@@ -68,9 +69,11 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				defer recorder.Close()
 				preparation := new(lifecyclePreparation)
 				thread, session, turn := "root", "root-session", "root-turn"
-				limited := strings.HasPrefix(kind, "usage_limit")
+				thirdParty := strings.HasPrefix(kind, "third_party")
+				capacity := strings.HasPrefix(kind, "capacity") || kind == "overloaded" || thirdParty
+				limited := strings.HasPrefix(kind, "usage_limit") || capacity
 				executor := Executor{Observations: preparation, Issues: testCriticalErrors()}
-				if kind == "local_wait" || limited {
+				if kind == "local_wait" || limited || kind == "provider" {
 					retained, err := history.NewService(control.RecordKinds())
 					check(err)
 					store, err := retained.Open(ctx, t.TempDir())
@@ -79,8 +82,12 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 					check(err)
 					defer selected.Close()
 					executor.ThreadControl = control.New()
-					check(executor.ThreadControl.AdmitRoot(ctx, selected, &control.Member{Thread: thread, Session: session, Task: "/root", Turn: turn, Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true}))
-					if !limited {
+					root := &control.Member{Thread: thread, Session: session, Task: "/root", Turn: turn, Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true}
+					if kind == "provider" {
+						root.CapacityRetrySeconds, root.CapacityRetryGeneration = 30, 1
+					}
+					check(executor.ThreadControl.AdmitRoot(ctx, selected, root))
+					if kind == "local_wait" {
 						caller := control.Identity{Thread: thread, Session: session, Turn: turn, Call: "wait", Item: "exec"}
 						spawn, err := executor.ThreadControl.ReserveSpawn(ctx, caller, control.SpawnRequest{Name: "worker", Message: "work", Settings: control.Settings{Workspace: t.TempDir()}})
 						check(err)
@@ -102,7 +109,13 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				terminal := []byte(`{"type":"response.completed","response":{"id":"provider-response","status":"completed","output":[],"usage":{"input_tokens":12,"output_tokens":3,"input_tokens_details":{"cached_tokens":2},"output_tokens_details":{"reasoning_tokens":1}}}}`)
 				reset := time.Now().Add(time.Hour).Truncate(time.Second)
 				rejection := map[string]any{"type": "usage_limit_reached"}
-				if kind == "usage_limit" {
+				if capacity {
+					rejection = map[string]any{"code": "server_is_overloaded"}
+					if kind == "overloaded" {
+						rejection["message"] = "The servers are overloaded. Please try again later."
+					}
+				}
+				if kind == "usage_limit" || kind == "capacity" {
 					rejection["resets_at"] = reset.Unix()
 				}
 				if limited {
@@ -131,9 +144,16 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 						return
 					}
 					providerCalls <- struct{}{}
-					if limited {
+					if thirdParty {
+						w.Header().Set("Retry-After", "60")
+					}
+					if limited && kind != "capacity_stream" && kind != "third_party_stream" {
 						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(http.StatusTooManyRequests)
+						status := http.StatusTooManyRequests
+						if capacity {
+							status = http.StatusServiceUnavailable
+						}
+						w.WriteHeader(status)
 						_, _ = w.Write(responses.MustMarshalJSON(map[string]any{"error": rejection}))
 						return
 					}
@@ -143,7 +163,15 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				defer provider.Close()
 				client := provider.Client()
 				client.Transport = recorder.Transport(client.Transport)
-				executor.Provider = inferencegateway.NewClient(provider.URL, client, ProviderDiagnostics())
+				gateway := inferencegateway.NewClient(provider.URL, client, ProviderDiagnostics())
+				model := "gpt-test"
+				if thirdParty {
+					service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "fixture"}}).Services()[0]
+					service.Endpoint = provider.URL + "/chat/completions"
+					gateway.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {OpenCode: &service, HTTPClient: client, Diagnostics: ProviderDiagnostics()}}
+					model = service.Prefix + ":glm-5.3-flash"
+				}
+				executor.Provider = gateway
 				headers := http.Header{}
 				headers.Set("Authorization", "Bearer fixture")
 				headers.Set("ChatGPT-Account-ID", "fixture-account")
@@ -162,7 +190,7 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 					handler.ServeHTTP(w, r)
 				})))
 				defer server.Close()
-				body := `{"type":"response.create","model":"gpt-test","stream":true,"input":[]}`
+				body := `{"type":"response.create","model":"` + model + `","stream":true,"input":[]}`
 				if transport == "http" {
 					request, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/v1/responses", strings.NewReader(body))
 					check(err)
@@ -207,17 +235,24 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				if limited {
 					member, _ := executor.ThreadControl.Member(thread)
 					if member.Stop == nil || member.Wait == nil || !member.Wait.UsageLimit || member.Status != control.Waiting || len(executor.Issues.Notices.Pending()) != 0 {
-						t.Fatalf("usage limit did not become a silent logical stop: %+v", member)
+						t.Fatalf("usage limit did not become a silent logical stop: %+v notices=%+v", member, executor.Issues.Notices.Pending())
 					}
 					check(executor.ThreadControl.HostCompleted(ctx, thread, turn, control.Completed, control.HostFailure{}))
-					wake, err := executor.ThreadControl.PrepareWake(ctx, thread, reset.Add(-time.Second))
+					if member.Wait.Capacity != capacity {
+						t.Fatalf("capacity classification lost: %+v", member.Wait)
+					}
+					deadline := reset
+					if member.Wait.Deadline != nil {
+						deadline = *member.Wait.Deadline
+					}
+					wake, err := executor.ThreadControl.PrepareWake(ctx, thread, deadline.Add(-time.Nanosecond))
 					check(err)
 					if wake != nil {
 						t.Fatal("usage limit resumed before provider reset")
 					}
-					wake, err = executor.ThreadControl.PrepareWake(ctx, thread, reset)
+					wake, err = executor.ThreadControl.PrepareWake(ctx, thread, deadline)
 					check(err)
-					if (wake != nil) != (kind == "usage_limit") {
+					if (wake != nil) != (kind == "usage_limit" || capacity) {
 						t.Fatalf("provider timing: wake=%+v", wake)
 					}
 					_, err = executor.ThreadControl.HumanInterrupt(ctx, thread, member.Stop.Wait)
@@ -226,6 +261,12 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 					check(err)
 					if wake != nil {
 						t.Fatal("canceled usage wait resumed")
+					}
+				}
+				if kind == "provider" {
+					member, _ := executor.ThreadControl.Member(thread)
+					if member.CapacityRetrySeconds != 0 {
+						t.Fatal("successful provider delivery did not reset capacity fallback")
 					}
 				}
 				if snapshot.Requests.Logical != 1 || snapshot.Requests.Completed != 1 || int(snapshot.Requests.ProviderAttempts) != wantAttempts || snapshot.Capture.MissingProvider != 0 {

@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/cenkalti/backoff/v7"
 )
 
 func resolve(tree *Tree, caller *Member, target string) (*Member, error) {
@@ -83,7 +85,7 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, Standalone: wait.Standalone, UsageLimit: wait.UsageLimit, All: wait.All, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
+	result := &WaitResult{ID: wait.ID, Standalone: wait.Standalone, UsageLimit: wait.UsageLimit, Capacity: wait.Capacity, All: wait.All, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
 	result.Timed = wait.Deadline != nil
 	if wait.Standalone || wait.UsageLimit {
 		result.Mode = ""
@@ -121,6 +123,9 @@ func (wait *WaitResult) Settled() bool {
 
 // StatusText is shared by ordinary and temporary conversation publications.
 func (wait *WaitResult) StatusText() string {
+	if wait.Capacity {
+		return "Waiting for provider capacity"
+	}
 	if !wait.UsageLimit {
 		return "Waiting for agents"
 	}
@@ -333,12 +338,49 @@ func (s *Service) PrepareWake(ctx context.Context, thread string, now time.Time)
 // stop. Only provider timing can release it; human input and interruption retain
 // their existing supersession rules.
 func (s *Service) WaitForUsageLimit(ctx context.Context, thread, turn string, deadline *time.Time) (result *LocalStop, err error) {
+	return s.waitForProvider(ctx, thread, turn, deadline, false)
+}
+
+// WaitForCapacity uses provider timing or a work-scoped exponential fallback.
+func (s *Service) WaitForCapacity(ctx context.Context, thread, turn string, deadline *time.Time) (*LocalStop, error) {
+	return s.waitForProvider(ctx, thread, turn, deadline, true)
+}
+
+// ProviderRecovered resets fallback timing only for the admitted running turn.
+func (s *Service) ProviderRecovered(ctx context.Context, thread, turn string) error {
+	if member, ok := s.member(thread); !ok || member.CapacityRetrySeconds == 0 {
+		return nil
+	}
+	return s.update(ctx, thread, func(_ *Tree, member *Member) error {
+		if !member.HostRunning || member.Turn != turn || member.CapacityRetrySeconds == 0 {
+			return unchanged
+		}
+		member.CapacityRetrySeconds = 0
+		return nil
+	})
+}
+
+func (s *Service) waitForProvider(ctx context.Context, thread, turn string, deadline *time.Time, capacity bool) (result *LocalStop, err error) {
 	err = s.update(ctx, thread, func(tree *Tree, member *Member) error {
 		if !member.HostRunning || member.Turn != turn {
 			return errors.New("usage limit does not belong to the running host turn")
 		}
 		id := fmt.Sprintf("%s:%d:%s:usage-limit", thread, member.Generation, turn)
-		wait := &Wait{Effect: Effect{ID: id, Caller: thread, Target: thread, Generation: member.Generation, Turn: turn, CallerTurn: turn, Kind: "wake", State: "registered"}, Stop: "committed", UsageLimit: true, Deadline: deadline}
+		if member.Stop != nil && member.Stop.Wait == id {
+			result = new(*member.Stop)
+			return unchanged
+		}
+		if capacity && deadline == nil {
+			policy := &backoff.ExponentialBackOff{InitialInterval: time.Second, Multiplier: 2, MaxInterval: 30 * time.Second}
+			if member.CapacityRetryGeneration == member.Generation && member.CapacityRetrySeconds != 0 {
+				policy.InitialInterval = time.Duration(member.CapacityRetrySeconds) * time.Second
+				policy.NextBackOff() // Advance past the preceding fallback interval.
+			}
+			member.CapacityRetrySeconds = int64(policy.NextBackOff() / time.Second)
+			member.CapacityRetryGeneration = member.Generation
+			deadline = new(time.Now().Add(time.Duration(member.CapacityRetrySeconds) * time.Second))
+		}
+		wait := &Wait{Effect: Effect{ID: id, Caller: thread, Target: thread, Generation: member.Generation, Turn: turn, CallerTurn: turn, Kind: "wake", State: "registered"}, Stop: "committed", UsageLimit: true, Capacity: capacity, Deadline: deadline}
 		if member.Wait != nil && hostOwned(member.Wait.State) {
 			member.RecoveryWait = wait
 		} else {

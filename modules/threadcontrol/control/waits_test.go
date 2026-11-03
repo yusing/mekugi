@@ -765,3 +765,73 @@ func TestWaitAllMessageTimeoutAndStoppedTargets(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderCapacityBackoff(t *testing.T) {
+	service, _ := fixture(t)
+	turn := "rt"
+	for i, interval := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second, 30 * time.Second} {
+		before := time.Now()
+		stop, err := service.WaitForCapacity(t.Context(), "root", turn, nil)
+		must(t, err)
+		member, _ := service.Member("root")
+		deadline := *member.Wait.Deadline
+		if deadline.Before(before.Add(interval)) || deadline.After(time.Now().Add(interval)) || time.Duration(member.CapacityRetrySeconds)*time.Second != interval {
+			t.Fatalf("retry %d: interval=%d deadline=%s", i, member.CapacityRetrySeconds, deadline)
+		}
+		publication := service.WaitPublication("root")
+		if !publication.Capacity || publication.StatusText() == (&WaitResult{UsageLimit: true, Timed: true}).StatusText() {
+			t.Fatalf("capacity wait presented as quota: %+v", publication)
+		}
+		repeated, err := service.WaitForCapacity(t.Context(), "root", turn, nil)
+		must(t, err)
+		member, _ = service.Member("root")
+		if *repeated != *stop || !member.Wait.Deadline.Equal(deadline) {
+			t.Fatal("duplicate rejection changed the wait")
+		}
+		must(t, service.HostCompleted(t.Context(), "root", turn, Completed, HostFailure{}))
+		wake, err := service.PrepareWake(t.Context(), "root", deadline.Add(-time.Nanosecond))
+		must(t, err)
+		if wake != nil {
+			t.Fatal("capacity resumed before deadline")
+		}
+		wake, err = service.PrepareWake(t.Context(), "root", deadline)
+		must(t, err)
+		if wake == nil {
+			t.Fatal("capacity did not resume at deadline")
+		}
+		_, err = service.ClaimEffect(t.Context(), "root", wake.ID)
+		must(t, err)
+		turn = fmt.Sprint("retry-", i)
+		hostStarted(t, service, "root", turn)
+		must(t, service.EffectAcknowledged(t.Context(), "root", wake.ID, Receipt{Turn: turn}))
+	}
+	// A successful inference resets fallback within the same work generation.
+	must(t, service.ProviderRecovered(t.Context(), "root", "stale-turn"))
+	member, _ := service.Member("root")
+	if member.CapacityRetrySeconds != 30 {
+		t.Fatal("stale recovery reset active work")
+	}
+	must(t, service.ProviderRecovered(t.Context(), "root", turn))
+	_, err := service.WaitForCapacity(t.Context(), "root", turn, nil)
+	must(t, err)
+	member, _ = service.Member("root")
+	if member.CapacityRetrySeconds != 1 {
+		t.Fatal("recovered work did not restart at one second")
+	}
+	_, err = service.HumanInterrupt(t.Context(), "root", member.Stop.Wait)
+	must(t, err)
+	must(t, service.HostCompleted(t.Context(), "root", turn, Interrupted, HostFailure{}))
+	wake, err := service.PrepareWake(t.Context(), "root", time.Now().Add(time.Hour))
+	must(t, err)
+	if wake != nil {
+		t.Fatal("interrupted capacity wait resumed")
+	}
+	hostStarted(t, service, "root", "new-work")
+	providerTime := time.Now().Add(90 * time.Second)
+	_, err = service.WaitForCapacity(t.Context(), "root", "new-work", &providerTime)
+	must(t, err)
+	member, _ = service.Member("root")
+	if !member.Wait.Deadline.Equal(providerTime) {
+		t.Fatal("provider timing was clamped to fallback bounds")
+	}
+}

@@ -22,6 +22,16 @@ type providerChunk struct {
 	Usage             *providerUsage   `json:"usage"`
 	Error             json.RawMessage  `json:"error"`
 }
+
+// ProviderError preserves rejected inference facts through response translation.
+type ProviderError struct {
+	Payload json.RawMessage
+	Err     error
+}
+
+func (e *ProviderError) Error() string { return e.Err.Error() }
+func (e *ProviderError) Unwrap() error { return e.Err }
+
 type providerChoice struct {
 	Index        int               `json:"index"`
 	Delta        providerDelta     `json:"delta"`
@@ -174,7 +184,11 @@ func (tr *Stream) Read(reader io.Reader, emit func(map[string]any) error, failur
 			return
 		}
 		failed := response("failed")
-		failed["error"] = map[string]string{"code": code, "message": summary}
+		failure := map[string]string{"code": code, "message": summary}
+		if provider, ok := errors.AsType[*ProviderError](streamErr); ok {
+			failure["provider_error"] = string(provider.Payload)
+		}
+		failed["error"] = failure
 		if err := emit(map[string]any{"type": responseevents.Failed, "response": failed}); err != nil {
 			streamErr = errors.Join(streamErr, err)
 		}
@@ -182,7 +196,7 @@ func (tr *Stream) Read(reader io.Reader, emit func(map[string]any) error, failur
 	consume := func(chunk providerChunk) error {
 		if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
 			detail := failureDetail(chunk.Error)
-			return d.Error(d.Prefix+"_stream_provider_error", d.Name+" reported a streaming error", detail)
+			return &ProviderError{Payload: chunk.Error, Err: d.Error(d.Prefix+"_stream_provider_error", d.Name+" reported a streaming error", detail)}
 		}
 		if tr.policy.SealReasoning != nil && len(chunk.RetainedReasoning) > 0 {
 			var item map[string]any

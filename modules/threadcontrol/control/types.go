@@ -49,6 +49,8 @@ type Member struct {
 	Path, Thread, Session, Parent, Task, Turn, LastAnswer string
 	answerItems                                           []string
 	Generation                                            uint64
+	CapacityRetrySeconds                                  int64
+	CapacityRetryGeneration                               uint64
 	Status                                                Status
 	AudienceAdmitted, HostRunning                         bool
 	Settings                                              Settings
@@ -101,6 +103,7 @@ type Wait struct {
 	Compaction               *Effect
 	Standalone               bool
 	UsageLimit               bool
+	Capacity                 bool
 }
 
 // View exposes wait state without checkpoint settings or effect payloads.
@@ -191,6 +194,7 @@ type WaitResult struct {
 	Stop         string                    `json:"-"`
 	Standalone   bool                      `json:"-"`
 	UsageLimit   bool                      `json:"-"`
+	Capacity     bool                      `json:"-"`
 	Timed        bool                      `json:"-"`
 	All          bool                      `json:"-"`
 	State        string                    `json:"state"`

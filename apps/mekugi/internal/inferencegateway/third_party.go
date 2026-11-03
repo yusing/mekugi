@@ -3,15 +3,18 @@ package inferencegateway
 // Source: apps/mekugi/internal/router/grok_client.go:1:89@[bd606c09] third-party transport.
 
 import (
+	"bytes"
 	"context"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/httptransport"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
 )
@@ -60,6 +63,9 @@ func (g *ThirdPartyClient) ForwardExecution(startCtx, responseCtx context.Contex
 	if err != nil {
 		cancel()
 		if rejection, ok := errors.AsType[*httptransport.Rejection](err); ok {
+			if _, limited, _ := ProviderWait(rejection.Detail, rejection.Header, time.Now()); limited {
+				return &Response{Response: &http.Response{StatusCode: rejection.Status, Header: rejection.Header, Body: io.NopCloser(bytes.NewReader(rejection.Detail))}}, nil
+			}
 			return nil, NewProviderHTTPError(label, rejection.Status, rejection.Detail)
 		}
 		if _, ok := errors.AsType[*httptransport.SendError](err); ok {
@@ -74,7 +80,19 @@ func (g *ThirdPartyClient) ForwardExecution(startCtx, responseCtx context.Contex
 		return NewProviderHTTPError(label, 0, body).Error()
 	})
 	if err != nil {
+		if rejection, ok := errors.AsType[*codexresponses.ProviderError](err); ok {
+			payload := responses.MustMarshalJSON(map[string]any{"error": map[string]string{"provider_error": string(rejection.Payload)}})
+			if _, limited, _ := ProviderWait(payload, upstream.Header, time.Now()); limited {
+				headers := upstream.Header.Clone()
+				headers.Set("Content-Type", "application/json")
+				headers.Del("Content-Length")
+				return &Response{Response: &http.Response{StatusCode: http.StatusServiceUnavailable, Header: headers, Body: io.NopCloser(bytes.NewReader(payload))}}, nil
+			}
+		}
 		return nil, err
+	}
+	if retry := upstream.Header.Get("Retry-After"); retry != "" {
+		response.Header.Set("Retry-After", retry)
 	}
 	var price *opencode.Price
 	if service != nil {

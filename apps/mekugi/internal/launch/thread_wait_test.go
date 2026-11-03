@@ -3,7 +3,6 @@ package launch
 import (
 	"context"
 	json "encoding/json/v2"
-	"fmt"
 	"net/http/httptest"
 	"slices"
 	"strings"
@@ -126,8 +125,9 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 }
 
 func TestUISnapshotUsageLimitWaiting(t *testing.T) {
-	for _, timed := range []bool{true, false} {
-		t.Run(fmt.Sprint(timed), func(t *testing.T) {
+	for _, mode := range []string{"true", "false", "capacity"} {
+		t.Run(mode, func(t *testing.T) {
+			timed := mode == "true"
 			u, at := newActiveWorkTestUI(t)
 			u.settings.Model, u.settings.Effort = "test-model", "high"
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
@@ -160,7 +160,11 @@ func TestUISnapshotUsageLimitWaiting(t *testing.T) {
 			if timed {
 				deadline = new(at.Add(time.Hour))
 			}
-			if _, err := threads.shared.WaitForUsageLimit(t.Context(), "main", "first", deadline); err != nil {
+			wait := threads.shared.WaitForUsageLimit
+			if mode == "capacity" {
+				wait = threads.shared.WaitForCapacity
+			}
+			if _, err := wait(t.Context(), "main", "first", deadline); err != nil {
 				t.Fatal(err)
 			}
 			if err := threads.shared.HostCompleted(t.Context(), "main", "first", control.Completed, control.HostFailure{}); err != nil {
@@ -173,9 +177,9 @@ func TestUISnapshotUsageLimitWaiting(t *testing.T) {
 			if !view.InterruptAvailable || !view.Status.Session.Running || view.Status.Feedback.Alert || view.Status.Session.CompletionKnown {
 				t.Fatalf("lost virtual wait: %+v", view)
 			}
-			assertNativeUISnapshot(t, fmt.Sprintf("usage-limit-waiting-%t", timed), rows)
+			assertNativeUISnapshot(t, "usage-limit-waiting-"+mode, rows)
 			u.testActivity(u.shell.Agents).publishActivity()
-			assertNativeUISnapshot(t, fmt.Sprintf("usage-limit-roster-%t", timed), u.shell.Agents.NativeRoster(80, 5, *at, true))
+			assertNativeUISnapshot(t, "usage-limit-roster-"+mode, u.shell.Agents.NativeRoster(80, 5, *at, true))
 		})
 	}
 }

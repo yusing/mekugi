@@ -64,8 +64,8 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 				body := attempt.HTTPErrorBody(response.Body, response.StatusCode, response.Header.Get("Content-Type"), response.Header.Get("Content-Encoding"))
 				payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 				_ = body.Close()
-				_, limited := UsageLimit(payload, response.Header, time.Now())
-				if response.StatusCode == http.StatusTooManyRequests && limited {
+				_, limited, _ := ProviderWait(payload, response.Header, time.Now())
+				if limited {
 					s.upstreamRejection = &http.Response{StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}
 				} else {
 					for _, name := range []string{"Content-Type", "Content-Encoding", "Retry-After", "X-Request-Id"} {
@@ -478,7 +478,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 			// by Codex for authentication recovery or rate-limit handling.
 			payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 			_ = body.Close()
-			if _, limited := UsageLimit(payload, rejected.Header, time.Now()); rejected.StatusCode == http.StatusTooManyRequests && limited {
+			if _, limited, _ := ProviderWait(payload, rejected.Header, time.Now()); limited {
 				return &Response{Response: &http.Response{StatusCode: rejected.StatusCode, Header: rejected.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}, Transport: "websocket"}, nil
 			}
 			return nil, &WebSocketStatusError{Status: rejected.StatusCode, body: payload}

@@ -304,9 +304,12 @@ logical work. A queued wake is undispatched; dispatching or uncertain wakes rema
 host-owned until confirmed or reconciled.
 
 The request executor can also commit a stop for a recognized provider usage-limit
-rejection. Its wait selects provider timing rather than descendants. A deadline
-permits continuation after host settlement; absent timing retains waiting until
-human input or interruption supersedes it.
+or overload/capacity rejection. Its wait selects provider timing rather than
+descendants. Provider reset or retry timing permits continuation after host
+settlement. Without provider timing, capacity rejections use backoff v7 exponential
+intervals from one to thirty seconds, scoped to the logical thread and work
+generation. Successful inference resets fallback timing. Usage-limit rejections
+without timing remain paused until human input or interruption supersedes them.
 
 | Host event | Executing, no committed stop | Committed stop / stopped waiting | Queued or host-owned wake |
 | --- | --- | --- | --- |
@@ -417,8 +420,8 @@ input. Already-stopped targets alone cannot trigger recovery, and each notificat
 is claimed once. An in-flight preceding wake retains its dispatch identity until
 settlement before the recovery wait can dispatch. Authentication, invalid
 requests, interruption and unknown errors remain terminal. Recognized provider
-usage-limit rejections use the provider-timed wait above; other quota failures
-remain terminal. Recovery adds neither
+usage-limit and capacity rejections use the dedicated wait above; other quota
+failures remain terminal. Descendant recovery adds neither
 timer retries nor model switching; host-owned request retries remain unchanged.
 
 Ordinary successful terminal work first retains its completed nonempty ordinary answers

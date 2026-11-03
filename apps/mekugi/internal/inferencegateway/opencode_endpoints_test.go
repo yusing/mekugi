@@ -9,6 +9,7 @@ import (
 
 	"github.com/yusing/mekugi/providers/opencode"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -370,5 +371,51 @@ func TestOpenCodeEndpointWriteFailureStopsConsumption(t *testing.T) {
 				t.Fatalf("upstream not closed: %v", err)
 			}
 		})
+	}
+}
+
+func TestOpenCodeCapacityRejectionFacts(t *testing.T) {
+	service := openCodeTestService(t, map[string]opencode.Metadata{"chat-model": {Format: "chat"}, "messages-model": {Format: "anthropic"}, "responses-model": {Format: "responses"}})
+	for _, model := range []string{"chat-model", "messages-model", "responses-model"} {
+		for _, stream := range []bool{false, true} {
+			for _, status := range []int{503, 200} {
+				t.Run(fmt.Sprintf("%s/%t/%d", model, stream, status), func(t *testing.T) {
+					payload := `{"type":"error","error":{"type":"overloaded_error","message":"Server overloaded"}}`
+					headers := http.Header{"Retry-After": {"60"}}
+					if model == "responses-model" && status == 200 {
+						// Responses can supply retry timing inside the streamed envelope.
+						payload = `{"type":"error","error":{"code":"server_is_overloaded"},"headers":{"retry-after":60}}`
+						headers.Del("Retry-After")
+					}
+					client := &ThirdPartyClient{Diagnostics: testDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+						body, contentType := payload, "application/json"
+						if status == 200 {
+							body, contentType = "data: "+payload+"\n\n", "text/event-stream"
+						}
+						headers.Set("Content-Type", contentType)
+						return &http.Response{StatusCode: status, Header: headers, Body: io.NopCloser(strings.NewReader(body))}, nil
+					})}}
+					response, err := client.ForwardExecution(t.Context(), t.Context(), mustTestJSON(t, map[string]any{"model": service.Prefix + ":" + model, "stream": stream, "input": []any{}}), grokTestHeaders())
+					if err != nil {
+						t.Fatalf("rejection bypassed wait delivery: %v", err)
+					}
+					defer response.Body.Close()
+					body, readErr := io.ReadAll(response.Body)
+					if _, ok := errors.AsType[*codexresponses.ProviderError](readErr); readErr != nil && !ok {
+						t.Fatal(readErr)
+					}
+					now, found := time.Now(), false
+					for _, line := range append([]string{string(body)}, strings.Split(string(body), "\n")...) {
+						deadline, limited, capacity := ProviderWait([]byte(strings.TrimPrefix(line, "data: ")), response.Header, now)
+						if limited {
+							found = capacity && deadline != nil && deadline.Equal(now.Add(time.Minute))
+						}
+					}
+					if !found {
+						t.Fatalf("capacity/timing lost: headers=%v body=%s", response.Header, body)
+					}
+				})
+			}
+		}
 	}
 }

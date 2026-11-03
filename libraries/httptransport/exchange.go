@@ -20,6 +20,7 @@ func (e *SendError) Unwrap() error { return e.Err }
 type Rejection struct {
 	Status int
 	Detail []byte
+	Header http.Header
 }
 
 func (e *Rejection) Error() string { return fmt.Sprintf("upstream returned HTTP %d", e.Status) }
@@ -53,7 +54,7 @@ func Exchange(startCtx, responseCtx context.Context, idleTimeout time.Duration, 
 		} else if len(detail) > detailLimit {
 			detail = []byte("provider error body exceeds the 8 KiB limit")
 		}
-		return nil, &Rejection{Status: response.StatusCode, Detail: detail}
+		return nil, &Rejection{Status: response.StatusCode, Detail: detail, Header: response.Header.Clone()}
 	}
 	if !stopStart() {
 		response.Body.Close()

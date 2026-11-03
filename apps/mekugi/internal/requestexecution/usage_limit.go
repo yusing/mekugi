@@ -17,7 +17,7 @@ import (
 type usageLimitResponse struct{ attempt *requestAttempt }
 
 func (a *requestAttempt) completeUsageLimit() (bool, error) {
-	if a.streamResponse || a.response.StatusCode != http.StatusTooManyRequests {
+	if a.streamResponse || a.response.StatusCode < http.StatusBadRequest {
 		return false, nil
 	}
 	body := a.response.Body
@@ -42,11 +42,17 @@ func (t usageLimitResponse) pause(payload []byte) (*control.LocalStop, error) {
 	if a.executor.ThreadControl == nil || a.approvalReview || a.prewarm || !a.metadataValid || a.metadata.RequestKind != responses.Turn {
 		return nil, nil
 	}
-	deadline, limited := inferencegateway.UsageLimit(payload, a.response.Header, time.Now())
+	deadline, limited, capacity := inferencegateway.ProviderWait(payload, a.response.Header, time.Now())
 	if !limited {
 		return nil, nil
 	}
-	stop, err := a.executor.ThreadControl.WaitForUsageLimit(a.executionCtx, a.threadID, a.metadata.TurnID, deadline)
+	var stop *control.LocalStop
+	var err error
+	if capacity {
+		stop, err = a.executor.ThreadControl.WaitForCapacity(a.executionCtx, a.threadID, a.metadata.TurnID, deadline)
+	} else {
+		stop, err = a.executor.ThreadControl.WaitForUsageLimit(a.executionCtx, a.threadID, a.metadata.TurnID, deadline)
+	}
 	if err != nil || stop == nil {
 		return nil, err
 	}

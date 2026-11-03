@@ -538,7 +538,10 @@ func (a *requestAttempt) deliver() error {
 			a.responseTransform,
 			a.hooks,
 		)
-		if err != nil {
+		_, providerRejected := errors.AsType[*codexresponses.ProviderError](err)
+		// The bridge retains its rejection error after emitting a failed terminal.
+		// A committed provider wait replaces that rejection, not delivery failures.
+		if err != nil && !(a.usageLimited && providerRejected) {
 			a.finalization.classifyCopyError(err)
 			return fmt.Errorf("execute request: %w", err)
 		}
@@ -591,6 +594,11 @@ func (a *requestAttempt) finish(requestErr error) error {
 
 	a.finalization.finish(a.executionCtx, requestErr, a.executor.Output, a.executor.Issues)
 	if requestErr == nil && !a.usageLimited && a.finishUsage && !a.approvalReview && !a.prewarm && a.metadataValid && a.metadata.RequestKind == responses.Turn && a.finalization.outcome == requestOutcomeCompleted && a.finalization.upstreamTerminalState == responses.TerminalCompleted {
+		if a.executor.ThreadControl != nil {
+			if err := a.executor.ThreadControl.ProviderRecovered(context.WithoutCancel(a.executionCtx), a.threadID, a.metadata.TurnID); err != nil {
+				a.executor.Issues.CleanupNotice(a.sessionID, a.threadID, "provider retry reset", err.Error())
+			}
+		}
 		a.executor.Issues.Notices.RequestSucceeded(a.threadID, time.Now())
 	}
 	_, compatibilityFault := errors.AsType[*inferencegateway.CompatibilityError](requestErr)
