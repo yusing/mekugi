@@ -180,10 +180,15 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		defer stop()
 		_ = command(cleanup, "close").Run()
 	}()
+	var actionTarget string
 	run := func(args ...string) string {
 		t.Helper()
 		output, err := command(ctx, args...).CombinedOutput()
 		if err != nil {
+			if actionTarget != "" {
+				geometry, _ := command(ctx, "eval", fmt.Sprintf(`(() => { const element = %s; const r = element?.getBoundingClientRect(); return {viewport:[innerWidth,innerHeight], bounds:r?.toJSON(), hit:r && document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.outerHTML.slice(0,300)}; })()`, actionTarget)).CombinedOutput()
+				t.Logf("action target: %s\n%s", actionTarget, geometry)
+			}
 			_, _ = command(ctx, "doctor", "--offline", "--quick").CombinedOutput()
 			snapshot, _ := command(ctx, "snapshot").CombinedOutput()
 			problems, _ := command(ctx, "errors").CombinedOutput()
@@ -205,6 +210,49 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		}
 		return string(output)
 	}
+	// Viewport emulation returns before the resize and matchMedia handlers run.
+	// Wait for the requested size to paint before inspecting responsive layout.
+	viewport := func(width, height string) {
+		t.Helper()
+		run("set", "viewport", width, height)
+		run("wait", "--fn", fmt.Sprintf(`new Promise(resolve => {
+			function check() {
+				if (innerWidth === %s && innerHeight === %s) {
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
+				} else requestAnimationFrame(check);
+			}
+			requestAnimationFrame(check);
+		})`, width, height))
+	}
+	// Native browser commands can return before a resize, scroll or popover
+	// opening has painted. Require a current, enabled hit target at the same
+	// geometry on consecutive frames before dispatching pointer input.
+	waitAction := func(target string) {
+		t.Helper()
+		actionTarget = target
+		defer func() { actionTarget = "" }()
+		run("wait", "--fn", fmt.Sprintf(`new Promise(resolve => {
+			let previous;
+			function check() {
+				const element = %s;
+				if (element && !element.matches(':disabled, [aria-disabled="true"]')) {
+					element.scrollIntoView({behavior:'instant', block:'center', inline:'nearest'});
+					const r = element.getBoundingClientRect();
+					const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+					const geometry = [r.x, r.y, r.width, r.height, innerWidth, innerHeight];
+					if (r.width > 0 && r.height > 0 && element.contains(hit)) {
+						if (previous?.element === element && geometry.every((value, i) => value === previous.geometry[i])) {
+							resolve(true);
+							return;
+						}
+						previous = {element, geometry};
+					} else previous = undefined;
+				} else previous = undefined;
+				requestAnimationFrame(check);
+			}
+			requestAnimationFrame(check);
+		})`, target))
+	}
 	button := func(label string) { t.Helper(); run("find", "role", "button", "click", "--name", label, "--exact") }
 	message := func(text string) {
 		t.Helper()
@@ -214,6 +262,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	}
 	closeDialog := func() {
 		t.Helper()
+		waitAction(`document.querySelector('[role="dialog"] button[aria-label="Close dialog"]')`)
 		button("Close dialog")
 		run("wait", "--fn", "!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')")
 	}
@@ -239,7 +288,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		t.Helper()
 		artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS")
 		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"tablet", "768", "1024"}, {"phone", "390", "844"}} {
-			run("set", "viewport", size.width, size.height)
+			viewport(size.width, size.height)
 			for _, theme := range []string{"dark", "light"} {
 				run("set", "media", theme)
 				if state == "end-confirmation" {
@@ -282,12 +331,12 @@ func TestWebUISemanticBrowser(t *testing.T) {
 				}
 			}
 		}
-		run("set", "viewport", "1280", "720")
+		viewport("1280", "720")
 	}
 	narrowAttachment := func(field, destination string) {
 		t.Helper()
 		const filename = "mekugi-upload-2444056966607230000.png"
-		run("set", "viewport", "360", "780")
+		viewport("360", "780")
 		run("eval", fmt.Sprintf(`(() => { const field = document.querySelector(%q); window.narrowDraft = field.value; const bytes = Uint8Array.from(atob(%q), c => c.charCodeAt(0)); const clipboard = new DataTransfer(); clipboard.items.add(new File([bytes, new Uint8Array(180*1024)], %q, {type:'image/png'})); field.dispatchEvent(new ClipboardEvent('paste', {clipboardData:clipboard, bubbles:true, cancelable:true})); })()`, field, base64.StdEncoding.EncodeToString(pngData.Bytes()), filename))
 		run("wait", "--fn", fmt.Sprintf(`document.querySelector('img[alt="Preview of %s"]')?.naturalWidth > 0`, filename))
 		bounds := fmt.Sprintf(`(() => { const row = document.querySelector('img[alt="Preview of %s"]').closest('li'); const list = row.closest('ul'); const r = row.getBoundingClientRect(), l = list.getBoundingClientRect(), p = list.parentElement.getBoundingClientRect(), b = row.querySelector('button').getBoundingClientRect(); return l.right <= Math.min(p.right, innerWidth) && r.right <= l.right && b.right <= r.right && b.left >= 0 && b.width >= 32 && b.height >= 32; })()`, filename)
@@ -300,7 +349,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		}
 		button("Remove " + filename)
 		run("wait", "--fn", fmt.Sprintf(`!document.querySelector('img[alt="Preview of %s"]') && document.querySelector(%q).value === window.narrowDraft`, filename, field))
-		run("set", "viewport", "1280", "720")
+		viewport("1280", "720")
 	}
 	run("open", page.URL)
 	run("snapshot", "-i")
@@ -327,7 +376,9 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("find", "role", "combobox", "click", "--name", "Model", "--exact")
 	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=option]')).some(option => option.textContent.trim() === 'Default')")
 	capture("model-picker")
+	waitAction(`Array.from(document.querySelectorAll('[role=option]')).find(option => option.textContent.trim() === 'Default')`)
 	run("find", "role", "option", "click", "--name", "Default", "--exact")
+	run("wait", "--fn", `!document.querySelector('[role=listbox]') && document.querySelector('[role=combobox][title=Model]')?.textContent.replaceAll(/\s/g, '') === 'Model:Default'`)
 	run("find", "label", "First message", "fill", "browser first input")
 	firstUpload := filepath.Join(directory, "first.txt")
 	laterUpload := filepath.Join(directory, "later.txt")
@@ -364,6 +415,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", `document.querySelector('img[alt="Preview of preview-image"]')?.naturalWidth > 0`)
 	run("eval", `window.pathPreviewURL = document.querySelector('img[alt="Preview of preview-image"]').src`)
 	capture("new-thread")
+	waitAction(`document.querySelector('button[aria-label="Remove preview-image"]')`)
 	button("Remove preview-image")
 	run("wait", "--fn", `window.revokedPreviews.includes(window.pathPreviewURL)`)
 	button("Start thread")
@@ -395,6 +447,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	}
 	capture("inline-preset")
 	run("fill", "#composer-text", "")
+	waitAction(`document.querySelector('button[aria-label="Presets"]')`)
 	button("Presets")
 	run("wait", "--fn", `(() => { const dialog = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); return !!dialog && dialog.querySelectorAll('ul kbd').length === 10 && dialog.textContent.includes('你好'); })()`)
 	capture("presets")
@@ -402,17 +455,17 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", `Array.from(document.querySelectorAll('[data-entry]')).some(row => row.textContent.includes('Browser host answer 1') && !row.querySelector('button[aria-label="Details"]'))`)
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.getAttribute('href') === 'https://example.com/auto' && a.target === '_blank' && a.rel.includes('noopener'))`)
 	run("wait", "--fn", `Array.from(document.querySelectorAll('.prose a')).some(a => a.textContent === 'Website' && a.getAttribute('href') === 'https://example.com/markdown')`)
+	waitAction(`Array.from(document.querySelectorAll('.prose a')).find(a => a.textContent === 'Workspace notes')`)
 	run("find", "role", "link", "click", "--name", "Workspace notes", "--exact")
 	run("wait", "--text", "Browser file details fixture")
 	run("wait", "--fn", `Array.from(document.querySelectorAll('[aria-labelledby="details-heading"] pre')).every(pre => pre.querySelector('span[style]') && pre.textContent.includes('**Highlighted file content**'))`)
 	button("Close details")
 	// Open after each resize: switching to a narrow layout closes the panel.
 	for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"tablet", "768", "1024"}, {"phone", "390", "844"}} {
-		run("set", "viewport", size.width, size.height)
+		viewport(size.width, size.height)
 		for _, theme := range []string{"dark", "light"} {
 			run("set", "media", theme)
-			run("eval", `Array.from(document.querySelectorAll('.prose a')).find(a => a.textContent === 'Workspace notes').scrollIntoView({block:'center'})`)
-			run("wait", "--fn", `(() => { const link = Array.from(document.querySelectorAll('.prose a')).find(a => a.textContent === 'Workspace notes'); const r = link.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('a') === link; })()`)
+			waitAction(`Array.from(document.querySelectorAll('.prose a')).find(a => a.textContent === 'Workspace notes')`)
 			run("find", "role", "link", "click", "--name", "Workspace notes", "--exact")
 			run("wait", "--fn", `(() => { const panel = document.querySelector('[aria-labelledby="details-heading"]'); const blocks = Array.from(panel?.querySelectorAll('pre') ?? []); return blocks.length > 0 && blocks.every(pre => pre.querySelector('span[style]') && pre.textContent.includes('**Highlighted file content**')); })()`)
 			if run("eval", `(() => { const panel = document.querySelector('[aria-labelledby="details-heading"]'); const r = panel.getBoundingClientRect(); const b = panel.querySelector('button[aria-label="Close details"]').getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight && b.left >= r.left && b.right <= r.right && b.bottom <= innerHeight; })()`) != "true\n" {
@@ -422,10 +475,10 @@ func TestWebUISemanticBrowser(t *testing.T) {
 				run("screenshot", filepath.Join(artifacts, "file-details-"+size.name+"-"+theme+".png"))
 			}
 			button("Close panel")
-			run("wait", "--fn", `!document.querySelector('[aria-labelledby="details-heading"]')`)
+			run("wait", "--fn", `!document.querySelector('aside[aria-label="Thread panel"]')`)
 		}
 	}
-	run("set", "viewport", "1280", "720")
+	viewport("1280", "720")
 	message("/session")
 	run("wait", "--text", "Session metrics")
 	run("wait", "--text", "Requests")
@@ -521,7 +574,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		// while scrolled stays reachable.
 		pinned := `((long) => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); d.scrollTop = d.scrollHeight; const r = d.getBoundingClientRect(); const nav = [...d.querySelectorAll('button[aria-label="Close dialog"], [aria-label="Session metrics view"] button, [aria-label="Retained exchange"] button')]; const last = [...d.querySelectorAll('button')].at(-1).getBoundingClientRect(); const strip = document.elementFromPoint(r.left + r.width / 2, r.top + 4); return (!long || d.scrollTop > 0) && !!strip && nav[0].closest('header').parentElement.contains(strip) && nav.length >= 5 && last.bottom <= r.bottom && nav.every(b => { const x = b.getBoundingClientRect(); return x.top >= r.top && x.bottom <= r.bottom && (hit => !!hit && (b.contains(hit) || (b.disabled && b.parentElement.contains(hit))))(document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)) && (innerWidth > 640 || x.height >= 44); }); })`
 		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "720"}, {"phone", "390", "844"}} {
-			run("set", "viewport", size.width, size.height)
+			viewport(size.width, size.height)
 			for _, theme := range []string{"dark", "light"} {
 				run("set", "media", theme)
 				for _, tab := range []struct {
@@ -544,7 +597,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		run("focus", `[aria-label="Session metrics view"] button:nth-child(3)`)
 		run("press", "Enter")
 		run("wait", "--text", "of 3")
-		run("set", "viewport", "1280", "720")
+		viewport("1280", "720")
 		button("Features")
 		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 2 4') && rows.includes('With edit ranges 0 5') && rows.includes('Saved tokens (est.) 1234 -20'); })()`)
 		capture("session-features")
@@ -623,9 +676,11 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	// Changing them leaves the draft in place.
 	run("find", "label", "Message", "fill", "kept draft")
 	run("click", `button[title="Model"]`)
+	waitAction(`Array.from(document.querySelectorAll('[role=listbox][aria-label=Model] [role=option]')).find(option => option.textContent.trim() === 'fixture-b')`)
 	run("find", "role", "option", "click", "--name", "fixture-b", "--exact")
 	run("wait", "--fn", "document.querySelector('button[title=Model]')?.textContent.includes('fixture-b') && !document.querySelector('[role=listbox][aria-label=Model]')")
 	run("click", `button[title="Reasoning effort"]`)
+	waitAction(`Array.from(document.querySelectorAll('[role=listbox] [role=option]')).find(option => option.textContent.trim() === 'high')`)
 	run("find", "role", "option", "click", "--name", "high", "--exact")
 	run("wait", "--fn", "document.querySelector('button[title=\"Reasoning effort\"]')?.textContent.includes('high')")
 	run("click", `button[title="Model"]`)
@@ -654,11 +709,11 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	message("/side")
 	run("wait", "--fn", `document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]').length === 2`)
 	// Phone conversation tabs keep their touch height, with Close side centred on its tab.
-	run("set", "viewport", "390", "844")
+	viewport("390", "844")
 	if run("eval", `(() => { const tabs = [...document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]')].map(tab => tab.getBoundingClientRect()); const close = document.querySelector('button[aria-label="Close side"]').getBoundingClientRect(); return tabs.every(r => r.height >= 44) && Math.abs(close.top + close.bottom - tabs[1].top - tabs[1].bottom) < 2; })()`) != "true\n" {
 		t.Fatal("phone conversation tabs lost their touch height or Close side left its tab's centre")
 	}
-	run("set", "viewport", "1280", "720")
+	viewport("1280", "720")
 	// The fork retains the authored response and user input in its native
 	// transcript. Only the response receives a copy action.
 	run("wait", "--text", "Browser host answer 1")
@@ -755,6 +810,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		run("wait", "--fn", "!!document.querySelector('textarea[aria-label=\"Message text 1\"]')")
 		run("find", "label", "Message text 1", "fill", "edited queued text ")
 		capture("queue-editor")
+		waitAction(`document.querySelector('section[aria-label="Unsent submission"] button:last-child')`)
 		run("click", "section[aria-label=\"Unsent submission\"] button:last-child")
 		waitRecovered()
 		run("wait", "--text", "1 message waits")
@@ -858,6 +914,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	// Ending the runtime keeps the browser's logical-thread selection. A new
 	// native resume of that identity must restore both publications and input.
 	address := run("get", "url")
+	waitAction(`document.querySelector('button[aria-label="Session details"]')`)
 	button("Session details")
 	run("wait", "--fn", `!!document.querySelector('[data-slot=popover-content][data-state=open]')`)
 	button("End thread")
@@ -880,6 +937,8 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		data, _ := os.ReadFile(ledger)
 		return strings.Contains(string(data), "browser after native resume")
 	})
+	run("wait", "--text", "Browser host answer 1")
+	waitAction(`document.querySelector('button[aria-label="Session details"]')`)
 	button("Session details")
 	run("wait", "--fn", `!!document.querySelector('[data-slot=popover-content][data-state=open]')`)
 	button("End thread")
@@ -911,8 +970,13 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("find", "role", "link", "click", "--name", "Recorded file", "--exact")
 	run("wait", "--text", "File details are available on a connected live thread.")
 	button("Restart")
+	// Wait for Restart's replacement entries before opening another control.
+	run("wait", "--fn", `document.querySelector('[data-kind="compaction"] details')?.open === false`)
+	waitAction(`document.querySelector('button[aria-label="Session details"]')`)
 	button("Session details")
+	waitAction(`Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === 'End replay')`)
 	button("End replay")
+	waitAction(`Array.from(document.querySelectorAll('[role=dialog] button')).find(button => button.textContent.trim() === 'End')`)
 	button("End")
 	body, err := os.ReadFile(ledger)
 	if err != nil {
