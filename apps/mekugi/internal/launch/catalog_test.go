@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -331,11 +332,28 @@ func TestCatalogProgressOutput(t *testing.T) {
 	}
 }
 
+type catalogProgressBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *catalogProgressBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *catalogProgressBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
+}
+
 func TestCatalogSlowProgress(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		var output bytes.Buffer
+		var output catalogProgressBuffer
 		stop := startCatalogProgress(ctx, &output, false)
 		synctest.Wait()
 		initial := output.String()
