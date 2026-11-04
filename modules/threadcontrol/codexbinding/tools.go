@@ -21,7 +21,7 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 	compactSchema := `{"type":"object","properties":{},"additionalProperties":false}`
 	waitReload := ""
 	if !claudeCaller {
-		reload := `"reload":{"description":"Selected file ranges, skills or captured changes to reload after reset. Select only needed JSON artifact fields using focused line ranges; omit when ordinary reads suffice.","allOf":[` + compact.SelectionSchema + `]}`
+		reload := `"reload":{"description":"Put files, skills and captured changes needed next directly in reload.sources. Recovery JSON holds task state; paths listed inside it are not reload selections. Select only needed JSON fields using focused line ranges; omit reload when no known sources are needed.","allOf":[` + compact.SelectionSchema + `]}`
 		compactSchema = `{"type":"object","properties":{` + reload + `},"additionalProperties":false}`
 		waitReload = "," + reload
 	}
