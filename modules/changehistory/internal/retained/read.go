@@ -62,7 +62,7 @@ func (s *store) readChangeRecord(workspace, id, correlation, call string) (captu
 }
 
 func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) {
-	options := changeReadOptions{workspace: cwd, cwd: cwd, maxTokens: 4000}
+	options := changeReadOptions{workspace: cwd, cwd: cwd}
 	seen := make(map[string]bool)
 	var refs []string
 	if len(arguments) > 0 && (arguments[0] == "revert" || arguments[0] == "apply") {

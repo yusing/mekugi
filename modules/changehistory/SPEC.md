@@ -134,7 +134,8 @@ Path filters apply to the composed files. An empty composition is explicit and
 distinct from no selected captures or a path filter matching no captured files.
 Shell pipes are supported, for example
 `mchanges amber1..amber5 | git apply --cached -p0`.
-For patch export, collect all pages, require a successful read and validate the
+Output has no implicit token limit. Omit `--max-tokens` when exporting a full patch.
+Require a successful read and validate the
 collected output with the intended patch consumer before applying it. Pure moves
 use display-only headers, not Git patches. Failed reads can retain partial stdout;
 an ordinary pipeline can obscure the producer failure and modify the index before
@@ -152,7 +153,8 @@ Directory operands select captured descendants at path-component boundaries,
 including when the directory no longer exists.
 Read-only views remain available after an authored workspace is deleted. Apply
 and revert require the selected authored workspaces to exist and validate every
-selected dependency before writing. `--max-tokens` bounds displayed output. When output is
+selected dependency before writing. Explicit `--max-tokens` bounds emitted output,
+including pipes, redirections and subprocess capture. When output is
 omitted, an `mread` reference retrieves the retained remainder on complete-row
 boundaries. The receipt freezes the selected attempts, allocation state and view
 under the read lock, and retains those exact attempt dependencies. Appended

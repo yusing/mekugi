@@ -47,7 +47,7 @@ func TestFrontendInlineBudgets(t *testing.T) {
 		})
 	}
 	options, err := testChanges().Parse([]string{"amber1", "--", "--max-tokens=99"}, workspace)
-	if err != nil || options.MaxTokens != 4000 || !reflect.DeepEqual(options.Paths, []string{"--max-tokens=99"}) {
+	if err != nil || options.MaxTokens != 0 || !reflect.DeepEqual(options.Paths, []string{"--max-tokens=99"}) {
 		t.Fatalf("path boundary: %+v %v", options, err)
 	}
 }

@@ -104,6 +104,22 @@ func review(path, before, after string) legacycall.ReviewFile {
 	return legacycall.ReviewFile{BeforePath: path, AfterPath: path, Diff: fmt.Sprintf("@@ -1 +1 @@\n-%s\n+%s\n", before, after)}
 }
 
+func TestModulePatchExportHasNoImplicitTokenLimit(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	id := f.reserve(t, "owner", "large")
+	after := strings.Repeat(" new", 20000)
+	f.publish(t, id, "large", "large-call", "owner", []legacycall.ReviewFile{review(filepath.Join(f.workspace, "file.txt"), "old", after)})
+	full := f.execute(t, "owner", id)
+	if full.ExitCode != 0 || full.Stderr != "" || full.Delivery != nil || full.OmittedOutput != nil || !strings.Contains(full.Stdout, "\n+"+after+"\n") {
+		t.Fatalf("incomplete default export: status=%d stderr=%q bytes=%d", full.ExitCode, full.Stderr, len(full.Stdout))
+	}
+	bounded := f.execute(t, "owner", id, "--max-tokens", "4000")
+	if bounded.ExitCode != 1 || bounded.Delivery == nil || len(bounded.Stdout) >= len(full.Stdout) {
+		t.Fatalf("explicit budget ignored: status=%d stderr=%q bytes=%d", bounded.ExitCode, bounded.Stderr, len(bounded.Stdout))
+	}
+}
+
 func TestComposedBinaryDiagnosticsAndRecovery(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

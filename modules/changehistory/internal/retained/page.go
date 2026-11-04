@@ -12,7 +12,7 @@ import (
 )
 
 func selectReadPage(ctx context.Context, text string, maxTokens int) (string, error) {
-	if len(text) <= maxTokens {
+	if maxTokens == 0 || len(text) <= maxTokens {
 		return text, nil
 	}
 	end := min(len(text), maxTokens*128+utf8.UTFMax)
