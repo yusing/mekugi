@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -104,6 +105,26 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 				results[i] = changes.read(ctx, source, directory, script)
 				budget.take(len(results[i].Stdout) + len(results[i].Stderr))
 				return
+			}
+			// A native metadata placeholder identifies a managed skill. Resolve
+			// it inside the admitted reader, preserving the selected source identity.
+			if source.Skill != "" && source.Path != "" && len(source.Ranges) == 0 {
+				path := source.Path
+				if !filepath.IsAbs(path) {
+					path = filepath.Join(directory, path)
+				}
+				_, err := os.Stat(filepath.Join(filepath.Dir(path), ".skills-mgr-placeholder"))
+				if err == nil {
+					data, _ := json.Marshal(struct {
+						Sources []Source `json:"sources"`
+					}{[]Source{{Skill: source.Skill}}})
+					managed, _ := ReadCommands(string(data))
+					script = managed[0]
+				} else if !os.IsNotExist(err) {
+					results[i] = CapturedSource{Command: script, Stderr: err.Error(), ExitCode: 1}
+					budget.take(len(results[i].Stderr))
+					return
+				}
 			}
 			var stdout, stderr bytes.Buffer
 			cmd := exec.CommandContext(ctx, "bash", "-c", script)

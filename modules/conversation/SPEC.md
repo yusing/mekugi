@@ -5,6 +5,11 @@
 Retain composer image previews for host paths, uploads and paste. Queued composer input
 does not cancel a logical agent wait.
 
+Context resets and summary compactions preserve attachment placeholders and selected
+text bytes. Attached skills refresh from current sources; attached file bodies reload
+only when explicitly selected. Identical supplied source content appears once in the
+new context.
+
 Editor state, attachment framing, input limits, menus, slot layout and draft/history
 algorithms below are current design.
 
@@ -205,6 +210,12 @@ Version 1 envelopes remain readable without inventing a submission identity.
 Native and managed skill instructions use the same framing, budgets and omission
 receipts as files, never a synthetic native path or name-only replacement. Replay
 recovers immutable instructions and identity without rerunning the manager.
+After a context boundary, provider input retains the submitted placeholders and
+selected text, omits old file and skill bodies, and acquires current skill instructions
+through the shared context reader. Managed metadata paths retain their identity while
+the manager supplies current instructions. Completed reads remain reusable within that
+window, including after resume and fork; the next boundary refreshes skills again.
+Native history supplies attachment identity for the selected fork or rewind prefix.
 Host text elements retain file/skill byte ranges relative to each text part;
 native skill metadata can restore unambiguous bindings when elements are absent.
 Explicit elements take precedence for repeated labels; absent metadata leaves

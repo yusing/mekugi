@@ -16,6 +16,7 @@ type Pass struct {
 	index   *matcher.Index
 	sources int
 	savings *Savings
+	exact   map[string]string
 }
 
 type Result struct {
@@ -28,6 +29,63 @@ func (Service) NewPass(savings *Savings) *Pass {
 	return &Pass{index: matcher.New(), savings: savings}
 }
 func (p *Pass) Close() { p.index.Close() }
+
+// Source gives explicitly supplied attachment/reload bodies one visible copy,
+// including short sources below the ordinary tool-output savings threshold.
+// Its request-local identities share the ordinary matcher anchor sequence.
+func (p *Pass) Source(header, body string) Result {
+	if body == "" {
+		return Result{Text: header}
+	}
+	if reference := p.exact[body]; reference != "" {
+		return repeatedSource(header, body, reference)
+	}
+	before := p.sources
+	result := p.Text(header, body)
+	if result.RepeatedBytes == 0 {
+		if p.sources == before {
+			p.sources++
+			result.Text = fmt.Sprintf("%sO%d:\n%s", header, p.sources, body)
+		}
+		if p.exact == nil {
+			p.exact = make(map[string]string)
+		}
+		p.exact[body] = referenceText(matcher.Span{Source: p.sources, Whole: true}, body)
+	}
+	return result
+}
+
+// Sources keeps framing independent of equality. A whole reload can refer to
+// the visible chunks, and a chunked attachment can refer to an earlier whole read.
+func (p *Pass) Sources(headers, bodies []string) []Result {
+	results := make([]Result, len(bodies))
+	whole := strings.Join(bodies, "")
+	if reference := p.exact[whole]; reference != "" {
+		for i, body := range bodies {
+			results[i] = repeatedSource(headers[i], body, "")
+		}
+		results[0].Text += reference
+		return results
+	}
+	var references []string
+	for i, body := range bodies {
+		results[i] = p.Source(headers[i], body)
+		if reference := p.exact[body]; reference != "" {
+			references = append(references, strings.TrimSuffix(reference, "\n"))
+		}
+	}
+	if len(bodies) > 1 && len(references) == len(bodies) {
+		p.exact[whole] = strings.Join(references, "\n")
+		if strings.HasSuffix(whole, "\n") {
+			p.exact[whole] += "\n"
+		}
+	}
+	return results
+}
+
+func repeatedSource(header, body, reference string) Result {
+	return Result{Text: header + reference, Occurrences: 1, BodyBytes: len(body), RepeatedBytes: len(body), RepeatedLines: strings.Count(strings.TrimSuffix(body, "\n"), "\n") + 1}
+}
 
 // Source: internal/router/output_dedupe.go:33:76@b9a7b3fe.
 func (p *Pass) Text(header, body string) Result {

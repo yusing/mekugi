@@ -30,8 +30,13 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 	pass := service.NewPass(&savings)
 	defer pass.Close()
 	changed := false
-	projectBody := func(header, body string) string {
-		result := pass.Text(header, body)
+	projectBody := func(header, body string, source bool) string {
+		var result projection.Result
+		if source {
+			result = pass.Source(header, body)
+		} else {
+			result = pass.Text(header, body)
+		}
 		summary.OutputRepetitions += result.Occurrences
 		repeatedLines += result.RepeatedLines
 		bodyBytes += result.BodyBytes
@@ -46,20 +51,25 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 		type counts struct{ lines, body, repeated int }
 		totals := make(map[string]counts)
 		changed := false
-		for i, frame := range snapshot.Frames {
-			header, body, ok := duplicateAttachmentBody(frame)
-			if !ok {
+		for i := 0; i < len(snapshot.Frames); {
+			headers, bodies := attachmentSource(snapshot.Frames[i:])
+			if len(bodies) == 0 {
+				i++
 				continue
 			}
-			repeatedLines, bodyBytes, repeatedBytes = 0, 0, 0
-			snapshot.Frames[i] = projectBody(header, body)
-			changed = changed || snapshot.Frames[i] != frame
-			if id := snapshot.ReceiptID(frame); id != "" {
-				count := totals[id]
-				count.lines += repeatedLines
-				count.body += bodyBytes
-				count.repeated += repeatedBytes
-				totals[id] = count
+			for _, result := range pass.Sources(headers, bodies) {
+				frame := snapshot.Frames[i]
+				snapshot.Frames[i] = result.Text
+				summary.OutputRepetitions += result.Occurrences
+				changed = changed || result.Text != frame
+				if id := snapshot.ReceiptID(frame); id != "" {
+					count := totals[id]
+					count.lines += result.RepeatedLines
+					count.body += result.BodyBytes
+					count.repeated += result.RepeatedBytes
+					totals[id] = count
+				}
+				i++
 			}
 		}
 		for id, count := range totals {
@@ -110,7 +120,13 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			if binding.NativeJSONSession(body) != 0 {
 				return text
 			}
-			projected := projectBody(header, body)
+			source := false
+			if strings.HasPrefix(id, "compact-") {
+				if first, rest, ok := strings.Cut(body, "\n"); ok && strings.HasSuffix(first, ": exit_code=0") {
+					header, body, source = header+first+"\n", rest, true
+				}
+			}
+			projected := projectBody(header, body, source)
 			savings.Add(text, projected)
 			return projected
 		}
@@ -130,10 +146,43 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 	return result
 }
 
+// Only contiguous chunks of the same complete submitted source form one body.
+// Omission notices and malformed framing retain the ordinary per-frame path.
+func attachmentSource(frames []string) (headers, bodies []string) {
+	header, body, ok := duplicateAttachmentBody(frames[0])
+	if !ok {
+		return nil, nil
+	}
+	headers, bodies = []string{header}, []string{body}
+	identity, coordinates, _ := strings.Cut(header, " (UTF-8 bytes ")
+	var start, end, total int
+	if n, _ := fmt.Sscanf(coordinates, "%d:%d of %d", &start, &end, &total); n != 3 || start != 0 || end != len(body) || end >= total {
+		return headers, bodies
+	}
+	for _, frame := range frames[1:] {
+		header, body, ok := duplicateAttachmentBody(frame)
+		key, coordinates, _ := strings.Cut(header, " (UTF-8 bytes ")
+		var nextStart, nextEnd, nextTotal int
+		n, _ := fmt.Sscanf(coordinates, "%d:%d of %d", &nextStart, &nextEnd, &nextTotal)
+		if !ok || key != identity || n != 3 || nextStart != end || nextEnd-nextStart != len(body) || nextTotal != total || nextEnd > total {
+			break
+		}
+		headers, bodies = append(headers, header), append(bodies, body)
+		end = nextEnd
+		if end == total {
+			return headers, bodies
+		}
+	}
+	return headers[:1], bodies[:1]
+}
+
 // Project only complete attachment frames, never ordinary prompts or failure
 // receipts. Snapshot byte ranges remain those of the original submitted body.
 func duplicateAttachmentBody(text string) (header, body string, ok bool) {
 	first, body, found := strings.Cut(text, "\n")
+	if found && attachments.SelectionFrame(text) && strings.Contains(first, " (UTF-8 bytes ") && strings.HasSuffix(first, "):") {
+		return first + "\n", body, true
+	}
 	if !found || !strings.Contains(first, " (UTF-8 bytes ") ||
 		!strings.HasSuffix(first, attachments.ReadGuidance+"):") ||
 		!strings.HasPrefix(first, "Attached file ") && !attachments.SkillFrame(text) {

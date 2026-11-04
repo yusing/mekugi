@@ -787,6 +787,8 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 				case inspection := <-session.Client.Requests.Inspections():
 					target := inspection.Target()
 					switch {
+					case inspection.ContextWindow() != "" && (target == session.Client.Thread || session.Client.Requests.HasSideThread(target)):
+						inspection.CompleteAttachments(target, session.conversationState.Attachments(session.attached.session.Thread(target)))
 					case target == session.Client.Thread:
 						inspection.Complete(target, threadInspection(&session.attached.session, target, session.settings, session.serviceTiers))
 					case session.Client.Requests.HasSideThread(target):

@@ -40,7 +40,7 @@ evidence consumer, including command
 and patch observation, result confirmation, failure observation, and retention, reads the original output before this final projection.
 
 A unit is one host-produced text part of a `function_call_output` or
-`custom_tool_call_output`, or one submitted file or managed-skill frame body in a
+`custom_tool_call_output`, or one submitted file, skill or selected-text frame body in a
 user message through a complete durable envelope in an `input_text` part.
 A string output is one part. Execution and attachment headers remain
 verbatim. Durable attachment envelopes use their submitted bodies; files and skills
@@ -48,13 +48,21 @@ are never reopened to infer equality. Compaction reader results participate as
 native tool output before the application adds reload-context framing, so later
 ordinary reads can reference the supplied source text. Frame byte ranges describe the original
 snapshot, while reference rows address the earlier visible body. Ordinary user
-requests, base instructions, selection attachments, malformed envelopes, and media
+requests, base instructions, malformed envelopes, and media
 are excluded. String-content or non-`input_text` envelopes and bare frame text
 remain ordinary input. Native selected-skill XML retains its existing manager
 rewrite. Router-appended parts, including warnings and edit notices, remain intact. Outputs without a call ID and native
 live-session JSON envelopes are excluded.
 
 ### Current matching design
+
+Explicit attachment and successful reload source bodies also use exact whole-body
+matching. They receive a stable source anchor even below the ordinary savings gate,
+so short supplied instructions or selections do not repeat when explicitly reloaded.
+Only actual supplied bytes establish equality. This request-local source index is
+independent of the bounded partial-match window below. Contiguous chunks of a
+complete attachment also match a whole reload: references name the earlier visible
+chunks in order, or the earlier whole source, regardless of framing.
 
 Verbatim runs aligned to logical lines and covering at least 192 bytes may be
 replaced with a reference to earlier output still visible in the same request.
@@ -74,14 +82,16 @@ wins, with ties resolved in favor of the most recent source.
 
 References have the form `See O3` or `See O3:40-112`; a single row
 uses `See O3:40`. A source anchor such as `O3:` appears on its own line after
-the preserved execution or attachment header only when remaining verbatim text
+the preserved execution or attachment header for every explicit source. Ordinary
+output receives an anchor only when remaining verbatim text
 can support beneficial later reuse. At least one retained, matchable run must
 meet the byte threshold and save 32 estimated tokens after paying for both its
 complete future reference and the source anchor, including trailing newlines,
 using the same independent-string estimates as replacement admission.
 Runs that cannot meet this gate are not indexed. Rejected text remains verbatim
 and still advances the bounded window. Seedless text, short residual runs and
-unavailable estimates create no anchor.
+unavailable estimates create no ordinary-output anchor. Explicit sources use the
+whole-body exception described above, independently of these gates.
 IDs are assigned to admitted sources in forward order in one request-local
 sequence across tool text parts and attachment frames. Fully replaced units get
 no anchor. Sources get their anchors immediately, even before a later repeat,
@@ -138,7 +148,7 @@ Unchanged keys and scalar values cancel. Measurement counts complete changed
 text parts, including attachment envelopes, rather than their individual body fragments.
 These pinned GPT-5 estimates are never exact provider input or billed tokens.
 
-An unavailable estimate prevents further replacements in that pass and is
+An unavailable estimate prevents further ordinary-output replacements in that pass and is
 counted as unmeasured; earlier replacements and their receipts remain intact.
 Tokenization is initialized only when evaluating a match, admitting a matchable
 source, or measuring changed input, not when composing a frontend worker.

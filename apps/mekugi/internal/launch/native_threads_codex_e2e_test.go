@@ -48,6 +48,7 @@ type nativeThreadsProvider struct {
 	earlyCompletion                         bool
 	preload                                 bool
 	attachChanges                           bool
+	attachments, attachmentReload           bool
 	recoverFailure                          bool
 	multipleAnswers                         bool
 	deduplication                           bool
@@ -348,7 +349,34 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if p.agentCompact {
 			program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"],compact:true}));`
 		}
+		if p.attachments {
+			if err := os.WriteFile(filepath.Join(p.childDirectory, "SKILL.md"), []byte("CURRENT_ATTACHED_SKILL"), 0600); err != nil {
+				failure = err.Error()
+			}
+			if err := os.WriteFile(filepath.Join(p.childDirectory, "attachment.txt"), []byte("CHANGED_ATTACHED_FILE"), 0600); err != nil {
+				failure = err.Error()
+			}
+			if p.attachmentReload {
+				source := `{skill:"guide",path:` + strconv.Quote(filepath.Join(p.childDirectory, "SKILL.md")) + `}`
+				program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"],compact:true,reload:{sources:[` + source + `,` + source + `]}}));`
+			}
+		}
 	case parent && step == 5:
+		if p.attachments {
+			for _, expected := range []string{"CURRENT_ATTACHED_SKILL", "SELECTED_SCREEN_BYTES"} {
+				if strings.Count(string(body), expected) != 1 {
+					failure = "reset did not supply current attachment content exactly once: " + expected
+				}
+			}
+			for _, excluded := range []string{"ORIGINAL_ATTACHED_SKILL", "ORIGINAL_ATTACHED_FILE", "CHANGED_ATTACHED_FILE"} {
+				if strings.Contains(string(body), excluded) {
+					failure = "reset supplied stale or unselected attachment content: " + excluded
+				}
+			}
+			if !strings.Contains(string(body), "@attachment.txt $guide [Selected 1]") {
+				failure = "reset lost submitted attachment placeholders"
+			}
+		}
 		expectedUsers := p.users
 		if p.compactWait || p.agentCompact {
 			expectedUsers-- // Reset removes the original human prompt.
@@ -366,7 +394,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			if metadata.TurnID == p.waitTurn || users != p.users+1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
 				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, p.users+1, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
 			}
-		} else if metadata.TurnID == p.waitTurn || users != expectedUsers || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "agent:main/worker") || !strings.Contains(string(body), "wait_agent") {
+		} else if metadata.TurnID == p.waitTurn || !p.attachments && users != expectedUsers || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "agent:main/worker") || !strings.Contains(string(body), "wait_agent") {
 			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, expectedUsers, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "agent:main/worker"), strings.Contains(string(body), "wait_agent"))
 		}
 		answer = "MANAGED_PARENT_RESUMED"
@@ -664,7 +692,16 @@ func TestNativeThreadsRewindServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{rewind: true})
 }
 
+func TestNativeThreadsAttachmentResetServerOwnedCodex(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		t.Run(fmt.Sprintf("explicit=%v", explicit), func(t *testing.T) {
+			testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{compactWait: true, agentCompact: true, attachments: true, attachmentReload: explicit})
+		})
+	}
+}
+
 type nativeThreadsScenario struct {
+	attachments, attachmentReload                                                                                                                                     bool
 	deduplication                                                                                                                                                     bool
 	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind, headless, attachChanges, usageLimit bool
 	temporaryUsageCommand                                                                                                                                             string
@@ -760,6 +797,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		}
 	}
 	fixture := &nativeThreadsProvider{usageLimit: scenario.usageLimit, limited: make(map[string]bool), attachChanges: scenario.attachChanges, multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
+	fixture.attachments, fixture.attachmentReload = scenario.attachments, scenario.attachmentReload
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
 	fixture.deduplication = scenario.deduplication
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1045,9 +1083,26 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	waitingObserved, compactObserved, childReleased := false, false, false
 	failureObserved, usageWaitingObserved := false, false
 	root := event.Frame.View.Main.ID
+	draft := composer.Draft{Text: "PARENT_PRIVATE_SENTINEL delegate fresh work"}
+	if scenario.attachments {
+		draft.Text += " @attachment.txt $guide [Selected 1]"
+		file, skill := filepath.Join(workspace, "attachment.txt"), filepath.Join(workspace, "SKILL.md")
+		if err := os.WriteFile(file, []byte("ORIGINAL_ATTACHED_FILE"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(skill, []byte("ORIGINAL_ATTACHED_SKILL"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		start := strings.Index(draft.Text, "@attachment.txt")
+		draft.Files = []composer.Token{{Start: start, End: start + len("@attachment.txt"), Path: file}}
+		start = strings.Index(draft.Text, "$guide")
+		draft.Skills = []composer.Token{{Start: start, End: start + len("$guide"), Name: "guide", Path: skill}}
+		start = strings.Index(draft.Text, "[Selected 1]")
+		draft.Selections = []composer.Token{{Start: start, End: len(draft.Text), Text: "SELECTED_SCREEN_BYTES", Source: "screen"}}
+	}
 	_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
 		Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
-		Draft:  composer.Draft{Text: "PARENT_PRIVATE_SENTINEL delegate fresh work"},
+		Draft:  draft,
 	}})
 	if err != nil {
 		t.Fatal("root input:", err)

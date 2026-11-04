@@ -11,6 +11,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/outputdeduplication"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
@@ -172,6 +173,39 @@ func TestAcceptanceDurableAttachmentBodies(t *testing.T) {
 	if got[1]["output"] != "See O1\n" || result.Receipt == nil || result.Receipt.OutputRepetitions != 2 ||
 		!reflect.DeepEqual(result.Receipt.RepeatedCalls, map[string]string{"tool-repeat": "repeated"}) || len(result.Receipt.RepeatedAttachments) != 0 {
 		t.Fatalf("tool = %+v, receipt = %+v", got[1], result.Receipt)
+	}
+}
+
+func TestAcceptanceChunkedSelectionAndWholeReload(t *testing.T) {
+	body := "START_SENTINEL" + strings.Repeat("a", 30000) + "END_SENTINEL"
+	draft := composer.Draft{Text: "[Selected 1]", Selections: []composer.Token{{Start: 0, End: 12, Text: body}}}
+	draft.SnapshotFiles("")
+	if err := draft.IdentifyAttachments("selection"); err != nil {
+		t.Fatal(err)
+	}
+	for _, reloadFirst := range []bool{false, true} {
+		t.Run(fmt.Sprint(reloadFirst), func(t *testing.T) {
+			p := registeredProjection(t)
+			items := []item{{"role": "user", "content": []item{textPart(draft.Attachments[0])}}, tool("compact-reader", "'cat' '--' '/selected': exit_code=0\n"+body)}
+			if reloadFirst {
+				items[0], items[1] = items[1], items[0]
+			}
+			input := encode(t, items)
+			result := p.Prepare(input)(input)
+			for _, marker := range []string{"START_SENTINEL", "END_SENTINEL"} {
+				if bytes.Count(result.Input, []byte(marker)) != 1 {
+					t.Fatalf("chunked source repeated %s", marker)
+				}
+			}
+			at := 0
+			if reloadFirst {
+				at = 1
+			}
+			projected := decode(t, result.Input)[at]["content"].([]any)[0].(map[string]any)["text"].(string)
+			if _, ok := attachments.DecodeSnapshot(projected); !ok {
+				t.Fatal("projected chunks lost the supported envelope bounds")
+			}
+		})
 	}
 }
 

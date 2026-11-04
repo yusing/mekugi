@@ -15,6 +15,7 @@ import (
 type TurnMetadata struct {
 	ActivityIdentityInvalid bool                         `json:"-"`
 	ContextWindowID         string                       `json:"context_window_id"`
+	WindowNumber            uint64                       `json:"window_number"`
 	ThreadID                string                       `json:"thread_id"`
 	ForkedFromThreadID      string                       `json:"forked_from_thread_id"`
 	ParentThreadID          string                       `json:"parent_thread_id"`

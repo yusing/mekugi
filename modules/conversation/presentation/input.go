@@ -16,8 +16,13 @@ import (
 
 // Service accesses only conversation-owned entries in application scope stores.
 type Service struct {
-	session    scope.Key[Session]
-	transcript scope.Key[transcript.State]
+	attachments scope.Key[composer.AttachmentContext]
+	session     scope.Key[Session]
+	transcript  scope.Key[transcript.State]
+}
+
+func (s *Service) Attachments(store *scope.Store) *composer.AttachmentContext {
+	return s.attachments.Value(store)
 }
 
 func (s *Service) Transcript(store *scope.Store) *transcript.State { return s.transcript.Value(store) }

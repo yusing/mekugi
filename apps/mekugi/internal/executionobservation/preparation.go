@@ -25,6 +25,7 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -40,25 +41,26 @@ const applyPatchToolName = "apply_patch"
 
 // Config supplies borrowed invocation owners. Startup owns their lifetimes.
 type Config struct {
-	Inspect          func(context.Context, string) (threadcontrol.SessionDetails, error)
-	ThreadControl    *threadbinding.Driver
-	Registry         *frontends.Registry
-	InputProjections []binding.InputProjection
-	Usage            *accounting.Service
-	Review           *sessionreview.Review
-	Audience         *sessioncontrol.Audience
-	Windows          *Windows
-	NativeTrace      *nativetrace.Reader
-	Control          *sessioncontrol.Observations
-	PreviewTiming    previewbinding.Timing
-	Calls            *history.CallCache
-	Retained         changes.Scope
-	Changes          changes.Service
-	Checkpoints      *changecapture.Workspaces
-	Recovery         *recovery.Service
-	PublishChanges   func([]changes.Update)
-	Notice           func(string, string, string, string)
-	Event            func(string, string, string, string)
+	ContextAttachments func(context.Context, string, string) ([]composer.ContextAttachment, error)
+	Inspect            func(context.Context, string) (threadcontrol.SessionDetails, error)
+	ThreadControl      *threadbinding.Driver
+	Registry           *frontends.Registry
+	InputProjections   []binding.InputProjection
+	Usage              *accounting.Service
+	Review             *sessionreview.Review
+	Audience           *sessioncontrol.Audience
+	Windows            *Windows
+	NativeTrace        *nativetrace.Reader
+	Control            *sessioncontrol.Observations
+	PreviewTiming      previewbinding.Timing
+	Calls              *history.CallCache
+	Retained           changes.Scope
+	Changes            changes.Service
+	Checkpoints        *changecapture.Workspaces
+	Recovery           *recovery.Service
+	PublishChanges     func([]changes.Update)
+	Notice             func(string, string, string, string)
+	Event              func(string, string, string, string)
 }
 
 // New binds request preparation to the composed owners without acquiring resources.
@@ -152,15 +154,31 @@ func (t *mekugiResponseTransform) ObserveUsage(counts inference.Usage) {
 func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
 	var reload jsonv1.RawMessage
 	var reloadCalls map[string]bool
+	if metadataValid && !metadata.ActivityIdentityInvalid && (metadata.ThreadID == "" || metadata.ThreadID == threadID) {
+		pending, calls, err := p.prepareAttachmentContext(ctx, request, threadID, metadata, prewarm)
+		if err != nil {
+			return nil, err
+		}
+		reload, reloadCalls = pending, calls
+	}
 	var preloadActivity []activitypresentation.Supplement
 	if bytes.Contains(request.Fields["input"], []byte(compact.Prefix)) {
 		if !metadataValid {
 			return nil, errors.New("compaction recovery requires valid metadata")
 		}
-		var err error
-		reload, reloadCalls, err = p.prepareCompactInput(ctx, request, sessionID, threadID, metadata, prewarm)
+		pending, calls, err := p.prepareCompactInput(ctx, request, sessionID, threadID, metadata, prewarm)
 		if err != nil {
 			return nil, err
+		}
+		if len(pending) > 0 {
+			reload = pending
+		}
+		if reloadCalls == nil {
+			reloadCalls = calls
+		} else {
+			for id := range calls {
+				reloadCalls[id] = true
+			}
 		}
 	}
 	if p.ThreadControl != nil || metadataValid && bytes.Contains(request.Fields["input"], []byte("threadcontrol")) {

@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -29,5 +30,27 @@ func TestInputPreservesPartRelativeBindingsAndSnapshot(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotValue, wantValue) {
 		t.Fatalf("wire: %s", data)
+	}
+}
+
+func TestCompactedUploadRetainsPlaceholder(t *testing.T) {
+	label := "[Uploaded notes.txt]"
+	file := composer.UploadAttachment("notes.txt", []byte("uploaded body"))
+	file.Start, file.End = 0, len(label)
+	draft := composer.Draft{Text: label, Files: []composer.Token{file}}
+	draft.SnapshotFiles("")
+	if err := draft.IdentifyAttachments("upload"); err != nil {
+		t.Fatal(err)
+	}
+	content, err := json.Marshal(Input(draft))
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := CompactedAttachments([]binding.HistoryTurn{{Items: []binding.ThreadItem{
+		{ID: "user", Type: "userMessage", Content: content},
+		{ID: "boundary", Type: "contextCompaction", Status: "completed"},
+	}}})
+	if len(values) != 1 || !reflect.DeepEqual(values[0].Placeholders, []string{label}) || len(values[0].Selection.Frames) != 0 {
+		t.Fatalf("upload context = %+v", values)
 	}
 }

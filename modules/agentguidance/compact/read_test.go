@@ -150,3 +150,29 @@ func TestReloadReadsDashFile(t *testing.T) {
 		})
 	}
 }
+
+func TestReloadRefreshesManagedMetadataSource(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "SKILL.md")
+	if err := os.WriteFile(path, []byte("metadata placeholder"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, ".skills-mgr-placeholder"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager := filepath.Join(directory, "skills-mgr")
+	if err := os.WriteFile(manager, []byte("#!/bin/sh\ntest \"$1 $2 $3\" = 'get --codex selected' || exit 2\ncat -- \""+filepath.Join(directory, "current")+"\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	selection, _ := json.Marshal(map[string]any{"sources": []Source{{Skill: "selected", Path: path}}})
+	for _, body := range []string{"first instructions", "current instructions"} {
+		if err := os.WriteFile(filepath.Join(directory, "current"), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		result, err := ReadSources(t.Context(), string(selection), directory, os.Environ(), ChangeReader{})
+		if err != nil || len(result.Sources) != 1 || result.Sources[0].ExitCode != 0 || result.Sources[0].Stdout != body {
+			t.Fatalf("current managed instructions unavailable: %+v, %v", result, err)
+		}
+	}
+}

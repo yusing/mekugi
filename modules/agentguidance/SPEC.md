@@ -181,8 +181,9 @@ An agent can select optional reload sources in `compact` or `wait_agent` with
 `compact:true`, using a structured JSON selection in the initiating call. The
 selection is retained with the checkpoint and acquired after successful reset,
 before the next provider inference. There is no separate selection request or
-response-schema change. Without a selection, ordinary model-directed reads recover
-needed context. Missing recovery state requires no bootstrap or completion gate.
+response-schema change. Attached skills refresh from current sources after a boundary;
+other context without a selection is recovered through ordinary model-directed reads.
+Missing recovery state requires no bootstrap or completion gate.
 
 An optional temporary JSON artifact can hold reusable task state. It is a source
 selected by the agent, never an automatic whole-artifact reload. Select only fields

@@ -54,7 +54,7 @@ func ElementSpans(text string, elements []binding.InputTextElement) []composer.S
 		}
 		kind := composer.File
 		switch {
-		case strings.HasPrefix(label, "@"):
+		case strings.HasPrefix(label, "@"), strings.HasPrefix(label, "[Uploaded ") && strings.HasSuffix(label, "]"):
 		case strings.HasPrefix(label, "$"):
 			kind = composer.Skill
 		case composer.SelectionLabel(label):
