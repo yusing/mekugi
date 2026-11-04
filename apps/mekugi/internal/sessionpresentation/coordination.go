@@ -64,6 +64,13 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 	entry.Kind = "progress"
 	entry.Native.Wait = &activitypresentation.Value{Kind: "progress", From: entry.Agent}
 	entry.Text = strings.TrimSpace(c.Action+" "+target) + " · " + c.State
+	if c.Kind == "side-question" {
+		from := entry.Agent
+		if from == "/root" {
+			from = "Main"
+		}
+		entry.SideQuestion = &activitypresentation.SideQuestion{From: from, To: target, Question: c.Message, Answer: c.Answer, Answered: c.Confirmed}
+	}
 	if c.Action == "Spawn" && c.State == "pending" {
 		entry.Text = "Spawning " + target
 	}

@@ -242,6 +242,17 @@
     {owner}
   />
 {/snippet}
+{#snippet agentProgress(value: Value)}
+  <p
+    data-ai-element="agent-progress"
+    class="col-span-full flex min-h-[26px] items-start gap-2 py-[3px] text-small text-muted"
+  >
+    <span class={["flex h-4 flex-none items-center", value.live && "animate-blink"]}
+      ><Icon name="agents" size={13} /></span
+    >
+    <span class="min-w-0">{@render wait(value)}</span>
+  </p>
+{/snippet}
 <!-- The programs behind a run of edits, in the edits' own column. -->
 {#snippet via(index: number)}
   {@const group = edits.via.get(index)!}
@@ -437,15 +448,7 @@
         <!-- Agent operations share the compact progress row, including lists
              and requests without wait targets. -->
         {#each entry.values ?? [] as value, i (i)}
-          <p
-            data-ai-element="agent-progress"
-            class="flex min-h-[26px] items-start gap-2 py-[3px] text-small text-muted"
-          >
-            <span class={["flex h-4 flex-none items-center", value.live && "animate-blink"]}
-              ><Icon name="agents" size={13} /></span
-            >
-            <span class="min-w-0">{@render wait(value)}</span>
-          </p>
+          {@render agentProgress(value)}
         {/each}
       {:else if entry.values?.length}
         <!-- Tool rows sit on the page without a frame; their output wells
@@ -455,8 +458,25 @@
         >
           {#each rows as { value, index, hidden } (index)}
             {#if edits.via.has(index)}{@render via(index)}{/if}
-            {#if value.kind === "progress" && value.waits?.length}
-              <p class="col-span-full py-[5px] text-muted">{@render wait(value)}</p>
+            {#if value.kind === "message"}
+              <Message.Root
+                data-ai-element="subagent"
+                class="col-span-full border-l-2 py-0.5 pl-3.5 {edges.message}"
+              >
+                <Message.Content class="gap-0">
+                  <Message.Header class="mb-1 px-0 font-normal">
+                    <Trace.Line class="flex-wrap items-baseline gap-x-1.5 text-small">
+                      <Trace.Icon class="size-3.5 {glyphs.message}">✉</Trace.Icon>
+                      <AgentName name={endpoint(value.from) ?? ""} current={owner} />
+                      <span class="text-muted">→</span>
+                      <AgentName name={endpoint(value.to) ?? ""} current={owner} />
+                    </Trace.Line>
+                  </Message.Header>
+                  <Excerpt text={value.body ?? ""} noun="message" />
+                </Message.Content>
+              </Message.Root>
+            {:else if value.kind === "progress" && (value.from || value.waits?.length)}
+              {@render agentProgress(value)}
             {:else if value.kind === "progress"}
               <p class="col-span-full py-[5px] text-muted">
                 {progressText(value, (name) => stream.label(name))}

@@ -117,3 +117,28 @@ func TestPublicationMainSummaryOrderAndIncomingOwner(t *testing.T) {
 		t.Fatalf("incoming summary lost sender or mutated source: %+v", incoming)
 	}
 }
+
+func TestPublicationSideQuestionSummary(t *testing.T) {
+	for _, answered := range []bool{false, true} {
+		content := ItemContent{Facts: Facts{Seq: 1, Agent: "/root/asking", Kind: "progress", Live: true, Text: "Side question worker · pending"},
+			Details:      &ItemDetails{WaitLive: !answered},
+			SideQuestion: &SideQuestion{From: "/root/asking", To: "/root/worker", Question: "Ready?", Answer: "Yes.", Answered: answered}}
+		if answered {
+			content.Text = "Side question worker · answered"
+		}
+		model := Model[modelSource, modelAgent]{Agents: []modelAgent{{Name: "/root/asking", Responding: true}}}
+		model.Append(modelSource{Facts: content.Facts}, content.Values())
+		publication := model.Publish()
+		summary := publication.Roster[0].Agent.Summary
+		if len(summary) != 1 || len(summary[0].Values) != 1 || summary[0].Values[0].Kind != "progress" || summary[0].Values[0].Body != content.Text || summary[0].StatusAnimating() != !answered {
+			t.Fatalf("answered=%v: roster lost side-question status: %+v", answered, summary)
+		}
+		wantValues := 2
+		if answered {
+			wantValues++
+		}
+		if len(publication.Entries[0].Values) != wantValues || publication.Entries[0].Values[1].Body != content.SideQuestion.Question {
+			t.Fatalf("answered=%v: summary trimmed the transcript: %+v", answered, publication.Entries)
+		}
+	}
+}

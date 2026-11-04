@@ -1436,7 +1436,8 @@ export type ItemContent = {
   "Assignment": (DirectedContent | null);
   "StartLabel": (string | null);
   "ErrorDetail": string;
-} & Omit<Facts, "Command" | "Details" | "Message" | "Assignment" | "StartLabel" | "ErrorDetail">;
+  "SideQuestion": (SideQuestion | null);
+} & Omit<Facts, "Command" | "Details" | "Message" | "Assignment" | "StartLabel" | "ErrorDetail" | "SideQuestion">;
 
 export type Agent = {
   "StatusItems": Array<Item>;
@@ -1704,6 +1705,14 @@ export type DirectedContent = {
   "From": string;
   "To": string;
   "Text": string;
+};
+
+export type SideQuestion = {
+  "From": string;
+  "To": string;
+  "Question": string;
+  "Answer": string;
+  "Answered": boolean;
 };
 
 export type AgentFacts = {

@@ -9,6 +9,7 @@ func ActivityContent(entry ActivityEntry) activitypresentation.ItemContent {
 	content := activitypresentation.ItemContent{
 		Facts:   entry.ActivityFacts(),
 		Command: CommandPresentation(entry), ErrorDetail: entry.ErrorDetail,
+		SideQuestion: entry.SideQuestion,
 	}
 	if message := entry.Message; message != nil {
 		content.Message = &activitypresentation.DirectedContent{From: message.From, To: message.To, Text: message.Text}

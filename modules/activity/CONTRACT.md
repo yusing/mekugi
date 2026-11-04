@@ -601,7 +601,10 @@ operation and remaining count. Agent colors derive solely from canonical paths.
 Thread-control operations share the existing started, follow-up and directed-message
 traffic rows. Only confirmed outcomes establish a child or delivered content.
 Pending, queued, failed and unconfirmed attempts retain explicit progress or error
-rows. Agent progress uses a shared compact row with an agent-traffic marker,
+rows. Independent side questions name their action and show the question and
+returned answer with their directed routes. A successful answer settles as answered;
+failed questions retain a side-question failure row, without ordinary message delivery.
+Agent progress uses a shared compact row with an agent-traffic marker,
 distinct from reasoning and generic tool cards. Waits publish their supplied
 targets and distinguish waiting, completion, timeout and cancellation. Aggregate
 completion reasons already stated by every target are omitted from display;

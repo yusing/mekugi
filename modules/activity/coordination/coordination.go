@@ -18,6 +18,7 @@ type Coordination struct {
 	Confirmed                                                            bool
 	Targets                                                              []Target
 	Count                                                                int
+	Answer                                                               string
 }
 
 type Target struct{ Name, Status string }
@@ -54,9 +55,13 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		Message string         `json:"message"`
 		Target  jsontext.Value `json:"target"`
 		Timeout *int64         `json:"timeout_ms"`
+		BTW     bool           `json:"btw"`
 	}
 	argumentsOK := json.Unmarshal(item.Arguments, &args) == nil
 	c.Target, c.Message = args.Task, args.Message
+	if item.Tool == "send_message" && args.BTW {
+		c.Action, c.Kind = "Side question", "side-question"
+	}
 	if item.Tool == "wait_agent" {
 		c.TimeoutMS = args.Timeout
 		var targets []string
@@ -122,6 +127,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		State       string            `json:"state"`
 		Thread      string            `json:"thread_id"`
 		Task        string            `json:"task_name"`
+		Answer      *string           `json:"answer"`
 		Agents      *[]jsontext.Value `json:"agents"`
 		Models      *[]jsontext.Value `json:"models"`
 		Event       *outcome          `json:"event"`
@@ -138,7 +144,16 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	switch item.Tool {
 	case "spawn_agent":
 		c.Confirmed = result.State == "confirmed" && result.Thread != "" && result.Task != ""
-	case "followup_task", "send_message", "interrupt_agent":
+	case "send_message":
+		if args.BTW {
+			c.Confirmed = result.Thread != "" && result.Task != "" && result.Answer != nil
+			if c.Confirmed {
+				c.State, c.Answer = "answered", *result.Answer
+			}
+		} else {
+			c.Confirmed = result.State == "confirmed" && result.ID != ""
+		}
+	case "followup_task", "interrupt_agent":
 		c.Confirmed = result.State == "confirmed" && result.ID != ""
 	case "list_agents":
 		c.Confirmed = result.Agents != nil

@@ -21,9 +21,16 @@ type ItemContent struct {
 	Message, Assignment *DirectedContent
 	StartLabel          *string
 	ErrorDetail         string
+	SideQuestion        *SideQuestion
 }
 
 type DirectedContent struct{ From, To, Text string }
+
+// SideQuestion retains an independent tool exchange without ordinary delivery.
+type SideQuestion struct {
+	From, To, Question, Answer string
+	Answered                   bool
+}
 
 type ItemDetails struct {
 	CompactionContext                     *observation.Context `json:"-"`
@@ -139,6 +146,14 @@ func (entry ItemContent) Values() (blocks []Value) {
 			return CloneValues(entry.Details.Attachments)
 		}
 	case "progress":
+		if q := entry.SideQuestion; q != nil {
+			blocks = []Value{{Kind: "progress", From: q.From, Body: text, Live: entry.Details != nil && entry.Details.WaitLive},
+				{Kind: "message", From: q.From, To: q.To, Body: textsanitize.MarkdownSource(q.Question)}}
+			if q.Answered {
+				blocks = append(blocks, Value{Kind: "message", From: q.To, To: q.From, Body: textsanitize.MarkdownSource(q.Answer)})
+			}
+			return blocks
+		}
 		if entry.Details != nil && entry.Details.Wait != nil {
 			block := *entry.Details.Wait
 			block.Live = entry.Details.WaitLive

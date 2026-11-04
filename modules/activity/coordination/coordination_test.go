@@ -28,6 +28,10 @@ func TestProjectCoordinationRoutes(t *testing.T) {
 			Coordination{Action: "Follow-up", Kind: "assignment", Target: "/root/child", Thread: "thread-1", Message: "continue", State: "confirmed", ID: "op-1", Confirmed: true}},
 		{"send_message", `{"target":"child","message":"update"}`, `{"id":"op-2","state":"confirmed","thread_id":"thread-1","task_name":"/root/child"}`,
 			Coordination{Action: "Message", Kind: "reply", Target: "/root/child", Thread: "thread-1", Message: "update", State: "confirmed", ID: "op-2", Confirmed: true}},
+		{"send_message", `{"target":"child","message":"update","btw":false}`, `{"id":"op-2","state":"confirmed","thread_id":"thread-1","task_name":"/root/child"}`,
+			Coordination{Action: "Message", Kind: "reply", Target: "/root/child", Thread: "thread-1", Message: "update", State: "confirmed", ID: "op-2", Confirmed: true}},
+		{"send_message", `{"target":"child","message":"Ready?","btw":true}`, `{"thread_id":"thread-1","task_name":"/root/child","answer":"Yes."}`,
+			Coordination{Action: "Side question", Kind: "side-question", Target: "/root/child", Thread: "thread-1", Message: "Ready?", State: "answered", Confirmed: true, Answer: "Yes."}},
 		{"interrupt_agent", `{"target":"child"}`, `{"id":"op-3","state":"confirmed","thread_id":"thread-1","task_name":"/root/child"}`,
 			Coordination{Action: "Interrupt", Kind: "progress", Target: "/root/child", Thread: "thread-1", State: "confirmed", ID: "op-3", Confirmed: true}},
 		{"wait_agent", `{"target":["/root/a","/root/b"]}`, `{"state":"waiting"}`,
@@ -55,6 +59,33 @@ func TestProjectCoordinationRoutes(t *testing.T) {
 			got, ok := ProjectCoordination(coordinationItem(tt.tool, tt.args, tt.result))
 			if !ok || !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("ProjectCoordination = %+v, %v; want %+v, true", got, ok, tt.want)
+			}
+		})
+	}
+}
+
+func TestProjectCoordinationSideQuestionOutcomes(t *testing.T) {
+	for _, tt := range []struct {
+		name, status, result, state, failure string
+		confirmed                            bool
+	}{
+		{name: "pending", status: "inProgress", state: "pending"},
+		{name: "empty answer", status: "completed", result: `{"thread_id":"thread-1","task_name":"/root/child","answer":""}`, state: "answered", confirmed: true},
+		{name: "missing answer", status: "completed", result: `{"thread_id":"thread-1","task_name":"/root/child"}`, state: "unconfirmed"},
+		{name: "missing identity", status: "completed", result: `{"answer":"Yes."}`, state: "unconfirmed"},
+		{name: "ordinary acknowledgement", status: "completed", result: `{"state":"confirmed","id":"op"}`, state: "unconfirmed"},
+		{name: "failed", status: "failed", failure: "Target unavailable"},
+		{name: "MCP failure", status: "completed", failure: "Target unavailable"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			item := coordinationItem("send_message", `{"target":"child","message":"Ready?","btw":true}`, tt.result)
+			item.Status = tt.status
+			if tt.failure != "" {
+				item.Result = jsontext.Value(`{"isError":true,"content":[{"type":"text","text":"Target unavailable"}]}`)
+			}
+			got, ok := ProjectCoordination(item)
+			if !ok || got.Action != "Side question" || got.Kind != "side-question" || got.Confirmed != tt.confirmed || got.State != tt.state || got.Failure != tt.failure {
+				t.Fatalf("side question = %+v, %v", got, ok)
 			}
 		})
 	}

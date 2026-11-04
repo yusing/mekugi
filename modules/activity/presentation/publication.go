@@ -99,6 +99,10 @@ func (m *Model[S, A]) SummaryEntries(owner string, root bool) []Entry {
 		entries = append(entries, m.Entries[index].Publish())
 	}
 	entry := m.Entries[selected.Index].Publish()
+	// An exchange can follow progress in the transcript; the roster keeps its status.
+	if entry.Kind == "progress" && len(entry.Values) > 1 {
+		entry.Values = entry.Values[:1]
+	}
 	if selected.Incoming {
 		entry.Values = CloneValues(entry.Values)
 		entry.Values[0].Owner = "/root"
