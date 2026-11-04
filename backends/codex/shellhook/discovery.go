@@ -6,21 +6,18 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-// Invocation retains the selected compaction prompt and only the host-resolved
-// sessionFlags hook layer. Copying merged hooks would duplicate other layers.
+// Invocation retains only the host-resolved sessionFlags hook layer.
+// Copying merged hooks would duplicate other layers.
 type Invocation struct {
-	CompactPrompt string                    `json:"-"`
-	PreToolUse    []jsontext.Value          `json:"PreToolUse"`
-	State         map[string]jsontext.Value `json:"state"`
+	PreToolUse []jsontext.Value          `json:"PreToolUse"`
+	State      map[string]jsontext.Value `json:"state"`
 }
 
 type hook struct {
@@ -71,51 +68,47 @@ func (h hook) shellConflict() (bool, error) {
 }
 
 // Discover starts no thread or turn. The process resolves caller configuration
-// and is joined before the caller starts its final, guarded invocation.
-func Discover(ctx context.Context, command *exec.Cmd) (Invocation, []string, error) {
-	return discover(ctx, command, true)
-}
-func DiscoverCompact(ctx context.Context, command *exec.Cmd) (Invocation, error) {
-	prior, _, err := discover(ctx, command, false)
-	return prior, err
-}
-func discover(ctx context.Context, command *exec.Cmd, guard bool) (prior Invocation, disabled []string, err error) {
+// and is joined before the final invocation. Hook layers are resolved only when
+// guards are enabled; effective configuration is always returned.
+func Discover(ctx context.Context, command *exec.Cmd, guards bool) (prior Invocation, disabled []string, configuration jsontext.Value, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cwd, err := filepath.Abs(command.Dir)
 	if err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
 	probe := exec.CommandContext(ctx, command.Path, command.Args[1:]...)
 	probe.Dir, probe.Env, probe.WaitDelay = cwd, command.Environ(), time.Second
 	client, err := appserver.Start(probe)
 	if err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
-	defer func() { err = errors.Join(err, client.Shutdown()) }()
+	defer func() {
+		err = errors.Join(err, client.Shutdown())
+		if diagnostic := client.Diagnostics.Snapshot(); err != nil && diagnostic != "" {
+			err = fmt.Errorf("%w\n%s", err, diagnostic)
+		}
+	}()
 	id, err := client.Initialize()
 	if err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
 	if _, err := reply(ctx, client, id); err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
 	if _, err := client.Send("initialized", nil, false); err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
-	id, err = client.Send("config/read", map[string]any{"cwd": cwd, "includeLayers": true}, true)
+	id, err = client.Send("config/read", map[string]any{"cwd": cwd, "includeLayers": guards}, true)
 	if err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
 	data, err := reply(ctx, client, id)
 	if err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
 	var config struct {
-		Config struct {
-			Prompt string `json:"compact_prompt"`
-			File   string `json:"experimental_compact_prompt_file"`
-		} `json:"config"`
+		Config jsontext.Value `json:"config"`
 		Layers *[]struct {
 			Name struct {
 				Type string `json:"type"`
@@ -126,74 +119,47 @@ func discover(ctx context.Context, command *exec.Cmd, guard bool) (prior Invocat
 		} `json:"layers"`
 	}
 	if err := json.Unmarshal(data, &config); err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
+	}
+	configuration = config.Config
+	if !guards {
+		return prior, nil, configuration, nil
 	}
 	if config.Layers == nil {
-		return prior, nil, errors.New("Codex did not return requested configuration layers")
+		return prior, nil, nil, errors.New("Codex did not return requested configuration layers")
 	}
 	for _, layer := range *config.Layers {
 		if layer.Name.Type == "sessionFlags" {
 			prior = layer.Config.Hooks
 		}
 	}
-	prior.CompactPrompt = strings.TrimSpace(config.Config.Prompt)
-	if prior.CompactPrompt == "" && config.Config.File != "" {
-		path := config.Config.File
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(cwd, path)
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return prior, nil, fmt.Errorf("read caller compaction prompt: %w", err)
-		}
-		prior.CompactPrompt = strings.TrimSpace(string(data))
-	}
-	if prior.CompactPrompt == "" {
-		prior.CompactPrompt = DefaultCompactPrompt
-	}
-	if !guard {
-		return prior, nil, nil
-	}
 	id, err = client.Send("hooks/list", map[string]any{"cwds": []string{cwd}}, true)
 	if err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
 	data, err = reply(ctx, client, id)
 	if err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
 	hooks, err := catalog(data, cwd)
 	if err != nil {
-		return prior, nil, err
+		return prior, nil, nil, err
 	}
 	for _, hook := range hooks {
 		matches, err := hook.shellConflict()
 		if err != nil {
-			return prior, nil, err
+			return prior, nil, nil, err
 		}
 		if !matches {
 			continue
 		}
 		if hook.Managed {
-			return prior, nil, fmt.Errorf("managed shell hook %q conflicts with the shell guard and cannot be replaced", hook.Key)
+			return prior, nil, nil, fmt.Errorf("managed shell hook %q conflicts with the shell guard and cannot be replaced", hook.Key)
 		}
 		disabled = append(disabled, hook.Key)
 	}
-	return prior, disabled, nil
+	return prior, disabled, configuration, nil
 }
-
-// Source: codex-rs/prompts/templates/compact/prompt.md:1:10@0df4aa677.
-// DefaultCompactPrompt is the stock plaintext handover prompt, pinned for launch.
-const DefaultCompactPrompt = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
-
-Include:
-- Current progress and key decisions made
-- Important context, constraints, or user preferences
-- What remains to be done (clear next steps)
-- Any critical data, examples, or references needed to continue
-
-Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
-`
 
 func reply(ctx context.Context, client *appserver.Client, id string) (jsontext.Value, error) {
 	for {

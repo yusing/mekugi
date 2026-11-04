@@ -13,13 +13,13 @@ func TestForeignWaitMixedSelectionAndPublication(t *testing.T) {
 			child(t, s, "root", "child", "/root/child", "ct")
 			caller, now := identity("root", "rt"), time.Now()
 			remote := RemoteTarget{Session: "foreign-root", Thread: "foreign", Task: "/root/worker", Turn: "ft", Generation: 1, Status: Working, HostRunning: true}
-			result, err := s.RegisterForeignWait(t.Context(), caller, []string{"child", "foreign"}, mode, nil, now, false, map[string]RemoteTarget{"foreign": remote})
+			result, err := s.RegisterForeignWait(t.Context(), caller, []string{"child", "foreign"}, mode, nil, now, false, map[string]RemoteTarget{"foreign": remote}, "")
 			must(t, err)
 			if result.State != "waiting" || len(result.Targets) != 2 || result.Targets[1] != "foreign" {
 				t.Fatalf("registration: %+v", result)
 			}
 			// Re-executing the enclosing call preserves its original subscription.
-			again, err := s.RegisterForeignWait(t.Context(), caller, []string{"foreign"}, mode, nil, now, false, map[string]RemoteTarget{"foreign": remote})
+			again, err := s.RegisterForeignWait(t.Context(), caller, []string{"foreign"}, mode, nil, now, false, map[string]RemoteTarget{"foreign": remote}, "")
 			must(t, err)
 			if len(again.Targets) != 2 {
 				t.Fatal("re-execution replaced selection")
@@ -71,7 +71,7 @@ func TestForeignMessageWakesBothModesThroughCompaction(t *testing.T) {
 				s, _ := fixture(t)
 				caller, now := identity("root", "rt"), time.Now()
 				remote := RemoteTarget{Session: "foreign-root", Thread: "foreign", Task: "/root/worker", Turn: "ft", Generation: 1, Status: Working, HostRunning: true}
-				_, err := s.RegisterForeignWait(t.Context(), caller, []string{"foreign"}, mode, nil, now, compact, map[string]RemoteTarget{"foreign": remote})
+				_, err := s.RegisterForeignWait(t.Context(), caller, []string{"foreign"}, mode, nil, now, compact, map[string]RemoteTarget{"foreign": remote}, "")
 				must(t, err)
 				stop(t, s, caller)
 				if compact {
@@ -108,7 +108,7 @@ func TestForeignWaitSupersessionAndMessageConflicts(t *testing.T) {
 	s, _ := fixture(t)
 	caller := identity("root", "rt")
 	remote := RemoteTarget{Session: "foreign-root", Thread: "foreign", Status: Working, HostRunning: true}
-	_, err := s.RegisterForeignWait(t.Context(), caller, []string{"foreign"}, WaitAny, nil, time.Now(), false, map[string]RemoteTarget{"foreign": remote})
+	_, err := s.RegisterForeignWait(t.Context(), caller, []string{"foreign"}, WaitAny, nil, time.Now(), false, map[string]RemoteTarget{"foreign": remote}, "")
 	must(t, err)
 	_, err = s.HumanInput(t.Context(), "root", "new-input")
 	must(t, err)

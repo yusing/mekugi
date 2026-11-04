@@ -19,15 +19,19 @@ import (
 // and retained snapshot projection. The admitted assignment, not message text,
 // selects the frozen preload; once compaction drops it, it cannot trigger rereads.
 func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata, prewarm bool) (jsontext.Value, map[string]bool, []activity.Supplement, error) {
-	if !bytes.Contains(request.Fields["input"], []byte("threadcontrol_")) {
+	if !bytes.Contains(request.Fields["input"], []byte("threadcontrol")) {
 		return nil, nil, nil, nil
 	}
 	if metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != thread {
 		return nil, nil, nil, errors.New("context preload requires matching runtime identity")
 	}
-	selections, err := p.ThreadControl.Coordination().ContextPreloads(thread, session)
-	if err != nil {
-		return nil, nil, nil, err
+	var selections []control.ContextPreload
+	if p.ThreadControl != nil {
+		var err error
+		selections, err = p.ThreadControl.Coordination().ContextPreloads(thread, session)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	var items []map[string]jsontext.Value
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
@@ -35,6 +39,14 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 	}
 	assignments := make(map[string]bool)
 	for _, item := range items {
+		reset, err := resetPreload(item)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if reset.Item != "" {
+			selections = append(selections, reset)
+			assignments[reset.Item] = true
+		}
 		if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "assistant" {
 			assignments[responses.StringField(item, "id")] = true
 			// Retained final envelopes use the same message-bound reload as
@@ -81,4 +93,27 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 		}
 	}
 	return pending, calls, supplements, nil
+}
+
+// Native checkpoint continuations retain the initiating selection separately
+// from conversation text. Reading it never creates another model request.
+func resetPreload(item map[string]jsontext.Value) (control.ContextPreload, error) {
+	if responses.StringField(item, "type") != "function_call_output" || responses.StringField(item, "namespace") != "threadcontrol" || responses.StringField(item, "call_id") != "" {
+		return control.ContextPreload{}, nil
+	}
+	name := responses.StringField(item, "name")
+	if name != "compact" && name != "wait_agent" {
+		return control.ContextPreload{}, nil
+	}
+	var result struct {
+		ID         string                    `json:"id"`
+		Compaction *control.CompactionResult `json:"compaction"`
+	}
+	if err := json.Unmarshal([]byte(responses.StringField(item, "output")), &result); err != nil {
+		return control.ContextPreload{}, err
+	}
+	if result.ID == "" || result.Compaction == nil || result.Compaction.State != "confirmed" || result.Compaction.Reload == "" {
+		return control.ContextPreload{}, nil
+	}
+	return control.ContextPreload{Item: control.MessageItemID(result.ID), Selection: result.Compaction.Reload}, nil
 }

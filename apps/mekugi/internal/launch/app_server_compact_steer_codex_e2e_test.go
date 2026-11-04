@@ -23,7 +23,7 @@ func TestAppServerCompactEnterInterruptsNativeCodex(t *testing.T) {
 			defer close(provider.gates[0])
 			environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 			terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-				cmd := exec.CommandContext(ctx, "codex", "app-server", featureFlag, "instant_interrupt", "-c", `model_providers.preview={name="compact-steer",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+				cmd := exec.CommandContext(ctx, "codex", "app-server", featureFlag, "instant_interrupt", "-c", `model_providers.preview={name="compact-steer",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.token_budget.enabled=true", "-c", "features.token_budget.use_history_notes_extension=false", "-c", `features.token_budget.guidance_message=""`, "-c", `features.token_budget.auto_compact_fallback_prompt=""`, "-c", "include_collaboration_mode_instructions=false")
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
 			}, "")
@@ -44,10 +44,6 @@ func TestAppServerCompactEnterInterruptsNativeCodex(t *testing.T) {
 				return strings.Contains(screen, "Working") && !strings.Contains(screen, "Sending…")
 			})
 			terminal.send("/compact\r")
-			compaction := next("compaction while initial inference remains blocked")
-			if strings.Contains(compaction, "Continue the task from where") {
-				t.Fatal("continuation overtook compaction")
-			}
 			continued := next("automatic task continuation")
 			if strings.Contains(continued, "Continue the task from where") {
 				t.Fatalf("fabricated continuation input: %s", continued)

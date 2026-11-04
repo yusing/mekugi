@@ -488,3 +488,27 @@ func TestLifecycleStopPausesAdmittedThread(t *testing.T) {
 		t.Fatalf("admitted work was not paused: %+v", member)
 	}
 }
+
+func TestNativeResetFeatureObservation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		driver, _, _, caller := reconciliationFixture(t)
+		if err := driver.Start(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		defer driver.Stop(t.Context())
+		for _, raw := range []string{
+			`{"threadId":"root","item":{"type":"contextCompaction","id":"failed","status":"failed"}}`,
+			`{"threadId":"foreign","item":{"type":"contextCompaction","id":"reset"}}`,
+			`{"threadId":"root","item":{"type":"contextCompaction","id":"reset","status":"completed"}}`,
+			`{"threadId":"root","item":{"type":"contextCompaction","id":"reset","status":"completed"}}`,
+		} {
+			if _, err := driver.Observe("item/completed", []byte(raw)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		synctest.Wait()
+		if use, _, _ := driver.control.FeatureUse(caller.Thread); use.Compactions != 1 {
+			t.Fatal(use)
+		}
+	})
+}

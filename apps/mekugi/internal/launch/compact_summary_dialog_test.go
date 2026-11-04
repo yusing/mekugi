@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -22,12 +23,11 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 	const summary = "## Current work\n\nKeep the **first** boundary's exact summary.\n\n```go\nreturn saved\n```\n"
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
-	owner := executionobservation.New(executionobservation.Config{Retained: p.retained})
-	first, err := owner.StoreCompact(t.Context(), "main", summary, `{"sources":[{"path":"never-read.txt"}]}`)
+	first, err := moduletest.StoreCompact(t.Context(), p.retained, "main", summary, `{"sources":[{"path":"never-read.txt"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := owner.StoreCompact(t.Context(), "main", "A different later summary.", "")
+	second, err := moduletest.StoreCompact(t.Context(), p.retained, "main", "A different later summary.", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 			t.Fatalf("summary has no clickable target: %q", feed.Lines)
 		})
 	}
-	foreign, err := owner.StoreCompact(t.Context(), "foreign", "foreign summary", "")
+	foreign, err := moduletest.StoreCompact(t.Context(), p.retained, "foreign", "foreign summary", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,8 +253,7 @@ func TestCompactionSummaryReadLeavesInputResponsiveAndRejectsStaleResult(t *test
 func TestCompactionReplayChargesRetainedSummaryBytes(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
-	owner := executionobservation.New(executionobservation.Config{Retained: p.retained})
-	ref, err := owner.StoreCompact(t.Context(), "main", strings.Repeat("x", 16<<20), "")
+	ref, err := moduletest.StoreCompact(t.Context(), p.retained, "main", strings.Repeat("x", 16<<20), "")
 	if err != nil {
 		t.Fatal(err)
 	}

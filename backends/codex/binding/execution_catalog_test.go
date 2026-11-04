@@ -145,3 +145,40 @@ func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
 		t.Fatalf("patch-only exec retained irrelevant frontend guide: %s", fields["input"])
 	}
 }
+
+func TestPrepareStockExecutionOmitsDirectReset(t *testing.T) {
+	for _, additional := range []bool{false, true} {
+		for _, namespace := range []bool{false, true} {
+			definitions := []any{map[string]any{"type": "function", "name": "new_context"}, map[string]any{"type": "function", "name": "get_context_remaining"}}
+			if namespace {
+				definitions = []any{map[string]any{"type": "namespace", "name": "functions", "tools": definitions}}
+			}
+			fields := map[string]jsonv1.RawMessage{"tools": responses.MustMarshalJSON(definitions)}
+			if additional {
+				fields = map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{map[string]any{"type": "additional_tools", "role": "developer", "tools": definitions}})}
+			}
+			if _, err := PrepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), FrontendGuidance{}, nil); err != nil {
+				t.Fatal(err)
+			}
+			wire := string(responses.MustMarshalJSON(fields))
+			if strings.Contains(wire, "new_context") || !strings.Contains(wire, "get_context_remaining") {
+				t.Fatal(wire)
+			}
+		}
+	}
+}
+
+func TestContextResetConfigPreservesCallerTools(t *testing.T) {
+	for _, test := range []struct{ config, override string }{
+		{`{}`, ""},
+		{`{"mcp_servers":{"other":{"disabled_tools":["thread_hint"]}}}`, ""},
+		{`{"mcp_servers":{"notes":{"disabled_tools":["thread_hint","blocked"]}}}`, ""},
+		{`{"mcp_servers":{"notes":{}}}`, `mcp_servers.notes.disabled_tools=["thread_hint"]`},
+		{`{"mcp_servers":{"notes":{"disabled_tools":["blocked"]}}}`, `mcp_servers.notes.disabled_tools=["blocked","thread_hint"]`},
+	} {
+		got, err := ContextResetConfig([]byte(test.config))
+		if err != nil || got != test.override {
+			t.Fatalf("%s: %q, %v", test.config, got, err)
+		}
+	}
+}

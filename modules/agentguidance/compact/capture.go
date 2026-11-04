@@ -10,10 +10,12 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 const SnapshotPrefix = "Reload snapshot: mread "
@@ -58,12 +60,18 @@ func Capture(ctx context.Context, request command.Request, changes ChangeReader)
 	if err != nil {
 		return command.Output{}, err
 	}
+	if len(data) > history.MaxRecordBytes {
+		return command.Output{}, errors.New("reload selection exceeds retained record capacity; select smaller ranges")
+	}
 	return command.Output{Delivery: capturedDelivery{string(data)}}, nil
 }
 
 // ReadSources acquires the shared selection in an admitted runtime environment.
 // The caller owns policy admission and durable context retention.
 func ReadSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader) (Snapshot, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	budget := &captureBudget{remaining: history.MaxRecordBytes, cancel: cancel}
 	sources, err := Sources(selection)
 	if err != nil {
 		return Snapshot{}, err
@@ -76,6 +84,7 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 	// Host-loaded instructions have no acquisition or result body.
 	results := make([]CapturedSource, len(sources))
 	var readers sync.WaitGroup
+	slots := make(chan struct{}, 8)
 	commandIndex := 0
 	for i, source := range sources {
 		if source.HostLoaded() {
@@ -83,15 +92,24 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 		}
 		script := commands[commandIndex]
 		commandIndex++
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			readers.Wait()
+			return Snapshot{}, errors.Join(budget.err, ctx.Err())
+		}
 		readers.Go(func() {
+			defer func() { <-slots }()
 			if source.Changes != nil {
 				results[i] = changes.read(ctx, source, directory, script)
+				budget.take(len(results[i].Stdout) + len(results[i].Stderr))
 				return
 			}
 			var stdout, stderr bytes.Buffer
 			cmd := exec.CommandContext(ctx, "bash", "-c", script)
 			cmd.Dir, cmd.Env = directory, environment
-			cmd.Stdout, cmd.Stderr = &stdout, &stderr
+			cmd.Stdout, cmd.Stderr = captureWriter{&stdout, budget}, captureWriter{&stderr, budget}
+			cmd.WaitDelay = time.Second
 			code := 0
 			if err := cmd.Run(); err != nil {
 				code = 1
@@ -106,10 +124,47 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 		})
 	}
 	readers.Wait()
+	if budget.err != nil {
+		return Snapshot{}, budget.err
+	}
 	if err := ctx.Err(); err != nil {
 		return Snapshot{}, err
 	}
 	return Snapshot{Selection: selection, Sources: results}, nil
+}
+
+type captureBudget struct {
+	mu        sync.Mutex
+	remaining int
+	err       error
+	cancel    context.CancelFunc
+}
+
+func (b *captureBudget) take(n int) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.err != nil {
+		return b.err
+	}
+	if n > b.remaining {
+		b.err = errors.New("reload selection exceeds retained record capacity; select smaller ranges")
+		b.cancel()
+		return b.err
+	}
+	b.remaining -= n
+	return nil
+}
+
+type captureWriter struct {
+	buffer *bytes.Buffer
+	budget *captureBudget
+}
+
+func (w captureWriter) Write(p []byte) (int, error) {
+	if err := w.budget.take(len(p)); err != nil {
+		return 0, err
+	}
+	return w.buffer.Write(p)
 }
 
 // ChangeReader borrows the admitted retained owner and caller scope. It never

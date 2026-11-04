@@ -55,8 +55,10 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 		} else {
 			workspace = p.observationDirectory(input.Metadata.Directories, input.Thread)
 		}
-		admitted := binding.EnvironmentContext{Session: input.Session, Thread: input.Thread, Workspace: workspace, Revision: p.Control.ContextRevision(input.Thread)}
+		admitted := binding.EnvironmentContext{Session: input.Session, Thread: input.Thread, Workspace: workspace}
 		if admitted.Session != "" && admitted.Thread != "" && !input.Metadata.ActivityIdentityInvalid && (input.Metadata.ThreadID == "" || input.Metadata.ThreadID == admitted.Thread) {
+			p.Control.ObserveCompactionContext(input.Thread, input.Metadata.ContextWindowID)
+			admitted.Revision = p.Control.ContextRevision(input.Thread)
 			err := requestexecution.ProjectInstructions(request, func(text binding.InstructionInput) (binding.InstructionUpdate, error) {
 				return p.Registry.Guidance.Environment(ctx, text, admitted)
 			})

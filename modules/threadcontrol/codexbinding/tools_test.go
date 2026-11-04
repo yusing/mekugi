@@ -321,3 +321,46 @@ func TestWaitAgentWaitsAfterImmediateTimeout(t *testing.T) {
 		t.Fatalf("replacement wait local stop = %+v, %v", stop, err)
 	}
 }
+
+func TestResetReloadAdmission(t *testing.T) {
+	for _, test := range []struct{ tool, args string }{
+		{"compact", `{"reload":{"sources":[{"path":"task.json","ranges":[[2]]}]}}`},
+		{"compact", `{"reload":{"sources":[{"unknown":"task.json"}]}}`},
+		{"wait_agent", `{"reload":{"sources":[]}}`},
+		{"wait_agent", `{"compact":true,"reload":null}`},
+	} {
+		t.Run(test.tool+test.args, func(t *testing.T) {
+			driver, _, _, caller := reconciliationFixture(t)
+			if _, err := driver.Call(t.Context(), caller, test.tool, []byte(test.args)); err == nil {
+				t.Fatal("invalid reload admitted")
+			}
+			member, _ := driver.control.Member(caller.Thread)
+			if member.Wait != nil {
+				t.Fatal("rejection changed wait")
+			}
+			if _, err := driver.Call(t.Context(), caller, "compact", []byte(`{"reload":{"sources":[{"path":"task.json","ranges":[[2,4]]}]}}`)); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	for _, claude := range []bool{false, true} {
+		for _, tool := range ToolCatalog(claude) {
+			if tool.Name != "compact" && tool.Name != "wait_agent" {
+				continue
+			}
+			raw, err := json.Marshal(tool.InputSchema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Properties map[string]jsontext.Value `json:"properties"`
+			}
+			if err := json.Unmarshal(raw, &schema); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := schema.Properties["reload"]; ok == claude {
+				t.Fatalf("claude=%t %s reload schema", claude, tool.Name)
+			}
+		}
+	}
+}

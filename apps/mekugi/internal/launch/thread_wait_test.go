@@ -633,7 +633,7 @@ func TestStandaloneCompactionOmitsAgentWaitPresentation(t *testing.T) {
 	}
 	caller := control.Identity{Thread: "main", Session: "session", Turn: "checkpoint-turn", Call: "compact", Item: "compact-exec"}
 	check(s.RequestStarted(ctx, caller, true))
-	_, err := s.RegisterCompaction(ctx, caller, nil, false, "", nil, *at, true)
+	_, err := s.RegisterCompaction(ctx, caller, nil, false, "", nil, *at, true, "")
 	check(err)
 	check(s.Execution(ctx, caller.Thread, caller.Turn, caller.Item, "", true))
 	_, err = s.ClaimLocalStop(ctx, caller.Thread, caller.Turn, caller.Item)

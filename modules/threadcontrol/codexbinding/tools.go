@@ -18,6 +18,13 @@ import (
 // ToolCatalog is shared by admitted backend transports. Calling conventions
 // and authenticated caller identity remain with each transport.
 func ToolCatalog(claudeCaller bool) []*mcp.Tool {
+	compactSchema := `{"type":"object","properties":{},"additionalProperties":false}`
+	waitReload := ""
+	if !claudeCaller {
+		reload := `"reload":{"description":"Selected file ranges, skills or captured changes to reload after reset. Select only needed JSON artifact fields using focused line ranges; omit when ordinary reads suffice.","allOf":[` + compact.SelectionSchema + `]}`
+		compactSchema = `{"type":"object","properties":{` + reload + `},"additionalProperties":false}`
+		waitReload = "," + reload
+	}
 	modelGuidance := "For a Claude delegate, use list_models and pass a returned claude:MODEL unchanged."
 	modelList := "List Claude's native advertised model IDs for spawn_agent without submitting model input. Account access is validated during execution. Use a returned claude: ID unchanged as spawn_agent.model with fork_turns=none."
 	if claudeCaller {
@@ -38,8 +45,8 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 		{"list_models", modelList, `{"type":"object","properties":{},"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations in the selected session.", `{"type":"object","properties":{"session_id":{"type":"string","description":"Exact ID of an active Mekugi session or thread. Omit for this session's admitted tree."},"path_prefix":{"type":"string","description":"Logical agent-name prefix, such as agent:main/worker. Omit to list the whole admitted tree."}},"additionalProperties":false}`},
 		{"inspect", "Inspect an admitted agent: applied model, reasoning effort, service tier, context usage/window and completed compactions. Includes idle or completed agents; uses retained observations without starting work; unavailable observations are null.", `{"type":"object","properties":{"target":{"type":"string","description":"Agent identifier: agent:main, a returned logical name, unambiguous relative task name, or thread ID. For another active Mekugi session, use an exact session/thread ID."}},"required":["target"],"additionalProperties":false}`},
-		{"compact", "Compact at a safe checkpoint when discarding obsolete context materially reduces what the remaining work must carry. A small completed step, preload or waiting transition alone is not a reason to compact. Automatically continue unfinished work. Call alone and let the enclosing execution finish. Context-usage reminders appear starting at 50%; they are not compaction triggers.", `{"type":"object","properties":{},"additionalProperties":false}`},
-		{"wait_agent", "Wait for an agent outcome or addressed message. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. New input supersedes the wait.", `{"type":"object","properties":{"target":{"description":"Descendant agent identifiers, or exact session/thread IDs in other active Mekugi sessions. Omit or use all to select all current descendants; otherwise provide a nonempty array.","oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"wait_mode":{"type":"string","enum":["any","all"],"description":"Omit or use any to return on the first selected completion or failure. Use all to wait until every selected agent settles. Addressed messages wake either mode."},"compact":{"type":"boolean","description":"Set true only when the compact tool's checkpoint criteria apply, not merely because you are waiting. Compacts before delivering this wait's outcome, including an already-ready outcome. The timeout starts at wait registration. Compaction failure is included in the eventual wait result; pending waits remain waiting."},"timeout_ms":{"type":"integer","description":"Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline. Omission waits indefinitely. Explicit values below the host minimum are clamped; values above its maximum are rejected."}},"additionalProperties":false}`},
+		{"compact", "Compact at a safe checkpoint when discarding obsolete context materially reduces what the remaining work must carry. A small completed step, preload or waiting transition alone is not a reason to compact. Automatically continue unfinished work. Call alone and let the enclosing execution finish. Context-usage reminders appear starting at 50%; they are not compaction triggers.", compactSchema},
+		{"wait_agent", "Wait for an agent outcome or addressed message. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. New input supersedes the wait.", `{"type":"object","properties":{"target":{"description":"Descendant agent identifiers, or exact session/thread IDs in other active Mekugi sessions. Omit or use all to select all current descendants; otherwise provide a nonempty array.","oneOf":[{"type":"string","enum":["all"]},{"type":"array","items":{"type":"string"},"minItems":1}]},"wait_mode":{"type":"string","enum":["any","all"],"description":"Omit or use any to return on the first selected completion or failure. Use all to wait until every selected agent settles. Addressed messages wake either mode."},"compact":{"type":"boolean","description":"Set true only when the compact tool's checkpoint criteria apply, not merely because you are waiting. Compacts before delivering this wait's outcome, including an already-ready outcome. The timeout starts at wait registration. Compaction failure is included in the eventual wait result; pending waits remain waiting."}` + waitReload + `,"timeout_ms":{"type":"integer","description":"Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline. Omission waits indefinitely. Explicit values below the host minimum are clamped; values above its maximum are rejected."}},"additionalProperties":false}`},
 		{"send_message", "Queue attributed input without starting idle work. Set btw=true to ask an independent side question and return its answer.", `{"type":"object","properties":{"target":{"type":"string","description":"Recipient's logical name, unambiguous relative task name, or thread ID. For another active Mekugi session, use its exact session/thread ID."},"message":{"type":"string","description":"Nonempty attributed message or independent side question."},"btw":{"type":"boolean","description":"Ask from the running or waiting target's context without changing its conversation or work. Defaults to false."}},"required":["target","message"],"additionalProperties":false}`},
 		{"followup_task", "Start or steer an admitted non-root agent with a new assignment.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."},"message":{"type":"string","description":"Nonempty follow-up assignment. Starts idle work, steers a running turn, or supersedes a pending wait."}},"required":["target","message"],"additionalProperties":false}`},
 		{"interrupt_agent", "Interrupt a non-root agent, retaining it for later work.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."}},"required":["target"],"additionalProperties":false}`},
@@ -97,9 +104,13 @@ func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, calle
 	case "inspect":
 		result, err = d.inspectAgent(ctx, caller, raw)
 	case "compact":
-		var args struct{}
+		var args struct {
+			Reload jsontext.Value `json:"reload"`
+		}
 		if err = json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err == nil {
-			result, err = d.control.RegisterCompaction(ctx, caller, nil, false, "", nil, time.Now(), true)
+			if err = resetSelection(args.Reload, strings.HasPrefix(metadata.Model, "claude:")); err == nil {
+				result, err = d.control.RegisterCompaction(ctx, caller, nil, false, "", nil, time.Now(), true, string(args.Reload))
+			}
 		}
 	case "wait_agent":
 		result, err = d.waitAgent(ctx, caller, raw)
@@ -162,6 +173,7 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 		Timeout *int64           `json:"timeout_ms"`
 		Mode    control.WaitMode `json:"wait_mode"`
 		Compact bool             `json:"compact"`
+		Reload  jsontext.Value   `json:"reload"`
 	}
 	if err := json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err != nil {
 		return nil, err
@@ -186,12 +198,18 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 	if err != nil {
 		return nil, err
 	}
+	if len(args.Reload) != 0 && !args.Compact {
+		return nil, errors.New("reload requires compact=true")
+	}
+	if err := resetSelection(args.Reload, strings.HasPrefix(member.Settings.Model, "claude:")); err != nil {
+		return nil, err
+	}
 	if err := d.Reconcile(ctx, caller.Thread); err != nil {
 		return nil, err
 	}
 	var result control.WaitResult
 	if wait := member.Wait; wait != nil && len(wait.Foreign) != 0 && (wait.ID == caller.Call || wait.State == "registered") && wait.Turn == caller.Turn && wait.Item == caller.Item && wait.Generation == member.Generation {
-		result, err = d.control.RegisterForeignWait(ctx, caller, wait.Targets, args.Mode, args.Timeout, time.Now(), args.Compact, wait.Foreign)
+		result, err = d.control.RegisterForeignWait(ctx, caller, wait.Targets, args.Mode, args.Timeout, time.Now(), args.Compact, wait.Foreign, string(args.Reload))
 	} else {
 		var peers map[string]control.Peer
 		peers, err = d.foreignSelection(caller, targets)
@@ -209,12 +227,12 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 			for id, peer := range peers {
 				foreign[id] = peer.Target
 			}
-			result, err = d.control.RegisterForeignWait(ctx, caller, targets, args.Mode, args.Timeout, time.Now(), args.Compact, foreign)
+			result, err = d.control.RegisterForeignWait(ctx, caller, targets, args.Mode, args.Timeout, time.Now(), args.Compact, foreign, string(args.Reload))
 			if err == nil {
 				d.watchForeign(caller, result.ID, peers)
 			}
 		} else if args.Compact {
-			result, err = d.control.RegisterCompaction(ctx, caller, targets, all, args.Mode, args.Timeout, time.Now(), false)
+			result, err = d.control.RegisterCompaction(ctx, caller, targets, all, args.Mode, args.Timeout, time.Now(), false, string(args.Reload))
 		} else {
 			result, err = d.control.RegisterWait(ctx, caller, targets, all, args.Mode, args.Timeout, time.Now())
 		}
@@ -363,4 +381,15 @@ func (d *Driver) listAgents(caller control.Identity, raw jsontext.Value) (any, e
 	}
 	// Status never exposes frozen settings, credentials or message payloads.
 	return d.control.Agents(caller.Thread, prefix)
+}
+
+func resetSelection(selection jsontext.Value, claude bool) error {
+	if len(selection) == 0 {
+		return nil
+	}
+	if claude {
+		return errors.New("reload selection is available only for Codex context reset")
+	}
+	_, err := compact.Sources(string(selection))
+	return err
 }

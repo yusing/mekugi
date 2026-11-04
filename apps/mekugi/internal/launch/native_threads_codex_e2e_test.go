@@ -45,7 +45,6 @@ type nativeThreadsProvider struct {
 	shellWait                               bool
 	compactWait                             bool
 	agentCompact                            bool
-	compactions                             int
 	earlyCompletion                         bool
 	preload                                 bool
 	attachChanges                           bool
@@ -66,7 +65,7 @@ type nativeThreadsProvider struct {
 func (p *nativeThreadsProvider) diagnostic() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return fmt.Sprintf("compactions=%d provider inference counts=%v; parent=%q child=%q wait_turn=%q; want initial parent=5 child=2, recovered parent=8 child=3", p.compactions, p.calls, p.parent, p.child, p.waitTurn)
+	return fmt.Sprintf("provider inference counts=%v; parent=%q child=%q wait_turn=%q; want initial parent=5 child=2, recovered parent=8 child=3", p.calls, p.parent, p.child, p.waitTurn)
 }
 
 func (p *nativeThreadsProvider) serveSocket(t *testing.T, w http.ResponseWriter, r *http.Request) {
@@ -163,6 +162,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		http.Error(w, "missing host identity", 500)
 		return
 	}
+	if metadata.RequestKind == "compaction" {
+		t.Error("summary-free reset requested provider inference")
+		http.Error(w, "unexpected summary inference", 500)
+		return
+	}
 	if p.temporaryUsage {
 		p.serveTemporaryUsage(t, w, metadata.ThreadID, body)
 		return
@@ -197,16 +201,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		fmt.Fprintf(w, `{"error":{"type":"usage_limit_reached","resets_at":%d}}`, time.Now().Add(3*time.Second).Unix())
 		return
 	}
-	compacting := bytes.Contains(body, []byte("At the end of your handover emit exactly one"))
-	if compacting && metadata.ThreadID == p.parent && (bytes.Contains(body, []byte("You are `/root`, the primary agent")) || bytes.Contains(body, []byte("addressed as to=/root")) || !bytes.Contains(body, []byte("Your logical task is agent:main."))) {
-		t.Error("compaction provider input omitted visible coordination identity or retained canonical generated guidance")
-	}
-	if compacting {
-		p.compactions++
-	}
-	if !compacting {
-		p.calls[metadata.ThreadID]++
-	}
+	p.calls[metadata.ThreadID]++
 	step, parent := p.calls[metadata.ThreadID], metadata.ThreadID == p.parent
 	grandchild := !parent && p.child != "" && metadata.ThreadID != p.child
 	if !parent && !grandchild {
@@ -297,8 +292,6 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			failure = "delegate full-history fork lost inherited assignment, own assignment or initial user context"
 		}
 		answer = "GRANDCHILD_CONTEXT_OK"
-	case compacting:
-		answer = "Waiting for worker to finish its assignment."
 	case parent && p.earlyCompletion && step == 4:
 		answer = "PARENT_PREMATURE_FINAL"
 	case parent && p.earlyCompletion && step == 5:
@@ -357,6 +350,12 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 	case parent && step == 5:
 		expectedUsers := p.users
+		if p.compactWait || p.agentCompact {
+			expectedUsers-- // Reset removes the original human prompt.
+			if strings.Contains(string(body), "PARENT_PRIVATE_SENTINEL") {
+				failure = "reset retained the original task"
+			}
+		}
 		if p.attachChanges {
 			expectedUsers++ // The shared reload consumer introduces captured context.
 		}
@@ -367,7 +366,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			if metadata.TurnID == p.waitTurn || users != p.users+1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
 				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, p.users+1, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
 			}
-		} else if metadata.TurnID == p.waitTurn || !p.compactWait && users != expectedUsers || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "agent:main/worker") || !strings.Contains(string(body), "wait_agent") {
+		} else if metadata.TurnID == p.waitTurn || users != expectedUsers || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "agent:main/worker") || !strings.Contains(string(body), "wait_agent") {
 			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, expectedUsers, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "agent:main/worker"), strings.Contains(string(body), "wait_agent"))
 		}
 		answer = "MANAGED_PARENT_RESUMED"
@@ -494,14 +493,14 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.stop()
 		return
 	}
-	if !compacting && parent && step == 3 {
+	if parent && step == 3 {
 		select {
 		case <-p.mailbox:
 		case <-r.Context().Done():
 			return
 		}
 	}
-	if !compacting && !parent && step == 2 {
+	if !parent && step == 2 {
 		close(p.mailbox)
 		select {
 		case <-p.waiting:
@@ -1090,9 +1089,13 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if scenario.compactWait && waitingObserved && !childReleased {
 			fixture.mu.Lock()
 			waitTurn := fixture.waitTurn
-			compactObserved = compactObserved || fixture.compactions > 0
 			fixture.mu.Unlock()
 			compactObserved = compactObserved || event.Frame.View.Interrupt.Turn != "" && event.Frame.View.Interrupt.Turn != waitTurn
+			if event.Frame.Main != nil {
+				for _, entry := range event.Frame.Main.Entries {
+					compactObserved = compactObserved || entry.Kind == "compaction"
+				}
+			}
 			if event.Frame.View.Status.Session.CompletionKnown {
 				t.Fatal("compaction ended the logical wait")
 			}

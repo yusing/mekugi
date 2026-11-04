@@ -75,8 +75,9 @@ and recoverable, and measures actual traffic without replaying effects.
 
 - **Context comes from current sources.** When context is rebuilt, after
   compaction or for a fresh delegate, the sources the work needs are read again.
-  A summary carries the task; it never stands in for source text, and neither do
-  agent-maintained notes or generated digests.
+  Codex resets without a generated summary. Optional temporary JSON task state
+  supports focused recovery, never automatic whole-artifact reload; neither task
+  state nor generated digests stand in for source text.
 - **Reduce retained output by reference.** Incomplete retained reads have an exact
   continuation, and repeated text is replaced only by a reference to text still
   visible to the model. Output is not filtered by guessed relevance. Explicit
@@ -99,8 +100,8 @@ and recoverable, and measures actual traffic without replaying effects.
   and similar structure are authored within a reply the model already makes, with
   no separate summarization, selection, or repair request.
 - **Agents choose their checkpoints.** Agents compact at points they judge safe,
-  informed by measured usage. Mekugi adds no automatic compaction threshold and
-  leaves provider and host compaction policy intact.
+  informed by measured usage. Codex native token-budget reset also handles full
+  windows using host-owned thresholds. Claude retains its native compaction policy.
 - **Model-facing text stays minimal.** Guidance, tool descriptions, and results
   preserve meaning in the fewest tokens, without decoration.
 
@@ -117,8 +118,8 @@ and recoverable, and measures actual traffic without replaying effects.
   process, or deny a command instead of discovering the result after the turn.
 - **Keep the why beside the what.** Operations are grouped under the reasoning
   that preceded them, agent start rows carry their assignments, child replies
-  keep supporting details behind their summary, compaction summaries stay
-  readable, and incomplete edit captures keep their reasons.
+  keep supporting details behind their summary, historical compaction summaries
+  stay readable, and incomplete edit captures keep their reasons.
 - **Label uncertainty.** Provisional previews, unknown counts, missing evidence,
   and lower bounds are marked as such rather than shown as confirmed results.
 - **Watching costs the model nothing.** Display-only activity, previews, and UI
@@ -146,10 +147,12 @@ Feature specifications own detailed current behavior and acceptance. The
 ### Keep a long session grounded
 
 An agent works through a long task while measured usage notices report how full
-its context is. At a safe checkpoint, or when the window fills, compaction writes
-a handover summary and selects the files, skills, and captured changes the
-unfinished work needs. Mekugi reads those sources again before the conversation
-continues, so the agent resumes from current text rather than its own summary.
+its context is. At a safe checkpoint, or when the window fills, Codex resets its
+context without a summary-generation request. An agent can select files, skills
+and captured changes with its checkpoint, or recover needed facts through ordinary
+reads after reset. Optional temporary JSON task state is read selectively and kept
+focused on remaining work. Mekugi supplies selected sources before continuation;
+Claude delegates retain their native compaction behavior.
 
 ### Delegate with prepared context
 
@@ -234,8 +237,8 @@ under `docs/guide/`.
 
 These exclusions describe the supported product. They do not establish that every
 alternative was rejected by the user. Explicit scope constraints above remain
-binding. Session-family recall and notes are planned work, distinct from
-cross-session memory.
+binding. Dedicated session-family recall and cross-session memory remain outside
+the current implementation.
 
 Mekugi does not:
 

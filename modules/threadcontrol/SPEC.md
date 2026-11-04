@@ -99,12 +99,16 @@ native request metadata remains unchanged on the provider wire.
   distinct from a measured zero. Inspection uses live session facts or retained
   observations without starting work or restoring an inactive runtime.
 - `compact` schedules an authenticated self-directed context checkpoint and then
-  continues unfinished work once. Context-usage reminders appear starting at 50%;
+  continues unfinished work once. Codex accepts optional `reload:{"sources":[...]}`
+  using [selected-source recovery](../agentguidance/SPEC.md#compaction-context).
+  Claude retains native compaction without this argument. Context-usage reminders appear starting at 50%;
   agents choose safe checkpoints where discarding obsolete context materially
   reduces what remaining work must carry. Small steps, preloads and waiting
   transitions alone do not call for compaction; notices are not automatic triggers.
 - `wait_agent` accepts `target?: string[] | "all"`, `wait_mode?: "any" | "all"`,
-  `timeout_ms?: integer`, and `compact?: boolean`. Omitted target means `"all"`;
+  `timeout_ms?: integer`, and `compact?: boolean`. Codex also accepts `reload`
+  when `compact:true`; invalid selections reject before wait registration.
+  Omitted target means `"all"`;
   omitted mode means `"any"`; omitted compaction means false.
 
 Follow-up acknowledgements include the target's current context and compaction
@@ -560,10 +564,11 @@ The service counts model-facing uses per thread for the
 [session Features view](../../apps/mekugi/internal/sessionpresentation/SPEC.md#session-metrics).
 Totals and their subsets:
 
-- **Compactions:** every retained compaction summary, whoever initiated it; newly
-  registered `compact` or `wait_agent` compactions; summaries with nonempty reload
-  sources. Self-initiated requests count at registration, so one whose summary is
-  never retained can exceed the total.
+- **Compactions:** completed live native context resets, whoever initiated them;
+  newly registered `compact` or `wait_agent` compactions; those registrations with
+  nonempty acquired-source selections. Self-initiated requests count at registration,
+  so requests whose reset fails can exceed the completed total. Empty and host-loaded
+  instruction-only selections count no preload.
 - **Spawns:** admitted children; those with nonempty preload sources; spawn calls
   whose preload selection is rejected.
 - **Delegate finals:** completed final answers; those selecting captured changes.

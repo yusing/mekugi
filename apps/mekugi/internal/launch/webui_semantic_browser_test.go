@@ -9,7 +9,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"image"
 	"image/color"
 	"image/png"
@@ -26,8 +25,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/connector"
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
@@ -983,8 +984,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if err := os.MkdirAll(sessions, 0700); err != nil {
 		t.Fatal(err)
 	}
-	compactOwner := executionobservation.New(executionobservation.Config{Retained: changes.Scope{Store: retained}})
-	compactRef, err := compactOwner.StoreCompact(ctx, "recorded", "Browser retained compaction summary.", "")
+	compactRef, err := moduletest.StoreCompact(ctx, changes.Scope{Store: retained}, "recorded", "Browser retained compaction summary.", "")
 	if err != nil {
 		t.Fatal(err)
 	}

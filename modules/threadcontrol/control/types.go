@@ -186,8 +186,9 @@ type Receipt struct {
 }
 
 type CompactionResult struct {
-	State string `json:"state"`
-	Error string `json:"error,omitempty"`
+	Reload string `json:"reload,omitempty"`
+	State  string `json:"state"`
+	Error  string `json:"error,omitempty"`
 }
 
 type WaitResult struct {

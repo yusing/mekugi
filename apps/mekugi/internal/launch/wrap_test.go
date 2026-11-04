@@ -51,10 +51,10 @@ func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
 	// Codex folds feature toggles after -c overrides, with disables last.
 	// Source: codex-rs/cli/src/main.rs FeatureToggles::to_overrides.
 	for _, prefix := range [][]string{nil, {"exec"}, {"app-server"}, {"resume"}} {
-		input := append(slices.Clone(prefix), "--disable", "code_mode", "--disable=code_mode_only", "--disable", "unrelated", "--", "--disable=code_mode")
+		input := append(slices.Clone(prefix), "--disable", "code_mode", "--disable=code_mode_only", "--disable", "token_budget", "--disable", "unrelated", "--", "--disable=code_mode")
 		original := slices.Clone(input)
 		got := codexArgs("http://localhost/v1", input, false, true)
-		want := append(slices.Clone(prefix), "--enable", "code_mode", "--enable=code_mode_only", "--disable", "unrelated")
+		want := append(slices.Clone(prefix), "--enable", "code_mode", "--enable=code_mode_only", "--enable", "token_budget", "--disable", "unrelated")
 		if !slices.Equal(got[:len(want)], want) || !slices.Equal(got[len(got)-2:], []string{"--", "--disable=code_mode"}) || !slices.Equal(input, original) {
 			t.Fatalf("execution overrides changed unrelated flags, prompt or caller input: %q", got)
 		}
@@ -95,7 +95,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		disabled := map[string]bool{}
 		for i := index; i < delimiter; i += 2 {
 			if args[i] == "--disable" {
-				if args[i+1] != "goals" && args[i+1] != "sleep_tool" {
+				if args[i+1] != "goals" && args[i+1] != "sleep_tool" && args[i+1] != "retain_client_tool_outputs" {
 					t.Fatalf("unexpected disabled feature: %q", args)
 				}
 				disabled[args[i+1]] = true
@@ -106,7 +106,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 			}
 			settings = append(settings, args[i+1])
 		}
-		if !disabled["goals"] || !disabled["sleep_tool"] {
+		if !disabled["goals"] || !disabled["sleep_tool"] || !disabled["retain_client_tool_outputs"] {
 			t.Fatalf("host feature toggles not disabled: %q", args)
 		}
 		if _, err := toml.Decode(strings.Join(settings, "\n"), &config); err != nil {

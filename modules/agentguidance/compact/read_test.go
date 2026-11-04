@@ -3,12 +3,35 @@ package compact
 import (
 	json "encoding/json/v2"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestReloadRejectsOversizedCapture(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oversized.json")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(history.MaxRecordBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	selection, err := json.Marshal(map[string]any{"sources": []Source{{Path: path}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}}, ChangeReader{})
+	if err == nil || !strings.Contains(err.Error(), "select smaller ranges") || output.Delivery != nil {
+		t.Fatalf("oversized selection published partial context: %v", err)
+	}
+}
 
 func TestReloadSelectionHasNoSourceCountLimit(t *testing.T) {
 	sources := make([]Source, 40)

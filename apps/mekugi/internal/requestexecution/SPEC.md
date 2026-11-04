@@ -17,26 +17,18 @@ without retaining a second transcript, agent registry or accounting ledger.
 
 Preparation applies authenticated guidance around execution admission and file
 attachment projection. Non-generating WebSocket prewarm cannot initialize live
-execution, retained history or agent lifecycle. Compaction keeps its existing
-request-wide projections. The executor replaces
-the compaction operation with one ordinary provider turn using the selected prompt
-plus reload instructions. It collects the completed assistant summary, separates
-reload metadata and returns a native compaction reference only after publication.
-While collecting a stream, provider activity reaches the host as content-free
-progress, preserving idle detection without exposing summary or reload metadata.
-[Agent guidance](../../../../modules/agentguidance/SPEC.md#compaction-context) owns
-the summary and source-snapshot contract. Provider usage and terminal failures
-retain ordinary accounting and delivery paths.
+execution, retained history or agent lifecycle. Codex compaction uses native
+summary-free reset without a provider request. [Agent guidance](../../../../modules/agentguidance/SPEC.md#compaction-context)
+owns selected-source recovery and historical summary compatibility. The executor
+neither generates nor publishes compaction summaries.
 
-Temporary `/btw` answers and compaction summaries use low reasoning when the
-selected model advertises it. Explicit lower efforts remain lower; an unset
-effort uses the catalog's advertised default to decide whether to reduce it.
-Unknown defaults and models without an advertised low choice stay unchanged.
-This request-local policy preserves Main, Side and One-off settings.
-On OpenAI models advertising reasoning updates, preparation appends a low-effort
-configuration update while retaining the request baseline and earlier history.
-Compaction retains tool definitions and tool-loading history and disables tool
-execution with the request's tool choice.
+Temporary `/btw` answers use low reasoning when the selected model advertises it.
+Explicit lower efforts remain lower; an unset effort uses the catalog's advertised
+default to decide whether to reduce it. Unknown defaults and models without an
+advertised low choice stay unchanged. This request-local policy preserves Main,
+Side and One-off settings. On OpenAI models advertising reasoning updates,
+preparation appends a low-effort configuration update while retaining the request
+baseline and earlier history.
 
 Codex-owned automatic approval reviewers retain their native instructions, tools
 and output schema. They use ordinary provider delivery and accounting without

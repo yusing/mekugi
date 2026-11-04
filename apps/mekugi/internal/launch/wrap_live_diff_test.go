@@ -21,7 +21,6 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/modules/agentguidance"
 )
 
 func TestAutoWrapProcess(t *testing.T) {
@@ -97,7 +96,7 @@ func TestAutoWrapProcess(t *testing.T) {
 	}
 	if len(os.Args) > 4 && os.Args[4] == "app-server" {
 		scenario := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS_SCENARIO")
-		headlessHost := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1" && strings.Contains(strings.Join(os.Args, "\n"), "compact_prompt=")
+		headlessHost := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1" && strings.Contains(strings.Join(os.Args, "\n"), "features.token_budget.enabled=true")
 		if headlessHost {
 			if scenario == "startup" {
 				fmt.Fprintln(os.Stderr, "fixture: invalid model configuration")
@@ -181,17 +180,10 @@ func TestAutoWrapProcess(t *testing.T) {
 				if trust := os.Getenv("MEKUGI_AUTO_WRAP_TRUST"); trust != "" && request.Params.Config["bypass_hook_trust"] != (trust == "true") {
 					t.Fatal("thread/start omitted explicit hook trust")
 				}
-				foundPrompt := false
 				for _, arg := range os.Args {
-					if strings.HasPrefix(arg, "experimental_compact_prompt_file=") {
-						t.Fatalf("launch generated a compaction prompt file: %s", arg)
+					if strings.HasPrefix(arg, "experimental_compact_prompt_file=") || strings.HasPrefix(arg, "compact_prompt=") {
+						t.Fatalf("launch injected a compaction prompt: %s", arg)
 					}
-					if strings.HasPrefix(arg, "compact_prompt=") {
-						foundPrompt = arg == fmt.Sprintf("compact_prompt=%q", "Fixture caller handover."+agentguidance.CompactInstructions)
-					}
-				}
-				if !foundPrompt {
-					t.Fatal("launch did not append reload instructions through compact_prompt")
 				}
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"thread":{"id":"auto-wrap","cwd":%q},"model":"test-model"}}`+"\n", request.ID, os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE"))
 				if os.Getenv("MEKUGI_AUTO_WRAP_FAILURE") == "1" {

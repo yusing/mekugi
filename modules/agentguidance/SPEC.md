@@ -3,8 +3,8 @@
 ## Required outcomes
 
 Continuity uses selected current sources rather than summaries as source substitutes.
-Retain context-usage notices and known-source preload for delegates. Selective
-session-family recall remains planned and provider-independent.
+Retain context-usage notices and known-source preload for delegates. Codex resets
+context without a generated summary; Claude retains its native compaction behavior.
 
 Prompt projection, source-selection syntax, reload orchestration, snapshot fields and
 exact notice thresholds/reset rules below are current design.
@@ -168,67 +168,68 @@ Claude uses post-tool-batch context. Prewarm, approval, compaction, already-star
 
 ## Compaction context
 
-Compaction makes one ordinary turn on the selected provider using the current
-conversation, the original compaction prompt and Mekugi's reload instructions.
-Caller inline prompts precede prompt-file contents; otherwise the stock prompt
-applies. Provider identity and authentication stay unchanged. The handover summarizes the task;
-reload metadata selects file paths with optional line ranges, skills, or explicit
-`mchanges` IDs/ranges. A `changes` source supplies an array such as
-`["amber1..3", "birch2"]`, exclusive with file/skill fields, and captures one
-complete composed diff using retained evidence in the admitted caller namespace.
-Unavailable IDs and incomplete chains retain available output and explicit diagnostics;
-selection never includes an automatic inventory or reads the live workspace.
-Selection has no fixed source-count limit.
+Codex uses its native token-budget reset for manual and automatic compaction.
+Reset makes no summary-generation request and does not inject a compaction prompt,
+handover, notes, or recovery artifact. Native thresholds remain host-owned. Mekugi
+leaves the history/notes extension disabled, disables automatic `notes.thread_hint`
+on configured notes servers while preserving other tools and restrictions, and
+excludes client tool outputs from cross-reset retention. Self-directed checkpoints
+use Thread Control rather than the native direct-reset tool. Claude compaction is
+unchanged.
+
+An agent can select optional reload sources in `compact` or `wait_agent` with
+`compact:true`, using a structured JSON selection in the initiating call. The
+selection is retained with the checkpoint and acquired after successful reset,
+before the next provider inference. There is no separate selection request or
+response-schema change. Without a selection, ordinary model-directed reads recover
+needed context. Missing recovery state requires no bootstrap or completion gate.
+
+An optional temporary JSON artifact can hold reusable task state. It is a source
+selected by the agent, never an automatic whole-artifact reload. Select only fields
+needed for the next operation, using focused line ranges or ordinary JSON extraction;
+remove obsolete facts instead of accumulating task history.
+
+Sources are file paths with optional inclusive line ranges, skills with optional
+native paths, or explicit `mchanges` IDs/ranges. A `changes` source supplies an
+array such as `["amber1..3", "birch2"]`, exclusive with file/skill fields, and captures
+the composed retained diff in the admitted caller namespace. Unavailable IDs and
+incomplete chains retain available output and explicit diagnostics. Selection never
+performs an automatic inventory. An empty selection is valid. There is no fixed
+source-count limit; oversized captures fail explicitly and require smaller selections.
+These storage bounds do not establish a complete-request token-fit guarantee.
+
 Fresh delegate [context preload](../threadcontrol/SPEC.md#prepared-children-and-guidance)
-uses this same selection, source capture and retained-result delivery. Its reads
-run in the selected child's workspace with the child's native execution authority.
-Codex supplies `AGENTS.md`; automatic reload excludes it at every directory level,
-including explicit selections and previously captured results. Selection includes
-known supporting implementations, callers, tests, fixtures and procedure/skill
-references needed for the next unfinished operation, rather than only entry points.
-File contents and skill instructions come from fresh reads, not generated summary
-text. Applicable guidance references can remain selected when the task is complete
-or waiting for input. Task-source selection remains focused
-on unfinished work. An empty selection is valid only when neither kind of context
-is needed.
+uses the same selection and retained-result delivery. Reads use the continuing
+thread's or selected child's workspace, permissions and approvals. Codex supplies
+`AGENTS.md`; automatic acquisition excludes it at every directory level, including
+explicit selections and previously captured results. Select needed implementations,
+callers, tests, fixtures and guidance for the next unfinished operation.
 
-Mekugi retains the model's summary and separate reload selection before returning
-its native compaction reference. Before provider continuation, independent selected
-readers run concurrently as stock Codex tools in the continuing thread with its exact
-current permissions. A denied or failed reader does not prevent the others from completing.
-Idle compaction waits for the next generating turn; automatic compaction uses the
-active turn. Prewarm and execution-free requests never start reads.
+Independent readers run concurrently as stock tools. A denied or failed source does
+not prevent the others from completing. Prewarm and execution-free requests never
+start reads. The authenticated reload frontend captures selected bodies through
+retained output delivery; stock output windows carry only the reference. Provider
+input expands it into a complete result per source and omits synthetic acquisition
+calls and selection metadata. One introduction identifies the bodies as reusable
+read context. Acquisition may yield internally; inference waits for terminal
+acquisition and never receives accumulated partial results. Publication failures
+remain explicit. Source rows participate in ordinary output deduplication.
 
-The reference expands to the exact assistant summary. The authenticated reload
-frontend captures complete selected bodies under the stock process's permissions
-and publishes them through retained output delivery before returning a reference.
-Provider input expands that reference into one complete result per source, omitting
-synthetic reader and continuation calls. One introduction identifies the supplied
-bodies as reusable read context. Stock output windows carry only the reference,
-never the file bodies. Acquisition can yield internally; provider inference waits
-for terminal acquisition and never receives accumulated partial results.
-Denied reads and publication failures remain explicit.
-Reload text uses ordinary unnumbered
-source rows and participates in output deduplication before its context framing.
-Native history retains the complete calls
-and results; ordinary tool history is unchanged.
-Reload orchestration emits typed file, skill and captured-change intents from retained selection metadata.
-The native acquisition command retains approval and execution ownership. Captured
-per-source outcomes, rather than selection or aggregate success, determine successful loads.
-Completed reads survive resume and fork without another acquisition. A fork made
-before acquisition reads in that branch when it continues. Cancellation and approval
-remain Codex-owned. Internal continuations finish the current acquisition without
-model involvement or retained-program compatibility paths; readers are never silently replayed.
+Native history retains the complete calls and results. Completed reads survive
+resume and fork without reacquisition; a branch created before acquisition reads
+when it continues. Cancellation and approvals remain Codex-owned. No reader is
+silently replayed. Historical Mekugi summary records remain readable for saved
+sessions and summary dialogs, with their original authorization and source results;
+new resets do not create them. Missing, corrupt or unauthorized historical references
+fail before provider access.
 
-Session history owns publication, retention and inherited authorization; this
-module owns the summary and selection codec. Missing, corrupt or unauthorized
-references fail before provider access. Selection metadata never enters the summary
-or provider conversation. Failed generation cannot install partial summaries;
-provider usage and failures retain normal accounting.
+Mekugi no longer discovers, loads or injects compaction prompts. Stock Codex may
+still read a caller-configured `experimental_compact_prompt_file` during its own
+startup, even though native reset does not use it.
 
 ## Lifecycle, Codex connection, records, and failure
 
-The module has no background resources. Compaction summaries use its contributed
+The module has no background resources. Historical summaries retain their contributed
 record kind in the shared retained-session store; captured sources use output
 recovery records. Its binding
 registers early omission filtering, execution-only conflict projection, late
@@ -263,8 +264,8 @@ command execution remains available. Provider compatibility prose belongs to its
 6. With `skills-mgr` in PATH, Codex launches disable stock skill-catalog instructions
    after caller overrides and selected skill wrappers reach the provider as `<skill name="…"/>`.
    Without `skills-mgr`, neither projection occurs.
-7. Compaction preserves prompt precedence and emits one ordinary provider request.
-   Built-in OpenAI manual/automatic continuation, fresh resume and fork recover
-   the exact summary and selected native reader results, without selection metadata.
-   Denied reads stay denied; failed publication exposes no reference. Recovery
-   survives process restart and rejects missing or foreign records.
+7. Codex manual and automatic resets make no summary inference. Optional selected
+   sources reach the first continuation without unrelated artifact contents or
+   selection metadata; tool schemas and cache identity remain stable. Completed
+   reads survive fresh resume and fork. Denied reads stay denied; failed publication
+   exposes no reference. Historical summary recovery rejects missing or foreign records.

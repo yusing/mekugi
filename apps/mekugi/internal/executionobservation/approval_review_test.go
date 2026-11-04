@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -36,7 +38,7 @@ func TestApprovalReviewRestoresCompactionAtProvider(t *testing.T) {
 				t.Fatal(err)
 			}
 			proxy.ThreadControl = driver
-			ref, err := proxy.StoreCompact(ctx, "parent", "exact retained handover", `{"sources":[{"path":"must-not-be-read.txt"}]}`)
+			ref, err := moduletest.StoreCompact(ctx, proxy.Retained, "parent", "exact retained handover", `{"sources":[{"path":"must-not-be-read.txt"}]}`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -217,7 +219,7 @@ func TestApprovalReviewCompactionAuthority(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			ref, err := proxy.StoreCompact(t.Context(), "parent", "retained summary", "")
+			ref, err := moduletest.StoreCompact(t.Context(), proxy.Retained, "parent", "retained summary", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -244,7 +246,7 @@ func TestApprovalReviewCompactionAuthority(t *testing.T) {
 						source = "unrelated"
 						metadata["parent_thread_id"] = source
 					}
-					ref, err = proxy.StoreCompact(t.Context(), source, "retained summary", "")
+					ref, err = moduletest.StoreCompact(t.Context(), proxy.Retained, source, "retained summary", "")
 					if err != nil {
 						t.Fatal(err)
 					}

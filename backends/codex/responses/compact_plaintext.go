@@ -1,39 +1,8 @@
 package responses
 
 import (
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"errors"
-	"slices"
-	"strings"
-
-	protocol "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
-
-// PrepareCompactTurn sends the selected summary prompt as an ordinary provider
-// turn. Response collection and reload metadata belong to the application.
-func PrepareCompactTurn(request *Request, prompt string) error {
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return errors.New("compaction requires a summary prompt")
-	}
-	var items []jsontext.Value
-	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
-		return err
-	}
-	items = slices.DeleteFunc(items, func(raw jsontext.Value) bool {
-		var item struct {
-			Type string `json:"type"`
-		}
-		_ = json.Unmarshal(raw, &item)
-		return item.Type == "compaction_trigger"
-	})
-	items = append(items, protocol.MustMarshalJSON(map[string]any{"type": "message", "role": "user", "content": []map[string]string{{"type": "input_text", "text": prompt}}}))
-	request.Fields["input"] = protocol.MustMarshalJSON(items)
-	// Disable execution without rewriting the cached tool and instruction prefix.
-	request.Fields["tool_choice"] = jsontext.Value(`"none"`)
-	return nil
-}
 
 func CompactReadProgram(command string) string {
 	data, _ := json.Marshal(command)

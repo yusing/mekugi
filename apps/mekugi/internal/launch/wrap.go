@@ -444,10 +444,10 @@ func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth
 	for i := 0; i < len(args) && args[i] != "--"; i++ {
 		switch args[i] {
 		case "--disable":
-			if i+1 < len(args) && (args[i+1] == "code_mode" || args[i+1] == "code_mode_only") {
+			if i+1 < len(args) && (args[i+1] == "code_mode" || args[i+1] == "code_mode_only" || args[i+1] == "token_budget") {
 				args[i] = "--enable"
 			}
-		case "--disable=code_mode", "--disable=code_mode_only":
+		case "--disable=code_mode", "--disable=code_mode_only", "--disable=token_budget":
 			args[i] = strings.Replace(args[i], "--disable=", "--enable=", 1)
 		}
 	}
@@ -461,6 +461,13 @@ func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth
 	args = slices.Insert(args, index, "-c", "features.code_mode=true", "-c", "features.code_mode_only=true")
 	index += 4
 	overrides := []string{
+		"-c", "features.token_budget.enabled=true",
+		"-c", "features.token_budget.use_history_notes_extension=false",
+		"--disable", "retain_client_tool_outputs",
+		"-c", "features.retain_client_tool_outputs=false",
+		"-c", `features.token_budget.guidance_message=""`,
+		"-c", `features.token_budget.auto_compact_fallback_prompt=""`,
+		"-c", `features.token_budget.reminder_message_template="Context remaining: {n_remaining} tokens."`,
 		"--disable", "goals",
 		"-c", "features.goals=false",
 		"--disable", "sleep_tool",

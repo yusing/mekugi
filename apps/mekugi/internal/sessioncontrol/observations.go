@@ -26,8 +26,9 @@ type Observations struct {
 	contextCompaction map[string]string
 }
 
-// ObserveCompactionContext consumes the latest retained, validated compaction
-// reference in native continuation history. It cannot race host event delivery.
+// ObserveCompactionContext consumes the request's native context-window identity,
+// or a historical summary reference when that identity is unavailable. Refresh
+// precedes inference independently of queued presentation events.
 func (o *Observations) ObserveCompactionContext(thread, reference string) {
 	if o == nil || thread == "" || reference == "" {
 		return

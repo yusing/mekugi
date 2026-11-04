@@ -7,6 +7,8 @@ import (
 	"maps"
 	"testing"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -15,12 +17,13 @@ import (
 )
 
 func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
-	for _, completion := range []bool{false, true} {
-		t.Run(map[bool]string{false: "assignment", true: "completion"}[completion], func(t *testing.T) { testContextReload(t, completion) })
+	for _, kind := range []string{"assignment", "completion", "reset"} {
+		t.Run(kind, func(t *testing.T) { testContextReload(t, kind) })
 	}
 }
 
-func testContextReload(t *testing.T, completion bool) {
+func testContextReload(t *testing.T, kind string) {
+	completion := kind == "completion"
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
 	session, err := p.Retained.Store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
@@ -48,7 +51,7 @@ func testContextReload(t *testing.T, completion bool) {
 	}
 	defer controlSession.Close()
 	preload := control.ContextPreload{Item: itemID, Selection: selection}
-	if completion {
+	if completion || kind == "reset" {
 		preload = control.ContextPreload{}
 	}
 	if err := service.AdmitRoot(t.Context(), controlSession, &control.Member{Thread: "root", Session: "routing", Task: "/root", AudienceAdmitted: true, Preload: preload}); err != nil {
@@ -63,6 +66,10 @@ func testContextReload(t *testing.T, completion bool) {
 		assignment["phase"] = mustTestJSON(t, "commentary")
 		assignment["internal_chat_message_metadata_passthrough"] = mustTestJSON(t, map[string]any{"content_item_kinds": []string{"multi_agent.inter_agent_completion_message"}})
 		assignment["content"] = mustTestJSON(t, []map[string]string{{"type": "output_text", "text": "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/child\nOutcome: completed\nSource generation: 1\nSource turn: child-turn\nPayload:\nfinished\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}})
+	}
+	if kind == "reset" {
+		wake := control.NativeInput{ID: "parent:spawn:assignment", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "confirmed", Reload: selection}}}
+		assignment = map[string]jsontext.Value{"type": mustTestJSON(t, "function_call_output"), "namespace": mustTestJSON(t, "threadcontrol"), "name": mustTestJSON(t, "compact"), "output": mustTestJSON(t, wake.RetainedWaitOutput())}
 	}
 	meta := codexresponses.TurnMetadata{ThreadID: "root", RequestKind: "turn"}
 	var reader map[string]jsontext.Value
@@ -194,7 +201,7 @@ func testContextReload(t *testing.T, completion bool) {
 			}
 		}
 		for range 2 {
-			ref, err := p.StoreCompact(t.Context(), "root", "completed handoffs retained by summary", "")
+			ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "completed handoffs retained by summary", "")
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -42,7 +42,8 @@ func frontendGuide(commands []command.Spec, sections map[string]string, childRep
 	var output, workflow strings.Builder
 	base, childRule, _ := strings.Cut(workflowPreamble, "<!-- child-reply-summary -->")
 	workflow.WriteString(workflowStart + "\n")
-	workflow.WriteString(base)
+	common, summaryRecovery, _ := strings.Cut(base, "<!-- summary-recovery -->")
+	workflow.WriteString(common + summaryRecovery)
 	if childReplySummary {
 		workflow.WriteString(childRule)
 	}
@@ -72,7 +73,8 @@ func frontendGuide(commands []command.Spec, sections map[string]string, childRep
 	if runtime.GOOS == "darwin" {
 		execution = macOSWorkflow + execution
 	}
-	codex := strings.Replace(workflow.String(), workflowStart+"\n", workflowStart+"\n"+execution+"\n", 1)
+	codex := strings.Replace(workflow.String(), summaryRecovery, "", 1)
+	codex = strings.Replace(codex, workflowStart+"\n", workflowStart+"\n"+execution+"\n", 1)
 	return binding.FrontendGuidance{Descriptions: output.String(), Workflow: codex, Shell: shell}, nil
 }
 

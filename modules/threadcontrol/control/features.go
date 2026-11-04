@@ -26,7 +26,7 @@ const (
 // contain. Counts are invocation-local: checkpoints, resume and fork do not
 // restore them.
 type FeatureUse struct {
-	Compactions        uint64 // Retained compaction summaries, whoever initiated them.
+	Compactions        uint64 // Completed native context resets, whoever initiated them.
 	SelfCompactions    uint64
 	CompactionPreloads uint64
 	Spawns             uint64 // Confirmed child admissions.
@@ -94,6 +94,27 @@ func (s *Service) ObserveFeature(thread string, features ...Feature) {
 	for _, feature := range features {
 		*use.counter(feature)++
 	}
+	s.features[thread] = use
+}
+
+// ObserveCompaction counts a live native boundary once. Restored history is not
+// current-launch feature use.
+func (s *Service) ObserveCompaction(thread, item string) {
+	if thread == "" || item == "" {
+		return
+	}
+	s.featureMu.Lock()
+	defer s.featureMu.Unlock()
+	if s.compactions == nil {
+		s.compactions = make(map[[2]string]bool)
+	}
+	key := [2]string{thread, item}
+	if s.compactions[key] {
+		return
+	}
+	s.compactions[key] = true
+	use := s.features[thread]
+	use.Compactions++
 	s.features[thread] = use
 }
 

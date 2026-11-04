@@ -163,7 +163,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, err
 		}
 	}
-	if p.ThreadControl != nil {
+	if p.ThreadControl != nil || metadataValid && bytes.Contains(request.Fields["input"], []byte("threadcontrol")) {
 		if !metadataValid {
 			return nil, errors.New("context preload requires valid metadata")
 		}

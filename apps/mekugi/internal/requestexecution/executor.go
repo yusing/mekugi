@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json/jsontext"
-	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -46,9 +45,7 @@ type Executor struct {
 	Observations     Preparer
 	Guidance         *binding.Guidance
 	SkillsManager    bool
-	CompactPrompt    func() string
 	ReasoningChoices func(string) (string, []string, bool)
-	CompactStore     func(context.Context, string, string, string) (string, error)
 	SideThreads      sessioncontrol.ForkClassifier
 	Usage            *accounting.Service
 }
@@ -182,9 +179,6 @@ func (a *requestAttempt) run() error {
 	if err := a.prepareResponse(); err != nil {
 		return err
 	}
-	if !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction && a.executor.CompactPrompt != nil && a.response.StatusCode >= 200 && a.response.StatusCode < 300 {
-		return a.deliverCompactSummary()
-	}
 	return a.deliver()
 }
 
@@ -289,32 +283,6 @@ func (a *requestAttempt) prepareWire() error {
 			return err
 		}
 	}
-	if compaction && a.executor.CompactPrompt != nil {
-		err = codexresponses.PrepareCompactTurn(&a.request, a.executor.CompactPrompt())
-		if err != nil {
-			return err
-		}
-		metadata, err := responses.ReplaceField([]byte(a.headers.Get(codexresponses.TurnMetadataHeader)), "request_kind", []byte(`"turn"`))
-		if err != nil {
-			return err
-		}
-		metadata, err = responses.ReplaceField(metadata, "compaction", []byte(`null`))
-		if err != nil {
-			return err
-		}
-		a.headers = a.headers.Clone()
-		a.headers.Set(codexresponses.TurnMetadataHeader, string(metadata))
-		if raw := a.request.Fields["client_metadata"]; len(raw) != 0 && string(raw) != "null" {
-			value, err := json.Marshal(string(metadata))
-			if err != nil {
-				return err
-			}
-			a.request.Fields["client_metadata"], err = responses.ReplaceField(raw, codexresponses.TurnMetadataHeader, value)
-			if err != nil {
-				return err
-			}
-		}
-	}
 	attachmentsProjected, attachmentIDs := ProjectFileAttachments(&a.request)
 	// Match attachment sources before compact skill rewriting drops native paths.
 	if !a.approvalReview && a.executor.Observations != nil {
@@ -352,9 +320,6 @@ func (a *requestAttempt) prepareWire() error {
 				"duration_us": time.Since(started).Microseconds(),
 			})
 		}
-	}
-	if compaction && a.executor.CompactPrompt != nil {
-		a.request.CachedInput, a.request.RebaseInput = 0, true
 	}
 	return nil
 }

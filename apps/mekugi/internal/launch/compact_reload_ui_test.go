@@ -10,7 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -67,8 +68,7 @@ func compactReloadUI(t *testing.T, sources []compact.Source, child bool) (*appSe
 		p.activity.Observe("main", "", "/root", false)
 		p.activity.Attach("main")
 	}
-	owner := executionobservation.New(executionobservation.Config{Retained: p.retained})
-	ref, err := owner.StoreCompact(t.Context(), "main", "Retained handover", selection)
+	ref, err := moduletest.StoreCompact(t.Context(), p.retained, "main", "Retained handover", selection)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -142,7 +142,7 @@ func TestGuardDiscoveryInvocationAndLifecycle(t *testing.T) {
 					}
 				}()
 			}
-			prior, disabled, err := Discover(ctx, command)
+			prior, disabled, _, err := Discover(ctx, command, true)
 			if mode == "success" {
 				if err != nil {
 					t.Fatal(err)

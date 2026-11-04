@@ -40,6 +40,14 @@ func ProjectLocalIdentities(input []byte) ([]byte, error) {
 					continue
 				}
 				delete(output, "id")
+				if raw := output["compaction"]; len(raw) != 0 && string(raw) != "null" {
+					var checkpoint map[string]jsontext.Value
+					if err := json.Unmarshal(raw, &checkpoint); err != nil {
+						return nil, err
+					}
+					delete(checkpoint, "reload")
+					output["compaction"] = responses.MustMarshalJSON(checkpoint)
+				}
 				if _, err := projectResultFields(output); err != nil {
 					return nil, err
 				}

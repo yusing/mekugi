@@ -14,9 +14,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -206,7 +208,6 @@ func TestEnvironmentFactsCompactionProviderInput(t *testing.T) {
 	gitTestCommit(t, workspace)
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	owner := executionobservation.New(executionobservation.Config{Retained: proxy.retained})
 	headers := serverMetadataHeaders(t, "turn", map[string]jsonv1.RawMessage{workspace: nil})
 	forward := func(reference string) string {
 		request := serverRequest(t, func(fields map[string]any) {
@@ -223,7 +224,7 @@ func TestEnvironmentFactsCompactionProviderInput(t *testing.T) {
 	}
 	first := forward("")
 	writeTestFile(t, filepath.Join(workspace, "first"), "new")
-	reference, err := owner.StoreCompact(t.Context(), "thread-1", "retained handover", "")
+	reference, err := moduletest.StoreCompact(t.Context(), proxy.retained, "thread-1", "retained handover", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +237,7 @@ func TestEnvironmentFactsCompactionProviderInput(t *testing.T) {
 	if repeated != compacted {
 		t.Fatal("repeated compact reference rescanned")
 	}
-	reference, err = owner.StoreCompact(t.Context(), "thread-1", "next retained handover", "")
+	reference, err = moduletest.StoreCompact(t.Context(), proxy.retained, "thread-1", "next retained handover", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,5 +261,46 @@ func TestEnvironmentFactsFreshStartAdmission(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":"fresh-environment","result":{"thread":{"id":"fresh","cwd":"/tmp"}}}`)
 	if u.controlObservations.ContextRevision("fresh") != 1 {
 		t.Fatal("duplicate host response refreshed again")
+	}
+}
+
+func TestEnvironmentFactsNativeResetProviderInput(t *testing.T) {
+	workspace := gitTestWorkspace(t)
+	proxy := newManagedMekugiProxy(t)
+	u, _ := newAppServerTestUI()
+	u.controlObservations = proxy.control
+	headers := serverMetadataHeaders(t, "turn", map[string]jsonv1.RawMessage{workspace: nil})
+	forward := func(window string) string {
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(headers.Get(codexresponses.TurnMetadataHeader)), &metadata); err != nil {
+			t.Fatal(err)
+		}
+		metadata["context_window_id"] = window
+		headers.Set(codexresponses.TurnMetadataHeader, string(responses.MustMarshalJSON(metadata)))
+		provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed"}`)}}}
+		var output bytes.Buffer
+		if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), headers, "reset-facts", provider, &output, nil, proxy); err != nil {
+			t.Fatal(err)
+		}
+		return environmentFacts(t, provider.forwarded[0])
+	}
+	first := forward("initial-window")
+	writeTestFile(t, filepath.Join(workspace, "after-reset"), "new")
+	notify := func(status string) {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "reset", "item": binding.ThreadItem{ID: "reset", Type: "contextCompaction", Status: status}})
+	}
+	notify("failed")
+	if forward("initial-window") != first {
+		t.Fatal("failed compaction refreshed facts")
+	}
+	// Request admission precedes the queued presentation completion.
+	refreshed := forward("reset-window")
+	if refreshed == first || !strings.Contains(refreshed, "?? after-reset") {
+		t.Fatal("native reset did not refresh facts")
+	}
+	writeTestFile(t, filepath.Join(workspace, "later"), "new")
+	notify("completed")
+	if forward("reset-window") != refreshed {
+		t.Fatal("duplicate reset rescanned facts")
 	}
 }

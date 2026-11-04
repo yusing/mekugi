@@ -16,15 +16,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/modules/agentguidance"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/providers/openai"
 )
 
-// Live generation, selection and continuation all use the built-in OpenAI
-// provider. Updated fixture contents can reach inference only through reloads.
+// Live continuation uses the built-in OpenAI provider. Reset itself is native;
+// updated fixture contents reach inference through ordinary selected reads.
 func TestCompactReloadLiveOpenAI(t *testing.T) {
 	model := strings.TrimSpace(os.Getenv("MEKUGI_E2E_MODEL"))
 	if model == "" {
@@ -35,6 +33,8 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer registry.Close()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	workspace := t.TempDir()
 	if out, err := exec.Command("git", "init", "--quiet", workspace).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
@@ -57,10 +57,6 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 	setTestProxyStore(proxy, store)
 	provider := &liveCompactProvider{Forwarder: newTestProviderClient(openai.BaseURL, http.DefaultClient)}
 	executor := testRequestExecutor(provider, nil, proxy)
-	executor.CompactPrompt = func() string {
-		return "Create a concise handover of the conversation." + agentguidance.CompactInstructions
-	}
-	executor.CompactStore = executionobservation.New(executionobservation.Config{Retained: proxy.retained}).StoreCompact
 	handler := inferencegateway.ResponsesHandler(t.Context(), time.Minute, executor.ExecuteHTTP)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
@@ -97,7 +93,7 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 	}
 	environment = append(environment, routerTestWorkerEnvironment+"=1")
 	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
-		args := codexArgs(server.URL+"/v1", []string{"app-server", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "model_reasoning_effort=\"low\"", "-c", fmt.Sprintf("compact_prompt=%q", executor.CompactPrompt())}, false, true)
+		args := codexArgs(server.URL+"/v1", []string{"app-server", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "model_reasoning_effort=\"low\""}, false, true)
 		cmd := exec.CommandContext(ctx, "codex", args...)
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
@@ -110,17 +106,14 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 	terminal.await("Context compacted")
 	write(source, "Reusable project guidance. Current file token: FILE_AFTER_7391.\n")
 	write(skill, "---\nname: reload-check\ndescription: reusable continuation guidance\n---\nCurrent skill token: SKILL_AFTER_8264.\n")
-	terminal.send("Without calling any tools yourself, report the current file and skill tokens from the reloaded context.\r")
+	terminal.send("Read guide.txt and SKILL.md with ordinary tools and report their current file and skill tokens.\r")
 	terminal.await("FILE_AFTER_7391")
 	terminal.await("SKILL_AFTER_8264")
-	terminal.await("Attached")
-	terminal.await("Attached skill")
-	terminal.await("(auto reloaded)")
 	if !provider.reloaded.Load() {
 		t.Fatal("fresh file and skill results did not reach live provider as reloaded context")
 	}
 	terminal.stopCanceled()
-	t.Log("actual /compact: live built-in OpenAI summary selected idle guidance and skill; fresh native reads reached live continuation")
+	t.Log("actual /compact: native reset followed by ordinary selected reads reached live continuation")
 }
 
 type liveCompactProvider struct {
@@ -129,7 +122,7 @@ type liveCompactProvider struct {
 }
 
 func (p *liveCompactProvider) ForwardExecution(ctx, execution context.Context, body []byte, headers http.Header, model string) (*inferencegateway.Response, error) {
-	if bytes.Contains(body, []byte("FILE_AFTER_7391")) && bytes.Contains(body, []byte("SKILL_AFTER_8264")) && bytes.Contains(body, []byte("Reloaded context (tool output)")) {
+	if bytes.Contains(body, []byte("FILE_AFTER_7391")) && bytes.Contains(body, []byte("SKILL_AFTER_8264")) {
 		if i := bytes.Index(body, []byte("<mekugi-reload-v1>")); i >= 0 {
 			return nil, fmt.Errorf("selection metadata leaked into continuation: %.300s", body[i:])
 		}

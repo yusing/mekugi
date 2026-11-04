@@ -92,7 +92,7 @@ func (d *Driver) Observe(method string, raw jsontext.Value) (<-chan error, error
 	if err != nil {
 		return nil, err
 	}
-	if method == "item/completed" && !(value.Item.Type == "agentMessage" && value.Item.Phase != "commentary" || value.Item.Type == "userMessage" && value.Item.ClientID != "") {
+	if method == "item/completed" && !(value.Item.Type == "agentMessage" && value.Item.Phase != "commentary" || value.Item.Type == "userMessage" && value.Item.ClientID != "" || value.Item.Type == "contextCompaction") {
 		return nil, nil
 	}
 	if _, ok := d.control.Member(value.ThreadID); !ok {
@@ -223,7 +223,11 @@ func (d *Driver) reduceHost() {
 				err = d.control.RequestStarted(d.lifecycle, control.Identity{Thread: thread, Session: member.Session, Turn: p.Turn.ID}, member.Parent == "")
 			}
 		case "item/completed":
-			if p.Item.Type == "userMessage" {
+			if p.Item.Type == "contextCompaction" {
+				if p.Item.Status == "" || p.Item.Status == "completed" {
+					d.control.ObserveCompaction(thread, p.Item.ID)
+				}
+			} else if p.Item.Type == "userMessage" {
 				err = d.control.HumanInputCommitted(d.lifecycle, thread, p.TurnID, p.Item.ClientID)
 			} else {
 				err = d.control.AnswerCompleted(d.lifecycle, thread, p.TurnID, p.Item.ID, p.Item.Text)

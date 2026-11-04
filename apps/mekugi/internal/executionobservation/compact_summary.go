@@ -19,8 +19,6 @@ import (
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // Native reviewers borrow only immutable compaction context. They do not publish
@@ -100,55 +98,6 @@ func (p *Preparer) restoreApprovalReviewContext(ctx context.Context, request *co
 		request.Fields["input"] = projected
 	}
 	return nil
-}
-
-// StoreCompact publishes the exact model answer and separate reload selection before the
-// native compaction reference can enter host history. It owns no second store.
-func (p *Preparer) StoreCompact(ctx context.Context, thread, summary, reload string) (string, error) {
-	if p == nil || p.Retained.Store == nil || thread == "" || strings.TrimSpace(summary) == "" {
-		return "", errors.New("compaction publication requires a retained thread and summary")
-	}
-	_, err := compact.ReadCommands(reload)
-	if err != nil {
-		return "", err
-	}
-	store := p.Retained
-	namespace, release, err := store.Store.BeginSession(ctx, store.Writes, store.Limits, thread)
-	if err != nil {
-		return "", err
-	}
-	defer release()
-	var reference string
-	err = store.Store.Transaction(ctx, store.Writes, func(tx *history.Transaction) error {
-		handles, err := tx.ReserveHandles(namespace, 1)
-		if err != nil {
-			return err
-		}
-		reference = compact.Prefix + namespace + ":" + handles[0]
-		data, err := json.Marshal(compact.Record{Version: 1, Reference: reference, Summary: summary, Selection: reload})
-		if err != nil {
-			return err
-		}
-		name := compact.Name(reference)
-		if err := tx.Admit(store.Limits, name, int64(len(data))); err != nil {
-			return err
-		}
-		if err := tx.Write(name, "compact-pending-", data); err != nil {
-			return err
-		}
-		return tx.Retain(thread, store.Limits, name)
-	})
-	if err != nil {
-		return "", err
-	}
-	if p.ThreadControl != nil {
-		features := []control.Feature{control.FeatureCompaction}
-		if sources, _ := compact.ReloadSources(reload); len(sources) > 0 {
-			features = append(features, control.FeatureCompactionPreload)
-		}
-		p.ThreadControl.Coordination().ObserveFeature(thread, features...)
-	}
-	return reference, nil
 }
 
 // Read under reconcileVisibleInput's snapshot lease. Prospective inheritance
@@ -260,7 +209,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		return nil, nil, errors.New("invalid compaction recovery workspace")
 	}
 	_, err = p.reconcileVisibleInput(ctx, request, workspace, workspace+"\x00"+thread)
-	if err == nil && metadata.RequestKind == responses.Turn {
+	if err == nil && metadata.RequestKind == responses.Turn && metadata.ContextWindowID == "" {
 		p.Control.ObserveCompactionContext(thread, contextReference)
 	}
 	return pending, readCalls, err
@@ -396,6 +345,13 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 	// identity permits projection, never scheduling new acquisition.
 	assignments := make(map[string]string)
 	for _, item := range items {
+		reset, err := resetPreload(item)
+		if err != nil {
+			return nil, err
+		}
+		if reset.Item != "" {
+			assignments[compactReaderPrefix(reset.Item)] = reset.Item
+		}
 		id := responses.StringField(item, "id")
 		if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "assistant" && strings.HasPrefix(id, "threadcontrol_") {
 			assignments[compactReaderPrefix(id)] = id

@@ -127,7 +127,7 @@ PostToolUse = [{matcher="Read",hooks=[%s]}]
 			t.Fatalf("caller hook was not trusted and enabled: %#v", entry)
 		}
 	}
-	prior, disabled, err := Discover(ctx, command(sessionOverride))
+	prior, disabled, _, err := Discover(ctx, command(sessionOverride), true)
 	if err != nil {
 		t.Fatal(err)
 	}

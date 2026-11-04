@@ -39,16 +39,20 @@ confirmation is created.
 
 ## Compaction and recovery
 
-Manual `/compact`, context-full compaction and agent checkpoints run one ordinary
-turn on the selected provider. The model writes a handover summary and a separate
-selection of files, line ranges, skills and captured-change IDs. Before the next
-model request, Mekugi reads those sources with the thread's own permissions and
-supplies their complete current contents; a denied or failed read stays visible
-without blocking the others. Codex already supplies `AGENTS.md`, so it is never
-reloaded. Reloaded context survives resume and fork without another read. Click
-**Context compacted** in the transcript to read the retained summary. Captured changes and retained
-output remain readable while their [storage](#replay-storage) is retained. See the
-[compaction contract](../../modules/agentguidance/SPEC.md#compaction-context).
+Manual `/compact`, context-full compaction and agent checkpoints reset Codex
+context without generating a handover summary. Agents may select files, line ranges,
+skills and captured-change IDs with a checkpoint, or recover needed facts through
+ordinary reads after reset. Temporary task-state JSON is optional and read selectively,
+never automatically loaded in full. Claude delegates retain native compaction.
+
+Before the next model request, Mekugi acquires selected sources with the thread's
+permissions. Failed reads stay visible without blocking the others. Codex supplies
+`AGENTS.md`, so it is excluded from reload. Captured reloads survive resume and fork
+without rereading. Earlier saved sessions retain their compaction summaries, available
+from **Context compacted** in the transcript. Captured changes and output remain
+readable while their [storage](#replay-storage) is retained. See the
+[compaction contract](../../modules/agentguidance/SPEC.md#compaction-context), including
+the native caller-prompt-file startup limitation.
 
 ## Replay storage
 

@@ -11,7 +11,8 @@ func TestCompactionCheckpointAdmission(t *testing.T) {
 		t.Run(evidence, func(t *testing.T) {
 			s, _ := fixture(t)
 			id := identity("root", "rt")
-			result, err := s.RegisterCompaction(t.Context(), id, nil, false, "", nil, time.Now(), true)
+			selection := `{"sources":[{"path":"task.json","ranges":[[2,4]]}]}`
+			result, err := s.RegisterCompaction(t.Context(), id, nil, false, "", nil, time.Now(), true, selection)
 			must(t, err)
 			if result.State != "scheduled" {
 				t.Fatal(result)
@@ -61,6 +62,9 @@ func TestCompactionCheckpointAdmission(t *testing.T) {
 			}
 			claimed, err := s.ClaimEffect(t.Context(), id.Thread, wake.ID)
 			must(t, err)
+			if claimed.Wake == nil || claimed.Wake.Compaction == nil || claimed.Wake.Compaction.Reload != selection {
+				t.Fatal("checkpoint lost its selected reload")
+			}
 			must(t, s.EffectAcknowledged(t.Context(), id.Thread, claimed.ID, Receipt{Turn: "continued"}))
 			if publication := s.WaitPublication(id.Thread); publication.State != "completed" {
 				t.Fatalf("successful checkpoint published as %+v", publication)
@@ -87,7 +91,7 @@ func TestCompoundCompactionRetainsWaitAndEvents(t *testing.T) {
 					if arrival == "timeout" {
 						timeout = new(int64(10))
 					}
-					result, err := s.RegisterCompaction(ctx, id, nil, true, mode, timeout, now, false)
+					result, err := s.RegisterCompaction(ctx, id, nil, true, mode, timeout, now, false, "")
 					must(t, err)
 					if result.State != "scheduled" || result.Event != nil {
 						t.Fatalf("ready outcome bypassed compact: %+v", result)
@@ -171,7 +175,7 @@ func TestCompactionSupersessionAndUncertainty(t *testing.T) {
 			s, _ := fixture(t)
 			ctx := t.Context()
 			id := identity("root", "rt")
-			_, err := s.RegisterCompaction(ctx, id, nil, false, "", nil, time.Now(), true)
+			_, err := s.RegisterCompaction(ctx, id, nil, false, "", nil, time.Now(), true, "")
 			must(t, err)
 			stop(t, s, id)
 			if uncertain {
@@ -185,7 +189,7 @@ func TestCompactionSupersessionAndUncertainty(t *testing.T) {
 				}
 				next := identity("root", "next-turn")
 				must(t, s.RequestStarted(ctx, next, true))
-				if _, err := s.RegisterCompaction(ctx, next, nil, false, "", nil, time.Now(), true); err == nil {
+				if _, err := s.RegisterCompaction(ctx, next, nil, false, "", nil, time.Now(), true, ""); err == nil {
 					t.Fatal("new call replaced uncertain compaction")
 				}
 			} else {

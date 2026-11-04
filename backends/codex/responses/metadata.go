@@ -14,6 +14,7 @@ import (
 // Host metadata retains its permissive v1 object-decoding contract.
 type TurnMetadata struct {
 	ActivityIdentityInvalid bool                         `json:"-"`
+	ContextWindowID         string                       `json:"context_window_id"`
 	ThreadID                string                       `json:"thread_id"`
 	ForkedFromThreadID      string                       `json:"forked_from_thread_id"`
 	ParentThreadID          string                       `json:"parent_thread_id"`

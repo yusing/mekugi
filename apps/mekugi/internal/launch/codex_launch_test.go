@@ -20,7 +20,7 @@ func TestWrapCodexSkipsThirdPartyCatalog(t *testing.T) {
 	directory := t.TempDir()
 	record := filepath.Join(directory, "args.txt")
 	t.Setenv("MEKUGI_TEST_CODEX_ARGS", record)
-	stub := "#!/bin/sh\ncase \"$*\" in *\"debug models\"*) exit 91;; esac\nprintf '%s\\n' \"$@\" > \"$MEKUGI_TEST_CODEX_ARGS\"\n"
+	stub := "#!/bin/sh\ncase \"$*\" in *\"debug models\"*) exit 91;; esac\nprintf '%s\\n' invocation >> \"$MEKUGI_TEST_CODEX_ARGS.calls\"\nprintf '%s\\n' \"$@\" > \"$MEKUGI_TEST_CODEX_ARGS\"\n"
 	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -30,6 +30,10 @@ func TestWrapCodexSkipsThirdPartyCatalog(t *testing.T) {
 	code, err := wrapCodex(ctx, nil, []string{"exec", "--profile", "work", "--ignore-user-config", "prompt"})
 	if code != 0 || err != nil {
 		t.Fatalf("Codex-only launch failed: code=%d error=%v", code, err)
+	}
+	calls, err := os.ReadFile(record + ".calls")
+	if err != nil || string(calls) != "invocation\n" {
+		t.Fatalf("noninteractive command must execute once: calls=%q error=%v", calls, err)
 	}
 	args, err := os.ReadFile(record)
 	if err != nil {

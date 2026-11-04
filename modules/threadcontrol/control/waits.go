@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v7"
+	compactreload "github.com/yusing/mekugi/modules/agentguidance/compact"
 )
 
 func resolve(tree *Tree, caller *Member, target string) (*Member, error) {
@@ -92,7 +93,7 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 		result.Mode = ""
 	}
 	if compact := wait.Compaction; compact != nil {
-		result.Compaction = &CompactionResult{State: compact.State, Error: compact.Error}
+		result.Compaction = &CompactionResult{State: compact.State, Error: compact.Error, Reload: compact.Message}
 		if compact.State == "registered" {
 			result.State = "scheduled"
 		}
@@ -228,20 +229,20 @@ func (tree *Tree) selectAllWaitOutcomes(wait *Wait) bool {
 	return true
 }
 
-func (s *Service) RegisterForeignWait(ctx context.Context, caller Identity, targets []string, mode WaitMode, timeout *int64, now time.Time, compact bool, foreign map[string]RemoteTarget) (WaitResult, error) {
-	return s.registerWait(ctx, caller, targets, false, mode, timeout, now, compact, false, foreign)
+func (s *Service) RegisterForeignWait(ctx context.Context, caller Identity, targets []string, mode WaitMode, timeout *int64, now time.Time, compact bool, foreign map[string]RemoteTarget, reload string) (WaitResult, error) {
+	return s.registerWait(ctx, caller, targets, false, mode, timeout, now, compact, false, foreign, reload)
 }
 
 func (s *Service) RegisterWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time) (result WaitResult, err error) {
-	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, false, false, nil)
+	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, false, false, nil, "")
 }
 
 // RegisterCompaction registers the checkpoint and optional wait in one transaction.
-func (s *Service) RegisterCompaction(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, standalone bool) (WaitResult, error) {
-	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, true, standalone, nil)
+func (s *Service) RegisterCompaction(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, standalone bool, reload string) (WaitResult, error) {
+	return s.registerWait(ctx, caller, targets, all, mode, timeout, now, true, standalone, nil, reload)
 }
 
-func (s *Service) registerWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, compact, standalone bool, foreign map[string]RemoteTarget) (result WaitResult, err error) {
+func (s *Service) registerWait(ctx context.Context, caller Identity, targets []string, all bool, mode WaitMode, timeout *int64, now time.Time, compact, standalone bool, foreign map[string]RemoteTarget, reload string) (result WaitResult, err error) {
 	if mode == "" {
 		mode = WaitAny
 	}
@@ -254,6 +255,9 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, targets []s
 		if err == nil && registered {
 			if compact {
 				s.ObserveFeature(caller.Thread, FeatureSelfCompaction)
+				if sources, _ := compactreload.ReloadSources(reload); len(sources) > 0 {
+					s.ObserveFeature(caller.Thread, FeatureCompactionPreload)
+				}
 			}
 			if !standalone {
 				s.ObserveFeature(caller.Thread, FeatureWait)
@@ -307,7 +311,7 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, targets []s
 		wait.Foreign = maps.Clone(foreign)
 		wait.Standalone = standalone
 		if compact {
-			wait.Compaction = &Effect{ID: caller.Call + ":compact", Caller: caller.Thread, Target: caller.Thread, CallerTurn: caller.Turn, Generation: member.Generation, Kind: "compact", State: "registered"}
+			wait.Compaction = &Effect{ID: caller.Call + ":compact", Caller: caller.Thread, Target: caller.Thread, CallerTurn: caller.Turn, Generation: member.Generation, Kind: "compact", State: "registered", Message: reload}
 		}
 		if timeout != nil {
 			if *timeout > member.Limits.MaxWaitMS {

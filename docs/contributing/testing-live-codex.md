@@ -12,8 +12,8 @@ requests to the live OpenAI Codex endpoint using its authentication.
 
 `TestCompactReloadLiveOpenAI` requires both `codex_e2e` and `e2e`. It drives
 terminal `/compact` with the built-in OpenAI provider and real authentication,
-covering live summary selection after completed work and fresh instruction-file
-and skill reads before live continuation. Run it with:
+covering summary-free reset after completed work and ordinary model-directed
+file and skill reads on live continuation. Run it with:
 
 ```sh
 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestCompactReloadLiveOpenAI$' TEST_FLAGS='-tags=codex_e2e,e2e -count=1'

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
@@ -23,7 +25,7 @@ func TestCompactReloadProviderInputHidesOrchestration(t *testing.T) {
 	attachTestReplayStore(t, p)
 	workspace := t.TempDir()
 	const selection = `{"sources":[{"path":"AGENTS.md"},{"path":"selected.txt"},{"path":"nested/AGENTS.md"}]}`
-	ref, err := p.StoreCompact(t.Context(), "root", "handover", selection)
+	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "handover", selection)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +117,7 @@ func TestCompactReloadDeduplicatesOrdinaryReread(t *testing.T) {
 	}
 	p.InputProjections = []binding.InputProjection{outputdeduplication.Module.Bindings.InputProjection(service)}
 	selection := `{"sources":[{"path":"selected.txt"}]}`
-	ref, err := p.StoreCompact(t.Context(), "root", "handover", selection)
+	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "handover", selection)
 	if err != nil {
 		t.Fatal(err)
 	}
