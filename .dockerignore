@@ -7,3 +7,4 @@ bin
 **/__pycache__
 apps/mekugi/internal/webui/dist/app
 *.log
+.worktrees/
