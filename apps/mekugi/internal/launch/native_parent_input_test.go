@@ -81,6 +81,10 @@ func TestNativeParentInputLiveAndRestored(t *testing.T) {
 				if len(entries) != 3 {
 					t.Fatalf("parent input count = %d", len(entries))
 				}
+				summary := u.attached.source.SummaryEntries("Main", true)
+				if len(summary) != 1 || summary[0].AssignmentText != "Follow-up parent assignment." {
+					t.Fatalf("incoming follow-up missing from runtime activity: %+v", summary)
+				}
 				for i, entry := range entries {
 					wantKind := "assignment"
 					if i == 2 {

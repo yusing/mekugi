@@ -47,6 +47,53 @@ func familyReview(chunks ...changes.Chunk) *changes.ReviewView {
 	return view
 }
 
+func TestFamilyFollowupReplacesPriorFinalActivity(t *testing.T) {
+	h := NewHub(t.Context(), nil)
+	member := threadcontrol.Participant{Thread: "child", Parent: "root", Task: "/root/child", Status: threadcontrol.Completed}
+	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root"}, Members: []threadcontrol.Participant{member}})
+	prior := activity.Entry{Facts: activity.Facts{Kind: "final", Agent: "Main", Text: "## Summary\nPrevious result.\n\n## Details\nEvidence."}, Values: []activity.Value{{Kind: "final", Body: "## Summary\nPrevious result."}}}
+	childActivity := familyActivity("child", "")
+	childActivity.Entries, childActivity.MainSummary = []activity.Entry{prior}, []activity.Entry{prior}
+	childActivity.Roster[0].Agent.Summary = []activity.Entry{prior}
+	childActivity.Roster[0].Agent.Responding, childActivity.Roster[0].Agent.Final = false, true
+	child := familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: member.Task}, Agents: childActivity})
+	check := func(want string) {
+		t.Helper()
+		family, _ := h.Family("root")
+		for _, row := range family.Agents.Roster {
+			if row.Agent.Thread != "child" {
+				continue
+			}
+			if want == "" && len(row.Agent.Summary) != 0 || want != "" && (len(row.Agent.Summary) != 1 || row.Agent.Summary[0].Text != want) {
+				t.Fatalf("unexpected current activity: %+v", row.Agent)
+			}
+			if want == "" {
+				view := new(activityui.View)
+				if painted := ansi.Strip(view.AgentState(row.Agent, 100, time.Now())); painted != "working" {
+					t.Fatalf("follow-up roster activity = %q", painted)
+				}
+			}
+			return
+		}
+		t.Fatal("child missing")
+	}
+	check(prior.Text)
+	for _, status := range []threadcontrol.Status{threadcontrol.Pending, threadcontrol.Working} {
+		frame := *root.server.frame.Load()
+		member.Status = status
+		frame.Members = []threadcontrol.Participant{member}
+		root.server.frame.Store(&frame)
+		check("")
+	}
+	frame := *child.server.frame.Load()
+	frame.Agents = familyActivity("child", "Checking the follow-up")
+	child.server.frame.Store(&frame)
+	check("Checking the follow-up")
+	if childActivity.Entries[0].Text != prior.Text || childActivity.Roster[0].Agent.Summary[0].Text != prior.Text {
+		t.Fatal("follow-up modified the retained answer")
+	}
+}
+
 func TestFamilyOrdinaryPublicationsAndColdTargets(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	rootActivity := familyActivity("root", "main summary")

@@ -412,6 +412,11 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 		row.Agent.Waiting = member.Status == threadcontrol.Waiting || row.Agent.Compacting
 		row.Agent.Paused = member.Status == threadcontrol.Paused || member.Status == threadcontrol.Uncertain
 		row.Agent.Final = member.Status == threadcontrol.Completed
+		// Logical follow-up admission precedes the runtime's next response.
+		// Keep the old answer in its transcript, not as the new work's activity.
+		if row.Agent.Responding && len(row.Agent.Summary) > 0 && row.Agent.Summary[len(row.Agent.Summary)-1].Kind == "final" {
+			row.Agent.Summary = nil
+		}
 		if member.Status == threadcontrol.Failed {
 			row.Agent.LatestKind = "error"
 		} else if row.Agent.LatestKind == "error" {

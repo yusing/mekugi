@@ -284,7 +284,7 @@ func (m *Model[S, A]) Summary(owner string, root bool) Summary {
 			continue
 		}
 		facts := record.Source.ActivityFacts()
-		if facts.Agent == owner {
+		if facts.Agent == owner || facts.Assignment && facts.AssignmentTo == owner {
 			summary := Summary{Index: i}
 			if facts.Kind == "reasoning" {
 				for j := i - 1; j >= 0; j-- {
