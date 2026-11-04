@@ -231,7 +231,7 @@ func TestShellRunnerMRunLargeSinglePiece(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		`mrun --max-tokens 1000 --tail -- sh -c 'head -c 20000 /dev/zero | tr "\000" a'`, nil)
-	if status != 0 || (len(stdout)+7)/8 != 1000 || strings.Trim(stdout, "a") != "" ||
+	if status != 0 || len(stdout) != 1000*4 || strings.Trim(stdout, "a") != "" ||
 		!strings.Contains(stderr, "mrun: output incomplete") {
 		t.Fatalf("long output: bytes=%d stderr=%q status=%d", len(stdout), stderr, status)
 	}

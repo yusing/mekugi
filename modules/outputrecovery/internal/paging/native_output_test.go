@@ -78,13 +78,13 @@ func TestNativeOutputReadPagination(t *testing.T) {
 	admitted := nativeSource(t, oversized, "", "rows", "")
 	request := ReadRequest{Stream: "stdout"}
 	page := nativeReadFixture(t, admitted, request, 80)
-	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != countTokens(t, oversized) {
+	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != max(countTokens(t, oversized), (len(oversized)+3)/4) {
 		t.Fatalf("oversized row must not advance: %+v", page)
 	}
 	request.Label, request.SourceRow = "file.go", 7
 	page = nativeReadFixture(t, admitted, request, 80)
 	framed := "--- file.go ---\n[rows 7:7]\n" + oversized
-	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != countTokens(t, framed) {
+	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != max(countTokens(t, framed), (len(framed)+3)/4) {
 		t.Fatalf("oversized framed row must count admission framing: %+v", page)
 	}
 	if page := nativeReadFixture(t, nativeSource(t, "x", "", "", ""), ReadRequest{Stream: "stdout"}, 1); page.Text != "x" || !page.Complete {

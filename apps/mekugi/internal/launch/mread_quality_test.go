@@ -155,6 +155,7 @@ func TestMReadTinyBudgetAndMalformedOperandsHaveExactMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	needed = max(needed, (len(row)+3)/4)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
 		"mread "+id+" --max-tokens 1", nil, mreadQualityInvocation(t, thread))
 	want := fmt.Sprintf("mread: next row needs ~%d tokens; retry: mread %s --max-tokens %d\n", needed, id, needed)
@@ -214,11 +215,11 @@ func TestMReadFreshStoreForkAndSideContinuityStayInTheirHandleScopes(t *testing.
 	assertPairRead := func(thread, first, second string) {
 		t.Helper()
 		page, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-			fmt.Sprintf("mread %s %s --max-tokens 120", first, second), nil, mreadQualityInvocation(t, thread))
+			fmt.Sprintf("mread %s %s --max-tokens 180", first, second), nil, mreadQualityInvocation(t, thread))
 		if status != 1 || !strings.Contains(page, "--- "+first+" ---\n") || !strings.Contains(page, "--- "+second+" ---\n") {
 			t.Fatalf("two-handle continuation in %s: status=%d stdout=%q stderr=%q", thread, status, page, diagnostic)
 		}
-		match := regexp.MustCompile(`(?m)^read: incomplete; next_call: mread ([a-z]+[0-9]*) ([a-z]+[0-9]*) --max-tokens 120$`).FindStringSubmatch(strings.TrimSuffix(diagnostic, "\n"))
+		match := regexp.MustCompile(`(?m)^read: incomplete; next_call: mread ([a-z]+[0-9]*) ([a-z]+[0-9]*) --max-tokens 180$`).FindStringSubmatch(strings.TrimSuffix(diagnostic, "\n"))
 		if len(match) != 3 {
 			t.Fatalf("%s did not retain both continuations in one call: %q", thread, diagnostic)
 		}

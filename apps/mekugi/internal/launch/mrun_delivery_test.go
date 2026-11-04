@@ -142,6 +142,23 @@ func TestShellRunnerMRunRecoversOversizedLFStderrRow(t *testing.T) {
 	}
 }
 
+func TestShellRunnerMRunRecoversCompressibleOversizedRow(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	invocation := newShellWorkerTestInvocation(t.TempDir(), "BASH_ENV=")
+	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
+		`mrun -n 1 -- awk 'BEGIN {for (i=0; i<7000; i++) printf "representation "; print ""}'`, nil, invocation)
+	if status != 0 || stdout != "" {
+		t.Fatalf("compressed oversized-row delivery: status=%d bytes=%d stderr=%q", status, len(stdout), stderr)
+	}
+	id := mrunDeliveryReadReference(t, stderr)
+	got := mrunRecoverDeliveryStream(t, registry, invocation, id, "stdout")
+	want := strings.Repeat("representation ", 7000) + "\n"
+	if got != want {
+		t.Fatalf("compressed oversized-row recovery changed bytes: %d/%d", len(got), len(want))
+	}
+}
+
 func mrunOversizedLFRow(t *testing.T, word string) (string, int) {
 	t.Helper()
 	codec, err := tokenizer.New()

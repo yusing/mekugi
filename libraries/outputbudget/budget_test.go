@@ -74,7 +74,31 @@ func TestNativeOutputRows(t *testing.T) {
 func TestSelectionNeedsNoResolverRuntime(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	result, err := Select(t.Context(), 3, "head", "hello world", "diagnostic")
-	if err != nil || result.Stdout != "hello world" || result.Stderr != "diagn" {
+	if err != nil || result.Stdout != "hello wo" || result.Stderr != "diag" {
 		t.Fatalf("isolated selection = %+v, %v", result, err)
+	}
+}
+
+func TestDeliveryAccountingAndRowSelection(t *testing.T) {
+	var b Budget
+	for _, source := range []string{strings.Repeat(" ", 1000), strings.Repeat("representation ", 100), strings.Repeat("🙂中文\n", 100)} {
+		for _, tail := range []bool{false, true} {
+			selected, err := b.SelectText(source, 42, tail)
+			if err != nil || len(selected.Text) > 42*4 || selected.Tokens > 42 || !utf8.ValidString(selected.Text) {
+				t.Fatalf("text selection: %+v, %v", selected, err)
+			}
+		}
+	}
+	const row = "representation representation representation\n"
+	source := strings.Repeat(row, 100)
+	for _, tail := range []bool{false, true} {
+		selected, err := b.SelectRows(source, 42, tail)
+		if err != nil || selected != strings.Repeat(row, 42*4/len(row)) {
+			t.Fatalf("row selection tail=%t: %q, %v", tail, selected, err)
+		}
+	}
+	count, err := b.Count(strings.Repeat(" ", 1000))
+	if err != nil || count != 250 {
+		t.Fatalf("delivery count=%d, %v", count, err)
 	}
 }

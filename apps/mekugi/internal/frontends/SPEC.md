@@ -99,6 +99,12 @@ budgets use the same diagnostic:
 `--max-tokens requires one integer from 1 to 15500 and cannot repeat`.
 Continuation commands use `next_call: COMMAND`.
 
+Shared output admission respects both GPT tokens and the stock executor's
+four-byte token estimate. A requested ceiling is a maximum, so compressible text
+may deliver fewer GPT tokens. Command-owned frames use the same accounting;
+callers still reserve outer delivery space for diagnostics, host framing, and
+the combined output of separately budgeted commands.
+
 Commands run and format output in the host-started worker. They return omitted
 payloads or a pure delivery plan over already captured output or a frozen
 retained-evidence selection. For coordinated results, the host reserves reference

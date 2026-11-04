@@ -8,7 +8,7 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget"
 )
 
 func executeBundle(
@@ -24,10 +24,7 @@ func executeBundle(
 			FailureClass: class,
 		}, nil
 	}
-	codec, err := tokenizer.New()
-	if err != nil {
-		return command.Output{}, err
-	}
+	codec := new(outputbudget.Budget)
 	reserve := 16
 	for _, spec := range specs {
 		pathTokens, err := codec.Count(quoteBundlePath(spec.Path))

@@ -9,7 +9,7 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget"
 	"github.com/yusing/mekugi/modules/outputrecovery/internal/paging"
 	"github.com/yusing/mekugi/modules/outputrecovery/internal/record"
 )
@@ -86,10 +86,7 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 	if err != nil {
 		return fail(err)
 	}
-	codec, err := tokenizer.New()
-	if err != nil {
-		return fail(err)
-	}
+	codec := new(outputbudget.Budget)
 	var result strings.Builder
 	var nextHandles []string
 	used := 0

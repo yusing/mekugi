@@ -162,6 +162,7 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 	if err := os.WriteFile(tokenPath, []byte(strings.Repeat(strings.Repeat("x", 4096)+"\n", 257)), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Close without reading: a bounded page can fit entirely in the pipe buffer.
 	// The frontend's own outcome is SIGPIPE status 141 without a broken-pipe
 	// diagnostic; default and errexit handling of that status is Bash's.
 	for name, command := range map[string]string{
@@ -171,7 +172,7 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-				"set -o pipefail\n"+command+" | head -n 1 >/dev/null\nprintf 'AFTER:%s' \"$?\"", nil)
+				"set -o pipefail\n"+command+" | head -n 0 >/dev/null\nprintf 'AFTER:%s' \"$?\"", nil)
 			if stdout != "AFTER:141" || status != 0 || strings.Contains(stderr, "broken pipe") {
 				t.Fatalf("%s: %q %q status=%d", command, stdout, stderr, status)
 			}

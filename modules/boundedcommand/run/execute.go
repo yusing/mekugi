@@ -13,8 +13,6 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/outputbudget"
-
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 const (
@@ -319,16 +317,13 @@ func mrunRetainedKind(text string) string {
 		return ""
 	}
 	const rowBudget = commandargs.MaxOutputTokens - 64
+	budget := new(outputbudget.Budget)
 	for row := range strings.SplitAfterSeq(text, "\n") {
 		if len(row) <= rowBudget {
 			continue
 		}
-		codec, err := tokenizer.New()
-		if err != nil {
-			return ""
-		}
-		count, err := codec.Count(row)
-		if err != nil || count > rowBudget {
+		fits, err := budget.Fits(row, rowBudget)
+		if err != nil || !fits {
 			return ""
 		}
 	}

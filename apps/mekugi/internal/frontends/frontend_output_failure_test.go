@@ -3,6 +3,7 @@ package frontends
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -138,4 +139,102 @@ func TestFrontendCompleteBundlesNeedNoRecoveryStore(t *testing.T) {
 			t.Fatalf("complete bundle needed a recovery store: output=%+v err=%v", got, err)
 		}
 	}
+}
+
+func TestFrontendMultiFileRecoverySurvivesHostDeliveryCeiling(t *testing.T) {
+	registry := sharedTestRegistry(t)
+	t.Setenv(codexThreadIDEnvironment, uniqueTestThread("host-delivery-budget"))
+	directory := t.TempDir()
+	want := make(map[string]string)
+	var allSource strings.Builder
+	args := []string{"--max-tokens", "1000"}
+	for _, name := range []string{"left", "right"} {
+		var source strings.Builder
+		for i := range 360 {
+			key := fmt.Sprintf("%s-%03d", name, i)
+			row := key + " " + strings.Repeat("representation ", 4) + "\n"
+			want[key] = row
+			source.WriteString(row)
+		}
+		path := filepath.Join(directory, name)
+		allSource.WriteString(source.String())
+		if err := os.WriteFile(path, []byte(source.String()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		args = append(args, path)
+	}
+	codec, err := tokenizer.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := codec.Count(allSource.String())
+	if err != nil || count >= 6400 {
+		t.Fatalf("fixture must fit GPT admission before host framing: tokens=%d err=%v", count, err)
+	}
+	t.Logf("complete fixture: %d bytes, %d GPT tokens", allSource.Len(), count)
+	seen := make(map[string]string)
+	nextRow := make(map[string]int)
+	name := "mcat"
+	for page := range 10 {
+		var stdout, stderr bytes.Buffer
+		handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(),
+			filepath.Join(registry.FrontendDirectory, name), args, nil, &stdout, &stderr)
+		// Codex utils/string truncation admits ceil(UTF-8 bytes/4) tokens.
+		// Include frontend labels, row frames, diagnostics and the next call.
+		delivered := stdout.String() + stderr.String()
+		if !handled || (len(delivered)+3)/4 > 7000 {
+			t.Fatalf("page %d would lose text at the host ceiling: bytes=%d status=%d", page, len(delivered), status)
+		}
+		if page == 1 {
+			if (len(delivered)+3)/4 < 6000 || status != 1 {
+				t.Fatalf("fixture did not exercise near-budget retained paging: bytes=%d status=%d", len(delivered), status)
+			}
+			t.Logf("first retained page: %d approximate host tokens, status=%d", (len(delivered)+3)/4, status)
+		}
+		for row := range strings.Lines(stdout.String()) {
+			key, _, _ := strings.Cut(row, " ")
+			if _, ok := want[key]; ok {
+				prefix, _, _ := strings.Cut(key, "-")
+				if key != fmt.Sprintf("%s-%03d", prefix, nextRow[prefix]) {
+					t.Fatalf("source rows out of order: %s", key)
+				}
+				nextRow[prefix]++
+				if _, duplicate := seen[key]; duplicate {
+					t.Fatalf("duplicate row %s", key)
+				}
+				seen[key] = row
+			}
+		}
+		_, next, incomplete := strings.Cut(delivered, "next_call: mread ")
+		if !incomplete {
+			if status != 0 || len(seen) != len(want) {
+				t.Fatalf("completed with lost rows: seen=%d want=%d status=%d stderr=%s", len(seen), len(want), status, stderr.String())
+			}
+			for key, row := range want {
+				if seen[key] != row {
+					t.Fatalf("changed source row %s", key)
+				}
+			}
+			return
+		}
+		next, _, _ = strings.Cut(next, "\n")
+		args = strings.Fields(next)
+		if page == 0 {
+			// The regression starts with multiple retained files, not one page.
+			if len(args) < 2 || strings.HasPrefix(args[1], "--") {
+				t.Fatalf("missing multi-file continuation: %s", next)
+			}
+			args = args[:2]
+		}
+		// Every mread uses the reported near-budget request and host ceiling.
+		for i, arg := range args {
+			if arg == "--max-tokens" {
+				args = args[:i]
+				break
+			}
+		}
+		args = append(args, "--max-tokens", "6500")
+		name = "mread"
+	}
+	t.Fatal("retained reads did not finish")
 }

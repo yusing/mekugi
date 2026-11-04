@@ -20,11 +20,17 @@ func (b *Budget) Count(s string) (int, error) {
 			return 0, err
 		}
 	}
-	return b.codec.Count(s)
+	n, err := b.codec.Count(s)
+	// Stock execution admits output using ceil(bytes/4), not GPT tokens.
+	// Respect both ceilings so a completed selection survives host delivery.
+	return max(n, (len(s)+3)/4), err
 }
 func (b *Budget) Fits(s string, limit int) (bool, error) {
 	if len(s) <= limit {
 		return true, nil
+	}
+	if (len(s)+3)/4 > limit {
+		return false, nil
 	}
 	n, e := b.Count(s)
 	return n <= limit, e
@@ -36,6 +42,17 @@ func (b *Budget) SelectRows(value string, limit int, tail bool) (string, error) 
 	}
 	if _, err := b.Count(""); err != nil {
 		return "", err
+	}
+	if limit > 0 && len(value) > limit*4 && strings.HasSuffix(value, "\n") {
+		if tail {
+			start := len(value) - limit*4
+			if start > 0 && value[start-1] != '\n' {
+				start += strings.IndexByte(value[start:], '\n') + 1
+			}
+			value = value[start:]
+		} else {
+			value = value[:strings.LastIndexByte(value[:limit*4], '\n')+1]
+		}
 	}
 	return b.codec.SelectRows(value, limit, tail)
 }
@@ -53,12 +70,25 @@ func (b *Budget) SelectText(value string, budget int, tail bool) (Text, error) {
 	if _, err := b.Count(""); err != nil {
 		return Text{}, err
 	}
+	if len(value) > budget*4 {
+		if tail {
+			value = value[len(value)-budget*4:]
+			for !utf8.ValidString(value) {
+				value = value[1:]
+			}
+		} else {
+			value = value[:budget*4]
+			for !utf8.ValidString(value) {
+				value = value[:len(value)-1]
+			}
+		}
+	}
 	_, tokens, err := b.codec.Encode(value)
 	if err != nil {
 		return Text{}, err
 	}
 	if len(tokens) <= budget {
-		return Text{value, len(tokens)}, nil
+		return Text{value, max(len(tokens), (len(value)+3)/4)}, nil
 	}
 	for keep := budget; keep > 0; {
 		parts := tokens[:keep]

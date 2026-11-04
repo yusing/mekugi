@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget"
 )
 
 // Source: internal/router/shell_read_bundle.go:292:366@[4b6a7a16] bundle framing.
@@ -30,10 +30,7 @@ func (p *bundleDelivery) Prepare(references []string) (command.PreparedDelivery,
 func (p *bundleDelivery) prepare(references []string) (command.PreparedDelivery, error) {
 	entries := slices.Clone(p.entries)
 	output := p.output
-	codec, err := tokenizer.New()
-	if err != nil {
-		return command.PreparedDelivery{}, err
-	}
+	codec := new(outputbudget.Budget)
 	continuation := func() string {
 		var handles []string
 		for i, entry := range entries {
@@ -52,7 +49,7 @@ func (p *bundleDelivery) prepare(references []string) (command.PreparedDelivery,
 	}
 	for {
 		output.Stdout = renderReadBundle(entries)
-		used, err := codec.Count(output.Stdout + continuation())
+		used, err := codec.Count(output.Stdout + output.Stderr + continuation())
 		if err != nil {
 			return command.PreparedDelivery{}, err
 		}

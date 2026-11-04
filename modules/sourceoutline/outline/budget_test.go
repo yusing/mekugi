@@ -13,7 +13,7 @@ func referenceOutlineRows(t *testing.T, rows []string, budget int) (string, stri
 	t.Helper()
 	shown := ""
 	for _, row := range rows {
-		if nativeTokens(t, shown+row) > budget {
+		if max(nativeTokens(t, shown+row), (len(shown+row)+3)/4) > budget {
 			break
 		}
 		shown += row
@@ -43,8 +43,8 @@ func TestNativeInspectRowBudgetIndependentTargets(t *testing.T) {
 				}
 				rows := strings.SplitAfter(full.Stdout, "\n")
 				rows = rows[:len(rows)-1]
-				boundary := nativeTokens(t, rows[0])
-				for _, budget := range []int{1, 2, 7, boundary - 1, boundary, boundary + 1, nativeTokens(t, full.Stdout)} {
+				boundary := max(nativeTokens(t, rows[0]), (len(rows[0])+3)/4)
+				for _, budget := range []int{1, 2, 7, boundary - 1, boundary, boundary + 1, max(nativeTokens(t, full.Stdout), (len(full.Stdout)+3)/4)} {
 					t.Run(strconv.Itoa(budget), func(t *testing.T) {
 						boundedArgs := append([]string(nil), args...)
 						boundedArgs[1] = strconv.Itoa(budget)

@@ -174,6 +174,7 @@ func TestMRunRetainedKindUsesBytePagingForOversizedOrUnterminatedRows(t *testing
 	}{
 		{name: "ordinary rows", text: "first row\nsecond row\n", want: "rows"},
 		{name: "oversized LF row", text: oversized, want: ""},
+		{name: "compressible oversized LF row", text: strings.Repeat("representation ", 7000) + "\n", want: ""},
 		{name: "unterminated bytes", text: "unterminated data", want: ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
