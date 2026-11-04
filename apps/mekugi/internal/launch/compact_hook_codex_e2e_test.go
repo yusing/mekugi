@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -121,9 +123,23 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 		t.Fatal(err)
 	}
 	environment = append(environment, routerTestWorkerEnvironment+"=1")
+	hook := filepath.Join(t.TempDir(), "compact-start-hook")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nprintf 'COMPACT_SESSION_START_MARKER\\n'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	hookCommand := quoteShellWord(hook)
+	hookHandler := fmt.Sprintf(`{type="command",command=%s,timeout=5,async=false}`, strconv.Quote(hookCommand))
+	identity := map[string]any{"event_name": "session_start", "matcher": "^compact$", "hooks": []map[string]any{{"type": "command", "command": hookCommand, "timeout": 5, "async": false}}}
+	encoded, err := json.Marshal(identity, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := fmt.Sprintf("sha256:%x", sha256.Sum256(encoded))
+	hookArgs := []string{"-c", "features.hooks=true", "-c", `hooks.SessionStart=[{matcher="^compact$",hooks=[` + hookHandler + `]}]`, "-c", `hooks.state={"/<session-flags>/config.toml:session_start:0:0"={trusted_hash=` + strconv.Quote(hash) + `,enabled=true}}`}
 	newClient := func() *appserver.Client {
 		cmd := exec.CommandContext(ctx, "codex", codexArgs(server.URL+"/v1", []string{"app-server", "-c", notesConfig, "--enable=retain_client_tool_outputs", "-c", "features.retain_client_tool_outputs=true", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true", "-c", "model_auto_compact_token_limit=100000"}, false, true)...)
 		cmd.Env, cmd.Dir = environment, workspace
+		cmd.Args = append(cmd.Args, hookArgs...)
 		_, _, config, err := shellhook.Discover(ctx, cmd, false)
 		if err != nil {
 			t.Fatal(err)
@@ -234,6 +250,9 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 		t.Fatal("fixture lost initial task")
 	}
 	if automatic {
+		if !bytes.Contains(afterTool, []byte("COMPACT_SESSION_START_MARKER")) {
+			t.Fatal("automatic reset lost SessionStart hook context before first continuation")
+		}
 		if bytes.Contains(afterTool, []byte("ORIGINAL_TASK_SENTINEL")) || compactions == 0 {
 			t.Fatal("automatic reset did not discard old context")
 		}
@@ -252,12 +271,15 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 	}
 	continuation := map[string]any{"threadId": thread, "input": appserver.Input("Continue normally.")}
 	if !automatic {
-		wake := control.NativeInput{ID: "fixture:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "confirmed", Reload: `{"sources":[{"path":"selected.json","ranges":[[1,1]]},{"path":"missing.json","ranges":[[1,1]]}]}`}}}
+		wake := control.NativeInput{ID: "fixture:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "completed", Reload: `{"sources":[{"path":"selected.json","ranges":[[1,1]]},{"path":"missing.json","ranges":[[1,1]]}]}`}}}
 		continuation["input"] = []any{}
 		continuation["toolOutput"] = map[string]any{"namespace": "threadcontrol", "name": "compact", "output": wake.RetainedWaitOutput(), "retain": true}
 	}
 	runTurn("turn/start", continuation)
 	reloaded := request()
+	if !automatic && !bytes.Contains(reloaded, []byte("COMPACT_SESSION_START_MARKER")) {
+		t.Fatal("SessionStart compact hook context missing from first continuation")
+	}
 	if bytes.Contains(reloaded, []byte("ORIGINAL_TASK_SENTINEL")) || bytes.Contains(reloaded, []byte("STALE_UNSELECTED_STATE")) {
 		t.Fatal("reset retained obsolete context")
 	}

@@ -112,7 +112,7 @@ func resetPreload(item map[string]jsontext.Value) (control.ContextPreload, error
 	if err := json.Unmarshal([]byte(responses.StringField(item, "output")), &result); err != nil {
 		return control.ContextPreload{}, err
 	}
-	if result.ID == "" || result.Compaction == nil || result.Compaction.State != "confirmed" || result.Compaction.Reload == "" {
+	if result.ID == "" || result.Compaction == nil || result.Compaction.State != "completed" || result.Compaction.Reload == "" {
 		return control.ContextPreload{}, nil
 	}
 	return control.ContextPreload{Item: control.MessageItemID(result.ID), Selection: result.Compaction.Reload}, nil

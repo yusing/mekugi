@@ -6,6 +6,7 @@ import (
 	json "encoding/json/v2"
 	"maps"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/testsupport/moduletest"
 
@@ -17,13 +18,14 @@ import (
 )
 
 func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
-	for _, kind := range []string{"assignment", "completion", "reset"} {
+	for _, kind := range []string{"assignment", "completion", "compact", "wait_agent"} {
 		t.Run(kind, func(t *testing.T) { testContextReload(t, kind) })
 	}
 }
 
 func testContextReload(t *testing.T, kind string) {
 	completion := kind == "completion"
+	reset := kind == "compact" || kind == "wait_agent"
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
 	session, err := p.Retained.Store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
@@ -51,10 +53,10 @@ func testContextReload(t *testing.T, kind string) {
 	}
 	defer controlSession.Close()
 	preload := control.ContextPreload{Item: itemID, Selection: selection}
-	if completion || kind == "reset" {
+	if completion || reset {
 		preload = control.ContextPreload{}
 	}
-	if err := service.AdmitRoot(t.Context(), controlSession, &control.Member{Thread: "root", Session: "routing", Task: "/root", AudienceAdmitted: true, Preload: preload}); err != nil {
+	if err := service.AdmitRoot(t.Context(), controlSession, &control.Member{Thread: "root", Session: "routing", Task: "/root", AudienceAdmitted: true, Preload: preload, Turn: "rt", Generation: 1, Status: control.Working, HostRunning: true}); err != nil {
 		t.Fatal(err)
 	}
 	p.ThreadControl, err = threadbinding.NewDriver(service)
@@ -67,9 +69,39 @@ func testContextReload(t *testing.T, kind string) {
 		assignment["internal_chat_message_metadata_passthrough"] = mustTestJSON(t, map[string]any{"content_item_kinds": []string{"multi_agent.inter_agent_completion_message"}})
 		assignment["content"] = mustTestJSON(t, []map[string]string{{"type": "output_text", "text": "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/child\nOutcome: completed\nSource generation: 1\nSource turn: child-turn\nPayload:\nfinished\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}})
 	}
-	if kind == "reset" {
-		wake := control.NativeInput{ID: "parent:spawn:assignment", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "confirmed", Reload: selection}}}
-		assignment = map[string]jsontext.Value{"type": mustTestJSON(t, "function_call_output"), "namespace": mustTestJSON(t, "threadcontrol"), "name": mustTestJSON(t, "compact"), "output": mustTestJSON(t, wake.RetainedWaitOutput())}
+	if reset {
+		id := control.Identity{Thread: "root", Session: "routing", Turn: "rt", Call: "checkpoint", Item: "cell"}
+		_, err := service.RegisterCompaction(t.Context(), id, nil, false, "", nil, time.Now(), true, selection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := service.Execution(t.Context(), id.Thread, id.Turn, id.Item, "", true); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.ClaimLocalStop(t.Context(), id.Thread, id.Turn, id.Item); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.HostCompleted(t.Context(), id.Thread, id.Turn, control.Completed, control.HostFailure{}); err != nil {
+			t.Fatal(err)
+		}
+		effect, err := service.ClaimEffect(t.Context(), id.Thread, id.Call+":compact")
+		if err != nil || effect == nil {
+			t.Fatalf("compact effect: %+v, %v", effect, err)
+		}
+		if err := service.EffectAcknowledged(t.Context(), id.Thread, effect.ID, control.Receipt{}); err != nil {
+			t.Fatal(err)
+		}
+		wakeEffect, err := service.PrepareWake(t.Context(), id.Thread, time.Now())
+		if err != nil || wakeEffect == nil {
+			t.Fatalf("wake: %+v, %v", wakeEffect, err)
+		}
+		claimed, err := service.ClaimEffect(t.Context(), id.Thread, wakeEffect.ID)
+		if err != nil || claimed == nil {
+			t.Fatalf("claimed wake: %+v, %v", claimed, err)
+		}
+		wake := control.NativeInput{ID: claimed.ID, Wake: claimed.Wake}
+		itemID = control.MessageItemID(claimed.ID)
+		assignment = map[string]jsontext.Value{"type": mustTestJSON(t, "function_call_output"), "namespace": mustTestJSON(t, "threadcontrol"), "name": mustTestJSON(t, kind), "output": mustTestJSON(t, wake.RetainedWaitOutput())}
 	}
 	meta := codexresponses.TurnMetadata{ThreadID: "root", RequestKind: "turn"}
 	var reader map[string]jsontext.Value
