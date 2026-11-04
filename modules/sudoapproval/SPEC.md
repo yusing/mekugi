@@ -24,8 +24,10 @@ Session grants release queued duplicates and expire with the UI, as for the
 [remote-write approval](../remotewriteapproval/SPEC.md). Denial fails only that
 command with exit status 1. Listing privileges (`sudo -l` or `--list`), help,
 version and timestamp removal remain outside command approval.
-Explicit noninteractive, stdin-password and caller-provided askpass modes still
-ask command approval but retain their native input policy.
+Explicit noninteractive mode bypasses command approval and retains sudo's native
+policy and result. Stdin-password and caller-provided askpass modes still ask
+command approval and retain their native input policy. Remote-write approval remains
+independent.
 
 Approval and password entry are separate. After approval, sudo's native policy
 decides whether authentication is needed. Its askpass request opens only the

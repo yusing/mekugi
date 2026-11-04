@@ -246,7 +246,7 @@ func newSudoShell(t *testing.T) (*approvalShell, string, string) {
 func TestSudoApprovalWithoutPassword(t *testing.T) {
 	shell, directory, real := newSudoShell(t)
 	// Simulate NOPASSWD/cached sudo by not invoking askpass. Explicit native
-	// input modes must still ask approval and retain their original argv.
+	// input modes retain their original argv; stdin and askpass still ask approval.
 	if err := os.WriteFile(filepath.Join(real, "sudo"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestSudoApprovalWithoutPassword(t *testing.T) {
 		approval, askpass, deny bool
 	}{
 		{[]string{"id"}, true, true, false}, {[]string{"-l"}, false, false, false}, {[]string{"--list"}, false, false, false},
-		{[]string{"-n", "id"}, true, false, false}, {[]string{"-S", "id"}, true, false, false}, {[]string{"-A", "id"}, true, false, false},
+		{[]string{"-n", "id"}, false, false, false}, {[]string{"--non-i", "id"}, false, false, false}, {[]string{"-S", "id"}, true, false, false}, {[]string{"-A", "id"}, true, false, false},
 		{large, true, true, false},
 		{[]string{"id"}, true, true, true},
 	} {
@@ -306,6 +306,34 @@ func TestSudoApprovalWithoutPassword(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			t.Fatal("sudo did not complete")
 		}
+	}
+}
+
+func TestSudoNoninteractivePreservesNativeFailure(t *testing.T) {
+	shell, directory, real := newSudoShell(t)
+	if err := os.WriteFile(filepath.Join(real, "sudo"), []byte("#!/bin/sh\nprintf 'authentication required\\n' >&2\nexit 17\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), filepath.Join(directory, "sudo"), "-n", "id")
+	cmd.Env = []string{"PATH=" + directory + ":" + real + ":" + execTrackPath()}
+	result := make(chan execTrackRun, 1)
+	go func() {
+		out, err := cmd.CombinedOutput()
+		code := 0
+		if err != nil {
+			code = cmd.ProcessState.ExitCode()
+		}
+		result <- execTrackRun{stdout: string(out), code: code}
+	}()
+	select {
+	case request := <-shell.guard.Requests():
+		t.Fatalf("unexpected approval request: %s", request.Kind)
+	case got := <-result:
+		if got.code != 17 || got.stdout != "authentication required\n" {
+			t.Fatalf("native failure changed: %+v", got)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("sudo did not complete")
 	}
 }
 
@@ -413,7 +441,7 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 			if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf '%s\n' \"$@\"\nexit 23\n"), 0700); err != nil {
 				t.Fatal(err)
 			}
-			body := quoteShellWord(executable) + " -n probe 'arg with spaces'"
+			body := quoteShellWord(executable) + " probe 'arg with spaces'"
 			prefix := ""
 			if tc.sudoOnly {
 				git := filepath.Join(real, "git")
@@ -452,7 +480,7 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 			}()
 			select {
 			case request := <-shell.guard.Requests():
-				if request.Kind != "sudo" || request.Executable != executable || !slices.Equal(request.Argv, []string{executable, "-n", "probe", "arg with spaces"}) || !tc.path && request.Item != "nested-command" {
+				if request.Kind != "sudo" || request.Executable != executable || !slices.Equal(request.Argv, []string{executable, "probe", "arg with spaces"}) || !tc.path && request.Item != "nested-command" {
 					t.Fatalf("nested approval lost command identity: %#v", request)
 				}
 				request.Reply <- shellapproval.Reply{OK: tc.allow, Reason: "nested fixture denial"}
@@ -464,7 +492,7 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 			select {
 			case got := <-result:
 				if tc.allow {
-					if got.code != 23 || got.stdout != prefix+"-n\nprobe\narg with spaces\n" {
+					if got.code != 23 || got.stdout != prefix+"-A\nprobe\narg with spaces\n" {
 						t.Fatalf("approved command changed: %+v", got)
 					}
 				} else if got.code != 1 || got.stdout != prefix+"mekugi: sudo command denied: nested fixture denial\n" {

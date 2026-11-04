@@ -9,7 +9,7 @@ func Interactive(args []string) bool {
 	return applicable(args, true)
 }
 
-// CommandApproval excludes listing and informational or timestamp-only modes,
+// CommandApproval excludes noninteractive, listing and informational or timestamp-only modes,
 // independently of sudo's authentication input policy.
 func CommandApproval(args []string) bool {
 	return applicable(args, false)
@@ -41,9 +41,9 @@ func applicable(args []string, password bool) bool {
 				return false
 			}
 			switch name {
-			case "--list", "--help", "--version", "--remove-timestamp":
+			case "--list", "--help", "--version", "--remove-timestamp", "--non-interactive":
 				return false
-			case "--non-interactive", "--stdin", "--askpass":
+			case "--stdin", "--askpass":
 				if password {
 					return false
 				}
@@ -56,9 +56,9 @@ func applicable(args []string, password bool) bool {
 		}
 		for j := 1; j < len(arg); j++ {
 			switch arg[j] {
-			case 'l', 'V', 'K':
+			case 'l', 'V', 'K', 'n':
 				return false
-			case 'n', 'S', 'A':
+			case 'S', 'A':
 				if password {
 					return false
 				}
