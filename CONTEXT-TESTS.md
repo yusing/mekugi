@@ -1,52 +1,39 @@
 # Test procedures
 
-Load only the procedures selected by the operation; routine focused checks use the runner and
-applicable coverage below.
+Load only the procedure matching the operation; routine focused checks need only the sections below.
 
 | Operation | Procedure |
 | --- | --- |
-| Terminal appearance, snapshot fixtures, or baseline checks/updates | [Terminal snapshots](docs/contributing/testing-snapshots.md) |
-| Opt-in browser-control fixture or browser wire-type generation | [Browser control](docs/contributing/testing-browser-control.md) |
-| Frontend/symbol benchmarks or test CPU/block profiles | [Performance measurements](docs/contributing/testing-performance.md) |
-| Compile/run installed-Codex fixtures with local providers | [Installed-Codex acceptance](CONTEXT-AUTOMATED-TESTS.md) |
-| Compile/run real-provider fixtures | [Live Codex requests](docs/contributing/testing-live-codex.md) |
-| Verify an introduced or changed cost invariant | [Cost checks](CONTEXT-PERFORMANCE.md#cost-checks) |
+| Opt-in browser-control fixture or browser wire-type generation | docs/contributing/testing-browser-control.md |
+| Frontend/symbol benchmarks or test CPU/block profiles | docs/contributing/testing-performance.md |
+| Compile/run installed-Codex fixtures with local providers | CONTEXT-AUTOMATED-TESTS.md |
+| Compile/run real-provider fixtures | docs/contributing/testing-live-codex.md |
+| Verify an introduced or changed cost invariant | CONTEXT-PERFORMANCE.md#cost-checks |
 
 ## Runner
 
-Test recipes summarize successful Go packages when RTK is enabled, stream failure
-diagnostics, and preserve native exit status. Set `RTK=` for Go's native package outcomes.
-Apply command-output bounds at the invocation when needed.
-
-Use `make test`; the root has no Go module. Default `TEST_PACKAGES=@workspace` expands
-explicit `go.work` members. Focused runs also include `testsupport/uisnapshot`:
+Use `make test`; the root has no Go module. `TEST_PACKAGES` defaults to `@workspace` (all `go.work`
+members); `TEST_RUN` and `TEST_FLAGS` pass through to `go test`. With RTK, successful packages are
+summarized; set `RTK=` for native output.
 
 ```sh
-make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestShellRunnerMRun'
 make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/launch' TEST_RUN=AppServer
 ```
 
-- Unchanged successful tests may use Go's cache. `TEST_FLAGS=-count=1` requests fresh results;
-  `TEST_FLAGS='-count=3 -shuffle=on'` checks repetition/isolation; `TEST_FLAGS=-race` checks concurrency.
-- `TEST_PARALLEL=32` overlaps process/PTY waits; reduce for constrained machines. Tests changing
-  process-wide environment/cwd stay serial. Time fresh full runs and report compilation separately.
-- The recipe clears `BASH_ENV`, `MEKUGI_EXEC_TRACK` and snapshot-update mode. For raw tests in an
-  active Mekugi shell, use `env -u BASH_ENV -u MEKUGI_EXEC_TRACK`: startup hooks can put live
-  frontends ahead of fixture PATH and route reads to the wrong store; inherited tracking can
-  suppress isolated command reports.
+- `TEST_PARALLEL` (default 32) overlaps process/PTY waits. Tests changing process-wide
+  environment/cwd stay serial.
+- For raw `go test` in an active Mekugi shell, use `env -u BASH_ENV -u MEKUGI_EXEC_TRACK`: startup
+  hooks can put live frontends ahead of fixture PATH and route reads to the wrong store; inherited
+  tracking can suppress isolated command reports. The recipe already clears them.
 - Tests neither generate assets nor install binaries. Interpreter/query fixtures need Node.js
-  and ripgrep; native frontends/catalog do not need JavaScript.
-- Linux amd64 release CI runs the fresh offline suite; other platforms retain command and
-  welcome/version checks. Installed-Codex checks are separate in `CONTEXT-AUTOMATED-TESTS.md`.
-  A focused pass covers only selected tests.
+  and ripgrep.
+- CI runs the offline suite only on Linux amd64; other platforms run command and welcome/version
+  checks.
 
-### Suite budget
-
-Target 30 seconds for a fresh offline suite with warm build caches, without making it a completion
-gate. Measure wall time when a full suite is warranted; report slower validation and continue.
-Report cold build/race/live checks separately. Do not repeat passing tests or warm caches just to
-meet the target. Investigate timing only for requested optimization or an evidenced task-related
-regression. Local passes/model prose do not replace host results or missing runtime coverage.
+A fresh offline suite with warm caches targets 30 seconds; it is not a completion gate. Report wall
+time for full runs, and cold build/race/live checks separately. Do not rerun passing tests or warm
+caches to meet it; investigate timing only for requested optimization or an evidenced task-related
+regression.
 
 ## Select coverage
 
@@ -72,10 +59,9 @@ Feature contracts in `docs/index.md` own acceptance details.
 | Launch/headless/naming | Changed `launch/options`, `launch/modelcatalog`, `headless` or `modules/sessionnaming`; Launch dispatch/build, reused configuration, resume models, picker/startup, headless delivery/control/shutdown and title/name-save consumers |
 | Session API | `sessionapi`, `sessionpresentation` and `modules/activity/presentation`; cover detached projection, prompt redaction, request admission, stream recovery, socket peer checks and hosted-resource cleanup. Runtime consumers require their own integration checks |
 
-After API changes, compile affected tagged fixtures using the compile-only command in the
-matching installed-host or live-provider procedure above. Installed-host cases include native frontends/mrun/mchanges,
-guards and sandbox reporting; compaction uses `TestAppServerCompactEnterInterruptsNativeCodex`
-and `TestAppServerQueuedCompactContinuesNativeCodex`; naming persistence/resume lives in
+After API changes, compile affected tagged fixtures with the compile-only command in the matching
+installed-host or live-provider procedure. Host compaction: `TestAppServerCompactEnterInterruptsNativeCodex`,
+`TestAppServerQueuedCompactContinuesNativeCodex`; naming persistence/resume:
 `launch/app_server_session_title_codex_e2e_test.go`.
 
 ## Focused checks
@@ -97,13 +83,11 @@ make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/fron
 
 ## Static checks
 
-`make docs-check` validates local documentation targets and Markdown heading anchors.
-The pre-commit hook runs it against the staged tree only when documentation changes.
+`make docs-check` validates Markdown link targets and anchors; the pre-commit hook runs it when
+documentation changes.
 
-`make lint` requires `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`, checks production
-and test reachability separately (including the snapshot harness), and fails on tool errors/findings.
-Linux amd64 CI installs versions pinned in the release workflow. Run it before committing Go
-changes: CI runs it after the offline suite, so a failing test hides its findings.
+Run `make lint` (needs `golangci-lint` and `deadcode`) before committing Go changes: CI runs it
+after the offline suite, so a failing test hides its findings.
 
 `make generate` also refreshes the network-sourced OpenCode catalog snapshots; run it only for a
 catalog refresh. For workspace references or the Session API schema, run
@@ -111,7 +95,7 @@ catalog refresh. For workspace references or the Session API schema, run
 
 ## Boundary acceptance
 
-Apply these routes when the requested change touches the boundary:
+Cover these when the change touches the boundary:
 
 - **Continuity:** restart durable review/output state with only the requesting thread; cover
   affected fork/switch/resume paths. Live ancestry is not retained identity.
@@ -132,11 +116,11 @@ Apply these routes when the requested change touches the boundary:
 - **Logical lifecycle:** for host-turn handling or thread-control waits, cover how host completion,
   failure, interruption, manual compaction, injected input and enclosing-cell re-execution keep or
   settle pending waits and logical work, per
-  [thread control](modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery).
+  `modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery`.
 - **Instruction projection:** mixed authorization/tool text, fenced examples and idempotence through
   stock, marked, custom and multipart developer text.
 
-Contracts: `docs/index.md`. Dated host evidence: `docs/codex-router-e2e.md`.
+Dated host evidence: `docs/codex-router-e2e.md`.
 
 ## Fixture isolation and cost
 

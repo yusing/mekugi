@@ -1,9 +1,8 @@
 # Owner map
 
-Use this map to locate an owner, `CONTEXT-TESTS.md` to select checks, and `docs/index.md`
-for specifications. Detailed module dependencies and bindings are generated in
-`docs/reference/modules.md`. Paths are repository-relative; braces group alternatives.
-Application owners below are under `apps/mekugi/internal/`.
+Generated module dependencies and bindings: `docs/reference/modules.md`. Paths are
+repository-relative; braces group alternatives. Application owners below are under
+`apps/mekugi/internal/`.
 
 ## Application
 
@@ -94,35 +93,34 @@ Cross-owner adapter entry points:
 Load contracts for boundaries the change crosses. They own details and acceptance cases;
 they do not expand the requested scope.
 
-- **Host execution and logical coordination:** [Codex execution](backends/codex/SPEC.md#execution-authority),
-  [thread coordination](modules/threadcontrol/SPEC.md),
-  [frontends](apps/mekugi/internal/frontends/SPEC.md), [MCP](libraries/mcptransport/SPEC.md),
-  [headless](apps/mekugi/internal/headless/SPEC.md), and [launch](apps/mekugi/internal/launch/SPEC.md).
-- **Change evidence:** [capture](docs/contracts/change-evidence.md),
-  [changes](modules/changehistory/SPEC.md), and [publication](docs/contracts/record-publication.md).
-- **Scope/isolation:** [authority and publication](docs/contracts/record-publication.md) and
-  [activity identity](modules/activity/SPEC.md#observation-authority).
-- **Forks, side threads, switching, and resume:** [replay](apps/mekugi/internal/frontends/SPEC.md),
-  [changes](modules/changehistory/SPEC.md), and [guide](modules/agentguidance/SPEC.md).
-- **Independent reads and apply/revert dependencies:** [changes](modules/changehistory/SPEC.md).
-- **Presentation:** [terminal interaction](apps/mekugi/internal/terminalsession/SPEC.md),
-  [session behavior](apps/mekugi/internal/sessionpresentation/SPEC.md),
-  [activity display](modules/activity/CONTRACT.md), and [session control](apps/mekugi/internal/sessioncontrol/SPEC.md).
-- **Frontend/guidance ownership:**
-  [plugin boundary](apps/mekugi/internal/frontends/SPEC.md) and [guide](modules/agentguidance/SPEC.md).
-- **Responsiveness:** [presentation boundary](apps/mekugi/internal/terminalsession/SPEC.md#boundary).
-- **Progress, capture, diagnostics, and providers:** [activity](modules/activity/SPEC.md),
-  [notices](modules/notifications/SPEC.md), [metrics](modules/transportdiagnostics/SPEC.md), and [providers](docs/contracts/provider-routing.md).
+- **Host execution and logical coordination:** `backends/codex/SPEC.md#execution-authority`,
+  `modules/threadcontrol/SPEC.md`, `libraries/mcptransport/SPEC.md`,
+  `apps/mekugi/internal/{frontends,headless,launch}/SPEC.md`.
+- **Change evidence:** `docs/contracts/{change-evidence,record-publication}.md`,
+  `modules/changehistory/SPEC.md`.
+- **Scope/isolation:** `docs/contracts/record-publication.md`,
+  `modules/activity/SPEC.md#observation-authority`.
+- **Forks, side threads, switching, and resume:**
+  `apps/mekugi/internal/frontends/SPEC.md#lifecycle-and-replay`,
+  `modules/{changehistory,agentguidance}/SPEC.md`.
+- **Independent reads and apply/revert dependencies:** `modules/changehistory/SPEC.md`.
+- **Presentation:** `apps/mekugi/internal/{terminalsession,sessionpresentation,sessioncontrol}/SPEC.md`,
+  `modules/activity/CONTRACT.md`.
+- **Frontend/guidance ownership:** `apps/mekugi/internal/frontends/SPEC.md`,
+  `modules/agentguidance/SPEC.md`.
+- **Responsiveness:** `apps/mekugi/internal/terminalsession/SPEC.md#boundary`.
+- **Progress, capture, diagnostics, and providers:**
+  `modules/{activity,notifications,transportdiagnostics}/SPEC.md`, `docs/contracts/provider-routing.md`.
 
 ## Session evidence and profiling
 
 Contracts: `modules/{sessioninspection,diagnostics,sessionreplay}/SPEC.md`.
 Profiling implementation: `launch/{profiling,profiling_disabled}.go`.
-Controlled model comparisons live in [codex-setup-ab](https://github.com/yusing/codex-setup-ab);
-select them only for a comparison task.
+Controlled model comparisons live in https://github.com/yusing/codex-setup-ab; select them only
+for a comparison task.
 
 ## Workspace and generation
 
 `apps/mekugi/cmd/workspace` owns enumeration, import and documentation-navigation checks;
-`go.work` owns membership,
-module-root descriptors own contributions, and `make check-generated` checks reference drift.
+`go.work` owns membership, module-root descriptors own contributions, and `make check-generated`
+checks reference drift.

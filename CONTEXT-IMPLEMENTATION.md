@@ -1,9 +1,9 @@
 # Implementation
 
-For feature work, locate the semantic owner in [the owner map](CONTEXT-MEKUGI.md) and read its
-specification. Load the [boundary contracts](CONTEXT-MEKUGI.md#boundary-contracts) the change crosses.
-The [composition contract](docs/contracts/composition.md) owns workspace and dependency rules.
-Distinguish [required outcomes and explicit constraints from replaceable design choices](docs/product.md#intent-and-design-authority).
+For feature work, locate the semantic owner in `CONTEXT-MEKUGI.md`, read its specification, and
+load the boundary contracts the change crosses. `docs/contracts/composition.md` owns workspace and
+dependency rules. Distinguish required outcomes and explicit constraints from replaceable design
+choices per `docs/product.md#intent-and-design-authority`.
 Preserve current behavioral commitments while changing their implementation; update affected
 contracts and consumers together when a redesign changes those commitments.
 
@@ -21,9 +21,9 @@ contracts and consumers together when a redesign changes those commitments.
 - **Compose once.** Descriptors own commands, records, bindings and views; derive catalogs and
   guidance from their contributions instead of adding parallel lists or command-name switches.
   Single-provider relationships use direct typed dependencies; shared extension families use typed
-  slots whose hosts accept zero contributions. With existing slots
-  and binding mechanisms, a new module needs only workspace membership and one composition entry;
-  a new shared mechanism is an explicit contract change, not a runtime plugin layer.
+  slots whose hosts accept zero contributions. With existing slots and binding mechanisms, a new
+  module needs only workspace membership and one composition entry; a new shared mechanism is an
+  explicit contract change, not a runtime plugin layer.
 - **Pass actual owners.** Give consumers the selected store, authenticated snapshot or narrow typed
   dependency, not an application back-pointer, ambient accessor or directory from which to reconstruct
   it. External entrypoints still validate and attach through the owning API. Keep one authoritative
@@ -43,14 +43,11 @@ contracts and consumers together when a redesign changes those commitments.
   agent display names, disclosure eligibility, folding, outcome tone or wait labels, publish that
   fact through the Session API instead of re-deriving it in TypeScript, because parallel
   derivations drift with each new producer shape. Measured geometry, such as actual clipping,
-  stays with the renderer. Reuse admitted snapshots instead of copying whole sessions for narrow
-  internal queries.
+  stays with the renderer.
 - **Require a present consumer.** Do not add contracts or slots for speculative backends or
   renderers.
 
-Keep behavioral specifications at their owners and update affected consumer checks. Workspace checks
-enforce imports and declarations; generated references derive from those declarations. Select checks
-through `CONTEXT-TESTS.md`; neither static checks nor generated indexes prove runtime behavior.
+Keep behavioral specifications at their owners and update affected consumer checks.
 
 ## Presentation
 

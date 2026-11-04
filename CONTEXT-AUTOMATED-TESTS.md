@@ -1,30 +1,15 @@
 # Installed-Codex acceptance
 
-Fixtures use the installed Codex with deterministic local providers, fake credentials,
-and isolated home/configuration directories. They require `codex_e2e` and exercise stock
-execution and independent thread coordination without live model usage or personal shell startup files.
+Fixtures need the `codex_e2e` tag and the installed Codex. They use deterministic local providers,
+fake credentials and isolated home/configuration, never live models or personal shell startup
+files, so they do not establish live-model behavior.
 
-## Focused host acceptance
+`make test-host` runs the focused set: authenticated frontends, PTY yield/continuation, durable
+nested edits and sandbox reports. Missing Codex or tests fail; a skip (sandbox reporting is
+Linux-only) is missing coverage.
 
-`make test-host` checks authenticated frontends, PTY yield/continuation, durable nested edits,
-and sandbox reports. It verifies every named test exists, then runs a fresh verbose suite.
-Missing Codex/tests fail; platform skips remain visible (sandbox reporting is Linux-only).
-It neither generates assets nor installs binaries.
-
-A skip is missing coverage. This set complements the [offline suite](CONTEXT-TESTS.md) and
-feature fixtures below; it does not establish live-model behavior.
-
-## Feature fixtures
-
-The compaction host fixture uses `MEKUGI_E2E_MODEL`, exported by the Makefile. Environment or Make
-command-line assignments can override it. Direct invocations require a nonblank value and fail
-before starting Codex if it is missing.
-
-Launch fixtures live in `apps/mekugi/internal/launch/*_codex_e2e_test.go`. List tests with:
-
-```sh
-rg '^func Test' apps/mekugi/internal/launch/*_codex_e2e_test.go
-```
+Launch fixtures live in `apps/mekugi/internal/launch/*_codex_e2e_test.go`. The compaction fixture
+reads `MEKUGI_E2E_MODEL`, which the Makefile sets; raw `go test` runs must set it.
 
 | Fixture | Coverage and limits |
 | --- | --- |
@@ -47,8 +32,8 @@ make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^(TestAppServerV
 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestAppServerExecTrackNativeCodex(Sandbox)?$' TEST_FLAGS='-tags=codex_e2e -count=1'
 ```
 
-Backend discovery checks invocation-only caller-hook replacement, hook identities/trust and
-unchanged persistent configuration. It starts no thread or model turn:
+Backend hook discovery (invocation-only replacement, identities/trust, unchanged persistent
+configuration; no thread or turn):
 
 ```sh
 make test TEST_PACKAGES=./backends/codex/shellhook TEST_RUN='^TestGuardDiscoveryConfigurationNativeCodex$' TEST_FLAGS='-tags=codex_e2e -count=1'
