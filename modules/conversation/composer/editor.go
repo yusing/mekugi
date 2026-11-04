@@ -2,6 +2,7 @@
 package composer
 
 import (
+	"crypto/rand"
 	"fmt"
 	"slices"
 	"strings"
@@ -36,8 +37,11 @@ type State struct {
 // HistoryEntry keeps restoration provenance outside editable draft state.
 type HistoryEntry struct {
 	Draft
-	Source   string
-	Restored bool
+	// Occurrence identifies live entries across bounded history publications.
+	// Shared persisted text has no occurrence identity until live enrichment.
+	Occurrence string
+	Source     string
+	Restored   bool
 }
 
 type Editor struct {
@@ -79,7 +83,7 @@ func (e *Editor) Remember(draft Draft) {
 	if draft.Text == "" {
 		return
 	}
-	e.InputHistory = append(e.InputHistory, HistoryEntry{Draft: draft.Clone()})
+	e.InputHistory = append(e.InputHistory, HistoryEntry{Draft: draft.Clone(), Occurrence: rand.Text()})
 	if len(e.InputHistory) > 100 {
 		e.InputHistory = slices.Clone(e.InputHistory[len(e.InputHistory)-100:])
 	}
@@ -93,6 +97,9 @@ func (e *Editor) RestoreHistory(source string, draft Draft) {
 		if entry.Source == source && entry.Text == draft.Text && !entry.Restored {
 			if len(entry.Images)+len(entry.Files)+len(entry.Skills)+len(entry.Selections) == 0 {
 				entry.Draft = draft.Clone()
+			}
+			if entry.Occurrence == "" {
+				entry.Occurrence = rand.Text()
 			}
 			entry.Restored = true
 			return
@@ -116,9 +123,17 @@ func (e *Editor) PrependHistory(entries []HistoryEntry, parked ...*State) {
 	var shared []HistoryEntry
 	for _, entry := range entries {
 		for i, local := range e.InputHistory {
-			if positions[i] < 0 && local.Restored && local.Source == entry.Source && local.Text == entry.Text {
+			match := local.Source == entry.Source && local.Text == entry.Text
+			if local.Occurrence != "" && entry.Occurrence != "" {
+				match = local.Occurrence == entry.Occurrence
+			}
+			if positions[i] < 0 && local.Restored && match {
 				positions[i] = len(shared)
-				entry = local
+				// Retain rich local bindings, but let a live publication enrich
+				// a text-only persisted occurrence and supply its identity.
+				if local.Occurrence != "" || entry.Occurrence == "" {
+					entry = local
+				}
 				break
 			}
 		}

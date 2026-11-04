@@ -15,10 +15,97 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/messagehistory"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
+
+func TestNativeMainHistoryRolloverKeepsAcknowledgedImages(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	// Keep persistent provenance on every occurrence, as Main does when shared
+	// input history is enabled, without starting a storage worker.
+	u.attached.inputHistory = &appServerInputHistory{thread: "main"}
+	c := nativeTestPromptClient(u)
+	for i := range 101 {
+		var input composer.Editor
+		input.InsertImage(fmt.Sprintf("/image-%d.png", i))
+		draft := input.Draft
+		id := fmt.Sprintf("input-%d", i)
+		u.attached.presentation.StageInput(&u.Live, u.attached.conversation, id, conversationmodel.Submission{Draft: draft, Parts: []conversationmodel.Input{{Draft: draft}}}, false)
+		effects := u.attached.presentation.AcknowledgeInput(&u.Live, u.attached.conversation, "turn/start", "", false)
+		applyInputEffects(&u.attached, u.shell, nil, nil, &u.picker, "", u.clock, effects)
+		facts := nativePublicationFacts(&u.attached, nil, binding.TokenUsage{}, "", false, nil, "main", nil)
+		wire, err := json.Marshal(facts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var received sessionapi.NativeSessionFacts
+		if err := json.Unmarshal(wire, &received); err != nil {
+			t.Fatal(err)
+		}
+		c.accept(sessionapi.NativeEvent{Attachment: "view", Frame: sessionapi.NativeFrame{View: u.attached.presentation.View(), Facts: received}})
+	}
+	editor := c.editor("main")
+	if len(editor.InputHistory) != 100 {
+		t.Fatalf("history length = %d", len(editor.InputHistory))
+	}
+	for i := 100; i > 0; i-- {
+		if !editor.Recall(true) || len(editor.Images) != 1 || editor.Images[0].Path != fmt.Sprintf("/image-%d.png", i) {
+			t.Fatalf("recall %d: %+v", i, editor.Draft)
+		}
+	}
+}
+
+func TestNativeHistoryEnrichesPersistedRepeatedOccurrences(t *testing.T) {
+	for _, sharedFirst := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sharedFirst=%t", sharedFirst), func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.startSession("main", "/workspace")
+			c := nativeTestPromptClient(u)
+			h := &appServerInputHistory{}
+			loaded := historyLoad{entries: []messagehistory.Entry{
+				{SessionID: "other", Text: "[Image 1]"},
+				{SessionID: "main", Text: "[Image 1]"},
+				{SessionID: "main", Text: "[Image 1]"},
+			}}
+			publish := func() {
+				c.event.Frame.Facts = nativePublicationFacts(&u.attached, nil, binding.TokenUsage{}, "", false, nil, "main", nil)
+				c.acceptFacts("main")
+			}
+			if sharedFirst {
+				h.loaded(u.attached.conversation, loaded)
+				publish()
+			}
+			for _, path := range []string{"/first.png", "/second.png"} {
+				var input composer.Editor
+				input.InsertImage(path)
+				u.attached.conversation.Editor.RestoreHistory("main", input.Draft)
+			}
+			publish()
+			if !sharedFirst {
+				h.loaded(u.attached.conversation, loaded)
+			}
+			publish()
+			publish()
+			editor := c.editor("main")
+			if len(editor.InputHistory) != 3 || editor.InputHistory[0].Source != "other" {
+				t.Fatalf("persisted occurrences lost or duplicated: %+v", editor.InputHistory)
+			}
+			for _, path := range []string{"/second.png", "/first.png"} {
+				if !editor.Recall(true) || len(editor.Images) != 1 || editor.Images[0].Path != path {
+					t.Fatalf("recall %s: %+v", path, editor.Draft)
+				}
+				entry := editor.InputHistory[len(editor.InputHistory)-editor.HistoryBack]
+				if entry.Source != "main" || entry.Occurrence == "" {
+					t.Fatalf("live identity lost: %+v", entry)
+				}
+			}
+		})
+	}
+}
 
 func TestNativeFactsRestoreHistoryPreferencesAndUsage(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())

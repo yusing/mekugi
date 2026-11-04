@@ -1171,9 +1171,10 @@ export type Label = {
 };
 
 export type HistoryEntry = {
+  "Occurrence": string;
   "Source": string;
   "Restored": boolean;
-} & Omit<Draft, "Source" | "Restored">;
+} & Omit<Draft, "Occurrence" | "Source" | "Restored">;
 
 export type NativeUsage = {
   "TotalTokens": number;
