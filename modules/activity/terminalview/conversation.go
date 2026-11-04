@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -453,6 +454,27 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 	entryRows := make(map[uint64]int)
 	p := &v.Painter
 	switch {
+	case entry.Kind == "progress" && len(blocks) > 1 && blocks[1].Kind == "message":
+		// Independent questions keep their tool status and source identity,
+		// but their directed exchange uses ordinary agent traffic painting.
+		laid = blocks
+		toggle := v.ClickTarget(&blocks[0], Snippet{Run: entry.Seq, Block: 0}, width)
+		for _, row := range p.Block(blocks[0], width) {
+			out.add(0, row)
+			if toggle {
+				out.snippets[len(out.snippets)-1] = Snippet{Run: entry.Seq, Block: 0}
+			}
+		}
+		for i, block := range blocks[1:] {
+			message := entry
+			if i > 0 {
+				// One host item supplies no independent answer duration.
+				message.Observed = time.Time{}
+			}
+			v.agentItem(&out, message, []Block{block}, first, width, ConversationThread{
+				First: first, Previous: first, Joined: i > 0, Followed: i+2 < len(blocks),
+			})
+		}
 	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "reasoning" || entry.Kind == "progress" || entry.Kind == "compaction"):
 		var summaries []Block
 		for k := first; k <= last; k++ {
@@ -716,6 +738,9 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		out.hang(gutter, gutter, v.paintBlock(len(out.lines), 5, func() []string { return p.Event(block, body) }))
 	case block.Kind == "start" || block.Kind == "message":
 		switch {
+		case entry.Kind == "progress":
+			// Compound exchanges retain full bodies, not entry-wide reply links.
+			out.hang(gutter, gutter, p.Markdown(block.Body, body, false))
 		case entry.Activity != 0 && external && block.Kind == "message" && entry.Kind != "assignment":
 			v.linkedExcerpt(out, entry, "message", p.Markdown(block.Body, body, false), gutter, tail, body, limit)
 		case reply && (v.Conversation || entry.Activity != 0):

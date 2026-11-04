@@ -57,6 +57,9 @@ func TestSideQuestionActivityLiveRestoredReplay(t *testing.T) {
 				if !strings.Contains(painted, "Are the parser tests ready?") || !strings.Contains(painted, "The parser tests pass.") {
 					t.Fatalf("missing rendered question/answer: %s", painted)
 				}
+				if strings.Count(painted, "✉") != 2 || !strings.Contains(painted, "│") || !strings.Contains(painted, "├─✉") {
+					t.Fatalf("exchange lost ordinary mail glyphs or nesting rail: %s", painted)
+				}
 			}
 			for _, restored := range []bool{false, true} {
 				u := newAppServerSessionTestUI(t, t.TempDir())
@@ -67,6 +70,10 @@ func TestSideQuestionActivityLiveRestoredReplay(t *testing.T) {
 					pending := u.attached.source.Entries[0]
 					if len(pending.Values) != 2 || !strings.Contains(pending.Values[0].Body, "pending") {
 						t.Fatalf("missing pending side question: %+v", pending)
+					}
+					painted := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(100).Lines, "\n"))
+					if !strings.Contains(painted, "✉") || !strings.Contains(painted, "│") || !strings.Contains(painted, "pending") {
+						t.Fatalf("pending question lost traffic presentation: %s", painted)
 					}
 					seq := pending.Source.Seq
 					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
@@ -100,15 +107,44 @@ func TestUISnapshotSideQuestionActivity(t *testing.T) {
 	view := u.testActivity(u.shell.Transcript)
 	view.Clock, view.Painter.Theme, view.Conversation = u.clock, diffrender.DarkTheme, true
 	view.testAudience()
-	for _, status := range []string{"completed", "failed"} {
+	for _, status := range []string{"inProgress", "completed", "failed"} {
 		item := sideQuestionActivityItem(t, status)
 		item.ID += status
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+		method := "item/completed"
+		if status == "inProgress" {
+			method = "item/started"
+		}
+		appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	}
 	now = now.Add(time.Second)
 	settleActivity(now, view)
 	for _, width := range []int{38, 80} {
 		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/side-question-%d.txt", width), append(view.testRenderConversation(width).Lines, "plain after exchange"), width)
+	}
+}
+
+func TestSideQuestionLongAnswerKeepsFullTrafficBody(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	item := sideQuestionActivityItem(t, "completed")
+	answer := "First line.\nSecond line.\nThird line.\nFourth line.\nFifth line.\nLast answer line."
+	body, err := json.Marshal(map[string]string{"thread_id": "worker-thread", "task_name": "/root/worker", "answer": answer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(body)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item.Result = result
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	painted := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(80).Lines, "\n"))
+	for _, line := range strings.Split(answer, "\n") {
+		if !strings.Contains(painted, "│ "+line) {
+			t.Fatalf("answer body lost its mail rail or content: %s", painted)
+		}
+	}
+	if strings.Contains(painted, "Open reply") || !strings.Contains(painted, "├─✉") {
+		t.Fatalf("compound exchange introduced an entry-wide reply disclosure: %s", painted)
 	}
 }
 
