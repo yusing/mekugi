@@ -166,8 +166,7 @@
               ? "failed"
               : "finished",
       };
-    if (child && entry.kind === "error")
-      return { glyph: "error", from: entry.agent, detail: "failed" };
+    if (entry.kind === "error") return { glyph: "error", from: entry.agent, detail: "failed" };
     return undefined;
   });
   const body = $derived(first?.body || entry.assignmentText || entry.text || "");
