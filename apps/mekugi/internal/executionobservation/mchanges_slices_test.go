@@ -819,7 +819,7 @@ func TestMChangesOverlappingCapturesKeepIndependentEvidence(t *testing.T) {
 	}
 	for _, selection := range []string{ids[0] + ".." + ids[5], strings.Join([]string{ids[5], ids[3], ids[2], ids[1], ids[4], ids[0]}, " ")} {
 		out, diagnostic, status := f.run(t, "mchanges "+selection)
-		if status != 1 || !strings.Contains(diagnostic, ids[2]+" cannot be composed") ||
+		if status != 1 || !strings.Contains(diagnostic, ids[2]+` file "wrap_test.go" cannot be composed`) ||
 			!strings.Contains(diagnostic, "captured source does not match") || !strings.Contains(diagnostic, "use --history") {
 			t.Fatalf("overlap diagnostic: %q %q %d", out, diagnostic, status)
 		}

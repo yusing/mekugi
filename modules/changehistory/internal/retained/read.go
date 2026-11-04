@@ -582,7 +582,9 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 		if !entry.uncomposable {
 			if err := entry.composition.ApplyWithHighlight(file, false, false); err != nil {
 				entry.uncomposable = true
-				entry.reasons = append(entry.reasons, err.Error())
+				if file.Incomplete == "" {
+					entry.reasons = append(entry.reasons, err.Error())
+				}
 			}
 		}
 		added, removed := file.LineCounts()
