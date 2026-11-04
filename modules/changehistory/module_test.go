@@ -120,6 +120,44 @@ func TestModulePatchExportHasNoImplicitTokenLimit(t *testing.T) {
 	}
 }
 
+func TestCanceledCaptureChainRetainsUnmatchedArtifactDiagnostic(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	path := filepath.Join(f.workspace, "candidate.txt.new")
+	var ids []string
+	for i, file := range []legacycall.ReviewFile{
+		{AfterPath: path, Diff: "@@ -0,0 +1 @@\n+A\n"},
+		{BeforePath: path, Diff: "@@ -1 +0,0 @@\n-A\n"},
+		{BeforePath: path, Diff: "@@ -1 +0,0 @@\n-B\n"},
+	} {
+		call := fmt.Sprintf("candidate-%d", i)
+		id := f.reserve(t, "owner", call)
+		files := []legacycall.ReviewFile{file}
+		if i == 2 {
+			files = append(files, review(filepath.Join(f.workspace, "healthy.txt"), "old", "new"))
+		}
+		f.publish(t, id, call, call, "owner", files)
+		ids = append(ids, id)
+	}
+	valid := f.execute(t, "owner", append([]string{"--summary"}, ids[:2]...)...)
+	if valid.ExitCode != 0 || valid.Stdout != "" {
+		t.Fatalf("canceled lifecycle should stay empty: %+v", valid)
+	}
+	const reason = "captured file identity does not continue the composed chain"
+	summary := f.execute(t, "owner", append([]string{"--summary"}, ids...)...)
+	if !strings.Contains(summary.Stdout, "?\t-\t-\t") || !strings.Contains(summary.Stdout, "candidate.txt.new\t\""+reason) || !strings.Contains(summary.Stdout, "healthy.txt") {
+		t.Fatalf("unknown artifact lost path, reason or sibling: %+v", summary)
+	}
+	full := f.execute(t, "owner", ids...)
+	if full.ExitCode != 1 || !strings.Contains(full.Stderr, "candidate.txt.new") || !strings.Contains(full.Stderr, reason) || !strings.Contains(full.Stdout, "+new") {
+		t.Fatalf("inconsistent chain lost explicit failure or healthy sibling: %+v", full)
+	}
+	history := f.execute(t, "owner", "--history", ids[2])
+	if history.ExitCode != 0 || !strings.Contains(history.Stdout, "-B") {
+		t.Fatalf("unmatched deletion history unavailable: %+v", history)
+	}
+}
+
 func TestComposedBinaryDiagnosticsAndRecovery(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

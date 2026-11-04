@@ -385,6 +385,7 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 		composition    diffmodel.ReviewComposition
 		uncomposable   bool
 		directory      bool
+		path           string
 	}
 	displayPath := func(path string) string {
 		if strings.IndexFunc(path, unicode.IsControl) >= 0 || strings.ContainsAny(path, "\"\\") || strings.Contains(path, " => ") {
@@ -572,13 +573,17 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 			after = before
 		}
 		stats[key(after)] = entry
+		entry.path = cmp.Or(file.AfterPath, file.BeforePath)
 		entry.directory = entry.directory || file.Directory
 		entry.status.Add(file)
 		if file.Incomplete != "" && !slices.Contains(entry.reasons, file.Incomplete) {
 			entry.reasons = append(entry.reasons, file.Incomplete)
 		}
 		if !entry.uncomposable {
-			entry.uncomposable = entry.composition.ApplyWithHighlight(file, false, false) != nil
+			if err := entry.composition.ApplyWithHighlight(file, false, false); err != nil {
+				entry.uncomposable = true
+				entry.reasons = append(entry.reasons, err.Error())
+			}
 		}
 		added, removed := file.LineCounts()
 		if added < 0 || file.Binary {
@@ -613,19 +618,13 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 			composed := diffmodel.StatusOf(regions...)
 			entry.status.Edited, entry.status.Conflict = composed.Edited, composed.Conflict
 		} else {
-			if !entry.incomplete && len(entry.reasons) == 0 {
-				entry.reasons = append(entry.reasons, "captured changes cannot be composed")
-				entry.status.Incomplete = true
-			}
+			entry.status.Incomplete = true
 			entry.incomplete = true
 		}
 		if !entry.incomplete && entry.added == 0 && entry.removed == 0 && entry.status.Before == entry.status.After {
 			continue
 		}
-		path := entry.status.After
-		if path == "" {
-			path = entry.status.Before
-		}
+		path := cmp.Or(entry.status.After, entry.status.Before, entry.path)
 		path = displayPath(pathdisplay.ForWorkspace(options.workspace, path))
 		if entry.status.Before != "" && entry.status.After != "" && entry.status.Before != entry.status.After {
 			path = displayPath(pathdisplay.ForWorkspace(options.workspace, entry.status.Before)) + " => " + path
