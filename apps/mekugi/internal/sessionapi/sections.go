@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"slices"
 	"strings"
 )
@@ -152,6 +153,7 @@ func (s *Server) sectionContent(ref ContentReference) (any, *RPCError) {
 	result := ContentResult{}
 	var data jsontext.Value
 	var target any
+	var failure *RPCError
 	switch ref.Kind {
 	case "session":
 		result.Session = new(s.session)
@@ -166,9 +168,23 @@ func (s *Server) sectionContent(ref ContentReference) (any, *RPCError) {
 	case "review-info":
 		data, target = s.review, &result.ReviewInfo
 	case "live":
-		data, target = s.livePreviews, &result.Live
+		if ref.Key == "" {
+			data, target = s.livePreviews, &result.Live
+		} else {
+			failure = rpcFailure(404, "The selected live source is unavailable.")
+			for _, source := range s.liveSource {
+				if source.ID == ref.Key {
+					result.Live = []preview.Preview{source}
+					failure = nil
+					break
+				}
+			}
+		}
 	}
 	s.mu.Unlock()
+	if failure != nil {
+		return nil, failure
+	}
 	if target != nil && json.Unmarshal(data, target) != nil {
 		return nil, rpcFailure(500, "Section content unavailable.")
 	}

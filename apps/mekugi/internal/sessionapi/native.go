@@ -96,6 +96,8 @@ func (e NativeEvent) Target() NativeTarget {
 // NativeOperation uses existing semantic intents, not terminal keys. Exactly
 // one operation is admitted by transport; its owner applies ordinary policy.
 type NativeOperation struct {
+	Viewer       *NativeViewerLease                       `json:"viewer,omitzero"`
+	Navigate     *NativeAgentSelection                    `json:"navigate,omitzero"`
 	StopProcess  *sessionpresentation.Process             `json:"stopProcess,omitzero"`
 	SaveDraft    *string                                  `json:"saveDraft,omitzero"`
 	Completion   *NativeEditorInput                       `json:"completion,omitzero"`
@@ -237,6 +239,7 @@ type NativeEffect struct {
 	Presentation *NativePresentationEffect
 	Deliveries   []sessionpresentation.ActivityDelivery
 	Notification *NativeDesktopNotification
+	Navigate     *NativeNavigation
 	Reattach     *string
 }
 
@@ -276,7 +279,25 @@ func (e NativeEffect) RecoveryDraft() *composer.Draft {
 	return e.Restore
 }
 
+type NativeViewerLease struct {
+	Revision uint64
+	Expires  int64 // Absolute Unix milliseconds; delayed delivery never renews a lease.
+}
+
+type NativeNavigation struct {
+	Activation uint64
+	Displayed  string
+	Thread     sessionpresentation.Thread
+}
+
+type NativeAgentSelection struct {
+	Activation uint64
+	Displayed  string
+	Agent      string
+}
+
 type NativePresentationEffect struct {
+	Viewer                                           *NativeViewerLease
 	LiveHidden, InterruptLocked, PredictionsDisabled bool
 }
 
@@ -358,7 +379,7 @@ func (f NativeFrame) withoutEditors() NativeFrame {
 
 func (o NativeOperation) valid() bool {
 	count := 0
-	for _, present := range []bool{o.SaveDraft != nil, o.Completion != nil, o.Preferences != nil, o.Focused != nil, o.Command != nil, o.Composer != nil, o.Menu != nil, o.Resume != nil,
+	for _, present := range []bool{o.Viewer != nil, o.Navigate != nil, o.SaveDraft != nil, o.Completion != nil, o.Preferences != nil, o.Focused != nil, o.Command != nil, o.Composer != nil, o.Menu != nil, o.Resume != nil,
 		o.Panel != nil, o.Display != nil, o.Interrupt != nil, o.StopProcess != nil,
 		o.Side != nil, o.BTW != nil, o.Answers != nil,
 		o.Approval != nil, o.Output != nil, o.DetailOutput != nil, o.Details != nil,

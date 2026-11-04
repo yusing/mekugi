@@ -188,9 +188,13 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 					yield(InputEffect{Details: &DetailInput{Version: in.Main.session.Version, View: in.displayedTranscript(), Kind: ErrorDetails}})
 				}
 			case "e":
-				in.Live.NextBatch(in.Main.session.Displayed.Caller)
+				if !in.Shell.ExternalPanes {
+					in.Live.NextBatch(in.Main.session.Displayed.Caller)
+				}
 			case "r":
-				in.Live.ScrollBatch(in.Main.session.Displayed.Caller, 'r')
+				if !in.Shell.ExternalPanes {
+					in.Live.ScrollBatch(in.Main.session.Displayed.Caller, 'r')
+				}
 			default:
 				in.Resize(key)
 			}

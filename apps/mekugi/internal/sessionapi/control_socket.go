@@ -17,7 +17,7 @@ import (
 
 const (
 	ProtocolHeader  = "Mekugi-Protocol"
-	ProtocolVersion = "7"
+	ProtocolVersion = "8"
 )
 
 // ControlSocketPath names the server's private, user-local control endpoint.

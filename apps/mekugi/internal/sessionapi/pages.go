@@ -181,12 +181,13 @@ type ContentReference struct {
 }
 
 type PageResult struct {
-	Roster   *roster      `json:"roster,omitzero"`
-	Delivery string       `json:"delivery,omitzero"`
-	Files    []reviewFile `json:"files,omitzero"`
-	Next     *PageCursor  `json:"next,omitzero"`
-	Entries  []entry      `json:"entries"`
-	Earlier  *PageCursor  `json:"earlier"`
+	Live     []preview.Preview `json:"live,omitzero"`
+	Roster   *roster           `json:"roster,omitzero"`
+	Delivery string            `json:"delivery,omitzero"`
+	Files    []reviewFile      `json:"files,omitzero"`
+	Next     *PageCursor       `json:"next,omitzero"`
+	Entries  []entry           `json:"entries"`
+	Earlier  *PageCursor       `json:"earlier"`
 }
 
 type ContentResult struct {
@@ -255,6 +256,11 @@ func (s *Server) page(body jsontext.Value) (any, *RPCError) {
 		return nil, failure
 	}
 	s.mu.Lock()
+	if cursor.Kind == "live" {
+		source, attachment, revision := s.liveSource, s.readAttachment, s.contentVersions["live"]
+		s.mu.Unlock()
+		return livePage(source, attachment, revision, cursor)
+	}
 	if cursor.Kind == "roster" {
 		value, attachment, revision := s.rosterValue, s.readAttachment, s.rosterRevision
 		s.mu.Unlock()

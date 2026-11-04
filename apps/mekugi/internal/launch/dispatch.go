@@ -11,6 +11,7 @@ import (
 	"slices"
 	"syscall"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/herdr"
 	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
@@ -46,6 +47,8 @@ func Run() (exitCode int) {
 	}
 	if worker == nil && len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "herdr":
+			return herdr.Run(ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "server":
 			if os.Getenv(nativeServerSupervisorEnvironment) != "" {
 				return runNativeServerSupervisor(ctx, os.Args[2:])

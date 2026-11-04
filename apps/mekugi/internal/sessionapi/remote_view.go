@@ -56,7 +56,7 @@ func (o NativeOperation) routeRefusal(authority viewAuthority) string {
 		}
 		return ""
 	}
-	if o.Preferences != nil || o.SaveDraft != nil || o.Composer != nil && o.Composer.Intent.Operation.ClientLocal() {
+	if o.Viewer != nil || o.Navigate != nil || o.Preferences != nil || o.SaveDraft != nil || o.Composer != nil && o.Composer.Intent.Operation.ClientLocal() {
 		return "This operation belongs to the native client."
 	}
 	for _, editor := range []*NativeEditorInput{o.Editor, o.Completion} {

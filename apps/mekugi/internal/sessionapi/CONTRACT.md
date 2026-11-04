@@ -11,10 +11,10 @@ The 32 MiB decoded-upload budget remains a required message constraint.
 Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients
 connect to `/api/native/control` over the private Unix socket; remote human
 clients use `/api/control` through the connector. Both select WebSocket
-subprotocol `mekugi.control.v7`. The socket retains kernel-confirmed same-user
+subprotocol `mekugi.control.v8`. The socket retains kernel-confirmed same-user
 peer admission, private filesystem permissions and listener/startup locks.
 
-The first request is `initialize` with `{"version":"7"}`. Remote clients also
+The first request is `initialize` with `{"version":"8"}`. Remote clients also
 supply `token`, consumed by the connector and never forwarded to the server.
 Initialization succeeds before any session data or operation is available.
 Observation requests may follow initialization on the ordered connection before
@@ -25,7 +25,7 @@ that sample to their local monotonic clock, independently of local wall time.
 The endpoint establishes authority; caller fields cannot select it. Remote
 connections cannot invoke native startup or native-only semantic operations.
 
-`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 7` on
+`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 8` on
 request and response. Missing/incompatible versions receive 409. WebSocket
 upgrades on the private socket also carry this header. Browser clients use the
 subprotocol and initialization version; the connector sets the private header.
@@ -53,7 +53,7 @@ acknowledgements cannot reactivate a retired subscription.
 | `session/options` | Execution-machine workspaces and offered models |
 | `session/list` | Current session-list value |
 | `session/read` | One confirmed thread's list entry |
-| `session/page` | A bounded retained-feed, roster or saved-review metadata page |
+| `session/page` | A bounded retained-feed, roster, saved-review or live-preview metadata page |
 | `session/start` | Create/resume using the creation body |
 | `session/end` | End the selected owned runtime |
 | `session/subscribe` | Session-list updates without `thread`; shared publications with `thread` |
@@ -67,6 +67,12 @@ acknowledgements cannot reactivate a retired subscription.
 | `view/attach` | Attach a per-view semantic publication stream |
 | `view/intent` | Existing semantic mutation body, retaining attachment and version |
 | `native/start` | Native invocation body plus its initial subscription; native endpoint only |
+| `native/activate` | Associate the physical frontend with its accepted native subscription |
+| `native/observe` | Observe that frontend's shared panel data and renew a viewer lease |
+| `native/resolve` | Resolve the frontend's current runtime for shared page reads |
+| `native/select` | Select an agent on the originating physical frontend |
+| `native/release` | Release a companion-panel viewer lease |
+| `native/content` | Read a published content reference for that frontend |
 | `subscription/cancel` | Release one subscription, leaving execution running |
 | `request/cancel` | Cancel pending request work; body contains the original `id` |
 | `publication/ack` | Acknowledge the current connection-local delivery ID |
@@ -133,7 +139,7 @@ published content reference and returns the complete content as JSON.
 `POST /api/resources/image` and `POST /api/resources/attachment-image` return
 raster bytes with their image Content-Type. These resource reads use separate
 HTTP requests, outside the control WebSocket. Private socket requests require
-`Mekugi-Protocol: 7`; connector requests also require `Authorization: Bearer TOKEN`
+`Mekugi-Protocol: 8`; connector requests also require `Authorization: Bearer TOKEN`
 and an admitted UI origin. Errors retain the RPC error shape and semantic HTTP
 status. Transfers share a separate aggregate resource budget through response delivery.
 Cancellation retires only the affected read, without ending execution.
@@ -362,6 +368,39 @@ discarding semantic effects. `notification` retains only the latest desktop wake
 Composer `Consumed` identifies a client that already took its submitted draft;
 known rejection restores that source rather than deleting text from a newer editor.
 
+### Native companion panels
+
+The `native/activate`, `native/observe`, `native/resolve`, `native/select`,
+`native/release` and `native/content` methods are native-endpoint-only.
+Activation names a subscription on the physical frontend's connection and supplies
+`{pid, sequence}` after an accepted initial frame or completed handoff. Increasing
+sequences keep a late activation from replacing a newer active attachment.
+
+Panel requests supply `pid` and the observed connection `instance`. Initial
+observation may omit `instance`; absence returns `{available:false}`. Observation
+also supplies a `viewer`, with `after` and `attachment` for subsequent reads.
+It renews a 45-second viewer lease and waits up to 18 seconds for changed panel
+state. Observation follows completed frontend handoffs even when its supplied
+attachment is the preceding one. The response contains the connection instance, runtime `thread` or
+`startup`, native `attachment`, `activation`, `version`, `displayed` and `caller` identities,
+an opaque `cursor`, and `publication` using the shared session, roster, review,
+live and deferred-section shapes. Its separate `live` content reference binds
+selected preview reads. Runtime and displayed-thread identities are distinct.
+
+Selection supplies `attachment`, `activation`, the observed `displayed` ID and
+the canonical `agent` name. Stale connection, activation, attachment or display
+identity fails instead of retargeting navigation. Release supplies the viewer and
+attachment; the viewer remains releasable after a handoff. Lease effects
+carry a revision and absolute expiry; delayed delivery cannot extend their
+lifetime. Expiry or final release restores the terminal's own panels.
+
+Page reads use `session/page` and its existing cursors. `native/content` supplies
+`content` with the published content reference. Omitting `offset` returns the
+ordinary complete content result; a numeric byte offset at a line boundary returns bounded `lines`
+and an optional numeric `next` offset. Saved-review caller filtering and content
+admission are shared with other Session API consumers. Each physical frontend
+retains its own selected source; helper connections borrow that state.
+
 ### Shared publications
 
 `session/subscribe` publishes `snapshot` and `patch` notifications whose data is:
@@ -424,8 +463,13 @@ and boundary. Stale cursors fail rather than mixing attachments or compositions.
 Saved-review file metadata loads when Changes opens; full file content is read by
 the exact caller, revision and file identity. Caller filtering composes the
 selected caller's changes against other callers' captures as baseline. It never
-filters an all-callers diff after composition. Oversized auxiliary sections remain
-available through explicit content references rather than silent truncation.
+filters an all-callers diff after composition. Live metadata pages use `kind:live`
+with the published live reference's attachment and revision. They return preview
+identities, status and the first file's paths without raw input or diff bodies; `next` continues
+the page. Selected line reads use the live content reference with `key` set to
+the preview ID. Complete live resources retain their full source shape.
+Oversized auxiliary sections remain available through explicit content references
+rather than silent truncation.
 
 ## Messages
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"math"
 	"net"
 	"net/http"
@@ -151,6 +152,7 @@ type Server struct {
 	reviewWorkspace     string
 	reviewSource        *changes.ReviewView
 	livePreviews        jsontext.Value
+	liveSource          []preview.Preview
 	subscribers         map[chan publication]struct{}
 	frame               atomic.Pointer[Frame] // Raw local input; family projections never feed back here.
 	summary             []byte                // The latest summary event.
@@ -302,6 +304,7 @@ func (s *Server) Publish(f Frame) error {
 		s.rosterValue = nil
 		s.prompts = nil
 		s.review, s.livePreviews = nil, nil
+		s.liveSource = nil
 		s.reviewSource = nil
 	}
 	var patch message
@@ -362,6 +365,7 @@ func (s *Server) Publish(f Frame) error {
 		}
 		if !bytes.Equal(data, s.livePreviews) {
 			s.livePreviews, patch.Live = data, data
+			s.liveSource = f.Live
 		}
 	}
 	mainChanged, err := s.main.update(f.Main, nil, f.ChildReplySummary, f.Session.Caller)

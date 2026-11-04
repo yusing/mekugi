@@ -362,7 +362,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 			capacity = 3 // input provenance, presentation, command deletion
 		case operation.Menu != nil:
 			capacity = 2 // menu consequence and editor replacement
-		case operation.Completion != nil || operation.Reference != nil || operation.Resume != nil:
+		case operation.Completion != nil || operation.Reference != nil || operation.Resume != nil || operation.Viewer != nil || operation.Navigate != nil:
 			capacity = 1
 		}
 		if capacity > 0 {
@@ -385,6 +385,16 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		}
 		closed := false
 		switch {
+		case operation.Viewer != nil:
+			view.effects.add(sessionapi.NativeEffect{Thread: session.Client.Thread, Presentation: &sessionapi.NativePresentationEffect{Viewer: operation.Viewer}})
+		case operation.Navigate != nil:
+			publication := view.attached.childSource.Publication(view.attached.presentation, view.attached.source)
+			if native.hub != nil {
+				if family, _ := native.hub.Family(session.Client.Thread); family != nil && family.Agents != nil {
+					publication = family.Agents
+				}
+			}
+			return view.selectAgent(*operation.Navigate, publication), nil
 		case operation.SaveDraft != nil:
 			session.attached.inputHistory.remember(*operation.SaveDraft)
 		case operation.Completion != nil:

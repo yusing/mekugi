@@ -79,6 +79,9 @@ func (in FrameInput) Status() ShellStatus {
 		Child: in.Main.session.Displayed.ID != in.Main.session.Main.ID || in.Main.session.Info.Caller != "" && in.Main.session.Info.Caller != "/root", Responding: responding,
 		DiffUnseen: in.DiffUnseen, Prefix: in.Prefix, LiveCount: in.Live.Live(), Locked: in.Main.InterruptLocked,
 	}
+	if in.Shell.ExternalPanes {
+		status.LiveCount = 0
+	}
 	if side := in.Main.session.Side; side != nil && in.Main.session.SideThread.ID != "" {
 		status.SideLabel, status.SideSelected = side.Label, in.Main.session.Displayed == in.Main.session.SideThread
 	}
@@ -110,9 +113,9 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	caller := view.Displayed.Caller
 	transcript := in.displayedTranscript()
 	transcript.ImageDemands, transcript.ImagePlacements = nil, nil
-	mainEdit := !in.LiveHidden && (slices.Contains(in.Live.Callers(), caller) || caller == "/root" && len(in.Live.Callers()) > 0)
+	mainEdit := !shell.ExternalPanes && !in.LiveHidden && (slices.Contains(in.Live.Callers(), caller) || caller == "/root" && len(in.Live.Callers()) > 0)
 	var roster []string
-	if shell.RosterLabel != "" {
+	if shell.RosterLabel != "" && !shell.ExternalPanes {
 		roster = in.Agents.NativeRoster(width, shell.Panes.RosterLimit(width, height), in.Now, shell.Focus == 3)
 	} else {
 		in.Agents.Hits = nil

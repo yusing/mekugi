@@ -214,6 +214,9 @@ existing semantic interrupt and exit controls; quitting or terminating the clien
 releases its renderer without stopping execution. The terminal-only `/detach`
 command leaves the native attachment, including during active work, keeping the session
 available to `--resume` and the WebUI. `/quit` retains the same local exit behavior.
+The [native Herdr adapter](../herdr/SPEC.md) observes the client's active attachment
+through its existing server connection. Native effects route panel selection and
+temporary pane visibility through the same reattachment, draft and renderer owners.
 Automatically started servers retain bounded private stderr and process-exit
 evidence through a detached supervisor, independent of client lifetime. Collection
 failure does not block startup; [process diagnostics](../../../../modules/diagnostics/SPEC.md#detached-server-evidence)

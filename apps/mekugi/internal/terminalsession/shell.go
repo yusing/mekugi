@@ -19,6 +19,24 @@ type Shell struct {
 	Layout         Layout
 	Tabs           [4]Rect
 	SideTab        Rect
+	ExternalPanes  bool
+	externalFocus  int
+}
+
+// SetExternalPanes leases presentation only, preserving saved preferences.
+func (s *Shell) SetExternalPanes(active bool) bool {
+	if s.ExternalPanes == active {
+		return false
+	}
+	if active {
+		s.externalFocus = s.Focus
+		s.Focus = 0
+		s.StopDrag()
+	} else {
+		s.Focus = s.externalFocus
+	}
+	s.ExternalPanes = active
+	return true
 }
 
 type ShellPlan struct {
@@ -49,10 +67,14 @@ type ShellStatus struct {
 func (s *Shell) Plan(width, height, roster int) ShellPlan {
 	s.Clamp()
 	width, height = max(1, width), max(1, height)
-	if s.RosterLabel == "" {
+	if s.RosterLabel == "" || s.ExternalPanes {
 		roster = 0
 	}
-	layout, left, right, framed, kept := s.Panes.Geometry(width, height, roster)
+	panes := s.Panes
+	if s.ExternalPanes {
+		panes.Focus, panes.DiffOpen = 0, false
+	}
+	layout, left, right, framed, kept := panes.Geometry(width, height, roster)
 	return ShellPlan{layout, left, right, width, height, kept, framed}
 }
 
@@ -159,10 +181,10 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 	if in.SideLabel != "" {
 		tab(0, in.SideLabel, "", in.SideSelected)
 	}
-	if s.Auxiliary != nil {
+	if s.Auxiliary != nil && !s.ExternalPanes {
 		tab(2, s.AuxiliaryLabel, diffBadge, s.DiffOpen)
 	}
-	if s.RosterLabel != "" {
+	if s.RosterLabel != "" && !s.ExternalPanes {
 		tab(3, s.RosterLabel, agentsBadge, true)
 	}
 	if in.Locked {
@@ -174,21 +196,24 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 	}
 	selector := "1"
 	switch {
-	case s.Auxiliary != nil && s.RosterLabel != "":
+	case !s.ExternalPanes && s.Auxiliary != nil && s.RosterLabel != "":
 		selector = "1-3"
-	case s.Auxiliary != nil:
+	case !s.ExternalPanes && s.Auxiliary != nil:
 		selector = "1-2"
-	case s.RosterLabel != "":
+	case !s.ExternalPanes && s.RosterLabel != "":
 		selector = "1,3"
 	}
 	var hints terminalui.Hints
 	switch {
 	case in.Prefix:
 		hints = terminalui.Hints{{"ctrl+b " + selector, "select", 0}}
-		if s.Auxiliary != nil {
+		if s.Auxiliary != nil && !s.ExternalPanes {
 			hints = append(hints, terminalui.Hint{"2", "toggle " + strings.ToLower(s.AuxiliaryLabel), 0})
 		}
-		hints = append(hints, terminalui.Hints{{"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}...)
+		if !s.ExternalPanes {
+			hints = append(hints, terminalui.Hints{{"e", "next live", 0}, {"←→", "resize", 0}}...)
+		}
+		hints = append(hints, terminalui.Hint{"PgUp/PgDn", "history", 0})
 		return tabs.String() + "  " + hints.Render()
 	case s.Focus == 1:
 		hints = s.Auxiliary.Hints()
@@ -228,6 +253,9 @@ func (s *Shell) Clamp() {
 }
 
 func (s *Shell) Select(pane int) {
+	if s.ExternalPanes && (pane == 1 || pane == 3) {
+		return
+	}
 	if pane == 1 && s.Auxiliary == nil || pane == 3 && s.RosterLabel == "" {
 		return
 	}

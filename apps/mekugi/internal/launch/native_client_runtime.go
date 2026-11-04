@@ -33,18 +33,27 @@ const (
 // Request lanes and input admission belong to each interaction, so a retained
 // source cannot block input in another thread.
 type nativeClientRuntime struct {
-	previews       imagePreviews
-	ctx            context.Context
-	active         *nativeClient
-	owners         []*nativeClient
-	messages       chan nativeClientMessage
-	results        chan *nativeClientCall
-	reattached     chan nativeClientReattached
-	clipboardOwner *nativeClient
-	pasteOwner     *nativeClient
-	editors        map[[2]string]*composer.Editor
-	images         map[string]bool
-	unknown        []nativeUnknownInput
+	activation        uint64
+	activationPending uint64
+	viewerRevision    uint64
+	viewerExpiry      time.Time
+	previews          imagePreviews
+	ctx               context.Context
+	active            *nativeClient
+	owners            []*nativeClient
+	messages          chan nativeClientMessage
+	results           chan *nativeClientCall
+	reattached        chan nativeClientReattached
+	clipboardOwner    *nativeClient
+	pasteOwner        *nativeClient
+	editors           map[[2]string]*composer.Editor
+	images            map[string]bool
+	unknown           []nativeUnknownInput
+}
+
+type nativeFrontendResult struct {
+	sequence uint64
+	err      error
 }
 
 type nativeClientMessage struct {
@@ -53,6 +62,7 @@ type nativeClientMessage struct {
 	clipboard   *nativeClipboardResult
 	restoration *nativeRestoredEffect
 	err         error
+	frontend    *nativeFrontendResult
 }
 
 func (r *nativeClientRuntime) decode(key byte, now time.Time) {
@@ -130,6 +140,9 @@ func (r *nativeClientRuntime) deliver(message nativeClientMessage) error {
 	case message.event != nil:
 		previous := c.event.Frame.View.Status.Feedback
 		c.accept(*message.event)
+		if c == r.active && !c.frontendActive && c.event.Attachment != "" {
+			r.activateFrontend(c)
+		}
 		if feedback := c.event.Frame.View.Status.Feedback; c != r.active && feedback.Alert && feedback.Text != "" && feedback != previous {
 			r.active.feedback.Set(fmt.Sprintf("Session %s: %s", c.event.Frame.View.Main.ID, feedback.Text), true, time.Now())
 			r.active.refresh(time.Now())
@@ -138,6 +151,14 @@ func (r *nativeClientRuntime) deliver(message nativeClientMessage) error {
 		c.clipboardResult(*message.clipboard)
 	case message.restoration != nil:
 		c.restorationResult(*message.restoration)
+	case message.frontend != nil:
+		if message.frontend.sequence == r.activationPending {
+			r.activationPending = 0
+		}
+		if message.frontend.err != nil {
+			c.feedback.Set("Native frontend association failed: "+message.frontend.err.Error(), true, time.Now())
+			c.refresh(time.Now())
+		}
 	case message.err != nil:
 		err := message.err
 		if errors.Is(err, io.EOF) {
@@ -320,6 +341,8 @@ func (r *nativeClientRuntime) activate(c *nativeClient) {
 		return true
 	})
 	r.active = c
+	r.activateFrontend(c)
+	c.renderer.terminal.Shell.SetExternalPanes(time.Now().Before(r.viewerExpiry))
 	if operation := previous.attachOperation; operation != nil {
 		previous.attachOperation = nil
 		if operation.Details != nil {
@@ -366,6 +389,10 @@ func (r *nativeClientRuntime) reattach(result nativeClientReattached, stdout *os
 }
 
 func (r *nativeClientRuntime) retire() {
+	// Keep the old subscription until the server has recorded the completed handoff.
+	if r.activationPending != 0 {
+		return
+	}
 	for _, c := range r.owners {
 		if c == r.active || c == r.pasteOwner || c.closed || c.attaching || c.handoff != nil || c.clipboardPending || len(c.calls) != 0 || !c.effectsSettled() {
 			continue
@@ -417,5 +444,38 @@ func (r *nativeClientRuntime) close() {
 	r.active.unknown = append(r.active.unknown, r.unknown...)
 	for path := range r.images {
 		_ = os.Remove(path)
+	}
+}
+
+func (r *nativeClientRuntime) activateFrontend(c *nativeClient) {
+	if c.connection == nil || c.event.Attachment == "" {
+		return
+	}
+	r.activation++
+	sequence := r.activation
+	r.activationPending = sequence
+	c.frontendActive = true
+	c.workers.Go(func() {
+		ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+		defer cancel()
+		err := c.connection.Activate(ctx, os.Getpid(), sequence)
+		select {
+		case r.messages <- nativeClientMessage{owner: c, frontend: &nativeFrontendResult{sequence: sequence, err: err}}:
+		case <-c.ctx.Done():
+		}
+	})
+}
+
+func (r *nativeClientRuntime) viewerLease(lease sessionapi.NativeViewerLease, now time.Time) {
+	if lease.Revision <= r.viewerRevision {
+		return
+	}
+	r.viewerRevision = lease.Revision
+	r.viewerExpiry = time.Time{}
+	if lease.Expires > 0 {
+		r.viewerExpiry = now.Add(max(time.Duration(0), time.UnixMilli(lease.Expires).Sub(now)))
+	}
+	if r.active != nil && r.active.renderer.terminal.Shell.SetExternalPanes(now.Before(r.viewerExpiry)) {
+		r.active.dirty = true
 	}
 }

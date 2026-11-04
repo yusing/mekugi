@@ -255,6 +255,10 @@ separate from painted readiness and offline prompt tests.
 
 ## Panes
 
+Connected [native Herdr panels](../herdr/SPEC.md) temporarily replace the terminal's
+roster, saved Diff and live-preview surfaces. Their presentation lease leaves saved
+pane preferences intact; ordinary terminal geometry returns when it ends.
+
 Main starts at full width. Diff toggles the auxiliary column open and closed.
 The auxiliary view comes from composition. Without a contribution, its selector,
 geometry and input targets are absent, and restored auxiliary focus returns to

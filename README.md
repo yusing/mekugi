@@ -154,7 +154,7 @@ are unsupported. See [launch details](docs/guide/launch.md).
 
 ## Guides
 
-- [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents pane and output dialogs.
+- [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents pane, output dialogs and optional Herdr app panels.
 - [Sessions and recovery](docs/guide/sessions.md): resume, fork, rewind, compaction and replay storage.
 - [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file` and `mchanges`.
 - [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write and sudo guards.

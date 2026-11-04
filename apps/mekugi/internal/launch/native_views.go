@@ -463,3 +463,26 @@ func (n *nativeViews) invalidateSkills(execution *executionPresentation) {
 		}
 	}
 }
+
+// Agent selection emits a retained navigation consequence. The physical client
+// uses displayThread so live, historical and cross-runtime paths share drafts.
+func (v *nativeSessionView) selectAgent(selection sessionapi.NativeAgentSelection, publication *activity.Publication) string {
+	current := v.attached.presentation.View()
+	if selection.Displayed != current.Displayed.ID {
+		return sessionpresentation.ErrStaleIntent.Error()
+	}
+	if publication != nil {
+		for _, row := range publication.Roster {
+			name := sessionpresentation.PresentAgent(row.Agent.Name, current.Info.Caller).Name
+			if name != selection.Agent {
+				continue
+			}
+			if row.Agent.NonAttachable || row.Agent.Thread == "" {
+				return "Agent is not attachable."
+			}
+			v.effects.add(sessionapi.NativeEffect{Thread: current.Main.ID, Navigate: &sessionapi.NativeNavigation{Thread: sessionpresentation.Thread{ID: row.Agent.Thread, Caller: name}, Displayed: selection.Displayed, Activation: selection.Activation}})
+			return ""
+		}
+	}
+	return "Agent is no longer in the displayed roster."
+}

@@ -2,7 +2,7 @@
 
 Panes, composer controls and dialogs of the native terminal UI.
 
-Main starts at full width, with Agents below. Toggle Diff to split the view;
+In a standalone terminal, Main starts at full width, with Agents below. Toggle Diff to split the view;
 close it to restore full width. Click a child to switch the displayed transcript.
 Live subagents use their own composer, prompts and settings. Main, children and
 Side retain separate drafts; historical views remain read-only. Narrow terminals show one pane.
@@ -114,6 +114,25 @@ throughput, usage, estimated API cost, and composed captured edits. Usage/rates 
 resume while retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
 Main's throughput appears beside composer context. Herdr is optional; redirected
 sessions keep Codex input/output. See [activity details](../../modules/activity/CONTRACT.md).
+
+## Herdr app panels
+
+A Herdr app layout with Mekugi panels shows the roster across the bottom and
+saved changes and live edits in its right-hand diff pane. The panels follow the
+active Herdr space, including spaces on another machine. Selecting an
+attachable agent switches that space's Mekugi terminal transcript and composer; each thread
+keeps its draft. Herdr's ordinary agents sidebar remains separate.
+
+While the native panels are connected, Mekugi hides its duplicate terminal roster,
+diff pane and live-edit dock. Disconnecting the panels restores the terminal
+layout without changing saved pane preferences or stopping the session.
+
+Each execution machine needs matching Mekugi client, shared-server and helper
+builds, and the Herdr layout needs the matching native mods. After a protocol
+upgrade, restart the shared server and reopen its clients. Let active work finish
+first: server shutdown ends running work. The panels read captured Mekugi changes, independently
+of the Git pane's working-tree changes. See the [native panel integration](../../apps/mekugi/internal/herdr/SPEC.md)
+for integration details.
 
 ## Output dialog
 

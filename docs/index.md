@@ -37,6 +37,7 @@ contracts stay with their owning modules.
 - [Session presentation](../apps/mekugi/internal/sessionpresentation/SPEC.md)
 - [Session API](../apps/mekugi/internal/sessionapi/SPEC.md)
 - [Browser UI](../apps/mekugi/internal/webui/SPEC.md)
+- [Herdr native panels](../apps/mekugi/internal/herdr/SPEC.md)
 - [Connector](../apps/mekugi/internal/connector/SPEC.md)
 - [Session review](../apps/mekugi/internal/sessionreview/SPEC.md)
 - [Terminal session](../apps/mekugi/internal/terminalsession/SPEC.md)

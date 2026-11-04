@@ -65,6 +65,9 @@ type nativeView struct {
 	target          requestTarget
 	startup         string
 	version         sessionpresentation.Version
+	displayed       sessionpresentation.Thread
+	caller          string
+	changed         chan struct{}
 	ctx             context.Context
 	cancel          context.CancelCauseFunc
 	queue           *nativePublications
@@ -380,6 +383,16 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		v.reviewBytes, v.reviewLimited = reviewBytes, reviewLimited
 		v.main, v.agents, v.family, v.state = main, agents, family, state
 		v.started, v.version = true, frame.View.Version
+		caller := frame.View.Displayed.Caller
+		if caller == "" || frame.View.Displayed.ID == frame.View.Main.ID && frame.View.Info.Caller != "" {
+			caller = frame.View.Info.Caller
+		}
+		metadataChanged := v.displayed != frame.View.Displayed || v.caller != caller || frame.Switch != nil
+		v.displayed, v.caller = frame.View.Displayed, caller
+		if v.changed != nil && metadataChanged {
+			close(v.changed)
+			v.changed = make(chan struct{})
+		}
 		if frame.Switch != nil {
 			v.target = requestTarget{thread, frame.View.Info.Workspace}
 			v.startup = ""
@@ -415,6 +428,7 @@ func (n *Native) newView(ctx context.Context, target requestTarget, startup stri
 		n.mu.Unlock()
 	})
 	subscription.native = v.queue
+	subscription.owner, subscription.view, subscription.attachment = n, v, id
 	request := NativeRequest{authority: authority, Attach: true, Attachment: id, Startup: startup, Thread: target.thread, Workspace: target.workspace, Context: ctx, ViewContext: ctx, Reply: make(chan string, 1)}
 	return subscription, request, nil
 }

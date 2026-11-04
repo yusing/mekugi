@@ -26,6 +26,9 @@ func (in FrameInput) Resize(key string) {
 		}
 		return
 	}
+	if in.Shell.ExternalPanes {
+		return
+	}
 	in.Shell.Panes.Resize(key, in.Width)
 	if navigator, ok := in.Shell.Auxiliary.(terminalui.PaneNavigator); ok && (key == "[" || key == "]") {
 		columns := navigator.NavigatorColumns()

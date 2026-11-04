@@ -114,3 +114,17 @@ initialization failures cannot disappear between admission and attachment. The
 runtime's joined exit result terminates native streams; transport loss alone is
 never reported as a successful runtime exit. Startup operation identities last
 only for their running owner, without retained completed-operation state.
+
+### Native companion panels
+
+Native companion panels observe an existing physical frontend through the shared
+server. The frontend's active attachment identifies the displayed session across
+runtime navigation; a process ID discovers that connection, never a runtime.
+Panels consume the shared roster, saved-review, live-preview and content owners.
+Selecting an agent uses the originating frontend's ordinary navigation, preserving
+its drafts and attachment handoff behavior.
+
+Connected panel viewers temporarily take over the terminal's Diff, Agents and
+live-preview surfaces. Viewer release or expiry restores those surfaces without
+changing saved preferences. These leases belong to the physical frontend, so
+other terminals and server-owned execution remain independent.

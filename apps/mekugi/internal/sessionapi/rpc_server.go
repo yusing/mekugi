@@ -48,6 +48,12 @@ var rpcMethods = map[string]rpcMethod{
 	"view/attach":         {limit: 1024},
 	"view/intent":         {limit: InputBodyLimit},
 	"native/start":        {limit: inputLimit, native: true},
+	"native/activate":     {limit: 1024, native: true},
+	"native/resolve":      {limit: 2048, native: true},
+	"native/observe":      {limit: 2048, native: true},
+	"native/release":      {limit: 2048, native: true},
+	"native/select":       {limit: 2048, native: true},
+	"native/content":      {limit: 4096, native: true},
 	"subscription/cancel": {limit: 1024},
 	"request/cancel":      {limit: 1024},
 	"publication/ack":     {limit: 1024},
@@ -72,17 +78,20 @@ func decodeBody(body jsontext.Value, value any) *RPCError {
 }
 
 type rpcSubscription struct {
-	id      string
-	ctx     context.Context
-	cancel  context.CancelFunc
-	events  <-chan publication
-	native  *nativePublications
-	values  <-chan []byte
-	kind    string
-	cleanup func()
-	once    sync.Once
-	active  bool // guarded by connection.mu
-	exited  bool // writer-owned
+	id         string
+	ctx        context.Context
+	cancel     context.CancelFunc
+	events     <-chan publication
+	native     *nativePublications
+	owner      *Native
+	view       *nativeView
+	attachment string
+	values     <-chan []byte
+	kind       string
+	cleanup    func()
+	once       sync.Once
+	active     bool // guarded by connection.mu
+	exited     bool // writer-owned
 }
 
 func newRPCSubscription(ctx context.Context, events <-chan publication, cleanup func()) *rpcSubscription {
@@ -137,6 +146,7 @@ type rpcConnection struct {
 	wg            sync.WaitGroup
 	draining      bool
 	drainTimer    *time.Timer
+	frontend      nativeFrontend
 }
 
 func (e *rpcEndpoint) serve(w http.ResponseWriter, r *http.Request, authority viewAuthority) {
@@ -683,6 +693,10 @@ func (c *rpcConnection) subscribe(ctx context.Context, id string, build func(con
 
 func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCParams) (any, *RPCError, func()) {
 	h := c.endpoint.hub
+	if strings.HasPrefix(method, "native/") && method != "native/start" {
+		value, failure := c.frontendRequest(ctx, method, params)
+		return value, failure, nil
+	}
 	switch method {
 	case "session/options":
 		value, err := h.startOptions(ctx)
