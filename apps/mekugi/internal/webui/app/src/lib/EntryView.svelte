@@ -205,8 +205,8 @@
     message: "text-muted",
   };
   const summary = "flex items-center gap-2 pointer-coarse:min-h-9";
-  const compactionLink =
-    "flex min-h-[26px] items-center gap-2 text-small text-warning-ink underline underline-offset-4 max-sm:min-h-11 pointer-coarse:min-h-11";
+  const compactionRow = "flex min-h-[26px] items-center gap-2 text-small text-warning-ink";
+  const compactionLink = `${compactionRow} underline underline-offset-4 max-sm:min-h-11 pointer-coarse:min-h-11`;
   const progress = $derived(
     !!entry.values?.length &&
       entry.values.every(
@@ -360,7 +360,9 @@
           </Message.Content>
         </Message.Root>
       {:else if first?.kind === "compaction"}
-        {#if ondetails}
+        {#if !first.detailsAvailable}
+          <span class={compactionRow}><span aria-hidden="true">◉</span>{first.label}</span>
+        {:else if ondetails}
           <button type="button" class={compactionLink} onclick={ondetails}>
             <span aria-hidden="true">◉</span>{first.label}
           </button>

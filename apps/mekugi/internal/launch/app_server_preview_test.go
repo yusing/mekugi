@@ -404,14 +404,14 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	p.until("done")
 	p.serve()
 	terminalTest(p.ui).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
-	if p.ui.Turn != "" || p.ui.Compaction.AcknowledgementPending() || !strings.Contains(render(), "Context compacted") {
+	if p.ui.Turn != "" || p.ui.Compaction.AcknowledgementPending() || !strings.Contains(render(), "Context reset") {
 		t.Fatal("queued compaction did not complete visibly")
 	}
 	keys("/clear\r")
 	if p.ui.Thread != "preview-clear-1" || len(p.ui.attached.source.Entries) != 0 {
 		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.Thread, p.ui.attached.source.Entries)
 	}
-	if frame := render(); strings.Contains(frame, "Context compacted") || strings.Contains(frame, "old transcript") {
+	if frame := render(); strings.Contains(frame, "Context reset") || strings.Contains(frame, "old transcript") {
 		t.Fatalf("clear retained previous presentation:\n%s", frame)
 	}
 	keys("fresh prompt\r")

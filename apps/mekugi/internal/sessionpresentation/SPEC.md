@@ -395,7 +395,10 @@ on resume and fork, and retired with that thread's attachment. An unavailable
 history baseline remains unknown rather than reporting zero completed compactions.
 
 Compaction replaces Working with `Compacting context`, then emits
-`Context compacted at <tokens> tokens (<percent>%) • <elapsed>` on success.
+`Context reset at <tokens> tokens (<percent>%) • <elapsed>` for a summary-free
+reset. The caller supplies the method; summary compaction retains `Context compacted`
+and its summary dialog. Reset has no summary disclosure. Retained boundaries preserve
+their method across restoration and replay; historical summary dialogs remain available.
 The count and percentage use the measured context at compaction start; absent
 measurements or window capacity omit their corresponding fields. Historical
 boundaries retain known measurements and timing, never invented zeros.

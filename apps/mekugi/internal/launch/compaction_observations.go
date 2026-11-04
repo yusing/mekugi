@@ -4,6 +4,8 @@ import (
 	json "encoding/json/v2"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -13,7 +15,7 @@ func retainCompaction(retained history.Session, entry sessionpresentation.Activi
 	if retained.Store == nil || n == nil || entry.Kind != "compaction" {
 		return nil
 	}
-	r := history.CompactionObservation{Thread: n.Thread, Item: n.Item, Context: n.CompactionContext}
+	r := history.CompactionObservation{Thread: n.Thread, Item: n.Item, Context: n.CompactionContext, Method: n.CompactionMethod}
 	if n.CompactionTimed {
 		r.ElapsedNS = new(int64(n.Duration))
 	}
@@ -40,6 +42,11 @@ func restoreCompactionObservations(attached *attachedPresentation, retained hist
 				continue
 			}
 			if r != nil {
+				n.CompactionMethod = r.Method
+				if r.Method == observation.ContextReset {
+					n.SummaryPending = false
+					entry.Text = ""
+				}
 				n.CompactionContext = r.Context
 				if r.ElapsedNS != nil {
 					n.Duration, n.CompactionTimed = time.Duration(*r.ElapsedNS), true

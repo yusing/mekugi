@@ -33,10 +33,11 @@ type SideQuestion struct {
 }
 
 type ItemDetails struct {
-	CompactionContext                     *observation.Context `json:"-"`
-	CompactionElapsed                     time.Duration        `json:"-"`
-	CompactionTimed                       bool                 `json:"-"`
-	ToolDetail                            string               `json:",omitempty"`
+	CompactionMethod                      observation.CompactionMethod `json:"-"`
+	CompactionContext                     *observation.Context         `json:"-"`
+	CompactionElapsed                     time.Duration                `json:"-"`
+	CompactionTimed                       bool                         `json:"-"`
+	ToolDetail                            string                       `json:",omitempty"`
 	Reload                                []ReloadSource
 	CommandText, Status, Timeout, Workdir string
 	ReasoningLive, WaitLive               bool
@@ -204,7 +205,12 @@ func (entry ItemContent) Values() (blocks []Value) {
 		return []Value{{Kind: "error", Body: text, Label: entry.Agent, Owner: entry.Agent}}
 	case "compaction":
 		label := "Context compacted"
+		var method observation.CompactionMethod
 		if n := entry.Details; n != nil {
+			method = n.CompactionMethod
+			if method == observation.ContextReset {
+				label = "Context reset"
+			}
 			if c := n.CompactionContext; c != nil && c.Known {
 				label += fmt.Sprintf(" at %d tokens", c.Tokens)
 				if c.Window > 0 {
@@ -215,7 +221,7 @@ func (entry ItemContent) Values() (blocks []Value) {
 				label += " • " + FormatDuration(n.CompactionElapsed)
 			}
 		}
-		return []Value{{Kind: "compaction", Label: label, Body: source}}
+		return []Value{{Kind: "compaction", Label: label, Body: source, CompactionMethod: method}}
 	case "tool":
 		if n := entry.Details; n != nil && len(n.Reload) != 0 {
 			for _, source := range n.Reload {

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/modules/activity/feed"
@@ -24,10 +26,11 @@ func (b Value) DirectoryDeletion() bool {
 // Values contain source text and bounded output facts, not renderer state or
 // handles into the attached output owner.
 type Value struct {
-	UserShell   bool
-	GroupHeader string
-	GroupStart  bool
-	GroupCount  int
+	CompactionMethod observation.CompactionMethod `json:"-"`
+	UserShell        bool
+	GroupHeader      string
+	GroupStart       bool
+	GroupCount       int
 	// Subsumed marks original work represented by a later operation, such as staging before its commit.
 	Subsumed bool
 	// Effect rows belong beneath the preceding action in the same invocation.
@@ -115,6 +118,9 @@ type Disclosure struct {
 func (b Value) Disclosure() *Disclosure {
 	switch b.Kind {
 	case "compaction":
+		if b.CompactionMethod == observation.ContextReset {
+			return nil
+		}
 		return &Disclosure{}
 	case "text", "user", "final", "message", "start", "summary", "progress":
 		return nil // Authored prose and progress own their inline disclosures.

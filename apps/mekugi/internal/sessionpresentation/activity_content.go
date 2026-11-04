@@ -22,6 +22,7 @@ func ActivityContent(entry ActivityEntry) activitypresentation.ItemContent {
 	}
 	if n := entry.Native; n != nil {
 		content.Details = &activitypresentation.ItemDetails{
+			CompactionMethod:  n.CompactionMethod,
 			CompactionContext: n.CompactionContext, CompactionElapsed: n.Duration, CompactionTimed: n.CompactionTimed,
 			ToolDetail: n.ToolDetail,
 			Reload:     n.Reload, CommandText: n.Command, Status: n.Status, Timeout: n.CommandTimeout,

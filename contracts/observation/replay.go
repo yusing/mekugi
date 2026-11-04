@@ -44,10 +44,20 @@ type Context struct {
 	Known          bool
 }
 
+// CompactionMethod is supplied by the initiating runtime, never inferred from
+// summary text. The zero value preserves historical summary presentation.
+type CompactionMethod string
+
+const (
+	ContextReset   CompactionMethod = "reset"
+	ContextSummary CompactionMethod = "summary"
+)
+
 // Item contains the retained facts used by session presentation. Content and
 // question options preserve opaque user-content blocks for their own consumer;
 // raw/private reasoning is never included.
 type Item struct {
+	CompactionMethod                                   CompactionMethod
 	CompactionContext                                  *Context
 	SavedPath                                          string
 	CompactionReference                                string // Exact retained replacement bound to this native boundary.

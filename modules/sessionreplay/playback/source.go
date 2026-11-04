@@ -141,12 +141,18 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 					measurement, size, measurementErr := store.ReadCompaction(thread, e.Item.ID)
 					totalBytes += size
 					if measurement != nil {
+						e.Item.CompactionMethod = measurement.Method
 						e.Item.CompactionContext = measurement.Context
 						if measurement.ElapsedNS != nil {
 							e.Item.DurationMS = new(time.Duration(*measurement.ElapsedNS).Milliseconds())
 						}
 					}
-					summary, size, err := compact.ReadSummary(store, thread, e.Item.CompactionReference)
+					var summary string
+					size = 0
+					var err error
+					if e.Item.CompactionMethod != observation.ContextReset {
+						summary, size, err = compact.ReadSummary(store, thread, e.Item.CompactionReference)
+					}
 					totalBytes += size
 					if totalBytes > 256<<20 {
 						return nil, errors.New("replay corpus exceeds 256 MiB")

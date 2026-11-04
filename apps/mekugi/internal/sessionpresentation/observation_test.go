@@ -314,13 +314,16 @@ func TestUISnapshotCompactionMeasurements(t *testing.T) {
 	}
 }
 
-func TestCompactionUnknownAndRetainedMeasurements(t *testing.T) {
+func TestUISnapshotCompactionUnknownAndRetainedMeasurements(t *testing.T) {
 	for _, test := range []struct {
+		method  observation.CompactionMethod
 		context *observation.Context
 		elapsed *int64
 		want    string
 	}{
 		{want: "Context compacted"},
+		{method: observation.ContextSummary, want: "Context compacted"},
+		{method: observation.ContextReset, want: "Context reset"},
 		{context: &observation.Context{Known: true}, elapsed: new(int64(0)), want: "Context compacted at 0 tokens • 0s"},
 		{context: &observation.Context{Known: true, Tokens: 1200, Window: 2000}, elapsed: new(int64(900)), want: "Context compacted at 1200 tokens (60%) • 900ms"},
 	} {
@@ -333,10 +336,19 @@ func TestCompactionUnknownAndRetainedMeasurements(t *testing.T) {
 		model := new(Model)
 		var text transcript.State
 		var outputs feed.Retention
-		item := observation.Item{ID: "historic", Type: "contextCompaction", Status: "completed", CompactionContext: test.context, DurationMS: test.elapsed}
+		item := observation.Item{ID: "historic", Type: "contextCompaction", Status: "completed", CompactionContext: test.context, DurationMS: test.elapsed, CompactionMethod: test.method}
 		ReduceObservation(&attached, model, main, child, &text, &outputs, ObservationInput{Main: "main", Event: observation.Event{Kind: observation.ItemCompleted, ThreadID: "main", TurnID: "turn", Item: item, At: time.Unix(100, 0)}})
 		if got := main.Entries[0].Values[0].Label; got != test.want {
 			t.Fatalf("got %q, want %q", got, test.want)
+		}
+		if got := main.Entries[0].Values[0].Disclosure(); (got == nil) != (test.method == observation.ContextReset) {
+			t.Fatalf("method %q disclosure = %+v", test.method, got)
+		}
+		if test.method == observation.ContextReset {
+			view := terminalview.NewView()
+			view.Painter.Theme = diffrender.DarkTheme
+			rows := view.Painter.Block(terminalview.Block{Value: main.Entries[0].Values[0]}, 80)
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/context-reset.txt", append(rows, "plain after reset"), 80)
 		}
 	}
 }

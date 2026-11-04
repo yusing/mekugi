@@ -217,8 +217,11 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 					break
 				}
 				summary := item.Text
-				native.SummaryPending = summary == ""
-				if summary == "" {
+				native.CompactionMethod = item.CompactionMethod
+				native.SummaryPending = item.CompactionMethod != observation.ContextReset && summary == ""
+				if item.CompactionMethod == observation.ContextReset {
+					summary = ""
+				} else if summary == "" {
 					summary = "Compaction summary unavailable."
 				}
 				entry := ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "compaction", Text: summary, Observed: now, Native: native}

@@ -1,0 +1,2 @@
+"\x1b[38;5;214m◉ Context reset\x1b[m                                                                 "
+"plain after reset                                                               "

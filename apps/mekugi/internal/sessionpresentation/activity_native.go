@@ -16,13 +16,14 @@ import (
 // Source: apps/mekugi/internal/router/live_activity_app_server.go:1:194@45fbe279
 
 type NativeItem struct {
-	CompactionContext *observation.Context `json:"-"`
-	CompactionTimed   bool                 `json:"-"`
-	InterruptTarget   string               `json:"-"` // Canonical target awaiting a terminal outcome.
-	InterruptID       string               `json:"-"` // Exact retained operation, scoped by Thread.
-	SummaryPending    bool                 `json:"-"` // Resolve live compaction storage only when its dialog opens.
-	ToolDetail        string               `json:"-"` // Original tool envelope behind a semantic row.
-	Images            []string             `json:"-"` // Bound user or viewed image sources, never inferred from labels.
+	CompactionMethod  observation.CompactionMethod `json:"-"`
+	CompactionContext *observation.Context         `json:"-"`
+	CompactionTimed   bool                         `json:"-"`
+	InterruptTarget   string                       `json:"-"` // Canonical target awaiting a terminal outcome.
+	InterruptID       string                       `json:"-"` // Exact retained operation, scoped by Thread.
+	SummaryPending    bool                         `json:"-"` // Resolve live compaction storage only when its dialog opens.
+	ToolDetail        string                       `json:"-"` // Original tool envelope behind a semantic row.
+	Images            []string                     `json:"-"` // Bound user or viewed image sources, never inferred from labels.
 	Reload            []activitypresentation.ReloadSource
 	UserShell         bool                             `json:"-"` // Host command origin, independent of source classification.
 	Invocation        *activitypresentation.Invocation `json:"-"` // Canonical host state, shared while terminal output settles.

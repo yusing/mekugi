@@ -546,16 +546,22 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	shell := activitypresentation.ItemContent{Seq: 92, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e\nset -u\nset -o pipefail\nplane comment ITEM --body - <<'EOF'\nA retained comment.\nEOF\nplane update ITEM", "")}
 	single := activitypresentation.ItemContent{Seq: 91, Agent: "Main", Kind: "tool", Text: activitypresentation.ShellSource("set -e; plane update ITEM", "")}
 	compaction := activitypresentation.ItemContent{Seq: 94, Agent: "Main", Kind: "compaction", Text: "Retained compacted summary.", Details: &activitypresentation.ItemDetails{CompactionContext: &observation.Context{Known: true, Tokens: 171300, Window: 285000}, CompactionElapsed: 65 * time.Second, CompactionTimed: true}}
+	reset := activitypresentation.ItemContent{Seq: 95, Agent: "Main", Kind: "compaction", Details: &activitypresentation.ItemDetails{CompactionMethod: observation.ContextReset}}
 	previewFrame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
 		{Facts: single.Facts, Values: single.Values(), Revision: 1},
 		{Facts: shell.Facts, Values: shell.Values(), Revision: 1},
 		{Seq: 93, Agent: "Main", Kind: "progress", Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/review", Status: "completed"}}, WaitReason: "completed"}}, Revision: 1},
 		{Facts: compaction.Facts, Values: compaction.Values(), Revision: 1},
+		{Facts: reset.Facts, Values: reset.Values(), Revision: 1},
 	}}
 	if err := alpha.publishFrame(previewFrame); err != nil {
 		t.Fatal(err)
 	}
 	run("wait", "--text", compaction.Values()[0].Label)
+	run("wait", "--text", reset.Values()[0].Label)
+	if run("eval", `(() => { const row = document.querySelector('[data-entry="95"]'); return row?.innerText.includes('Context reset') && !row.querySelector('button,summary,details'); })()`) != "true\n" {
+		t.Fatal("context reset exposed a summary affordance")
+	}
 	if run("eval", `(() => { const shell = document.querySelector('[data-entry="92"]'); const wait = document.querySelector('[data-entry="93"]'); return shell?.querySelector('code')?.textContent.includes('plane comment ITEM') && !shell.innerText.includes('set -e') && wait?.innerText.split('completed').length === 2 && !document.body.innerText.includes('Retained compacted summary.'); })()`) != "true\n" {
 		t.Fatal("activity previews lost their shared source semantics")
 	}

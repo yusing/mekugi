@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -80,6 +82,11 @@ func (session *nativeSession) sessionEvent(attached *attachedPresentation, termi
 
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
 	event := p.Observation(method, presentationTime(clock))
+	// This invocation configures native token-budget reset. Historical events
+	// carry their retained method through restoration instead of this live path.
+	if event.Item.Type == "contextCompaction" && event.Item.CompactionMethod == "" {
+		event.Item.CompactionMethod = observation.ContextReset
+	}
 
 	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: session.Client.Thread, Selected: session.Client.Turn, Start: session.Client.InterruptTarget().Start, Workspace: attached.cwd, Tracked: session.execTrack.Tracking(key)}
 	facts.AuxiliaryTurn = p.ThreadID == session.Client.Thread && session.Client.AuxiliaryTurn(p.Turn.ID)

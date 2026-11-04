@@ -4,30 +4,33 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+
+	"github.com/yusing/mekugi/contracts/observation"
 )
 
 // ThreadItem retains native item payloads without presentation state.
 // Source: apps/mekugi/internal/router/app_server_ui.go:70:107@[eaad597b] appServerItem.
 type ThreadItem struct {
-	DurationMS       *int64           `json:"durationMs"`
-	Delivery         string           `json:"delivery"`
-	Questions        []Question       `json:"questions"`
-	ID               string           `json:"id"`
-	ClientID         string           `json:"clientId"` // userMessage: the submission's clientUserMessageId.
-	Type             string           `json:"type"`
-	Text             string           `json:"text"`
-	Summary          []string         `json:"summary"`
-	Command          string           `json:"command"`
-	Cwd              string           `json:"cwd"` // commandExecution: the directory the host ran it in.
-	Source           string           `json:"source"`
-	ProcessID        string           `json:"processId"`
-	Path             string           `json:"path"`
-	SavedPath        string           `json:"savedPath"`
-	Status           string           `json:"status"`
-	AggregatedOutput *string          `json:"aggregatedOutput"`
-	Query            string           `json:"query"`
-	Action           *WebSearchAction `json:"action"`
-	Results          []jsontext.Value `json:"results"`
+	CompactionMethod observation.CompactionMethod `json:"compactionMethod,omitzero"`
+	DurationMS       *int64                       `json:"durationMs"`
+	Delivery         string                       `json:"delivery"`
+	Questions        []Question                   `json:"questions"`
+	ID               string                       `json:"id"`
+	ClientID         string                       `json:"clientId"` // userMessage: the submission's clientUserMessageId.
+	Type             string                       `json:"type"`
+	Text             string                       `json:"text"`
+	Summary          []string                     `json:"summary"`
+	Command          string                       `json:"command"`
+	Cwd              string                       `json:"cwd"` // commandExecution: the directory the host ran it in.
+	Source           string                       `json:"source"`
+	ProcessID        string                       `json:"processId"`
+	Path             string                       `json:"path"`
+	SavedPath        string                       `json:"savedPath"`
+	Status           string                       `json:"status"`
+	AggregatedOutput *string                      `json:"aggregatedOutput"`
+	Query            string                       `json:"query"`
+	Action           *WebSearchAction             `json:"action"`
+	Results          []jsontext.Value             `json:"results"`
 	// Content is variant-specific: user input blocks or raw reasoning strings.
 	// Decode only userMessage content; reasoning presentation uses Summary.
 	Content        jsontext.Value  `json:"content"`

@@ -67,6 +67,7 @@ func TestDetailsFactSurvivesProjectionAndCompaction(t *testing.T) {
 		{"authored response", activity.Value{Kind: "final", Body: "Complete response"}, false},
 		{"reasoning disclosure", activity.Value{Kind: "summary", Body: "Expanded thought"}, false},
 		{"missing compacted context", activity.ItemContent{Kind: "compaction"}.Values()[0], true},
+		{"context reset", activity.ItemContent{Kind: "compaction", Details: &activity.ItemDetails{CompactionMethod: observation.ContextReset}}.Values()[0], false},
 		{"successful hook output", activity.Value{Kind: "op", Hook: &activity.HookDetails{Status: "completed"}, Tail: []string{"hidden output"}}, true},
 		{"failed hook output inline", activity.Value{Kind: "op", Hook: &activity.HookDetails{Status: "failed"}, Tail: []string{"visible output"}}, false},
 		{"blank output", activity.Value{Kind: "op", Tail: []string{"", " "}}, false},

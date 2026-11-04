@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/testsupport/moduletest"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -66,7 +68,7 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 			}
 			if mode == "live" || mode == "replacement" {
 				for i, id := range []string{"first", "second"} {
-					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": []string{"one", "two"}[i], "item": binding.ThreadItem{ID: id, Type: "contextCompaction"}})
+					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": []string{"one", "two"}[i], "item": binding.ThreadItem{ID: id, Type: "contextCompaction", CompactionMethod: observation.ContextSummary}})
 				}
 			} else if mode == "restore" {
 				info := binding.ThreadInfo{ID: "main", Path: path, Cwd: u.attached.cwd, Turns: []binding.HistoryTurn{
@@ -199,7 +201,11 @@ func TestCompactionUnsuccessfulCompletionHasNoSuccessRow(t *testing.T) {
 			if mode != "replay" {
 				u.testActivity(view).publishActivity()
 			}
-			if rendered := strings.Join(view.RenderConversation(80).Lines, "\n"); strings.Count(rendered, "Context compacted") != 1 {
+			label := "Context reset"
+			if mode == "restore" || mode == "replay" {
+				label = "Context compacted"
+			}
+			if rendered := strings.Join(view.RenderConversation(80).Lines, "\n"); strings.Count(rendered, label) != 1 {
 				t.Fatalf("successful boundary was not rendered exactly once: %s", rendered)
 			}
 		})
@@ -220,7 +226,7 @@ func TestCompactionSummaryReadLeavesInputResponsiveAndRejectsStaleResult(t *test
 			return "late summary", nil
 		}
 	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "one", "item": binding.ThreadItem{ID: "boundary", Type: "contextCompaction"}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "one", "item": binding.ThreadItem{ID: "boundary", Type: "contextCompaction", CompactionMethod: observation.ContextSummary}})
 	_, view, _ := nativeDetailTestViews(t, u)
 	seq := view.attached.source.Entries[0].Source.Seq
 	if failure := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: seq}); failure != "" {

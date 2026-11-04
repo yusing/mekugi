@@ -60,7 +60,7 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	}
 	frame, _ := u.testMainFrame(80, 24, 0)
 	screen := ansi.Strip(strings.Join(frame, "\n"))
-	if !strings.Contains(screen, "Context compacted") || strings.Contains(screen, "re:") {
+	if !strings.Contains(screen, "Context reset") || strings.Contains(screen, "re:") {
 		t.Fatalf("compaction should be an event without reply context: %s", screen)
 	}
 	for _, status := range []string{"interrupted", "failed", "completed"} {

@@ -143,6 +143,9 @@ replayed events.
 Clicking `Context compacted` opens that boundary's retained summary in the shared
 content dialog, including after restoration and in replay. Missing or unauthorized
 summary evidence is explicit. Opening a summary starts no model request or reload.
+The caller-identified summary-free method instead shows `Context reset`, with the
+same available measurements and no summary affordance. Empty summary text never
+determines the method.
 
 Skill rows emphasize the skill name; reference paths and run arguments keep normal
 weight. Roster Skill summaries preserve the complete skill reference identity.

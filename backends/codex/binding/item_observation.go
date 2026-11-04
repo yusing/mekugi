@@ -11,8 +11,9 @@ import (
 // Variant-specific private reasoning remains in the original host payload.
 func (i ThreadItem) Observation() observation.Item {
 	out := observation.Item{
-		UserShell: i.Type == "commandExecution" && i.Source == "userShell",
-		ID:        i.ID, Type: i.Type, Status: i.Status, Delivery: i.Delivery, Phase: i.Phase,
+		CompactionMethod: i.CompactionMethod,
+		UserShell:        i.Type == "commandExecution" && i.Source == "userShell",
+		ID:               i.ID, Type: i.Type, Status: i.Status, Delivery: i.Delivery, Phase: i.Phase,
 		Cwd: i.Cwd, Path: i.Path, Command: i.Command, ProcessID: i.ProcessID,
 		SavedPath:  i.SavedPath,
 		ClientID:   i.ClientID,

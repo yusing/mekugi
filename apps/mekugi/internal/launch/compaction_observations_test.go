@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -34,12 +36,18 @@ func TestCompactionMeasurementsRetainRestoreReplay(t *testing.T) {
 		t.Fatalf("foreign measurement: %+v, %v", foreign, err)
 	}
 	want := u.attached.source.Entries[0].Values[0].Label
+	if retained.Method != observation.ContextReset || !strings.HasPrefix(want, "Context reset") || u.attached.source.Entries[0].Values[0].Disclosure() != nil {
+		t.Fatal("live reset lost method or exposed a summary")
+	}
 	restored := newAppServerSessionTestUI(t, "/workspace/replay")
 	restored.retainedSession = u.retainedSession
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{{ID: "compact", Type: "contextCompaction", Status: "completed"}}}})
 	restoreCompactionObservations(&restored.attached, restored.retainedSession, &appServerActivityRestore{})
 	if got := restored.attached.source.Entries[0].Values[0].Label; got != want {
 		t.Fatalf("restore label %q, live %q", got, want)
+	}
+	if restored.attached.source.Entries[0].Values[0].Disclosure() != nil {
+		t.Fatal("restored reset exposed a summary")
 	}
 	path := replayTestWrite(t, t.TempDir(), "rollout-main.jsonl", replayTestMeta("main"),
 		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),

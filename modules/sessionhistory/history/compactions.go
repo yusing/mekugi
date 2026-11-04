@@ -15,6 +15,7 @@ import (
 // CompactionObservation retains measurements unavailable in native item history.
 // Item identity joins them to the original completed boundary, never a nearby one.
 type CompactionObservation struct {
+	Method       observation.CompactionMethod `json:",omitzero"`
 	Thread, Item string
 	Context      *observation.Context
 	ElapsedNS    *int64
