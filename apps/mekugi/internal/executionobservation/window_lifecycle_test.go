@@ -4,7 +4,50 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"testing/synctest"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
+
+func TestRetireJoinsCanceledPreviewBeforeResourceCleanup(t *testing.T) {
+	workspace, _, observation := captureRunningExecScope(t)
+	synctest.Test(t, func(t *testing.T) {
+		reading, release := make(chan struct{}), make(chan struct{})
+		review := sessionreview.New(t.Context(), previewmodel.New(func(path string, remaining *int) changecapture.File {
+			close(reading)
+			<-release
+			return changecapture.ReadFile(path, remaining)
+		}), nil)
+		defer review.Close()
+		broker := review.Preview()
+		broker.Enable()
+		review.IncludeThread(workspace, "child", true)
+		parent := new(Windows)
+		child := parent.ForRuntime()
+		child.open(&execWindow{ref: "preview", thread: "child", turn: "turn", roots: []string{workspace}})
+		child.preview("preview", *observation, broker, workspace, "child", "/root/child", nil)
+		<-reading
+		// A sibling runtime must not join this worker. Turn cancellation must
+		// remain nonblocking even while an endpoint read is still in flight.
+		parent.Retire()
+		child.StopTurnPreviews("child", "turn")
+		retired := make(chan struct{})
+		go func() {
+			child.Retire()
+			close(retired)
+		}()
+		synctest.Wait()
+		select {
+		case <-retired:
+			t.Error("resource cleanup could race the canceled preview worker")
+		default:
+		}
+		close(release)
+		<-retired
+	})
+}
 
 func TestStopTurnPreviewsPreservesCapture(t *testing.T) {
 	windows := new(Windows)

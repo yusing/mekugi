@@ -51,8 +51,9 @@ type execWindow struct {
 }
 
 type Windows struct {
-	local  windowRegistry
-	shared *windowRegistry
+	local    windowRegistry
+	shared   *windowRegistry
+	previews sync.WaitGroup // Runtime-local workers, including canceled/pruned windows.
 	// Reports is supplied during invocation setup, before observations begin.
 	Reports *segments.Observer
 }
@@ -114,8 +115,9 @@ func (r *Windows) serialize(workspace string) func() {
 	}
 }
 
-// Retire ends this runtime's observation windows after its processes and
-// observations have stopped. It does not invent terminal results or captures.
+// Retire ends this runtime's observation windows and joins their preview workers
+// after admission and host observations have stopped. Checkpoint owners can then
+// close safely. It does not invent terminal results or captures.
 func (r *Windows) Retire() {
 	if r == nil {
 		return
@@ -130,6 +132,7 @@ func (r *Windows) Retire() {
 	}
 	state.mu.Unlock()
 	r.close(refs...)
+	r.previews.Wait()
 }
 
 // Only windows sharing a writer serialize interval publication. Never hold the

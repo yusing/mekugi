@@ -51,11 +51,11 @@ func (r *Windows) preview(ref string, observation changecapture.Observation, bro
 		}
 	}
 	turn := window.turn
-	go func() {
+	r.previews.Go(func() {
 		defer func() { <-execRunningPreviewSlots }()
 		capture := &execPreviewCapture{registry: r, ref: ref, observation: observed, snapshots: snapshots}
 		runExecScopePreview(ctx, broker, observation, previewmodel.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller}, tracking, capture)
-	}()
+	})
 }
 
 // The running watcher owns both source cards and completed Activity evidence.

@@ -76,7 +76,11 @@ func attachTestReplayStore(t *testing.T, proxy *observationFixture) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(store.snapshots.Close)
+	t.Cleanup(func() {
+		// Preview cancellation alone can leave an in-flight snapshot comparison.
+		proxy.execWindows.Retire()
+		store.snapshots.Close()
+	})
 	setTestProxyStore(proxy, store)
 }
 
