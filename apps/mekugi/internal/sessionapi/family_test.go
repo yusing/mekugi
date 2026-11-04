@@ -10,12 +10,14 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
+	"github.com/yusing/mekugi/modules/conversation/transcript"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -48,49 +50,83 @@ func familyReview(chunks ...changes.Chunk) *changes.ReviewView {
 }
 
 func TestFamilyFollowupReplacesPriorFinalActivity(t *testing.T) {
-	h := NewHub(t.Context(), nil)
-	member := threadcontrol.Participant{Thread: "child", Parent: "root", Task: "/root/child", Status: threadcontrol.Completed}
-	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root"}, Members: []threadcontrol.Participant{member}})
-	prior := activity.Entry{Facts: activity.Facts{Kind: "final", Agent: "Main", Text: "## Summary\nPrevious result.\n\n## Details\nEvidence."}, Values: []activity.Value{{Kind: "final", Body: "## Summary\nPrevious result."}}}
-	childActivity := familyActivity("child", "")
-	childActivity.Entries, childActivity.MainSummary = []activity.Entry{prior}, []activity.Entry{prior}
-	childActivity.Roster[0].Agent.Summary = []activity.Entry{prior}
-	childActivity.Roster[0].Agent.Responding, childActivity.Roster[0].Agent.Final = false, true
-	child := familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: member.Task}, Agents: childActivity})
-	check := func(want string) {
-		t.Helper()
-		family, _ := h.Family("root")
-		for _, row := range family.Agents.Roster {
-			if row.Agent.Thread != "child" {
-				continue
-			}
-			if want == "" && len(row.Agent.Summary) != 0 || want != "" && (len(row.Agent.Summary) != 1 || row.Agent.Summary[0].Text != want) {
-				t.Fatalf("unexpected current activity: %+v", row.Agent)
-			}
-			if want == "" {
-				view := new(activityui.View)
-				if painted := ansi.Strip(view.AgentState(row.Agent, 100, time.Now())); painted != "working" {
-					t.Fatalf("follow-up roster activity = %q", painted)
+	for _, priorKind := range []string{"text", "final"} {
+		t.Run(priorKind, func(t *testing.T) {
+			h := NewHub(t.Context(), nil)
+			member := threadcontrol.Participant{Thread: "child", Parent: "root", Task: "/root/child", Status: threadcontrol.Completed}
+			root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root"}, Members: []threadcontrol.Participant{member}})
+			prior := activity.Entry{Facts: activity.Facts{Kind: priorKind, Agent: "Main", Text: "## Summary\nPrevious result.\n\n## Details\nEvidence."}, Values: []activity.Value{{Kind: priorKind, Body: "## Summary\nPrevious result."}}}
+			childActivity := familyActivity("child", "")
+			childActivity.Entries, childActivity.MainSummary = []activity.Entry{prior}, []activity.Entry{prior}
+			childActivity.Roster[0].Agent.Summary = []activity.Entry{prior}
+			childActivity.Roster[0].Agent.Responding, childActivity.Roster[0].Agent.Final = false, true
+			child := familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: member.Task}, Agents: childActivity})
+			check := func(want string) {
+				t.Helper()
+				family, _ := h.Family("root")
+				for _, row := range family.Agents.Roster {
+					if row.Agent.Thread != "child" {
+						continue
+					}
+					if want == "" && len(row.Agent.Summary) != 0 || want != "" && (len(row.Agent.Summary) != 1 || row.Agent.Summary[0].Text != want) {
+						t.Fatalf("unexpected current activity: %+v", row.Agent)
+					}
+					if want == "" || row.Agent.Responding {
+						view := new(activityui.View)
+						expected := want
+						if expected == "" {
+							expected = "working"
+						}
+						if painted := ansi.Strip(view.AgentState(row.Agent, 100, time.Now())); painted != expected {
+							t.Fatalf("follow-up roster activity = %q", painted)
+						}
+					}
+					return
 				}
+				t.Fatal("child missing")
 			}
-			return
-		}
-		t.Fatal("child missing")
-	}
-	check(prior.Text)
-	for _, status := range []threadcontrol.Status{threadcontrol.Pending, threadcontrol.Working} {
-		frame := *root.server.frame.Load()
-		member.Status = status
-		frame.Members = []threadcontrol.Participant{member}
-		root.server.frame.Store(&frame)
-		check("")
-	}
-	frame := *child.server.frame.Load()
-	frame.Agents = familyActivity("child", "Checking the follow-up")
-	child.server.frame.Store(&frame)
-	check("Checking the follow-up")
-	if childActivity.Entries[0].Text != prior.Text || childActivity.Roster[0].Agent.Summary[0].Text != prior.Text {
-		t.Fatal("follow-up modified the retained answer")
+			check(prior.Text)
+			for _, status := range []threadcontrol.Status{threadcontrol.Pending, threadcontrol.Working} {
+				frame := *root.server.frame.Load()
+				member.Status = status
+				frame.Members = []threadcontrol.Participant{member}
+				root.server.frame.Store(&frame)
+				check("")
+			}
+			// A new host turn still carries the old answer until its first response.
+			started := time.Unix(100, 0)
+			frame := *child.server.frame.Load()
+			agent := sessionpresentation.ActivityAgent{Name: "/root", Thread: "child"}
+			agent.TurnStarted(started)
+			active := *frame.Agents
+			active.Roster = []activity.AgentRow{{Agent: activity.Agent{AgentFacts: agent.ActivityAgent(), Summary: []activity.Entry{prior}}}}
+			frame.Agents = &active
+			child.server.frame.Store(new(frame))
+			check("")
+			for _, event := range []struct {
+				main bool
+				kind observation.Kind
+			}{{true, observation.AgentDelta}, {false, observation.ItemCompleted}} {
+				// Exercise both runtime streaming text and explicit child final output.
+				var text transcript.State
+				updates := text.Observe(observation.TextEvent{Kind: event.kind, At: started.Add(time.Second), Delta: "New final answer.", Item: observation.TextItem{
+					Ref: observation.ItemRef{ThreadID: "child", TurnID: "new-turn", ItemID: "new-answer"}, Type: "agentMessage", Final: true, Text: "New final answer.",
+				}}, event.main, observation.TextScope{Thread: new(scope.Store), Turn: new(scope.Store)})
+				if len(updates) != 1 || !agent.Responding {
+					t.Fatalf("fresh responding answer missing: %+v", updates)
+				}
+				source := sessionpresentation.TranscriptEntry(updates[0], "/root")
+				model := activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent]{Agents: []sessionpresentation.ActivityAgent{agent}}
+				model.Append(source, sessionpresentation.ActivityContent(source).Values())
+				publication := model.Publish()
+				frame.Agents = &publication
+				child.server.frame.Store(new(frame))
+				check("New final answer.")
+			}
+			if childActivity.Entries[0].Text != prior.Text || childActivity.Roster[0].Agent.Summary[0].Text != prior.Text {
+				t.Fatal("follow-up modified the retained answer")
+			}
+		})
 	}
 }
 

@@ -407,6 +407,7 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 			continue
 		}
 		row := &publication.Roster[rows[member.Thread]]
+		priorResponse := !row.Agent.Responding || row.Agent.Final
 		row.Agent.NonAttachable = member.NonAttachable
 		row.Agent.Responding = member.Status == threadcontrol.Working || member.Status == threadcontrol.Pending
 		row.Agent.Waiting = member.Status == threadcontrol.Waiting || row.Agent.Compacting
@@ -414,8 +415,11 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 		row.Agent.Final = member.Status == threadcontrol.Completed
 		// Logical follow-up admission precedes the runtime's next response.
 		// Keep the old answer in its transcript, not as the new work's activity.
-		if row.Agent.Responding && len(row.Agent.Summary) > 0 && row.Agent.Summary[len(row.Agent.Summary)-1].Kind == "final" {
-			row.Agent.Summary = nil
+		if row.Agent.Responding && len(row.Agent.Summary) > 0 {
+			latest := row.Agent.Summary[len(row.Agent.Summary)-1]
+			if (latest.Kind == "final" || latest.Kind == "text") && (priorResponse || latest.Observed.Before(row.Agent.WorkSince)) {
+				row.Agent.Summary = nil
+			}
 		}
 		if member.Status == threadcontrol.Failed {
 			row.Agent.LatestKind = "error"
