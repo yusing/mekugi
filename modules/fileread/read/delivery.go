@@ -12,9 +12,10 @@ import (
 
 // Source: internal/router/shell_read_bundle.go:292:366@[4b6a7a16] bundle framing.
 type bundleDelivery struct {
-	entries []readBundleEntry
-	budget  int
-	output  command.Output
+	entries    []readBundleEntry
+	budget     int
+	output     command.Output
+	advisories string
 }
 
 func (p *bundleDelivery) ReferenceCount() int { return len(p.entries) }
@@ -74,9 +75,12 @@ func (p *bundleDelivery) prepare(references []string) (command.PreparedDelivery,
 		}
 		if !trimmed {
 			failed := failure(errors.New("budget cannot fit the bundle manifest; increase --max-tokens or select fewer paths"), "invalid_arguments")
+			failed.Stderr += p.advisories
 			return command.PreparedDelivery{Referenced: failed, Unreferenced: failed}, nil
 		}
 	}
+	// Advisory stderr must not displace selected source rows or their framing.
+	output.Stderr += p.advisories
 	prepared := command.PreparedDelivery{Unreferenced: output, Referenced: output}
 	prepared.Referenced.Stdout += continuation()
 	for _, entry := range entries {

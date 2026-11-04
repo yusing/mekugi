@@ -88,7 +88,7 @@ func executeBundle(
 			if err != nil {
 				return command.Output{}, err
 			}
-			execution = command.Output{Stdout: shown}
+			execution = command.Output{Stdout: shown, Stderr: execution.Stderr}
 			if len(shown) < len(all) {
 				execution.ExitCode, execution.FailureClass = 1, "output_limit"
 				execution.OmittedOutput = &command.OmittedOutput{Stdout: all[len(shown):], StdoutKind: "rows"}
@@ -98,6 +98,7 @@ func executeBundle(
 	}
 	entries := make([]readBundleEntry, 0, len(specs))
 	var diagnostics strings.Builder
+	var advisories strings.Builder
 	incomplete := false
 	failureClass := ""
 	for i, spec := range specs {
@@ -121,7 +122,11 @@ func executeBundle(
 		// Keep source diagnostics visible with one path prefix; only omitted
 		// output needs a retained continuation.
 		for line := range strings.Lines(execution.Stderr) {
-			diagnostics.WriteString(prefixReadBundleDiagnostic(spec.Path, line))
+			if line == "mcat: "+quoteBundlePath(spec.Path)+": "+generatedReminder+"\n" {
+				advisories.WriteString(line)
+			} else {
+				diagnostics.WriteString(prefixReadBundleDiagnostic(spec.Path, line))
+			}
 		}
 		var remainder command.OmittedOutput
 		if execution.OmittedOutput != nil {
@@ -135,7 +140,7 @@ func executeBundle(
 				StderrKind: remainder.StderrKind, SourceRow: start + bundleRowCount(execution.Stdout)}},
 		})
 	}
-	plan := &bundleDelivery{entries: entries, budget: budget, output: command.Output{Stderr: diagnostics.String(), FailureClass: failureClass}}
+	plan := &bundleDelivery{entries: entries, budget: budget, advisories: advisories.String(), output: command.Output{Stderr: diagnostics.String(), FailureClass: failureClass}}
 	if incomplete {
 		plan.output.ExitCode = 1
 	}

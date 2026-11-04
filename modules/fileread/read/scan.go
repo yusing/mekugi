@@ -68,6 +68,7 @@ func scanRows(ctx context.Context, source io.Reader, selections []commandargs.Re
 		states[i].selection = selection
 	}
 	var row strings.Builder
+	var header generatedHeader
 	line := 1
 	oversized, open, pendingCR := false, false, false
 	wanted := make([]*selectionScan, 0, len(states))
@@ -81,6 +82,11 @@ func scanRows(ctx context.Context, source io.Reader, selections []commandargs.Re
 	}
 	selectRow()
 	finish := func() {
+		if oversized {
+			header.done = true
+		} else {
+			header.accept(row.String(), line == 1)
+		}
 		if oversized {
 			for _, state := range wanted {
 				state.rejectOversized(line, o)
@@ -134,7 +140,7 @@ func scanRows(ctx context.Context, source io.Reader, selections []commandargs.Re
 			continue
 		}
 		open = true
-		if len(wanted) == 0 || oversized {
+		if (len(wanted) == 0 && header.done) || oversized {
 			continue
 		}
 		if row.Len()+size > commandargs.MaxOutputTokens*128 {
@@ -163,6 +169,9 @@ func scanRows(ctx context.Context, source io.Reader, selections []commandargs.Re
 			return nil, err
 		}
 		outputs[i] = output
+		if header.found {
+			outputs[i].Stderr += "mcat: " + quoteBundlePath(selection.Path) + ": " + generatedReminder + "\n"
+		}
 	}
 	return outputs, nil
 }
