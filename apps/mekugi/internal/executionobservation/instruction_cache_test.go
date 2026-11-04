@@ -13,6 +13,7 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
@@ -96,10 +97,9 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 					t.Fatal("effective developer cleanup differs from recorded projection")
 				}
 			}
-			for _, guidance := range []string{"For composed review, use `mchanges ID...` or bare `mchanges`", "This default composes selected captured diffs", "Use --history only to diagnose individual attempts", "mchanges amber1..amber5 | git apply --cached -p0", "Piping partial stdout can modify the index", "validate the collected output", "pure moves use display-only headers"} {
-				if !strings.Contains(string(warm.Fields["tools"])+string(warm.Fields["input"]), guidance) {
-					t.Errorf("prepared frontend guidance lacks %q", guidance)
-				}
+			description := mustTestJSON(t, changes.Command.Description)
+			if !strings.Contains(string(warm.Fields["tools"])+string(warm.Fields["input"]), string(description[1:len(description)-1])) {
+				t.Error("prepared frontend guidance lacks the owning mchanges description")
 			}
 			if strings.Contains(string(warm.Fields["tools"])+string(warm.Fields["input"]), "--net") {
 				t.Error("prepared frontend guidance exposes an undocumented compatibility option")
