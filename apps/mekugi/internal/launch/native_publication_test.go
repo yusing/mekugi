@@ -59,6 +59,35 @@ func TestNativeMainHistoryRolloverKeepsAcknowledgedImages(t *testing.T) {
 	}
 }
 
+func TestNativeMainHistoryRolloverRestoresBrowsingDraft(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	c := nativeTestPromptClient(u)
+	publish := func(i int) {
+		rememberInput(u.attached.conversation, conversationmodel.Input{Text: fmt.Sprintf("entry-%d", i)})
+		c.event.Frame.Facts = nativePublicationFacts(&u.attached, nil, binding.TokenUsage{}, "", false, nil, "main", nil)
+		c.acceptFacts("main")
+	}
+	for i := range 100 {
+		publish(i)
+	}
+	editor := c.editor("main")
+	editor.Insert("unsent draft")
+	editor.CursorBack = 3
+	for range 100 {
+		if !editor.Recall(true) {
+			t.Fatal("could not browse to oldest entry")
+		}
+	}
+	publish(100)
+	if editor.Text != "unsent draft" || editor.CursorBack != 3 || editor.HistoryBack != 0 {
+		t.Fatalf("rollover lost native draft: %+v", editor)
+	}
+	if !editor.Recall(true) || editor.Text != "entry-100" || !editor.Recall(false) || editor.Text != "unsent draft" || editor.CursorBack != 3 {
+		t.Fatalf("native recall overwrote restored draft: %+v", editor)
+	}
+}
+
 func TestNativeHistoryEnrichesPersistedRepeatedOccurrences(t *testing.T) {
 	for _, sharedFirst := range []bool{false, true} {
 		t.Run(fmt.Sprintf("sharedFirst=%t", sharedFirst), func(t *testing.T) {

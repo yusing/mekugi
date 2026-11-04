@@ -162,25 +162,40 @@ func (e *Editor) PrependHistory(entries []HistoryEntry, parked ...*State) {
 			history = append(history, entry)
 		}
 	}
-	rebase := func(back *int) {
+	rebase := func(back *int) bool {
 		if *back > 0 && *back <= len(positions) {
 			*back = len(history) - positions[len(positions)-*back]
 			if *back > 100 {
 				*back = 0
+				return true
 			}
 		}
+		return false
 	}
-	rebase(&e.HistoryBack)
+	rebaseSnapshot := func(snapshot *Undo) {
+		if rebase(&snapshot.HistoryBack) {
+			snapshot.Draft = snapshot.HistoryDraft.Editable()
+		}
+	}
+	// Expiration ends browsing just like recalling past the newest entry.
+	if rebase(&e.HistoryBack) {
+		e.Replace(e.HistoryDraft)
+		e.Run = NoRun
+	}
 	for _, stack := range [][]Undo{e.UndoDrafts, e.RedoDrafts} {
 		for i := range stack {
-			rebase(&stack[i].HistoryBack)
+			rebaseSnapshot(&stack[i])
 		}
 	}
 	for _, state := range parked {
-		rebase(&state.Snapshot.HistoryBack)
+		browsing := state.Snapshot.HistoryBack > 0
+		rebaseSnapshot(&state.Snapshot)
+		if browsing && state.Snapshot.HistoryBack == 0 {
+			state.Run = NoRun
+		}
 		for _, stack := range [][]Undo{state.UndoDrafts, state.RedoDrafts} {
 			for i := range stack {
-				rebase(&stack[i].HistoryBack)
+				rebaseSnapshot(&stack[i])
 			}
 		}
 	}

@@ -196,3 +196,65 @@ func TestHistoryMergeRebasesParkedAndUndoNavigation(t *testing.T) {
 		t.Fatalf("parked draft=%+v", e.Draft)
 	}
 }
+
+func TestHistoryRolloverRestoresExpiredBrowseDraft(t *testing.T) {
+	for _, parked := range []bool{false, true} {
+		for _, target := range []string{"active", "undo", "redo"} {
+			t.Run(fmt.Sprintf("parked=%t/%s", parked, target), func(t *testing.T) {
+				var e Editor
+				e.InsertImage("draft.png")
+				e.InsertText(" unsent draft")
+				e.CursorBack = 3
+				want := e.Draft.Editable()
+				var history []HistoryEntry
+				for i := range 100 {
+					history = append(history, HistoryEntry{Text: fmt.Sprintf("entry-%d", i), Source: "main", Restored: true})
+				}
+				e.PrependHistory(history)
+				for range 100 {
+					if !e.Recall(true) {
+						t.Fatal("could not browse to oldest entry")
+					}
+				}
+				switch target {
+				case "undo":
+					e.Recall(false) // The expired entry is now the next undo.
+				case "redo":
+					e.Undo(false) // The expired entry is now the next redo.
+				}
+				var state State
+				if parked {
+					state = e.Park()
+					e.Resume(State{})
+				}
+				history = append(history, HistoryEntry{Text: "entry-100", Source: "main", Restored: true})
+				revision := e.Revision()
+				e.PrependHistory(history[1:], &state)
+				if !parked && target == "active" && e.Revision() == revision {
+					t.Fatal("draft restoration did not advance revision")
+				}
+				if parked {
+					if e.Text != "" || e.HistoryBack != 0 {
+						t.Fatal("parked draft leaked into active editor")
+					}
+					e.Resume(state)
+				}
+				if target != "active" {
+					if e.Text != "entry-1" || e.HistoryBack != 100 {
+						t.Fatalf("surviving entry moved: %+v", e)
+					}
+					e.Undo(target == "redo")
+				}
+				if e.HistoryBack != 0 || !reflect.DeepEqual(e.Draft, want) {
+					t.Fatalf("expired browse lost draft: back=%d draft=%+v", e.HistoryBack, e.Draft)
+				}
+				if e.Recall(false) || len(e.InputHistory) != 100 {
+					t.Fatal("expiration left browsing active or changed history capacity")
+				}
+				if !e.Recall(true) || e.Text != "entry-100" || !e.Recall(false) || !reflect.DeepEqual(e.Draft, want) {
+					t.Fatalf("next browse overwrote saved draft: %+v", e.Draft)
+				}
+			})
+		}
+	}
+}
