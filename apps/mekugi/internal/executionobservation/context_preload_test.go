@@ -105,13 +105,22 @@ func testContextReload(t *testing.T, kind string) {
 	}
 	meta := codexresponses.TurnMetadata{ThreadID: "root", RequestKind: "turn"}
 	var reader map[string]jsontext.Value
-	modes := []string{"turn", "prewarm", "execution-free", "compacted", "foreign", "mismatched-thread"}
+	modes := []string{"turn", "prewarm", "execution-free", "compacted", "foreign", "mismatched-thread", "invalid-identity"}
+	if kind == "assignment" {
+		modes = append(modes, "non-assistant", "unrelated-item")
+	}
 	if completion {
 		modes = append(modes, "failed", "forged", "invalid-selection")
 	}
 	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			items := []map[string]jsontext.Value{maps.Clone(assignment)}
+			if mode == "non-assistant" {
+				items[0]["role"] = mustTestJSON(t, "user")
+			}
+			if mode == "unrelated-item" {
+				items[0]["id"] = mustTestJSON(t, control.MessageItemID("unrelated"))
+			}
 			if mode == "failed" {
 				items[0]["content"] = bytes.ReplaceAll(items[0]["content"], []byte("Outcome: completed"), []byte("Outcome: failed"))
 			}
@@ -139,8 +148,11 @@ func testContextReload(t *testing.T, kind string) {
 			if mode == "mismatched-thread" {
 				metadata.ThreadID = "other"
 			}
+			if mode == "invalid-identity" {
+				metadata.ActivityIdentityInvalid = true
+			}
 			pending, _, supplements, err := p.preparePreloadInput(&request, identity, "root", metadata, mode == "prewarm")
-			if mode == "foreign" || mode == "mismatched-thread" {
+			if mode == "foreign" || mode == "mismatched-thread" || mode == "invalid-identity" {
 				if err == nil {
 					t.Fatal("foreign identity admitted")
 				}
@@ -249,6 +261,8 @@ func testContextReload(t *testing.T, kind string) {
 			}
 		}
 	}
+	// Inherited completed evidence does not depend on a surviving logical tree.
+	p.ThreadControl = nil
 	for _, mode := range []string{"completed", "yielded", "foreign", "changed-program"} {
 		t.Run("ordinary-fork-"+mode, func(t *testing.T) {
 			fork := "fork-" + mode
@@ -280,13 +294,13 @@ func testContextReload(t *testing.T, kind string) {
 				}
 				inherited = append(inherited, wait, map[string]jsontext.Value{"type": mustTestJSON(t, "function_call_output"), "call_id": wait["call_id"], "output": mustTestJSON(t, result)})
 			}
-			forkRequest, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": inherited, "tools": []any{}}))
+			forkRequest, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": inherited, "tools": testExecResponsesTools()}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			forkMeta := meta
 			forkMeta.ThreadID, forkMeta.ForkedFromThreadID = fork, ancestor
-			_, err = p.prepareModelRequest(t.Context(), &forkRequest, "fork-routing", fork, forkMeta, true, false)
+			transform, err := p.prepareModelRequest(t.Context(), &forkRequest, "fork-routing", fork, forkMeta, true, false)
 			if mode == "foreign" || mode == "changed-program" {
 				if err == nil {
 					t.Fatal("untrusted inherited snapshot accepted")
@@ -295,6 +309,10 @@ func testContextReload(t *testing.T, kind string) {
 			}
 			if err != nil {
 				t.Fatal(err)
+			}
+			defer transform.Close()
+			if len(transform.CompactReload()) != 0 {
+				t.Fatal("ordinary fork reacquired completed inherited sources")
 			}
 			visible := forkRequest.Fields["input"]
 			if !bytes.Contains(visible, []byte("complete body")) || !bytes.Contains(visible, []byte("permission denied")) || !bytes.Contains(visible, []byte("composed retained diff")) || bytes.Contains(visible, []byte(compact.SnapshotPrefix)) || bytes.Contains(visible, []byte("Script running")) {

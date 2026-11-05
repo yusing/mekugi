@@ -37,32 +37,11 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		return nil, nil, nil, err
 	}
-	assignments := make(map[string]bool)
-	for _, item := range items {
-		reset, err := resetPreload(item)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		if reset.Item != "" {
-			selections = append(selections, reset)
-			assignments[reset.Item] = true
-		}
-		if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "assistant" {
-			assignments[responses.StringField(item, "id")] = true
-			// Retained final envelopes use the same message-bound reload as
-			// assignments, including when followed by a wait_agent wake.
-			var envelope sessioncontrol.NativeMessage
-			if !bytes.Contains(item["content"], []byte(strings.Trim(compact.CompactMetadataStart, "<>"))) || json.Unmarshal(responses.MustMarshalJSON(item), &envelope) != nil {
-				continue
-			}
-			if delivery, ok := envelope.Delivery(); ok && delivery.Kind == "FINAL_ANSWER" && delivery.Outcome == control.Completed {
-				_, selection, found := compact.SplitCompactReload(delivery.Message)
-				if found && compact.CompletionSources(selection) == nil {
-					selections = append(selections, control.ContextPreload{Item: envelope.ID, Selection: selection})
-				}
-			}
-		}
+	selected, assignments, err := preloadSelections(items)
+	if err != nil {
+		return nil, nil, nil, err
 	}
+	selections = append(selections, selected...)
 	var pending jsontext.Value
 	var supplements []activity.Supplement
 	calls := make(map[string]bool)
@@ -93,6 +72,40 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 		}
 	}
 	return pending, calls, supplements, nil
+}
+
+// Message identities recognize inherited completed readers independently of
+// acquisition authority. New reads require an admitted selection or a retained
+// checkpoint/completion selection, together with its visible initiating item.
+func preloadSelections(items []map[string]jsontext.Value) ([]control.ContextPreload, map[string]bool, error) {
+	var selections []control.ContextPreload
+	assignments := make(map[string]bool)
+	for _, item := range items {
+		reset, err := resetPreload(item)
+		if err != nil {
+			return nil, nil, err
+		}
+		if reset.Item != "" {
+			selections = append(selections, reset)
+			assignments[reset.Item] = true
+		}
+		if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "assistant" {
+			assignments[responses.StringField(item, "id")] = true
+			// Retained final envelopes use the same message-bound reload as
+			// assignments, including when followed by a wait_agent wake.
+			var envelope sessioncontrol.NativeMessage
+			if !bytes.Contains(item["content"], []byte(strings.Trim(compact.CompactMetadataStart, "<>"))) || json.Unmarshal(responses.MustMarshalJSON(item), &envelope) != nil {
+				continue
+			}
+			if delivery, ok := envelope.Delivery(); ok && delivery.Kind == "FINAL_ANSWER" && delivery.Outcome == control.Completed {
+				_, selection, found := compact.SplitCompactReload(delivery.Message)
+				if found && compact.CompletionSources(selection) == nil {
+					selections = append(selections, control.ContextPreload{Item: envelope.ID, Selection: selection})
+				}
+			}
+		}
+	}
+	return selections, assignments, nil
 }
 
 // Native checkpoint continuations retain the initiating selection separately

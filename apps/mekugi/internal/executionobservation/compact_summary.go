@@ -343,17 +343,13 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 	// Completed preload history can outlive its logical tree in an ordinary
 	// fork. An authorized snapshot plus the exact assignment-derived reader
 	// identity permits projection, never scheduling new acquisition.
+	_, references, err := preloadSelections(items)
+	if err != nil {
+		return nil, err
+	}
 	assignments := make(map[string]string)
-	for _, item := range items {
-		reset, err := resetPreload(item)
-		if err != nil {
-			return nil, err
-		}
-		if reset.Item != "" {
-			assignments[compactReaderPrefix(reset.Item)] = reset.Item
-		}
-		id := responses.StringField(item, "id")
-		if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "assistant" && strings.HasPrefix(id, "threadcontrol_") {
+	for id := range references {
+		if strings.HasPrefix(id, "threadcontrol_") {
 			assignments[compactReaderPrefix(id)] = id
 		}
 	}
