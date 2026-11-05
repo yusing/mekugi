@@ -5,7 +5,7 @@ Mekugi dev • codex
 
 
 
-• Steering after the next tool call…
+• Steering pending · esc sends now …
   ↳ Diagnose the broken pipe issue.
     Add replay key tests.
     Preserve pending attachments.

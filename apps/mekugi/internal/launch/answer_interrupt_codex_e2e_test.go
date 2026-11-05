@@ -3,9 +3,11 @@
 package launch
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+	"github.com/coder/websocket"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
@@ -35,6 +37,7 @@ type answerInterruptCodexProvider struct {
 	mu          sync.Mutex
 	turn        int
 	mode, input string
+	socket      bool
 	gate        chan struct{}
 	requests    chan []byte
 }
@@ -49,9 +52,62 @@ func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, 
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	if turn == 1 {
+	if turn == 1 && p.mode != "steer" {
 		question := &questionCodexProvider{mode: "async", requests: make(chan []byte, 1)}
 		return question.ForwardExecution(ctx, ctx, body, nil, "")
+	}
+	if turn == 2 && p.mode == "message" || turn == 1 && p.mode == "steer" {
+		reader, writer := io.Pipe()
+		stop := context.AfterFunc(ctx, func() { _ = writer.CloseWithError(ctx.Err()) })
+		go func() {
+			defer stop()
+			defer writer.Close()
+			item := instantInterruptAnswer("The latest trace is complete.")
+			item["id"] = "streaming-message"
+			item["status"] = "in_progress"
+			item["content"] = []any{}
+			emit := func(events ...any) bool {
+				_, err := io.WriteString(writer, routerFaultSSE(events...))
+				return err == nil
+			}
+			if !emit(
+				map[string]any{"type": "response.created", "response": map[string]any{"id": "message-emission", "status": "in_progress", "output": []any{}}},
+				map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item},
+				map[string]any{"type": "response.output_text.delta", "item_id": item["id"], "output_index": 0, "content_index": 0, "delta": "The latest trace"},
+			) {
+				return
+			}
+			select {
+			case <-p.gate:
+			case <-ctx.Done():
+				return
+			}
+			item = instantInterruptAnswer("The latest trace is complete.")
+			item["id"] = "streaming-message"
+			if !emit(
+				map[string]any{"type": "response.output_text.delta", "item_id": item["id"], "output_index": 0, "content_index": 0, "delta": " is complete."},
+				map[string]any{"type": "response.output_text.done", "item_id": item["id"], "output_index": 0, "content_index": 0, "text": "The latest trace is complete."},
+				map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item},
+			) {
+				return
+			}
+			// Consecutive HTTP messages test that accepted input retains the first
+			// message's boundary even when the next message starts in the same read.
+			if !p.socket {
+				if !emit(
+					map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"id": "next-message", "type": "message", "role": "assistant", "status": "in_progress", "content": []any{}}},
+					map[string]any{"type": "response.output_text.delta", "output_index": 1, "content_index": 0, "item_id": "next-message", "delta": "Another message is streaming"},
+				) {
+					return
+				}
+			}
+			// Neither transport completes its response or native turn at this gate.
+			<-ctx.Done()
+		}()
+		return testGatewayResponse(&http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}, nil)
+	}
+	if turn == 2 && p.mode == "steer" {
+		return testGatewayResponse(mchangesNestedCodexResponse(turn, instantInterruptAnswer("Answer emission acceptance complete")), nil)
 	}
 	if turn == 2 {
 		reader, writer := io.Pipe()
@@ -146,7 +202,7 @@ type answerInterruptResponseWriter struct {
 func (w *answerInterruptResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func (w *answerInterruptResponseWriter) Write(body []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(body)
-	if err == nil && bytes.Contains(body[:n], []byte(`"type":"response.custom_tool_call_input.delta"`)) {
+	if err == nil && (bytes.Contains(body[:n], []byte(`"type":"response.custom_tool_call_input.delta"`)) || bytes.Contains(body[:n], []byte(`"type":"response.output_text.delta"`))) {
 		select {
 		case w.emitted <- struct{}{}:
 		default:
@@ -160,15 +216,19 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal("installed Codex is required for answer interruption acceptance")
 	}
-	for _, mode := range []string{"apply_patch", "exec"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct {
+		mode   string
+		socket bool
+	}{{"apply_patch", false}, {"exec", false}, {"message", false}, {"steer", false}, {"message", true}, {"steer", true}} {
+		mode := tc.mode
+		t.Run(fmt.Sprintf("%s/socket=%v", mode, tc.socket), func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			workspace := t.TempDir()
 			gatePath := filepath.Join(workspace, "release")
 			startedPath := filepath.Join(workspace, "started")
 			countPath := filepath.Join(workspace, "count")
 			patchPath := filepath.Join(workspace, "answer-patch.txt")
-			provider := &answerInterruptCodexProvider{t: t, mode: mode, gate: make(chan struct{}), requests: make(chan []byte, 8)}
+			provider := &answerInterruptCodexProvider{t: t, mode: mode, socket: tc.socket, gate: make(chan struct{}), requests: make(chan []byte, 8)}
 			if mode == "apply_patch" {
 				provider.input = "*** Begin Patch\n*** Add File: " + patchPath + "\n+input-survived\n*** End Patch"
 			} else {
@@ -179,13 +239,19 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			attachTestReplayStore(t, proxy)
 			issues := testCriticalErrors()
 			emitted := make(chan struct{}, 2)
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveHTTPTestProvider(w, r, provider) }))
+			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
 			defer upstream.Close()
 			client := newTestProviderClient(upstream.URL, upstream.Client())
 			handler := testResponsesHandler(t.Context(), time.Minute, client, issues, proxy)
+			endpoint := testWebSocketEndpoint(t.Context(), time.Minute, client, issues, proxy)
+			defer endpoint.Close()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				for key, values := range codexAuthHeaders() {
 					r.Header[key] = values
+				}
+				if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+					endpoint.ServeHTTP(w, r)
+					return
 				}
 				handler(&answerInterruptResponseWriter{ResponseWriter: w, emitted: emitted}, r)
 			}))
@@ -199,7 +265,7 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			}()
 			environment := routerFaultCodexEnvironment(t)
 			terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
-				cmd := exec.CommandContext(ctx, codex, "app-server", "--enable", "instant_interrupt", "-c", `model_providers.answer_fixture={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="answer_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.code_mode=true", "-c", "features.code_mode_host=true", "-c", "include_collaboration_mode_instructions=false", "-c", "features.default_mode_request_user_input=true")
+				cmd := exec.CommandContext(ctx, codex, "app-server", "--enable", "instant_interrupt", "-c", `model_providers.answer_fixture={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false,supports_websockets=`+strconv.FormatBool(tc.socket)+`}`, "-c", `model_provider="answer_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.code_mode=true", "-c", "features.code_mode_host=true", "-c", "include_collaboration_mode_instructions=false", "-c", "features.default_mode_request_user_input=true")
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
 			}, "", testAppServerIntegration(proxy))
@@ -217,23 +283,33 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			terminal.await("Ready")
 			terminal.send("Ask the release question, then perform held work\r")
 			_ = next()
-			terminal.await("Who should receive the update?")
-			_ = next()
+			if mode != "steer" {
+				terminal.await("Who should receive the update?")
+				_ = next()
+			}
 			// This signal comes from the consumer-facing HTTP writer, after both
 			// response.created and output_item.added, not from provider admission.
-			select {
-			case <-emitted:
-			case <-terminal.ctx.Done():
-				t.Fatal("tool input delta was not delivered")
+			if tc.socket {
+				terminal.await("The latest trace")
+			} else {
+				select {
+				case <-emitted:
+				case <-terminal.ctx.Done():
+					t.Fatal("input delta was not delivered")
+				}
 			}
-			terminal.send("\x02q")
-			terminal.await("1 of 1")
-			terminal.send("1\r")
+			if mode == "steer" {
+				terminal.send("Change direction now\r")
+			} else {
+				terminal.send("\x02q")
+				terminal.await("1 of 1")
+				terminal.send("1\r")
+			}
 			terminal.awaitMatch("accepted queued answer", func(screen string) bool {
-				queued := strings.Contains(screen, "Steering after") && strings.Contains(screen, "Working") && !strings.Contains(screen, "Sending…")
+				queued := strings.Contains(screen, "Steering pending") && strings.Contains(screen, "Working") && !strings.Contains(screen, "Sending…")
 				// Let a broken early-send path reach the request assertion below.
 				answered := strings.Contains(screen, "Who should receive the update?") && strings.Contains(screen, "Customers") && !strings.Contains(screen, "1 of 1")
-				return queued || answered
+				return queued || answered || mode == "steer" && strings.Contains(screen, "Change direction now")
 			})
 			select {
 			case <-provider.requests:
@@ -255,8 +331,17 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Count(string(input), "<send_user_message_question_reply>") != 1 || !bytes.Contains(input, []byte("Customers")) {
-				t.Fatal("answer was not delivered exactly once after tool input completed")
+			if mode == "steer" {
+				if bytes.Count(input, []byte("Change direction now")) != 1 {
+					t.Fatalf("steer was not delivered exactly once: %.4000s", input)
+				}
+			} else if strings.Count(string(input), "<send_user_message_question_reply>") != 1 || !bytes.Contains(input, []byte("Customers")) {
+				t.Fatalf("answer was not delivered exactly once after input completed: %.4000s", input)
+			}
+			if mode == "message" || mode == "steer" {
+				if !tc.socket && !bytes.Contains(input, []byte("The latest trace is complete.")) {
+					t.Fatalf("steering truncated the assistant message: %.2000s", input)
+				}
 			}
 			if mode == "exec" {
 				if _, err := os.Stat(startedPath); err != nil {
@@ -273,11 +358,14 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 				if err != nil || string(count) != "run\n" {
 					t.Fatalf("host command execution count %q, %v", count, err)
 				}
-			} else {
+			} else if mode == "apply_patch" {
 				data, err := os.ReadFile(patchPath)
 				if err != nil || string(data) != "input-survived\n" {
 					t.Fatalf("streamed patch did not execute intact: %q, %v", data, err)
 				}
+			}
+			if mode == "message" || mode == "steer" {
+				terminal.await("The latest trace is complete.")
 			}
 			terminal.await("Answer emission acceptance complete")
 			terminal.await("completed")
@@ -286,5 +374,71 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 				t.Fatalf("answer interruption produced router failures: %v", pending)
 			}
 		})
+	}
+}
+
+// Serve the same deterministic stream through the real provider WebSocket path.
+func (p *answerInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Request) {
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		serveHTTPTestProvider(w, r, p)
+		return
+	}
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.CloseNow()
+	cancelResponse := func() {}
+	defer func() { cancelResponse() }()
+	for {
+		fields, err := providerSocketRead(r.Context(), conn)
+		if err != nil {
+			return
+		}
+		if responses.StringField(fields, "type") == "response.interrupt" {
+			cancelResponse()
+			item := instantInterruptAnswer("The latest trace is complete.")
+			item["id"] = "streaming-message"
+			if providerSocketWrite(r.Context(), conn, map[string]any{"type": "response.interrupt.accepted", "response_id": "message-emission"}) != nil ||
+				providerSocketWrite(r.Context(), conn, map[string]any{"type": "response.incomplete", "response": map[string]any{"id": "message-emission", "status": "incomplete", "incomplete_details": map[string]string{"reason": "interrupted"}, "output": []any{item}}}) != nil {
+				return
+			}
+			continue
+		}
+		if string(fields["generate"]) == "false" {
+			if providerSocketWrite(r.Context(), conn, socketEvent("response.created", "warm")) != nil || providerSocketWrite(r.Context(), conn, socketEvent("response.completed", "warm")) != nil {
+				return
+			}
+			continue
+		}
+		body, err := json.Marshal(fields)
+		if err != nil {
+			return
+		}
+		cancelResponse()
+		responseCtx, cancel := context.WithCancel(r.Context())
+		cancelResponse = cancel
+		response, err := p.ForwardExecution(responseCtx, responseCtx, body, r.Header, "")
+		if err != nil {
+			return
+		}
+		// Keep reading so cancellation/connection closure retires an unfinished
+		// response instead of blocking the fixture in its held response body.
+		go func() {
+			defer cancel()
+			defer response.Body.Close()
+			scanner := bufio.NewScanner(response.Body)
+			for scanner.Scan() {
+				if payload, ok := bytes.CutPrefix(scanner.Bytes(), []byte("data: ")); ok {
+					if err := conn.Write(r.Context(), websocket.MessageText, payload); err != nil {
+						conn.CloseNow()
+						return
+					}
+				}
+			}
+			if scanner.Err() != nil && responseCtx.Err() == nil {
+				conn.CloseNow()
+			}
+		}()
 	}
 }

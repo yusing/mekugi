@@ -149,7 +149,7 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 				terminal.await("1 of 1")
 				answer(terminal)
 				terminal.awaitMatch("accepted question steer", func(screen string) bool {
-					return strings.Contains(screen, "Steering after") && strings.Contains(screen, "Working") && !strings.Contains(screen, "Sending…")
+					return strings.Contains(screen, "Steering pending") && strings.Contains(screen, "Working") && !strings.Contains(screen, "Sending…")
 				})
 				close(provider.gate)
 				gateClosed = true

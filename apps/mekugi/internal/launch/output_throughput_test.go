@@ -76,7 +76,7 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 }
 
 func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
-	for _, mode := range []string{"no-proxy", "thread", "module-absent", "diagnostics-absent"} {
+	for _, mode := range []string{"no-proxy", "thread", "module-absent", "diagnostics-absent", "execution-free"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("stream=%v/%s", stream, mode), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
@@ -89,7 +89,16 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 					}
 					headers := serverMetadataHeaders(t, "turn", nil)
 					headers.Set(codexresponses.RoutingSessionHeader, "transport-session")
-					req := serverRequest(t, func(f map[string]any) { f["stream"] = stream; f["model"] = "gpt-6-sol" })
+					req := serverRequest(t, func(f map[string]any) {
+						f["stream"], f["model"] = stream, "gpt-6-sol"
+						if mode == "execution-free" {
+							f["tools"] = []any{}
+							f["input"] = []any{map[string]any{"role": "user", "content": "task"}}
+						}
+					})
+					if mode == "execution-free" && !codexresponses.ExecutionFree(&req) {
+						t.Fatal("fixture is not execution-free")
+					}
 					terminal := `{"id":"tps-response","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":80,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":20}}}`
 					wire := terminal
 					if stream {
@@ -148,7 +157,7 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 							t.Fatalf("capture throughput=%+v", measurement)
 						}
 					}
-					if mode == "thread" || mode == "diagnostics-absent" {
+					if mode == "thread" || mode == "diagnostics-absent" || mode == "execution-free" {
 						report := requireRoundThroughput(t, proxy.usage, "thread-1", 40, true)
 						if report.OutputTokens != 80 || report.Roundtrips != 1 {
 							t.Fatal(report)

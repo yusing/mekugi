@@ -11,7 +11,12 @@ type Generation struct{ _ byte }
 
 type generatingInput struct {
 	workspace, thread string
-	items             map[string]bool
+	items             map[string]generatingItem
+}
+
+type generatingItem struct {
+	tool    bool
+	message uint64
 }
 
 // Observations coordinates invocation-local generation and control delivery.
@@ -20,6 +25,7 @@ type generatingInput struct {
 type Observations struct {
 	mu                sync.RWMutex
 	generations       map[*Generation]generatingInput
+	nextMessage       uint64
 	feedbackMu        sync.Mutex
 	feedback          map[[2]string][]string
 	contextRevision   map[string]uint64
@@ -72,6 +78,14 @@ func (o *Observations) ContextRevision(thread string) uint64 {
 }
 
 func (o *Observations) SetToolInput(generation *Generation, workspace, thread, item string, active bool) {
+	o.setInput(generation, workspace, thread, item, active, true)
+}
+
+func (o *Observations) SetAssistantMessage(generation *Generation, workspace, thread, item string, active bool) {
+	o.setInput(generation, workspace, thread, item, active, false)
+}
+
+func (o *Observations) setInput(generation *Generation, workspace, thread, item string, active, tool bool) {
 	if o == nil || generation == nil || thread == "" || item == "" {
 		return
 	}
@@ -83,9 +97,15 @@ func (o *Observations) SetToolInput(generation *Generation, workspace, thread, i
 		}
 		input := o.generations[generation]
 		if input.items == nil {
-			input = generatingInput{workspace: workspace, thread: thread, items: make(map[string]bool)}
+			input = generatingInput{workspace: workspace, thread: thread, items: make(map[string]generatingItem)}
 		}
-		input.items[item] = true
+		value := input.items[item]
+		value.tool = tool
+		if !tool && value.message == 0 {
+			o.nextMessage++
+			value.message = o.nextMessage
+		}
+		input.items[item] = value
 		o.generations[generation] = input
 	} else if input := o.generations[generation]; input.items != nil {
 		delete(input.items, item)
@@ -104,6 +124,33 @@ func (o *Observations) EndGeneration(generation *Generation) {
 }
 
 func (o *Observations) EmittingToolInput(workspace, thread string) bool {
+	return o.emitting(workspace, thread, 0)
+}
+
+// AssistantMessage snapshots only the message active at input admission.
+// Later messages cannot rearm an already-accepted input's boundary.
+func (o *Observations) AssistantMessage(workspace, thread string) uint64 {
+	if o == nil {
+		return 0
+	}
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	var message uint64
+	for _, input := range o.generations {
+		if input.thread == thread && (input.workspace == "" || input.workspace == workspace) {
+			for _, item := range input.items {
+				message = max(message, item.message)
+			}
+		}
+	}
+	return message
+}
+
+func (o *Observations) AwaitingMessage(workspace, thread string, message uint64) bool {
+	return message != 0 && o.emitting(workspace, thread, message)
+}
+
+func (o *Observations) emitting(workspace, thread string, message uint64) bool {
 	if o == nil {
 		return false
 	}
@@ -113,7 +160,11 @@ func (o *Observations) EmittingToolInput(workspace, thread string) bool {
 		// Missing cwd does not erase native thread identity. This observation
 		// resolves no filesystem operand.
 		if input.thread == thread && (input.workspace == "" || input.workspace == workspace) {
-			return true
+			for _, item := range input.items {
+				if message == 0 && item.tool || message != 0 && item.message == message {
+					return true
+				}
+			}
 		}
 	}
 	return false

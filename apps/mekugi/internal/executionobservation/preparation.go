@@ -97,6 +97,7 @@ type mekugiResponseTransform struct {
 	localWaitItem    string
 	compactReload    jsonv1.RawMessage
 	generation       sessioncontrol.Generation
+	generationOnly   bool
 	toolTrace        requestexecution.Trace
 	ctx              context.Context
 	sessionID        string
@@ -380,25 +381,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, err
 		}
 	}
-	// Only accepted requests may change retained ancestry or collect activity.
-	activityThreadID := ""
-	if metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != threadID {
-		p.Audience.Invalidate(threadID)
-	} else {
-		name := metadata.AgentName
-		if name == "" && metadata.SubagentKind == "" {
-			name = "/root"
-		}
-		var observed bool
-		if p.ThreadControl != nil {
-			observed = p.ThreadControl.Coordination().ObserveAudience(threadID, p.Audience.ObserveAdmitted)
-		} else {
-			observed = p.Audience.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "")
-		}
-		if observed {
-			activityThreadID = threadID
-		}
-	}
+	activityThreadID := p.admitActivityThread(threadID, metadata)
 	if activityThreadID != "" {
 		p.Audience.Collect(preloadActivity...)
 		model := request.Model()
@@ -491,3 +474,26 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 
 // Publish the native denial and its feedback together. A provider continuation
 // cannot observe the denial without the user reply already being available.
+
+// Only accepted requests may change retained ancestry or collect activity.
+func (p *Preparer) admitActivityThread(threadID string, metadata codexresponses.TurnMetadata) string {
+	activityThreadID := ""
+	if metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != threadID {
+		p.Audience.Invalidate(threadID)
+	} else {
+		name := metadata.AgentName
+		if name == "" && metadata.SubagentKind == "" {
+			name = "/root"
+		}
+		var observed bool
+		if p.ThreadControl != nil {
+			observed = p.ThreadControl.Coordination().ObserveAudience(threadID, p.Audience.ObserveAdmitted)
+		} else {
+			observed = p.Audience.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "")
+		}
+		if observed {
+			activityThreadID = threadID
+		}
+	}
+	return activityThreadID
+}

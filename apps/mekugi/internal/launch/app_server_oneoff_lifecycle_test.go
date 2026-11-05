@@ -329,3 +329,75 @@ func TestOneoffChildGuardFailurePreservesRoot(t *testing.T) {
 		t.Fatalf("child guard failure changed running root: busy=%v turn=%q pending=%q restored=%q", u.side.Busy, u.side.Turn, u.side.Pending.Text, u.side.Drafts.Editor.Text)
 	}
 }
+
+func TestOneoffInputWaitsForItsAssistantMessage(t *testing.T) {
+	for _, answer := range []bool{false, true} {
+		t.Run(map[bool]string{false: "steer", true: "answer"}[answer], func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			proxy := newManagedMekugiProxy(t)
+			setTestAppServerIntegration(u, proxy)
+			u.startSession("main", "/workspace")
+			oneoffTestStart(t, u, wire)
+			transform := prepareEmissionTest(t, proxy, "", "oneoff")
+			defer transform.Close()
+			item := map[string]any{"id": "message", "type": "message"}
+			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
+			if answer {
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
+				selectSideThread(t, u, u.attached.presentation.View().Main)
+				openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+				questionTestPaint(t, u, 80)
+				appServerTestKeys(t, u, "1\r")
+			} else {
+				appServerTestKeys(t, u, "change approach\r")
+			}
+			if wire.Len() != 0 || len(u.side.Drafts.Unsent) != 1 {
+				t.Fatal("oneoff input interrupted its message")
+			}
+			selectSideThread(t, u, u.attached.presentation.View().Main)
+			appServerTestKeys(t, u, "main request\r")
+			_ = btwTestRequest(t, wire, "turn/start", "main")
+			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
+			if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+				t.Fatal(err)
+			}
+			_ = btwTestRequest(t, wire, "turn/steer", "oneoff")
+			if len(u.side.Drafts.Unsent) != 0 {
+				t.Fatal("oneoff input remained queued after its boundary")
+			}
+		})
+	}
+}
+
+func TestOneoffSteerPassesChildAnswerWaitingForMessage(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	proxy := newManagedMekugiProxy(t)
+	setTestAppServerIntegration(u, proxy)
+	u.startSession("main", "/workspace")
+	oneoffTestStart(t, u, wire)
+	oneoffTestChild(t, u)
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "oneoff-child", "turn": map[string]any{"id": "child-turn"}})
+	transform := prepareEmissionTest(t, proxy, "", "oneoff-child")
+	defer transform.Close()
+	item := map[string]any{"id": "child-message", "type": "message"}
+	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "1\r")
+	if wire.Len() != 0 || len(u.side.Drafts.Unsent) != 1 {
+		t.Fatal("child answer was not deferred")
+	}
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	appServerTestKeys(t, u, "change parent direction\r")
+	_ = btwTestRequest(t, wire, "turn/steer", "oneoff")
+	if len(u.side.Drafts.Unsent) != 1 || u.side.Drafts.Unsent[0].Question.Thread != "oneoff-child" {
+		t.Fatal("parent steer consumed the child answer")
+	}
+	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
+	if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+		t.Fatal(err)
+	}
+	_ = btwTestRequest(t, wire, "turn/steer", "oneoff-child")
+}

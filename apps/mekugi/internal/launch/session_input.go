@@ -21,7 +21,13 @@ func (session *nativeSession) submitInput(attached *attachedPresentation, termin
 		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
+	// Attachment preparation must not move an admitted input to a later message.
+	var messageBoundary uint64
+	if !plan.Queued {
+		messageBoundary = session.controlObservations.AssistantMessage(attached.cwd, session.Client.Thread)
+	}
 	input := prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, draft)
+	input.MessageBoundary = messageBoundary
 	attached.conversation.QueueInput(input, plan.Queued)
 	pruneDraftImages(session.ownedImages, (*editor), attached.conversation, &session.questions, &session.approvals, terminal.Prompts, (*side), attached.hooks.nativeImages)
 	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)

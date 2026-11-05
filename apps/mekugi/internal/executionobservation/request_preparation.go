@@ -95,10 +95,18 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 			return nil, err
 		}
 	}
+	if t == nil && !input.Prewarm && !input.ApprovalReview && input.MetadataValid && input.Metadata.RequestKind == "turn" {
+		// Execution-free turns retain native payloads but still publish message
+		// boundaries. They acquire no execution cache, capture or replay owners.
+		t = &mekugiResponseTransform{owners: p, ctx: ctx, generationOnly: true,
+			threadID:     p.admitActivityThread(input.Thread, input.Metadata),
+			directory:    p.observationDirectory(input.Metadata.Directories, input.Thread),
+			usageTracker: p.Usage.Observation(input.Thread, input.Metadata.ThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"]))}
+	}
 	if t == nil {
 		return nil, nil
 	}
-	if input.MetadataValid {
+	if input.MetadataValid && !t.generationOnly {
 		observeReview(p.Review, t.directory, t.threadID, input.Metadata)
 		if !input.Automatic {
 			beginLiveDiffTurn(p.Review.Preview(), t.directory, t.threadID, input.Metadata)

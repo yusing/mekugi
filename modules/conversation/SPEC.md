@@ -365,9 +365,12 @@ question reply or compaction command remains its own submission. Conversation
 retains queued compaction intent, not its execution lifecycle.
 
 Answers steer during an active turn, start a turn when idle or queue until input
-admission permits delivery. Deferred answers wait for a tool's generated input to
-finish, not for execution to finish. Ordinary prompts retain instant interruption
-and can pass deferred answers. Payload snapshots retain attachment bytes and
+admission permits delivery. Steers and asynchronous answers accepted during an
+assistant message retain that message's boundary and their input snapshots; a
+later message cannot postpone already-accepted input.
+Deferred answers also wait for a tool's generated input to finish, not for
+execution to finish. Outside assistant-message generation, ordinary prompts retain
+instant interruption and can pass answers deferred by tool-input generation. Payload snapshots retain attachment bytes and
 neutral question identity until [session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md#submission-and-interruption)
 settles submission. That owner also defines interruption, rejection, native-shell
 recovery and session replacement. A rejected or withdrawn payload remains editable

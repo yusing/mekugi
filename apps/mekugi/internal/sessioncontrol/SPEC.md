@@ -102,8 +102,9 @@ Terminal keys and contextual dismissal belong to
 
 ### Submission and interruption
 
-For conversation input, Enter steers an active turn; Tab queues for the next turn
-and submits while idle. Logical waiting remains busy for Tab: queued composer input
+For conversation input, Enter accepts a steer for an active turn; delivery waits
+until the assistant message active at submission finishes, then uses that active turn
+without waiting for turn completion. Tab queues for the next turn and submits while idle. Logical waiting remains busy for Tab: queued composer input
 waits for the resumed work to finish, while Enter can supersede the wait.
 Shell commands use their immediate-submission behavior below.
 Alt-Up/Shift-Left restores only locally waiting input into the requesting editor,
@@ -293,7 +294,7 @@ request identities. Host parent identities admit descendants into the same isola
 audience. Activity with unresolved ancestry remains outside Main until metadata
 settles its audience. Closing the slot retires their visible activity and prompts without
 answering them or claiming that their host processes completed. Queued answers wait
-for their own thread's tool-input generation, independently of Main.
+for their own thread's assistant-message and tool-input generation, independently of Main.
 Side and One-off forks initially preserve Main’s effective settings without changing Main,
 except inherited ultra uses the selected model's stock ordinary equivalent, as for delegates.
 While either is selected, model and reasoning commands, pickers and shifted-arrow
@@ -310,8 +311,12 @@ Session control owns authenticated ancestry and the attached audience used for
 auxiliary notices and Activity supplements. Conflicting identity remains invalid
 for the invocation. Activity owns supplement retention and deduplication; terminal
 consumers receive detached facts rather than access to the ancestry registry.
-Question answers wait for matching tool-input generation to finish; ordinary
-steers remain available. Generation completion is independent of host execution,
+Steers and asynchronous question answers wait for their target's streaming
+assistant message to finish. Question answers also wait for matching tool-input
+generation; ordinary steers remain available during tool-input generation. Message
+completion or generation settlement releases that input's message gate, even if
+another message starts. This includes failed or
+interrupted streams. Generation completion is independent of host execution,
 preview availability and command completion. Request cleanup removes only its own
 generation observations. Side-thread membership survives pending cleanup, never
 resume or replay.

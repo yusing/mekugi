@@ -35,3 +35,25 @@ func emissionTestEvent(t *testing.T, transform *mekugiResponseTransform, event m
 		t.Fatal(err)
 	}
 }
+
+func TestAssistantMessageEmissionSettlement(t *testing.T) {
+	for _, ending := range []string{"response.completed", "response.failed", "response.incomplete", "close"} {
+		t.Run(ending, func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t)
+			transform := &mekugiResponseTransform{owners: &Preparer{Config: Config{Control: proxy.Control, Review: proxy.Review}}, threadID: "child", directory: "/workspace"}
+			defer transform.Close()
+			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "message", "type": "message"}})
+			if proxy.Control.AssistantMessage("/workspace", "child") == 0 || proxy.Control.AssistantMessage("/workspace", "main") != 0 || proxy.Control.AssistantMessage("/other", "child") != 0 || proxy.Control.EmittingToolInput("/workspace", "child") {
+				t.Fatal("message gate escaped its authenticated scope or kind")
+			}
+			if ending == "close" {
+				transform.Close()
+			} else {
+				emissionTestEvent(t, transform, map[string]any{"type": ending, "response": map[string]any{"id": "response", "output": []any{}}})
+			}
+			if proxy.Control.AssistantMessage("/workspace", "child") != 0 {
+				t.Fatal("settled generation still blocks input")
+			}
+		})
+	}
+}

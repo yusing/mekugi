@@ -447,7 +447,7 @@ func TestLogicalWaitKeepsQueuedComposerInput(t *testing.T) {
 	if wire.Len() != 0 || member.Wait.State != "registered" || len(u.attached.conversation.Queued) != 1 || u.attached.threadInput.preparing() {
 		t.Fatalf("queued composer input superseded wait: wire=%s unsent=%d queued=%d preparing=%v member=%+v", wire.String(), len(u.attached.conversation.Unsent), len(u.attached.conversation.Queued), u.attached.threadInput.preparing(), member)
 	}
-	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, false); len(next.Batch.Parts) != 0 || len(u.attached.conversation.Queued) != 1 {
+	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, nil, ""); len(next.Batch.Parts) != 0 || len(u.attached.conversation.Queued) != 1 {
 		t.Fatal("ordinary input flushing drained the queue during a logical wait")
 	}
 	// Addressed delegate messages still wake the parent. Its queued composer
@@ -474,11 +474,11 @@ func TestLogicalWaitKeepsQueuedComposerInput(t *testing.T) {
 	}
 	appServerTestTurn(t, u, "resumed")
 	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, false); len(next.Batch.Parts) != 0 || len(u.attached.conversation.Queued) != 1 {
+	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, nil, ""); len(next.Batch.Parts) != 0 || len(u.attached.conversation.Queued) != 1 {
 		t.Fatal("wake promoted queued composer input into a steer")
 	}
 	u.Live.Completed(true)
-	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, false); len(next.Batch.Parts) != 1 || next.Batch.Parts[0].Text != "next assignment" || next.Steer {
+	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, nil, ""); len(next.Batch.Parts) != 1 || next.Batch.Parts[0].Text != "next assignment" || next.Steer {
 		t.Fatalf("queue did not release after resumed turn: %+v", next)
 	}
 }

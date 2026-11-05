@@ -18,6 +18,14 @@ func TestGenerationObservationsRemainRequestScoped(t *testing.T) {
 	if observations.EmittingToolInput("/workspace", "main") {
 		t.Fatal("completed tool input still blocks question answers")
 	}
+	observations.SetAssistantMessage(&first, "", "main", "item", true)
+	message := observations.AssistantMessage("/workspace", "main")
+	observations.SetAssistantMessage(&second, "", "main", "item", true)
+	later := observations.AssistantMessage("/workspace", "main")
+	observations.EndGeneration(&first)
+	if message == later || observations.AwaitingMessage("/workspace", "main", message) || !observations.AwaitingMessage("/workspace", "main", later) {
+		t.Fatal("message boundaries lost request identity or rearmed after completion")
+	}
 }
 
 func TestApprovalFeedbackFollowsSuccessfulDelivery(t *testing.T) {

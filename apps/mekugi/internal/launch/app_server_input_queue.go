@@ -93,8 +93,7 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, termina
 			return err
 		}
 	}
-	emitting := session.controlObservations != nil && session.controlObservations.EmittingToolInput(attached.cwd, session.Client.Thread)
-	next := attached.presentation.NextInput(&session.Client.Live, attached.conversation, emitting)
+	next := attached.presentation.NextInput(&session.Client.Live, attached.conversation, session.controlObservations, attached.cwd)
 	if next.Interrupt {
 		return applyInterruption(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, session.Client.Interrupt())
 	}

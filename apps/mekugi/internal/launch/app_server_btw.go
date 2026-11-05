@@ -28,6 +28,11 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, terminal
 		return nil
 	}
 	if b := *side; text == "" && b != nil && b.OneOff && displayingSide && len(b.Drafts.Queued) > 0 {
+		thread := b.Thread
+		if question := b.Drafts.Queued[0].Question; question != nil {
+			thread = question.Thread
+		}
+		b.Drafts.Queued[0].MessageBoundary = session.controlObservations.AssistantMessage(attached.cwd, thread)
 		b.Drafts.Unsent = append(b.Drafts.Unsent, b.Drafts.Queued[0])
 		b.Drafts.Queued = b.Drafts.Queued[1:]
 		return flushBTW(attached, terminal, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
@@ -127,9 +132,11 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, terminal
 	if prefix > 0 {
 		session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, overlay, 0, prefix)
 	}
+	messageBoundary := session.controlObservations.AssistantMessage(attached.cwd, b.Thread)
 	pending := prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, preparation.take(*editor).Trimmed())
 	pending.Origin = attached.view
 	pending.Delivery = attached.effects.input()
+	pending.MessageBoundary = messageBoundary
 	if b.Waiting != "" {
 		if attached.sideInputs == nil {
 			attached.sideInputs = make(map[*sessioncontrol.Side]*threadInput)
@@ -197,6 +204,12 @@ func flushSide(attached *attachedPresentation, terminal *terminalsession.Attachm
 				b.Busy = true
 				b.Drafts.Unsent = slices.Delete(b.Drafts.Unsent, next, next+1)
 				break
+			}
+			if observations.AwaitingMessage(attached.cwd, thread, input.MessageBoundary) {
+				if input.Question != nil && input.Question.Thread != b.Thread && b.Waiting == "" && b.Drafts.AdvancePrompt() {
+					continue
+				}
+				return nil
 			}
 			if control.Requests.SideReplyStarting(thread) {
 				return nil

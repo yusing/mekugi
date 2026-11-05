@@ -333,7 +333,7 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 		clear(secretAnswers)
 		renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
 		if len(answerDraft.AnswerImages) > 0 || len(answerDraft.Attachments) > 0 {
-			d := conversationmodel.Input{Draft: answerDraft}
+			d := conversationmodel.Input{Draft: answerDraft, MessageBoundary: session.controlObservations.AssistantMessage(attached.cwd, c.Thread)}
 			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c.Call, true
 			for i, path := range answerDraft.AnswerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
@@ -363,14 +363,14 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 		return nil
 	}
 	answerDraft.Text, answerDraft.InHistory = reply, true
+	input := conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply)), MessageBoundary: session.controlObservations.AssistantMessage(attached.cwd, c.Thread)}
 	if session.Client.Requests.WorkSide(c.Thread) {
 		target := session.Client.Requests.Side(c.Thread)
-		input := conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))}
 
 		target.Drafts.Unsent = append(target.Drafts.Unsent, input)
 		return flushBTW(attached, terminal, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
 	}
-	attached.conversation.Unsent = append(attached.conversation.Unsent, conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
+	attached.conversation.Unsent = append(attached.conversation.Unsent, input)
 	renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
 	return session.flushInput(attached, terminal, picker, clock, editor, parent)
 }

@@ -30,7 +30,7 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 		t.Fatalf("question dock counted the sent answer: %q", rows)
 	}
 	preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n")
-	if !strings.Contains(preview, "Steering after the next tool call") || !strings.Contains(preview, "Answering 1 question(s)") || strings.Contains(preview, binding.QuestionReplyStart) {
+	if !strings.Contains(preview, "Steering pending") || !strings.Contains(preview, "Answering 1 question(s)") || strings.Contains(preview, binding.QuestionReplyStart) {
 		t.Fatalf("queued answer was not shown truthfully: %q", preview)
 	}
 	// RPC acceptance is not a committed user message. The answer remains in-flight.

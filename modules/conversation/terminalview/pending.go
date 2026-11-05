@@ -43,7 +43,7 @@ func Pending(view presentation.PendingView, width int) []string {
 	case presentation.RetryAttachments:
 		header = "Attachment delivery failed · Enter in empty composer retries"
 	case presentation.Steering:
-		header = "Steering after the next tool call · esc sends now · ctrl+c interrupts and restores input"
+		header = "Steering pending · esc sends now · ctrl+c interrupts and restores input"
 	case presentation.CompactAfterInterrupt:
 		header = "Compacting after interruption · ctrl+c cancels compaction"
 	case presentation.ShellRunning:

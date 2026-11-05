@@ -18,6 +18,9 @@ import (
 )
 
 func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) {
+	if t.generationOnly {
+		return payload, nil
+	}
 	transformed, err := t.transformResponse(payload, "")
 	return transformed, translationDiagnostic(err, "mekugi_json", "Mekugi response translation failed while processing a JSON response")
 }
@@ -58,18 +61,36 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		t.finalAnswer.observe(payload)
 		return [][]byte{payload}, nil
 	}
-	t.finalAnswer.observe(payload)
-	switch {
-	case envelope.Type == responseevents.OutputItemAdded:
-		item, ok := responseevents.DecodeItem(envelope.Item)
+	var item responseevents.Item
+	if envelope.Type.ItemEvent() {
+		var ok bool
+		item, ok = responseevents.DecodeItem(envelope.Item)
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Unrelated output items pass through unchanged.
 		}
-		if item.Type == "function_call" || item.Type == "custom_tool_call" {
-			if t.owners.Control != nil {
+	}
+	if t.owners.Control != nil {
+		switch envelope.Type {
+		case responseevents.OutputItemAdded:
+			if item.Type == "message" {
+				t.owners.Control.SetAssistantMessage(&t.generation, t.directory, t.threadID, item.ID, true)
+			} else if item.Type == "function_call" || item.Type == "custom_tool_call" {
 				t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, true)
 			}
+		case responseevents.OutputItemDone:
+			t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, false)
+		case responseevents.FunctionArgumentsDone, responseevents.CustomInputDone:
+			t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
+		case responseevents.Completed, responseevents.Failed, responseevents.Incomplete:
+			t.owners.Control.EndGeneration(&t.generation)
 		}
+	}
+	if t.generationOnly {
+		return [][]byte{payload}, nil
+	}
+	t.finalAnswer.observe(payload)
+	switch {
+	case envelope.Type == responseevents.OutputItemAdded:
 		name := item.Name
 		if t.codeModeToolName != "" && name == t.codeModeToolName {
 			if item.Type == "custom_tool_call" && item.ID != "" {
@@ -91,9 +112,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
-		if t.owners.Control != nil {
-			t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
-		}
 		if addedFields, stockCall := t.nativeExecCalls[envelope.ItemID]; stockCall {
 			if responseevents.StringField(addedFields, "type") == "custom_tool_call" {
 				addedCallID := responseevents.StringField(addedFields, "call_id")
@@ -127,20 +145,10 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.FunctionArgumentsDone:
-		if t.owners.Control != nil {
-			t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
-		}
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.OutputItemDone:
-		item, ok := responseevents.DecodeItem(envelope.Item)
-		if !ok {
-			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
-		}
 		t.storageToolHandoff = t.storageToolHandoff || blocksTokenUsage(item.Fields)
-		if t.owners.Control != nil {
-			t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, false)
-		}
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
 			// Item completion can report interrupted generation, not complete input.

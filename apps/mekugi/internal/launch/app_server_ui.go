@@ -469,7 +469,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 					if failure != nil {
 						return failure.Error(), nil
 					}
-					if !session.attached.conversation.SteerQueued() {
+					if !session.attached.conversation.SteerQueued(session.controlObservations.AssistantMessage(session.attached.cwd, session.Client.Thread)) {
 						return "No queued messages can be steered.", nil
 					}
 					if plan.Flush {
@@ -519,6 +519,9 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 							return "The prepared input was canceled before admission.", nil
 						}
 						input := conversationmodel.Input{Draft: request.Prepared.Draft.Trimmed(), Origin: view.attached.view, Delivery: view.effects.input()}
+						if !plan.Queued {
+							input.MessageBoundary = session.controlObservations.AssistantMessage(session.attached.cwd, session.Client.Thread)
+						}
 						session.attached.conversation.QueueInput(input, plan.Queued)
 						if input.AttachmentNotice != "" {
 							setNotice(&view.attached.feedback, view.shell, presentationTime(session.clock), input.AttachmentNotice, true)
@@ -900,7 +903,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 							return err
 						}
 					}
-					if session.Client.Shell.Continuation() || session.attached.threadInput.preparing() || len(session.attached.conversation.Unsent) > 0 && session.attached.conversation.Unsent[0].Question != nil && (session.controlObservations == nil || !session.controlObservations.EmittingToolInput(session.attached.cwd, session.Client.Thread)) {
+					if session.Client.Shell.Continuation() || session.attached.threadInput.preparing() || len(session.attached.conversation.Unsent) > 0 {
 						if err := session.flushInput(&session.attached, session.shell, &session.picker, session.clock, &session.Editor, session.ctx); err != nil {
 							return err
 						}
