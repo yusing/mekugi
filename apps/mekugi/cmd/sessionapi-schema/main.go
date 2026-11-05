@@ -23,7 +23,7 @@ func main() {
 		var current []byte
 		current, err = os.ReadFile(target)
 		if err == nil && !bytes.Equal(current, data) {
-			err = fmt.Errorf("%s is stale; run make generate", target)
+			err = fmt.Errorf("%s is stale; run go run ./apps/mekugi/cmd/sessionapi-schema", target)
 		}
 	} else if err == nil {
 		err = os.WriteFile(target, data, 0644)
