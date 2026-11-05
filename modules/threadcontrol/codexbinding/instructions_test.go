@@ -280,15 +280,15 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 			if strings.Contains(replacements[0].Text, "an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits") != tc.child {
 				t.Fatalf("parent delegation authority must be child-only: %s", replacements[0].Text)
 			}
-			if strings.Contains(replacements[0].Text, "Ask the user directly for clarification with request_user_input_async, or request_user_input in Plan mode.") != tc.child {
-				t.Fatalf("direct user clarification guidance must be child-only: %s", replacements[0].Text)
-			}
 			driver.host = nil // Auxiliary projection must not call a busy host.
 			passive, err := driver.RetainedInstructions(thread, "new-model")
 			if err != nil || len(passive) != 1 || !strings.HasPrefix(passive[0].Text, tc.want+"\n\n") || !strings.Contains(passive[0].Text, identity) {
 				t.Fatalf("retained instruction projection = %+v, %v", passive, err)
 			}
 			for _, projection := range []string{replacements[0].Text, passive[0].Text} {
+				if strings.Contains(projection, "Ask the user directly for clarification with functions.request_user_input_async.") != tc.child {
+					t.Fatalf("direct user clarification guidance must be child-only: %s", projection)
+				}
 				if strings.Contains(projection, CompletionChangesGuidance) != tc.child {
 					t.Fatal("completion selection guidance did not follow child admission")
 				}

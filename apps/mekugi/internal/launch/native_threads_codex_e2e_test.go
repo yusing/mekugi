@@ -249,6 +249,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if strings.Contains(string(body), "an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits") != !parent {
 			failure = "parent-assignment delegation authority is not child-only"
 		}
+		if strings.Contains(string(body), "Ask the user directly for clarification with functions.request_user_input_async.") != !parent {
+			failure = "direct user clarification guidance is not child-only"
+		}
 		identity := "Your logical task is agent:main."
 		if !parent {
 			identity = "Your logical task is agent:main/worker. Your parent logical task is agent:main."
