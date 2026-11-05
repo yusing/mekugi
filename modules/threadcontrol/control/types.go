@@ -202,6 +202,7 @@ type WaitResult struct {
 	UsageLimit   bool                      `json:"-"`
 	Capacity     bool                      `json:"-"`
 	Timed        bool                      `json:"-"`
+	Deadline     *time.Time                `json:"-"`
 	All          bool                      `json:"-"`
 	State        string                    `json:"state"`
 	Mode         WaitMode                  `json:"wait_mode,omitempty"`

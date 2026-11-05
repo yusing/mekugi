@@ -79,6 +79,22 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 	text := in.Text
 	model.ObserveActivityProgress(p, in.Main, in.Selected, mainSource)
 	main := p.ThreadID == in.Main
+	if p.Kind == "error" || p.Kind.ResponseProgress() {
+		active := in.Selected
+		if !main {
+			active = ""
+			if agent := s.Activity().Agent(p.ThreadID); agent != nil {
+				active = agent.Turn
+			}
+		}
+		if active != "" && p.TurnID == active {
+			if p.Kind == "error" && p.Retry != "" && !model.replay {
+				s.Lifecycle(p.ThreadID).Retry = &activitypresentation.Value{Kind: "progress", Body: p.Retry, Live: true}
+			} else {
+				s.Lifecycle(p.ThreadID).Retry = nil
+			}
+		}
+	}
 	result.Publish = true
 	var entries []ActivityEntry
 	// Source transitions complete before delivery; publication remains the adapter's job.

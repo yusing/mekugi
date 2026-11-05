@@ -13,6 +13,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/contracts/observation"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -405,12 +406,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 	if !r.HasSides() {
 		return SideUpdate{}, nil
 	}
-	var p struct {
-		binding.Notification
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
+	var p binding.Notification
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return SideUpdate{}, nil
 	}
@@ -453,6 +449,12 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 		s.Status, s.Alert = "Side answer blocked on "+m.Method+" · Esc closes", true
 		return update, nil
+	}
+	if observation.Kind(m.Method).ResponseProgress() && p.TurnID == s.Turn && s.Turn != "" && !s.Closed && !s.Alert {
+		s.Status = "Answering"
+		if s.OneOff {
+			s.Status = "Working"
+		}
 	}
 	switch m.Method {
 	case "thread/settings/updated":
@@ -505,11 +507,14 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 		s.SideAnswer.Complete(p.Turn.Status, failure)
 	case "error":
-		if p.Error != nil {
+		if p.Error != nil && p.TurnID == s.Turn && s.Turn != "" && !s.Closed {
 			if strings.Contains(p.Error.Message, conversationmodel.SideCompactionRequired) {
 				return s.fail(conversationmodel.SideCompactionRequired), nil
 			}
-			s.Status, s.Alert = p.Error.Message, true
+			s.Status, s.Alert = p.Error.Message, !p.WillRetry
+			if p.WillRetry {
+				s.Status = p.Observation("error", time.Time{}).Retry
+			}
 		}
 	case "item/agentMessage/delta", "item/completed":
 		if s.OneOff || s.Closed || p.TurnID != s.Turn {

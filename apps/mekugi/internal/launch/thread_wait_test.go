@@ -125,6 +125,9 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 }
 
 func TestUISnapshotUsageLimitWaiting(t *testing.T) {
+	previous := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previous })
 	for _, mode := range []string{"true", "false", "capacity"} {
 		t.Run(mode, func(t *testing.T) {
 			timed := mode == "true"
@@ -160,6 +163,9 @@ func TestUISnapshotUsageLimitWaiting(t *testing.T) {
 			if timed {
 				deadline = new(at.Add(time.Hour))
 			}
+			if mode == "capacity" {
+				deadline = new(at.Add(time.Second))
+			}
 			wait := threads.shared.WaitForUsageLimit
 			if mode == "capacity" {
 				wait = threads.shared.WaitForCapacity
@@ -180,6 +186,99 @@ func TestUISnapshotUsageLimitWaiting(t *testing.T) {
 			assertNativeUISnapshot(t, "usage-limit-waiting-"+mode, rows)
 			u.testActivity(u.shell.Agents).publishActivity()
 			assertNativeUISnapshot(t, "usage-limit-roster-"+mode, u.shell.Agents.NativeRoster(80, 5, *at, true))
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if deadline != nil {
+				wake, err := service.PrepareWake(t.Context(), "main", *deadline)
+				check(err)
+				_, err = service.ClaimEffect(t.Context(), "main", wake.ID)
+				check(err)
+				check(service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "retry"}))
+				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "retry"}})
+				syncLogicalWork(&u.attached, &u.Live, threads, *at)
+				u.testMainFrame(100, 8, 0)
+				if strings.Contains(u.attached.presentation.View().Status.Session.Text, "retry at") {
+					t.Fatal("resumed request retained old retry deadline")
+				}
+				deadline = new(deadline.Add(time.Minute))
+				_, err = wait(t.Context(), "main", "retry", deadline)
+				check(err)
+				check(service.HostCompleted(t.Context(), "main", "retry", control.Completed, control.HostFailure{}))
+				syncLogicalWork(&u.attached, &u.Live, threads, *at)
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "retry", "status": "completed"}})
+				u.testMainFrame(100, 8, 0)
+				if !strings.Contains(u.attached.presentation.View().Status.Session.Text, deadline.Format("15:04:05")) {
+					t.Fatal("repeated rejection hid the new deadline")
+				}
+			}
+			member, _ := service.Member("main")
+			_, err = service.HumanInterrupt(t.Context(), "main", member.Stop.Wait)
+			check(err)
+			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			u.testMainFrame(100, 8, 0)
+			if u.attached.presentation.View().Status.Session.Running {
+				t.Fatal("interrupted provider wait still appeared running")
+			}
+		})
+	}
+}
+
+func TestUISnapshotNativeRetryProgress(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		t.Run(thread, func(t *testing.T) {
+			u, at := newActiveWorkTestUI(t)
+			u.attached.cwd = "/workspace"
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+			u.shell.Agents.Painter.Theme = diffrender.DarkTheme
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first"}})
+			notify := func(turn, message string, retry bool) {
+				appServerTestNotify(t, u, "error", map[string]any{"threadId": thread, "turnId": turn, "willRetry": retry,
+					"error": map[string]any{"message": message, "additionalDetails": "Server overloaded", "codexErrorInfo": "serverOverloaded"}})
+			}
+			for _, message := range []string{"Reconnecting... 1/5", "Reconnecting... 2/5"} {
+				notify("first", message, true)
+				rows, _ := u.testMainFrame(100, 8, 0)
+				view := u.attached.presentation.View()
+				if thread == "main" && (!strings.Contains(view.Status.Composer.Text, message) || view.Status.Composer.Alert || !view.InterruptAvailable) {
+					t.Fatalf("retry lost from shared status: %+v", view.Status)
+				}
+				if got := u.attached.session.RetryStatus(thread); !strings.Contains(got, message) || !strings.Contains(got, "Server overloaded") {
+					t.Fatalf("retry facts lost: %q", got)
+				}
+				if message == "Reconnecting... 2/5" {
+					if thread == "main" {
+						assertNativeUISnapshot(t, "native-retry-status", rows)
+					}
+					u.testActivity(u.shell.Agents).publishActivity()
+					assertNativeUISnapshot(t, "native-retry-roster-"+thread, u.shell.Agents.NativeRoster(100, 6, *at, true))
+				}
+			}
+			notify("old", "stale retry", true)
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "old", "status": "completed"}})
+			if !strings.Contains(u.attached.session.RetryStatus(thread), "2/5") {
+				t.Fatal("stale turn changed current retry")
+			}
+			appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": thread, "turnId": "first", "itemId": "answer", "delta": "Recovered"})
+			if u.attached.session.RetryStatus(thread) != "" {
+				t.Fatal("response did not clear retry")
+			}
+			for _, outcome := range []string{"completed", "interrupted", "failed"} {
+				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": outcome}})
+				notify(outcome, "Reconnecting... 1/5", true)
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": outcome, "status": outcome}})
+				notify(outcome, "late retry", true)
+				if u.attached.session.RetryStatus(thread) != "" {
+					t.Fatalf("%s retained or reopened retry", outcome)
+				}
+			}
+			notify("first", "terminal error", false)
+			if u.attached.session.RetryStatus(thread) != "" {
+				t.Fatal("terminal error became retry progress")
+			}
 		})
 	}
 }

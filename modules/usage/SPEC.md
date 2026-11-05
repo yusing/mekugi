@@ -34,6 +34,8 @@ and later usable usage MUST remain available; a later success MUST NOT erase the
 A thread with only missing responses has zero observed usage, explicitly labeled partial,
 not a claim that those responses consumed zero tokens. Definite HTTP rejections, requests
 rejected before forwarding, and non-generating WebSocket prewarm do not create usage gaps.
+Recognized usage-limit and capacity rejections likewise charge no usage, including
+rejected streaming terminals carrying zero or stale usage fields.
 Failed and incomplete terminal responses with complete usage still contribute
 to later totals without producing their own notices.
 
@@ -103,6 +105,8 @@ no measurement. Reported zero output with positive timing is a measured zero.
 The latest-started request determines display ordering. A late older result cannot
 replace it; the last valid rate remains available while a newer request streams
 or lacks a valid sample. Before the first valid sample, throughput is absent.
+Retry pauses preserve that last sample; a successful retry measures only its own
+forwarded request, excluding the intervening wait.
 Only paired measurements restore by stable thread identity, without reviving a
 stopwatch. Usage declares its throughput status contribution for composer captions
 and agent metrics. Session presentation supplies already-admitted facts for the

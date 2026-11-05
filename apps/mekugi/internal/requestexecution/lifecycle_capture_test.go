@@ -31,6 +31,7 @@ import (
 type lifecyclePreparation struct {
 	localWait string
 	reload    jsontext.Value
+	usage     *accounting.Observation
 }
 
 func (p *lifecyclePreparation) Prepare(context.Context, *codexresponses.Request, Preparation) (Prepared, error) {
@@ -44,11 +45,11 @@ func (*lifecyclePreparation) TransformJSON(body []byte) ([]byte, error) {
 func (*lifecyclePreparation) TransformSSE(body []byte) ([][]byte, error) {
 	return [][]byte{body}, nil
 }
-func (*lifecyclePreparation) Finish(bool) error              { return nil }
-func (*lifecyclePreparation) Usage() *accounting.Observation { return nil }
-func (*lifecyclePreparation) ObserveUsage(inference.Usage)   {}
-func (*lifecyclePreparation) BindExecution(context.Context)  {}
-func (*lifecyclePreparation) Close()                         {}
+func (*lifecyclePreparation) Finish(bool) error                     { return nil }
+func (p *lifecyclePreparation) Usage() *accounting.Observation      { return p.usage }
+func (p *lifecyclePreparation) ObserveUsage(counts inference.Usage) { p.usage.Observe(counts) }
+func (*lifecyclePreparation) BindExecution(context.Context)         {}
+func (*lifecyclePreparation) Close()                                {}
 
 func TestLifecycleCaptureProviderDecision(t *testing.T) {
 	for _, transport := range []string{"http", "websocket"} {
@@ -121,6 +122,16 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				if limited {
 					terminal = responses.MustMarshalJSON(map[string]any{"type": "error", "status": 429, "error": rejection, "headers": map[string]any{"x-codex-primary-window-minutes": 15}})
 				}
+				if kind == "capacity_stream" {
+					terminal = responses.MustMarshalJSON(map[string]any{"type": "response.failed", "response": map[string]any{"id": "rejected", "status": "failed", "error": rejection, "usage": map[string]any{"input_tokens": 1000, "output_tokens": 0}}})
+				}
+				usage := accounting.New()
+				first := usage.Observation(thread, thread, "gpt-test", "")
+				first.Begin()
+				first.ReceivedAt = time.Now().Add(2 * time.Second)
+				first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 80})
+				baseline, _ := usage.Snapshot(thread)
+				preparation.usage = usage.Observation(thread, thread, "gpt-test", "")
 
 				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.Method == http.MethodGet {
@@ -222,6 +233,14 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 					t.Fatal(ctx.Err())
 				}
 				snapshot := recorder.Snapshot()
+				report, _ := usage.Snapshot(thread)
+				if kind == "provider" {
+					if report.Roundtrips != 2 || report.OutputTokens != 83 || report.RoundOutput.Throughput.OutputTokens != 3 {
+						t.Fatalf("provider accounting: %+v", report)
+					}
+				} else if report.Roundtrips != 1 || report.OutputTokens != 80 || report.RoundOutput.Throughput != baseline.RoundOutput.Throughput {
+					t.Fatalf("local wait or rejection changed usage/rate: %+v", report)
+				}
 				wantAttempts := 0
 				if kind == "provider" || limited {
 					wantAttempts = 1

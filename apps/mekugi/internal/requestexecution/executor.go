@@ -81,6 +81,7 @@ type requestAttempt struct {
 	responseTransform codexresponses.Transformer
 	finishUsage       bool
 	usageLimited      bool
+	usageRejected     bool
 }
 
 // ExecuteHTTP binds an admitted HTTP exchange to the shared request lifecycle.
@@ -187,6 +188,9 @@ func (a *requestAttempt) prepare() error {
 		return fmt.Errorf("prepare request: %w", inferencegateway.WithRequestStartCause(a.startCtx, err))
 	}
 	a.hooks.onProviderFailure = func(payload []byte, stream bool) {
+		if _, rejected, _ := inferencegateway.ProviderWait(payload, a.response.Header, time.Now()); rejected {
+			a.usageRejected, a.finishUsage = true, false
+		}
 		if !stream && a.response.StatusCode >= http.StatusBadRequest {
 			a.finalization.providerFailure = inferencegateway.NewProviderHTTPError("Upstream response", a.response.StatusCode, payload)
 		} else {
@@ -419,6 +423,11 @@ func (a *requestAttempt) prepareResponse() error {
 	}
 	a.responseTransform = codexresponses.Compose(usageLimitResponse{a}, a.responseTransform)
 	a.hooks.OnUsage = func(counts inference.Usage) {
+		// Definite rejections sometimes carry zero or stale usage. They never
+		// replace the last measured rate or charge an unadmitted inference.
+		if a.usageRejected {
+			return
+		}
 		if a.usageTracker != nil {
 			a.usageTracker.ReceivedAt = a.hooks.ReceivedAt
 		}

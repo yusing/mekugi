@@ -26,8 +26,9 @@ type Turn struct {
 }
 
 type TurnError struct {
-	Message        string         `json:"message"`
-	CodexErrorInfo jsontext.Value `json:"codexErrorInfo"`
+	Message           string         `json:"message"`
+	AdditionalDetails string         `json:"additionalDetails"`
+	CodexErrorInfo    jsontext.Value `json:"codexErrorInfo"`
 }
 
 // Recoverable identifies transient host failures without interpreting prose.
@@ -75,7 +76,9 @@ type Notification struct {
 		Last               *TokenUsage `json:"last"`
 		ModelContextWindow uint64      `json:"modelContextWindow"`
 	} `json:"tokenUsage"`
-	Turn Turn `json:"turn"`
+	Turn      Turn       `json:"turn"`
+	Error     *TurnError `json:"error"`
+	WillRetry bool       `json:"willRetry"`
 }
 
 func (p Notification) Observation(method string, at time.Time) observation.Event {
@@ -92,6 +95,12 @@ func (p Notification) Observation(method string, at time.Time) observation.Event
 	}
 	if method == "turn/started" || method == "turn/completed" {
 		e.TurnID = p.Turn.ID
+	}
+	if method == "error" && p.WillRetry && p.Error != nil {
+		e.Retry = p.Error.Message
+		if p.Error.AdditionalDetails != "" {
+			e.Retry += " · " + p.Error.AdditionalDetails
+		}
 	}
 	return e
 }

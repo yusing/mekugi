@@ -12,6 +12,7 @@ type AgentLifecycle struct {
 	Responding   bool      `json:",omitzero"`
 	WaitingFor   string    `json:",omitzero"`
 	Wait         *Value    `json:"-"`
+	Retry        *Value    `json:"-"`
 	Waiting      bool      `json:",omitzero"`
 	Paused       bool      `json:",omitzero"`
 	Final        bool      `json:",omitzero"`
@@ -41,6 +42,7 @@ func (a *AgentLifecycle) ObserveActive(active bool, at time.Time) {
 }
 
 func (a *AgentLifecycle) TurnStarted(at time.Time) {
+	a.Retry = nil
 	a.Paused = false
 	a.Waiting = false
 	a.WorkTimer.update(true, at)
@@ -53,6 +55,7 @@ func (a *AgentLifecycle) TurnStarted(at time.Time) {
 
 // TurnCompleted receives only a completion admitted for the current turn.
 func (a *AgentLifecycle) TurnCompleted(completed bool, at time.Time) {
+	a.Retry = nil
 	if a.Waiting && completed {
 		return
 	}

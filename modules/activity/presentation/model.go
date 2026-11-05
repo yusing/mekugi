@@ -41,6 +41,7 @@ type AgentFacts struct {
 	Wait                                         *Value
 	Responding, Final, Waiting, Paused           bool
 	Compacting                                   bool
+	Retrying                                     bool
 	Started, LastResponse                        time.Time
 	WorkElapsed                                  time.Duration
 	WorkSince                                    time.Time

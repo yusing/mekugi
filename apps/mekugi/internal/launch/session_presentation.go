@@ -104,6 +104,7 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 	}
 	picker.refreshPresetCatalog(attached, control, restoring)
 	return m.Publish(sessionpresentation.MainInputs{
+		Retry:      attached.session.RetryStatus(control.Thread),
 		BTWRunning: control.BTW != nil && (control.BTW.Busy || control.BTW.Starting),
 		Info:       info, ClientEditors: clientEditors,
 		Menu: picker.menuView(attached.cwd, draft, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,

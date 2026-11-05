@@ -10,16 +10,26 @@ import (
 type Kind string
 
 const (
-	TurnStarted       Kind = "turn/started"
-	TurnCompleted     Kind = "turn/completed"
-	ItemStarted       Kind = "item/started"
-	ItemCompleted     Kind = "item/completed"
-	AgentDelta        Kind = "item/agentMessage/delta"
-	ReasoningDelta    Kind = "item/reasoning/summaryTextDelta"
-	CommandDelta      Kind = "item/commandExecution/outputDelta"
-	ProviderStarted   Kind = "replay/providerStarted"
-	ProviderCompleted Kind = "replay/providerCompleted"
+	TurnStarted        Kind = "turn/started"
+	TurnCompleted      Kind = "turn/completed"
+	ItemStarted        Kind = "item/started"
+	ItemCompleted      Kind = "item/completed"
+	AgentDelta         Kind = "item/agentMessage/delta"
+	ReasoningDelta     Kind = "item/reasoning/summaryTextDelta"
+	ReasoningPartAdded Kind = "item/reasoning/summaryPartAdded"
+	CommandDelta       Kind = "item/commandExecution/outputDelta"
+	ProviderStarted    Kind = "replay/providerStarted"
+	ProviderCompleted  Kind = "replay/providerCompleted"
 )
+
+// ResponseProgress identifies response activity; callers retain turn admission.
+func (k Kind) ResponseProgress() bool {
+	switch k {
+	case ItemStarted, ItemCompleted, AgentDelta, ReasoningDelta, ReasoningPartAdded:
+		return true
+	}
+	return false
+}
 
 // Event is an immutable observation. Started is present on retained item
 // completions; synthetic starts and deltas are the replay consumer's policy.
@@ -31,6 +41,7 @@ type Event struct {
 	Thread                                      Thread
 	ThreadStatus, ProcessID, Stdin              string
 	Context                                     Context
+	Retry                                       string // Live retry status, absent for terminal errors.
 }
 
 // Thread is admitted metadata, not a filesystem or host-request capability.

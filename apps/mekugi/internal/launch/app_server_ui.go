@@ -1500,7 +1500,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 		return err
 	}
 	switch m.Method {
-	case "thread/started", "thread/status/changed", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
+	case "error", "thread/started", "thread/status/changed", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
 		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta", "item/commandExecution/terminalInteraction",
 		"item/commandExecution/outputDelta", "hook/started", "hook/completed":
 	default:

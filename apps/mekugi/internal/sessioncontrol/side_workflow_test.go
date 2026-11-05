@@ -57,6 +57,34 @@ func TestAnswerOnlyClassificationUsesLiveForkLedger(t *testing.T) {
 	}
 }
 
+func TestSideNativeRetryIsProgress(t *testing.T) {
+	for _, oneoff := range []bool{false, true} {
+		for _, recovery := range []string{"item/agentMessage/delta", "item/reasoning/summaryTextDelta", "item/started"} {
+			r := NewRequests[struct{}](&requestTransport{})
+			side := &Side{SideAnswer: &conversationmodel.SideAnswer{OneOff: oneoff}, Thread: "side", Turn: "turn", Busy: true}
+			r.TrackSide(side.Thread, side)
+			notify := func(method, params string) {
+				t.Helper()
+				if _, err := r.ObserveSide(appserver.Message{Method: method, Params: []byte(params)}, Request[struct{}]{}, "main"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			notify("error", `{"threadId":"side","turnId":"turn","willRetry":true,"error":{"message":"Reconnecting... 2/5","additionalDetails":"Model at capacity"}}`)
+			if side.Alert || !side.Busy || !strings.Contains(side.Status, "2/5") || !strings.Contains(side.Status, "Model at capacity") {
+				t.Fatalf("retry became failure: %+v", side)
+			}
+			notify("error", `{"threadId":"side","turnId":"old","willRetry":true,"error":{"message":"stale"}}`)
+			if !strings.Contains(side.Status, "2/5") {
+				t.Fatal("stale retry replaced current progress")
+			}
+			notify(recovery, `{"threadId":"side","turnId":"turn","itemId":"answer","delta":"Recovered","item":{"id":"tool","type":"commandExecution"}}`)
+			if side.Alert || strings.Contains(side.Status, "Reconnecting") {
+				t.Fatalf("retry did not clear: %+v", side)
+			}
+		}
+	}
+}
+
 func TestClosedSideHostCloseBeforeStartAcknowledgement(t *testing.T) {
 	transport := &requestTransport{id: "archive"}
 	r := NewRequests[struct{}](transport)

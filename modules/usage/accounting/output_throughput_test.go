@@ -62,6 +62,36 @@ func TestOutputThroughputConcurrentRoundOrdering(t *testing.T) {
 	})
 }
 
+func TestOutputThroughputRetryWaits(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		usage := newTestUsage(t)
+		first := usage.Observation("main", "main", "gpt-6-sol", "")
+		first.Begin()
+		time.Sleep(2 * time.Second)
+		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 80})
+		for range 3 {
+			rejected := usage.Observation("main", "main", "gpt-6-sol", "")
+			rejected.Begin()
+			// A definite rejection has no usage or inferred completion.
+			time.Sleep(time.Minute)
+			report := requireRoundThroughput(t, usage, "main", 40, true)
+			if report.Roundtrips != 1 || report.OutputTokens != 80 {
+				t.Fatal(report)
+			}
+		}
+		retry := usage.Observation("main", "main", "gpt-6-sol", "")
+		retry.Begin()
+		time.Sleep(4 * time.Second)
+		retry.ReceivedAt = time.Now()
+		time.Sleep(time.Minute) // Local delivery work is outside provider timing.
+		retry.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 120})
+		report := requireRoundThroughput(t, usage, "main", 30, true)
+		if report.Roundtrips != 2 || report.OutputTokens != 200 {
+			t.Fatal(report)
+		}
+	})
+}
+
 func TestOutputThroughputMissingAndPartialEvidence(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		started := time.Now()

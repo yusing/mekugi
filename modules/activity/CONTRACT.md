@@ -619,6 +619,8 @@ canonical target colors and muted optional timeout, rather than a names-only lab
 Observed current compaction temporarily shows `Compacting context` instead of
 that wait in Main, child and family roster views. Settlement restores the logical
 wait or working state; historical compaction does not revive live progress.
+Live provider retries use the same progress surface with supplied attempt/cause
+details. Response activity or the current turn's end clears this transient status.
 Interrupt acknowledgement reports the request, not task
 completion. Its settled interruption event remains visible; an interrupted result
 does not replay the agent's earlier message as a new reply.

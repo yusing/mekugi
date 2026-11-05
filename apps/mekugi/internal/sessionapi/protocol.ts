@@ -1801,6 +1801,7 @@ export type AgentFacts = {
   "Waiting": boolean;
   "Paused": boolean;
   "Compacting": boolean;
+  "Retrying": boolean;
   "Started": string;
   "LastResponse": string;
   "WorkElapsed": number;

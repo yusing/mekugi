@@ -228,6 +228,9 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 		{name: "pending with stale final", status: threadcontrol.Pending, host: activity.AgentFacts{Final: true}, state: "working", text: "child activity"},
 		{name: "waiting across host completion", status: threadcontrol.Waiting, host: activity.AgentFacts{Final: true}, state: "waiting", text: "Waiting for"},
 		{name: "continuation leaves waiting", status: threadcontrol.Working, host: activity.AgentFacts{Waiting: true}, state: "working", text: "child activity"},
+		{name: "working during native retry", status: threadcontrol.Working, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "waiting", text: "Reconnecting... 2/5"},
+		{name: "completion supersedes stale retry", status: threadcontrol.Completed, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "done", text: "done"},
+		{name: "interruption supersedes stale retry", status: threadcontrol.Interrupted, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "idle", text: "idle"},
 		{name: "completed with stale activity", status: threadcontrol.Completed, host: activity.AgentFacts{Responding: true}, state: "done", text: "done"},
 		{name: "failed while host idle", status: threadcontrol.Failed, state: "error", text: "error"},
 		{name: "interrupted with stale final", status: threadcontrol.Interrupted, host: activity.AgentFacts{Final: true}, state: "idle", text: "idle"},
@@ -247,6 +250,10 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 			childFrame.Agents = familyActivity("child", "child activity")
 			host := &childFrame.Agents.Roster[0].Agent
 			host.Responding, host.Waiting, host.Final = tc.host.Responding, tc.host.Waiting, tc.host.Final
+			host.Retrying = tc.host.Retrying
+			if host.Retrying {
+				host.Wait = &activity.Value{Kind: "progress", Body: "Reconnecting... 2/5", Live: true}
+			}
 			host.LatestKind = tc.kind
 			host.Status = host.ObservedStatus(tc.kind)
 			child.server.frame.Store(new(childFrame))

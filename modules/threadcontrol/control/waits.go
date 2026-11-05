@@ -89,6 +89,9 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 	result := &WaitResult{ID: wait.ID, Standalone: wait.Standalone, UsageLimit: wait.UsageLimit, Capacity: wait.Capacity, All: wait.All, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
 	result.Timed = wait.Deadline != nil
+	if wait.UsageLimit && wait.Deadline != nil {
+		result.Deadline = new(*wait.Deadline)
+	}
 	if wait.Standalone || wait.UsageLimit {
 		result.Mode = ""
 	}
@@ -125,8 +128,12 @@ func (wait *WaitResult) Settled() bool {
 
 // StatusText is shared by ordinary and temporary conversation publications.
 func (wait *WaitResult) StatusText() string {
+	retry := ""
+	if wait.Deadline != nil {
+		retry = " · retry at " + wait.Deadline.Local().Format("15:04:05 MST Jan 2")
+	}
 	if wait.Capacity {
-		return "Waiting for provider capacity"
+		return "Waiting for provider capacity" + retry
 	}
 	if !wait.UsageLimit {
 		return "Waiting for agents"
@@ -134,7 +141,7 @@ func (wait *WaitResult) StatusText() string {
 	if !wait.Timed {
 		return "Usage limit · paused"
 	}
-	return "Waiting for usage limit reset"
+	return "Waiting for usage limit reset" + retry
 }
 
 // Prefer ordered delivered events. A stopped target still settles a wait when

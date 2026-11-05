@@ -5,6 +5,7 @@
 - Show public reasoning summaries for Main and delegates while keeping raw
   reasoning hidden. Show spawn assignments and avoid duplicate completion entries.
 - Show per-agent measured usage and cost, identifying partial or unknown values.
+- Make automatic provider retries visible, including usage-limit and capacity waits.
 - Preserve browser/native input during queued-message editing and steering.
 - Restore roster, Activity and saved captured changes when resuming a session.
 
@@ -364,6 +365,13 @@ default-effort repair restores waiting input while keeping the repair gate visib
 The terminal receives only editor-restoration effects and user feedback.
 
 ## Session title and progress
+
+Live retry notifications temporarily replace Working with the host's retry message,
+attempt and cause when supplied. Current response activity or turn termination
+clears that status; stale turns and historical replay cannot revive it. Main,
+child and side views share this progress. Logical provider waits show their cause
+and actual retry deadline when known, or an explicit paused usage limit when no
+deadline exists. Status publication neither changes retry policy nor adds history rows.
 
 `/title NAME` immediately names Main without interrupting work or submitting model
 input, then saves through [session control](../sessioncontrol/SPEC.md#thread-names).

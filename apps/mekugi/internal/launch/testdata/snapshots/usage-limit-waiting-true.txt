@@ -3,6 +3,6 @@ Mekugi dev • codex
 
 
 
-╭─ ◐ Waiting for usage limit reset 2s ─────────────────────────────────────────╮
+╭─ ◐ Waiting for usage limit reset · retry at 13:00:02 UTC Oct 3 2s ───────────╮
 │ ❯                                                                            │
 ╰──────────────────────────────────────── /workspace • test-model (high) • 0% ─╯

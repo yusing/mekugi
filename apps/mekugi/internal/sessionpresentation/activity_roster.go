@@ -100,11 +100,23 @@ func (a *Attachment) Lifecycle(thread string) *activitypresentation.AgentLifecyc
 	return a.Activity().Lifecycle(a.Thread(thread))
 }
 
+func (a *Attachment) RetryStatus(thread string) string {
+	if store := a.FindThread(thread); store != nil && !a.retired {
+		if retry := a.Activity().Lifecycle(store).Retry; retry != nil {
+			return retry.Body
+		}
+	}
+	return ""
+}
+
 // Roster publishes detached lifecycle values with the existing host metadata.
 func (a *Attachment) Roster() []ActivityAgent {
 	agents := a.Activity().Agents()
 	for i := range agents {
 		agents[i].AgentLifecycle = *a.Lifecycle(agents[i].Thread)
+		if retry := agents[i].Retry; retry != nil {
+			agents[i].Waiting, agents[i].Wait = true, retry
+		}
 		if progress := compactionMetricKey.Value(a.Thread(agents[i].Thread)).progress; progress != nil {
 			agents[i].Compacting, agents[i].Waiting, agents[i].Wait = true, true, progress
 		}

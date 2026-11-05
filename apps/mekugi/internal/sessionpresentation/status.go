@@ -91,6 +91,7 @@ type MainInputs struct {
 	Menu                   *MenuView
 	Control                *sessioncontrol.Live
 	RecordedTurn           string // Playback selection, used only without live control.
+	Retry                  string
 	Feedback               *noticepresentation.Model
 	Conversation           *conversationmodel.Session
 	ClientEditors          bool // Editor contents remain client-owned, outside this view's retained publication.
@@ -167,6 +168,9 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 	base := Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
 		Completion: state.completed, CompletionKnown: state.completionKnown}
 	v.Status.Session = m.sessionLabel(base, turn, pending, archiving, shell)
+	if in.Retry != "" && turn != "" && !archiving && !base.Alert {
+		v.Status.Session.Text, v.Status.Session.Animation = in.Retry, Pulse
+	}
 	if in.Control != nil && in.Control.LocalStop != "" && turn == "" {
 		text := "Working"
 		if in.Control.Waiting != "" {

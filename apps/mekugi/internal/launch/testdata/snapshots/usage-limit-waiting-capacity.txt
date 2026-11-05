@@ -3,6 +3,6 @@ Mekugi dev • codex
 
 
 
-╭─ ◐ Waiting for provider capacity 2s ─────────────────────────────────────────╮
+╭─ ◐ Waiting for provider capacity · retry at 12:00:03 UTC Oct 3 2s ───────────╮
 │ ❯                                                                            │
 ╰──────────────────────────────────────── /workspace • test-model (high) • 0% ─╯
