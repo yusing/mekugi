@@ -363,7 +363,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			retained.Finish(false)
 			return nil, err
 		}
-		localWaitItem, err = p.observeThreadWait(ctx, threadID, metadata.TurnID, codeModeToolName, request, visible)
+		localWaitItem, err = p.observeThreadWait(ctx, threadID, metadata.TurnID, codeModeToolName, request, visible, reloadCalls)
 		if err != nil {
 			retained.Finish(false)
 			return nil, err

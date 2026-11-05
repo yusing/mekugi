@@ -8,11 +8,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -69,7 +71,7 @@ func TestCompletionInjectionCarriesPreparedEvidenceWithoutAnotherRead(t *testing
 		t.Fatal(err)
 	}
 	selection := string(mustTestJSON(t, map[string]any{"sources": []any{map[string]any{"changes": []string{id}}}}))
-	input := control.NativeInput{Thread: f.thread, ID: "final", Kind: "FINAL_ANSWER", Outcome: control.Completed, Sender: "/root/worker", Recipient: "/root", Message: "Finished.\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}
+	input := control.NativeInput{Thread: f.thread, ID: "final", Kind: "FINAL_ANSWER", Outcome: control.Completed, SourceGeneration: 1, ParentTurn: "child-turn", Sender: "/root/worker", Recipient: "/root", Message: "Finished.\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}
 	wire := new(completionTransport)
 	requests := sessioncontrol.NewRequests[struct{}](wire)
 	requests.PrepareCompletion = p.PrepareCompletion
@@ -113,6 +115,26 @@ func TestCompletionInjectionCarriesPreparedEvidenceWithoutAnotherRead(t *testing
 	}
 	if reader.reads.Load() != 1 {
 		t.Fatalf("completion acquired evidence %d times", reader.reads.Load())
+	}
+	caller := control.Identity{Thread: f.thread, Session: "runtime", Turn: "parent-turn", Call: "checkpoint", Item: "checkpoint-exec"}
+	if err := service.RequestStarted(t.Context(), caller, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RegisterCompaction(t.Context(), caller, nil, false, "", nil, time.Now(), true, ""); err != nil {
+		t.Fatal(err)
+	}
+	items := []any{map[string]any{"type": "custom_tool_call", "call_id": caller.Call, "id": caller.Item, "name": "exec"},
+		map[string]any{"type": "custom_tool_call_output", "call_id": caller.Call, "output": "Script completed\nWall time 0.1 seconds\nOutput:\n"}}
+	for _, item := range sent.Items {
+		items = append(items, item)
+	}
+	request := codexresponses.Request{Fields: map[string]jsontext.Value{"input": mustTestJSON(t, items), "tools": mustTestJSON(t, testExecResponsesTools())}}
+	_, calls, _, err := p.preparePreloadInput(&request, "runtime", f.thread, codexresponses.TurnMetadata{ThreadID: f.thread, TurnID: caller.Turn, RequestKind: "turn"}, false)
+	if err != nil || !calls[responses.StringField(sent.Items[1], "call_id")] {
+		t.Fatalf("completion evidence was not admitted: %v, %v", calls, err)
+	}
+	if item, err := p.observeThreadWait(t.Context(), f.thread, caller.Turn, "exec", &request, nil, calls); err != nil || item != caller.Item {
+		t.Fatalf("completion attachment superseded checkpoint: item=%q, %v", item, err)
 	}
 	failed, err := new(Preparer).PrepareCompletion(t.Context(), input)
 	if err != nil || len(failed.Items) != 2 || !strings.Contains(string(failed.Items[1]), "CONTENT NOT ATTACHED") {
