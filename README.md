@@ -17,16 +17,18 @@ Invocation overrides leave Codex configuration unchanged.
 
 ### Agents work from current, compact context
 
-- **Compaction that rereads sources.** When a thread compacts, the agent writes its
-  handover and [selects the files, skills and captured changes](modules/agentguidance/SPEC.md#compaction-context)
-  its unfinished work needs. Mekugi reads them again before the conversation
-  continues, so work resumes from current source text rather than a summary of it.
+- **Compaction that rereads sources.** Codex context resets without generating a
+  handover summary. Agents can [select files, skills and captured changes](modules/agentguidance/SPEC.md#compaction-context)
+  needed for unfinished work; Mekugi reads them before the conversation continues,
+  so work resumes from current source text.
 - **Agent-chosen checkpoints.** Agents can [compact at safe checkpoints](modules/threadcontrol/SPEC.md#operations-and-admission)
   and continue, or compact while waiting for delegates. [Measured usage reminders](modules/agentguidance/SPEC.md#context-usage-notices)
   arrive from halfway full when usage is measured.
 - **Delegates start prepared.** [Fresh agents start with selected files, skills and captured changes](modules/threadcontrol/SPEC.md#prepared-children-and-guidance)
   already loaded. Parents wait for one or all agents without polling; delegates
   can coordinate their own children and reply with a short summary and details.
+  Agents can also [ask independent side questions](modules/threadcontrol/SPEC.md#independent-side-questions)
+  without steering the recipient's work, and coordinate across active sessions.
 - **Facts up front.** Codex agents receive an [observed OS and Git snapshot](modules/agentguidance/SPEC.md#environment-snapshot),
   and attached files and skills are marked as reusable, so neither is rediscovered.
 - **Fewer output tokens, recoverable reads.** [Session helpers](docs/guide/agent-tools.md)
@@ -46,8 +48,9 @@ Invocation overrides leave Codex configuration unchanged.
   agent can [revert the captured edits behind it](modules/changehistory/SPEC.md#revert-and-apply),
   optionally limited to specific paths, without `git restore`. Later and unrelated
   edits, including your uncommitted work, are merged rather than discarded, and
-  the revert can be reapplied. [`/rewind`](docs/guide/sessions.md#resume) offers
-  the same reversal when branching before an earlier turn.
+  the revert can be reapplied. [`/rewind`](docs/guide/sessions.md#resume) can
+  also revert captured edits while removing an earlier turn and later conversation
+  from the same session.
 
 ### See what agents are doing, will do, and have done
 
@@ -59,17 +62,20 @@ Invocation overrides leave Codex configuration unchanged.
   while the agent writes them. Steer or interrupt the turn, [stop one running command](docs/guide/terminal-ui.md#composer),
   or deny [remote writes and sudo](docs/guide/approvals.md) before they run.
 - **Review what happened.** Open saved edits by hunk, [searchable per-command output](docs/guide/terminal-ui.md#output-dialog),
-  compaction summaries, and [usage, throughput and cost](docs/guide/configuration.md#metrics).
+  compaction events, and [usage, throughput and cost](docs/guide/configuration.md#metrics).
   Missing evidence and provisional previews are labeled. Past sessions can be
   [inspected](docs/contributing/development.md#inspect-a-session) or
   [replayed](docs/contributing/development.md#replay-a-session).
+- **Herdr app panels.** See the agent roster, saved changes and live edits in
+  [native Herdr panels](docs/guide/terminal-ui.md#herdr-app-panels) that follow
+  the active space, and select an agent to switch its transcript and composer.
 
 ### Work from anywhere
 
 - **Server-owned threads.** Threads keep running when the terminal or browser
   closes. [Control them from another machine](docs/guide/remote.md), including
   phones, through an authenticated connector.
-- **Branches.** [Resume, fork, or rewind](docs/guide/sessions.md) conversations.
+- **Session continuity.** [Resume, fork, or rewind](docs/guide/sessions.md) conversations.
 - **Providers and delegates.** Use [Grok, OpenCode Go and Zen](docs/guide/providers.md),
   and [Claude delegates](docs/guide/providers.md#claude-delegates) through the same
   coordination tools.
