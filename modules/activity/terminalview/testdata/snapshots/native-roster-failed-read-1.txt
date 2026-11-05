@@ -1,0 +1,3 @@
+"\x1b[38;2;70;70;90m─ \x1b[39;2m3 Agents · 1 · \x1b[38;5;214;22m1 working\x1b[38;2;70;70;90m ───────────────────────────────────────────────────────────────\x1b[m"
+" \x1b[38;5;133;1m◐\x1b[m \x1b[38;5;133;1mreader\x1b[m  \x1b[38;5;203mRead\x1b[m missing.txt \x1b[38;5;203m(exit 3)\x1b[m                                                 \x1b[2m  0%\x1b[m "
+"plain after roster                                                                        "

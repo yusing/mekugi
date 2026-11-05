@@ -1297,7 +1297,14 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		// The roster's status glyph already marks a sent final answer.
 		return text
 	case "reads":
-		return SummaryVerb(block.RowVerb()) + ansi.Strip(p.Inline(block.ReadSubject())) + more
+		verb, detail := SummaryVerb(block.RowVerb()), ansi.Strip(p.Inline(block.ReadSubject()))
+		if block.FailedOutcome() {
+			verb = terminalui.Red + block.RowVerb() + terminalui.Reset + " "
+			if block.ExitCode != 0 {
+				detail += " " + terminalui.Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
+			}
+		}
+		return verb + detail + more
 	case "op":
 		if block.VCS() {
 			return p.vcsSummary(block) + more

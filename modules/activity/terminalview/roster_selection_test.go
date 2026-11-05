@@ -10,6 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -259,5 +261,42 @@ func TestUISnapshotNativeRosterNarrowOverflow(t *testing.T) {
 			frame = append(frame, "plain after roster")
 		}
 		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-roster-narrow-overflow-%d.txt", width), frame, width)
+	}
+}
+
+func TestUISnapshotNativeRosterFailedRead(t *testing.T) {
+	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.DarkTheme, diffrender.LightTheme} {
+		t.Run(fmt.Sprint(theme), func(t *testing.T) {
+			source := presentation.CommandSource{Script: "cat missing.txt", Display: "cat missing.txt"}
+			invocation := presentation.NewInvocation(source, time.Unix(100, 0), new(feed.Retention))
+			invocation.Write("cat: missing.txt: No such file or directory\n")
+			invocation.Complete(presentation.CommandCompletion{Source: source, Exit: new(3)})
+			command := invocation.Snapshot()
+			command.Source = 7
+			output, _ := invocation.Output().Context(feed.OutputBytes)
+			command.Output = &output
+			values := (presentation.ItemContent{Seq: 7, Kind: "tool", Text: presentation.ShellSource(command.Script, ""), Command: command, Details: &presentation.ItemDetails{CommandText: command.Script, Output: 1}}).Values()
+			if len(values) != 1 || values[0].Kind != "reads" || !values[0].FailedOutcome() || !values[0].Exited || values[0].ExitCode != 3 {
+				t.Fatalf("read projection = %+v", values)
+			}
+			pages := presentation.DetailPages(values)
+			if len(pages) != 1 || pages[0].Source != command.Source || pages[0].ExitCode != 3 || command.Output == nil || len(command.Output.Lines) != 1 {
+				t.Fatalf("retained read detail = %+v", pages)
+			}
+			agent := presentation.Agent{Name: "/root/reader", Responding: true, Status: "responding", Summary: []presentation.Entry{{Seq: 7, Kind: "tool", Values: values}}}
+			v := NewView()
+			v.Painter.Theme, v.ChildrenOnly = theme, true
+			v.Update(&presentation.Publication{Roster: []presentation.AgentRow{{Agent: agent}}}, Display{Caller: "/root"})
+			rows := v.NativeRoster(90, 4, time.Unix(100, 0), false)
+			plain := ansi.Strip(strings.Join(rows, "\n"))
+			if !strings.Contains(plain, "Read missing.txt (exit 3)") {
+				t.Fatalf("failed read roster: %s", plain)
+			}
+			summary := v.Painter.Summary([]Block{{Value: values[0]}}, 90)
+			if !strings.HasPrefix(summary, terminalui.Red+"Read") {
+				t.Fatalf("failed read tone: %q", summary)
+			}
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-roster-failed-read-%d.txt", theme), append(rows, "plain after roster"), 90)
+		})
 	}
 }
