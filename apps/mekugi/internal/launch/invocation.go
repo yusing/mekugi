@@ -295,16 +295,16 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	defer review.Close()
 	var driver *threadbinding.Driver
 	var inspect func(context.Context, string) (threadcontrol.SessionDetails, error)
-	var contextAttachments func(context.Context, string, string) ([]composer.ContextAttachment, error)
+	var contextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
 	if appUI {
-		contextAttachments = func(ctx context.Context, thread, window string) ([]composer.ContextAttachment, error) {
+		contextAttachments = func(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
 			runtime, err := threads.Runtime(thread)
 			if err != nil {
-				return nil, err
+				return composer.AttachmentSnapshot{}, err
 			}
 			reader, ok := runtime.(sessioncontrol.AttachmentReader)
 			if !ok {
-				return nil, errors.New("runtime attachment history is unavailable")
+				return composer.AttachmentSnapshot{}, errors.New("runtime attachment history is unavailable")
 			}
 			return reader.ContextAttachments(ctx, thread, window)
 		}

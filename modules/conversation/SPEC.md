@@ -5,10 +5,13 @@
 Retain composer image previews for host paths, uploads and paste. Queued composer input
 does not cancel a logical agent wait.
 
-Context resets and summary compactions preserve attachment placeholders and selected
-text bytes. Attached skills refresh from current sources; attached file bodies reload
-only when explicitly selected. Identical supplied source content appears once in the
-new context.
+Context resets and summary compactions offer optional `mread` recall grouped by
+selections, skills, files and images. Recall preserves selection placeholders and
+original bytes, file and skill placeholders, current skill instructions, and
+submitted-image markers and source descriptors. Attached file bodies reload only when explicitly
+selected. Identical supplied source content appears once in the new context.
+Submitted-image reference continuity does not replay pixels or retain viewed or
+generated tool-image references.
 
 Editor state, attachment framing, input limits, menus, slot layout and draft/history
 algorithms below are current design.
@@ -210,11 +213,23 @@ Version 1 envelopes remain readable without inventing a submission identity.
 Native and managed skill instructions use the same framing, budgets and omission
 receipts as files, never a synthetic native path or name-only replacement. Replay
 recovers immutable instructions and identity without rerunning the manager.
-After a context boundary, provider input retains the submitted placeholders and
-selected text, omits old file and skill bodies, and acquires current skill instructions
-through the shared context reader. Managed metadata paths retain their identity while
-the manager supplies current instructions. Completed reads remain reusable within that
-window, including after resume and fork; the next boundary refreshes skills again.
+After a context boundary, provider input offers short, kind-separated `mread`
+hints instead of automatically restoring attachment bodies. Each window freezes
+its complete hint at the start of provider input, so assistant/tool continuations
+and later explicit selections preserve the provider-confirmed input prefix. Selection evidence
+retains original bytes and placeholder identities; files retain placeholders only.
+Submitted images retain markers and source descriptors, including image-only and
+question-answer inputs. Embedded images retain a descriptor without their pixels.
+These references do not change image-file ownership or lifetime.
+
+Current skill instructions are acquired once through the shared stock reader,
+with Codex permissions and approvals, and frozen as optional evidence. Managed
+metadata paths retain their identity while the manager supplies current instructions.
+Completed reads remain reusable within that window, including after resume and
+fork; the next boundary refreshes skills again. Explicit selected preload and
+reload still supply their bodies and suppress duplicate skill acquisition and initial body-recall hints. Already
+published hints remain unchanged when later selections supply the same source.
+Consuming optional evidence participates in the same source deduplication.
 Native history supplies attachment identity for the selected fork or rewind prefix.
 Host text elements retain file/skill byte ranges relative to each text part;
 native skill metadata can restore unambiguous bindings when elements are absent.

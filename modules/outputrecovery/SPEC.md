@@ -63,6 +63,8 @@ status 1 with the next call on stderr. The producer's status is preserved indepe
 Compaction acquisition uses the same publication path for complete source
 snapshots. Its provider projection reads the original retained payload under the
 admitted session lease without paging, reopening sources, or advancing a cursor.
+Optional attachment recall uses frozen output through this same scoped publication;
+reading a hint never reacquires files, skills or image pixels.
 
 The authenticated executor persists records through the managed replay-store
 locking and atomic write/rename path before exposing references. There are no

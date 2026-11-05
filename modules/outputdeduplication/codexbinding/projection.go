@@ -120,6 +120,13 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			if binding.NativeJSONSession(body) != 0 {
 				return text
 			}
+			// Optional attachment recall returns the same frozen envelopes as
+			// submitted attachments, so explicit subsequent reloads share source identity.
+			if strings.Contains(body, "<mekugi-file-attachments-") {
+				if projected, valid := projectRetainedAttachments(body, projectAttachment); valid {
+					return header + projected
+				}
+			}
 			source := false
 			if strings.HasPrefix(id, "compact-") {
 				if first, rest, ok := strings.Cut(body, "\n"); ok && strings.HasSuffix(first, ": exit_code=0") {
@@ -296,4 +303,41 @@ func repetitionLabel(lines, body, repeated int) string {
 		return "repeated"
 	}
 	return fmt.Sprintf("%d lines repeated", lines)
+}
+
+// mread may frame several handles in one output. Only complete validated
+// envelopes establish attachment sources; surrounding host text stays verbatim.
+func projectRetainedAttachments(text string, project func(string) string) (string, bool) {
+	var result strings.Builder
+	matched := false
+	at := 0
+	for {
+		start := strings.Index(text[at:], "<mekugi-file-attachments-")
+		if start < 0 {
+			break
+		}
+		start += at
+		close := strings.Index(text[start:], "\n</mekugi-file-attachments-")
+		if close < 0 {
+			break
+		}
+		close += start
+		end := strings.IndexByte(text[close:], '>')
+		if end < 0 {
+			break
+		}
+		end += close + 1
+		candidate := text[start:end]
+		if _, valid := attachments.DecodeSnapshot(candidate); valid {
+			result.WriteString(text[at:start])
+			result.WriteString(project(candidate))
+			at = end
+			matched = true
+		} else {
+			result.WriteString(text[at : start+1])
+			at = start + 1
+		}
+	}
+	result.WriteString(text[at:])
+	return result.String(), matched
 }

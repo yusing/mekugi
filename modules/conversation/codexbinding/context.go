@@ -3,6 +3,8 @@ package codexbinding
 import (
 	"crypto/sha256"
 	json "encoding/json/v2"
+	"fmt"
+	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -28,6 +30,15 @@ func CompactedAttachments(turns []binding.HistoryTurn) []composer.ContextAttachm
 				continue
 			}
 			var placeholders []string
+			var images []composer.Token
+			for i, source := range userImages(parts) {
+				if strings.HasPrefix(source, "data:") {
+					media, _, _ := strings.Cut(source, ";")
+					media, _, _ = strings.Cut(media, ",")
+					source = media + " (embedded image; pixels not retained)"
+				}
+				images = append(images, composer.Token{Name: fmt.Sprintf("[Image %d]", i+1), Path: source})
+			}
 			for _, part := range parts {
 				if part.Type != "text" {
 					continue
@@ -44,7 +55,7 @@ func CompactedAttachments(turns []binding.HistoryTurn) []composer.ContextAttachm
 				if !ok {
 					continue
 				}
-				value := composer.ContextAttachment{ID: snapshot.ID, Original: sha256.Sum256([]byte(part.Text)), Placeholders: placeholders, Selection: attachments.Snapshot{ID: snapshot.ID}}
+				value := composer.ContextAttachment{ID: snapshot.ID, Original: sha256.Sum256([]byte(part.Text)), Placeholders: placeholders, Images: images, Selection: attachments.Snapshot{ID: snapshot.ID}}
 				seen := make(map[string]bool)
 				for _, frame := range snapshot.Frames {
 					if attachments.SelectionFrame(frame) {
@@ -57,6 +68,10 @@ func CompactedAttachments(turns []binding.HistoryTurn) []composer.ContextAttachm
 				}
 				result = append(result, value)
 				placeholders = nil
+				images = nil
+			}
+			if len(images) > 0 {
+				result = append(result, composer.ContextAttachment{Images: images})
 			}
 		}
 	}

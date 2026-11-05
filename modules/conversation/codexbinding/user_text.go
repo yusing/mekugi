@@ -63,6 +63,10 @@ func UserImages(content jsontext.Value) []string {
 	if json.Unmarshal(content, &contents) != nil {
 		return nil
 	}
+	return userImages(contents)
+}
+
+func userImages(contents []UserContent) []string {
 	var images []string
 	for _, item := range contents {
 		switch item.Type {

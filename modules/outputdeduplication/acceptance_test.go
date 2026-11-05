@@ -314,3 +314,21 @@ func TestAcceptanceSingleBaseEditsThroughHostAndAttachment(t *testing.T) {
 		t.Fatal("appended attachment changed earlier host projection")
 	}
 }
+
+func TestAcceptanceRecoveredAttachmentsAndExplicitReload(t *testing.T) {
+	var draft composer.Draft
+	draft.Skills = []composer.Token{{Name: "guide", Path: "/SKILL.md"}}
+	draft.SnapshotSkills(func(_, _ string) ([]byte, error) { return []byte("SHORT_SKILL"), nil })
+	skill := draft.Attachments[0]
+	selection := attachments.Snapshot{ID: "submitted", Frames: []string{"Selected text for \"[Selected 1]\" (UTF-8 bytes 0:15 of 15):\nSHORT_SELECTION"}}.Encode()
+	for _, prefix := range []string{"", "<mekugi-file-attachments-v0>\nmalformed\n"} {
+		recovered := "[stdout maple bytes]\n" + prefix + selection + "\n[/stdout]\n[stdout birch bytes]\n" + skill + "\n[/stdout]"
+		items := []item{tool("recall", recovered), tool("compact-skill", "'cat' '/SKILL.md': exit_code=0\nSHORT_SKILL"), tool("compact-selection", "'cat' '/selection': exit_code=0\nSHORT_SELECTION")}
+		p := registeredProjection(t)
+		input := encode(t, items)
+		result := p.Prepare(input)(input)
+		if bytes.Count(result.Input, []byte("SHORT_SKILL")) != 1 || bytes.Count(result.Input, []byte("SHORT_SELECTION")) != 1 {
+			t.Fatalf("recovered envelopes failed shared source dedup: %s", result.Input)
+		}
+	}
+}

@@ -31,7 +31,7 @@ func TestCompactRecoveryAuthorityAndPrewarm(t *testing.T) {
 		if parent != "" {
 			meta.SubagentKind = "thread_spawn"
 		}
-		_, _, err = p.prepareCompactInput(t.Context(), &req, "routing", thread, meta, warm)
+		_, err = p.prepareCompactInput(t.Context(), &req, "routing", thread, meta, warm)
 		if err == nil && (!bytes.Contains(req.Fields["input"], []byte("retained handover")) || bytes.Contains(req.Fields["input"], []byte("selected.txt"))) {
 			t.Fatal("summary recovery or metadata separation failed")
 		}

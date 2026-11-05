@@ -35,6 +35,12 @@ projects complete retained bodies and failed reads without exposing orchestratio
 calls. Prewarm and execution-free requests never start acquisition; completed
 results remain reusable across continuation and resume.
 
+Pre-boundary [Conversation attachments](../../../../modules/conversation/SPEC.md#attachment-snapshots)
+produce optional kind-separated recall hints instead of supplied context bodies.
+Skill acquisition keeps the same stock-reader authority; completed skill evidence
+and immutable submitted descriptors use the existing scoped Recovery publication.
+Explicit preload and reload selections retain their full-body delivery.
+
 One invocation window registry joins command reports and capture observations.
 Synchronous native pre-tool observations bind actual patch inputs and overlapping
 writer endpoints to admitted windows through the same capture and history owners.

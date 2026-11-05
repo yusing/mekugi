@@ -123,29 +123,36 @@ func (p *Preparer) readCompact(ctx context.Context, reference string) (compact.R
 }
 
 // Prewarm projects immutable history without publishing a scope or running readers.
-func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata, prewarm bool) (jsontext.Value, map[string]bool, error) {
+type compactPreparation struct {
+	reader  jsontext.Value
+	calls   map[string]bool
+	sources []compact.Source
+}
+
+func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata, prewarm bool) (compactPreparation, error) {
 	if p == nil || p.Retained.Store == nil || thread == "" || metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != thread {
-		return nil, nil, errors.New("compaction recovery identity or storage is unavailable")
+		return compactPreparation{}, errors.New("compaction recovery identity or storage is unavailable")
 	}
 	namespace, err := p.Retained.Store.NamespaceForThread(thread)
 	if err != nil {
-		return nil, nil, err
+		return compactPreparation{}, err
 	}
 	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: thread, Namespace: namespace})
 	ctx, err = prepareHandleScope(ctx, p.Retained.Store, p.Retained.Writes, metadata)
 	if err != nil {
-		return nil, nil, err
+		return compactPreparation{}, err
 	}
 	release, err := p.Retained.Store.SnapshotLease(ctx)
 	if err != nil {
-		return nil, nil, err
+		return compactPreparation{}, err
 	}
 	defer release()
 	var items []map[string]jsontext.Value
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
-		return nil, nil, err
+		return compactPreparation{}, err
 	}
 	var pending jsontext.Value
+	var explicit []compact.Source
 	var contextReference string
 	readCalls := make(map[string]bool)
 	for _, item := range items {
@@ -155,8 +162,10 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		}
 		record, err := p.readCompact(ctx, reference)
 		if err != nil {
-			return nil, nil, err
+			return compactPreparation{}, err
 		}
+		sources, _ := compact.ReloadSources(record.Selection)
+		explicit = append(explicit, sources...)
 		contextReference = record.Reference
 		call, calls, callErr := compactReaderCall(record, items, thread)
 		for _, id := range calls {
@@ -183,7 +192,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 			item["content"] = responses.MustMarshalJSON([]map[string]string{{"type": "output_text", "text": record.Summary}})
 		} else if record.Selection != "" && metadata.RequestKind == responses.Turn && !codexresponses.ExecutionFree(request) {
 			if callErr != nil {
-				return nil, nil, callErr
+				return compactPreparation{}, callErr
 			}
 			if len(call) > 0 {
 				pending = call
@@ -192,27 +201,27 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 	}
 	if prewarm {
 		request.Fields["input"], err = json.Marshal(items)
-		return nil, readCalls, err
+		return compactPreparation{calls: readCalls, sources: explicit}, err
 	}
 	release()
 	ctx, release, err = beginRetainedSession(ctx, p.Retained.Store, p.Retained.Writes, p.Retained.Limits, thread, session)
 	if err != nil {
-		return nil, nil, err
+		return compactPreparation{}, err
 	}
 	defer release()
 	ctx, err = prepareHandleScope(ctx, p.Retained.Store, p.Retained.Writes, metadata)
 	if err != nil {
-		return nil, nil, err
+		return compactPreparation{}, err
 	}
 	workspace, valid := usableRoutingDirectory(metadata.Directories)
 	if len(metadata.Directories) != 0 && !valid {
-		return nil, nil, errors.New("invalid compaction recovery workspace")
+		return compactPreparation{}, errors.New("invalid compaction recovery workspace")
 	}
 	_, err = p.reconcileVisibleInput(ctx, request, workspace, workspace+"\x00"+thread)
 	if err == nil && metadata.RequestKind == responses.Turn && metadata.ContextWindowID == "" {
 		p.Control.ObserveCompactionContext(thread, contextReference)
 	}
-	return pending, readCalls, err
+	return compactPreparation{reader: pending, calls: readCalls, sources: explicit}, err
 }
 
 // Only the provider view changes. Host history and observation retain the exact
@@ -331,7 +340,7 @@ func compactReaderPrefix(reference string) string {
 
 // Hydrate only authenticated completed reload results. Original host history and
 // its short retained reference remain untouched for observation and replay.
-func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, calls map[string]bool, thread string, metadata codexresponses.TurnMetadata, prewarm bool) (map[string]jsontext.Value, error) {
+func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, calls map[string]bool, thread string, metadata codexresponses.TurnMetadata, prewarm bool, optional *attachmentPreparation) (map[string]jsontext.Value, error) {
 	outputs := make(map[string]jsontext.Value)
 	if len(calls) == 0 && !bytes.Contains(input, []byte(compact.SnapshotPrefix)) {
 		return outputs, nil
@@ -451,7 +460,13 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 				continue
 			}
 			reloads = append(reloads, activity.ReloadSource{Command: command, Path: selected[i].Path, Skill: selected[i].Skill, Changes: strings.Join(selected[i].Changes, " "), ExitCode: new(source.ExitCode), Preload: assignment != ""})
-			parts = append(parts, map[string]string{"type": "input_text", "text": source.Text()})
+			if !optional.calls[id] {
+				parts = append(parts, map[string]string{"type": "input_text", "text": source.Text()})
+			}
+		}
+		if optional.calls[id] {
+			optional.skills = &captured
+			parts = nil
 		}
 		outputs[id] = responses.MustMarshalJSON(parts)
 		if !prewarm && metadata.RequestKind == responses.Turn {

@@ -22,17 +22,17 @@ type Inspection struct {
 type inspectionResult struct {
 	details     control.SessionDetails
 	err         error
-	attachments []composer.ContextAttachment
+	attachments composer.AttachmentSnapshot
 	cached      bool
 }
 
 // AttachmentReader borrows the same admitted runtime and native history used by
 // ordinary thread restoration. It neither opens source files nor runs skills.
 type AttachmentReader interface {
-	ContextAttachments(context.Context, string, string) ([]composer.ContextAttachment, error)
+	ContextAttachments(context.Context, string, string) (composer.AttachmentSnapshot, error)
 }
 
-func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window string) ([]composer.ContextAttachment, error) {
+func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
 	query := &Inspection{thread: thread, window: window, result: make(chan inspectionResult, 1)}
 	result := r.inspect(ctx, query)
 	if result.err != nil || result.cached {
@@ -40,11 +40,11 @@ func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window str
 	}
 	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": true}, nil)
 	if err != nil {
-		return nil, err
+		return composer.AttachmentSnapshot{}, err
 	}
 	info, err := binding.DecodeHistoryThread(raw, thread)
 	if err != nil {
-		return nil, err
+		return composer.AttachmentSnapshot{}, err
 	}
 	query = &Inspection{thread: thread, window: window, loaded: true, attachments: conversationbinding.CompactedAttachments(info.Turns), result: make(chan inspectionResult, 1)}
 	result = r.inspect(ctx, query)

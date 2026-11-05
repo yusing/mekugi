@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"maps"
 	"strings"
 	"time"
 
@@ -41,7 +42,7 @@ const applyPatchToolName = "apply_patch"
 
 // Config supplies borrowed invocation owners. Startup owns their lifetimes.
 type Config struct {
-	ContextAttachments func(context.Context, string, string) ([]composer.ContextAttachment, error)
+	ContextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
 	Inspect            func(context.Context, string) (threadcontrol.SessionDetails, error)
 	ThreadControl      *threadbinding.Driver
 	Registry           *frontends.Registry
@@ -154,33 +155,37 @@ func (t *mekugiResponseTransform) ObserveUsage(counts inference.Usage) {
 func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
 	var reload jsonv1.RawMessage
 	var reloadCalls map[string]bool
-	if metadataValid && !metadata.ActivityIdentityInvalid && (metadata.ThreadID == "" || metadata.ThreadID == threadID) {
-		pending, calls, err := p.prepareAttachmentContext(ctx, request, threadID, metadata, prewarm)
-		if err != nil {
-			return nil, err
-		}
-		reload, reloadCalls = pending, calls
-	}
-	var preloadActivity []activitypresentation.Supplement
+	var attachments attachmentPreparation
+	var historical []compact.Source
 	if bytes.Contains(request.Fields["input"], []byte(compact.Prefix)) {
 		if !metadataValid {
 			return nil, errors.New("compaction recovery requires valid metadata")
 		}
-		pending, calls, err := p.prepareCompactInput(ctx, request, sessionID, threadID, metadata, prewarm)
+		prepared, err := p.prepareCompactInput(ctx, request, sessionID, threadID, metadata, prewarm)
 		if err != nil {
 			return nil, err
 		}
-		if len(pending) > 0 {
-			reload = pending
+		reload, reloadCalls, historical = prepared.reader, prepared.calls, prepared.sources
+	}
+	if metadataValid && !metadata.ActivityIdentityInvalid && (metadata.ThreadID == "" || metadata.ThreadID == threadID) {
+		prepared, err := p.prepareAttachmentContext(ctx, request, threadID, metadata, prewarm, historical)
+		if err != nil {
+			return nil, err
+		}
+		attachments = prepared
+		if len(reload) == 0 {
+			reload = prepared.reader
 		}
 		if reloadCalls == nil {
-			reloadCalls = calls
+			reloadCalls = maps.Clone(prepared.calls)
 		} else {
-			for id := range calls {
+			for id := range prepared.calls {
 				reloadCalls[id] = true
 			}
 		}
 	}
+	var preloadActivity []activitypresentation.Supplement
+
 	if p.ThreadControl != nil || metadataValid && bytes.Contains(request.Fields["input"], []byte("threadcontrol")) {
 		if !metadataValid {
 			return nil, errors.New("context preload requires valid metadata")
@@ -204,7 +209,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	if reloadCalls == nil && bytes.Contains(request.Fields["input"], []byte(compact.SnapshotPrefix)) {
 		reloadCalls = make(map[string]bool)
 	}
-	reloadOutputs, err := p.compactSnapshots(ctx, request.Fields["input"], reloadCalls, threadID, metadata, prewarm)
+	reloadOutputs, err := p.compactSnapshots(ctx, request.Fields["input"], reloadCalls, threadID, metadata, prewarm, &attachments)
 	if err != nil {
 		return nil, err
 	}
@@ -342,6 +347,12 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	if err != nil {
 		retained.Finish(false)
 		return nil, err
+	}
+	if len(reload) == 0 {
+		if err := p.prepareAttachmentHints(ctx, request, attachments); err != nil {
+			retained.Finish(false)
+			return nil, err
+		}
 	}
 	var localWaitItem string
 	if p.ThreadControl != nil {

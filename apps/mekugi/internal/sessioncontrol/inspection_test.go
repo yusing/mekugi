@@ -53,7 +53,7 @@ func TestAttachmentContextReadsHistoryOncePerWindow(t *testing.T) {
 		content, _ := json.Marshal(conversationbinding.Input(draft))
 		response, _ := json.Marshal(map[string]any{"thread": binding.ThreadInfo{ID: "root", Turns: []binding.HistoryTurn{{Items: []binding.ThreadItem{{ID: "user", Type: "userMessage", Content: content}, {ID: "reset", Type: "contextCompaction", Status: "completed"}}}}}})
 		for _, window := range []string{"one", "one", "two", "two"} {
-			result := make(chan []composer.ContextAttachment, 1)
+			result := make(chan composer.AttachmentSnapshot, 1)
 			failure := make(chan error, 1)
 			go func() {
 				values, err := requests.ContextAttachments(t.Context(), "root", window)
@@ -79,7 +79,7 @@ func TestAttachmentContextReadsHistoryOncePerWindow(t *testing.T) {
 				query = <-requests.Inspections()
 				query.CompleteAttachments("root", &cache)
 			}
-			values := <-result
+			values := (<-result).Values
 			if err := <-failure; err != nil {
 				t.Fatal(err)
 			}
@@ -89,7 +89,7 @@ func TestAttachmentContextReadsHistoryOncePerWindow(t *testing.T) {
 			values[0].Placeholders[0] = "changed"
 			values[0].Selection.Frames[0] = "changed"
 			again, _ := cache.Get(window)
-			if again[0].Placeholders[0] == "changed" || again[0].Selection.Frames[0] == "changed" {
+			if again.Values[0].Placeholders[0] == "changed" || again.Values[0].Selection.Frames[0] == "changed" {
 				t.Fatal("inspection mutated the scoped cache")
 			}
 		}

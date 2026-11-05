@@ -3,6 +3,7 @@ package composer
 import (
 	"crypto/sha256"
 	"slices"
+	"sync"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
@@ -15,6 +16,38 @@ type ContextAttachment struct {
 	Placeholders []string
 	Selection    attachments.Snapshot
 	Skills       []Token
+	Images       []Token
+}
+
+// AttachmentSnapshot borrows the active window's optional recall publication.
+// Source identities and bytes remain detached from the mutable cache.
+type AttachmentSnapshot struct {
+	Values []ContextAttachment
+	Recall *AttachmentRecall
+}
+
+// AttachmentRecall caches the selected reader and frozen evidence hints for one
+// active native window.
+// Reopening history may issue fresh handles; existing handles remain retained.
+type AttachmentRecall struct {
+	mu    sync.Mutex
+	hints map[string]string
+}
+
+func (r *AttachmentRecall) Publish(key string, create func() (string, error)) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if hint, ok := r.hints[key]; ok {
+		return hint, nil
+	}
+	hint, err := create()
+	if err == nil {
+		if r.hints == nil {
+			r.hints = make(map[string]string)
+		}
+		r.hints[key] = hint
+	}
+	return hint, err
 }
 
 func (a ContextAttachment) Matches(snapshot attachments.Snapshot, original string) bool {
@@ -26,17 +59,19 @@ func (a ContextAttachment) Matches(snapshot attachments.Snapshot, original strin
 type AttachmentContext struct {
 	window string
 	values []ContextAttachment
+	recall *AttachmentRecall
 }
 
-func (c *AttachmentContext) Get(window string) ([]ContextAttachment, bool) {
+func (c *AttachmentContext) Get(window string) (AttachmentSnapshot, bool) {
 	if c.window != window {
-		return nil, false
+		return AttachmentSnapshot{}, false
 	}
-	return cloneContextAttachments(c.values), true
+	return AttachmentSnapshot{Values: cloneContextAttachments(c.values), Recall: c.recall}, true
 }
 
 func (c *AttachmentContext) Set(window string, values []ContextAttachment) {
 	c.window, c.values = window, cloneContextAttachments(values)
+	c.recall = &AttachmentRecall{}
 }
 
 func cloneContextAttachments(values []ContextAttachment) []ContextAttachment {
@@ -45,6 +80,7 @@ func cloneContextAttachments(values []ContextAttachment) []ContextAttachment {
 		copy[i].Placeholders = slices.Clone(copy[i].Placeholders)
 		copy[i].Selection.Frames = slices.Clone(copy[i].Selection.Frames)
 		copy[i].Skills = slices.Clone(copy[i].Skills)
+		copy[i].Images = slices.Clone(copy[i].Images)
 	}
 	return copy
 }

@@ -3,6 +3,8 @@ package codexbinding
 import (
 	"encoding/json/v2"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -52,5 +54,28 @@ func TestCompactedUploadRetainsPlaceholder(t *testing.T) {
 	}}})
 	if len(values) != 1 || !reflect.DeepEqual(values[0].Placeholders, []string{label}) || len(values[0].Selection.Frames) != 0 {
 		t.Fatalf("upload context = %+v", values)
+	}
+}
+
+func TestCompactedImagesFollowAdmittedHistoryPrefix(t *testing.T) {
+	image := func(id, source string) binding.ThreadItem {
+		return binding.ThreadItem{ID: id, Type: "userMessage", Content: []byte(`[{"type":"image","url":` + strconv.Quote(source) + `}]`)}
+	}
+	before := image("before", "https://example.test/submitted.png")
+	embedded := image("embedded", "data:image/png,PRIVATE_PIXELS")
+	boundary := binding.ThreadItem{ID: "boundary", Type: "contextCompaction", Status: "completed"}
+	after := image("after", "https://example.test/later.png")
+	tool := binding.ThreadItem{ID: "tool", Type: "imageGeneration", Content: []byte(`[{"type":"localImage","path":"/tool/generated.png"}]`)}
+	for _, items := range [][]binding.ThreadItem{{before, embedded, tool, boundary, after}, {before, embedded, boundary}} {
+		values := CompactedAttachments([]binding.HistoryTurn{{Items: items}})
+		if len(values) != 2 || values[0].Images[0].Path != "https://example.test/submitted.png" || strings.Contains(values[1].Images[0].Path, "PRIVATE_PIXELS") || values[1].Images[0].Name != "[Image 1]" {
+			t.Fatalf("native image prefix lost or pixel/tool evidence retained: %+v", values)
+		}
+	}
+	if got := CompactedAttachments([]binding.HistoryTurn{{Items: []binding.ThreadItem{before, {Type: "contextCompaction", Status: "failed"}}}}); len(got) != 0 {
+		t.Fatalf("failed boundary admitted recall: %+v", got)
+	}
+	if got := CompactedAttachments([]binding.HistoryTurn{{Items: []binding.ThreadItem{boundary, after}}}); len(got) != 0 {
+		t.Fatalf("rewound prefix admitted later image: %+v", got)
 	}
 }

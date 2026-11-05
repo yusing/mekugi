@@ -42,6 +42,8 @@ and patch observation, result confirmation, failure observation, and retention, 
 A unit is one host-produced text part of a `function_call_output` or
 `custom_tool_call_output`, or one submitted file, skill or selected-text frame body in a
 user message through a complete durable envelope in an `input_text` part.
+Complete attachment envelopes recovered in original tool output, including
+multi-handle `mread` results, use the same source matching.
 A string output is one part. Execution and attachment headers remain
 verbatim. Durable attachment envelopes use their submitted bodies; files and skills
 are never reopened to infer equality. Compaction reader results participate as

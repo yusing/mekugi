@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -126,6 +128,16 @@ func TestAPIAttachmentSnapshotAdmissionAndContinuation(t *testing.T) {
 	}
 	if len(images) != 2 || images[0] != acquired || images[1] != borrowed || len(frames) != 3 || !strings.Contains(frames[0], "uploaded text, not an image") || !strings.Contains(frames[1], "captured host contents") || !strings.Contains(frames[2], "directory tree") {
 		t.Fatalf("snapshot order/content: images=%v frames=%q", images, frames)
+	}
+	retained := conversationbinding.CompactedAttachments([]binding.HistoryTurn{{Items: []binding.ThreadItem{{ID: "submission", Type: "userMessage", Content: mustTestJSON(t, requests[0].Params.Input)}, {ID: "reset", Type: "contextCompaction", Status: "completed"}}}})
+	var descriptors []string
+	for _, value := range retained {
+		for _, image := range value.Images {
+			descriptors = append(descriptors, image.Path)
+		}
+	}
+	if strings.Join(descriptors, "\x00") != strings.Join(images, "\x00") {
+		t.Fatalf("prepared host/upload image descriptors lost: %v", descriptors)
 	}
 	prepared.Cleanup()
 	if !prepared.Admitted() || u.ownedImages[acquired] {

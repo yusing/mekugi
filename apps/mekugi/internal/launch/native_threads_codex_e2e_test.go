@@ -178,7 +178,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		return
 	}
 	p.mu.Lock()
-	resumedParent := !p.earlyCompletion && metadata.ThreadID == p.parent && p.calls[p.parent] >= 5
+	resumeStep := 5
+	if p.attachments {
+		resumeStep++
+	}
+	resumedParent := !p.earlyCompletion && metadata.ThreadID == p.parent && p.calls[p.parent] >= resumeStep
 	p.mu.Unlock()
 	wantEffort := "low"
 	if resumedParent {
@@ -376,20 +380,16 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 	case parent && step == 5:
 		if p.attachments {
-			for _, expected := range []string{"CURRENT_ATTACHED_SKILL", "SELECTED_SCREEN_BYTES"} {
-				if strings.Count(string(body), expected) != 1 {
-					failure = "reset did not supply current attachment content exactly once: " + expected
-				}
+			if strings.Count(string(body), "CURRENT_ATTACHED_SKILL") != map[bool]int{true: 1, false: 0}[p.attachmentReload] || strings.Contains(string(body), "SELECTED_SCREEN_BYTES") {
+				failure = "reset forced attachment bodies or lost explicit reload"
 			}
 			for _, excluded := range []string{"ORIGINAL_ATTACHED_SKILL", "ORIGINAL_ATTACHED_FILE", "CHANGED_ATTACHED_FILE"} {
 				if strings.Contains(string(body), excluded) {
 					failure = "reset supplied stale or unselected attachment content: " + excluded
 				}
 			}
-			if !strings.Contains(string(body), "@attachment.txt $guide [Selected 1]") {
-				failure = "reset lost submitted attachment placeholders"
-			}
 		}
+
 		expectedUsers := p.users
 		if p.compactWait || p.agentCompact {
 			expectedUsers-- // Reset removes the original human prompt.
@@ -414,6 +414,47 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if p.multipleAnswers && (strings.Count(string(body), "MANAGED_CHILD_FINAL") != 1 || strings.Count(string(body), "LATER_CHILD_FINAL") != 1) {
 			failure = "first awakened request omitted or repeated completed child answers"
 		}
+		if p.attachments {
+			var handles []string
+			for _, item := range request.Input {
+				if string(item["role"]) != `"user"` {
+					continue
+				}
+				var parts []struct {
+					Text string `json:"text"`
+				}
+				_ = json.Unmarshal(item["content"], &parts)
+				for _, part := range parts {
+					if !strings.HasPrefix(part.Text, "Optional attachment recall:") {
+						continue
+					}
+					for _, match := range regexp.MustCompile(`mread ([a-z]+[0-9]*(?: [a-z]+[0-9]*)*)`).FindAllStringSubmatch(part.Text, -1) {
+						handles = append(handles, strings.Fields(match[1])...)
+					}
+				}
+			}
+			if len(handles) != 3 {
+				failure = fmt.Sprintf("reset did not expose kind-separated recall: %v", handles)
+			}
+			answer = ""
+			program = `const r = await tools.exec_command({cmd:` + strconv.Quote("mread "+strings.Join(handles, " ")) + `}); text(r.output);`
+		}
+	case parent && step == 6 && p.attachments:
+		for _, expected := range []string{"CURRENT_ATTACHED_SKILL", "SELECTED_SCREEN_BYTES", "@attachment.txt", "$guide"} {
+			count := 1
+			if expected == "CURRENT_ATTACHED_SKILL" && p.attachmentReload && request.PreviousResponse != "" {
+				count = 0
+			} // Explicit source is already cached upstream.
+			if strings.Count(string(body), expected) != count {
+				failure = "mread did not recover attachment context exactly once: " + expected
+			}
+		}
+		for _, excluded := range []string{"ORIGINAL_ATTACHED_SKILL", "ORIGINAL_ATTACHED_FILE", "CHANGED_ATTACHED_FILE"} {
+			if strings.Contains(string(body), excluded) {
+				failure = "mread recovered stale or unselected file content: " + excluded
+			}
+		}
+		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 6:
 		program = `text(await tools.mcp__threadcontrol__list_agents({path_prefix:"agent:main"})); text(await tools.mcp__threadcontrol__followup_task({target:"agent:main/worker",message:"COLD_CHILD_FOLLOWUP"}));`
 	case parent && step == 7:
@@ -1343,6 +1384,9 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	fixture.mu.Unlock()
 	wantParentCalls := 5
+	if scenario.attachments {
+		wantParentCalls++
+	}
 	wantThreads := 2
 	if fullHistory {
 		wantThreads = 3

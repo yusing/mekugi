@@ -3,7 +3,6 @@ package requestexecution
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"strings"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -11,10 +10,9 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-// RestoreAttachments projects only pre-boundary attachment context. Summary
-// compaction may already retain its envelope; reset may remove it entirely.
-// In both cases file bodies and stale skill bodies stay out of the new window.
-func RestoreAttachments(request *codexresponses.Request, context []composer.ContextAttachment) error {
+// OmitCompactedAttachments removes pre-boundary supplied bodies from summary
+// continuations. Native placeholders remain; optional recall owns restoration.
+func OmitCompactedAttachments(request *codexresponses.Request, context []composer.ContextAttachment) error {
 	if len(context) == 0 {
 		return nil
 	}
@@ -22,7 +20,6 @@ func RestoreAttachments(request *codexresponses.Request, context []composer.Cont
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		return err
 	}
-	present := make(map[int]bool)
 	staleSkill := func(text string) bool {
 		name, path := attachments.SelectedSkillSource(text)
 		if name == "" {
@@ -62,15 +59,11 @@ func RestoreAttachments(request *codexresponses.Request, context []composer.Cont
 			snapshot, valid := attachments.DecodeSnapshot(text)
 			matched := false
 			if responses.StringField(part, "type") == "input_text" && valid {
-				for i, value := range context {
+				for _, value := range context {
 					if !value.Matches(snapshot, text) {
 						continue
 					}
-					present[i], matched, changed = true, true, true
-					if len(value.Selection.Frames) > 0 {
-						part["text"] = responses.MustMarshalJSON(value.Selection.Encode())
-						kept = append(kept, part)
-					}
+					matched, changed = true, true
 					break
 				}
 			}
@@ -87,22 +80,6 @@ func RestoreAttachments(request *codexresponses.Request, context []composer.Cont
 		}
 		retained = append(retained, item)
 	}
-	var restored []map[string]jsontext.Value
-	for i, value := range context {
-		if present[i] {
-			continue
-		}
-		var parts []map[string]string
-		if len(value.Placeholders) > 0 {
-			parts = append(parts, map[string]string{"type": "input_text", "text": strings.Join(value.Placeholders, " ")})
-		}
-		if len(value.Selection.Frames) > 0 {
-			parts = append(parts, map[string]string{"type": "input_text", "text": value.Selection.Encode()})
-		}
-		if len(parts) > 0 {
-			restored = append(restored, map[string]jsontext.Value{"type": responses.MustMarshalJSON("message"), "role": responses.MustMarshalJSON("user"), "content": responses.MustMarshalJSON(parts)})
-		}
-	}
-	request.Fields["input"] = responses.MustMarshalJSON(append(restored, retained...))
+	request.Fields["input"] = responses.MustMarshalJSON(retained)
 	return nil
 }
