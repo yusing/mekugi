@@ -1,6 +1,7 @@
 package terminalview
 
 import (
+	"io"
 	"strings"
 	"testing"
 
@@ -108,5 +109,47 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 		if got := view.Scroll[file.Key()] + narrow.Starts[i]; got != end-1 {
 			t.Fatalf("file %d resize moved anchor to %d, want %d", i, got, end-1)
 		}
+	}
+}
+
+func TestPaneRepublicationPreservesResizeAnchor(t *testing.T) {
+	chunk := liveDiffHighlightChunk("wrapped", "x.txt", "@@ -0,0 +1,30 @@\n"+
+		strings.Repeat("+"+strings.Repeat("a", 160)+"\n", 30))
+	publication := (presentation.Publication{}).With([]presentation.File{{Path: "x.txt", Chunks: []presentation.Chunk{chunk}}})
+	for _, republish := range []bool{false, true} {
+		name := "resize"
+		if republish {
+			name = "republish-and-resize"
+		}
+		t.Run(name, func(t *testing.T) {
+			pane := NewPane("", diffrender.DarkTheme)
+			view := presentation.ReviewView{Revision: 1, Publication: publication}
+			pane.PublishReview(view)
+			paint := func(width int) {
+				t.Helper()
+				if err := pane.Paint(t.Context(), io.Discard, width, 10); err != nil {
+					t.Fatal(err)
+				}
+			}
+			paint(60)
+			for range 14 {
+				pane.Key("j")
+			}
+			paint(60)
+			before := pane.Selection(5, 1)
+			if before.Painted[1].Line != 4 {
+				t.Fatalf("fixture top source line = %d, want 4", before.Painted[1].Line)
+			}
+			if republish {
+				view.Revision++
+				view.Coverage = "REFRESHED"
+				pane.PublishReview(view)
+			}
+			paint(95)
+			after := pane.Selection(5, 1)
+			if after.Painted[1].Line != before.Painted[1].Line {
+				t.Fatalf("resize moved top source line from %d to %d", before.Painted[1].Line, after.Painted[1].Line)
+			}
+		})
 	}
 }

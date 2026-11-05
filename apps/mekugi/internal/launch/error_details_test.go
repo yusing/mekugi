@@ -22,6 +22,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -63,7 +64,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 				t.Fatal("stock host evidence changed")
 			}
 			full := "exec script failed: " + detail
-			if len(view.Entries) != 1 || view.Entries[0].Source.ErrorDetail != full || view.Entries[0].Source.Text != activityui.ErrorPreview(full) {
+			if len(view.Entries) != 1 || view.Entries[0].Source.ErrorDetail != full || view.Entries[0].Source.Text != activitypresentation.ErrorPreview(full) {
 				t.Fatal("full evidence or bounded preview lost, or repeated failure duplicated")
 			}
 			if child {
@@ -133,7 +134,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			index := slices.IndexFunc(view.Entries, func(e sessionpresentation.ActivityRecord) bool {
 				return e.Source.Kind == "error" && e.Source.CallID == "rejected"
 			})
-			if index < 0 || view.Entries[index].Source.ErrorDetail != full || view.Entries[index].Source.Text != activityui.ErrorPreview(full) {
+			if index < 0 || view.Entries[index].Source.ErrorDetail != full || view.Entries[index].Source.Text != activitypresentation.ErrorPreview(full) {
 				t.Fatal("restoration clipped the full host error")
 			}
 			if !terminalTest(u).openEntry(view.bind(terminalTest(u)), view.Entries[index].Source.Seq) {

@@ -21,8 +21,7 @@ func liveDiffChangesController(t *testing.T, width, height int, captures []prese
 	c := NewPane("/w", diffrender.DarkTheme)
 	c.lastWidth, c.lastHeight = width, height
 	cviewPublication = cviewPublication.With(presentation.GroupCaptures(captures))
-	c.view.Update(cviewPublication)
-	c.view.RefreshVisible()
+	c.Update(cviewPublication, c.coverage)
 
 	c.frame(t)
 	return c
@@ -335,8 +334,7 @@ func TestLiveDiffChangesSurviveShrinkingMerge(t *testing.T) {
 	}
 	c := liveDiffChangesController(t, 130, 20, captures)
 	cviewPublication = cviewPublication.With(c.view.Files).With(presentation.GroupCaptures(captures[2:]))
-	c.view.Update(cviewPublication)
-	c.view.RefreshVisible()
+	c.Update(cviewPublication, c.coverage)
 	for _, key := range []byte("}}{\t\r") {
 		c.Key(string(key))
 	}

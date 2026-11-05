@@ -99,7 +99,7 @@ func TestRosterAndAuxiliaryContentRemainReadable(t *testing.T) {
 	}
 	changed := *agents
 	changed.Roster = slices.Clone(agents.Roster)
-	changed.Roster[119].Agent.Responding = true
+	changed.Roster[119].Agent.Status = "responding"
 	frame.Agents = &changed
 	if err := s.Publish(frame); err != nil {
 		t.Fatal(err)

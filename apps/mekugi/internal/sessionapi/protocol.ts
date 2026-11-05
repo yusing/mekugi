@@ -39,6 +39,7 @@ export type NativeFrontendRequest = {
 };
 
 export type Lines = {
+  "origins"?: Array<Origin>;
   "lines": Array<string>;
   "next"?: (number | null);
 };
@@ -214,6 +215,12 @@ export type Version = {
 export type Thread = {
   "ID": string;
   "Caller": string;
+};
+
+export type Origin = {
+  "Change": string;
+  "Caller": string;
+  "Source": string;
 };
 
 export type Preview = {
@@ -498,12 +505,6 @@ export type Chunk = {
   "Highlighted": boolean;
 } & Omit<Origin, "Key" | "Status" | "Stream" | "Workspace" | "CaptureOrder" | "Review" | "Highlighted">;
 
-export type Origin = {
-  "Change": string;
-  "Caller": string;
-  "Source": string;
-};
-
 export type Counts = {
   "Added": number;
   "Removed": number;
@@ -530,6 +531,7 @@ export type TextSpan = {
 };
 
 export type value = {
+  "failed"?: boolean;
   "kind"?: string;
   "verb"?: string;
   "batchExit"?: boolean;
@@ -1497,7 +1499,8 @@ export type Value = {
   "DetailLines": number;
   "Live": boolean;
   "Thought": number;
-} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "TailClipped" | "SourceOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought">;
+  "Failed": boolean;
+} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "TailClipped" | "SourceOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought" | "Failed">;
 
 export type ItemContent = {
   "Command": Command;

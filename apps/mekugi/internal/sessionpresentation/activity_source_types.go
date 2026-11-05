@@ -104,8 +104,7 @@ func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 			facts.InputGroup = n.Thread + "\x00" + n.Turn
 		}
 		if n.Output != nil {
-			state, _ := n.Output.Context(0)
-			facts.OutputFailed = state.Exited && state.Exit != 0
+			facts.OutputFailed = n.Output.Failed()
 		}
 	}
 	return facts

@@ -120,3 +120,12 @@ func ReasoningSummaryBody(text string) string {
 	}
 	return text
 }
+
+// ReasoningLabel uses the supplied heading or the first detected section title.
+// Whether an untitled body fits is a renderer's geometry decision.
+func (v Value) ReasoningLabel() string {
+	if v.Label != "" {
+		return v.Label
+	}
+	return ReasoningSections(v.Body)[0].Label
+}

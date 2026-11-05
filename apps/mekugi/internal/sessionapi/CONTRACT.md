@@ -386,6 +386,8 @@ attachment is the preceding one. The response contains the connection instance, 
 an opaque `cursor`, and `publication` using the shared session, roster, review,
 live and deferred-section shapes. Its separate `live` content reference binds
 selected preview reads. Runtime and displayed-thread identities are distinct.
+An unchanged timeout returns the same cursor and identities without `publication`
+or `live`; the consumer retains its previously acquired panel data.
 
 Selection supplies `attachment`, `activation`, the observed `displayed` ID and
 the canonical `agent` name. Stale connection, activation, attachment or display
@@ -397,7 +399,9 @@ lifetime. Expiry or final release restores the terminal's own panels.
 Page reads use `session/page` and its existing cursors. `native/content` supplies
 `content` with the published content reference. Omitting `offset` returns the
 ordinary complete content result; a numeric byte offset at a line boundary returns bounded `lines`
-and an optional numeric `next` offset. Saved-review caller filtering and content
+and an optional numeric `next` offset. For saved review, offset zero also returns
+`origins` with the file's edit attribution; subsequent pages omit it.
+Saved-review caller filtering and content
 admission are shared with other Session API consumers. Each physical frontend
 retains its own selected source; helper connections borrow that state.
 
@@ -502,7 +506,7 @@ omitted when unknown.
   `counts` and a metadata `page` cursor. `callers` lists each caller with captures,
   Main first, as `caller` (canonical path, or `?` when unknown) and file `count`.
   Review counts contain `Net` (null without project evidence) and `Callers`.
-  Metadata pages return files with `key`, `path`, `counts` and a `content`
+  Metadata pages return files with `key`, `path`, `status`, `counts` and a `content`
   reference. The complete file adds composed `chunks` and `origins`, retaining
   Change History's wire shapes and provenance. File counts use `Added` and
   `Removed`; negative counts mean unavailable. Metadata may abbreviate long paths;
@@ -542,13 +546,17 @@ omitted when unknown.
   and the session's net changed lines as
   `added` and `removed` when known. Each agent has its caller path as `name`,
   its display name as `label`, address `aliases`, `role` (absent for Main), tree `depth` and a
-  `state` of `working`, `waiting`, `idle`, `done` or `error`. A waiting agent
+  `state` of `working`, `waiting`, `paused`, `idle`, `done` or `error`. A waiting agent
   may publish `wait`, using the same presentation-value shape as transcript
   progress, including its target names and effective timeout. Each settled target
   retains its own status; the wait's aggregate reason remains independent of target
   order and status. Optional `activity`
   carries its owning runtime's latest shared roster summary as entry-shaped
-  `kind`, `observed` and `values`. It is display-only: it supplies labels, read
+  `kind`, `observed` and compact `values`. These reuse the shared presentation
+  value shape with resolved outcome-aware `verb`, `label` and bounded `code`,
+  canonical `from`/`to` endpoints, `failed` tone and structured progress facts.
+  Renderers select and lay out these values without deriving outcomes or subjects.
+  It is display-only: it supplies labels, read
   paths, progress, short reasoning and a bounded code preview, without retained
   output, full authored bodies or a navigable source identity. `turns` and `roundtrips`
   count its work. `work` is its accumulated work time; while it works,

@@ -286,7 +286,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
 		} else {
-			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), suffix, width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), suffix, width)...)
 		}
 	}
 	if len(block.Timeouts) > 0 && !block.Skipped && runDuration(block, p.now()) >= 500*time.Millisecond && len(lines) > 0 {
@@ -298,7 +298,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		if ansi.StringWidth(lines[0])+1+ansi.StringWidth(suffix) <= width {
 			lines[0] += " " + suffix
 		} else {
-			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), suffix, width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), suffix, width)...)
 		}
 	}
 	if outcome := approvalLabel(block.Approval); outcome != "" && len(lines) > 0 {
@@ -309,7 +309,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
 		} else {
-			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), outcome, width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), outcome, width)...)
 		}
 	}
 	if block.ShowWorkdir && block.Workdir != "" && block.Verb != "Run" && len(lines) > 0 {
@@ -317,7 +317,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		if suffix := " " + workdirLabel(block.Workdir); ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
 		} else {
-			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), workdirLabel(block.Workdir), width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), workdirLabel(block.Workdir), width)...)
 		}
 	}
 	if block.Verb != "Run" && !block.Skipped && len(lines) > 0 {
@@ -326,7 +326,7 @@ func (p *Painter) Block(block Block, width int) []string {
 			if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 				lines[0] += suffix
 			} else {
-				lines = append(lines, strings.Repeat(" ", block.cell(RowVerb(block)))+terminalui.Dim+"· "+elapsed+terminalui.Undim)
+				lines = append(lines, strings.Repeat(" ", block.cell(block.RowVerb()))+terminalui.Dim+"· "+elapsed+terminalui.Undim)
 			}
 		}
 	}
@@ -334,7 +334,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		if last := len(lines) - 1; ansi.StringWidth(lines[last])+1+ansi.StringWidth(trailer) <= width {
 			lines[last] += " " + trailer
 		} else {
-			lines = append(lines, strings.Repeat(" ", block.cell(RowVerb(block)))+trailer)
+			lines = append(lines, strings.Repeat(" ", block.cell(block.RowVerb()))+trailer)
 		}
 	}
 	if block.Repeated != "" && len(lines) > 0 {
@@ -342,7 +342,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
 		} else {
-			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), terminalui.Dim+block.Repeated+terminalui.Undim, width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), terminalui.Dim+block.Repeated+terminalui.Undim, width)...)
 		}
 	}
 	// Row metadata is appended after compact path headings. Keep it selectable
@@ -365,7 +365,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 	}
 	if block.Expanded && block.MarkdownOutput() && len(block.Tail) > 0 {
-		indent := min(block.cell(RowVerb(block)), max(0, width-8))
+		indent := min(block.cell(block.RowVerb()), max(0, width-8))
 		rows := p.Markdown(strings.Join(block.Tail, "\n"), width-indent, false)
 		if block.TailOmitted > 0 {
 			rows = append([]string{terminalui.Dim + Elision{Hidden: block.TailOmitted, Form: ElisionEarlier}.Text() + " not retained" + terminalui.Undim}, rows...)
@@ -414,7 +414,7 @@ func workdirLabel(workdir string) string {
 // no exit, such as a failed read.
 func segmentTrailer(block Block) string {
 	switch {
-	case block.Skipped && RowVerb(block) != "Skipped" && EditStatus(block) != "skipped":
+	case block.Skipped && block.RowVerb() != "Skipped" && EditStatus(block) != "skipped":
 		return "· skipped"
 	case block.ExitCode == 0 || block.EditOperation() || block.Kind != "op" && block.Kind != "reads" || block.VCS():
 		return ""
@@ -443,7 +443,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	case "summary":
 		// Public reasoning shares one streaming block across providers.
 		if block.Label == "" {
-			block.Label = presentation.ReasoningSections(block.Body)[0].Label
+			block.Label = block.ReasoningLabel()
 		}
 		body := presentation.ReasoningSummaryBody(block.Body)
 		if body == "" {
@@ -694,7 +694,7 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 		return terminalui.Hang(strings.Repeat(" ", max(block.cell("Edit"), block.VerbAlign+1)),
 			Elision{Hidden: block.HiddenEdits, Unit: unit, Hovered: block.Hovered}.String(), width)
 	}
-	verb, status, start := EditVerb(block), EditStatus(block), block.GroupStart
+	verb, status, start := block.EditVerb(), EditStatus(block), block.GroupStart
 	color := terminalui.Green
 	switch status {
 	case "failed", "declined":
@@ -884,7 +884,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	if block.ExitCode != 0 {
 		color, exit = terminalui.Red, terminalui.Dim+"· "+terminalui.Undim+exitText(block.ExitCode)
 	}
-	verb := RowVerb(block)
+	verb := block.RowVerb()
 	lead, indent := block.lead(color, verb), block.cell(verb)
 	padding := strings.Repeat(" ", indent)
 	// suffix follows the last row when it fits, and otherwise takes its own.
@@ -981,7 +981,7 @@ func lineSuffix(n int, hovered bool) string {
 // outputRows attaches the invocation's output to its final operation. Open
 // output counts its earlier lines in the verb column of its first row.
 func outputRows(block Block, lines []string, width int) []string {
-	indent := block.cell(RowVerb(block))
+	indent := block.cell(block.RowVerb())
 	padding := strings.Repeat(" ", indent)
 	// A VCS row's changes are its result, not output to collapse.
 	if len(block.Changes) > 0 && (!block.Collapsed || block.VCS()) {
@@ -1280,8 +1280,6 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 	case "summary":
 		var headers []string
 		for i := len(blocks) - 1; i >= 0 && blocks[i].Kind == "summary"; i-- {
-			// Share the transcript's collapsed title, not its latest body line.
-			// Roster timers already supply elapsed time separately.
 			if label := blocks[i].Label; label != "" {
 				headers = append(headers, ansi.Strip(p.Inline(label)))
 				continue
@@ -1299,15 +1297,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		// The roster's status glyph already marks a sent final answer.
 		return text
 	case "reads":
-		var names []string
-		for _, read := range block.Reads {
-			name := read.Path
-			if block.Verb != "Search" && block.Verb != "Web Search" && block.Verb != "Skill" {
-				name = name[strings.LastIndex(name, "/")+1:]
-			}
-			names = append(names, name)
-		}
-		return SummaryVerb(block.Verb) + strings.Join(names, ", ") + more
+		return SummaryVerb(block.RowVerb()) + ansi.Strip(p.Inline(block.ReadSubject())) + more
 	case "op":
 		if block.VCS() {
 			return p.vcsSummary(block) + more
@@ -1322,15 +1312,12 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 			}
 			detail = strings.TrimSpace(code + " " + detail)
 		}
-		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
+		if block.FailedOutcome() && block.ExitCode != 0 {
 			detail += " " + terminalui.Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 		}
-		verb := block.Verb
-		if block.Running {
-			verb = "Running"
-		}
+		verb := block.RowVerb()
 		if block.Hook != nil {
-			return block.runColor() + RowVerb(block) + terminalui.Reset + " " + detail + more
+			return block.runColor() + block.RowVerb() + terminalui.Reset + " " + detail + more
 		}
 		return SummaryVerb(verb) + detail + more
 	case "message":
@@ -1348,7 +1335,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 	case "compaction":
 		return terminalui.Amber + "◉ " + block.Label + terminalui.Reset
 	case "error":
-		return terminalui.Red + "✗ " + ErrorPreview(block.Body) + terminalui.Reset
+		return terminalui.Red + "✗ " + presentation.ErrorPreview(block.Body) + terminalui.Reset
 	}
 	return p.MarkdownPreview(block.Body)
 }

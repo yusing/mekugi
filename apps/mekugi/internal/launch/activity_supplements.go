@@ -5,7 +5,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
@@ -18,7 +17,7 @@ func takeNativeActivity(a *sessioncontrol.Audience, root string) []sessionpresen
 			entry.Agent = "/root"
 		}
 		if event.Kind == "error" {
-			entry.ErrorDetail, entry.Text = event.Text, activityui.ErrorPreview(event.Text)
+			entry.ErrorDetail, entry.Text = event.Text, activitypresentation.ErrorPreview(event.Text)
 		}
 		if event.Kind == activitypresentation.SupplementEditReceipt {
 			entry.Native.CapturedEdit = &changepresentation.Receipt{Thread: event.Thread, Calls: event.Calls, Text: event.Text}

@@ -1,6 +1,7 @@
 package sessionpresentation
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 
@@ -93,11 +94,48 @@ func TestActivityPublicationReusesUnchangedInputs(t *testing.T) {
 func TestActivityIdlePublicationDoesNotProjectFeed(t *testing.T) {
 	source := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
 	session := new(Model)
-	for i := range activitypresentation.FeedLimit {
-		source.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: "retained"}}})
+	for i := range 50 {
+		source.Agents = append(source.Agents, ActivityAgent{Name: fmt.Sprintf("/root/worker%d", i)})
 	}
-	source.Publication(session, nil)
+	output := new(feed.Retention).New()
+	for i := range activitypresentation.FeedLimit {
+		entry := ActivityEntry{Seq: uint64(i + 1), Agent: source.Agents[i%50].Name, Kind: "text", Text: "retained"}
+		if i == activitypresentation.FeedLimit-1 {
+			entry.Native = &NativeItem{Output: output}
+		}
+		source.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
+	}
+	first := source.Publication(session, nil)
 	if allocations := testing.AllocsPerRun(10, func() { source.Publication(session, nil) }); allocations != 0 {
 		t.Fatalf("idle publication projected retained feed: %g allocations", allocations)
+	}
+	output.Write("streamed")
+	next := source.Publication(session, nil)
+	last := activitypresentation.FeedLimit - 1
+	if next == first || next.Entries[last].Outputs[1] != output.Version() || first.Entries[last].Outputs[1] == output.Version() || &first.Entries[0].Values[0] != &next.Entries[0].Values[0] {
+		t.Fatal("streaming update failed to reuse immutable retained entries")
+	}
+}
+
+func TestActivityOutputFailureSurvivesUnrelatedRevisions(t *testing.T) {
+	for _, unrelated := range []bool{false, true} {
+		t.Run(fmt.Sprintf("concurrent-observation-%v", unrelated), func(t *testing.T) {
+			source := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
+			output := new(feed.Retention).New()
+			source.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `false`", Native: &NativeItem{Output: output}}}})
+			first := source.Publication(new(Model), nil)
+			output.Finish(nil, new(1))
+			if unrelated {
+				source.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: "another observation"}}})
+			}
+			next := source.Publication(new(Model), nil)
+			if first.Entries[0].OutputFailed || !next.Entries[0].OutputFailed || next.Entries[0].Outputs[1] != output.Version() {
+				t.Fatal("output completion lost its failure or mutated the previous publication")
+			}
+			source.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 3, Agent: "Main", Kind: "text", Text: "later observation"}}})
+			if !source.Publication(new(Model), nil).Entries[0].OutputFailed {
+				t.Fatal("later semantic publication discarded previously enriched output facts")
+			}
+		})
 	}
 }

@@ -34,7 +34,7 @@ func PaintSessionStatus(label sessionpresentation.Label, now time.Time, colors t
 		return ""
 	}
 	if label.Alert {
-		return terminalui.Red + "✗ " + activityui.ErrorPreview(full) + terminalui.Reset
+		return terminalui.Red + "✗ " + presentation.ErrorPreview(full) + terminalui.Reset
 	}
 	if label.Running {
 		elapsed := time.Duration(0)

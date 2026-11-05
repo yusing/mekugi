@@ -39,7 +39,7 @@ func familyRuntime(h *Hub, parent *managedSession, frame Frame) *managedSession 
 func familyActivity(thread, text string) *activity.Publication {
 	entry := activity.Entry{Agent: "/root", Text: text, Values: []activity.Value{{Kind: "text", Body: text, From: "/root", To: "Main"}}}
 	return &activity.Publication{Entries: []activity.Entry{entry}, MainSummary: []activity.Entry{entry}, Roster: []activity.AgentRow{{Agent: activity.Agent{
-		AgentFacts: activity.AgentFacts{Name: "/root", Thread: thread, Responding: true, ContextKnown: true, ContextTokens: 42}, Summary: []activity.Entry{entry},
+		AgentFacts: activity.AgentFacts{Name: "/root", Thread: thread, Responding: true, ContextKnown: true, ContextTokens: 42}, Summary: []activity.Entry{entry}, Status: "responding",
 	}}}}
 }
 
@@ -232,8 +232,8 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 		{name: "failed while host idle", status: threadcontrol.Failed, state: "error", text: "error"},
 		{name: "interrupted with stale final", status: threadcontrol.Interrupted, host: activity.AgentFacts{Final: true}, state: "idle", text: "idle"},
 		{name: "working clears prior error", status: threadcontrol.Working, kind: "error", state: "working", text: "child activity"},
-		{name: "paused with stale activity", status: threadcontrol.Paused, host: activity.AgentFacts{Responding: true}, state: "idle", text: "paused"},
-		{name: "uncertain with stale activity", status: threadcontrol.Uncertain, host: activity.AgentFacts{Responding: true}, state: "idle", text: "paused"},
+		{name: "paused with stale activity", status: threadcontrol.Paused, host: activity.AgentFacts{Responding: true}, state: "paused", text: "paused"},
+		{name: "uncertain with stale activity", status: threadcontrol.Uncertain, host: activity.AgentFacts{Responding: true}, state: "paused", text: "paused"},
 		{name: "runtime-only fallback", host: activity.AgentFacts{Waiting: true}, state: "waiting", text: "Waiting for"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -248,6 +248,7 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 			host := &childFrame.Agents.Roster[0].Agent
 			host.Responding, host.Waiting, host.Final = tc.host.Responding, tc.host.Waiting, tc.host.Final
 			host.LatestKind = tc.kind
+			host.Status = host.ObservedStatus(tc.kind)
 			child.server.frame.Store(new(childFrame))
 			family, _ := h.Family("child")
 			rows := projectRoster(family.Agents, "/root").Agents
@@ -428,6 +429,9 @@ func TestFamilyLogicalRootReplacementKeepsOldWorkIsolated(t *testing.T) {
 	for _, row := range old.Agents.Roster {
 		if row.Agent.Thread == "original" && (row.Agent.Status != "Unavailable" || row.Agent.Responding) {
 			t.Fatalf("unavailable Main retained live state: %+v", row)
+		}
+		if row.Agent.Thread == "original" && projectRoster(&activity.Publication{Roster: []activity.AgentRow{row}}, "/root").Agents[0].State != "idle" {
+			t.Fatal("unavailable Main published an invalid browser lifecycle state")
 		}
 		if row.Agent.Thread == "replacement" {
 			t.Fatal("replacement Main entered the original family roster")

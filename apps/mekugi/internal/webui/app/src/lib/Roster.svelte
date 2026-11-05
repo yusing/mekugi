@@ -96,6 +96,7 @@
     done: "done",
     error: "alert",
     idle: "hollow",
+    paused: "hollow",
   };
   const tallyInk: Record<string, string> = { working: "text-accent", error: "text-negative" };
   const stateInk: Record<string, string> = { working: "text-ink", error: "text-negative" };
@@ -221,7 +222,9 @@
               />
             {:else if what}
               <span class="sr-only">Working:</span>
-              <span class="font-medium text-accent">{what.verb}</span>
+              <span class={["font-medium", what.failed ? "text-negative" : "text-accent"]}
+                >{what.verb}</span
+              >
               {#if what.html}<span>{@html what.html}</span>{/if}
             {:else}
               {stateLabel[agent.state]}{#if replied && agent.state !== "working"}<span

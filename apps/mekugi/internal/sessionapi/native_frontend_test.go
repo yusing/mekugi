@@ -4,6 +4,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -459,5 +460,81 @@ func TestNativeFrontendObservationReadsCurrentSharedState(t *testing.T) {
 	publication = message{}
 	if failure != nil || after.Cursor == before.Cursor || json.Unmarshal(after.Publication, &publication) != nil || string(publication.Review) != "null" {
 		t.Fatalf("review removal was not published: %+v failure=%v", after, failure)
+	}
+}
+
+func TestNativeFrontendPanelEncodingReuseAndUnchangedHeartbeat(t *testing.T) {
+	f := newFrontendFixture(t)
+	f.open(t, 914)
+	f.open(t, 915)
+	frame := Frame{Session: Session{Thread: "thread", Workspace: "/workspace", Title: strings.Repeat("title", 1000)}, Attachment: 1, Input: &Input{Reason: strings.Repeat("input", 10000)}}
+	if err := f.api.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	initial, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 914, Viewer: "diff"})
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	f.api.mu.Lock()
+	retained := f.api.nativePanel
+	inputDeferred := f.api.sharedDeferred["input"]
+	f.api.mu.Unlock()
+	var panel message
+	if json.Unmarshal(initial.Publication, &panel) != nil || panel.Input != nil || panel.Deferred.Input != nil || !inputDeferred {
+		t.Fatal("panel encoding changed ordinary delivery deferrals or included unrelated input")
+	}
+	for _, request := range []NativeFrontendRequest{{PID: 914, Viewer: "agents"}, {PID: 915, Viewer: "diff"}} {
+		observed, failure := f.call(t, "native/observe", request)
+		if failure != nil || string(observed.Publication) != string(initial.Publication) {
+			t.Fatalf("another observer lost shared publication: %+v %v", observed, failure)
+		}
+		f.api.mu.Lock()
+		reused := f.api.nativePanel == retained && len(f.api.subscribers) == 0
+		f.api.mu.Unlock()
+		if !reused {
+			t.Fatal("observer reencoded panels or materialized an unused shared subscription")
+		}
+	}
+	f.hub.mu.Lock()
+	var owner *rpcConnection
+	for connection := range f.hub.connections {
+		if connection.frontend.pid == 914 {
+			owner = connection
+		}
+	}
+	viewers := len(owner.frontend.viewers)
+	f.hub.mu.Unlock()
+	if viewers != 2 {
+		t.Fatal("mounted panels lost independent viewer leases")
+	}
+	// The same observation path sees an expired long-poll deadline without a
+	// wall-clock wait or a test-only production timeout setting.
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	value, failure := owner.observeFrontend(ctx, NativeFrontendRequest{After: initial.Cursor})
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	heartbeat := value.(NativeObservation)
+	if !heartbeat.Available || heartbeat.Cursor != initial.Cursor || heartbeat.Instance != initial.Instance || heartbeat.Attachment != initial.Attachment || heartbeat.Activation != initial.Activation || heartbeat.Displayed != initial.Displayed || heartbeat.Caller != initial.Caller || len(heartbeat.Publication) != 0 || heartbeat.Live != nil {
+		t.Fatalf("unchanged deadline did not retain identities with a lightweight heartbeat: %+v", heartbeat)
+	}
+	f.api.mu.Lock()
+	reused := f.api.nativePanel == retained
+	f.api.mu.Unlock()
+	if len(mustJSON(t, heartbeat))*2 >= len(mustJSON(t, initial)) || !reused {
+		t.Fatal("unchanged deadline retransferred or reencoded shared panel state")
+	}
+	t.Logf("unchanged heartbeat %d bytes versus initial publication %d bytes", len(mustJSON(t, heartbeat)), len(mustJSON(t, initial)))
+	frame.Session.Title = "changed"
+	if err := f.api.Publish(frame); err != nil {
+		t.Fatal(err)
+	}
+	changed, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 914, Instance: initial.Instance, Viewer: "diff", After: initial.Cursor})
+	f.api.mu.Lock()
+	reused = f.api.nativePanel == retained
+	f.api.mu.Unlock()
+	if failure != nil || changed.Cursor == initial.Cursor || len(changed.Publication) == 0 || reused {
+		t.Fatal("changed owner revision reused stale detached panels")
 	}
 }

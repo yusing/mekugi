@@ -289,7 +289,7 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 	if block.OutputSnapshot != nil {
 		block.Running = !block.OutputSnapshot.Done
 	}
-	verb := RowVerb(block)
+	verb := block.RowVerb()
 	if block.Kind == "compaction" {
 		block.Verb, verb = "", "Context compacted"
 		block.Label = ""

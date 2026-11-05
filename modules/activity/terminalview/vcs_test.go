@@ -22,17 +22,17 @@ func TestUISnapshotMRunCommit(t *testing.T) {
 	}
 	block := Block{Value: values[0]}
 	var p Painter
-	if got := RowVerb(block); got != "Commit" {
+	if got := block.RowVerb(); got != "Commit" {
 		t.Fatalf("requested verb = %q", got)
 	}
 	output := "[main 3a1f9c2] fix: keep commit activity\n 1 file changed, 2 insertions(+)\n"
 	block.Changes, _ = presentation.VCSOutputRows(source, "/workspace", output)
-	if got := RowVerb(block); got != "Committed" {
+	if got := block.RowVerb(); got != "Committed" {
 		t.Fatalf("observed verb = %q", got)
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/mrun_commit.txt", append(p.Block(block, 80), "plain"), 80)
 	block.ExitCode = 1
-	if got := RowVerb(block); got != "Commit" {
+	if got := block.RowVerb(); got != "Commit" {
 		t.Fatalf("failed verb = %q", got)
 	}
 }
@@ -52,7 +52,7 @@ func TestVCSRowsShowTheirResult(t *testing.T) {
 	}
 	// Without a named commit, output does not make the request a recorded commit.
 	commit.Changes = []ChangeRow{{Code: "M", Label: "a.go", Added: 2, Removed: 1}}
-	if got := RowVerb(commit); got != "Commit" {
+	if got := commit.RowVerb(); got != "Commit" {
 		t.Fatalf("unnamed commit verb = %q", got)
 	}
 	commit.Changes = append(commit.Changes, ChangeRow{Code: "A", Label: "doc/b.md", Added: 9}, ChangeRow{Footer: true, Label: "3a1f9c2", Note: "on main · 2 files", Added: 11, Removed: 1})
@@ -74,7 +74,7 @@ func TestVCSRowsShowTheirResult(t *testing.T) {
 		t.Fatalf("roster summary = %q", got)
 	}
 	failed := Block{Kind: "op", Verb: "Commit", Label: "`fix: x` · git", ExitCode: 1, Tail: []string{"hook failed"}}
-	if got := vcsRows(&p, failed, 80); !strings.HasPrefix(got, "Commit fix: x · git · exit 1\n") || RowVerb(failed) != "Commit" {
+	if got := vcsRows(&p, failed, 80); !strings.HasPrefix(got, "Commit fix: x · git · exit 1\n") || failed.RowVerb() != "Commit" {
 		t.Fatalf("failed commit =\n%s", got)
 	}
 	if raw := p.Block(failed, 80)[0]; !strings.HasPrefix(raw, terminalui.Red) {

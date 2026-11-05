@@ -93,9 +93,16 @@ func TestFamilyColdRosterLifecycleReplacesPriorStatus(t *testing.T) {
 		frame := Frame{Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{
 			Thread: "child", Status: "error", LatestKind: "error",
 		}}}}, Members: []threadcontrol.Participant{{Thread: "child", Task: "/root/child", Status: tc.state}}}
-		got := familyRoster(&frame, nil).Roster[0].Agent.Status
+		publication := familyRoster(&frame, nil)
+		got := publication.Roster[0].Agent.Status
 		if got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.state, got, tc.want)
+		}
+		if tc.state == threadcontrol.Paused || tc.state == threadcontrol.Uncertain {
+			projected := projectRoster(publication, "/root").Agents[0]
+			if projected.State != "paused" || projected.WorkSince != 0 {
+				t.Errorf("cold paused member lost its state or restarted its clock: %+v", projected)
+			}
 		}
 	}
 }

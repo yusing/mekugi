@@ -130,7 +130,7 @@ func TestWaitingRosterProjection(t *testing.T) {
 	lifecycle.SetWaiting(true, time.Unix(100, 0))
 	wait := &activitypresentation.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "1s", Live: true}
 	facts := activitypresentation.AgentFacts{Name: "/root", Waiting: lifecycle.Waiting, Responding: lifecycle.Responding, Final: lifecycle.Final, Wait: wait}
-	roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error"}}}}, "/root")
+	roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error", Status: "waiting"}}}}, "/root")
 	got := roster.Agents[0]
 	if got.State != "waiting" || got.Wait == nil || got.Wait.Body != "Waiting for" || len(got.Wait.Waits) != 1 || got.Wait.Waits[0].Name != "/root/worker" || got.Wait.WaitTimeout != "1s" {
 		t.Fatalf("waiting lifecycle lost its publication: %+v", got)
@@ -139,8 +139,8 @@ func TestWaitingRosterProjection(t *testing.T) {
 	if got.Wait.Waits[0].Name != "/root/worker" {
 		t.Fatal("published wait borrowed mutable owner data")
 	}
-	facts.Waiting = false
-	settled := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error"}}}}, "/root")
+	// Published status supersedes stale lifecycle flags and their retained wait.
+	settled := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: facts, LatestKind: "error", Status: "error"}}}}, "/root")
 	if settled.Agents[0].State != "error" || settled.Agents[0].Wait != nil {
 		t.Fatal("settled agent retained its prior wait")
 	}
@@ -189,7 +189,7 @@ func TestCoordinationEndpointsUseRuntimeCaller(t *testing.T) {
 	roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{
 		AgentFacts: activitypresentation.AgentFacts{Name: "/root/child", Responding: true}, Summary: []activitypresentation.Entry{retained},
 	}}}}, "/root/child")
-	if summary := roster.Agents[0].Activity.Values[0]; summary.From != value.From || summary.To != value.To || summary.Body != "" {
+	if summary := roster.Agents[0].Activity.Values[0]; summary.From != value.From || summary.To != value.To || summary.Code != "" || summary.Label != "" {
 		t.Fatalf("roster discarded direction or copied the message body: %+v", summary)
 	}
 	for _, endpoints := range [][2]string{{"/root", "Main"}, {"/root", "/root/parent"}, {"unknown", ""}} {
@@ -207,7 +207,7 @@ func TestCoordinationEndpointsUseRuntimeCaller(t *testing.T) {
 
 func TestRosterActivityUsesSharedSummary(t *testing.T) {
 	for _, kind := range []string{"progress", "reasoning"} {
-		item := activitypresentation.ItemContent{Kind: kind, Text: "Checking callers", Observed: time.Unix(100, 0)}
+		item := activitypresentation.ItemContent{Kind: kind, Text: "Checking callers", Observed: time.Unix(100, 0), Details: &activitypresentation.ItemDetails{ToolDetail: "retained protocol evidence"}}
 		summary := activitypresentation.Entry{Facts: item.Facts, Values: item.Values()}
 		roster := projectRoster(&activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{
 			AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Responding: true}, Summary: []activitypresentation.Entry{summary},
@@ -216,8 +216,12 @@ func TestRosterActivityUsesSharedSummary(t *testing.T) {
 		if got == nil || got.Kind != kind || got.Observed != 100_000 || len(got.Values) != 1 {
 			t.Fatalf("%s summary unavailable without a feed entry: %+v", kind, got)
 		}
-		if got.Text != "" || got.Values[0].Body != "Checking callers" {
+		compact := got.Values[0]
+		if kind == "progress" && (compact.Kind != "progress" || compact.Body != item.Text) || kind == "reasoning" && compact.Label != item.Text || got.Text != "" {
 			t.Fatalf("summary content lost or duplicated: %+v", got)
+		}
+		if compact.DetailCode != "" || compact.Code != "" || len(compact.Tail) != 0 {
+			t.Fatalf("compact progress copied retained source/output: %+v", compact)
 		}
 	}
 }

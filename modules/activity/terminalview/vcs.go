@@ -2,7 +2,6 @@ package terminalview
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/modules/activity/presentation"
@@ -13,17 +12,10 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
-// committed reports a commit the host completed and whose output named the
-// commit it recorded; without that evidence the row keeps the request verb.
-func (b Block) committed() bool {
-	return b.Verb == "Commit" && !b.Running && !b.Skipped && b.ExitCode == 0 &&
-		slices.ContainsFunc(b.Changes, func(row ChangeRow) bool { return row.Footer }) && b.VCS()
-}
-
 // vcsRow lays out a VCS operation on one row where it fits: the verb, its
 // heading cut short to leave room for the source, then any exit.
 func (p *Painter) vcsRow(block Block, width int) []string {
-	verb, color := RowVerb(block), VerbColor(block.Verb)
+	verb, color := block.RowVerb(), VerbColor(block.Verb)
 	if block.ExitCode != 0 {
 		color = terminalui.Red
 	}
@@ -92,5 +84,5 @@ func (p *Painter) vcsSummary(block Block) string {
 	if block.ExitCode != 0 {
 		detail += " " + terminalui.Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 	}
-	return SummaryVerb(RowVerb(block)) + detail
+	return SummaryVerb(block.RowVerb()) + detail
 }

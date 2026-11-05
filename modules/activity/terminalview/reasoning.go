@@ -44,7 +44,7 @@ func CompactReasoning(blocks []Block) []Block {
 func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
 	label := block.Label
 	if label == "" {
-		label = presentation.ReasoningSections(block.Body)[0].Label
+		label = block.ReasoningLabel()
 	}
 	if !block.Live && block.Thought >= time.Second {
 		label = reasoningFor(p.Inline(label), presentation.FormatDuration(block.Thought))
@@ -108,7 +108,7 @@ func (p *Painter) ReasoningElided(block Block, width int) bool {
 
 func (p *Painter) reasoningContent(block Block, width int) (rows []string, short, titleOnly bool) {
 	if block.Label == "" {
-		block.Label = presentation.ReasoningSections(block.Body)[0].Label
+		block.Label = block.ReasoningLabel()
 	}
 	body := presentation.ReasoningSummaryBody(block.Body)
 	if body == "" {

@@ -50,6 +50,34 @@ type NativeObservation struct {
 	Live        *ContentReference           `json:"live,omitempty"`
 }
 
+// The shared payload excludes physical frontend identities. Keep only its
+// latest detached encoding, under Server.mu, for every panel observing it.
+type nativePanelKey struct {
+	Attachment string
+	Revisions  [4]uint64
+}
+
+type nativePanelPublication struct {
+	key  nativePanelKey
+	data jsontext.Value
+}
+
+func (s *Server) panelPublication(key nativePanelKey) (jsontext.Value, error) {
+	if s.nativePanel != nil && s.nativePanel.key == key {
+		return s.nativePanel.data, nil
+	}
+	review := s.review
+	if review == nil {
+		review = jsontext.Value("null")
+	}
+	publication, err := s.encodeShared("snapshot", message{Session: &s.session, Roster: s.roster, Review: review, Live: s.livePreviews}, true)
+	if err != nil {
+		return nil, err
+	}
+	s.nativePanel = &nativePanelPublication{key: key, data: publication.Data}
+	return publication.Data, nil
+}
+
 // Fields through changed are guarded by Hub.mu, alongside physical connection
 // membership. Selected source has its own lock: indexing cannot block delivery.
 type nativeFrontend struct {
@@ -286,13 +314,6 @@ func (c *rpcConnection) frontendRequest(ctx context.Context, method string, para
 }
 
 func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFrontendRequest) (any, *RPCError) {
-	var observation *rpcSubscription
-	var server *Server
-	defer func() {
-		if observation != nil {
-			observation.close()
-		}
-	}()
 	for {
 		h := c.endpoint.hub
 		h.mu.Lock()
@@ -312,35 +333,30 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		if failure != nil {
 			return nil, failure
 		}
-		if selected.server != server {
-			if observation != nil {
-				observation.close()
-			}
-			server = selected.server
-			observation, failure = server.subscribe(ctx)
-			if failure != nil {
-				return nil, failure
-			}
-		}
-		// Shared owner revisions identify panel changes. Subscription events only
-		// wake this read; they do not become a second materialized publication.
+		server := selected.server
+		// Observe owner revisions directly. A full shared subscription would
+		// materialize an unused feed snapshot for each short-lived panel read.
 		server.mu.Lock()
+		if server.panelChanged == nil {
+			server.panelChanged = make(chan struct{})
+		}
+		panelChanged := server.panelChanged
+		key := nativePanelKey{Attachment: server.readAttachment, Revisions: [4]uint64{server.contentVersions["session"], server.rosterRevision, server.contentVersions["review-info"], server.contentVersions["live"]}}
 		identity, _ := json.Marshal(&struct {
 			Instance, Attachment, Source, Caller string
 			Activation                           uint64
 			Displayed                            sessionpresentation.Thread
 			Revisions                            [4]uint64
-		}{result.Instance, result.Attachment, server.readAttachment, result.Caller, result.Activation, result.Displayed,
-			[4]uint64{server.contentVersions["session"], server.rosterRevision, server.contentVersions["review-info"], server.contentVersions["live"]}}, encoding)
+		}{result.Instance, result.Attachment, key.Attachment, result.Caller, result.Activation, result.Displayed, key.Revisions}, encoding)
 		result.Cursor = fmt.Sprintf("%x", sha256.Sum256(identity))
 		ready := server.published
 		if ready && (result.Cursor != request.After || ctx.Err() == context.DeadlineExceeded) {
-			review := server.review
-			if review == nil {
-				review = jsontext.Value("null")
+			if result.Cursor == request.After {
+				server.mu.Unlock()
+				return result, nil
 			}
-			publication, err := server.encodeShared("snapshot", message{Session: &server.session, Roster: server.roster, Review: review, Live: server.livePreviews})
-			result.Publication = publication.Data
+			publication, err := server.panelPublication(key)
+			result.Publication = publication
 			result.Live = &ContentReference{Kind: "live", Attachment: server.readAttachment, Revision: server.contentVersions["live"]}
 			server.mu.Unlock()
 			if err != nil {
@@ -359,10 +375,7 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		case <-sub.ctx.Done():
 		case <-changed:
 		case <-nativeChanged:
-		case _, ok := <-observation.events:
-			if !ok {
-				return NativeObservation{Available: false}, nil
-			}
+		case <-panelChanged:
 		}
 	}
 }

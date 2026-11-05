@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -19,9 +20,10 @@ const (
 // One selected source belongs to a physical frontend, not a page-sized cache.
 // Independent terminals retain their own index without evicting each other.
 type selectedContent struct {
-	server *Server
-	ref    ContentReference
-	source string
+	server  *Server
+	ref     ContentReference
+	source  string
+	origins []changes.Origin
 }
 
 func (s *Server) selectedContent(ref ContentReference, offset uint64, cached **selectedContent) (any, *RPCError) {
@@ -47,7 +49,9 @@ func (s *Server) selectedContent(ref ContentReference, offset uint64, cached **s
 		}
 		full := value.(ContentResult)
 		var pieces []string
+		var origins []changes.Origin
 		if full.Review != nil {
+			origins = full.Review.Origins
 			s.mu.Lock()
 			workspace := s.reviewWorkspace
 			s.mu.Unlock()
@@ -79,18 +83,22 @@ func (s *Server) selectedContent(ref ContentReference, offset uint64, cached **s
 		for i, piece := range pieces {
 			pieces[i] = strings.TrimSuffix(piece, "\n") + "\n"
 		}
-		*cached = &selectedContent{server: s, ref: ref, source: strings.Join(pieces, "")}
+		*cached = &selectedContent{server: s, ref: ref, source: strings.Join(pieces, ""), origins: origins}
 	}
 	page, err := linePage((*cached).source, offset)
 	if err != nil {
 		return nil, rpcFailure(413, err.Error())
 	}
+	if offset == 0 {
+		page.Origins = (*cached).origins
+	}
 	return page, nil
 }
 
 type Lines struct {
-	Lines []string `json:"lines"`
-	Next  *uint64  `json:"next,omitempty"`
+	Origins []changes.Origin `json:"origins,omitempty"`
+	Lines   []string         `json:"lines"`
+	Next    *uint64          `json:"next,omitempty"`
 }
 
 // Offsets are source bytes at line boundaries, so continuation never scans an

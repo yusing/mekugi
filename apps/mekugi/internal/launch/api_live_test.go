@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -180,9 +181,10 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 		} `json:"review"`
 		Roster struct {
 			Agents []struct {
-				Name  string `json:"name"`
-				State string `json:"state"`
-				Wait  *struct {
+				Content *sessionapi.ContentReference `json:"content"`
+				Name    string                       `json:"name"`
+				State   string                       `json:"state"`
+				Wait    *struct {
 					Body        string `json:"body"`
 					WaitTimeout string `json:"waitTimeout"`
 					Waits       []struct {
@@ -209,6 +211,18 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	}
 	for _, agent := range state.Roster.Agents {
 		if agent.Name == "/root" {
+			if agent.Content != nil {
+				var content struct {
+					Agent jsontext.Value `json:"agent"`
+				}
+				if err := json.Unmarshal(readAPIResource(t, endpoint, "content", "main", agent.Content), &content); err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal(content.Agent, &agent); err != nil {
+					t.Fatal(err)
+				}
+				t.Logf("hydrated %d-byte deferred roster row", len(content.Agent))
+			}
 			if agent.State != "waiting" || agent.Wait == nil || agent.Wait.Body != "Waiting for" || agent.Wait.WaitTimeout != "1s" || len(agent.Wait.Waits) != 1 || agent.Wait.Waits[0].Name != "all" {
 				t.Fatalf("shared roster lost canonical logical wait: %s", event.Data)
 			}

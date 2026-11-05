@@ -38,9 +38,16 @@ const (
 // Retention bounds the output a session keeps, releasing the oldest settled
 // output first. Output still running is never released.
 type Retention struct {
-	outputs []*Output
-	bytes   int
+	outputs  []*Output
+	bytes    int
+	revision uint64
 }
+
+// Revision changes whenever any retained output changes, including release.
+func (r *Retention) Revision() uint64 { return r.revision }
+
+// Retention is the actual output owner, shared by the attachment's feeds.
+func (o *Output) Retention() *Retention { return o.owner }
 
 // New starts retaining a command's output.
 func (r *Retention) New() *Output {
@@ -163,6 +170,9 @@ func (o *Output) Version() int {
 	return o.version
 }
 
+// Failed reports an observed nonzero host exit independently of retained bytes.
+func (o *Output) Failed() bool { return o.exited && o.exit != 0 }
+
 // HasContent checks for nonblank retained text without copying the full stream.
 func (o *Output) HasContent() bool {
 	for _, line := range o.lines {
@@ -175,6 +185,9 @@ func (o *Output) HasContent() bool {
 
 func (o *Output) changed() {
 	o.version++
+	if o.owner != nil {
+		o.owner.revision++
+	}
 	o.snapshot = nil
 }
 

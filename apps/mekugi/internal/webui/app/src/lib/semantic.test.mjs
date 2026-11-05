@@ -159,84 +159,47 @@ test("deferred identity retention follows its feed and historical entry owners",
   source.close();
 });
 
-test("roster activity uses observed progress and collapsed reasoning labels", () => {
-  const labels = { "agent:main/worker/reviewer": "worker/reviewer" };
-  const label = (name) => labels[name] ?? name;
-  for (const [from, to, html] of [
-    ["child", "main", "child → main"],
-    ["main", "child", "main → child"],
-    ["unknown_*", "", "unknown_*"],
-  ]) {
-    assert.deepEqual(doing({ kind: "reply", values: [{ kind: "message", from, to }] }, label), {
-      verb: "",
-      html,
-    });
-  }
+const rosterEntry = (summary) => ({ values: [summary] });
+
+test("roster activity renders the shared semantic summaries", () => {
+  const labels = new Map([["/root/worker", "worker"]]);
+  const label = (name) => labels.get(name) ?? name;
+  assert.deepEqual(doing(rosterEntry({ from: "/root/worker", to: "main" }), label), {
+    verb: "",
+    html: "worker → main",
+  });
   assert.deepEqual(
     doing(
-      {
-        kind: "progress",
-        values: [
-          {
-            body: "Waiting for",
-            kind: "progress",
-            waits: [{ name: "agent:main/worker/reviewer" }],
-          },
-        ],
-      },
+      rosterEntry({ kind: "progress", body: "Waiting for", waits: [{ name: "/root/worker" }] }),
       label,
     ),
-    { verb: "", html: "Waiting for worker/reviewer" },
+    { verb: "", html: "Waiting for worker" },
   );
+  assert.deepEqual(doing(rosterEntry({ label: "Checking callers" }), label), {
+    verb: "",
+    html: "Checking callers",
+  });
+  assert.deepEqual(doing(rosterEntry({ verb: "Thinking" }), label), { verb: "Thinking", html: "" });
   assert.deepEqual(
-    doing(
-      { kind: "progress", values: [{ kind: "progress", body: "Connecting to provider" }] },
-      label,
-    ),
-    { verb: "", html: "Connecting to provider" },
+    doing(rosterEntry({ verb: "Ran", code: "import sys", label: "· via `python3`" }), label),
+    {
+      verb: "Ran",
+      html: "<code>import sys</code> · via <code>python3</code>",
+    },
   );
-  assert.deepEqual(
-    doing(
-      {
-        kind: "reasoning",
-        values: [
-          {
-            kind: "summary",
-            label: "Checking callers",
-            body: "Private to the expanded reasoning view",
-            live: true,
-          },
-        ],
-      },
-      label,
-    ),
-    { verb: "", html: "Checking callers" },
-  );
-  assert.deepEqual(
-    doing(
-      {
-        kind: "reasoning",
-        values: [{ kind: "summary", body: "A long body\nwith another line", live: true }],
-      },
-      label,
-    ),
-    { verb: "Thinking", html: "" },
-  );
-  const program = {
-    kind: "op",
-    verb: "Run",
-    label: "· via `python3`",
-    code: "import sys\nprint(1)",
-  };
-  assert.match(
-    doing({ kind: "tool", values: [program] }, label).html,
-    /^<code>import sys<\/code> · via <code>python3<\/code>$/,
-  );
-  // Program text is literal, even where it holds Markdown or HTML.
   assert.equal(
-    doing({ kind: "tool", values: [{ ...program, code: "print(`<b>`)" }] }, label).html,
-    "<code>print(`&lt;b&gt;`)</code> · via <code>python3</code>",
+    doing(rosterEntry({ code: "print(`<b>`)" }), label).html,
+    "<code>print(`&lt;b&gt;`)</code>",
   );
+  assert.equal(
+    doing(rosterEntry({ verb: "Hook Failed", label: "Stop", failed: true }), label).verb,
+    "Hook Failed",
+  );
+  assert.match(
+    doing(rosterEntry({ verb: "Hook Failed", label: "Stop", failed: true }), label).html,
+    /class="text-negative"/,
+  );
+  assert.equal(doing({ kind: "final" }, label), undefined);
 });
 const { view, show } = await import("./view.svelte.ts");
 const { prepareAttachments } = await import("./attachments.ts");

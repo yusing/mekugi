@@ -67,15 +67,20 @@ type Record[S Source] struct {
 // Model owns one semantic feed. The renderer keeps disclosure, animation, layout and selection.
 // Main and child feeds share an attached Session but never duplicate their records.
 type Model[S Source, A AgentSource] struct {
-	Entries           []Record[S]
-	Agents            []A
-	Revision, LastSeq uint64
-	LineCounts        map[string]diffmodel.Counts
-	NetCounts         *diffmodel.Counts
-	retiredSkills     map[string]SkillSet
-	skillHistory      map[string]bool
-	skills            map[string]SkillSet
-	skillsRevision    uint64
+	reasoningPrevious   map[int]int
+	Entries             []Record[S]
+	Agents              []A
+	Revision, LastSeq   uint64
+	LineCounts          map[string]diffmodel.Counts
+	NetCounts           *diffmodel.Counts
+	retiredSkills       map[string]SkillSet
+	skillHistory        map[string]bool
+	skills              map[string]SkillSet
+	skillsRevision      uint64
+	publicationEntries  []Entry
+	publicationRevision uint64
+	latest              map[string]int
+	summaries           map[string]Summary
 }
 type Session[S Source, A AgentSource] struct {
 	Main, Children Model[S, A]
@@ -129,10 +134,9 @@ func (m *Model[S, A]) Remove(from, to int) {
 	m.skills = nil
 }
 func (m *Model[S, A]) Latest(name string) int {
-	for i, entry := range slices.Backward(m.Entries) {
-		if entry.Source.ActivityFacts().Agent == name {
-			return i
-		}
+	m.PublishedEntries()
+	if latest, exists := m.latest[name]; exists {
+		return latest
 	}
 	return -1
 }
@@ -145,7 +149,7 @@ func (m *Model[S, A]) Status(agent A) string {
 	}
 	kind := ""
 	if latest := m.Latest(facts.Name); latest >= 0 {
-		kind = m.Entries[latest].Source.ActivityFacts().Kind
+		kind = m.publicationEntries[latest].Kind
 	}
 	return facts.ObservedStatus(kind)
 }
@@ -213,14 +217,17 @@ func (m *Model[S, A]) Roster() []RosterRow[A] {
 	slices.SortStableFunc(agents, func(a, b A) int {
 		return cmp.Compare(priorities[a.ActivityAgent().Name], priorities[b.ActivityAgent().Name])
 	})
+	children := make(map[string][]A, len(agents))
+	for _, agent := range agents {
+		under := parent(agent.ActivityAgent().Name)
+		children[under] = append(children[under], agent)
+	}
 	var rows []RosterRow[A]
 	var visit func(string, int)
 	visit = func(under string, depth int) {
-		for _, agent := range agents {
-			if parent(agent.ActivityAgent().Name) == under {
-				rows = append(rows, RosterRow[A]{agent, depth})
-				visit(agent.ActivityAgent().Name, depth+1)
-			}
+		for _, agent := range children[under] {
+			rows = append(rows, RosterRow[A]{agent, depth})
+			visit(agent.ActivityAgent().Name, depth+1)
 		}
 	}
 	visit("", 0)
@@ -279,30 +286,18 @@ type Summary struct {
 }
 
 func (m *Model[S, A]) Summary(owner string, root bool) Summary {
-	for i, record := range slices.Backward(m.Entries) {
-		if len(record.Values) == 0 {
-			continue
-		}
-		facts := record.Source.ActivityFacts()
-		if facts.Agent == owner || facts.Assignment && facts.AssignmentTo == owner {
-			summary := Summary{Index: i}
-			if facts.Kind == "reasoning" {
-				for j := i - 1; j >= 0; j-- {
-					previous := m.Entries[j].Source.ActivityFacts()
-					if previous.Agent != facts.Agent {
-						continue
-					}
-					if previous.Kind != "reasoning" {
-						break
-					}
-					summary.Earlier = append(summary.Earlier, j)
-				}
-			}
-			return summary
-		}
-		if root && len(record.Values) == 1 && record.Values[0].Kind == "message" && record.Values[0].To == "/root" {
-			return Summary{Index: i, Incoming: true}
+	m.PublishedEntries()
+	selected, exists := m.summaries[owner]
+	if incoming, found := m.summaries[""]; root && found && (!exists || incoming.Index > selected.Index) {
+		selected, exists = incoming, true
+	}
+	if !exists {
+		return Summary{Index: -1}
+	}
+	if m.publicationEntries[selected.Index].Kind == "reasoning" {
+		for i, found := m.reasoningPrevious[selected.Index]; found; i, found = m.reasoningPrevious[i] {
+			selected.Earlier = append(selected.Earlier, i)
 		}
 	}
-	return Summary{Index: -1}
+	return selected
 }

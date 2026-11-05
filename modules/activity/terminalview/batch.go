@@ -80,7 +80,7 @@ func (p *Painter) batchRow(block Block, width int) []string {
 		}
 		at := slices.IndexFunc(tallies, func(t *tally) bool { return t.verb == member.Verb && t.order == order })
 		if at < 0 {
-			tallies = append(tallies, &tally{order: order, verb: member.Verb, label: RowVerb(Block{Value: member})})
+			tallies = append(tallies, &tally{order: order, verb: member.Verb, label: member.RowVerb()})
 			at = len(tallies) - 1
 		}
 		t := tallies[at]

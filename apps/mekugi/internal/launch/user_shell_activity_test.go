@@ -53,10 +53,10 @@ func TestUISnapshotUserShellActivity(t *testing.T) {
 			now = now.Add(10 * time.Second)
 			settleActivity(now, view)
 			blocks := view.blocks(0)
-			if len(blocks) != 1 || !strings.HasPrefix(activityui.RowVerb(blocks[0]), "You ") || blocks[0].Code != item.Command || blocks[0].Collapsed || blocks[0].Collapsible() {
+			if len(blocks) != 1 || !strings.HasPrefix(blocks[0].RowVerb(), "You ") || blocks[0].Code != item.Command || blocks[0].Collapsed || blocks[0].Collapsible() {
 				t.Fatalf("user command lost source or disclosure: %+v", blocks)
 			}
-			if view.blocks(1)[0].Verb != "Read" || activityui.RowVerb(view.blocks(2)[0]) != "Ran" {
+			if view.blocks(1)[0].Verb != "Read" || view.blocks(2)[0].RowVerb() != "Ran" {
 				t.Fatal("agent command display changed")
 			}
 			want := "You ran"

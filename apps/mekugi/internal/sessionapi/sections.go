@@ -21,7 +21,7 @@ type DeferredSections struct {
 
 // encodeShared leaves RPC envelope room after two feed windows and a roster
 // window. Auxiliary content has explicit references instead of silent loss.
-func (s *Server) encodeShared(kind string, m message) (publication, error) {
+func (s *Server) encodeShared(kind string, m message, panel bool) (publication, error) {
 	refs := &DeferredSections{}
 	ref := func(kind string) *ContentReference {
 		return &ContentReference{Attachment: s.readAttachment, Kind: kind, Revision: s.contentVersions[kind]}
@@ -31,9 +31,12 @@ func (s *Server) encodeShared(kind string, m message) (publication, error) {
 	if err != nil {
 		return publication{}, err
 	}
-	input, err := json.Marshal(s.input, encoding)
-	if err != nil {
-		return publication{}, err
+	var input []byte
+	if !panel {
+		input, err = json.Marshal(s.input, encoding)
+		if err != nil {
+			return publication{}, err
+		}
 	}
 	type sectionSize struct {
 		kind          string
@@ -41,6 +44,12 @@ func (s *Server) encodeShared(kind string, m message) (publication, error) {
 	}
 	sizes := []sectionSize{{"session", len(session), 1400}, {"input", len(input), 600}, {"prompts", len(s.prompts), 250}, {"status", len(s.status), 600}, {"review-info", len(s.review), 1300}, {"live", len(s.livePreviews), 250}}
 	total := s.main.windowBytes + s.agents.windowBytes + len(s.roster) + 512
+	if panel {
+		// Companion panels contain only these sections. Their budget and
+		// deferrals are independent of the ordinary shared feed's delivery.
+		sizes = []sectionSize{{"session", len(session), 1400}, {"review-info", len(s.review), 1300}, {"live", len(s.livePreviews), 250}}
+		total = len(s.roster) + 512
+	}
 	for _, section := range sizes {
 		total += section.size
 	}
@@ -58,7 +67,11 @@ func (s *Server) encodeShared(kind string, m message) (publication, error) {
 	}
 	// If a smaller latest window makes an auxiliary section fit again, deliver
 	// it even when the auxiliary owner itself did not change this publication.
-	for kind := range s.sharedDeferred {
+	previous := s.sharedDeferred
+	if panel {
+		previous = nil
+	}
+	for kind := range previous {
 		if deferred[kind] {
 			continue
 		}
@@ -77,7 +90,9 @@ func (s *Server) encodeShared(kind string, m message) (publication, error) {
 			m.Live = s.livePreviews
 		}
 	}
-	s.sharedDeferred = deferred
+	if !panel {
+		s.sharedDeferred = deferred
+	}
 	if deferred["session"] {
 		refs.Session = ref("session")
 		if m.Session != nil {

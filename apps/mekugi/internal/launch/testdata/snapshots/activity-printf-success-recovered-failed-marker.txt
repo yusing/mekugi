@@ -1,5 +1,5 @@
 AGENTS  1 agents · 0 responding                                                              FOLLOW
- ✓ probe  Run printf 'Recovered rich-cli dependenc…                                                
+ ✓ probe  Ran printf 'Recovered rich-cli dependenc…                                                
 ───────────────────────────────────────────────────────────────────────────────────────────────────
 ● probe                                                                                    12:00:00
 ▎ Ran test -f /tmp/.tmpw4Pr3l/pyproject.toml

@@ -25,7 +25,7 @@ func TestCommandClipPreservesWrappedRows(t *testing.T) {
 				for _, budget := range []int{1, 2, 5, len(full), len(full) + 1} {
 					for _, hover := range []bool{false, true} {
 						block.SourceRows, block.Hovered = budget, hover
-						want := clipSource(full, block, strings.Repeat(" ", block.cell(RowVerb(block))))
+						want := clipSource(full, block, strings.Repeat(" ", block.cell(block.RowVerb())))
 						if got := p.Block(block, width); !slices.Equal(got, want) {
 							t.Fatalf("width=%d budget=%d layout=%v hover=%v: got %q, want %q", width, budget, layout, hover, got, want)
 						}

@@ -304,7 +304,7 @@ func (m *Main) noticeBorder(status sessionpresentation.MainStatus, now time.Time
 	// In compact panes the error takes precedence over the session caption.
 	plain := ansi.Strip(label)
 	if before, _, ok := strings.Cut(plain, "✗ "); ok && ansi.StringWidth(before)+4 > room {
-		label = terminalui.Red + "✗ " + activityui.ErrorPreview(full) + terminalui.Reset
+		label = terminalui.Red + "✗ " + activitypresentation.ErrorPreview(full) + terminalui.Reset
 	}
 	details := activityui.ErrorHasDetails(activityui.Block{Body: full})
 	if details && !strings.HasSuffix(ansi.Strip(label), "…") {

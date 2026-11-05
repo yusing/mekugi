@@ -493,10 +493,10 @@ func (v *View) NativeGlyph(agent activitypresentation.Agent) string {
 // AgentState preserves lifecycle states when idle, and shares the detailed
 // activity summary while an agent is working.
 func (v *View) AgentState(agent activitypresentation.Agent, width int, now time.Time) string {
-	switch {
-	case agent.Paused:
+	switch agent.Status {
+	case "paused":
 		return terminalui.Dim + "paused" + terminalui.Undim
-	case agent.Waiting:
+	case "waiting":
 		wait := Block{Kind: "progress", Body: "Waiting for", Live: true}
 		if agent.Wait != nil {
 			wait.Value = *agent.Wait
@@ -505,14 +505,18 @@ func (v *View) AgentState(agent activitypresentation.Agent, width int, now time.
 			wait.Body += " " + agent.WaitingFor
 		}
 		return v.Painter.Summary([]Block{wait}, width)
-	case agent.LatestKind == "error":
+	case "error":
 		return terminalui.Red + "error" + terminalui.Reset
-	case !agent.Responding && agent.Final:
+	case "answered":
 		return terminalui.Dim + "done" + terminalui.Undim
-	case !agent.Responding:
+	case "":
 		return terminalui.Dim + "idle" + terminalui.Undim
-	case len(agent.Summary) == 0:
-		return "working"
+	case "responding":
+		if len(agent.Summary) == 0 {
+			return "working"
+		}
+	default:
+		return terminalui.Dim + agent.Status + terminalui.Undim
 	}
 	summary, _ := v.Current(agent, now, width)
 	return summary

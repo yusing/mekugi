@@ -20,9 +20,11 @@ func TestRosterSummaryFormatting(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		for _, source := range []string{"Run `git status --short`", "Run\n```bash\ngit status --short\n```"} {
-			summary := p.Summary(parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: source}), 80)
-			command := strings.TrimPrefix(summary, activityui.SummaryVerb("Run"))
-			if ansi.Strip(summary) != "Run git status --short" || command == ansi.Strip(command) {
+			blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: source})
+			summary := p.Summary(blocks, 80)
+			verb := blocks[0].RowVerb()
+			command := strings.TrimPrefix(summary, activityui.SummaryVerb(verb))
+			if ansi.Strip(summary) != verb+" git status --short" || command == ansi.Strip(command) {
 				t.Fatalf("command lost syntax highlighting: %q", summary)
 			}
 		}

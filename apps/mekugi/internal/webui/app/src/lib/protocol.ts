@@ -52,7 +52,7 @@ import type {
   status,
   savedReview,
 } from "../../../../sessionapi/protocol.ts";
-export type AgentState = "working" | "waiting" | "error" | "done" | "idle";
+export type AgentState = "working" | "waiting" | "error" | "done" | "idle" | "paused";
 export type Agent = agent & { state: AgentState };
 export type Roster = Omit<roster, "agents"> & { agents: Agent[] };
 export type FeedChange = Partial<Omit<feedPatch, "entries">> & { entries?: entry[] };

@@ -27,7 +27,9 @@ func (v *Model[S, A]) ActiveSkills() map[string]SkillSet {
 	for owner, names := range v.retiredSkills {
 		sets[owner] = slices.Clone(names)
 	}
-	foldSkills(sets, v.Entries, v.skillHistory)
+	for _, entry := range v.PublishedEntries() {
+		foldSkills(sets, []Record[Entry]{{Source: entry, Values: entry.Values}}, v.skillHistory)
+	}
 	for owner, known := range v.skillHistory {
 		if !known {
 			delete(sets, owner)

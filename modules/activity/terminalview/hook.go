@@ -9,7 +9,7 @@ import (
 type HookDetails = presentation.HookDetails
 
 func (b Block) runColor() string {
-	if b.ExitCode != 0 || b.Hook != nil && (b.Hook.Status == "failed" || b.Hook.HasError) {
+	if b.ExitCode != 0 || b.Hook != nil && b.Hook.Failed() {
 		return terminalui.Red
 	}
 	return VerbColor("Run")

@@ -1,6 +1,7 @@
 package terminalview
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -200,10 +201,14 @@ func (c *Pane) SelectCaller(caller string) {
 // refreshChanges rebuilds what the navigator derives from captures: the
 // Changes tab, caller marks, and the filter shown in the Files heading.
 func (c *Pane) refreshChanges() {
-	c.files = make([]presentation.File, len(c.view.Files))
+	files := make([]presentation.File, len(c.view.Files))
 	for i, file := range c.view.Files {
-		c.files[i] = c.view.Visible[file.Key()]
+		files[i] = c.view.Visible[file.Key()]
 	}
+	// Coverage and availability revisions can republish identical content.
+	// Compare at replacement, so paint reuses layout and resize anchors.
+	c.layoutDirty = c.layoutDirty || !reflect.DeepEqual(c.files, files)
+	c.files, c.dirty = files, true
 	c.navigation.Rebuild(c.files, c.workspace)
 	c.navigation.Changes.Rebuild(&c.view.View, c.workspace)
 	c.navigation.Dots = c.callerDots()

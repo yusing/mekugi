@@ -2,6 +2,7 @@ package sessionapi
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -64,6 +65,7 @@ func TestContentContinuationCostAndIndependentFrontends(t *testing.T) {
 	}
 	file := changes.File{Path: "a.go", Chunks: []changes.Chunk{{Origin: changes.Origin{Caller: "/root"}, Review: diffmodel.RenderReviewFile("a.go", "a.go", "", "new\n")}}}
 	file.Chunks[0].Review.Diff = text
+	file.Origins = []changes.Origin{{Change: "capture", Caller: "/root", Source: "apply_patch"}}
 	review := &changes.ReviewView{Publication: changes.Publication{Files: []changes.File{file}, Unfiltered: map[string]changes.File{file.Key(): file}}, Revision: 1, Workspace: "/workspace", Coverage: "complete"}
 	if err := f.api.Publish(Frame{Session: Session{Thread: "thread", Workspace: "/workspace"}, Attachment: 1, Review: review}); err != nil {
 		t.Fatal(err)
@@ -87,9 +89,19 @@ func TestContentContinuationCostAndIndependentFrontends(t *testing.T) {
 	read := func(pid int, offset uint64) Lines {
 		t.Helper()
 		body, _ := json.Marshal(NativeFrontendRequest{PID: pid, Instance: frontends[pid].frontend.instance, Content: &ref, Offset: &offset})
-		var result Lines
-		if err := rpc.Call(t.Context(), "native/content", RPCParams{Body: body}, &result); err != nil {
+		var wire jsontext.Value
+		if err := rpc.Call(t.Context(), "native/content", RPCParams{Body: body}, &wire); err != nil {
 			t.Fatal(err)
+		}
+		var result Lines
+		if err := json.Unmarshal(wire, &result); err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(wire, []byte(`"chunks"`)) || len(wire) > pageBytes+1024 {
+			t.Fatal("selected lines transferred full chunks or exceeded the page budget")
+		}
+		if offset == 0 && !slices.Equal(result.Origins, file.Origins) || offset != 0 && len(result.Origins) != 0 {
+			t.Fatal("initial selected lines lost origins or continuation repeated them")
 		}
 		return result
 	}

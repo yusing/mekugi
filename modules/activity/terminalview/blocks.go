@@ -110,7 +110,7 @@ func AlignVerbs(blocks []Block) []Block {
 	for start := 0; start < len(blocks); {
 		end, column := start, 0
 		for ; end < len(blocks) && slices.Contains([]string{"op", "reads", "filter"}, blocks[end].Kind); end++ {
-			if w := ansi.StringWidth(RowVerb(blocks[end])); blocks[end].Kind != "filter" && w <= widestAlignedVerb {
+			if w := ansi.StringWidth(blocks[end].RowVerb()); blocks[end].Kind != "filter" && w <= widestAlignedVerb {
 				column = max(column, w+1)
 			}
 		}
@@ -120,69 +120,6 @@ func AlignVerbs(blocks []Block) []Block {
 		start = max(end, start+1)
 	}
 	return blocks
-}
-
-// RowVerb is the verb a row shows.
-func RowVerb(b Block) string {
-	if b.UserShell {
-		if b.Running {
-			return "You running"
-		}
-		return "You ran"
-	}
-	if b.Hook != nil {
-		switch b.Hook.Status {
-		case "running":
-			if b.Running {
-				return "Hook Running"
-			}
-		case "completed":
-			return "Hook Ran"
-		case "failed":
-			return "Hook Failed"
-		case "blocked":
-			return "Hook Blocked"
-		case "stopped":
-			return "Hook Stopped"
-		}
-		return "Hook Run"
-	}
-	switch {
-	case b.Pending:
-		return "Pending"
-	case b.Skipped && b.Verb == "Run":
-		return "Skipped"
-	case b.Kind == "op" && b.Verb == "Run" && b.Requested:
-		return "Run"
-	case b.Kind == "op" && b.Verb == "Run" && !b.Running && strings.HasPrefix(b.Approval, "Pending Approval"):
-		return "Run"
-	case b.Kind == "op" && b.Verb == "Run" && b.Running:
-		return "Running"
-	case b.Kind == "op" && b.Verb == "Run" && !b.Skipped:
-		return "Ran"
-	case b.committed():
-		return "Committed"
-	case b.EditOperation():
-		return EditVerb(b)
-	}
-	return b.Verb
-}
-
-// EditVerb is a grouped row's verb: past tense once confirmed, and otherwise
-// the requested action, whose status the group's first row names.
-func EditVerb(b Block) string {
-	if b.GroupHeader != "Edited" {
-		return b.Verb
-	}
-	switch b.Verb {
-	case "Create":
-		return "Created"
-	case "Delete":
-		return "Deleted"
-	case "Move":
-		return "Moved"
-	}
-	return "Edited"
 }
 
 // EditStatus is the outcome a group's first row names after its source.
@@ -216,7 +153,7 @@ func measureGroups(blocks []Block) {
 			g = &group{}
 			groups[start] = g
 		}
-		g.verb = max(g.verb, len(EditVerb(b)))
+		g.verb = max(g.verb, len(b.EditVerb()))
 		path, added, removed, _, ok := EditStat(b.EditLabel())
 		if !ok {
 			continue

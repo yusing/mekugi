@@ -174,6 +174,7 @@ type entry struct {
 }
 
 type value struct {
+	Failed           bool                             `json:"failed,omitzero"`
 	Kind             string                           `json:"kind,omitzero"`
 	Verb             string                           `json:"verb,omitzero"`
 	BatchExit        bool                             `json:"batchExit,omitzero"` // A compound command's combined result.
@@ -372,6 +373,7 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 	for i, v := range values {
 		p := value{
 			DetailsAvailable: v.Disclosure(),
+			Failed:           v.FailedOutcome(),
 			DetailCode:       v.DetailCode,
 			Path:             v.Path, AutoReload: v.AutoReload, Approval: v.Approval,
 			Kind: v.Kind, Verb: v.Verb, BatchExit: v.BatchExit, Label: v.Label, Code: v.Code, Lang: v.Lang, Fenced: v.Fenced, Body: v.Body,
@@ -440,48 +442,31 @@ func projectRoster(p *activitypresentation.Publication, caller string) roster {
 		if x.Name != "/root" {
 			x.Role = textsanitize.Safe(a.Role, false)
 		}
-		switch {
-		case a.Waiting:
-			x.State = "waiting"
-		case a.LatestKind == "error":
-			x.State = "error"
-		case !a.Responding && a.Final:
-			x.State = "done"
-		case !a.Responding:
-			x.State = "idle"
-		default:
+		x.State = a.Status
+		switch x.State {
+		case "responding":
 			x.State = "working"
+		case "answered":
+			x.State = "done"
+		case "", "Unavailable":
+			x.State = "idle"
 		}
-		if a.Waiting && a.Wait != nil {
+		if x.State == "waiting" && a.Wait != nil {
 			x.Wait = new(projectValues([]activitypresentation.Value{*a.Wait}, false)[0])
 			x.Identities = sessionpresentation.PresentEntryAgents(activitypresentation.Entry{Values: []activitypresentation.Value{*a.Wait}}, caller)
 		}
 		if len(a.Summary) > 0 {
-			latest := publicEntry(a.Summary[len(a.Summary)-1])
+			summaries := publicEntries(a.Summary)
+			latest := summaries[len(summaries)-1]
 			x.Activity = &entry{Kind: latest.Kind, Observed: millis(latest.Observed)}
-			var values []activitypresentation.Value
-			for _, v := range latest.Values {
-				// Roster rows need labels, not another copy of retained bodies or output.
-				item := activitypresentation.Value{Kind: v.Kind, Verb: v.Verb, Label: v.Label, Reads: v.Reads, Live: v.Live}
-				item.From, item.To = v.Endpoints(caller)
-				if v.Kind == "progress" {
-					item.Body, item.WaitTargets, item.WaitTimeout, item.WaitReason = v.Body, v.WaitTargets, v.WaitTimeout, v.WaitReason
-				} else if v.Kind == "summary" && len(v.Body) <= 80 && !strings.Contains(v.Body, "\n") {
-					item.Body = v.Body
-				}
-				item.Code = v.Code
-				length := 0
-				for offset, r := range v.Code {
-					if r == '\n' || length == 256 {
-						item.Code = v.Code[:offset]
-						break
-					}
-					length++
-				}
-				values = append(values, item)
+			x.Activity.Values = projectValues(activitypresentation.CompactRoster(summaries, caller), false)
+			for i := range x.Activity.Values {
+				x.Activity.Values[i].DetailsAvailable = nil
 			}
-			x.Activity.Values = projectValues(values, false)
-			x.Identities = append(x.Identities, sessionpresentation.PresentEntryAgents(activitypresentation.Entry{Values: values}, caller)...)
+			for _, entry := range summaries {
+				x.Identities = append(x.Identities, sessionpresentation.PresentEntryAgents(entry, caller)...)
+			}
+
 		}
 		if !a.Started.IsZero() && a.WorkKnown {
 			x.Work, x.WorkSince = new(a.WorkElapsed.Milliseconds()), millis(a.WorkSince)

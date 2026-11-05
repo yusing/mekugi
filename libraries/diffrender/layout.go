@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -152,12 +153,10 @@ type syntaxHunk struct {
 // PaintViewport decorates intersecting complete hunks. Coordinates and source
 // attribution were fixed during layout; off-screen hunks never invoke a lexer.
 func (render *Layout) PaintViewport(ctx context.Context, start, end int) error {
-	if end <= start {
-		return nil
-	}
-	for i := range render.syntaxHunks {
-		h := &render.syntaxHunks[i]
-		if h.painted || h.end <= start || h.start >= end {
+	hunks := render.viewportHunks(start, end)
+	for i := range hunks {
+		h := &hunks[i]
+		if h.painted {
 			continue
 		}
 		before, after, err := h.renderer.ColorHunk(ctx, h.theme, h.review, h.rows)
@@ -196,4 +195,17 @@ func (render *Layout) PaintViewport(ctx context.Context, start, end int) error {
 		h.painted = true
 	}
 	return nil
+}
+
+// Hunks are appended in row order and never overlap. Bound the decoration walk
+// before visiting hunks, including already-painted ones.
+func (render *Layout) viewportHunks(start, end int) []syntaxHunk {
+	if end <= start {
+		return nil
+	}
+	hunks := render.syntaxHunks
+	first := sort.Search(len(hunks), func(i int) bool { return hunks[i].end > start })
+	hunks = hunks[first:]
+	last := sort.Search(len(hunks), func(i int) bool { return hunks[i].start >= end })
+	return hunks[:last]
 }

@@ -136,6 +136,8 @@ type Server struct {
 	readAttachment      string
 	contentVersions     map[string]uint64
 	sharedDeferred      map[string]bool
+	nativePanel         *nativePanelPublication
+	panelChanged        chan struct{}
 	session             Session
 	playback            *Playback
 	input               *Input
@@ -419,6 +421,10 @@ func (s *Server) Publish(f Frame) error {
 			s.contentVersions[kind]++
 		}
 	}
+	if s.panelChanged != nil && (reset || patch.Session != nil || patch.Roster != nil || patch.Review != nil || patch.Live != nil) {
+		close(s.panelChanged)
+		s.panelChanged = nil
+	}
 	if reset {
 		data, err := s.snapshot()
 		if err != nil {
@@ -429,7 +435,7 @@ func (s *Server) Publish(f Frame) error {
 	if patch.Session == nil && patch.Playback == nil && patch.Input == nil && patch.Prompts == nil && patch.Status == nil && patch.Main == nil && patch.Agents == nil && patch.Roster == nil && patch.Review == nil && patch.Live == nil {
 		return nil
 	}
-	event, err := s.encodeShared("patch", patch)
+	event, err := s.encodeShared("patch", patch, false)
 	if err != nil {
 		return err
 	}
@@ -569,7 +575,7 @@ func (s *Server) snapshot() (publication, error) {
 		return publication{}, err
 	}
 	m := message{Session: &s.session, Playback: s.playback, Input: s.input, Prompts: s.prompts, Status: s.status, Main: main, Agents: agents, Roster: s.roster, Review: s.review, Live: s.livePreviews}
-	return s.encodeShared("snapshot", m)
+	return s.encodeShared("snapshot", m, false)
 }
 
 func encodeEvent(name string, v any) (publication, error) {

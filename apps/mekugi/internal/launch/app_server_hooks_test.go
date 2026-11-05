@@ -177,7 +177,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 			t.Fatal("resume revived a hook")
 		}
 	}
-	if activityui.RowVerb(fresh.testActivity(fresh.shell.Transcript).blocks(1)[0]) != "Hook Run" || !strings.Contains(fresh.attached.source.Entries[1].Source.Text, "outcome unknown") {
+	if fresh.testActivity(fresh.shell.Transcript).blocks(1)[0].RowVerb() != "Hook Run" || !strings.Contains(fresh.attached.source.Entries[1].Source.Text, "outcome unknown") {
 		t.Fatal("unfinished restored hook claims completion")
 	}
 	foreign, err := reopened.publication.ReadHookObservations("/other", "main")
@@ -201,7 +201,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	end := hookTestRun(u.attached.cwd, "completed")
 	end["id"] = "unfinished"
 	appServerTestNotify(t, fresh, "hook/completed", map[string]any{"threadId": "main", "run": end})
-	if len(fresh.attached.source.Entries) != 2 || activityui.RowVerb(fresh.testActivity(fresh.shell.Transcript).blocks(1)[0]) != "Hook Ran" {
+	if len(fresh.attached.source.Entries) != 2 || fresh.testActivity(fresh.shell.Transcript).blocks(1)[0].RowVerb() != "Hook Ran" {
 		t.Fatal("a fresh host completion could not settle a restored unknown hook")
 	}
 	// Corrupt optional hook history is disclosed without losing the host replay.

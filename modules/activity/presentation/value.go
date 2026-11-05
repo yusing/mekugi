@@ -75,6 +75,26 @@ type Value struct {
 	DetailLines                                   int
 	Live                                          bool
 	Thought                                       time.Duration
+	Failed                                        bool // Compact values retain the observed outcome without tool evidence.
+}
+
+// FailedOutcome shares operation failure semantics across full and compact rows.
+func (b Value) FailedOutcome() bool {
+	return b.Failed || b.ExitCode != 0 || b.Hook != nil &&
+		(b.Hook.Failed() || slices.Contains([]string{"blocked", "stopped"}, b.Hook.Status))
+}
+
+// ReadSubject preserves literal queries and skill identities, shortening file paths.
+func (b Value) ReadSubject() string {
+	var names []string
+	for _, read := range b.Reads {
+		name := read.Path
+		if b.Verb != "Search" && b.Verb != "Web Search" && b.Verb != "Skill" {
+			name = name[strings.LastIndex(name, "/")+1:]
+		}
+		names = append(names, markdownsyntax.QuoteCode(name))
+	}
+	return strings.Join(names, ", ")
 }
 
 type Question struct {
@@ -99,6 +119,10 @@ type HookDetails struct {
 	HandlerType, ExecutionMode, Status string
 	HasError                           bool
 }
+
+// Failed distinguishes hook errors from blocked or stopped execution.
+func (h HookDetails) Failed() bool { return h.HasError || h.Status == "failed" }
+
 type ChangeRow struct {
 	OmittedLines            int // Source rows omitted before the retained change summary.
 	Verb, Code, From, Label string
@@ -185,4 +209,73 @@ func (b Value) Instant() bool {
 		return b.Kind == "reads" // skills-mgr run runs a program.
 	}
 	return false
+}
+
+// Committed requires a completed operation and observed commit output.
+func (b Value) Committed() bool {
+	return b.Verb == "Commit" && !b.Running && !b.Skipped && b.ExitCode == 0 &&
+		slices.ContainsFunc(b.Changes, func(row ChangeRow) bool { return row.Footer }) && b.VCS()
+}
+
+// Source: modules/activity/terminalview/blocks.go:126:179@f7b0377da.
+func (b Value) RowVerb() string {
+	if b.UserShell {
+		if b.Running {
+			return "You running"
+		}
+		return "You ran"
+	}
+	if b.Hook != nil {
+		switch b.Hook.Status {
+		case "running":
+			if b.Running {
+				return "Hook Running"
+			}
+		case "completed":
+			return "Hook Ran"
+		case "failed":
+			return "Hook Failed"
+		case "blocked":
+			return "Hook Blocked"
+		case "stopped":
+			return "Hook Stopped"
+		}
+		return "Hook Run"
+	}
+	switch {
+	case b.Pending:
+		return "Pending"
+	case b.Skipped && b.Verb == "Run":
+		return "Skipped"
+	case b.Kind == "op" && b.Verb == "Run" && b.Requested:
+		return "Run"
+	case b.Kind == "op" && b.Verb == "Run" && !b.Running && strings.HasPrefix(b.Approval, "Pending Approval"):
+		return "Run"
+	case b.Kind == "op" && b.Verb == "Run" && b.Running:
+		return "Running"
+	case b.Kind == "op" && b.Verb == "Run" && !b.Skipped:
+		return "Ran"
+	case b.Committed():
+		return "Committed"
+	case b.EditOperation():
+		return b.EditVerb()
+	}
+	return b.Verb
+}
+
+// EditVerb is a grouped row's verb: past tense once confirmed, and otherwise
+// the requested action, whose status the group's first row names.
+func (b Value) EditVerb() string {
+	if b.GroupHeader != "Edited" {
+		return b.Verb
+	}
+	switch b.Verb {
+	case "Create":
+		return "Created"
+	case "Delete":
+		return "Deleted"
+	case "Move":
+		return "Moved"
+	}
+	return "Edited"
 }

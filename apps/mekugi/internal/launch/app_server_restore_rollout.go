@@ -16,7 +16,7 @@ import (
 	"io"
 	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 // Bound restoration I/O per thread independently of transcript size. Older
@@ -112,7 +112,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			}
 		case "response_item/custom_tool_call_output":
 			if text, failed := binding.CodeModeFailureText(binding.ExecutionOutputTexts(p.Output)); p.CallID != nil && cells[*p.CallID] && failed && turn != "" {
-				event.entry = sessionpresentation.ActivityEntry{Agent: agent, Kind: "error", Text: activityui.ErrorPreview(text), ErrorDetail: text, CallID: *p.CallID}
+				event.entry = sessionpresentation.ActivityEntry{Agent: agent, Kind: "error", Text: activitypresentation.ErrorPreview(text), ErrorDetail: text, CallID: *p.CallID}
 				r.events = append(r.events, event)
 			}
 		case "response_item/function_call_output":

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"reflect"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -26,7 +25,7 @@ type Pane struct {
 	view                             View
 	renderer                         Renderer
 	rendering                        Render
-	rendered                         []presentation.File
+	layoutDirty                      bool
 	renderedTheme                    diffrender.Theme
 	lastWidth, lastHeight, diffWidth int
 	navigation                       Navigation
@@ -50,7 +49,7 @@ func (c *Pane) SetWorkspace(workspace string) {
 	if c.workspace == workspace {
 		return
 	}
-	c.workspace, c.rendered, c.dirty = workspace, nil, true
+	c.workspace, c.layoutDirty = workspace, true
 	c.refreshChanges()
 }
 func (c *Pane) SetTheme(theme diffrender.Theme) {
@@ -83,7 +82,7 @@ func (c *Pane) Reset() {
 	c.view = View{Scroll: make(map[string]int)}
 	c.navigation = Navigation{Flat: c.navigation.Flat}
 	c.back = paneBack{}
-	c.files, c.lines, c.offset, c.rendered = nil, nil, 0, nil
+	c.files, c.lines, c.offset = nil, nil, 0
 	c.dirty = true
 	c.refreshChanges()
 }
@@ -121,10 +120,10 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 		c.selection = terminalui.SelectionSource{}
 		return nil
 	}
-	files := make([]presentation.File, len(c.view.Files))
-	for i, file := range c.view.Files {
-		files[i] = c.view.Visible[file.Key()]
+	if !c.dirty && width == c.lastWidth && height == c.lastHeight {
+		return nil
 	}
+	files := c.files
 	navWidth := c.navigation.Width(width)
 	if inline := width < 100; inline != c.navigation.Changes.Inline {
 		c.navigation.Changes.Inline = inline
@@ -134,7 +133,7 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 	if navWidth > 0 {
 		diffWidth -= navWidth + 1
 	}
-	sameFiles := reflect.DeepEqual(c.rendered, files)
+	sameFiles := !c.layoutDirty
 	if !sameFiles || diffWidth != c.diffWidth || c.theme != c.renderedTheme {
 		previous := c.rendering
 		c.renderer.Caller = CallerStyle(c.theme)
@@ -147,7 +146,7 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 			c.view.Reflow(previous, c.rendering)
 		}
 		c.renderedTheme = c.theme
-		c.rendered = files
+		c.layoutDirty = false
 		c.dirty = true
 	}
 	resized := height != c.lastHeight || width != c.lastWidth
@@ -200,10 +199,6 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 	navResized := stack != c.stack || resized && c.navigation.Focused
 	c.files, c.lines, c.offset, c.rows, c.stack = files, lines, offset, rows, stack
 	c.navRows = cmp.Or(stack, rows)
-	if !sameFiles {
-		c.navigation.Rebuild(files, c.workspace)
-		c.refreshChanges()
-	}
 	if navResized {
 		if c.navigation.ChangesTab {
 			c.navigation.Changes.EnsureVisible(c.navRows)

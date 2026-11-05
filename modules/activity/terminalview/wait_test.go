@@ -130,7 +130,7 @@ func TestUISnapshotWaitingRosterMatchesTranscript(t *testing.T) {
 	for _, timeout := range []string{"", "10s"} {
 		block := activityui.Block{Kind: "progress", Body: "Waiting for", Live: true,
 			WaitTargets: []activityui.WaitTarget{{Name: "/root/backend-extraction/backend-extraction-review"}}, WaitTimeout: timeout}
-		agent := activitymodel.Agent{Waiting: true, Wait: &block.Value}
+		agent := activitymodel.Agent{Status: "waiting", Waiting: true, Wait: &block.Value}
 		got := v.AgentState(agent, 120, now)
 		if want := v.Painter.Summary([]activityui.Block{block}, 120); got != want {
 			t.Fatalf("roster %q differs from transcript summary %q", got, want)
