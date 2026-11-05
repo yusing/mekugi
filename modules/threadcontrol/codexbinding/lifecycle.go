@@ -252,6 +252,9 @@ func (d *Driver) reduceHost() {
 			err = d.DispatchPending(d.lifecycle, thread)
 			err = errors.Join(err, d.Wake(d.lifecycle, thread, time.Now()))
 			for member, ok := d.control.Member(thread); ok && member.Parent != ""; member, ok = d.control.Member(member.Parent) {
+				// A sibling's delivery may have queued behind this target's
+				// acknowledged injection. Drain it before selecting the wait.
+				err = errors.Join(err, d.DispatchPending(d.lifecycle, member.Parent))
 				err = errors.Join(err, d.Wake(d.lifecycle, member.Parent, time.Now()))
 			}
 		}

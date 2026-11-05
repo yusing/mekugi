@@ -54,6 +54,7 @@ type nativeThreadsProvider struct {
 	deduplication                           bool
 	usageLimit                              bool
 	temporaryUsage                          bool
+	concurrentChildren                      bool
 	limited                                 map[string]bool
 	calls                                   map[string]int
 	users                                   int
@@ -166,6 +167,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	if metadata.RequestKind == "compaction" {
 		t.Error("summary-free reset requested provider inference")
 		http.Error(w, "unexpected summary inference", 500)
+		return
+	}
+	if p.concurrentChildren {
+		p.serveConcurrentChildren(t, w, r, metadata.ThreadID, body)
 		return
 	}
 	if p.temporaryUsage {
@@ -640,6 +645,74 @@ func TestNativeThreadsServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{multipleAnswers: true})
 }
 
+// Exercise ordered delivery across independent child reducers while their stock
+// executions publish captures through the same retained history owner.
+func (p *nativeThreadsProvider) serveConcurrentChildren(t *testing.T, w http.ResponseWriter, r *http.Request, thread string, body []byte) {
+	t.Helper()
+	p.mu.Lock()
+	if p.parent == "" {
+		p.parent = thread
+	}
+	parent := p.parent == thread
+	p.calls[thread]++
+	step := p.calls[thread]
+	p.mu.Unlock()
+	program, answer := "", ""
+	if parent {
+		switch step {
+		case 1:
+			program = `const results = await Promise.allSettled(["worker", "helper1", "helper2"].map(task_name => tools.mcp__threadcontrol__spawn_agent({task_name,message:"parallel shared-history work",fork_turns:"none"}))); for (const result of results) text(result);`
+		case 2:
+			program = `text(await tools.mcp__threadcontrol__wait_agent({target:"all",wait_mode:"all"}));`
+		case 3:
+			if strings.Count(string(body), "MANAGED_CHILD_FINAL:") != 3 {
+				t.Error("awakened provider input omitted or repeated concurrent child results")
+			}
+			answer = "MANAGED_PARENT_RESUMED"
+		default:
+			t.Errorf("unexpected parent inference step %d", step)
+		}
+	} else {
+		switch step {
+		case 1:
+			program = `const prefix = ` + strconv.Quote(thread) + `; const results = await Promise.allSettled([0,1,2,3].map(index => tools.exec_command({cmd:"printf shared-history-write >> capture-"+prefix+"-"+index+".txt",shell:"/bin/bash",login:false}))); for (const result of results) text(result);`
+		case 2:
+			select {
+			case <-p.waiting:
+			case <-r.Context().Done():
+				return
+			}
+			answer = "MANAGED_CHILD_FINAL:" + thread
+		default:
+			t.Errorf("unexpected child inference step %d", step)
+		}
+	}
+	id := fmt.Sprintf("concurrent-%s-%d", thread, step)
+	item := map[string]any{"type": "message", "id": id, "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": answer}}}
+	if program != "" {
+		item = map[string]any{"type": "custom_tool_call", "id": id, "call_id": id + "-call", "name": "exec", "namespace": "functions", "input": program, "status": "completed"}
+	}
+	events := []map[string]any{
+		{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}},
+		{"type": "response.output_item.added", "output_index": 0, "item": item},
+		{"type": "response.output_item.done", "output_index": 0, "item": item},
+		{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{item}}},
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	for _, event := range events {
+		raw, err := json.Marshal(event)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		fmt.Fprintf(w, "data: %s\n\n", raw)
+	}
+}
+
+func TestNativeThreadsConcurrentCompletionServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{concurrentChildren: true})
+}
+
 func TestNativeThreadsOutputDeduplicationServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{deduplication: true})
 }
@@ -709,6 +782,7 @@ func TestNativeThreadsAttachmentResetServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
+	concurrentChildren                                                                                                                                                bool
 	attachments, attachmentReload                                                                                                                                     bool
 	deduplication                                                                                                                                                     bool
 	fullHistory, shellWait, compactWait, agentCompact, earlyCompletion, nonGit, preload, recoverFailure, multipleAnswers, rewind, headless, attachChanges, usageLimit bool
@@ -806,6 +880,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	fixture := &nativeThreadsProvider{usageLimit: scenario.usageLimit, limited: make(map[string]bool), attachChanges: scenario.attachChanges, multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	fixture.attachments, fixture.attachmentReload = scenario.attachments, scenario.attachmentReload
+	fixture.concurrentChildren = scenario.concurrentChildren
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
 	fixture.deduplication = scenario.deduplication
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1120,7 +1195,21 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if err != nil {
 			t.Fatal("parent completion:", err)
 		}
-		if event.Frame.View.Status.Composer.Text == "Waiting for agents" {
+		waiting := event.Frame.View.Status.Composer.Text == "Waiting for agents"
+		if scenario.earlyCompletion && waiting {
+			// The completion guard also commits a local stop. Release the child
+			// only for the actual wait subscription, not that earlier guard stop.
+			waiting = false
+			if event.Frame.Agents != nil {
+				for _, row := range event.Frame.Agents.Roster {
+					if row.Agent.Thread == root && row.Agent.Wait != nil && row.Agent.Wait.Live {
+						waiting = true
+						break
+					}
+				}
+			}
+		}
+		if waiting {
 			if !event.Frame.Facts.Busy {
 				t.Fatal("logical waiting lost the native terminal-title busy state")
 			}
@@ -1181,6 +1270,37 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if shellWait && waitingObserved && event.Frame.View.Status.Session.CompletionKnown {
 			t.Fatal("standalone shell marked Main done before model continuation")
 		}
+	}
+	if scenario.concurrentChildren {
+		finals := make(map[string]bool)
+		if event.Frame.Main != nil {
+			for _, entry := range event.Frame.Main.Entries {
+				if entry.Kind == "final" && strings.HasPrefix(entry.Text, "MANAGED_CHILD_FINAL:") {
+					if finals[entry.Text] {
+						t.Fatal("duplicate concurrent child result")
+					}
+					finals[entry.Text] = true
+				}
+			}
+		}
+		if len(finals) != 3 {
+			t.Fatalf("concurrent child results=%v", finals)
+		}
+		fixture.mu.Lock()
+		defer fixture.mu.Unlock()
+		if len(fixture.calls) != 4 {
+			t.Fatalf("concurrent runtimes=%v", fixture.calls)
+		}
+		for thread, count := range fixture.calls {
+			want := 2
+			if thread == fixture.parent {
+				want = 3
+			}
+			if count != want {
+				t.Fatalf("concurrent inference count=%d, want %d", count, want)
+			}
+		}
+		return
 	}
 	if scenario.recoverFailure && !failureObserved {
 		t.Fatal("recovery hid the provider failure")

@@ -3,6 +3,7 @@ package codexbinding
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -145,6 +146,194 @@ func reconciliationFixture(t *testing.T) (*Driver, *reconciliationHost, history.
 		t.Fatal(err)
 	}
 	return driver, host, session, caller
+}
+
+type gatedCompletionHost struct {
+	*reconciliationHost
+	injectionStarted, injectionRelease chan struct{}
+	metricsStarted, metricsRelease     chan struct{}
+}
+
+func (h *gatedCompletionHost) Resume(context.Context, string) (control.Runtime, error) {
+	return h, nil
+}
+
+func (h *gatedCompletionHost) Runtime(string) (control.Runtime, error) { return h, nil }
+
+func (h *gatedCompletionHost) Input(ctx context.Context, input control.NativeInput) (string, error) {
+	if input.Kind == "FINAL_ANSWER" {
+		select {
+		case <-h.injectionStarted:
+		default:
+			close(h.injectionStarted)
+			select {
+			case <-h.injectionRelease:
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+	}
+	return h.reconciliationHost.Input(ctx, input)
+}
+
+func (h *gatedCompletionHost) Inspect(ctx context.Context, _ string) (control.SessionDetails, error) {
+	if h.metricsStarted == nil {
+		return control.SessionDetails{}, nil
+	}
+	close(h.metricsStarted)
+	select {
+	case <-h.metricsRelease:
+	case <-ctx.Done():
+		return control.SessionDetails{}, ctx.Err()
+	}
+	return control.SessionDetails{}, nil
+}
+
+func TestSelectedCompletionWakesWithoutSchedulerDelay(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		driver, native, _, caller := reconciliationFixture(t)
+		native.inputs = nil
+		host := &gatedCompletionHost{reconciliationHost: native,
+			injectionStarted: make(chan struct{}), injectionRelease: make(chan struct{}),
+			metricsStarted: make(chan struct{}), metricsRelease: make(chan struct{}),
+		}
+		driver.host = host
+		check := func(err error) {
+			t.Helper()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		caller.Call = "wait"
+		_, err := driver.control.RegisterWait(t.Context(), caller, nil, true, "", nil, time.Now())
+		check(err)
+		check(driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
+		_, err = driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)
+		check(err)
+		check(driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}))
+		check(driver.Start(t.Context()))
+		defer driver.Stop(t.Context())
+		started := time.Now()
+		_, err = driver.Observe("item/completed", []byte(`{"threadId":"child","turnId":"child-turn","item":{"type":"agentMessage","id":"answer","text":"ready","phase":"final_answer"}}`))
+		check(err)
+		terminal := []byte(`{"threadId":"child","turn":{"id":"child-turn","status":"completed"}}`)
+		_, err = driver.Observe("turn/completed", terminal)
+		check(err)
+		synctest.Wait()
+		select {
+		case <-host.injectionStarted:
+		default:
+			t.Fatal("completion did not begin injection immediately")
+		}
+		if len(native.inputs) != 0 {
+			t.Fatal("continuation crossed injection acknowledgement")
+		}
+		close(host.injectionRelease)
+		synctest.Wait()
+		select {
+		case <-host.metricsStarted:
+		default:
+			t.Fatal("acknowledged result did not begin continuation metrics")
+		}
+		if len(native.inputs) != 1 || native.inputs[0].Kind != "FINAL_ANSWER" {
+			t.Fatalf("metrics barrier input=%+v", native.inputs)
+		}
+		close(host.metricsRelease)
+		synctest.Wait()
+		if len(native.inputs) != 2 || native.inputs[1].Wake == nil || native.inputs[1].Wake.ID != caller.Call || native.inputs[1].Wake.Event == nil || native.inputs[1].Wake.Event.Source != "child" || native.inputs[1].Wake.Event.Status != control.Completed {
+			t.Fatalf("settled prerequisites did not release original wait: %+v", native.inputs)
+		}
+		if delay := time.Since(started); delay != 0 {
+			t.Fatalf("coordination imposed scheduler delay: %v", delay)
+		}
+		_, err = driver.Observe("turn/completed", terminal)
+		check(err)
+		synctest.Wait()
+		if len(native.inputs) != 2 {
+			t.Fatalf("duplicate completion redelivered result: %+v", native.inputs)
+		}
+		if failures := driver.Failures(); len(failures) != 0 {
+			t.Fatal(failures)
+		}
+	})
+}
+
+func TestConcurrentCompletionsDrainBeforeAllWaitWake(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		first, native, _, caller := reconciliationFixture(t)
+		check := func(err error) {
+			t.Helper()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		caller.Call = "spawn-sibling"
+		spawn, err := first.control.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "sibling", Message: "work", Settings: control.Settings{Workspace: t.TempDir()}})
+		check(err)
+		for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
+			_, err := first.control.ClaimEffect(t.Context(), "root", spawn.ID)
+			check(err)
+			check(first.control.EffectAcknowledged(t.Context(), "root", spawn.ID, control.Receipt{Phase: phase, Thread: "sibling", Session: "sibling-session", Turn: "sibling-turn"}))
+		}
+		caller.Call = "wait-all"
+		_, err = first.control.RegisterWait(t.Context(), caller, nil, true, control.WaitAll, nil, time.Now())
+		check(err)
+		check(first.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
+		stop, err := first.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)
+		check(err)
+		if stop == nil {
+			t.Fatal("all-wait did not commit")
+		}
+		check(first.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}))
+		native.inputs, native.nextTurn = nil, "continued"
+		host := &gatedCompletionHost{reconciliationHost: native, injectionStarted: make(chan struct{}), injectionRelease: make(chan struct{})}
+		first.host = host
+		second, err := NewDriver(first.control)
+		check(err)
+		check(second.Connect(host, native))
+		check(first.Start(t.Context()))
+		defer first.Stop(t.Context())
+		check(second.Start(t.Context()))
+		defer second.Stop(t.Context())
+		complete := func(driver *Driver, thread, turn string) {
+			t.Helper()
+			_, err := driver.Observe("item/completed", []byte(fmt.Sprintf(`{"threadId":%q,"turnId":%q,"item":{"type":"agentMessage","id":"answer","text":"ready","phase":"final_answer"}}`, thread, turn)))
+			check(err)
+			_, err = driver.Observe("turn/completed", []byte(fmt.Sprintf(`{"threadId":%q,"turn":{"id":%q,"status":"completed"}}`, thread, turn)))
+			check(err)
+		}
+		complete(first, "child", "child-turn")
+		synctest.Wait()
+		select {
+		case <-host.injectionStarted:
+		default:
+			t.Fatal("first final did not begin injection")
+		}
+		complete(second, "sibling", "sibling-turn")
+		synctest.Wait()
+		pending, err := first.control.Effect("sibling", "sibling:1:sibling-turn:final")
+		check(err)
+		if pending == nil || pending.State != "pending" || len(native.inputs) != 0 {
+			t.Fatal("sibling crossed earlier injection acknowledgement")
+		}
+		started := time.Now()
+		close(host.injectionRelease)
+		synctest.Wait()
+		if len(native.inputs) != 3 || native.inputs[0].Kind != "FINAL_ANSWER" || native.inputs[0].Sender != "/root/child" || native.inputs[1].Kind != "FINAL_ANSWER" || native.inputs[1].Sender != "/root/sibling" || native.inputs[2].Wake == nil || len(native.inputs[2].Wake.Events) != 2 {
+			t.Fatalf("acknowledged injection stranded sibling or original wait: %+v", native.inputs)
+		}
+		if time.Since(started) != 0 {
+			t.Fatal("eligible continuation waited for a timer")
+		}
+		complete(second, "sibling", "sibling-turn")
+		synctest.Wait()
+		if len(native.inputs) != 3 {
+			t.Fatal("duplicate final observation redelivered results or wake")
+		}
+		if failures := append(first.Failures(), second.Failures()...); len(failures) != 0 {
+			t.Fatal(failures)
+		}
+	})
 }
 
 func TestExplicitMessageReconcilesBeforeDependentDispatch(t *testing.T) {
