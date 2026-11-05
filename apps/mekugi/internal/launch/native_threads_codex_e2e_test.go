@@ -210,6 +210,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 	var program, answer, failure string
 	if step == 1 {
+		if !strings.Contains(string(body), "Compaction does not end the task. Treat work spanning compactions as one logical chain of events.") ||
+			strings.Contains(string(body), "the conversation is automatically compacted into a summary") ||
+			strings.Contains(string(body), "Continue naturally from the summarized state") {
+			failure = "first request contains stock summary-compaction assumptions or lost task continuity"
+		}
 		var descriptions strings.Builder
 		for _, tool := range request.Tools {
 			descriptions.Write(tool)

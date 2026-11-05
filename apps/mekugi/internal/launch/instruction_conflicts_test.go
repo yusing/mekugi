@@ -181,6 +181,51 @@ func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 	}
 }
 
+func TestConflictRewriteSummaryFreeCompaction(t *testing.T) {
+	// Stock paragraphs observed in the installed Codex 0.166.0 first request.
+	for _, test := range []struct{ source, want string }{
+		{
+			"When you run out of context, the conversation is automatically compacted into a summary, but you will still see all prior user requests. Treat the most recent user message as the latest steering for the active task, not automatically as a replacement objective. Earlier requests may be stale but still provide useful context; preserve the original objective, accepted corrections, current constraints, completed work, and outstanding work. Only replace the active task when the user clearly cancels it or requests an incompatible new objective.",
+			"",
+		},
+		{
+			"Compaction does not end the task. Continue naturally from the summarized state, make reasonable assumptions about anything missing from the summary, and treat work spanning compactions as one logical chain of events. Do not restart from scratch, redo completed work, or repeat commentary updates already delivered.",
+			"Compaction does not end the task. Treat work spanning compactions as one logical chain of events. Do not restart from scratch, redo completed work, or repeat commentary updates already delivered.",
+		},
+	} {
+		for _, newline := range []string{"\n", "\r\n"} {
+			suffix := newline + test.source + " Caller qualification." + newline + "```text" + newline + test.source + newline + "```"
+			source := test.source + suffix
+			request := codexresponses.Request{Fields: map[string]json.RawMessage{
+				"instructions": responses.MustMarshalJSON(source),
+				"input": responses.MustMarshalJSON([]any{
+					map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
+					map[string]string{"role": "user", "content": source},
+					map[string]string{"role": "system", "content": source},
+				}),
+			}}
+			if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil {
+				t.Fatal(err)
+			}
+			if got := responses.StringField(request.Fields, "instructions"); got != test.want+suffix {
+				t.Fatalf("top-level compaction conflict = %q", got)
+			}
+			wantInput := responses.MustMarshalJSON([]any{
+				map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": test.want + suffix}}},
+				map[string]string{"role": "user", "content": source},
+				map[string]string{"role": "system", "content": source},
+			})
+			if !responses.SameJSONValue(request.Fields["input"], wantInput) {
+				t.Fatal("developer compaction conflict unresolved or unrelated carriers changed")
+			}
+			before := responses.MustMarshalJSON(request.Fields)
+			if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
+				t.Fatalf("compaction conflict rewrite not idempotent: %v", err)
+			}
+		}
+	}
+}
+
 func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 	// The wait fragment occurs in the previously pinned Astra stock instructions.
 	for _, test := range []struct{ source, want string }{

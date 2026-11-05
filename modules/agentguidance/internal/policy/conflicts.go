@@ -35,6 +35,10 @@ func newConflictRewriter() func(string) string {
 		"",
 		"- First, tell the user in the commentary channel **why** you are using the skill.",
 		"",
+		"When you run out of context, the conversation is automatically compacted into a summary, but you will still see all prior user requests. Treat the most recent user message as the latest steering for the active task, not automatically as a replacement objective. Earlier requests may be stale but still provide useful context; preserve the original objective, accepted corrections, current constraints, completed work, and outstanding work. Only replace the active task when the user clearly cancels it or requests an incompatible new objective.",
+		"",
+		"Compaction does not end the task. Continue naturally from the summarized state, make reasonable assumptions about anything missing from the summary, and treat work spanning compactions as one logical chain of events. Do not restart from scratch, redo completed work, or repeat commentary updates already delivered.",
+		"Compaction does not end the task. Treat work spanning compactions as one logical chain of events. Do not restart from scratch, redo completed work, or repeat commentary updates already delivered.",
 	}
 	for i := range pairs {
 		pairs[i] = "\n" + pairs[i] + "\n"

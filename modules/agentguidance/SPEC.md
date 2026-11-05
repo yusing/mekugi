@@ -28,8 +28,9 @@ It does not detect stock prompt shapes, replace editing sections, select model-s
 inspect `model_instructions_file`, or create or modify caller instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
 
-Exact inherited stock progress conflicts are deleted, and the pinned wait conflict is
-rewritten in top-level instructions and developer text parts. Pinned stock paragraphs lose
+Exact inherited stock progress and summary-based compaction conflicts are deleted or rewritten
+in top-level instructions and developer text parts. The pinned wait conflict is also rewritten.
+Pinned stock paragraphs lose
 their commentary directives while retaining permission and task-steering policy. Complete stock
 uninstalled-plugin advertisements are removed. Inherited delegation and custom plugin policy
 remain intact. Unrelated policy,
