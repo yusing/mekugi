@@ -16,6 +16,136 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 )
 
+type browserFixtureTool struct {
+	executable string
+	binPath    string
+}
+
+// Set once by TestMain before isolating configuration. Resolution failures only
+// fail opted-in browser fixtures, not unrelated tests in the same process.
+var browserFixtureExecutable browserFixtureTool
+var browserFixtureError error
+
+func browserFixtureCommand(t *testing.T) string {
+	t.Helper()
+	if browserFixtureError != nil {
+		t.Fatal(browserFixtureError)
+	}
+	if browserFixtureExecutable.binPath != "" {
+		t.Setenv("PATH", browserFixtureExecutable.binPath+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+	return browserFixtureExecutable.executable
+}
+
+func resolveBrowserFixtureExecutable(override string) (browserFixtureTool, error) {
+	name := override
+	if name == "" {
+		name = "agent-browser"
+	}
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return browserFixtureTool{}, err
+	}
+	// An explicit override is authoritative, including a selected manager shim.
+	if override != "" {
+		return browserFixtureTool{executable: path}, nil
+	}
+	manager, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return browserFixtureTool{}, err
+	}
+	if filepath.Base(manager) != "mise" && filepath.Base(manager) != "mise.exe" {
+		return browserFixtureTool{executable: path}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, manager, "which", "agent-browser")
+	output, err := command.Output()
+	if err != nil {
+		if failure, ok := err.(*exec.ExitError); ok {
+			return browserFixtureTool{}, fmt.Errorf("resolve agent-browser with mise: %w: %s", err, failure.Stderr)
+		}
+		return browserFixtureTool{}, fmt.Errorf("resolve agent-browser with mise: %w", err)
+	}
+	path, err = exec.LookPath(strings.TrimSpace(string(output)))
+	if err != nil {
+		return browserFixtureTool{}, err
+	}
+	// npm wrappers may use env node; retain installed runtime bins too, without
+	// carrying host configuration into the isolated fixture.
+	bins, err := exec.CommandContext(ctx, manager, "bin-paths").Output()
+	if err != nil {
+		return browserFixtureTool{}, fmt.Errorf("resolve browser runtime paths with mise: %w", err)
+	}
+	return browserFixtureTool{executable: path, binPath: strings.Join(strings.Split(strings.TrimSpace(string(bins)), "\n"), string(os.PathListSeparator))}, nil
+}
+
+func TestBrowserFixtureExecutable(t *testing.T) {
+	if os.PathSeparator != '/' {
+		t.Skip("fixture executables use shell scripts and symlinks")
+	}
+	directory := t.TempDir()
+	installed := filepath.Join(directory, "installed-browser")
+	if err := os.WriteFile(installed, []byte("#!/usr/bin/env fixture-runtime\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	runtimeDirectory := t.TempDir()
+	runtime := filepath.Join(runtimeDirectory, "fixture-runtime")
+	if err := os.WriteFile(runtime, []byte("#!/bin/sh\nprintf 'installed browser'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	manager := filepath.Join(directory, "mise")
+	// The manager must resolve while the host configuration is still available.
+	script := fmt.Sprintf("#!/bin/sh\n[ \"$XDG_CONFIG_HOME\" = host-config ] || exit 1\ncase \"$*\" in\n'which agent-browser') printf '%%s\\n' %q ;;\n'bin-paths') printf '%%s\\n' %q ;;\n*) exit 1 ;;\nesac\n", installed, runtimeDirectory)
+	if err := os.WriteFile(manager, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	shim := filepath.Join(directory, "agent-browser")
+	if err := os.Symlink(manager, shim); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(manager, filepath.Join(directory, "fixture-runtime")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
+	t.Setenv("XDG_CONFIG_HOME", "host-config")
+	resolved, err := resolveBrowserFixtureExecutable("")
+	if err != nil || resolved.executable != installed {
+		t.Fatalf("resolve shim: %q, %v", resolved, err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", "isolated-config")
+	t.Setenv("PATH", resolved.binPath+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := exec.CommandContext(t.Context(), resolved.executable).CombinedOutput()
+	if err != nil || string(output) != "installed browser" {
+		t.Fatalf("run resolved browser after isolation: %v, %s", err, output)
+	}
+	for _, override := range []string{installed, "installed-browser", shim} {
+		got, err := resolveBrowserFixtureExecutable(override)
+		want := override
+		if override == "installed-browser" {
+			want = installed
+		}
+		if err != nil || got.executable != want {
+			t.Fatalf("override %q: got %q, %v; want %q", override, got, err, want)
+		}
+	}
+	if _, err := resolveBrowserFixtureExecutable(""); err == nil {
+		t.Fatal("manager resolution failure was suppressed")
+	}
+	if err := os.Remove(shim); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(installed, shim); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := resolveBrowserFixtureExecutable(""); err != nil || got.executable != shim {
+		t.Fatalf("ordinary executable: %q, %v", got, err)
+	}
+	if _, err := resolveBrowserFixtureExecutable(filepath.Join(directory, "missing")); err == nil {
+		t.Fatal("missing override did not fail")
+	}
+}
+
 // This opt-in fixture exercises browser-origin/authentication semantics using a
 // real browser and the actual connector/socket/server. It starts no Codex/model.
 func TestControlBrowser(t *testing.T) {
@@ -23,10 +153,7 @@ func TestControlBrowser(t *testing.T) {
 		t.Skip("set MEKUGI_TEST_CONTROL_BROWSER=1 with agent-browser installed")
 	}
 	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
-	browser := os.Getenv("MEKUGI_TEST_AGENT_BROWSER")
-	if browser == "" {
-		browser = "agent-browser"
-	}
+	browser := browserFixtureCommand(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 	directory, err := os.MkdirTemp("", "mekugi-browser-")

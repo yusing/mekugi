@@ -48,6 +48,10 @@ func TestMain(m *testing.M) {
 	}
 	// Keep test publications and configuration outside the user's directories,
 	// including parallel cases. Tests that need settings supply their own config.
+	// Tool managers need the host configuration to resolve installed browsers.
+	if os.Getenv("MEKUGI_TEST_WEBUI_BROWSER") == "1" || os.Getenv("MEKUGI_TEST_CONTROL_BROWSER") == "1" {
+		browserFixtureExecutable, browserFixtureError = resolveBrowserFixtureExecutable(os.Getenv("MEKUGI_TEST_AGENT_BROWSER"))
+	}
 	var stateDirectory string
 	// Child test executables must retain their parent's authenticated store path.
 	if os.Getenv("MEKUGI_LAUNCHER_TEST_STATE_ISOLATED") == "" {

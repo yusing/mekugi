@@ -9,9 +9,11 @@ Unix-socket server with disposable credentials and no Codex/model invocation:
 MEKUGI_TEST_CONTROL_BROWSER=1 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestControlBrowser$'
 ```
 
-`MEKUGI_TEST_AGENT_BROWSER` can select an absolute executable when a tool-manager
-shim cannot run under isolated test configuration. The fixture owns and closes a
-named browser session. It covers initialization, publication, mutation, native
+Browser fixtures resolve the installed executable before isolating test
+configuration, using `mise which` and installed runtime paths when the default
+command is a mise shim. `MEKUGI_TEST_AGENT_BROWSER` explicitly selects an
+executable instead. The fixture owns and closes a named browser session. It covers
+initialization, publication, mutation, native
 method denial, reconnection and token rotation; TLS deployment remains separate.
 `make check-generated` checks generated browser wire types as well as the module
 index. Regenerate only browser types with

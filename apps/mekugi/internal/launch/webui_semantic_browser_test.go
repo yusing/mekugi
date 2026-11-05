@@ -57,6 +57,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_WEBUI_BROWSER") != "1" {
 		t.Skip("set MEKUGI_TEST_WEBUI_BROWSER=1 after make webui, with agent-browser installed")
 	}
+	browser := browserFixtureCommand(t)
 	// Keep the browser separate from the execution host's per-test environment.
 	browserEnvironment := append(os.Environ(), "AGENT_BROWSER_ENGINE=chrome")
 	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR"} {
@@ -160,10 +161,6 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	defer bridge.Close()
 	remote := httptest.NewServer(bridge)
 	defer remote.Close()
-	browser := os.Getenv("MEKUGI_TEST_AGENT_BROWSER")
-	if browser == "" {
-		browser = "agent-browser"
-	}
 	identityCommand := exec.CommandContext(ctx, browser, "--engine", "chrome", "session", "id", "--scope", "worktree", "--prefix", "webui-semantic")
 	identityCommand.Env = browserEnvironment
 	identity, err := identityCommand.CombinedOutput()

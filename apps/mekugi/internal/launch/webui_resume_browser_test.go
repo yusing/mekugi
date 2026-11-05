@@ -24,10 +24,7 @@ func TestWebUIBrowserResumeFailure(t *testing.T) {
 		t.Skip("set MEKUGI_TEST_WEBUI_BROWSER=1 after make webui, with agent-browser installed")
 	}
 	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
-	browser := os.Getenv("MEKUGI_TEST_AGENT_BROWSER")
-	if browser == "" {
-		browser = "agent-browser"
-	}
+	browser := browserFixtureCommand(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
 	page := httptest.NewServer(webui.Handler())
