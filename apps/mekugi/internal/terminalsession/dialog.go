@@ -48,6 +48,7 @@ type Dialog struct {
 	Navigation    string
 	ForceTabs     bool
 	OutputToggle  string
+	Mention       string
 	StopAvailable bool
 	// FileLinks is detached local-path admission supplied by the application.
 	FileLinks       map[string]bool
@@ -74,9 +75,10 @@ const (
 )
 
 type DialogIntent struct {
-	Action  DialogAction
-	Text    string
-	Process *sessionpresentation.Process
+	Action      DialogAction
+	Text        string
+	Description string
+	Process     *sessionpresentation.Process
 }
 
 func (d *Dialog) tabbed() bool { return len(d.pages) > 1 || d.ForceTabs }
@@ -382,7 +384,7 @@ func (d *Dialog) selectionAction(action SelectionIntent) DialogIntent {
 	var intent DialogIntent
 	switch action {
 	case SelectionReference:
-		intent = DialogIntent{Action: DialogReference, Text: s.Text()}
+		intent = DialogIntent{Action: DialogReference, Text: s.Text(), Description: d.Mention}
 	case SelectionCopy:
 		intent = DialogIntent{Action: DialogCopy, Text: s.Text()}
 	case SelectionClear:

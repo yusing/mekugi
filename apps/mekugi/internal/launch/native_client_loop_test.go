@@ -428,3 +428,57 @@ func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 		t.Fatalf("terminal modes were not restored: %v", err)
 	}
 }
+
+func TestUISnapshotNativeClientDialogReferenceKeepsSourceLabel(t *testing.T) {
+	for _, lang := range []string{"diff", "text"} {
+		t.Run(lang, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			c := nativeTestPromptClient(u)
+			terminal := c.renderer.terminal
+			terminal.Width, terminal.Height = 80, 18
+			d := &terminalsession.ContentDialog{View: terminal.Transcript}
+			d.Pages = []sessionpresentation.DetailItem{{ID: "source", Kind: "op", Verb: "Read", Lang: lang, Path: "source.txt", Code: "+selected"}}
+			d.Update(sessionpresentation.DetailView{Pages: d.Pages})
+			rows := make([]string, 18)
+			d.Paint(rows, 80, 18)
+			x, y := -1, -1
+			for row, painted := range rows {
+				if column := strings.Index(ansi.Strip(painted), "+selected"); column >= 0 {
+					x, y = column, row
+					break
+				}
+			}
+			if x < 0 {
+				t.Fatal("source was not delivered in the dialog")
+			}
+			d.Mouse(0, x, y, false)
+			d.Mouse(32, x+8, y, false)
+			d.Mouse(0, x+8, y, true)
+			terminal.Dialog = d
+			c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "r"})
+			if len(c.calls) != 1 || c.calls[0].operation.Reference == nil {
+				t.Fatal("reference was not delivered")
+			}
+			reference := c.calls[0].operation.Reference
+			var editor composer.Editor
+			if err := editor.InsertSelection(reference.Description, reference.Text, reference.Source, nil); err != nil {
+				t.Fatal(err)
+			}
+			description := "output"
+			if lang == "diff" {
+				description = "diff"
+			}
+			if want := "[Selected " + description + "] "; editor.Text != want || editor.Selections[0].Text != "+selected" {
+				t.Fatalf("reference = %q, %+v", editor.Text, reference)
+			}
+			terminal.Dialog = nil
+			*c.editor(c.event.Frame.View.Input.ID) = editor
+			c.refresh(time.Unix(100, 0))
+			frame, err := c.renderer.render(t.Context(), io.Discard, time.Unix(100, 0), "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertNativeUISnapshot(t, "native-reference-"+lang, frame.Rows)
+		})
+	}
+}

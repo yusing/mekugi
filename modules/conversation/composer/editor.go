@@ -315,6 +315,7 @@ func (e *Editor) InsertSelection(description, text, source string, pending []Dra
 	if len(text) > attachments.Budget/2 {
 		return fmt.Errorf("Selection exceeds the %d KiB mention limit; copy it instead", attachments.Budget/2>>10)
 	}
+	description = strings.TrimPrefix(description, "Selected ")
 	label := SelectionPrefix + description + "]"
 	used := func(label string) bool {
 		return strings.Contains(e.Text, label) || slices.ContainsFunc(pending, func(d Draft) bool { return strings.Contains(d.Text, label) })

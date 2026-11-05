@@ -572,7 +572,7 @@ func (c *nativeClient) dialog(intent terminalsession.DialogIntent) {
 		c.details(c.event.Frame.View.Version, sessionapi.NativeDetailRequest{Displayed: source, Kind: sessionapi.NativeFileDetails, Path: intent.Text})
 	case terminalsession.DialogReference:
 		c.closeLocalDetails()
-		intent := u.Main.Reference("Selected output", intent.Text, "")
+		intent := u.Main.Reference(intent.Description, intent.Text, "")
 		c.enqueue(sessionapi.NativeOperation{Reference: &intent}, nil, nil)
 	}
 }

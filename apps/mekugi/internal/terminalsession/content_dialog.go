@@ -95,6 +95,10 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 // Layout renders the current retained snapshot without owning output lifetime.
 func (d *ContentDialog) Layout(width int) {
 	page := d.Pages[d.Page]
+	d.Mention = "output"
+	if page.Lang == "diff" {
+		d.Mention = "diff"
+	}
 	d.StopAvailable = d.Processes && page.Process != nil
 	if !d.View.ChildReplySummary {
 		page.ReplyDetails = ""

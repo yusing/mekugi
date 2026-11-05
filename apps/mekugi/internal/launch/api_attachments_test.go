@@ -21,13 +21,13 @@ func TestAPISelectionReferenceSubmission(t *testing.T) {
 	selection := sessionapi.Attachment{Source: "selection", Name: "Selected output", Path: "source.go", Data: new(base64.StdEncoding.EncodeToString([]byte(quote)))}
 	inline := selection
 	inline.Inline = true
-	text := "日本語 Why [Selected Selected output] now?"
+	text := "日本語 Why [Selected output] now?"
 	prepared, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{Text: text, Attachments: []sessionapi.Attachment{inline, selection}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer prepared.Cleanup()
-	if len(prepared.Draft.Selections) != 2 || len(prepared.Draft.Files) != 0 || !strings.Contains(prepared.Draft.Text, "[Selected Selected output 2]") {
+	if len(prepared.Draft.Selections) != 2 || len(prepared.Draft.Files) != 0 || !strings.Contains(prepared.Draft.Text, "[Selected output 2]") {
 		t.Fatalf("reference bindings: %+v", prepared.Draft)
 	}
 	if !strings.HasPrefix(prepared.Draft.Text, text+"\n") || prepared.Draft.Selections[0].Start != len("日本語 Why ") {

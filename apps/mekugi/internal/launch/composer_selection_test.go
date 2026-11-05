@@ -144,10 +144,11 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 		if description, source := u.Selection.MentionDescription(); description != tt.description || source != tt.source {
 			t.Fatalf("mention = %q from %q, want %q from %q", description, source, tt.description, tt.source)
 		}
-	}
-	u.selectionAction('r')
-	if u.main.Text != "[Selected diff hunks @amber1 +1] " || u.main.Selections[0].Text != "-old\n ctx\n+other" {
-		t.Fatalf("diff mention draft = %q", u.main.Text)
+		u.selectionAction('r')
+		selection := u.main.Selections[len(u.main.Selections)-1]
+		if u.main.Text[selection.Start:selection.End] != "[Selected "+tt.description+"]" || selection.Text != tt.text || selection.Source != tt.source {
+			t.Fatalf("reference lost diff attribution: %q %+v", u.main.Text, selection)
+		}
 	}
 }
 
@@ -197,6 +198,10 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 		}
 		if got, want := u.Selection.Text(), "+a.go_line_02\n+a.go_line_03\n+a.go_line_04"; got != want {
 			t.Fatalf("selected = %q, want %q", got, want)
+		}
+		u.selectionAction('r')
+		if u.main.Text != "[Selected diff hunk @amber1:3-5] " || u.main.Selections[0].Source != "a.go" {
+			t.Fatalf("painted diff reference = %q %+v", u.main.Text, u.main.Selections)
 		}
 	}
 }
