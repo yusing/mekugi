@@ -258,6 +258,49 @@ func TestNativeClientBacklogPreservesSwitchOutputAndEffects(t *testing.T) {
 	}
 }
 
+func TestRPCClientAcknowledgesConsumedPublication(t *testing.T) {
+	acknowledged := make(chan string, 1)
+	release := make(chan struct{})
+	client := scriptedRPC(t, func(ctx context.Context, conn *websocket.Conn) {
+		request := readScriptRPC(t, ctx, conn)
+		var params RPCParams
+		if err := json.Unmarshal(request.Params, &params); err != nil {
+			t.Error(err)
+			return
+		}
+		result, _ := json.Marshal(RPCSubscribed{Subscription: params.Subscription})
+		writeScriptRPC(t, ctx, conn, RPCMessage{JSONRPC: "2.0", ID: request.ID, Result: result})
+		event, _ := json.Marshal(RPCEvent{Subscription: params.Subscription, Kind: "snapshot", Data: jsontext.Value(`{}`), Delivery: "receipt"})
+		writeScriptRPC(t, ctx, conn, RPCMessage{JSONRPC: "2.0", Method: "subscription/event", Params: event})
+		request = readScriptRPC(t, ctx, conn)
+		var ack RPCParams
+		if err := json.Unmarshal(request.Params, &ack); err != nil {
+			t.Error(err)
+			return
+		}
+		acknowledged <- request.Method + ":" + string(ack.Body)
+		writeScriptRPC(t, ctx, conn, RPCMessage{JSONRPC: "2.0", ID: request.ID, Result: jsontext.Value(`{}`)})
+		<-release
+	})
+	t.Cleanup(func() { close(release) })
+	subscription, err := client.Subscribe(t.Context(), "session/subscribe", RPCParams{Thread: "thread"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := subscription.Next(t.Context())
+	if err != nil || event.Delivery != "receipt" {
+		t.Fatalf("publication lost receipt: %+v, %v", event, err)
+	}
+	select {
+	case ack := <-acknowledged:
+		if ack != `publication/ack:{"delivery":"receipt"}` {
+			t.Fatalf("unexpected acknowledgement: %s", ack)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("consumed publication was not acknowledged")
+	}
+}
+
 // The response is a wire-order barrier: the reader must have accepted every
 // queued observation before the independent control call can settle.
 func bufferedRPCPublications(t *testing.T, method string, events []publication) (*RPCClient, *RPCSubscription) {

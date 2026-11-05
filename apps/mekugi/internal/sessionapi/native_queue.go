@@ -9,6 +9,47 @@ import (
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
+// publicationAdmission describes the retained prefix followed by the admitted
+// event. Endpoints own storage, locking, wakeups and delivery receipts.
+type publicationAdmission struct {
+	event publication
+	keep  int
+	bytes int
+}
+
+func admitPublication(event, last publication, count, bytes int, native bool) (publicationAdmission, bool) {
+	keep := count
+	if !native && event.Kind == "snapshot" {
+		// A shared snapshot resets feed identity, including reused sequences.
+		keep, bytes = 0, 0
+	}
+	if keep > 0 {
+		var merged publication
+		var replace bool
+		if native {
+			merged, replace = coalesceNative(last, event)
+		} else if last.Kind == "sessions" && event.Kind == "sessions" {
+			merged, replace = event, true
+		} else {
+			merged, replace = coalesceShared(last, event)
+		}
+		if replace {
+			event = merged
+			keep--
+			bytes -= len(last.Data)
+		}
+	}
+	if native {
+		event = normalizeNativeOutput(event)
+	}
+	bytes += len(event.Data)
+	// Joined exit follows all retained deliveries in a reserved terminal slot.
+	if len(event.Data) > subscriptionBytes || event.Kind != "exit" && (bytes > subscriptionBytes || keep+1 > subscriberBuffer) {
+		return publicationAdmission{}, false
+	}
+	return publicationAdmission{event: event, keep: keep, bytes: bytes}, true
+}
+
 // Inspect only delivery identity. Rendering payloads remain raw, including
 // fields unknown to this queue and exact integers inside retained output.
 type nativeQueueEvent struct {

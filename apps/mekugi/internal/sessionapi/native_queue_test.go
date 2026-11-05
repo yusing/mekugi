@@ -1,6 +1,7 @@
 package sessionapi
 
 import (
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"strings"
@@ -10,6 +11,33 @@ import (
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
+
+func TestPublicationAdmissionCapacityBoundaries(t *testing.T) {
+	for mode, native := range map[string]bool{"shared": false, "native": true} {
+		for _, test := range []struct {
+			name, kind   string
+			count, bytes int
+			accepted     bool
+		}{
+			{"last byte", "ordered", 1, subscriptionBytes - 2, true},
+			{"byte overflow", "ordered", 1, subscriptionBytes - 1, false},
+			{"last slot", "ordered", subscriberBuffer - 1, 2, true},
+			{"count overflow", "ordered", subscriberBuffer, 2, false},
+			{"reserved exit", "exit", subscriberBuffer, subscriptionBytes, true},
+		} {
+			t.Run(mode+"/"+test.name, func(t *testing.T) {
+				event := publication{Kind: test.kind, Data: jsontext.Value(`{}`)}
+				admission, ok := admitPublication(event, event, test.count, test.bytes, native)
+				if ok != test.accepted {
+					t.Fatalf("admission accepted=%v, want %v", ok, test.accepted)
+				}
+				if ok && (admission.keep != test.count || admission.bytes != test.bytes+len(event.Data)) {
+					t.Fatalf("ordered delivery changed retained accounting: %+v", admission)
+				}
+			})
+		}
+	}
+}
 
 func TestNativeJoinedExitHasReservedServerAndClientCapacity(t *testing.T) {
 	native := NewLive().Native()

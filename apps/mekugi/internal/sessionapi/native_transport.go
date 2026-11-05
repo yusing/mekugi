@@ -99,27 +99,17 @@ type nativePublications struct {
 func (q *nativePublications) push(event publication) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	var replace bool
+	var last publication
 	if len(q.events) > 0 {
-		if merged, ok := coalesceNative(q.events[len(q.events)-1], event); ok {
-			event, replace = merged, true
-		}
+		last = q.events[len(q.events)-1]
 	}
-	event = normalizeNativeOutput(event)
-	queuedBytes := q.bytes + len(event.Data)
-	if replace {
-		queuedBytes -= len(q.events[len(q.events)-1].Data)
-	}
-	// The joined exit has a reserved slot and follows all retained deliveries.
-	if len(event.Data) > subscriptionBytes || event.Kind != "exit" && (queuedBytes > subscriptionBytes || !replace && len(q.events) >= subscriberBuffer) {
+	admission, ok := admitPublication(event, last, len(q.events), q.bytes, true)
+	if !ok {
 		return false
 	}
-	if replace {
-		q.events[len(q.events)-1] = event
-	} else {
-		q.events = append(q.events, event)
-	}
-	q.bytes = queuedBytes
+	clear(q.events[admission.keep:])
+	q.events = append(q.events[:admission.keep], admission.event)
+	q.bytes = admission.bytes
 	select {
 	case q.ready <- struct{}{}:
 	default:

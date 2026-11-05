@@ -161,40 +161,13 @@ func (c *RPCClient) read() {
 			c.mu.Lock()
 			s := c.subscriptions[event.Subscription]
 			if s != nil {
-				var replace bool
-				if !s.native && event.Kind == "snapshot" {
-					// Shared snapshots reset all feed identity, including sequence
-					// reuse after a seek or attachment replacement.
-					clear(s.events)
-					s.events, s.bytes = s.events[:0], 0
-				}
+				var last publication
 				if len(s.events) > 0 {
-					last := s.events[len(s.events)-1]
-					previous, next := publication{Kind: last.Kind, Data: last.Data}, publication{Kind: event.Kind, Data: event.Data}
-					var merged publication
-					if s.native {
-						merged, replace = coalesceNative(previous, next)
-					} else if event.Kind == "sessions" && last.Kind == "sessions" {
-						merged, replace = next, true
-					} else {
-						merged, replace = coalesceShared(previous, next)
-					}
-					if replace {
-						event.Kind, event.Data = merged.Kind, merged.Data
-					}
+					previous := s.events[len(s.events)-1]
+					last = publication{Kind: previous.Kind, Data: previous.Data}
 				}
-				if s.native {
-					normalized := normalizeNativeOutput(publication{Kind: event.Kind, Data: event.Data})
-					event.Data = normalized.Data
-				}
-				queuedBytes, queuedCount := s.bytes+len(event.Data), len(s.events)+1
-				if replace {
-					queuedBytes -= len(s.events[len(s.events)-1].Data)
-					queuedCount--
-				}
-				// Runtime exit owns a reserved terminal slot even when every
-				// ordinary slot contains an irreducible ordered delivery.
-				if len(event.Data) > subscriptionBytes || event.Kind != "exit" && (queuedBytes > subscriptionBytes || queuedCount > subscriberBuffer) {
+				admission, ok := admitPublication(publication{Kind: event.Kind, Data: event.Data}, last, len(s.events), s.bytes, s.native)
+				if !ok {
 					s.err = errors.New("control subscription exceeded its retained delivery capacity")
 					close(s.ready)
 					delete(c.subscriptions, s.ID)
@@ -202,12 +175,10 @@ func (c *RPCClient) read() {
 					go c.cancelSubscription(s.ID)
 					continue
 				}
-				if replace {
-					s.events[len(s.events)-1] = event
-				} else {
-					s.events = append(s.events, event)
-				}
-				s.bytes = queuedBytes
+				event.Kind, event.Data = admission.event.Kind, admission.event.Data
+				clear(s.events[admission.keep:])
+				s.events = append(s.events[:admission.keep], event)
+				s.bytes = admission.bytes
 				select {
 				case s.ready <- struct{}{}:
 				default:
