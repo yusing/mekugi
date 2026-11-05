@@ -47,18 +47,18 @@ func TestBatchResultRow(t *testing.T) {
 	steps := activitypresentation.Value{Kind: "reads", Verb: "Read", Reads: []activityfeed.Read{{Path: "a.go", Ranges: []string{"1:9"}}, {Path: "b.go", Ranges: []string{"3:7"}}}}
 	command := &activitypresentation.ItemContent{Command: activitypresentation.Command{Display: script}}
 
-	listed := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{steps, result}, Command: command}, false, "/root")
+	listed := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{steps, result}, Command: command}, false, "/root", "/root")
 	if len(listed.Values) != 2 {
 		t.Fatalf("values = %+v", listed.Values)
 	}
 	if r := listed.Values[1]; !r.BatchExit || r.Label != "" || r.Code != "" || r.Duration != 3700 || r.TailOmitted != 143 || len(r.Tail) != 1 || r.DetailsAvailable == nil {
 		t.Fatalf("result under steps = %+v", r)
 	}
-	alone := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{result}, Command: command}, false, "/root")
+	alone := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{result}, Command: command}, false, "/root", "/root")
 	if r := alone.Values[0]; r.Label != "" || r.Code != script || r.CodePreview != "mcat a.go 1:9; mcat b.go 3:7" || r.Lang != "bash" || r.TailOmitted != 143 {
 		t.Fatalf("result alone = %+v", r)
 	}
-	merged := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{{Kind: "op", Code: script}, result}, Command: command}, false, "/root")
+	merged := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{{Kind: "op", Code: script}, result}, Command: command}, false, "/root", "/root")
 	if len(merged.Values) != 1 || merged.Values[0].DetailsAvailable == nil {
 		t.Fatalf("batch merge lost output disclosure: %+v", merged.Values)
 	}
@@ -68,7 +68,7 @@ func TestBatchResultRow(t *testing.T) {
 func TestEditSources(t *testing.T) {
 	t.Parallel()
 	edit := activitypresentation.Value{Kind: "op", Verb: "Edit", Label: "`a.go` +2 −1 · python3, gofmt", EditSource: "python3, gofmt"}
-	if v := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{edit}}, false, "/root").Values[0]; v.Label != "`a.go` +2 −1" || strings.Join(v.Sources, "|") != "python3|gofmt" {
+	if v := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{edit}}, false, "/root", "/root").Values[0]; v.Label != "`a.go` +2 −1" || strings.Join(v.Sources, "|") != "python3|gofmt" {
 		t.Fatalf("edit = %+v", v)
 	}
 }
@@ -156,7 +156,7 @@ func TestRosterAgentDisplayNames(t *testing.T) {
 }
 
 func TestEntryAgentIdentitiesBeforeRoster(t *testing.T) {
-	entry := projectEntry(activitypresentation.Entry{Agent: "Main", Values: []activitypresentation.Value{{Kind: "progress", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/worker/reviewer"}, {Name: "unknown"}}}}}, false, "/root/delegate")
+	entry := projectEntry(activitypresentation.Entry{Agent: "Main", Values: []activitypresentation.Value{{Kind: "progress", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/worker/reviewer"}, {Name: "unknown"}}}}}, false, "/root/delegate", "/root/delegate")
 	for i, want := range [][2]string{{"/root/delegate", "delegate"}, {"/root/worker/reviewer", "worker/reviewer"}, {"unknown", "unknown"}} {
 		if got := entry.Identities[i]; got.Name != want[0] || got.Label != want[1] {
 			t.Fatalf("entry identity %d = %+v, want %v", i, got, want)
@@ -181,7 +181,7 @@ func TestCoordinationEndpointsUseRuntimeCaller(t *testing.T) {
 		Arguments: []byte(`{"target":"agent:main","message":"Evidence from the child."}`),
 		Result:    []byte(`{"content":[{"type":"text","text":"{\"state\":\"confirmed\",\"id\":\"message\",\"task_name\":\"agent:main\"}"}]}`),
 	})
-	value := projectEntry(activitypresentation.Entry{Facts: entry.ActivityFacts(), Values: sessionpresentation.ActivityContent(entry).Values()}, false, "/root/child").Values[0]
+	value := projectEntry(activitypresentation.Entry{Facts: entry.ActivityFacts(), Values: sessionpresentation.ActivityContent(entry).Values()}, false, "/root/child", "/root/child").Values[0]
 	if value.From != "/root/child" || value.To != "/root" {
 		t.Fatalf("child outbox became a root self-message: %+v", value)
 	}
@@ -194,7 +194,7 @@ func TestCoordinationEndpointsUseRuntimeCaller(t *testing.T) {
 	}
 	for _, endpoints := range [][2]string{{"/root", "Main"}, {"/root", "/root/parent"}, {"unknown", ""}} {
 		original := activitypresentation.Value{From: endpoints[0], To: endpoints[1]}
-		projected := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{original}}, false, "/root/child").Values[0]
+		projected := projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{original}}, false, "/root/child", "/root/child").Values[0]
 		wantTo := endpoints[1]
 		if wantTo == "Main" {
 			wantTo = "/root/child"
@@ -242,7 +242,7 @@ func TestSkippedCommandProjection(t *testing.T) {
 	if data := string(snapshot.Data); strings.Count(data, `"skipped":true`) != 1 || !strings.Contains(data, "unreachable") {
 		t.Fatalf("skipped command lost in browser snapshot: %s", data)
 	}
-	values := projectEntry(entry, false, "/root").Values
+	values := projectEntry(entry, false, "/root", "/root").Values
 	if len(values) < 2 || values[0].ExitCode == nil || *values[0].ExitCode != 1 || values[1].ExitCode != nil {
 		t.Fatalf("command outcomes = %+v", values)
 	}
@@ -255,12 +255,12 @@ func TestPendingCommandsAndEffects(t *testing.T) {
 		{Source: "printf ready", Text: activitypresentation.ShellSource("printf ready", ""), Running: true},
 		{Source: "printf later", Pending: true},
 	}}, Details: &activitypresentation.ItemDetails{CommandText: source}}
-	projected := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root")
+	projected := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root", "/root")
 	if len(projected.Values) < 2 || !projected.Values[1].Pending {
 		t.Fatalf("pending command lost: %+v", projected.Values)
 	}
 	effect := activitypresentation.Value{Effect: true, Kind: "op", Verb: "Create", Label: "`a.go` +1 -0"}
-	if !projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{effect}}, false, "/root").Values[0].Effect {
+	if !projectEntry(activitypresentation.Entry{Values: []activitypresentation.Value{effect}}, false, "/root", "/root").Values[0].Effect {
 		t.Fatal("captured effect lost its parent relationship")
 	}
 }
@@ -279,7 +279,7 @@ func TestTemporaryEditDisclosure(t *testing.T) {
 					records = append(records, fmt.Sprintf("%s `%s/file%03d.go` %s · %s", verb, root, i, counts, writer))
 				}
 				item := activitypresentation.ItemContent{Seq: 1, Kind: "tool", Text: strings.Join(records, "\n\n")}
-				values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root").Values
+				values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root", "/root").Values
 				if len(values) != count || !strings.Contains(values[count-1].Label, fmt.Sprintf("file%03d.go", count-1)) {
 					t.Fatal("folded capture lost its original files")
 				}
@@ -297,7 +297,7 @@ func TestTemporaryEditDisclosure(t *testing.T) {
 	}
 	const source = "first\nsecond\nthird\nfourth\nfifth\nsixth"
 	item := activitypresentation.ItemContent{Kind: "tool", Text: "Create `/tmp/large.txt`\n```text\n" + source + "\n```"}
-	if values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root").Values; len(values) != 1 || !values[0].FoldSource || values[0].Code != source {
+	if values := projectEntry(activitypresentation.Entry{Values: item.Values()}, false, "/root", "/root").Values; len(values) != 1 || !values[0].FoldSource || values[0].Code != source {
 		t.Fatalf("temporary source disclosure lost original: %+v", values)
 	}
 }
@@ -400,5 +400,50 @@ func TestPathlessSkillAttachmentProjection(t *testing.T) {
 		if v := values[i]; v.Verb != "Attached skill" || v.Label != name || v.Reads != nil || len(v.Tail) == 0 {
 			t.Fatalf("value %d = %+v", i, v)
 		}
+	}
+}
+
+func TestAgentTrafficProjectionUsesTranscriptOwner(t *testing.T) {
+	const caller, child = "/root/parent", "/root/parent/child"
+	item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Agent: child, Kind: "final", Text: "Completed the task.", Outcome: "interrupted"}, Message: &activitypresentation.DirectedContent{From: child, To: "Main"}}
+	entry := activitypresentation.Entry{Facts: item.Facts, Values: item.Values()}
+	received := projectEntry(entry, true, caller, caller)
+	if received.Traffic == nil || received.Traffic.Kind != "interrupted" || received.Traffic.From != child || received.Traffic.To != caller || !received.Traffic.Incoming {
+		t.Fatalf("received traffic = %+v", received.Traffic)
+	}
+	entry.Values = nil // Historical/publications may retain only entry-level facts.
+	bare := projectEntry(entry, true, caller, caller)
+	if bare.Traffic == nil || bare.Traffic.Kind != received.Traffic.Kind || bare.Traffic.From != child {
+		t.Fatalf("entry-level final lost traffic: %+v", bare.Traffic)
+	}
+	own := projectEntry(entry, true, caller, child)
+	if own.Traffic != nil {
+		t.Fatalf("own final answer became traffic: %+v", own.Traffic)
+	}
+}
+
+func TestAgentTrafficDefaultCallerAndRootDelivery(t *testing.T) {
+	for _, test := range []struct {
+		name, agent, kind, caller string
+		incoming                  bool
+	}{
+		{"own answer without caller", "Main", "final", "", false},
+		{"root message to child", "/root", "reply", "/root/worker", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			item := activitypresentation.ItemContent{Facts: activitypresentation.Facts{Seq: 1, Agent: test.agent, Kind: test.kind, Text: "Authored reply."}, Message: &activitypresentation.DirectedContent{From: test.agent, To: "Main", Text: "Authored reply."}}
+			entry := activitypresentation.Entry{Facts: item.Facts, Values: item.Values()}
+			server := New()
+			if err := server.Publish(Frame{Session: Session{Caller: test.caller}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{entry}}}); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := server.snapshot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if event := string(snapshot.Data); strings.Contains(event, `"incoming":true`) != test.incoming || strings.Contains(event, `"traffic":`) != test.incoming {
+				t.Fatalf("traffic publication = %s", event)
+			}
+		})
 	}
 }

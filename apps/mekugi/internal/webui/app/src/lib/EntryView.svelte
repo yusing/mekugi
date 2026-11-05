@@ -126,59 +126,12 @@
       notify();
     };
   };
-  const endpoint = (name?: string) => (name ? stream.address(name) : undefined);
-
-  // Traffic between agents: a task, a message, or a child's answer. Like the
-  // terminal, it is headed by who sent it and what happened.
-  const traffic = $derived.by(() => {
-    if (user) return undefined;
-    const kind = first?.kind;
-    if (entry.kind === "start" || kind === "start")
-      return {
-        glyph: "start",
-        from: endpoint(first?.from),
-        to: endpoint(first?.to || entry.assignmentTo || entry.agent),
-        detail: "started",
-      };
-    if (kind === "message" || entry.kind === "reply" || entry.assignment)
-      return {
-        glyph: "message",
-        from: endpoint(first?.from),
-        to: endpoint(first?.to ?? entry.assignmentTo),
-        detail: "",
-      };
-    // A child's answer, as Main's transcript shows it.
-    const child = entry.agent !== owner && entry.agent !== "Main";
-    if (child && entry.kind === "final")
-      return {
-        glyph:
-          entry.outcome === "interrupted"
-            ? "interrupted"
-            : entry.outcome === "failed"
-              ? "error"
-              : "final",
-        from: endpoint(first?.from) ?? entry.agent,
-        to: endpoint(first?.to),
-        detail:
-          entry.outcome === "interrupted"
-            ? "interrupted"
-            : entry.outcome === "failed"
-              ? "failed"
-              : "finished",
-      };
-    if (entry.kind === "error") return { glyph: "error", from: entry.agent, detail: "failed" };
-    return undefined;
-  });
+  const traffic = $derived(entry.traffic);
   const body = $derived(first?.body || entry.assignmentText || entry.text || "");
   const replyContext = $derived(first?.summary ? referenceContext(body) : undefined);
   // Incoming replies use their summary or excerpt in the recipient's feed;
   // the displayed agent's own replies remain complete.
-  const reply = $derived(
-    (entry.kind === "final" || traffic?.glyph === "message") &&
-      !entry.assignment &&
-      entry.agent !== "Main" &&
-      entry.agent !== owner,
-  );
+  const reply = $derived(traffic?.incoming);
   const thought = (ms?: number) => (ms && ms >= 1000 ? `Thought for ${duration(ms)}` : "Thought");
   // Consecutive thoughts fold into one line headed by the latest.
   const reasoning = $derived((thoughts ?? [entry]).flatMap((e) => e.values ?? []));
@@ -319,31 +272,31 @@
       {#if traffic}
         <Message.Root
           data-ai-element="subagent"
-          class="border-l-2 py-0.5 pl-3.5 {edges[traffic.glyph]}"
+          class="border-l-2 py-0.5 pl-3.5 {edges[traffic.kind]}"
         >
           <Message.Content class="gap-0">
             <Message.Header class="mb-1 px-0 font-normal">
               <Trace.Line
-                status={traffic.glyph === "error" ? "error" : undefined}
+                status={traffic.kind === "error" ? "error" : undefined}
                 class="flex-wrap items-baseline gap-x-1.5 text-small"
               >
-                <Trace.Icon class="size-3.5 {glyphs[traffic.glyph]}"
+                <Trace.Icon class="size-3.5 {glyphs[traffic.kind]}"
                   >{{ start: "▶", message: "✉", final: "✓", error: "✗", interrupted: "■" }[
-                    traffic.glyph
+                    traffic.kind
                   ]}</Trace.Icon
                 >
                 {#if traffic.from}<AgentName name={traffic.from} current={owner} />{/if}
                 {#if traffic.to}{#if traffic.from}<span class="text-muted">→</span>{/if}
                   <AgentName name={traffic.to} current={owner} />{/if}
-                {#if traffic.detail}<Trace.Description class="text-muted"
-                    >{traffic.detail}</Trace.Description
+                {#if traffic.detail && (!entry.assignment || traffic.kind !== "message")}<Trace.Description
+                    class="text-muted">{traffic.detail}</Trace.Description
                   >{/if}
               </Trace.Line>
             </Message.Header>
             {#if body}
               <!-- A task is long and its agent's own view leads with it; elsewhere
                  it opens with its first lines. -->
-              {#if traffic.glyph === "start" && traffic.to !== owner}
+              {#if traffic.kind === "start" && traffic.to !== owner}
                 <Excerpt text={body} noun="task" />
               {:else if reply && first?.summary}
                 <Markdown text={first.summary} context={replyContext} />
@@ -469,9 +422,9 @@
                   <Message.Header class="mb-1 px-0 font-normal">
                     <Trace.Line class="flex-wrap items-baseline gap-x-1.5 text-small">
                       <Trace.Icon class="size-3.5 {glyphs.message}">✉</Trace.Icon>
-                      <AgentName name={endpoint(value.from) ?? ""} current={owner} />
+                      <AgentName name={value.from ?? ""} current={owner} />
                       <span class="text-muted">→</span>
-                      <AgentName name={endpoint(value.to) ?? ""} current={owner} />
+                      <AgentName name={value.to ?? ""} current={owner} />
                     </Trace.Line>
                   </Message.Header>
                   <Excerpt text={value.body ?? ""} noun="message" />

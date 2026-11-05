@@ -506,7 +506,11 @@ func (f *feed) update(publication *activitypresentation.Publication, keep func(a
 		if ok && previous.position < int(f.window) {
 			historical = true
 		}
-		value := projectEntry(e, summaries, caller)
+		owner := caller
+		if keep != nil {
+			owner = e.Agent // The agents feed is displayed as each agent's own transcript.
+		}
+		value := projectEntry(e, summaries, caller, owner)
 		value.Turn = turn
 		value.Position = position
 		data, err := json.Marshal(value, encoding)

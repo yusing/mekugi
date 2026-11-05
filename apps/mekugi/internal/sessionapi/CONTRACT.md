@@ -526,6 +526,12 @@ omitted when unknown.
   `observed` is its time and `running` marks unfinished work. A task sets
   `assignment`, with its recipient's caller path in `assignmentTo` and its
   Markdown in `assignmentText`. `values` holds the entry's presentation values.
+  Optional `traffic` publishes Activity's shared agent-exchange interpretation:
+  semantic `kind` (`start`, `message`, `final`, `interrupted` or `error`), known
+  canonical `from`/`to` endpoints, outcome `detail`, and `incoming` reply
+  disclosure eligibility. Own final answers remain ordinary prose without
+  `traffic`. Renderers paint these facts rather than reclassifying outcomes or
+  resolving runtime-local endpoints.
   For delivered agent results, optional `outcome` is the authoritative terminal
   outcome: `completed`, `failed` or `interrupted`. It is independent of authored
   text. Omission means no outcome is available, including historical messages

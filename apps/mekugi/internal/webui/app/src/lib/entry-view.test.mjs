@@ -66,6 +66,7 @@ test("deferred replies keep their authored summary and Details disclosure", () =
         seq: 1,
         agent: "/root/child",
         kind: "reply",
+        traffic: { kind: "message", from: "/root/child", to: "/root", incoming: true },
         autoContent: true,
         content: { attachment: "current", kind: "main", revision: 1, seq: 1 },
         values: [
@@ -160,7 +161,7 @@ test("a wait reads as a collaboration line naming its targets", () => {
   assert.doesNotMatch(html, /\/root\//);
 });
 
-test("traffic resolves the local recipient from published identity facts", () => {
+test("traffic paints the published local recipient and start target", () => {
   stream.main = {
     order: [9],
     entries: {
@@ -176,6 +177,7 @@ test("traffic resolves the local recipient from published identity facts", () =>
         seq: 9,
         kind: "reply",
         agent: "/root/sender",
+        traffic: { kind: "message", from: "/root/sender", to: "/root/worker", incoming: true },
         values: [{ kind: "message", from: "/root/sender", to: "Main", body: "Incoming message" }],
       },
       at: "",
@@ -187,13 +189,21 @@ test("traffic resolves the local recipient from published identity facts", () =>
   assert.doesNotMatch(html, />Main<|>\/root</);
   const start = render(EntryView, {
     props: {
-      entry: { seq: 9, kind: "start", agent: "/root/worker", values: [{ kind: "start" }] },
+      entry: {
+        seq: 9,
+        kind: "start",
+        assignment: true,
+        agent: "/root/worker",
+        traffic: { kind: "start", to: "/root/worker", detail: "started" },
+        values: [{ kind: "start" }],
+      },
       at: "",
       stamp: "",
       owner: "/root",
     },
   }).body;
   assert.match(start, />worker</);
+  assert.match(start, /started/);
   assert.doesNotMatch(start, />main<|>Main<|→/);
   stream.main = { order: [], entries: {} };
 });
@@ -217,6 +227,13 @@ test("delivered final answers retain both published endpoints", () => {
         seq: 10,
         kind: "final",
         agent: "/root/reviewer",
+        traffic: {
+          kind: "final",
+          from: "/root/reviewer",
+          to: "/root/worker",
+          detail: "finished",
+          incoming: true,
+        },
         values: [{ kind: "final", from: "/root/reviewer", to: "/root/worker", body: "Reviewed." }],
       },
       at: "",

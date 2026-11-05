@@ -216,3 +216,48 @@ func TestCapturedApprovalKeepsSingleAction(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentTrafficInterpretation(t *testing.T) {
+	const caller, child, peer = "/root/worker", "/root/worker/reviewer", "/root/other"
+	for _, test := range []struct {
+		name, kind, from, to, outcome, owner, wantKind, wantDetail, wantPeer string
+		incoming, external                                                   bool
+	}{
+		{"start", "start", "Main", child, "", caller, "start", "started", child, false, false},
+		{"assignment", "assignment", "Main", child, "", caller, "message", "assignment", child, false, false},
+		{"outgoing", "reply", "Main", peer, "", caller, "message", "", peer, false, false},
+		{"incoming", "reply", child, "Main", "", caller, "message", "", child, true, false},
+		{"root incoming", "reply", "/root", "Main", "", caller, "message", "", "/root", true, false},
+		{"external", "reply", child, peer, "", caller, "message", "", "", true, true},
+		{"completed", "final", child, "Main", "completed", caller, "final", "finished", child, true, false},
+		{"interrupted", "final", child, "Main", "interrupted", caller, "interrupted", "interrupted", child, true, false},
+		{"failed", "final", child, "Main", "failed", caller, "error", "failed", child, true, false},
+		{"own answer", "final", child, "Main", "completed", child, "", "", "", false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			item := ItemContent{Facts: Facts{Kind: test.kind, Agent: test.from, Outcome: test.outcome}}
+			directed := &DirectedContent{From: test.from, To: test.to, Text: "Authored message"}
+			label := "review-correctness"
+			item.Message, item.Assignment, item.StartLabel = directed, directed, &label
+			item.Facts.Assignment = test.kind == "assignment" || test.kind == "start"
+			values := item.Values()
+			entry := Entry{Facts: item.Facts, Values: values}
+			traffic := entry.Traffic(values[0], caller, test.owner)
+			if test.wantKind == "" {
+				if traffic == nil || !traffic.OwnAnswer || traffic.Kind != "final" {
+					t.Fatalf("own answer lost its completion semantics: %+v", traffic)
+				}
+				return
+			}
+			if traffic == nil {
+				t.Fatal("missing traffic")
+			}
+			if traffic.Kind != test.wantKind || traffic.Detail != test.wantDetail || traffic.Peer != test.wantPeer || traffic.Incoming != test.incoming || traffic.External != test.external {
+				t.Fatalf("traffic = %+v", traffic)
+			}
+			if traffic.From == "Main" || traffic.To == "Main" {
+				t.Fatalf("unresolved runtime address: %+v", traffic)
+			}
+		})
+	}
+}

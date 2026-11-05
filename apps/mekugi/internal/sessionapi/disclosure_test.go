@@ -73,7 +73,7 @@ func TestDetailsFactSurvivesProjectionAndCompaction(t *testing.T) {
 		{"blank output", activity.Value{Kind: "op", Tail: []string{"", " "}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			full := projectEntry(activity.Entry{Values: []activity.Value{tc.value}}, false, "/root")
+			full := projectEntry(activity.Entry{Values: []activity.Value{tc.value}}, false, "/root", "/root")
 			for _, value := range []entry{full, compactEntry(full)} {
 				if got := value.Values[0].DetailsAvailable != nil; got != tc.want {
 					t.Fatalf("disclosure=%v, want %v: %+v", got, tc.want, value.Values[0])
@@ -82,7 +82,7 @@ func TestDetailsFactSurvivesProjectionAndCompaction(t *testing.T) {
 		})
 	}
 	item := activity.ItemContent{Kind: "error", Agent: "Main", Text: "Complete failure"}
-	full := projectEntry(activity.Entry{Agent: "Main", Kind: "error", Values: item.Values()}, false, "/root/worker")
+	full := projectEntry(activity.Entry{Agent: "Main", Kind: "error", Values: item.Values()}, false, "/root/worker", "/root/worker")
 	if disclosure := full.Values[0].DetailsAvailable; disclosure == nil || disclosure.Owner != "/root/worker" {
 		t.Fatalf("local diagnostic owner lost: %+v", disclosure)
 	}

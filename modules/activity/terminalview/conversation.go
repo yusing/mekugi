@@ -358,7 +358,11 @@ func (v *View) threadAgent(index int) string {
 	if (entry.Agent == "You" || entry.Kind == "user") || entry.Agent == v.conversationSpeaker() && entry.Kind != "start" && entry.Kind != "assignment" && entry.Kind != "reply" || len(v.entries[index].Values) == 0 {
 		return ""
 	}
-	return v.trafficAgent(entry, v.blocks(index)[0])
+	traffic := entry.Traffic(v.blocks(index)[0].Value, v.Display.MainCaller, v.conversationCaller())
+	if traffic == nil {
+		return ""
+	}
+	return traffic.Peer
 }
 
 // conversationCaller is the canonical endpoint of the displayed transcript.
@@ -373,35 +377,6 @@ func (v *View) conversationCaller() string {
 // when viewing that child's entries in the shared Activity feed.
 func (v *View) conversationLocal(endpoint string) bool {
 	return endpoint == v.conversationCaller() || endpoint == "Main" && v.conversationSpeaker() == "Main"
-}
-
-// trafficAgent names the started agent or the other peer of a local message.
-// Traffic between other agents must retain its own route, outside a local thread.
-func (v *View) trafficAgent(entry activitypresentation.Entry, block Block) string {
-	agent := ""
-	switch {
-	case block.Kind == "start":
-		if block.From != "" && block.To != "" && !v.conversationLocal(block.From) && !v.conversationLocal(block.To) {
-			return ""
-		}
-		agent = block.To
-	case block.Kind == "message":
-		switch {
-		case v.conversationLocal(block.From):
-			agent = block.To
-		case v.conversationLocal(block.To):
-			agent = block.From
-		default:
-			return ""
-		}
-	case block.Kind == "final" || block.Kind == "error":
-	default:
-		return ""
-	}
-	if agent == "" {
-		agent = entry.Agent
-	}
-	return agent
 }
 
 // threadTask reports whether seq is the latest assignment in the thread above
@@ -666,35 +641,29 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 	if len(blocks) > 0 {
 		block = blocks[0]
 	}
-	agent := v.trafficAgent(entry, block)
-	external := agent == "" && block.From != "" && block.To != "" && (block.Kind == "message" || block.Kind == "start")
-	if agent == "" {
-		agent = entry.Agent
-	}
-	reply := block.Kind != "start" && entry.Kind != "assignment" && (block.Kind != "message" || v.conversationLocal(block.To))
-	switch {
-	case block.Kind == "start":
-		glyph, detail = terminalui.Green+"▶"+terminalui.Reset, "started"
-		if block.Label != "" {
-			detail += " · " + ansi.Strip(p.Inline(block.Label))
+	traffic := entry.Traffic(block.Value, v.Display.MainCaller, v.conversationCaller())
+	agent, external, reply := entry.Agent, false, false
+	if traffic != nil {
+		agent, external, reply = cmp.Or(traffic.Peer, entry.Agent), traffic.External, traffic.Reply
+		detail = traffic.Detail
+		switch traffic.Kind {
+		case "start":
+			glyph = terminalui.Green + "▶" + terminalui.Reset
+			if block.Label != "" {
+				detail += " · " + ansi.Strip(p.Inline(block.Label))
+			}
+		case "message":
+			glyph = terminalui.Dim + "✉" + terminalui.Undim
+		case "final":
+			glyph = terminalui.Green + "✓" + terminalui.Reset
+		case "interrupted":
+			glyph = terminalui.Dim + "■" + terminalui.Undim
+		case "error":
+			glyph = terminalui.Red + "✗" + terminalui.Reset
 		}
-	case block.Kind == "message":
-		glyph = terminalui.Dim + "✉" + terminalui.Undim
-		if entry.Kind == "assignment" {
-			detail = "assignment"
-		}
-	case block.Kind == "final":
-		glyph, detail = terminalui.Green+"✓"+terminalui.Reset, "finished"
-		if entry.Outcome == "interrupted" {
-			glyph, detail = terminalui.Dim+"■"+terminalui.Undim, "interrupted"
-		}
-		if entry.Outcome == "failed" {
-			glyph, detail = terminalui.Red+"✗"+terminalui.Reset, "failed"
-		}
-	case block.Kind == "error":
-		glyph = terminalui.Red + "✗" + terminalui.Reset
-		if thread.Joined {
-			detail = "failed"
+		// Unjoined error bodies already carry their failure heading.
+		if block.Kind == "error" && !thread.Joined {
+			detail = ""
 		}
 	}
 	name := p.Agent(agent)

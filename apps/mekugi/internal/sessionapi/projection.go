@@ -151,6 +151,7 @@ func projectStatus(label sessionpresentation.Label) status {
 }
 
 type entry struct {
+	Traffic        *activitypresentation.Traffic       `json:"traffic,omitzero"`
 	Identities     []sessionpresentation.AgentIdentity `json:"identities,omitzero"`
 	Position       int                                 `json:"position"`
 	Turn           uint64                              `json:"turn,omitzero"`
@@ -295,13 +296,20 @@ func millis(t time.Time) int64 {
 }
 
 // projectEntry carries child reply summaries only when summaries is set.
-func projectEntry(e activitypresentation.Entry, summaries bool, caller string) entry {
+func projectEntry(e activitypresentation.Entry, summaries bool, caller, owner string) entry {
 	e = publicEntry(e)
 	p := entry{
 		Seq: e.Seq, Revision: e.Revision, Agent: sessionpresentation.PresentAgent(e.Agent, caller).Name, Kind: e.Kind, Outcome: e.Outcome, Text: e.Text, Observed: millis(e.Observed), Running: e.Running,
 		Assignment: e.Assignment, AssignmentTo: e.AssignmentTo, AssignmentText: e.AssignmentText,
 		Values: projectValues(e.Values, summaries), Spans: e.Spans,
 		Identities: sessionpresentation.PresentEntryAgents(e, caller),
+	}
+	var first activitypresentation.Value
+	if len(e.Values) > 0 {
+		first = e.Values[0]
+	}
+	if traffic := e.Traffic(first, caller, owner); traffic != nil && !traffic.OwnAnswer {
+		p.Traffic = traffic
 	}
 	for i := range p.Values {
 		p.Values[i].From, p.Values[i].To = e.Values[i].Endpoints(caller)

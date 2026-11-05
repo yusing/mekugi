@@ -253,6 +253,7 @@ export type reviewFile = {
 };
 
 export type entry = {
+  "traffic"?: (Traffic | null);
   "identities"?: Array<AgentIdentity>;
   "position": number;
   "turn"?: number;
@@ -505,6 +506,14 @@ export type Origin = {
 export type Counts = {
   "Added": number;
   "Removed": number;
+};
+
+export type Traffic = {
+  "kind": string;
+  "from"?: string;
+  "to"?: string;
+  "detail"?: string;
+  "incoming"?: boolean;
 };
 
 export type AgentIdentity = {
