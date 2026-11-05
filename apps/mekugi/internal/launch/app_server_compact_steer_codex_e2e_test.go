@@ -53,7 +53,7 @@ func TestAppServerCompactEnterInterruptsNativeCodex(t *testing.T) {
 				t.Fatal("initial inference was released before compaction and continuation")
 			default:
 			}
-			terminal.await("Context compacted")
+			terminal.await("Context reset")
 			terminal.await("╭─ Completed")
 			terminal.quit()
 			select {

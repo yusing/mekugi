@@ -75,7 +75,7 @@ func TestSideForkDuringMainCompactionNativeCodex(t *testing.T) {
 		return strings.Contains(frame, "Compacting context") && !strings.Contains(frame, "One-off")
 	})
 	close(compact)
-	terminal.await("Context compacted")
+	terminal.await("Context reset")
 	terminal.quit()
 }
 

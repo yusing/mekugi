@@ -103,7 +103,7 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 	terminal.await("INITIAL_DONE")
 	terminal.await("╭─ Completed")
 	terminal.send("/compact\r")
-	terminal.await("Context compacted")
+	terminal.await("Context reset")
 	write(source, "Reusable project guidance. Current file token: FILE_AFTER_7391.\n")
 	write(skill, "---\nname: reload-check\ndescription: reusable continuation guidance\n---\nCurrent skill token: SKILL_AFTER_8264.\n")
 	terminal.send("Read guide.txt and SKILL.md with ordinary tools and report their current file and skill tokens.\r")
