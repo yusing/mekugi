@@ -287,6 +287,9 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 	frame := benchmarkNativeHistoryFrame(1)
 	frame.Family = &Family{Root: "thread", Threads: []string{"thread", "child"}, Agents: &activity.Publication{MainSummary: []activity.Entry{{Text: "family summary"}}}, Status: sessionpresentation.Label{Text: "Working", Running: true}}
 	frame.Review = &changes.ReviewView{Revision: 1, Coverage: "loading", Files: []changes.File{{Path: "first.go"}}}
+	frame.Review.Publication = frame.Review.Publication.With([]changes.File{{Path: "first.go", Chunks: []changes.Chunk{{
+		Review: diffmodel.RenderReviewFile("old.go", "first.go", "old\n", "new\n"),
+	}}}})
 	connection := &NativeConnection{thread: "thread", subscription: &RPCSubscription{client: &RPCClient{}}}
 	var first NativeFrame
 	for step := range 6 {
@@ -343,6 +346,9 @@ func TestNativeOwnerDeltaResetAndReviewReplacement(t *testing.T) {
 	}
 	if first.Review.Coverage != "loading" || first.Review.Files[0].Path != "first.go" {
 		t.Fatal("replacement mutated prior review")
+	}
+	if first.Review.Unfiltered["first.go"].Status.ShortCode() != "RM" {
+		t.Fatal("native transport lost the composed file status")
 	}
 	if first.Family.Root != "thread" || len(first.Family.Threads) != 2 || first.Family.Agents.MainSummary[0].Text != "family summary" || !first.Family.Status.Running {
 		t.Fatal("replacement mutated prior family")

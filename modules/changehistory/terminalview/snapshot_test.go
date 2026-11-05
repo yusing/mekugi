@@ -56,6 +56,11 @@ func TestUISnapshotDiffNavigation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			files := snapshotFiles()
+			view := presentation.View{Files: files}
+			view.RefreshVisible()
+			for i, file := range files {
+				files[i] = view.Visible[file.Key()]
+			}
 			var counts []diffmodel.Counts
 			for _, file := range files {
 				counts = append(counts, file.NetCounts())
@@ -86,6 +91,9 @@ func TestUISnapshotDiffChanges(t *testing.T) {
 
 func TestUISnapshotDependencyDirectoryNavigation(t *testing.T) {
 	file := presentation.File{Path: "/workspace/node_modules", Chunks: []presentation.Chunk{{Review: diffmodel.ReviewFile{BeforePath: "/workspace/node_modules", AfterPath: "/workspace/node_modules", Directory: true, Incomplete: "directory contents intentionally not captured"}}}}
+	view := presentation.View{Files: []presentation.File{file}}
+	view.RefreshVisible()
+	file = view.Visible[file.Key()]
 	files := []presentation.File{file}
 	nav := Navigation{Flat: true, Focused: true}
 	nav.Rebuild(files, "/workspace")

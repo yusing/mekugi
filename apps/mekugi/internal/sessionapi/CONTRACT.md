@@ -460,7 +460,9 @@ session leaves, and stopping the server closes every stream.
 
 Page cursors bind attachment, feed or metadata category, revision, caller filter
 and boundary. Stale cursors fail rather than mixing attachments or compositions.
-Saved-review file metadata loads when Changes opens; full file content is read by
+Saved-review file metadata loads when Changes opens and includes the composed
+file's short status (`M`, `D`, `R`, `RM`, `A`, `UU`, or `?` for incomplete evidence)
+when captured regions are present. Full file content is read by
 the exact caller, revision and file identity. Caller filtering composes the
 selected caller's changes against other callers' captures as baseline. It never
 filters an all-callers diff after composition. Live metadata pages use `kind:live`

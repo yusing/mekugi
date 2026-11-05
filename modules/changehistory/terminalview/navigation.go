@@ -133,15 +133,12 @@ func (n *Navigation) Render(files []presentation.File, counts []diffmodel.Counts
 			label = indent + theme.Accent() + arrow + "\x1b[39m " + textsanitize.Safe(entry.Label, false)
 			stats = fmt.Sprintf(" "+diffrender.Subtle+"(%d)"+diffrender.SubtleReset, entry.Count)
 		} else {
-			var regions []diffmodel.ReviewFile
-			for _, chunk := range files[entry.File].Chunks {
-				regions = append(regions, chunk.Review)
-			}
+			file := files[entry.File]
 			label = indent + textsanitize.Safe(entry.Label, false)
-			if len(regions) > 0 {
-				label = indent + diffrender.FileLabel(diffmodel.StatusOf(regions...), entry.Label, n.Workspace, theme)
+			if len(file.Chunks) > 0 {
+				label = indent + diffrender.FileLabel(file.Status, entry.Label, n.Workspace, theme)
 			}
-			if entry.File < len(counts) && !diffmodel.StatusOf(regions...).Directory {
+			if entry.File < len(counts) && !file.Status.Directory {
 				stats = diffrender.CountStats(counts[entry.File], theme)
 			}
 			if entry.File < len(n.Dots) {

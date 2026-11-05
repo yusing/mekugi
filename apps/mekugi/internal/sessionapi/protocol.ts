@@ -247,6 +247,7 @@ export type reviewFile = {
   "content"?: (ContentReference | null);
   "key": string;
   "path": string;
+  "status"?: string;
   "chunks": Array<Chunk>;
   "origins": Array<Origin>;
   "counts": Counts;
@@ -1519,6 +1520,7 @@ export type Agent = {
 export type File = {
   "Path": string;
   "Chunks": Array<Chunk>;
+  "Status": Status;
   "Highlighted": boolean;
   "Origins": Array<Origin>;
   "Baseline": number;
@@ -1815,6 +1817,15 @@ export type AgentFacts = {
   "ContextTokens": number;
   "ContextWindow": number;
   "ContextKnown": boolean;
+};
+
+export type Status = {
+  "Before": string;
+  "After": string;
+  "Edited": boolean;
+  "Conflict": boolean;
+  "Incomplete": boolean;
+  "Directory": boolean;
 };
 
 export type SegmentReport = {

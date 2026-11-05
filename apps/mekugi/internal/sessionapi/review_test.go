@@ -131,7 +131,11 @@ func TestPublishReviewComposition(t *testing.T) {
 				if failure != nil {
 					t.Fatal(failure)
 				}
-				files = append(files, *content.(ContentResult).Review)
+				full := *content.(ContentResult).Review
+				if metadata.Status == "" || metadata.Status != full.Status {
+					t.Fatalf("metadata/content status mismatch: %q / %q", metadata.Status, full.Status)
+				}
+				files = append(files, full)
 			}
 			if page.Next == nil {
 				return files
@@ -181,6 +185,38 @@ func TestPublishReviewComposition(t *testing.T) {
 	late := reviewSubscriber(t, server)
 	if snapshot := reviewEvent(t, late, "snapshot"); !bytes.Equal(snapshot["review"], first["review"]) {
 		t.Fatal("late subscriber lost cached review")
+	}
+}
+
+func TestReviewPageStatuses(t *testing.T) {
+	t.Parallel()
+	captures := []changes.Chunk{
+		reviewChunk(1, "/root", "/project/modified", "/project/modified", "old\n", "new\n"),
+		reviewChunk(2, "/root", "/project/deleted", "", "old\n", ""),
+		reviewChunk(3, "/root", "/project/old", "/project/renamed", "same\n", "same\n"),
+		reviewChunk(4, "/root", "/project/old-edit", "/project/renamed-edit", "old\n", "new\n"),
+		reviewChunk(5, "/root", "", "/project/added", "", "new\n"),
+	}
+	view := &changes.ReviewView{Revision: 1, Workspace: "/project"}
+	view.Publication = view.Publication.With(changes.GroupCaptures(captures))
+	server := NewLive()
+	publishReviewFrame(t, server, Frame{Review: view})
+	for _, caller := range []string{"", "/root"} {
+		value, failure := server.page(testJSON(t, PageCursor{Kind: "review", Attachment: server.readAttachment, Revision: 1, Caller: caller}))
+		if failure != nil {
+			t.Fatal(failure)
+		}
+		got := map[string]string{}
+		for _, file := range value.(PageResult).Files {
+			got[file.Path] = file.Status
+			if len(file.Chunks) != 0 {
+				t.Fatal("status metadata loaded diff bodies")
+			}
+		}
+		want := map[string]string{"/project/modified": "M", "/project/deleted": "D", "/project/renamed": "R", "/project/renamed-edit": "RM", "/project/added": "A"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("caller %q statuses = %v, want %v", caller, got, want)
+		}
 	}
 }
 

@@ -246,9 +246,15 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 		navigationFile("renamed.go"),
 	}
 	files[1].Chunks[0].Review.BeforePath = ""
+	files[0].Chunks[0].Review = diffmodel.RenderReviewFile("modified.go", "modified.go", "old\n", "new\n")
 	files[1].Highlighted = true
 	files[2].Chunks[0].Review.AfterPath = ""
 	files[3].Chunks[0].Review = diffmodel.RenderReviewFile("was.go", "renamed.go", "a\n", "b\n")
+	view := presentation.View{Files: files}
+	view.RefreshVisible()
+	for i, file := range files {
+		files[i] = view.Visible[file.Key()]
+	}
 	var nav Navigation
 	nav.Flat = true
 	nav.Rebuild(files, "")

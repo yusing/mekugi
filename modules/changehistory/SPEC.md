@@ -229,6 +229,10 @@ composition and change navigation; receipt arrival and caller identity do not
 reorder effects. Files retain identity through moves, deletion and recreation.
 All authored captures participate regardless of command exit status.
 
+Composition derives each visible file's status once. The immutable publication
+carries that status through native RPC and metadata projection; renderers and
+API readers consume it without reclassifying diff regions.
+
 The saved Diff pane omits captures whose existing endpoints are all at `/tmp`
 or below it outside their admitted workspace from Files, Changes and diff content.
 Authored files inside a workspace remain visible when that workspace itself is

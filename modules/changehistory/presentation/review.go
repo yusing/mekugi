@@ -10,9 +10,11 @@ import (
 // Source: internal/livediff/model.go:10:357@[ebde9ad5]
 // Live views read immutable review projections, never workspace files or carriers.
 type File struct {
-	id          string
-	Path        string
-	Chunks      []Chunk
+	id     string
+	Path   string
+	Chunks []Chunk
+	// Status is derived once from composed regions and travels with the publication.
+	Status      diffmodel.Status
 	Highlighted bool
 	// Origins are the shown changes a visible file composes, in capture
 	// order. Baseline counts changes a caller filter folded into its base.
@@ -248,6 +250,11 @@ func (v *View) RefreshVisible() {
 		visible.Chunks = slices.DeleteFunc(visible.Chunks, func(chunk Chunk) bool {
 			return chunk.Review.Directory && chunk.Review.BeforePath == "" && chunk.Review.AfterPath == ""
 		})
+		regions := make([]diffmodel.ReviewFile, len(visible.Chunks))
+		for i, chunk := range visible.Chunks {
+			regions[i] = chunk.Review
+		}
+		visible.Status = diffmodel.StatusOf(regions...)
 		visible.netCounts = visible.NetCounts()
 		visible.countsValid = true
 		v.Visible[file.Key()] = visible

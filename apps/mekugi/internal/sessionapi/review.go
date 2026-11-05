@@ -26,6 +26,7 @@ type reviewFile struct {
 	Content *ContentReference `json:"content,omitzero"`
 	Key     string            `json:"key"`
 	Path    string            `json:"path"`
+	Status  string            `json:"status,omitzero"`
 	Chunks  []changes.Chunk   `json:"chunks"`
 	Origins []changes.Origin  `json:"origins"`
 	Counts  diffmodel.Counts  `json:"counts"`
@@ -58,7 +59,14 @@ func projectReview(view *changes.ReviewView) savedReview {
 }
 
 func projectReviewFile(key string, composed changes.File) reviewFile {
-	return reviewFile{Key: reviewIdentity(key), Path: composed.Path, Chunks: composed.Chunks, Origins: composed.Origins, Counts: composed.NetCounts()}
+	return reviewFile{Key: reviewIdentity(key), Path: composed.Path, Status: reviewStatus(composed), Chunks: composed.Chunks, Origins: composed.Origins, Counts: composed.NetCounts()}
+}
+
+func reviewStatus(file changes.File) string {
+	if len(file.Chunks) == 0 {
+		return ""
+	}
+	return file.Status.ShortCode()
 }
 
 // Long paths remain fully readable without making their metadata unpageable.
@@ -84,7 +92,7 @@ func reviewPage(view *changes.ReviewView, attachment string, cursor PageCursor) 
 		if len(path) > 1024 {
 			path = strings.ToValidUTF8(path[:1024], "") + "…"
 		}
-		metadata := reviewFile{Key: key, Path: path, Counts: composed.NetCounts(), Content: ref}
+		metadata := reviewFile{Key: key, Path: path, Status: reviewStatus(composed), Counts: composed.NetCounts(), Content: ref}
 		data, err := json.Marshal(metadata, encoding)
 		if err != nil {
 			return nil, rpcFailure(500, "Saved file metadata unavailable.")
