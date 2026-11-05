@@ -124,3 +124,32 @@ func TestRosterBudgetPreservesOpenSplit(t *testing.T) {
 		}
 	}
 }
+
+func TestShellExternalPanesReclaimStatusRow(t *testing.T) {
+	for _, size := range []struct{ width, height int }{{1, 1}, {20, 7}, {80, 8}, {120, 24}} {
+		s := Shell{RosterLabel: "Agents"}
+		standalone := s.Plan(size.width, size.height, 0)
+		s.Compose(standalone, ShellContent{Status: ShellStatus{SideLabel: "Side"}})
+		if s.Tabs[0].H != 1 || s.SideTab.H != 1 {
+			t.Fatalf("%+v: standalone status targets missing", size)
+		}
+		s.SetExternalPanes(true)
+		if s.Tabs != [4]Rect{} || s.SideTab != (Rect{}) {
+			t.Fatalf("%+v: stale status targets", size)
+		}
+		active := s.Plan(size.width, size.height, 0)
+		if active.Left.H != size.height || standalone.Left.H != size.height-1 {
+			t.Fatalf("%+v: standalone height=%d, active height=%d", size, standalone.Left.H, active.Left.H)
+		}
+		s.Compose(active, ShellContent{})
+		if s.Tabs != [4]Rect{} || s.SideTab != (Rect{}) {
+			t.Fatalf("%+v: active status targets", size)
+		}
+		s.SetExternalPanes(false)
+		restored := s.Plan(size.width, size.height, 0)
+		s.Compose(restored, ShellContent{Status: ShellStatus{SideLabel: "Side"}})
+		if restored.Left.H != standalone.Left.H || s.Tabs[0].H != 1 || s.SideTab.H != 1 {
+			t.Fatalf("%+v: standalone status not restored", size)
+		}
+	}
+}

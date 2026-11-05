@@ -40,6 +40,6 @@ effects invoke the terminal's ordinary display/reattachment path.
 Viewer leases belong to the frontend, surviving active-thread changes without
 affecting other terminals. Ordered native presentation effects carry absolute
 expiry, so delayed delivery cannot restart a full lease or overwrite newer state.
-Any active viewer suppresses duplicate terminal Diff, Agents and live-preview
-surfaces. Release or expiry restores ordinary geometry without persisting the
+Any active viewer suppresses duplicate terminal Diff, Agents, live-preview and
+bottom navigation surfaces. Release or expiry restores ordinary geometry without persisting the
 override or changing pane preferences. Standalone presentation remains unchanged.

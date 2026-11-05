@@ -257,7 +257,8 @@ separate from painted readiness and offline prompt tests.
 
 Connected [native Herdr panels](../herdr/SPEC.md) temporarily replace the terminal's
 roster, saved Diff and live-preview surfaces. Their presentation lease leaves saved
-pane preferences intact; ordinary terminal geometry returns when it ends.
+pane preferences intact and hides the bottom status bar, returning its row to Main;
+ordinary terminal geometry returns when the lease ends.
 
 Main starts at full width. Diff toggles the auxiliary column open and closed.
 The auxiliary view comes from composition. Without a contribution, its selector,
@@ -269,7 +270,7 @@ The bottom pane selectors are clickable and perform the same selection as
 open dialogs and selection actions retain pointer precedence. The unread Diff
 indicator is separated from its label and retains the selected tab highlight.
 
-Geometry reserves the status row and a content-fitted roster before allocating
+Standalone geometry reserves the status row and a content-fitted roster before allocating
 Main and Diff. Wide terminals show both columns; narrower terminals show the
 focused content pane. A short terminal retains Main rows before roster or pane
 frames. The unfocused roster grows beyond four rows to retain active agents,

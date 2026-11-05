@@ -32,6 +32,8 @@ func (s *Shell) SetExternalPanes(active bool) bool {
 		s.externalFocus = s.Focus
 		s.Focus = 0
 		s.StopDrag()
+		s.Tabs = [4]Rect{}
+		s.SideTab = Rect{}
 	} else {
 		s.Focus = s.externalFocus
 	}
@@ -74,7 +76,12 @@ func (s *Shell) Plan(width, height, roster int) ShellPlan {
 	if s.ExternalPanes {
 		panes.Focus, panes.DiffOpen = 0, false
 	}
-	layout, left, right, framed, kept := panes.Geometry(width, height, roster)
+	geometryHeight := height
+	if s.ExternalPanes {
+		// Geometry normally reserves a status row, which external panes hide.
+		geometryHeight++
+	}
+	layout, left, right, framed, kept := panes.Geometry(width, geometryHeight, roster)
 	return ShellPlan{layout, left, right, width, height, kept, framed}
 }
 
@@ -117,7 +124,9 @@ func (s *Shell) Compose(plan ShellPlan, in ShellContent) []string {
 		}
 	}
 	draw(layout.Roster, in.Roster[:min(len(in.Roster), plan.Roster)])
-	rows[plan.Height-1] += "\x1b[1G\x1b[0m" + ansi.Truncate(s.Status(in.Status, plan.Width, plan.Height), plan.Width, "")
+	if !s.ExternalPanes {
+		rows[plan.Height-1] += "\x1b[1G\x1b[0m" + ansi.Truncate(s.Status(in.Status, plan.Width, plan.Height), plan.Width, "")
+	}
 	s.Layout = layout
 	return rows
 }
@@ -137,6 +146,9 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 	s.Clamp()
 	s.Tabs = [4]Rect{}
 	s.SideTab = Rect{}
+	if s.ExternalPanes {
+		return ""
+	}
 	if in.Playback {
 		return in.PlaybackBar
 	}

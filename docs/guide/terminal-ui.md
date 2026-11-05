@@ -124,7 +124,7 @@ attachable agent switches that space's Mekugi terminal transcript and composer; 
 keeps its draft. Herdr's ordinary agents sidebar remains separate.
 
 While the native panels are connected, Mekugi hides its duplicate terminal roster,
-diff pane and live-edit dock. Disconnecting the panels restores the terminal
+diff pane, live-edit dock and bottom navigation bar. Disconnecting the panels restores the terminal
 layout without changing saved pane preferences or stopping the session.
 
 Each execution machine needs matching Mekugi client, shared-server and helper
