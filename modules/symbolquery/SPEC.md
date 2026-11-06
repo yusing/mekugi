@@ -60,6 +60,12 @@ including TypeScript 7's `tsc --lsp` capability. Msymbol never installs
 dependencies, searches for a different workspace, weakens result confinement, or
 substitutes text search. Go and LSP processes both run in the selected workspace.
 
+Go queries that fail with missing package metadata retry with a single positive
+`//go:build` tag from the selected file when effective `GOFLAGS` does not select
+tags. Explicit environment or persisted Go tag settings remain authoritative.
+Compound and negated constraints are not inferred. Each batched query starts
+with the default build settings; an inferred tag does not leak to later queries.
+
 #### Current resolver lifecycle design
 
 Several `(def|refs) PATH [LINE] SYMBOL [N]` tuples may follow each other in one
