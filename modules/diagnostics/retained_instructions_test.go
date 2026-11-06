@@ -56,13 +56,21 @@ func instructionRequest(thread, turn string, developers ...string) diagnostic.In
 	return contentRequest(thread, turn, &staticContent{instructions: retainedBase, developers: developers, tools: []string{retainedTool, retainedWait}})
 }
 
+// canonical returns the RFC 8785 form that retention stores and digests.
+func canonical(value string) string {
+	canonical := jsontext.Value(value)
+	if err := canonical.Canonicalize(); err != nil {
+		panic(err)
+	}
+	return string(canonical)
+}
+
 func contentName(value string) string {
-	digest := sha256.Sum256([]byte(value))
-	return "instruction-content-" + hex.EncodeToString(digest[:]) + ".json"
+	return "instruction-content-" + contentDigest(value) + ".json"
 }
 
 func contentDigest(value string) string {
-	digest := sha256.Sum256([]byte(value))
+	digest := sha256.Sum256([]byte(canonical(value)))
 	return hex.EncodeToString(digest[:])
 }
 
@@ -172,7 +180,7 @@ func TestRetainedInstructionsPublishOnlyChangedContent(t *testing.T) {
 	if text := selected.Content[second.Instructions]; text.Text != base[:10] || text.OmittedBytes != len(base)-10 {
 		t.Fatalf("selected instruction text = %+v", text)
 	}
-	if text := selected.Content[contentDigest(retainedTool)]; text.Text != retainedTool[:10] {
+	if text := selected.Content[contentDigest(retainedTool)]; text.Text != canonical(retainedTool)[:10] {
 		t.Fatalf("selected tool text = %+v", text)
 	}
 	missing, err := reader.ReadInstructions(t.Context(), directory, "unknown-thread", true, 4096)
@@ -181,6 +189,44 @@ func TestRetainedInstructionsPublishOnlyChangedContent(t *testing.T) {
 	}
 	if !reflect.DeepEqual(before, diagnosticsTree(t, root)) {
 		t.Fatal("instruction inspection mutated storage")
+	}
+}
+
+func TestRetainedInstructionsIgnoreMemberOrderAndFormatting(t *testing.T) {
+	service := newDiagnostics(t)
+	directory := t.TempDir()
+	store, err := service.OpenFailures(t.Context(), directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writes := new(persistence.Counter)
+	retention := service.RetainInstructions(store, writes, history.Limits{})
+	if err := retention.Observe(t.Context(), instructionRequest("thread", "turn-1", retainedRules)); err != nil {
+		t.Fatal(err)
+	}
+	reordered := contentRequest("thread", "turn-2", &staticContent{
+		instructions: retainedBase,
+		developers:   []string{`{ "content": "permissions", "type": "message", "role": "developer" }`},
+		tools:        []string{`{"name":"exec","description":"run commands","type":"function"}`, retainedWait},
+	})
+	written := writes.Snapshot().Bytes
+	if err := retention.Observe(t.Context(), reordered); err != nil {
+		t.Fatal(err)
+	}
+	if writes.Snapshot().Bytes != written {
+		t.Fatal("reordered members published storage")
+	}
+	// Without the fingerprint cache, publication resolves the same revision.
+	if err := service.RetainInstructions(store, writes, history.Limits{}).Observe(t.Context(), reordered); err != nil {
+		t.Fatal(err)
+	}
+	report, err := service.ReadInstructions(t.Context(), directory, "thread", false, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Revisions) != 1 || len(report.Uses) != 1 || len(report.Content) != 4 ||
+		len(retainedNames(t, directory, "instruction-content-")) != 4 {
+		t.Fatalf("report = %+v", report)
 	}
 }
 

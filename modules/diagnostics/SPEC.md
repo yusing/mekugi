@@ -119,10 +119,14 @@ and `request_sequence`; later requests use that revision until the next use
 entry. A request whose content matches the revision the invocation last recorded
 for the thread, while that index file is unchanged, does no locked read or write;
 a replaced or removed index makes the next request read it and republish as needed.
-Each revision's ordered digest list and each base-instruction value, developer
-message or tool item is stored once per store, content-addressed by the SHA-256
-of its exact JSON bytes, and shared by every thread that used it, so the index
-grows by one entry per revision or use.
+Each base-instruction value, developer message or tool item is stored once per
+store as RFC 8785 canonical JSON, content-addressed by the SHA-256 of those
+bytes, so member order and formatting differences between requests do not create
+revisions; a value that cannot be canonicalized (duplicate names or invalid
+UTF-8) keeps its exact bytes. Each revision's ordered digest list is likewise
+addressed by its SHA-256. Records are shared by every thread that used them, so
+the index grows by one entry per revision or use. Inspection renders invalid
+Unicode as replacement characters while preserving stored bytes and digests.
 
 The application reports a failed publication as a thread notice without failing
 the request. The next request publishes its own content: unchanged content

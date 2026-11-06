@@ -216,16 +216,28 @@ func readAddressed(directory, name, digest string) ([]byte, error) {
 	return data, nil
 }
 
-// fingerprint hashes per-value digests through one scratch buffer, so
-// unchanged requests allocate nothing per value.
+// canonicalInstruction copies value into buffer as RFC 8785 canonical JSON, so
+// member order and formatting do not change a value's digest. A value that
+// cannot be canonicalized, such as one with duplicate names or invalid UTF-8,
+// keeps its exact bytes.
+func canonicalInstruction(buffer jsontext.Value, value jsontext.Value) jsontext.Value {
+	buffer = append(buffer[:0], value...)
+	_ = buffer.Canonicalize()
+	return buffer
+}
+
+// fingerprint hashes per-value canonical digests through reused buffers, so
+// unchanged requests do not allocate per value for copies or digests.
 type fingerprint struct {
-	hash    hash.Hash
-	scratch [1 + sha256.Size]byte
+	hash      hash.Hash
+	scratch   [1 + sha256.Size]byte
+	canonical jsontext.Value
 }
 
 func (f *fingerprint) Visit(field InstructionField, value jsontext.Value) {
 	f.scratch[0] = byte(field)
-	digest := sha256.Sum256(value)
+	f.canonical = canonicalInstruction(f.canonical, value)
+	digest := sha256.Sum256(f.canonical)
 	copy(f.scratch[1:], digest[:])
 	f.hash.Write(f.scratch[:])
 }
@@ -237,8 +249,9 @@ type revisionBuilder struct {
 }
 
 func (b *revisionBuilder) Visit(field InstructionField, value jsontext.Value) {
-	digest := instructionDigest(value)
-	b.content[digest] = slices.Clone(value)
+	canonical := canonicalInstruction(nil, value)
+	digest := instructionDigest(canonical)
+	b.content[digest] = canonical
 	switch field {
 	case InstructionText:
 		b.revision.Instructions = digest

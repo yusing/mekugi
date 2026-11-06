@@ -78,7 +78,7 @@ func TestRetainInstructionsKeepsForwardedProjection(t *testing.T) {
 		if got := report.Content[revision.Instructions].Text; got != "projected <mekugi_environment_facts>facts</mekugi_environment_facts>" {
 			t.Fatalf("%s instructions = %q", tc.name, got)
 		}
-		if got := report.Content[revision.DeveloperMessages[0]].Text; got != `{"type":"message","role":"developer","content":"rules"}` {
+		if got := report.Content[revision.DeveloperMessages[0]].Text; got != `{"content":"rules","role":"developer","type":"message"}` {
 			t.Fatalf("%s developer item = %q", tc.name, got)
 		}
 		for _, text := range report.Content {
