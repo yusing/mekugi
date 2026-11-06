@@ -81,24 +81,26 @@ type claudeInterrupt struct {
 // ClaudeRuntime owns only request/receipt identities and unconsumed input. The
 // SDK remains the sole transcript owner; logical work belongs to Thread Control.
 type ClaudeRuntime struct {
-	mu           sync.Mutex
-	dispatch     sync.Mutex
-	history      history.Session
-	native       ClaudeRequester
-	ledger       claudeLedger
-	pending      map[string]*claudeReceipt
-	changed      chan struct{}
-	turn         string
-	running      bool
-	answer       string
-	active       map[string]bool
-	closed       error
-	inputContext func(context.Context, control.NativeInput) (string, error)
-	eventSink    func(context.Context, ClaudeEvent) error
-	lastTerminal *claudeTerminal
-	admissions   int
-	retiring     *ClaudeEvent
-	metricResult string
+	generationInputs Observations
+	generation       Generation
+	mu               sync.Mutex
+	dispatch         sync.Mutex
+	history          history.Session
+	native           ClaudeRequester
+	ledger           claudeLedger
+	pending          map[string]*claudeReceipt
+	changed          chan struct{}
+	turn             string
+	running          bool
+	answer           string
+	active           map[string]bool
+	closed           error
+	inputContext     func(context.Context, control.NativeInput) (string, error)
+	eventSink        func(context.Context, ClaudeEvent) error
+	lastTerminal     *claudeTerminal
+	admissions       int
+	retiring         *ClaudeEvent
+	metricResult     string
 }
 
 var _ control.Runtime = (*ClaudeRuntime)(nil)
@@ -344,6 +346,7 @@ func (r *ClaudeRuntime) RetireCompleted(turn string, err error) {
 func (r *ClaudeRuntime) TransportClosed(err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.generationInputs.EndGeneration(&r.generation)
 	if r.closed == nil {
 		if err == nil {
 			err = errors.New("Claude native transport closed")
@@ -804,17 +807,19 @@ func confirmClaudeReceipt(ledger claudeLedger, input control.NativeInput) error 
 func (r *ClaudeRuntime) HandleEvent(ctx context.Context, raw jsontext.Value) (ClaudeEvent, error) {
 	var event struct {
 		claude.Event
-		CommandUUID     string   `json:"command_uuid"`
-		State           string   `json:"state"`
-		Model           string   `json:"model"`
-		Result          string   `json:"result"`
-		IsError         bool     `json:"is_error"`
-		Errors          []string `json:"errors"`
-		UserUUID        string   `json:"user_message_uuid"`
-		UserUUIDs       []string `json:"user_message_uuids"`
-		APIStatus       int      `json:"api_error_status"`
-		CompactResult   string   `json:"compact_result"`
-		CompactError    string   `json:"compact_error"`
+		Stream          claudeGenerationEvent `json:"event"`
+		ParentToolUseID *string               `json:"parent_tool_use_id"`
+		CommandUUID     string                `json:"command_uuid"`
+		State           string                `json:"state"`
+		Model           string                `json:"model"`
+		Result          string                `json:"result"`
+		IsError         bool                  `json:"is_error"`
+		Errors          []string              `json:"errors"`
+		UserUUID        string                `json:"user_message_uuid"`
+		UserUUIDs       []string              `json:"user_message_uuids"`
+		APIStatus       int                   `json:"api_error_status"`
+		CompactResult   string                `json:"compact_result"`
+		CompactError    string                `json:"compact_error"`
 		CompactMetadata struct {
 			Trigger string `json:"trigger"`
 		} `json:"compact_metadata"`
@@ -827,6 +832,13 @@ func (r *ClaudeRuntime) HandleEvent(ctx context.Context, raw jsontext.Value) (Cl
 	defer r.mu.Unlock()
 	if event.SessionID != "" && event.SessionID != r.ledger.Info.Session {
 		return result, errors.New("Claude event native session identity mismatch")
+	}
+	if event.ParentToolUseID == nil {
+		if event.Type == "stream_event" {
+			r.observeToolGeneration(event.Stream)
+		} else if event.Type == "result" {
+			r.generationInputs.EndGeneration(&r.generation)
+		}
 	}
 	if event.Type == "system" && event.Subtype == "init" {
 		if event.SessionID == "" {

@@ -1,0 +1,7 @@
+"\x1b[38;2;96;96;96mAsking user question\x1b[m                                                            "
+"\x1b[38;2;96;96;96mSpawning subagent\x1b[m                                                               "
+"\x1b[38;2;96;96;96mSpawning subagent \x1b[38;2;0;112;120mworker\x1b[m                                                        "
+"\x1b[38;2;96;96;96mEmitting a patch\x1b[m                                                                "
+"\x1b[38;2;96;96;96mExecuting a command\x1b[m                                                             "
+"\x1b[38;2;96;96;96mCalling \x1b[38;2;0;112;120mmcp__other__lookup\x1b[m                                                      "
+"plain after generation                                                          "

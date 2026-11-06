@@ -78,7 +78,16 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 				t.owners.Control.SetAssistantMessage(&t.generation, t.directory, t.threadID, generationItemKey(envelope.Index, item.ID), true)
 			} else if item.Type == "function_call" || item.Type == "custom_tool_call" {
 				t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, generationItemKey(envelope.Index, item.ID), true)
+				initial := ""
+				if item.Input != nil {
+					initial = *item.Input
+				} else if item.Arguments != nil {
+					initial = *item.Arguments
+				}
+				t.owners.Control.IdentifyToolInput(&t.generation, generationItemKey(envelope.Index, item.ID), item.Name, item.Name == t.codeModeToolName, initial)
 			}
+		case responseevents.FunctionArgumentsDelta, responseevents.CustomInputDelta:
+			t.owners.Control.IdentifyToolInput(&t.generation, generationItemKey(envelope.Index, envelope.ItemID), "", false, envelope.Delta)
 		}
 	}
 	if t.generationOnly {

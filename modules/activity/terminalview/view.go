@@ -698,6 +698,13 @@ func (v *View) Current(agent activitypresentation.Agent, now time.Time, widths .
 	if len(widths) > 0 {
 		width = max(1, widths[0])
 	}
+	if agent.Responding && agent.Generating != "" && !agent.Waiting && !agent.Paused {
+		clock := v.Painter.Clock
+		v.Painter.Clock = func() time.Time { return now }
+		summary := v.Painter.statusStyle(true) + v.Painter.Inline(agent.Generating) + terminalui.Reset
+		v.Painter.Clock = clock
+		return summary, agentTimer(agent, now)
+	}
 	summary := terminalui.Dim + "—" + terminalui.Undim
 	if agent.Name == "/root" && v.MainStatus != "" {
 		summary = v.MainStatus

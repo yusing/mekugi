@@ -35,6 +35,7 @@ type Facts struct {
 }
 type AgentSource interface{ ActivityAgent() AgentFacts }
 type AgentFacts struct {
+	Generating                                   string
 	Name, Role, Thread                           string
 	NonAttachable                                bool
 	WaitingFor                                   string

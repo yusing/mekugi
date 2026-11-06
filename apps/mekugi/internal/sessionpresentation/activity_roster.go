@@ -114,6 +114,10 @@ func (a *Attachment) Roster() []ActivityAgent {
 	agents := a.Activity().Agents()
 	for i := range agents {
 		agents[i].AgentLifecycle = *a.Lifecycle(agents[i].Thread)
+		agents[i].Generating = ""
+		if a.ToolInput != nil && agents[i].Responding {
+			agents[i].Generating = a.ToolInput(agents[i].Thread)
+		}
 		if retry := agents[i].Retry; retry != nil {
 			agents[i].Waiting, agents[i].Wait = true, retry
 		}

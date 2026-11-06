@@ -37,6 +37,7 @@ type ActivityEntry struct {
 // Source: apps/mekugi/internal/router/subagent_activity_pane.go:34:58@45fbe279
 type ActivityAgent struct {
 	activitypresentation.AgentLifecycle
+	Generating      string               `json:"-"` // Detached label from the live request observation.
 	ParentThread    string               `json:"-"` // Host ancestry for delayed metadata admission.
 	AudiencePending bool                 `json:"-"` // Activity stays visible while its Main audience is unresolved.
 	Isolated        bool                 `json:"-"` // Invocation-local audience, keyed by host thread identity.
@@ -115,7 +116,7 @@ func (agent ActivityAgent) ActivityAgent() activitypresentation.AgentFacts {
 	return activitypresentation.AgentFacts{
 		NonAttachable: agent.NonAttachable,
 		Name:          agent.Name, Role: agent.Role, Thread: agent.Thread, Responding: agent.Responding, Final: agent.Final, Waiting: agent.Waiting, WaitingFor: agent.WaitingFor, Paused: agent.Paused,
-		Wait: agent.Wait, Compacting: agent.Compacting, Retrying: agent.Retry != nil,
+		Wait: agent.Wait, Compacting: agent.Compacting, Retrying: agent.Retry != nil, Generating: agent.Generating,
 		Started: agent.Started, LastResponse: agent.LastResponse,
 		WorkElapsed: time.Duration(agent.WorkTimer.ElapsedNS), WorkSince: agent.WorkTimer.Since, WorkKnown: agent.WorkTimer.Known,
 		Turns: agent.Turns, Roundtrips: agent.Roundtrips, Cost: agent.Cost, CostKnown: agent.CostKnown, CostPartial: agent.CostPartial,

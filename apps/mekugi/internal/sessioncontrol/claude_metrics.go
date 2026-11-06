@@ -68,7 +68,8 @@ func (r *ClaudeRuntime) Metrics() (activity.AgentFacts, accounting.Report) {
 	m := r.ledger.Metrics
 	lifecycle := m.Lifecycle
 	facts := activity.AgentFacts{Started: lifecycle.Started, LastResponse: lifecycle.LastResponse,
-		Turns: lifecycle.Turns, WorkElapsed: time.Duration(lifecycle.WorkTimer.ElapsedNS), WorkSince: lifecycle.WorkTimer.Since, WorkKnown: lifecycle.WorkTimer.Known}
+		Generating: r.generationInputs.ToolInput(r.ledger.Info.Thread),
+		Turns:      lifecycle.Turns, WorkElapsed: time.Duration(lifecycle.WorkTimer.ElapsedNS), WorkSince: lifecycle.WorkTimer.Since, WorkKnown: lifecycle.WorkTimer.Known}
 	if m.ContextTokens != nil {
 		facts.ContextTokens, facts.ContextKnown = *m.ContextTokens, true
 	}

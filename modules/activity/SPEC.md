@@ -3,6 +3,7 @@
 ## Required outcomes
 
 Preserve stock tool inputs, results, batch/parallel execution and captured changes.
+Identify the active tool in the roster while its input is still being generated.
 Agent traffic must show the correct sender and recipient. Hide internal bookkeeping
 without losing inseparable ordinary command output; interruption events must not repeat
 an earlier reply.
@@ -286,10 +287,17 @@ The presentation session keeps feed models, their shared sequence and one
 observation-ordered roster in the application's attached session store, with
 agent lifecycle state in its thread stores. Caller labels can change while
 thread identity and roster order remain stable. Adapters publish detached
-roster values; those values do not own lifecycle transitions. The optional composed
-service supplies output retention and asynchronous enrichment. Main and children
-have distinct feeds and share output retention; separate attachments and offline
-replay resets receive distinct stores. Confirmed replacement retires the old store;
+roster values; those values do not own lifecycle transitions.
+Responses and authenticated primary native Claude SDK streams supply transient
+tool identities and partial input through the request-scoped observation owner.
+These replace stale roster summaries only while work is running; completed-item
+delivery or native content-block completion retires them, as do request termination
+and transport loss. Internal native subagents do not overwrite their parent's label.
+Restoration does not revive generated-input labels.
+The optional composed service supplies output retention and asynchronous
+enrichment. Main and children have distinct feeds and share output retention;
+separate attachments and offline replay resets receive distinct stores.
+Confirmed replacement retires the old store;
 a failed replacement keeps it. Child display changes neither work scopes nor host
 operations. The application serializes access and retires thread/turn correlation
 with the attachment on replacement, replay reset or shutdown. Replacement

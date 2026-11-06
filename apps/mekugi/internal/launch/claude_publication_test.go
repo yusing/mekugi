@@ -1,8 +1,10 @@
 package launch
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -16,6 +18,41 @@ import (
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func claudeGenerationEvents(t *testing.T) []jsontext.Value {
+	t.Helper()
+	data, err := os.ReadFile("../sessioncontrol/testdata/claude-tool-generation.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []jsontext.Value
+	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
+		events = append(events, line)
+	}
+	return events
+}
+
+func TestClaudeToolGenerationReachesPublication(t *testing.T) {
+	f := newClaudeHookFixture(t)
+	b := f.bridge
+	publication := claudePublication{frame: sessionapi.Frame{Session: sessionapi.Session{Thread: b.info.Thread}}}
+	for _, raw := range claudeGenerationEvents(t) {
+		if err := b.event(t.Context(), raw); err != nil {
+			t.Fatal(err)
+		}
+		facts, _ := b.runtime.Metrics()
+		root, family := b.execution.shared.Family("parent")
+		member, _ := b.execution.shared.Member(b.info.Thread)
+		publication.update(root, family, member, nil, facts)
+		row := publication.frame.Agents.Roster[0].Agent
+		if row.Generating != facts.Generating || (len(row.Summary) > 0) != (facts.Generating != "") {
+			t.Fatalf("native generation did not reach roster publication: %+v, facts=%+v", row, facts)
+		}
+		if facts.Generating != "" && row.Summary[0].Values[0].Body != facts.Generating {
+			t.Fatal("native producer diverged from shared generation summary")
+		}
+	}
+}
 
 func TestClaudePublicationPreservesUnchangedReview(t *testing.T) {
 	f := newClaudeHookFixture(t)

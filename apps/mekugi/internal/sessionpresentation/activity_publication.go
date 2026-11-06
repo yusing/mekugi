@@ -105,7 +105,9 @@ func (v *ActivitySource) Publication(session *Model, main *ActivitySource) *acti
 			if agent.Name != "/root" {
 				continue
 			}
-			agent.Summary = mainSummary
+			if agent.Generating == "" {
+				agent.Summary = mainSummary
+			}
 			agent.Skills = slices.Clone(main.ActiveSkills()["Main"])
 			if latest := main.Model.Latest("Main"); latest >= 0 {
 				agent.LatestKind = mainPublication.Entries[latest].Kind

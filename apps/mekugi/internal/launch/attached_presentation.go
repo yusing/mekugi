@@ -37,6 +37,7 @@ type executionPresentation struct {
 
 // executionHooks are bound once before the owner loop starts and survive presentation replacement.
 type executionHooks struct {
+	toolInput       func(string) string
 	compaction      func(thread, item string) func(context.Context) (string, error)
 	restoreInput    func(*executionPresentation, []conversationmodel.Input)
 	restoreShell    func(*executionPresentation, conversationmodel.Input)
@@ -70,6 +71,9 @@ type attachedPresentation struct {
 func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, hooks *executionHooks) attachedPresentation {
 	a := attachedPresentation{executionPresentation: new(executionPresentation)}
 	a.ctx, a.hooks = ctx, hooks
+	if hooks != nil {
+		a.session.ToolInput = hooks.toolInput
+	}
 	store := a.session.Scope()
 	a.presentation = views.Session(store)
 	a.conversation = conversation.Session(store)

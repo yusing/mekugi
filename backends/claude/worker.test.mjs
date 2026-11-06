@@ -373,6 +373,61 @@ test("native CLI initialization discovers models without input, inference or ses
   assert.equal(alive(initialization.pid), false, "native discovery process outlived joined shutdown");
 });
 
+test("native CLI streams tool identity and partial input before dispatch", { skip: process.env.MEKUGI_TEST_CLAUDE_NATIVE !== "1", timeout: 30_000 }, async (t) => {
+  const claude = Bun.which("claude");
+  assert.ok(claude, "Opted-in native acceptance requires Claude Code");
+  const directory = await mkdtemp(join(tmpdir(), "mekugi-claude-generation-"));
+  let releaseFirst, releaseLast;
+  const first = new Promise((resolve) => { releaseFirst = resolve; });
+  const last = new Promise((resolve) => { releaseLast = resolve; });
+  let dispatched = false;
+  const provider = createMockProvider(() => ({
+    content: [{ type: "tool_use", id: "fixture-spawn", name: "mcp__threadcontrol__spawn_agent", input: { task_name: "worker", message: "long payload" } }],
+    inputChunks: () => ['{"task_name":"worker","message":"long', ' payload"}'],
+    beforeDelta: (_index, part) => part === 0 ? first : last,
+  }));
+  provider.listen(0, "127.0.0.1");
+  await once(provider, "listening");
+  const worker = start(t, async (method) => {
+    if (method === "tool") { dispatched = true; return { content: [{ type: "text", text: "fixture complete" }] }; }
+    return {};
+  }, {
+    CLAUDE_CONFIG_DIR: join(directory, "config"), ANTHROPIC_BASE_URL: `http://127.0.0.1:${provider.address().port}`,
+    ANTHROPIC_API_KEY: "local-fixture", ANTHROPIC_AUTH_TOKEN: "", CLAUDE_CODE_OAUTH_TOKEN: "",
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_USE_BEDROCK: "0", CLAUDE_CODE_USE_VERTEX: "0", CLAUDE_CODE_USE_FOUNDRY: "0",
+  });
+  t.after(async () => { releaseFirst(); releaseLast(); worker.closeInput(); await worker.exit; provider.closeAllConnections(); await new Promise((resolve) => provider.close(resolve)); await rm(directory, { recursive: true, force: true }); });
+  await worker.request("initialize", { workspace: directory, claudePath: claude,
+    options: { model: "claude-sonnet-4-6", permissionMode: "bypassPermissions", allowDangerouslySkipPermissions: true, maxTurns: 1 },
+    tools: [{ name: "spawn_agent", description: "Fixture spawn", inputSchema: { type: "object", properties: { task_name: { type: "string" }, message: { type: "string" } }, required: ["task_name", "message"] } }] });
+  await worker.input("work");
+  const header = await worker.waitFor((event) => event.type === "stream_event" && event.event.type === "content_block_start");
+  assert.equal(header.event.content_block.name, "mcp__threadcontrol__spawn_agent");
+  assert.equal(dispatched, false, "identity must precede the tool input");
+  releaseFirst();
+  const partial = await worker.waitFor((event) => event.type === "stream_event" && event.event.delta?.type === "input_json_delta");
+  assert.equal(partial.event.delta.partial_json, '{"task_name":"worker","message":"long');
+  assert.equal(dispatched, false, "partial input must not dispatch the tool");
+  releaseLast();
+  await worker.waitFor((event) => event.type === "result");
+  assert.equal(dispatched, true);
+  await worker.request("shutdown");
+  // Capture SDK-emitted fixtures, replacing only disposable native identities.
+  if (process.env.MEKUGI_CAPTURE_CLAUDE_GENERATION) {
+    const captured = worker.events.filter((event) => event.type === "stream_event").map((value, index) => {
+      const event = structuredClone(value);
+      event.uuid = `fixture-stream-${index}`;
+      event.session_id = "native-session";
+      event.api_message_id = "fixture-message";
+      if (event.user_message_uuid) event.user_message_uuid = "fixture-input";
+      if (event.user_message_uuids) event.user_message_uuids = ["fixture-input"];
+      if (event.event.message?.id) event.event.message.id = "fixture-message";
+      return JSON.stringify(event);
+    });
+    await writeFile(process.env.MEKUGI_CAPTURE_CLAUDE_GENERATION, captured.join("\n") + "\n");
+  }
+});
+
 test("native CLI publishes metrics before a tool finishes", { skip: process.env.MEKUGI_TEST_CLAUDE_NATIVE !== "1", timeout: 30_000 }, async (t) => {
   const claude = Bun.which("claude");
   assert.ok(claude, "Opted-in native acceptance requires Claude Code");

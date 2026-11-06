@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"sync"
+
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 // Generation identifies one live provider request, independently of host calls.
@@ -23,8 +25,10 @@ type generatingInput struct {
 }
 
 type generatingItem struct {
-	tool    bool
-	message uint64
+	tool     bool
+	message  uint64
+	identity *activitypresentation.ToolGeneration
+	order    uint64
 }
 
 // Observations coordinates invocation-local generation and control delivery.
@@ -34,6 +38,7 @@ type Observations struct {
 	mu                sync.RWMutex
 	generations       map[*Generation]generatingInput
 	nextMessage       uint64
+	nextTool          uint64
 	feedbackMu        sync.Mutex
 	feedback          map[[2]string][]string
 	contextRevision   map[string]uint64
@@ -93,6 +98,53 @@ func (o *Observations) SetAssistantMessage(generation *Generation, workspace, th
 	o.setInput(generation, workspace, thread, item, active, false)
 }
 
+// IdentifyToolInput enriches the existing request-scoped input observation.
+// Unknown tools keep their supplied identity rather than disappearing.
+func (o *Observations) IdentifyToolInput(generation *Generation, item GenerationItem, name string, javascript bool, delta string) {
+	if o == nil {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	input := o.generations[generation]
+	key := input.itemKey(item)
+	value, exists := input.items[key]
+	if !exists || !value.tool {
+		return
+	}
+	if value.identity == nil {
+		if javascript {
+			name = ""
+		}
+		value.identity = activitypresentation.NewToolGeneration(name, javascript)
+		o.nextTool++
+		value.order = o.nextTool
+	}
+	value.identity.Append(delta)
+	input.items[key] = value
+}
+
+// ToolInput returns the newest still-generating tool for the admitted thread.
+func (o *Observations) ToolInput(thread string) string {
+	if o == nil {
+		return ""
+	}
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	var label string
+	var order uint64
+	for _, input := range o.generations {
+		if input.thread == thread {
+			for _, value := range input.items {
+				if value.identity != nil && value.order > order {
+					label, order = value.identity.Label(), value.order
+				}
+			}
+		}
+	}
+	return label
+}
+
 func (o *Observations) setInput(generation *Generation, workspace, thread string, item GenerationItem, active, tool bool) {
 	if o == nil || generation == nil || thread == "" || item.ID == "" && !item.Indexed {
 		return
@@ -100,18 +152,7 @@ func (o *Observations) setInput(generation *Generation, workspace, thread string
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	input := o.generations[generation]
-	for admitted := range input.items {
-		// Indices disambiguate items when both events carry them. Otherwise,
-		// a stable ID joins an indexed event to an ID-only counterpart.
-		matches := admitted.ID != "" && admitted.ID == item.ID
-		if admitted.Indexed && item.Indexed {
-			matches = admitted.Index == item.Index
-		}
-		if matches {
-			item = admitted
-			break
-		}
-	}
+	item = input.itemKey(item)
 	if active {
 		if o.generations == nil {
 			o.generations = make(map[*Generation]generatingInput)
@@ -133,6 +174,21 @@ func (o *Observations) setInput(generation *Generation, workspace, thread string
 			delete(o.generations, generation)
 		}
 	}
+}
+
+func (input generatingInput) itemKey(item GenerationItem) GenerationItem {
+	for admitted := range input.items {
+		// Indices disambiguate items when both events carry them. Otherwise,
+		// a stable ID joins an indexed event to an ID-only counterpart.
+		matches := admitted.ID != "" && admitted.ID == item.ID
+		if admitted.Indexed && item.Indexed {
+			matches = admitted.Index == item.Index
+		}
+		if matches {
+			return admitted
+		}
+	}
+	return item
 }
 
 func (o *Observations) EndGeneration(generation *Generation) {

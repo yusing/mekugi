@@ -5,6 +5,55 @@ import (
 	"testing"
 )
 
+func TestIdentifiedToolInputLifecycle(t *testing.T) {
+	var o Observations
+	var first, second Generation
+	o.SetToolInput(&first, "", "main", GenerationItem{ID: "same"}, true)
+	o.IdentifyToolInput(&first, GenerationItem{ID: "same"}, "exec", true, `await tools.exec_command({cmd: "long`)
+	if got := o.ToolInput("main"); got != "Executing a command" || o.ToolInput("child") != "" {
+		t.Fatalf("identified tool routing: %q", got)
+	}
+	o.SetToolInput(&second, "", "main", GenerationItem{ID: "same"}, true)
+	o.IdentifyToolInput(&second, GenerationItem{ID: "same"}, "mcp__threadcontrol__spawn_agent", false, `{"task_name":"worker", "message":"long`)
+	if got := o.ToolInput("main"); got != "Spawning subagent `worker`" {
+		t.Fatal(got)
+	}
+	o.EndGeneration(&first)
+	if got := o.ToolInput("main"); got != "Spawning subagent `worker`" {
+		t.Fatalf("older request cleared newer generation: %q", got)
+	}
+	o.SetToolInput(&second, "", "main", GenerationItem{ID: "same"}, false)
+	if o.ToolInput("main") != "" || o.EmittingToolInput("", "main") {
+		t.Fatal("finished input survived its existing lifecycle")
+	}
+	o.IdentifyToolInput(&second, GenerationItem{ID: "same"}, "exec_command", false, "late")
+	if o.ToolInput("main") != "" {
+		t.Fatal("late input revived a completed item")
+	}
+}
+
+func TestIdentifiedToolInputCorrelatesIndexAndID(t *testing.T) {
+	var observations Observations
+	var generation Generation
+	first := GenerationItem{ID: "call", Index: 0, Indexed: true}
+	second := GenerationItem{ID: "call", Index: 1, Indexed: true}
+	observations.SetToolInput(&generation, "", "main", first, true)
+	observations.IdentifyToolInput(&generation, GenerationItem{Index: 0, Indexed: true}, "apply_patch", false, "")
+	observations.SetToolInput(&generation, "", "main", second, true)
+	observations.IdentifyToolInput(&generation, second, "exec_command", false, "")
+	if got := observations.ToolInput("main"); got != "Executing a command" {
+		t.Fatalf("distinct output index lost tool identity: %q", got)
+	}
+	observations.SetToolInput(&generation, "", "main", GenerationItem{Index: 1, Indexed: true}, false)
+	if got := observations.ToolInput("main"); got != "Emitting a patch" {
+		t.Fatalf("index completion cleared a neighboring tool: %q", got)
+	}
+	observations.SetToolInput(&generation, "", "main", GenerationItem{ID: "call"}, false)
+	if observations.ToolInput("main") != "" {
+		t.Fatal("ID-only completion retained indexed tool identity")
+	}
+}
+
 func TestGenerationObservationsRemainRequestScoped(t *testing.T) {
 	var observations Observations
 	var first, second Generation

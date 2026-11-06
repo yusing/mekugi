@@ -13,6 +13,8 @@ import (
 // Source: apps/mekugi/internal/router/app_server_events.go:37:161@eaad597b;
 // apps/mekugi/internal/router/app_server_transcript.go:15:29@eaad597b.
 type Attachment struct {
+	// ToolInput borrows the live generation owner; no input source is retained here.
+	ToolInput  func(string) string
 	session    *scope.Store
 	threads    map[string]*scope.Store
 	turns      map[[2]string]turnScope

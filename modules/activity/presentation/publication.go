@@ -121,9 +121,23 @@ func (m *Model[S, A]) Publish() Publication {
 		}
 		agent.Status = facts.ObservedStatus(agent.LatestKind)
 		agent.Summary = m.SummaryEntries(facts.Name, facts.Name == "/root")
+		if facts.Responding && !facts.Waiting && !facts.Paused {
+			if summary := facts.GenerationSummary(); summary != nil {
+				agent.Summary = summary
+			}
+		}
 		publication.Roster = append(publication.Roster, AgentRow{Agent: agent, Depth: row.Depth})
 	}
 	return publication
+}
+
+// GenerationSummary is shared by feed-backed and native SDK roster producers.
+func (facts AgentFacts) GenerationSummary() []Entry {
+	if facts.Generating == "" {
+		return nil
+	}
+	// There is no feed event, but this summary belongs to the current work.
+	return []Entry{{Agent: facts.Name, Kind: "progress", Observed: facts.WorkSince, Live: true, Values: []Value{{Kind: "progress", Body: facts.Generating, Live: true}}}}
 }
 
 // SummaryEntries also lets the application supply Main's existing feed summary

@@ -512,7 +512,7 @@ func (v *View) AgentState(agent activitypresentation.Agent, width int, now time.
 	case "":
 		return terminalui.Dim + "idle" + terminalui.Undim
 	case "responding":
-		if len(agent.Summary) == 0 {
+		if len(agent.Summary) == 0 && agent.Generating == "" {
 			return "working"
 		}
 	default:

@@ -379,6 +379,9 @@ func (p *claudePublication) update(root string, members []control.Participant, m
 		caller = member.Task
 		label.Text, label.Running = string(member.Status), member.HostRunning
 	}
+	if member == nil || !member.HostRunning || member.Status == control.Waiting || member.Status == control.Paused {
+		metrics.Generating = ""
+	}
 	if root == "" {
 		root = p.frame.FamilyRoot
 	}
@@ -389,7 +392,7 @@ func (p *claudePublication) update(root string, members []control.Participant, m
 		return false
 	}
 	if metricsChanged {
-		p.frame.Agents = &activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: metrics}}}}
+		p.frame.Agents = &activitypresentation.Publication{Roster: []activitypresentation.AgentRow{{Agent: activitypresentation.Agent{AgentFacts: metrics, Summary: metrics.GenerationSummary()}}}}
 	}
 	if p.review != review {
 		revision := uint64(1)

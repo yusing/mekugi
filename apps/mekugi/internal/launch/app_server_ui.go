@@ -80,6 +80,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	// presentation scratch state. Server execution never attaches or paints it.
 	session.shell, session.preparePane = session.terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
 	hooks := new(executionHooks)
+	hooks.toolInput = session.controlObservations.ToolInput
 	session.attached = newAttachedPresentation(session.ctx, session.presentationState, session.conversationState, session.observations, hooks)
 	processCwd, _ := filepath.Abs(cmd.Dir)
 	session.attached.cwd = processCwd
@@ -1670,6 +1671,7 @@ func applyObservedActivity(attached *attachedPresentation, terminal *terminalses
 	for _, observed := range attached.session.Roster() {
 		if agent := attached.session.Agent(observed.Name); agent != nil {
 			before := *agent
+			agent.Generating = observed.Generating
 			observeCost(usage, observed.Thread, agent)
 			usageChanged = usageChanged || before != *agent
 		}
