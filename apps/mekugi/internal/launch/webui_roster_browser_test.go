@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -174,7 +175,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 			}
 		}
 		rows = append(rows, nativePublication.frame.Agents.Roster...)
-		if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Input: &sessionapi.Input{Stoppable: true},
+		if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Status: u.attached.presentation.View().Status.Session, Input: &sessionapi.Input{Stoppable: true},
 			Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{Roster: rows},
 			Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root", Status: threadcontrol.Working},
 				{Thread: native.info.Thread, Parent: "same-thread", Task: "/root/child", Status: threadcontrol.Working, NonAttachable: true}}}); err != nil {
@@ -182,6 +183,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 		}
 	}
 	publishGeneration()
+	run("wait", "--fn", `!!document.querySelector('header [title="Emitting a patch"]')`)
 	run("wait", "--fn", `(() => { const rows = document.querySelector('#panel-content').textContent; return rows.includes('Emitting a patch') && rows.includes('Spawning subagent') && !rows.includes('Spawning subagent worker'); })()`)
 	if err := native.event(t.Context(), nativeEvents[2]); err != nil {
 		t.Fatal(err)
@@ -205,5 +207,58 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 		}
 	}
 	publishGeneration()
+	run("wait", "--fn", `!!document.querySelector('header [title="Working"]') && !document.querySelector('header [title="Emitting a patch"]')`)
 	run("wait", "--fn", `!document.querySelector('#panel-content').textContent.includes('Emitting a patch') && !document.querySelector('#panel-content').textContent.includes('Spawning subagent')`)
+
+	// Side and One-off keep Main's header status, but own the composer hint.
+	raw, ok := machine.views.Load("same-thread")
+	if !ok {
+		t.Fatal("missing native attachment")
+	}
+	attachment := raw.(sessionapi.NativeRequest)
+	m := u.attached.presentation
+	u.Turn = ""
+	m.Status.Set("Completed", false)
+	side := sessionpresentation.Thread{ID: "side", Caller: "/root/side"}
+	m.SetSide(side)
+	if err := m.Display(sessionpresentation.DisplayIntent{Version: m.View().Version, Thread: side}); err != nil {
+		t.Fatal(err)
+	}
+	u.attached.conversation.Side = &conversationmodel.SideAnswer{Status: "Working"}
+	if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Status: sessionpresentation.Label{Text: "Completed"}, Input: &sessionapi.Input{}}); err != nil {
+		t.Fatal(err)
+	}
+	run("set", "viewport", "1280", "900")
+	run("wait", "--fn", `!!document.querySelector('header [title="Completed"]')`)
+	for _, oneOff := range []bool{false, true} {
+		u.attached.conversation.Side.OneOff = oneOff
+		generationInputs.SetToolInput(&generation, "", "side", item, true)
+		generationInputs.IdentifyToolInput(&generation, item, "exec", true, `await tools.mcp__threadcontrol__spawn_agent({message:"long`)
+		for _, want := range []string{"Spawning subagent", "Spawning subagent `worker`", "Working"} {
+			if want == "Working" {
+				generationInputs.EndGeneration(&generation)
+			} else if want != "Spawning subagent" {
+				generationInputs.IdentifyToolInput(&generation, item, "", false, `",task_name:"worker",more:`)
+			}
+			view := m.Publish(sessionpresentation.MainInputs{Control: &u.Live, Conversation: u.attached.conversation,
+				Info: sessionpresentation.MainInfo{Workspace: machine.workdir}, Feedback: &u.attached.feedback, SideRunning: true, ToolInput: generationInputs.ToolInput}, sessionpresentation.Caption{})
+			if err := machine.api.Native().Publish(attachment.Attachment, sessionapi.NativeFrame{View: view}); err != nil {
+				t.Fatal(err)
+			}
+			run("wait", "--fn", `document.querySelector('#composer-hint')?.textContent.trim() === '`+want+`'`)
+			if want == "Spawning subagent `worker`" && !oneOff {
+				for _, width := range []string{"1280", "390"} {
+					run("set", "viewport", width, "900")
+					run("eval", `document.querySelector('aside[aria-label="Thread panel"] button[aria-label="Close panel"]')?.click()`)
+					for _, theme := range []string{"dark", "light"} {
+						run("set", "media", theme)
+						run("wait", "--fn", `(() => { const r = document.querySelector('#composer-hint')?.getBoundingClientRect(); return r?.width > 0 && r.left >= 0 && r.right <= innerWidth; })()`)
+						if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+							run("screenshot", filepath.Join(artifacts, "composer-side-generation-"+width+"-"+theme+".png"))
+						}
+					}
+				}
+			}
+		}
+	}
 }

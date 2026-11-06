@@ -1791,6 +1791,7 @@ export type SideQuestion = {
 };
 
 export type AgentFacts = {
+  "Generating": string;
   "Name": string;
   "Role": string;
   "Thread": string;

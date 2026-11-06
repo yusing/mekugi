@@ -46,6 +46,11 @@
   } = $props();
   const editor = $derived(semantic.editor());
   const view = $derived(semantic.frame?.view);
+  const sideStatus = $derived(
+    view?.SideThread.ID && view.Displayed.ID === view.SideThread.ID
+      ? view.Status.Composer
+      : undefined,
+  );
   const previewThread = $derived(view?.Input.ID);
   const previewTarget = $derived(
     hub.selected && previewThread ? { machine: hub.selected, thread: previewThread } : undefined,
@@ -352,6 +357,7 @@
       (pending ? "Sending…" : undefined) ||
       refusal ||
       stream.notice ||
+      sideStatus?.Text ||
       (touch
         ? ""
         : shell

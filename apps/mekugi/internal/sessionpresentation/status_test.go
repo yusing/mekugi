@@ -316,3 +316,92 @@ func TestNonTerminalStatusReplacementRetiresProgress(t *testing.T) {
 		t.Fatalf("replacement retained previous status: %+v", s)
 	}
 }
+
+func TestComposerToolGenerationScopeAndPrecedence(t *testing.T) {
+	for _, caller := range []string{"/root", "/root/worker", "/root/resumed", "/root/rewound"} {
+		t.Run(caller, func(t *testing.T) {
+			c := newStatusConsumer()
+			m := c.model()
+			m.Attach(sessionpresentation.Thread{ID: "main", Caller: caller}, false)
+			m.Status.Set("Working", false)
+			m.Status.Started = c.now
+			label := "Emitting a patch"
+			in := sessionpresentation.MainInputs{Control: &c.control, Conversation: &c.conversation, Feedback: &c.feedback,
+				ToolInput: func(thread string) string {
+					if thread != "main" {
+						t.Fatalf("wrong generation owner: %q", thread)
+					}
+					return label
+				}}
+			check := func(want string) {
+				t.Helper()
+				v := m.Publish(in, sessionpresentation.Caption{})
+				if v.Status.Composer.Text != want {
+					t.Fatalf("composer = %+v, want %q", v.Status.Composer, want)
+				}
+			}
+			check(label)
+			if got := m.View().Status.Composer; !got.Running || got.Started != c.now {
+				t.Fatalf("lost work timing: %+v", got)
+			}
+			label = "Spawning subagent `worker`"
+			check(label)
+			in.Retry = "Reconnecting... 2/5"
+			check(in.Retry)
+			in.Retry = ""
+			m.ObserveProgress(observation.Event{Kind: observation.ItemStarted, ThreadID: "main", TurnID: "turn", Item: observation.Item{ID: "compact", Type: "contextCompaction"}}, "turn", false)
+			check("Compacting context")
+			m.ObserveProgress(observation.Event{Kind: observation.ItemCompleted, ThreadID: "main", TurnID: "turn", Item: observation.Item{ID: "compact", Type: "contextCompaction"}}, "turn", false)
+			check(label)
+		})
+	}
+}
+
+func TestComposerToolGenerationCleanupAndSide(t *testing.T) {
+	c := newStatusConsumer()
+	m := c.model()
+	labels := map[string]string{"main": "Executing a command", "side": "Asking user question"}
+	in := sessionpresentation.MainInputs{Control: &c.control, Conversation: &c.conversation, Feedback: &c.feedback,
+		ToolInput: func(thread string) string { return labels[thread] }}
+	check := func(want string) {
+		t.Helper()
+		if got := m.Publish(in, sessionpresentation.Caption{}).Status.Composer.Text; got != want {
+			t.Fatalf("composer = %q, want %q", got, want)
+		}
+	}
+	check(labels["main"])
+	labels["main"] = ""
+	check("Working")
+	labels["main"] = "stale"
+	c.control.Turn = ""
+	c.control.LocalStop, c.control.Waiting = "stop", "wait"
+	check("Waiting for agents")
+	c.control.LocalStop, c.control.Waiting = "", ""
+	m.Status.Set("Completed", false)
+	check("Completed")
+	child := sessionpresentation.Thread{ID: "child", Caller: "/root/child"}
+	if err := m.Display(sessionpresentation.DisplayIntent{Version: m.View().Version, Thread: child}); err != nil {
+		t.Fatal(err)
+	}
+	check("Read-only")
+	side := sessionpresentation.Thread{ID: "side", Caller: "/root/side"}
+	m.SetSide(side)
+	if err := m.Display(sessionpresentation.DisplayIntent{Version: m.View().Version, Thread: side}); err != nil {
+		t.Fatal(err)
+	}
+	c.conversation.Side = &conversationmodel.SideAnswer{Status: "Working", Started: c.now}
+	in.SideRunning = true
+	for _, oneOff := range []bool{false, true} {
+		c.conversation.Side.OneOff = oneOff
+		check(labels["side"])
+		c.conversation.Side.Status = "Reconnecting... 2/5"
+		check("Reconnecting... 2/5")
+		c.conversation.Side.Status = "Working"
+	}
+	labels["side"] = ""
+	check("Working")
+	in.SideRunning = false
+	c.conversation.Side.Status = "Completed"
+	labels["side"] = "stale"
+	check("Completed")
+}

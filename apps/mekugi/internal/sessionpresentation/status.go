@@ -92,6 +92,7 @@ type MainInputs struct {
 	Control                *sessioncontrol.Live
 	RecordedTurn           string // Playback selection, used only without live control.
 	Retry                  string
+	ToolInput              func(string) string // Borrowed live Activity generation owner.
 	Feedback               *noticepresentation.Model
 	Conversation           *conversationmodel.Session
 	ClientEditors          bool // Editor contents remain client-owned, outside this view's retained publication.
@@ -168,6 +169,11 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 	base := Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
 		Completion: state.completed, CompletionKnown: state.completionKnown}
 	v.Status.Session = m.sessionLabel(base, turn, pending, archiving, shell)
+	if turn != "" && v.Status.Session.Text == "Working" && !base.Alert && in.ToolInput != nil {
+		if text := in.ToolInput(thread); text != "" {
+			v.Status.Session.Text = text
+		}
+	}
 	if in.Retry != "" && turn != "" && !archiving && !base.Alert {
 		v.Status.Session.Text, v.Status.Session.Animation = in.Retry, Pulse
 	}
@@ -210,6 +216,11 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 		if in.SideRunning {
 			v.Status.Composer.Animation = Pulse
 			v.Status.Composer.Started = side.Started
+			if side.Status == "Working" && !side.Alert && in.ToolInput != nil {
+				if text := in.ToolInput(v.SideThread.ID); text != "" {
+					v.Status.Composer.Text = text
+				}
+			}
 		}
 		v.Status.Animating = in.SideRunning || v.BTWRunning
 		v.Status.FeedbackRevision = in.Feedback.Revision

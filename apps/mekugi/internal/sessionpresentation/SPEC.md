@@ -402,6 +402,12 @@ boundaries are counted once per thread, restored from full admitted native histo
 on resume and fork, and retired with that thread's attachment. An unavailable
 history baseline remains unknown rather than reporting zero completed compactions.
 
+Live tool-input generation replaces generic Working with Activity's identified
+call in the session status and editable composer, including admitted children,
+Side and One-off. Labels refine as arguments arrive and disappear when generation
+ends; they are not restored from history. Retry, compaction, shell, polling,
+logical waits and prompt/read-only overrides retain their status precedence.
+
 Compaction replaces Working with `Compacting context`, then emits
 `Context reset at <tokens> tokens (<percent>%) • <elapsed>` for a summary-free
 reset. The caller supplies the method; summary compaction retains `Context compacted`
