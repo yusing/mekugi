@@ -17,7 +17,7 @@ func TestCaptureConfiguredCatalog(t *testing.T) {
 	}
 	driver := new(Driver)
 	driver.CaptureCatalog([]byte(`{"models":[{"slug":"other"}]}`))
-	driver.CaptureConfiguredCatalog([]byte(fmt.Sprintf(`{"config":{"model_catalog_json":%q}}`, path)))
+	driver.CaptureConfiguredCatalog(fmt.Appendf(nil, `{"config":{"model_catalog_json":%q}}`, path))
 	if effort, err := driver.InheritedEffort("selected", "ultra"); err != nil || effort != "high" {
 		t.Fatalf("selected catalog: %q %v", effort, err)
 	}
@@ -29,7 +29,7 @@ func TestCaptureConfiguredCatalog(t *testing.T) {
 	if effort, err := child.InheritedEffort("selected", "ultra"); err != nil || effort != "high" {
 		t.Fatalf("inherited catalog: %q %v", effort, err)
 	}
-	driver.CaptureConfiguredCatalog([]byte(fmt.Sprintf(`{"config":{"model_catalog_json":%q}}`, path+"-missing")))
+	driver.CaptureConfiguredCatalog(fmt.Appendf(nil, `{"config":{"model_catalog_json":%q}}`, path+"-missing"))
 	if _, err := driver.InheritedEffort("selected", "ultra"); err == nil {
 		t.Fatal("unreadable selected catalog retained stale metadata")
 	}

@@ -223,13 +223,14 @@ func (d *Driver) reduceHost() {
 				err = d.control.RequestStarted(d.lifecycle, control.Identity{Thread: thread, Session: member.Session, Turn: p.Turn.ID}, member.Parent == "")
 			}
 		case "item/completed":
-			if p.Item.Type == "contextCompaction" {
+			switch p.Item.Type {
+			case "contextCompaction":
 				if p.Item.Status == "" || p.Item.Status == "completed" {
 					d.control.ObserveCompaction(thread, p.Item.ID)
 				}
-			} else if p.Item.Type == "userMessage" {
+			case "userMessage":
 				err = d.control.HumanInputCommitted(d.lifecycle, thread, p.TurnID, p.Item.ClientID)
-			} else {
+			default:
 				err = d.control.AnswerCompleted(d.lifecycle, thread, p.TurnID, p.Item.ID, p.Item.Text)
 			}
 		case "turn/completed":

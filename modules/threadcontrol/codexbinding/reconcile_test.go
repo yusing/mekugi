@@ -297,9 +297,9 @@ func TestConcurrentCompletionsDrainBeforeAllWaitWake(t *testing.T) {
 		defer second.Stop(t.Context())
 		complete := func(driver *Driver, thread, turn string) {
 			t.Helper()
-			_, err := driver.Observe("item/completed", []byte(fmt.Sprintf(`{"threadId":%q,"turnId":%q,"item":{"type":"agentMessage","id":"answer","text":"ready","phase":"final_answer"}}`, thread, turn)))
+			_, err := driver.Observe("item/completed", fmt.Appendf(nil, `{"threadId":%q,"turnId":%q,"item":{"type":"agentMessage","id":"answer","text":"ready","phase":"final_answer"}}`, thread, turn))
 			check(err)
-			_, err = driver.Observe("turn/completed", []byte(fmt.Sprintf(`{"threadId":%q,"turn":{"id":%q,"status":"completed"}}`, thread, turn)))
+			_, err = driver.Observe("turn/completed", fmt.Appendf(nil, `{"threadId":%q,"turn":{"id":%q,"status":"completed"}}`, thread, turn))
 			check(err)
 		}
 		complete(first, "child", "child-turn")
