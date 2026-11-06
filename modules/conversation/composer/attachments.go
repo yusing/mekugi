@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -50,22 +51,34 @@ func (d *Draft) SnapshotSources(cwd string, sources []AttachmentSource) {
 		return
 	}
 	var frames []string
-	seen := make(map[string]bool)
+	seen := make(map[string]attachmentFile)
 	for index, source := range sources {
 		var next []string
 		var err error
 		var header string
+		base := cwd
+		snapshotPath := ""
 		if source.Path != "" {
 			path := source.Path
 			if !filepath.IsAbs(path) && filepath.IsAbs(cwd) {
 				path = filepath.Join(cwd, path)
 			}
 			path = filepath.Clean(path)
-			if seen[path] {
+			snapshotPath = path
+			if prior, ok := seen[path]; ok {
+				if prior.depth > 1 {
+					seen[path] = attachmentFile{prior.body, 1}
+					var more bool
+					frames, more = d.appendNestedAttachments(frames, prior.body, filepath.Dir(path), 1, seen)
+					if !more {
+						break
+					}
+				}
 				continue
 			}
-			seen[path] = true
+			seen[path] = attachmentFile{depth: 1}
 			next, err = pathFrames(path)
+			base = filepath.Dir(path)
 			header = fmt.Sprintf("Attached file %q", path)
 		} else {
 			// A display label is not identity: distinct uploads can share a name.
@@ -77,10 +90,21 @@ func (d *Draft) SnapshotSources(cwd string, sources []AttachmentSource) {
 				})
 			}
 		}
+		before := len(frames)
 		var more bool
 		frames, more = d.appendAttachmentSnapshot(frames, next, header, err)
 		if !more {
 			break
+		}
+		if err == nil {
+			body := attachmentBody(frames[before:])
+			if source.Path != "" {
+				seen[snapshotPath] = attachmentFile{body, 1}
+			}
+			frames, more = d.appendNestedAttachments(frames, body, base, 1, seen)
+			if !more {
+				break
+			}
 		}
 	}
 	// Mentioned selections follow file contents; each fits whole or says so.
@@ -102,10 +126,88 @@ func (d *Draft) SnapshotSources(cwd string, sources []AttachmentSource) {
 			}
 		}
 		frames = append(frames, next...)
+		var more bool
+		var selected strings.Builder
+		for _, frame := range next {
+			if value, ok := attachments.ParseSelection(frame); ok {
+				selected.WriteString(value.Body)
+			}
+		}
+		frames, more = d.appendNestedAttachments(frames, selected.String(), cwd, 1, seen)
+		if !more {
+			break
+		}
 	}
 	if len(frames) > 0 {
 		d.Attachments = []string{attachments.Encode(frames)}
 	}
+}
+
+// Read only bodies that were actually framed, not generated directory listings.
+func attachmentBody(frames []string) string {
+	var body strings.Builder
+	for _, frame := range frames {
+		header, content, ok := strings.Cut(frame, "\n")
+		metadata := header
+		if rest, file := strings.CutPrefix(header, "Attached file "); file {
+			if quoted, err := strconv.QuotedPrefix(rest); err == nil {
+				metadata = rest[len(quoted):]
+			}
+		}
+		if ok && !strings.Contains(metadata, "; directory tree,") {
+			body.WriteString(content)
+		}
+	}
+	return body.String()
+}
+
+type attachmentFile struct {
+	body  string
+	depth int
+}
+
+func (d *Draft) appendNestedAttachments(frames []string, content, base string, depth int, seen map[string]attachmentFile) ([]string, bool) {
+	for reference := range attachments.References(content) {
+		path := reference
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(base, path)
+		}
+		path = filepath.Clean(path)
+		var next []string
+		var err error
+		if depth >= attachments.MaxDepth {
+			err = fmt.Errorf("nested attachment depth limit 3 exceeded")
+		} else {
+			if prior, ok := seen[path]; ok {
+				if prior.depth > depth+1 {
+					seen[path] = attachmentFile{prior.body, depth + 1}
+					var more bool
+					frames, more = d.appendNestedAttachments(frames, prior.body, filepath.Dir(path), depth+1, seen)
+					if !more {
+						return frames, false
+					}
+				}
+				continue
+			}
+			seen[path] = attachmentFile{depth: depth + 1}
+			next, err = pathFrames(path)
+		}
+		before := len(frames)
+		var more bool
+		frames, more = d.appendAttachmentSnapshot(frames, next, fmt.Sprintf("Attached file %q", path), err)
+		if !more {
+			return frames, false
+		}
+		if err == nil {
+			body := attachmentBody(frames[before:])
+			seen[path] = attachmentFile{body, depth + 1}
+			frames, more = d.appendNestedAttachments(frames, body, filepath.Dir(path), depth+1, seen)
+			if !more {
+				return frames, false
+			}
+		}
+	}
+	return frames, true
 }
 
 // Files and skills share one snapshot budget and explicit omission behavior.

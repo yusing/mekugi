@@ -5,6 +5,8 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"maps"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -182,6 +184,22 @@ func testContextReload(t *testing.T, kind string) {
 	sources := []compact.CapturedSource{{Command: "cat selected.txt", Stdout: "complete body"}, {Command: "cat missing.txt", Stderr: "permission denied", ExitCode: 1}, {Command: "mchanges amber1..3", Stdout: "composed retained diff"}}
 	if completion {
 		sources = []compact.CapturedSource{{Command: "mchanges amber1..3", Stdout: "complete body\ncomposed retained diff", Stderr: "permission denied", ExitCode: 1}}
+	} else {
+		dir := t.TempDir()
+		for name, body := range map[string]string{"selected.txt": "complete body\n@nested.txt", "nested.txt": "nested retained body\n@missing-nested", "mcat": "#!/bin/sh\nshift\nexec cat -- \"$@\"\n"} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		captured, err := compact.ReadSources(t.Context(), `{"sources":[{"path":"selected.txt"}]}`, dir, os.Environ(), compact.ChangeReader{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sources[0] = captured.Sources[0]
+		if err := os.WriteFile(filepath.Join(dir, "nested.txt"), []byte("changed nested source"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	snapshot := compact.Snapshot{Selection: selection, Sources: sources}
 	if completion {
@@ -200,6 +218,9 @@ func testContextReload(t *testing.T, kind string) {
 		t.Fatal(err)
 	}
 	visible := request.Fields["input"]
+	if !completion && (!bytes.Contains(visible, []byte("nested retained body")) || !bytes.Contains(visible, []byte("missing-nested")) || bytes.Contains(visible, []byte("changed nested source"))) {
+		t.Fatalf("nested preload/reload lost retained bytes or errors: %s", visible)
+	}
 	if !bytes.Contains(visible, []byte("complete body")) || !bytes.Contains(visible, []byte("permission denied")) || !bytes.Contains(visible, []byte("composed retained diff")) || bytes.Contains(visible, []byte(compact.SnapshotPrefix)) || !bytes.Equal(request.OriginalField("input"), mustTestJSON(t, items)) {
 		t.Fatalf("lost preload context or original history: %s", visible)
 	}

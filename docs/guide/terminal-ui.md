@@ -50,6 +50,11 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
 - Enabled `$skill-name` references attach instructions, using `skills-mgr` when available.
   Use it for managed skills, `/skills` for Codex toggles; click receipts for submitted contents.
 - Select transcript or saved Diff text and press `r` to mention it.
+- Attached file, upload, selection and skill text can include `@path` or
+  `@"path with spaces"` to attach referenced files. Relative references resolve
+  beside a native file, or from the workspace for uploads, selections and managed
+  skills. The selected source counts as depth 1; depth 3 is the last acquired level.
+  Deeper or failed reads show omission notices. Directory trees are not expanded.
 - `/side` creates a fresh answer-only snapshot with a Side tab beside Main. Only one
   Side is open; repeat `/side` to choose Replace or Cancel. Select Side to read or
   reply with its own draft.

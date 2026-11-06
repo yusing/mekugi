@@ -255,3 +255,116 @@ func TestReloadMcatQuotedRangesAndLimits(t *testing.T) {
 		t.Fatalf("invalid ranges accepted: %+v", snapshot.Sources)
 	}
 }
+
+func TestReloadNestedSelectedText(t *testing.T) {
+	testMcat(t)
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"state.json": "{\"next\":\"@child\"}\n@not-selected\n",
+		"child":      "child body @leaf @AGENTS.md", "leaf": "leaf body @too-deep",
+		"too-deep": "FORBIDDEN_DEPTH", "AGENTS.md": "HOST_ONLY", "not-selected": "UNSELECTED",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	selection, _ := json.Marshal(map[string]any{"sources": []Source{{Path: "state.json", Ranges: [][2]int{{1, 1}}}, {Path: "missing"}}})
+	snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := snapshot.Sources[0].Text()
+	if !strings.Contains(body, "child body") || !strings.Contains(body, "leaf body") || !strings.Contains(body, "depth limit 3 exceeded") || snapshot.Sources[0].ExitCode == 0 || snapshot.Sources[1].ExitCode == 0 {
+		t.Fatal(body)
+	}
+	for _, excluded := range []string{"FORBIDDEN_DEPTH", "UNSELECTED", "HOST_ONLY"} {
+		if strings.Contains(body, excluded) {
+			t.Fatal(body)
+		}
+	}
+	if snapshot.Selection != string(selection) || len(snapshot.Sources) != 2 {
+		t.Fatal("root selection identity changed")
+	}
+}
+
+func TestReloadSkillReferences(t *testing.T) {
+	testMcat(t)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "references"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	reference := filepath.Join(dir, "references", "guide.md")
+	if err := os.WriteFile(reference, []byte("first\nselected reference\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager := "#!/bin/sh\ntest \"$1 $2 $3 $4\" = 'get --codex chosen/references/guide.md 2:2' || exit 2\nprintf 'managed reference\\n'\n"
+	if err := os.WriteFile(filepath.Join(dir, "skills-mgr"), []byte(manager), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, source := range []Source{
+		{Skill: "chosen/references/guide.md", Ranges: [][2]int{{2, 2}}},
+		{Skill: "chosen", Path: reference, Ranges: [][2]int{{2, 2}}},
+		{Skill: "chosen/references/guide.md", Path: filepath.Join(dir, "SKILL.md"), Ranges: [][2]int{{2, 2}}},
+	} {
+		selection, _ := json.Marshal(map[string]any{"sources": []Source{source}})
+		snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
+		if err != nil || snapshot.Sources[0].ExitCode != 0 || !strings.Contains(snapshot.Sources[0].Stdout, "reference") || strings.Contains(snapshot.Sources[0].Stdout, "first") {
+			t.Fatalf("%+v: %+v %v", source, snapshot, err)
+		}
+	}
+	for _, skill := range []string{"chosen/../secret", "chosen//reference", "chosen/./reference", "-flag", "/absolute"} {
+		selection, _ := json.Marshal(map[string]any{"sources": []Source{{Skill: skill}}})
+		commands, err := ReadCommands(string(selection))
+		if err != nil || !strings.Contains(commands[0], "CONTENT NOT ATTACHED") {
+			t.Fatalf("unsafe skill %q: %v %v", skill, commands, err)
+		}
+	}
+}
+
+func TestReloadNestedShallowerBranch(t *testing.T) {
+	testMcat(t)
+	dir := t.TempDir()
+	for name, body := range map[string]string{"root": "@a @b", "a": "@b", "b": "branch body @c", "c": "reachable leaf"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := ReadSources(t.Context(), `{"sources":[{"path":"root"}]}`, dir, os.Environ(), ChangeReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := snapshot.Sources[0].Stdout
+	if !strings.Contains(body, "reachable leaf") || strings.Count(body, "branch body") != 1 {
+		t.Fatal(body)
+	}
+}
+
+func TestReloadManagedNestedWorkspaceAndNativeHostExclusion(t *testing.T) {
+	testMcat(t)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "placeholder"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"placeholder/SKILL.md": "metadata", "placeholder/.skills-mgr-placeholder": "",
+		"placeholder/child": "WRONG body", "child": "workspace body",
+		"skills-mgr": "#!/bin/sh\nprintf '@child'\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	selection, _ := json.Marshal(map[string]any{"sources": []Source{
+		{Skill: "chosen", Path: "placeholder/SKILL.md"},
+		{Skill: "chosen/references/AGENTS.md", Path: "SKILL.md"},
+	}})
+	snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(snapshot.Sources[0].Stdout, "workspace body") || strings.Contains(snapshot.Sources[0].Stdout, "WRONG body") || snapshot.Sources[1] != (CapturedSource{}) {
+		t.Fatalf("%+v", snapshot)
+	}
+}

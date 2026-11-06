@@ -65,10 +65,9 @@ func readSkillAttachment(ctx context.Context, cwd string, environment []string, 
 	return data, false, err
 }
 func snapshotDraftSkills(workspace string, environment []string, d *conversationmodel.Input) {
-	d.SnapshotSkills(func(name, path string) ([]byte, error) {
+	d.SnapshotSkillSources(workspace, func(name, path string) ([]byte, bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		data, _, err := readSkillAttachment(ctx, workspace, environment, name, path)
-		return data, err
+		return readSkillAttachment(ctx, workspace, environment, name, path)
 	})
 }

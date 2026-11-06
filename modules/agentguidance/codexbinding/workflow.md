@@ -1,6 +1,7 @@
 Keep command output in tool results; redirect to a file only when the task needs that artifact, not for display preference. Disposable logs pollute change history and diff stats.
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution.
 An incomplete result does not establish full coverage; follow its next_call exactly rather than rerunning the producer. Display labels are not recovery handles.
+In selected recovery/handoff text, use @path for needed files, not deferred reads; bare paths stay literal.
 <!-- summary-recovery -->For repeated compactions, you may keep reusable task state in a temporary JSON artifact outside the repository instead of repeating it in each summary. Keep only facts needed for current and remaining work; summarize or remove completed work that no longer matters instead of appending history indefinitely. Update changed facts there; keep the summary to the artifact's absolute path, current goal, blockers and next step. After compaction, read only the fields needed for that step. Keep the artifact until its work is complete.
 
 <!-- child-reply-summary -->

@@ -3,6 +3,9 @@ package composer
 
 import (
 	"fmt"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
@@ -20,8 +23,18 @@ func SkillFrames(name, path, content string) []string {
 // Skills use the file attachment store, budgets, framing and delivery. Only
 // source resolution and the header differ; no second snapshot lifecycle exists.
 func (d *Draft) SnapshotSkills(read func(name, path string) ([]byte, error)) {
+	d.SnapshotSkillSources("", func(name, path string) ([]byte, bool, error) {
+		data, err := read(name, path)
+		return data, false, err
+	})
+}
+
+// SnapshotSkillSources acquires nested files only for a live workspace. Retained
+// skill snapshots use SnapshotSkills to frame already-acquired bytes without I/O.
+func (d *Draft) SnapshotSkillSources(workspace string, read func(name, path string) ([]byte, bool, error)) {
 	var frames []string
 	seen := make(map[string]bool)
+	files := make(map[string]attachmentFile)
 	for _, attachment := range d.Attachments {
 		retained, ok := attachments.Decode(attachment)
 		if !ok {
@@ -29,6 +42,15 @@ func (d *Draft) SnapshotSkills(read func(name, path string) ([]byte, error)) {
 		}
 		frames = append(frames, retained...)
 		for _, frame := range retained {
+			if rest, ok := strings.CutPrefix(frame, "Attached file "); ok {
+				if quoted, err := strconv.QuotedPrefix(rest); err == nil {
+					path, _ := strconv.Unquote(quoted)
+					if filepath.IsAbs(path) {
+						prior := files[path]
+						files[path] = attachmentFile{prior.body + attachmentBody([]string{frame}), attachments.MaxDepth + 1}
+					}
+				}
+			}
 			if name, path, _ := attachments.ParseSkillFrame(frame); name != "" {
 				seen[name+"\x00"+path] = true
 			}
@@ -44,12 +66,23 @@ func (d *Draft) SnapshotSkills(read func(name, path string) ([]byte, error)) {
 		if skill.Path != "" {
 			header += fmt.Sprintf(" from %q", skill.Path)
 		}
-		data, err := read(skill.Name, skill.Path)
+		data, managed, err := read(skill.Name, skill.Path)
 		next := SkillFrames(skill.Name, skill.Path, string(data))
+		before := len(frames)
 		var more bool
 		frames, more = d.appendAttachmentSnapshot(frames, next, header, err)
 		if !more {
 			break
+		}
+		if err == nil && workspace != "" {
+			base := workspace
+			if skill.Path != "" && !managed {
+				base = filepath.Dir(skill.Path)
+			}
+			frames, more = d.appendNestedAttachments(frames, attachmentBody(frames[before:]), base, 1, files)
+			if !more {
+				break
+			}
 		}
 	}
 	if len(frames) > 0 {

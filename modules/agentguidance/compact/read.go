@@ -27,7 +27,7 @@ func ReadCommands(selection string) ([]string, error) {
 
 	var commands []string
 	for _, source := range selected {
-		path := source.Path
+		path := source.readPath()
 		if path != "" && !filepath.IsAbs(path) {
 			path = "./" + path
 		}
@@ -37,10 +37,10 @@ func ReadCommands(selection string) ([]string, error) {
 			valid = len(source.Changes) > 0 && source.Path == "" && source.Skill == "" && len(source.Ranges) == 0
 			args = append([]string{"mchanges"}, source.Changes...)
 		} else if source.Path == "" {
-			valid = valid && source.Skill != "" && !strings.ContainsAny(source.Skill, "\x00\r\n/") && !strings.HasPrefix(source.Skill, "-") && len(source.Ranges) == 0
+			valid = valid && validSkillReference(source.Skill)
 			args = []string{"skills-mgr", "get", "--codex", source.Skill}
 		} else if source.Skill != "" {
-			valid = valid && filepath.Base(source.Path) == "SKILL.md"
+			valid = valid && validSkillReference(source.Skill)
 		}
 		for _, span := range source.Ranges {
 			valid = valid && span[0] > 0 && span[1] >= span[0]
@@ -57,6 +57,25 @@ func ReadCommands(selection string) ([]string, error) {
 	return commands, nil
 }
 
+func (s Source) readPath() string {
+	if _, reference, ok := strings.Cut(s.Skill, "/"); ok && filepath.Base(s.Path) == "SKILL.md" {
+		return filepath.Join(filepath.Dir(s.Path), reference)
+	}
+	return s.Path
+}
+
+func validSkillReference(skill string) bool {
+	if skill == "" || strings.HasPrefix(skill, "-") || strings.ContainsAny(skill, "\x00\r\n\\") {
+		return false
+	}
+	for part := range strings.SplitSeq(skill, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
+}
+
 // Source is selected context identity, independent of its command and outcome.
 type Source struct {
 	Path    string   `json:"path,omitempty"`
@@ -66,7 +85,9 @@ type Source struct {
 }
 
 // HostLoaded sources are supplied by Codex's instruction discovery.
-func (s Source) HostLoaded() bool { return s.Changes == nil && filepath.Base(s.Path) == "AGENTS.md" }
+func (s Source) HostLoaded() bool {
+	return s.Changes == nil && filepath.Base(s.readPath()) == "AGENTS.md"
+}
 
 // ReloadSources excludes host-owned instructions while Sources preserves the
 // original order for interpreting already retained capture results.

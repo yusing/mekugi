@@ -210,6 +210,15 @@ envelope a durable identity independent of its contents. Identical submissions
 remain distinct; request refresh, forks and resume preserve the submitted identity.
 Version 1 envelopes remain readable without inventing a submission identity.
 
+Selected text can contain nested `@path` references, including JSON string values
+and `@"paths with spaces"`. Email addresses remain literal. Relative references
+resolve beside the containing host file; uploads, screen selections and managed
+skills use the active workspace. The selected attachment counts as depth 1;
+depth 3 is the last acquired level. Deeper references produce an explicit omission
+in the snapshot and a composer notice. Nested reads share the attachment budget,
+deduplicate paths, and retain the same immutable submission lifecycle. Directory
+listings are not scanned for references.
+
 Native and managed skill instructions use the same framing, budgets and omission
 receipts as files, never a synthetic native path or name-only replacement. Replay
 recovers immutable instructions and identity without rerunning the manager.

@@ -21,7 +21,7 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 	compactSchema := `{"type":"object","properties":{},"additionalProperties":false}`
 	waitReload := ""
 	if !claudeCaller {
-		reload := `"reload":{"description":"Put files, skills and captured changes needed next directly in reload.sources; paths listed inside a task-state JSON artifact are not selections. Select only the artifact lines the next step needs; omit reload when no known sources are needed.","allOf":[` + compact.SelectionSchema + `]}`
+		reload := `"reload":{"description":"Select needed files, skills or captured changes in reload.sources. Selected text expands @path references through depth 3, counting the root as depth 1; bare paths stay literal. Select only needed artifact lines; omit reload when no sources are needed.","allOf":[` + compact.SelectionSchema + `]}`
 		compactSchema = `{"type":"object","properties":{` + reload + `},"additionalProperties":false}`
 		waitReload = "," + reload
 	}
@@ -40,7 +40,7 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 			"model":{"type":"string","description":"Model override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions. ` + modelGuidance + `"},
 			"reasoning_effort":{"type":"string","description":"Reasoning-effort override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions."},
 			"cwd":{"type":"string","description":"Existing authorized working directory for the child. Omit to inherit the caller's cwd; relative paths resolve there. The parent's cwd is unchanged."},
-			"preload":{"description":"Required instruction files, skills, task files or mchanges IDs/ranges for fork_turns=none, acquired before first inference. Select only sources needed to begin; omit for full-history forks or when none are known. Each source uses path with optional inclusive ranges, skill with optional SKILL.md path, or changes with an array of explicit IDs/ranges supplying their composed diff. Relative paths use child cwd; AGENTS.md is host-loaded. Reads use child permissions; failures remain visible.","allOf":[` + compact.SelectionSchema + `]}
+			"preload":{"description":"Required instruction files, skills, task files or mchanges IDs/ranges for fork_turns=none, acquired before first inference. Select only sources needed to begin; omit for full-history forks or when none are known. Each source uses path with optional inclusive ranges, skill or skill/reference with an optional native skill-document anchor or reference-file path, or changes with an array of explicit IDs/ranges supplying their composed diff. Relative paths use child cwd; AGENTS.md is host-loaded. Reads use child permissions; failures remain visible. Selected text expands @path references through depth 3, counting the root as depth 1; bare paths stay literal.","allOf":[` + compact.SelectionSchema + `]}
 		},"required":["task_name","message"],"additionalProperties":false}`},
 		{"list_models", modelList, `{"type":"object","properties":{},"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations in the selected session.", `{"type":"object","properties":{"session_id":{"type":"string","description":"Exact ID of an active Mekugi session or thread. Omit for this session's admitted tree."},"path_prefix":{"type":"string","description":"Logical agent-name prefix, such as agent:main/worker. Omit to list the whole admitted tree."}},"additionalProperties":false}`},

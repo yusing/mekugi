@@ -196,7 +196,10 @@ needed for the next operation, using focused line ranges or ordinary JSON extrac
 remove obsolete facts instead of accumulating task history.
 
 Sources are file paths with optional inclusive line ranges, skills with optional
-native paths, or explicit `mchanges` IDs/ranges. A `changes` source supplies an
+native paths, or explicit `mchanges` IDs/ranges. Skill references use
+`skill: "name/references/file.md"`; a native `SKILL.md` path anchors that reference,
+or `path` can name the native reference file directly. Skill ranges use the
+selected reader's inclusive line ranges. A `changes` source supplies an
 array such as `["amber1..3", "birch2"]`, exclusive with file/skill fields, and captures
 the composed retained diff in the admitted caller namespace. Unavailable IDs and
 incomplete chains retain available output and explicit diagnostics. Selection never
@@ -215,6 +218,15 @@ File selections use `mcat` with its normal range, output and recovery bounds. An
 incomplete file read reports its failure and, when available, an `mread` continuation;
 its omitted rows are not included in the preload. Skill and change selections retain
 their own readers.
+
+Successfully selected file and skill text also resolves nested `@path` references,
+including JSON string values and `@"paths with spaces"`. Plain paths remain data.
+Relative references resolve beside a native source, or in the admitted workspace
+for managed skills. Only selected rows are scanned, never omitted rows or captured
+diffs. The root counts as depth 1; references beyond depth 3 retain visible errors.
+Host-owned `AGENTS.md` stays excluded at every depth. Nested results remain inside
+the root's retained result with command identities and failure status, using the
+same permissions, approvals, byte budget and immutable reload/preload snapshot.
 
 Independent readers run concurrently as stock tools. A denied or failed source does
 not prevent the others from completing. Prewarm and execution-free requests never

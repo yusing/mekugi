@@ -40,6 +40,8 @@ file, skill, and selection snapshots. Encoding preserves the submitted frame tex
 decoding validates the envelope, size limits, and recognized frame families.
 Consumers share frame recognition and guidance spelling. The codec performs no
 filesystem reads, composer actions, or model-input projection policy.
+Shared nested-reference recognition identifies bounded-depth `@path` selections
+in attachment text; each acquiring owner retains read authority and budgets.
 
 ## Ownership and acceptance
 

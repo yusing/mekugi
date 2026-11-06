@@ -78,6 +78,9 @@ and recoverable, and measures actual traffic without replaying effects.
   Codex resets without a generated summary. Optional temporary JSON task state
   supports focused recovery, never automatic whole-artifact reload; neither task
   state nor generated digests stand in for source text.
+  Selected attachment, reload and preload text can name required files with
+  explicit `@path` references, acquired through depth 3 including the selected
+  root. Bare paths remain literal; acquisition failures stay visible.
 - **Reduce retained output by reference.** Incomplete retained reads have an exact
   continuation, and repeated text is replaced only by a reference to text still
   visible to the model. Output is not filtered by guessed relevance. Explicit

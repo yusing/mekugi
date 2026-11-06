@@ -15,6 +15,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -81,6 +82,117 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 	if err != nil {
 		return Snapshot{}, err
 	}
+	// Nested reads use the same admitted process environment and capture budget.
+	acquire := func(source Source, script string) (CapturedSource, bool) {
+		managedSource := source.Skill != "" && source.Path == ""
+		// A native metadata placeholder identifies a managed skill. Resolve
+		// it inside the admitted reader, preserving the selected source identity.
+		if source.Skill != "" && source.Path != "" {
+			path := source.Path
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(directory, path)
+			}
+			_, err := os.Stat(filepath.Join(filepath.Dir(path), ".skills-mgr-placeholder"))
+			if err == nil {
+				managedSource = true
+				data, _ := json.Marshal(struct {
+					Sources []Source `json:"sources"`
+				}{[]Source{{Skill: source.Skill, Ranges: source.Ranges}}})
+				managed, _ := ReadCommands(string(data))
+				script = managed[0]
+			} else if !os.IsNotExist(err) {
+				result := CapturedSource{Command: script, Stderr: err.Error(), ExitCode: 1}
+				budget.take(len(result.Stderr))
+				return result, managedSource
+			}
+		}
+		var stdout, stderr bytes.Buffer
+		cmd := exec.CommandContext(ctx, "bash", "-c", script)
+		cmd.Dir, cmd.Env = directory, environment
+		cmd.Stdout, cmd.Stderr = captureWriter{&stdout, budget}, captureWriter{&stderr, budget}
+		cmd.WaitDelay = time.Second
+		code := 0
+		if err := cmd.Run(); err != nil {
+			code = 1
+			if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() > 0 {
+				code = exit.ExitCode()
+			}
+			if stderr.Len() == 0 {
+				fmt.Fprintln(&stderr, err)
+			}
+		}
+		return CapturedSource{script, stdout.String(), stderr.String(), code}, managedSource
+	}
+	type capturedFile struct {
+		body, base, command string
+		depth               int
+	}
+	var readSource func(Source, string, int, map[string]capturedFile) CapturedSource
+	readSource = func(source Source, script string, depth int, seen map[string]capturedFile) CapturedSource {
+		path := source.readPath()
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(directory, path)
+		}
+		key := source.Skill + "\x00" + filepath.Clean(path)
+		var result CapturedSource
+		var body, base string
+		if prior, ok := seen[key]; ok {
+			if prior.depth <= depth {
+				return result
+			}
+			result.Command, body, base = prior.command, prior.body, prior.base
+		} else {
+			var managed bool
+			result, managed = acquire(source, script)
+			if result.ExitCode != 0 {
+				return result
+			}
+			body, base = result.Stdout, directory
+			if source.Path != "" && !managed {
+				base = filepath.Dir(path)
+			}
+		}
+		seen[key] = capturedFile{body, base, result.Command, depth}
+
+		for reference := range attachments.References(body) {
+			if ctx.Err() != nil {
+				return result
+			}
+			path := reference
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(base, path)
+			}
+			path = filepath.Clean(path)
+			nested := Source{Path: path}
+			if nested.HostLoaded() {
+				continue
+			}
+			data, _ := json.Marshal(struct {
+				Sources []Source `json:"sources"`
+			}{[]Source{nested}})
+			commands, _ := ReadCommands(string(data))
+			child := CapturedSource{Command: commands[0]}
+			if depth >= attachments.MaxDepth {
+				child.Stderr, child.ExitCode = "CONTENT NOT ATTACHED: nested attachment depth limit 3 exceeded", 1
+				budget.take(len(child.Stderr))
+			} else {
+				child = readSource(nested, commands[0], depth+1, seen)
+				if child.Command == "" {
+					continue
+				}
+			}
+			text := "\n" + child.Text()
+			// Child body bytes have already consumed budget; account for framing.
+			if budget.take(len(text)-len(child.Stdout)-len(child.Stderr)) != nil {
+				return result
+			}
+			result.Stdout += text
+			if child.ExitCode != 0 {
+				result.ExitCode = 1
+			}
+		}
+		return result
+	}
 	// Keep original selection indices and command identity for retained history.
 	// Host-loaded instructions have no acquisition or result body.
 	results := make([]CapturedSource, len(sources))
@@ -106,42 +218,7 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 				budget.take(len(results[i].Stdout) + len(results[i].Stderr))
 				return
 			}
-			// A native metadata placeholder identifies a managed skill. Resolve
-			// it inside the admitted reader, preserving the selected source identity.
-			if source.Skill != "" && source.Path != "" && len(source.Ranges) == 0 {
-				path := source.Path
-				if !filepath.IsAbs(path) {
-					path = filepath.Join(directory, path)
-				}
-				_, err := os.Stat(filepath.Join(filepath.Dir(path), ".skills-mgr-placeholder"))
-				if err == nil {
-					data, _ := json.Marshal(struct {
-						Sources []Source `json:"sources"`
-					}{[]Source{{Skill: source.Skill}}})
-					managed, _ := ReadCommands(string(data))
-					script = managed[0]
-				} else if !os.IsNotExist(err) {
-					results[i] = CapturedSource{Command: script, Stderr: err.Error(), ExitCode: 1}
-					budget.take(len(results[i].Stderr))
-					return
-				}
-			}
-			var stdout, stderr bytes.Buffer
-			cmd := exec.CommandContext(ctx, "bash", "-c", script)
-			cmd.Dir, cmd.Env = directory, environment
-			cmd.Stdout, cmd.Stderr = captureWriter{&stdout, budget}, captureWriter{&stderr, budget}
-			cmd.WaitDelay = time.Second
-			code := 0
-			if err := cmd.Run(); err != nil {
-				code = 1
-				if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() > 0 {
-					code = exit.ExitCode()
-				}
-				if stderr.Len() == 0 {
-					fmt.Fprintln(&stderr, err)
-				}
-			}
-			results[i] = CapturedSource{script, stdout.String(), stderr.String(), code}
+			results[i] = readSource(source, script, 1, map[string]capturedFile{})
 		})
 	}
 	readers.Wait()

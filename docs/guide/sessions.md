@@ -45,6 +45,13 @@ skills and captured-change IDs with a checkpoint, or recover needed facts throug
 ordinary reads after reset. Temporary task-state JSON is optional and read selectively,
 never automatically loaded in full. Claude delegates retain native compaction.
 
+Selected reload and fresh-delegate preload text can include `@path` references to
+required files, including inside JSON state. Bare paths do not trigger reads. The
+selected source counts as depth 1; depth 3 is the last acquired level. References
+resolve beside native source files, or from the workspace for managed skills.
+Skills can select a reference such as `name/references/guide.md` instead of the
+whole skill. Captured diffs and unselected lines do not expand references.
+
 Before the next model request, Mekugi acquires selected sources with the thread's
 permissions. Failed reads stay visible without blocking the others. Codex supplies
 `AGENTS.md`, so it is excluded from reload. Captured reloads survive resume and fork

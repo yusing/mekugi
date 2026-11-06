@@ -77,6 +77,102 @@ func TestSnapshotSourcesUploadAndPaths(t *testing.T) {
 	}
 }
 
+func TestNestedAttachmentSnapshots(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"root.json": `{"next":"@child.txt"}`, "child.txt": "child body @leaf.txt",
+		"leaf.txt": "leaf body @too-deep.txt", "too-deep.txt": "MUST NOT LOAD",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, kind := range []string{"file", "upload", "selection", "skill"} {
+		t.Run(kind, func(t *testing.T) {
+			var draft Draft
+			switch kind {
+			case "file":
+				draft.SnapshotSources(dir, []AttachmentSource{{Path: "root.json"}})
+			case "upload":
+				draft.SnapshotSources(dir, []AttachmentSource{{Name: "../untrusted", Data: []byte(`{"next":"@child.txt"}`)}})
+			case "selection":
+				draft.Text = "[Selected message]"
+				draft.Selections = []Token{{Start: 0, End: len(draft.Text), Text: "@child.txt"}}
+				draft.SnapshotSources(dir, nil)
+			case "skill":
+				draft.Skills = []Token{{Name: "selected"}}
+				draft.SnapshotSkillSources(dir, func(_, _ string) ([]byte, bool, error) { return []byte("@child.txt"), true, nil })
+			}
+			frames, ok := attachments.Decode(draft.Attachments[0])
+			body := strings.Join(frames, "\n")
+			if !ok || !strings.Contains(body, "child body") || !strings.Contains(body, "leaf body") || strings.Contains(body, "MUST NOT LOAD") || !strings.Contains(body, "depth limit 3 exceeded") || !strings.Contains(draft.AttachmentNotice, "depth limit 3 exceeded") {
+				t.Fatalf("nested %s: notice=%q frames=%q", kind, draft.AttachmentNotice, frames)
+			}
+		})
+	}
+}
+
+func TestNestedAttachmentFailuresAndDeduplication(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "child"), []byte("unique child"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var draft Draft
+	draft.SnapshotSources(dir, []AttachmentSource{{Name: "root", Data: []byte("@missing @child @child")}, {Path: "child"}})
+	frames, _ := attachments.Decode(draft.Attachments[0])
+	body := strings.Join(frames, "\n")
+	if !strings.Contains(body, "CONTENT NOT ATTACHED") || strings.Count(body, "unique child") != 1 || draft.AttachmentNotice == "" {
+		t.Fatal(body)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "child"), []byte("changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(frames, "\n"), "unique child") {
+		t.Fatal("snapshot was not immutable")
+	}
+}
+
+func TestNestedAttachmentShallowerBranchUsesSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{"root": "@a @b", "a": "@b", "b": "branch body @c", "c": "reachable leaf"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var draft Draft
+	draft.SnapshotSources(dir, []AttachmentSource{{Path: "root"}})
+	frames, _ := attachments.Decode(draft.Attachments[0])
+	body := strings.Join(frames, "\n")
+	if !strings.Contains(body, "reachable leaf") || strings.Count(body, "branch body") != 1 {
+		t.Fatal(body)
+	}
+}
+
+func TestNestedManagedSkillsReuseFilesAndWorkspace(t *testing.T) {
+	dir := t.TempDir()
+	placeholder := filepath.Join(dir, "placeholder")
+	if err := os.Mkdir(placeholder, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"directory tree, notes.txt": "@child", "child": "workspace body", "placeholder/child": "WRONG body"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var draft Draft
+	draft.SnapshotSources(dir, []AttachmentSource{{Path: "directory tree, notes.txt"}})
+	if err := os.WriteFile(filepath.Join(dir, "child"), []byte("changed body"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	draft.Skills = []Token{{Name: "chosen", Path: filepath.Join(placeholder, "SKILL.md")}}
+	draft.SnapshotSkillSources(dir, func(_, _ string) ([]byte, bool, error) { return []byte("@child"), true, nil })
+	frames, _ := attachments.Decode(draft.Attachments[0])
+	body := strings.Join(frames, "\n")
+	if strings.Count(body, "workspace body") != 1 || strings.Contains(body, "changed body") || strings.Contains(body, "WRONG body") {
+		t.Fatal(body)
+	}
+}
+
 func TestSnapshotUploadOmissions(t *testing.T) {
 	for _, data := range [][]byte{{0}, {0xff}, []byte(strings.Repeat("x", attachments.Budget/2+1))} {
 		var draft Draft
