@@ -45,7 +45,9 @@ mismatched snapshots fail rather than selecting another implementation.
 An installed binary update cannot change active workers. Each invocation has a
 private PATH entry; Bash login startup restores that entry without changing
 Codex's login-shell setting. Global commands and persistent user configuration
-remain untouched. Cleanup removes only invocation-created frontends, snapshot
+remain untouched. Inherited command directories missing after Bash startup are
+retained as PATH fallbacks, after the login-profile entries and private frontends.
+Cleanup removes only invocation-created frontends, snapshot
 files, and leased worker resources, preserving concurrent invocations.
 The server releases its shared image after all invocation owners have stopped.
 

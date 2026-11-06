@@ -381,6 +381,16 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		front += string(os.PathListSeparator) + sudoDirectory
 	}
 	startup += "PATH=" + commandargs.Quote(front) + ":\"$PATH\"; export PATH\n"
+	// Login profiles can replace PATH. Retain inherited command directories as
+	// fallbacks without accumulating them each time a nested shell starts.
+	if paths := filepath.SplitList(basePath); len(paths) != 0 {
+		for i := range paths {
+			paths[i] = commandargs.Quote(paths[i])
+		}
+		startup += "for __mekugi_path in " + strings.Join(paths, " ") + "; do\n" +
+			"  case :$PATH: in *\":$__mekugi_path:\"*) ;; *) PATH=\"$PATH:$__mekugi_path\" ;; esac\n" +
+			"done\nunset __mekugi_path\n"
+	}
 	if guardDirectory != "" {
 		startup += shellinstrumentation.Functions(guardDirectory, shellinstrumentation.KnownPaths(basePath, commandanalysis.VCSTools), commandanalysis.VCSTools)
 	}

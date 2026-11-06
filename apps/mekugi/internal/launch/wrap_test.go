@@ -177,19 +177,32 @@ func TestFrontendPathSurvivesLoginBash(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(frontend, "mcat"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	prior := filepath.Join(snapshot, "prior-bash-env")
-	if err := os.WriteFile(prior, []byte("export MEKUGI_PRIOR_BASH_ENV=preserved\n"), 0o600); err != nil {
+	installed := filepath.Join(snapshot, "user's [tools]")
+	if err := os.Mkdir(installed, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "BASH_ENV=" + prior}, frontend, "", nil, segmenttransport.Endpoints{})
+	if err := os.WriteFile(filepath.Join(installed, "mekugi"), []byte("#!/bin/sh\nprintf '%s\\n' \"$*\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	prior := filepath.Join(snapshot, "prior-bash-env")
+	// Model a profile replacing PATH once, then source startup again to check
+	// that restoring inherited entries does not keep growing the path.
+	if err := os.WriteFile(prior, []byte("if [ -z \"${MEKUGI_PRIOR_BASH_ENV-}\" ]; then PATH=/usr/bin:/bin; fi\nexport MEKUGI_PRIOR_BASH_ENV=preserved\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	environment, err := frontendShellEnvironment([]string{"PATH=" + installed + ":/usr/bin:/bin", "BASH_ENV=" + prior}, frontend, "", nil, segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(bash, "-lc", "command -v mcat; printf '%s' \"$MEKUGI_PRIOR_BASH_ENV\"")
-	command.Env = environment
-	output, err := command.Output()
-	if err != nil || string(output) != filepath.Join(frontend, "mcat")+"\npreserved" {
-		t.Fatalf("login Bash frontend = %q, %v", output, err)
+	for _, mode := range []string{"-c", "-lc"} {
+		command := exec.Command(bash, mode, "command -v mcat; mekugi inspect-session --help; . \"$BASH_ENV\"; printf '%s\\n%s' \"$MEKUGI_PRIOR_BASH_ENV\" \"$PATH\"")
+		command.Env = environment
+		output, err := command.Output()
+		prefix := filepath.Join(frontend, "mcat") + "\ninspect-session --help\npreserved\n"
+		path, ok := strings.CutPrefix(string(output), prefix)
+		if err != nil || !ok || strings.Count(":"+path+":", ":"+installed+":") != 1 {
+			t.Fatalf("Bash %s frontend = %q, %v", mode, output, err)
+		}
 	}
 }
 
