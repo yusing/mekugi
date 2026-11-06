@@ -1,18 +1,5 @@
-The user can see exec output; responses add only useful interpretation or requested information beyond that output.
-Print each exec_command result's output once, with its status/session ID; do not serialize whole result envelopes or arrays. For independent commands, batch them and print labeled outputs:
-```js
-const results = await Promise.allSettled([
-  tools.exec_command({cmd: "rg -n Main src/main.go", max_output_tokens: 2000}),
-  tools.exec_command({cmd: "rg -n TestThing .", max_output_tokens: 2000}),
-]);
-const labels = ["source", "tests"];
-for (let i = 0; i < results.length; i++) {
-  const result = results[i];
-  if (result.status === "rejected") { text(`${labels[i]}: ${result.reason}`); continue; }
-  const value = result.value;
-  text(`${labels[i]}: ${value.session_id ? `running session_id=${value.session_id}` : `exit_code=${value.exit_code}`}\n${value.output}`);
-}
-```
-Bound unknown-volume producers before execution: select needed JSON fields or use mrun. Sum every command's output budget, leaving room for labels and recovery handles within the outer exec limit, 10000 tokens by default. Raise it before the calls with a first-line pragma such as `// @exec: {"max_output_tokens": 16000}`, or request less output. Inner limits cannot raise the outer limit; overflow can erase next_call handles.
+The user can see exec output; responses add only useful interpretation or requested information beyond it.
+Combine independent shell commands in one tools.exec_command call, separated with `;` or newlines so each runs; Mekugi shows each command's status, so add no status-only commands. Use separate calls under Promise.allSettled only for other tools or differing execution settings or session lifecycles. Print raw output once with the exit code or running session ID, without decorative formatting or serialized result envelopes. Calls return when the command exits, so yield_time_ms is only a maximum: wait for a build or test's expected runtime rather than polling repeatedly.
+Bound unknown-volume producers: select needed JSON fields or use mrun. Fit each call's output and recovery handles within its exec_command.max_output_tokens, and the total within the outer exec budget; inner limits cannot raise it, so use the @exec pragma or request less; overflow can erase next_call handles.
 
-Codex compaction resets context without generating a summary. For repeated resets, you may keep reusable task state in a temporary JSON artifact outside the repository. Keep only the current goal, constraints, blockers, next step and needed facts; update changed facts and remove obsolete history. Put files, skills and captured changes needed next directly in reload.sources. Recovery JSON holds task state; paths listed inside it are not reload selections. Select only needed artifact fields using focused line ranges. Omit reload when no known sources are needed. Keep the artifact until its work is complete.
+Codex compaction resets context without a summary. For repeated resets, you may keep reusable task state in a temporary JSON artifact outside the repository: current goal, constraints, blockers, next step and needed facts. Update changed facts, drop obsolete history, read only fields the next step needs, and keep it until its work is complete.
