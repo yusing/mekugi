@@ -56,14 +56,27 @@ func (p *observationFixture) IsBTWThread(thread string) bool {
 	return p.forks.Load().IsBTWThread(thread)
 }
 
+func (p *observationFixture) ObserveCacheKey(thread, key string) {
+	p.forks.Load().ObserveCacheKey(thread, key)
+}
+
+func (p *observationFixture) ForkCacheKey(thread string) string {
+	return p.forks.Load().ForkCacheKey(thread)
+}
+
 func (p *observationFixture) bindForkRequests(requests *sessioncontrol.Requests[appServerRequest]) {
+	requests.AdmitSideFork = p.preparer().AdmitSideFork
 	server := sessionapi.NewLive()
 	server.BindRequests(requests)
 	p.forks.Store(server)
 }
 
 func (p *observationFixture) Prepare(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) (requestexecution.Prepared, error) {
-	preparer := executionobservation.New(executionobservation.Config{
+	return p.preparer().Prepare(ctx, request, input)
+}
+
+func (p *observationFixture) preparer() *executionobservation.Preparer {
+	return executionobservation.New(executionobservation.Config{
 		Registry:         p.registry,
 		InputProjections: p.inputProjections,
 		Usage:            p.usage,
@@ -81,7 +94,6 @@ func (p *observationFixture) Prepare(ctx context.Context, request *codexresponse
 		PublishChanges:   p.publishChanges,
 		Notice:           p.noticeSink,
 	})
-	return preparer.Prepare(ctx, request, input)
 }
 func (p *observationFixture) notice(session, thread, category, message string) {
 	if p != nil && p.noticeSink != nil {

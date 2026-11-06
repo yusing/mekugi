@@ -48,7 +48,13 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 			}
 		}()
 		if provider.Grok == nil && len(provider.OpenCode) == 0 {
-			_, handshake, err := openAIWebSocketRequest([]byte(`{}`), r.Header, codexresponses.RoutingSessionID(r.Header, codexresponses.Request{}))
+			key := codexresponses.RoutingSessionID(r.Header, codexresponses.Request{})
+			if endpoint.ForkCacheKey != nil {
+				if inherited := endpoint.ForkCacheKey(codexresponses.ThreadID(r.Header)); inherited != "" {
+					key = inherited
+				}
+			}
+			_, handshake, err := openAIWebSocketRequest([]byte(`{}`), r.Header, key)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -113,11 +119,12 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 // net/http stops tracking upgraded connections. The endpoint therefore owns
 // admission and waits for their handlers before shared router resources close.
 type WebSocketEndpoint struct {
-	handler http.HandlerFunc
-	cancel  context.CancelFunc
-	mu      sync.Mutex
-	closed  bool
-	active  sync.WaitGroup
+	ForkCacheKey func(thread string) string // Bound before serving; native headers remain intact.
+	handler      http.HandlerFunc
+	cancel       context.CancelFunc
+	mu           sync.Mutex
+	closed       bool
+	active       sync.WaitGroup
 }
 
 func (e *WebSocketEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {

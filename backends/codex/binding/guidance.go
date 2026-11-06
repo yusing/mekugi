@@ -25,6 +25,7 @@ type InstructionUpdate struct {
 type EnvironmentContext struct {
 	Session, Thread, Workspace string
 	Revision                   uint64
+	PreviousRevision           uint64 // Before observing this request's native context window.
 }
 
 // ContextUsage carries observed native context facts for an admitted request.
@@ -48,6 +49,7 @@ type FrontendGuidance struct {
 type Guidance struct {
 	ContextUsage      func(InstructionInput, ContextUsage) (InstructionUpdate, error)
 	Environment       func(context.Context, InstructionInput, EnvironmentContext) (InstructionUpdate, error)
+	ForkEnvironment   func(source string, admitted EnvironmentContext)
 	Threads           func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
 	BeforePreparation func(InstructionInput) (InstructionUpdate, error)
 	ForExecution      func(InstructionInput) (InstructionUpdate, error)

@@ -392,6 +392,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	executor.SkillsManager, executor.SideThreads, executor.Usage = skillsManagerAvailable, api, usage
 
 	webSocketEndpoint := inferencegateway.NewWebSocketEndpoint(ctx, options.Timeout, provider, executor.ExecuteWebSocket)
+	webSocketEndpoint.ForkCacheKey = api.ForkCacheKey
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
 	mux.HandleFunc("POST /v1/responses", inferencegateway.ResponsesHandler(ctx, options.Timeout, executor.ExecuteHTTP))

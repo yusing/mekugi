@@ -30,6 +30,19 @@ func (s *Server) IsBTWThread(thread string) bool {
 	return forks != nil && forks.IsBTWThread(thread)
 }
 
+func (s *Server) ObserveCacheKey(thread, key string) {
+	if forks := s.forkClassifier(); forks != nil {
+		forks.ObserveCacheKey(thread, key)
+	}
+}
+
+func (s *Server) ForkCacheKey(thread string) string {
+	if forks := s.forkClassifier(); forks != nil {
+		return forks.ForkCacheKey(thread)
+	}
+	return ""
+}
+
 func (s *Server) BindRequests(requests threadcontrol.Runtime) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

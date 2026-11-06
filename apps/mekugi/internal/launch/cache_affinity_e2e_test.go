@@ -34,6 +34,7 @@ type cacheAffinityE2ETransport struct {
 	usages          []inference.Usage
 	promptCacheKeys []string
 	headers         []http.Header
+	bodies          [][]byte
 }
 
 func (t *cacheAffinityE2ETransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -61,6 +62,7 @@ func (t *cacheAffinityE2ETransport) RoundTrip(request *http.Request) (*http.Resp
 	t.mu.Lock()
 	t.promptCacheKeys = append(t.promptCacheKeys, promptCacheKey)
 	t.headers = append(t.headers, request.Header.Clone())
+	t.bodies = append(t.bodies, bytes.Clone(body))
 	t.mu.Unlock()
 
 	response, err := t.delegate.RoundTrip(request)
@@ -106,6 +108,12 @@ func (t *cacheAffinityE2ETransport) snapshot() ([]inference.Usage, []string, []h
 	return append([]inference.Usage(nil), t.usages...),
 		append([]string(nil), t.promptCacheKeys...),
 		append([]http.Header(nil), t.headers...)
+}
+
+func (t *cacheAffinityE2ETransport) requestBodies() [][]byte {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([][]byte(nil), t.bodies...)
 }
 
 type cacheAffinityE2EBody struct {

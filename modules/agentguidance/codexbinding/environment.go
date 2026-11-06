@@ -20,7 +20,7 @@ func projectEnvironment(ctx context.Context, input binding.InstructionInput, adm
 	if !ok && len(input.Instructions) != 0 && !bytes.Equal(bytes.TrimSpace(input.Instructions), []byte("null")) {
 		return result, errors.New("base instructions must be a string or null")
 	}
-	facts := store.Snapshot(ctx, environment.Context{Session: admitted.Session, Thread: admitted.Thread, Workspace: admitted.Workspace, Revision: admitted.Revision})
+	facts := store.Snapshot(ctx, environment.Context{Session: admitted.Session, Thread: admitted.Thread, Workspace: admitted.Workspace, Revision: admitted.Revision}, admitted.PreviousRevision)
 	body := html.EscapeString(facts.Text(admitted.Workspace))
 	// Keep snapshots in the owned base layer, outside native conversation history.
 	// Refresh replaces inherited copies without changing tool/result boundaries.

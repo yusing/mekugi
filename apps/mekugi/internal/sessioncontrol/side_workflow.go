@@ -165,6 +165,12 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 			}
 		}
 		s.Source, s.Model, s.Effort, s.Tier = main.Thread, main.Model, main.Effort, main.Tier
+		s.cacheKey = ""
+		r.sidesMu.RLock()
+		if r.cacheThread == main.Thread {
+			s.cacheKey = r.cacheKey
+		}
+		r.sidesMu.RUnlock()
 		s.Starting, s.Status = true, "Branching…"
 		params := map[string]any{"threadId": main.Thread, "threadSource": SideThreadSource, "excludeTurns": true}
 		if !s.OneOff {
@@ -388,6 +394,9 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				s.Busy = false
 			}
 			r.TrackSide(s.Thread, s)
+			if r.AdmitSideFork != nil && !s.Closed {
+				r.AdmitSideFork(s.Source, s.Thread, result.Thread.Cwd)
+			}
 		case "turn/start":
 			if result.Turn.ID == "" {
 				update = s.fail("Codex returned no side-turn identity")

@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/agentguidance/environment"
 	"github.com/yusing/mekugi/modules/agentguidance/internal/policy"
 )
 
@@ -19,6 +20,9 @@ var Codex = Bindings{
 			},
 			Environment: func(ctx context.Context, input binding.InstructionInput, admitted binding.EnvironmentContext) (binding.InstructionUpdate, error) {
 				return projectEnvironment(ctx, input, admitted, &service.Environment)
+			},
+			ForkEnvironment: func(source string, admitted binding.EnvironmentContext) {
+				service.Environment.Inherit(source, environment.Context{Thread: admitted.Thread, Workspace: admitted.Workspace, Revision: admitted.Revision})
 			},
 			Threads:           projectThreadInstructions,
 			BeforePreparation: beforePreparation,

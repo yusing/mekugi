@@ -2,6 +2,7 @@ package executionobservation
 
 import (
 	"context"
+	jsonv1 "encoding/json"
 	"errors"
 	"fmt"
 
@@ -57,6 +58,7 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 		}
 		admitted := binding.EnvironmentContext{Session: input.Session, Thread: input.Thread, Workspace: workspace}
 		if admitted.Session != "" && admitted.Thread != "" && !input.Metadata.ActivityIdentityInvalid && (input.Metadata.ThreadID == "" || input.Metadata.ThreadID == admitted.Thread) {
+			admitted.PreviousRevision = p.Control.ContextRevision(input.Thread)
 			p.Control.ObserveCompactionContext(input.Thread, input.Metadata.ContextWindowID)
 			admitted.Revision = p.Control.ContextRevision(input.Thread)
 			err := requestexecution.ProjectInstructions(request, func(text binding.InstructionInput) (binding.InstructionUpdate, error) {
@@ -114,6 +116,24 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 	}
 	t.toolTrace = input.Trace
 	return t, nil
+}
+
+// AdmitSideFork receives only confirmed host identity and cwd, before a side
+// turn starts. Review membership supplies workspace identity, not permissions.
+func (p *Preparer) AdmitSideFork(source, thread, workspace string) {
+	if source == "" || thread == "" || source == thread || workspace == "" {
+		return
+	}
+	directory := p.observationDirectory(map[string]jsonv1.RawMessage{workspace: nil}, source)
+	if directory == "" {
+		return
+	}
+	p.Review.IncludeThread(directory, thread, false)
+	if p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.ForkEnvironment != nil {
+		p.Registry.Guidance.ForkEnvironment(source, binding.EnvironmentContext{
+			Thread: thread, Workspace: directory, Revision: p.Control.ContextRevision(thread),
+		})
+	}
 }
 
 func (t *mekugiResponseTransform) Usage() *accounting.Observation { return t.usageTracker }

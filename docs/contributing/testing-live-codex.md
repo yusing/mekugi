@@ -19,6 +19,17 @@ file and skill reads on live continuation. Run it with:
 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestCompactReloadLiveOpenAI$' TEST_FLAGS='-tags=codex_e2e,e2e -count=1'
 ```
 
+`TestSideCacheEligibilityLiveOpenAI` also requires both tags. It warms Main, then checks
+that the first `/btw`, `/side` and `/oneoff` requests preserve the prepared prefix and
+report cached input. Each command runs with Main-first and fork-first continuations,
+checking each branch's prepared prefix, native thread identity, separate history and
+cached input. Provider cache availability can still cause a miss despite an identical
+prefix. Run it with:
+
+```sh
+make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestSideCacheEligibilityLiveOpenAI$' TEST_FLAGS='-tags=codex_e2e,e2e -count=1 -v'
+```
+
 Compile these fixtures without making live requests:
 
 ```sh

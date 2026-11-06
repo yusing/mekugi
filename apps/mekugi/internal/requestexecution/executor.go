@@ -70,6 +70,7 @@ type requestAttempt struct {
 	approvalReview bool
 	threadID       string
 	prewarm        bool
+	cacheKey       string
 
 	prepared        Prepared
 	forwardBody     []byte
@@ -273,6 +274,25 @@ func (a *requestAttempt) prepare() error {
 
 func (a *requestAttempt) prepareWire() error {
 	var err error
+	nativeKey := a.request.PromptCacheKey()
+	a.cacheKey = nativeKey
+	if a.cacheKey == "" {
+		a.cacheKey = a.sessionID
+	}
+	if !a.approvalReview && a.metadataValid && !a.metadata.ActivityIdentityInvalid &&
+		(a.metadata.RequestKind == responses.Turn || a.prewarm) && (a.metadata.ThreadID == "" || a.metadata.ThreadID == a.threadID) &&
+		!inferencegateway.IsThirdPartyModel(a.request.Model()) && a.executor.SideThreads != nil {
+		if key := a.executor.SideThreads.ForkCacheKey(a.threadID); key != "" {
+			// An omitted native body key stays omitted. Provider affinity is
+			// independent of the session identity already used for preparation.
+			if nativeKey != "" {
+				a.request.Fields["prompt_cache_key"] = responses.MustMarshalJSON(key)
+			}
+			a.cacheKey = key
+		} else if !a.prewarm && codexresponses.ValidCacheKey(a.cacheKey) {
+			a.executor.SideThreads.ObserveCacheKey(a.threadID, a.cacheKey)
+		}
+	}
 	if !grok.IsModel(a.request.Model()) && !opencode.IsModel(a.request.Model()) {
 		programs, err := standardCyberAccess(a.request.Fields["access_programs"])
 		if err != nil {
@@ -341,10 +361,6 @@ func (a *requestAttempt) forward() error {
 	}
 	transportcapture.ObserveProjectedRequest(a.startCtx, debugWire)
 	a.finalization.failurePhase = requestFailureForward
-	cacheKey := a.request.PromptCacheKey()
-	if cacheKey == "" {
-		cacheKey = a.sessionID
-	}
 	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.CachedInput)
 	if !a.prewarm {
 		if a.prepared != nil {
@@ -369,7 +385,7 @@ func (a *requestAttempt) forward() error {
 		a.executionCtx,
 		a.forwardBody,
 		a.headers,
-		cacheKey,
+		a.cacheKey,
 	)
 	rejection, rejectedUpgrade := errors.AsType[*inferencegateway.WebSocketStatusError](err)
 	if rejectedUpgrade {

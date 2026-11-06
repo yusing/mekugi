@@ -37,6 +37,7 @@ import (
 
 // appServerIntegration selects independent collaborators for native-session fixtures.
 type appServerIntegration struct {
+	preparer            *executionobservation.Preparer
 	nativeHub           func(*sessionapi.Hub)
 	controlObservations *sessioncontrol.Observations
 	bindForks           func(*sessionapi.Server)
@@ -91,7 +92,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		defer listener.Close()
 		serverContext, stopServer := context.WithCancel(ctx)
 		launcher := nativeFixtureLauncher{run: func(runtimeContext context.Context, api *sessionapi.Server, threads *threadExecution) error {
-			wait, err := (&nativeSession{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments, ctx: runtimeContext, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: generator, observations: observations, approvalMode: approvals}).start(prefs, cmd, integration.guard, integration.guards, integration.skillsManager, resumeThread, nil, api, false, threads)
+			wait, err := (&nativeSession{preparer: integration.preparer, terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments, ctx: runtimeContext, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: generator, observations: observations, approvalMode: approvals}).start(prefs, cmd, integration.guard, integration.guards, integration.skillsManager, resumeThread, nil, api, false, threads)
 			if err != nil {
 				return err
 			}

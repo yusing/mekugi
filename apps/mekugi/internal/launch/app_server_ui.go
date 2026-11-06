@@ -108,6 +108,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	api.BindCoordination(threads.shared, threads.driver.DeliverMessages)
 	if session.preparer != nil {
 		session.Client.Requests.PrepareCompletion = session.preparer.PrepareCompletion
+		session.Client.Requests.AdmitSideFork = session.preparer.AdmitSideFork
 	}
 	api.BindSideThreads(session.Client.Requests.HasSideThread)
 	session.Client.Requests.Coordination, session.Client.Requests.InterruptWait = threads.shared, threads.driver.Interrupt

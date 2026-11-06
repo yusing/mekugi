@@ -147,8 +147,10 @@ conversation items and tool/result history boundaries.
 
 Snapshots are acquired against the admitted execution workspace before generating inference.
 Fresh, resumed, cleared, compacted and authoritatively changed workspaces refresh lazily;
-ordinary requests reuse the current snapshot and prewarm never acquires one. Each child's
-workspace has its own snapshot, replacing inherited copies. Native cwd, execution shell,
+ordinary requests reuse the current snapshot and prewarm never acquires one. Confirmed
+same-workspace Side and One-off forks inherit the source snapshot with its original observation
+time, then refresh independently. Different-workspace children acquire their own snapshots,
+replacing inherited copies. Native cwd, execution shell,
 date/timezone and permission context remain intact. Claude retains its native environment
 supply without an additional snapshot.
 

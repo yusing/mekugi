@@ -287,7 +287,12 @@ side operation, independently of any renderer. An empty `/side` forks without
 starting a turn; `/oneoff TASK` creates the same owned internal fork and starts
 its task. Side forks retain native history for authenticated request preparation,
 remain hidden from normal session selection, and are archived on cleanup. Their
-history remains in Codex storage. Answer-only forks retain their restricted settings; one-off forks inherit
+history remains in Codex storage. The first side request preserves Main's reusable cached prefix
+when its model and context remain compatible. Continuing Main or the fork in either order preserves
+each thread's own prefix and history without importing the other branch's turns. Source cache
+affinity is inherited without changing native thread, accounting or execution identities; provider
+cache availability still determines hits.
+Answer-only forks retain their restricted settings; one-off forks inherit
 permissions and environments. Each new side turn carries its scoped instruction.
 One-off tool events and prompt responses retain their original thread, turn and
 request identities. Host parent identities admit descendants into the same isolated

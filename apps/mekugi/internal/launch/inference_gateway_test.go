@@ -43,7 +43,11 @@ func testResponsesHandler(ctx context.Context, timeout time.Duration, provider i
 }
 
 func testWebSocketEndpoint(ctx context.Context, timeout time.Duration, provider *inferencegateway.Client, issues *requestexecution.Failures, proxy *observationFixture) *inferencegateway.WebSocketEndpoint {
-	return inferencegateway.NewWebSocketEndpoint(ctx, timeout, provider, testRequestExecutor(provider, issues, proxy).ExecuteWebSocket)
+	endpoint := inferencegateway.NewWebSocketEndpoint(ctx, timeout, provider, testRequestExecutor(provider, issues, proxy).ExecuteWebSocket)
+	if proxy != nil {
+		endpoint.ForkCacheKey = proxy.ForkCacheKey
+	}
+	return endpoint
 }
 
 // Exercise application consumers through the same translated HTTP response that

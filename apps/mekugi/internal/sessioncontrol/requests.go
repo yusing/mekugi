@@ -54,12 +54,14 @@ type Requests[T any] struct {
 	CaptureConfiguredCatalog func([]byte)
 	CatalogPending           bool
 	PrepareCompletion        func(context.Context, control.NativeInput) (PreparedCompletion, error)
+	AdmitSideFork            func(source, thread, workspace string)
 	preparation              atomic.Pointer[PreparedThread]
 	transport                Transport
 	pending                  map[string]Request[T]
 	sidesMu                  sync.RWMutex
 	sides                    map[string]*Side
 	predictions              map[string]*Prediction
+	cacheThread, cacheKey    string // Guarded by sidesMu; forks freeze their own copy.
 	calls                    chan *HostCall
 	inspections              chan *Inspection
 	questions                chan *AgentQuestion
