@@ -38,6 +38,7 @@ type answerInterruptCodexProvider struct {
 	turn        int
 	mode, input string
 	socket      bool
+	anonymous   bool
 	gate        chan struct{}
 	requests    chan []byte
 }
@@ -64,6 +65,9 @@ func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, 
 			defer writer.Close()
 			item := instantInterruptAnswer("The latest trace is complete.")
 			item["id"] = "streaming-message"
+			if p.anonymous {
+				delete(item, "id")
+			}
 			item["status"] = "in_progress"
 			item["content"] = []any{}
 			emit := func(events ...any) bool {
@@ -84,6 +88,9 @@ func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, 
 			}
 			item = instantInterruptAnswer("The latest trace is complete.")
 			item["id"] = "streaming-message"
+			if p.anonymous {
+				delete(item, "id")
+			}
 			if !emit(
 				map[string]any{"type": "response.output_text.delta", "item_id": item["id"], "output_index": 0, "content_index": 0, "delta": " is complete."},
 				map[string]any{"type": "response.output_text.done", "item_id": item["id"], "output_index": 0, "content_index": 0, "text": "The latest trace is complete."},
@@ -217,18 +224,19 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 		t.Fatal("installed Codex is required for answer interruption acceptance")
 	}
 	for _, tc := range []struct {
-		mode   string
-		socket bool
-	}{{"apply_patch", false}, {"exec", false}, {"message", false}, {"steer", false}, {"message", true}, {"steer", true}} {
+		mode      string
+		socket    bool
+		anonymous bool
+	}{{"apply_patch", false, false}, {"exec", false, false}, {"message", false, false}, {"steer", false, false}, {"message", true, false}, {"steer", true, false}, {"message", false, true}, {"steer", true, true}} {
 		mode := tc.mode
-		t.Run(fmt.Sprintf("%s/socket=%v", mode, tc.socket), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/socket=%v/anonymous=%v", mode, tc.socket, tc.anonymous), func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			workspace := t.TempDir()
 			gatePath := filepath.Join(workspace, "release")
 			startedPath := filepath.Join(workspace, "started")
 			countPath := filepath.Join(workspace, "count")
 			patchPath := filepath.Join(workspace, "answer-patch.txt")
-			provider := &answerInterruptCodexProvider{t: t, mode: mode, socket: tc.socket, gate: make(chan struct{}), requests: make(chan []byte, 8)}
+			provider := &answerInterruptCodexProvider{t: t, mode: mode, socket: tc.socket, anonymous: tc.anonymous, gate: make(chan struct{}), requests: make(chan []byte, 8)}
 			if mode == "apply_patch" {
 				provider.input = "*** Begin Patch\n*** Add File: " + patchPath + "\n+input-survived\n*** End Patch"
 			} else {
@@ -345,7 +353,13 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			}
 			if mode == "exec" {
 				if _, err := os.Stat(startedPath); err != nil {
-					t.Fatalf("host command did not start: %v", err)
+					var outputs []any
+					for _, value := range parsed.Input {
+						if item, ok := value.(map[string]any); ok && strings.HasSuffix(fmt.Sprint(item["type"]), "_output") {
+							outputs = append(outputs, item)
+						}
+					}
+					t.Fatalf("host command did not start: %v; outputs: %s", err, responses.MustMarshalJSON(outputs))
 				}
 				if _, err := os.Stat(gatePath); !os.IsNotExist(err) {
 					t.Fatalf("answer waited for command gate: %v", err)

@@ -31,13 +31,17 @@ func TestToolInputEmissionClearsOnItemDoneOrResponseClose(t *testing.T) {
 
 func emissionTestEvent(t *testing.T, transform *mekugiResponseTransform, event map[string]any) {
 	t.Helper()
-	if _, err := transform.transformActivitySSE(responses.MustMarshalJSON(event)); err != nil {
+	visible, err := transform.TransformSSE(responses.MustMarshalJSON(event))
+	if err != nil {
 		t.Fatal(err)
+	}
+	for _, payload := range visible {
+		transform.Delivered(payload)
 	}
 }
 
 func TestAssistantMessageEmissionSettlement(t *testing.T) {
-	for _, ending := range []string{"response.completed", "response.failed", "response.incomplete", "close"} {
+	for _, ending := range []string{"response.completed", "response.failed", "response.incomplete", "error", "close"} {
 		t.Run(ending, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			transform := &mekugiResponseTransform{owners: &Preparer{Config: Config{Control: proxy.Control, Review: proxy.Review}}, threadID: "child", directory: "/workspace"}
@@ -49,7 +53,16 @@ func TestAssistantMessageEmissionSettlement(t *testing.T) {
 			if ending == "close" {
 				transform.Close()
 			} else {
-				emissionTestEvent(t, transform, map[string]any{"type": ending, "response": map[string]any{"id": "response", "output": []any{}}})
+				visible, err := transform.TransformSSE(responses.MustMarshalJSON(map[string]any{"type": ending, "response": map[string]any{"id": "response", "output": []any{}}}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if proxy.Control.AssistantMessage("/workspace", "child") == 0 {
+					t.Fatal("undelivered terminal released input")
+				}
+				for _, payload := range visible {
+					transform.Delivered(payload)
+				}
 			}
 			if proxy.Control.AssistantMessage("/workspace", "child") != 0 {
 				t.Fatal("settled generation still blocks input")

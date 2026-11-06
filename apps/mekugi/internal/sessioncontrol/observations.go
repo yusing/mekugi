@@ -9,9 +9,17 @@ import (
 // Generation identifies one live provider request, independently of host calls.
 type Generation struct{ _ byte }
 
+// GenerationItem joins the identities available on admission and completion.
+// Some host-supported streams omit the output index or assign an ID only later.
+type GenerationItem struct {
+	ID      string
+	Index   int
+	Indexed bool
+}
+
 type generatingInput struct {
 	workspace, thread string
-	items             map[string]generatingItem
+	items             map[GenerationItem]generatingItem
 }
 
 type generatingItem struct {
@@ -77,27 +85,39 @@ func (o *Observations) ContextRevision(thread string) uint64 {
 	return o.contextRevision[thread]
 }
 
-func (o *Observations) SetToolInput(generation *Generation, workspace, thread, item string, active bool) {
+func (o *Observations) SetToolInput(generation *Generation, workspace, thread string, item GenerationItem, active bool) {
 	o.setInput(generation, workspace, thread, item, active, true)
 }
 
-func (o *Observations) SetAssistantMessage(generation *Generation, workspace, thread, item string, active bool) {
+func (o *Observations) SetAssistantMessage(generation *Generation, workspace, thread string, item GenerationItem, active bool) {
 	o.setInput(generation, workspace, thread, item, active, false)
 }
 
-func (o *Observations) setInput(generation *Generation, workspace, thread, item string, active, tool bool) {
-	if o == nil || generation == nil || thread == "" || item == "" {
+func (o *Observations) setInput(generation *Generation, workspace, thread string, item GenerationItem, active, tool bool) {
+	if o == nil || generation == nil || thread == "" || item.ID == "" && !item.Indexed {
 		return
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	input := o.generations[generation]
+	for admitted := range input.items {
+		// Indices disambiguate items when both events carry them. Otherwise,
+		// a stable ID joins an indexed event to an ID-only counterpart.
+		matches := admitted.ID != "" && admitted.ID == item.ID
+		if admitted.Indexed && item.Indexed {
+			matches = admitted.Index == item.Index
+		}
+		if matches {
+			item = admitted
+			break
+		}
+	}
 	if active {
 		if o.generations == nil {
 			o.generations = make(map[*Generation]generatingInput)
 		}
-		input := o.generations[generation]
 		if input.items == nil {
-			input = generatingInput{workspace: workspace, thread: thread, items: make(map[string]generatingItem)}
+			input = generatingInput{workspace: workspace, thread: thread, items: make(map[GenerationItem]generatingItem)}
 		}
 		value := input.items[item]
 		value.tool = tool
@@ -107,7 +127,7 @@ func (o *Observations) setInput(generation *Generation, workspace, thread, item 
 		}
 		input.items[item] = value
 		o.generations[generation] = input
-	} else if input := o.generations[generation]; input.items != nil {
+	} else if input.items != nil {
 		delete(input.items, item)
 		if len(input.items) == 0 {
 			delete(o.generations, generation)

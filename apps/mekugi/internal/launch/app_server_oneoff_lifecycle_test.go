@@ -219,6 +219,7 @@ func TestOneoffAnswerDuringToolInput(t *testing.T) {
 		t.Fatalf("ordinary steering did not pass the waiting companion: %+v", steer)
 	}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.function_call_arguments.done", "item_id": "emitting"})
+	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": "emitting", "type": "function_call"}})
 	if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
 		t.Fatal(err)
 	}

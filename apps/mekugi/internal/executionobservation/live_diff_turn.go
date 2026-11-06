@@ -2,9 +2,10 @@ package executionobservation
 
 import json "encoding/json/v2"
 
-// Delivered confirms storage completion independently of final-answer painting.
-// Transformation alone cannot release the turn's storage lease.
+// Delivered confirms input boundaries and storage independently of painting.
+// Transformation alone cannot release input or the turn's storage lease.
 func (t *mekugiResponseTransform) Delivered(payload []byte) {
+	t.deliveredGeneration(payload)
 	if !t.storageCompletionReady && !t.liveDiffCompletionReady {
 		return
 	}

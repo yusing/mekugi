@@ -8,19 +8,19 @@ import (
 func TestGenerationObservationsRemainRequestScoped(t *testing.T) {
 	var observations Observations
 	var first, second Generation
-	observations.SetToolInput(&first, "", "main", "item", true)
-	observations.SetToolInput(&second, "/workspace", "main", "item", true)
+	observations.SetToolInput(&first, "", "main", GenerationItem{ID: "item"}, true)
+	observations.SetToolInput(&second, "/workspace", "main", GenerationItem{ID: "item"}, true)
 	observations.EndGeneration(&first)
 	if !observations.EmittingToolInput("/workspace", "main") || observations.EmittingToolInput("/other", "main") || observations.EmittingToolInput("/workspace", "child") {
 		t.Fatal("ending one request changed another request's generation scope")
 	}
-	observations.SetToolInput(&second, "/workspace", "main", "item", false)
+	observations.SetToolInput(&second, "/workspace", "main", GenerationItem{ID: "item"}, false)
 	if observations.EmittingToolInput("/workspace", "main") {
 		t.Fatal("completed tool input still blocks question answers")
 	}
-	observations.SetAssistantMessage(&first, "", "main", "item", true)
+	observations.SetAssistantMessage(&first, "", "main", GenerationItem{ID: "item"}, true)
 	message := observations.AssistantMessage("/workspace", "main")
-	observations.SetAssistantMessage(&second, "", "main", "item", true)
+	observations.SetAssistantMessage(&second, "", "main", GenerationItem{ID: "item"}, true)
 	later := observations.AssistantMessage("/workspace", "main")
 	observations.EndGeneration(&first)
 	if message == later || observations.AwaitingMessage("/workspace", "main", message) || !observations.AwaitingMessage("/workspace", "main", later) {

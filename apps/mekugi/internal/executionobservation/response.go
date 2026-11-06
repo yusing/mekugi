@@ -9,6 +9,7 @@ import (
 	"maps"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 
@@ -48,6 +49,7 @@ func translationDiagnostic(err error, code, summary string) error {
 func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte, error) {
 	var envelope struct {
 		Type      responseevents.Kind `json:"type"`
+		Index     *int                `json:"output_index"`
 		ItemID    string              `json:"item_id"`
 		CallID    string              `json:"call_id"`
 		Name      string              `json:"name"`
@@ -73,16 +75,10 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		switch envelope.Type {
 		case responseevents.OutputItemAdded:
 			if item.Type == "message" {
-				t.owners.Control.SetAssistantMessage(&t.generation, t.directory, t.threadID, item.ID, true)
+				t.owners.Control.SetAssistantMessage(&t.generation, t.directory, t.threadID, generationItemKey(envelope.Index, item.ID), true)
 			} else if item.Type == "function_call" || item.Type == "custom_tool_call" {
-				t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, true)
+				t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, generationItemKey(envelope.Index, item.ID), true)
 			}
-		case responseevents.OutputItemDone:
-			t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, false)
-		case responseevents.FunctionArgumentsDone, responseevents.CustomInputDone:
-			t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
-		case responseevents.Completed, responseevents.Failed, responseevents.Incomplete:
-			t.owners.Control.EndGeneration(&t.generation)
 		}
 	}
 	if t.generationOnly {
@@ -226,6 +222,39 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 
 	default:
 		return [][]byte{payload}, nil
+	}
+}
+
+// Provider item IDs may be absent or assigned only at completion. The stream's
+// output index retains the same boundary through both representations.
+func generationItemKey(index *int, id string) sessioncontrol.GenerationItem {
+	item := sessioncontrol.GenerationItem{ID: id}
+	if index != nil {
+		item.Index, item.Indexed = *index, true
+	}
+	return item
+}
+
+func (t *mekugiResponseTransform) deliveredGeneration(payload []byte) {
+	if t.owners.Control == nil {
+		return
+	}
+	var event struct {
+		Type  responseevents.Kind `json:"type"`
+		Index *int                `json:"output_index"`
+		Item  struct {
+			ID string `json:"id"`
+		} `json:"item"`
+	}
+	if json.Unmarshal(payload, &event) != nil {
+		return
+	}
+	if event.Type == responseevents.OutputItemDone {
+		// Input/arguments.done alone cannot dispatch a stock tool. Keep answers
+		// behind the complete item until it has actually reached the host.
+		t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, generationItemKey(event.Index, event.Item.ID), false)
+	} else if event.Type.EndsExchange() {
+		t.owners.Control.EndGeneration(&t.generation)
 	}
 }
 
