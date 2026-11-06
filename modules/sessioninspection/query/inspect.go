@@ -46,8 +46,11 @@ type CallResult struct {
 }
 
 type Result struct {
-	ThreadID          string         `json:"-"`
-	AX                jsontext.Value `json:"ax,omitempty"`
+	ThreadID string         `json:"-"`
+	AX       jsontext.Value `json:"ax,omitempty"`
+	// Instructions is the application-joined retained-instruction report,
+	// encoded by its diagnostic owner.
+	Instructions      jsontext.Value `json:"instructions,omitempty"`
 	Schema            string         `json:"schema"`
 	WorkspaceOverride string         `json:"workspace_override,omitempty"`
 	TotalCalls        int            `json:"total_calls"`

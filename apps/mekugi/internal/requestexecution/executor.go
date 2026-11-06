@@ -20,6 +20,7 @@ import (
 	"github.com/yusing/mekugi/providers/opencode"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/inference"
@@ -48,6 +49,7 @@ type Executor struct {
 	ReasoningChoices func(string) (string, []string, bool)
 	SideThreads      sessioncontrol.ForkClassifier
 	Usage            *accounting.Service
+	Instructions     *diagnostic.InstructionRetention
 }
 
 type requestAttempt struct {
@@ -362,6 +364,7 @@ func (a *requestAttempt) forward() error {
 	transportcapture.ObserveProjectedRequest(a.startCtx, debugWire)
 	a.finalization.failurePhase = requestFailureForward
 	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.CachedInput)
+	a.retainInstructions()
 	if !a.prewarm {
 		if a.prepared != nil {
 			a.usageTracker = a.prepared.Usage()

@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -23,7 +24,7 @@ func openDebugOutput(service *diagnostic.Service, enabled bool, capturePath, rea
 	if err != nil {
 		return nil, err
 	}
-	bundle, err := service.OpenBundle(diagnostic.BundleOptions{Root: root, ReplayDirectory: replay, CapturePath: capturePath, ReadLogPath: readLogPath, Discover: discoverDebugRollouts})
+	bundle, err := service.OpenBundle(diagnostic.BundleOptions{Root: root, ReplayDirectory: replay, CapturePath: capturePath, ReadLogPath: readLogPath, Discover: rollout.Discover})
 	if err != nil {
 		return nil, err
 	}

@@ -115,17 +115,24 @@ for collection limits.
 ### Inspect a session
 
 For historical behavior, start with recorded calls/results; current code explains intended behavior.
-Codex rollouts live under `$CODEX_HOME/sessions` (default `~/.codex/sessions`). Locate an exact ID
-with `rg --files --hidden --no-ignore` and a filename glob, then verify `session_meta` identity/workspace.
+`--thread ID` finds the thread's rollout under `$CODEX_HOME/sessions` or `archived_sessions`
+(default `~/.codex`) by its exact metadata identity; `--session PATH` reads a rollout file directly.
 Child sessions and inherited fork history are not independent user sessions.
 
+Session reports include the thread's retained `instructions`: what Mekugi forwarded to the model,
+including environment facts, Mekugi guidance, developer messages and tool descriptions, as
+content revisions with the time, model and turn each began. They are recorded without `--debug`;
+older or expired threads report them as `unavailable`. Revisions reference `content` by digest.
+
 Inspection runs no recorded operations. Rollout and debug-bundle reports omit private
-text unless `--field` selects it. `--request-id ID --field all` drills into one request.
+text unless `--field` selects it; `--field instructions` selects only retained instruction text.
+`--request-id ID --field all` drills into one debug request.
 Failure lookup with `--failures [REF]` always includes complete private error text,
 which may contain request content or credentials.
 
 ```sh
-mekugi inspect-session --session /path/to/rollout.jsonl
+mekugi inspect-session --thread THREAD_ID
+mekugi inspect-session --thread THREAD_ID --field instructions --text-bytes 65536
 mekugi inspect-session --debug-dir /path/to/debug --field diagnostic --limit 5 --text-bytes 512
 ```
 

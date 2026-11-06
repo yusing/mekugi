@@ -89,7 +89,7 @@ Retain and inspect private diagnostic evidence
 - Requires: `sessionhistory`, `sessioninspection`.
 - Contributes: `record-kinds`.
 - Hosts: `diagnostic-sections`.
-- Records: `failure`.
+- Records: `failure`, `instructions`, `instruction-revision`, `instruction-content`.
 - Codex connections: none.
 
 ## [fileread](../../modules/fileread/SPEC.md)

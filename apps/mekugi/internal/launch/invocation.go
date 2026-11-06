@@ -390,6 +390,9 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
 	executor.SkillsManager, executor.SideThreads, executor.Usage = skillsManagerAvailable, api, usage
+	if diagnosis != nil {
+		executor.Instructions = diagnosis.RetainInstructions(retained.Store, retained.Writes, retained.Limits)
+	}
 
 	webSocketEndpoint := inferencegateway.NewWebSocketEndpoint(ctx, options.Timeout, provider, executor.ExecuteWebSocket)
 	webSocketEndpoint.ForkCacheKey = api.ForkCacheKey

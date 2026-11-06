@@ -10,8 +10,9 @@ current design.
 ## Scope
 
 The module owns single-rollout queries, retained-evidence joins, corpus filtering
-and static friction findings. The application exposes `inspect-session --session`
-and `inspect-sessions`; the Codex binding supplies decoded rollout facts.
+and static friction findings. The application exposes `inspect-session` with
+`--session PATH` or `--thread ID`, and `inspect-sessions`; the Codex binding
+supplies decoded rollout facts.
 [Diagnostic inspection](../diagnostics/SPEC.md) owns debug-bundle and
 failure-reference queries. Application dispatch and CLI option handling live in
 `apps/mekugi/internal/inspectioncli`, separate from live invocation and terminal
@@ -52,11 +53,18 @@ authority from retained metadata.
 
 ### Selection and output
 
+`--thread` resolves exactly one rollout through
+[thread discovery](../../backends/codex/SPEC.md#supplied-offline-rollouts); an
+unknown or ambiguous thread fails. Both selectors then run the same query.
 Single-session output retains `mekugi.session.v1`. Call filtering precedes paging;
 `total_calls` describes the filtered selection, `next_offset` identifies the
 next page, and missing matches return an empty page. The default page contains at
 most 50 calls; `--limit` accepts 1–500. `--field` selects script, report, diagnostic,
-output or all; otherwise text is omitted. Selected fields retain original meaning,
+output, instructions or all; otherwise text is omitted. When diagnostics are
+composed, the application joins the rollout thread's
+[retained instructions](../diagnostics/SPEC.md#retained-instructions) as
+`instructions`, independent of call filtering and paging; `instructions` selects
+only their text and `all` includes it. Selected fields retain original meaning,
 byte count and omitted-byte count.
 The text bound defaults to 4096 bytes and accepts 1–65536 bytes.
 Text is a bounded UTF-8 prefix; non-string host output keeps its JSON form.

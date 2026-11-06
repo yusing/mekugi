@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"net/http"
 	"time"
@@ -42,40 +43,12 @@ func (d *Debug) instructions(body, wire []byte, headers http.Header, sessionID, 
 	}
 	// Keep the local projection and the instruction-bearing wire subset distinct.
 	// A reconstructed prefix is not itself evidence of provider delivery.
-	var input []jsonv1.RawMessage
-	_ = json.Unmarshal(fields["input"], &input, jsonv1.DefaultOptionsV1())
-	developers := []jsonv1.RawMessage{}
-	additional := []jsonv1.RawMessage{}
-	for _, raw := range input {
-		var item map[string]jsonv1.RawMessage
-		if json.Unmarshal(raw, &item, jsonv1.DefaultOptionsV1()) != nil {
-			continue
-		}
-		if responses.StringField(item, "role") == "developer" {
-			developers = append(developers, raw)
-		}
-		if responses.StringField(item, "type") == "additional_tools" {
-			additional = append(additional, raw)
-		}
-	}
+	developers, additional := instructionItems(jsontext.Value(fields["input"]))
 	var wireFields map[string]jsonv1.RawMessage
 	var wireInput []jsonv1.RawMessage
 	_ = json.Unmarshal(wire, &wireFields, jsonv1.DefaultOptionsV1())
 	_ = json.Unmarshal(wireFields["input"], &wireInput, jsonv1.DefaultOptionsV1())
-	wireDevelopers := []jsonv1.RawMessage{}
-	wireAdditional := []jsonv1.RawMessage{}
-	for _, raw := range wireInput {
-		var item map[string]jsonv1.RawMessage
-		if json.Unmarshal(raw, &item, jsonv1.DefaultOptionsV1()) != nil {
-			continue
-		}
-		if responses.StringField(item, "role") == "developer" {
-			wireDevelopers = append(wireDevelopers, raw)
-		}
-		if responses.StringField(item, "type") == "additional_tools" {
-			wireAdditional = append(wireAdditional, raw)
-		}
-	}
+	wireDevelopers, wireAdditional := instructionItems(jsontext.Value(wireFields["input"]))
 	d.Instructions(map[string]any{
 		"timestamp": time.Now().UTC(), "request_id": requestID,
 		"client_request_id": headers.Get("x-client-request-id"),

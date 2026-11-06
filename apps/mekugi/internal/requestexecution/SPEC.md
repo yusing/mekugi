@@ -81,8 +81,9 @@ distinct; classification never retries publication or execution.
 Catalog transport failures use the same private classification and recording
 owner without becoming inference failures or terminal notices.
 
-Private failure records, optional notices and debug bundles remain independent
-consumers. Sanitized stream metrics contain classification, not prompt or error
+Private failure records, [retained instructions](../../../../modules/diagnostics/SPEC.md#retained-instructions),
+optional notices and debug bundles remain independent consumers. Retained
+instructions observe the same final projection as debug instruction dumps. Sanitized stream metrics contain classification, not prompt or error
 content. Debug instructions distinguish local projection from the actual wire
 subset. No diagnostic operation retries host execution or provider inference.
 

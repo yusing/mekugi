@@ -10,7 +10,6 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
-	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity"
 	"github.com/yusing/mekugi/modules/agentguidance"
@@ -34,7 +33,7 @@ func testHistory() *history.Service {
 		sessionhistory.Module.Contributes.RecordKinds,
 		activity.Module.Contributes.RecordKinds,
 		agentguidance.Module.Contributes.RecordKinds,
-		[]recordkind.Spec{diagnostic.Failures},
+		diagnostic.RecordKinds(),
 		accounting.RecordKinds(),
 		changehistory.Module.Contributes.RecordKinds,
 		recovery.RecordKinds(), reports.RecordKinds(),

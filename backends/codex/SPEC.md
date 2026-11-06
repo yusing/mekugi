@@ -333,6 +333,10 @@ the inspection consumer.
 Discovery can read only a supplied file's first metadata record using the same
 file and line bounds. This identifies a candidate; it does not validate the
 remaining rollout or certify that discovery found every matching source.
+Thread discovery walks `sessions` and `archived_sessions` under `$CODEX_HOME`
+(default `~/.codex`), at most 100,000 entries, for filenames ending in
+`-<thread>.jsonl`, and keeps a candidate only when its metadata names that exact
+thread. Single-source consumers treat no match or several matches as failures.
 
 The replay consumer receives decoded item and turn observations separately from
 logical-call inspection. Replay files are regular JSONL at most 64 MiB, with

@@ -14,6 +14,7 @@ import (
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
+	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
@@ -25,6 +26,7 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 	flags := flag.NewFlagSet("inspect-session", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	session := flags.String("session", "", "Codex rollout JSONL file")
+	thread := flags.String("thread", "", "thread ID; resolves its rollout under CODEX_HOME sessions or archived_sessions")
 	debugDir := flags.String("debug-dir", "", "inspect one debug bundle instead of a rollout")
 	requestID := flags.String("request-id", "", "select one request in a debug bundle")
 	workspace := flags.String("workspace", "", "override workspace inferred from rollout metadata")
@@ -36,10 +38,11 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 	callID := flags.String("call-id", "", "select one call identity")
 	offset := flags.Int("offset", 0, "skip this many matching calls")
 	limit := flags.Int("limit", 50, "maximum calls returned (1-500)")
-	field := flags.String("field", "", "include text: script, report, diagnostic, output, or all")
+	field := flags.String("field", "", "include text: script, report, diagnostic, output, instructions, or all")
 	textBytes := flags.Int("text-bytes", 4096, "maximum UTF-8 bytes per included field (1-65536)")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: mekugi inspect-session --session PATH [options]")
+		fmt.Fprintln(stderr, "Usage: mekugi inspect-session --thread ID [options]")
+		fmt.Fprintln(stderr, "       mekugi inspect-session --session PATH [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session --debug-dir DIR [--request-id ID] [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session [--replay-dir PATH] --failures [REF]")
 		fmt.Fprintln(stderr, "Read local evidence without running operations. Rollout and debug text requires --field.")
@@ -62,7 +65,7 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 	}
 	fields := []string{"script", "report", "diagnostic", "output"}
 	if *debugDir != "" {
-		if flags.NArg() != 0 || *session != "" || *failures || *ax || *readLog != "" || *defects != "" ||
+		if flags.NArg() != 0 || *session != "" || *thread != "" || *failures || *ax || *readLog != "" || *defects != "" ||
 			*callID != "" || *workspace != "" || *replayDir != "" || *offset < 0 || *limit < 1 || *limit > 500 ||
 			*textBytes < 1 || *textBytes > 65536 || (*field != "" && *field != "all" && *field != "diagnostic") {
 			flags.Usage()
@@ -87,7 +90,7 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 		return 2
 	}
 	if *failures {
-		if flags.NArg() > 1 || *session != "" || *ax || *readLog != "" || *defects != "" || *field != "" || *callID != "" || *workspace != "" ||
+		if flags.NArg() > 1 || *session != "" || *thread != "" || *ax || *readLog != "" || *defects != "" || *field != "" || *callID != "" || *workspace != "" ||
 			*offset != 0 || *limit != 50 || *textBytes != 4096 {
 			flags.Usage()
 			return 2
@@ -111,11 +114,14 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 		}
 		return 0
 	}
-	if *session == "" || flags.NArg() != 0 || *offset < 0 ||
+	if (*session == "") == (*thread == "") || flags.NArg() != 0 || *offset < 0 ||
 		*limit < 1 || *limit > 500 || *textBytes < 1 || *textBytes > 65536 ||
-		(*field != "" && *field != "all" && !slices.Contains(fields, *field)) {
+		(*field != "" && *field != "all" && *field != "instructions" && !slices.Contains(fields, *field)) {
 		flags.Usage()
 		return 2
+	}
+	if *field == "instructions" && diagnostics == nil {
+		return fail(errors.New("diagnostics are unavailable in this composition"))
 	}
 	if *replayDir == "" {
 		var err error
@@ -124,13 +130,43 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 			return fail(err)
 		}
 	}
+	if *thread != "" {
+		var err error
+		*session, err = rollout.DiscoverOne(ctx, *thread)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	callField := *field
+	if callField == "instructions" {
+		callField = ""
+	}
 	result, err := inspector.Inspect(ctx, query.SingleOptions{Session: *session, ReplayDirectory: *replayDir, Workspace: *workspace,
-		CallID: *callID, Offset: *offset, Limit: *limit, Field: *field, TextBytes: *textBytes, AX: withAX, ReadLog: *readLog, Defects: *defects})
+		CallID: *callID, Offset: *offset, Limit: *limit, Field: callField, TextBytes: *textBytes, AX: withAX, ReadLog: *readLog, Defects: *defects})
 	if err != nil {
 		return fail(err)
+	}
+	code := 0
+	if diagnostics != nil {
+		// Instruction evidence is independent: invalid records are reported
+		// alongside the call evidence instead of replacing it.
+		report := diagnostic.InstructionReport{Status: diagnostic.InstructionsUnavailable, Reason: "the rollout records no thread identity"}
+		if result.ThreadID != "" {
+			report, err = diagnostics.ReadInstructions(ctx, *replayDir, result.ThreadID, *field == "instructions" || *field == "all", *textBytes)
+			if err != nil {
+				if ctx.Err() != nil {
+					return fail(err)
+				}
+				fmt.Fprintln(stderr, "mekugi inspect-session: retained instructions:", err)
+				report, code = diagnostic.InstructionReport{Status: diagnostic.InstructionsInvalid, Reason: err.Error()}, 1
+			}
+		}
+		if result.Instructions, err = json.Marshal(&report, json.Deterministic(true), jsontext.EscapeForHTML(false)); err != nil {
+			return fail(err)
+		}
 	}
 	if err := json.MarshalEncode(jsontext.NewEncoder(stdout), &result, jsonv1.DefaultOptionsV1(), jsontext.EscapeForHTML(false)); err != nil {
 		return fail(err)
 	}
-	return 0
+	return code
 }

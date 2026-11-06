@@ -10,6 +10,7 @@ import (
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/rollout"
 
 	json "encoding/json/v2"
 	"errors"
@@ -492,22 +493,15 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 }
 
 func readReplaySource(ctx context.Context, service *playback.Service, session, debug string, seed uint64) (*playback.Source, error) {
-	rollouts, err := discoverDebugRollouts(ctx, []string{session})
+	path, err := rollout.DiscoverOne(ctx, session)
 	if err != nil {
 		return nil, err
-	}
-	paths := rollouts[session]
-	if len(paths) == 0 {
-		return nil, fmt.Errorf("session %q not found in Codex sessions or archived_sessions", session)
-	}
-	if len(paths) != 1 {
-		return nil, fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", session)
 	}
 	directory, err := history.ReplayDirectory()
 	if err != nil {
 		return nil, err
 	}
-	return service.Read(ctx, playback.ReadOptions{Path: paths[0], HistoryDirectory: directory, DebugDirectory: debug, Seed: seed, ThreadMetadata: replayThreadMetadata})
+	return service.Read(ctx, playback.ReadOptions{Path: path, HistoryDirectory: directory, DebugDirectory: debug, Seed: seed, ThreadMetadata: replayThreadMetadata})
 }
 
 func replayThreadMetadata(store *history.Store, thread string) ([]observation.Thread, int, error) {

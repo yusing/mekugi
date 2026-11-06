@@ -9,8 +9,8 @@ current design.
 
 ## Scope
 
-The module owns debug bundles, instruction-dump encoding, failure records and
-their offline queries. The application owns command parsing, launch and exit
+The module owns debug bundles, instruction-dump encoding, failure records,
+retained instructions and their offline queries. The application owns command parsing, launch and exit
 presentation. Transport observations belong to
 [transport diagnostics](../transportdiagnostics/SPEC.md); AX calculations belong
 to [agent metrics](../agentmetrics/SPEC.md). Diagnostics consumes their facts
@@ -101,6 +101,41 @@ records and an explicitly selected replay-store directory. Complete errors are
 included without a text selector and may contain credentials or request content. Missing references fail
 with an expiry-aware explanation. Lookup never revives expired evidence.
 
+### Retained instructions
+
+Without `--debug`, each thread retains the final projected content Mekugi
+forwards for its model requests: base instructions (including environment facts
+and Mekugi guidance), developer messages, tool descriptions and additional tool
+items. Prewarm, Codex approval-reviewer and thread-less requests are excluded. As
+with debug instruction dumps, a forwarded request does not claim provider
+acceptance. Selection reads only each input item's top-level role and type and
+tolerates duplicate names and invalid UTF-8 elsewhere in admitted JSON; a request
+whose selection cannot be decoded retains nothing rather than a partial revision.
+
+A thread's index lists its revisions and use entries. A use entry records the
+first request that used a revision after a different one, with its time, model,
+Codex turn ID and, when transport capture is active, the capture `request_id`
+and `request_sequence`; later requests use that revision until the next use
+entry. A request whose content matches the revision the invocation last recorded
+for the thread, while that index file is unchanged, does no locked read or write;
+a replaced or removed index makes the next request read it and republish as needed.
+Each revision's ordered digest list and each base-instruction value, developer
+message or tool item is stored once per store, content-addressed by the SHA-256
+of its exact JSON bytes, and shared by every thread that used it, so the index
+grows by one entry per revision or use.
+
+The application reports a failed publication as a thread notice without failing
+the request. The next request publishes its own content: unchanged content
+retries the failed revision, while changed content supersedes it and the failed
+revision is not retained. Session inspection joins the report as
+`instructions`, with status `available`, `unavailable` (the rollout has no thread
+identity, or nothing is retained for the thread, including sessions recorded
+before retention, expired after inactivity or reclaimed under storage pressure)
+or `invalid`. Revisions reference `content` by digest so shared text appears
+once; text requires the `instructions` or `all` field selection and follows the
+session text bound. Invalid indexes, missing records and digest mismatches fail
+the instruction report without hiding call evidence, and make the command exit 1.
+
 ### Offline diagnosis
 
 `inspect-session --debug-dir` reads only the selected bundle and its explicit
@@ -133,10 +168,9 @@ Cancellation reports an incomplete query even when its selected files or record
 directory are empty.
 
 AX export combines one validated read-log snapshot with typed
-[session inspection](../sessioninspection/SPEC.md) facts. The application discovers
-candidates by filename suffix under `$CODEX_HOME/sessions` and `archived_sessions`,
-defaulting to `~/.codex`, within its shutdown bound. The backend establishes exact
-metadata identity, session inspection validates selected rollouts in full, and
+[session inspection](../sessioninspection/SPEC.md) facts. The application uses
+[thread discovery](../../backends/codex/SPEC.md#supplied-offline-rollouts) within
+its shutdown bound; the backend establishes exact metadata identity, session inspection validates selected rollouts in full, and
 agent metrics calculates the report. Invalid or unreadable candidates make
 discovery incomplete. Missing, ambiguous, incomplete or mismatched discovery
 remains explicit. Available read evidence survives unavailable rollout-dependent
@@ -164,9 +198,14 @@ uses session inspection; diagnostic collection never issues host controls.
 
 ## Records
 
-Version-1 failure records publish through
-[session history](../sessionhistory/SPEC.md), sharing its quota and thread
-retention. The module owns their codec and record-kind registration. Debug files
+Version-1 failure records and retained instructions publish through
+[session history](../sessionhistory/SPEC.md), sharing its quota, thread expiry
+and cleanup. The module owns their codecs and record-kind registration:
+`failure-<hash>.json`; the per-thread `instructions-<sha256(thread)>.json` index,
+which depends on `instruction-revision-<sha256>.json` digest lists, which depend
+on `instruction-content-<sha256>.json` values. Shared records survive until their
+last owning thread expires. Index and revision records are bounded to 4 MiB each.
+Debug files
 have their own provenance-based bundle retention and privacy boundary; sanitized
 capture does not make the containing bundle safe to publish.
 
@@ -180,6 +219,7 @@ remain unavailable rather than empty successful measurements.
 ## Acceptance
 
 Acceptance covers private failure lookup after restart, publication failures,
+retained-instruction deduplication, sharing, restart, capacity retry and expiry,
 retention, bundle permissions and leases, external destinations, older instruction
 records, independent artifact errors, exact request selection, bounded AX export
 and optional contributors. Read-only queries are tested for absence of filesystem

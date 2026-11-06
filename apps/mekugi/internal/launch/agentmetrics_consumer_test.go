@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/backends/codex/rollout"
 
 	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -91,7 +92,7 @@ func TestAgentMetricsReaderAuthenticatedDestinationPrecedesEnvironment(t *testin
 	t.Parallel()
 	directory := t.TempDir()
 	log, conflicting := filepath.Join(directory, "manifest.jsonl"), filepath.Join(directory, "environment.jsonl")
-	bundle, err := testDiagnostics(new(evidence.Service), nil).OpenBundle(diagnostic.BundleOptions{Root: filepath.Join(directory, "bundles"), ReadLogPath: log, Discover: discoverDebugRollouts})
+	bundle, err := testDiagnostics(new(evidence.Service), nil).OpenBundle(diagnostic.BundleOptions{Root: filepath.Join(directory, "bundles"), ReadLogPath: log, Discover: rollout.Discover})
 	if err != nil {
 		t.Fatal(err)
 	}
