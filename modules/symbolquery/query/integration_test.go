@@ -163,6 +163,105 @@ func TestNativeSymbolRealGoplsReferences(t *testing.T) {
 	})
 }
 
+func TestNativeSymbolRealGoplsTaggedTest(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_REAL_GOPLS") != "1" {
+		t.Skip("set MEKUGI_TEST_REAL_GOPLS=1 to exercise installed gopls")
+	}
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOWORK", "off")
+	t.Setenv("GOFLAGS", "")
+	t.Setenv("GOENV", "off")
+	root := t.TempDir()
+	for path, source := range map[string]string{
+		"go.mod":         "module example.com/tagged\n\ngo 1.23\n",
+		"core.go":        "package tagged\nfunc Ordinary() {}\n",
+		"plain_test.go":  "//go:build !e2e\n\npackage tagged\nfunc selected() {}\nfunc plainUse() { selected() }\n",
+		"tagged_test.go": "//go:build e2e\n\npackage tagged\nfunc selected() {}\nfunc taggedUse() { selected() }\n",
+		"other_test.go":  "//go:build e2e\n\npackage tagged\nfunc otherUse() { selected() }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, path), []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, mode := range []string{"def", "refs"} {
+		t.Run(mode, func(t *testing.T) {
+			out := executeQuery(t, "--workspace", root, mode, "tagged_test.go", "5", "selected")
+			if out.ExitCode != 0 || out.Stderr != "" || out.OmittedOutput != nil {
+				t.Fatalf("tagged %s failed: %+v", mode, out)
+			}
+			if mode == "def" {
+				want := fmt.Sprintf("%q:4-4\nfunc selected() {}\n", filepath.Join(root, "tagged_test.go"))
+				if out.Stdout != want {
+					t.Fatalf("definition: got %q, want %q", out.Stdout, want)
+				}
+			} else if got := nativeRealGoplsReferenceRows(t, out.Stdout); len(got) != 3 || strings.Contains(out.Stdout, "plain_test.go") {
+				t.Fatalf("tagged references: %s", out.Stdout)
+			}
+		})
+	}
+	for _, persisted := range []bool{false, true} {
+		t.Run(fmt.Sprintf("explicit-tags/persisted=%t", persisted), func(t *testing.T) {
+			if persisted {
+				config := filepath.Join(t.TempDir(), "goenv")
+				if err := os.WriteFile(config, []byte("GOFLAGS=-tags=integration\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("GOENV", config)
+			} else {
+				t.Setenv("GOFLAGS", "-tags=integration")
+			}
+			out := executeQuery(t, "--workspace", root, "def", "tagged_test.go", "selected")
+			if out.ExitCode != 1 || !strings.Contains(out.Stderr, "no package metadata") {
+				t.Fatalf("explicit build tags were not preserved: %+v", out)
+			}
+		})
+	}
+	t.Run("mixed-batch", func(t *testing.T) {
+		out := executeQuery(t, "--workspace", root,
+			"refs", "plain_test.go", "selected",
+			"refs", "tagged_test.go", "selected",
+			"refs", "plain_test.go", "selected")
+		if out.ExitCode != 0 || out.Stderr != "" || out.OmittedOutput != nil {
+			t.Fatalf("mixed batch failed: %+v", out)
+		}
+		want := map[string]int{}
+		for _, id := range []int{1, 3} {
+			for _, row := range []string{"4 func selected() {}", "5 func plainUse() { selected() }"} {
+				want[fmt.Sprintf("refs[%d]:%s:%s", id, filepath.Join(root, "plain_test.go"), row)] = 1
+			}
+		}
+		for path, rows := range map[string][]string{
+			"tagged_test.go": {"4 func selected() {}", "5 func taggedUse() { selected() }"},
+			"other_test.go":  {"4 func otherUse() { selected() }"},
+		} {
+			for _, row := range rows {
+				want[fmt.Sprintf("refs[2]:%s:%s", filepath.Join(root, path), row)] = 1
+			}
+		}
+		if got := nativeRealGoplsReferenceRows(t, out.Stdout); !reflect.DeepEqual(got, want) {
+			t.Fatalf("per-query build contexts differ: got %#v, want %#v", got, want)
+		}
+	})
+}
+
+func TestMissingGoBuildTag(t *testing.T) {
+	for _, tc := range []struct{ source, want string }{
+		{"//go:build e2e\n\npackage fixture\n", "e2e"},
+		{"\uFEFF//go:build e2e\n\npackage fixture\n", "e2e"},
+		{"//go:build !e2e\n\npackage fixture\n", ""},
+		{"//go:build e2e && integration\n\npackage fixture\n", ""},
+		{"//go:build e2e || integration\n\npackage fixture\n", ""},
+		{"//go:build (\n\npackage fixture\n", ""},
+		{"package fixture\n//go:build e2e\n", ""},
+	} {
+		if got := missingGoBuildTag(tc.source); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.source, got, tc.want)
+		}
+	}
+}
+
 // Ignore resolver ordering only. Preserve exact paths, line numbers, source rows,
 // and multiplicity so duplicates, missing references, and stale text all fail.
 func nativeRealGoplsReferenceRows(t *testing.T, output string) map[string]int {

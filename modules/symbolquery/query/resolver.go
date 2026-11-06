@@ -8,6 +8,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"go/build/constraint"
 	"io"
 	"os"
 	"os/exec"
@@ -86,10 +87,11 @@ type rpcEvent struct {
 	err     error
 }
 type lspClient struct {
-	input   io.Writer
-	events  <-chan rpcEvent
-	nextID  int
-	folders []map[string]string
+	input         io.Writer
+	events        <-chan rpcEvent
+	nextID        int
+	folders       []map[string]string
+	configuration map[string]any
 }
 
 func readRPC(reader io.Reader, events chan<- rpcEvent, stop <-chan struct{}) {
@@ -200,7 +202,11 @@ func (l *lspClient) request(ctx context.Context, method string, params any) (jso
 							Items []any `json:"items"`
 						}
 						_ = json.Unmarshal(m.Params, &p)
-						result = make([]any, len(p.Items))
+						settings := make([]any, len(p.Items))
+						for i := range settings {
+							settings[i] = l.configuration
+						}
+						result = settings
 					case "workspace/workspaceFolders":
 						result = l.folders
 					case "client/registerCapability", "window/workDoneProgress/create":
@@ -396,7 +402,8 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 		// This short-lived client only consumes semantic locations, not lint
 		// diagnostics. Avoid competing staticcheck work without narrowing the
 		// workspace, disabling tests, or changing reference resolution.
-		params["initializationOptions"] = map[string]any{"staticcheck": false}
+		lsp.configuration = map[string]any{"staticcheck": false}
+		params["initializationOptions"] = lsp.configuration
 	}
 	initialized, err := lsp.request(deadline, "initialize", params)
 	if err != nil {
@@ -421,7 +428,19 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 		return
 	}
 	opened := map[string]bool{}
+	customBuild := false
+	checkedGoFlags, inferGoTags := false, false
 	for _, q := range queries {
+		if customBuild {
+			// A previous tuple's inferred tag must not change this tuple's
+			// default build, including mutually exclusive test variants.
+			lsp.configuration["buildFlags"] = []string{}
+			if err := lsp.notify("workspace/didChangeConfiguration", map[string]any{}); err != nil {
+				q.err = err
+				continue
+			}
+			customBuild = false
+		}
 		uri := symbolFileURI(q.file.path)
 		if !opened[uri] {
 			format := q.file.parsed.Format
@@ -446,10 +465,68 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 			params["context"] = map[string]bool{"includeDeclaration": true}
 		}
 		raw, e := lsp.request(deadline, method, params)
+		if resolver == "gopls" && e != nil && strings.Contains(e.Error(), "no package metadata for file") {
+			if tag := missingGoBuildTag(q.file.parsed.Source); tag != "" {
+				if !checkedGoFlags {
+					// go env includes persisted GOENV settings, not just the
+					// process environment. Never replace explicit tag selections.
+					flags := resolverCommand(deadline, processScope, root, "go", "env", "GOFLAGS")
+					flags.Env = cmd.Env
+					output := &boundedResolverOutput{limit: retainedBytes + 1}
+					flags.Stdout, flags.Stderr = output, output
+					err := flags.Run()
+					retireResolver(flags, processScope)
+					inferGoTags = err == nil && output.Len() <= retainedBytes && !strings.Contains(output.String(), "-tags")
+					checkedGoFlags = true
+				}
+				if err := deadline.Err(); err != nil {
+					q.err = err
+					if errors.Is(err, context.DeadlineExceeded) {
+						q.err = resolverTimeoutError()
+					}
+					continue
+				}
+				if !inferGoTags {
+					q.err = e
+					continue
+				}
+				// gopls processes configuration notifications before subsequent
+				// requests. Answer its configuration fetches with the same settings
+				// used at initialization, adding only this file's simple tag.
+				lsp.configuration["buildFlags"] = []string{"-tags=" + tag}
+				customBuild = true
+				if e = lsp.notify("workspace/didChangeConfiguration", map[string]any{}); e == nil {
+					raw, e = lsp.request(deadline, method, params)
+				}
+			}
+		}
 		if e != nil {
 			q.err = e
 			continue
 		}
 		q.locations, q.err = parseLocations(raw, q.mode)
 	}
+}
+
+// Infer only a single positive source tag after gopls' normal build selection
+// fails. Leave compound constraints and explicit user tag selections alone;
+// choosing among their possible builds would require a separate contract.
+func missingGoBuildTag(source string) string {
+	source = strings.TrimPrefix(source, "\uFEFF")
+	for line := range strings.Lines(source) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "package ") {
+			break
+		}
+		if constraint.IsGoBuild(line) {
+			expr, err := constraint.Parse(line)
+			if err == nil {
+				if tag, ok := expr.(*constraint.TagExpr); ok {
+					return tag.Tag
+				}
+			}
+			return ""
+		}
+	}
+	return ""
 }
