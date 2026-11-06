@@ -28,13 +28,10 @@ func ReadCommands(selection string) ([]string, error) {
 	var commands []string
 	for _, source := range selected {
 		path := source.Path
-		if path == "-" {
-			path = "./-"
+		if path != "" && !filepath.IsAbs(path) {
+			path = "./" + path
 		}
-		args := []string{"cat", "--", path}
-		if len(source.Ranges) > 0 {
-			args = []string{"sed", "-n"}
-		}
+		args := []string{"mcat", "--", path}
 		valid := len(source.Path) <= 4096 && len(source.Skill) <= 256 && !strings.ContainsRune(source.Path, 0)
 		if source.Changes != nil {
 			valid = len(source.Changes) > 0 && source.Path == "" && source.Skill == "" && len(source.Ranges) == 0
@@ -47,10 +44,7 @@ func ReadCommands(selection string) ([]string, error) {
 		}
 		for _, span := range source.Ranges {
 			valid = valid && span[0] > 0 && span[1] >= span[0]
-			args = append(args, "-e", fmt.Sprintf("%d,%dp", span[0], span[1]))
-		}
-		if source.Path != "" && len(source.Ranges) > 0 {
-			args = append(args, "--", path)
+			args = append(args, fmt.Sprintf("%d:%d", span[0], span[1]))
 		}
 		if !valid {
 			args = []string{"bash", "-c", "printf '%s\\n' " + commandargs.Quote(fmt.Sprintf("CONTENT NOT ATTACHED: invalid reload source %.256q", source.Path+source.Skill)) + "; exit 1"}

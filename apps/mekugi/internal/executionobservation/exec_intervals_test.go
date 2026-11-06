@@ -117,6 +117,7 @@ func TestExecCompletionOrderingSkipsUninterruptedHistory(t *testing.T) {
 }
 
 func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
+	usePreloadTestFrontend(t)
 	for _, scenario := range []string{"completed", "failed", "no-continuation", "missing-boundary", "missing-prefix", "no-effect", "exec-overlap", "gofmt-cell-yield", "gofmt-mrun-no-effect", "writer-first-command", "writer-first-patch"} {
 		t.Run(scenario, func(t *testing.T) {
 			noEffect := scenario == "no-effect" || scenario == "gofmt-mrun-no-effect"

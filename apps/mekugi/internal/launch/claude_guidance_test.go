@@ -21,6 +21,7 @@ import (
 )
 
 func TestClaudeGuidanceAndPreload(t *testing.T) {
+	usePreloadTestFrontend(t)
 	parent := t.TempDir()
 	child := filepath.Join(parent, "child")
 	if err := os.Mkdir(child, 0700); err != nil {
@@ -70,6 +71,7 @@ func TestClaudeGuidanceAndPreload(t *testing.T) {
 }
 
 func TestContextChangesPreloadCompleteComposition(t *testing.T) {
+	usePreloadTestFrontend(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +151,7 @@ func TestContextChangesPreloadCompleteComposition(t *testing.T) {
 			t.Fatal("invalid source accepted")
 		}
 	}
-	if sources[5].ExitCode != 0 || sources[5].Stdout != "independent file" {
+	if sources[5].ExitCode != 0 || sources[5].Stdout != "independent file\n" {
 		t.Fatal("failed changes source suppressed independent file")
 	}
 	reader := compact.ChangeReader{Service: store.changes, Scope: selected}

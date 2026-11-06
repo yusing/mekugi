@@ -2,6 +2,7 @@ package frontends
 
 import (
 	"bytes"
+	json "encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/fileread/read"
 )
 
@@ -77,5 +79,67 @@ func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) 
 	}
 	if stdout, stderr, err := run(); err == nil || stdout != "" || !strings.Contains(stderr, "registry identity mismatch") {
 		t.Fatalf("altered catalog: stdout %q stderr %q error %v", stdout, stderr, err)
+	}
+}
+
+func TestPreloadMcatRecoveryInAdmittedThread(t *testing.T) {
+	registry := sharedTestRegistry(t)
+	thread := uniqueTestThread("preload")
+	t.Setenv("CODEX_THREAD_ID", thread)
+	t.Setenv(testWorkerEnvironment, "1")
+	t.Setenv("PATH", registry.FrontendDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	path := filepath.Join(t.TempDir(), "selected file.txt")
+	body := strings.Repeat("A selected source row that exceeds the ordinary output budget.\n", 5000) + "LAST_SELECTED_ROW\n"
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	selection, err := json.Marshal(map[string]any{"sources": []compact.Source{{Path: path}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The outer mreload worker retains its session lease while its mcat child runs.
+	_, release, err := beginSession(t.Context(), testHistory(), registry.ReplayDirectory, thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	captured, err := compact.Capture(t.Context(), command.Request{Args: []string{string(selection)}}, compact.ChangeReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := captured.Delivery.Prepare([]string{"snapshot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot compact.Snapshot
+	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	// Claude invokes ReadSources directly with the child environment.
+	claude, err := compact.ReadSources(t.Context(), string(selection), "", os.Environ(), compact.ChangeReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []compact.CapturedSource{snapshot.Sources[0], claude.Sources[0]} {
+		if source.ExitCode == 0 || !strings.HasPrefix(source.Command, "'mcat'") {
+			t.Fatalf("expected an incomplete mcat source: %+v", source)
+		}
+		output := source.Stdout + source.Stderr
+		for page := 0; page < 30 && !strings.Contains(output, "LAST_SELECTED_ROW"); page++ {
+			_, rest, ok := strings.Cut(output, "next_call: mread ")
+			if !ok {
+				t.Fatalf("missing recovery for incomplete preload: %s", output)
+			}
+			line, _, _ := strings.Cut(rest, "\n")
+			cmd := exec.CommandContext(t.Context(), filepath.Join(registry.FrontendDirectory, "mread"), strings.Fields(line)...)
+			pageOutput, err := cmd.CombinedOutput()
+			if err != nil && len(pageOutput) == 0 {
+				t.Fatalf("mread failed: %v", err)
+			}
+			output = string(pageOutput)
+		}
+		if !strings.Contains(output, "LAST_SELECTED_ROW") {
+			t.Fatal("recovery did not reach the selected source end")
+		}
 	}
 }

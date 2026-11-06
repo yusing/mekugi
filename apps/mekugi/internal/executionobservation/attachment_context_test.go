@@ -29,6 +29,7 @@ import (
 )
 
 func TestAttachmentContextRefreshesCurrentSkillsAndPreservesSelections(t *testing.T) {
+	usePreloadTestFrontend(t)
 	for _, retained := range []bool{false, true} {
 		for _, explicit := range []bool{false, true} {
 			t.Run(strings.Join([]string{map[bool]string{true: "summary", false: "reset"}[retained], map[bool]string{true: "explicit", false: "automatic"}[explicit]}, "/"), func(t *testing.T) {
@@ -419,6 +420,7 @@ func attachmentTestHint(t *testing.T, input []byte) string {
 }
 
 func TestAttachmentRecallPreservesProviderPrefix(t *testing.T) {
+	usePreloadTestFrontend(t)
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
 	service, err := outputdeduplication.Module.New(outputdeduplication.Deps{}, module.Slots{})

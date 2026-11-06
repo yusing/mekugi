@@ -28,6 +28,7 @@ import (
 // only the native host lifecycle events are supplied by this renderer fixture.
 func compactReloadUI(t *testing.T, sources []compact.Source, child bool) (*appServerUI, string, func()) {
 	t.Helper()
+	usePreloadTestFrontend(t)
 	workspace := t.TempDir()
 	for i := range sources {
 		if sources[i].Changes != nil {

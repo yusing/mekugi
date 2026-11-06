@@ -211,11 +211,16 @@ thread's or selected child's workspace, permissions and approvals. Codex supplie
 explicit selections and previously captured results. Select needed implementations,
 callers, tests, fixtures and guidance for the next unfinished operation.
 
+File selections use `mcat` with its normal range, output and recovery bounds. An
+incomplete file read reports its failure and, when available, an `mread` continuation;
+its omitted rows are not included in the preload. Skill and change selections retain
+their own readers.
+
 Independent readers run concurrently as stock tools. A denied or failed source does
 not prevent the others from completing. Prewarm and execution-free requests never
 start reads. The authenticated reload frontend captures selected bodies through
 retained output delivery; stock output windows carry only the reference. Provider
-input expands it into a complete result per source and omits synthetic acquisition
+input expands it into a result per source and omits synthetic acquisition
 calls and selection metadata. One introduction identifies the bodies as reusable
 read context. Acquisition may yield internally; inference waits for terminal
 acquisition and never receives accumulated partial results. Publication failures

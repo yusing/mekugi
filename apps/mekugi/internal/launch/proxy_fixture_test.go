@@ -58,6 +58,14 @@ func uniqueTestThread(prefix string) string {
 }
 
 // Ordinary proxy tests borrow the real, immutable built-in frontend catalog.
+func usePreloadTestFrontend(t *testing.T) {
+	t.Helper()
+	registry := sharedProxyTestRegistry(t)
+	t.Setenv("PATH", registry.FrontendDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv(routerTestWorkerEnvironment, "1")
+	t.Setenv("CODEX_THREAD_ID", "")
+}
+
 func sharedProxyTestRegistry(t *testing.T) *frontends.Registry {
 	t.Helper()
 	return proxyTestFixture.get(t)
