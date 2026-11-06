@@ -39,6 +39,9 @@ type Git struct {
 	HooksPath     string
 	Status        []string
 	Recent        []Commit
+	// MoreUnpushed counts commits absent from local remote-tracking branches
+	// beyond those listed in Recent.
+	MoreUnpushed int
 }
 
 type Commit struct {
@@ -106,7 +109,9 @@ func Acquire(ctx context.Context, workspace string) Snapshot {
 		s.Git.Head = "unborn"
 		s.Incomplete = slices.DeleteFunc(s.Incomplete, func(v string) bool { return v == "head unavailable" })
 	}
+	hasRemotes := false
 	if refs, ok := git("default_branch", "for-each-ref", "--format=%(refname)%00%(symref)", "refs/remotes"); ok {
+		hasRemotes = refs != ""
 		var branches []string
 		for row := range strings.SplitSeq(refs, "\n") {
 			ref, target, _ := strings.Cut(row, "\x00")
@@ -174,6 +179,9 @@ func Acquire(ctx context.Context, workspace string) Snapshot {
 				s.Git.Recent = append(s.Git.Recent, Commit{ID: id, Subject: subject})
 			}
 		}
+		if hasRemotes && len(s.Git.Recent) != 0 {
+			s.Git.MoreUnpushed = moreUnpushed(git, s.Git.Recent)
+		}
 	}
 	value, truncated, err := commandWithConfig(ctx, workspace, true, "git", "--no-lazy-fetch", "--no-optional-locks", "config", "--get", "core.hooksPath")
 	switch {
@@ -193,6 +201,31 @@ func Acquire(ctx context.Context, workspace string) Snapshot {
 		s.Incomplete = append(s.Incomplete, "hooks_path unavailable")
 	}
 	return s
+}
+
+// moreUnpushed counts unpushed commits that the recent list omits. The newest
+// unpushed commits follow the same walk order as the recent list, so listed
+// unpushed commits are among the first len(recent) of them.
+func moreUnpushed(git func(string, ...string) (string, bool), recent []Commit) int {
+	count, ok := git("unpushed_commits", "rev-list", "--count", "HEAD", "--not", "--remotes")
+	if !ok {
+		return 0
+	}
+	total, err := strconv.Atoi(count)
+	if err != nil || total == 0 {
+		return 0
+	}
+	newest, ok := git("unpushed_commits", "rev-list", "--max-count="+strconv.Itoa(len(recent)), "HEAD", "--not", "--remotes")
+	if !ok {
+		return 0
+	}
+	listed := 0
+	for id := range strings.SplitSeq(newest, "\n") {
+		if slices.ContainsFunc(recent, func(commit Commit) bool { return commit.ID != "" && strings.HasPrefix(id, commit.ID) }) {
+			listed++
+		}
+	}
+	return max(total-listed, 0)
 }
 
 func isUnsetConfig(err error) bool {
@@ -296,6 +329,12 @@ func (s Snapshot) Text(workspace string) string {
 			out.WriteString("Recent commits:\n")
 			for _, commit := range s.Git.Recent {
 				fmt.Fprintf(&out, "%s %s\n", commit.ID, commit.Subject)
+			}
+			switch {
+			case s.Git.MoreUnpushed == 1:
+				out.WriteString("(... 1 more unpushed commit)\n")
+			case s.Git.MoreUnpushed > 1:
+				fmt.Fprintf(&out, "(... %d more unpushed commits)\n", s.Git.MoreUnpushed)
 			}
 		}
 	}

@@ -103,6 +103,32 @@ func TestSnapshotEffectiveHooksPath(t *testing.T) {
 	}
 }
 
+func TestSnapshotCountsUnlistedUnpushedCommits(t *testing.T) {
+	workspace := repository(t)
+	commit := func(subject string) {
+		git(t, workspace, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", subject)
+	}
+	commit("pushed")
+	for n := range 6 {
+		commit(fmt.Sprintf("local %d", n))
+	}
+	if snapshot := Acquire(t.Context(), workspace); snapshot.Git.MoreUnpushed != 0 || strings.Contains(snapshot.Text(workspace), "unpushed") {
+		t.Fatalf("without remote-tracking branches: %+v", snapshot)
+	}
+	git(t, workspace, "update-ref", "refs/remotes/origin/main", "HEAD~6")
+	if snapshot := Acquire(t.Context(), workspace); !strings.Contains(snapshot.Text(workspace), "local 1\n(... 1 more unpushed commit)") {
+		t.Fatalf("one unlisted: %s", snapshot.Text(workspace))
+	}
+	commit("local 6")
+	if snapshot := Acquire(t.Context(), workspace); snapshot.Git.MoreUnpushed != 2 || !strings.HasSuffix(snapshot.Text(workspace), "(... 2 more unpushed commits)") {
+		t.Fatalf("two unlisted: %s", snapshot.Text(workspace))
+	}
+	git(t, workspace, "update-ref", "refs/remotes/origin/main", "HEAD~3")
+	if snapshot := Acquire(t.Context(), workspace); snapshot.Git.MoreUnpushed != 0 || strings.Contains(snapshot.Text(workspace), "unpushed") {
+		t.Fatalf("all unpushed listed: %s", snapshot.Text(workspace))
+	}
+}
+
 func TestSnapshotStatusHonorsGlobalExcludesFile(t *testing.T) {
 	workspace := repository(t)
 	for _, name := range []string{"ignored-globally", "visible"} {
