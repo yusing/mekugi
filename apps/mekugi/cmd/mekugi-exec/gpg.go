@@ -191,8 +191,10 @@ func gpgExit(state *os.ProcessState) int {
 	if status, ok := state.Sys().(syscall.WaitStatus); ok && status.Signaled() {
 		signal.Reset(status.Signal())
 		// Go retains runtime handlers for signals such as SIGQUIT and SIGPIPE
-		// even after Reset. A minimal POSIX shell restores native dispositions.
-		unix.Exec("/bin/sh", []string{"sh", "-c", "kill -" + strconv.Itoa(int(status.Signal())) + " $$"}, nil)
+		// even after Reset. Exec restores native dispositions; the system kill
+		// utility signals this same PID without Bash's builtin SIGQUIT handling.
+		// Linux and macOS provide /bin/kill, independent of the guarded PATH.
+		unix.Exec("/bin/kill", []string{"kill", "-" + strconv.Itoa(int(status.Signal())), strconv.Itoa(os.Getpid())}, nil)
 		return 128 + int(status.Signal())
 	}
 	return state.ExitCode()

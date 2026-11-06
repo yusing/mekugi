@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
@@ -74,7 +75,7 @@ func TestGPGUnlock(t *testing.T) {
 	if err := init.Run(); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"sign", "cached", "decrypt", "git", "wrong", "skip", "cancel-command", "cancel-owner", "cancel-input", "signal-input", "signal-quit", "non-passphrase", "caller-input", "caller-command", "inherited-status", "inherited-output", "status-failure", "invalid-status", "option-operand"} {
+	for _, name := range []string{"sign", "cached", "decrypt", "git", "wrong", "skip", "cancel-command", "cancel-owner", "cancel-input", "signal-input", "signal-quit", "signal-input-pty", "signal-quit-pty", "non-passphrase", "caller-input", "caller-command", "inherited-status", "inherited-output", "status-failure", "invalid-status", "option-operand"} {
 		t.Run(name, func(t *testing.T) {
 			if name != "cached" {
 				killAgent()
@@ -140,6 +141,14 @@ func TestGPGUnlock(t *testing.T) {
 				}
 				t.Cleanup(func() { reader.Close(); writer.Close() })
 				cmd.Stdin = reader // Keep ordinary stdin open throughout cancellation.
+				if strings.HasSuffix(name, "-pty") {
+					master, slave, err := pty.Open()
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { master.Close(); slave.Close() })
+					cmd.Stdin = slave
+				}
 			}
 			result := make(chan execTrackRun, 1)
 			var captured bytes.Buffer
@@ -170,10 +179,10 @@ func TestGPGUnlock(t *testing.T) {
 					}
 				}
 				var sig os.Signal = syscall.SIGKILL
-				if name == "signal-input" {
+				if strings.HasPrefix(name, "signal-input") {
 					sig = syscall.SIGTERM
 				}
-				if name == "signal-quit" {
+				if strings.HasPrefix(name, "signal-quit") {
 					sig = syscall.SIGQUIT
 				}
 				if err := cmd.Process.Signal(sig); err != nil {
@@ -281,7 +290,7 @@ func TestGPGUnlock(t *testing.T) {
 				}
 				if waitingInput {
 					status := cmd.ProcessState.Sys().(syscall.WaitStatus)
-					if !status.Signaled() || name == "signal-input" && status.Signal() != syscall.SIGTERM || name == "signal-quit" && status.Signal() != syscall.SIGQUIT {
+					if !status.Signaled() || strings.HasPrefix(name, "signal-input") && status.Signal() != syscall.SIGTERM || strings.HasPrefix(name, "signal-quit") && status.Signal() != syscall.SIGQUIT {
 						t.Fatal("GPG signal termination became an ordinary numeric exit")
 					}
 				}
