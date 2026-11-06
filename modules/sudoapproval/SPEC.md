@@ -3,6 +3,7 @@
 ## Current capability
 
 Retain sudo approval and authentication support alongside stock command execution.
+Provide GPG passphrase entry through the same private secret-answer channel.
 
 Hook instrumentation, classification, session grants, secret-editor presentation and
 timeout policy below are current design.
@@ -56,6 +57,32 @@ Scripts keep their original bytes, interpreter, arguments and exit status;
 absolute paths invoked through wrappers inside script files retain the same
 limits as the VCS guard's Bash path functions.
 
+## GPG passphrases
+
+With shell guarding enabled, supported `gpg` and `gpg2` invocations, including
+Git signing through PATH, use the secret editor when GPG requests a passphrase.
+GPG owns authentication, command results and its native agent cache. Cached keys
+need no dialog. Wrong answers fail the native command without automatic replay,
+another attempt, or an unsigned fallback. Skipping denies authentication; command
+or owning-thread cancellation withdraws the question and discards its draft.
+
+This uses per-command loopback inquiries, not global GPG or agent configuration.
+The agent must allow loopback pinentry. Explicit caller pinentry, passphrase,
+command-input or status-file options, and explicit options files, keep their native
+behavior instead. A caller status descriptor, including Git's signing status,
+continues to receive GPG's status stream. Other inherited descriptors and command
+stdin/stdout remain available. Non-passphrase inquiries, such as interactive key
+editing or trust confirmations, fail with an explanation; use caller-owned
+`--command-fd` for those workflows. Smartcard and external pinentry interaction
+remain native concerns, not an emulated authentication policy.
+
+Passphrases traverse only the private approval socket and GPG command pipe, never
+command arguments, environment, retained history, replay or model input. This does
+not add a command approval or reuse sudo command grants. GPG input framing is
+separate from sudo policy. Headless execution and disabled shell guarding remain
+unchanged. Executable-path coverage has the same shell-hook and script limits as
+sudo above.
+
 ## Lifecycle
 
 Session Control owns exact-command grants per registered guard kind for each attached UI lifetime.
@@ -84,6 +111,8 @@ resources, including nested-shell instrumentation when only sudo is present.
 
 ## Acceptance
 Native helper and UI acceptance covers command approval, independent password requests, exact grants, cancellation, secret-only delivery, and unchanged execution.
+Real-GPG acceptance covers signing, decryption, Git signing, cached keys, wrong
+answers, skip, cancellation, caller-owned input, and non-passphrase inquiry failure.
 
 Module acceptance exercises policy and guard registration through the
 scripted binder. Application acceptance covers isolated grant lifetimes, leave-one-out resources, request

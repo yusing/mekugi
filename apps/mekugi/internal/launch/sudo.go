@@ -17,10 +17,14 @@ import (
 )
 
 func openSudoPassword(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, a *sessioncontrol.Approval) {
-	id := fmt.Sprintf("sudo-password/%p", a.Guard)
+	id := fmt.Sprintf("%s/%p", a.Guard.Kind, a.Guard)
+	header, label := "Sudo password", "sudo password"
+	if a.Guard.Kind == "gpg-passphrase" {
+		header, label = "GPG passphrase", "GPG passphrase"
+	}
 	c := &sessioncontrol.Question{Call: &prompt.Call{ID: id, Thread: a.Thread, Turn: a.Turn, Item: id, Local: true,
-		Questions: []prompt.Question{{ID: "password", Header: "Sudo password", IsSecret: true,
-			Question: "Enter your sudo password:\n" + a.Subject + "\nCtrl-] skips and denies authentication."}}}, Sudo: a.Guard}
+		Questions: []prompt.Question{{ID: "password", Header: header, IsSecret: true,
+			Question: "Enter your " + label + ":\n" + a.Subject + "\nCtrl-] skips and denies authentication."}}}, Sudo: a.Guard}
 	addQuestions(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, c, false)
 }
 

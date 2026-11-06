@@ -56,7 +56,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
-| `--shell-guard` | `true` | Guard UI remote writes and sudo commands, even with `--yolo` |
+| `--shell-guard` | `true` | Guard UI remote writes and sudo commands; securely answer GPG passphrase requests, even with `--yolo` |
 | `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
 | `--child-reply-summary` | `true` | Show child-authored summaries in Main, with the original behind Open reply |
 | `--grok-auth-file` | `~/.grok/auth.json` | OAuth store |

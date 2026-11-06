@@ -17,7 +17,7 @@ func GuardForRequest(kind string) (ShellGuardKind, bool) {
 	switch kind {
 	case "":
 		return RemoteWrite, true
-	case "sudo", "sudo-password":
+	case "sudo", "sudo-password", "gpg-passphrase":
 		return Sudo, true
 	default:
 		return "", false

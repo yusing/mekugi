@@ -17,7 +17,7 @@ flags go **before** `codex`, `grok`, or standalone Codex arguments.
 Codex's approval/sandbox policy applies. The UI's [remote-write guard](approvals.md#approvals) needs
 unsandboxed execution: configure `sandbox_mode="danger-full-access"`, or use `--yolo` to
 disable Codex approvals/sandboxing while keeping the guard. To disable Mekugi's
-remote-write and sudo guarding while retaining Codex policy, use `--shell-guard=false`.
+remote-write/sudo guarding and GPG passphrase entry while retaining Codex policy, use `--shell-guard=false`.
 
 ```sh
 mekugi codex

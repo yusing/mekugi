@@ -7,6 +7,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
+	"github.com/yusing/mekugi/modules/sudoapproval/gpg"
 	"github.com/yusing/mekugi/modules/sudoapproval/sudo"
 )
 
@@ -32,7 +33,7 @@ func (q *Question) AnswerPassword(answers map[int][]string) (outcome string, del
 		return "", false, err
 	}
 	question := &q.Questions[0]
-	reply := shellapproval.Reply{Reason: "sudo authentication denied"}
+	reply := shellapproval.Reply{Reason: "authentication denied"}
 	if question.Done && !question.Skipped && len(answers[0]) == 1 {
 		password := answers[0][0]
 		reply.OK, reply.Password = true, password
@@ -49,7 +50,7 @@ func (q *Question) CancelPassword() bool {
 	if q.Sent || q.Sudo.Finished() {
 		return false
 	}
-	q.Sudo.Reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
+	q.Sudo.Reply <- shellapproval.Reply{Reason: "authentication canceled"}
 	return true
 }
 
@@ -57,6 +58,12 @@ func (q *Question) CancelPassword() bool {
 // It neither retains the secret nor answers the request.
 func (q *Question) ValidatePassword(answers map[int][]string) error {
 	question := &q.Questions[0]
+	if q.Sudo != nil && q.Sudo.Kind == "gpg-passphrase" {
+		if question.Done && !question.Skipped && len(answers[0]) == 1 && !gpg.ValidPassphrase(answers[0][0]) {
+			return errors.New("GPG passphrase must be a single line without NUL")
+		}
+		return nil
+	}
 	if question.Done && !question.Skipped && len(answers[0]) == 1 && !sudo.ValidPassword(answers[0][0]) {
 		return errors.New("sudo password must be a single line")
 	}

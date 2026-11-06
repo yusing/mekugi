@@ -91,7 +91,7 @@ func newFlags(stderr io.Writer, config *Config) *flag.FlagSet {
 	flags.StringVar(&config.ANSIFaint, "ansi-faint", "auto", "dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors)")
 	flags.DurationVar(&config.Timeout, "timeout", DefaultRequestTimeout, "upstream response-start timeout")
 	flags.DurationVar(&config.StreamIdleTimeout, "stream-idle-timeout", 4*time.Minute, "maximum upstream inactivity between WebSocket messages or HTTP response bytes")
-	flags.BoolVar(&config.ShellGuard, "shell-guard", true, "ask before remote VCS writes and sudo commands in the UI, independently of Codex approval policy")
+	flags.BoolVar(&config.ShellGuard, "shell-guard", true, "guard UI remote writes/sudo commands and securely answer GPG passphrases; independent of Codex approval policy")
 	flags.BoolVar(&config.DeduplicateOutput, "deduplicate-output", true, "deduplicate output and attachments in model input")
 	flags.StringVar(&config.GrokAuthFile, "grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)")
 	flags.StringVar(&config.CaptureOutput, "capture-output", "", "optional sanitized capture JSONL path")

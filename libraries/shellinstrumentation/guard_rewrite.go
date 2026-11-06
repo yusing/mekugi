@@ -114,6 +114,7 @@ var commandGuards = []commandGuardSpec{
 	{VCSDirectory, "--vcs-command", commandanalysis.VCSTools, true},
 	{VCSDirectory, "--vcs-shell", Shells, false},
 	{SudoDirectory, "--sudo-command", []string{"sudo"}, true},
+	{SudoDirectory, "--gpg-command", []string{"gpg", "gpg2"}, true},
 }
 
 type commandGuardSpec struct {

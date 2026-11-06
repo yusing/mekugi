@@ -355,7 +355,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		tools     []string
 	}{
 		{guardDirectory, commandanalysis.VCSTools},
-		{sudoDirectory, []string{"sudo", shellapproval.Askpass}},
+		{sudoDirectory, []string{"sudo", "gpg", "gpg2", shellapproval.Askpass}},
 	} {
 		if resource.directory == "" {
 			continue
@@ -395,7 +395,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		startup += shellinstrumentation.Functions(guardDirectory, shellinstrumentation.KnownPaths(basePath, commandanalysis.VCSTools), commandanalysis.VCSTools)
 	}
 	if sudoDirectory != "" {
-		tools := []string{"sudo"}
+		tools := []string{"sudo", "gpg", "gpg2"}
 		startup += shellinstrumentation.Functions(sudoDirectory, shellinstrumentation.KnownPaths(basePath, tools), tools)
 	}
 

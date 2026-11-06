@@ -50,6 +50,20 @@ const (
 )
 
 func main() {
+	if len(os.Args) >= 5 && os.Args[1] == "--gpg-run" {
+		lifetime, err := strconv.Atoi(os.Args[2])
+		if err != nil || lifetime < 3 {
+			os.Exit(1)
+		}
+		os.Exit(gpgRun(lifetime, os.Args[3], os.Args[4:]))
+	}
+	if len(os.Args) >= 4 && strings.TrimSuffix(os.Args[1], "-default") == "--gpg-command" {
+		if os.Args[3] == shellinstrumentation.ItemFlag && len(os.Args) >= 6 {
+			os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4])
+			os.Args = append(os.Args[:3], os.Args[5:]...)
+		}
+		os.Exit(gpgCommand(os.Args[2], os.Args[3], forwardedArgv0(os.Args[3]), strings.HasSuffix(os.Args[1], "-default"), os.Args[4:]))
+	}
 	if len(os.Args) > 1 && os.Args[1] == shellhook.Flag {
 		os.Exit(guardHook(os.Args[0], os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
@@ -109,6 +123,9 @@ func main() {
 	}
 	if filepath.Base(os.Args[0]) == "sudo" {
 		os.Exit(sudoCommand("", "sudo", os.Args[0], false, os.Args[1:]))
+	}
+	if name := filepath.Base(os.Args[0]); name == "gpg" || name == "gpg2" {
+		os.Exit(gpgCommand("", name, os.Args[0], false, os.Args[1:]))
 	}
 	if name := filepath.Base(os.Args[0]); slices.Contains(commandanalysis.VCSTools, name) {
 		os.Exit(guard(name, os.Args[1:]))

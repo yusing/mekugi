@@ -46,6 +46,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 				{name: "remote", active: selected.remote},
 				{name: "sudo", kind: "sudo", active: selected.sudo},
 				{name: "password", kind: "sudo-password", active: selected.sudo},
+				{name: "passphrase", kind: "gpg-passphrase", active: selected.sudo},
 				{name: "unknown", kind: "unknown"},
 			} {
 				t.Run(request.name, func(t *testing.T) {
@@ -82,7 +83,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 							t.Fatal("socket changed the approval identity")
 						}
 						addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, pending)
-						if request.kind == "sudo-password" {
+						if request.kind == "sudo-password" || request.kind == "gpg-passphrase" {
 							if len(u.questions.calls()) != 1 || len(u.approvals.calls()) != 0 {
 								t.Fatal("sudo password did not reach its secret-entry UI")
 							}
@@ -121,7 +122,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 					if got.err != nil {
 						t.Fatal(got.err)
 					}
-					if request.kind == "sudo-password" {
+					if request.kind == "sudo-password" || request.kind == "gpg-passphrase" {
 						if !got.reply.OK || got.reply.Password != "fixture-password" {
 							t.Fatal("password answer did not reach the socket client")
 						}

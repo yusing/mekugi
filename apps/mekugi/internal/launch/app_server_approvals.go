@@ -101,7 +101,7 @@ func addGuardApproval(attached *attachedPresentation, terminal *terminalsession.
 		}
 	}
 	// Password requests are never command approvals or session-grant lookups.
-	if request.Kind == "sudo-password" {
+	if request.Kind == "sudo-password" || request.Kind == "gpg-passphrase" {
 		openSudoPassword(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, a)
 		return
 	}

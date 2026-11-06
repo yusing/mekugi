@@ -221,7 +221,7 @@ func resolveQuestionCall(attached *attachedPresentation, terminal *terminalsessi
 	discardQuestionEditors(terminal.Prompts, c)
 	if c.Sudo != nil {
 		if c.CancelPassword() {
-			recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: sudo authentication canceled")
+			recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: authentication canceled")
 		}
 		questions.Remove(c.Call)
 		delete(questions.handles, c.Call)

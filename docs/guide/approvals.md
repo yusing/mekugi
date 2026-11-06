@@ -27,6 +27,14 @@ limits](../../modules/remotewriteapproval/SPEC.md).
 Interactive sudo commands also ask for approval, even with cached credentials or
 passwordless sudo. If authentication is needed afterward, a separate secret password
 dialog keeps the answer out of model input and retained history. The shared
-`--shell-guard` toggle controls both sudo and remote-write approval and grants no
+`--shell-guard` toggle controls sudo, GPG passphrase entry and remote-write approval and grants no
 sandbox permissions. See
 [sudo support and limits](../../modules/sudoapproval/SPEC.md).
+
+GPG signing and decryption, including Git signing, request passphrases through the
+same secret editor. GPG keeps ownership of authentication and cached keys; a wrong
+answer fails the command without retrying or falling back to an unsigned result.
+Skipping denies authentication. Cancellation discards the pending secret draft.
+No global GPG configuration is changed. Explicit caller-owned authentication/input
+modes stay native; non-passphrase inquiries require caller-owned `--command-fd`.
+See [GPG support and limits](../../modules/sudoapproval/SPEC.md#gpg-passphrases).

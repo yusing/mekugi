@@ -163,7 +163,7 @@ are unsupported. See [launch details](docs/guide/launch.md).
 - [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents pane, output dialogs and optional Herdr app panels.
 - [Sessions and recovery](docs/guide/sessions.md): resume, fork, rewind, compaction and replay storage.
 - [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file` and `mchanges`.
-- [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write and sudo guards.
+- [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards and secure GPG passphrase entry.
 - [Server, connector and browser](docs/guide/remote.md): remote control, browser UI and Docker deployment.
 - [Providers and delegates](docs/guide/providers.md): Grok, OpenCode and Claude delegates.
 - [Launch and automation](docs/guide/launch.md): launch commands, execution policy and headless runs.

@@ -44,3 +44,18 @@ func TestRewriteLeavesZshUnsupported(t *testing.T) {
 		t.Fatal("Zsh-only syntax was accepted")
 	}
 }
+
+func TestGPGGuardRewrite(t *testing.T) {
+	for _, source := range []string{`gpg --decrypt input`, `command /usr/bin/gpg2 -s input`, `env -i /usr/bin/gpg --decrypt input`, `bash -c 'gpg -s input'`} {
+		got, err := RewriteCommands(source, "/helper", "", "/session/sudo-guard", "item")
+		if err != nil || got == source {
+			t.Fatalf("GPG command not instrumented: %s: %v", source, err)
+		}
+		if again, err := RewriteCommands(got, "/helper", "", "/session/sudo-guard", "item"); err != nil || again != got {
+			t.Fatal("GPG instrumentation is not idempotent")
+		}
+		if inactive, err := RewriteCommands(source, "/helper", "/session/vcs-guard", "", "item"); err != nil || inactive != source && !strings.HasPrefix(source, "bash") {
+			t.Fatal("absent secret owner instrumented GPG")
+		}
+	}
+}

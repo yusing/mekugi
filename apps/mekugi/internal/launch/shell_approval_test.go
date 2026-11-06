@@ -33,13 +33,15 @@ func TestFrontendShellEnvironmentSelectedGuards(t *testing.T) {
 					helper:                      "printf 'guard:%s\n' \"${0##*/}\"",
 					filepath.Join(real, "git"):  "printf 'native:git\n'",
 					filepath.Join(real, "sudo"): "printf 'native:sudo\n'",
+					filepath.Join(real, "gpg"):  "printf 'native:gpg\n'",
+					filepath.Join(real, "gpg2"): "printf 'native:gpg2\n'",
 				} {
 					if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0700); err != nil {
 						t.Fatal(err)
 					}
 				}
 				var guards []binding.ShellApproval
-				want := "native:git\nnative:sudo\n"
+				want := "native:git\nnative:sudo\nnative:gpg\nnative:gpg2\n"
 				if remote {
 					guards = append(guards, binding.ShellApproval{Kind: binding.RemoteWrite})
 					want = strings.Replace(want, "native:git", "guard:git", 1)
@@ -47,12 +49,13 @@ func TestFrontendShellEnvironmentSelectedGuards(t *testing.T) {
 				if sudo {
 					guards = append(guards, binding.ShellApproval{Kind: binding.Sudo})
 					want = strings.Replace(want, "native:sudo", "guard:sudo", 1)
+					want = strings.ReplaceAll(want, "native:gpg", "guard:gpg")
 				}
 				environment, err := frontendShellEnvironment([]string{"PATH=" + real + ":/bin:/usr/bin"}, frontend, helper, guards, segmenttransport.Endpoints{})
 				if err != nil {
 					t.Fatal(err)
 				}
-				cmd := exec.CommandContext(t.Context(), bash, "-c", "command git push; command sudo -n probe")
+				cmd := exec.CommandContext(t.Context(), bash, "-c", "command git push; command sudo -n probe; command gpg --version; command gpg2 --version")
 				cmd.Env = environment
 				output, err := cmd.CombinedOutput()
 				if err != nil || string(output) != want {
