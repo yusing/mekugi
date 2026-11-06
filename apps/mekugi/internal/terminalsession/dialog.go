@@ -46,7 +46,6 @@ type Dialog struct {
 	Document      terminalui.DialogPage
 	Selection     *Selection
 	Navigation    string
-	ForceTabs     bool
 	HideTabs      bool
 	Footer        string
 	OutputToggle  string
@@ -83,7 +82,7 @@ type DialogIntent struct {
 	Process     *sessionpresentation.Process
 }
 
-func (d *Dialog) tabbed() bool { return !d.HideTabs && (len(d.pages) > 1 || d.ForceTabs) }
+func (d *Dialog) tabbed() bool { return !d.HideTabs && len(d.pages) > 1 }
 func (d *Dialog) Chrome() int {
 	if d.tabbed() {
 		return terminalui.DialogChrome + 1

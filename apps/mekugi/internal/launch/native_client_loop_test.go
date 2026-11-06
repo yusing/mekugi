@@ -482,3 +482,32 @@ func TestUISnapshotNativeClientDialogReferenceKeepsSourceLabel(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeClientProcessDetailsReferenceKeepsOutputLabel(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	c := nativeTestPromptClient(u)
+	terminal := c.renderer.terminal
+	terminal.Width, terminal.Height = 80, 18
+	d := &terminalsession.ContentDialog{View: terminal.Transcript, ProcessDetail: true}
+	d.Pages = []sessionpresentation.DetailItem{{ID: "process:1", Source: 1, Kind: "op", Verb: "Run", Code: "printf selected", Tail: []string{"selected output"}, Exited: true}}
+	d.Update(sessionpresentation.DetailView{Pages: d.Pages, Processes: true})
+	rows := make([]string, 18)
+	d.Paint(rows, 80, 18)
+	x, y := dialogFramePoint(t, renderedDialogRows(rows, 80), "selected output")
+	d.Mouse(0, x, y, false)
+	d.Mouse(32, x+len("selected output")-1, y, false)
+	d.Mouse(0, x+len("selected output")-1, y, true)
+	terminal.Dialog = d
+	c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "r"})
+	if len(c.calls) != 1 || c.calls[0].operation.Reference == nil {
+		t.Fatal("reference was not delivered")
+	}
+	reference := c.calls[0].operation.Reference
+	var editor composer.Editor
+	if err := editor.InsertSelection(reference.Description, reference.Text, reference.Source, nil); err != nil {
+		t.Fatal(err)
+	}
+	if editor.Text != "[Selected output] " || editor.Selections[0].Text != "selected output" {
+		t.Fatalf("process reference = %q, %+v", editor.Text, reference)
+	}
+}

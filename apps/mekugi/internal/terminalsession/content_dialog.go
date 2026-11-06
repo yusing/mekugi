@@ -86,7 +86,6 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 	if d.File != nil {
 		d.Navigation = "view"
 	}
-	d.ForceTabs = d.Processes && len(d.Pages) > 0 && d.Pages[0].Source != 0
 	d.HideTabs = d.Processes
 	d.SetPages(tabs)
 	if d.Output != nil && (len(d.Pages) == 0 || d.Output.Page != d.Pages[d.Page].ID || d.Output.Version != d.Pages[d.Page].OutputVersion) {
@@ -96,12 +95,12 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 
 // Layout renders the current retained snapshot without owning output lifetime.
 func (d *ContentDialog) Layout(width int) {
+	d.Mention = "output"
 	if d.Processes {
 		d.layoutProcess(width)
 		return
 	}
 	page := d.Pages[d.Page]
-	d.Mention = "output"
 	if page.Lang == "diff" {
 		d.Mention = "diff"
 	}
@@ -220,11 +219,6 @@ func (d *ContentDialog) Key(key string) DialogIntent {
 	}
 	if d.Processes && d.Selection == nil && !d.Typing {
 		return d.processKey(key)
-	}
-	if key == "s" && !d.Typing && d.Selection == nil && d.Processes && len(d.Pages) > 0 {
-		if process := d.Pages[d.Page].Process; process != nil {
-			return DialogIntent{Action: DialogStopProcess, Process: new(*process)}
-		}
 	}
 	if key == "o" && !d.Typing {
 		if d.Selection == nil && len(d.Pages) > 0 {
