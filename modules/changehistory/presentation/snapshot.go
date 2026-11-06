@@ -79,7 +79,7 @@ func (p Publication) With(files []File) Publication {
 		Counts: Counts{Callers: CallerCounts(v.Files), Net: NetCounts(&v)}, initialized: true}
 }
 
-// ForDiff omits temporary-only captures from the saved pane, without changing
+// ForDiff omits temporary-only captures and confirmed empty net files from the saved pane, without changing
 // the retained publication used by details and edit totals. Boundary-crossing
 // moves keep both endpoints so their non-temporary effects remain reviewable.
 func (p Publication) ForDiff(workspace string) Publication {
@@ -121,10 +121,32 @@ func (p Publication) ForDiff(workspace string) Publication {
 			}
 		}
 	}
-	if !filtered {
-		return p
+	if filtered {
+		p = p.With(GroupCaptures(captures))
 	}
-	return p.With(GroupCaptures(captures))
+	// Keep the complete publication for history, details and edit totals. A
+	// zero line count alone cannot hide moves, empty creations or unknown bytes.
+	// Link captures do not retain each endpoint's type, so identical rendered
+	// text cannot prove that a regular-file/symlink replacement was reversed.
+	var files []File
+	var visible map[string]File
+	for i, file := range p.Files {
+		composed, known := p.Unfiltered[file.Key()]
+		if known && !composed.incomplete && len(composed.Chunks) == 0 &&
+			!slices.ContainsFunc(file.Chunks, func(chunk Chunk) bool { return chunk.Review.Link }) {
+			if visible == nil {
+				files = slices.Clone(p.Files[:i])
+				visible = maps.Clone(p.Unfiltered)
+			}
+			delete(visible, file.Key())
+		} else if visible != nil {
+			files = append(files, file)
+		}
+	}
+	if visible != nil {
+		p.Files, p.Unfiltered = files, visible
+	}
+	return p
 }
 
 // Snapshot owns exact attempts and their one derived publication. Its contents

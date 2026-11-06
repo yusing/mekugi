@@ -245,6 +245,14 @@ never the application directory. Moves crossing that boundary remain visible
 with both endpoints. Capture, retained history, `mchanges`, exact-operation
 details and published edit totals remain complete.
 
+Files whose captured changes compose to a confirmed empty result are also omitted
+from the saved file list and content, including their provenance-only sections.
+Zero line counts alone do not establish an empty result: moves, empty-file
+creation/deletion, binary, incomplete and inconsistent evidence remain visible.
+Link evidence also remains visible when identical rendered text cannot establish
+that the file type is unchanged.
+Later edits can make an omitted file visible again from its complete capture history.
+
 The presentation owner also supplies bounded source-text edit receipts for live
 observations and retained review. Receipts preserve captured provenance, group
 confirmed directory removals, and distinguish evidence gaps from confirmed edits.

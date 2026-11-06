@@ -344,3 +344,68 @@ func TestPublishLivePreviewLifecycle(t *testing.T) {
 		t.Fatalf("replay acquired live-only state: %s", fields)
 	}
 }
+
+func TestSavedReviewOmitsRevertedFilesAndContent(t *testing.T) {
+	captures := []changes.Chunk{
+		reviewChunk(1, "/root", "/project/reverted", "/project/reverted", "old\n", "draft\n"),
+		reviewChunk(2, "/root", "/project/kept", "/project/kept", "old\n", "kept\n"),
+		reviewChunk(3, "/root/child", "/project/reverted", "/project/reverted", "draft\n", "old\n"),
+	}
+	server := NewLive()
+	sub := reviewSubscriber(t, server)
+	view := familyReview(captures[:2]...)
+	publishReviewFrame(t, server, Frame{Review: view})
+	first := reviewEvent(t, sub, "snapshot")
+	var metadata savedReview
+	if err := json.Unmarshal(first["review"], &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.FileCount != 2 {
+		t.Fatalf("before revert: %+v", metadata)
+	}
+	view = familyReview(captures...)
+	view.Revision++
+	publishReviewFrame(t, server, Frame{Review: view})
+	updated := reviewEvent(t, sub, "patch")
+	if err := json.Unmarshal(updated["review"], &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.FileCount != 1 || metadata.Page == nil {
+		t.Fatalf("after revert: %+v", metadata)
+	}
+	value, failure := server.page(testJSON(t, metadata.Page))
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	page := value.(PageResult)
+	if len(page.Files) != 1 || page.Files[0].Path != "/project/kept" {
+		t.Fatalf("saved file list: %+v", page)
+	}
+	value, failure = server.content(testJSON(t, page.Files[0].Content))
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	content := value.(ContentResult).Review
+	if len(content.Chunks) != 1 || len(content.Origins) != 1 || content.Origins[0].Change != captures[1].Change {
+		t.Fatalf("saved content: %+v", content)
+	}
+	_, failure = server.content(testJSON(t, ContentReference{Attachment: server.readAttachment, Kind: "review", Revision: view.Revision, Key: reviewIdentity(captures[0].Key)}))
+	if failure == nil || failure.Data == nil || failure.Data.Status != 404 {
+		t.Fatalf("empty provenance-only content remains readable: %+v", failure)
+	}
+	if len(view.Files) != 2 || len(view.Unfiltered) != 2 {
+		t.Fatal("saved publication mutated its retained source")
+	}
+
+	// Family composition must see both operations before applying saved-pane
+	// policy, even when the original and reversal belong to separate runtimes.
+	hub := NewHub(t.Context(), nil)
+	root := familyRuntime(hub, nil, Frame{Session: Session{Thread: "root", Workspace: "/project"}, Review: familyReview(captures[:2]...)})
+	familyRuntime(hub, root, Frame{Session: Session{Thread: "child", Caller: "/root/child", Workspace: "/project"}, Review: familyReview(captures[2])})
+	for _, thread := range []string{"root", "child"} {
+		_, diff := hub.Family(thread)
+		if len(diff.Files) != 1 || diff.Files[0].Path != "/project/kept" || len(diff.Unfiltered) != 1 {
+			t.Fatalf("%s family saved review: %+v", thread, diff)
+		}
+	}
+}
