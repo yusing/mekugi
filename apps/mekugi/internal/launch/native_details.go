@@ -91,7 +91,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 				}
 			}
 		}
-		if request.Path != "" {
+		if request.Edit || request.Path != "" {
 			if !openActivityEdit(&v.attached, v.shell, &v.files, v.changes, v.shell, terminal, request.Source, request.Path) {
 				return sessionpresentation.ErrStaleIntent.Error()
 			}
@@ -106,16 +106,18 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		}
 		var pages []activity.DetailPage
 		for _, seq := range sources {
-			// A batch edit uses the admitted change owner's complete file pages.
-			if edits, _ := activityEditPages(&v.attached, v.shell, v.changes, terminal, seq, ""); len(edits) > 0 {
-				pages = append(pages, edits...)
-				continue
-			}
 			next := entryDetailPages(activitySource(&v.attached, v.shell, terminal), seq)
 			if len(next) == 0 {
 				return sessionpresentation.ErrStaleIntent.Error()
 			}
 			pages = append(pages, next...)
+			// Source-only row details also expose retained edits, without replacing
+			// the Activity pages needed by source and output disclosures.
+			if request.Source == seq && request.Operation == 0 && request.Output == 0 && len(request.Sources) == 0 {
+				if edits, _ := activityEditPages(&v.attached, v.shell, v.changes, terminal, seq, ""); len(edits) > 0 {
+					pages = append(pages, edits...)
+				}
+			}
 		}
 		if len(pages) == 0 {
 			return sessionpresentation.ErrStaleIntent.Error()

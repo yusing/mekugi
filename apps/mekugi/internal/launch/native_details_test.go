@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +12,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	changehistory "github.com/yusing/mekugi/modules/changehistory/presentation"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -282,6 +285,66 @@ func TestNativeChildDialogLinkKeepsSourceAcrossNavigation(t *testing.T) {
 			request := c.calls[0].operation.Details
 			if request.Displayed != detail.Source || request.Path != "source.go" {
 				t.Fatalf("retained dialog link changed source: %+v", request)
+			}
+		})
+	}
+}
+
+func TestNativeOutputDisclosureWithCapturedEdits(t *testing.T) {
+	for _, captured := range []bool{false, true} {
+		t.Run(fmt.Sprint(captured), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			output := u.activity.Outputs(u.attached.session.Scope()).New()
+			output.Finish(new("one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n"), new(0))
+			native := &sessionpresentation.NativeItem{Thread: "main", Item: "loop", Command: "printf output", Output: output, Exit: new(0)}
+			if captured {
+				native.CapturedEdit = &changehistory.Receipt{Thread: "main", Calls: []string{"loop"}, Pages: []activitydetail.Page{{ID: "edit:1", Verb: "Created", Path: "first.go", Code: "+first"}, {ID: "edit:2", Verb: "Created", Path: "second.go", Code: "+second"}}}
+			}
+			u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `printf output`", OutputTail: []string{"seven", "eight"}, OutputOmit: 6, Native: native}}})
+			_, view, _ := nativeDetailTestViews(t, u)
+			publishActivity(&view.attached, view.shell)
+			pages := entryDetailPages(activitySource(&view.attached, view.shell, view.shell.Transcript), 1)
+			if len(pages) == 0 {
+				t.Fatal("missing activity pages")
+			}
+			page := pages[len(pages)-1]
+			request := sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: page.Source, Operation: page.Operation, Output: page.Output}
+			if refusal := view.openDetails(request); refusal != "" {
+				t.Fatal(refusal)
+			}
+			frame := nativeDetailFrame(view)
+			if frame.Details == nil || frame.Details.Output == nil || strings.Join(frame.Details.Output.View.Lines, "\n") != "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight" {
+				t.Fatalf("output not selected: %+v", frame.Details)
+			}
+			request.Operation += 1000
+			if refusal := view.openDetails(request); refusal == "" || nativeDetailFrame(view).Details.View.ID != frame.Details.View.ID {
+				t.Fatal("stale operation replaced output")
+			}
+			if !captured {
+				return
+			}
+			// The browser's source-only Details action retains both Activity and edits.
+			if refusal := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: 1}); refusal != "" {
+				t.Fatal(refusal)
+			}
+			row := nativeDetailFrame(view).Details
+			if row == nil || len(row.View.Pages) < 3 || row.View.Pages[len(row.View.Pages)-1].ID != "edit:2" {
+				t.Fatalf("source details lost captured edits: %+v", row)
+			}
+			for _, tc := range []struct{ path, selected string }{{"second.go", "edit:2"}, {"", "edit:1"}} {
+				request = sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: 1, Edit: true, Path: tc.path}
+				if refusal := view.openDetails(request); refusal != "" {
+					t.Fatal(refusal)
+				}
+				detail := nativeDetailFrame(view).Details
+				if detail == nil || len(detail.View.Pages) != 2 || detail.Selected != tc.selected {
+					t.Fatalf("edit selection: %+v", detail)
+				}
+			}
+			request.Path = "missing.go"
+			before := nativeDetailFrame(view).Details.View.ID
+			if refusal := view.openDetails(request); refusal == "" || nativeDetailFrame(view).Details.View.ID != before {
+				t.Fatal("stale edit replaced selection")
 			}
 		})
 	}

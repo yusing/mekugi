@@ -212,6 +212,7 @@ type NativeDetailRequest struct {
 	Operation    int `json:",omitzero"`
 	Sources      []uint64
 	Agent        bool
+	Edit         bool `json:",omitzero"`
 	Path, Caller string
 }
 

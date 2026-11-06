@@ -312,6 +312,7 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 					request := sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: target.Entry, Agent: target.View == u.Agents, Displayed: sessionpresentation.Thread{ID: target.Thread}}
 					if target.Entry == 0 {
 						request.Source, request.Path = target.Snippet.Run, target.Snippet.Path
+						request.Edit = target.Snippet.Block == activityui.EditNavigationSnippet
 						if block, ok := target.View.SnippetBlock(target.Snippet); ok {
 							request.Source, request.Output = block.Source, block.Output
 							request.Operation = block.Operation
