@@ -386,22 +386,22 @@ replacement provenance can combine enriched replies; text similarity is not proo
 With invocation-level `child_reply_summary` enabled (the default), completed child
 replies can carry a child-authored summary and supporting details in one original
 message. A leading top-level `## Summary` after optional blank lines, nonblank
-summary content, then top-level `## Details` and nonblank details identify it.
-Labels are exact and case-sensitive. Quoted, indented and fenced lookalikes are
-ordinary content; another Summary before Details is ambiguous and falls back.
-Everything after the first valid Details delimiter is ordinary detail content.
+summary content, then the next unindented ATX heading of any level and nonblank
+content after it identify it. The Summary label is exact and case-sensitive.
+Quoted, indented and fenced lookalikes are ordinary content. Details start at
+that heading, which they keep unless it is exactly `## Details`.
 Activity derives summary and details once at its shared presentation boundary, preserving
 source identity and original content without a second record or persistent store.
 
 Default Main disclosure shows the complete summary with normal Markdown wrapping
 and `↩ Open reply`, without an excerpt limit or omitted-detail line count. Explicit
-expanded disclosure shows summary and details once, without their delimiter headings;
+expanded disclosure shows summary and details once, without the Summary heading;
 the child transcript retains the original body. Missing,
 malformed, empty and in-flight structures use the existing excerpt and dialog:
 four wrapped rows for the latest reply, two for earlier replies. Disabling the
 feature selects that fallback even for retained structured replies. Root ordinary
 answers remain unchanged. Opening selects the exact retained Activity entry and
-shows its supporting details without repeating the summary or delimiter headings,
+shows its supporting details without repeating the summary or its heading,
 subject to explicit retention limits. Full-copy actions preserve the original body.
 Replies remain expandable from their receiving transcript when the sender's Activity
 history is unavailable.

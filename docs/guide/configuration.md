@@ -38,8 +38,8 @@ to that invocation and its child threads, never write the file or saved session
 settings, and are preserved in the printed resume command. A fresh launch or
 resume reads the current file again.
 
-Child replies normally include a short authored Summary and supporting Details in
-one response. Main shows the complete summary; **Open reply** shows supporting
+Child replies normally begin with a short authored Summary, followed by supporting
+sections, in one response. Main shows the complete summary; **Open reply** shows supporting
 details without repeating it. Full-copy actions keep the original response.
 Plain or malformed replies keep the excerpt fallback. Set
 `child_reply_summary = false` or launch `mekugi --child-reply-summary=false codex`

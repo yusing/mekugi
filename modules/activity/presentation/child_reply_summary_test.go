@@ -15,13 +15,16 @@ func TestChildReplySummaryInterpretation(t *testing.T) {
 		{"leading blanks", "\n \t\n" + valid, summary},
 		{"CRLF", strings.ReplaceAll(valid, "\n", "\r\n"), summary},
 		{"later headings ordinary", valid + "\n## Summary\nMore detail\n## Details\nStill detail", summary},
+		{"chosen section", "## Summary\n" + summary + "\n\n### Evidence\nTests.", summary},
+		{"top heading", "## Summary\n" + summary + "\n# Findings\nTests.", summary},
+		{"summary only", "## Summary\n" + summary, ""},
+		{"hashtag", "## Summary\nOutcome\n#tag\n## Notes\nEvidence", "Outcome\n#tag"},
 		{"plain", "A short acknowledgement", ""},
 		{"preamble", "Introduction\n" + valid, ""},
 		{"case", strings.Replace(valid, "## Summary", "## summary", 1), ""},
 		{"trailing space", strings.Replace(valid, "## Summary", "## Summary ", 1), ""},
 		{"empty summary", "## Summary\n \t\n## Details\nEvidence", ""},
 		{"empty details", "## Summary\nOutcome\n## Details\n \t", ""},
-		{"repeated summary", "## Summary\nOutcome\n## Summary\nOther\n## Details\nEvidence", ""},
 		{"partial", "## Summary\nOutcome\n## Det", ""},
 		{"quoted", "> " + strings.ReplaceAll(valid, "\n", "\n> "), ""},
 		{"indented", "    " + strings.ReplaceAll(valid, "\n", "\n    "), ""},
@@ -43,6 +46,9 @@ func TestChildReplySummaryInterpretation(t *testing.T) {
 				}
 				if tc.want != "" && (strings.TrimSpace(values[0].ReplyDetails) == "" || values[0].Body != textsanitize.MarkdownSource(tc.body)) {
 					t.Fatalf("details or original body lost: %#v", values[0])
+				}
+				if tc.name == "valid" && values[0].ReplyDetails != "Evidence and references." || tc.name == "chosen section" && values[0].ReplyDetails != "### Evidence\nTests." {
+					t.Fatalf("details = %q", values[0].ReplyDetails)
 				}
 				entry.ItemComplete = false
 				if entry.Values()[0].ReplySummary != "" {

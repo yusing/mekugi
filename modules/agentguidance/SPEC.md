@@ -85,7 +85,8 @@ does not assert the current workspace state.
 The invocation's `child_reply_summary` feature conditionally contributes a rule
 inside the existing marked workflow section. Enabled children author child-to-parent
 directed messages and final answers long enough to benefit from structure with a concise, meaningful
-`## Summary` and supporting `## Details` in the same existing reply generation.
+`## Summary` in the same existing reply generation, followed by supporting sections
+under headings the child chooses.
 The summary states the actual result, findings or blocker and material uncertainty,
 normally in one to three sentences. Short replies may remain plain, including substantive
 replies with supporting details; they need no padding or duplicate summary.

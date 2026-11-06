@@ -9,6 +9,8 @@ import (
 
 // replySections interprets only completed child replies. Its result is detached
 // presentation data on the same identified value as the unmodified source body.
+// The summary ends at the next heading the child chose; the details disclosure
+// already labels its content, so a "## Details" heading is omitted.
 func (entry ItemContent) replySections(body string) (summary, details string) {
 	if !entry.ItemComplete || entry.Agent == "" || entry.Agent == "/root" || entry.Agent == "Main" {
 		return "", ""
@@ -43,16 +45,23 @@ func (entry ItemContent) replySections(body string) (summary, details string) {
 			fence = trimmed[:len(trimmed)-len(strings.TrimLeft(trimmed, "~"))]
 			continue
 		}
-		switch line {
-		case "## Summary":
-			return "", ""
-		case "## Details":
-			summary := strings.Join(lines[start:i], "\n")
-			if strings.TrimSpace(summary) != "" && strings.TrimSpace(strings.Join(lines[i+1:], "\n")) != "" {
-				return textsanitize.MarkdownSource(summary), textsanitize.MarkdownSource(strings.Join(lines[i+1:], "\n"))
-			}
+		if !heading(line) {
+			continue
+		}
+		summary, details := strings.Join(lines[start:i], "\n"), strings.Join(lines[i+1:], "\n")
+		if strings.TrimSpace(summary) == "" || strings.TrimSpace(details) == "" {
 			return "", ""
 		}
+		if line != "## Details" {
+			details = line + "\n" + details
+		}
+		return textsanitize.MarkdownSource(summary), textsanitize.MarkdownSource(details)
 	}
 	return "", ""
+}
+
+// heading reports an unindented ATX heading line.
+func heading(line string) bool {
+	level := len(line) - len(strings.TrimLeft(line, "#"))
+	return level >= 1 && level <= 6 && (len(line) == level || line[level] == ' ' || line[level] == '\t')
 }
