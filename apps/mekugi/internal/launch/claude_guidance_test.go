@@ -58,6 +58,11 @@ func TestClaudeGuidanceAndPreload(t *testing.T) {
 	if !strings.Contains(value["append"], threadbinding.CompletionChangesGuidance) {
 		t.Fatal("Claude prompt omitted completion selection guidance")
 	}
+	for _, instruction := range []string{"read the saved file completely through shell tools before dependent work", "report unavailable or truncated guidance instead of assuming it was loaded"} {
+		if !strings.Contains(value["append"], instruction) {
+			t.Fatalf("Claude system append omitted startup recovery instruction %q", instruction)
+		}
+	}
 	if !strings.Contains(value["append"], "reviewer: Review the implementation. (model: codex-pinned, role-selected) (model_reasoning_effort: high, role-selected)") {
 		t.Fatalf("native guidance omitted the selected Codex role catalog: %s", prompt)
 	}

@@ -35,6 +35,9 @@ appends captured custom/role instructions and coordination guidance to the syste
 prompt. The authenticated shell frontend catalog and workflow arrive as SessionStart
 context from a settings command hook, which runs for startup, resume and compaction and
 places it in the conversation alongside Claude Code's project instructions. Codex JavaScript execution guidance stays with Codex.
+If Claude replaces SessionStart context with a saved-output preview, the system
+append requires reading the complete saved file through shell tools before dependent
+work, or reporting unavailable or truncated guidance rather than assuming it loaded.
 Captured approvals, role reductions and Thread Control coordination remain authoritative.
 Native delegation and team tools are disabled. The native Skill tool is
 available unless skills-mgr is on the delegate PATH, which then owns skill acquisition. Native main-agent selection cannot

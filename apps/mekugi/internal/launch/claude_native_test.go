@@ -21,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	commandcontract "github.com/yusing/mekugi/contracts/command"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -97,10 +98,20 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	workspace := b.settings.Workspace
 	claudeConfig := t.TempDir()
 	excluded := filepath.Join(workspace, "AGENTS.md")
+	oversizedGuidance := "oversized-native-startup-fixture\n" + strings.Repeat("startup guidance line\n", 650) + "startup-guidance-tail"
+	startupHook, err := claudeGuidanceSettings(oversizedGuidance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var startupSettings map[string]jsontext.Value
+	if err := json.Unmarshal(startupHook, &startupSettings); err != nil {
+		t.Fatal(err)
+	}
 	nativeSettings, err := json.Marshal(map[string]any{
 		"autoMemoryEnabled": true,
 		"attribution":       map[string]string{"commit": "", "pr": ""},
 		"claudeMdExcludes":  []string{excluded, filepath.Join(claudeConfig, "CLAUDE.md")},
+		"hooks":             startupSettings["hooks"],
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -430,12 +441,74 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 		t.Fatalf("fixture requests: %v", err)
 	}
 	const workflow = "Reuse completed edit-receipt IDs"
+	specs := make([]commandcontract.Spec, len(b.owners.Commands))
+	for i, contribution := range b.owners.Commands {
+		specs[i] = contribution.Spec
+	}
+	guidance, err := b.owners.Guidance.Frontends(specs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i, request := range requests {
 		if strings.Contains(string(request.System), workflow) {
 			t.Errorf("request %d carries frontend guidance in the system prompt", i)
 		}
+		for _, instruction := range []string{"read the saved file completely through shell tools before dependent work", "report unavailable or truncated guidance instead of assuming it was loaded"} {
+			if !strings.Contains(string(request.System), instruction) {
+				t.Errorf("request %d omitted startup recovery instruction %q", i, instruction)
+			}
+		}
 	}
-	if !strings.Contains(string(requests[0].Messages), workflow) || compact == "success" && !strings.Contains(string(requests[len(requests)-1].Messages), workflow) {
-		t.Error("frontend guidance missing from initial or post-compaction context")
+	for _, index := range []int{0, len(requests) - 1} {
+		if index != 0 && compact != "success" {
+			continue
+		}
+		var messages []struct {
+			Content jsontext.Value `json:"content"`
+		}
+		if err := json.Unmarshal(requests[index].Messages, &messages); err != nil {
+			t.Fatal(err)
+		}
+		found, recoveredOversized := false, false
+		for _, message := range messages {
+			if message.Content.Kind() != '[' {
+				continue
+			}
+			var blocks []struct {
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal(message.Content, &blocks); err != nil {
+				t.Fatal(err)
+			}
+			for _, block := range blocks {
+				if !strings.Contains(block.Text, "SessionStart hook additional context:") {
+					continue
+				}
+				if strings.Contains(block.Text, guidance.Shell) {
+					found = true
+				}
+				for _, saved := range strings.Split(block.Text, "Full output saved to: ")[1:] {
+					path, _, _ := strings.Cut(saved, "\n")
+					body, err := os.ReadFile(path)
+					if err != nil {
+						t.Fatalf("request %d startup guidance not recoverable: %v", index, err)
+					}
+					switch string(body) {
+					case guidance.Shell:
+						found = true
+					case oversizedGuidance:
+						recoveredOversized = true
+					default:
+						t.Fatalf("request %d saved startup guidance differs from its producer", index)
+					}
+				}
+			}
+		}
+		if !found {
+			t.Errorf("request %d lacks complete inline or recoverable startup guidance", index)
+		}
+		if !recoveredOversized {
+			t.Errorf("request %d lacks byte-exact recovery for oversized startup guidance", index)
+		}
 	}
 }
