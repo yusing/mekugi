@@ -60,7 +60,14 @@ Invocation overrides leave Codex configuration unchanged.
   Open attachable children to read their transcripts and steer them.
 - **Catch mistakes before they land.** [Edits stream into the Diff pane](docs/guide/terminal-ui.md#live-diff-pane)
   while the agent writes them. Steer or interrupt the turn, [stop one running command](docs/guide/terminal-ui.md#composer),
-  or deny [remote writes and sudo](docs/guide/approvals.md) before they run.
+  or deny commands before they run.
+- **VCS remote-write and sudo guards.** [Approve or deny supported remote writes](docs/guide/approvals.md)
+  for Git, GitHub, Mercurial, SVN and Jujutsu, plus sudo commands, even with
+  `--yolo`. Guards require interactive, unsandboxed execution and do not cover
+  every way a program can perform a remote write.
+- **Private sudo passwords and GPG passphrases.** Enter secrets in a
+  [dedicated dialog](docs/guide/approvals.md), not the conversation. Passwords and
+  passphrases stay out of model input and retained history, including for Git signing.
 - **Review what happened.** Open saved edits by hunk, [searchable per-command output](docs/guide/terminal-ui.md#output-dialog),
   compaction events, and [usage, throughput and cost](docs/guide/configuration.md#metrics).
   Missing evidence and provisional previews are labeled. Past sessions can be
