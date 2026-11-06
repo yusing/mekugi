@@ -262,8 +262,10 @@ children. Unavailable ignore rules explicitly omit the affected listing. Directo
 snapshots share file envelopes, receipts and content dialogs.
 
 Selected-text mentions follow file frames in the same envelope, preserving their
-label and optional source path. Their quote headers omit byte coordinates, and
-optional recall publishes plain quoted text rather than an attachment envelope.
+label and optional source path. Their XML boundaries retain the selection label, optional source and quoted-input
+meaning without byte coordinates. Selected diffs also carry a collision-free
+Markdown diff fence. Initial delivery and optional recall use the same framing;
+recall publishes quoted text rather than a serialized attachment envelope.
 Selections over 96 KiB are refused with a notice.
 A quote exceeding the remaining envelope budget becomes an explicit omission
 frame, reported by the composer. Question answers use the same bound tokens and

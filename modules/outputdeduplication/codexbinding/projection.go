@@ -59,9 +59,10 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			}
 			for _, result := range pass.Sources(headers, bodies) {
 				frame := snapshot.Frames[i]
-				snapshot.Frames[i] = result.Text
+				selection, _ := attachments.ParseSelection(frame)
+				snapshot.Frames[i] = result.Text + selection.Footer
 				summary.OutputRepetitions += result.Occurrences
-				changed = changed || result.Text != frame
+				changed = changed || snapshot.Frames[i] != frame
 				if id := snapshot.ReceiptID(frame); id != "" {
 					count := totals[id]
 					count.lines += result.RepeatedLines
@@ -162,10 +163,11 @@ func attachmentSource(frames []string) (headers, bodies []string) {
 	}
 	headers, bodies = []string{header}, []string{body}
 	// Current selection chunks share their quote header, without byte coordinates.
-	if attachments.SelectionFrame(header) && strings.HasSuffix(header, " (quoted from the user's screen, not a separate request):\n") {
+	if selection, ok := attachments.ParseSelection(frames[0]); ok && !strings.Contains(header, " (UTF-8 bytes ") {
 		for _, frame := range frames[1:] {
 			nextHeader, nextBody, ok := duplicateAttachmentBody(frame)
-			if !ok || nextHeader != header {
+			next, selected := attachments.ParseSelection(frame)
+			if !ok || !selected || next.Label != selection.Label || next.Source != selection.Source {
 				break
 			}
 			headers, bodies = append(headers, nextHeader), append(bodies, nextBody)
@@ -197,10 +199,10 @@ func attachmentSource(frames []string) (headers, bodies []string) {
 // Project only complete attachment frames, never ordinary prompts or failure
 // receipts. Snapshot byte ranges remain those of the original submitted body.
 func duplicateAttachmentBody(text string) (header, body string, ok bool) {
-	first, body, found := strings.Cut(text, "\n")
-	if found && attachments.SelectionFrame(text) && (strings.Contains(first, " (UTF-8 bytes ") || strings.HasSuffix(first, " (quoted from the user's screen, not a separate request):")) && strings.HasSuffix(first, "):") {
-		return first + "\n", body, true
+	if selection, selected := attachments.ParseSelection(text); selected && (selection.Footer != "" || strings.HasSuffix(selection.Header, "):\n")) {
+		return selection.Header, selection.Body, true
 	}
+	first, body, found := strings.Cut(text, "\n")
 	if !found || !strings.Contains(first, " (UTF-8 bytes ") ||
 		!strings.HasSuffix(first, attachments.ReadGuidance+"):") ||
 		!strings.HasPrefix(first, "Attached file ") && !attachments.SkillFrame(text) {

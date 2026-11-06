@@ -227,3 +227,50 @@ func TestUISnapshotOutputDeduplicationAttachments(t *testing.T) {
 		})
 	}
 }
+
+func TestSelectionLargeDiffFenceSurvivesModelProjection(t *testing.T) {
+	const label = "[Selected diff]"
+	body := strings.Repeat("`", attachments.Chunk)
+	draft := composer.Draft{Text: label, Selections: []composer.Token{{Start: 0, End: len(label), Text: body}}}
+	draft.SnapshotFiles("")
+	if err := draft.IdentifyAttachments("selection"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, ok := attachments.DecodeSnapshot(draft.Attachments[0])
+	if !ok {
+		t.Fatal("selection producer emitted an invalid envelope")
+	}
+	file := composer.FileFrames("/file.txt", "FILE_BODY")[0]
+	skill := composer.SkillFrames("guide", "", "SKILL_BODY")[0]
+	snapshot.Frames = append(snapshot.Frames, file, skill)
+	input := []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": snapshot.Encode()}}}}
+	proxy := newManagedMekugiProxy(t)
+	proxy.inputProjections = testInputProjections()
+	request := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
+	changed, ids := requestexecution.ProjectFileAttachments(request)
+	if !changed || len(ids) != 2 || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
+		t.Fatal("projected mixed envelope did not expand")
+	}
+	items := duplicateTestItems(t, request)
+	if len(items) != 3 {
+		t.Fatalf("expanded messages: %d", len(items))
+	}
+	var frames []string
+	for _, item := range items {
+		var content []map[string]string
+		if err := json.Unmarshal(item["content"], &content); err != nil || len(content) != 1 {
+			t.Fatalf("projected content: %s, %v", item["content"], err)
+		}
+		frames = append(frames, content[0]["text"])
+	}
+	selection, ok := attachments.ParseSelection(frames[0])
+	if !ok || selection.Body != "O1:\n"+body || !strings.HasSuffix(selection.Footer, "</selected-text>") {
+		t.Fatal("large diff fence or source bytes lost after deduplication")
+	}
+	for i, original := range []string{file, skill} {
+		header, body, _ := strings.Cut(original, "\n")
+		if frames[i+1] != fmt.Sprintf("%s\nO%d:\n%s", header, i+2, body) {
+			t.Fatalf("file or skill framing changed: %q", frames[i+1])
+		}
+	}
+}

@@ -2,9 +2,7 @@
 package composer
 
 import (
-	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -20,13 +18,11 @@ func SelectionLabel(label string) bool {
 // frames; nothing is dropped silently.
 func (d Draft) selectionFrames(selection Token) []string {
 	label := d.Text[selection.Start:selection.End]
-	origin := ""
-	if selection.Source != "" {
-		origin = fmt.Sprintf(" from %q", selection.Source)
+	frames := frameText(selection.Text, func(_, _, _ int) string { return "" })
+	for i, body := range frames {
+		frames[i] = attachments.FormatSelection(label, selection.Source, body)
 	}
-	return frameText(selection.Text, func(_, _, _ int) string {
-		return fmt.Sprintf(attachments.SelectionPrefix+"%q%s (quoted from the user's screen, not a separate request):\n", label, origin)
-	})
+	return frames
 }
 
 // RestoreSelections rebinds mentions from their submitted frames, so recalled
@@ -36,24 +32,11 @@ func RestoreSelections(text string, frames []string) []Token {
 	var labels []string
 	quotes := make(map[string]*Token)
 	for _, frame := range frames {
-		rest, ok := strings.CutPrefix(frame, attachments.SelectionPrefix)
-		quoted, err := strconv.QuotedPrefix(rest)
-		if !ok || err != nil {
+		selection, ok := attachments.ParseSelection(frame)
+		if !ok || !SelectionLabel(selection.Label) {
 			continue
 		}
-		label, _ := strconv.Unquote(quoted)
-		rest = rest[len(quoted):]
-		source := ""
-		if after, ok := strings.CutPrefix(rest, " from "); ok {
-			if quoted, err := strconv.QuotedPrefix(after); err == nil {
-				source, _ = strconv.Unquote(quoted)
-				rest = after[len(quoted):]
-			}
-		}
-		header, body, ok := strings.Cut(rest, "\n")
-		if !ok || (!strings.HasPrefix(header, " (UTF-8 bytes ") && header != " (quoted from the user's screen, not a separate request):") || !SelectionLabel(label) {
-			continue
-		}
+		label, source, body := selection.Label, selection.Source, selection.Body
 		if quotes[label] == nil {
 			labels = append(labels, label)
 			quotes[label] = &Token{Source: source}

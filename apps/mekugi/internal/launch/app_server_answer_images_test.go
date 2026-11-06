@@ -80,7 +80,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 		t.Fatalf("images became paths: %+v", input)
 	}
 	frames, ok := attachments.Decode(input[3].Text)
-	if !ok || len(frames) != 2 || !strings.HasSuffix(frames[0], "\nfirst quote") || !strings.HasSuffix(frames[1], "\nsecond quote") {
+	if !ok || len(frames) != 2 || !strings.HasSuffix(frames[0], "\nfirst quote\n</selected-text>") || !strings.HasSuffix(frames[1], "\nsecond quote\n</selected-text>") {
 		t.Fatalf("answer selections lost: %q", frames)
 	}
 	content, err := json.Marshal(conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft))

@@ -57,7 +57,7 @@ func TestQuestionSelectedTextUsesComposerAttachments(t *testing.T) {
 			}
 			input := conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)
 			frames, ok := attachments.Decode(input[len(input)-1]["text"].(string))
-			if !ok || len(frames) != 1 || !strings.HasSuffix(frames[0], "\nquoted") || !strings.Contains(frames[0], `"[Selected message]"`) {
+			if !ok || len(frames) != 1 || !strings.HasSuffix(frames[0], "\nquoted\n</selected-text>") || !strings.Contains(frames[0], `"[Selected message]"`) {
 				t.Fatalf("selection lost in transport: %+v", input)
 			}
 		})
@@ -104,7 +104,7 @@ func TestQuestionSecretAndOrdinarySelectionsKeepDistinctLabels(t *testing.T) {
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "mixed-selection"})
 	input := conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)
 	frames, ok := attachments.Decode(input[len(input)-1]["text"].(string))
-	if !ok || len(frames) != 2 || !strings.Contains(frames[0], `"[Selected message]"`) || !strings.HasSuffix(frames[0], "\nprivate quote") || !strings.Contains(frames[1], `"[Selected message 2]"`) || !strings.HasSuffix(frames[1], "\nordinary quote") {
+	if !ok || len(frames) != 2 || !strings.Contains(frames[0], `"[Selected message]"`) || !strings.HasSuffix(frames[0], "\nprivate quote\n</selected-text>") || !strings.Contains(frames[1], `"[Selected message 2]"`) || !strings.HasSuffix(frames[1], "\nordinary quote\n</selected-text>") {
 		t.Fatalf("companion selection frames = %q", frames)
 	}
 }

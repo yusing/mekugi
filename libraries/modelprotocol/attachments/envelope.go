@@ -71,7 +71,14 @@ func DecodeSnapshot(text string) (Snapshot, bool) {
 		return Snapshot{}, false
 	}
 	for _, frame := range snapshot.Frames {
-		if len(frame) > Chunk+4096 || !strings.HasPrefix(frame, "Attached file ") && !SelectionFrame(frame) && !SkillFrame(frame) {
+		if len(frame) > Chunk+4096 {
+			// A collision-free diff fence can exceed the ordinary header allowance.
+			selection, ok := ParseSelection(frame)
+			if !ok || selection.Footer == "" || len(selection.Body) > Chunk+4096 {
+				return Snapshot{}, false
+			}
+		}
+		if !strings.HasPrefix(frame, "Attached file ") && !SelectionFrame(frame) && !SkillFrame(frame) {
 			return Snapshot{}, false
 		}
 	}
@@ -136,9 +143,9 @@ func ParseSkillFrame(frame string) (name, path, rest string) {
 	return name, path, rest
 }
 
-// SelectionPrefix starts every selection frame, including omissions.
+// SelectionPrefix starts historical selection frames and current omission notices.
 const SelectionPrefix = "Selected text for "
 
 func SelectionFrame(frame string) bool {
-	return strings.HasPrefix(frame, SelectionPrefix)
+	return strings.HasPrefix(frame, SelectionPrefix) || strings.HasPrefix(frame, "<selected-text ")
 }

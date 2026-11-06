@@ -43,8 +43,9 @@ A unit is one host-produced text part of a `function_call_output` or
 `custom_tool_call_output`, or one submitted file, skill or selected-text frame body in a
 user message through a complete durable envelope in an `input_text` part.
 Complete attachment envelopes recovered in original tool output, including
-multi-handle `mread` results, use the same source matching. Plain selected-text
-recall uses ordinary tool-output matching.
+multi-handle `mread` results, use the same source matching. Selected-text
+recall outside envelopes uses ordinary tool-output matching. Selection XML
+boundaries and diff fences remain intact when bodies are deduplicated.
 A string output is one part. Execution and attachment headers remain
 verbatim. Durable attachment envelopes use their submitted bodies; files and skills
 are never reopened to infer equality. Compaction reader results participate as

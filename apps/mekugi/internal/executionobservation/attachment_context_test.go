@@ -265,16 +265,21 @@ func attachmentTestReadHints(t *testing.T, p *Preparer, thread string, input []b
 }
 
 func TestAttachmentContextPreservesSubmittedImagePath(t *testing.T) {
-	for _, mixed := range []bool{false, true} {
+	for _, kind := range []string{"", "message", "diff"} {
+		mixed := kind != ""
 		for _, origin := range []string{"image", "answer"} {
-			t.Run(fmt.Sprintf("%s/mixed=%v", origin, mixed), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/selection=%s", origin, kind), func(t *testing.T) {
 				p := newManagedMekugiProxy(t)
 				attachTestReplayStore(t, p)
 				imagePath := filepath.Join(t.TempDir(), origin+"-image.png")
 				var editor composer.Editor
 				if mixed {
-					editor.InsertText("[Selected 1]")
-					editor.Selections = []composer.Token{{Start: 0, End: len(editor.Text), Text: "ORIGINAL_SELECTION\r\n日本語\n", Source: "screen"}}
+					editor.InsertText("[Selected " + kind + "]")
+					body := "ORIGINAL_SELECTION\r\n日本語\n"
+					if kind == "diff" {
+						body = "+ORIGINAL_SELECTION\r\n-日本語\n"
+					}
+					editor.Selections = []composer.Token{{Start: 0, End: len(editor.Text), Text: body, Source: "screen"}}
 				}
 				if origin == "answer" {
 					editor.InsertText(binding.EncodeQuestionReplies([]binding.QuestionReply{{Answer: "image answer", QuestionItemID: binding.AsyncQuestionIdentity("call", 0)}}))
@@ -323,6 +328,10 @@ func TestAttachmentContextPreservesSubmittedImagePath(t *testing.T) {
 				}
 				if mixed {
 					quote := strings.Join(values[0].Selection.Frames, "\n")
+					selection, ok := attachments.ParseSelection(quote)
+					if !ok || selection.Label != "[Selected "+kind+"]" || !strings.HasPrefix(selection.Header, "<selected-text ") || !strings.HasSuffix(selection.Footer, "</selected-text>") || (kind == "diff") != strings.HasSuffix(selection.Header, "```diff\n") {
+						t.Fatalf("recall lost selection or diff framing: %q", quote)
+					}
 					at := strings.Index(recalled, quote)
 					t.Logf("Recalled model-visible selection:\n%s", recalled[at:at+len(quote)])
 				}

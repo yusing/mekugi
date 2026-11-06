@@ -79,7 +79,7 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	}
 	envelope, _ := input[1]["text"].(string)
 	frames, ok := attachments.Decode(envelope)
-	want := "Selected text for \"[Selected diff hunk @amber1:42-45]\" from \"a.go\" (quoted from the user's screen, not a separate request):\n+new\n-old"
+	want := "<selected-text label=\"[Selected diff hunk @amber1:42-45]\" source=\"a.go\">\nQuoted from the user's screen, not a separate request:\n```diff\n+new\n-old\n```\n</selected-text>"
 	if !ok || !slices.Equal(frames, []string{want}) {
 		t.Fatalf("frames = %q, %v", frames, ok)
 	}

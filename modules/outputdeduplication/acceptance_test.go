@@ -178,7 +178,7 @@ func TestAcceptanceDurableAttachmentBodies(t *testing.T) {
 
 func TestAcceptanceChunkedSelectionAndWholeReload(t *testing.T) {
 	body := "START_SENTINEL" + strings.Repeat("a", 30000) + "END_SENTINEL"
-	draft := composer.Draft{Text: "[Selected 1]", Selections: []composer.Token{{Start: 0, End: 12, Text: body}}}
+	draft := composer.Draft{Text: "[Selected diff]", Selections: []composer.Token{{Start: 0, End: len("[Selected diff]"), Text: body}}}
 	draft.SnapshotFiles("")
 	if err := draft.IdentifyAttachments("selection"); err != nil {
 		t.Fatal(err)
@@ -202,8 +202,15 @@ func TestAcceptanceChunkedSelectionAndWholeReload(t *testing.T) {
 				at = 1
 			}
 			projected := decode(t, result.Input)[at]["content"].([]any)[0].(map[string]any)["text"].(string)
-			if _, ok := attachments.DecodeSnapshot(projected); !ok {
+			snapshot, ok := attachments.DecodeSnapshot(projected)
+			if !ok {
 				t.Fatal("projected chunks lost the supported envelope bounds")
+			}
+			for _, frame := range snapshot.Frames {
+				selection, ok := attachments.ParseSelection(frame)
+				if !ok || !strings.HasSuffix(selection.Header, "```diff\n") || selection.Footer != "\n```\n</selected-text>" {
+					t.Fatalf("deduplicated diff lost its framing: %q", frame[:min(200, len(frame))])
+				}
 			}
 		})
 	}
@@ -330,5 +337,14 @@ func TestAcceptanceRecoveredAttachmentsAndExplicitReload(t *testing.T) {
 		if bytes.Count(result.Input, []byte("SHORT_SKILL")) != 1 || bytes.Count(result.Input, []byte("SHORT_SELECTION")) != 1 {
 			t.Fatalf("recovered envelopes failed shared source dedup: %s", result.Input)
 		}
+	}
+}
+
+func TestAcceptanceMalformedLegacySelectionRemainsLiteral(t *testing.T) {
+	frame := "Selected text for \"[Selected message]\" (UTF-8 bytes not-a-range\nquoted bytes"
+	input := encode(t, []item{{"role": "user", "content": []item{textPart(attachments.Encode([]string{frame}))}}})
+	p := registeredProjection(t)
+	if result := p.Prepare(input)(input); !bytes.Equal(result.Input, input) {
+		t.Fatalf("malformed selection became a source: %s", result.Input)
 	}
 }

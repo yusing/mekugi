@@ -117,30 +117,32 @@ func TestUploadedFileRestoresThroughComposer(t *testing.T) {
 }
 
 func TestSelectionSnapshotRestoresWithoutCoordinates(t *testing.T) {
-	const label = "[Selected message]"
-	for _, body := range []string{"inspect-session\r\n日本語\n", strings.Repeat("日本語\n", 4000)} {
-		draft := Draft{Text: label, Selections: []Token{{Start: 0, End: len(label), Text: body, Source: "screen"}}}
-		draft.SnapshotFiles("")
-		frames, ok := attachments.Decode(draft.Attachments[0])
-		if !ok || len(frames) == 0 {
-			t.Fatal("selection snapshot missing")
-		}
-		var restoredBody strings.Builder
-		for _, frame := range frames {
-			header, part, ok := strings.Cut(frame, "\n")
-			if !ok || header != "Selected text for \"[Selected message]\" from \"screen\" (quoted from the user's screen, not a separate request):" {
-				t.Fatalf("selection framing: %q", header)
+	for _, label := range []string{"[Selected message]", "[Selected diff]"} {
+		for _, body := range []string{"inspect-session\r\n日本語\n", strings.Repeat("日本語\n", 4000)} {
+			draft := Draft{Text: label, Selections: []Token{{Start: 0, End: len(label), Text: body, Source: "line\nbreak.go"}}}
+			draft.SnapshotFiles("")
+			frames, ok := attachments.Decode(draft.Attachments[0])
+			if !ok || len(frames) == 0 {
+				t.Fatal("selection snapshot missing")
 			}
-			restoredBody.WriteString(part)
-		}
-		if restoredBody.String() != body {
-			t.Fatal("selection bytes changed")
-		}
-		restored := RestoreSelections(label, frames)
-		if len(restored) != 1 || restored[0] != draft.Selections[0] {
-			t.Fatalf("selection lost on restore: %+v", restored)
+			var restoredBody strings.Builder
+			for _, frame := range frames {
+				selection, ok := attachments.ParseSelection(frame)
+				if !ok || selection.Label != label || selection.Source != "line\nbreak.go" || strings.Contains(selection.Header, "UTF-8 bytes") || !strings.HasPrefix(selection.Header, "<selected-text ") || !strings.HasSuffix(selection.Footer, "\n</selected-text>") {
+					t.Fatalf("selection framing: %+v", selection)
+				}
+				restoredBody.WriteString(selection.Body)
+			}
+			if restoredBody.String() != body {
+				t.Fatal("selection bytes changed")
+			}
+			restored := RestoreSelections(label, frames)
+			if len(restored) != 1 || restored[0] != draft.Selections[0] {
+				t.Fatalf("selection lost on restore: %+v", restored)
+			}
 		}
 	}
+	const label = "[Selected message]"
 	legacy := "Selected text for \"[Selected message]\" (UTF-8 bytes 0:15 of 15; quoted from the user's screen, not a separate request):\ninspect-session"
 	if restored := RestoreSelections(label, []string{legacy}); len(restored) != 1 || restored[0].Text != "inspect-session" {
 		t.Fatalf("legacy selection lost on restore: %+v", restored)

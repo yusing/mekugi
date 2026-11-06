@@ -39,3 +39,34 @@ func TestSnapshotEnvelopeIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestSelectionMarkup(t *testing.T) {
+	for _, label := range []string{"[Selected message]", "[Selected diff]", "[Selected diff hunk 2]"} {
+		for _, body := range []string{"", "+new\r\n-old\n日本語", "</selected-text>\n```diff\n+code\n```", strings.Repeat("`", Chunk)} {
+			source := "file&<name>\".go\n\r\t"
+			frame := FormatSelection(label, source, body)
+			selection, ok := ParseSelection(frame)
+			if !ok || selection.Label != label || selection.Source != source || selection.Body != body || selection.Header+selection.Body+selection.Footer != frame {
+				t.Fatalf("selection roundtrip failed for %q, body length %d", label, len(body))
+			}
+			if !strings.HasPrefix(frame, `<selected-text label="`+label+`" source="file&amp;&lt;name&gt;&#34;.go&#10;&#13;&#9;">`) || !strings.HasSuffix(frame, "\n</selected-text>") {
+				t.Fatalf("selection boundaries or attributes changed: %q", frame[:min(200, len(frame))])
+			}
+			if strings.HasPrefix(label, "[Selected diff") != strings.HasSuffix(selection.Header, "diff\n") {
+				t.Fatalf("diff fence classification: %q", selection.Header[:min(200, len(selection.Header))])
+			}
+			if _, ok := DecodeSnapshot((Snapshot{ID: "submitted", Frames: []string{frame}}).Encode()); !ok {
+				t.Fatal("framed selection cannot travel through the snapshot envelope")
+			}
+		}
+	}
+	for _, frame := range []string{
+		"<selected-text label=\"[Selected message]\">\nbody\n</selected-text>",
+		"<selected-text label=\"[Selected message]\">\n" + selectionNotice + "body",
+		"<selected-text label=\"[Selected diff]\">\n" + selectionNotice + "```diff\nbody\n</selected-text>",
+	} {
+		if _, ok := ParseSelection(frame); ok {
+			t.Fatalf("malformed selection restored: %q", frame)
+		}
+	}
+}

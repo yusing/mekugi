@@ -48,7 +48,7 @@ func TestAPISelectionReferenceSubmission(t *testing.T) {
 		}
 	}
 	restored := composer.RestoreSelections(prepared.Draft.Text, frames)
-	if len(restored) != 2 || restored[0].Text != quote || restored[0].Source != "source.go" || !strings.Contains(strings.Join(frames, ""), "quoted from the user's screen, not a separate request") {
+	if len(restored) != 2 || restored[0].Text != quote || restored[0].Source != "source.go" || !strings.Contains(strings.Join(frames, ""), "Quoted from the user's screen, not a separate request") {
 		t.Fatalf("submitted reference framing: %q, restored=%+v", frames, restored)
 	}
 	selection.Data = new(base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", attachments.Budget))))
