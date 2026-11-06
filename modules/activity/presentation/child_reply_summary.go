@@ -10,7 +10,8 @@ import (
 // replySections interprets only completed child replies. Its result is detached
 // presentation data on the same identified value as the unmodified source body.
 // The summary ends at the next heading the child chose; the details disclosure
-// already labels its content, so a "## Details" heading is omitted.
+// already labels its content, so a "## Details" heading is omitted. Without a
+// valid section boundary, details carries the headingless body for an excerpt.
 func (entry ItemContent) replySections(body string) (summary, details string) {
 	if !entry.ItemComplete || entry.Agent == "" || entry.Agent == "/root" || entry.Agent == "Main" {
 		return "", ""
@@ -27,6 +28,10 @@ func (entry ItemContent) replySections(body string) (summary, details string) {
 		return "", ""
 	}
 	start++
+	body = textsanitize.MarkdownSource(strings.Join(lines[start:], "\n"))
+	if strings.TrimSpace(body) == "" {
+		return "", ""
+	}
 	fence := ""
 	for i := start; i < len(lines); i++ {
 		line := strings.TrimSuffix(lines[i], "\r")
@@ -50,14 +55,14 @@ func (entry ItemContent) replySections(body string) (summary, details string) {
 		}
 		summary, details := strings.Join(lines[start:i], "\n"), strings.Join(lines[i+1:], "\n")
 		if strings.TrimSpace(summary) == "" || strings.TrimSpace(details) == "" {
-			return "", ""
+			return "", body
 		}
 		if line != "## Details" {
 			details = line + "\n" + details
 		}
 		return textsanitize.MarkdownSource(summary), textsanitize.MarkdownSource(details)
 	}
-	return "", ""
+	return "", body
 }
 
 // heading reports an unindented ATX heading line.

@@ -390,14 +390,18 @@ summary content, then the next unindented ATX heading of any level and nonblank
 content after it identify it. The Summary label is exact and case-sensitive.
 Quoted, indented and fenced lookalikes are ordinary content. Details start at
 that heading, which they keep unless it is exactly `## Details`.
+Without a valid supporting-section boundary, a nonblank body after the exact
+Summary label is available as details with no summary, for bounded excerpt display.
 Activity derives summary and details once at its shared presentation boundary, preserving
 source identity and original content without a second record or persistent store.
 
 Default Main disclosure shows the complete summary with normal Markdown wrapping
 and `↩ Open reply`, without an excerpt limit or omitted-detail line count. Explicit
 expanded disclosure shows summary and details once, without the Summary heading;
-the child transcript retains the original body. Missing,
-malformed, empty and in-flight structures use the existing excerpt and dialog:
+the child transcript retains the original body. A recognized Summary label is
+also omitted from fallback excerpts and dialogs when its remaining body is
+nonblank; no summary split is inferred. Missing, malformed, empty and in-flight
+structures otherwise use the existing excerpt and dialog:
 four wrapped rows for the latest reply, two for earlier replies. Disabling the
 feature selects that fallback even for retained structured replies. Root ordinary
 answers remain unchanged. Opening selects the exact retained Activity entry and

@@ -62,3 +62,47 @@ func TestChildReplySummaryInterpretation(t *testing.T) {
 		})
 	}
 }
+
+func TestChildReplySummaryFallbackBody(t *testing.T) {
+	for _, body := range []string{
+		"## Summary\nFixed navigation.",
+		"\n \t\n## Summary\r\nFixed navigation.\r\n\r\n- Evidence.\r\n**Decision needed:** choose a name.",
+		"## Summary\nOutcome\n> ## Details\nQuoted evidence.",
+		"## Summary\nOutcome\n    ## Details\nIndented evidence.",
+		"## Summary\nOutcome\n```md\n## Details\n```\nEvidence.",
+		"## Summary\nOutcome\n~~~md\n## Details\n~~~\nEvidence.",
+		"## Summary\nOutcome\n## Notes\n \t",
+	} {
+		for _, kind := range []string{"reply", "final"} {
+			entry := ItemContent{Seq: 17, Agent: "/root/worker", Kind: kind, Text: body, ItemComplete: true}
+			if kind == "reply" {
+				entry.Message = &DirectedContent{From: entry.Agent, To: "/root", Text: body}
+			}
+			_, want, _ := strings.Cut(body, "## Summary")
+			value := entry.Values()[0]
+			if value.ReplySummary != "" || value.ReplyDetails != textsanitize.MarkdownSource(strings.TrimPrefix(strings.TrimPrefix(want, "\r"), "\n")) || value.Body != textsanitize.MarkdownSource(body) {
+				t.Fatalf("%s fallback = %#v", kind, value)
+			}
+			entry.ItemComplete = false
+			if value := entry.Values()[0]; value.ReplyDetails != "" {
+				t.Fatal("in-flight reply interpreted")
+			}
+			entry.ItemComplete, entry.Agent = true, "/root"
+			if value := entry.Values()[0]; value.ReplyDetails != "" {
+				t.Fatal("root answer interpreted")
+			}
+			if entry.Message != nil {
+				entry.Agent, entry.Message.To = "/root/worker", "/root/other"
+				if value := entry.Values()[0]; value.ReplyDetails != "" {
+					t.Fatal("sibling-directed reply interpreted")
+				}
+			}
+		}
+	}
+	for _, body := range []string{"## Summary\n\n", "## Summary\n \t"} {
+		entry := ItemContent{Agent: "/root/worker", Kind: "final", Text: body, ItemComplete: true}
+		if value := entry.Values()[0]; value.ReplySummary != "" || value.ReplyDetails != "" {
+			t.Fatalf("empty structure interpreted: %#v", value)
+		}
+	}
+}

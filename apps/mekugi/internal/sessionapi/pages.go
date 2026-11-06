@@ -71,7 +71,13 @@ func compactEntry(full entry) entry {
 				}
 			}
 			if len(v.Details) > 512 {
-				v.Details = ""
+				if v.Summary == "" {
+					// Sectionless replies use details as their excerpt body even
+					// before complete content arrives. Body remains the copy source.
+					v.Details = strings.ToValidUTF8(v.Details[:512], "")
+				} else {
+					v.Details = ""
+				}
 				p.AutoContent = true
 			}
 			if len(v.Summary) > 512 {

@@ -824,7 +824,11 @@ func (v *View) childReply(out *conversationLines, entry activitypresentation.Ent
 		}
 		return
 	}
-	v.replyExcerpt(out, entry, block.Body, gutter, tail, width, limit)
+	body := block.Body
+	if v.ChildReplySummary && block.ReplyDetails != "" {
+		body = block.ReplyDetails
+	}
+	v.replyExcerpt(out, entry, body, gutter, tail, width, limit)
 }
 
 func (v *View) replyExcerpt(out *conversationLines, entry activitypresentation.Entry, text, gutter, tail string, width, limit int) {

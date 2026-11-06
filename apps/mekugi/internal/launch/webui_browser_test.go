@@ -1224,7 +1224,9 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	run("set", "viewport", "1280", "720")
 	restoredReplies := newAppServerSessionTestUI(t, t.TempDir())
-	for i, text := range []string{"## Summary\nNested review complete.\n\n[evidence]: https://example.com/evidence\n\n## Details\nNested retained details. See [evidence].", strings.Repeat("Nested unstructured reply paragraph.\n\n", 12)} {
+	const fallbackReply = "## Summary\nSectionless reply complete.\n\n- Focused checks pass.\n\n**Decision needed:** choose a name.\n\n"
+	sectionlessBody := fallbackReply + strings.Repeat("Supporting sectionless evidence.\n\n", 100)
+	for i, text := range []string{"## Summary\nNested review complete.\n\n[evidence]: https://example.com/evidence\n\n## Details\nNested retained details. See [evidence].", strings.Repeat("Nested unstructured reply paragraph.\n\n", 12), sectionlessBody} {
 		entry := nativeDeliveryEntry(threadcontrol.NativeInput{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root", Kind: "MESSAGE", Message: text}, fmt.Sprint(i), time.Now(), false)
 		applyRestoredMain(&restoredReplies.attached, []*restoredPlacement{{entry: entry}})
 	}
@@ -1253,6 +1255,16 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-kind="reply"], [data-kind="final"]')]; const out = rows.find(row => row.textContent.includes('Child outbox evidence.')); const final = rows.find(row => row.textContent.includes('Nested final route.')); return /worker\s*→\s*main/.test(out?.textContent ?? '') && /worker\/reviewer\s*→\s*worker/.test(final?.textContent ?? '') && !/main\s*→\s*main/.test(out?.textContent ?? ''); })()`)
 	run("wait", "--fn", `/worker\s*→\s*main/.test(document.querySelector('[aria-label="Thread panel"]')?.textContent ?? '')`)
 	run("wait", "--fn", `(() => { const row = document.querySelector('[data-kind="start"]'); return row?.textContent.includes('worker/new-child') && !row.textContent.includes('main') && !row.textContent.includes('→'); })()`)
+	sectionless := `[...document.querySelectorAll('[data-entry]:has([data-kind="reply"])')].find(row => row.textContent.includes('Sectionless reply complete.'))`
+	run("wait", "--fn", `(() => { const row = `+sectionless+`; const button = row?.querySelector('button[aria-expanded]'); return row && !row.querySelector('h2') && !row.querySelector('details') && button?.textContent.trim() === 'Show full reply' && button.getAttribute('aria-expanded') === 'false'; })()`)
+	run("eval", sectionless+`.querySelector('button[aria-label="Copy response"]').click()`)
+	sectionlessJSON, err := json.Marshal(sectionlessBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", "window.copiedResponse === "+string(sectionlessJSON))
+	run("eval", sectionless+`.querySelector('button[aria-expanded]').click()`)
+	run("wait", "--fn", `(() => { const row = `+sectionless+`; return !row.querySelector('h2') && row.querySelector('button[aria-expanded]')?.textContent.trim() === 'Show less' && row.innerText.includes('Decision needed:'); })()`)
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "child-incoming-replies.png"))
 	}

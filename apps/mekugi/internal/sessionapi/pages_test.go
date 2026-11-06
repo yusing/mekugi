@@ -243,6 +243,7 @@ func TestCompactFeedPreservesPresentation(t *testing.T) {
 		edits = append(edits, fmt.Sprintf("Create `/tmp/tree/file%03d.go` +3 -0 · cp", i))
 	}
 	item := activity.ItemContent{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(edits, "\n\n")}
+	sectionless := activity.ItemContent{Seq: 1, Agent: "/root/child", Kind: "final", ItemComplete: true, Text: "## Summary\nDone.\n\n" + strings.Repeat("- Supporting evidence stays available.\n", 100)}
 	command := "echo first\n" + strings.Repeat("echo next\n", 600)
 	for _, test := range []struct {
 		name  string
@@ -272,6 +273,12 @@ func TestCompactFeedPreservesPresentation(t *testing.T) {
 		{"reply", activity.Entry{Seq: 1, Agent: "/root/child", Kind: "reply", Text: "retained reply", Values: []activity.Value{{Kind: "message", From: "/root/child", To: "/root", Body: strings.Repeat("Supporting text. ", 1000), ReplySummary: "Compact summary.", ReplyDetails: strings.Repeat("Supporting text. ", 1000)}}, Revision: 1}, func(t *testing.T, e entry) {
 			if !e.AutoContent || e.Text != "" || e.Values[0].Summary != "Compact summary." || e.Values[0].Body == "" || len(e.Values[0].Body) > 512 || e.Values[0].Details != "" {
 				t.Fatal("deferred reply lost its summary or semantic body")
+			}
+		}},
+		{"sectionless reply", activity.Entry{Seq: 1, Agent: sectionless.Agent, Kind: sectionless.Kind, Text: sectionless.Text, Values: sectionless.Values(), Revision: 1}, func(t *testing.T, e entry) {
+			v := e.Values[0]
+			if !e.AutoContent || v.Summary != "" || !strings.HasPrefix(v.Details, "Done.\n") || len(v.Details) > 512 || !strings.HasPrefix(v.Body, "## Summary\n") {
+				t.Fatalf("deferred sectionless reply lost headingless excerpt or original copy source: %+v", e)
 			}
 		}},
 		{"long path", activity.Entry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Read path", Values: []activity.Value{{Kind: "op", Verb: "Read", Reads: []activityfeed.Read{{Path: strings.Repeat("long/path/", 1000)}}}}, Revision: 1}, func(t *testing.T, e entry) {

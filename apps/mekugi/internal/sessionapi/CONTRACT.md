@@ -579,7 +579,12 @@ renderer-neutral facts: `kind`, `verb`, `label`, `code` and its language `lang`
 output `tail` with `tailOmitted` earlier lines, `changes` with their counts and
 `footer`, and `hook` status. A child's reply that carries its own summary has
 it in `summary`, alongside the whole reply in `body`, while the invocation's
-`child_reply_summary` feature is on. Labels, bodies and `text` are display-sanitized
+`child_reply_summary` feature is on. `details` carries the supporting sections;
+without a valid section boundary it instead carries the nonblank headingless
+body for the ordinary bounded excerpt, with no `summary`. The original `body`
+remains the copy source and the child's own transcript content. Compacted replies
+retain a bounded headingless preview while full content loads.
+Labels, bodies and `text` are display-sanitized
 Markdown; `code` is literal text in the language `lang` names.
 `detailCode` preserves original JSON tool evidence for a semantic operation's
 content dialog, separately from its compact transcript presentation.

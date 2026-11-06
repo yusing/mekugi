@@ -38,6 +38,28 @@ func TestChildReplySummaryFollowsFeature(t *testing.T) {
 	}
 }
 
+func TestChildReplySummaryFallbackFollowsFeature(t *testing.T) {
+	t.Parallel()
+	const body = "## Summary\nDone.\n\n- Evidence.\n**Decision needed:** choose a name."
+	item := activitypresentation.ItemContent{Seq: 1, Agent: "/root/worker", Kind: "final", Text: body, ItemComplete: true}
+	reply := activitypresentation.Entry{Values: item.Values()}
+	reply.Seq, reply.Agent, reply.Kind = 1, item.Agent, item.Kind
+	for _, enabled := range []bool{true, false} {
+		server := New()
+		if err := server.Publish(Frame{Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{reply}}, ChildReplySummary: enabled}); err != nil {
+			t.Fatal(err)
+		}
+		data, err := server.snapshot()
+		if err != nil {
+			t.Fatal(err)
+		}
+		event := string(data.Data)
+		if !strings.Contains(event, `"body":"## Summary\nDone.`) || strings.Contains(event, `"summary":`) || strings.Contains(event, `"details":"Done.`) != enabled {
+			t.Fatalf("feature %v: snapshot = %s", enabled, event)
+		}
+	}
+}
+
 // A compound command's result row repeats nothing its listed steps already
 // show, and names the command only when no step is listed.
 func TestBatchResultRow(t *testing.T) {

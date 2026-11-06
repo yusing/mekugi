@@ -305,7 +305,7 @@
                   <Markdown text={first.details ?? body} context={replyContext} />
                 </details>
               {:else if reply}
-                <Excerpt text={body} />
+                <Excerpt text={first?.details ?? body} />
               {:else}
                 <Markdown text={body} />
               {/if}

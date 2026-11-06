@@ -143,3 +143,60 @@ func TestUISnapshotChildReplySummaryFallback(t *testing.T) {
 	}
 	assertNativeUISnapshot(t, "child-reply-summary-fallback", u.testActivity(u.shell.Transcript).RenderFeed(60, 40).Lines)
 }
+
+func TestUISnapshotChildReplySummaryWithoutDetails(t *testing.T) {
+	const body = "## Summary\nFixed reply navigation.\n\n- Focused checks pass.\n- Original evidence stays available.\n\n**Decision needed:** choose a name.\n" + "More supporting evidence.\nEnd of evidence."
+	for _, kind := range []string{"directed", "final"} {
+		t.Run(kind, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+			var item any = map[string]any{"id": "target", "type": "agentMessage", "phase": "final_answer", "text": body}
+			if kind == "directed" {
+				item = coordinationTestCall(t, "target", "send_message", "main", u.attached.session.Caller("main"), body)
+			}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": item})
+			var seq uint64
+			for i, record := range u.attached.source.Entries {
+				if record.Source.Text == body {
+					seq = record.Source.Seq
+				}
+				u.attached.source.Mutate(i, func(record *sessionpresentation.ActivityRecord) {
+					record.Source.Observed = time.Date(2026, 10, 6, 11, 50, i, 0, time.Local)
+				})
+			}
+			feed := u.testActivity(u.shell.Transcript).RenderFeed(60, 40)
+			plain := ansi.Strip(strings.Join(feed.Lines, "\n"))
+			if strings.Contains(plain, "Summary") || strings.Contains(plain, "End of evidence.") || !strings.Contains(plain, "↩ Open reply") || !strings.Contains(plain, "Fixed reply navigation.") {
+				t.Fatalf("headingless excerpt: %s", plain)
+			}
+			assertNativeUISnapshot(t, "child-reply-summary-no-details-"+kind, feed.Lines)
+			u.shell.Transcript.Expansion = 1
+			expanded := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(60, 40).Lines, "\n"))
+			if strings.Contains(expanded, "Summary") || !strings.Contains(expanded, "End of evidence.") {
+				t.Fatalf("expanded fallback: %s", expanded)
+			}
+			if !terminalTest(u).openActivityReply(seq) {
+				t.Fatal("cannot open exact reply")
+			}
+			terminalTest(u).Dialog.Layout(60)
+			if terminalTest(u).Dialog.Document.Text != body {
+				t.Fatal("original-copy source changed")
+			}
+			var rendered []string
+			for _, line := range terminalTest(u).Dialog.Document.Lines {
+				rendered = append(rendered, ansi.Strip(line.Text))
+			}
+			if text := strings.Join(rendered, "\n"); strings.Contains(text, "Summary") || !strings.Contains(text, "End of evidence.") {
+				t.Fatalf("fallback dialog: %s", text)
+			}
+			terminalTest(u).outputKey("\x1b")
+			u.shell.Transcript.Expansion = 0
+			u.shell.Transcript.ChildReplySummary = false
+			u.shell.Transcript.InvalidateRuns(0)
+			if disabled := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(60, 40).Lines, "\n")); !strings.Contains(disabled, "Summary") {
+				t.Fatal("disabled feature changed original excerpt")
+			}
+		})
+	}
+}

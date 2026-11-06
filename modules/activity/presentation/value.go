@@ -41,7 +41,9 @@ type Value struct {
 	Output int
 
 	feed.Content
-	ReplySummary, ReplyDetails                    string // Derived from the completed original body; never replaces Body.
+	// ReplyDetails is the supporting section, or the headingless excerpt body
+	// when ReplySummary is empty. Body always retains the original source.
+	ReplySummary, ReplyDetails                    string
 	DetailCode                                    string `json:",omitempty"` // Original tool evidence, displayed only in details.
 	Repeated                                      string
 	AutoReload                                    bool   // Native compaction reader, distinct from a submitted attachment.
