@@ -113,6 +113,13 @@ they do not expand the requested scope.
 - **Progress, capture, diagnostics, and providers:**
   `modules/{activity,notifications,transportdiagnostics}/SPEC.md`, `docs/contracts/provider-routing.md`.
 
+## Local integration source
+
+Herdr-app mods live in `~/.config/herdr-app/mods` in the home configuration repository.
+The Mekugi mod source is `mods/mekugi/entry.js`; shared bridge sources are under
+`~/.config/herdr-app/lib`. Regenerate bundled `main.js` with that repository’s
+`~/.config/herdr-app/build-mods.ts`, rather than editing the bundle.
+
 ## Session evidence and profiling
 
 Contracts: `modules/{sessioninspection,diagnostics,sessionreplay}/SPEC.md`.
