@@ -73,6 +73,43 @@ func TestCompactionCheckpointAdmission(t *testing.T) {
 	}
 }
 
+func TestRejectedCompactionRetainsWaitDeadline(t *testing.T) {
+	for _, mode := range []WaitMode{WaitAny, WaitAll} {
+		t.Run(string(mode), func(t *testing.T) {
+			s, _ := fixture(t)
+			child(t, s, "root", "child", "/root/child", "ct")
+			id, now := identity("root", "rt"), time.Unix(100, 0)
+			_, err := s.RegisterCompaction(t.Context(), id, nil, true, mode, new(int64(10)), now, false, "")
+			must(t, err)
+			must(t, s.Execution(t.Context(), id.Thread, id.Turn, id.Item, "", true))
+			must(t, s.RejectCompaction(t.Context(), id.Thread, "stale", id.Item, "wrong"))
+			member, _ := s.Member(id.Thread)
+			if member.Wait.Compaction.State != "registered" {
+				t.Fatal("stale estimate changed checkpoint")
+			}
+			must(t, s.RejectCompaction(t.Context(), id.Thread, id.Turn, id.Item, "cost estimate"))
+			_, err = s.ClaimLocalStop(t.Context(), id.Thread, id.Turn, id.Item)
+			must(t, err)
+			must(t, s.HostCompleted(t.Context(), id.Thread, id.Turn, Completed, HostFailure{}))
+			wake, err := s.PrepareWake(t.Context(), id.Thread, now)
+			must(t, err)
+			if wake != nil {
+				t.Fatal("rejection completed wait early")
+			}
+			wake, err = s.PrepareWake(t.Context(), id.Thread, now.Add(time.Second))
+			must(t, err)
+			if wake == nil {
+				t.Fatal("rejection lost original deadline")
+			}
+			claimed, err := s.ClaimEffect(t.Context(), id.Thread, wake.ID)
+			must(t, err)
+			if claimed == nil || claimed.Wake.State != "timeout" || claimed.Wake.Compaction.Error != "cost estimate" {
+				t.Fatalf("lost delayed rejection: %+v", claimed)
+			}
+		})
+	}
+}
+
 func TestCompoundCompactionRetainsWaitAndEvents(t *testing.T) {
 	for _, mode := range []WaitMode{WaitAny, WaitAll} {
 		for _, arrival := range []string{"before", "during", "after", "timeout", "pending"} {

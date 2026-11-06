@@ -26,6 +26,10 @@ type attachmentPreparation struct {
 	explicit map[string]bool
 }
 
+func attachmentRecallHint(groups []string) string {
+	return "Optional attachment recall: " + strings.Join(groups, "; ")
+}
+
 // Freeze the complete hint before the window's first provider continuation.
 // Native skill acquisition remains stock-owned; source-reader turns defer it.
 func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexresponses.Request, prepared attachmentPreparation) error {
@@ -92,7 +96,7 @@ func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexres
 			}
 			hints = append(hints, group.kind+": mread "+ref)
 		}
-		return "Optional attachment recall: " + strings.Join(hints, "; "), nil
+		return attachmentRecallHint(hints), nil
 	})
 	if err != nil || hint == "" {
 		return err

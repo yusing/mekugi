@@ -364,6 +364,19 @@ func (s *Service) ClaimLocalStop(ctx context.Context, thread, turn, item string)
 	return
 }
 
+// RejectCompaction settles only the unstarted reset. The checkpoint still owns
+// its local stop and wait; its eventual output carries the rejection.
+func (s *Service) RejectCompaction(ctx context.Context, thread, turn, item, reason string) error {
+	return s.update(ctx, thread, func(_ *Tree, member *Member) error {
+		wait := member.Wait
+		if wait == nil || wait.State != "registered" || wait.Turn != turn || wait.Item != item || wait.Generation != member.Generation || wait.Compaction == nil || wait.Compaction.State != "registered" || wait.Stop != "eligible" {
+			return unchanged
+		}
+		wait.Compaction.State, wait.Compaction.Error = "failed", reason
+		return nil
+	})
+}
+
 func (s *Service) PrepareWake(ctx context.Context, thread string, now time.Time) (result *Effect, err error) {
 	err = s.update(ctx, thread, func(tree *Tree, member *Member) error {
 		wait := member.Wait

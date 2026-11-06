@@ -112,7 +112,7 @@ func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName
 		for _, later := range items[index+1:] {
 			kind := responses.StringField(later, "type")
 			if !strings.HasSuffix(kind, "_output") {
-				if wait.CompactionPending() {
+				if wait.Compaction != nil {
 					if (kind == "custom_tool_call" || kind == "function_call") && reloadCalls[responses.StringField(later, "call_id")] {
 						// Completed evidence shares its attributed arrival's barrier.
 						continue

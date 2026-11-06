@@ -30,6 +30,7 @@ type inspectionResult struct {
 // ordinary thread restoration. It neither opens source files nor runs skills.
 type AttachmentReader interface {
 	ContextAttachments(context.Context, string, string) (composer.AttachmentSnapshot, error)
+	CurrentAttachments(context.Context, string) ([]composer.ContextAttachment, error)
 }
 
 func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
@@ -38,17 +39,34 @@ func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window str
 	if result.err != nil || result.cached {
 		return result.attachments, result.err
 	}
-	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": true}, nil)
+	turns, err := r.attachmentHistory(ctx, thread)
 	if err != nil {
 		return composer.AttachmentSnapshot{}, err
 	}
-	info, err := binding.DecodeHistoryThread(raw, thread)
-	if err != nil {
-		return composer.AttachmentSnapshot{}, err
-	}
-	query = &Inspection{thread: thread, window: window, loaded: true, attachments: conversationbinding.CompactedAttachments(info.Turns), result: make(chan inspectionResult, 1)}
+	query = &Inspection{thread: thread, window: window, loaded: true, attachments: conversationbinding.CompactedAttachments(turns), result: make(chan inspectionResult, 1)}
 	result = r.inspect(ctx, query)
 	return result.attachments, result.err
+}
+
+// CurrentAttachments never changes the active window's frozen recall cache.
+func (r *Requests[T]) CurrentAttachments(ctx context.Context, thread string) ([]composer.ContextAttachment, error) {
+	if _, err := r.Inspect(ctx, thread); err != nil {
+		return nil, err
+	}
+	turns, err := r.attachmentHistory(ctx, thread)
+	if err != nil {
+		return nil, err
+	}
+	return conversationbinding.CurrentAttachments(turns), nil
+}
+
+func (r *Requests[T]) attachmentHistory(ctx context.Context, thread string) ([]binding.HistoryTurn, error) {
+	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": true}, nil)
+	if err != nil {
+		return nil, err
+	}
+	info, err := binding.DecodeHistoryThread(raw, thread)
+	return info.Turns, err
 }
 
 func (request *Inspection) ContextWindow() string { return request.window }

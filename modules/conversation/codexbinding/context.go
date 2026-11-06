@@ -15,6 +15,16 @@ import (
 // completed boundary. Native history supplies the exact fork/rewind prefix and
 // text-element placeholders; ordinary prompt text never becomes reload context.
 func CompactedAttachments(turns []binding.HistoryTurn) []composer.ContextAttachment {
+	return contextAttachments(turns, true)
+}
+
+// CurrentAttachments selects the admitted prefix before a proposed reset,
+// including submissions after the last completed boundary.
+func CurrentAttachments(turns []binding.HistoryTurn) []composer.ContextAttachment {
+	return contextAttachments(turns, false)
+}
+
+func contextAttachments(turns []binding.HistoryTurn, compacted bool) []composer.ContextAttachment {
 	var result []composer.ContextAttachment
 	boundary := 0
 	for _, turn := range turns {
@@ -75,5 +85,8 @@ func CompactedAttachments(turns []binding.HistoryTurn) []composer.ContextAttachm
 			}
 		}
 	}
-	return result[:boundary]
+	if compacted {
+		return result[:boundary]
+	}
+	return result
 }

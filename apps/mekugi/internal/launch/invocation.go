@@ -296,7 +296,19 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	var driver *threadbinding.Driver
 	var inspect func(context.Context, string) (threadcontrol.SessionDetails, error)
 	var contextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
+	var compactionAttachments func(context.Context, string) ([]composer.ContextAttachment, error)
 	if appUI {
+		compactionAttachments = func(ctx context.Context, thread string) ([]composer.ContextAttachment, error) {
+			runtime, err := threads.Runtime(thread)
+			if err != nil {
+				return nil, err
+			}
+			reader, ok := runtime.(sessioncontrol.AttachmentReader)
+			if !ok {
+				return nil, errors.New("runtime attachment history is unavailable")
+			}
+			return reader.CurrentAttachments(ctx, thread)
+		}
 		contextAttachments = func(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
 			runtime, err := threads.Runtime(thread)
 			if err != nil {
@@ -319,6 +331,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	mekugiCalls = executionobservation.New(executionobservation.Config{Inspect: inspect, ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, Event: issues.AddThreadEvent, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 	mekugiCalls.ContextAttachments = contextAttachments
+	mekugiCalls.CompactionAttachments = compactionAttachments
 	if segments.Live != nil {
 		if err := segments.Live.RegisterBoundary(mekugiCalls.ObserveNativeBoundary); err != nil {
 			issues.AddNotice("", "capture_boundary", "Native capture boundaries unavailable: "+err.Error())

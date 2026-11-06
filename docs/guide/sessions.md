@@ -45,6 +45,15 @@ skills and captured-change IDs with a checkpoint, or recover needed facts throug
 ordinary reads after reset. Temporary task-state JSON is optional and read selectively,
 never automatically loaded in full. Claude delegates retain native compaction.
 
+Agent checkpoints estimate the next uncached input cost and skip reset when it
+would exceed the latest observed input cost. Selected sources may be read for this
+check even when reset is skipped. The estimate assumes unchanged source files;
+unavailable cost evidence permits reset with a notice. A preflight that produces no
+usable capture skips reset rather than retrying denied or canceled acquisition.
+A skipped reset preserves the
+wait and its deadline, reporting the reason with the eventual outcome. Manual and
+context-full compaction are unaffected.
+
 Selected reload and fresh-delegate preload text can include `@path` references to
 required files, including inside JSON state. Bare paths do not trigger reads. The
 selected source counts as depth 1; depth 3 is the last acquired level. References

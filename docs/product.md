@@ -155,7 +155,12 @@ context without a summary-generation request. An agent can select files, skills
 and captured changes with its checkpoint, or recover needed facts through ordinary
 reads after reset. Optional temporary JSON task state is read selectively and kept
 focused on remaining work. Mekugi supplies selected sources before continuation;
-Claude delegates retain their native compaction behavior.
+Agent checkpoints skip reset when estimated uncached next-input cost exceeds the
+latest observed input cost, preserving any wait. This estimate assumes unchanged
+source files; unavailable cost evidence permits reset with a notice. Failed
+preflight acquisition skips reset without retrying denied or canceled reads.
+Manual and context-full
+compaction are unaffected. Claude delegates retain their native compaction behavior.
 
 ### Delegate with prepared context
 

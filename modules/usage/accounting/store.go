@@ -285,6 +285,9 @@ func (u *Service) runWriter(ctx context.Context) {
 				pending.baseline.models = slices.Clone(retained.models)
 				mergeThreadUsageTotal(retained, pending.delta)
 			}
+			if live := u.threads[thread]; live.roundOutput.StartedUnixNano == retained.roundOutput.StartedUnixNano {
+				retained.input = live.input
+			}
 			u.threads[thread] = retained
 		}
 		u.writing = false

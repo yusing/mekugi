@@ -29,6 +29,7 @@ func (o *Observation) Begin() {
 	delta := newThreadUsageTotal()
 	delta.roundOutput.StartedUnixNano = o.started.UnixNano()
 	u.updateLocked(o.thread, delta)
+	u.threads[o.thread].input = nil // A new request cannot borrow the previous cache split.
 }
 
 func MeasureThroughput(counts inference.Usage, started, receivedAt time.Time) inference.OutputThroughput {

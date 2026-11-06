@@ -414,7 +414,18 @@ releases only the original wait: an eligible outcome is delivered once, otherwis
 the caller stays waiting without inference. Wait deadlines run from registration
 and may expire during compaction.
 
-Compound compaction failure preserves the wait and events, surfaces an immediate
+Codex self-checkpoints preflight sources through the admitted stock reader and
+compare locally estimated uncached reset input cost with the latest observed input
+cost, using its model, service tier and pinned provider pricing. Source contents
+are assumed unchanged across reset. Unavailable cost evidence permits reset with a notice;
+cost rejection skips only reset and preserves the original wait and deadline.
+Attempted preflight without a usable capture also skips reset, preserving the wait
+without automatically retrying denied or canceled acquisition.
+The rejection reaches the model in the eventual wait output, not an immediate
+inference. Manual, automatic and Claude compaction are unchanged. Future hook and
+outcome text is unmeasured.
+
+Compound native compaction failure preserves the wait and events, surfaces an immediate
 notice, and includes the failed compaction outcome in eventual delivery. Failure
 alone does not start inference. Human input and interruption supersede undispatched
 continuations. Uncertain native dispatch pauses for reconciliation and is never
