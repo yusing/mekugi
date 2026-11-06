@@ -67,6 +67,7 @@ type nativeView struct {
 	version         sessionpresentation.Version
 	displayed       sessionpresentation.Thread
 	caller          string
+	fileOpen        *NativeFileOpen
 	changed         chan struct{}
 	ctx             context.Context
 	cancel          context.CancelCauseFunc
@@ -377,7 +378,12 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		if caller == "" || frame.View.Displayed.ID == frame.View.Main.ID && frame.View.Info.Caller != "" {
 			caller = frame.View.Info.Caller
 		}
-		metadataChanged := v.displayed != frame.View.Displayed || v.caller != caller || frame.Switch != nil
+		fileChanged := (v.fileOpen == nil) != (frame.FileOpen == nil) || v.fileOpen != nil && frame.FileOpen != nil && *v.fileOpen != *frame.FileOpen
+		metadataChanged := v.displayed != frame.View.Displayed || v.caller != caller || frame.Switch != nil || fileChanged
+		v.fileOpen = nil
+		if frame.FileOpen != nil {
+			v.fileOpen = new(*frame.FileOpen)
+		}
 		v.displayed, v.caller = frame.View.Displayed, caller
 		if v.changed != nil && metadataChanged {
 			close(v.changed)

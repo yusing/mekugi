@@ -77,6 +77,8 @@ type detailFiles struct {
 	fileReads    <-chan markdownFileResult
 	pendingFile  *terminalsession.ContentDialog
 	copyFilePath func(string)
+	externalFile bool
+	openFile     func(string, int, int)
 	textOnly     bool // Remote-human links retain the text-only file contract.
 }
 
@@ -127,6 +129,7 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	results := make(chan markdownFileResult, 2)
 	u.fileReads = results
 	images := !u.textOnly
+	external := u.externalFile
 	go func(slot chan struct{}) {
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
@@ -142,7 +145,7 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 		var data []byte
 		if err == nil && !info.Mode().IsRegular() {
 			result.copyPath = true
-		} else if err == nil {
+		} else if err == nil && !external {
 			loading := result
 			loading.classified = true
 			results <- loading
@@ -193,6 +196,12 @@ func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment
 		}
 		u.closeOutput(terminal)
 		return true, result.path
+	}
+	if u.openFile != nil {
+		open := u.openFile
+		u.closeOutput(terminal)
+		open(result.path, result.first, result.last)
+		return true, ""
 	}
 	terminal.Dialog, u.pendingFile = d, nil
 	return u.finishMarkdownFile(session, terminal, result), ""
@@ -319,4 +328,5 @@ func (u *detailFiles) stopFileRead() {
 	u.fileReads = nil
 	u.pendingFile = nil
 	u.copyFilePath = nil
+	u.openFile = nil
 }

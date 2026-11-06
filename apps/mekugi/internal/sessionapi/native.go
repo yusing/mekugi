@@ -18,6 +18,7 @@ import (
 // contains no renderer, source store, host connection or execution capability.
 // Draft and prompt-editor contents are removed at the publication boundary.
 type NativeFrame struct {
+	FileOpen          *NativeFileOpen               `json:"file_open,omitempty"`
 	Processes         []sessionpresentation.Process `json:"processes"`
 	CompletionCatalog uint64                        `json:"completionCatalog"`
 	CompletionTarget  conversation.EditorTarget     `json:"completionTarget"`
@@ -282,8 +283,18 @@ func (e NativeEffect) RecoveryDraft() *composer.Draft {
 }
 
 type NativeViewerLease struct {
-	Revision uint64
-	Expires  int64 // Absolute Unix milliseconds; delayed delivery never renews a lease.
+	Revision        uint64
+	Expires         int64 // Absolute Unix milliseconds; delayed delivery never renews a lease.
+	FileOpenExpires int64
+}
+
+// NativeFileOpen is the latest selection, scoped to one native attachment.
+// Paths are literal absolute names; locations are one-based inclusive lines.
+type NativeFileOpen struct {
+	ID    uint64 `json:"id"`
+	Path  string `json:"path"`
+	First int    `json:"first,omitzero"`
+	Last  int    `json:"last,omitzero"`
 }
 
 type NativeNavigation struct {

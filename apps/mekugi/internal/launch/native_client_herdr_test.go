@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -122,8 +123,9 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 		if err := api.Publish(sessionapi.Frame{Session: sessionapi.Session{Thread: start.Resume, Caller: frame.View.Main.Caller, Workspace: dir}, Attachment: 1, Agents: frame.Agents, Review: frame.Review, Live: frame.Live}); err != nil {
 			return err
 		}
-		model := new(sessionpresentation.Model)
-		model.Attach(frame.View.Main, false)
+		u, _ := newAppServerTestUI()
+		u.Thread = start.Resume
+		u.startSession(start.Resume, dir)
 		owners := map[string]*nativeSessionView{}
 		for {
 			select {
@@ -132,13 +134,20 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 			case request := <-api.Native().Requests():
 				owner := owners[request.Attachment]
 				if owner == nil {
-					owner = &nativeSessionView{attached: attachedPresentation{presentation: model}}
+					_, owner, _ = nativeDetailTestViews(t, u)
 					owners[request.Attachment] = owner
 				}
 				switch {
 				case request.Operation.Viewer != nil:
+					owner.viewerLease = *request.Operation.Viewer
 					owner.effects.add(sessionapi.NativeEffect{Thread: start.Resume, Presentation: &sessionapi.NativePresentationEffect{Viewer: request.Operation.Viewer}})
 					viewerRequests <- struct{}{}
+				case request.Operation.Details != nil:
+					if refusal := owner.openDetails(*request.Operation.Details); refusal != "" {
+						request.Reply <- refusal
+						continue
+					}
+					awaitNativeFileDialog(t, owner)
 				case request.Operation.Navigate != nil:
 					if refusal := owner.selectAgent(*request.Operation.Navigate, frame.Family.Agents); refusal != "" {
 						request.Reply <- refusal
@@ -148,6 +157,7 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 					owner.effects.acknowledge(request.Operation.Receipt.Effect, false)
 				}
 				current := frame
+				owner.publishDetails(&current)
 				current.Effects = owner.effects.publication()
 				if err := api.Native().Publish(request.Attachment, current); err != nil {
 					request.Reply <- err.Error()
@@ -307,12 +317,32 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 	}
 	await(func(s string) bool { return strings.Contains(s, "parent draft") })
 	initial, code := request(herdr.Request{Method: "native/observe", Body: body(sessionapi.NativeFrontendRequest{Viewer: "pty"})})
-	if code != 0 || !initial.Available || initial.Thread != "main" {
+	if code != 0 || !initial.Available || initial.Thread != "main" || !initial.FileOpenSupported {
 		t.Fatalf("initial shared observation: %+v code=%d", initial, code)
 	}
 	await(func(s string) bool {
 		return !strings.Contains(s, "2 Diff") && !strings.Contains(s, "3 Agents") && !strings.Contains(s, "new live") && strings.Contains(s, "parent draft")
 	})
+	file := filepath.Join(dir, "source with spaces.go")
+	initial, code = request(herdr.Request{Method: "native/observe", Instance: initial.Instance, Body: body(sessionapi.NativeFrontendRequest{Viewer: "pty", FileOpen: true})})
+	if code != 0 {
+		t.Fatal("file-opening lease failed")
+	}
+	if err = os.WriteFile(file, []byte("first\nsecond\nthird\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for id := uint64(1); id <= 2; id++ {
+		_, err = connection.Send(ctx, sessionapi.NativeTarget{Thread: initial.Thread, Attachment: initial.Attachment, Version: initial.Version}, sessionapi.NativeOperation{Details: &sessionapi.NativeDetailRequest{Kind: sessionapi.NativeFileDetails, Path: file + ":2-3"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		opened, status := request(herdr.Request{Method: "native/observe", Instance: initial.Instance, Body: body(sessionapi.NativeFrontendRequest{Viewer: "pty", FileOpen: true, After: initial.Cursor})})
+		want := sessionapi.NativeFileOpen{ID: id, Path: file, First: 2, Last: 3}
+		if status != 0 || opened.FileOpen == nil || *opened.FileOpen != want || opened.Attachment != initial.Attachment {
+			t.Fatalf("line-qualified file action through helper: %+v code=%d", opened, status)
+		}
+		initial = opened
+	}
 	for _, agent := range []string{"/root/foreign", "/root/missing"} {
 		if _, code = request(herdr.Request{Method: "native/select", Instance: initial.Instance, Body: body(sessionapi.NativeFrontendRequest{Activation: initial.Activation, Attachment: initial.Attachment, Displayed: initial.Displayed.ID, Agent: agent})}); code == 0 {
 			t.Fatalf("unattachable agent %q admitted", agent)
@@ -328,6 +358,9 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 	}
 	await(func(s string) bool { return strings.Contains(s, "child draft") })
 	child := finishObserve(watchChild, "child")
+	if child.FileOpen != nil {
+		t.Fatal("file selection crossed attachment handoff")
+	}
 	if child.Displayed.Caller != "/root/child" {
 		t.Fatalf("child displayed identity: %+v", child)
 	}

@@ -5,6 +5,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"time"
 )
 
 func (v *nativeSessionView) reserveFileCopy() *nativeEffectReservation {
@@ -58,6 +59,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 	switch request.Kind {
 	case sessionapi.NativeFileDetails:
 		v.files.textOnly = v.remoteHuman
+		v.files.externalFile = !v.remoteHuman && time.Now().UnixMilli() < v.viewerLease.FileOpenExpires
 		copyReservation := v.reserveFileCopy()
 		if copyReservation == nil {
 			return "Clipboard delivery capacity is exhausted."
@@ -74,6 +76,15 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		v.files.cancelRead = func() { cancel(); copyReservation.release() }
 		v.files.copyFilePath = func(path string) {
 			copyReservation.add(sessionapi.NativeEffect{Thread: v.thread, Clipboard: new(path)})
+		}
+		if v.files.externalFile {
+			v.files.openFile = func(path string, first, last int) {
+				id := uint64(1)
+				if v.fileOpen != nil {
+					id = v.fileOpen.ID + 1
+				}
+				v.fileOpen = &sessionapi.NativeFileOpen{ID: id, Path: path, First: first, Last: last}
+			}
 		}
 	case sessionapi.NativeErrorDetails:
 		openErrorDetails(&v.attached, v.shell, &v.files, v.shell, terminal)
@@ -144,6 +155,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 }
 
 func (v *nativeSessionView) publishDetails(frame *sessionapi.NativeFrame) {
+	defer func() { frame.FileOpen = v.fileOpen }()
 	select {
 	case result := <-v.files.fileReads:
 		v.files.loadedMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, v.shell, result)

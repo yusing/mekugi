@@ -43,3 +43,15 @@ expiry, so delayed delivery cannot restart a full lease or overwrite newer state
 Any active viewer suppresses duplicate terminal Diff, Agents, live-preview and
 bottom navigation surfaces. Release or expiry restores ordinary geometry without persisting the
 override or changing pane preferences. Standalone presentation remains unchanged.
+
+A companion with the custom Files sidebar advertises file-opening capability on
+its viewer lease. Clicked local file links then select that sidebar instead of a
+terminal dialog. The producer resolves literal absolute paths and optional line
+ranges, preferring an existing literal filename over a numeric suffix. The
+consumer reads the file on the observed machine and navigates to the requested
+lines; read failures belong in Files. Without an active capable viewer, the
+ordinary dialog remains available. Nonregular paths retain clipboard behavior.
+
+File selection is latest-wins, retained for repeat observation rather than queued.
+Consumers deduplicate by physical frontend, activation, attachment and selection
+ID. A replacement attachment does not inherit the previous attachment's selection.

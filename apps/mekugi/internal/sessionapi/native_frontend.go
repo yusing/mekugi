@@ -23,6 +23,7 @@ type NativeActivation struct {
 }
 
 type NativeFrontendRequest struct {
+	FileOpen   bool              `json:"file_open,omitzero"`
 	Activation uint64            `json:"activation,omitempty"`
 	PID        int               `json:"pid"`
 	Instance   string            `json:"instance,omitempty"`
@@ -36,18 +37,20 @@ type NativeFrontendRequest struct {
 }
 
 type NativeObservation struct {
-	Activation  uint64                      `json:"activation,omitempty"`
-	Available   bool                        `json:"available"`
-	Instance    string                      `json:"instance,omitempty"`
-	Thread      string                      `json:"thread,omitempty"`
-	Startup     string                      `json:"startup,omitempty"`
-	Attachment  string                      `json:"attachment,omitempty"`
-	Version     sessionpresentation.Version `json:"version,omitzero"`
-	Displayed   sessionpresentation.Thread  `json:"displayed,omitzero"`
-	Caller      string                      `json:"caller,omitempty"`
-	Cursor      string                      `json:"cursor,omitempty"`
-	Publication jsontext.Value              `json:"publication,omitempty"`
-	Live        *ContentReference           `json:"live,omitempty"`
+	FileOpenSupported bool                        `json:"file_open_supported,omitzero"`
+	FileOpen          *NativeFileOpen             `json:"file_open,omitempty"`
+	Activation        uint64                      `json:"activation,omitempty"`
+	Available         bool                        `json:"available"`
+	Instance          string                      `json:"instance,omitempty"`
+	Thread            string                      `json:"thread,omitempty"`
+	Startup           string                      `json:"startup,omitempty"`
+	Attachment        string                      `json:"attachment,omitempty"`
+	Version           sessionpresentation.Version `json:"version,omitzero"`
+	Displayed         sessionpresentation.Thread  `json:"displayed,omitzero"`
+	Caller            string                      `json:"caller,omitempty"`
+	Cursor            string                      `json:"cursor,omitempty"`
+	Publication       jsontext.Value              `json:"publication,omitempty"`
+	Live              *ContentReference           `json:"live,omitempty"`
 }
 
 // The shared payload excludes physical frontend identities. Keep only its
@@ -81,15 +84,21 @@ func (s *Server) panelPublication(key nativePanelKey) (jsontext.Value, error) {
 // Fields through changed are guarded by Hub.mu, alongside physical connection
 // membership. Selected source has its own lock: indexing cannot block delivery.
 type nativeFrontend struct {
-	pid        int
-	instance   string
-	sequence   uint64
-	active     *rpcSubscription
-	changed    chan struct{}
-	viewers    map[string]time.Time
-	revision   uint64
-	selectedMu sync.Mutex
-	selected   *selectedContent
+	pid           int
+	instance      string
+	sequence      uint64
+	active        *rpcSubscription
+	changed       chan struct{}
+	viewers       map[string]nativeViewer
+	revision      uint64
+	fileOpenAfter uint64
+	selectedMu    sync.Mutex
+	selected      *selectedContent
+}
+
+type nativeViewer struct {
+	expires  time.Time
+	fileOpen bool
 }
 
 func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
@@ -109,6 +118,10 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 	}
 	sub.owner.mu.Lock()
 	started := sub.view.started && sub.view.ctx.Err() == nil
+	var fileOpenAfter uint64
+	if sub.view.fileOpen != nil {
+		fileOpenAfter = sub.view.fileOpen.ID
+	}
 	if sub.view.changed == nil {
 		sub.view.changed = make(chan struct{})
 	}
@@ -128,7 +141,7 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 		return nil, nil
 	}
 	if f.instance == "" {
-		f.instance, f.viewers = rand.Text(), make(map[string]time.Time)
+		f.instance, f.viewers = rand.Text(), make(map[string]nativeViewer)
 	}
 	if f.changed != nil {
 		close(f.changed)
@@ -145,6 +158,7 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 		}
 	}
 	f.pid, f.sequence, f.active = request.PID, request.Sequence, sub
+	f.fileOpenAfter = fileOpenAfter
 	lease := f.lease(time.Now())
 	h.mu.Unlock()
 	if lease.Revision != 0 {
@@ -158,7 +172,9 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 // No expiry worker is needed: each physical renderer also restores at that deadline.
 func (f *nativeFrontend) lease(now time.Time) NativeViewerLease {
 	var expiry time.Time
-	for viewer, until := range f.viewers {
+	var fileExpiry time.Time
+	for viewer, value := range f.viewers {
+		until := value.expires
 		if !now.Before(until) {
 			delete(f.viewers, viewer)
 			continue
@@ -166,10 +182,16 @@ func (f *nativeFrontend) lease(now time.Time) NativeViewerLease {
 		if until.After(expiry) {
 			expiry = until
 		}
+		if value.fileOpen && until.After(fileExpiry) {
+			fileExpiry = until
+		}
 	}
 	out := NativeViewerLease{Revision: f.revision}
 	if !expiry.IsZero() {
 		out.Expires = expiry.UnixMilli()
+	}
+	if !fileExpiry.IsZero() {
+		out.FileOpenExpires = fileExpiry.UnixMilli()
 	}
 	return out
 }
@@ -236,7 +258,7 @@ func (c *rpcConnection) frontendRequest(ctx context.Context, method string, para
 				h.mu.Unlock()
 				return nil, rpcFailure(429, "Native viewer capacity reached.")
 			}
-			f.viewers[request.Viewer] = now.Add(nativeViewerLease)
+			f.viewers[request.Viewer] = nativeViewer{expires: now.Add(nativeViewerLease), fileOpen: request.FileOpen}
 		} else {
 			delete(f.viewers, request.Viewer)
 		}
@@ -318,7 +340,8 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		h := c.endpoint.hub
 		h.mu.Lock()
 		sub, changed := c.frontend.active, c.frontend.changed
-		result := NativeObservation{Available: true, Instance: c.frontend.instance, Activation: c.frontend.sequence}
+		fileOpenAfter := c.frontend.fileOpenAfter
+		result := NativeObservation{Available: true, FileOpenSupported: true, Instance: c.frontend.instance, Activation: c.frontend.sequence}
 		h.mu.Unlock()
 		if c.ctx.Err() != nil || sub == nil || sub.ctx.Err() != nil {
 			return NativeObservation{Available: false}, nil
@@ -328,6 +351,9 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		target, startup, nativeChanged := view.target, view.startup, view.changed
 		result.Thread, result.Startup, result.Attachment = target.thread, startup, sub.attachment
 		result.Version, result.Displayed, result.Caller = view.version, view.displayed, view.caller
+		if view.fileOpen != nil && view.fileOpen.ID > fileOpenAfter {
+			result.FileOpen = view.fileOpen
+		}
 		sub.owner.mu.Unlock()
 		selected, failure := h.lookup(target.thread, startup, localNativeView)
 		if failure != nil {
@@ -347,7 +373,8 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 			Activation                           uint64
 			Displayed                            sessionpresentation.Thread
 			Revisions                            [4]uint64
-		}{result.Instance, result.Attachment, key.Attachment, result.Caller, result.Activation, result.Displayed, key.Revisions}, encoding)
+			FileOpen                             *NativeFileOpen
+		}{result.Instance, result.Attachment, key.Attachment, result.Caller, result.Activation, result.Displayed, key.Revisions, result.FileOpen}, encoding)
 		result.Cursor = fmt.Sprintf("%x", sha256.Sum256(identity))
 		ready := server.published
 		if ready && (result.Cursor != request.After || ctx.Err() == context.DeadlineExceeded) {

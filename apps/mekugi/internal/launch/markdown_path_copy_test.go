@@ -143,3 +143,70 @@ func TestNativePathCopyRetainsAdmissionCapacity(t *testing.T) {
 		t.Fatal("copy did not settle through its reserved capacity")
 	}
 }
+
+func TestNativeFileOpenLeaseAndLocations(t *testing.T) {
+	workspace := t.TempDir()
+	for _, name := range []string{"source.go", "literal.go:3-4"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte("one\ntwo\nthree\nfour"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, test := range []struct {
+		name, target, path                string
+		first, last                       int
+		capable, expired, remote, retired bool
+	}{
+		{name: "range", target: "source.go:3-4", path: "source.go", first: 3, last: 4, capable: true},
+		{name: "line", target: "source.go:3", path: "source.go", first: 3, last: 3, capable: true},
+		{name: "literal", target: "literal.go:3-4", path: "literal.go:3-4", capable: true},
+		{name: "file-url", target: (&url.URL{Scheme: "file", Path: filepath.Join(workspace, "source.go:3-4")}).String(), path: "source.go", first: 3, last: 4, capable: true},
+		{name: "missing", target: "missing.go:3", path: "missing.go", first: 3, last: 3, capable: true},
+		{name: "standalone", target: "source.go"},
+		{name: "expired", target: "source.go", capable: true, expired: true},
+		{name: "remote", target: "source.go", capable: true, remote: true},
+		{name: "retired", target: "source.go", capable: true, retired: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.startSession("main", workspace)
+			_, view, other := nativeDetailTestViews(t, u)
+			view.remoteHuman = test.remote
+			if test.capable {
+				view.viewerLease.FileOpenExpires = time.Now().Add(time.Minute).UnixMilli()
+			}
+			if test.expired {
+				view.viewerLease.FileOpenExpires = time.Now().Add(-time.Second).UnixMilli()
+			}
+			if refusal := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeFileDetails, Path: test.target}); refusal != "" {
+				t.Fatal(refusal)
+			}
+			results := view.files.fileReads
+			if test.retired {
+				view.files.closeOutput(view.shell)
+			}
+			for view.files.fileReads != nil || test.retired {
+				select {
+				case result := <-results:
+					view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, workspace, view.shell, result)
+				case <-time.After(5 * time.Second):
+					t.Fatal("file acquisition timed out")
+				}
+				if test.retired {
+					break
+				}
+			}
+			frame := nativeDetailFrame(view)
+			if test.capable && !test.expired && !test.remote && !test.retired {
+				want := sessionapi.NativeFileOpen{ID: 1, Path: filepath.Join(workspace, test.path), First: test.first, Last: test.last}
+				if frame.FileOpen == nil || *frame.FileOpen != want || frame.Details != nil {
+					t.Fatalf("frame file=%+v details=%+v", frame.FileOpen, frame.Details)
+				}
+			} else if frame.FileOpen != nil || !test.retired && frame.Details == nil {
+				t.Fatalf("fallback file=%+v details=%+v", frame.FileOpen, frame.Details)
+			}
+			if nativeDetailFrame(other).FileOpen != nil || view.effects.reserved != 0 {
+				t.Fatal("selection leaked to another terminal or retained capacity")
+			}
+		})
+	}
+}

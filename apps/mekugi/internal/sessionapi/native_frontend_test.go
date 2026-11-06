@@ -258,12 +258,18 @@ func TestNativeFrontendObserveDisplayChangeAndHandoff(t *testing.T) {
 
 func TestNativeViewerLeaseExpiryAndOrdering(t *testing.T) {
 	now := time.Unix(1000, 0)
-	frontend := nativeFrontend{viewers: map[string]time.Time{"first": now.Add(time.Second), "second": now.Add(2 * time.Second)}, revision: 3}
+	frontend := nativeFrontend{viewers: map[string]nativeViewer{"first": {expires: now.Add(time.Second), fileOpen: true}, "second": {expires: now.Add(2 * time.Second)}}, revision: 3}
 	if lease := frontend.lease(now); lease.Revision != 3 || lease.Expires != now.Add(2*time.Second).UnixMilli() {
 		t.Fatal("effective lease did not retain latest viewer")
 	}
+	if lease := frontend.lease(now); lease.FileOpenExpires != now.Add(time.Second).UnixMilli() {
+		t.Fatal("file-opening capability did not retain its own deadline")
+	}
 	if lease := frontend.lease(now.Add(time.Second)); lease.Expires != now.Add(2*time.Second).UnixMilli() || len(frontend.viewers) != 1 {
 		t.Fatal("expiry released another viewer")
+	}
+	if lease := frontend.lease(now.Add(time.Second)); lease.FileOpenExpires != 0 {
+		t.Fatal("ordinary viewer extended file-opening capability")
 	}
 	if lease := frontend.lease(now.Add(2 * time.Second)); lease.Expires != 0 || len(frontend.viewers) != 0 {
 		t.Fatal("expired viewer retained")
@@ -536,5 +542,61 @@ func TestNativeFrontendPanelEncodingReuseAndUnchangedHeartbeat(t *testing.T) {
 	f.api.mu.Unlock()
 	if failure != nil || changed.Cursor == initial.Cursor || len(changed.Publication) == 0 || reused {
 		t.Fatal("changed owner revision reused stale detached panels")
+	}
+}
+
+func TestNativeFrontendFileOpenObservation(t *testing.T) {
+	f := newFrontendFixture(t)
+	first := f.open(t, 916)
+	initial, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 916, Viewer: "files"})
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	if !initial.FileOpenSupported {
+		t.Fatal("observation did not advertise file-open support")
+	}
+	if lease := <-f.requests; lease.Operation.Viewer.FileOpenExpires != 0 {
+		t.Fatal("initial observer opted into file opening")
+	}
+	if _, failure = f.call(t, "native/observe", NativeFrontendRequest{PID: 916, Instance: initial.Instance, Viewer: "files", FileOpen: true}); failure != nil {
+		t.Fatal(failure)
+	}
+	lease := <-f.requests
+	if lease.Operation.Viewer.FileOpenExpires == 0 {
+		t.Fatal("capability was not delivered")
+	}
+	frame := nativeTestFrame("thread", 1)
+	frame.View.Displayed = frame.View.Main
+	frame.FileOpen = &NativeFileOpen{ID: 1, Path: "/workspace/a b.go", First: 3, Last: 4}
+	f.frames <- frame
+	if _, err := first.Next(); err != nil {
+		t.Fatal(err)
+	}
+	observed, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 916, Instance: initial.Instance, Viewer: "files", FileOpen: true, After: initial.Cursor})
+	if failure != nil || observed.FileOpen == nil || *observed.FileOpen != *frame.FileOpen || observed.Cursor == initial.Cursor {
+		t.Fatalf("file observation: %+v %v", observed, failure)
+	}
+	<-f.requests
+	repeated, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 916, Instance: initial.Instance, Viewer: "files", FileOpen: true})
+	if failure != nil || repeated.FileOpen == nil || *repeated.FileOpen != *observed.FileOpen || repeated.Cursor != observed.Cursor {
+		t.Fatalf("selection not retained: %+v %v", repeated, failure)
+	}
+	<-f.requests
+	if _, failure = f.call(t, "native/release", NativeFrontendRequest{PID: 916, Instance: initial.Instance, Viewer: "files"}); failure != nil {
+		t.Fatal(failure)
+	}
+	if lease := <-f.requests; lease.Operation.Viewer.FileOpenExpires != 0 {
+		t.Fatal("release retained capability")
+	}
+	if frame.remote().FileOpen != nil {
+		t.Fatal("remote human received native intent")
+	}
+	if err := first.Activate(t.Context(), 916, 2); err != nil {
+		t.Fatal(err)
+	}
+	<-f.requests
+	reactivated, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 916, Instance: initial.Instance, Viewer: "files", FileOpen: true})
+	if failure != nil || reactivated.FileOpen != nil {
+		t.Fatalf("activation replayed previous selection: %+v %v", reactivated, failure)
 	}
 }

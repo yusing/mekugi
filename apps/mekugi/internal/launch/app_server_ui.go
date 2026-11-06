@@ -388,6 +388,9 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		closed := false
 		switch {
 		case operation.Viewer != nil:
+			if operation.Viewer.Revision > view.viewerLease.Revision {
+				view.viewerLease = *operation.Viewer
+			}
 			view.effects.add(sessionapi.NativeEffect{Thread: session.Client.Thread, Presentation: &sessionapi.NativePresentationEffect{Viewer: operation.Viewer}})
 		case operation.Navigate != nil:
 			publication := view.attached.childSource.Publication(view.attached.presentation, view.attached.source)

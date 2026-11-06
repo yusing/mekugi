@@ -6,6 +6,8 @@ export const subprotocol = "mekugi.control.v8" as const;
 export type RPCMethod = "initialize" | "native/activate" | "native/content" | "native/observe" | "native/release" | "native/resolve" | "native/select" | "native/start" | "publication/ack" | "request/cancel" | "session/answer" | "session/control" | "session/decide" | "session/end" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/page" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
 
 export type NativeObservation = {
+  "file_open_supported"?: boolean;
+  "file_open"?: (NativeFileOpen | null);
   "activation"?: number;
   "available": boolean;
   "instance"?: string;
@@ -26,6 +28,7 @@ export type NativeActivation = {
 };
 
 export type NativeFrontendRequest = {
+  "file_open"?: boolean;
   "activation"?: number;
   "pid": number;
   "instance"?: string;
@@ -205,6 +208,13 @@ export type message = {
   "roster"?: unknown;
   "review"?: unknown;
   "live"?: unknown;
+};
+
+export type NativeFileOpen = {
+  "id": number;
+  "path": string;
+  "first"?: number;
+  "last"?: number;
 };
 
 export type Version = {
@@ -429,6 +439,7 @@ export type RemoteOperation = {
 } & Omit<NativeOperation, "answers">;
 
 export type NativeFrame = {
+  "file_open"?: (NativeFileOpen | null);
   "processes": Array<Process>;
   "completionCatalog": number;
   "completionTarget": EditorTarget;
@@ -638,6 +649,7 @@ export type Model = {
 export type NativeViewerLease = {
   "Revision": number;
   "Expires": number;
+  "FileOpenExpires": number;
 };
 
 export type NativeAgentSelection = {

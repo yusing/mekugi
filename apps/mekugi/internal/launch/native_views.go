@@ -52,6 +52,8 @@ type nativeSessionView struct {
 	focused               bool
 	predictionDraftEmpty  bool
 	files                 detailFiles
+	viewerLease           sessionapi.NativeViewerLease
+	fileOpen              *sessionapi.NativeFileOpen
 	activity              *activitymodel.Service
 	changes               *changecapture.Service
 	detailDemand          *sessionpresentation.DetailOutputRequest

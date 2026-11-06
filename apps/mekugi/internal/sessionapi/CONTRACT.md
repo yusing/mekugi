@@ -389,6 +389,24 @@ selected preview reads. Runtime and displayed-thread identities are distinct.
 An unchanged timeout returns the same cursor and identities without `publication`
 or `live`; the consumer retains its previously acquired panel data.
 
+Observation responses advertise `file_open_supported: true`. Companions first
+observe without new request fields, then send `file_open: true` when support is
+advertised and they can open the custom Files sidebar. Omitted support means
+unsupported, allowing older helpers to retain dialogs without validation retries.
+This capability expires independently with that viewer's lease.
+While active, local file clicks publish optional `file_open: {id, path, first,
+last}` instead of a terminal dialog. `path` is a literal absolute filename;
+optional `first` and `last` are one-based inclusive lines. Resolution prefers an
+existing literal filename before interpreting a numeric colon suffix. The
+consumer opens the bare path on the observed machine, navigates to those lines,
+and owns read errors. Nonregular paths keep their clipboard behavior.
+
+File-open selection is latest-wins, not queued, and repeats in observations until
+replaced. Consumers deduplicate by instance, activation, attachment and selection
+ID. A new activation excludes selections already published by its destination,
+so returning to an attachment cannot reopen an old file. No active capable lease
+means ordinary standalone dialogs; remote-human views never publish this intent.
+
 Selection supplies `attachment`, `activation`, the observed `displayed` ID and
 the canonical `agent` name. Stale connection, activation, attachment or display
 identity fails instead of retargeting navigation. Release supplies the viewer and
