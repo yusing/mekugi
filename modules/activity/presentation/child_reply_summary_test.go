@@ -35,12 +35,21 @@ func TestChildReplySummaryInterpretation(t *testing.T) {
 		{"indented details only", "## Summary\nOutcome\n    ## Details\nEvidence", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, kind := range []string{"reply", "final"} {
+			for _, kind := range []string{"reply", "final", "progress"} {
 				entry := ItemContent{Seq: 17, Agent: "/root/worker", Kind: kind, Text: tc.body, ItemComplete: true}
+				if kind == "progress" {
+					entry.SideQuestion = &SideQuestion{From: "/root/asking", To: entry.Agent, Question: "Ready?", Answer: tc.body, Answered: true}
+				}
 				if kind == "reply" {
 					entry.Message = &DirectedContent{From: entry.Agent, To: "/root", Text: tc.body}
 				}
 				values := entry.Values()
+				if kind == "progress" {
+					if len(values) != 3 || values[1].ReplySummary != "" || values[1].Body != "Ready?" {
+						t.Fatalf("side question changed: %#v", values)
+					}
+					values = values[2:]
+				}
 				if len(values) != 1 || strings.Trim(values[0].ReplySummary, "\r\n") != tc.want || values[0].Source != 17 {
 					t.Fatalf("%s values = %#v, want summary %q", kind, values, tc.want)
 				}
@@ -49,6 +58,13 @@ func TestChildReplySummaryInterpretation(t *testing.T) {
 				}
 				if tc.name == "valid" && values[0].ReplyDetails != "Evidence and references." || tc.name == "chosen section" && values[0].ReplyDetails != "### Evidence\nTests." {
 					t.Fatalf("details = %q", values[0].ReplyDetails)
+				}
+				if kind == "progress" {
+					entry.SideQuestion.Answered = false
+					if len(entry.Values()) != 2 {
+						t.Fatal("pending side question has an answer")
+					}
+					return
 				}
 				entry.ItemComplete = false
 				if entry.Values()[0].ReplySummary != "" {

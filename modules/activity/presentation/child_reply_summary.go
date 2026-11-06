@@ -7,17 +7,23 @@ import (
 	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
-// replySections interprets only completed child replies. Its result is detached
+// replySections interprets completed child replies and answered side questions. Its result is detached
 // presentation data on the same identified value as the unmodified source body.
 // The summary ends at the next heading the child chose; the details disclosure
 // already labels its content, so a "## Details" heading is omitted. Without a
 // valid section boundary, details carries the headingless body for an excerpt.
 func (entry ItemContent) replySections(body string) (summary, details string) {
-	if !entry.ItemComplete || entry.Agent == "" || entry.Agent == "/root" || entry.Agent == "Main" {
-		return "", ""
-	}
-	if entry.Message != nil && entry.Message.To != "/root" && entry.Message.To != "Main" {
-		return "", ""
+	if entry.SideQuestion != nil {
+		if !entry.SideQuestion.Answered {
+			return "", ""
+		}
+	} else {
+		if !entry.ItemComplete || entry.Agent == "" || entry.Agent == "/root" || entry.Agent == "Main" {
+			return "", ""
+		}
+		if entry.Message != nil && entry.Message.To != "/root" && entry.Message.To != "Main" {
+			return "", ""
+		}
 	}
 	lines := strings.Split(body, "\n")
 	start := 0

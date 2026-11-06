@@ -746,6 +746,7 @@ export type NativeDetailRequest = {
   "Kind": string;
   "Source": number;
   "Output": number;
+  "Operation"?: number;
   "Sources": Array<number>;
   "Agent": boolean;
   "Path": string;

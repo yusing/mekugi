@@ -120,12 +120,19 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		if len(pages) == 0 {
 			return sessionpresentation.ErrStaleIntent.Error()
 		}
-		openDetails(&v.attached, v.shell, &v.files, v.shell, terminal, pages)
-		for i, page := range v.shell.Dialog.Pages {
-			if page.Source == request.Source && page.Output == request.Output {
-				v.shell.Dialog.ShowPage(i)
+		selected := -1
+		for i, page := range pages {
+			if page.Source == request.Source && page.Output == request.Output && (request.Operation == 0 || page.Operation == request.Operation) {
+				selected = i
 				break
 			}
+		}
+		if selected < 0 && request.Operation != 0 {
+			return sessionpresentation.ErrStaleIntent.Error()
+		}
+		openDetails(&v.attached, v.shell, &v.files, v.shell, terminal, pages)
+		if selected >= 0 {
+			v.shell.Dialog.ShowPage(selected)
 		}
 	default:
 		return "The detail action is unavailable."

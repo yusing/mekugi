@@ -314,6 +314,7 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 						request.Source, request.Path = target.Snippet.Run, target.Snippet.Path
 						if block, ok := target.View.SnippetBlock(target.Snippet); ok {
 							request.Source, request.Output = block.Source, block.Output
+							request.Operation = block.Operation
 							for _, member := range block.Members {
 								if !slices.Contains(request.Sources, member.Source) {
 									request.Sources = append(request.Sources, member.Source)

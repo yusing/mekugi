@@ -148,6 +148,97 @@ func TestSideQuestionLongAnswerKeepsFullTrafficBody(t *testing.T) {
 	}
 }
 
+func TestUISnapshotSideQuestionReplySummary(t *testing.T) {
+	for _, restored := range []bool{false, true} {
+		t.Run(fmt.Sprintf("restored=%v", restored), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
+			u.clock = func() time.Time { return now }
+			item := sideQuestionActivityItem(t, "completed")
+			body, err := json.Marshal(map[string]string{"thread_id": "worker-thread", "task_name": "/root/worker", "answer": childReplySummaryBody})
+			if err != nil {
+				t.Fatal(err)
+			}
+			item.Result, err = json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(body)}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if restored {
+				u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
+			} else {
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": sideQuestionActivityItem(t, "inProgress")})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			}
+			view := u.testActivity(u.shell.Transcript)
+			view.Clock, view.Painter.Theme, view.Conversation = u.clock, diffrender.DarkTheme, true
+			view.testAudience()
+			view.ChildReplySummary = true
+			for i := range u.attached.source.Entries {
+				u.attached.source.Mutate(i, func(record *sessionpresentation.ActivityRecord) { record.Source.Observed = now })
+			}
+			for _, width := range []int{38, 100} {
+				feed := view.testRenderConversation(width)
+				plain := ansi.Strip(strings.Join(feed.Lines, "\n"))
+				if strings.Contains(plain, "Summary") || strings.Contains(plain, "supporting explanation") || !strings.Contains(plain, "unverified.") || !strings.Contains(plain, "Are the parser tests ready?") {
+					t.Fatalf("summary exchange: %s", plain)
+				}
+				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/side-question-summary-%d.txt", width), append(feed.Lines, "plain after exchange"), width)
+				opened := false
+				for row, line := range feed.Lines {
+					if !strings.Contains(ansi.Strip(line), "Open reply") {
+						continue
+					}
+					if feed.Questions[row] != 0 || feed.Snippets[row].Block != 2 || !terminalTest(u).openOutput(u.shell.Transcript, feed.Snippets[row]) {
+						t.Fatal("reply link did not select exact answer")
+					}
+					terminalTest(u).Dialog.Layout(100)
+					if terminalTest(u).Dialog.Document.Text != childReplySummaryBody {
+						t.Fatal("full-copy answer changed")
+					}
+					opened = true
+					terminalTest(u).outputKey("\x1b")
+				}
+				if !opened {
+					t.Fatal("missing Open reply")
+				}
+			}
+			view.Expansion = 1
+			expanded := ansi.Strip(strings.Join(view.testRenderConversation(100).Lines, "\n"))
+			if !strings.Contains(expanded, "End of evidence.") || strings.Count(expanded, "Fixed exact reply navigation") != 1 || strings.Contains(expanded, "Summary") {
+				t.Fatalf("expanded: %s", expanded)
+			}
+			view.Expansion, view.ChildReplySummary = 0, false
+			view.InvalidateRuns(0)
+			disabled := ansi.Strip(strings.Join(view.testRenderConversation(100).Lines, "\n"))
+			if !strings.Contains(disabled, "Summary") || !strings.Contains(disabled, "Open reply · +") {
+				t.Fatalf("disabled fallback: %s", disabled)
+			}
+			// The same answer in a child's tool stream uses the child consumer.
+			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "asking", "agentNickname": "asking"}})
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "asking", "turnId": "ask-turn", "item": item})
+			childView := u.testActivity(u.shell.Agents)
+			childView.setDisplayFilter(true, "/root/asking")
+			childView.Conversation, childView.ChildReplySummary = true, true
+			childFeed := childView.RenderFeed(100, 80)
+			childText := ansi.Strip(strings.Join(childFeed.Lines, "\n"))
+			if !strings.Contains(childText, "unverified.") || !strings.Contains(childText, "Open reply") || strings.Contains(childText, "supporting explanation") || strings.Contains(childText, "Summary") {
+				t.Fatalf("child summary: %s", childText)
+			}
+			for row, line := range childFeed.Lines {
+				if strings.Contains(ansi.Strip(line), "Open reply") {
+					if !terminalTest(u).openOutput(u.shell.Agents, childFeed.Snippets[row]) {
+						t.Fatal("child answer cannot open")
+					}
+					terminalTest(u).Dialog.Layout(100)
+					if terminalTest(u).Dialog.Document.Text != childReplySummaryBody {
+						t.Fatal("child answer identity changed")
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestSideQuestionRosterActivity(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn"}})

@@ -1,6 +1,8 @@
 package launch
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -8,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -59,4 +63,48 @@ func TestNativeIncomingReplyWithoutActivityLink(t *testing.T) {
 func TestUISnapshotNativeUnlinkedReply(t *testing.T) {
 	u, _ := unlinkedReplyUI(t)
 	assertNativeUISnapshot(t, "native-unlinked-reply", u.testActivity(u.shell.Transcript).testRenderConversation(100).Lines)
+}
+
+func TestNativeSideQuestionReplyDisclosure(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	item := sideQuestionActivityItem(t, "completed")
+	item.Result = []byte(`{"content":[{"type":"text","text":"{\"thread_id\":\"worker-thread\",\"task_name\":\"/root/worker\",\"answer\":\"## Summary\\nOutcome.\\n\\n## Details\\nEvidence.\"}"}]}`)
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)
+	terminal.Width, terminal.Height = 100, 30
+	c := nativeClient{renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
+	c.accept(sessionapi.NativeEvent{Attachment: "view", Frame: sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil)}})
+	if _, err := c.renderer.render(t.Context(), io.Discard, time.Now(), "test"); err != nil {
+		t.Fatal(err)
+	}
+	view := terminal.Transcript
+	for row, line := range terminal.Frame.Rows {
+		if !strings.Contains(ansi.Strip(line), "Open reply") {
+			continue
+		}
+		x, y := terminal.Layout.Main.X+view.FeedLeft+3, row+1
+		c.dispatch(terminalsession.Input{Kind: terminalsession.MouseInput, Text: fmt.Sprintf("\x1b[<0;%d;%dM", x, y)})
+		c.dispatch(terminalsession.Input{Kind: terminalsession.MouseInput, Text: fmt.Sprintf("\x1b[<0;%d;%dm", x, y)})
+		if len(c.calls) != 1 || c.calls[0].operation.Details == nil {
+			t.Fatalf("reply click did not request details: calls=%d notice=%s", len(c.calls), c.notice)
+		}
+		request := *c.calls[0].operation.Details
+		if request.Operation != 3 {
+			t.Fatalf("answer identity lost: %+v", request)
+		}
+		semantic := nativeSessionView{attached: u.attached, shell: u.shell, thread: u.Thread}
+		if refusal := semantic.openDetails(request); refusal != "" {
+			t.Fatal(refusal)
+		}
+		semantic.shell.Dialog.Layout(100)
+		if got := semantic.shell.Dialog.Document.Text; got != "## Summary\nOutcome.\n\n## Details\nEvidence." {
+			t.Fatalf("wrong native reply: %q", got)
+		}
+		request.Operation = 99
+		if semantic.openDetails(request) == "" {
+			t.Fatal("unknown answer operation accepted")
+		}
+		return
+	}
+	t.Fatal("no native Open reply link")
 }

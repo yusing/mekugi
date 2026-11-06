@@ -151,7 +151,8 @@ func (entry ItemContent) Values() (blocks []Value) {
 			blocks = []Value{{Kind: "progress", From: q.From, Body: text, Live: entry.Details != nil && entry.Details.WaitLive},
 				{Kind: "message", From: q.From, To: q.To, Body: textsanitize.MarkdownSource(q.Question)}}
 			if q.Answered {
-				blocks = append(blocks, Value{Kind: "message", From: q.To, To: q.From, Body: textsanitize.MarkdownSource(q.Answer)})
+				summary, details := entry.replySections(q.Answer)
+				blocks = append(blocks, Value{Kind: "message", From: q.To, To: q.From, Body: textsanitize.MarkdownSource(q.Answer), ReplySummary: summary, ReplyDetails: details})
 			}
 			return blocks
 		}

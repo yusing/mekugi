@@ -446,9 +446,18 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 				// One host item supplies no independent answer duration.
 				message.Observed = time.Time{}
 			}
+			start := len(out.lines)
 			v.agentItem(&out, message, []Block{block}, first, width, ConversationThread{
 				First: first, Previous: first, Joined: i > 0, Followed: i+2 < len(blocks),
 			})
+			// A compound exchange's disclosure opens its exact answer block,
+			// not the entry-wide tool evidence or the question.
+			for row := start; row < len(out.lines); row++ {
+				if out.questions[row] == entry.Seq {
+					out.questions[row] = 0
+					out.snippets[row] = Snippet{Run: entry.Seq, Block: i + 1}
+				}
+			}
 		}
 	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "reasoning" || entry.Kind == "progress" || entry.Kind == "compaction"):
 		var summaries []Block
@@ -715,8 +724,11 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 	case block.Kind == "start" || block.Kind == "message":
 		switch {
 		case entry.Kind == "progress":
-			// Compound exchanges retain full bodies, not entry-wide reply links.
-			out.hang(gutter, gutter, p.Markdown(block.Body, body, false))
+			if block.ReplySummary != "" || block.ReplyDetails != "" {
+				v.childReply(out, entry, block, gutter, tail, body, limit)
+			} else {
+				out.hang(gutter, gutter, p.Markdown(block.Body, body, false))
+			}
 		case entry.Activity != 0 && external && block.Kind == "message" && entry.Kind != "assignment":
 			v.linkedExcerpt(out, entry, "message", p.Markdown(block.Body, body, false), gutter, tail, body, limit)
 		case reply && (v.Conversation || entry.Activity != 0):

@@ -624,6 +624,11 @@ Pending, queued, failed and unconfirmed attempts retain explicit progress or err
 rows. Independent side questions name their action and show the question and
 returned answer with their directed routes. A successful answer settles as answered;
 failed questions retain a side-question failure row, without ordinary message delivery.
+Answered side questions use the same Summary interpretation and preference as
+completed child replies. Recognized answers show the headingless summary and
+`Open reply`; disclosure opens the exact answer within the exchange and full copy
+retains its original body. Questions and unstructured answers retain full traffic
+bodies. Pending questions never acquire answer disclosure.
 Agent progress uses a shared compact row with an agent-traffic marker,
 distinct from reasoning and generic tool cards. Waits publish their supplied
 targets and distinguish waiting, completion, timeout and cancellation. Aggregate
