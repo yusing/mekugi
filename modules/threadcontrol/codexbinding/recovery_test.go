@@ -22,7 +22,7 @@ func TestRecoverableParentFailureWakesOnlyForUnreadEvents(t *testing.T) {
 		defer driver.Stop(t.Context())
 		fail := func(turn string, waiting bool) {
 			t.Helper()
-			_, err := driver.Observe("turn/completed", []byte(`{"threadId":"root","turn":{"id":"`+turn+`","status":"failed","error":{"message":"provider at capacity","codexErrorInfo":"serverOverloaded"}}}`))
+			_, err := driver.Observe("turn/completed", []byte(`{"threadId":"root","turn":{"id":"`+turn+`","status":"failed","error":{"message":"server failed","codexErrorInfo":"internalServerError"}}}`))
 			check(err)
 			synctest.Wait()
 			member, _ := driver.control.Member("root")
@@ -35,9 +35,14 @@ func TestRecoverableParentFailureWakesOnlyForUnreadEvents(t *testing.T) {
 				t.Fatal("failure retried without an unread event")
 			}
 		}
+		// The parent already read progress before its request failed. Neither
+		// that notification nor elapsed time can substitute for a fresh outcome.
+		_, err := driver.controlAction(t.Context(), control.Identity{Thread: "child", Session: "child-session", Turn: "child-turn", Call: "read-progress", Item: "exec"}, []byte(`{"target":"/root","message":"already read"}`), "send_message")
+		check(err)
+		check(driver.control.InputConsumed(t.Context(), control.Identity{Thread: "root", Session: "root-session"}, []string{control.MessageItemID("child:read-progress")}))
 		fail("root-turn", true)
 		host.nextTurn = "recovered-message"
-		_, err := driver.controlAction(t.Context(), control.Identity{Thread: "child", Session: "child-session", Turn: "child-turn", Call: "progress", Item: "exec"}, []byte(`{"target":"/root","message":"new progress"}`), "send_message")
+		_, err = driver.controlAction(t.Context(), control.Identity{Thread: "child", Session: "child-session", Turn: "child-turn", Call: "progress", Item: "exec"}, []byte(`{"target":"/root","message":"new progress"}`), "send_message")
 		check(err)
 		last := host.inputs[len(host.inputs)-1]
 		if !last.Run || last.Wake == nil || last.Wake.Event.Kind != "message" {
@@ -51,6 +56,10 @@ func TestRecoverableParentFailureWakesOnlyForUnreadEvents(t *testing.T) {
 		last = host.inputs[len(host.inputs)-1]
 		if !last.Run || last.Wake == nil || last.Wake.Event.Status != control.Completed {
 			t.Fatalf("result did not wake parent: %+v", last)
+		}
+		final := host.inputs[len(host.inputs)-2]
+		if final.Kind != "FINAL_ANSWER" || final.Run || final.Thread != last.Thread {
+			t.Fatalf("completion wake preceded final injection: %+v", host.inputs)
 		}
 		fail("recovered-result", false)
 		if failures := driver.Failures(); len(failures) != 0 {

@@ -50,6 +50,7 @@ type nativeThreadsProvider struct {
 	attachChanges                           bool
 	attachments, attachmentReload           bool
 	recoverFailure                          bool
+	recoveryRetries                         int
 	multipleAnswers                         bool
 	deduplication                           bool
 	usageLimit                              bool
@@ -107,7 +108,7 @@ func (p *nativeThreadsProvider) serveSocket(t *testing.T, w http.ResponseWriter,
 		response := httptest.NewRecorder()
 		p.serve(t, response, request)
 		if response.Code != http.StatusOK {
-			if response.Code == http.StatusTooManyRequests {
+			if response.Code == http.StatusTooManyRequests || p.recoverFailure && response.Code == http.StatusInternalServerError {
 				var rejection map[string]any
 				if json.Unmarshal(response.Body.Bytes(), &rejection) == nil {
 					rejection["type"], rejection["status"] = "error", response.Code
@@ -182,7 +183,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	if p.attachments {
 		resumeStep++
 	}
-	resumedParent := !p.earlyCompletion && metadata.ThreadID == p.parent && p.calls[p.parent] >= resumeStep
+	resumedParent := !p.earlyCompletion && metadata.ThreadID == p.parent && p.calls[p.parent]-p.recoveryRetries >= resumeStep
 	p.mu.Unlock()
 	wantEffort := "low"
 	if resumedParent {
@@ -213,6 +214,14 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 	p.calls[metadata.ThreadID]++
 	step, parent := p.calls[metadata.ThreadID], metadata.ThreadID == p.parent
+	if parent && p.recoverFailure {
+		// Exhaust stock host retries on the failed turn. Only a new turn may
+		// reach the resumed-parent assertions; do not mistake a retry for a wake.
+		if metadata.TurnID == p.waitTurn && step-p.recoveryRetries > 4 {
+			p.recoveryRetries++
+		}
+		step -= p.recoveryRetries
+	}
 	grandchild := !parent && p.child != "" && metadata.ThreadID != p.child
 	if !parent && !grandchild {
 		p.child = metadata.ThreadID
@@ -379,6 +388,28 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 		}
 	case parent && step == 5:
+		if p.recoverFailure {
+			completed := false
+			for _, item := range request.Input {
+				if string(item["namespace"]) != `"threadcontrol"` || string(item["name"]) != `"wait_agent"` {
+					continue
+				}
+				var output string
+				var wake struct {
+					Event *struct {
+						Kind   string `json:"kind"`
+						Status string `json:"status"`
+						Task   string `json:"task"`
+					} `json:"event"`
+				}
+				if json.Unmarshal(item["output"], &output) == nil && json.Unmarshal([]byte(output), &wake) == nil && wake.Event != nil {
+					completed = wake.Event.Kind == "completed" && wake.Event.Status == "completed" && wake.Event.Task == "agent:main/worker"
+				}
+			}
+			if !completed {
+				failure = "recovery wake did not identify the completed child"
+			}
+		}
 		if p.attachments {
 			if strings.Count(string(body), "CURRENT_ATTACHED_SKILL") != map[bool]int{true: 1, false: 0}[p.attachmentReload] || strings.Contains(string(body), "SELECTED_SCREEN_BYTES") {
 				failure = "reset forced attachment bodies or lost explicit reload"
@@ -592,8 +623,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 	id := fmt.Sprintf("managed-%s-%d", metadata.ThreadID, step)
 	if parent && step == 4 && p.recoverFailure {
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintf(w, "data: {\"type\":\"response.failed\",\"response\":{\"id\":%q,\"status\":\"failed\",\"output\":[],\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"MANAGED_PARENT_OVERLOADED\"}}}\n\n", id)
+		// Capacity rejections have a timed provider wait, not descendant recovery.
+		// A structured 500 reaches the host's internal-server failure mapping.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":{"type":"server_error","message":"MANAGED_PARENT_SERVER_FAILED"}}`)
 		return
 	}
 	item := map[string]any{"type": "message", "id": id, "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": answer}}}
@@ -1304,7 +1338,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if strings.Contains(string(body), "MANAGED_PARENT_RESUMED") {
 			break
 		}
-		failureObserved = failureObserved || strings.Contains(string(body), "MANAGED_PARENT_OVERLOADED") || strings.Contains(string(body), "out of capacity") || strings.Contains(string(body), "model is at capacity")
+		failureObserved = failureObserved || strings.Contains(string(body), "MANAGED_PARENT_SERVER_FAILED") || strings.Contains(string(body), "We're currently experiencing high demand")
 		if scenario.earlyCompletion && event.Frame.View.Status.Session.CompletionKnown {
 			t.Fatal("early completion published a completed parent while its child was running")
 		}
@@ -1382,8 +1416,9 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	for id, n := range fixture.calls {
 		counts[id] = n
 	}
+	recoveryRetries := fixture.recoveryRetries
 	fixture.mu.Unlock()
-	wantParentCalls := 5
+	wantParentCalls := 5 + recoveryRetries
 	if scenario.attachments {
 		wantParentCalls++
 	}
