@@ -173,9 +173,9 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		script = execObservationScript(observation)
 	}
 	if (observation.Tree != "" || len(observation.Checkpoints) != 0) && selected.Store != nil {
-		// Closing, comparing, and claiming are one step per workspace, so
-		// concurrent finalizations cannot both record one effect.
-		defer windows.serialize(workspace)()
+		// Closing, comparing, and claiming are one step across overlapping
+		// physical scopes, even when runtimes selected different workspaces.
+		defer windows.serialize(workspace, observation.Roots...)()
 	}
 	view := windows.close(refs...)
 	for _, path := range view.created {

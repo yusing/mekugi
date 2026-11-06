@@ -323,6 +323,77 @@ func TestWorkspaceSnapshotConcurrentRuntimesRecordAnEffectOnce(t *testing.T) {
 	}
 }
 
+func TestWorkspaceSnapshotExternalScopesSerializeAcrossWorkspaces(t *testing.T) {
+	isolateSnapshotGit(t)
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	// The rendezvous shim must not recurse through a PATH-injected VCS guard.
+	git := "/usr/bin/git"
+	if _, err := os.Stat(git); err != nil {
+		t.Skip("requires system Git outside injected PATH")
+	}
+	gate, bin := t.TempDir(), t.TempDir()
+	// Hold concurrent comparisons at diff-tree long enough to expose both
+	// windows closing before either claims. A serialized comparison proceeds
+	// after the bounded wait without requiring a second comparison to enter.
+	shim := "#!/bin/sh\nfor arg do\n if [ \"$arg\" = diff-tree ]; then\n  n=0; : > " + quoteShellWord(gate+"/ready-") + "$$\n  while [ \"$(find " + quoteShellWord(gate) + " -type f | wc -l)\" -lt 2 ] && [ $n -lt 40 ]; do sleep .005; n=$((n+1)); done\n  break\n fi\ndone\nexec " + quoteShellWord(git) + " \"$@\"\n"
+	writeTestFile(t, filepath.Join(bin, "git"), shim)
+	if err := os.Chmod(filepath.Join(bin, "git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	f := newMChangesSliceFixture(t, "snapshot-external-concurrency")
+	parent := testProxyWithStore(f.store, &Windows{})
+	child := testProxyWithStore(f.store, parent.Windows.ForRuntime())
+	var err error
+	child.Checkpoints, err = testCapture(t, f.store.directory).Checkpoints(f.store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspaces := []string{f.workspace, t.TempDir()}
+	external := t.TempDir()
+	target := filepath.Join(external, "shared.txt")
+	writeTestFile(t, target, "before\n")
+	proxies, refs := []*Preparer{parent, child}, []string{"parent", "child"}
+	histories := make([]mekugiHistory, len(proxies))
+	for i, proxy := range proxies {
+		observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: "custom-generator", Workdir: external, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspaces[i], Workspaces: proxy.Checkpoints})
+		if !ok || observation == nil || observation.Checkpoints[external] == "" {
+			t.Fatalf("missing explicit-workdir capture: %+v", observation)
+		}
+		proxy.Windows.open(&execWindow{ref: refs[i], roots: observation.Roots, workspace: workspaces[i]})
+		histories[i] = mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
+	}
+	writeTestFile(t, target, "after\n")
+	var workers sync.WaitGroup
+	for i, proxy := range proxies {
+		workers.Go(func() {
+			if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, workspaces[i], []execCompletion{{callID: refs[i], history: histories[i], result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	workers.Wait()
+	effects := 0
+	for i, ref := range refs {
+		record, found, err := f.store.lookup(f.ctx, workspaces[i], legacycall.ExecCallID(ref, false))
+		if err != nil || !found {
+			t.Fatalf("finalization missing: %v %v", found, err)
+		}
+		for _, file := range record.ReviewFiles {
+			if file.AfterPath == target && strings.Contains(file.Diff, "-before\n+after\n") {
+				effects++
+			}
+		}
+	}
+	if effects != 1 {
+		t.Fatalf("one shared external physical edit captured %d times", effects)
+	}
+	if len(parent.Windows.state().finalizing) != 0 {
+		t.Fatal("completed comparisons retained scope locks")
+	}
+}
+
 // isolateSnapshotGit keeps the developer's global Git ignore and attribute
 // files out of snapshot tests.
 func isolateSnapshotGit(t *testing.T) {

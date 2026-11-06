@@ -67,6 +67,7 @@ type windowRegistry struct {
 type workspaceFinalization struct {
 	mu    sync.Mutex
 	users int
+	roots []string
 }
 
 // ForRuntime shares overlap exclusions, interval boundaries and snapshot claims
@@ -86,8 +87,9 @@ func (r *Windows) state() *windowRegistry {
 }
 
 // serialize coordinates close/compare/claim across runtime-local checkpoint
-// owners. Entries live only while a comparison is running or waiting.
-func (r *Windows) serialize(workspace string) func() {
+// owners, including overlapping physical scopes from different workspaces.
+// Entries live only while a comparison is running or waiting.
+func (r *Windows) serialize(workspace string, roots ...string) func() {
 	if r == nil {
 		return func() {}
 	}
@@ -101,15 +103,38 @@ func (r *Windows) serialize(workspace string) func() {
 		lock = &workspaceFinalization{}
 		state.finalizing[workspace] = lock
 	}
-	lock.users++
+	roots = append(slices.Clone(roots), workspace)
+	for _, root := range roots {
+		lock.roots = changecapture.AddRoot(lock.roots, root)
+	}
+	type scopeLock struct {
+		workspace string
+		lock      *workspaceFinalization
+	}
+	var locks []scopeLock
+	for workspace, lock := range state.finalizing {
+		if execRootsMeet(lock.roots, roots) {
+			lock.users++
+			locks = append(locks, scopeLock{workspace, lock})
+		}
+	}
 	state.mu.Unlock()
-	lock.mu.Lock()
+	// Register all scopes before waiting, so later admissions see pending
+	// overlaps too. A common order prevents multi-scope lock cycles.
+	slices.SortFunc(locks, func(a, b scopeLock) int { return strings.Compare(a.workspace, b.workspace) })
+	for _, held := range locks {
+		held.lock.mu.Lock()
+	}
 	return func() {
-		lock.mu.Unlock()
+		for _, held := range slices.Backward(locks) {
+			held.lock.mu.Unlock()
+		}
 		state.mu.Lock()
-		lock.users--
-		if lock.users == 0 {
-			delete(state.finalizing, workspace)
+		for _, held := range locks {
+			held.lock.users--
+			if held.lock.users == 0 {
+				delete(state.finalizing, held.workspace)
+			}
 		}
 		state.mu.Unlock()
 	}

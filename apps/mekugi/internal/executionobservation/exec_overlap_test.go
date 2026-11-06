@@ -2,8 +2,11 @@ package executionobservation
 
 import (
 	"path/filepath"
+	"runtime"
 	"slices"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestExecWindowSiblingMergeAndOtherOverlap(t *testing.T) {
@@ -66,5 +69,60 @@ func TestExecWindowRuntimeFamily(t *testing.T) {
 		if len(view.overlaps) != len(runtimes)-1 || len(view.excluded) != len(runtimes)-1 || slices.Contains(view.overlaps, names[i]) {
 			t.Fatalf("runtime %s lost family overlap: %+v", names[i], view)
 		}
+	}
+}
+
+func TestExecFinalizationOverlappingScopeLocks(t *testing.T) {
+	r := &Windows{}
+	release := sync.OnceFunc(r.serialize("/held-workspace", "/held-scope"))
+	defer release()
+	disjoint := make(chan struct{})
+	go func() {
+		r.serialize("/other-workspace", "/other-scope")()
+		close(disjoint)
+	}()
+	select {
+	case <-disjoint:
+	case <-time.After(5 * time.Second):
+		t.Fatal("unrelated workspace scopes shared a comparison lock")
+	}
+	release()
+	// A bridge covers both independently held scopes; parent/subdirectory
+	// overlap and repeated workspaces exercise multi-lock ordering as well.
+	workspaces := []string{"/workspace-a", "/workspace-b", "/workspace-c", "/workspace-d"}
+	roots := [][]string{{"/shared/a"}, {"/shared/b"}, {"/shared/a/sub", "/shared/b/sub"}, {"/separate"}}
+	var workers sync.WaitGroup
+	var mu sync.Mutex
+	active := make(map[int][]string)
+	start, done := make(chan struct{}), make(chan struct{})
+	for i := range 32 {
+		workers.Go(func() {
+			<-start
+			scope := i % len(roots)
+			release := r.serialize(workspaces[scope], roots[scope]...)
+			mu.Lock()
+			for _, other := range active {
+				if execRootsMeet(other, roots[scope]) {
+					t.Error("overlapping physical scopes entered comparison together")
+				}
+			}
+			active[i] = roots[scope]
+			mu.Unlock()
+			runtime.Gosched()
+			mu.Lock()
+			delete(active, i)
+			mu.Unlock()
+			release()
+		})
+	}
+	close(start)
+	go func() { workers.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("overlapping scope comparisons deadlocked")
+	}
+	if len(r.state().finalizing) != 0 {
+		t.Fatal("completed comparisons retained scope locks")
 	}
 }
