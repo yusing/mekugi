@@ -213,11 +213,12 @@ func TestNativeProcessDetailsBorrowExecutionCommands(t *testing.T) {
 	c.accept(sessionapi.NativeEvent{Attachment: "first", Frame: frame})
 	d := c.renderer.terminal.Dialog
 	d.Paint(make([]string, 16), 80, 16)
-	d.Key("\x1b[C")
-	stop := d.Key("s")
+	d.Key("\x1b[B")
+	stop := d.Key("x")
 	if stop.Process == nil || stop.Process.Item != "second" || stop.Process.ID != "42" {
 		t.Fatal("queued navigation did not stop the selected process")
 	}
+	d.Key("\r")
 	d.Key("/")
 	if intent := d.Key("s"); intent.Action != 0 {
 		t.Fatal("search triggered Stop")

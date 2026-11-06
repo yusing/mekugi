@@ -16,18 +16,19 @@ import (
 // Retained content arrives as detached, identity-addressed publications.
 type ContentDialog struct {
 	Dialog
-	View         *activityui.View
-	ID           sessionpresentation.DetailID
-	Revision     uint64
-	Output       *sessionpresentation.DetailOutput
-	Pages        []sessionpresentation.DetailItem
-	Processes    bool
-	File         *activitypresentation.DetailFile
-	Image        *terminalui.ImagePreview // Borrowed from the physical frontend's image cache.
-	ImageReady   bool
-	imageLine    int
-	laidKey      contentDialogKey
-	modelVisible map[string]bool
+	View          *activityui.View
+	ID            sessionpresentation.DetailID
+	Revision      uint64
+	Output        *sessionpresentation.DetailOutput
+	Pages         []sessionpresentation.DetailItem
+	Processes     bool
+	ProcessDetail bool
+	File          *activitypresentation.DetailFile
+	Image         *terminalui.ImagePreview // Borrowed from the physical frontend's image cache.
+	ImageReady    bool
+	imageLine     int
+	laidKey       contentDialogKey
+	modelVisible  map[string]bool
 }
 
 type contentDialogKey struct {
@@ -86,6 +87,7 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 		d.Navigation = "view"
 	}
 	d.ForceTabs = d.Processes && len(d.Pages) > 0 && d.Pages[0].Source != 0
+	d.HideTabs = d.Processes
 	d.SetPages(tabs)
 	if d.Output != nil && (len(d.Pages) == 0 || d.Output.Page != d.Pages[d.Page].ID || d.Output.Version != d.Pages[d.Page].OutputVersion) {
 		d.Output = nil
@@ -94,6 +96,10 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 
 // Layout renders the current retained snapshot without owning output lifetime.
 func (d *ContentDialog) Layout(width int) {
+	if d.Processes {
+		d.layoutProcess(width)
+		return
+	}
 	page := d.Pages[d.Page]
 	d.Mention = "output"
 	if page.Lang == "diff" {
@@ -177,6 +183,10 @@ func (d *ContentDialog) Paint(rows []string, width, height int) {
 	if bodyWidth == 0 {
 		return
 	}
+	if d.Processes && !d.ProcessDetail {
+		_, h := dialogSize(width, height)
+		d.rows = h - d.Chrome()
+	}
 	if d.Selection == nil {
 		d.Layout(bodyWidth)
 	}
@@ -208,6 +218,9 @@ func (d *ContentDialog) Key(key string) DialogIntent {
 	if d.Selection == nil && len(d.Pages) > 0 && d.width > 0 {
 		d.Layout(d.width)
 	}
+	if d.Processes && d.Selection == nil && !d.Typing {
+		return d.processKey(key)
+	}
 	if key == "s" && !d.Typing && d.Selection == nil && d.Processes && len(d.Pages) > 0 {
 		if process := d.Pages[d.Page].Process; process != nil {
 			return DialogIntent{Action: DialogStopProcess, Process: new(*process)}
@@ -236,6 +249,9 @@ func (d *ContentDialog) Key(key string) DialogIntent {
 
 // Mouse synchronizes selected content before a gesture can freeze its document.
 func (d *ContentDialog) Mouse(button, x, y int, release bool) DialogIntent {
+	if d.Processes && !d.ProcessDetail {
+		return d.processMouse(button, x, y, release)
+	}
 	if d.Selection == nil && len(d.Pages) > 0 && d.width > 0 {
 		d.Layout(d.width)
 		if button&^28 == 0 && !release {

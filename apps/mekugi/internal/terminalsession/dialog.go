@@ -47,6 +47,8 @@ type Dialog struct {
 	Selection     *Selection
 	Navigation    string
 	ForceTabs     bool
+	HideTabs      bool
+	Footer        string
 	OutputToggle  string
 	Mention       string
 	StopAvailable bool
@@ -81,7 +83,7 @@ type DialogIntent struct {
 	Process     *sessionpresentation.Process
 }
 
-func (d *Dialog) tabbed() bool { return len(d.pages) > 1 || d.ForceTabs }
+func (d *Dialog) tabbed() bool { return !d.HideTabs && (len(d.pages) > 1 || d.ForceTabs) }
 func (d *Dialog) Chrome() int {
 	if d.tabbed() {
 		return terminalui.DialogChrome + 1
@@ -272,6 +274,13 @@ func (d *Dialog) highlight(row string, indent int, current bool) string {
 
 func (d *Dialog) footer(width int) string {
 	dim, undim := terminalui.Dim, terminalui.Undim
+	if d.Footer != "" && !d.Typing {
+		footer := dim + d.Footer + undim
+		if d.missed {
+			footer = terminalui.Amber + "no match" + terminalui.Reset + dim + " · " + undim + footer
+		}
+		return footer
+	}
 	if d.Typing {
 		return "/" + d.draft + "▏" + dim + "  enter find · esc cancel" + undim
 	}

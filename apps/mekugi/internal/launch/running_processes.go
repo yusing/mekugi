@@ -17,7 +17,7 @@ func runningProcessCount(session *sessionpresentation.Attachment) int {
 	return count
 }
 
-// showRunningProcesses opens the shared output dialog on every live command.
+// showRunningProcesses opens the background list backed by live command details.
 func (session *nativeSession) showRunningProcesses(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, files *detailFiles) {
 	session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
 

@@ -1,12 +1,12 @@
 
 
-╭─ Running processes ────────────────────────── [×] ─╮
-│                                                    │
+╭─ Background ───────────────────────────────── [×] ─╮
+│ 0 active shells                                    │
 ├────────────────────────────────────────────────────┤
 │ No running processes                               │
 │                                                    │
 │                                                    │
-╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ──╯
+╰─ ↑↓ select · Enter view · Esc close ───────────────╯
 
 
 

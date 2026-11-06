@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -57,9 +59,9 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if runningProcessCount(&u.attached.session) != 2 {
 		t.Fatal("Main and child commands were not counted once each")
 	}
-	if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "1 main git fetch && go test") || !strings.Contains(got, "2 worker make test") ||
+	if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "main · git fetch && go test") || !strings.Contains(got, "worker · make test") ||
 		strings.Contains(got, "No running processes") || strings.Contains(got, "exec-track") || strings.Contains(got, displayGuardHelper) {
-		t.Fatalf("missing command tabs or owners, or leaked instrumentation: %s", got)
+		t.Fatalf("missing process list or owners, or leaked instrumentation: %s", got)
 	}
 	// A yielded command can outlive the turn that started it. Only its host
 	// completion removes it, including when the UI still has output to roll.
@@ -70,8 +72,10 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if u.attached.session.Transcript("main", "t").Turn != nil || !u.attached.session.Commands()[[3]string{"main", "t", "cmd"}].Entry.Native.Invocation.Snapshot().Running {
 		t.Fatal("command lifetime followed its closed turn scope")
 	}
-	if err := terminalTest(u).send("\x1b[C"); err != nil {
-		t.Fatal(err)
+	for _, key := range []string{"\x1b[B", "\r"} {
+		if err := terminalTest(u).send(key); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for i := range 30 {
 		appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "cmd", "delta": fmt.Sprintf("output %02d\n", i)})
@@ -130,7 +134,7 @@ func TestRunningProcessesTrackedCompletion(t *testing.T) {
 	// to the canonical running operation, not that earlier display snapshot.
 	appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "processId": "42"})
 	appServerTestKeys(t, u, "/ps\r")
-	stop := terminalTest(u).Dialog.Key("s")
+	stop := terminalTest(u).Dialog.Key("x")
 	if stop.Process == nil || stop.Process.ID != "42" || stop.Process.Item != "cmd" {
 		t.Fatal("tracked command lost late Stop identity")
 	}
@@ -171,16 +175,16 @@ func TestRunningProcessesInteraction(t *testing.T) {
 		appServerTestKeys(t, u, "/ps\r")
 		drawOutputDialog(terminalTest(u))
 		d := terminalTest(u).Dialog
-		if err := terminalTest(u).send("\x1b[C"); err != nil {
+		if err := terminalTest(u).send("\x1b[B"); err != nil {
 			t.Fatal(err)
 		}
 		if got := drawOutputDialog(terminalTest(u)); d.Page != 1 || !strings.Contains(got, "sleep 2") || !strings.Contains(got, "2 / 20") {
-			t.Fatalf("Right did not select the next process: %s", got)
+			t.Fatalf("Down did not select the next process: %s", got)
 		}
-		x, y := dialogFramePoint(t, outputDialogScreen(terminalTest(u)), "1 main")
+		x, y := dialogFramePoint(t, outputDialogScreen(terminalTest(u)), "main · sleep 1 ")
 		terminalTest(u).outputMouse(0, x, y, false)
-		if d.Page != 0 {
-			t.Fatal("tab click did not select its process")
+		if d.Page != 0 || !d.ProcessDetail {
+			t.Fatal("list click did not open its process")
 		}
 		if err := terminalTest(u).send(closeKey); err != nil {
 			t.Fatal(err)
@@ -201,7 +205,11 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	}
 	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	for _, thread := range []string{"main", "child"} {
-		processNotify(t, u, thread, "cmd", "go test ./...", "inProgress")
+		command := "go test ./..."
+		if thread == "child" {
+			command = "cd ~/projects/example && go test ./... -run TestBackgroundProcess -count=1"
+		}
+		processNotify(t, u, thread, "cmd", command, "inProgress")
 		appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": thread, "turnId": "t", "itemId": "cmd", "processId": "42"})
 		for i := range 3 {
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": fmt.Sprint("after", i), "type": "agentMessage", "text": strings.Repeat("Later transcript\n", 12) + "Last row"}})
@@ -217,10 +225,20 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	now = now.Add(12 * time.Second)
 	appServerTestKeys(t, u, "/ps\r")
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-dialog.txt", append(processDialog(u, 80, 16), "plain"), 80)
+	terminalTest(u).outputKey("\r")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-detail.txt", append(processDialog(u, 80, 18), "plain"), 80)
+	terminalTest(u).outputKey("\x1b[D")
 	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 		view.Painter.Theme = diffrender.LightTheme
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-light.txt", append(processDialog(u, 44, 14), "plain"), 44)
+	terminalTest(u).outputKey("\x1b[B")
+	terminalTest(u).outputKey("\r")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-detail-light.txt", append(processDialog(u, 44, 16), "plain"), 44)
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
+		view.Painter.Theme = diffrender.TerminalTheme
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-detail-terminal.txt", append(processDialog(u, 80, 20), "plain"), 80)
 	for _, thread := range []string{"main", "child"} {
 		processNotify(t, u, thread, "cmd", "go test ./...", "completed")
 	}
@@ -229,6 +247,81 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "/ps\r")
 	assertNativeUISnapshot(t, "running-processes-empty", processDialog(u, 60, 12))
+}
+
+func TestRunningProcessesDetailNavigation(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	u.clock = func() time.Time { return now }
+	u.testActivity(u.shell.Agents).Clock = u.clock
+	for i := range 25 {
+		processNotify(t, u, "main", fmt.Sprint(i), fmt.Sprintf("sleep %d", i), "inProgress")
+	}
+	wire := u.Host.Input.(*appServerTestInput)
+	wire.Reset()
+	appServerTestKeys(t, u, "/ps\r")
+	d := terminalTest(u).Dialog
+	for _, last := range []int{5, 24} {
+		if last == 24 {
+			d.Key("G")
+		}
+		processDialog(u, 44, 10)
+		d.Mouse(0, 3, 8, false) // Last visible body row, immediately above footer.
+		d.Mouse(0, 3, 8, true)
+		if d.Page != last || !d.ProcessDetail || d.Selection != nil {
+			t.Fatalf("last visible row did not open process %d", last)
+		}
+		d.Key("\x1b[D")
+	}
+	processDialog(u, 100, 30)
+	d.Key("G")
+	if got := strings.Join(processDialog(u, 44, 10), "\n"); d.Page != 24 || !strings.Contains(got, "sleep 24") {
+		t.Fatalf("resize hid selected process: %s", got)
+	}
+	d.Key("\r")
+	got := strings.Join(processDialog(u, 100, 24), "\n")
+	if !strings.Contains(got, "Shell details") || !strings.Contains(got, "No output available") || !strings.Contains(got, "Status:  running") {
+		t.Fatalf("missing selected process details: %s", got)
+	}
+	for _, key := range []string{"/", "not-found", "\r"} {
+		d.Key(key)
+	}
+	if got := ansi.Strip(strings.Join(processDialog(u, 100, 24), "\n")); !strings.Contains(got, "no match") {
+		t.Fatalf("failed search hid its result: %s", got)
+	}
+	now = now.Add(124 * time.Second)
+	if got := strings.Join(processDialog(u, 100, 24), "\n"); !strings.Contains(got, "Runtime: 2m4s") {
+		t.Fatalf("runtime did not advance without output: %s", got)
+	}
+	if d.Key("x").Process != nil {
+		t.Fatal("process without host identity was stoppable")
+	}
+	appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": "main", "turnId": "t", "itemId": "24", "processId": "42"})
+	processDialog(u, 100, 24)
+	if stop := d.Key("x"); stop.Process == nil || stop.Process.Item != "24" {
+		t.Fatal("late host identity did not enable selected detail stop")
+	}
+	d.Key("\x1b[D")
+	if got := strings.Join(processDialog(u, 100, 24), "\n"); d.Page != 24 || d.ProcessDetail || !strings.Contains(got, "Background") {
+		t.Fatalf("back lost selection: %s", got)
+	}
+	processNotify(t, u, "main", "24", "sleep 24", "failed")
+	processDialog(u, 100, 24)
+	if d.Key("x").Process != nil {
+		t.Fatal("completed process remained stoppable")
+	}
+	d.Key("\r")
+	if got := strings.Join(processDialog(u, 100, 24), "\n"); !strings.Contains(got, "Status:  exit 1") {
+		t.Fatalf("failed completion lost its status: %s", got)
+	}
+	for _, key := range []string{"\r", " "} {
+		if intent := d.Key(key); intent.Action != terminalsession.DialogClose {
+			t.Fatalf("detail close key %q did not dismiss", key)
+		}
+	}
+	if wire.Len() != 0 || runningProcessCount(&u.attached.session) != 24 {
+		t.Fatal("navigation dispatched host work or stopped a process")
+	}
 }
 
 func TestRunningProcessControlIdentity(t *testing.T) {
