@@ -99,8 +99,10 @@ func TestNativeSymbolRealGoplsReferences(t *testing.T) {
 		write("core/options.go", "package core\ntype Options struct { Model, ReasoningEffort, ServiceTier string }\n")
 		var source strings.Builder
 		source.WriteString("package caller\nimport target \"example.com/symbolfixture/core\"\nvar options = []target.Options{\n")
+		// Keep the shared inventory below both the tokenizer and stock host's
+		// bytes/4 ceiling; the three separate inventories still need three pages.
 		for i := range 48 {
-			fmt.Fprintf(&source, "{Model: %q, ReasoningEffort: %q, ServiceTier: %q}, // %s\n", fmt.Sprintf("model-%d", i), "high", "default", strings.Repeat("source context ", 20))
+			fmt.Fprintf(&source, "{Model: %q, ReasoningEffort: %q, ServiceTier: %q}, // %s\n", fmt.Sprintf("model-%d", i), "high", "default", strings.Repeat("source context ", 12))
 		}
 		source.WriteString("}\nvar model = options[0].Model\nvar effort = options[0].ReasoningEffort\nvar tier = options[0].ServiceTier\n")
 		write("caller/options.go", source.String())
