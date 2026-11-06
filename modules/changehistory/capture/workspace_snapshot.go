@@ -67,9 +67,14 @@ const workspaceSnapshotAttributes = "* -text -eol -crlf -filter -ident -working-
 // not yet been rehashed under the private attributes.
 const workspaceSnapshotSeeded = "mekugi-seeded"
 
-// Claims are snapshot states that a finished call recorded,
-// by private repository, so a claim never crosses comparison domains.
-type Claims map[string]map[string]workspaceSnapshotEntry
+// Claims record finished calls by physical path, including the private object
+// store holding their state. Overlapping directory scopes share attribution.
+type Claims map[string]snapshotClaim
+
+type snapshotClaim struct {
+	state workspaceSnapshotEntry
+	repo  *workspaceSnapshotRepo
+}
 
 type Workspaces struct {
 	directory string
@@ -108,15 +113,17 @@ type workspaceSnapshotEntry struct {
 // execSnapshotChange is a snapshot-derived before/after pair for reconcile.
 type execSnapshotChange struct {
 	before, after File
+	physicalPath  string
 }
 
 type workspaceSnapshotRepo struct {
-	owner     *Workspaces
-	workspace string
-	git       string
-	gitDir    string
-	index     string
-	lockPath  string
+	owner             *Workspaces
+	workspace         string
+	physicalWorkspace string
+	git               string
+	gitDir            string
+	index             string
+	lockPath          string
 	// worktree is the real repository's top level in Git mode, so its ignore
 	// files apply; pathspec limits the snapshot to the workspace below it.
 	worktree string
@@ -426,6 +433,11 @@ func (r *workspaceSnapshotRepo) renormalize(ctx context.Context) error {
 }
 
 func (r *workspaceSnapshotRepo) setup(ctx context.Context) error {
+	physical, err := filepath.EvalSymlinks(r.workspace)
+	if err != nil {
+		return err
+	}
+	r.physicalWorkspace = physical
 	git, err := exec.LookPath("git")
 	if err != nil {
 		return errors.New("git is unavailable")
@@ -434,11 +446,11 @@ func (r *workspaceSnapshotRepo) setup(ctx context.Context) error {
 	query := exec.CommandContext(ctx, git, "-c", "core.fsmonitor=false", "-C", r.workspace,
 		"rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir", "--git-path", "index")
 	query.Env, query.WaitDelay = userEnv, workspaceSnapshotDrain
-	r.worktree, r.pathspec, r.plain, r.exclude, r.objects, r.seed = r.workspace, ".", true, "", "", ""
+	r.worktree, r.pathspec, r.plain, r.exclude, r.objects, r.seed = r.physicalWorkspace, ".", true, "", "", ""
 	if output, err := query.Output(); err == nil {
 		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 		if len(lines) == 3 && filepath.IsAbs(lines[0]) {
-			if relative, err := filepath.Rel(lines[0], r.workspace); err == nil && filepath.IsLocal(relative) {
+			if relative, err := filepath.Rel(lines[0], r.physicalWorkspace); err == nil && filepath.IsLocal(relative) {
 				r.worktree, r.pathspec, r.plain = lines[0], filepath.ToSlash(relative), false
 				r.exclude = filepath.Join(lines[1], "info", "exclude")
 				r.objects, r.seed = filepath.Join(lines[1], "objects"), lines[2]
@@ -698,7 +710,17 @@ func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Clai
 	if current == "" {
 		return nil, nil, errors.New("no current checkpoint")
 	}
-	claims := all[repo.gitDir]
+	claims := make(map[string]snapshotClaim)
+	for physical, claim := range all {
+		// A containing checkpoint cannot represent files inside an independent
+		// nested Git authority. Its missing entries do not prove deletions.
+		if claim.repo.plain != repo.plain || !repo.plain && claim.repo.worktree != repo.worktree {
+			continue
+		}
+		if relative, err := filepath.Rel(repo.physicalWorkspace, physical); err == nil && filepath.IsLocal(relative) {
+			claims[physical] = claim
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, workspaceSnapshotWait)
 	defer cancel()
 	output, err := repo.run(ctx, nil, "diff-tree", "-r", "-z", "--no-renames", "--raw", tree, current, "--", repo.pathspec)
@@ -744,27 +766,46 @@ func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Clai
 	for _, path := range ignored {
 		delete(changed, path)
 	}
-	latest := make(map[string]workspaceSnapshotEntry, len(changed))
-	var oids []string
+	latest := make(Claims, len(changed))
+	oids := make(map[*workspaceSnapshotRepo][]string)
+	beforeRepos := make(map[string]*workspaceSnapshotRepo)
 	for path, change := range changed {
-		latest[path] = change.after
+		relative, err := filepath.Rel(repo.physicalWorkspace, path)
+		if err != nil || !filepath.IsLocal(relative) {
+			return nil, nil, errors.New("snapshot path outside its workspace")
+		}
+		latest[path] = snapshotClaim{state: change.after, repo: repo}
+		beforeRepo := repo
 		if claim, found := claims[path]; found {
-			change.before = claim
+			change.before, beforeRepo = claim.state, claim.repo
 			changed[path] = change
 		}
+		beforeRepos[path] = beforeRepo
 		if change.before == change.after {
 			delete(changed, path)
 			continue
 		}
-		for _, side := range []workspaceSnapshotEntry{change.before, change.after} {
+		for i, side := range []workspaceSnapshotEntry{change.before, change.after} {
 			if side.mode != "" && side.mode != "160000" {
-				oids = append(oids, side.oid)
+				source := repo
+				if i == 0 {
+					source = beforeRepo
+				}
+				oids[source] = append(oids[source], side.oid)
 			}
 		}
 	}
-	contents, err := repo.blobs(ctx, oids)
-	if err != nil {
-		return nil, nil, err
+	contents := make(map[*workspaceSnapshotRepo]map[string]workspaceSnapshotBlob)
+	budget := MaxContentBytes
+	// Deterministic store order also makes aggregate budget admission stable.
+	stores := slices.Collect(maps.Keys(oids))
+	slices.SortFunc(stores, func(a, b *workspaceSnapshotRepo) int { return strings.Compare(a.gitDir, b.gitDir) })
+	for _, source := range stores {
+		blobs, err := source.blobs(ctx, oids[source], &budget)
+		if err != nil {
+			return nil, nil, err
+		}
+		contents[source] = blobs
 	}
 	var changes []execSnapshotChange
 	for _, path := range slices.Sorted(maps.Keys(changed)) {
@@ -772,12 +813,15 @@ func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Clai
 		if change.before.mode == "160000" || change.after.mode == "160000" {
 			continue // Nested repositories are not reviewed as files.
 		}
+		relative, _ := filepath.Rel(repo.physicalWorkspace, path)
+		displayPath := filepath.Join(repo.workspace, relative)
 		changes = append(changes, execSnapshotChange{
-			before: workspaceSnapshotFile(path, change.before, contents),
-			after:  workspaceSnapshotFile(path, change.after, contents),
+			before:       workspaceSnapshotFile(displayPath, change.before, contents[beforeRepos[path]]),
+			after:        workspaceSnapshotFile(displayPath, change.after, contents[repo]),
+			physicalPath: path,
 		})
 	}
-	return changes, Claims{repo.gitDir: latest}, nil
+	return changes, latest, nil
 }
 
 // states reads paths' entries in a snapshot tree; absent paths stay zero.
@@ -816,7 +860,7 @@ type workspaceSnapshotBlob struct {
 }
 
 // blobs reads bounded content with the same limits as named capture.
-func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string) (map[string]workspaceSnapshotBlob, error) {
+func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string, budget *int) (map[string]workspaceSnapshotBlob, error) {
 	slices.Sort(oids)
 	oids = slices.Compact(oids)
 	blobs := make(map[string]workspaceSnapshotBlob, len(oids))
@@ -828,7 +872,6 @@ func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string) (map[s
 	if err != nil {
 		return nil, err
 	}
-	budget := MaxContentBytes
 	var wanted []string
 	for line := range strings.SplitSeq(strings.TrimSpace(string(output)), "\n") {
 		oid, sizeText, _ := strings.Cut(line, " ")
@@ -839,10 +882,10 @@ func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string) (map[s
 		switch {
 		case size > MaxFileBytes:
 			blobs[oid] = workspaceSnapshotBlob{size: size, error: "file exceeds the 8 MiB capture bound"}
-		case size > int64(budget):
+		case size > int64(*budget):
 			blobs[oid] = workspaceSnapshotBlob{size: size, error: "capture budget exhausted"}
 		default:
-			budget -= int(size)
+			*budget -= int(size)
 			wanted = append(wanted, oid)
 		}
 	}
@@ -891,14 +934,9 @@ func workspaceSnapshotFile(path string, entry workspaceSnapshotEntry, blobs map[
 
 // merge adds claims to c, allocating it when needed.
 func (c Claims) Merge(claims Claims) Claims {
-	for domain, states := range claims {
-		if c == nil {
-			c = make(Claims)
-		}
-		if c[domain] == nil {
-			c[domain] = make(map[string]workspaceSnapshotEntry, len(states))
-		}
-		maps.Copy(c[domain], states)
+	if c == nil && len(claims) != 0 {
+		c = make(Claims, len(claims))
 	}
+	maps.Copy(c, claims)
 	return c
 }

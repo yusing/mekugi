@@ -77,6 +77,85 @@ func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
 	}
 }
 
+func TestInterpreterEndpointDoesNotRequirePredictedTransform(t *testing.T) {
+	t.Parallel()
+	python, binary := interpreterForTest("python3", "python")
+	if binary == "" {
+		t.Skip("Python runtime unavailable")
+	}
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "source.txt")
+	writeTestFile(t, path, "before\n")
+	command := python + " - <<'PY'\nfrom pathlib import Path\nimport re\np = Path('source.txt')\np.write_text(re.sub('before', 'after', p.read_text()))\nPY"
+	observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspace})
+	if !ok || observation == nil || len(observation.Files) != 1 {
+		t.Fatal("interpreter target baseline missing")
+	}
+	if predicted, _ := previewmodel.ProjectCaptured(t.Context(), *observation); len(predicted) != 0 {
+		t.Fatal("fixture requires an unpredicted transformation")
+	}
+	selected := previewmodel.SelectEndpoints(t.Context(), *observation)
+	if len(selected.Files) != 1 || len(observation.Files) != 1 || previewmodel.Expected(t.Context(), selected) != nil {
+		t.Fatalf("named interpreter write could not be observed without a prediction: %+v", selected)
+	}
+	broker := newLivePreview(t.Context())
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	endpoint := broker.ObserveEndpoints(t.Context(), selected, previewmodel.Preview{ID: "interpreter", Workspace: workspace, Thread: "main"})
+	defer endpoint.Close()
+	process := exec.Command(execTrackShellExecutable(t, "bash"), "-c", command)
+	process.Dir, process.Env = workspace, append(os.Environ(), "BASH_ENV=", "MEKUGI_EXEC_TRACK=")
+	if output, err := process.CombinedOutput(); err != nil {
+		t.Fatalf("interpreter writer: %v: %s", err, output)
+	}
+	if endpoint.Advance(t.Context(), false) {
+		t.Fatal("unpredicted endpoint invented completion")
+	}
+	current := broker.Current()
+	if len(current) != 1 || current[0].Status != previewmodel.PreviewRunning || len(current[0].Files) != 1 || !strings.Contains(current[0].Files[0].Diff, "-before\n+after\n") {
+		t.Fatalf("unpredicted execution evidence did not reach the live consumer: %+v", current)
+	}
+	if !endpoint.Advance(t.Context(), true) || !endpoint.View().Complete {
+		t.Fatal("interpreter boundary did not settle its observed card")
+	}
+}
+
+func TestInterpreterEndpointProgramIdentityAndMixedTransforms(t *testing.T) {
+	t.Parallel()
+	js := `const fs = require('fs'); fs.writeFileSync('source.txt', transform(fs.readFileSync('source.txt', 'utf8')))`
+	for _, command := range []string{
+		"node -e " + quoteShellWord(js),
+		"bun -e " + quoteShellWord(js),
+		"deno run writer.ts",
+		"python3 - <<'PY'\nfrom pathlib import Path\nimport re\nPath('predicted.txt').write_text('after\\n')\np = Path('source.txt')\np.write_text(re.sub('before', 'after', p.read_text()))\nPY",
+	} {
+		t.Run(strings.Fields(command)[0], func(t *testing.T) {
+			workspace := t.TempDir()
+			path := filepath.Join(workspace, "source.txt")
+			writeTestFile(t, path, "before\n")
+			writeTestFile(t, filepath.Join(workspace, "predicted.txt"), "before\n")
+			writeTestFile(t, filepath.Join(workspace, "writer.ts"), `import fs from 'node:fs'; fs.writeFileSync('source.txt', Deno.env.get('BODY'));`)
+			observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspace})
+			if !ok || observation == nil {
+				t.Fatal("missing interpreter baseline")
+			}
+			selected := previewmodel.SelectEndpoints(t.Context(), *observation)
+			if len(selected.Files) != len(observation.Files) || len(selected.Files) == 0 {
+				t.Fatalf("interpreter identity or a predicted neighbor excluded a named write: %+v", selected)
+			}
+			broker := newLivePreview(t.Context())
+			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+			endpoint := broker.ObserveEndpoints(t.Context(), selected, previewmodel.Preview{ID: "identity", Workspace: workspace, Thread: "main"})
+			defer endpoint.Close()
+			writeTestFile(t, path, "after\n")
+			endpoint.Advance(t.Context(), false)
+			current := broker.Current()
+			if len(current) != 1 || len(current[0].Files) != 1 || current[0].Files[0].AfterPath != path || !strings.Contains(current[0].Files[0].Diff, "-before\n+after\n") {
+				t.Fatalf("interpreter observed endpoint missing: %+v", current)
+			}
+		})
+	}
+}
+
 func captureRunningExecScope(t *testing.T) (string, string, *changecapture.Observation) {
 	t.Helper()
 	repo := t.TempDir()

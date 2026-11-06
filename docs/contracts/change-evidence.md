@@ -109,6 +109,13 @@ history do not create captures. Recovery never repeats a mutation.
 
 Commands not recognized as read-only also receive a bounded selected-workspace
 checkpoint before forwarding, compared with a fresh checkpoint at completion.
+Explicit command working directories outside that scope, including nested Git
+worktrees or repositories with independent ignore authority, receive their own
+bounded checkpoints under the original capture identity. Working directories
+reached through symlinks outside the enclosing physical scope also receive a
+checkpoint. Covered subdirectories reuse their enclosing checkpoint, and
+overlapping scopes share claims by physical path. This acquisition does not
+evaluate interpreter source or depend on its syntax.
 Previously unnamed differences join the command's evidence with its program as
 their source. Private snapshot
 Git state never modifies the user's repository, runs its hooks or filters, or
@@ -118,13 +125,14 @@ to locate global excludes.
 - In Git workspaces, repository, `info/exclude` and global ignore rules apply.
   Tracked files remain eligible even when ignored. Ignored untracked paths need
   explicit named scope; an older checkpoint cannot turn a newly ignored path
-  into a deletion. Only the selected workspace below the repository root is
+  into a deletion. Only admitted checkpoint directories below their repository root are
   compared. VCS metadata and the replay store are excluded; submodules are not
   compared.
 - Without Git ignore authority, workspaces over 20,000 files take no snapshot.
   Later checkpoints admit new files only from directories gaining at most 256
   files, whether those directories are new or existing.
-- A checkpoint not ready within one second is skipped for that call. A slow
+- Checkpoint acquisition and comparison each share one second across all admitted
+  directories. A checkpoint not ready in time is skipped for that call. A slow
   first checkpoint can serve later calls; failures retry after 30 seconds.
   Unavailable comparisons leave named evidence and explicit partial coverage.
 - Private objects over 512 MiB restart their snapshot store. Workspaces unused

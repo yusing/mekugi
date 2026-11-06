@@ -106,6 +106,7 @@ func legacyObservation(v legacycall.Observation) changecapture.Observation {
 		RepeatedPaths:  v.RepeatedPaths,
 		LiteralClass:   v.LiteralClass,
 		Tree:           v.Tree,
+		Checkpoints:    v.Checkpoints,
 	}
 }
 
@@ -229,6 +230,7 @@ func retainedObservation(v changecapture.Observation) legacycall.Observation {
 		RepeatedPaths:  v.RepeatedPaths,
 		LiteralClass:   v.LiteralClass,
 		Tree:           v.Tree,
+		Checkpoints:    v.Checkpoints,
 	}
 }
 

@@ -27,6 +27,8 @@ Only arriving source with a producible hunk opens a live preview. Stock patches
 and literal `cat`/`tee` heredoc writes can stream, including nested stock commands.
 Supported Python, JavaScript and TypeScript writes use known literal paths and
 bounded source values. Independent writes within a call remain visible.
+Named interpreter write targets with witnessed text baselines can also show
+observed differences while execution runs, without predicting their transformations.
 
 Copies, moves, removals, formatter-only effects, generic commands, VCS effects,
 non-file targets, binary content and metadata-only changes do not open source
@@ -137,6 +139,9 @@ of later tests. Their `observed` label describes differences, not exclusive
 attribution, shell success or test success. Unknown additional targets remain
 distinct from displayed files. Failed or partial host outcomes retain their observed
 effects under the change-evidence contract.
+Computed targets in admitted checkpoint scope can project observed differences at
+a matched completed writer boundary, while later commands remain running. They do
+not require a source prediction or a periodic workspace sweep.
 
 The feature owns source-card admission, captured-baseline prediction and endpoint
 comparison state. Its composed capture dependency supplies the bounded endpoint

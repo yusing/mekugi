@@ -23,7 +23,8 @@ import (
 
 const endpointReadBytes = 1 << 20
 
-// SelectEndpoints admits predicted source-content paths without changing the capture.
+// SelectEndpoints admits predicted paths and known interpreter write targets.
+// The latter show execution evidence, not a predicted interpreter result.
 // Source: apps/mekugi/internal/router/live_diff_exec_running.go:34:66@80a1714b.
 func SelectEndpoints(ctx context.Context, observation changecapture.Observation) changecapture.Observation {
 	// VCS effects use the same provenance admission as authored counts.
@@ -33,10 +34,39 @@ func SelectEndpoints(ctx context.Context, observation changecapture.Observation)
 		return commandanalysis.IsVCSTool(tool) && !changes.AuthoredReview(diffmodel.ReviewFile{Origin: origin})
 	}
 	projected := make(map[string]bool)
+	var available map[string]bool
 	commands := observation.Commands
 	observation.Commands = nil
 	for _, command := range commands {
 		files, _ := ProjectCaptured(ctx, changecapture.Observation{Files: observation.Files, Commands: []commandanalysis.Command{command}})
+		plan := execscope.Classify(execscope.Input{Command: command.Command, Directory: command.Workdir, Shell: command.Shell, AuthoredOnly: true})
+		// Source evaluation is optional. A pure interpreter's named writes
+		// can be observed against their captured baselines regardless of its
+		// transformations, without admitting generic commands or VCS effects.
+		if len(plan.Programs) > 0 && !slices.ContainsFunc(plan.Programs, func(program execscope.Program) bool {
+			tool, _, _ := strings.Cut(program.Label, " ")
+			return !program.Direct || !strings.HasPrefix(tool, "python") && tool != "node" && tool != "bun" && tool != "deno"
+		}) {
+			if files == nil {
+				files = make(map[string]diffmodel.ReviewFile)
+			}
+			if available == nil {
+				available = make(map[string]bool)
+				for _, file := range observation.Files {
+					available[file.Path] = file.Error == "" && len(file.Content) <= projection.FileLimit && (file.Kind == changecapture.Text || file.Kind == changecapture.Absent)
+				}
+			}
+			for _, entry := range plan.Scope {
+				if entry.Kind != execscope.File {
+					continue
+				}
+				for _, operand := range entry.Operands {
+					if !operand.Glob && available[operand.Path] {
+						files[operand.Path] = diffmodel.ReviewFile{}
+					}
+				}
+			}
+		}
 		if len(files) == 0 {
 			continue
 		}
@@ -358,8 +388,8 @@ func StreamableSources(ctx context.Context, observation changecapture.Observatio
 			}
 			input := command
 			input.Command, input.Workdir = segment.Source, directory
-			files, _ := ProjectCaptured(ctx, changecapture.Observation{Files: observation.Files, Commands: []commandanalysis.Command{input}})
-			if len(files) > 0 {
+			selected := SelectEndpoints(ctx, changecapture.Observation{Files: observation.Files, Commands: []commandanalysis.Command{input}})
+			if len(selected.Files) > 0 {
 				sources = append(sources, segment.Source)
 			}
 		}

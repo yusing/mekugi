@@ -401,6 +401,7 @@ func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *c
 		if preview, ok := changecapture.Capture(t.ctx, commands, dynamic, codeMode, env); ok {
 			if authored != nil {
 				preview.Tree = authored.Tree
+				preview.Checkpoints = maps.Clone(authored.Checkpoints)
 			}
 			display = preview
 		}

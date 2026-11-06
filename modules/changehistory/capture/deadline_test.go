@@ -32,6 +32,9 @@ func TestCaptureWhileWorkersUnavailable(t *testing.T) {
 	unrelated := filepath.Join(workspace, "unrelated.txt")
 	writeTestFile(t, unrelated, "written while capture was unavailable\n")
 	result := Reconcile(t.Context(), *observation, Comparison{})
+	if result.Coverage != CoveragePartial || result.Complete {
+		t.Fatalf("capture deadline claimed exact coverage: %+v", result)
+	}
 	reviews := result.Files
 	for _, review := range reviews {
 		if review.BeforePath == unrelated || review.AfterPath == unrelated {

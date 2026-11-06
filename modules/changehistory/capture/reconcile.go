@@ -6,7 +6,9 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,7 +22,7 @@ import (
 
 // Comparison supplies concurrent exclusions and an eligible workspace fallback.
 // A nil Workspaces compares only the named baseline. Claims come from prior
-// completed windows in the same snapshot domain.
+// completed windows covering the same physical paths and Git authority.
 type Comparison struct {
 	Excluded   []string
 	Workspaces *Workspaces
@@ -51,8 +53,41 @@ type Result struct {
 func Reconcile(ctx context.Context, observation Observation, comparison Comparison) Result {
 	var result Result
 	var snapshot []execSnapshotChange
-	if comparison.Workspaces != nil && observation.Tree != "" {
-		snapshot, result.Claims, result.SnapshotError = comparison.Workspaces.since(ctx, comparison.Workspace, observation.Tree, comparison.Claims)
+	if comparison.Workspaces != nil {
+		ctx, cancel := context.WithTimeout(ctx, workspaceSnapshotWait)
+		defer cancel()
+		checkpoints := maps.Clone(observation.Checkpoints)
+		if observation.Tree != "" {
+			if checkpoints == nil {
+				checkpoints = make(map[string]string)
+			}
+			checkpoints[comparison.Workspace] = observation.Tree
+		}
+		seen := make(map[string]bool)
+		budget := MaxContentBytes
+		for _, directory := range slices.Sorted(maps.Keys(checkpoints)) {
+			if checkpoints[directory] == "" {
+				result.SnapshotError = errors.Join(result.SnapshotError, fmt.Errorf("no before checkpoint for %s", directory))
+				continue
+			}
+			files, claims, err := comparison.Workspaces.since(ctx, directory, checkpoints[directory], comparison.Claims)
+			result.Claims = result.Claims.Merge(claims)
+			result.SnapshotError = errors.Join(result.SnapshotError, err)
+			for _, file := range files {
+				if seen[file.physicalPath] {
+					continue
+				}
+				seen[file.physicalPath] = true
+				for _, endpoint := range []*File{&file.before, &file.after} {
+					if len(endpoint.Content) > budget {
+						endpoint.Content, endpoint.Error = "", "capture budget exhausted"
+					} else {
+						budget -= len(endpoint.Content)
+					}
+				}
+				snapshot = append(snapshot, file)
+			}
+		}
 	}
 	interval := observation
 	if comparison.PriorChanges {
@@ -91,6 +126,43 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 	budget := MaxContentBytes
 	after := make(map[string]File, len(observation.Files))
 	metadata := make(map[string]File, len(observation.Files))
+	// Preserve leaf symlinks as filesystem entries. Resolving their parents
+	// identifies directory aliases without conflating a link with its target.
+	directories := make(map[string]string)
+	var physicalDirectory func(string) string
+	physicalDirectory = func(path string) string {
+		if physical, found := directories[path]; found {
+			return physical
+		}
+		physical, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			physical = filepath.Clean(path)
+			if parent := filepath.Dir(path); errors.Is(err, os.ErrNotExist) && parent != path {
+				physical = filepath.Join(physicalDirectory(parent), filepath.Base(path))
+			}
+		}
+		directories[path] = physical
+		return physical
+	}
+	identity := func(path string) string {
+		return filepath.Join(physicalDirectory(filepath.Dir(path)), filepath.Base(path))
+	}
+	roots := make(map[string]string)
+	within := func(path, root string) bool {
+		if changehistory.PathWithin(path, root) {
+			return true
+		}
+		physicalRoot, found := roots[root]
+		if !found {
+			physicalRoot = identity(root)
+			if info, err := os.Stat(root); err == nil && info.IsDir() {
+				physicalRoot = physicalDirectory(root)
+			}
+			roots[root] = physicalRoot
+		}
+		return changehistory.PathWithin(identity(path), physicalRoot)
+	}
+	captured := make(map[string]bool, len(observation.Files))
 	// record keeps one path's before/after evidence as a change, or as an
 	// incomplete review when either side could not be read.
 	record := func(before, current File) {
@@ -126,9 +198,11 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 		changes = append(changes, execSnapshotChange{before: before, after: current})
 	}
 	compare := func(before File) {
-		if _, seen := after[before.Path]; seen || slices.Contains(observation.Excluded, before.Path) {
+		key := identity(before.Path)
+		if captured[key] || slices.ContainsFunc(observation.Excluded, func(path string) bool { return within(before.Path, path) }) {
 			return
 		}
+		captured[key] = true
 		metadata[before.Path] = before
 		if observation.endpoints == nil && before.Stamp != "" {
 			// An uncaptured file with the same identity, size, and time was
@@ -152,7 +226,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 	}
 	omitted := func(path string) bool {
 		for _, omission := range observation.Omitted {
-			if changehistory.PathWithin(path, omission.Path) {
+			if within(path, omission.Path) {
 				return true
 			}
 		}
@@ -177,10 +251,10 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			}
 			relative, _ := filepath.Rel(listing.Root, path)
 			seen[relative] = true
-			if slices.Contains(observation.Excluded, path) {
+			if slices.ContainsFunc(observation.Excluded, func(root string) bool { return within(path, root) }) {
 				return nil
 			}
-			if _, captured := after[path]; captured {
+			if captured[identity(path)] {
 				return nil
 			}
 			if stamp, listed := listing.Entries[relative]; listed {
@@ -195,10 +269,10 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 		})
 		for relative := range listing.Entries {
 			path := filepath.Join(listing.Root, relative)
-			if slices.Contains(observation.Excluded, path) {
+			if slices.ContainsFunc(observation.Excluded, func(root string) bool { return within(path, root) }) {
 				continue
 			}
-			if _, captured := after[path]; !captured && !seen[relative] {
+			if !captured[identity(path)] && !seen[relative] {
 				_, err := os.Lstat(path)
 				if err == nil {
 					continue
@@ -215,18 +289,18 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 	// The workspace snapshot covers effects outside the named scope. Paths
 	// that scope, a same-call patch, or an overlapping call claims stay theirs.
 	claimed := func(path string) bool {
-		if _, captured := after[path]; captured || omitted(path) {
+		if captured[identity(path)] || omitted(path) {
 			return true
 		}
 		for _, roots := range [][]string{observation.Excluded, excluded} {
 			for _, root := range roots {
-				if changehistory.PathWithin(path, root) {
+				if within(path, root) {
 					return true
 				}
 			}
 		}
 		for _, listing := range observation.Listings {
-			if changehistory.PathWithin(path, listing.Root) {
+			if within(path, listing.Root) {
 				return true
 			}
 		}

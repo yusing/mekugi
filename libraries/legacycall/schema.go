@@ -127,18 +127,19 @@ type Observation struct {
 	Reason         string   `json:",omitempty"`
 	Unresolved     bool     `json:",omitzero"`
 	Files          []File
-	Omitted        []Omission `json:",omitempty"`
-	Listings       []Listing  `json:",omitempty"`
-	CodeMode       bool       `json:",omitzero"`
-	Roots          []string   `json:",omitempty"`
-	WindowStart    time.Time  `json:",omitzero"`
-	Programs       []Program  `json:",omitempty"`
-	Group          string     `json:",omitempty"`
-	Excluded       []string   `json:",omitempty"`
-	RepeatedPaths  bool       `json:",omitzero"`
-	LiteralClass   string     `json:",omitempty"`
-	Inventory      *Inventory `json:",omitempty"`
-	Tree           string     `json:",omitempty"`
+	Omitted        []Omission        `json:",omitempty"`
+	Listings       []Listing         `json:",omitempty"`
+	CodeMode       bool              `json:",omitzero"`
+	Roots          []string          `json:",omitempty"`
+	WindowStart    time.Time         `json:",omitzero"`
+	Programs       []Program         `json:",omitempty"`
+	Group          string            `json:",omitempty"`
+	Excluded       []string          `json:",omitempty"`
+	RepeatedPaths  bool              `json:",omitzero"`
+	LiteralClass   string            `json:",omitempty"`
+	Inventory      *Inventory        `json:",omitempty"`
+	Tree           string            `json:",omitempty"`
+	Checkpoints    map[string]string `json:",omitempty"`
 }
 
 // Source: internal/router/exec_observation.go:164:186@[ff834f05] execOutcome

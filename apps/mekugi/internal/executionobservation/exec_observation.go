@@ -172,7 +172,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	if !first.native {
 		script = execObservationScript(observation)
 	}
-	if observation.Tree != "" && selected.Store != nil {
+	if (observation.Tree != "" || len(observation.Checkpoints) != 0) && selected.Store != nil {
 		// Closing, comparing, and claiming are one step per workspace, so
 		// concurrent finalizations cannot both record one effect.
 		defer windows.serialize(workspace)()

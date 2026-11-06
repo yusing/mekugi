@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -117,6 +118,9 @@ type Observation struct {
 	// Tree is the private workspace snapshot taken before a writer call. Its
 	// comparison covers effects outside the source-named scope.
 	Tree string `json:",omitempty"`
+	// Checkpoints cover explicit command directories outside the workspace's
+	// comparison, including nested repositories. Workspace remains the identity.
+	Checkpoints map[string]string `json:",omitempty"`
 }
 
 // A successful mktemp report supplies an absent endpoint. Large temporary
@@ -211,6 +215,18 @@ func Merge(members []Member) Observation {
 	merged.Omitted = slices.Clone(merged.Omitted)
 	merged.Listings = slices.Clone(merged.Listings)
 	merged.Excluded = slices.Clone(merged.Excluded)
+	merged.Checkpoints = maps.Clone(merged.Checkpoints)
+	checkpointOrder := make(map[string]uint64)
+	for _, member := range members {
+		for directory, tree := range member.Checkpoints {
+			if sequence, found := checkpointOrder[directory]; !found || member.Sequence < sequence {
+				if merged.Checkpoints == nil {
+					merged.Checkpoints = make(map[string]string)
+				}
+				merged.Checkpoints[directory], checkpointOrder[directory] = tree, member.Sequence
+			}
+		}
+	}
 	for _, member := range members[1:] {
 		other := member.Observation
 		merged.CodeMode = merged.CodeMode || other.CodeMode
@@ -311,20 +327,76 @@ type Options struct {
 }
 
 // Capture captures named scope and, for writers, a selected-workspace checkpoint.
-// Neutral readers and calls with no available baseline stay unobserved.
+// Neutral readers stay unobserved; unavailable writer baselines remain explicit.
 func Capture(ctx context.Context, commands []commandanalysis.Command, dynamic, codeMode bool, env Options) (*Observation, bool) {
 	observation, observed := observeCommands(commands, dynamic, codeMode, env)
-	if !env.PreviewOnly && observation != nil && observation.Class != execscope.Neutral.String() {
-		if tree := env.Workspaces.Checkpoint(ctx, env.Directory); tree != "" {
-			observation.Tree = tree
-			observation.Roots = AddRoot(observation.Roots, env.Directory)
-			return observation, true
+	if !env.PreviewOnly && observation != nil && observation.Class != execscope.Neutral.String() && env.Workspaces != nil {
+		// All fallback scopes share the existing acquisition bound. Actual
+		// execution directories, not interpreter syntax, establish these scopes.
+		ctx, cancel := context.WithTimeout(ctx, workspaceSnapshotWait)
+		defer cancel()
+		var directories []string
+		if filepath.IsAbs(env.Directory) {
+			directories = append(directories, env.Directory)
+		}
+		directories = append(directories, slices.Sorted(maps.Keys(observation.Checkpoints))...)
+		for _, directory := range directories {
+			tree := env.Workspaces.Checkpoint(ctx, directory)
+			if directory == env.Directory {
+				observation.Tree = tree
+			} else {
+				if observation.Checkpoints == nil {
+					observation.Checkpoints = make(map[string]string)
+				}
+				observation.Checkpoints[directory] = tree
+			}
+			observation.Roots = AddRoot(observation.Roots, directory)
+			if tree == "" {
+				observation.Unresolved = true
+				observation.Reason = strings.TrimPrefix(observation.Reason+"; workspace checkpoint unavailable", "; ")
+			}
+			observed = true
 		}
 	}
 	if !observed {
 		return nil, false
 	}
 	return observation, true
+}
+
+// A nested repository has its own ignore/index authority and is not covered by
+// its parent's checkpoint. Ordinary subdirectories reuse the enclosing scope.
+func checkpointDirectories(workspace string, commands []commandanalysis.Command, classes []string) []string {
+	var directories []string
+	if filepath.IsAbs(workspace) {
+		directories = append(directories, filepath.Clean(workspace))
+	}
+	for i, command := range commands {
+		directory := filepath.Clean(command.Workdir)
+		if !filepath.IsAbs(directory) || slices.Contains(directories, directory) || i < len(classes) && classes[i] == execscope.Neutral.String() {
+			continue
+		}
+		covered := slices.ContainsFunc(directories, func(root string) bool {
+			if !changes.PathWithin(directory, root) {
+				return false
+			}
+			physicalRoot, rootErr := filepath.EvalSymlinks(root)
+			physicalDirectory, directoryErr := filepath.EvalSymlinks(directory)
+			if rootErr != nil || directoryErr != nil || !changes.PathWithin(physicalDirectory, physicalRoot) {
+				return false
+			}
+			for path := physicalDirectory; path != physicalRoot; path = filepath.Dir(path) {
+				if _, err := os.Lstat(filepath.Join(path, ".git")); !errors.Is(err, os.ErrNotExist) {
+					return false
+				}
+			}
+			return true
+		})
+		if !covered {
+			directories = append(directories, directory)
+		}
+	}
+	return directories
 }
 
 // observeCommands classifies commands and captures their scope before
@@ -368,7 +440,7 @@ func observeCommands(commands []commandanalysis.Command, dynamic, codeMode bool,
 var execCaptureSlots = make(chan struct{}, 16)
 
 func incompleteExecCapture(commands []commandanalysis.Command, codeMode bool) *Observation {
-	return &Observation{Commands: commands, CodeMode: codeMode, Class: execscope.Opaque.String(), Reason: "capture deadline"}
+	return &Observation{Commands: commands, CodeMode: codeMode, Class: execscope.Opaque.String(), Unresolved: true, Reason: "capture deadline"}
 }
 
 func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, codeMode bool, env Options) (*Observation, bool) {
@@ -415,6 +487,21 @@ func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, c
 	}
 	observation.Class = class.String()
 	observation.Excluded = env.Excluded
+	if !env.PreviewOnly && env.Workspaces != nil && class != execscope.Neutral {
+		// Directory metadata reads share the bounded acquisition worker; a slow
+		// mount cannot hold host forwarding outside that worker's deadline.
+		for _, directory := range checkpointDirectories(env.Directory, commands, observation.CommandClasses) {
+			if physical, err := filepath.EvalSymlinks(directory); err == nil {
+				observation.Roots = AddRoot(observation.Roots, physical)
+			}
+			if directory != env.Directory {
+				if observation.Checkpoints == nil {
+					observation.Checkpoints = make(map[string]string)
+				}
+				observation.Checkpoints[directory] = ""
+			}
+		}
+	}
 	if len(scope) == 0 {
 		if class == execscope.Neutral {
 			return nil, false

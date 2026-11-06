@@ -103,7 +103,7 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Se
 	if (complete || text != "") && (text != c.text || text != "" && !slices.Equal(state.calls, c.calls)) {
 		preview.ID, preview.Files = "observed:"+c.ref, files
 		preview.EditReceipt, preview.HostItems, preview.Complete = text, slices.Clone(state.calls), true
-		preview.Status, preview.Footer = "", "observed edit"
+		preview.Status, preview.Footer = previewmodel.PreviewRunning, "observed edit"
 		broker.Update(preview, false)
 		c.text, c.calls = text, slices.Clone(state.calls)
 	}

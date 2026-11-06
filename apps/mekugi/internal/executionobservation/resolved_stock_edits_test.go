@@ -1,12 +1,14 @@
 package executionobservation
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -19,7 +21,114 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
+
+func TestGeneralPythonWorkingDirectoryEvidence(t *testing.T) {
+	python, binary := interpreterForTest("python3", "python")
+	if binary == "" {
+		t.Skip("Python runtime unavailable")
+	}
+	files := map[string]string{".gitignore": ".worktrees/\n"}
+	for i := range 14 {
+		files[fmt.Sprintf(".config/instructions/%d.md", i)] = "before\n"
+	}
+	workspace := newExecVCSTestRepo(t, files)
+	directory := filepath.Join(workspace, ".worktrees", "edit")
+	runExecVCSTestGit(t, workspace, "worktree", "add", "--detach", directory, "HEAD")
+	f := newMChangesSliceFixture(t, "computed-python")
+	f.workspace = workspace
+	proxy := testProxyWithStore(f.store, &Windows{})
+	broker := newLivePreview(t.Context())
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {f.thread: true}}})
+	proxy.Review = testReview(broker)
+	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	proxy.Windows.Reports = hub.Observer
+	t.Cleanup(proxy.Windows.Retire)
+	var ids []string
+	for step, content := range []string{"first", "final"} {
+		// Runtime decoding and a computed target set deliberately supply no
+		// syntax-derived file paths. This retains the screenshot's fourteen-file
+		// linked-worktree shape without depending on any Python source pattern.
+		data := fmt.Sprintf(`{"body":"%s"}`, content)
+		command := fmt.Sprintf("%s - <<'PY'\nimport base64, json\nfrom pathlib import Path\nbody = json.loads(base64.b64decode('%s'))['body']\nfiles = {'.config/instructions/' + str(i) + '.md': body for i in range(14)}\nfor name, text in files.items():\n    Path(name).write_text(text + '\\n')\nPY", python, base64.StdEncoding.EncodeToString([]byte(data)))
+		exit := 0
+		if step == 1 {
+			exit = 7 // Later host failure does not discard successfully written bytes.
+			command = strings.TrimSuffix(command, "\nPY") + "\nraise SystemExit(7)\nPY"
+		}
+		// A named script input makes stock display recapture reachable. Its
+		// computed output paths still cannot be predicted from the command.
+		script := strings.TrimSuffix(strings.TrimPrefix(command, python+" - <<'PY'\n"), "\nPY")
+		writeTestFile(t, filepath.Join(directory, "script.py"), script)
+		command = python + " script.py"
+		commands := []commandanalysis.Command{{Command: command + "\nread -r gate", Workdir: directory, Shell: "bash"}}
+		observation, observed := changecapture.Capture(t.Context(), commands, false, false, changecapture.Options{Directory: workspace, Workspaces: proxy.Checkpoints})
+		if !observed || observation == nil || observation.Checkpoints[directory] == "" || len(observation.Files) != 0 {
+			t.Fatalf("computed writer lacks working-directory baseline: %+v", observation)
+		}
+		if display, ok := changecapture.Capture(t.Context(), commands, false, false, changecapture.Options{Directory: workspace, PreviewOnly: true}); !ok || display == nil || len(display.Files) != 1 || display.Files[0].Path != filepath.Join(directory, "script.py") {
+			t.Fatalf("fixture did not reach stock opaque display recapture: %+v", display)
+		}
+		// Round-trip the production codec before either live or retained use.
+		captured := legacyObservation(retainedObservation(*observation))
+		call := fmt.Sprintf("computed-%d", step)
+		transform := &mekugiResponseTransform{owners: proxy, ctx: f.ctx, directory: workspace, threadID: f.thread, shellThreadID: f.thread, shellTurnID: "turn", sessionShell: "bash"}
+		if !transform.openStockExecWindow(call, &captured, nil, commands, false, false) {
+			t.Fatal("stock writer admission failed")
+		}
+		host := exec.Command(execTrackShellExecutable(t, "bash"), "-c", command)
+		host.Dir, host.Env = directory, append(os.Environ(), "BASH_ENV=", "MEKUGI_EXEC_TRACK=")
+		if output, err := host.CombinedOutput(); host.ProcessState.ExitCode() != exit {
+			t.Fatalf("Python writer: %v: %s", err, output)
+		}
+		if step == 0 {
+			sub := proxy.Review.Subscribe()
+			key := [3]string{f.thread, "turn", "writer"}
+			hub.start(key, "/bin/bash -lc "+quoteShellWord(commands[0].Command))
+			report := dialExecTrackReportThread(t, hub, f.thread, commands[0].Command)
+			report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.End, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
+			hub.await(t, key, func(view segments.Report) bool { return view.LastStarted() == 1 })
+			var view previewmodel.Preview
+			deadline := time.NewTimer(5 * time.Second)
+			defer deadline.Stop()
+			for view.EditReceipt == "" {
+				for _, event := range proxy.Review.TakePreviews(sub) {
+					if event.Preview != nil && event.Preview.ID == "observed:"+call {
+						view = *event.Preview
+					}
+				}
+				if view.EditReceipt != "" {
+					break
+				}
+				select {
+				case <-sub.Ready():
+				case <-deadline.C:
+					t.Fatal("computed edits did not reach the stock live consumer")
+				}
+			}
+			if !view.Complete || view.Status != previewmodel.PreviewRunning || len(view.Files) != 14 || !proxy.Windows.find(call).closed.IsZero() {
+				t.Fatalf("computed edits did not project through stock admission while the host stayed open: %+v", view)
+			}
+		}
+		h := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: &captured}
+		if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, workspace,
+			[]execCompletion{{callID: call, history: h, result: binding.DecodeExecutionResult(h.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": exit}))}}); err != nil {
+			t.Fatal(err)
+		}
+		record, found, err := f.store.lookup(f.ctx, workspace, legacycall.ExecCallID(call, false))
+		if err != nil || !found || record.ChangeID == "" || len(record.ReviewFiles) != 14 || record.ExecOutcome.Coverage != changecapture.CoverageExact {
+			t.Fatalf("working-directory capture missing: %+v, %v", record, err)
+		}
+		ids = append(ids, record.ChangeID)
+	}
+	net, err := proxy.Changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net"})
+	if err != nil || strings.Count(net, "-before\n+final\n") != 14 || strings.Contains(net, "+first") {
+		t.Fatalf("computed edits failed retained composition: %q, %v", net, err)
+	}
+}
 
 func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
 	t.Parallel()
