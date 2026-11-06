@@ -39,7 +39,7 @@ func TestExecTrackDashMissingHelperRunsOriginal(t *testing.T) {
 	shell.hub.start([3]string{"thread", "turn", "missing-helper"}, "/bin/sh -c "+commandargs.Quote(command))
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "sh"), "-c", command)
+	cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "dash"), "-c", command)
 	cmd.Env = shell.env
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -85,8 +85,8 @@ func TestExecTrackDashSegments(t *testing.T) {
 			}
 			key := [3]string{"thread", "turn", script}
 			shell.hub.start(key, "/bin/sh -c "+commandargs.Quote(instrumented))
-			plain := runShell(t, shell.env, "sh", "-c", script)
-			tracked := runShell(t, shell.env, "sh", "-c", instrumented)
+			plain := runShell(t, shell.env, "dash", "-c", script)
+			tracked := runShell(t, shell.env, "dash", "-c", instrumented)
 			if tracked != plain {
 				t.Fatalf("tracked=%+v, plain=%+v", tracked, plain)
 			}

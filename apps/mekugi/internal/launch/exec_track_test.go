@@ -330,12 +330,14 @@ c.XXXXXX"`, created: 1, reported: true},
 					t.Fatal(err)
 				}
 				command := tc.script
+				interpreter := name
 				if name == "sh" {
+					interpreter = "dash"
 					command = shellinstrumentation.ShScript(shTracker, tc.script)
 				}
 				key := [3]string{"thread", "turn", name + "-" + tc.name}
 				shell.hub.start(key, name+" -c "+quoteShellWord(command))
-				got := runShell(t, env, name, "-c", command)
+				got := runShell(t, env, interpreter, "-c", command)
 				if view := shell.awaitView(t, key); !view.complete && tc.code == 0 {
 					t.Fatalf("report: %+v", view)
 				}
@@ -1341,13 +1343,15 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			}
 			script := "echo FIRST; echo SECOND >&2; false"
 			command := script
+			interpreter := name
 			if name == "sh" {
+				interpreter = "dash"
 				command = shellinstrumentation.ShScript(trackerPath, script)
 			}
 			hub.start([3]string{"thread", "turn", "item"}, name+" -c "+quoteShellWord(command))
 			commandCtx, stop := context.WithTimeout(t.Context(), 5*time.Second)
 			defer stop()
-			cmd := exec.CommandContext(commandCtx, execTrackShellExecutable(t, name), "-c", command)
+			cmd := exec.CommandContext(commandCtx, execTrackShellExecutable(t, interpreter), "-c", command)
 			cmd.Env = []string{"PATH=" + execTrackPath(), "HOME=" + root, "BASH_ENV=" + startup, "CODEX_THREAD_ID=thread"}
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
