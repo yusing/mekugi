@@ -1432,6 +1432,7 @@ export type Facts = {
   "AssignmentTo": string;
   "AssignmentText": string;
   "Assignment": boolean;
+  "Delivered": boolean;
   "Running": boolean;
   "Live": boolean;
   "Restored": boolean;

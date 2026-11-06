@@ -465,7 +465,9 @@ Original host evidence remains unchanged.
 Only successful compaction reloads carry the muted `(auto reloaded)` suffix;
 fresh-delegate preloads use plain Attached rows.
 
-Adjacent traffic between the displayed agent and one peer forms a thread. Traffic
+Adjacent traffic between the displayed agent and one peer forms a thread.
+Consecutive same-direction completions retain a compact continuation heading and
+the shared rail, without repeating their route. Traffic
 between other agents keeps separate route headings and sender-colored rails, so
 changing recipients cannot inherit a previous exchange's reply direction.
 Assignments/messages retain exact
@@ -479,7 +481,9 @@ edit paths remain visible. Running, skipped,
 declined, unconfirmed, unanswered and outcome-unknown work stays visible. Resume
 starts settled groups collapsed. Shrinking preserves a scrolled-up anchor.
 
-Replies link to their own retained assignment or user input. An answer to the
+Replies link to their own retained assignment or user input. A receiving runtime
+cannot infer that link from its latest assignment: a delivered completion may
+answer input sent directly to the child. An answer to the
 latest adjacent assignment omits a redundant link; older assignments keep theirs.
 Repeated replies quote input again only after another message intervenes, not
 after tools/reasoning/progress. Question replies link to the Asked record as

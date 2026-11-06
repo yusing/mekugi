@@ -20,6 +20,62 @@ type Traffic struct {
 	OwnAnswer bool   `json:"-"`
 }
 
+// SameRoute keeps unchanged endpoints implicit in a joined exchange.
+func (t *Traffic) SameRoute(other *Traffic) bool {
+	return t != nil && other != nil && t.From != "" && t.To != "" && t.From == other.From && t.To == other.To
+}
+
+// ReplyAssignment finds the latest retained assignment without quoting it again
+// for consecutive answers. Tools, reasoning and progress do not start an exchange.
+func ReplyAssignment(entries []Entry, index int, caller, owner string) *Entry {
+	entry := entries[index]
+	if entry.Question != 0 {
+		for i := index - 1; i >= 0; i-- {
+			if entries[i].Seq == entry.Question {
+				return &entries[i]
+			}
+		}
+		return nil
+	}
+	// A delivered completion can answer input sent directly to the child.
+	// Its receipt in this transcript does not link it to our latest assignment.
+	if entry.Delivered {
+		return nil
+	}
+	if len(entry.Values) == 0 {
+		return nil
+	}
+	current := entry.Traffic(entry.Values[0], caller, owner)
+	if current == nil || current.Peer == "" {
+		return nil
+	}
+	intervening := false
+	for i := index - 1; i >= 0; i-- {
+		previous := &entries[i]
+		if previous.Suppressed {
+			continue
+		}
+		if (previous.Kind == "start" || previous.Kind == "assignment") && previous.AssignmentTo == current.Peer {
+			return previous
+		}
+		if len(previous.Values) == 0 {
+			continue
+		}
+		traffic := previous.Traffic(previous.Values[0], caller, owner)
+		if traffic == nil {
+			if previous.Kind == "user" || previous.Agent == "You" || previous.Kind == "text" {
+				intervening = true
+			}
+			continue
+		}
+		if !intervening && traffic.Kind == "final" && traffic.From == current.From && traffic.To == current.To {
+			return nil
+		}
+		intervening = true
+	}
+	return nil
+}
+
 // Traffic interprets one value, including an exchange within a compound item.
 // caller identifies the runtime's Main alias; owner identifies the transcript
 // being displayed. OwnAnswer distinguishes an owner's own final answer from a

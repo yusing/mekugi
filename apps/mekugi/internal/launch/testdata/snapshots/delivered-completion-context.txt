@@ -1,0 +1,7 @@
+✓ fix-attachments-540-astra → main finished                                                                     17:51:07
+│ No. Actual @ file attachments and $ skill attachments retain their existing framing and behavior. This change targets
+│ selected screen text.…
+│ ↩ Open reply · +2 lines
+├─✓ finished · 21m27s
+│ Implemented XML boundaries for selected text and diff fences for selected diffs.
+╰─↩ Open reply

@@ -689,7 +689,14 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 	}
 	if thread.Joined {
 		if block.From != "" && block.To != "" {
-			detail = strings.TrimSpace(name + " " + detail)
+			previous := v.entries[thread.Previous]
+			var prior *activitypresentation.Traffic
+			if len(previous.Values) != 0 {
+				prior = previous.Traffic(previous.Values[0], v.Display.MainCaller, v.conversationCaller())
+			}
+			if !traffic.SameRoute(prior) || traffic.Kind != "final" || prior.Kind != "final" {
+				detail = strings.TrimSpace(name + " " + detail)
+			}
 		}
 		out.add(0, threadHeading(color+"├─"+terminalui.Reset+glyph, detail, entry, v.entries[thread.Previous], reply, width))
 	} else {
@@ -728,14 +735,8 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 				continue
 			}
 			if block.Kind == "final" {
-				// A plain answer links to the latest task it could answer.
-				for _, question := range slices.Backward(v.entries[:index]) {
-					if (question.Kind == "start" || question.Kind == "assignment") && question.AssignmentTo == agent {
-						if !v.threadTask(thread, index, question.Seq) {
-							v.replyContext(out, question, gutter, body)
-						}
-						break
-					}
+				if question := activitypresentation.ReplyAssignment(v.entries, index, v.Display.MainCaller, v.conversationCaller()); question != nil && !v.threadTask(thread, index, question.Seq) {
+					v.replyContext(out, *question, gutter, body)
 				}
 				if entry.Activity != 0 || v.Conversation && !v.conversationLocal(entry.Agent) {
 					v.childReply(out, entry, block, gutter, tail, body, limit)

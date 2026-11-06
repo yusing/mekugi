@@ -261,3 +261,50 @@ func TestAgentTrafficInterpretation(t *testing.T) {
 		})
 	}
 }
+
+func TestCompletionExchangeContext(t *testing.T) {
+	const peer = "/root/worker"
+	assignment := Entry{Facts: Facts{Seq: 1, Kind: "assignment", AssignmentTo: peer}}
+	answer := Entry{Facts: Facts{Seq: 2, Agent: peer, Kind: "final"}, Values: []Value{{Kind: "final", From: peer, To: "Main"}}}
+	traffic := answer.Traffic(answer.Values[0], "/root", "/root")
+	if !traffic.SameRoute(traffic) || traffic.SameRoute(&Traffic{From: "/root", To: peer}) {
+		t.Fatal("route identity lost direction")
+	}
+	delivered := answer
+	delivered.Delivered = true
+	entries := []Entry{assignment, delivered}
+	if ReplyAssignment(entries, 1, "/root", "/root") != nil {
+		t.Fatal("received completion guessed an assignment link")
+	}
+	entries[1].Question = 1
+	if got := ReplyAssignment(entries, 1, "/root", "/root"); got == nil || got.Seq != 1 {
+		t.Fatal("received completion lost its exact known link")
+	}
+	for _, kind := range []string{"tool", "reasoning", "progress", "reply", "assignment"} {
+		t.Run(kind, func(t *testing.T) {
+			middle := Entry{Facts: Facts{Seq: 3, Kind: kind}, Values: []Value{{Kind: kind}}}
+			if kind == "reply" {
+				middle.Values = []Value{{Kind: "message", From: peer, To: "Main"}}
+			}
+			if kind == "assignment" {
+				middle.AssignmentTo = peer
+			}
+			entries := []Entry{assignment, answer, middle, answer}
+			context := ReplyAssignment(entries, 3, "/root", "/root")
+			switch kind {
+			case "reply":
+				if context == nil || context.Seq != 1 {
+					t.Fatal("intervening message lost original context")
+				}
+			case "assignment":
+				if context == nil || context.Seq != 3 {
+					t.Fatal("new assignment inherited old context")
+				}
+			default:
+				if context != nil {
+					t.Fatalf("%s repeated assignment", kind)
+				}
+			}
+		})
+	}
+}

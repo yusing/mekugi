@@ -79,6 +79,7 @@ func (entry ActivityEntry) ActivityFacts() activitypresentation.Facts {
 	// Restored recipient envelopes have no native item, but their body has
 	// already been delivered just like a live recipient-input supplement.
 	facts.ItemComplete = entry.Native == nil && entry.Kind == "reply" && entry.Message != nil
+	facts.Delivered = entry.Kind == "final" && entry.Message != nil
 	if entry.Assignment != nil {
 		facts.Assignment = true
 		facts.AssignmentTo, facts.AssignmentText = entry.Assignment.To, entry.Assignment.Text
