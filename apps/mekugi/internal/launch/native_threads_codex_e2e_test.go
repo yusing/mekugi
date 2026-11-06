@@ -702,7 +702,7 @@ func (p *nativeThreadsProvider) serveConcurrentChildren(t *testing.T, w http.Res
 	if parent {
 		switch step {
 		case 1:
-			program = `const results = await Promise.allSettled(["worker", "helper1", "helper2"].map(task_name => tools.mcp__threadcontrol__spawn_agent({task_name,message:"parallel shared-history work",fork_turns:"none"}))); for (const result of results) text(result);`
+			program = `const results = await Promise.allSettled(["worker", "helper1", "helper2"].map(task_name => tools.mcp__threadcontrol__spawn_agent({task_name,message:"parallel shared-history work",fork_turns:"none"}))); for (const result of results) { if (result.status !== "fulfilled" || result.value.isError) throw new Error("concurrent spawn failed: " + JSON.stringify(result)); text(result); }`
 		case 2:
 			program = `text(await tools.mcp__threadcontrol__wait_agent({target:"all",wait_mode:"all"}));`
 		case 3:

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -151,6 +154,143 @@ func TestResumedUnselectedChildDoesNotWakeWait(t *testing.T) {
 }
 
 type reconciliationRuntime struct{ control.Runtime }
+
+type concurrentSpawnHost struct {
+	*reconciliationHost
+	created atomic.Int32
+	entered chan string
+	release <-chan struct{}
+}
+
+func (h *concurrentSpawnHost) Create(ctx context.Context, _, _ string, _ control.Settings) (control.Receipt, error) {
+	id := fmt.Sprintf("parallel-%d", h.created.Add(1))
+	h.entered <- id
+	select {
+	case <-h.release:
+		return control.Receipt{Thread: id, Session: id + "-session", Path: "/" + id}, nil
+	case <-ctx.Done():
+		return control.Receipt{}, ctx.Err()
+	}
+}
+
+func (h *concurrentSpawnHost) Resume(context.Context, string) (control.Runtime, error) {
+	return h, nil
+}
+
+func (h *concurrentSpawnHost) Input(_ context.Context, input control.NativeInput) (string, error) {
+	return input.Thread + "-turn", nil
+}
+
+func TestConcurrentSpawnsConfirmIndependentChildren(t *testing.T) {
+	driver, host, _, caller := reconciliationFixture(t)
+	release := make(chan struct{})
+	native := &concurrentSpawnHost{reconciliationHost: host, entered: make(chan string, 3), release: release}
+	driver.host = native
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	type outcome struct {
+		result SpawnResult
+		err    error
+	}
+	done := make(chan outcome, 3)
+	workspace := t.TempDir()
+	var workers sync.WaitGroup
+	t.Cleanup(func() {
+		cancel()
+		workers.Wait()
+	})
+	for i := range 3 {
+		workers.Go(func() {
+			identity := caller
+			identity.Call = fmt.Sprintf("parallel-%d", i)
+			result, err := driver.SpawnPrepared(ctx, identity, PreparedChild{TaskName: identity.Call, Message: "work", Settings: control.Settings{Workspace: workspace}})
+			done <- outcome{result, err}
+		})
+	}
+	for range 3 {
+		select {
+		case <-native.entered:
+		case <-ctx.Done():
+			t.Fatal("independent creations did not overlap:", ctx.Err())
+		}
+	}
+	select {
+	case result := <-done:
+		t.Fatalf("spawn returned before creation confirmation: %+v", result)
+	default:
+	}
+	close(release)
+	threads := make(map[string]bool)
+	for range 3 {
+		select {
+		case got := <-done:
+			if got.err != nil || got.result.State != "confirmed" || got.result.Thread == "" || threads[got.result.Thread] {
+				t.Fatalf("spawn outcome = %+v", got)
+			}
+			threads[got.result.Thread] = true
+		case <-ctx.Done():
+			t.Fatal("concurrent spawns did not settle:", ctx.Err())
+		}
+	}
+}
+
+func TestSpawnWaitsForLifecycleOwnedPhase(t *testing.T) {
+	for _, outcome := range []string{"confirmed", "failed", "uncertain", "canceled"} {
+		t.Run(outcome, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				driver, _, _, caller := reconciliationFixture(t)
+				caller.Call = "lifecycle-spawn"
+				prepared := PreparedChild{TaskName: "new-child", Message: "work", Settings: control.Settings{Workspace: t.TempDir()}}
+				_, err := driver.control.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: prepared.TaskName, Message: prepared.Message, Settings: prepared.Settings})
+				if err != nil {
+					t.Fatal(err)
+				}
+				claimed, err := driver.control.ClaimEffect(t.Context(), caller.Thread, caller.Call)
+				if err != nil || claimed == nil {
+					t.Fatalf("claim=%+v err=%v", claimed, err)
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				done := make(chan error, 1)
+				go func() {
+					result, err := driver.SpawnPrepared(ctx, caller, prepared)
+					if err == nil && (result.State != "confirmed" || result.Thread != "new-child") {
+						err = fmt.Errorf("unconfirmed spawn result: %+v", result)
+					}
+					done <- err
+				}()
+				synctest.Wait()
+				select {
+				case err := <-done:
+					t.Fatalf("spawn returned before lifecycle acknowledgement: %v", err)
+				default:
+				}
+				if outcome == "canceled" {
+					cancel()
+					if err := <-done; !errors.Is(err, context.Canceled) {
+						t.Fatal("cancellation lost:", err)
+					}
+					retained, err := driver.control.Effect(caller.Thread, caller.Call)
+					if err != nil || retained.State != "dispatching" {
+						t.Fatalf("cancellation changed host ownership: %+v, %v", retained, err)
+					}
+					return
+				}
+				receipt := control.Receipt{Phase: "create", Thread: "new-child", Session: "new-session", Path: "/new-child"}
+				if outcome != "confirmed" {
+					receipt.Error, receipt.Uncertain = "specific host permission failure", outcome == "uncertain"
+				}
+				if err := driver.control.EffectAcknowledged(t.Context(), caller.Thread, caller.Call, receipt); err != nil {
+					t.Fatal(err)
+				}
+				err = <-done
+				if outcome == "confirmed" && err != nil || outcome != "confirmed" && (err == nil || !strings.Contains(err.Error(), receipt.Error)) {
+					t.Fatalf("lifecycle outcome %s: %v", outcome, err)
+				}
+			})
+		})
+	}
+}
 
 func (*reconciliationRuntime) Inspect(context.Context, string) (control.SessionDetails, error) {
 	return control.SessionDetails{}, nil
@@ -805,4 +945,33 @@ func TestNativeResetFeatureObservation(t *testing.T) {
 			t.Fatal(use)
 		}
 	})
+}
+
+type rejectedSiblingHost struct{ *reconciliationHost }
+
+func (h *rejectedSiblingHost) Create(context.Context, string, string, control.Settings) (control.Receipt, error) {
+	return control.Receipt{}, &binding.DispatchError{Outcome: binding.NotDispatched, Cause: errors.New("sibling create rejected")}
+}
+
+func TestMessageDoesNotDispatchSiblingSpawn(t *testing.T) {
+	d, h, _, caller := reconciliationFixture(t)
+	h.inputs = nil
+	d.host = &rejectedSiblingHost{h}
+	spawnCaller := caller
+	spawnCaller.Call = "concurrent-spawn"
+	// This is the publication boundary in SpawnPrepared, before its ClaimEffect.
+	_, err := d.control.ReserveSpawn(t.Context(), spawnCaller, control.SpawnRequest{Name: "sibling", Message: "work", Settings: control.Settings{Workspace: t.TempDir()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller.Call = "concurrent-message"
+	_, err = d.controlAction(t.Context(), caller, []byte(`{"target":"child","message":"independent message"}`), "send_message")
+	retained, _ := d.control.Effect(caller.Thread, caller.Call)
+	if err != nil || retained.State != "confirmed" {
+		t.Fatalf("independent message failed: err=%v state=%s delivered_inputs=%d", err, retained.State, len(h.inputs))
+	}
+	spawn, err := d.control.Effect(spawnCaller.Thread, spawnCaller.Call)
+	if err != nil || spawn.State != "pending" {
+		t.Fatalf("message claimed unrelated creation: %+v, %v", spawn, err)
+	}
 }

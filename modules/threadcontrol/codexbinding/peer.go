@@ -39,7 +39,7 @@ func (d *Driver) DeliverMessages(ctx context.Context, thread string) error {
 	if err := d.Reconcile(ctx, thread); err != nil {
 		return err
 	}
-	if err := d.DispatchPending(ctx, thread); err != nil {
+	if err := d.dispatchPending(ctx, thread, thread); err != nil {
 		return err
 	}
 	if err := lifecycle.Err(); err != nil {

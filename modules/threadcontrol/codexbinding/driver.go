@@ -60,6 +60,12 @@ func (d *Driver) Coordination() *control.Service { return d.control }
 // DispatchPending delivers already-admitted controls released by host settlement.
 // Claims serialize each target; an unresolved effect leaves its successors queued.
 func (d *Driver) DispatchPending(ctx context.Context, thread string) error {
+	return d.dispatchPending(ctx, thread, "")
+}
+
+// Explicit controls drain only their target's ordered prerequisites, not sibling
+// operations whose latency or failure must not determine this call's result.
+func (d *Driver) dispatchPending(ctx context.Context, thread, target string) error {
 	for {
 		pendingEffects, recoveryReady, err := d.control.PendingEffects(thread)
 		if err != nil {
@@ -67,6 +73,9 @@ func (d *Driver) DispatchPending(ctx context.Context, thread string) error {
 		}
 		progressed := false
 		for _, pending := range pendingEffects {
+			if target != "" && pending.Target != target {
+				continue
+			}
 			action, err := d.control.ClaimEffect(ctx, pending.Caller, pending.ID)
 			if err != nil {
 				return err
@@ -190,7 +199,7 @@ func (d *Driver) Wake(ctx context.Context, thread string, now time.Time) error {
 	if err != nil || wake == nil {
 		return err
 	}
-	return d.DispatchPending(ctx, thread)
+	return d.dispatchPending(ctx, thread, thread)
 }
 
 func (d *Driver) native() control.Native {

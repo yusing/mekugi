@@ -334,10 +334,7 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	if err != nil {
 		return nil, err
 	}
-	err = d.DispatchPending(ctx, caller.Thread)
-	if err == nil {
-		err = d.DispatchPending(ctx, target.Thread)
-	}
+	err = d.dispatchPending(ctx, target.Thread, target.Thread)
 	err = errors.Join(err, d.Wake(ctx, target.Thread, time.Now()))
 	if target.Parent != "" {
 		err = errors.Join(err, d.Wake(ctx, target.Parent, time.Now()))

@@ -37,7 +37,7 @@ func (tree *Tree) detachedEffect(effect Effect) (*Effect, error) {
 	return &result, nil
 }
 
-type EffectRef struct{ Caller, ID string }
+type EffectRef struct{ Caller, ID, Target string }
 
 // PendingEffects selects dispatch candidates in retained arrival order. Claims
 // remain authoritative; these identities grant no dispatch permission.
@@ -50,7 +50,7 @@ func (s *Service) PendingEffects(thread string) ([]EffectRef, bool, error) {
 	var pending []EffectRef
 	appendPending := func(effect Effect) {
 		if (effect.Target == thread || effect.Caller == thread) && (effect.State == "pending" || effect.State == "queued") {
-			pending = append(pending, EffectRef{effect.Caller, effect.ID})
+			pending = append(pending, EffectRef{effect.Caller, effect.ID, effect.Target})
 		}
 	}
 	for _, effect := range tree.Effects {

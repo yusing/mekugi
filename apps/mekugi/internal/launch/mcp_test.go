@@ -50,12 +50,16 @@ func TestInvocationMCPComposedEndpoint(t *testing.T) {
 			DisabledTools     []string `toml:"disabled_tools"`
 			OmitToolsFrom     []string `toml:"omit_tools_from"`
 			Approval          string   `toml:"default_tools_approval_mode"`
+			Parallel          bool     `toml:"supports_parallel_tool_calls"`
 		} `toml:"mcp_servers"`
 	}
 	if _, err := toml.Decode(args[1], &config); err != nil {
 		t.Fatal(err)
 	}
 	selected := config.Servers["threadcontrol"]
+	if !selected.Parallel {
+		t.Fatal("invocation tools must preserve concurrent stock execution")
+	}
 	if !reflect.DeepEqual(selected.OmitToolsFrom, []string{"deferred"}) {
 		t.Fatalf("invocation tools must be declared before inference: %+v", selected)
 	}

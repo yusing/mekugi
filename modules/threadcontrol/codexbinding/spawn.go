@@ -38,18 +38,48 @@ func (d *Driver) SpawnPrepared(ctx context.Context, caller control.Identity, pre
 			return SpawnResult{}, err
 		}
 	}
-	if err = d.DispatchPending(ctx, caller.Thread); err != nil {
-		return SpawnResult{}, err
+	for {
+		changed, err := d.control.Changes(caller.Thread)
+		if err != nil {
+			return SpawnResult{}, err
+		}
+		created, err := d.control.Effect(caller.Thread, spawn.ID)
+		if err != nil {
+			return SpawnResult{}, err
+		}
+		result := SpawnResult{Thread: created.Target, Task: created.Child.Task, State: created.State}
+		switch created.State {
+		case "confirmed":
+			return result, nil
+		case "pending", "queued":
+			// Advance only this spawn. Draining the caller's entire queue can
+			// claim a sibling and leave that sibling's own call unconfirmed.
+			action, err := d.control.ClaimEffect(ctx, caller.Thread, spawn.ID)
+			if err != nil {
+				return result, err
+			}
+			if action != nil {
+				if err := d.dispatchClaimedAction(ctx, action); err != nil {
+					return result, err
+				}
+				continue
+			}
+		case "dispatching":
+			// A lifecycle worker may already own this phase. Its acknowledgement,
+			// not a second dispatch or an optimistic receipt, releases this call.
+		default:
+			err := fmt.Errorf("spawn is %s; no repeated dispatch was issued", result.State)
+			if created.Error != "" {
+				err = errors.Join(err, errors.New(created.Error))
+			}
+			return result, err
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return result, ctx.Err()
+		}
 	}
-	created, err := d.control.Effect(caller.Thread, spawn.ID)
-	if err != nil {
-		return SpawnResult{}, err
-	}
-	result := SpawnResult{Thread: created.Target, Task: created.Child.Task, State: created.State}
-	if result.State != "confirmed" {
-		return result, fmt.Errorf("spawn is %s; no repeated dispatch was issued", result.State)
-	}
-	return result, nil
 }
 
 func sameJSON(a, b jsontext.Value) bool {
