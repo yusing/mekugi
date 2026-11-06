@@ -133,6 +133,10 @@ func TestAttachmentContextRefreshesCurrentSkillsAndPreservesSelections(t *testin
 					}
 					transform.Close()
 					visible := request.Fields["input"]
+					hint := attachmentTestHint(t, visible)
+					if !regexp.MustCompile(`^Optional attachment recall: selections: mread [a-z]+[0-9]*; skills: mread [a-z]+[0-9]*; files: mread [a-z]+[0-9]*$`).MatchString(hint) {
+						t.Fatalf("unexpected attachment hint: %q", hint)
+					}
 					if bytes.Contains(visible, []byte("SELECTED_BYTES")) || bytes.Count(visible, []byte("CURRENT_SKILL")) != map[bool]int{true: 1, false: 0}[explicit] {
 						t.Fatalf("attachment bodies were forced or explicit skill lost: %s", visible)
 					}
@@ -295,6 +299,13 @@ func TestAttachmentContextPreservesSubmittedImagePath(t *testing.T) {
 				defer transform.Close()
 				if len(transform.CompactReload()) != 0 || bytes.Contains(request.Fields["input"], []byte(imagePath)) || bytes.Contains(request.Fields["input"], []byte("ORIGINAL_SELECTION")) {
 					t.Fatalf("attachment content forced into provider input: %s", request.Fields["input"])
+				}
+				pattern := `^Optional attachment recall: images: mread [a-z]+[0-9]*$`
+				if mixed {
+					pattern = `^Optional attachment recall: selections: mread [a-z]+[0-9]*; images: mread [a-z]+[0-9]*$`
+				}
+				if hint := attachmentTestHint(t, request.Fields["input"]); !regexp.MustCompile(pattern).MatchString(hint) {
+					t.Fatalf("unexpected attachment hint: %q", hint)
 				}
 				recalled := attachmentTestReadHints(t, p, "root", request.Fields["input"])
 				if !strings.Contains(recalled, imagePath) || !strings.Contains(recalled, "[Image 1]") || mixed && !strings.Contains(recalled, values[0].Selection.Encode()) {

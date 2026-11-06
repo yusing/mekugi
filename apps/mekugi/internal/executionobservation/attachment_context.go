@@ -90,7 +90,7 @@ func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexres
 			if err != nil {
 				return "", err
 			}
-			hints = append(hints, group.kind+": "+recovery.NextCall(ref))
+			hints = append(hints, group.kind+": mread "+ref)
 		}
 		return "Optional attachment recall: " + strings.Join(hints, "; "), nil
 	})
