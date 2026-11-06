@@ -103,6 +103,28 @@ func TestSnapshotEffectiveHooksPath(t *testing.T) {
 	}
 }
 
+func TestSnapshotStatusHonorsGlobalExcludesFile(t *testing.T) {
+	workspace := repository(t)
+	for _, name := range []string{"ignored-globally", "visible"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte("data"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	excludes := filepath.Join(t.TempDir(), "ignore")
+	config := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(excludes, []byte("ignored-globally\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte("[core]\n excludesFile = "+excludes+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", config)
+	snapshot := Acquire(t.Context(), workspace)
+	if !slices.Equal(snapshot.Git.Status, []string{"?? visible"}) {
+		t.Fatalf("status = %q", snapshot.Git.Status)
+	}
+}
+
 func TestSnapshotsGitStatesAndIsolation(t *testing.T) {
 	workspace := repository(t)
 	unborn := Acquire(t.Context(), workspace)

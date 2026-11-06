@@ -122,7 +122,15 @@ func Acquire(ctx context.Context, workspace string) Snapshot {
 			s.Git.DefaultBranch = branches[0]
 		}
 	}
-	if status, ok := git("status", "status", "--porcelain=v1", "--untracked-files=normal", "--ignore-submodules=none"); ok && status != "" {
+	// Status must list what the agent's own git status lists, so it honors the
+	// account's configured excludes file while other settings stay isolated.
+	statusArgs := []string{"status", "--porcelain=v1", "--untracked-files=normal", "--ignore-submodules=none"}
+	if excludes, _, err := commandWithConfig(ctx, workspace, true, "git", "--no-lazy-fetch", "--no-optional-locks", "config", "--path", "--get", "core.excludesFile"); err == nil {
+		if excludes = strings.TrimSuffix(excludes, "\n"); excludes != "" {
+			statusArgs = append([]string{"-c", "core.excludesFile=" + excludes}, statusArgs...)
+		}
+	}
+	if status, ok := git("status", statusArgs...); ok && status != "" {
 		for row := range strings.SplitSeq(status, "\n") {
 			if len(s.Git.Status) == 32 {
 				s.Incomplete = append(s.Incomplete, "status truncated")
@@ -218,8 +226,8 @@ func command(ctx context.Context, workspace, name string, args ...string) (strin
 	return commandWithConfig(ctx, workspace, false, name, args...)
 }
 
-// Only the narrow hooksPath read uses effective configuration; other facts stay
-// independent of account configuration. Repository-routing variables stay out.
+// Only the narrow hooksPath and excludes-file reads use effective
+// configuration; other facts stay independent of account configuration. Repository-routing variables stay out.
 func commandWithConfig(ctx context.Context, workspace string, effectiveConfig bool, name string, args ...string) (string, bool, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workspace
