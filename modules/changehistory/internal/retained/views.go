@@ -167,7 +167,8 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 		}
 		if capture.coverage != "" && capture.coverage != "exact" {
 			failures = append(failures, fmt.Errorf("change %s has partial captured effects; use --history to inspect them", capture.id))
-			continue
+			// Coverage describes the whole operation, not every file. Complete
+			// independent files still continue their retained source chains.
 		}
 		for _, file := range capture.files {
 			if file.Binary {

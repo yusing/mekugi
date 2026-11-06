@@ -121,6 +121,8 @@ Display-region boundaries do not split those operations into repeated file secti
 Pending or retired history and
 inconsistent, incomplete, partial-coverage, or binary capture chains
 fail rather than claim a complete net diff; `--history` preserves that evidence.
+Complete independent files from a partial-coverage capture still participate in
+their source chains; usable output accompanies the nonzero coverage diagnostic.
 Complete captured diffs remain composable regardless of command exit status,
 including older retained records. Normal views
 describe captured file differences, not command outcomes; execution and capture

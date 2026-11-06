@@ -602,7 +602,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	assertRejected := func(id, reason string) {
 		t.Helper()
 		stdout, stderr, status := f.run(t, "mchanges "+id)
-		if status == 0 || stdout != "" || !strings.Contains(stderr, reason) ||
+		if status == 0 || !strings.Contains(stdout, "-before\n+after\n") || !strings.Contains(stderr, reason) ||
 			!strings.Contains(stderr, "use --history to inspect") {
 			t.Errorf("net accepted or obscured %s capture: %q, %q, %d", reason, stdout, stderr, status)
 		}
@@ -835,5 +835,31 @@ func TestMChangesOverlappingCapturesKeepIndependentEvidence(t *testing.T) {
 	out, diagnostic, status := f.run(t, "mchanges --history "+ids[0]+".."+ids[5])
 	if status != 0 || diagnostic != "" || !strings.Contains(out, "-index+12\n+index+14") {
 		t.Fatalf("history read lost overlapping capture: %q %q %d", out, diagnostic, status)
+	}
+}
+
+func TestMChangesPartialCapturePreservesIndependentSourceChain(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "partial-source-chain")
+	var ids []string
+	for i, state := range []struct{ before, after string }{{"before\n", "first\n"}, {"first\n", "second\n"}, {"second\n", "final\n"}} {
+		correlation := fmt.Sprintf("partial-chain-%d", i)
+		id := f.reserve(t, f.thread, correlation)
+		h := mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("complete.txt", "complete.txt", state.before, state.after)}}
+		if i == 1 {
+			h.ExecOutcome = &changecapture.Outcome{Coverage: changecapture.CoveragePartial}
+			h.ReviewFiles = append(h.ReviewFiles, diffmodel.RenderUnbasedReviewFile("incomplete.txt", "known endpoint\n", "overlapping writer endpoint unavailable"))
+		}
+		f.publish(t, id, correlation, correlation, h)
+		ids = append(ids, id)
+	}
+	for _, paths := range []string{"", " -- complete.txt"} {
+		out, diagnostic, status := f.run(t, "mchanges "+ids[0]+".."+ids[2]+paths)
+		if status != 1 || !strings.Contains(diagnostic, ids[1]+" has partial captured effects") || strings.Contains(diagnostic, "source does not match") {
+			t.Fatalf("partial chain diagnostic: %q %q %d", out, diagnostic, status)
+		}
+		if !strings.Contains(out, "-before\n+final\n") || strings.Contains(out, "known endpoint") || strings.Contains(out, "+second") {
+			t.Fatalf("partial capture lost the complete independent chain: %q", out)
+		}
 	}
 }
