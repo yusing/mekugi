@@ -24,8 +24,8 @@ func (d Draft) selectionFrames(selection Token) []string {
 	if selection.Source != "" {
 		origin = fmt.Sprintf(" from %q", selection.Source)
 	}
-	return frameText(selection.Text, func(start, end, total int) string {
-		return fmt.Sprintf(attachments.SelectionPrefix+"%q%s (UTF-8 bytes %d:%d of %d; quoted from the user's screen, not a separate request):\n", label, origin, start, end, total)
+	return frameText(selection.Text, func(_, _, _ int) string {
+		return fmt.Sprintf(attachments.SelectionPrefix+"%q%s (quoted from the user's screen, not a separate request):\n", label, origin)
 	})
 }
 
@@ -51,7 +51,7 @@ func RestoreSelections(text string, frames []string) []Token {
 			}
 		}
 		header, body, ok := strings.Cut(rest, "\n")
-		if !ok || !strings.HasPrefix(header, " (UTF-8 bytes ") || !SelectionLabel(label) {
+		if !ok || (!strings.HasPrefix(header, " (UTF-8 bytes ") && header != " (quoted from the user's screen, not a separate request):") || !SelectionLabel(label) {
 			continue
 		}
 		if quotes[label] == nil {

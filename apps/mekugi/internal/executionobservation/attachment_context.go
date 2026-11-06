@@ -37,7 +37,7 @@ func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexres
 		var selections, files, images, skills []string
 		for _, value := range snapshot.Values {
 			if len(value.Selection.Frames) > 0 {
-				selections = append(selections, value.Selection.Encode())
+				selections = append(selections, value.Selection.Frames...)
 			}
 			for _, label := range value.Placeholders {
 				if strings.HasPrefix(label, "$") {

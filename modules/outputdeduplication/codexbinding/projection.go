@@ -120,8 +120,8 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			if binding.NativeJSONSession(body) != 0 {
 				return text
 			}
-			// Optional attachment recall returns the same frozen envelopes as
-			// submitted attachments, so explicit subsequent reloads share source identity.
+			// Retained file/skill envelopes and historical selection envelopes
+			// share submitted source identity with explicit subsequent reloads.
 			if strings.Contains(body, "<mekugi-file-attachments-") {
 				if projected, valid := projectRetainedAttachments(body, projectAttachment); valid {
 					return header + projected
@@ -161,6 +161,17 @@ func attachmentSource(frames []string) (headers, bodies []string) {
 		return nil, nil
 	}
 	headers, bodies = []string{header}, []string{body}
+	// Current selection chunks share their quote header, without byte coordinates.
+	if attachments.SelectionFrame(header) && strings.HasSuffix(header, " (quoted from the user's screen, not a separate request):\n") {
+		for _, frame := range frames[1:] {
+			nextHeader, nextBody, ok := duplicateAttachmentBody(frame)
+			if !ok || nextHeader != header {
+				break
+			}
+			headers, bodies = append(headers, nextHeader), append(bodies, nextBody)
+		}
+		return headers, bodies
+	}
 	identity, coordinates, _ := strings.Cut(header, " (UTF-8 bytes ")
 	var start, end, total int
 	if n, _ := fmt.Sscanf(coordinates, "%d:%d of %d", &start, &end, &total); n != 3 || start != 0 || end != len(body) || end >= total {
@@ -187,7 +198,7 @@ func attachmentSource(frames []string) (headers, bodies []string) {
 // receipts. Snapshot byte ranges remain those of the original submitted body.
 func duplicateAttachmentBody(text string) (header, body string, ok bool) {
 	first, body, found := strings.Cut(text, "\n")
-	if found && attachments.SelectionFrame(text) && strings.Contains(first, " (UTF-8 bytes ") && strings.HasSuffix(first, "):") {
+	if found && attachments.SelectionFrame(text) && (strings.Contains(first, " (UTF-8 bytes ") || strings.HasSuffix(first, " (quoted from the user's screen, not a separate request):")) && strings.HasSuffix(first, "):") {
 		return first + "\n", body, true
 	}
 	if !found || !strings.Contains(first, " (UTF-8 bytes ") ||

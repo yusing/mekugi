@@ -309,8 +309,22 @@ func TestAttachmentContextPreservesSubmittedImagePath(t *testing.T) {
 					t.Fatalf("unexpected attachment hint: %q", hint)
 				}
 				recalled := attachmentTestReadHints(t, p, "root", request.Fields["input"])
-				if !strings.Contains(recalled, imagePath) || !strings.Contains(recalled, "[Image 1]") || mixed && !strings.Contains(recalled, values[0].Selection.Encode()) {
+				if !strings.Contains(recalled, imagePath) || !strings.Contains(recalled, "[Image 1]") || mixed && !strings.Contains(recalled, strings.Join(values[0].Selection.Frames, "\n")) {
 					t.Fatalf("reset dropped submitted evidence: %s", recalled)
+				}
+				for _, noise := range []struct{ name, text string }{
+					{"JSON", `"frames":`}, {"v2", "<mekugi-file-attachments-v2>"},
+					{"id", `"id":`}, {"byte coordinates", "UTF-8 bytes"},
+					{"file-attachments label", "file-attachments"},
+				} {
+					if strings.Contains(recalled, noise.text) {
+						t.Fatalf("selection recall contains %s: %s", noise.name, recalled)
+					}
+				}
+				if mixed {
+					quote := strings.Join(values[0].Selection.Frames, "\n")
+					at := strings.Index(recalled, quote)
+					t.Logf("Recalled model-visible selection:\n%s", recalled[at:at+len(quote)])
 				}
 			})
 		}

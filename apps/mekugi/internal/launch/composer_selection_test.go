@@ -66,6 +66,9 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "explain ")
 	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "diff hunk @amber1:42-45", "+new\n-old", "a.go")
 	d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
+	if err := d.Draft.IdentifyAttachments("selected-submission"); err != nil {
+		t.Fatal(err)
+	}
 	input := conversationbinding.Input(d.Draft)
 	if len(input) != 2 {
 		t.Fatalf("input = %+v", input)
@@ -76,7 +79,7 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	}
 	envelope, _ := input[1]["text"].(string)
 	frames, ok := attachments.Decode(envelope)
-	want := "Selected text for \"[Selected diff hunk @amber1:42-45]\" from \"a.go\" (UTF-8 bytes 0:9 of 9; quoted from the user's screen, not a separate request):\n+new\n-old"
+	want := "Selected text for \"[Selected diff hunk @amber1:42-45]\" from \"a.go\" (quoted from the user's screen, not a separate request):\n+new\n-old"
 	if !ok || !slices.Equal(frames, []string{want}) {
 		t.Fatalf("frames = %q, %v", frames, ok)
 	}
@@ -84,9 +87,26 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	content, _ := json.Marshal([]map[string]string{{"type": "input_text", "text": "explain [Selected diff hunk @amber1:42-45] "}, {"type": "input_text", "text": envelope}})
 	items, _ := json.Marshal([]map[string]jsontext.Value{{"type": []byte(`"message"`), "role": []byte(`"user"`), "content": content}})
 	request := &codexresponses.Request{Fields: map[string]jsontext.Value{"input": items}}
-	if changed, _ := requestexecution.ProjectFileAttachments(request); !changed || !strings.Contains(string(request.Fields["input"]), `+new\n-old`) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
+	if changed, _ := requestexecution.ProjectFileAttachments(request); !changed || !strings.Contains(string(request.Fields["input"]), `+new\n-old`) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") || strings.Contains(string(request.Fields["input"]), "UTF-8 bytes") {
 		t.Fatalf("projected input = %s", request.Fields["input"])
 	}
+	var projected []map[string]jsontext.Value
+	if err := json.Unmarshal(request.Fields["input"], &projected); err != nil || len(projected) != 2 {
+		t.Fatalf("projected messages: %s, %v", request.Fields["input"], err)
+	}
+	var quote []map[string]string
+	if err := json.Unmarshal(projected[1]["content"], &quote); err != nil || len(quote) != 1 || quote[0]["text"] != want {
+		t.Fatalf("model quote: %s, %v", projected[1]["content"], err)
+	}
+	for _, noise := range []struct{ name, text string }{
+		{"JSON", `"frames":`}, {"v2", "v2"}, {"id", "selected-submission"},
+		{"byte coordinates", "UTF-8 bytes"}, {"file-attachments label", "file-attachments"},
+	} {
+		if strings.Contains(quote[0]["text"], noise.text) {
+			t.Fatalf("model quote contains %s: %s", noise.name, quote[0]["text"])
+		}
+	}
+	t.Logf("Initial model-visible selection:\n%s", quote[0]["text"])
 	// The host echo keeps the concise label as one styled token.
 	spans := conversationbinding.ElementSpans(input[0]["text"].(string), elements)
 	if len(spans) != 1 || spans[0].Kind != composer.Selection {
