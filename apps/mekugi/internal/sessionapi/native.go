@@ -18,6 +18,7 @@ import (
 // contains no renderer, source store, host connection or execution capability.
 // Draft and prompt-editor contents are removed at the publication boundary.
 type NativeFrame struct {
+	DiffOpen          *NativeDiffOpen               `json:"diff_open,omitempty"`
 	FileOpen          *NativeFileOpen               `json:"file_open,omitempty"`
 	Processes         []sessionpresentation.Process `json:"processes"`
 	CompletionCatalog uint64                        `json:"completionCatalog"`
@@ -285,6 +286,7 @@ func (e NativeEffect) RecoveryDraft() *composer.Draft {
 type NativeViewerLease struct {
 	Revision        uint64
 	Expires         int64 // Absolute Unix milliseconds; delayed delivery never renews a lease.
+	DiffOpenExpires int64
 	FileOpenExpires int64
 }
 
@@ -295,6 +297,15 @@ type NativeFileOpen struct {
 	Path  string `json:"path"`
 	First int    `json:"first,omitzero"`
 	Last  int    `json:"last,omitzero"`
+}
+
+// NativeDiffOpen retains the exact clicked edit. Source stays in the server;
+// companions acquire bounded lines through native/content.
+type NativeDiffOpen struct {
+	ID     uint64 `json:"id"`
+	Path   string `json:"path"`
+	Title  string `json:"title"`
+	Source string `json:"-"`
 }
 
 type NativeNavigation struct {

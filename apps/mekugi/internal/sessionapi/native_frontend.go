@@ -23,6 +23,7 @@ type NativeActivation struct {
 }
 
 type NativeFrontendRequest struct {
+	DiffOpen   bool              `json:"diff_open,omitzero"`
 	FileOpen   bool              `json:"file_open,omitzero"`
 	Activation uint64            `json:"activation,omitempty"`
 	PID        int               `json:"pid"`
@@ -37,6 +38,8 @@ type NativeFrontendRequest struct {
 }
 
 type NativeObservation struct {
+	DiffOpenSupported bool                        `json:"diff_open_supported,omitzero"`
+	DiffOpen          *NativeDiffOpen             `json:"diff_open,omitempty"`
 	FileOpenSupported bool                        `json:"file_open_supported,omitzero"`
 	FileOpen          *NativeFileOpen             `json:"file_open,omitempty"`
 	Activation        uint64                      `json:"activation,omitempty"`
@@ -91,6 +94,7 @@ type nativeFrontend struct {
 	changed       chan struct{}
 	viewers       map[string]nativeViewer
 	revision      uint64
+	diffOpenAfter uint64
 	fileOpenAfter uint64
 	selectedMu    sync.Mutex
 	selected      *selectedContent
@@ -98,6 +102,7 @@ type nativeFrontend struct {
 
 type nativeViewer struct {
 	expires  time.Time
+	diffOpen bool
 	fileOpen bool
 }
 
@@ -118,6 +123,10 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 	}
 	sub.owner.mu.Lock()
 	started := sub.view.started && sub.view.ctx.Err() == nil
+	var diffOpenAfter uint64
+	if sub.view.diffOpen != nil {
+		diffOpenAfter = sub.view.diffOpen.ID
+	}
 	var fileOpenAfter uint64
 	if sub.view.fileOpen != nil {
 		fileOpenAfter = sub.view.fileOpen.ID
@@ -159,6 +168,7 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 	}
 	f.pid, f.sequence, f.active = request.PID, request.Sequence, sub
 	f.fileOpenAfter = fileOpenAfter
+	f.diffOpenAfter = diffOpenAfter
 	lease := f.lease(time.Now())
 	h.mu.Unlock()
 	if lease.Revision != 0 {
@@ -172,7 +182,7 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 // No expiry worker is needed: each physical renderer also restores at that deadline.
 func (f *nativeFrontend) lease(now time.Time) NativeViewerLease {
 	var expiry time.Time
-	var fileExpiry time.Time
+	var fileExpiry, diffExpiry time.Time
 	for viewer, value := range f.viewers {
 		until := value.expires
 		if !now.Before(until) {
@@ -182,6 +192,9 @@ func (f *nativeFrontend) lease(now time.Time) NativeViewerLease {
 		if until.After(expiry) {
 			expiry = until
 		}
+		if value.diffOpen && until.After(diffExpiry) {
+			diffExpiry = until
+		}
 		if value.fileOpen && until.After(fileExpiry) {
 			fileExpiry = until
 		}
@@ -189,6 +202,9 @@ func (f *nativeFrontend) lease(now time.Time) NativeViewerLease {
 	out := NativeViewerLease{Revision: f.revision}
 	if !expiry.IsZero() {
 		out.Expires = expiry.UnixMilli()
+	}
+	if !diffExpiry.IsZero() {
+		out.DiffOpenExpires = diffExpiry.UnixMilli()
 	}
 	if !fileExpiry.IsZero() {
 		out.FileOpenExpires = fileExpiry.UnixMilli()
@@ -258,7 +274,7 @@ func (c *rpcConnection) frontendRequest(ctx context.Context, method string, para
 				h.mu.Unlock()
 				return nil, rpcFailure(429, "Native viewer capacity reached.")
 			}
-			f.viewers[request.Viewer] = nativeViewer{expires: now.Add(nativeViewerLease), fileOpen: request.FileOpen}
+			f.viewers[request.Viewer] = nativeViewer{expires: now.Add(nativeViewerLease), fileOpen: request.FileOpen, diffOpen: request.DiffOpen}
 		} else {
 			delete(f.viewers, request.Viewer)
 		}
@@ -291,7 +307,7 @@ func (c *rpcConnection) frontendRequest(ctx context.Context, method string, para
 		}
 		return owner.observeFrontend(ctx, request)
 	}
-	instance, activation := f.instance, f.sequence
+	instance, activation, diffOpenAfter := f.instance, f.sequence, f.diffOpenAfter
 	h.mu.Unlock()
 	if method == "native/resolve" {
 		sub.owner.mu.Lock()
@@ -320,6 +336,24 @@ func (c *rpcConnection) frontendRequest(ctx context.Context, method string, para
 		if request.Content == nil {
 			return nil, rpcFailure(400, "Content reference is required.")
 		}
+		if ref := request.Content; ref.Kind == "native-diff" {
+			sub.owner.mu.Lock()
+			opened := sub.view.diffOpen
+			valid := ref.Attachment == currentAttachment && ref.Seq == activation && opened != nil && opened.ID == ref.Revision && opened.ID > diffOpenAfter
+			sub.owner.mu.Unlock()
+			if !valid {
+				return nil, rpcFailure(409, "Selected content changed; reopen its current reference.")
+			}
+			var offset uint64
+			if request.Offset != nil {
+				offset = *request.Offset
+			}
+			page, err := linePage(opened.Source, offset)
+			if err != nil {
+				return nil, rpcFailure(413, err.Error())
+			}
+			return page, nil
+		}
 		selected, failure := h.lookup(target.thread, startup, localNativeView)
 		if failure != nil {
 			return nil, failure
@@ -341,7 +375,8 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		h.mu.Lock()
 		sub, changed := c.frontend.active, c.frontend.changed
 		fileOpenAfter := c.frontend.fileOpenAfter
-		result := NativeObservation{Available: true, FileOpenSupported: true, Instance: c.frontend.instance, Activation: c.frontend.sequence}
+		diffOpenAfter := c.frontend.diffOpenAfter
+		result := NativeObservation{Available: true, FileOpenSupported: true, DiffOpenSupported: true, Instance: c.frontend.instance, Activation: c.frontend.sequence}
 		h.mu.Unlock()
 		if c.ctx.Err() != nil || sub == nil || sub.ctx.Err() != nil {
 			return NativeObservation{Available: false}, nil
@@ -351,6 +386,10 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		target, startup, nativeChanged := view.target, view.startup, view.changed
 		result.Thread, result.Startup, result.Attachment = target.thread, startup, sub.attachment
 		result.Version, result.Displayed, result.Caller = view.version, view.displayed, view.caller
+		if view.diffOpen != nil && view.diffOpen.ID > diffOpenAfter {
+			result.DiffOpen = new(*view.diffOpen)
+			result.DiffOpen.Source = ""
+		}
 		if view.fileOpen != nil && view.fileOpen.ID > fileOpenAfter {
 			result.FileOpen = view.fileOpen
 		}
@@ -373,8 +412,9 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 			Activation                           uint64
 			Displayed                            sessionpresentation.Thread
 			Revisions                            [4]uint64
+			DiffOpen                             *NativeDiffOpen
 			FileOpen                             *NativeFileOpen
-		}{result.Instance, result.Attachment, key.Attachment, result.Caller, result.Activation, result.Displayed, key.Revisions, result.FileOpen}, encoding)
+		}{result.Instance, result.Attachment, key.Attachment, result.Caller, result.Activation, result.Displayed, key.Revisions, result.DiffOpen, result.FileOpen}, encoding)
 		result.Cursor = fmt.Sprintf("%x", sha256.Sum256(identity))
 		ready := server.published
 		if ready && (result.Cursor != request.After || ctx.Err() == context.DeadlineExceeded) {

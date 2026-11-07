@@ -55,3 +55,10 @@ ordinary dialog remains available. Nonregular paths retain clipboard behavior.
 File selection is latest-wins, retained for repeat observation rather than queued.
 Consumers deduplicate by physical frontend, activation, attachment and selection
 ID. A replacement attachment does not inherit the previous attachment's selection.
+
+A companion advertises edit-opening capability when its diff pane is available.
+Clicked edit details reveal that pane and select the exact original diff in that pane, independently of its
+cumulative Saved and Live views. Repeated clicks select again; subsequent review
+updates do not replace the selected edit. Non-diff details and terminals without
+an active capable companion retain their ordinary dialogs. Diff source stays on
+the observed machine and is acquired through bounded content continuation.

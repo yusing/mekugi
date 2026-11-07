@@ -56,6 +56,21 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 	// Legacy semantic adapters consume the same detached Activity publications as
 	// native painting. The selected source and contributed detail owner stay real.
 	publishActivity(&v.attached, v.shell)
+	v.files.openDiff = nil
+	if !v.remoteHuman && time.Now().UnixMilli() < v.viewerLease.DiffOpenExpires {
+		v.files.openDiff = func(page activity.DetailPage) {
+			id := uint64(1)
+			if v.diffOpen != nil {
+				id = v.diffOpen.ID + 1
+			}
+			path := page.DisplayPath
+			if path == "" {
+				path = page.Path
+			}
+			v.diffOpen = &sessionapi.NativeDiffOpen{ID: id, Path: path, Title: page.Verb, Source: page.Code}
+			v.files.closeOutput(v.shell)
+		}
+	}
 	switch request.Kind {
 	case sessionapi.NativeFileDetails:
 		v.files.textOnly = v.remoteHuman
@@ -155,7 +170,10 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 }
 
 func (v *nativeSessionView) publishDetails(frame *sessionapi.NativeFrame) {
-	defer func() { frame.FileOpen = v.fileOpen }()
+	defer func() {
+		frame.FileOpen = v.fileOpen
+		frame.DiffOpen = v.diffOpen
+	}()
 	select {
 	case result := <-v.files.fileReads:
 		v.files.loadedMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, v.shell, result)

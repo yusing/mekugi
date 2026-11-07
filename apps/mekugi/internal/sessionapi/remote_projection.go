@@ -98,6 +98,7 @@ func publicCall(call prompt.CallView) prompt.CallView {
 
 func (f NativeFrame) remote() NativeFrame {
 	f.FileOpen = nil
+	f.DiffOpen = nil
 	if menu := f.View.Menu; menu != nil {
 		f.View.Menu = new(*menu)
 		f.View.Menu.Choices = slices.DeleteFunc(slices.Clone(menu.Choices), func(choice completion.Choice) bool { return choice.HideRemote })

@@ -19,6 +19,10 @@ func openActivityEdit(attached *attachedPresentation, terminal *terminalsession.
 	pages, selected := activityEditPages(attached, terminal, changes, view, seq, path)
 	for _, page := range pages {
 		if page.ID == selected {
+			if page.Lang == "diff" && files.openDiff != nil {
+				files.openDiff(page)
+				return true
+			}
 			openDetails(attached, terminal, files, u, view, pages)
 			for i, page := range u.Dialog.Pages {
 				if page.ID == selected {

@@ -53,6 +53,7 @@ type nativeSessionView struct {
 	predictionDraftEmpty  bool
 	files                 detailFiles
 	viewerLease           sessionapi.NativeViewerLease
+	diffOpen              *sessionapi.NativeDiffOpen
 	fileOpen              *sessionapi.NativeFileOpen
 	activity              *activitymodel.Service
 	changes               *changecapture.Service

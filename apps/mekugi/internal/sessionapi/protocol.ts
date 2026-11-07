@@ -6,6 +6,8 @@ export const subprotocol = "mekugi.control.v8" as const;
 export type RPCMethod = "initialize" | "native/activate" | "native/content" | "native/observe" | "native/release" | "native/resolve" | "native/select" | "native/start" | "publication/ack" | "request/cancel" | "session/answer" | "session/control" | "session/decide" | "session/end" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/page" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
 
 export type NativeObservation = {
+  "diff_open_supported"?: boolean;
+  "diff_open"?: (NativeDiffOpen | null);
   "file_open_supported"?: boolean;
   "file_open"?: (NativeFileOpen | null);
   "activation"?: number;
@@ -28,6 +30,7 @@ export type NativeActivation = {
 };
 
 export type NativeFrontendRequest = {
+  "diff_open"?: boolean;
   "file_open"?: boolean;
   "activation"?: number;
   "pid": number;
@@ -208,6 +211,12 @@ export type message = {
   "roster"?: unknown;
   "review"?: unknown;
   "live"?: unknown;
+};
+
+export type NativeDiffOpen = {
+  "id": number;
+  "path": string;
+  "title": string;
 };
 
 export type NativeFileOpen = {
@@ -439,6 +448,7 @@ export type RemoteOperation = {
 } & Omit<NativeOperation, "answers">;
 
 export type NativeFrame = {
+  "diff_open"?: (NativeDiffOpen | null);
   "file_open"?: (NativeFileOpen | null);
   "processes": Array<Process>;
   "completionCatalog": number;
@@ -649,6 +659,7 @@ export type Model = {
 export type NativeViewerLease = {
   "Revision": number;
   "Expires": number;
+  "DiffOpenExpires": number;
   "FileOpenExpires": number;
 };
 

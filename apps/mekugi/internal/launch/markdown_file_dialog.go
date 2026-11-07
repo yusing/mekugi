@@ -79,6 +79,7 @@ type detailFiles struct {
 	copyFilePath func(string)
 	externalFile bool
 	openFile     func(string, int, int)
+	openDiff     func(activitypresentation.DetailPage)
 	textOnly     bool // Remote-human links retain the text-only file contract.
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changehistory "github.com/yusing/mekugi/modules/changehistory/presentation"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -348,5 +349,62 @@ func TestNativeOutputDisclosureWithCapturedEdits(t *testing.T) {
 				t.Fatal("stale edit replaced selection")
 			}
 		})
+	}
+}
+
+func TestNativeEditDetailsUseCapableCompanion(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	seq := u.attached.source.LastSeq + 1
+	u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
+		{Seq: seq, Agent: "Main", Kind: "tool", Text: "Edit `a.go` +1 -1 · apply_patch\n\nEdit `b.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "edit", EditPages: []activity.Value{
+			{Kind: "op", Verb: "Edit", Path: "a.go", Lang: "diff", Code: "@@ -1 +1 @@\n-wrong\n+other\n"},
+			{Kind: "op", Verb: "Edit", Path: "b.go", Lang: "diff", Code: "@@ -1 +1 @@\n-before\n+exact\n"},
+		}}},
+	}})
+	_, first, second := nativeDetailTestViews(t, u)
+	request := sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: seq, Path: "b.go", Edit: true}
+	first.viewerLease.DiffOpenExpires = time.Now().Add(time.Minute).UnixMilli()
+	for id := uint64(1); id <= 2; id++ {
+		if refusal := first.openDetails(request); refusal != "" {
+			t.Fatal(refusal)
+		}
+		frame := nativeDetailFrame(first)
+		if frame.Details != nil || frame.DiffOpen == nil || frame.DiffOpen.ID != id || frame.DiffOpen.Path != "b.go" || frame.DiffOpen.Source != "@@ -1 +1 @@\n-before\n+exact\n" {
+			t.Fatalf("companion did not receive exact repeated selection: %+v", frame.DiffOpen)
+		}
+	}
+	if second.diffOpen != nil {
+		t.Fatal("selection crossed physical viewers")
+	}
+	first.attached.childSource.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
+		{Seq: seq, Agent: "worker", Kind: "tool", Text: "Edit `b.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "child", Item: "child-edit", EditPages: []activity.Value{
+			{Kind: "op", Verb: "Edit", Path: "b.go", Lang: "diff", Code: "@@ -1 +1 @@\n-before\n+child\n"},
+		}}},
+	}})
+	request.Agent = true
+	if refusal := first.openDetails(request); refusal != "" {
+		t.Fatal(refusal)
+	}
+	if frame := nativeDetailFrame(first); frame.Details != nil || frame.DiffOpen.ID != 3 || !strings.Contains(frame.DiffOpen.Source, "+child") {
+		t.Fatal("child click used the main edit")
+	}
+	request.Agent = false
+	for _, mode := range []string{"standalone", "expired", "remote"} {
+		first.viewerLease.DiffOpenExpires = 0
+		first.remoteHuman = mode == "remote"
+		if mode == "expired" {
+			first.viewerLease.DiffOpenExpires = time.Now().Add(-time.Second).UnixMilli()
+		}
+		if mode == "remote" {
+			first.viewerLease.DiffOpenExpires = time.Now().Add(time.Minute).UnixMilli()
+		}
+		if refusal := first.openDetails(request); refusal != "" {
+			t.Fatal(refusal)
+		}
+		frame := nativeDetailFrame(first)
+		if frame.Details == nil || frame.DiffOpen == nil || frame.DiffOpen.ID != 3 {
+			t.Fatalf("%s did not retain the dialog", mode)
+		}
 	}
 }

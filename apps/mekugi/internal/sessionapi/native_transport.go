@@ -67,6 +67,7 @@ type nativeView struct {
 	version         sessionpresentation.Version
 	displayed       sessionpresentation.Thread
 	caller          string
+	diffOpen        *NativeDiffOpen
 	fileOpen        *NativeFileOpen
 	changed         chan struct{}
 	ctx             context.Context
@@ -379,7 +380,12 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 			caller = frame.View.Info.Caller
 		}
 		fileChanged := (v.fileOpen == nil) != (frame.FileOpen == nil) || v.fileOpen != nil && frame.FileOpen != nil && *v.fileOpen != *frame.FileOpen
-		metadataChanged := v.displayed != frame.View.Displayed || v.caller != caller || frame.Switch != nil || fileChanged
+		diffChanged := (v.diffOpen == nil) != (frame.DiffOpen == nil) || v.diffOpen != nil && frame.DiffOpen != nil && v.diffOpen.ID != frame.DiffOpen.ID
+		v.diffOpen = nil
+		if frame.DiffOpen != nil {
+			v.diffOpen = new(*frame.DiffOpen)
+		}
+		metadataChanged := diffChanged || v.displayed != frame.View.Displayed || v.caller != caller || frame.Switch != nil || fileChanged
 		v.fileOpen = nil
 		if frame.FileOpen != nil {
 			v.fileOpen = new(*frame.FileOpen)

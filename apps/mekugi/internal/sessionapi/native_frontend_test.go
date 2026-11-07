@@ -600,3 +600,111 @@ func TestNativeFrontendFileOpenObservation(t *testing.T) {
 		t.Fatalf("activation replayed previous selection: %+v %v", reactivated, failure)
 	}
 }
+
+func TestNativeFrontendDiffSelectionAndContent(t *testing.T) {
+	f := newFrontendFixture(t)
+	first := f.open(t, 917)
+	initial, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 917, Viewer: "diff"})
+	if failure != nil || !initial.DiffOpenSupported {
+		t.Fatalf("support: %+v %v", initial, failure)
+	}
+	if lease := <-f.requests; lease.Operation.Viewer.DiffOpenExpires != 0 {
+		t.Fatal("unnegotiated capability")
+	}
+	observed, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 917, Instance: initial.Instance, Viewer: "diff", DiffOpen: true})
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	if lease := <-f.requests; lease.Operation.Viewer.DiffOpenExpires == 0 {
+		t.Fatal("missing diff lease")
+	}
+	frame := nativeTestFrame("thread", 1)
+	frame.View.Displayed = frame.View.Main
+	source := "@@ -1 +1 @@\n-old\n+exact\n" + strings.Repeat(" context\n", 1005)
+	frame.DiffOpen = &NativeDiffOpen{ID: 1, Path: "a.go", Title: "Edit", Source: source}
+	f.frames <- frame
+	event, err := first.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Frame.DiffOpen == nil || event.Frame.DiffOpen.Source != "" {
+		t.Fatal("terminal wire leaked source")
+	}
+	observed, failure = f.call(t, "native/observe", NativeFrontendRequest{PID: 917, Instance: initial.Instance, Viewer: "diff", DiffOpen: true, After: observed.Cursor})
+	if failure != nil || observed.DiffOpen == nil || observed.DiffOpen.ID != 1 || observed.DiffOpen.Source != "" {
+		t.Fatalf("selection: %+v %v", observed, failure)
+	}
+	<-f.requests
+	repeated, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 917, Instance: initial.Instance, Viewer: "diff", DiffOpen: true})
+	if failure != nil || repeated.Cursor != observed.Cursor {
+		t.Fatal("selection was not retained")
+	}
+	<-f.requests
+	rpc, err := OpenRPC(t.Context(), f.server.Client(), f.server.URL+NativeRPCPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpc.Close()
+	ref := ContentReference{Kind: "native-diff", Attachment: observed.Attachment, Revision: 1, Seq: observed.Activation}
+	read := func(ref ContentReference, offset uint64) (Lines, error) {
+		body, _ := json.Marshal(&NativeFrontendRequest{PID: 917, Instance: initial.Instance, Content: &ref, Offset: &offset})
+		var lines Lines
+		err := rpc.Call(t.Context(), "native/content", RPCParams{Body: body}, &lines)
+		return lines, err
+	}
+	lines, err := read(ref, 0)
+	if err != nil || len(lines.Lines) != contentPageLines || lines.Next == nil {
+		t.Fatalf("first page: %d %v", len(lines.Lines), err)
+	}
+	rest, err := read(ref, *lines.Next)
+	if err != nil || rest.Next != nil || strings.Join(append(lines.Lines, rest.Lines...), "\n")+"\n" != source {
+		t.Fatalf("continuation lost source: %v", err)
+	}
+	wrong := ref
+	wrong.Revision++
+	if _, err := read(wrong, 0); err == nil {
+		t.Fatal("stale selection admitted")
+	}
+	wrong = ref
+	wrong.Attachment = "other"
+	if _, err := read(wrong, 0); err == nil {
+		t.Fatal("foreign attachment admitted")
+	}
+	if frame.remote().DiffOpen != nil {
+		t.Fatal("remote view retained diff selection")
+	}
+	frame.DiffOpen = &NativeDiffOpen{ID: 2, Path: "b.go", Title: "Edit", Source: "+replacement\n"}
+	f.frames <- frame
+	if _, err := first.Next(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := read(ref, 0); err == nil {
+		t.Fatal("replaced diff still readable")
+	}
+	ref.Revision = 2
+	if lines, err := read(ref, 0); err != nil || len(lines.Lines) != 1 || lines.Lines[0] != "+replacement" {
+		t.Fatalf("replacement: %+v %v", lines, err)
+	}
+	if err := first.Activate(t.Context(), 917, 2); err != nil {
+		t.Fatal(err)
+	}
+	<-f.requests
+	if _, err := read(ref, 0); err == nil {
+		t.Fatal("old activation read admitted")
+	}
+	ref.Seq = 2
+	if _, err := read(ref, 0); err == nil {
+		t.Fatal("new activation read an excluded old selection")
+	}
+	reactivated, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 917, Instance: initial.Instance, Viewer: "diff", DiffOpen: true})
+	if failure != nil || reactivated.DiffOpen != nil {
+		t.Fatalf("activation replayed selection: %+v %v", reactivated, failure)
+	}
+	<-f.requests
+	if _, failure := f.call(t, "native/release", NativeFrontendRequest{PID: 917, Instance: initial.Instance, Viewer: "diff"}); failure != nil {
+		t.Fatal(failure)
+	}
+	if lease := <-f.requests; lease.Operation.Viewer.DiffOpenExpires != 0 {
+		t.Fatal("release retained diff capability")
+	}
+}

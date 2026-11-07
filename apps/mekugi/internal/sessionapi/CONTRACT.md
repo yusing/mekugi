@@ -407,6 +407,15 @@ ID. A new activation excludes selections already published by its destination,
 so returning to an attachment cannot reopen an old file. No active capable lease
 means ordinary standalone dialogs; remote-human views never publish this intent.
 
+Diff panes negotiate `diff_open_supported` / `diff_open: true` independently of
+file opening when they can reveal a selected edit, including from a hidden pane. The latest
+`diff_open: {id, path, title}` follows the same activation, deduplication and lease
+rules as file opening. It represents the exact clicked diff, not cumulative review.
+Source is excluded from observations and terminal frames. `native/content` reads
+it with `{kind: "native-diff", attachment, revision: id, seq: activation}` and a
+byte `offset`, returning ordinary bounded `lines` and `next`. Replacement or stale
+attachment/activation rejects the read. Non-diff details retain the modal.
+
 Selection supplies `attachment`, `activation`, the observed `displayed` ID and
 the canonical `agent` name. Stale connection, activation, attachment or display
 identity fails instead of retargeting navigation. Release supplies the viewer and
