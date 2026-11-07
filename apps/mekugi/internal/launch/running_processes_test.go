@@ -2,6 +2,7 @@ package launch
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func processNotify(t *testing.T, u *appServerUI, thread, id, command, status str
 	appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
 }
 
-// processDialog paints the open /ps dialog over a blank screen.
+// processDialog paints the inline process surface in isolation.
 func processDialog(u *appServerUI, width, height int) []string {
 	rows := make([]string, height)
 	u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
@@ -275,7 +276,7 @@ func TestRunningProcessesDetailNavigation(t *testing.T) {
 	}
 	processDialog(u, 100, 30)
 	d.Key("G")
-	if got := strings.Join(processDialog(u, 44, 10), "\n"); d.Page != 24 || !strings.Contains(got, "sleep 24") {
+	if got := ansi.Strip(strings.Join(processDialog(u, 44, 10), "\n")); d.Page != 24 || !strings.Contains(got, "sleep 24") {
 		t.Fatalf("resize hid selected process: %s", got)
 	}
 	d.Key("\r")
@@ -344,5 +345,49 @@ func TestRunningProcessControlIdentity(t *testing.T) {
 	processNotify(t, u, "main", "cmd", "sleep 30", "completed")
 	if len(u.attached.session.Processes()) != 0 || u.attached.session.AdmitProcess(processes[0]) == nil {
 		t.Fatal("completed process retained Stop capability")
+	}
+}
+
+func TestUISnapshotRunningProcessesInline(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	u.clock = func() time.Time { return now }
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
+		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
+	}
+	processNotify(t, u, "main", "cmd", "printf '%s\\n' \"$HOME\" && sleep 30", "inProgress")
+	appServerTestKeys(t, u, "/ps\r")
+	for _, detail := range []bool{false, true} {
+		if detail {
+			terminalTest(u).outputKey("\r")
+		}
+		for _, external := range []bool{false, true} {
+			u.shell.Shell.SetExternalPanes(external)
+			if err := u.testPaint(io.Discard, 100, 32); err != nil {
+				t.Fatal(err)
+			}
+			terminal := terminalTest(u)
+			frame, err := terminal.Frame.Render(t.Context(), terminal.frameInput())
+			if err != nil || len(frame.Demands) != 0 {
+				t.Fatalf("render: %v, demands: %v", err, frame.Demands)
+			}
+			rows, _ := terminalsession.Screen(100, 32, frame.Rows, -1, -1)
+			text := ansi.Strip(strings.Join(rows, "\n"))
+			title := "Background"
+			if detail {
+				title = "Shell details"
+			}
+			panelRow := -1
+			for i, row := range rows {
+				if strings.Contains(ansi.Strip(row), title) {
+					panelRow = i
+				}
+			}
+			composer := terminal.Main.ComposerRect
+			if composer.H == 0 || panelRow < terminal.Shell.Layout.Main.Y+composer.Y+composer.H || strings.Contains(text, "[×]") {
+				t.Fatalf("process surface is not below composer: %s", text)
+			}
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/running-processes-inline-%t-%t.txt", detail, external), append(rows, "plain"), 100)
+		}
 	}
 }

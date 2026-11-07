@@ -178,13 +178,13 @@ func (d *ContentDialog) ImageSource() terminalui.ImageSource {
 }
 
 func (d *ContentDialog) Paint(rows []string, width, height int) {
+	if d.Processes {
+		d.PaintProcesses(rows, Rect{W: width, H: height})
+		return
+	}
 	bodyWidth := d.Prepare(width, height)
 	if bodyWidth == 0 {
 		return
-	}
-	if d.Processes && !d.ProcessDetail {
-		_, h := dialogSize(width, height)
-		d.rows = h - d.Chrome()
 	}
 	if d.Selection == nil {
 		d.Layout(bodyWidth)
@@ -243,6 +243,9 @@ func (d *ContentDialog) Key(key string) DialogIntent {
 
 // Mouse synchronizes selected content before a gesture can freeze its document.
 func (d *ContentDialog) Mouse(button, x, y int, release bool) DialogIntent {
+	if d.Processes && d.rect.Contains(x, y) && y < d.rect.Y+d.Chrome()-1 && button&^28 == 0 {
+		return DialogIntent{}
+	}
 	if d.Processes && !d.ProcessDetail {
 		return d.processMouse(button, x, y, release)
 	}

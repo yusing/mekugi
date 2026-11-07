@@ -389,16 +389,18 @@ that result. Reopening rereads without monitoring.
 HTTP(S) links copy destinations in transcripts and do nothing on dialog click.
 The application resolves and reads files; rendering receives their content or error.
 
-`/ps` opens a Background list with active-shell count, command, owner and status.
+`/ps` opens an inline Background list below the composer, not a modal dialog,
+with active-shell count, syntax-highlighted command, owner and status.
 Up/Down selects a process; Enter or a row click opens Shell details with status,
-runtime, full command and retained streaming output. Left returns to the list;
+runtime, full syntax-highlighted command and retained streaming output in the
+same inline surface. Left returns to the list;
 Escape closes either view, and Enter/Space also closes details. Output remains
 scrollable and searchable. Completed processes stay in the open list until it
 closes; reopening lists only live processes. New live processes join in start order.
 `x` (or `s`) requests the selected process's stop when the host
-has supplied a process identity. Stopping dismisses the dialog so admission or
+has supplied a process identity. Stopping dismisses the surface so admission or
 host failures remain visible. A completed or replaced process cannot redirect
-the request to another invocation. Closing the dialog alone leaves work running.
+the request to another invocation. Closing the surface alone leaves work running.
 
 ## Selection and source copy
 

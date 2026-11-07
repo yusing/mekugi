@@ -23,6 +23,55 @@ func (d *ContentDialog) processStatus(index int) string {
 	}
 }
 
+// PaintProcesses paints an inline surface below the composer, without a modal
+// backdrop or dialog border. Navigation and retained-output selection are shared
+// with other content views.
+func (d *ContentDialog) PaintProcesses(rows []string, rect Rect) {
+	if rect.W < 12 || rect.H < d.Chrome()+1 {
+		d.rect, d.Selection = Rect{}, nil
+		return
+	}
+	if d.rect != rect {
+		d.Selection = nil
+	}
+	d.rect, d.rows, d.theme = rect, rect.H-d.Chrome(), d.View.Painter.Theme
+	if d.Selection == nil {
+		d.Layout(rect.W - 4)
+	}
+	d.layoutBody()
+	detail := d.Document.Detail
+	if len(d.Pages) > 1 {
+		detail += fmt.Sprintf(" · %d / %d", d.Page+1, len(d.Pages))
+	}
+	if d.Document.Live {
+		detail += " · ● live"
+		if !d.follow {
+			detail += " · paused"
+		}
+	}
+	lines := []string{
+		d.theme.Accent() + strings.Repeat("─", rect.W-4) + terminalui.Reset,
+		d.theme.Accent() + d.Document.Title + terminalui.Reset + "  " + detail,
+		"",
+	}
+	for i, row := range d.body {
+		if d.Selection != nil {
+			row = d.Selection.Row(d.Selection.DocumentY(i), d.theme)
+		}
+		lines = append(lines, row)
+	}
+	footer := d.footer(rect.W)
+	if d.Selection != nil {
+		footer = " " + SelectionHints.Render()
+	}
+	lines = append(lines, footer)
+	for i, line := range lines {
+		if y := rect.Y + i; y >= 0 && y < len(rows) {
+			rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m  %s\x1b[0m", rect.X+1, ansi.Truncate(line, rect.W-4, ""))
+		}
+	}
+}
+
 func (d *ContentDialog) layoutProcess(width int) {
 	page := d.Pages[d.Page]
 	d.StopAvailable = page.Process != nil
@@ -52,10 +101,11 @@ func (d *ContentDialog) layoutProcess(width int) {
 				command := strings.Join(strings.Fields(textsanitize.Safe(item.Code, false)), " ")
 				owner := textsanitize.Safe(pathdisplay.AgentDisplayName(item.Owner), false)
 				status := d.processStatus(i)
+				command = strings.Join(d.View.Painter.Highlight("bash", command), " ")
 				label := ansi.Truncate(owner+" · "+command, max(1, width-len(status)-5), "…")
 				label += strings.Repeat(" ", max(1, width-ansi.StringWidth(label)-len(status)-3)) + status
 				if i == d.Page {
-					label = d.View.Painter.Theme.Accent() + "❯ " + label + terminalui.Reset
+					label = d.View.Painter.Theme.Accent() + "❯ " + terminalui.Reset + label
 				} else {
 					label = "  " + label
 				}
@@ -102,7 +152,7 @@ func (d *ContentDialog) layoutProcess(width int) {
 		lines := []terminalui.DialogLine{
 			{Text: "Status:  " + d.processStatus(d.Page), Wrap: true},
 			{},
-			{Text: "Command: " + textsanitize.Safe(page.Code, false), Wrap: true},
+			{Text: "Command: " + strings.Join(d.View.Painter.Highlight("bash", textsanitize.Safe(page.Code, false)), "\n"), Wrap: true},
 			{},
 			{Text: "Output:"},
 		}

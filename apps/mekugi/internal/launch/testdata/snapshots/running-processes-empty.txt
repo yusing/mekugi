@@ -1,12 +1,12 @@
-
-
-╭─ Background ───────────────────────────────── [×] ─╮
-│ 0 active shells                                    │
-├────────────────────────────────────────────────────┤
-│ No running processes                               │
-│                                                    │
-│                                                    │
-╰─ ↑↓ select · Enter view · Esc close ───────────────╯
-
-
-
+  ────────────────────────────────────────────────────────
+  Background  0 active shells
+  
+  No running processes
+  
+  
+  
+  
+  
+  
+  
+  ↑↓ select · Enter view · Esc close

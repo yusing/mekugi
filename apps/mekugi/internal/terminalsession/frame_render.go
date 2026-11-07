@@ -121,12 +121,21 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		in.Agents.Hits = nil
 	}
 	plan := shell.Plan(width, height, len(roster))
+	processRect := Rect{}
 	content := ShellContent{Roster: roster, MainName: "Main"}
 	if view.Info.Caller != "" && view.Info.Caller != "/root" {
 		content.MainName = "Thread"
 	}
 	if plan.Left.W >= 4 && plan.Left.H >= 1 {
 		iw, ih := plan.Layout.Main.W, plan.Layout.Main.H
+		if in.Dialog != nil && in.Dialog.Processes {
+			panelHeight := min(max(0, ih-4), max(in.Dialog.Chrome()+1, ih/2))
+			if !in.Dialog.ProcessDetail {
+				panelHeight = min(panelHeight, in.Dialog.Chrome()+len(in.Dialog.Pages))
+			}
+			ih -= panelHeight
+			processRect = Rect{plan.Layout.Main.X, plan.Layout.Main.Y + ih, iw, panelHeight}
+		}
 		dockRows := 0
 		if mainEdit && !in.Main.Keybindings && !in.Main.Menu.Open() {
 			dockRows = ih
@@ -199,7 +208,11 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	if in.Dialog != nil {
 		in.Dialog.FileLinks = in.FileLinks
 		in.Dialog.FileLinkDemands = nil
-		in.Dialog.Paint(out.Rows[:height-1], width, height-1)
+		if in.Dialog.Processes {
+			in.Dialog.PaintProcesses(out.Rows, processRect)
+		} else {
+			in.Dialog.Paint(out.Rows[:height-1], width, height-1)
+		}
 		out.FileLinkDemands = append(out.FileLinkDemands, in.Dialog.FileLinkDemands...)
 	}
 	out.Copy = make([][]terminalui.CopySpan, len(out.Rows))
