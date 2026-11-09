@@ -321,6 +321,83 @@ func TestCheckpointIntervalCanceledAcquisitionRetainsGap(t *testing.T) {
 	}
 }
 
+func TestPrivateArtifactWriterDoesNotClaimIsolatedWorktree(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("canceled=%v", canceled), func(t *testing.T) {
+			isolateSnapshotGit(t)
+			f := newMChangesSliceFixture(t, "private-artifact")
+			gitTestRun(t, f.workspace, "init", "--quiet")
+			writeTestFile(t, filepath.Join(f.workspace, ".gitignore"), ".worktrees/\n")
+			writeTestFile(t, filepath.Join(f.workspace, "test.go"), "before\n")
+			gitTestRun(t, f.workspace, "add", ".")
+			gitTestRun(t, f.workspace, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "fixture")
+			sibling := filepath.Join(f.workspace, ".worktrees", "delegate")
+			gitTestRun(t, f.workspace, "worktree", "add", "--quiet", "--detach", sibling)
+			private := filepath.Join(t.TempDir(), "task.txt")
+			writeTestFile(t, private, "private before\n")
+			p := testProxyWithStore(f.store, &Windows{})
+			selected := observationScope(f.ctx, p.Retained)
+			command := "printf 'private after\\n' > " + private
+			observation, _ := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: command, Workdir: f.workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: f.workspace, Workspaces: p.Checkpoints})
+			if observation == nil || observation.Tree == "" || len(observation.Files) != 1 {
+				t.Fatal("missing private writer checkpoint/baseline")
+			}
+			original := mekugiHistory{ToolName: nativeExecCommandToolName, Root: f.workspace, Script: command, ExecutingThread: f.thread, ExecObservation: observation}
+			if err := publishObservations(f.ctx, selected, p.Changes, nil, f.workspace, map[string]mekugiHistory{"writer": original}); err != nil {
+				t.Fatal(err)
+			}
+			p.Windows.open(&execWindow{ref: "writer", group: "writer", workspace: f.workspace, roots: observation.Roots, paths: observation.ScopePaths(), scope: selected})
+			path := filepath.Join(sibling, "test.go")
+			childObservation := changecapture.Named([]string{path}, sibling, captureSource(selected))
+			child := mekugiHistory{ToolName: nativeExecCommandToolName, Root: sibling, ExecutingThread: "delegate", ExecObservation: childObservation}
+			if err := publishObservations(f.ctx, selected, p.Changes, nil, sibling, map[string]mekugiHistory{"child": child}); err != nil {
+				t.Fatal(err)
+			}
+			p.Windows.open(&execWindow{ref: "child", group: "child", workspace: sibling, roots: childObservation.Roots, paths: childObservation.ScopePaths(), scope: selected})
+			acquisition, cancel := context.WithCancel(f.ctx)
+			defer cancel()
+			if canceled {
+				cancel()
+			}
+			if err := p.splitExecInterval(f.ctx, acquisition, sibling, "child", childObservation.Files, execIntervalCut{writer: "writer", workspace: f.workspace, scope: selected}, false); err != nil {
+				t.Fatal(err)
+			}
+			if prefix, found, err := f.store.lookup(f.ctx, f.workspace, execIntervalID("writer", false, 0)); err != nil || found {
+				t.Fatalf("private writer claimed sibling boundary: found=%v err=%v files=%+v", found, err, prefix.ReviewFiles)
+			}
+			writeTestFile(t, private, "private after\n")
+			writeTestFile(t, path, "delegate after\n")
+			for _, completion := range []struct {
+				workspace, call string
+				history         mekugiHistory
+			}{{sibling, "child", child}, {f.workspace, "writer", original}} {
+				if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges, p.Windows, p.Audience, p.Notice, f.ctx, completion.workspace, []execCompletion{{callID: completion.call, history: completion.history, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, want := range []struct{ workspace, call, thread, path, added, absent string }{
+				{f.workspace, "writer", f.thread, private, "+private after", "test.go"},
+				{sibling, "child", "delegate", path, "+delegate after", "task.txt"},
+			} {
+				completed, found, err := f.store.lookup(f.ctx, want.workspace, legacycall.ExecCallID(want.call, false))
+				if err != nil || !found || completed.ExecutingThread != want.thread || len(completed.ReviewFiles) != 1 || completed.ReviewFiles[0].AfterPath != want.path || completed.ExecOutcome.Coverage != changecapture.CoverageExact {
+					t.Fatalf("incorrect terminal attribution for %s: %+v, %v", want.call, completed, err)
+				}
+				f.invocation = mchangesSliceInvocation(want.workspace, f.thread)
+				stdout, stderr, status := f.run(t, "mchanges "+completed.ChangeID)
+				if status != 0 || stderr != "" || !strings.Contains(stdout, want.added) || strings.Contains(stdout, want.absent) {
+					t.Fatalf("retained %s evidence: %q, %q, %d", want.call, stdout, stderr, status)
+				}
+			}
+			f.invocation = mchangesSliceInvocation(f.workspace, f.thread)
+			stdout, stderr, status := f.run(t, "mchanges --mine")
+			if status != 0 || stderr != "" || !strings.Contains(stdout, "+private after") || strings.Contains(stdout, "test.go") {
+				t.Fatalf("implicit caller selection included sibling work: %q, %q, %d", stdout, stderr, status)
+			}
+		})
+	}
+}
+
 func TestCheckpointIntervalsKeepAuthoredWorkspace(t *testing.T) {
 	for _, mode := range []string{"eager", "dynamic-native", "terminal-native"} {
 		t.Run(mode, func(t *testing.T) {

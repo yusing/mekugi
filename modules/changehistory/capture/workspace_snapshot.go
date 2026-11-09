@@ -901,7 +901,7 @@ func (s *Workspaces) IntervalBefore(ctx context.Context, workspace string, obser
 				root = directory
 			}
 		}
-		if root != "" {
+		if root != "" && !nestedCheckpointRepository(root, endpoint.Path) {
 			known[endpoint.Path] = true
 			boundaries[endpoint.Path] = endpoint
 			if index, found := positions[endpoint.Path]; found {
@@ -946,6 +946,21 @@ func (s *Workspaces) IntervalBefore(ctx context.Context, workspace string, obser
 		}
 	}
 	return before, claimed
+}
+
+// A checkpoint never observes through an independent repository. Check that
+// authority before attempting a bounded checkpoint read: an expired read of an
+// unrelated worktree must not manufacture a gap attributed to this writer.
+// Explicit named paths bypass this check, and separately admitted checkpoints
+// select their own root above. Only a witnessed Git boundary excludes a path;
+// unavailable metadata still takes the ordinary incomplete-evidence route.
+func nestedCheckpointRepository(root, path string) bool {
+	for directory := filepath.Dir(path); directory != root && changes.PathWithin(directory, root); directory = filepath.Dir(directory) {
+		if _, err := os.Lstat(filepath.Join(directory, ".git")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Workspaces) checkpointFiles(ctx context.Context, workspace, tree string, paths []string, reused map[string]File, claims Claims, budget *int, sink *evidence.Source) ([]File, error) {
