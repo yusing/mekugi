@@ -220,7 +220,7 @@ Resolve semantic definitions and references
 
 ## [threadcontrol](../../modules/threadcontrol/SPEC.md)
 
-Coordinate native agent threads and retained targeted waits
+Coordinate native agent threads and retained descendant waits
 
 - Composition: selected; lifetime: `invocation`.
 - Requires: `sessionhistory`, `agentguidance`.

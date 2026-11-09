@@ -3,7 +3,6 @@ package control
 
 import (
 	"encoding/json/jsontext"
-	"maps"
 	"time"
 
 	"github.com/yusing/mekugi/contracts/guidance"
@@ -95,8 +94,6 @@ type Wait struct {
 	Metrics                  map[string]SessionMetrics
 	Item, Stop, ResumeHandle string
 	Targets                  []string
-	Foreign                  map[string]RemoteTarget `json:",omitzero"`
-	All                      bool
 	Mode                     WaitMode
 	Terminals                []Event
 	Recovery                 map[string]uint64
@@ -203,7 +200,6 @@ type WaitResult struct {
 	Capacity     bool                      `json:"-"`
 	Timed        bool                      `json:"-"`
 	Deadline     *time.Time                `json:"-"`
-	All          bool                      `json:"-"`
 	State        string                    `json:"state"`
 	Mode         WaitMode                  `json:"wait_mode,omitempty"`
 	Events       []Event                   `json:"events,omitempty"`
@@ -250,7 +246,6 @@ func (tree *Tree) edit(thread string) *Member {
 		member := *current
 		if current.Wait != nil {
 			member.Wait = new(*current.Wait)
-			member.Wait.Foreign = maps.Clone(current.Wait.Foreign)
 			if current.Wait.Compaction != nil {
 				member.Wait.Compaction = new(*current.Wait.Compaction)
 			}

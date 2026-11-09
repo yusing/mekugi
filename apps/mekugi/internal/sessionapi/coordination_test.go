@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -280,44 +279,13 @@ func TestCrossSessionSideQuestion(t *testing.T) {
 	}
 }
 
-func TestCrossSessionWaitObservesPublicationAndRuntimeExit(t *testing.T) {
-	for _, ended := range []bool{false, true} {
-		t.Run(map[bool]string{false: "completed", true: "ended"}[ended], func(t *testing.T) {
-			_, source, target := coordinationPair(t)
-			coordinationCall(t, source, "wait_agent", `{"target":["target"]}`)
-			if err := source.service.Execution(t.Context(), "source", "source-turn", "exec", "", true); err != nil {
-				t.Fatal(err)
-			}
-			if stop, err := source.service.ClaimLocalStop(t.Context(), "source", "source-turn", "exec"); err != nil || stop == nil {
-				t.Fatalf("stop: %v %v", stop, err)
-			}
-			if err := source.service.HostCompleted(t.Context(), "source", "source-turn", threadcontrol.Completed, threadcontrol.HostFailure{}); err != nil {
-				t.Fatal(err)
-			}
-			if ended {
-				target.cancel()
-			} else if err := target.service.HostCompleted(t.Context(), "target", "target-turn", threadcontrol.Completed, threadcontrol.HostFailure{}); err != nil {
-				t.Fatal(err)
-			}
-			select {
-			case input := <-source.host.notices:
-				if input.Wake == nil || input.Wake.Event == nil || input.Wake.Event.Session != "target" || input.Wake.Event.Source != "target" {
-					t.Fatalf("wake: %+v", input)
-				}
-				if ended && input.Wake.Event.Kind != "unavailable" {
-					t.Fatalf("ended event: %+v", input.Wake.Event)
-				}
-			case <-time.After(3 * time.Second):
-				t.Fatal("foreign observation failed to wake caller")
-			}
-			state, err := source.service.Snapshot("source")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(state.Members) != 1 {
-				t.Fatal("foreign member merged into local tree")
-			}
-		})
+func TestCrossSessionWaitTargetRejected(t *testing.T) {
+	_, source, _ := coordinationPair(t)
+	if _, err := source.driver.Call(t.Context(), source.caller, "wait_agent", jsontext.Value(`{"target":["target"]}`)); err == nil {
+		t.Fatal("foreign wait target accepted")
+	}
+	if member, _ := source.service.Member("source"); member.Wait != nil {
+		t.Fatal("rejected target registered a wait")
 	}
 }
 
@@ -340,33 +308,24 @@ func TestCrossSessionSideQuestionRejectsNewGeneration(t *testing.T) {
 	}
 }
 
-func TestCrossSessionWaitReexecutionAfterTargetExit(t *testing.T) {
-	_, source, target := coordinationPair(t)
-	if _, err := source.driver.Call(t.Context(), source.caller, "wait_agent", jsontext.Value(`{"target":["target"],"timeout_ms":1001}`)); err == nil {
-		t.Fatal("invalid foreign wait timeout accepted")
-	}
-	if member, _ := source.service.Member("source"); member.Wait != nil {
-		t.Fatal("invalid registration changed prior state")
-	}
-	args := `{"target":["target"]}`
-	first := coordinationCall(t, source, "wait_agent", args)
-	target.cancel()
-	second := coordinationCall(t, source, "wait_agent", args)
-	var original, repeated threadcontrol.WaitResult
-	if err := json.Unmarshal(first, &original); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(second, &repeated); err != nil {
-		t.Fatal(err)
-	}
-	if repeated.ID != original.ID || len(repeated.Targets) != 1 || repeated.Targets[0] != "target" {
-		t.Fatalf("repeated wait lost selection: %s", second)
-	}
-}
-
 func TestCrossSessionMessageDoesNotResumeEndedWaiter(t *testing.T) {
 	_, source, target := coordinationPair(t)
-	coordinationCall(t, target, "wait_agent", `{"target":["source"]}`)
+	spawn := target.caller
+	spawn.Call = "spawn-child"
+	effect, err := target.service.ReserveSpawn(t.Context(), spawn, threadcontrol.SpawnRequest{Name: "child", Message: "work", Settings: threadcontrol.Settings{Workspace: t.TempDir()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
+		claimed, err := target.service.ClaimEffect(t.Context(), spawn.Thread, effect.ID)
+		if err != nil || claimed == nil || claimed.Phase != phase {
+			t.Fatalf("child %s: %v %v", phase, claimed, err)
+		}
+		if err := target.service.EffectAcknowledged(t.Context(), spawn.Thread, effect.ID, threadcontrol.Receipt{Phase: phase, Thread: "child", Session: "child-auth", Turn: "child-turn"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	coordinationCall(t, target, "wait_agent", `{}`)
 	if err := target.service.Execution(t.Context(), "target", "target-turn", "exec", "", true); err != nil {
 		t.Fatal(err)
 	}
@@ -375,6 +334,9 @@ func TestCrossSessionMessageDoesNotResumeEndedWaiter(t *testing.T) {
 	}
 	if err := target.service.HostCompleted(t.Context(), "target", "target-turn", threadcontrol.Completed, threadcontrol.HostFailure{}); err != nil {
 		t.Fatal(err)
+	}
+	if member, _ := target.service.Member("target"); member.Status != threadcontrol.Waiting || member.HostRunning {
+		t.Fatalf("receiver did not stop waiting: %+v", member)
 	}
 	target.host.afterInput = func(input threadcontrol.NativeInput) {
 		if !input.Run {

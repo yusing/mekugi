@@ -45,7 +45,7 @@ func TestProjectCoordinationRoutes(t *testing.T) {
 		{"compact", `{}`, `{"state":"scheduled"}`,
 			Coordination{Action: "Compact", Kind: "progress", State: "scheduled", Confirmed: true}},
 		{"wait_agent", `{"compact":true}`, `{"state":"scheduled"}`,
-			Coordination{Action: "Wait", Kind: "progress", State: "scheduled", Confirmed: true, Targets: []Target{{Name: "all"}}}},
+			Coordination{Action: "Wait", Kind: "progress", State: "scheduled", Confirmed: true}},
 		{"list_agents", `{}`, `{"agents":[]}`,
 			Coordination{Action: "List agents", Kind: "progress", State: "completed", Confirmed: true}},
 		{"list_models", `{}`, `{"models":[{"model":"a"}]}`,
@@ -158,8 +158,8 @@ func TestProjectCoordinationWaitDispositions(t *testing.T) {
 		name, args, result, state string
 		targets                   []Target
 	}{
-		{"implicit all", `{}`, `{"state":"waiting","targets":["/root/a","/root/b"]}`, "waiting", []Target{{Name: "all"}}},
-		{"explicit all", `{"target":"all"}`, `{"state":"waiting","targets":["/root/a","/root/b"]}`, "waiting", []Target{{Name: "all"}}},
+		{"implicit all", `{}`, `{"state":"waiting","targets":["/root/a","/root/b"]}`, "waiting", []Target{{Name: "/root/a"}, {Name: "/root/b"}}},
+		{"explicit all", `{"target":"all"}`, `{"state":"waiting","targets":["/root/a","/root/b"]}`, "waiting", []Target{{Name: "/root/a"}, {Name: "/root/b"}}},
 		{"all failed target", `{}`, `{"state":"completed","event":{"task":"/root/child","status":"failed"}}`, "completed", []Target{{Name: "/root/child", Status: "failed"}}},
 		{"completed event", `{"target":["child"]}`, `{"state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []Target{{Name: "/root/child", Status: "completed"}}},
 		{"timeout", `{"target":["child"]}`, `{"state":"timeout"}`, "timeout", []Target{{Name: "child"}}},

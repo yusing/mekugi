@@ -141,7 +141,7 @@ func TestRecoveryPreservesInFlightWakeAcknowledgement(t *testing.T) {
 		}
 	}
 	caller.Call = "wait"
-	_, err := d.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`))
+	_, err := d.waitAgent(t.Context(), caller, []byte(`{}`))
 	check(err)
 	check(d.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
 	_, err = d.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)
@@ -203,7 +203,7 @@ func TestPendingRecoveryDrainsResultAfterAcknowledgement(t *testing.T) {
 			}
 		}
 		caller.Call = "wait"
-		_, err := d.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`))
+		_, err := d.waitAgent(t.Context(), caller, []byte(`{}`))
 		check(err)
 		check(d.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
 		_, err = d.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)

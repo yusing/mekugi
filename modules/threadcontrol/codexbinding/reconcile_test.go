@@ -53,106 +53,6 @@ func TestHumanChildResultUsesParentDelivery(t *testing.T) {
 	})
 }
 
-func TestResumedUnselectedChildDoesNotWakeWait(t *testing.T) {
-	for _, mode := range []control.WaitMode{control.WaitAny, control.WaitAll} {
-		for _, stopped := range []bool{false, true} {
-			for _, message := range []bool{false, true} {
-				t.Run(fmt.Sprintf("%s/stopped=%t/message=%t", mode, stopped, message), func(t *testing.T) {
-					synctest.Test(t, func(t *testing.T) {
-						driver, host, _, caller := reconciliationFixture(t)
-						ctx := t.Context()
-						check := func(err error) {
-							t.Helper()
-							if err != nil {
-								t.Fatal(err)
-							}
-						}
-						check(driver.control.HostCompleted(ctx, "child", "child-turn", control.Completed, control.HostFailure{}))
-						check(driver.DispatchPending(ctx, "child"))
-						caller.Call = "spawn-selected"
-						host.createThread = "selected"
-						_, err := driver.SpawnPrepared(ctx, caller, PreparedChild{TaskName: "selected", Message: "continue working", Settings: control.Settings{Workspace: t.TempDir()}})
-						check(err)
-						caller.Call = "wait-selected"
-						_, err = driver.control.RegisterWait(ctx, caller, []string{"selected"}, false, mode, nil, time.Now())
-						check(err)
-						stop := func() {
-							check(driver.control.Execution(ctx, caller.Thread, caller.Turn, caller.Item, "", true))
-							local, err := driver.control.ClaimLocalStop(ctx, caller.Thread, caller.Turn, caller.Item)
-							check(err)
-							if local == nil {
-								t.Fatal("wait did not acquire local stop")
-							}
-							_, err = driver.Observe("turn/completed", []byte(`{"threadId":"root","turn":{"id":"root-turn","status":"completed"}}`))
-							check(err)
-							synctest.Wait()
-						}
-						check(driver.Start(ctx))
-						defer driver.Stop(ctx)
-						if stopped {
-							stop()
-						}
-						host.inputs = nil
-						_, err = driver.HumanInput(ctx, "child", "question")
-						check(err)
-						driver.HumanInputAcknowledged("child", "question", "answer-turn", nil)
-						_, err = driver.Observe("item/completed", []byte(`{"threadId":"child","turnId":"answer-turn","item":{"type":"agentMessage","id":"answer","text":"answer to human","phase":"final_answer"}}`))
-						check(err)
-						terminal := []byte(`{"threadId":"child","turn":{"id":"answer-turn","status":"completed"}}`)
-						_, err = driver.Observe("turn/completed", terminal)
-						check(err)
-						synctest.Wait()
-						if !stopped {
-							stop()
-						}
-						// Duplicate terminal evidence must not turn retained delivery into a wake.
-						_, err = driver.Observe("turn/completed", terminal)
-						check(err)
-						synctest.Wait()
-						if len(host.inputs) != 1 || host.inputs[0].Kind != "FINAL_ANSWER" || host.inputs[0].Thread != "root" || host.inputs[0].Run || host.inputs[0].Message != "answer to human" {
-							t.Fatalf("unselected completion started or duplicated input: %+v", host.inputs)
-						}
-						state, err := driver.control.Snapshot("root")
-						check(err)
-						root := state.Members["root"]
-						if root.Status != control.Waiting || root.HostRunning || root.Wait.ID != caller.Call || root.Wait.State != "registered" {
-							t.Fatalf("unselected completion changed retained wait: %+v", root)
-						}
-						for _, effect := range state.Effects {
-							if effect.Kind == "final" && effect.Caller == "child" && (effect.ClaimedBy != "" || effect.Consumed) {
-								t.Fatalf("unselected completion consumed: %+v", effect)
-							}
-						}
-						if message {
-							id := control.Identity{Thread: "selected", Session: "selected-session", Turn: "selected-turn", Call: "message", Item: "exec"}
-							_, err = driver.controlAction(ctx, id, []byte(`{"target":"root","message":"explicit update"}`), "send_message")
-							check(err)
-						} else {
-							_, err = driver.Observe("turn/completed", []byte(`{"threadId":"selected","turn":{"id":"selected-turn","status":"completed"}}`))
-							check(err)
-						}
-						synctest.Wait()
-						if len(host.inputs) != 3 || host.inputs[2].Wake == nil || host.inputs[2].Wake.ID != caller.Call || !host.inputs[2].Run {
-							t.Fatalf("selected event did not resume original wait: %+v", host.inputs)
-						}
-						wake := host.inputs[2].Wake
-						if mode == control.WaitAll && !message {
-							if len(wake.Events) != 1 || wake.Events[0].Source != "selected" {
-								t.Fatalf("wrong all-wait outcome: %+v", wake)
-							}
-						} else if wake.Event == nil || wake.Event.Source != "selected" || message && wake.Event.Message != "explicit update" {
-							t.Fatalf("wrong selected outcome: %+v", wake)
-						}
-						if failures := driver.Failures(); len(failures) != 0 {
-							t.Fatal(failures)
-						}
-					})
-				})
-			}
-		}
-	}
-}
-
 type reconciliationRuntime struct{ control.Runtime }
 
 type concurrentSpawnHost struct {
@@ -450,7 +350,7 @@ func TestSelectedCompletionWakesWithoutSchedulerDelay(t *testing.T) {
 			}
 		}
 		caller.Call = "wait"
-		_, err := driver.control.RegisterWait(t.Context(), caller, nil, true, "", nil, time.Now())
+		_, err := driver.control.RegisterWait(t.Context(), caller, "", nil, time.Now())
 		check(err)
 		check(driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
 		_, err = driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)
@@ -521,7 +421,7 @@ func TestConcurrentCompletionsDrainBeforeAllWaitWake(t *testing.T) {
 			check(first.control.EffectAcknowledged(t.Context(), "root", spawn.ID, control.Receipt{Phase: phase, Thread: "sibling", Session: "sibling-session", Turn: "sibling-turn"}))
 		}
 		caller.Call = "wait-all"
-		_, err = first.control.RegisterWait(t.Context(), caller, nil, true, control.WaitAll, nil, time.Now())
+		_, err = first.control.RegisterWait(t.Context(), caller, control.WaitAll, nil, time.Now())
 		check(err)
 		check(first.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
 		stop, err := first.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)
@@ -679,7 +579,7 @@ func TestColdWaitConfirmationDoesNotResumeOrDispatch(t *testing.T) {
 	driver, host, session, caller := reconciliationFixture(t)
 	driver.host = instructionNative{Native: host, owner: &inspectionRuntime{}}
 	caller.Call = "wait"
-	if _, err := driver.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`)); err != nil {
+	if _, err := driver.waitAgent(t.Context(), caller, []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
@@ -777,7 +677,7 @@ func TestColdExplicitFollowupLeavesOldMessagesPaused(t *testing.T) {
 func TestQueuedHumanInterruptSettlesStoppedLogicalWait(t *testing.T) {
 	driver, _, _, caller := reconciliationFixture(t)
 	caller.Call = "wait"
-	if _, err := driver.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`)); err != nil {
+	if _, err := driver.waitAgent(t.Context(), caller, []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
@@ -809,7 +709,7 @@ func TestQueuedHumanInterruptSettlesStoppedLogicalWait(t *testing.T) {
 func TestRejectedFinalDeliveryWakesWithVisibleFailure(t *testing.T) {
 	driver, host, _, caller := reconciliationFixture(t)
 	caller.Call = "wait"
-	if _, err := driver.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`)); err != nil {
+	if _, err := driver.waitAgent(t.Context(), caller, []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {

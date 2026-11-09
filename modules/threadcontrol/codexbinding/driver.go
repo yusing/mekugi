@@ -13,22 +13,21 @@ import (
 )
 
 type Driver struct {
-	control        *control.Service
-	mu             sync.RWMutex
-	host           control.Native
-	audience       ChildAudience
-	models         []Model
-	catalogError   error
-	lifecycle      context.Context
-	cancel         context.CancelFunc
-	thread         string
-	pending        []hostObservation
-	wake           chan struct{}
-	failures       map[string]error
-	changed        chan struct{}
-	stopped        chan struct{}
-	auxiliary      sync.WaitGroup
-	foreignWatches map[string]bool
+	control      *control.Service
+	mu           sync.RWMutex
+	host         control.Native
+	audience     ChildAudience
+	models       []Model
+	catalogError error
+	lifecycle    context.Context
+	cancel       context.CancelFunc
+	thread       string
+	pending      []hostObservation
+	wake         chan struct{}
+	failures     map[string]error
+	changed      chan struct{}
+	stopped      chan struct{}
+	auxiliary    sync.WaitGroup
 }
 
 func NewDriver(service *control.Service) (*Driver, error) {

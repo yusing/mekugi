@@ -68,9 +68,6 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		if args.Target.Kind() == '[' {
 			_ = json.Unmarshal(args.Target, &targets)
 		}
-		if len(args.Target) == 0 || args.Target.Kind() == '"' {
-			targets = []string{"all"}
-		}
 		for _, target := range targets {
 			c.Targets = append(c.Targets, Target{Name: target})
 		}
@@ -176,8 +173,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		c.Confirmed = result.State == "scheduled"
 	case "wait_agent":
 		c.Confirmed = slices.Contains([]string{"scheduled", "waiting", "completed", "timeout", "canceled", "paused"}, result.State)
-		all := len(args.Target) == 0 || args.Target.Kind() == '"'
-		if c.Confirmed && len(result.Targets) > 0 && !all {
+		if c.Confirmed && len(result.Targets) > 0 {
 			c.Targets = nil
 			for _, target := range result.Targets {
 				c.Targets = append(c.Targets, Target{Name: target})

@@ -13,7 +13,6 @@ type Peer struct {
 	Target  RemoteTarget
 	Control *Service
 	Runtime Runtime
-	Done    <-chan struct{}
 	Deliver func(context.Context, string) error
 }
 
@@ -36,8 +35,6 @@ type RemoteTarget struct {
 	Session, Thread, Task, Turn string
 	Generation                  uint64
 	Status                      Status
-	HostRunning                 bool
-	Unavailable                 bool
 }
 
 func (s *Service) Origin(caller Identity) (Origin, error) {
@@ -63,7 +60,7 @@ func (s *Service) RemoteTarget(thread string) (RemoteTarget, error) {
 	if !m.AudienceAdmitted || m.Parent == "" && tree.Root != thread {
 		return RemoteTarget{}, errors.New("target has no active coordination identity")
 	}
-	return RemoteTarget{Session: tree.Root, Thread: m.Thread, Task: m.Task, Turn: m.Turn, Generation: m.Generation, Status: m.Status, HostRunning: m.HostRunning}, nil
+	return RemoteTarget{Session: tree.Root, Thread: m.Thread, Task: m.Task, Turn: m.Turn, Generation: m.Generation, Status: m.Status}, nil
 }
 
 // Changes closes after the next immutable publication. Read selected facts after
@@ -111,50 +108,7 @@ func (effect Effect) source() string {
 	return effect.Caller
 }
 
-func (tree *Tree) waitMember(wait *Wait, id string) *Member {
-	if member := tree.Members[id]; member != nil {
-		return member
-	}
-	if remote, ok := wait.Foreign[id]; ok {
-		return &Member{Thread: id, Session: remote.Session, Task: id, Turn: remote.Turn, Generation: remote.Generation, Status: remote.Status, HostRunning: remote.HostRunning}
-	}
-	return nil
-}
-
-// ForeignWait borrows only immutable selected status facts, never a foreign tree.
-func (s *Service) ForeignWait(thread, id string) map[string]RemoteTarget {
-	member, ok := s.member(thread)
-	if !ok || member.Wait == nil || member.Wait.ID != id || member.Wait.State != "registered" {
-		return nil
-	}
-	return member.Wait.Foreign
-}
-
-func (s *Service) RefreshForeignWait(ctx context.Context, thread, id string, state RemoteTarget) error {
-	return s.update(ctx, thread, func(_ *Tree, member *Member) error {
-		wait := member.Wait
-		if wait == nil || wait.ID != id || wait.State != "registered" {
-			return unchanged
-		}
-		old, ok := wait.Foreign[state.Thread]
-		if !ok || old == state {
-			return unchanged
-		}
-		if old.Session != state.Session {
-			return errors.New("foreign wait target identity changed")
-		}
-		wait.Foreign[state.Thread] = state
-		return nil
-	})
-}
-
 func (tree *Tree) stoppedEvent(wait *Wait, member *Member) *Event {
 	event := &Event{ID: wait.ID + ":stopped:" + member.Thread, Recipient: wait.Caller, Source: member.Thread, Task: member.Task, Turn: member.Turn, Generation: member.Generation, Kind: string(member.Status), Status: member.Status}
-	if remote, ok := wait.Foreign[member.Thread]; ok {
-		event.Session = remote.Session
-		if remote.Unavailable {
-			event.Kind, event.Message = "unavailable", "Selected foreign session runtime ended"
-		}
-	}
 	return event
 }

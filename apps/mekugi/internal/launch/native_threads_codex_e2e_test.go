@@ -326,9 +326,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			failure = "early completion did not receive retained descendant hint"
 		}
 		p.waitTurn = metadata.TurnID
-		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"]}));`
+		program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
 		if p.agentCompact {
-			program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"],compact:true}));`
+			program = `text(await tools.mcp__threadcontrol__wait_agent({compact:true}));`
 		}
 	case parent && p.earlyCompletion && step == 6:
 		if metadata.TurnID == p.waitTurn || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") {
@@ -371,9 +371,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			failure = "parent input omitted injected mailbox message"
 		}
 		p.waitTurn = metadata.TurnID
-		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"]}));`
+		program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
 		if p.agentCompact {
-			program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"],compact:true}));`
+			program = `text(await tools.mcp__threadcontrol__wait_agent({compact:true}));`
 		}
 		if p.attachments {
 			if err := os.WriteFile(filepath.Join(p.childDirectory, "SKILL.md"), []byte("CURRENT_ATTACHED_SKILL"), 0600); err != nil {
@@ -384,7 +384,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 			if p.attachmentReload {
 				source := `{skill:"guide",path:` + strconv.Quote(filepath.Join(p.childDirectory, "SKILL.md")) + `}`
-				program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"],compact:true,reload:{sources:[` + source + `,` + source + `]}}));`
+				program = `text(await tools.mcp__threadcontrol__wait_agent({compact:true,reload:{sources:[` + source + `,` + source + `]}}));`
 			}
 		}
 	case parent && step == 5:
@@ -489,7 +489,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	case parent && step == 6:
 		program = `text(await tools.mcp__threadcontrol__list_agents({path_prefix:"agent:main"})); text(await tools.mcp__threadcontrol__followup_task({target:"agent:main/worker",message:"COLD_CHILD_FOLLOWUP"}));`
 	case parent && step == 7:
-		program = `text(await tools.mcp__threadcontrol__wait_agent({target:["agent:main/worker"]}));`
+		program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
 	case parent && step == 8:
 		if !strings.Contains(string(body), "MANAGED_CHILD_RECOVERED") {
 			failure = "cold recovery omitted the retained child's attributed result"
@@ -553,7 +553,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		program = `text(await tools.mcp__threadcontrol__send_message({target:"agent:main",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
 		if p.fullHistory {
-			program += `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"reviewer",message:"GRANDCHILD_ATTRIBUTED_ASSIGNMENT",fork_turns:"all"})); text(await tools.mcp__threadcontrol__wait_agent({target:["reviewer"]}));`
+			program += `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"reviewer",message:"GRANDCHILD_ATTRIBUTED_ASSIGNMENT",fork_turns:"all"})); text(await tools.mcp__threadcontrol__wait_agent({}));`
 		}
 	case !parent && step == 2:
 		receipt := false
@@ -738,7 +738,7 @@ func (p *nativeThreadsProvider) serveConcurrentChildren(t *testing.T, w http.Res
 		case 1:
 			program = `const results = await Promise.allSettled(["worker", "helper1", "helper2"].map(task_name => tools.mcp__threadcontrol__spawn_agent({task_name,message:"parallel shared-history work",fork_turns:"none"}))); for (const result of results) { if (result.status !== "fulfilled" || result.value.isError) throw new Error("concurrent spawn failed: " + JSON.stringify(result)); text(result); }`
 		case 2:
-			program = `text(await tools.mcp__threadcontrol__wait_agent({target:"all",wait_mode:"all"}));`
+			program = `text(await tools.mcp__threadcontrol__wait_agent({wait_mode:"all"}));`
 		case 3:
 			if strings.Count(string(body), "MANAGED_CHILD_FINAL:") != 3 {
 				t.Error("awakened provider input omitted or repeated concurrent child results")

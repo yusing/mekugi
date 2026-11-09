@@ -117,6 +117,8 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"inspect", `{}`},
 		{"inspect", `{"target":"/root","unknown":true}`},
 		{"wait_agent", `{"target":[]}`},
+		{"wait_agent", `{"target":"all"}`},
+		{"wait_agent", `{"target":["child"]}`},
 		{"wait_agent", `{"timeout_ms":1.5}`},
 		{"wait_agent", `{"cancel_id":"wait"}`},
 		{"wait_agent", `{"wait_mode":"invalid"}`},
@@ -154,7 +156,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		t.Fatalf("MCP question result=%+v error=%v", question, err)
 	}
 	for _, tool := range []string{"wait_agent", "list_agents"} {
-		arguments := map[string]any{"target": []string{"agent:main/child"}}
+		arguments := map[string]any{}
 		if tool == "list_agents" {
 			arguments = map[string]any{"path_prefix": "agent:main"}
 		}
@@ -283,7 +285,7 @@ func TestWaitAgentKeepsWaitIdentityInternal(t *testing.T) {
 		t.Fatalf("wait acknowledgement omitted delivery instructions: %s", payload)
 	}
 	member, _ := driver.control.Member(caller.Thread)
-	if member.Wait == nil || member.Wait.ID != caller.Call || !member.Wait.All || member.Wait.State != "registered" || member.Wait.Mode != control.WaitAll {
+	if member.Wait == nil || member.Wait.ID != caller.Call || member.Wait.State != "registered" || member.Wait.Mode != control.WaitAll {
 		t.Fatal("lost internal wait correlation or mode")
 	}
 }

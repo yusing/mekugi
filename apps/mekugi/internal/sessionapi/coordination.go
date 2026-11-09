@@ -15,20 +15,20 @@ func (s *Server) BindCoordination(owner *threadcontrol.Service, deliver func(con
 	s.coordination, s.deliverCoordination = owner, deliver
 }
 
-func (h *Hub) coordinationRuntime(thread string) (*Server, <-chan struct{}, error) {
+func (h *Hub) coordinationRuntime(thread string) (*Server, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	s := h.sessions[thread]
 	if s == nil || s.runtime == nil || s.runtime.ctx.Err() != nil {
-		return nil, nil, errors.New("coordination target has no active Mekugi runtime")
+		return nil, errors.New("coordination target has no active Mekugi runtime")
 	}
-	return s.server, s.runtime.ctx.Done(), nil
+	return s.server, nil
 }
 
 // Peer authenticates the source using its registered owner. Exact runtime IDs
 // select the destination; task aliases cannot cross session boundaries.
 func (h *Hub) Peer(caller threadcontrol.Identity, target string) (threadcontrol.Peer, error) {
-	source, _, err := h.coordinationRuntime(caller.Thread)
+	source, err := h.coordinationRuntime(caller.Thread)
 	if err != nil {
 		return threadcontrol.Peer{}, err
 	}
@@ -42,12 +42,12 @@ func (h *Hub) Peer(caller threadcontrol.Identity, target string) (threadcontrol.
 	if err != nil {
 		return threadcontrol.Peer{}, err
 	}
-	destination, done, err := h.coordinationRuntime(target)
+	destination, err := h.coordinationRuntime(target)
 	if err != nil {
 		return threadcontrol.Peer{}, err
 	}
 	destination.mu.Lock()
-	peer := threadcontrol.Peer{Source: origin, Control: destination.coordination, Runtime: destination.requests, Done: done, Deliver: destination.deliverCoordination}
+	peer := threadcontrol.Peer{Source: origin, Control: destination.coordination, Runtime: destination.requests, Deliver: destination.deliverCoordination}
 	destination.mu.Unlock()
 	if peer.Control == nil || peer.Runtime == nil || peer.Deliver == nil {
 		return threadcontrol.Peer{}, errors.New("target has no admitted coordination owner")

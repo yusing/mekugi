@@ -73,7 +73,7 @@ func testContextReload(t *testing.T, kind string) {
 	}
 	if reset {
 		id := control.Identity{Thread: "root", Session: "routing", Turn: "rt", Call: "checkpoint", Item: "cell"}
-		_, err := service.RegisterCompaction(t.Context(), id, nil, false, "", nil, time.Now(), true, selection)
+		_, err := service.RegisterCompaction(t.Context(), id, "", nil, time.Now(), true, selection)
 		if err != nil {
 			t.Fatal(err)
 		}

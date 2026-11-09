@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"strings"
 
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -56,13 +55,6 @@ func (d *Driver) waitMetrics(ctx context.Context, thread string, result *control
 	result.Metrics = make(map[string]control.SessionMetrics, len(result.Targets))
 	for _, target := range result.Targets {
 		result.Metrics[target] = control.SessionMetrics{}
-		if !strings.HasPrefix(target, "/") {
-			if owner, err := d.native().Runtime(target); err == nil {
-				if details, err := owner.Inspect(ctx, target); err == nil {
-					result.Metrics[target] = details.SessionMetrics
-				}
-			}
-		}
 	}
 	for _, member := range d.control.Descendants(thread) {
 		if _, selected := result.Metrics[member.Task]; selected {

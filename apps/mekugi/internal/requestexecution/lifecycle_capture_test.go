@@ -97,7 +97,7 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 							check(err)
 							check(executor.ThreadControl.EffectAcknowledged(ctx, thread, spawn.ID, control.Receipt{Phase: phase, Thread: "child", Session: "child-session", Turn: "child-turn"}))
 						}
-						_, err = executor.ThreadControl.RegisterWait(ctx, caller, []string{"child"}, false, "", nil, time.Now())
+						_, err = executor.ThreadControl.RegisterWait(ctx, caller, "", nil, time.Now())
 						check(err)
 						check(executor.ThreadControl.Execution(ctx, thread, turn, caller.Item, "", true))
 						preparation.localWait = caller.Item

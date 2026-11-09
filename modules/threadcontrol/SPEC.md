@@ -2,14 +2,14 @@
 
 ## Required outcomes
 
-Codex remains the root execution authority. Wait for any or all selected agents; an
+Codex remains the root execution authority. Wait for any or all current descendants; an
 addressed message wakes either selection mode, while queued composer input does not
 cancel the wait. Compact-and-wait is atomic: compaction failure retains the wait and
 reports failure with the eventual outcome. Independent delegate questions do not replace
 assignments or ordinary messages/follow-ups.
 
 Active Mekugi sessions can exchange messages, including independent side questions,
-and inspect, list or wait for agents across session boundaries. Foreign recipients
+and inspect or list agents across session boundaries. Foreign recipients
 receive the authenticated source session and sender identity. Communication within
 one session retains its existing behavior and receipt format.
 
@@ -19,7 +19,7 @@ machinery below are current design.
 ## Ownership
 
 Thread control owns admitted logical trees, work generations, admission reservations,
-attributed messages/results, targeted waits and their durable dispositions. Each admitted
+attributed messages/results, descendant waits and their durable dispositions. Each admitted
 backend owns its thread and turn execution, tools, processes, permissions, approvals
 and interruption. Codex owns root execution; qualified Claude models select the
 [Claude delegate backend](../../backends/claude/SPEC.md). The Mekugi server owns each native runtime. Its Session Control retains that
@@ -105,15 +105,15 @@ native request metadata remains unchanged on the provider wire.
   agents choose safe checkpoints where discarding obsolete context materially
   reduces what remaining work must carry. Small steps, preloads and waiting
   transitions alone do not call for compaction; notices are not automatic triggers.
-- `wait_agent` accepts `target?: string[] | "all"`, `wait_mode?: "any" | "all"`,
+- `wait_agent` accepts `wait_mode?: "any" | "all"`,
   `timeout_ms?: integer`, and `compact?: boolean`. Codex also accepts `reload`
   when `compact:true`; invalid selections reject before wait registration.
-  Omitted target means `"all"`;
+  Each wait snapshots all current descendants;
   omitted mode means `"any"`; omitted compaction means false.
 
 Follow-up acknowledgements include the target's current context and compaction
 metrics. Immediate wait results and resumed wait outputs include those same metrics
-for each selected target, keyed by visible agent name or foreign thread ID. Unavailable observations
+for each descendant, keyed by visible agent name. Unavailable observations
 are `null` without failing an otherwise successful coordination operation.
 Dispatched wait metrics freeze with that wait's existing checkpoint so a resumed
 runtime can confirm the exact retained continuation without replacing its facts.
@@ -125,22 +125,14 @@ control retains root authority. Foreign, retired or conflicting callers reject.
 
 ### Active-session coordination
 
-Same-tree names resolve first. `send_message`, `inspect` and explicit `wait_agent`
-selections also accept exact thread IDs owned by another active Mekugi session.
+Same-tree names resolve first. `send_message` and `inspect` also accept exact
+thread IDs owned by another active Mekugi session.
 `list_agents.session_id` selects that session's admitted tree and retains its
 prefix filter. A registered runtime authenticates both source ownership and target
 availability; aliases never cross session boundaries. Unavailable runtimes fail
 without being resumed. Foreign message and inspection receipts identify the target
 session. Ordinary input carries the source root session and sender as delivery
 metadata; side questions prefix those identities to the question text.
-
-Foreign waits can mix local descendants and foreign threads in either selection
-mode. Foreign status references remain outside the caller's logical tree and its
-completion guards. Addressed messages use the recipient's ordinary retained
-delivery and wait lifecycle. Runtime termination settles a pending foreign target
-as unavailable. Compaction, enclosing-execution completion and new-input
-supersession retain the ordinary wait semantics. Omitted targets and `"all"`
-continue to select only local descendants.
 
 Cross-session coordination does not grant spawn, follow-up, interruption or
 compaction authority over the foreign tree. It does not import another product's
@@ -365,18 +357,16 @@ registered or queued wait; a child turn requires its retained work reservation.
 Observed attributed items in admitted model input consume only their exact
 unclaimed notifications, so reading input does not generate a later duplicate wake.
 
-Selection resolves once to local descendant identities or exact active foreign
-thread IDs. `"all"` snapshots local descendants; empty, unknown, ambiguous, local
-self and ancestor selections reject. In `any` mode, a selected queued event
-returns immediately, leaving others queued.
+Each wait snapshots all current local descendants once; an empty family rejects.
+In `any` mode, a queued descendant outcome returns immediately, leaving others queued.
 In `all` mode, every selected agent must settle before completion; failures and
 interruptions count as settled. Pending result deliveries finish before the wait
-returns all selected outcomes in `events`. A selected addressed message wakes either
+returns all selected outcomes in `events`. An addressed message wakes either
 mode immediately as a single `event`, leaving completion notifications queued.
 Stopped selected targets settle with their terminal status, including when their
 notification was already read or their runtime was paused. Pending result delivery
 keeps its existing order. In `any` mode, mixed selections settle on an eligible selected outcome;
-unselected stopped targets do not wake the caller.
+descendants admitted after registration do not join that wait.
 One pending wait per caller is retained; calls in the same enclosing execution
 report that wait instead of replacing it. A different enclosing execution rejects
 while that subscription remains pending. Human interruption, `interrupt_agent`, and explicit
@@ -510,8 +500,8 @@ Host lifecycle and logical working/waiting state remain separate in admission,
 elapsed timing, roster/composer publication, idle guards and cancellation. Existing
 prompt handling remains independent and responsive to unrelated storage waits.
 Activity and Session Presentation consume detached owner state and reuse existing
-terminal painting. Omitted or explicit all-target selection displays `all`; named
-selections show a short preview with an omitted-target count and complete detail access.
+terminal painting. Waits display actual descendant names in a short preview with an omitted-target
+count and complete detail access.
 Transcript progress
 shows `Waiting for …`, adds a muted explicit timeout when present, and records
 `Finished waiting for …: reason` when the wait settles, including timeout,
@@ -599,7 +589,7 @@ ones. Counts are invocation-local and never checkpointed, resumed or inherited b
 Focused composed checks and deterministic installed-host fixtures establish native
 suppression, sole replacement discovery, all operations, role/config/guidance
 differentials, cwd and complete permissions, active-boundary full-history sanitation,
-targeted nested stop/wake, ordered delivery, failures/uncertainty and cold recovery.
+descendant nested stop/wake, ordered delivery, failures/uncertainty and cold recovery.
 Actual-renderer snapshots cover waiting across host stops, resumption, cancellation
 and paused restoration. Runtime checks separately cover responsiveness and idle
 guards. Source/schema checks alone establish no runtime guarantee.

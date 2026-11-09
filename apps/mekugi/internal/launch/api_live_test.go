@@ -223,7 +223,7 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 				}
 				t.Logf("hydrated %d-byte deferred roster row", len(content.Agent))
 			}
-			if agent.State != "waiting" || agent.Wait == nil || agent.Wait.Body != "Waiting for" || agent.Wait.WaitTimeout != "1s" || len(agent.Wait.Waits) != 1 || agent.Wait.Waits[0].Name != "all" {
+			if agent.State != "waiting" || agent.Wait == nil || agent.Wait.Body != "Waiting for" || agent.Wait.WaitTimeout != "1s" || len(agent.Wait.Waits) != 1 || agent.Wait.Waits[0].Name != "/root/worker" {
 				t.Fatalf("shared roster lost canonical logical wait: %s", event.Data)
 			}
 			return

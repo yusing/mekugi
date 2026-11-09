@@ -66,7 +66,7 @@ func logicalWaitRunningUI(t *testing.T, timeout *int64) (*appServerUI, *threadEx
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
 	caller.Call = "wait"
-	registration, err := service.RegisterWait(t.Context(), caller, nil, true, "", timeout, *at)
+	registration, err := service.RegisterWait(t.Context(), caller, "", timeout, *at)
 	check(err)
 	payload, err := json.Marshal(registration)
 	check(err)
@@ -108,7 +108,7 @@ func TestUISnapshotLogicalWaiting(t *testing.T) {
 	}
 	assertNativeUISnapshot(t, "logical-waiting", rows)
 	u.testActivity(u.shell.Agents).publishActivity()
-	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for all (timeout 1s)") {
+	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for worker (timeout 1s)") {
 		t.Fatalf("roster lost transcript wait details: %s", text)
 	}
 	assertNativeUISnapshot(t, "logical-waiting-roster", u.shell.Agents.NativeRoster(80, 5, *at, true))
@@ -305,7 +305,7 @@ func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
 	}
 	rows, _ := u.testMainFrame(100, 15, 0)
 	text := ansi.Strip(strings.Join(rows, "\n"))
-	if !strings.Contains(text, "Finished waiting for all: timeout") {
+	if !strings.Contains(text, "Finished waiting for worker: timeout") {
 		t.Fatalf("invisible timeout wake: %s", text)
 	}
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
@@ -527,16 +527,16 @@ func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
 	if previousWait == nil || agent.Wait != previousWait {
 		t.Fatal("unchanged wait invalidated roster publication")
 	}
-	if agent.Responding || !agent.Waiting || agent.WaitingFor != "all" {
+	if agent.Responding || !agent.Waiting || agent.WaitingFor != "worker" {
 		t.Fatalf("stopped parent remained active: %+v", agent)
 	}
 	rows, _ := u.testMainFrame(100, 10, 0)
-	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Waiting for all") || strings.Contains(text, "timeout") {
+	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Waiting for worker") || strings.Contains(text, "timeout") {
 		t.Fatalf("deadline-free wait: %s", text)
 	}
 	assertNativeUISnapshot(t, "logical-wait-no-timeout", rows)
 	u.testActivity(u.shell.Agents).publishActivity()
-	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for all") || strings.Contains(text, "timeout") {
+	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for worker") || strings.Contains(text, "timeout") {
 		t.Fatalf("roster differs from deadline-free transcript: %s", text)
 	}
 }
@@ -677,7 +677,7 @@ func TestUISnapshotLogicalWaitAllOutcome(t *testing.T) {
 			check(err)
 			caller := control.Identity{Thread: "main", Session: "session", Turn: "next", Call: "wait-all", Item: "exec"}
 			check(service.RequestStarted(t.Context(), caller, true))
-			_, err = service.RegisterWait(t.Context(), caller, nil, true, control.WaitAll, nil, *at)
+			_, err = service.RegisterWait(t.Context(), caller, control.WaitAll, nil, *at)
 			check(err)
 			check(service.Execution(t.Context(), "main", "next", "exec", "", true))
 			_, err = service.ClaimLocalStop(t.Context(), "main", "next", "exec")
@@ -732,7 +732,7 @@ func TestStandaloneCompactionOmitsAgentWaitPresentation(t *testing.T) {
 	}
 	caller := control.Identity{Thread: "main", Session: "session", Turn: "checkpoint-turn", Call: "compact", Item: "compact-exec"}
 	check(s.RequestStarted(ctx, caller, true))
-	_, err := s.RegisterCompaction(ctx, caller, nil, false, "", nil, *at, true, "")
+	_, err := s.RegisterCompaction(ctx, caller, "", nil, *at, true, "")
 	check(err)
 	check(s.Execution(ctx, caller.Thread, caller.Turn, caller.Item, "", true))
 	_, err = s.ClaimLocalStop(ctx, caller.Thread, caller.Turn, caller.Item)

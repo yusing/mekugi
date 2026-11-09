@@ -89,7 +89,7 @@ func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {
 		t.Fatalf("followup metrics = %+v", metrics)
 	}
 	caller.Call = "wait-with-metrics"
-	wait, err := driver.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`))
+	wait, err := driver.waitAgent(t.Context(), caller, []byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {
 		t.Fatalf("unavailable followup wire = %s, err=%v", data, err)
 	}
 	caller.Call = "wait-without-runtime-metrics"
-	wait, err = driver.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`))
+	wait, err = driver.waitAgent(t.Context(), caller, []byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func (r *cancelInspection) Inspect(context.Context, string) (control.SessionDeta
 func TestMetricsCancellationSettlesUndispatchedWake(t *testing.T) {
 	d, host, _, caller := reconciliationFixture(t)
 	caller.Call = "wait"
-	if _, err := d.waitAgent(t.Context(), caller, []byte(`{"target":["child"]}`)); err != nil {
+	if _, err := d.waitAgent(t.Context(), caller, []byte(`{}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {

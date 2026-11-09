@@ -15,15 +15,15 @@ func TestFeatureUseSeparatesSelfFromAllDescendants(t *testing.T) {
 
 	root := identity("root", "rt")
 	for range 2 { // Repeating the call in one enclosing execution reuses its wait.
-		_, err := s.RegisterWait(ctx, root, nil, true, WaitAll, nil, now)
+		_, err := s.RegisterWait(ctx, root, WaitAll, nil, now)
 		must(t, err)
 	}
 	worker := identity("worker", "wt")
-	_, err := s.RegisterCompaction(ctx, worker, nil, true, WaitAll, nil, now, false, "")
+	_, err := s.RegisterCompaction(ctx, worker, WaitAll, nil, now, false, "")
 	must(t, err)
-	_, err = s.RegisterCompaction(ctx, identity("nested", "nt"), nil, false, "", nil, now, true, "")
+	_, err = s.RegisterCompaction(ctx, identity("nested", "nt"), "", nil, now, true, "")
 	must(t, err)
-	if _, err := s.RegisterWait(ctx, identity("second", "st"), nil, true, WaitAny, nil, now); err == nil {
+	if _, err := s.RegisterWait(ctx, identity("second", "st"), WaitAny, nil, now); err == nil {
 		t.Fatal("a leaf accepted a descendant wait")
 	}
 	s.ObserveFeature("second", FeatureSideQuestion)
@@ -57,14 +57,14 @@ func TestCompactionFeatureCounts(t *testing.T) {
 			s, _ := fixture(t)
 			id := identity("root", "rt")
 			for range 2 {
-				result, err := s.RegisterCompaction(t.Context(), id, nil, false, "", nil, time.Now(), true, selection)
+				result, err := s.RegisterCompaction(t.Context(), id, "", nil, time.Now(), true, selection)
 				must(t, err)
 				if result.Compaction.Reload != selection {
 					t.Fatal("registration lost selection")
 				}
 			}
 			// Another call in the same cell cannot replace the checkpoint selection.
-			result, err := s.RegisterCompaction(t.Context(), id, nil, false, "", nil, time.Now(), true, `{"sources":[{"path":"other"}]}`)
+			result, err := s.RegisterCompaction(t.Context(), id, "", nil, time.Now(), true, `{"sources":[{"path":"other"}]}`)
 			must(t, err)
 			if result.Compaction.Reload != selection {
 				t.Fatal("repeated registration replaced selection")

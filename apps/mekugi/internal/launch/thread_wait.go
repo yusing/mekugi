@@ -137,9 +137,6 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 		wait = nil
 	}
 	if wait != nil {
-		if wait.All {
-			wait.Targets = []string{"all"}
-		}
 		names := make([]string, len(wait.Targets))
 		for i, target := range wait.Targets {
 			names[i] = pathdisplay.AgentDisplayName(target)
