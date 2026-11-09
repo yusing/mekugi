@@ -47,6 +47,9 @@
   } = $props();
   const editor = $derived(semantic.editor());
   const view = $derived(semantic.frame?.view);
+  const targetName = $derived(
+    view?.Side && view.Input.ID === view.SideThread.ID ? view.Side.Label : agentName,
+  );
   const sideStatus = $derived(
     view?.SideThread.ID && view.Displayed.ID === view.SideThread.ID
       ? view.Status.Composer
@@ -362,9 +365,9 @@
       (touch
         ? ""
         : shell
-          ? `Enter runs this on the machine. Remove the leading ! to message ${agentName}.`
+          ? `Enter runs this on the machine. Remove the leading ! to message ${targetName}.`
           : running
-            ? `Enter steers ${agentName}'s turn · Tab queues for the next turn · Shift+Enter adds a line`
+            ? `Enter steers ${targetName}'s turn · Tab queues for the next turn · Shift+Enter adds a line`
             : "Enter sends · Shift+Enter adds a line · / for commands · ! for shell"),
   );
 </script>
@@ -433,7 +436,9 @@
       {previewTarget}
       disabled={!!pending || shell}
     />
-    <label class="sr-only" for="composer-text">{shell ? "Shell command" : "Message"}</label>
+    <label class="sr-only" for="composer-text"
+      >{shell ? "Shell command" : `Message ${targetName}`}</label
+    >
     <div class="relative">
       {#if painted}<div
           class="pointer-events-none absolute inset-0 overflow-hidden"
@@ -489,8 +494,8 @@
         placeholder={shell
           ? `Shell command on ${machine}`
           : running
-            ? `Steer ${agentName}'s turn`
-            : `Message ${agentName}`}
+            ? `Steer ${targetName}'s turn`
+            : `Message ${targetName}`}
         aria-describedby="composer-hint"
         aria-invalid={error ? "true" : undefined}></textarea>
     </div>
@@ -566,7 +571,7 @@
             shape="round"
             icon="stop"
             label="Stop"
-            title={`Stop ${agentName}'s turn`}
+            title={`Stop ${targetName}'s turn`}
             onclick={stop}
             disabled={stopping || !!unavailable}
           />{/if}

@@ -708,6 +708,22 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", "!document.querySelector('[aria-label=\"Side answer\"]')")
 	message("/oneoff initial task")
 	run("wait", "--fn", `document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]').length === 2`)
+	run("wait", "--fn", `document.querySelector('#composer-text')?.placeholder === 'Message One-off'`)
+	run("find", "label", "Message One-off", "fill", "oneoff target draft")
+	run("find", "role", "tab", "click", "--name", "Main", "--exact")
+	run("wait", "--fn", `document.querySelector('#composer-text')?.placeholder === 'Message main' && document.querySelector('#composer-text').value === ''`)
+	run("find", "label", "Message main", "fill", "main target draft")
+	run("find", "role", "tab", "click", "--name", "One-off", "--exact")
+	run("wait", "--fn", `document.querySelector('#composer-text')?.placeholder === 'Message One-off' && document.querySelector('#composer-text').value === 'oneoff target draft'`)
+	run("focus", "#composer-text")
+	run("press", "Enter")
+	run("wait", "--text", "Browser host answer 4")
+	run("find", "role", "tab", "click", "--name", "Main", "--exact")
+	run("wait", "--fn", `document.querySelector('#composer-text')?.placeholder === 'Message main' && document.querySelector('#composer-text').value === 'main target draft'`)
+	run("focus", "#composer-text")
+	run("press", "Enter")
+	run("wait", "--text", "Browser host answer 5")
+	run("find", "role", "tab", "click", "--name", "One-off", "--exact")
 	// Selection and closing retain separate hit targets and keyboard focus.
 	for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"phone", "390", "844"}} {
 		viewport(size.width, size.height)
@@ -738,6 +754,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 			// used to paint the same message and command twice inside one article.
 			run("wait", "--fn", `(() => { const text = document.querySelector('[aria-label="Transcript"]').innerText; return !text.includes('browser first input') && !text.includes('Browser host answer 1') && !text.includes('sleep 101') && text.split('initial task').length === 2 && text.split('printf oneoff').length === 2 && text.split('One-off repeated answer').length === 3; })()`)
 			run("wait", "--fn", `(() => { const text = document.querySelector('[aria-label="Transcript"]').innerText; return ['Read', 'source.go'].every(part => text.includes(part)); })()`)
+			run("wait", "--fn", `document.querySelector('#composer-text')?.placeholder === 'Message One-off' && document.querySelector('label[for="composer-text"]')?.textContent.trim() === 'Message One-off'`)
 			waitAction(`document.querySelector('button[aria-label="Close side"]')`)
 			run("focus", `[aria-label="Conversation"] span [role=tab]`)
 			run("press", "Tab")
@@ -1030,6 +1047,27 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	}
 	if strings.Count(string(body), "thread/start ") != 1 {
 		t.Fatalf("browser/native continuation started %d owners", strings.Count(string(body), "thread/start "))
+	}
+	for draft, thread := range map[string]string{"oneoff target draft": "fork-2", "main target draft": "main"} {
+		sent := 0
+		for line := range strings.SplitSeq(string(body), "\n") {
+			if !strings.HasPrefix(line, "turn/start ") || !strings.Contains(line, draft) {
+				continue
+			}
+			var params struct {
+				Thread string `json:"threadId"`
+			}
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "turn/start ")), &params); err != nil {
+				t.Fatal(err)
+			}
+			if params.Thread != thread {
+				t.Fatalf("%q was labeled for %s but submitted to %s", draft, thread, params.Thread)
+			}
+			sent++
+		}
+		if sent != 1 {
+			t.Fatalf("%q submitted %d times, want once", draft, sent)
+		}
 	}
 	for text, count := range map[string]int{"browser first input": 3, "browser later input": 2, "browser discard input": 1} {
 		var original []map[string]any
