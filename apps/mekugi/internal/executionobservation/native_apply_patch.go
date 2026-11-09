@@ -40,6 +40,9 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 	}
 	unlock := p.Windows.lockIntervals(refs)
 	defer unlock()
+	if len(cuts) != 0 {
+		defer p.Windows.serialize(workspace)()
+	}
 	windowFiles := changecapture.PatchWindowFiles(history.NativePatches)
 	// A later patch whose paths are wholly owned by an earlier observation
 	// has no separate window diff. Its host row must join that earlier receipt
@@ -169,6 +172,7 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 	if err := publishObservations(context.WithoutCancel(ctx), p.Retained, p.Changes, p.PublishChanges, workspace, attempts, continuations...); err != nil {
 		return changeError(err)
 	}
+	p.Windows.forgetIntervalClaims(cuts, endpoints)
 	displayID := ""
 	if history.ToolName == applyPatchToolName {
 		displayID = responses.StringField(history.UpstreamItem, "id")

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
@@ -68,13 +69,15 @@ const workspaceSnapshotAttributes = "* -text -eol -crlf -filter -ident -working-
 // not yet been rehashed under the private attributes.
 const workspaceSnapshotSeeded = "mekugi-seeded"
 
-// Claims record finished calls by physical path, including the private object
-// store holding their state. Overlapping directory scopes share attribution.
+// Claims record published effects by physical path. Ordinary completion retains
+// a private object identity; an interval retains its witnessed endpoint instead.
+// Overlapping directory scopes share attribution without refreshing checkpoints.
 type Claims map[string]snapshotClaim
 
 type snapshotClaim struct {
 	state workspaceSnapshotEntry
 	repo  *workspaceSnapshotRepo
+	file  *File
 }
 
 type Workspaces struct {
@@ -782,7 +785,7 @@ func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Clai
 			changed[path] = change
 		}
 		beforeRepos[path] = beforeRepo
-		if change.before == change.after {
+		if change.before == change.after && claims[path].file == nil {
 			delete(changed, path)
 			continue
 		}
@@ -821,6 +824,10 @@ func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Clai
 			after:        workspaceSnapshotFile(displayPath, change.after, contents[repo]),
 			physicalPath: path,
 		})
+		if file := claims[path].file; file != nil {
+			changes[len(changes)-1].before = *file
+			changes[len(changes)-1].before.Path = displayPath
+		}
 	}
 	return changes, latest, nil
 }
@@ -852,6 +859,216 @@ func (r *workspaceSnapshotRepo) states(ctx context.Context, tree string, paths [
 		states[filepath.Join(r.worktree, filepath.FromSlash(name))] = workspaceSnapshotEntry{fields[0], fields[2]}
 	}
 	return states, nil
+}
+
+// IntervalBefore supplements named before-state with selected checkpoint paths.
+// It never refreshes a checkpoint: an unavailable witnessed tree is incomplete
+// evidence, not permission to learn a before-state from the live workspace.
+// named is the original scope; observation can also contain rebased intervals.
+func (s *Workspaces) IntervalBefore(ctx context.Context, workspace string, observation Observation, named, endpoints []File, claims Claims, sink *evidence.Source) ([]File, Claims) {
+	before := slices.Clone(observation.Files)
+	known := make(map[string]bool, len(named))
+	for _, file := range named {
+		known[file.Path] = true
+	}
+	positions := make(map[string]int, len(before))
+	for i, file := range before {
+		positions[file.Path] = i
+	}
+	keep := func(file File) {
+		if index, found := positions[file.Path]; found {
+			before[index] = file
+		} else {
+			before = append(before, file)
+		}
+	}
+	reused := make(map[string]File)
+	boundaries := make(map[string]File, len(endpoints))
+	checkpoints := maps.Clone(observation.Checkpoints)
+	if checkpoints == nil {
+		checkpoints = make(map[string]string)
+	}
+	checkpoints[workspace] = observation.Tree
+	selected := make(map[string][]string)
+	for _, endpoint := range endpoints {
+		if known[endpoint.Path] ||
+			slices.ContainsFunc(observation.Excluded, func(root string) bool { return changes.PathWithin(endpoint.Path, root) }) {
+			continue
+		}
+		root := ""
+		for directory := range checkpoints {
+			if len(directory) > len(root) && changes.PathWithin(endpoint.Path, directory) {
+				root = directory
+			}
+		}
+		if root != "" {
+			known[endpoint.Path] = true
+			boundaries[endpoint.Path] = endpoint
+			if index, found := positions[endpoint.Path]; found {
+				reused[endpoint.Path] = before[index]
+			}
+			selected[root] = append(selected[root], endpoint.Path)
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, execCaptureHold)
+	defer cancel()
+	budget := MaxContentBytes
+	claimed := make(Claims)
+	for _, file := range before {
+		if _, readmitted := reused[file.Path]; !readmitted {
+			budget = max(0, budget-len(file.Content))
+		}
+	}
+	origin := ""
+	for _, program := range observation.Programs {
+		if program.VCS {
+			origin = program.Label
+			break
+		}
+	}
+	for _, directory := range slices.Sorted(maps.Keys(selected)) {
+		paths := selected[directory]
+		files, err := s.checkpointFiles(ctx, directory, checkpoints[directory], paths, reused, claims, &budget, sink)
+		if err != nil {
+			for _, path := range paths {
+				keep(File{Path: path, Origin: origin, Error: "overlapping writer checkpoint unavailable: " + err.Error()})
+			}
+			continue
+		}
+		for _, file := range files {
+			file.Origin = origin
+			keep(file)
+			if endpoint := boundaries[file.Path]; file.Error == "" && endpoint.Error == "" {
+				repo := s.repo(directory)
+				relative, _ := filepath.Rel(directory, file.Path)
+				claimed[filepath.Join(repo.physicalWorkspace, relative)] = snapshotClaim{repo: repo, file: &endpoint}
+			}
+		}
+	}
+	return before, claimed
+}
+
+func (s *Workspaces) checkpointFiles(ctx context.Context, workspace, tree string, paths []string, reused map[string]File, claims Claims, budget *int, sink *evidence.Source) ([]File, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s == nil {
+		return nil, errors.New("no before checkpoint")
+	}
+	repo := s.repo(workspace)
+	if repo == nil {
+		return nil, errors.New("checkpoint workspace unavailable")
+	}
+	// A tree can only have been witnessed after this repository became ready.
+	// Await initialization when another admitted reader opens the same store.
+	repo.mu.Lock()
+	ready := repo.ready
+	repo.mu.Unlock()
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	physical := make([]string, 0, len(paths))
+	var fresh []string
+	retained := make(map[string]File)
+	for _, path := range paths {
+		relative, err := filepath.Rel(workspace, path)
+		if err != nil || !filepath.IsLocal(relative) {
+			return nil, errors.New("checkpoint path outside its workspace")
+		}
+		key := filepath.Join(repo.physicalWorkspace, relative)
+		physical = append(physical, key)
+		if file, found := reused[path]; found {
+			retained[key] = file
+		} else {
+			fresh = append(fresh, key)
+		}
+	}
+	states := make(map[string]workspaceSnapshotEntry)
+	if len(fresh) != 0 {
+		if tree == "" {
+			return nil, errors.New("no before checkpoint")
+		}
+		var err error
+		states, err = repo.states(ctx, tree, fresh)
+		if err != nil {
+			return nil, err
+		}
+	}
+	ignored, err := repo.ignored(ctx, fresh)
+	if err != nil {
+		return nil, err
+	}
+	entries := make(map[*workspaceSnapshotRepo][]workspaceSnapshotEntry)
+	sources := make(map[string]*workspaceSnapshotRepo)
+	for _, path := range physical {
+		if slices.Contains(ignored, path) {
+			continue
+		}
+		source := repo
+		if claim, found := claims[path]; found && retained[path].Error == "" && claim.repo.plain == repo.plain && (repo.plain || claim.repo.worktree == repo.worktree) {
+			states[path], source = claim.state, claim.repo
+			delete(retained, path)
+			if claim.file != nil {
+				retained[path] = *claim.file
+			}
+		}
+		sources[path] = source
+		if _, exists := retained[path]; exists {
+			continue
+		}
+		if _, witnessed := states[path]; !witnessed {
+			// Absence from a bounded tree can mean an unadmitted path, not an
+			// absent file. Do not invent a creation outside checkpoint coverage.
+			retained[path] = File{Error: "path was not retained in before checkpoint"}
+			continue
+		}
+		if state := states[path]; state.mode != "" && state.mode != "160000" && state.mode != "040000" {
+			entries[source] = append(entries[source], state)
+		}
+	}
+	contents := make(map[*workspaceSnapshotRepo]map[string]workspaceSnapshotBlob)
+	stores := slices.Collect(maps.Keys(entries))
+	slices.SortFunc(stores, func(a, b *workspaceSnapshotRepo) int { return strings.Compare(a.gitDir, b.gitDir) })
+	for _, source := range stores {
+		blobs, err := source.blobs(ctx, entries[source], budget, sink)
+		if err != nil {
+			return nil, err
+		}
+		contents[source] = blobs
+	}
+	var files []File
+	for i, path := range physical {
+		if source, admitted := sources[path]; admitted {
+			file := workspaceSnapshotFile(paths[i], states[path], contents[source])
+			if previous, found := retained[path]; found {
+				file = retainFile(ctx, previous, budget, sink)
+				file.Path = paths[i]
+			}
+			files = append(files, file)
+		}
+	}
+	return files, nil
+}
+
+// Forget releases claims superseded by a published interval continuation.
+// Its witnessed endpoint is now the writer's baseline; older shared claims
+// must not replace it at the next cut. Callers serialize publication and claims.
+func (c Claims) Forget(endpoints []File) {
+	seen := make(map[*workspaceSnapshotRepo]bool)
+	for _, claim := range c {
+		if seen[claim.repo] {
+			continue
+		}
+		seen[claim.repo] = true
+		for _, endpoint := range endpoints {
+			relative, err := filepath.Rel(claim.repo.workspace, endpoint.Path)
+			if err == nil && filepath.IsLocal(relative) {
+				delete(c, filepath.Join(claim.repo.physicalWorkspace, relative))
+			}
+		}
+	}
 }
 
 type workspaceSnapshotBlob struct {

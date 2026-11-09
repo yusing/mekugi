@@ -168,10 +168,12 @@ excluded from the others' workspace fallback. Overlapping calls attribute unname
 snapshot differences to the first finisher; remaining calls compare only later differences, so an
 effect is recorded once. Siblings can share a record with overlap diagnostics.
 When a later named command or native patch supplies an observed boundary inside an
-open named writer, capture retains separate writer-before-edit, edit, and
+open named or checkpoint-backed writer, capture retains separate writer-before-edit, edit, and
 writer-after-edit intervals. Each interval keeps its originating operation. Writer intervals remain
 pending until that writer's terminal result; the intervening edit can complete independently.
-Unavailable boundaries retain incomplete evidence rather than an invented chain.
+Checkpoint-backed intervals read only the later operation's selected paths from
+the witnessed checkpoint, without refreshing it or broadening authored scope.
+Unavailable boundaries or checkpoints retain incomplete evidence rather than an invented chain.
 A synchronous native pre-tool boundary can close a terminated overlapping writer
 before the next named writer starts. This preserves both operations even when the
 later writer restores earlier bytes. Acquisition shares one 500 ms deadline from

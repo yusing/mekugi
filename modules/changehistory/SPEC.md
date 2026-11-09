@@ -128,7 +128,7 @@ Complete captured diffs remain composable regardless of command exit status,
 including older retained records. Normal views
 describe captured file differences, not command outcomes; execution and capture
 diagnostics are available in `--history` only.
-An overlapping named writer can own multiple ordered intervals around another
+An overlapping named or checkpoint-backed writer can own multiple ordered intervals around another
 operation's named command or patch. Its intervals retain one change identity and become readable
 only after its terminal result. Exact-operation details include only that
 operation's intervals, while net composition interleaves all selected evidence

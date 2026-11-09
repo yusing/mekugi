@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,9 +11,78 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+func TestCheckpointIntervalSelectionAndClaims(t *testing.T) {
+	isolateSnapshotGit(t)
+	workspace := t.TempDir()
+	path, sibling := filepath.Join(workspace, "selected"), filepath.Join(workspace, "unselected")
+	writeTestFile(t, path, "before\n")
+	writeTestFile(t, sibling, "unselected bytes\n")
+	snapshots := newWorkspaces(t.Context(), t.TempDir())
+	t.Cleanup(snapshots.Close)
+	tree := snapshots.Checkpoint(t.Context(), workspace)
+	repo := snapshots.repo(workspace)
+	states, err := repo.states(t.Context(), tree, []string{sibling})
+	if err != nil || states[sibling].oid == "" {
+		t.Fatalf("missing fixture object: %v", err)
+	}
+	// An unavailable unrelated object must not be loaded by a selected read.
+	oid := states[sibling].oid
+	if err := os.Remove(filepath.Join(repo.gitDir, "objects", oid[:2], oid[2:])); err != nil {
+		t.Fatal(err)
+	}
+	observation := Observation{Tree: tree, Excluded: []string{sibling}, Programs: []execscope.Program{{Label: "git reset", VCS: true}}}
+	endpoint := File{Path: path, Kind: Text, Content: "boundary\n", Size: 9}
+	endpoints := []File{endpoint, endpoint, {Path: sibling}, {Path: filepath.Join(t.TempDir(), "outside")}}
+	before, claims := snapshots.IntervalBefore(t.Context(), workspace, observation, observation.Files, endpoints, nil, nil)
+	if len(before) != 1 || before[0].Content != "before\n" || before[0].Origin != "git reset" || before[0].Error != "" || len(claims) != 1 {
+		t.Fatalf("selected checkpoint/provenance: %+v, claims=%d", before, len(claims))
+	}
+	writeTestFile(t, path, "unrelated live bytes\n")
+	reused, _ := snapshots.IntervalBefore(t.Context(), workspace, observation, observation.Files, endpoints, claims, nil)
+	if len(reused) != 1 || reused[0].Content != endpoint.Content || reused[0].Error != "" {
+		t.Fatalf("claimed interval reread old or live bytes: %+v", reused)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	missing, _ := snapshots.IntervalBefore(ctx, workspace, observation, observation.Files, endpoints, nil, nil)
+	if len(missing) != 1 || missing[0].Error == "" || missing[0].Content != "" {
+		t.Fatalf("expired acquisition fabricated before-state: %+v", missing)
+	}
+	observation.Files = []File{{Path: filepath.Join(workspace, "named"), Kind: Text, Content: strings.Repeat("x", MaxContentBytes)}}
+	bounded, _ := snapshots.IntervalBefore(t.Context(), workspace, observation, observation.Files, []File{endpoint}, nil, nil)
+	if len(bounded) != 2 || !strings.Contains(bounded[1].Error, "budget exhausted") {
+		t.Fatalf("interval exceeded aggregate inline bound: files=%d", len(bounded))
+	}
+	service, err := history.NewService(evidence.RecordKinds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := service.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []*evidence.Source{nil, {Store: store, Thread: "interval-budget"}} {
+		readmitted, _ := snapshots.IntervalBefore(t.Context(), workspace, observation, observation.Files, []File{endpoint}, claims, source)
+		if len(readmitted) != 2 || readmitted[1].Content != "" || source == nil && readmitted[1].Error == "" || source != nil && readmitted[1].ContentRef == nil {
+			t.Fatalf("claimed endpoint bypassed remaining inline budget: source=%v files=%d", source != nil, len(readmitted))
+		}
+		if source != nil {
+			if text, err := readmitted[1].Text(); err != nil || text != endpoint.Content {
+				t.Fatalf("spilled claim lost bytes: %q, %v", text, err)
+			}
+		}
+	}
+	observation.Files = nil
+	unknown, claimed := snapshots.IntervalBefore(t.Context(), workspace, observation, nil, []File{{Path: filepath.Join(workspace, "unadmitted"), Kind: Text, Content: "boundary\n"}}, nil, nil)
+	if len(unknown) != 1 || unknown[0].Error == "" || len(claimed) != 0 {
+		t.Fatalf("bounded checkpoint absence fabricated a creation: %+v", unknown)
+	}
+}
 
 func TestWorkspaceSnapshotSymlinkTargetsIgnoreTextBudgetAndClassification(t *testing.T) {
 	for _, target := range []string{"old-target", "old-\xff"} {

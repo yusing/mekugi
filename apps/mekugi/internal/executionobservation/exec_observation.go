@@ -172,7 +172,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	if !first.native {
 		script = execObservationScript(observation)
 	}
-	if (observation.Tree != "" || len(observation.Checkpoints) != 0) && selected.Store != nil {
+	if (observation.Tree != "" || len(observation.Checkpoints) != 0 || len(cuts) != 0) && selected.Store != nil {
 		// Closing, comparing, and claiming are one step across overlapping
 		// physical scopes, even when runtimes selected different workspaces.
 		defer windows.serialize(workspace, observation.Roots...)()
@@ -330,6 +330,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	if err := publishObservations(context.WithoutCancel(ctx), selected, source, publish, workspace, records, continuations...); err != nil {
 		return err
 	}
+	windows.forgetIntervalClaims(cuts, result.Endpoints)
 	if record.ChangeID != "" {
 		_ = publishEditReceipt(context.WithoutCancel(ctx), selected, source, workspace, thread, derivedCallID, activity, responses.StringField(first.history.UpstreamItem, "id"))
 	}

@@ -104,7 +104,9 @@ func ReadFileIn(ctx context.Context, path string, budget *int, source *evidence.
 }
 
 func retainFile(ctx context.Context, snapshot File, budget *int, source *evidence.Source) File {
-	if source != nil && (len(snapshot.Content) > evidence.InlineBytes || budget != nil && len(snapshot.Content) > *budget) {
+	if source == nil && budget != nil && len(snapshot.Content) > *budget {
+		snapshot.Content, snapshot.Error = "", "capture budget exhausted"
+	} else if source != nil && (len(snapshot.Content) > evidence.InlineBytes || budget != nil && len(snapshot.Content) > *budget) {
 		if err := snapshot.Spill(ctx, source); err != nil {
 			snapshot.Content, snapshot.Error = "", "retain baseline: "+err.Error()
 		}

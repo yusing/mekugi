@@ -2,8 +2,11 @@ package executionobservation
 
 import (
 	"context"
+	"crypto/sha256"
 	jsonv1 "encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -23,6 +26,7 @@ import (
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -53,7 +57,7 @@ func TestLegacyMetadataSurvivesIntervalPublication(t *testing.T) {
 	writeTestFile(t, path, "B\n")
 	transform := &mekugiResponseTransform{owners: &Preparer{Config: Config{Windows: p.Windows, Changes: p.Changes}}, ctx: f.ctx, directory: f.workspace}
 	cut := execIntervalCut{writer: "writer", scope: selected}
-	if err := transform.owners.splitExecInterval(f.ctx, f.workspace, "patch", []changecapture.File{changecapture.ReadFile(path, nil)}, cut, false); err != nil {
+	if err := transform.owners.splitExecInterval(f.ctx, f.ctx, f.workspace, "patch", []changecapture.File{changecapture.ReadFile(path, nil)}, cut, false); err != nil {
 		t.Fatal(err)
 	}
 	id := execIntervalID("writer", false, 0)
@@ -114,6 +118,320 @@ func TestExecCompletionOrderingSkipsUninterruptedHistory(t *testing.T) {
 		}
 	}); allocations != 0 {
 		t.Fatalf("uninterrupted history allocated %g objects", allocations)
+	}
+}
+
+func TestCheckpointWriterPatchIntervals(t *testing.T) {
+	usePreloadTestFrontend(t)
+	for _, scenario := range []string{"formatter", "failed-tests", "opaque-writer", "missing-checkpoint", "overlapping-writers"} {
+		t.Run(scenario, func(t *testing.T) {
+			isolateSnapshotGit(t)
+			f := newMChangesSliceFixture(t, "checkpoint-interval")
+			proxy := newManagedMekugiProxy(t)
+			setTestProxyStore(proxy, f.store)
+			trace := newNativeTraceFixture(t)
+			proxy.NativeTrace = nativetrace.NewWithNotice(trace.root, nil)
+			path := filepath.Join(f.workspace, "file.go")
+			initial := "package example\nvar value=1\n"
+			writeTestFile(t, path, initial)
+			seed := f.reserve(t, f.thread, "create")
+			f.publish(t, seed, "create", "create", mekugiHistory{ExecutingThread: f.thread, ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", path, "", initial)}})
+			var items []any
+			prepare := func() *mekugiResponseTransform {
+				t.Helper()
+				request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
+					"model": "gpt-test", "input": append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, items...),
+					"tools": []any{map[string]any{"type": "function", "name": "lookup"}}, "tool_choice": "auto",
+				}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				transform, err := proxy.prepareRequest(f.ctx, &request, f.thread, f.thread, codexresponses.TurnMetadata{RequestKind: "turn", Directories: map[string]jsonv1.RawMessage{f.workspace: nil}}, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(transform.Close)
+				transform.sessionShell = "bash"
+				return transform
+			}
+			transform := prepare()
+			observe := func(id, source string) {
+				t.Helper()
+				call := map[string]any{"type": "custom_tool_call", "id": id + "-item", "call_id": id, "name": "exec", "input": source, "status": "completed"}
+				if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
+					t.Fatal(err)
+				}
+				items = append(items, call, map[string]any{"type": "custom_tool_call_output", "call_id": id, "output": "Script completed\nWall time 0.1 seconds\nOutput:\n"})
+				trace.start(f.thread, id+"-runtime", id, source)
+			}
+			reconcile := func() {
+				t.Helper()
+				request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
+				if _, err := proxy.reconcileVisibleInput(f.ctx, &request, f.workspace, f.thread); err != nil {
+					t.Fatal(err)
+				}
+			}
+			lookup := func(id string) mekugiHistory {
+				t.Helper()
+				h, found, err := f.store.lookup(f.ctx, f.workspace, id)
+				if err != nil || !found {
+					t.Fatalf("lookup %s: %v, %v", id, found, err)
+				}
+				return h
+			}
+			command := "gofmt -w .; mrun --max-tokens 2000 make test"
+			if scenario == "opaque-writer" {
+				command = "./generate; mrun --max-tokens 2000 make test"
+			}
+			observe("writer", "await tools.exec_command({cmd: "+string(responses.MustMarshalJSON(command))+"});")
+			original := lookup("writer")
+			if original.ExecObservation == nil || original.ExecObservation.Tree == "" || len(original.ExecObservation.Files) != 0 {
+				t.Fatal("fixture must exercise checkpoint-only before-state")
+			}
+			if scenario == "missing-checkpoint" {
+				// Lose only the witnessed private tree, not retained evidence or
+				// current files. Later checkpoints cannot reconstruct that baseline.
+				tree := original.ExecObservation.Tree
+				directory := fmt.Sprintf("%x", sha256.Sum256([]byte(f.workspace)))[:32]
+				if err := os.Remove(filepath.Join(f.store.directory, "workspace-snapshots", directory, "git", "objects", tree[:2], tree[2:])); err != nil {
+					t.Fatal(err)
+				}
+			}
+			trace.tool(f.thread, "writer-runtime", "writer-command", "exec_command", string(responses.MustMarshalJSON(map[string]string{"cmd": command})))
+			if scenario == "overlapping-writers" {
+				transform = prepare()
+				observe("sibling", "await tools.exec_command({cmd: "+string(responses.MustMarshalJSON(command))+"});")
+				trace.tool(f.thread, "sibling-runtime", "sibling-command", "exec_command", string(responses.MustMarshalJSON(map[string]string{"cmd": command})))
+				trace.result(f.thread, "sibling-command", "completed", map[string]any{"session_id": 102})
+				trace.end(f.thread, "sibling-runtime")
+			}
+			// The formatter finishes, but its following tests keep the host open.
+			if output, err := exec.Command("gofmt", "-w", f.workspace).CombinedOutput(); err != nil {
+				t.Fatalf("format: %v: %s", err, output)
+			}
+			formatted, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			trace.result(f.thread, "writer-command", "completed", map[string]any{"session_id": 101})
+			trace.end(f.thread, "writer-runtime")
+			reconcile()
+			transform = prepare()
+			patch := "*** Begin Patch\n*** Update File: file.go\n@@\n-var value = 1\n+var value = 2\n*** End Patch\n"
+			observe("patch", "await tools.apply_patch("+string(responses.MustMarshalJSON(patch))+");")
+			trace.tool(f.thread, "patch-runtime", "patch-command", "apply_patch", patch)
+			writeTestFile(t, path, strings.Replace(string(formatted), "= 1", "= 2", 1))
+			trace.result(f.thread, "patch-command", "completed", map[string]any{"exit_code": 0})
+			trace.end(f.thread, "patch-runtime")
+			reconcile()
+			var secondPatch string
+			want := "+var value = 2\n"
+			if scenario == "overlapping-writers" {
+				// The same two writers remain open across another observed cut.
+				writeTestFile(t, path, strings.Replace(string(formatted), "= 1", "= 3", 1))
+				transform = prepare()
+				patch = "*** Begin Patch\n*** Update File: file.go\n@@\n-var value = 3\n+var value = 4\n*** End Patch\n"
+				observe("patch2", "await tools.apply_patch("+string(responses.MustMarshalJSON(patch))+");")
+				trace.tool(f.thread, "patch2-runtime", "patch2-command", "apply_patch", patch)
+				writeTestFile(t, path, strings.Replace(string(formatted), "= 1", "= 4", 1))
+				trace.result(f.thread, "patch2-command", "completed", map[string]any{"exit_code": 0})
+				trace.end(f.thread, "patch2-runtime")
+				reconcile()
+				secondPatch = lookup(legacycall.PatchCallID("patch2", 0)).ChangeID
+				want = "+var value = 4\n"
+			}
+			exit := 0
+			if scenario == "failed-tests" {
+				exit = 1
+			}
+			trace.event(f.thread, map[string]any{"type": "tool_call_runtime_ended", "tool_call_id": "writer-command", "status": "completed", "runtime_payload": trace.ref(map[string]any{"exit_code": exit})})
+			if scenario == "overlapping-writers" {
+				trace.event(f.thread, map[string]any{"type": "tool_call_runtime_ended", "tool_call_id": "sibling-command", "status": "completed", "runtime_payload": trace.ref(map[string]any{"exit_code": 0})})
+			}
+			reconcile()
+			if scenario == "overlapping-writers" && lookup(legacycall.ExecCallID("sibling", true)).ChangeID != "" {
+				t.Fatal("overlapping checkpoint writer claimed the formatter effect twice")
+			}
+			writer := lookup(legacycall.ExecCallID("writer", true))
+			patchHistory := lookup(legacycall.PatchCallID("patch", 0))
+			prefix := lookup(execIntervalID("writer", true, 0))
+			if writer.ChangeID == "" || writer.ChangeID != prefix.ChangeID || len(writer.ReviewFiles) != 0 || writer.ExecOutcome.Exit == nil || *writer.ExecOutcome.Exit != exit {
+				t.Fatalf("writer terminal lost identity, outcome, or attribution: %+v", writer)
+			}
+			if len(patchHistory.ReviewFiles) != 1 || !strings.Contains(patchHistory.ReviewFiles[0].Diff, "-var value = 1\n+var value = 2") {
+				t.Fatalf("patch stole formatter changes: %+v", patchHistory.ReviewFiles)
+			}
+			ids := []string{seed, writer.ChangeID, patchHistory.ChangeID}
+			if secondPatch != "" {
+				ids = append(ids, secondPatch)
+				second := lookup(execIntervalID("writer", true, 1))
+				if len(second.ReviewFiles) != 1 || !strings.Contains(second.ReviewFiles[0].Diff, "-var value = 2\n+var value = 3") {
+					t.Fatalf("second writer interval reused stale claims: %+v", second.ReviewFiles)
+				}
+			}
+			stdout, stderr, status := f.run(t, "mchanges "+strings.Join(ids, " ")+" -- file.go")
+			if scenario == "missing-checkpoint" {
+				if status != 1 || !strings.Contains(stderr, "checkpoint unavailable") || len(prefix.ReviewFiles) != 1 || prefix.ReviewFiles[0].Incomplete == "" || writer.ExecOutcome.Coverage != changecapture.CoveragePartial {
+					t.Fatalf("missing checkpoint claimed complete evidence: %q, %q, %d; %+v", stdout, stderr, status, prefix)
+				}
+				return
+			}
+			if status != 0 || stderr != "" || !strings.Contains(stdout, want) || strings.Contains(stdout, "+var value=1\n") || len(prefix.ReviewFiles) != 1 || !strings.Contains(prefix.ReviewFiles[0].Diff, "+var value = 1\n") {
+				t.Fatalf("composed mchanges lost formatter interval: %q, %q, %d; %+v", stdout, stderr, status, prefix.ReviewFiles)
+			}
+			writeTestFile(t, path, "unrelated live bytes\n")
+			reopened, err := openMekugiReplayStore(f.store.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(reopened.snapshots.Close)
+			net, err := reopened.changes.Read(f.ctx, reopened.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: ids, View: "net", Paths: []string{path}})
+			if err != nil || net != stdout {
+				t.Fatalf("cold retained composition changed: %q, %v", net, err)
+			}
+		})
+	}
+}
+
+func TestCheckpointIntervalCanceledAcquisitionRetainsGap(t *testing.T) {
+	f := newMChangesSliceFixture(t, "checkpoint-canceled")
+	p := testProxyWithStore(f.store, &Windows{})
+	selected := observationScope(f.ctx, p.Retained)
+	path := filepath.Join(f.workspace, "file.txt")
+	writeTestFile(t, path, "before\n")
+	observation, _ := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: "custom-generator", Workdir: f.workspace}}, false, false, changecapture.Options{Directory: f.workspace, Workspaces: p.Checkpoints})
+	if observation == nil || observation.Tree == "" {
+		t.Fatal("missing checkpoint fixture")
+	}
+	original := mekugiHistory{ToolName: nativeExecCommandToolName, Root: f.workspace, ExecutingThread: f.thread, ExecObservation: observation}
+	if err := publishObservations(f.ctx, selected, p.Changes, nil, f.workspace, map[string]mekugiHistory{"writer": original}); err != nil {
+		t.Fatal(err)
+	}
+	p.Windows.open(&execWindow{ref: "writer", group: "writer", roots: []string{f.workspace}, scope: selected})
+	release := p.Windows.serialize(f.workspace)
+	defer release()
+	acquisition, cancel := context.WithCancel(f.ctx)
+	cancel()
+	if err := p.splitExecInterval(f.ctx, acquisition, f.workspace, "patch", []changecapture.File{{Path: path, Kind: changecapture.Text, Content: "boundary\n"}}, execIntervalCut{writer: "writer", scope: selected}, false); err != nil {
+		t.Fatal(err)
+	}
+	prefix, found, err := f.store.lookup(f.ctx, f.workspace, execIntervalID("writer", false, 0))
+	if err != nil || !found || len(prefix.ReviewFiles) != 1 || !strings.Contains(prefix.ReviewFiles[0].Incomplete, "context canceled") {
+		t.Fatalf("canceled acquisition lost explicit incomplete evidence: %+v, %v", prefix, err)
+	}
+}
+
+func TestCheckpointIntervalsKeepAuthoredWorkspace(t *testing.T) {
+	for _, mode := range []string{"eager", "dynamic-native", "terminal-native"} {
+		t.Run(mode, func(t *testing.T) {
+			isolateSnapshotGit(t)
+			f := newMChangesSliceFixture(t, "cross-workspace-interval")
+			writer := testProxyWithStore(f.store, &Windows{})
+			edit := testProxyWithStore(f.store, writer.Windows.ForRuntime())
+			selected := observationScope(f.ctx, writer.Retained)
+			directory := t.TempDir()
+			path := filepath.Join(directory, "selected.txt")
+			writeTestFile(t, path, "A\n")
+			seed := f.reserve(t, f.thread, "create")
+			f.publish(t, seed, "create", "create", mekugiHistory{ExecutingThread: f.thread, ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", path, "", "A\n")}})
+			observation, _ := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: "custom-generator", Workdir: directory, Shell: "bash"}}, false, true, changecapture.Options{Directory: f.workspace, Workspaces: writer.Checkpoints})
+			if observation == nil || observation.Checkpoints[directory] == "" || len(observation.Files) != 0 {
+				t.Fatal("missing external checkpoint fixture")
+			}
+			trace := newNativeTraceFixture(t)
+			trace.turn = "turn"
+			edit.NativeTrace = nativetrace.NewWithNotice(trace.root, nil)
+			arguments := responses.MustMarshalJSON(map[string]string{"cmd": "custom-generator", "workdir": directory})
+			writerSource := "await tools.exec_command(" + string(arguments) + ");"
+			original := mekugiHistory{ToolName: "exec", Script: writerSource, Root: f.workspace, ExecutingThread: f.thread, ExecObservation: observation}
+			if err := publishObservations(f.ctx, selected, writer.Changes, nil, f.workspace, map[string]mekugiHistory{"writer": original}); err != nil {
+				t.Fatal(err)
+			}
+			writer.Windows.open(&execWindow{ref: "writer", group: "writer", workspace: f.workspace, roots: observation.Roots, scope: selected, thread: f.thread, turn: trace.turn, source: writerSource})
+			trace.start(f.thread, "writer-runtime", "writer", writerSource)
+			trace.tool(f.thread, "writer-runtime", "writer-command", "exec_command", string(arguments))
+			writeTestFile(t, path, "B\n")
+			before := "B"
+			if mode == "terminal-native" {
+				before = "D"
+			}
+			patch := "*** Begin Patch\n*** Update File: selected.txt\n@@\n-" + before + "\n+C\n*** End Patch\n"
+			patchSource := "await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + ");"
+			later := mekugiHistory{ToolName: "exec", Root: directory, ExecutingThread: f.thread}
+			if mode == "dynamic-native" {
+				patchSource = "await tools.apply_patch(makePatch());"
+			} else {
+				later.NativePatches = changecapture.Patches([]string{patch}, directory)
+			}
+			later.Script = patchSource
+			if err := publishObservations(f.ctx, selected, edit.Changes, nil, directory, map[string]mekugiHistory{"patch": later}); err != nil {
+				t.Fatal(err)
+			}
+			edit.Windows.open(&execWindow{ref: "patch", group: "patch", workspace: directory, roots: []string{directory}, scope: selected, thread: f.thread, turn: trace.turn, source: patchSource})
+			transform := &mekugiResponseTransform{owners: edit, ctx: f.ctx, directory: directory, execGroup: "patch"}
+			if err := transform.splitExecIntervals("patch", nil, later.NativePatches); err != nil {
+				t.Fatal(err)
+			}
+			if mode == "terminal-native" {
+				// A completed writer changes again between the eager cut and hook.
+				writeTestFile(t, path, "D\n")
+				trace.result(f.thread, "writer-command", "completed", map[string]any{"exit_code": 0})
+			} else {
+				trace.result(f.thread, "writer-command", "completed", map[string]any{"session_id": 101})
+			}
+			trace.end(f.thread, "writer-runtime")
+			trace.start(f.thread, "patch-runtime", "patch", patchSource)
+			trace.tool(f.thread, "patch-runtime", "patch-command", "apply_patch", patch)
+			if mode != "eager" {
+				ctx, cancel := context.WithTimeout(f.ctx, segmenttransport.BoundaryHold)
+				deadline, _ := ctx.Deadline()
+				edit.ObserveNativeBoundary(ctx, segmenttransport.Boundary{Thread: f.thread, Turn: trace.turn, Item: "patch-command", Tool: applyPatchToolName, CWD: directory, Input: patch, Deadline: deadline})
+				cancel()
+			}
+			prefixID := execIntervalID("writer", true, 0)
+			prefix, found, err := f.store.lookup(f.ctx, f.workspace, prefixID)
+			if err != nil || !found || len(prefix.ReviewFiles) != 1 || !strings.Contains(prefix.ReviewFiles[0].Diff, "-A\n+B") {
+				t.Fatalf("writer's authored workspace lost prefix: %+v, %v", prefix, err)
+			}
+			if _, found, err := f.store.lookup(f.ctx, directory, prefixID); found || err != nil {
+				t.Fatalf("prefix published under interrupter workspace: %v, %v", found, err)
+			}
+			writeTestFile(t, path, "C\n")
+			trace.result(f.thread, "patch-command", "completed", map[string]any{"exit_code": 0})
+			trace.end(f.thread, "patch-runtime")
+			later.nativeCell = edit.NativeTrace.ReadCell(f.thread, "patch", patchSource)
+			if err := edit.loadNativeBoundaries(f.ctx, directory, "patch", &later); err != nil {
+				t.Fatal(err)
+			}
+			if err := edit.finalizeNativePatches(f.ctx, directory, f.thread, "patch", later, binding.ExecutionResult{Terminal: true, Succeeded: true}); err != nil {
+				t.Fatal(err)
+			}
+			trace.event(f.thread, map[string]any{"type": "tool_call_runtime_ended", "tool_call_id": "writer-command", "status": "completed", "runtime_payload": trace.ref(map[string]any{"exit_code": 0})})
+			original.nativeCell = edit.NativeTrace.ReadCell(f.thread, "writer", writerSource)
+			if err := finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.Recovery, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
+				t.Fatal(err)
+			}
+			patchHistory, _, err := f.store.lookup(f.ctx, directory, legacycall.PatchCallID("patch", 0))
+			if err != nil || patchHistory.ChangeID == "" || len(patchHistory.ReviewFiles) != 1 || !strings.Contains(patchHistory.ReviewFiles[0].Diff, "-"+before+"\n+C") {
+				t.Fatalf("interrupter attribution: %+v, %v", patchHistory, err)
+			}
+			ids := []string{seed, prefix.ChangeID, patchHistory.ChangeID}
+			f.invocation = mchangesSliceInvocation(directory, f.thread)
+			stdout, stderr, status := f.run(t, "mchanges "+strings.Join(ids, " ")+" -- selected.txt")
+			if status != 0 || stderr != "" || !strings.Contains(stdout, "+C\n") || strings.Contains(stdout, "+A\n") || strings.Contains(stdout, "+B\n") {
+				t.Fatalf("cross-workspace mchanges: %q, %q, %d", stdout, stderr, status)
+			}
+			writeTestFile(t, path, "unrelated live bytes\n")
+			reopened, err := openMekugiReplayStore(f.store.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(reopened.snapshots.Close)
+			net, err := reopened.changes.Read(f.ctx, reopened.scoped(f.ctx).changeScope(), changes.Query{Workspace: directory, IDs: ids, View: "net", Paths: []string{path}})
+			if err != nil || net != stdout {
+				t.Fatalf("cold cross-workspace composition: %q, %v", net, err)
+			}
+		})
 	}
 }
 

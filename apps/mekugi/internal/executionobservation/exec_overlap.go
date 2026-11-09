@@ -2,6 +2,7 @@ package executionobservation
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -50,6 +51,12 @@ type execWindow struct {
 	claims changecapture.Claims
 }
 
+func (w *execWindow) coversInterval(path string) bool {
+	return slices.Contains(w.paths, path) || !w.background && slices.ContainsFunc(w.roots, func(root string) bool {
+		return changes.PathWithin(path, root)
+	})
+}
+
 type Windows struct {
 	local    windowRegistry
 	shared   *windowRegistry
@@ -65,9 +72,9 @@ type windowRegistry struct {
 }
 
 type workspaceFinalization struct {
-	mu    sync.Mutex
+	gate  chan struct{}
 	users int
-	roots []string
+	roots map[string]int
 }
 
 // ForRuntime shares overlap exclusions, interval boundaries and snapshot claims
@@ -90,8 +97,16 @@ func (r *Windows) state() *windowRegistry {
 // owners, including overlapping physical scopes from different workspaces.
 // Entries live only while a comparison is running or waiting.
 func (r *Windows) serialize(workspace string, roots ...string) func() {
+	release, _ := r.serializeContext(context.Background(), workspace, roots...)
+	return release
+}
+
+func (r *Windows) serializeContext(ctx context.Context, workspace string, roots ...string) (func(), error) {
 	if r == nil {
-		return func() {}
+		return func() {}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	state := r.state()
 	state.mu.Lock()
@@ -100,12 +115,12 @@ func (r *Windows) serialize(workspace string, roots ...string) func() {
 	}
 	lock := state.finalizing[workspace]
 	if lock == nil {
-		lock = &workspaceFinalization{}
+		lock = &workspaceFinalization{gate: make(chan struct{}, 1), roots: make(map[string]int)}
 		state.finalizing[workspace] = lock
 	}
-	roots = append(slices.Clone(roots), workspace)
+	roots = slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(roots), workspace))))
 	for _, root := range roots {
-		lock.roots = changecapture.AddRoot(lock.roots, root)
+		lock.roots[root]++
 	}
 	type scopeLock struct {
 		workspace string
@@ -113,7 +128,7 @@ func (r *Windows) serialize(workspace string, roots ...string) func() {
 	}
 	var locks []scopeLock
 	for workspace, lock := range state.finalizing {
-		if execRootsMeet(lock.roots, roots) {
+		if execRootsMeet(slices.Collect(maps.Keys(lock.roots)), roots) {
 			lock.users++
 			locks = append(locks, scopeLock{workspace, lock})
 		}
@@ -122,14 +137,17 @@ func (r *Windows) serialize(workspace string, roots ...string) func() {
 	// Register all scopes before waiting, so later admissions see pending
 	// overlaps too. A common order prevents multi-scope lock cycles.
 	slices.SortFunc(locks, func(a, b scopeLock) int { return strings.Compare(a.workspace, b.workspace) })
-	for _, held := range locks {
-		held.lock.mu.Lock()
-	}
-	return func() {
-		for _, held := range slices.Backward(locks) {
-			held.lock.mu.Unlock()
+	acquired := 0
+	release := func() {
+		for _, held := range slices.Backward(locks[:acquired]) {
+			<-held.lock.gate
 		}
 		state.mu.Lock()
+		for _, root := range roots {
+			if lock.roots[root]--; lock.roots[root] == 0 {
+				delete(lock.roots, root)
+			}
+		}
 		for _, held := range locks {
 			held.lock.users--
 			if held.lock.users == 0 {
@@ -138,6 +156,20 @@ func (r *Windows) serialize(workspace string, roots ...string) func() {
 		}
 		state.mu.Unlock()
 	}
+	for _, held := range locks {
+		select {
+		case held.lock.gate <- struct{}{}:
+			acquired++
+		case <-ctx.Done():
+			release()
+			return nil, ctx.Err()
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		release()
+		return nil, err
+	}
+	return release, nil
 }
 
 // Retire ends this runtime's observation windows and joins their preview workers

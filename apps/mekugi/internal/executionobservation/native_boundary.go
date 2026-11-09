@@ -1,6 +1,7 @@
 package executionobservation
 
 import (
+	"cmp"
 	"context"
 	"path/filepath"
 	"slices"
@@ -126,9 +127,9 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 			if request.Tool == applyPatchToolName {
 				state.mu.Lock()
 				for _, writer := range state.windows {
-					if writer.ref != incoming.ref && writer.group != incoming.group && writer.workspace == incoming.workspace && writer.closed.IsZero() && writer.scope.Store != nil &&
-						!slices.ContainsFunc(cuts, func(c execIntervalCut) bool { return c.writer == writer.ref }) && slices.ContainsFunc(writer.paths, func(path string) bool { return slices.Contains(paths, path) }) {
-						missing = append(missing, execIntervalCut{writer: writer.ref, scope: writer.scope})
+					if writer.ref != incoming.ref && writer.group != incoming.group && writer.closed.IsZero() && writer.scope.Store != nil &&
+						!slices.ContainsFunc(cuts, func(c execIntervalCut) bool { return c.writer == writer.ref }) && slices.ContainsFunc(paths, writer.coversInterval) {
+						missing = append(missing, execIntervalCut{writer: writer.ref, workspace: writer.workspace, scope: writer.scope})
 					}
 				}
 				state.mu.Unlock()
@@ -136,12 +137,16 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 			for _, cut := range append(slices.Clone(cuts), missing...) {
 				state.mu.Lock()
 				writer := p.Windows.find(cut.writer)
-				var writerPaths []string
+				var overlap []string
 				if writer != nil {
-					writerPaths = slices.Clone(writer.paths)
+					for _, path := range paths {
+						if writer.coversInterval(path) {
+							overlap = append(overlap, path)
+						}
+					}
 				}
 				state.mu.Unlock()
-				if writer == nil || writer.workspace != incoming.workspace || writer.source == "" {
+				if writer == nil || writer.source == "" {
 					continue
 				}
 				cell := p.NativeTrace.ReadCell(writer.thread, writer.ref, writer.source)
@@ -149,12 +154,6 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 				newCut := slices.ContainsFunc(missing, func(c execIntervalCut) bool { return c.writer == cut.writer })
 				if !ended[cut.writer] && !newCut {
 					continue
-				}
-				var overlap []string
-				for _, path := range writerPaths {
-					if slices.Contains(paths, path) {
-						overlap = append(overlap, path)
-					}
 				}
 				if len(overlap) == 0 {
 					continue
@@ -198,7 +197,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 			return
 		}
 		for _, cut := range missing {
-			if err := p.splitExecInterval(ctx, incoming.workspace, incoming.ref, files, cut, ended[cut.writer]); err != nil {
+			if err := p.splitExecInterval(ctx, ctx, incoming.workspace, incoming.ref, files, cut, ended[cut.writer]); err != nil {
 				return
 			}
 		}
@@ -280,6 +279,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 }
 
 func (p *Preparer) prepareTerminalBoundary(ctx context.Context, workspace string, cut execIntervalCut, endpoints []changecapture.File) (*execIntervalContinuation, error) {
+	workspace = cmp.Or(cut.workspace, workspace)
 	parts, err := readExecIntervals(ctx, cut.scope, p.Changes, workspace, cut.writer, cut.codeMode)
 	if err != nil || len(parts) == maxExecIntervals {
 		return nil, err

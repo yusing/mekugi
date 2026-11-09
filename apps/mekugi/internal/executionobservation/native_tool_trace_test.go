@@ -18,6 +18,7 @@ import (
 type nativeTraceFixture struct {
 	t            *testing.T
 	root, bundle string
+	turn         string
 	seq, payload int
 }
 
@@ -48,7 +49,11 @@ func (f *nativeTraceFixture) ref(value any) map[string]string {
 func (f *nativeTraceFixture) event(thread string, payload map[string]any) {
 	f.t.Helper()
 	f.seq++
-	b, err := json.Marshal(map[string]any{"schema_version": 2, "seq": f.seq, "thread_id": thread, "payload": payload})
+	value := map[string]any{"schema_version": 2, "seq": f.seq, "thread_id": thread, "payload": payload}
+	if f.turn != "" {
+		value["codex_turn_id"] = f.turn
+	}
+	b, err := json.Marshal(value)
 	if err != nil {
 		f.t.Fatal(err)
 	}

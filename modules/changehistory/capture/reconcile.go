@@ -486,6 +486,7 @@ func ReviewInterval(before, endpoints []File, sources ...*evidence.Source) ([]ev
 			}
 			observation.Files = append(observation.Files, file)
 			observation.endpoints[file.Path] = boundary
+			boundary.Origin, boundary.AlsoManaged = file.Origin, file.AlsoManaged
 			boundaries = append(boundaries, boundary)
 			break
 		}

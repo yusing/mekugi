@@ -1,9 +1,11 @@
 package executionobservation
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -11,16 +13,18 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 const maxExecIntervals = 64
 
 type execIntervalCut struct {
-	writer   string
-	number   int
-	codeMode bool
-	scope    changes.Scope
+	writer    string
+	workspace string
+	number    int
+	codeMode  bool
+	scope     changes.Scope
 }
 
 type execInterval struct {
@@ -184,6 +188,11 @@ func rebaseExecIntervals(observation *changecapture.Observation, intervals []exe
 	for _, interval := range intervals {
 		copy.Excluded = append(slices.Clone(copy.Excluded), interval.before.ExecObservation.Excluded...)
 		for _, boundary := range interval.before.ExecObservation.Files {
+			// Checkpoint-backed paths become named only at this boundary. Their
+			// retained continuation, not the old tree, owns subsequent comparison.
+			if !slices.ContainsFunc(copy.Files, func(file changecapture.File) bool { return file.Path == boundary.Path }) {
+				copy.Files = append(copy.Files, boundary)
+			}
 			for i, file := range copy.Files {
 				if file.Path != boundary.Path {
 					continue
@@ -239,21 +248,19 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observati
 	if len(boundaries) == 0 {
 		return nil
 	}
-	paths := make(map[string]bool, len(boundaries))
-	for _, boundary := range boundaries {
-		paths[boundary.Path] = true
-	}
 	var candidates []execIntervalCut
 	t.owners.Windows.state().mu.Lock()
 	for _, window := range t.owners.Windows.state().windows {
-		if window.ref != patchCall && window.group != t.execGroup && window.closed.IsZero() && window.scope.Store != nil && slices.ContainsFunc(window.paths, func(path string) bool { return paths[path] }) {
-			candidates = append(candidates, execIntervalCut{writer: window.ref, scope: window.scope})
+		if window.ref != patchCall && window.group != t.execGroup && window.closed.IsZero() && window.scope.Store != nil && slices.ContainsFunc(boundaries, func(file changecapture.File) bool { return window.coversInterval(file.Path) }) {
+			candidates = append(candidates, execIntervalCut{writer: window.ref, workspace: window.workspace, scope: window.scope})
 		}
 	}
 	t.owners.Windows.state().mu.Unlock()
+	acquisition, cancel := context.WithTimeout(t.ctx, segmenttransport.BoundaryHold)
+	defer cancel()
 	for _, cut := range candidates {
 		unlock := t.owners.Windows.lockIntervals([]string{cut.writer})
-		err := t.owners.splitExecInterval(t.ctx, t.directory, patchCall, boundaries, cut, false)
+		err := t.owners.splitExecInterval(t.ctx, acquisition, t.directory, patchCall, boundaries, cut, false)
 		unlock()
 		if err != nil {
 			return err
@@ -262,10 +269,17 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observati
 	return nil
 }
 
-func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall string, boundaries []changecapture.File, cut execIntervalCut, terminal bool) error {
+func (p *Preparer) splitExecInterval(ctx, acquisition context.Context, workspace, patchCall string, boundaries []changecapture.File, cut execIntervalCut, terminal bool) error {
 	p.Windows.state().mu.Lock()
 	window := p.Windows.find(cut.writer)
 	active := window != nil && window.closed.IsZero()
+	fallback := active && !window.background
+	if active {
+		// Physical scope can overlap another authored workspace. Retained
+		// identity always remains the interrupted writer's, not the edit's.
+		workspace = cmp.Or(cut.workspace, window.workspace, workspace)
+		cut.workspace = workspace
+	}
 	p.Windows.state().mu.Unlock()
 	if !active {
 		return nil
@@ -292,6 +306,24 @@ func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall s
 	observation.Files = slices.DeleteFunc(observation.Files, func(file changecapture.File) bool {
 		return slices.Contains(observation.Excluded, file.Path)
 	})
+	var claimed changecapture.Claims
+	if fallback && p.Checkpoints != nil && slices.ContainsFunc(boundaries, func(boundary changecapture.File) bool {
+		return !slices.ContainsFunc(original.ExecObservation.Files, func(file changecapture.File) bool { return file.Path == boundary.Path })
+	}) {
+		// Prefix publication participates in the same first-finisher claims as
+		// terminal fallback, including concurrently interrupted opaque writers.
+		var claims changecapture.Claims
+		unlock, err := p.Windows.serializeContext(acquisition, workspace, observation.Roots...)
+		if err == nil {
+			defer unlock()
+			p.Windows.state().mu.Lock()
+			claims = maps.Clone(window.claims)
+			p.Windows.state().mu.Unlock()
+		}
+		// Expired acquisition retains explicit incomplete before-state without
+		// waiting on the busy workspace or claiming another writer's effect.
+		observation.Files, claimed = p.Checkpoints.IntervalBefore(acquisition, workspace, *observation, original.ExecObservation.Files, boundaries, claims, captureSource(cut.scope))
+	}
 	reviews, files := changecapture.ReviewInterval(observation.Files, boundaries, captureSource(cut.scope))
 	if len(files) == 0 {
 		return nil
@@ -320,12 +352,26 @@ func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall s
 	}); err != nil {
 		return err
 	}
+	p.Windows.claim([]string{cut.writer}, claimed)
 	p.Windows.state().mu.Lock()
 	if window := p.Windows.find(patchCall); window != nil && !terminal {
 		window.cuts = append(window.cuts, cut)
 	}
 	p.Windows.state().mu.Unlock()
 	return nil
+}
+
+func (w *Windows) forgetIntervalClaims(cuts []execIntervalCut, endpoints []changecapture.File) {
+	if w == nil || len(cuts) == 0 {
+		return
+	}
+	w.state().mu.Lock()
+	defer w.state().mu.Unlock()
+	for _, cut := range cuts {
+		if window := w.find(cut.writer); window != nil {
+			window.claims.Forget(endpoints)
+		}
+	}
 }
 
 type execIntervalContinuation struct {
@@ -352,6 +398,7 @@ func prepareExecIntervalContinuations(ctx context.Context, workspace string, cut
 }
 
 func prepareExecIntervalContinuation(ctx context.Context, workspace string, cut execIntervalCut, endpoints []changecapture.File) (*execIntervalContinuation, error) {
+	workspace = cmp.Or(cut.workspace, workspace)
 	id := execIntervalID(cut.writer, cut.codeMode, cut.number)
 	prefix, found, err := lookupObservation(ctx, cut.scope, workspace, id)
 	if err != nil {

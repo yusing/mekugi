@@ -1,13 +1,54 @@
 package executionobservation
 
 import (
+	"context"
+	"errors"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
+
+func TestWorkspaceSerializationCancellationReleasesScopes(t *testing.T) {
+	for _, workspace := range []string{"/a", "/b"} {
+		t.Run(workspace, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				windows := new(Windows)
+				release := windows.serialize("/b")
+				ctx, cancel := context.WithCancel(t.Context())
+				done := make(chan error, 1)
+				go func() {
+					unlock, err := windows.serializeContext(ctx, workspace, "/a", "/b")
+					if unlock != nil {
+						unlock()
+					}
+					done <- err
+				}()
+				synctest.Wait()
+				cancel()
+				synctest.Wait()
+				if err := <-done; !errors.Is(err, context.Canceled) {
+					t.Fatalf("canceled acquisition: %v", err)
+				}
+				state := windows.state()
+				if len(state.finalizing) != 1 || state.finalizing["/b"].users != 1 || len(state.finalizing["/b"].roots) != 1 {
+					t.Fatalf("cancellation retained scope ownership: %+v", state.finalizing)
+				}
+				// The canceled waiter either acquired /a first or added /a to
+				// /b's registration. Neither may keep the independent scope busy.
+				unrelated := windows.serialize("/a")
+				unrelated()
+				release()
+				if len(state.finalizing) != 0 {
+					t.Fatal("serialization registrations leaked")
+				}
+			})
+		})
+	}
+}
 
 func TestExecWindowSiblingMergeAndOtherOverlap(t *testing.T) {
 	root := t.TempDir()
