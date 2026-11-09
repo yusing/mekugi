@@ -422,11 +422,15 @@ releases only the original wait: an eligible outcome is delivered once, otherwis
 the caller stays waiting without inference. Wait deadlines run from registration
 and may expire during compaction.
 
-Codex self-checkpoints preflight sources through the admitted stock reader and
+At measured context usage of 40% or below, Codex self-checkpoints preflight sources
+through the admitted stock reader and
 compare locally estimated uncached reset input cost with the latest observed input
 cost, using its model, service tier and pinned provider pricing. Source contents
 are assumed unchanged across reset. Unavailable cost evidence permits reset with a notice;
 cost rejection skips only reset and preserves the original wait and deadline.
+Above 40%, or when context usage/window is unavailable, checkpoints bypass cost
+preflight and its veto. The boundary uses the caller's observed context and window,
+not provider input counts or the reset estimate.
 Attempted preflight without a usable capture also skips reset, preserving the wait
 without automatically retrying denied or canceled acquisition.
 Rejection records a `skipped` compaction outcome and immediately displays its reason,

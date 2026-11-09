@@ -45,9 +45,12 @@ skills and captured-change IDs with a checkpoint, or recover needed facts throug
 ordinary reads after reset. Temporary task-state JSON is optional and read selectively,
 never automatically loaded in full. Claude delegates retain native compaction.
 
-Agent checkpoints estimate the next uncached input cost and skip reset when it
+At measured context usage of 40% or below, agent checkpoints estimate the next
+uncached input cost and skip reset when it
 would exceed the latest observed input cost, including that request's cache discount.
 This compares one next input, not the cost of all remaining work. Selected sources
+are not preflighted for cost above 40% or when context usage is unavailable; those
+checkpoints bypass the cost veto. Otherwise, selected sources
 may be read for this check, but are not attached unless reset succeeds.
 The estimate assumes no cache hits after reset and unchanged source files;
 unavailable cost evidence permits reset with a notice. A preflight that produces no

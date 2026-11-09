@@ -33,6 +33,15 @@ func (p *Preparer) prepareCompactionCost(ctx context.Context, request *codexresp
 	if err != nil || wait == nil || wait.State != "registered" || wait.Stop != "eligible" || wait.Compaction == nil || strings.HasPrefix(request.Model(), "claude:") {
 		return nil
 	}
+	// Cost vetoes apply only to measured context usage at or below 40%.
+	// Skip preflight acquisition entirely when the gate cannot veto a reset.
+	if p.Inspect == nil {
+		return nil
+	}
+	details, err := p.Inspect(ctx, thread)
+	if err != nil || details.ContextTokens == nil || details.ContextWindow == nil || *details.ContextWindow == 0 || float64(*details.ContextTokens) > .4*float64(*details.ContextWindow) {
+		return nil
+	}
 	_, _, priced := p.Usage.CompareInputCost(thread, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"]), 0)
 	if !priced {
 		return &compactionCost{unknown: "current model/tier input pricing is unavailable"}

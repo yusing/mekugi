@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ import (
 )
 
 func TestSelfCompactionCostAdmission(t *testing.T) {
-	for _, mode := range []string{"compact", "wait", "reload", "yielded", "superseded", "optional-skill", "skill-ref", "cheap", "denied", "denied-wait", "canceled", "source-error", "unknown", "unknown-cold"} {
+	for _, mode := range []string{"compact", "wait", "reload", "yielded", "superseded", "optional-skill", "skill-ref", "cheap", "denied", "denied-wait", "canceled", "source-error", "unknown", "unknown-cold", "context-40", "context-above-40", "context-above-40-wait", "context-unknown", "context-error", "context-no-inspector", "context-zero-window"} {
 		t.Run(mode, func(t *testing.T) {
 			bare, service, caller := threadWaitFixture(t)
 			p := newManagedMekugiProxy(t)
@@ -30,6 +31,29 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 			}
 			defer session.Close()
 			p.ThreadControl, p.Usage = bare.ThreadControl, accounting.New()
+			bypass := strings.HasPrefix(mode, "context-") && mode != "context-40"
+			p.Inspect = func(_ context.Context, thread string) (control.SessionDetails, error) {
+				if thread != caller.Thread {
+					t.Fatalf("inspected wrong caller: %q", thread)
+				}
+				tokens, window := uint64(39999), uint64(100000)
+				switch mode {
+				case "context-40":
+					tokens = 40000
+				case "context-above-40", "context-above-40-wait":
+					tokens = 40001
+				case "context-unknown":
+					return control.SessionDetails{}, nil
+				case "context-error":
+					return control.SessionDetails{}, errors.New("inspection unavailable")
+				case "context-zero-window":
+					window = 0
+				}
+				return control.SessionDetails{SessionMetrics: control.SessionMetrics{ContextTokens: &tokens, ContextWindow: &window}}, nil
+			}
+			if mode == "context-no-inspector" {
+				p.Inspect = nil
+			}
 			p.Audience.Observe(caller.Thread, "", "/root", false)
 			p.Audience.Attach(caller.Thread)
 			var notice string
@@ -50,7 +74,7 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 				p.Usage.Observation("root", "root", "gpt-5.4", tier).Observe(counts)
 			}
 			selection := ""
-			if mode == "reload" || mode == "yielded" || mode == "superseded" || strings.HasPrefix(mode, "denied") || mode == "canceled" || mode == "source-error" {
+			if mode == "reload" || mode == "yielded" || mode == "superseded" || strings.HasPrefix(mode, "denied") || mode == "canceled" || mode == "source-error" || bypass {
 				selection = `{"sources":[{"path":"selected.txt"}]}`
 			}
 			if mode == "optional-skill" || mode == "skill-ref" {
@@ -61,7 +85,7 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 			if mode == "skill-ref" {
 				selection = `{"sources":[{"skill":"example/references/check.md"}]}`
 			}
-			standalone := mode != "wait" && mode != "denied-wait"
+			standalone := mode != "wait" && mode != "denied-wait" && mode != "context-above-40-wait"
 			if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), standalone, selection); err != nil {
 				t.Fatal(err)
 			}
@@ -101,10 +125,13 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 				return prepared
 			}
 			prepared := prepare()
+			if bypass && (prepared.compactionCost != nil || len(prepared.CompactReload()) != 0) {
+				t.Fatal("bypassed cost gate acquired preflight reload")
+			}
 			if mode == "optional-skill" && (len(prepared.CompactReload()) != 0 || !strings.Contains(string(mustTestJSON(t, prepared.compactionCost.reload)), "Optional attachment recall: skills: mread ")) {
 				t.Fatal("optional skill body was acquired/charged instead of its recall hint")
 			}
-			if selection != "" {
+			if selection != "" && !bypass {
 				reader := prepared.CompactReload()
 				if len(reader) == 0 || prepared.LocalWaitItem() != "" {
 					t.Fatal("preflight did not hold local stop")
@@ -144,7 +171,7 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 				prepared = prepare()
 			}
 			defer prepared.Close()
-			rejected := mode != "cheap" && mode != "optional-skill" && mode != "source-error" && mode != "unknown" && mode != "unknown-cold"
+			rejected := !bypass && mode != "cheap" && mode != "optional-skill" && mode != "source-error" && mode != "unknown" && mode != "unknown-cold"
 			member, _ := service.Member(caller.Thread)
 			if mode == "superseded" {
 				if member.Wait.State != "canceled" || prepared.LocalWaitItem() != "" {
