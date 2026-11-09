@@ -22,7 +22,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	p := testPanePreferences()
-	if err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
+	if err := p.openTerminal(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
 	terminalTest(u).Focus, terminalTest(u).Split, terminalTest(u).DiffOpen = 1, 67, true
@@ -55,7 +55,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	} {
 		restored := newAppServerSessionTestUI(t, tc.workspace)
 		q := testPanePreferences()
-		if err := q.open(&terminalTest(restored).Shell, restored.shell.Main, tc.workspace, tc.thread, tc.resume); err != nil {
+		if err := q.openTerminal(&terminalTest(restored).Shell, restored.shell.Main, tc.workspace, tc.thread, tc.resume); err != nil {
 			t.Fatal(err)
 		}
 		if tc.restored {
@@ -97,7 +97,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	p := testPanePreferences()
-	if err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
+	if err := p.openTerminal(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now()
@@ -137,7 +137,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := newAppServerSessionTestUI(t, "/workspace")
-	if err := testPanePreferences().open(&terminalTest(restored).Shell, restored.shell.Main, "/workspace", "thread", true); err != nil {
+	if err := testPanePreferences().openTerminal(&terminalTest(restored).Shell, restored.shell.Main, "/workspace", "thread", true); err != nil {
 		t.Fatal(err)
 	}
 	if terminalTest(restored).Focus != 3 || terminalTest(restored).Split != 63 {
@@ -149,7 +149,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	p := testPanePreferences()
-	if err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
+	if err := p.openTerminal(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Dir(testPanePath(t, p)), 0700); err != nil {
@@ -160,7 +160,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 			t.Fatal(err)
 		}
 		p = testPanePreferences()
-		err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", true)
+		err := p.openTerminal(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", true)
 		if err == nil || terminalTest(u).Focus != 0 || terminalTest(u).Split != 0 {
 			t.Fatalf("invalid state applied: %s %v", body, err)
 		}
@@ -178,7 +178,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	}
 	t.Setenv("XDG_STATE_HOME", blocked)
 	p = testPanePreferences()
-	if err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
+	if err := p.openTerminal(&terminalTest(u).Shell, u.shell.Main, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
 	terminalTest(u).Split = 60

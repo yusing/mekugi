@@ -30,7 +30,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	file := diffmodel.RenderReviewFile("a.go", "a.go", "before\n", "after\n")
 	// The tracker sees host starts on the transport reader. Its completion
 	// can reach the preview mailbox before the UI consumes that same item.
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "early", Workspace: u.attached.cwd, Thread: "main", Complete: true,
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "early", Workspace: u.attached.cwd, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"}, false)
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
@@ -345,7 +345,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				if tc.lines == 4000 && (len(preview.Files) != 0 || !preview.Truncated) {
 					t.Fatal("fixture did not cross live-card clipping")
 				}
-				applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
+				applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 			}
 			for i := range tc.calls {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
@@ -391,7 +391,7 @@ func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	receipt := presentation.ReceiptText(u.attached.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: &legacycall.Outcome{Labels: []string{"cat"}}}))
 	for i := range 256 {
 		call := fmt.Sprintf("cmd%d", i)
-		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: call, Workspace: u.attached.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
+		applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: call, Workspace: u.attached.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
 	}
 	pending := u.pendingEditReceipts
 	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].Calls[0] != "cmd255" {

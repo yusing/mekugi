@@ -29,11 +29,11 @@ func TestDelegateApprovalDockPreservesChildAuthorityAndParentDraft(t *testing.T)
 		result <- err
 	}()
 	request := <-owner.Requests()
-	addDelegateApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+	addDelegateApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
 	if u.approvals.Open || u.Text != parent.Snapshot.Text {
 		t.Fatal("approval took over a nonempty parent composer")
 	}
-	if !openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread) {
+	if !openApprovals(&u.approvals, &u.questions, u.attached.conversation, &u.picker, &u.Editor, u.Thread) {
 		t.Fatal("delegate approval did not enter the existing dock")
 	}
 	view := u.approvals.View().Approval
@@ -72,16 +72,16 @@ func TestDelegateApprovalCancellationWithdrawsDock(t *testing.T) {
 		result <- err
 	}()
 	request := <-owner.Requests()
-	addDelegateApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
-	openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
+	addDelegateApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+	openApprovals(&u.approvals, &u.questions, u.attached.conversation, &u.picker, &u.Editor, u.Thread)
 	cancel()
 	if err := <-result; !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled request = %v", err)
 	}
-	if !expireApprovals(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) || len(u.approvals.Pending) != 0 || u.approvals.Open || u.Text != "parked parent input" {
+	if !expireApprovals(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) || len(u.approvals.Pending) != 0 || u.approvals.Open || u.Text != "parked parent input" {
 		t.Fatal("canceled request remained visible or lost the parent draft")
 	}
-	addDelegateApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+	addDelegateApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
 	if wire.Len() != 0 || len(u.approvals.Pending) != 0 {
 		t.Fatal("canceled request was answered or reopened")
 	}

@@ -43,7 +43,7 @@ func TestAppServerNotificationMethods(t *testing.T) {
 			t.Setenv("TERM", tc.term)
 			t.Setenv("TMUX", tc.tmux)
 			t.Setenv("HERDR_ENV", tc.herdr)
-			u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "agent-turn-complete", "Agent turn complete")
+			u.notifications.notify(&u.attached.feedback, u.clock, "agent-turn-complete", "Agent turn complete")
 			if out.String() != tc.want {
 				t.Fatalf("notification = %q, want %q", out.String(), tc.want)
 			}
@@ -70,7 +70,7 @@ func TestAppServerNotificationConfig(t *testing.T) {
 			out := notificationTestOutput(t, u)
 			u.notifications.ready = false
 			u.notifications.focused = tc.focused
-			u.notifications.notify(&u.attached.feedback, u.shell, u.clock, tc.event, "test")
+			u.notifications.notify(&u.attached.feedback, u.clock, tc.event, "test")
 			if out.Len() != 0 {
 				t.Fatal("notification before configuration")
 			}
@@ -79,7 +79,7 @@ func TestAppServerNotificationConfig(t *testing.T) {
 			if !u.notifications.ready || u.Requests.Pending() {
 				t.Fatal("configuration response was not consumed")
 			}
-			u.notifications.notify(&u.attached.feedback, u.shell, u.clock, tc.event, "test")
+			u.notifications.notify(&u.attached.feedback, u.clock, tc.event, "test")
 			if (out.Len() > 0) != tc.want {
 				t.Fatalf("notification = %q, want emitted %v", out.String(), tc.want)
 			}
@@ -91,7 +91,7 @@ func TestAppServerNotificationConfig(t *testing.T) {
 		u.notifications.ready = false
 		appServerTestRequest(t, u, "42", "config/read")
 		appServerTestMessage(t, u, reply)
-		u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "agent-turn-complete", "test")
+		u.notifications.notify(&u.attached.feedback, u.clock, "agent-turn-complete", "test")
 		if u.notifications.ready || out.Len() != 0 || u.attached.feedback.Text == "" {
 			t.Fatal("invalid configuration enabled notifications or hid the error")
 		}
@@ -190,11 +190,11 @@ func TestTerminalUINotificationFocusReports(t *testing.T) {
 				t.Fatal("focus-in not consumed")
 			}
 			send("\x1b[O")
-			if u.notifications.focused || u.Text != "" || terminalTest(u).Focus != pane || terminalTest(u).Decoder.Pending() {
+			if u.notifications.focused || u.Text != "" || terminalTest(u).Focus != pane {
 				t.Fatal("focus report leaked into pane input")
 			}
 			send("\x1b[200~\x1b[I\x1b[201~")
-			if u.notifications.focused || terminalTest(u).Decoder.Pasting() {
+			if u.notifications.focused || terminalTest(u).Main.Pasting() {
 				t.Fatal("paste was interpreted as focus report or left open")
 			}
 			send("\x1b[I")
@@ -219,7 +219,7 @@ func TestAppServerNotificationOutputFailureNonfatal(t *testing.T) {
 	u.notifications.out = failing
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
-	u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "agent-turn-complete", "again")
+	u.notifications.notify(&u.attached.feedback, u.clock, "agent-turn-complete", "again")
 	if u.Turn != "" || !strings.HasPrefix(u.attached.presentation.Status.Text, "Completed") || failing.calls != 1 || u.attached.feedback.Text == "" {
 		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.Turn, u.attached.presentation.Status.Text, failing.calls, u.attached.feedback.Text)
 	}

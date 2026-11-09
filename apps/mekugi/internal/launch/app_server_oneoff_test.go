@@ -90,7 +90,7 @@ func TestOneoffQuestionApprovalAndClose(t *testing.T) {
 		t.Fatal("oneoff question unavailable in selected view")
 	}
 	selectSideThread(t, u, u.attached.presentation.View().Main)
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
 	if !strings.Contains(wire.String(), `"id":"oneoff-question"`) || !strings.Contains(wire.String(), `"Small"`) {
@@ -101,7 +101,7 @@ func TestOneoffQuestionApprovalAndClose(t *testing.T) {
 	if len(u.approvals.calls()) != 1 || u.approvals.calls()[0].Thread != "oneoff" {
 		t.Fatal("oneoff approval missing")
 	}
-	openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
+	openApprovals(&u.approvals, &u.questions, u.attached.conversation, &u.picker, &u.Editor, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
 	if !strings.Contains(wire.String(), `"id":"oneoff-approval"`) {
@@ -224,7 +224,7 @@ func TestUISnapshotOneoffSyncQuestionImageCompanion(t *testing.T) {
 			}
 			questionTestMessage(t, u, "image-question", "item/tool/requestUserInput", map[string]any{"threadId": thread, "turnId": turn, "itemId": "image", "questions": []any{map[string]any{"id": "image", "header": "Image", "question": "Which image?", "isOther": true, "options": []any{map[string]any{"label": "Use image", "description": "Attach image"}}}}})
 			selectSideThread(t, u, u.attached.presentation.View().Main)
-			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+			openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			questionTestPaint(t, u, 80)
 			image := answerImageFixture(t)
 			appServerTestKeys(t, u, "\x1b[200~"+image+"\x1b[201~\r")

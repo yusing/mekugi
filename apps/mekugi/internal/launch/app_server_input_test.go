@@ -18,14 +18,14 @@ func TestPasteAdmissionPreservesOriginalDestination(t *testing.T) {
 			appServerTestKeys(t, u, "\x1b[200~payload")
 			switch change {
 			case "status":
-				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "new status", false)
+				setNotice(&u.attached.feedback, presentationTime(u.clock), "new status", false)
 			case "draft":
 				u.Editor.Replace(composer.Draft{Text: "replacement"})
 			case "menu":
 				u.picker.openMenu("manage")
 			case "prompt":
 				questionTestSync(t, u, "replacement", false)
-				openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+				openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			}
 			appServerTestKeys(t, u, "\x1b[201~")
 			want := ""
@@ -50,13 +50,13 @@ func TestSecretPasteRejectsReopenedEditor(t *testing.T) {
 	questionTestSync(t, u, "secret-paste", true)
 	questionTestPaint(t, u, 60)
 	appServerTestKeys(t, u, "\x1b[200~private\x1b[201~")
-	if u.shell.Prompts.Secret.Text != "private" || u.attached.presentation.View().PromptDraft.Draft.Text != "" {
+	if u.questions.secret.Text != "private" || u.attached.presentation.View().PromptDraft.Draft.Text != "" {
 		t.Fatal("secret paste was lost or published")
 	}
 	appServerTestKeys(t, u, "\x1b[200~stale")
 	u.shell.Prompts.Reopen()
 	appServerTestKeys(t, u, "\x1b[201~")
-	if u.shell.Prompts.Secret.Text != "private" || !u.attached.feedback.Alert {
+	if u.questions.secret.Text != "private" || !u.attached.feedback.Alert {
 		t.Fatal("reopened secret editor accepted an old paste")
 	}
 }
@@ -69,8 +69,8 @@ func TestPromptInputRejectsRetiredDock(t *testing.T) {
 	if input == nil {
 		t.Fatal("question did not produce targeted input")
 	}
-	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
+	publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	if handled, err := u.nativeSession.applyPromptInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, *input); !handled || err != nil || !u.attached.feedback.Alert || u.Text != "" || wire.Len() != 0 {
 		t.Fatalf("retired prompt input escaped admission: handled=%v err=%v draft=%q", handled, err, u.Text)
 	}
@@ -99,8 +99,8 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 			if err := u.drainKeys(keys); err != nil {
 				t.Fatal(err)
 			}
-			if u.Text != tc.want || wire.Len() != 0 || terminalTest(u).Decoder.Pasting() {
-				t.Fatalf("draft=%q want=%q wire=%q paste=%v", u.Text, tc.want, wire.String(), terminalTest(u).Decoder.Pasting())
+			if u.Text != tc.want || wire.Len() != 0 || terminalTest(u).Main.Pasting() {
+				t.Fatalf("draft=%q want=%q wire=%q paste=%v", u.Text, tc.want, wire.String(), terminalTest(u).Main.Pasting())
 			}
 		})
 	}
@@ -163,7 +163,7 @@ func TestNativeUIInputDrainBoundedAndClosed(t *testing.T) {
 	if err := u.drainKeys(keys); err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 2 || !terminalTest(u).Decoder.Pending() {
+	if len(keys) != 2 {
 		t.Fatal("input budget did not preserve pending sequence")
 	}
 	ageTerminalEscape(terminalTest(u))

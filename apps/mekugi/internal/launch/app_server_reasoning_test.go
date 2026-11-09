@@ -75,7 +75,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	activity.BeginResponse("child", true, at.Add(-3*time.Second))
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+	applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	oldEnd := map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}}
 	reasoningTestNotify(t, u, "turn/completed", oldEnd)
@@ -102,7 +102,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	}
 	assertAgentWork(t, u, "child", *at, 2*time.Second, false)
 	activity.BeginResponse("child", true, time.Now())
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+	applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "without-start", "status": "interrupted"}})
 	if got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking") {
 		t.Fatalf("completion without a start left provider thinking: %q", got)
@@ -148,7 +148,7 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	activity.BeginResponse("child", true, presentationTime(u.clock))
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+	applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "current", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Current answer"}})
 	for _, item := range []binding.ThreadItem{{ID: "late-summary", Type: "reasoning", Summary: []string{"Older summary"}}, {ID: "late-answer", Type: "agentMessage", Text: "Older answer"}} {
@@ -263,7 +263,7 @@ func TestAppServerWorkingSurvivesDockComposition(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Text = "one\ntwo\nthree\nfour"
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "p", Caller: "/root", Status: previewmodel.PreviewEdit, Input: "package a\n"}, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "p", Caller: "/root", Status: previewmodel.PreviewEdit, Input: "package a\n"}, false)
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
 	var out bytes.Buffer
 	if err := u.testPaint(&out, 80, 14); err != nil {
@@ -305,18 +305,18 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 			u.attached.presentation.Status.Set(status, false)
 			start := time.Unix(0, 0)
 			dim, bright, dimAgain := u.sessionLabel(start), u.sessionLabel(start.Add(time.Second)), u.sessionLabel(start.Add(2*time.Second))
-			if !publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
+			if !publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
 				t.Fatalf("pending status does not pulse: %q %q %q", dim, bright, dimAgain)
 			}
 			u.attached.presentation.Status.Alert = true
-			if publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			if publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("alert animates")
 			}
 			u.restoring = nil
 			u.LeaveThread()
 			u.Thread = "main"
 			u.attached.presentation.Status.Set("Ready", false)
-			if publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			if publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
 			}
 		})
@@ -426,7 +426,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	start := func(thread string, ago time.Duration) {
 		t.Helper()
 		activity.BeginResponse(thread, true, time.Now().Add(-ago))
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	}
 	thinkingRows := func(view *activityAdapter) int {
 		rows := 0
@@ -513,7 +513,7 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				}
 				start := func() {
 					activity.BeginResponse(thread, true, *at)
-					applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+					applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 				}
 				complete := func(id, text string) {
 					reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: id, Type: "reasoning", Summary: []string{text}}})

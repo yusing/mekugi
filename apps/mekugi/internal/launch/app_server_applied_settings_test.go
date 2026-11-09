@@ -23,7 +23,7 @@ func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI
 	u.Thread = thread
 	u.startSession(thread, workspace)
 	u.panes = testPanePreferences()
-	if err := u.panes.open(&terminalTest(u).Shell, u.shell.Main, workspace, thread, false); err != nil {
+	if err := u.panes.openTerminal(&terminalTest(u).Shell, u.shell.Main, workspace, thread, false); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { appliedSettingsTestDrain(t, u) })
@@ -271,7 +271,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				if u.Text != "held" || !u.Settings.RestoreEffort || u.Settings.Pending() || w.Len() != 0 {
 					t.Fatal("rejected restoration ran input or lost its recovery draft")
 				}
-				if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil || w.Len() != 0 {
+				if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil || w.Len() != 0 {
 					t.Fatal("rejected restoration released input on a later event")
 				}
 				after, err := u.panes.read("/workspace", "saved")
@@ -285,7 +285,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				if !fresh.ResumeEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "saved-model"}) {
 					t.Fatal("fresh retry promoted transient resume defaults over saved null intent")
 				}
-				if _, err := updateSettings(&u.attached, u.shell, &u.Client, u.settings, &u.serviceTiers, u.panes, u.restoring != nil, u.clock, map[string]any{"effort": effort}); err != nil {
+				if _, err := updateSettings(&u.attached, &u.Client, u.settings, &u.serviceTiers, u.panes, u.restoring != nil, u.clock, map[string]any{"effort": effort}); err != nil {
 					t.Fatal(err)
 				}
 				if effort == "medium" {
@@ -411,7 +411,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 					t.Fatal("corrupt retention failed invisibly")
 				}
 			} else {
-				if err := fresh.panes.open(&terminalTest(fresh).Shell, fresh.shell.Main, "/workspace", "saved", true); err != nil || terminalTest(fresh).Split != 63 || savedPane(terminalTest(fresh)).NavigatorColumns() != 20 {
+				if err := fresh.panes.openTerminal(&terminalTest(fresh).Shell, fresh.shell.Main, "/workspace", "saved", true); err != nil || terminalTest(fresh).Split != 63 || savedPane(terminalTest(fresh)).NavigatorColumns() != 20 {
 					t.Fatalf("layout-only record not backward compatible: %v", err)
 				}
 			}

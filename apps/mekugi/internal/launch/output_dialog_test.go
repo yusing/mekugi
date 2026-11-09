@@ -330,7 +330,7 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
-	u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
+	u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 	if got := u.attached.source.RetainedOutput(u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Source, u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Output); got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
@@ -666,7 +666,7 @@ func TestSharedDialogCloseButton(t *testing.T) {
 		u := dialogForOutput(&activitymodel.Output{})
 		page := u.Dialog.Pages[0].DetailPage
 		page.Body = "Dialog body"
-		u.main.detailFiles.replaceDetails(&u.main.attached.session, u.Attachment, []activitypresentation.DetailPage{page})
+		u.main.detailFiles.replaceTerminalDetails(&u.main.attached.session, u.Attachment, []activitypresentation.DetailPage{page})
 		rows := make([]string, 20)
 		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 		u.Dialog.Paint(rows, width, len(rows))

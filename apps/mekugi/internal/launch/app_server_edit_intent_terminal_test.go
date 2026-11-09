@@ -116,7 +116,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	// The observer finishes the edit before the command's test and before
 	// the next model request can supply durable outer-cell evidence.
 	u.review.Projection.Data = new(presentation.Snapshot)
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, EditReceipt: receipt.Text, Files: reviewFiles(history.ReviewFiles)}, false)
 	if err := u.testPaint(slave, width, height); err != nil {
 		t.Fatal(err)

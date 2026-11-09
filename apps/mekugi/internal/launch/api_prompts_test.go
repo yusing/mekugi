@@ -5,13 +5,14 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 func TestAPIQuestionBatchRejectsAtomically(t *testing.T) {
@@ -169,7 +170,7 @@ func TestAPIGuardDecisionsRequireAttachmentForReusableGrants(t *testing.T) {
 				return 0, ""
 			}
 			request := compositionApproval(kind)
-			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+			addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
 			approval := u.approvals.calls()[0]
 			intent := sessionapi.Intent{Action: sessionapi.DecideApproval, Decide: sessionapi.Decide{Approval: approval.ID, Choice: 1}}
 			if code, refusal := decide(intent.Decide); code != http.StatusConflict || !strings.Contains(refusal, "view/intent") || len(request.Reply) != 0 || len(u.approvals.calls()) != 1 || u.attached.grants.Allows(request) {
@@ -180,7 +181,7 @@ func TestAPIGuardDecisionsRequireAttachmentForReusableGrants(t *testing.T) {
 				t.Fatalf("approve-once refused: %q", refusal)
 			}
 			repeated := compositionApproval(kind)
-			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, repeated)
+			addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, repeated)
 			if len(repeated.Reply) != 0 || len(u.approvals.calls()) != 1 {
 				t.Fatal("approve-once granted the repeated command")
 			}

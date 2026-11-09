@@ -28,17 +28,17 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 			r.IncludeThread("/workspace", "main", true)
 			sub := r.Subscribe()
 			defer r.Unsubscribe(sub)
-			if !admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sub, <-sub.Events()) {
+			if !admitTestReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sub, <-sub.Events()) {
 				t.Fatal("storage-free scope admission requested a resync")
 			}
 			const text = "Edit `source.go` +1 -1"
 			if retained {
 				r.Projection.Data = reviewReceiptSnapshot(t, []*changepresentation.Receipt{{Thread: "main", Calls: []string{"edit"}, Text: text}})
-				publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
+				publishTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
 				applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 			} else {
 				p := preview.Preview{ID: "observed", Workspace: "/workspace", Thread: "main", HostItems: []string{"edit"}, Complete: true, EditReceipt: text}
-				admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &p})
+				admitTestReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &p})
 			}
 			for _, source := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
 				record := source.Entries[0]

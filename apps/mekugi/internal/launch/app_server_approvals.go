@@ -22,7 +22,7 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
@@ -59,21 +59,21 @@ func approvalDirectory(workspace string, cwd string) []string {
 	return nil
 }
 
-func addApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, a *sessioncontrol.Approval) {
+func addApproval(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, a *sessioncontrol.Approval) {
 	approvals.Add(a.Approval)
 	if approvals.handles == nil {
 		approvals.handles = make(map[*prompt.Approval]*sessioncontrol.Approval)
 	}
 	approvals.handles[a.Approval] = a
-	recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, a, "Pending Approval")
+	recordApproval(attached, approvals, reviewOwner, receipts, control.Thread, clock, a, "Pending Approval")
 	approvals.AutoOpen = true
 	if a.RequestID == nil {
-		notifications.notify(&attached.feedback, terminal, clock, "approval-requested", "Approval requested")
+		notifications.notify(&attached.feedback, clock, "approval-requested", "Approval requested")
 	}
-	autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+	autoOpenApprovals(attached, picker, editor, questions, approvals, control.Thread, overlay)
 }
 
-func addGuardApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, request *sessioncontrol.ShellApprovalRequest) {
+func addGuardApproval(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, request *sessioncontrol.ShellApprovalRequest) {
 	if request.Finished() {
 		return
 	}
@@ -102,28 +102,28 @@ func addGuardApproval(attached *attachedPresentation, terminal *terminalsession.
 	}
 	// Password requests are never command approvals or session-grant lookups.
 	if request.Kind == "sudo-password" || request.Kind == "gpg-passphrase" {
-		openSudoPassword(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, a)
+		openSudoPassword(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, a)
 		return
 	}
 	if approvals.allows != nil && approvals.allows(request) {
-		recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, a, "Approved for this session")
+		recordApproval(attached, approvals, reviewOwner, receipts, control.Thread, clock, a, "Approved for this session")
 		request.Reply <- shellapproval.Reply{OK: true}
 		return
 	}
-	addApproval(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, a)
+	addApproval(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, a)
 }
 
-func addDelegateApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, request *sessioncontrol.DelegateApprovalRequest) {
+func addDelegateApproval(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, request *sessioncontrol.DelegateApprovalRequest) {
 	if request.Finished() {
 		return
 	}
 	attached.session.RegisterThread(request.Source)
-	addApproval(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, &sessioncontrol.Approval{Approval: request.Approval, Delegate: request})
+	addApproval(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, &sessioncontrol.Approval{Approval: request.Approval, Delegate: request})
 }
 
 // approvalMessage answers Codex's approval requests. Resolution and turn
 // completion notifications also reach their other owners.
-func approvalMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, m appserver.Message) (bool, error) {
+func approvalMessage(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, observations *sessioncontrol.Observations, m appserver.Message) (bool, error) {
 	switch m.Method {
 	case "item/autoApprovalReview/started", "item/autoApprovalReview/completed":
 		review, err := binding.DecodeApprovalReview(m.Params)
@@ -132,7 +132,7 @@ func approvalMessage(attached *attachedPresentation, terminal *terminalsession.A
 		}
 		record := conversationbinding.ApprovalReview(review)
 		if record.Item != "" && record.Outcome != "" {
-			recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &record}, record.Outcome)
+			recordApproval(attached, approvals, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &record}, record.Outcome)
 		}
 		return true, nil
 	case "serverRequest/resolved":
@@ -143,7 +143,7 @@ func approvalMessage(attached *attachedPresentation, terminal *terminalsession.A
 		if json.Unmarshal(m.Params, &p) == nil {
 			for _, a := range slices.Clone(approvals.calls()) {
 				if a.RequestID != nil && string(a.RequestID) == string(p.RequestID) && (p.ThreadID == "" || a.Thread == p.ThreadID) {
-					endApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, "Resolved elsewhere")
+					endApproval(attached, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, "Resolved elsewhere")
 				}
 			}
 		}
@@ -156,7 +156,7 @@ func approvalMessage(attached *attachedPresentation, terminal *terminalsession.A
 		if json.Unmarshal(m.Params, &p) == nil {
 			for _, a := range slices.Clone(approvals.calls()) {
 				if a.RequestID != nil && a.Thread == p.ThreadID && a.Turn == p.Turn.ID {
-					endApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, "Turn ended before an answer")
+					endApproval(attached, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, "Turn ended before an answer")
 				}
 			}
 			if observations != nil {
@@ -205,17 +205,17 @@ func approvalMessage(attached *attachedPresentation, terminal *terminalsession.A
 	if decoded.DisplayCommand {
 		a.Subject = sessionpresentation.DisplayCommand(a.Subject)
 	}
-	notifications.blockNotification(&attached.feedback, terminal, clock, m)
-	addApproval(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, a)
+	notifications.blockNotification(&attached.feedback, clock, m)
+	addApproval(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, a)
 	return true, nil
 }
 
 // expireApprovals withdraws guarded writes whose command stopped waiting.
-func expireApprovals(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt) bool {
-	changed := expireSudoPasswords(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts)
+func expireApprovals(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt) bool {
+	changed := expireSudoPasswords(attached, control, editor, questions, approvals, clock, reviewOwner, receipts)
 	for _, a := range slices.Clone(approvals.calls()) {
 		if a.Delegate != nil && a.Delegate.Finished() {
-			endApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, "Withdrawn: the request stopped")
+			endApproval(attached, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, "Withdrawn: the request stopped")
 			changed = true
 			continue
 		}
@@ -224,7 +224,7 @@ func expireApprovals(attached *attachedPresentation, terminal *terminalsession.A
 			if a.Guard.Outcome == "withdrawn" {
 				outcome = "Withdrawn: the command stopped"
 			}
-			endApproval(attached, terminal, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, outcome)
+			endApproval(attached, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, outcome)
 			changed = true
 		}
 	}
@@ -232,25 +232,24 @@ func expireApprovals(attached *attachedPresentation, terminal *terminalsession.A
 }
 
 // endApproval removes a pending approval and records how it ended.
-func endApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, a *sessioncontrol.Approval, outcome string) {
+func endApproval(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, a *sessioncontrol.Approval, outcome string) {
 	index := slices.Index(approvals.calls(), a)
 	if index < 0 {
 		return
 	}
 	wasOpen := approvals.Open && index == 0
 	if wasOpen {
-		hideApprovals(approvals, terminal, &attached.conversation.PromptEditor, &attached.conversation.Editor)
+		hideApprovals(approvals, &attached.conversation.PromptEditor, &attached.conversation.Editor)
 	}
 	approvals.Remove(a.Approval)
 	delete(approvals.handles, a.Approval)
-	terminal.Prompts.ForgetApproval(a.ID)
 	if wasOpen && !attached.presentation.DisplayingSide() {
-		openApprovals(approvals, questions, attached.conversation, terminal, picker, editor, control.Thread)
+		openApprovals(approvals, questions, attached.conversation, picker, editor, control.Thread)
 	}
 	if a.RequestID != nil && notifications != nil {
 		delete(notifications.blocked, string(a.RequestID))
 	}
-	recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, a, outcome)
+	recordApproval(attached, approvals, reviewOwner, receipts, control.Thread, clock, a, outcome)
 }
 
 // approvalItem finds one exact host identity across the two presentation views.
@@ -275,13 +274,13 @@ func approvalItem(attached *attachedPresentation, thread, turn, item string) *se
 }
 
 // recordApproval updates the host item, never a separate approval event.
-func recordApproval(attached *attachedPresentation, approvals *nativeApprovalDock, terminal *terminalsession.Attachment, review *sessionreview.Review, pending *[]*changepresentation.Receipt, main string, clock func() time.Time, a *sessioncontrol.Approval, outcome string) {
+func recordApproval(attached *attachedPresentation, approvals *nativeApprovalDock, review *sessionreview.Review, pending *[]*changepresentation.Receipt, main string, clock func() time.Time, a *sessioncontrol.Approval, outcome string) {
 	entry, ok := approvalRecord(attached, approvals, main, presentationTime(clock), a, outcome)
 	if !ok {
 		return
 	}
 	if attached.session.KnownCaller(main) != "" {
-		applyActivity(attached, approvals, terminal, review, pending, main, clock, []sessionpresentation.ActivityEntry{entry}, nil)
+		applyActivity(attached, approvals, review, pending, main, clock, []sessionpresentation.ActivityEntry{entry}, nil)
 	} else {
 		attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 	}
@@ -317,34 +316,34 @@ func approvalRecord(attached *attachedPresentation, approvals *nativeApprovalDoc
 	return entry, true
 }
 
-func (session *nativeSession) decideApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, intent sessionpresentation.ApprovalIntent) error {
+func (session *nativeSession) decideApproval(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, intent sessionpresentation.ApprovalIntent) error {
 	defer func() {
-		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
+		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
 	record, choice, err := attached.presentation.Approval(intent, session.approvals.Approvals)
 	if err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		return nil
 	}
-	return session.applyApproval(attached, terminal, picker, editor, clock, attached.grants, session.approvals.handles[record], choice, intent.Reason)
+	return session.applyApproval(attached, picker, editor, clock, attached.grants, session.approvals.handles[record], choice, intent.Reason)
 }
 
 // applyApproval also settles decisions covered by an existing exact-command
 // grant; those carry their admitted authority rather than a new renderer intent.
-func (session *nativeSession) applyApproval(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, grants sessioncontrol.ApprovalGrants, a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
+func (session *nativeSession) applyApproval(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, grants sessioncontrol.ApprovalGrants, a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
 	outcome, delivered, err := a.Decide(choice, reason, grants, session.Client.Requests, session.controlObservations)
 	if err != nil {
 		return err
 	}
 	if !delivered {
-		expireApprovals(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts)
+		expireApprovals(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts)
 		return nil
 	}
-	endApproval(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts, a, outcome)
+	endApproval(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts, a, outcome)
 	if a.Guard != nil && choice.Approve && choice.Session {
 		for _, pending := range slices.Clone(session.approvals.calls()) {
 			if a.SameCommand(pending) {
-				if err := session.applyApproval(attached, terminal, picker, editor, clock, grants, pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
+				if err := session.applyApproval(attached, picker, editor, clock, grants, pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
 					return err
 				}
 			}
@@ -355,37 +354,32 @@ func (session *nativeSession) applyApproval(attached *attachedPresentation, term
 
 // autoOpenApprovals takes over an empty, idle composer. Explicitly hiding the
 // dock leaves it closed until reopened or another approval arrives.
-func autoOpenApprovals(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, overlay bool) {
-	if approvals.ShouldOpen(composerVacant((*editor), terminal, picker, attached.presentation, overlay || approvals.Open), questions.Active != nil) {
-		openApprovals(approvals, questions, attached.conversation, terminal, picker, editor, main)
+func autoOpenApprovals(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, overlay bool) {
+	if approvals.ShouldOpen(composerVacant((*editor), picker, attached.presentation, overlay || approvals.Open), questions.Active != nil) {
+		openApprovals(approvals, questions, attached.conversation, picker, editor, main)
 	}
 }
 
-func openApprovals(approvals *nativeApprovalDock, questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, main string) bool {
+func openApprovals(approvals *nativeApprovalDock, questions *nativeQuestionDock, conversation *conversationmodel.Session, picker *composerPicker, editor **composer.Editor, main string) bool {
 	if len(approvals.calls()) == 0 {
 		return false
 	}
 	if approvals.Open {
 		return true
 	}
-	*editor = hideQuestionEditor(questions, conversation, terminal, *editor, main)
+	*editor = hideQuestionEditor(questions, conversation, *editor, main)
 	if a := approvals.calls()[0]; a.DenialChoice() >= 0 {
-		terminal.Main.PromptColumn = terminal.Main.CursorColumn
 		conversation.PromptEditor.Open(*editor, a.Editor)
-		terminal.Main.CursorColumn = terminal.Prompts.ApprovalLayout(a.ID).Column
 	}
 	approvals.Show()
-	terminal.Prompts.Reopen()
-	focusPrompt(picker, terminal)
+	focusPrompt(picker)
 	return true
 }
 
-func hideApprovals(approvals *nativeApprovalDock, terminal *terminalsession.Attachment, parked *prompt.Editor, editor *composer.Editor) {
+func hideApprovals(approvals *nativeApprovalDock, parked *prompt.Editor, editor *composer.Editor) {
 	if approvals.Open && len(approvals.calls()) > 0 {
 		if a := approvals.calls()[0]; a.DenialChoice() >= 0 {
-			terminal.Prompts.ApprovalLayout(a.ID).Column = terminal.Main.CursorColumn
 			a.Editor = parked.Close(editor)
-			terminal.Main.CursorColumn = terminal.Main.PromptColumn
 		}
 	}
 	approvals.Hide()

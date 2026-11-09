@@ -174,7 +174,7 @@ func TestUISnapshotCompactReloadApprovalLifecycle(t *testing.T) {
 		t.Fatalf("pending attachment: %s", got)
 	}
 	assertNativeUISnapshot(t, "compact-reload-approval-pending", u.testActivity(u.shell.Transcript).RenderFeed(100, 24).Lines)
-	recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, u.approvals.calls()[0], "Approved")
+	recordApproval(&u.attached, &u.approvals, u.review, &u.pendingEditReceipts, u.Thread, u.clock, u.approvals.calls()[0], "Approved")
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: script, Status: "completed", ExitCode: new(0)}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	complete()

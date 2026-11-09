@@ -46,7 +46,7 @@ func TestUISnapshotContextEventReachesTerminal(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Client.Thread = t.Name()
 	queueContextWarning(t, u.issues, u.Client.Thread)
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
+	delivery := applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if delivery == nil || u.attached.feedback.Text != "" || len(u.attached.source.Entries) != 1 {
 		t.Fatalf("context event missing from the transcript or shown as composer feedback: %+v", u.attached.feedback)
 	}
@@ -59,7 +59,7 @@ func TestUISnapshotContextEventReachesTerminal(t *testing.T) {
 	delivery.finish(terminalsession.NoticeReceipt{})
 	view := u.attached
 	view.feedback = noticepresentation.Model{}
-	delivery = applyCriticalNotices(&view, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
+	delivery = applyCriticalNotices(&view, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if delivery == nil || len(u.attached.source.Entries) != 1 || !slices.Equal(delivery.entries, []uint64{row}) {
 		t.Fatalf("retried context event duplicated its row: %d rows, claimed %v", len(u.attached.source.Entries), delivery.entries)
 	}
@@ -82,7 +82,7 @@ func TestNativeContextEventReceiptRequiresItsVisibleRow(t *testing.T) {
 	u.startSession("main", "/workspace")
 	queueContextWarning(t, u.issues, u.Thread)
 	claim := func() *nativeCriticalNoticeDelivery {
-		return applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, u.audience, u.issues)
+		return applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, u.audience, u.issues)
 	}
 	delivery := claim()
 	delivery.finish(terminalsession.NoticeReceipt{})
@@ -163,7 +163,7 @@ func TestNativeContextEventSurvivesFeedTrim(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
 	queueContextWarning(t, u.issues, u.Thread)
-	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, u.audience, u.issues)
+	delivery := applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, u.audience, u.issues)
 	original := delivery.entries[0]
 	entries := make([]sessionpresentation.ActivityEntry, activitypresentation.FeedLimit)
 	for i := range entries {
@@ -177,7 +177,7 @@ func TestNativeContextEventSurvivesFeedTrim(t *testing.T) {
 	}
 	rows := slices.Clone(delivery.entries)
 	delivery.finish(terminalsession.NoticeReceipt{})
-	delivery = applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, u.audience, u.issues)
+	delivery = applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, u.audience, u.issues)
 	if !slices.Equal(rows, delivery.entries) {
 		t.Fatal("retry duplicated a surviving replacement row")
 	}

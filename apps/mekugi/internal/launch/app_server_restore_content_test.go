@@ -58,7 +58,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, workspace)
 	u.review = testReview(auto)
 	sub := testReview(auto).Subscribe()
-	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace})
+	restoreTestDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace})
 	u.review.IncludeThread(workspace, "child", false)
 	var lastScope *previewmodel.Scope
 	for len(sub.Events()) > 0 {
@@ -115,14 +115,14 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			}
 			if viaPreviews {
 				for _, event := range testReview(auto).TakePreviews(sub) {
-					applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
+					applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 				}
 				if err := u.finishRestoredContent(); err != nil {
 					t.Fatal(err)
 				}
 			} else {
 				for len(sub.Events()) > 0 {
-					applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), <-sub.Events())
+					applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), <-sub.Events())
 					if err := u.finishRestoredContent(); err != nil {
 						t.Fatal(err)
 					}

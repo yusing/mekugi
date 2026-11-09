@@ -67,9 +67,9 @@ func TestComposerFileTokenEditorRelocationAndIdentity(t *testing.T) {
 func TestComposerFileTokenMixedImageOffsets(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, filepath.Join(t.TempDir(), "one.png"))
-	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
+	insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
 	bindComposerFile(u, "@code.go", "code.go")
-	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
+	insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
 	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, filepath.Join(t.TempDir(), "two.png"))
 	if len(u.Files) != 1 || u.Text[u.Files[0].Start:u.Files[0].End] != "@code.go" {
 		t.Fatalf("file binding shifted by image insertion: %q %+v", u.Text, u.Files)
@@ -85,7 +85,7 @@ func TestComposerFileTokenEditorPreservesExistingAdjacency(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Text = "("
 	bindComposerFile(u, "@file.go", "file.go")
-	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "), before")
+	insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "), before")
 	if err := u.Editor.ApplyExternal("(@file.go), after"); err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"encoding/json/jsontext"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -50,15 +51,14 @@ func (p *nativePreferences) read(workspace, thread string) (nativePreferenceSnap
 	return result, nil
 }
 
-func (p *nativePreferences) open(shell *terminalsession.Shell, main *terminalsession.Main, workspace, thread string, resume bool) error {
+func (p *nativePreferences) open(workspace, thread string, resume bool) error {
+	var initial jsontext.Value
 	if p.attachment != nil {
+		initial = p.attachment.Snapshot().Presentation
 		p.writer.outgoing = append(p.writer.outgoing, p.attachment)
 	}
 	p.attachment = nil
-	initial, err := p.encoding.Encode(shell.Preferences(main))
-	if err != nil {
-		return err
-	}
+	var err error
 	p.attachment, err = p.service.Attach(preferences.Scope{Workspace: workspace, Thread: thread}, initial)
 	if err != nil || !resume {
 		return err
@@ -67,31 +67,17 @@ func (p *nativePreferences) open(shell *terminalsession.Shell, main *terminalses
 	if err != nil || state.Presentation == nil {
 		return err
 	}
-	shell.RestorePreferences(state.layout, main)
-	state.Presentation, err = p.encoding.Encode(shell.Preferences(main))
-	if err != nil {
-		return err
-	}
 	p.attachment.Restore(state.Snapshot)
 	return nil
 }
 
-func (p *nativePreferences) stage(layout terminalsession.Preferences) error {
-	state, err := p.encoding.Encode(layout)
-	if err != nil {
-		return err
-	}
-	p.attachment.StagePresentation(state)
-	return nil
-}
-
 // Only authoritative start/resume results and settings notifications reach here.
-func (p *nativePreferences) retainAppliedSettings(terminal *terminalsession.Attachment, scope preferences.Scope, restoreEffort bool, applied preferences.Applied) error {
+func (p *nativePreferences) retainAppliedSettings(scope preferences.Scope, restoreEffort bool, applied preferences.Applied) error {
 	if p == nil || p.attachment == nil || applied.Model == "" || restoreEffort {
 		return nil
 	}
 	if p.attachment.Scope() != scope {
-		if err := p.open(&terminal.Shell, terminal.Main, scope.Workspace, scope.Thread, false); err != nil {
+		if err := p.open(scope.Workspace, scope.Thread, false); err != nil {
 			return err
 		}
 	}

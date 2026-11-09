@@ -35,11 +35,11 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	u.Text = "Review "
 	bindComposerFile(u, `@"file name.go"`, "file name.go")
 	u.Text += " please"
-	draft := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
+	draft := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	if err := os.WriteFile(path, []byte("changed after queueing"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := sendConversationInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{draft}, false); err != nil {
+	if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{draft}, false); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)
@@ -266,7 +266,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
 	d := conversationmodel.Input{Text: strings.Repeat("x", codexresponses.UserTextLimit), Attachments: []string{attachments.Encode([]string{"Attached file data"})}}
-	if err := sendConversationInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{d}, false); err != nil {
+	if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{d}, false); err != nil {
 		t.Fatal(err)
 	}
 	if w.Len() != 0 || u.Text != d.Text || !u.attached.feedback.Alert || u.Starting() {
@@ -277,7 +277,7 @@ func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 func TestComposerFileAttachmentLeavesOrdinaryUnicodeLimitToCodex(t *testing.T) {
 	u, w := newAppServerTestUI()
 	d := conversationmodel.Input{Text: strings.Repeat("界", 400_000)}
-	if err := sendConversationInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{d}, false); err != nil {
+	if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{d}, false); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)

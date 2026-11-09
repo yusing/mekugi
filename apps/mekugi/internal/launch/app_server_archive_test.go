@@ -24,7 +24,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 				u.Turn = "turn"
 			}
 			appServerTestKeys(t, u, "/arch\r")
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			if u.picker.Kind != "archive" || u.shell.Main.Menu.Selected != 0 || wire.Len() != 0 {
 				t.Fatal("archive must first ask for confirmation, defaulting to No")
 			}
@@ -66,7 +66,7 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 			}
 		}
 		u.pickerKey(cancel)
-		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+		u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		if wire.Len() != 0 || u.picker.Open || u.Replacement.Pending() || u.quitRequested || u.Text != "" {
 			t.Fatalf("cancel %q archived, left confirmation open or accepted hidden paste: %q", cancel, u.Text)
 		}

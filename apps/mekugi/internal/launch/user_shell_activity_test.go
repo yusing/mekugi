@@ -41,7 +41,7 @@ func TestUISnapshotUserShellActivity(t *testing.T) {
 					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 				}
 				for range 10 {
-					u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
+					u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 				}
 			}
 			// Later agent work must retain its ordinary classification without

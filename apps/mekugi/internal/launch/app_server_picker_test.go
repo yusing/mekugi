@@ -75,7 +75,7 @@ func TestComposerFilePickerScopesAndCoalescesRequests(t *testing.T) {
 		t.Fatalf("unscoped search results: %+v", u.picker.Choices)
 	}
 	u.attached.cwd = "/work/two"
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	requests = pickerRequests(t, w)
 	if len(requests) != 3 || len(requests[2].Params.Roots) != 1 || requests[2].Params.Roots[0] != "/work/two" {
 		t.Fatalf("workspace change did not request fresh search: %+v", requests)
@@ -183,7 +183,7 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 	if u.picker.Open || u.Text != "@file" {
 		t.Fatalf("escape altered draft or left picker open: %q %+v", u.Text, u.picker)
 	}
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	if u.picker.Open {
 		t.Fatal("dismissed picker reopened without an edit")
 	}
@@ -325,10 +325,10 @@ func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 110 {
-		insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "word ")
+		insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "word ")
 		u.Run = composer.NoRun
 	}
-	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "@s")
+	insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "@s")
 	target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 	u.attached.conversation.Completion = completion.State{Open: true, Target: target, Choices: []completion.Choice{{Name: "shot.png", Path: "shot.png"}}}
 	before := u.Text
@@ -353,7 +353,7 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.attached.cwd = "/work"
 		u.Text = "long prompt @file"
-		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+		u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 		u.attached.conversation.Completion = completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}
 		c := nativeTestPromptClient(u)
@@ -416,15 +416,15 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 
 // These fixtures publish the source transition before consuming terminal state.
 func (u *appServerUI) pickerKey(key string) bool {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return u.nativeSession.applyMenuResult(&u.attached, u.shell, &u.picker, &u.Editor, &u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, u.shell.Main.Menu.Key(key))
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	return u.nativeSession.applyTestMenuResult(&u.attached, u.shell, &u.picker, &u.Editor, &u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, u.shell.Main.Menu.Key(key))
 }
 func (u *appServerUI) pickerHeight(width int) int {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.shell.Main.Menu.Height(width)
 }
 func (u *appServerUI) renderPicker(width, height int) []string {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.shell.Main.Menu.Render(&u.shell.Transcript.Painter.Painter, terminalsession.SelectionStyle(&u.shell.Transcript.Painter.Painter), width, height)
 }
 
@@ -433,7 +433,7 @@ func TestComposerCompletionAttachmentLifetime(t *testing.T) {
 	previous := u.attached.conversation
 	u.picker.Catalog([]completion.Choice{{Name: "skill", Path: "/work/SKILL.md"}}, "/work", true, "")
 	u.picker.CopyTexts = []string{"retained response"}
-	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
+	attachPresentation(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
 	if !u.attached.conversation.Completion.SkillsLoaded || len(u.attached.conversation.Completion.CopyTexts) != 1 {
 		t.Fatal("attachment binding discarded Conversation completion values")
 	}

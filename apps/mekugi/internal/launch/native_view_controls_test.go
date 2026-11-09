@@ -19,7 +19,7 @@ import (
 func TestNativeViewMenuRechecksTargetAfterStatusProgress(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	request := sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}
 	if refusal := n.attach(request, &u.attached, "main"); refusal != "" {
@@ -29,7 +29,7 @@ func TestNativeViewMenuRechecksTargetAfterStatusProgress(t *testing.T) {
 	editor := new(composer.Editor)
 	editor.InsertText("/status")
 	v.completionTarget = conversation.EditorTarget{Revision: editor.Revision()}
-	v.picker.refreshPicker(&v.attached, v.shell, u.clock, u.Requests, editor, t.Context(), nil)
+	v.picker.refreshPicker(&v.attached, u.clock, u.Requests, editor, t.Context(), nil)
 	publish := func() sessionpresentation.View {
 		return publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, true)
 	}
@@ -50,7 +50,7 @@ func TestNativeViewMenuRechecksTargetAfterStatusProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u.nativeSession.applyMenuResult(&v.attached, v.shell, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
+	u.nativeSession.applyMenuResult(&v.attached, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
 	if strings.TrimSpace(editor.Text) != "/status" {
 		t.Fatal("admitted menu did not use existing command completion")
 	}
@@ -69,7 +69,7 @@ func TestNativeViewMenuRechecksTargetAfterStatusProgress(t *testing.T) {
 func TestNativeViewExplicitCompletionReopensDismissedTarget(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 		t.Fatal(refusal)
@@ -98,7 +98,7 @@ func TestNativeViewExplicitCompletionReopensDismissedTarget(t *testing.T) {
 func TestNativeViewReplacementRetiresAcquisitions(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	for _, id := range []string{"origin", "other"} {
 		if refusal := n.attach(sessionapi.NativeRequest{Attachment: id, Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
@@ -134,7 +134,7 @@ func TestNativeViewReplacementRetiresAcquisitions(t *testing.T) {
 func TestNativeViewRestorationUsesOriginatingEditorLifetime(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	for _, id := range []string{"first", "second"} {
 		if refusal := n.attach(sessionapi.NativeRequest{Attachment: id, Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
@@ -144,7 +144,7 @@ func TestNativeViewRestorationUsesOriginatingEditorLifetime(t *testing.T) {
 	u.attached.hooks.restoreInput = n.restore
 	u.Editor.Text = "legacy draft"
 	first, second := n.views["first"], n.views["second"]
-	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, "", u.clock,
+	restoreDrafts(&u.attached, &u.questions, &u.approvals, &u.picker, "", u.clock,
 		conversation.Input{Origin: "first", Delivery: first.effects.input(), Text: "first input"},
 		conversation.Input{Origin: "first", Delivery: first.effects.input(), Text: "next input"},
 		conversation.Input{Origin: "second", Text: "second input"})
@@ -160,7 +160,7 @@ func TestNativeViewRestorationUsesOriginatingEditorLifetime(t *testing.T) {
 		t.Fatal("individual restoration changed input order or duplicated delivery")
 	}
 	n.retire("first")
-	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, "", u.clock, conversation.Input{Origin: "first", Text: "late rejected input"})
+	restoreDrafts(&u.attached, &u.questions, &u.approvals, &u.picker, "", u.clock, conversation.Input{Origin: "first", Text: "late rejected input"})
 	if len(second.effects.pending) != 1 || u.Editor.Text != "legacy draft" || len(u.attached.conversation.Unsent) != 0 || len(u.attached.conversation.Queued) != 0 {
 		t.Fatal("closed editor restoration retargeted or retried input")
 	}
@@ -172,7 +172,7 @@ func TestNativeViewRestorationUsesOriginatingEditorLifetime(t *testing.T) {
 func TestNativeViewCommandBorrowsExecutionWithoutSharedDraft(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 		t.Fatal(refusal)
@@ -180,7 +180,7 @@ func TestNativeViewCommandBorrowsExecutionWithoutSharedDraft(t *testing.T) {
 	v := n.views["view"]
 	root := u.attached
 	root.conversation.Editor.Text = "unrelated editor"
-	u.attached, u.shell, u.picker = v.attached, v.shell, v.picker
+	u.attached, u.picker = v.attached, v.picker
 	u.Editor = &composer.Editor{Text: "/status"}
 	view := publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	_, err := u.applyComposerInput(terminalsession.ComposerInput{Command: sessionpresentation.ComposerIntent{Version: view.Version, Thread: "main", Target: conversation.EditorTarget{Revision: 99}, Operation: sessionpresentation.SubmitComposer}})
@@ -206,7 +206,7 @@ func TestNativeViewCommandBorrowsExecutionWithoutSharedDraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	applyPanelAction(&v.attached, v.shell, u.clock, &v.panel, nil, action)
+	applyPanelAction(&v.attached, u.clock, &v.panel, nil, action)
 	after := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, nil, "", "", false, nil, true)
 	if after.Panel != nil || v.panel != nil {
 		t.Fatal("status progress prevented identified panel close")
@@ -230,7 +230,7 @@ func TestNativeViewCommandBorrowsExecutionWithoutSharedDraft(t *testing.T) {
 func TestNativeViewObservedReceiptKeepsCapturedIdentity(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	request := sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}
 	if refusal := n.attach(request, &u.attached, "main"); refusal != "" {
@@ -269,7 +269,7 @@ func TestNativePreparedViewAdmissionKeepsAttachmentIdentity(t *testing.T) {
 		t.Run(map[bool]string{false: "composer", true: "answers"}[answers], func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.startSession("main", "/workspace")
-			n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+			n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 			defer n.close()
 			request := sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}
 			if refusal := n.attach(request, &u.attached, "main"); refusal != "" {
@@ -312,13 +312,13 @@ func TestNativePreparedViewAdmissionKeepsAttachmentIdentity(t *testing.T) {
 func TestNativeViewResumeUsesExistingExecutionOwner(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 		t.Fatal(refusal)
 	}
 	v := n.views["view"]
-	u.attached, u.shell, u.picker = v.attached, v.shell, v.picker
+	u.attached, u.picker = v.attached, v.picker
 	u.attached.hooks.activeThread = func(id string) bool { return id == "other" }
 	u.Editor = &composer.Editor{Text: "/resume other"}
 	view := publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
@@ -334,7 +334,7 @@ func TestNativeViewResumeUsesExistingExecutionOwner(t *testing.T) {
 	u.resumePicker.Append([]sessionpresentation.ResumeRow{{ID: "other", Workspace: "/other"}}, "", 1)
 	view = publishSessionView(&u.attached, &u.Client, &u.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	before, picker := wire.Len(), u.resumePicker
-	if err := u.nativeSession.applyResumeAction(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, &u.quitRequested, sessionpresentation.ResumeAction{Version: view.Version, Picker: view.Resume.ID, Kind: sessionpresentation.ResumeChoose, Thread: "other"}); err != nil {
+	if err := u.nativeSession.applyResumeAction(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker, &u.quitRequested, sessionpresentation.ResumeAction{Version: view.Version, Picker: view.Resume.ID, Kind: sessionpresentation.ResumeChoose, Thread: "other"}); err != nil {
 		t.Fatal(err)
 	}
 	if wire.Len() != before || u.Replacement.Pending() || u.resumePicker != picker || len(v.effects.pending) != 2 || *v.effects.pending[1].Reattach != "other" {

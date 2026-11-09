@@ -4,12 +4,9 @@ import (
 	"context"
 	"slices"
 	"strconv"
-	"time"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
@@ -36,7 +33,7 @@ func attachReview(ctx context.Context, review *sessionreview.Review, retained ch
 
 // Source: apps/mekugi/internal/router/native_shell.go:61:243@51f24bbd.
 // preview joins completed receipts independently of terminal card lifetime.
-func applyPreview(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, pending *[]*changepresentation.Receipt, at time.Time, preview previewmodel.Preview, restored bool) {
+func applyPreview(attached *attachedPresentation, review *sessionreview.Review, pending *[]*changepresentation.Receipt, preview previewmodel.Preview) {
 	if preview.Complete && len(preview.HostItems) > 0 {
 		receipt := &changepresentation.Receipt{Thread: preview.Thread, Calls: preview.HostItems, Text: preview.EditReceipt}
 		for _, file := range preview.Files {
@@ -83,65 +80,49 @@ func applyPreview(attached *attachedPresentation, terminal *terminalsession.Atta
 			}
 		}
 	}
-	if terminal != nil {
-		terminal.Live.Observe(preview, restored, at)
-	}
 }
 
 // Reject a retired subscription before its queued scope can authorize any read.
-func admitReviewEvents(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), pending *[]*changepresentation.Receipt, clock func() time.Time, ctx context.Context, sub *sessionreview.Subscription, events ...sessionreview.Event) bool {
+func admitReviewEvents(attached *attachedPresentation, review *sessionreview.Review, source *changecapture.Service, pending *[]*changepresentation.Receipt, ctx context.Context, sub *sessionreview.Subscription, events ...sessionreview.Event) bool {
 	if sub.Invalidated() {
 		return false
 	}
 	for _, event := range events {
-		applyReview(attached, terminal, review, source, prepare, pending, clock, ctx, event)
+		applyReview(attached, review, source, pending, ctx, event)
 	}
 	return review.Ready()
 }
 
-func applyReview(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), pending *[]*changepresentation.Receipt, clock func() time.Time, ctx context.Context, event sessionreview.Event) {
+func applyReview(attached *attachedPresentation, review *sessionreview.Review, source *changecapture.Service, pending *[]*changepresentation.Receipt, ctx context.Context, event sessionreview.Event) {
 	admitted, published := review.Apply(ctx, event)
 	if !admitted {
 		return
 	}
 	if event.Kind == "preview" {
-		applyPreview(attached, terminal, review, pending, presentationTime(clock), *event.Preview, event.Resync)
+		applyPreview(attached, review, pending, *event.Preview)
 		return
 	}
-	if terminal != nil {
-		switch event.Kind {
-		case "scope":
-			if event.Resync && event.Scope != nil {
-				terminal.Live.Resync(*event.Scope, event.PreviewIDs)
-			}
-		case "change":
-			terminal.DiffUnseen = terminal.DiffUnseen || !terminal.DiffOpen
-		}
-	}
 	if published {
-		publishReview(attached, terminal, review, source, prepare)
+		publishReview(attached, review, source)
 	}
 	if review.Loader == nil && (event.Kind == "scope" || event.Kind == "change") {
 		applyCapturedEdits(attached, review, pending)
 	}
 }
 
-func loadedReview(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), pending *[]*changepresentation.Receipt, result sessionreview.Result) {
+func loadedReview(attached *attachedPresentation, review *sessionreview.Review, source *changecapture.Service, pending *[]*changepresentation.Receipt, result sessionreview.Result) {
 	if review.Loaded(result) {
-		publishReview(attached, terminal, review, source, prepare)
+		publishReview(attached, review, source)
 		if review.Failure == "" {
 			applyCapturedEdits(attached, review, pending)
 		}
 	}
 }
 
-func publishReview(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store)) {
+func publishReview(attached *attachedPresentation, review *sessionreview.Review, source *changecapture.Service) {
 	projection := &review.Projection
 	snapshot := projection.Data
 	source.PublishReview(attached.session.Scope(), snapshot, projection.Workspace, projection.Coverage, review.Failure)
-	if terminal != nil && prepare != nil {
-		prepare(attached.session.Scope())
-	}
 	if attached.childSource != nil {
 		attached.childSource.Model.LineCounts, attached.childSource.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
 	}

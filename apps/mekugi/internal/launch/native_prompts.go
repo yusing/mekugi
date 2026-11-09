@@ -7,7 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -129,7 +129,7 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 // Only accepted ordinary answer values enter the authoritative Call. Secret
 // answers are borrowed solely for the existing response/password authority and
 // discarded before the next event or publication.
-func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, input sessionapi.NativeAnswers, prepared *sessionapi.PreparedInput, requestContext context.Context, remoteHuman bool) (string, error) {
+func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, input sessionapi.NativeAnswers, prepared *sessionapi.PreparedInput, requestContext context.Context, remoteHuman bool) (string, error) {
 	handle, trial, secrets, refusal := prepareNativeAnswers(&session.questions, &session.Client, input, remoteHuman)
 	if refusal != "" {
 		return refusal, nil
@@ -138,7 +138,7 @@ func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation,
 		return "The native answer was canceled before admission.", nil
 	}
 	if session.questions.Active == handle.Call {
-		*editor = hideQuestionEditor(&session.questions, attached.conversation, terminal, *editor, session.Client.Thread)
+		*editor = hideQuestionEditor(&session.questions, attached.conversation, *editor, session.Client.Thread)
 	}
 	previous := handle.Questions
 	handle.Questions = trial.Questions
@@ -154,9 +154,9 @@ func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation,
 		secretEditors[index] = composer.State{Snapshot: composer.Undo{Draft: draft}}
 	}
 	defer func() {
-		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
+		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
-	err := session.submitQuestionAnswers(attached, terminal, picker, editor, side, clock, overlay, parent, handle, secretEditors, secrets)
+	err := session.submitQuestionAnswers(attached, picker, editor, side, clock, overlay, parent, handle, secretEditors, secrets)
 	if !handle.Sent && !handle.Resolved {
 		handle.Questions = previous
 		if err == nil {

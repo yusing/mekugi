@@ -134,10 +134,10 @@ func TestServerReplayNativeSwitchReservation(t *testing.T) {
 		reserved = thread
 		return nil
 	}
-	if err := resumeSession(&u.attached, u.shell, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode, "blocked"); err != nil || !strings.Contains(u.attached.feedback.Text, refused.Error()) || wire.Len() != 0 || u.Replacement.Pending() {
+	if err := resumeSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode, "blocked"); err != nil || !strings.Contains(u.attached.feedback.Text, refused.Error()) || wire.Len() != 0 || u.Replacement.Pending() {
 		t.Fatalf("blocked resume reached host or changed pending replacement: %v, %s", err, wire.String())
 	}
-	if err := resumeSession(&u.attached, u.shell, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode, "saved"); err != nil || reserved != "saved" {
+	if err := resumeSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode, "saved"); err != nil || reserved != "saved" {
 		t.Fatalf("saved resume did not reserve before host request: %q, %v", reserved, err)
 	}
 	read := resumeTestOne(t, wire, "thread/read")

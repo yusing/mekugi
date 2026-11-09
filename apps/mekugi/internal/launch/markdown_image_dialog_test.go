@@ -28,7 +28,7 @@ func awaitNativeFileDialog(t *testing.T, view *nativeSessionView) {
 	for view.files.fileReads != nil {
 		select {
 		case result := <-view.files.fileReads:
-			view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, view.attached.cwd, view.shell, result)
+			view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, view.attached.cwd, result)
 		case <-time.After(3 * time.Second):
 			t.Fatal("file admission stalled")
 		}
@@ -191,7 +191,7 @@ func TestUISnapshotNativeImageFileDialog(t *testing.T) {
 					t.Fatalf("image escaped the resized dialog body: %+v", p)
 				}
 			}
-			view.files.closeOutput(view.shell)
+			view.files.closeOutput()
 			publish()
 			closed := render()
 			if len(closed.Images.Placements) != 0 || len(previews.images) != 0 {
@@ -241,7 +241,7 @@ func TestUISnapshotNativeImageFileDialog(t *testing.T) {
 				if result.preview == nil {
 					t.Fatal("pending result has no decoded image")
 				}
-				view.files.closeOutput(view.shell)
+				view.files.closeOutput()
 				publish()
 				render()
 				previews.finish(result)
@@ -309,8 +309,9 @@ func TestNativeImageHeaderTextStaysText(t *testing.T) {
 	}
 	awaitNativeFileDialog(t, view)
 	details := nativeDetailFrame(view).Details
-	view.shell.Dialog.Layout(76)
-	if details.File.ImagePath != "" || details.File.Source != text || view.shell.Dialog.Document.Text != text {
+	renderer := nativeDetailTestRenderer(t, main, view)
+	renderer.terminal.Dialog.Layout(76)
+	if details.File.ImagePath != "" || details.File.Source != text || renderer.terminal.Dialog.Document.Text != text {
 		t.Fatal("image header overrode the text dialog's source or copy content")
 	}
 }

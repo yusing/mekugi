@@ -7,7 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -47,7 +47,7 @@ func hookOutput(run appserver.HookRun) (string, bool) {
 	return text, hasError
 }
 
-func hookEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], activity *activitymodel.Service, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, retainedSession history.Session, clock func() time.Time, method string, event binding.Notification) error {
+func hookEvent(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], activity *activitymodel.Service, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, retainedSession history.Session, clock func() time.Time, method string, event binding.Notification) error {
 	if event.ThreadID == "" || event.Run == nil || event.Run.ID == "" {
 		return fmt.Errorf("%s: missing hook thread or run identity", method)
 	}
@@ -73,14 +73,14 @@ func hookEvent(attached *attachedPresentation, terminal *terminalsession.Attachm
 	observation := history.HookObservation{Turn: event.TurnID, Run: history.HookRun(run), At: presentationTime(clock), Output: output, HasError: hasError, Completed: completed}
 	observation.Run.Entries = nil
 	if err := retainHook(retainedSession, attached.cwd, event.ThreadID, observation); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Hook observation could not be retained: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Hook observation could not be retained: "+err.Error(), true)
 	}
 	entry := hookEntry(&attached.session, activity, attached.cwd, event.ThreadID, observation, true)
 	if previousOutput != nil {
 		previousOutput.Release()
 	}
 	entry.Seq = s.Activity().NextSequence()
-	applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, []sessionpresentation.ActivityEntry{entry}, s.Roster())
+	applyActivity(attached, approvals, reviewOwner, receipts, control.Thread, clock, []sessionpresentation.ActivityEntry{entry}, s.Roster())
 	return nil
 }
 

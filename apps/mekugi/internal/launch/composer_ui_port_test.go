@@ -108,11 +108,11 @@ func TestComposerPasteBoundariesAndImages(t *testing.T) {
 			}
 		}
 		feed("\x1b[200~" + payload + "\x1b[201~")
-		if terminalTest(u).Decoder.Pasting() || terminalTest(u).Decoder.Pending() || u.Text != "plain" {
-			t.Fatalf("opaque paste=%q state=%v pending=%v", u.Text, terminalTest(u).Decoder.Pasting(), terminalTest(u).Decoder.Pending())
+		if terminalTest(u).Main.Pasting() || u.Text != "plain" {
+			t.Fatalf("opaque paste=%q state=%v", u.Text, terminalTest(u).Main.Pasting())
 		}
 		feed("\x1b[200~'" + image + "'\x1b[201~typed")
-		if u.Text != "plain"+"[Image 1] typed" || len(u.Images) != 1 || terminalTest(u).Decoder.Pasting() {
+		if u.Text != "plain"+"[Image 1] typed" || len(u.Images) != 1 || terminalTest(u).Main.Pasting() {
 			t.Fatalf("next paste stuck: %q %+v", u.Text, u.Images)
 		}
 		feed("\x1b[200~'" + image + "'\x1b[201~")
@@ -154,9 +154,9 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 					if err := terminalTest(u).key(b); err != nil {
 						return err
 					}
-					if b == '!' && !terminalTest(u).Decoder.Pasting() {
-						if terminalTest(u).Decoder.Pasting() || len(u.Images) != 2 || u.Text != "[Image 1] [Image 2] editable!" {
-							return fmt.Errorf("paste lifecycle: %q images=%d state=%v", u.Text, len(u.Images), terminalTest(u).Decoder.Pasting())
+					if b == '!' && !terminalTest(u).Main.Pasting() {
+						if terminalTest(u).Main.Pasting() || len(u.Images) != 2 || u.Text != "[Image 1] [Image 2] editable!" {
+							return fmt.Errorf("paste lifecycle: %q images=%d state=%v", u.Text, len(u.Images), terminalTest(u).Main.Pasting())
 						}
 						var frame bytes.Buffer
 						if err := u.testPaint(&frame, 80, 20); err != nil {

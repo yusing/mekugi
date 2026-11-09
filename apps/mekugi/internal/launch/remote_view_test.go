@@ -43,7 +43,7 @@ func remoteOwnerView(t *testing.T, u *appServerUI) *remoteViewHarness {
 		prepare: prepareAPIInput,
 		run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
 			h.api = api
-			h.views = newNativeViews(ctx, api.Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+			h.views = newNativeViews(ctx, api.Native(), u.presentationState, u.activity, u.Requests)
 			h.views.guards = u.approvals.guards
 			u.approvals.allows = h.views.allowsApproval
 			defer h.views.close()
@@ -180,7 +180,7 @@ func TestRemoteViewAnswersUsePendingPromptOwner(t *testing.T) {
 			h := remoteOwnerView(t, u)
 			answer := sessionapi.Answer{Call: call.ID, Answers: []sessionapi.QuestionAnswer{{Question: call.Questions[0].ID, Choice: tc.choice, Text: tc.text, Skip: tc.skip}}}
 			code, body := h.send(map[string]any{"answers": answer}, func(request sessionapi.NativeRequest) string {
-				refusal, err := u.nativeSession.applyNativeAnswers(&u.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, false, u.ctx, *request.Operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
+				refusal, err := u.nativeSession.applyNativeAnswers(&u.attached, &u.picker, &u.Editor, u.side, u.clock, false, u.ctx, *request.Operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -251,7 +251,7 @@ func TestRemoteQuestionImagesReachHostAndReleaseRefusals(t *testing.T) {
 				if mode == "stale" {
 					u.questions.Calls[0].Resolved = true
 				}
-				refusal, err := u.nativeSession.applyNativeAnswers(&u.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, false, u.ctx, *request.Operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
+				refusal, err := u.nativeSession.applyNativeAnswers(&u.attached, &u.picker, &u.Editor, u.side, u.clock, false, u.ctx, *request.Operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -318,7 +318,7 @@ func TestRemoteViewCommandAndDetailUseSharedOwners(t *testing.T) {
 	h := remoteOwnerView(t, u)
 	code, body := h.send(sessionapi.NativeOperation{Command: new("/status")}, func(request sessionapi.NativeRequest) string {
 		v := h.view
-		u.attached, u.shell, u.picker = v.attached, v.shell, v.picker
+		u.attached, u.picker = v.attached, v.picker
 		u.Editor = &composer.Editor{Text: *request.Operation.Command}
 		_, err := u.applyComposerInput(terminalsession.ComposerInput{Command: sessionpresentation.ComposerIntent{Version: request.Version, Thread: u.Thread, Operation: sessionpresentation.SubmitComposer}})
 		if err != nil {
@@ -420,7 +420,7 @@ func TestRemoteViewApprovalGrantsRetireWithAnsweringAttachment(t *testing.T) {
 	h := remoteOwnerView(t, u)
 	enqueue := func(kind string) *sessioncontrol.ShellApprovalRequest {
 		request := compositionApproval(kind)
-		addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+		addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
 		return request
 	}
 	first, queued := enqueue(""), enqueue("")
@@ -433,7 +433,7 @@ func TestRemoteViewApprovalGrantsRetireWithAnsweringAttachment(t *testing.T) {
 		if err != nil {
 			return err.Error()
 		}
-		if err := u.nativeSession.applyApproval(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, view.attached.grants, u.approvals.handles[record], choice, ""); err != nil {
+		if err := u.nativeSession.applyApproval(&u.attached, &u.picker, &u.Editor, u.clock, view.attached.grants, u.approvals.handles[record], choice, ""); err != nil {
 			return err.Error()
 		}
 		return ""
@@ -463,7 +463,7 @@ func TestRemoteViewApprovalGrantsRetireWithAnsweringAttachment(t *testing.T) {
 	publishSessionView(&other.attached, &u.Client, &other.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, false)
 	approval = u.approvals.calls()[0]
 	intent = &sessionpresentation.ApprovalIntent{Version: other.attached.presentation.View().Version, Request: approval.ID, Choice: 1}
-	if err := u.nativeSession.decideApproval(&other.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, false, *intent); err != nil || len(second.Reply) != 1 || !(<-second.Reply).OK {
+	if err := u.nativeSession.decideApproval(&other.attached, &u.picker, &u.Editor, u.side, u.clock, false, *intent); err != nil || len(second.Reply) != 1 || !(<-second.Reply).OK {
 		t.Fatalf("second attachment grant: %v", err)
 	}
 	h.views.retire(h.event.Attachment)

@@ -1,12 +1,9 @@
 package launch
 
 import (
-	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -32,14 +29,6 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 	return (binding.TranscriptItem{ID: item.ID, Type: item.Type, Text: item.Text, Status: item.Status, Summary: item.Summary, Delivery: item.Delivery, Phase: item.Phase, Questions: item.Questions}).Observation(thread, turn, id)
 }
 
-func transcriptUpdates(attached *attachedPresentation, terminal *terminalsession.Attachment, streams *terminalsession.Streams, main string, updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
-	entries := attached.session.AdmitText(updates, main)
-	if paced {
-		streams.QueueText(slices.Clone(updates), terminal.Transcript, terminal.Agents)
-	}
-	return entries
-}
-
 func historicalTranscript(items []binding.ThreadItem, thread, turn string, main, promote bool, at time.Time) map[string]observation.TextUpdate {
 	events := make([]observation.TextEvent, len(items))
 	for i, item := range items {
@@ -52,42 +41,42 @@ func historicalTranscript(items []binding.ThreadItem, thread, turn string, main,
 // uses the same Conversation reducer without response handles. Parking precedes
 // the model transition so external replies cannot discard an active draft before
 // it reaches the question's editor.
-func observeMessageQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], approvals *nativeApprovalDock, clock func() time.Time, questions *nativeQuestionDock, editor **composer.Editor, picker *composerPicker, overlay bool, notifications *nativeNotifications, text observation.TextEvent, item observation.Item, history bool) bool {
+func observeMessageQuestions(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], approvals *nativeApprovalDock, clock func() time.Time, questions *nativeQuestionDock, editor **composer.Editor, picker *composerPicker, overlay bool, notifications *nativeNotifications, text observation.TextEvent, item observation.Item, history bool) bool {
 	var userText string
 	if item.Type == "userMessage" {
 		userText, _, _ = sessionpresentation.UserText(item.Content)
 	}
 	in := conversationbinding.MessageQuestions(text, item, userText, (text.Item.Ref.ThreadID == control.Thread || control.Requests.WorkSide(text.Item.Ref.ThreadID)), history)
 	if questions.NeedsParking(in) {
-		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+		(*editor) = hideQuestionEditor(questions, attached.conversation, (*editor), control.Thread)
 	}
 	changes := questions.ObserveMessage(in)
 	if changes.Added != nil {
-		bindQuestion(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, &sessioncontrol.Question{Call: changes.Added}, history)
+		bindQuestion(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, &sessioncontrol.Question{Call: changes.Added}, history)
 	}
 	for _, change := range changes.Changed {
 		for _, draft := range change.Discarded {
-			saveUnsentAnswer(attached, terminal, clock, draft)
+			saveUnsentAnswer(attached, clock, draft)
 		}
 		c := questions.handles[change.Call]
 		if change.Superseded {
-			discardQuestionEditors(terminal.Prompts, c)
+			discardQuestionEditors(questions, c)
 		}
 		renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 	}
 	return changes.Suppress
 }
 
-func (session *nativeSession) messageTranscript(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, editor **composer.Editor, picker *composerPicker, overlay bool, text observation.TextEvent, item observation.Item, main bool) bool {
-	if observeMessageQuestions(attached, terminal, &session.Client, &session.approvals, clock, &session.questions, editor, picker, overlay, session.notifications, text, item, false) {
+func (session *nativeSession) messageTranscript(attached *attachedPresentation, clock func() time.Time, editor **composer.Editor, picker *composerPicker, overlay bool, text observation.TextEvent, item observation.Item, main bool) bool {
+	if observeMessageQuestions(attached, &session.Client, &session.approvals, clock, &session.questions, editor, picker, overlay, session.notifications, text, item, false) {
 		return true
 	}
 	deliveries := sessionpresentation.ProjectMessage(&attached.session, attached.source, attached.childSource, attached.transcript, main, sessionpresentation.ObservationInput{
 		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: session.Client.Thread, Workspace: attached.cwd,
 	})
-	session.streams.Deliver(deliveries, terminal.Transcript, terminal.Agents)
+	attached.hooks.deliverActivity(attached.executionPresentation, deliveries)
 	if !main || len(deliveries) > 0 {
-		applyActivity(attached, &session.approvals, terminal, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, nil)
+		applyActivity(attached, &session.approvals, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, nil)
 	}
 	return false
 }

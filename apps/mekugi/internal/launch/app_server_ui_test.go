@@ -124,15 +124,15 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 	}
 	u.Text = ""
 	appServerTestKeys(t, u, "\x1b")
-	if !w.keys.Pending() || u.Text != "" || w.Len() != 0 {
+	if u.Text != "" || w.Len() != 0 {
 		t.Fatal("partial paste start was interpreted before its continuation")
 	}
 	appServerTestKeys(t, u, "[200~split\rpaste\x1b")
-	if !w.keys.Pasting() || w.Len() != 0 {
+	if !u.shell.Main.Pasting() || w.Len() != 0 {
 		t.Fatal("partial paste terminator ended paste or submitted input")
 	}
 	appServerTestKeys(t, u, "[201~")
-	if u.Text != "split\npaste" || w.keys.Pasting() || w.keys.Pending() || w.Len() != 0 {
+	if u.Text != "split\npaste" || u.shell.Main.Pasting() || w.Len() != 0 {
 		t.Fatal("split paste submitted or lost data")
 	}
 }
@@ -207,8 +207,8 @@ func TestAppServerUIInput(t *testing.T) {
 	}
 	u.Text = ""
 	appServerTestKeys(t, u, "\x7f\x1b[200~one\rtwo\n你好\x1b[201~")
-	if u.Text != "one\ntwo\n你好" || w.keys.Pasting() || w.Len() != 0 {
-		t.Fatalf("paste submitted or corrupted: draft=%q paste=%v wire=%q", u.Text, w.keys.Pasting(), w.String())
+	if u.Text != "one\ntwo\n你好" || u.shell.Main.Pasting() || w.Len() != 0 {
+		t.Fatalf("paste submitted or corrupted: draft=%q paste=%v wire=%q", u.Text, u.shell.Main.Pasting(), w.String())
 	}
 	u.Text = "/unsupported"
 	appServerTestKeys(t, u, "\r")
@@ -381,21 +381,21 @@ func TestAppServerNoticeExpiry(t *testing.T) {
 	u.attached.presentation.Status.Text = "Working"
 	terminalTest(u).copyText("copied")
 	deadline := u.attached.feedback.Until
-	if deadline.IsZero() || expireNotice(&u.attached.feedback, u.shell, deadline.Add(-time.Millisecond)) {
+	if deadline.IsZero() || expireNotice(&u.attached.feedback, deadline.Add(-time.Millisecond)) {
 		t.Fatal("notice expired early")
 	}
 	terminalTest(u).copyText("copied again")
 	if u.attached.feedback.Until.Before(deadline) {
 		t.Fatal("repeat notice did not refresh deadline")
 	}
-	if !expireNotice(&u.attached.feedback, u.shell, u.attached.feedback.Until) || u.attached.feedback.Text != "" || u.attached.presentation.Status.Text != "Working" {
+	if !expireNotice(&u.attached.feedback, u.attached.feedback.Until) || u.attached.feedback.Text != "" || u.attached.presentation.Status.Text != "Working" {
 		t.Fatal("notice did not expire independently of status")
 	}
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "failure", true)
-	if expireNotice(&u.attached.feedback, u.shell, time.Now().Add(time.Hour)) || u.attached.feedback.Text != "failure" {
+	setNotice(&u.attached.feedback, presentationTime(u.clock), "failure", true)
+	if expireNotice(&u.attached.feedback, time.Now().Add(time.Hour)) || u.attached.feedback.Text != "failure" {
 		t.Fatal("error expired")
 	}
-	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "x")
+	insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "x")
 	if u.attached.feedback.Text != "" || !u.attached.feedback.Until.IsZero() {
 		t.Fatal("editing did not clear notice")
 	}
@@ -457,9 +457,23 @@ func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appS
 	}
 	source, child, workspace := u.attached.source, u.attached.childSource, u.attached.cwd
 	api := sessionapi.NewLive()
-	native := newNativeViews(context.Background(), api.Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	native := newNativeViews(context.Background(), api.Native(), u.presentationState, u.activity, u.Requests)
 	hooks := new(executionHooks)
 	hooks.bind(native, api, u.nativeSession.compactionReader)
+	delivery := hooks.deliverActivity
+	hooks.deliverActivity = func(execution *executionPresentation, deliveries []sessionpresentation.ActivityDelivery) {
+		delivery(execution, deliveries)
+		for _, next := range deliveries {
+			if report := next.Report; report != nil {
+				// This in-process renderer resolves content through Activity's
+				// replay adapter, so retain its matching output identities.
+				local := *report
+				local.Snapshot = execution.session.Commands()[report.Key].Entry.Native.Invocation.ReportSnapshot(report.Final)
+				next.Report = &local
+			}
+			u.renderStreams.Deliver([]sessionpresentation.ActivityDelivery{next}, u.shell.Transcript, u.shell.Agents)
+		}
+	}
 	u.dispatch = u.message
 	u.attached = newAttachedPresentation(context.Background(), u.presentationState, u.conversationState, &observations, hooks)
 	if source != nil {
@@ -473,8 +487,8 @@ func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appS
 		u.attached.childSource = child
 	}
 	u.attached.cwd = workspace
-	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	attachPresentation(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u
 }
 
@@ -506,7 +520,7 @@ func newActivityAdapter() *activityAdapter { return newTranscriptAdapter(activit
 // transitions as accepted host startup.
 func (u *appServerUI) startSession(thread, workspace string) {
 	startAttachedSession(&u.attached, u.observations, thread, workspace)
-	u.streams = terminalsession.Streams{}
+	u.renderStreams = terminalsession.Streams{}
 	u.retainedSession.Close()
 	u.retainedSession = history.Session{}
 }

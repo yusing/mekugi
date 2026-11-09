@@ -51,7 +51,7 @@ func TestComposerPredictionRejectsStaleConfiguration(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			p := composerPredictions{supported: true, provider: provider, results: make(chan predictionConfiguration, 1)}
 			p.observe(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"main","turn":{"id":"source","status":"completed"}}`)}, "main")
-			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
+			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.attached.predictionsDisabled); err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -66,11 +66,11 @@ func TestComposerPredictionRejectsStaleConfiguration(t *testing.T) {
 			case "turn":
 				p.observe(appserver.Message{Method: "turn/started", Params: []byte(`{"threadId":"main","turn":{"id":"new"}}`)}, "main")
 			case "disable":
-				u.shell.Main.PredictionsDisabled = true
+				u.attached.predictionsDisabled = true
 			case "switch":
 				u.Thread = "replacement"
 			}
-			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
+			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.attached.predictionsDisabled); err != nil {
 				t.Fatal(err)
 			}
 			if p.request != nil {
@@ -97,7 +97,7 @@ func TestComposerPredictionModerationAndResume(t *testing.T) {
 	_, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	p.request = &predictionRequest{thread: "main", turn: "source", revision: u.Editor.Revision(), cancel: cancel, operation: &sessioncontrol.Prediction{Completed: true, Text: "hidden"}, settings: &openai.PredictionSettings{Policy: openai.PredictionPolicy{AssistantLabels: []string{"blocked"}}}}
-	if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
+	if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.attached.predictionsDisabled); err != nil {
 		t.Fatal(err)
 	}
 	if u.attached.conversation.DraftView().Prediction != "" {
@@ -107,7 +107,7 @@ func TestComposerPredictionModerationAndResume(t *testing.T) {
 		t.Fatal("moderation evidence was retained after evaluation")
 	}
 	p.request.settings.Policy = openai.PredictionPolicy{}
-	if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
+	if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.attached.predictionsDisabled); err != nil {
 		t.Fatal(err)
 	}
 	if u.attached.conversation.DraftView().Prediction != "" {
@@ -149,7 +149,7 @@ func TestComposerPredictionAcceptEditAndSubmit(t *testing.T) {
 		t.Fatal("prediction preference did not restore")
 	}
 	appServerTestKeys(t, u, "/predictions on\r")
-	if u.shell.Main.PredictionsDisabled {
+	if u.attached.predictionsDisabled {
 		t.Fatal("enable failed")
 	}
 }
@@ -182,7 +182,7 @@ func TestComposerPredictionModerationBoundAndLateArrival(t *testing.T) {
 			_, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			p.request = &predictionRequest{thread: "main", turn: "source", revision: u.Editor.Revision(), cancel: cancel, operation: &sessioncontrol.Prediction{Completed: true, Text: "suggestion"}, settings: &openai.PredictionSettings{Policy: openai.PredictionPolicy{AssistantLabels: []string{"blocked"}}}}
-			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
+			if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.attached.predictionsDisabled); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "late" {
@@ -190,7 +190,7 @@ func TestComposerPredictionModerationBoundAndLateArrival(t *testing.T) {
 					t.Fatal("eligible result not published")
 				}
 				moderate("blocked", "")
-				if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.shell.Main.PredictionsDisabled); err != nil {
+				if err := p.sync(t.Context(), &u.attached, &u.Client, false, true, u.attached.predictionsDisabled); err != nil {
 					t.Fatal(err)
 				}
 			}

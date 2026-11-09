@@ -194,7 +194,7 @@ func TestOutputDialogMouseSelectionClearedByNavigation(t *testing.T) {
 	for _, action := range []string{"page", "wheel", "width", "height"} {
 		t.Run(action, func(t *testing.T) {
 			u, _ := outputSelectionFixture("alpha\nbeta\n", false)
-			u.main.detailFiles.replaceDetails(&u.main.attached.session, u.Attachment, activitypresentation.DetailPages(activityui.Values([]activityui.Block{{Value: u.Dialog.Pages[0].Value}, {Kind: "op", Verb: "Run", Code: "second"}})))
+			u.main.detailFiles.replaceTerminalDetails(&u.main.attached.session, u.Attachment, activitypresentation.DetailPages(activityui.Values([]activityui.Block{{Value: u.Dialog.Pages[0].Value}, {Kind: "op", Verb: "Run", Code: "second"}})))
 			x, y := outputSelectionPoint(t, u, "alpha")
 			outputSelectionDrag(u, x, y, x+4, y)
 			switch action {
@@ -227,7 +227,7 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	u := dialogForOutput(output)
 	block := activityui.Block{Content: activitymodel.ParseOperation("Skill `example`")}
 	block.Source, block.Output = u.Dialog.Pages[0].Source, u.Dialog.Pages[0].Output
-	u.main.detailFiles.replaceDetails(&u.main.attached.session, u.Attachment, activitypresentation.DetailPages(activityui.Values([]activityui.Block{block})))
+	u.main.detailFiles.replaceTerminalDetails(&u.main.attached.session, u.Attachment, activitypresentation.DetailPages(activityui.Values([]activityui.Block{block})))
 	frame := drawOutputDialog(u)
 	if !strings.Contains(frame, "Use careful steps.") || strings.Contains(frame, "**") || strings.Contains(frame, "# Skill guide") {
 		t.Fatalf("skill Markdown not rendered in dialog: %q", frame)

@@ -7,7 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/contracts/observation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -19,16 +19,14 @@ import (
 	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // publishPresentation settles detached facts at a semantic transition boundary.
 // Reading Model.View does not run this projection or bind an attachment.
-func publishPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side) sessionpresentation.View {
+func publishPresentation(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side) sessionpresentation.View {
 	m := attached.presentation
 	if attached.view != "" {
 		view := publishSessionView(attached, control, picker, "", settings, tiers, title, backend, restoring, side, true)
-		terminal.Main.Update(view)
 		return view
 	}
 	if side != nil {
@@ -47,20 +45,10 @@ func publishPresentation(attached *attachedPresentation, terminal *terminalsessi
 	}
 	if m.DisplayingSide() {
 		*editor = &side.Drafts.Editor
-	} else if q := attached.conversation.Questions.Current(); q != nil && q.IsSecret {
-		*editor = &terminal.Prompts.Secret
-	} else {
+	} else if q := attached.conversation.Questions.Current(); q == nil || !q.IsSecret {
 		*editor = &attached.conversation.Editor
 	}
 	view := publishSessionView(attached, control, picker, (*editor).Text, settings, tiers, title, backend, restoring, side, false)
-	terminal.Prompts.Update(view)
-	terminal.Main.Update(view)
-	for _, terminal := range []*activityui.View{terminal.Transcript, terminal.Agents} {
-		if terminal != nil {
-			terminal.Painter.FileLink = markdownFileLinks(view.Info.Workspace)
-			terminal.Painter.DeferFileLinks = true
-		}
-	}
 	return view
 }
 
@@ -113,11 +101,11 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 	}, caption)
 }
 
-func attachPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, review **sessionreview.Review, commits **activitypresentation.CommitReader, parent context.Context, retained changes.Scope, changeSource changes.Service, activityPresent bool) {
+func attachPresentation(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, review **sessionreview.Review, commits **activitypresentation.CommitReader, parent context.Context, retained changes.Scope, changeSource changes.Service, activityPresent bool) {
 	(*review) = attachReview(parent, (*review), retained, changeSource)
 	(*commits) = attachCommitReader(&attached.session, (*commits), parent, activityPresent)
 	conversation := attached.conversation
-	if (*editor) != &terminal.Prompts.Secret {
+	if (*editor) != &questions.secret {
 		(*editor) = &conversation.Editor
 	}
 	picker.State, picker.MenuState = &conversation.Completion, attached.presentation.Menu()
@@ -128,14 +116,15 @@ func attachPresentation(attached *attachedPresentation, terminal *terminalsessio
 
 // settlePresentation runs before another intent can observe this session.
 // Opening a prompt does not mark it painted or acknowledge a notice.
-func settlePresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool) {
-	continueRewind(attached, terminal, control, picker, restoring, clock)
+func settlePresentation(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool) {
+	continueRewind(attached, control, picker, restoring, clock)
 	if attached.view == "" {
-		autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
-		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+		autoOpenApprovals(attached, picker, editor, questions, approvals, control.Thread, overlay)
+		autoOpenQuestions(attached, picker, editor, questions, approvals, control.Thread, overlay)
 	}
-	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side)
-	publishActivity(attached, terminal)
+	publishPresentation(attached, control, picker, editor, settings, tiers, title, backend, restoring, side)
+	attached.session.ProjectSide(attached.childSource, attached.presentation.View().SideThread, attached.conversation.Side)
+	refreshRosterRoles(&attached.session, attached.childSource)
 }
 
 // sessionCaption borrows the selected source's facts; it retains no accounting state.

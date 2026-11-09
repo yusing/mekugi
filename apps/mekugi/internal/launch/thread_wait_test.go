@@ -430,7 +430,7 @@ func TestRecoveryInputRetriesWithoutAnotherHostMessage(t *testing.T) {
 			if !u.attached.threadInput.preparing() {
 				t.Fatal("deferred input lost its tick retry")
 			}
-			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			synctest.Wait()
@@ -498,7 +498,7 @@ func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
 		u.attached.threadInput = &threadInput{driver: threads.driver, caller: "/root/worker", admitted: true}
 		u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "/compact", Compact: new(conversationmodel.CompactIntent{})}}
 		for range 2 {
-			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
 				t.Fatal(err)
 			}
 			synctest.Wait()

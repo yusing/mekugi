@@ -17,10 +17,10 @@ import (
 // resumes interpretation; no application key or pointer switch remains here.
 func (session *nativeSession) applyInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, dirty *bool, files *detailFiles, quit *bool, surface *terminalsession.Attachment, effects iter.Seq[terminalsession.InputEffect]) error {
 	if attached != nil {
-		publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
+		publishTestPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
 		publishActivity(attached, terminal)
 		defer func() {
-			settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
+			settleTestPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
 		}()
 	}
 	for effect := range effects {
@@ -29,7 +29,7 @@ func (session *nativeSession) applyInput(attached *attachedPresentation, termina
 			return err
 		}
 		if attached != nil {
-			publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
+			publishTestPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
 		}
 	}
 	return nil
@@ -53,7 +53,7 @@ func (session *nativeSession) applyEffect(attached *attachedPresentation, termin
 		return !handled, err
 	case effect.PendingPrompt != nil:
 		if effect.PendingPrompt.Version != attached.presentation.View().Version {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
 		if attached.presentation.DisplayingSide() {
@@ -61,17 +61,17 @@ func (session *nativeSession) applyEffect(attached *attachedPresentation, termin
 			_ = attached.presentation.Display(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main})
 			*editor = &attached.conversation.Editor
 		}
-		if !effect.PendingPrompt.ApprovalsFirst || !openApprovals(&session.approvals, &session.questions, attached.conversation, terminal, picker, editor, session.Client.Thread) {
-			openQuestions(attached, terminal, picker, editor, &session.questions, &session.approvals, session.Client.Thread)
+		if !effect.PendingPrompt.ApprovalsFirst || !openApprovals(&session.approvals, &session.questions, attached.conversation, picker, editor, session.Client.Thread) {
+			openQuestions(attached, picker, editor, &session.questions, &session.approvals, session.Client.Thread)
 		}
 	case effect.Panel != nil:
-		applyPanelAction(attached, terminal, clock, panel, session.sessionCapture, *effect.Panel)
+		applyPanelAction(attached, clock, panel, session.sessionCapture, *effect.Panel)
 		(*dirty) = true
 	case effect.Resume != nil:
-		return false, session.applyResumeAction(attached, terminal, picker, editor, clock, side, panel, resumePicker, quit, *effect.Resume)
+		return false, session.applyResumeAction(attached, picker, editor, clock, side, panel, resumePicker, quit, *effect.Resume)
 	case effect.Menu != nil:
-		handled := session.applyMenuResult(attached, terminal, picker, editor, side, clock, session.overlayOpen(*panel, *resumePicker), parent, *effect.Menu)
-		session.dispatchRewind(attached, terminal, picker, clock, parent)
+		handled := session.applyTestMenuResult(attached, terminal, picker, editor, side, clock, session.overlayOpen(*panel, *resumePicker), parent, *effect.Menu)
+		session.dispatchRewind(attached, picker, clock, parent)
 		return !handled, nil
 	case effect.Side != nil:
 		return false, applyCloseSide(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, session.overlayOpen(*panel, *resumePicker), &session.ownedImages, *effect.Side)
@@ -83,13 +83,13 @@ func (session *nativeSession) applyEffect(attached *attachedPresentation, termin
 	case effect.Dialog != nil:
 		session.outputIntent(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, files, surface, *effect.Dialog)
 	case effect.Reference != nil:
-		return session.referenceInput(attached, terminal, picker, editor, clock, side, panel, resumePicker, parent, *effect.Reference), nil
+		return session.referenceInput(attached, picker, editor, clock, side, panel, resumePicker, parent, *effect.Reference), nil
 	case effect.Selection != nil:
 		result := effect.Selection
 		if len(result.Demands) > 0 {
 			source := activitySource(attached, terminal, result.Selection.View)
 			if source == nil {
-				setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
+				setNotice(&attached.feedback, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 				return false, nil
 			}
 			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))
@@ -108,7 +108,7 @@ func (session *nativeSession) applyEffect(attached *attachedPresentation, termin
 	case effect.Details != nil:
 		intent := effect.Details
 		if intent.Version != attached.presentation.View().Version || activitySource(attached, terminal, intent.View) == nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
 		switch intent.Kind {
@@ -121,11 +121,11 @@ func (session *nativeSession) applyEffect(attached *attachedPresentation, termin
 		intent := effect.Notice
 		view := attached.presentation.View()
 		if intent.Version != view.Version || intent.Feedback != view.Status.FeedbackRevision {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
 		if intent.Dismiss {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
+			setNotice(&attached.feedback, presentationTime(clock), "", false)
 			if attached.presentation.Status.Alert {
 				attached.presentation.Status.Set("", false)
 			}
@@ -134,11 +134,11 @@ func (session *nativeSession) applyEffect(attached *attachedPresentation, termin
 		}
 		(*dirty) = true
 	case effect.Clipboard != nil:
-		setNotice(&attached.feedback, terminal, presentationTime(clock), effect.Clipboard.Text, effect.Clipboard.Alert)
+		setNotice(&attached.feedback, presentationTime(clock), effect.Clipboard.Text, effect.Clipboard.Alert)
 	case effect.Interrupt != nil:
-		return false, session.interruptSession(attached, terminal, picker, editor, clock, side, session.overlayOpen(*panel, *resumePicker), *effect.Interrupt)
+		return false, session.interruptSession(attached, picker, editor, clock, side, session.overlayOpen(*panel, *resumePicker), *effect.Interrupt)
 	case effect.Locked:
-		lockNotice(attached, terminal, clock)
+		lockNotice(attached, clock)
 	case effect.EditorPath != "":
 		return false, &openFileEditor{path: effect.EditorPath}
 	}

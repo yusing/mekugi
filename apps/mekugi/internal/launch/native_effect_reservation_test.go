@@ -15,18 +15,18 @@ func TestNativeShellReservationSurvivesHostAcknowledgement(t *testing.T) {
 		t.Run(fmt.Sprintf("rejected=%t", rejected), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.startSession("main", "/workspace")
-			n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+			n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 			defer n.close()
 			if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 				t.Fatal(refusal)
 			}
 			view := n.views["view"]
-			u.attached, u.shell, u.picker = view.attached, view.shell, view.picker
+			u.attached, u.picker = view.attached, view.picker
 			u.attached.hooks.restoreShell = n.restoreShell
 			reservation := view.effects.reserve(1)
 			view.effects.current = reservation
 			u.Editor = &composer.Editor{Text: "!pwd"}
-			if err := u.nativeSession.submitShell(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
+			if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			view.effects.current = nil
@@ -69,7 +69,7 @@ func TestNativeShellReservationSurvivesHostAcknowledgement(t *testing.T) {
 func TestNativeNotificationCoalescesWithoutSemanticCapacity(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 		t.Fatal(refusal)

@@ -37,7 +37,7 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 				live = ""
 			}
 			for _, status := range []string{"Waiting", "Working"} {
-				u := *appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, Turn: "active"}})
+				u := *appServerTestFeatures(&appServerUI{shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, nativeSession: nativeSession{activity: new(activitymodel.Service), Turn: "active"}})
 				u.attached.presentation.Status.Set(status, false)
 				u.attached.presentation.Status.Started = start
 				if got := ansi.Strip(u.sessionLabel(now)); got != strings.TrimSpace("◐ "+status+" "+live) {

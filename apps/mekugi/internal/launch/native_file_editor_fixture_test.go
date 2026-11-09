@@ -22,7 +22,7 @@ func (*openFileEditor) Error() string { return "open file editor" }
 func openSelectedFileEditor(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, parent context.Context, path string, stdin, stdout *os.File) {
 	terminal.Frame.Rows = nil
 	if !filepath.IsAbs(path) {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Open editor: file has no absolute workspace path", true)
+		setNotice(&attached.feedback, presentationTime(clock), "Open editor: file has no absolute workspace path", true)
 		return
 	}
 	info, err := os.Stat(path)
@@ -33,12 +33,12 @@ func openSelectedFileEditor(attached *attachedPresentation, terminal *terminalse
 		err = runEditor(parent, path, stdin, stdout)
 	}
 	if err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Open editor: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Open editor: "+err.Error(), true)
 		return
 	}
 	workspace := attached.cwd
 	if editor, ok := terminal.Auxiliary.(terminalui.PaneEditor); ok {
 		workspace = editor.Workspace()
 	}
-	setNotice(&attached.feedback, terminal, presentationTime(clock), "Editor closed: "+pathdisplay.ForWorkspace(workspace, path), false)
+	setNotice(&attached.feedback, presentationTime(clock), "Editor closed: "+pathdisplay.ForWorkspace(workspace, path), false)
 }

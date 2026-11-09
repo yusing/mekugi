@@ -39,18 +39,18 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	u.Turn = "turn"
 	appServerTestKeys(t, u, "main draft")
 	questionTestAsync(t, u, "photos", "First image?", "Second image?")
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	first, second := answerImageFixture(t), answerImageFixture(t)
 	appServerTestKeys(t, u, "\x1b[200~"+first+"\x1b[201~")
 	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(sessionpresentation.DraftSpans(draftSnapshot(u.Editor).Draft)) != 1 {
 		t.Fatalf("answer did not reuse composer: %q %+v", u.Text, u.Images)
 	}
-	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "first quote", "")
+	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "first quote", "")
 	appServerTestKeys(t, u, "\r")
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "\x1b[200~"+second+"\x1b[201~")
-	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "second quote", "")
+	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "second quote", "")
 	appServerTestKeys(t, u, "\r")
 	if u.Text != "main draft" {
 		t.Fatalf("parked editor changed: %q", u.Text)
@@ -130,9 +130,9 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
 	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
-	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "retry quote", "")
+	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "retry quote", "")
 	appServerTestKeys(t, u, "\r")
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.hooks.nativeImages)
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.side, u.attached.hooks.nativeImages)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("parked answer image reclaimed", err)
 	}
@@ -140,7 +140,7 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	appServerTestKeys(t, u, "1\r")
 	request := resumeTestOne(t, wire, "turn/steer")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	if len(u.Images) != 1 || u.Images[0].Path != path || len(u.Selections) != 1 || u.Selections[0].Text != "retry quote" {
 		t.Fatalf("retry lost image: %q %+v", u.Text, u.Images)
@@ -172,8 +172,8 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
 	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
-	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, u.attached.hooks.nativeImages)
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.side, u.attached.hooks.nativeImages)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("parked secret image reclaimed", err)
 	}
@@ -181,13 +181,13 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	if call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 || len(call.View().Questions[0].Answer) != 0 {
 		t.Fatal("secret draft exposed through model")
 	}
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "\r")
 	if !strings.Contains(wire.String(), "user_note: [Image 1]") || len(u.attached.conversation.Unsent) != 1 || len(u.attached.conversation.Unsent[0].Images) != 1 {
 		t.Fatal("secret answer image companion lost")
 	}
-	if len(u.shell.Prompts.SecretState(call.ID).Editors) != 0 || len(u.shell.Prompts.SecretState(call.ID).Answers) != 0 || len(call.Questions[0].Answer) != 0 {
+	if len(u.questions.secretState(call.ID).Editors) != 0 || len(u.questions.secretState(call.ID).Answers) != 0 || len(call.Questions[0].Answer) != 0 {
 		t.Fatal("submitted secret retained")
 	}
 }

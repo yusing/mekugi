@@ -36,7 +36,7 @@ func TestNativeMainHistoryRolloverKeepsAcknowledgedImages(t *testing.T) {
 		id := fmt.Sprintf("input-%d", i)
 		u.attached.presentation.StageInput(&u.Live, u.attached.conversation, id, conversationmodel.Submission{Draft: draft, Parts: []conversationmodel.Input{{Draft: draft}}}, false)
 		effects := u.attached.presentation.AcknowledgeInput(&u.Live, u.attached.conversation, "turn/start", "", false)
-		applyInputEffects(&u.attached, u.shell, nil, nil, &u.picker, "", u.clock, effects)
+		applyInputEffects(&u.attached, nil, nil, &u.picker, "", u.clock, effects)
 		facts := nativePublicationFacts(&u.attached, nil, binding.TokenUsage{}, "", false, nil, "main", nil)
 		wire, err := json.Marshal(facts)
 		if err != nil {
@@ -141,7 +141,7 @@ func TestNativeFactsRestoreHistoryPreferencesAndUsage(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.attached.cwd = t.TempDir()
 	panes := testPanePreferences()
-	if err := panes.open(&u.shell.Shell, u.shell.Main, u.attached.cwd, "main", false); err != nil {
+	if err := panes.openTerminal(&u.shell.Shell, u.shell.Main, u.attached.cwd, "main", false); err != nil {
 		t.Fatal(err)
 	}
 	panes.attachment.StagePresentation(jsontext.Value(`{"focus":0,"split":62,"diffOpen":true,"interruptLocked":true}`))
@@ -187,10 +187,10 @@ func TestNativeCompletionContinuesNewestTargetWithoutEditorCache(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.attached.cwd, u.attached.view, u.picker.view = "/work", "view", "view"
 	editor := &composer.Editor{Text: "@first"}
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, editor, context.Background(), nil)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, editor, context.Background(), nil)
 	editor.Replace(composer.Draft{Text: "@second"})
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, editor, context.Background(), nil)
-	u.picker.pickerMessage(&u.attached, u.shell, u.clock, u.Requests, new(composer.Editor), context.Background(), nil, "fuzzyFileSearch", appserver.Message{Result: jsontext.Value(`{"files":[]}`)})
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, editor, context.Background(), nil)
+	u.picker.pickerMessage(&u.attached, u.clock, u.Requests, new(composer.Editor), context.Background(), nil, "fuzzyFileSearch", appserver.Message{Result: jsontext.Value(`{"files":[]}`)})
 	requests := pickerRequests(t, wire)
 	if len(requests) != 2 || requests[1].Params.Query != "second" {
 		t.Fatalf("latest target lost: %+v", requests)
@@ -202,18 +202,18 @@ func TestNativePreferenceWriterRetainsOutgoingOwnersInOrder(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	p := testPanePreferences()
 	workspace := t.TempDir()
-	if err := p.open(&u.shell.Shell, u.shell.Main, workspace, "first", false); err != nil {
+	if err := p.openTerminal(&u.shell.Shell, u.shell.Main, workspace, "first", false); err != nil {
 		t.Fatal(err)
 	}
 	p.attachment.StagePresentation(jsontext.Value(`{"focus":0,"split":61,"diffOpen":true}`))
 	if err := p.savePrepared(time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.open(&u.shell.Shell, u.shell.Main, workspace, "second", false); err != nil {
+	if err := p.openTerminal(&u.shell.Shell, u.shell.Main, workspace, "second", false); err != nil {
 		t.Fatal(err)
 	}
 	p.attachment.StagePresentation(jsontext.Value(`{"focus":0,"split":42,"diffOpen":true}`))
-	if err := p.open(&u.shell.Shell, u.shell.Main, workspace, "first", true); err != nil {
+	if err := p.openTerminal(&u.shell.Shell, u.shell.Main, workspace, "first", true); err != nil {
 		t.Fatal(err)
 	}
 	if got := u.shell.Shell.Preferences(u.shell.Main).Split; got != 61 {
@@ -303,7 +303,7 @@ func TestNativeLocalShellModeAndStaleCompletion(t *testing.T) {
 	if !c.renderer.frame.View.Status.ShellMode {
 		t.Fatal("local shell draft lost its semantic presentation")
 	}
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, c.editor("main"), t.Context(), nil)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, c.editor("main"), t.Context(), nil)
 	if u.picker.Open || wire.Len() != 0 {
 		t.Fatal("shell text acquired feature completion")
 	}
@@ -371,7 +371,7 @@ func TestNativePredictionDismissalAndSkillBindingAreClientLocal(t *testing.T) {
 func TestNativeSideCompletionKeepsOriginatingDraft(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 		t.Fatal(refusal)
@@ -410,7 +410,7 @@ func TestNativeSideCompletionKeepsOriginatingDraft(t *testing.T) {
 func TestNativeSkillChangeInvalidatesEachViewCatalog(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	for _, id := range []string{"one", "two"} {
 		request := sessionapi.NativeRequest{Attachment: id, Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}

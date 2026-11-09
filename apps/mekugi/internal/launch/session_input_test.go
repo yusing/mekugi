@@ -30,7 +30,7 @@ func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 			t.Fatal("reading refreshed the publication")
 		}
 	}
-	if err := u.nativeSession.submitInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, sessionpresentation.SubmitIntent{Version: v.Version, Revision: v.Draft.Revision}); err != nil {
+	if err := u.nativeSession.submitInput(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, sessionpresentation.SubmitIntent{Version: v.Version, Revision: v.Draft.Revision}); err != nil {
 		t.Fatal(err)
 	}
 	r := appServerOneRequest(t, wire, "turn/start", "second")
@@ -59,7 +59,7 @@ func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 
 func editOrdinaryInput(t *testing.T, u *appServerUI, text string) {
 	t.Helper()
-	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	v := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	if !v.Draft.Available {
 		t.Fatal("ordinary draft unavailable")
 	}
@@ -69,11 +69,11 @@ func editOrdinaryInput(t *testing.T, u *appServerUI, text string) {
 			t.Fatal(err)
 		}
 	}
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 }
 
 func ordinarySubmitIntent(u *appServerUI, mode sessioncontrol.InputMode) sessionpresentation.SubmitIntent {
-	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	v := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	return sessionpresentation.SubmitIntent{Version: v.Version, Revision: v.Draft.Revision, Mode: mode}
 }
 
@@ -96,11 +96,11 @@ func TestNonTerminalInputDispositionAndHostRequests(t *testing.T) {
 			u.Turn, u.Settings.RestoreEffort = tc.turn, tc.blocked
 			if tc.question {
 				questionTestSync(t, u, "waiting", false)
-				u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+				u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
 			}
 			editOrdinaryInput(t, u, "ordinary input")
 			intent := ordinarySubmitIntent(u, tc.mode)
-			if err := u.nativeSession.submitInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, intent); err != nil {
+			if err := u.nativeSession.submitInput(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, intent); err != nil {
 				t.Fatal(err)
 			}
 			if tc.method != "" {
@@ -109,11 +109,11 @@ func TestNonTerminalInputDispositionAndHostRequests(t *testing.T) {
 					t.Fatalf("wrong submission target: %+v", r)
 				}
 			}
-			v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+			v := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 			if wire.Len() != 0 || v.Draft.Draft.Text != "" || len(u.attached.conversation.Queued) != tc.queued || len(u.attached.conversation.Unsent) != tc.unsent {
 				t.Fatalf("wrong disposition: draft=%q queued=%d unsent=%d wire=%s", v.Draft.Draft.Text, len(u.attached.conversation.Queued), len(u.attached.conversation.Unsent), wire.String())
 			}
-			if err := u.nativeSession.submitInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, intent); err != nil || wire.Len() != 0 {
+			if err := u.nativeSession.submitInput(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, intent); err != nil || wire.Len() != 0 {
 				t.Fatal("duplicate intent submitted again")
 			}
 		})
@@ -126,16 +126,16 @@ func TestNonTerminalInputRevisionAndRejection(t *testing.T) {
 	stale := ordinarySubmitIntent(u, sessioncontrol.SendInput)
 	editOrdinaryInput(t, u, "new draft")
 	editOrdinaryInput(t, u, "same text")
-	if err := u.nativeSession.submitInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, stale); err != nil || wire.Len() != 0 || publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Draft.Draft.Text != "same text" {
+	if err := u.nativeSession.submitInput(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, stale); err != nil || wire.Len() != 0 || publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Draft.Draft.Text != "same text" {
 		t.Fatal("identical replacement revived a retired draft target")
 	}
-	if err := u.nativeSession.submitInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil {
+	if err := u.nativeSession.submitInput(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil {
 		t.Fatal(err)
 	}
 	r := appServerOneRequest(t, wire, "turn/start", "same text")
 	editOrdinaryInput(t, u, "newer typing")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if got := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Draft.Draft.Text; got != "same text\nnewer typing" {
+	if got := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Draft.Draft.Text; got != "same text\nnewer typing" {
 		t.Fatalf("rejection lost ordering: %q", got)
 	}
 }
@@ -145,23 +145,23 @@ func TestNonTerminalOrdinaryInputRejectsPromptAndReadOnlyViews(t *testing.T) {
 	editOrdinaryInput(t, u, "keep draft")
 	intent := ordinarySubmitIntent(u, sessioncontrol.SendInput)
 	questionTestSync(t, u, "secret", true)
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
-	if v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side); v.Draft.Available || v.Draft.Draft.Text != "" {
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	if v := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side); v.Draft.Available || v.Draft.Draft.Text != "" {
 		t.Fatal("prompt editor leaked into ordinary publication")
 	}
-	if err := u.nativeSession.submitInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, intent); err != nil || wire.Len() != 0 || u.questions.Current() == nil {
+	if err := u.nativeSession.submitInput(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, intent); err != nil || wire.Len() != 0 || u.questions.Current() == nil {
 		t.Fatal("ordinary submit took a prompt editor")
 	}
-	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
+	v := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	if err := u.attached.presentation.Display(sessionpresentation.DisplayIntent{Version: v.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/child"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.nativeSession.submitInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 || publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Draft.Draft.Text != "keep draft" {
+	if err := u.nativeSession.submitInput(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 || publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Draft.Draft.Text != "keep draft" {
 		t.Fatal("child display submitted Main input")
 	}
 	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
-	if err := u.nativeSession.submitInput(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 {
+	if err := u.nativeSession.submitInput(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 {
 		t.Fatal("replay submitted input")
 	}
 }
@@ -174,12 +174,12 @@ func TestDraftDeletionSettlesNewSecretEditorBeforeReturning(t *testing.T) {
 		t.Fatal("pending question captured a nonempty draft")
 	}
 	before := u.attached.presentation.View().Version
-	u.nativeSession.deleteDraftRange(&u.attached, u.shell, &u.picker, &u.Editor,
+	u.nativeSession.deleteDraftRange(&u.attached, &u.picker, &u.Editor,
 
 		u.side, u.clock,
 		u.statusPanel != nil || u.resumePicker != nil, 0, len(u.Text))
 	view := u.attached.presentation.View()
-	if u.Editor != &u.shell.Prompts.Secret || u.questions.Current() == nil {
+	if u.Editor != &u.questions.secret || u.questions.Current() == nil {
 		t.Fatal("deletion returned before the pending secret editor opened")
 	}
 	if view.Version == before || view.Questions.Call == nil || view.Questions.Call.ID != u.questions.activeCall().ID {

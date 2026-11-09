@@ -15,12 +15,12 @@ func (c *nativeClient) writeTerminalStatus(now time.Time) {
 		return
 	}
 	if c.event.Attachment == "" || c.event.Frame.View.Main.ID == "" || c.event.Frame.View.ReadOnly == sessionpresentation.Replay {
-		c.notifications.clearTerminalStatus(&c.feedback, c.renderer.terminal)
+		c.notifications.clearTerminalStatus(&c.feedback)
 		return
 	}
 	facts := c.event.Frame.Facts
-	c.notifications.writeTitle(&c.feedback, c.renderer.terminal, nil, c.event.Frame.View.Info.Workspace, facts.ActionRequired, facts.Busy, now)
-	c.notifications.writeStatus(&c.feedback, c.renderer.terminal, facts.ActionRequired, facts.Busy)
+	c.notifications.writeTitle(&c.feedback, nil, c.event.Frame.View.Info.Workspace, facts.ActionRequired, facts.Busy, now)
+	c.notifications.writeStatus(&c.feedback, facts.ActionRequired, facts.Busy)
 }
 
 func (c *nativeClient) acceptFacts(previous string) {

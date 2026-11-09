@@ -217,7 +217,7 @@ func TestPromptFailedFrameDoesNotAcknowledgeOpening(t *testing.T) {
 func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.title, u.backendVersion = "Published title", "1.2.3"
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	before := u.attached.presentation.View()
 	u.title, u.backendVersion, u.attached.cwd = "Unpublished title", "9.9.9", "/unpublished"
 	u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Unpublished activity"}}})
@@ -236,7 +236,7 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	if !reflect.DeepEqual(u.attached.presentation.View(), before) {
 		t.Fatal("painting refreshed the session publication")
 	}
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	rows, _ = u.mainFrame(100, 24, 0)
 	if !strings.Contains(strings.Join(rows, "\n"), "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Unpublished title") || u.attached.presentation.View().Info.Workspace != "/unpublished" {
 		t.Fatal("explicit publication did not advance Main")

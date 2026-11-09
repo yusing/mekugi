@@ -6,13 +6,13 @@ import (
 
 func TestAppServerReplacementRetiresOnlyMainRequests(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, sessionTitleUpdate{thread: "main", name: "Old title"})
+	persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.clock, sessionTitleUpdate{thread: "main", name: "Old title"})
 	title := btwTestRequest(t, wire, "thread/name/set", "main")
 	appServerTestKeys(t, u, "/btw question\r")
 	side := btwTestRequest(t, wire, "thread/fork", "main")
 	appServerTestKeys(t, u, "/status\r")
 	status := btwTestRequest(t, wire, "account/read", "")
-	if err := u.nativeSession.sessionCommand(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, u.ctx, u.statusConfig.Provider, "/clear"); err != nil {
+	if err := u.nativeSession.sessionCommand(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx, u.statusConfig.Provider, "/clear"); err != nil {
 		t.Fatal(err)
 	}
 	clear := btwTestRequest(t, wire, "thread/start", "")

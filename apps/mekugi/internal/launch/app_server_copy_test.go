@@ -93,13 +93,13 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 		t.Fatalf("empty notice=%q wire=%s", u.attached.feedback.Text, wire.Bytes())
 	}
 	u.startSession("main", "")
-	u.nativeSession.restoreMainHistory(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, []binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{ID: "a", Type: "agentMessage", Text: "restored"}}}}, nil, nil)
+	u.nativeSession.restoreMainHistory(&u.attached, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, []binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{ID: "a", Type: "agentMessage", Text: "restored"}}}}, nil, nil)
 	appServerTestKeys(t, u, "/copy\r")
 	if u.picker.CopyTexts[0] != "restored" {
 		t.Fatal("resume lost copy source")
 	}
 	u.pickerKey("\x1b")
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	if u.picker.Open || terminalTest(u).Frame.Clipboard != "" || u.Text != "" {
 		t.Fatal("cancel copied or reopened")
 	}

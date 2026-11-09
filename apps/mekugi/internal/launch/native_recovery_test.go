@@ -18,7 +18,7 @@ func TestRemoteRecoveryReceiptPreservesImageClaims(t *testing.T) {
 			u.startSession("main", t.TempDir())
 			h := remoteOwnerView(t, u)
 			prune := func() {
-				pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, h.views.imageClaims)
+				pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.side, h.views.imageClaims)
 			}
 			h.views.retiring = func(*nativeSessionView) error { prune(); return nil }
 			path := filepath.Join(t.TempDir(), "owned.png")

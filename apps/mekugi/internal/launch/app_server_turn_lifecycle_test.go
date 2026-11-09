@@ -25,7 +25,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	child.ID, child.Thread, child.Caller = "child-edit", "child", "/root/child"
 	for _, preview := range []previewmodel.Preview{main, child} {
 		auto.Update(preview, false)
-		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
+		applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 		revealNativeDock(terminalTest(u))
 	}
 	queued := main
@@ -43,7 +43,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 		auto.Update(main, false)
 		for _, event := range testReview(auto).TakePreviews(sub) {
 			if event.Kind == "preview" {
-				applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
+				applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 			}
 		}
 		if terminalTest(u).Live.Views[main.ID] != nil || terminalTest(u).Live.Views[queued.ID] != nil {

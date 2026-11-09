@@ -44,24 +44,24 @@ func (session *nativeSession) drainKeys(attached *attachedPresentation, terminal
 // prepareComposerInput admits terminal-selected prompt suspension before editing.
 func prepareComposerInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock) bool {
 	ready := terminal.Prompts.Ready()
-	publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side)
+	publishTestPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, restoring, side)
 	preparation := terminal.Main.PrepareInput(ready)
 	if !preparation.Editable {
 		return false
 	}
 	if intent := preparation.Question; intent != nil {
 		if err := attached.presentation.QuestionInput(*intent, questions.Questions); err != nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 			return false
 		}
-		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+		(*editor) = hideQuestionEditor(questions, attached.conversation, (*editor), control.Thread)
 	}
 	if intent := preparation.Approval; intent != nil {
 		if err := attached.presentation.ApprovalInput(*intent, approvals.Approvals); err != nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 			return false
 		}
-		hideApprovals(approvals, terminal, &attached.conversation.PromptEditor, (*editor))
+		hideApprovals(approvals, &attached.conversation.PromptEditor, (*editor))
 	}
 	return true
 }
@@ -72,7 +72,7 @@ func (session *nativeSession) input(attached *attachedPresentation, terminal *te
 		return false, nil
 	}
 	defer func() {
-		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
+		settleTestPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
 	}()
 	switch event.Kind {
 	case terminalsession.KeyInput:
@@ -86,11 +86,11 @@ func (session *nativeSession) input(attached *attachedPresentation, terminal *te
 			(*editor).Run = composer.NoRun
 		}
 		if event.Kind != terminalsession.PasteInput {
-			publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
+			publishTestPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
 		}
 		pasted, err := terminal.Main.PasteInput(event, terminal.Prompts)
 		if err != nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		} else if pasted != nil {
 			applyPaste(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, side, &session.ownedImages, session.skillEnvironment, parent, *pasted)
 		}

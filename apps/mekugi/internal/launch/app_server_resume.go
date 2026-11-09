@@ -4,8 +4,6 @@ import (
 	"cmp"
 	"context"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -54,10 +52,10 @@ func openSession(attached *attachedPresentation, control *sessioncontrol.Client[
 	return nil
 }
 
-func resumeSettingsResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, approvalMode bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, panes *nativePreferences, m appserver.Message) error {
+func resumeSettingsResponse(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, approvalMode bool, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, panes *nativePreferences, m appserver.Message) error {
 	fail := func(message string) error {
 		if control.Replacement.Target != "" {
-			return resumeSessionFailed(attached, terminal, control, picker, questions, approvals, clock, dispatch, resumePending, message)
+			return resumeSessionFailed(attached, control, picker, questions, approvals, clock, dispatch, resumePending, message)
 		}
 		return fmt.Errorf("read resume settings: %s", message)
 	}
@@ -85,7 +83,7 @@ func resumeSettingsResponse(attached *attachedPresentation, terminal *terminalse
 	evidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(info.ID, info.Path, newerThan)))
 	err = control.Requests.Resume(&control.Startup, &control.Live, evidence, approvalMode)
 	if control.Startup.MissingSettings {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ResumeSettingsUnavailable, true)
+		setNotice(&attached.feedback, presentationTime(clock), sessionpresentation.ResumeSettingsUnavailable, true)
 	}
 	return err
 }
@@ -186,7 +184,7 @@ func appServerResumeConfig(args, resumeArgv []string) map[string]any {
 // processes or child agents. restoreMainHistory
 // also places restored evidence the host's history omits among Main's items: at its rollout anchor, or by time for evidence from
 // another thread. itemAt holds the root's retained item completion times.
-func (session *nativeSession) restoreMainHistory(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, turns []binding.HistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
+func (session *nativeSession) restoreMainHistory(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, turns []binding.HistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
 	previousSegments := session.restoredSegments
 	defer func() { session.restoredSegments = previousSegments }()
 	positions := historyPositions(turns, itemAt)
@@ -218,7 +216,7 @@ func (session *nativeSession) restoreMainHistory(attached *attachedPresentation,
 				// Linked audiences must receive the retained time at admission.
 				itemClock = func() time.Time { return at }
 			}
-			session.restoreHistoryItem(attached, terminal, picker, editor, itemClock, panel, resumePicker, parent, turn, item)
+			session.restoreHistoryItem(attached, picker, editor, itemClock, panel, resumePicker, parent, turn, item)
 			if !at.IsZero() {
 				for j := len(attached.source.Entries) - 1; j >= 0 && attached.source.Entries[j].Source.Seq > before; j-- {
 					attached.source.Model.Mutate(j, func(record *sessionpresentation.ActivityRecord) { record.Source.Observed = at })
@@ -244,7 +242,7 @@ func (session *nativeSession) restoreMainHistory(attached *attachedPresentation,
 	attached.session.Lifecycle(session.Client.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), session.Client.Turn != "")
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
 	attached.session.Activity().AdvanceSequence(attached.source.LastSeq)
-	applyActivity(attached, &session.approvals, terminal, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, attached.session.Roster())
+	applyActivity(attached, &session.approvals, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, attached.session.Roster())
 }
 
 func applyRestoredMain(attached *attachedPresentation, placements []*restoredPlacement) {
@@ -264,13 +262,13 @@ func applyRestoredMain(attached *attachedPresentation, placements []*restoredPla
 	}
 }
 
-func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, turn binding.HistoryTurn, item binding.ThreadItem) {
+func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, turn binding.HistoryTurn, item binding.ThreadItem) {
 	if item.Type == "userMessage" {
 		session.Client.HasUserTurn = true
 	}
 	facts := item.Observation()
 	text := observation.TextEvent{Kind: observation.ItemCompleted, Item: transcriptItem(item, session.Client.Thread, turn.ID, item.ID)}
-	if observeMessageQuestions(attached, terminal, &session.Client, &session.approvals, clock, &session.questions, editor, picker, session.overlayOpen(*panel, *resumePicker), session.notifications, text, facts, true) {
+	if observeMessageQuestions(attached, &session.Client, &session.approvals, clock, &session.questions, editor, picker, session.overlayOpen(*panel, *resumePicker), session.notifications, text, facts, true) {
 		return
 	}
 	if item.Type == "userMessage" {

@@ -14,7 +14,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -28,6 +28,31 @@ import (
 type nativeQuestionDock struct {
 	*prompt.Questions
 	handles map[*prompt.Call]*sessioncontrol.Question
+	secret  composer.Editor
+	secrets map[string]*nativeSecretAnswers
+}
+
+// Secret input never enters a presentation, retained question or playback event.
+type nativeSecretAnswers struct {
+	Editors map[int]composer.State
+	Answers map[int][]string
+}
+
+func (q *nativeQuestionDock) secretAnswers(call string) *nativeSecretAnswers {
+	if q.secrets == nil {
+		q.secrets = make(map[string]*nativeSecretAnswers)
+	}
+	if q.secrets[call] == nil {
+		q.secrets[call] = &nativeSecretAnswers{Editors: make(map[int]composer.State), Answers: make(map[int][]string)}
+	}
+	return q.secrets[call]
+}
+
+func (q *nativeQuestionDock) secretState(call string) nativeSecretAnswers {
+	if state := q.secrets[call]; state != nil {
+		return *state
+	}
+	return nativeSecretAnswers{}
 }
 
 func (q *nativeQuestionDock) calls() []*sessioncontrol.Question {
@@ -40,92 +65,83 @@ func (q *nativeQuestionDock) calls() []*sessioncontrol.Question {
 func (q *nativeQuestionDock) activeCall() *sessioncontrol.Question {
 	return q.handles[q.Active]
 }
-func parkQuestion(questions *nativeQuestionDock, terminal *terminalsession.Attachment, editor *composer.Editor, main string, q *prompt.Question) {
+func parkQuestion(questions *nativeQuestionDock, editor *composer.Editor, main string, q *prompt.Question) {
 	state := editor.Park()
-	terminal.Prompts.QuestionLayout(questions.View(main)).Column = terminal.Main.CursorColumn
 	if q.IsSecret {
-		terminal.Prompts.Secrets(questions.Active.ID).Editors[questions.Index] = state
+		questions.secretAnswers(questions.Active.ID).Editors[questions.Index] = state
 	} else {
 		q.Editor = state
 	}
 }
-func resumeQuestion(questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, main string, q *prompt.Question) *composer.Editor {
+func resumeQuestion(questions *nativeQuestionDock, conversation *conversationmodel.Session, main string, q *prompt.Question) *composer.Editor {
 	editor := &conversation.Editor
-	terminal.Prompts.Secret = composer.Editor{}
+	questions.secret = composer.Editor{}
 	state := q.Editor
 	if q.IsSecret {
-		editor = &terminal.Prompts.Secret
-		state = terminal.Prompts.SecretState(questions.Active.ID).Editors[questions.Index]
+		editor = &questions.secret
+		state = questions.secretState(questions.Active.ID).Editors[questions.Index]
 	}
 	editor.Resume(state)
-	terminal.Main.CursorColumn = terminal.Prompts.QuestionLayout(questions.View(main)).Column
 	return editor
 }
-func discardQuestionEditors(prompts *terminalsession.Prompts, c *sessioncontrol.Question) {
-	prompts.ForgetCall(c.ID)
+func discardQuestionEditors(questions *nativeQuestionDock, c *sessioncontrol.Question) {
+	delete(questions.secrets, c.ID)
 	for i := range c.Questions {
 		c.Questions[i].Editor = composer.State{}
 	}
 }
 
-func openQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string) {
+func openQuestions(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string) {
 	if c := questions.Next(); c != nil {
-		openQuestionCall(questions, approvals, attached.conversation, terminal, picker, editor, main, questions.handles[c])
+		openQuestionCall(questions, approvals, attached.conversation, picker, editor, main, questions.handles[c])
 	}
 }
 
 // Only an empty, idle composer yields to pending live questions. Explicitly
 // hiding the dock and history restoration leave manual reopening available.
-func autoOpenQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, overlay bool) {
-	if questions.ShouldOpen(composerVacant((*editor), terminal, picker, attached.presentation, overlay || approvals.Open)) {
-		openQuestions(attached, terminal, picker, editor, questions, approvals, main)
+func autoOpenQuestions(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, overlay bool) {
+	if questions.ShouldOpen(composerVacant((*editor), picker, attached.presentation, overlay || approvals.Open)) {
+		openQuestions(attached, picker, editor, questions, approvals, main)
 	}
 }
 
 // composerVacant reports an empty, idle composer with no overlay, which a
 // pending dock may take over without capturing keys meant for a draft.
-func composerVacant(editor *composer.Editor, terminal *terminalsession.Attachment, picker *composerPicker, presentation *sessionpresentation.Model, overlay bool) bool {
+func composerVacant(editor *composer.Editor, picker *composerPicker, presentation *sessionpresentation.Model, overlay bool) bool {
 	if presentation.View().ReadOnly != sessionpresentation.Editable || presentation.DisplayingSide() {
 		return false
 	}
-	if editor.Text != "" || len(editor.Images) > 0 || len(editor.Files) > 0 || len(editor.Skills) > 0 || len(editor.Selections) > 0 || terminal.Main.Pasting() || pickerVisible(picker, presentation, terminal) || terminal.Main.Keybindings || overlay {
+	if editor.Text != "" || len(editor.Images) > 0 || len(editor.Files) > 0 || len(editor.Skills) > 0 || len(editor.Selections) > 0 || pickerVisible(picker, presentation) || overlay {
 		return false
 	}
-	return terminal == nil || terminal.Focus == 0 && !terminal.Decoder.Pasting() && !terminal.Decoder.Pending()
+	return true
 }
-func openQuestionCall(questions *nativeQuestionDock, approvals *nativeApprovalDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, main string, c *sessioncontrol.Question) {
+func openQuestionCall(questions *nativeQuestionDock, approvals *nativeApprovalDock, conversation *conversationmodel.Session, picker *composerPicker, editor **composer.Editor, main string, c *sessioncontrol.Question) {
 	if questions.Active != nil {
 		return
 	}
-	hideApprovals(approvals, terminal, &conversation.PromptEditor, *editor)
-	terminal.Prompts.Reopen()
-	terminal.Main.PromptColumn = terminal.Main.CursorColumn
+	hideApprovals(approvals, &conversation.PromptEditor, *editor)
 	conversation.PromptEditor.Open(*editor, composer.State{})
 	if !questions.Open(c.Call) {
 		return
 	}
-	*editor = resumeQuestion(questions, conversation, terminal, main, questions.Current())
-	focusPrompt(picker, terminal)
+	*editor = resumeQuestion(questions, conversation, main, questions.Current())
+	focusPrompt(picker)
 }
-func focusPrompt(picker *composerPicker, terminal *terminalsession.Attachment) {
-	picker.Open, terminal.Main.Keybindings = false, false
+func focusPrompt(picker *composerPicker) {
+	picker.Open = false
 	picker.cancelScan()
-	if terminal != nil {
-		terminal.Focus = 0
-		terminal.Selection = nil
-	}
 }
-func hideQuestionEditor(questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, editor *composer.Editor, main string) *composer.Editor {
+func hideQuestionEditor(questions *nativeQuestionDock, conversation *conversationmodel.Session, editor *composer.Editor, main string) *composer.Editor {
 	if q := questions.Current(); q != nil {
 		editor = &conversation.Editor
 		if q.IsSecret {
-			editor = &terminal.Prompts.Secret
+			editor = &questions.secret
 		}
-		parkQuestion(questions, terminal, editor, main, q)
+		parkQuestion(questions, editor, main, q)
 		editor = &conversation.Editor
-		terminal.Prompts.Secret = composer.Editor{}
+		questions.secret = composer.Editor{}
 		conversation.PromptEditor.Close(editor)
-		terminal.Main.CursorColumn = terminal.Main.PromptColumn
 		questions.Hide()
 	}
 	return editor
@@ -133,6 +149,7 @@ func hideQuestionEditor(questions *nativeQuestionDock, conversation *conversatio
 
 // carryLocal preserves unresolved local authentication without recording a host question.
 func (q *nativeQuestionDock) carryLocal(conversation *conversationmodel.Session, previous []*sessioncontrol.Question, main string) {
+	secrets := q.secrets
 	*q = nativeQuestionDock{Questions: &conversation.Questions}
 	for _, c := range previous {
 		if c.Sudo == nil || c.Resolved || c.Thread != main && !c.Local || !q.Add(c.Call, true) {
@@ -142,36 +159,42 @@ func (q *nativeQuestionDock) carryLocal(conversation *conversationmodel.Session,
 			q.handles = make(map[*prompt.Call]*sessioncontrol.Question)
 		}
 		q.handles[c.Call] = c
+		if state := secrets[c.ID]; state != nil {
+			if q.secrets == nil {
+				q.secrets = make(map[string]*nativeSecretAnswers)
+			}
+			q.secrets[c.ID] = state
+		}
 	}
 }
 
-func addQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, c *sessioncontrol.Question, replay bool) {
+func addQuestions(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, c *sessioncontrol.Question, replay bool) {
 	if c.Thread != control.Thread && !c.Local && !control.Requests.WorkSide(c.Thread) || !questions.Add(c.Call, replay) {
 		return
 	}
-	bindQuestion(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, c, replay)
+	bindQuestion(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, c, replay)
 }
 
 // bindQuestion attaches live handles and terminal effects after neutral admission.
-func bindQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, c *sessioncontrol.Question, replay bool) {
+func bindQuestion(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, c *sessioncontrol.Question, replay bool) {
 	if questions.handles == nil {
 		questions.handles = make(map[*prompt.Call]*sessioncontrol.Question)
 	}
 	questions.handles[c.Call] = c
 	if !replay && !c.Local {
 		if c.Sync {
-			notifications.notify(&attached.feedback, terminal, clock, "plan-mode-prompt", "Input requested")
+			notifications.notify(&attached.feedback, clock, "plan-mode-prompt", "Input requested")
 		} else {
-			notifications.notify(&attached.feedback, terminal, clock, "async-question", "Question pending")
+			notifications.notify(&attached.feedback, clock, "async-question", "Question pending")
 		}
 	}
 	renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 	if !replay {
-		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+		autoOpenQuestions(attached, picker, editor, questions, approvals, control.Thread, overlay)
 	}
 }
 
-func questionMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, m appserver.Message) (bool, error) {
+func questionMessage(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, m appserver.Message) (bool, error) {
 	if m.Method == "item/tool/requestUserInput" && len(m.ID) > 0 {
 		p, err := binding.DecodeQuestionRequest(m.Params)
 		if err != nil {
@@ -181,7 +204,7 @@ func questionMessage(attached *attachedPresentation, terminal *terminalsession.A
 			return false, nil
 		}
 		call := conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions)
-		addQuestions(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, &sessioncontrol.Question{Call: &call, RequestID: slices.Clone(m.ID)}, false)
+		addQuestions(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, &sessioncontrol.Question{Call: &call, RequestID: slices.Clone(m.ID)}, false)
 		return true, nil
 	}
 	if m.Method == "serverRequest/resolved" {
@@ -191,7 +214,7 @@ func questionMessage(attached *attachedPresentation, terminal *terminalsession.A
 		}
 		for _, c := range questions.calls() {
 			if c.Thread == p.ThreadID && string(c.RequestID) == string(p.RequestID) {
-				resolveQuestionCall(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "answered elsewhere")
+				resolveQuestionCall(attached, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "answered elsewhere")
 			}
 		}
 		return true, nil
@@ -199,29 +222,29 @@ func questionMessage(attached *attachedPresentation, terminal *terminalsession.A
 	return false, nil
 }
 
-func saveUnsentAnswer(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, d composer.Draft) {
+func saveUnsentAnswer(attached *attachedPresentation, clock func() time.Time, d composer.Draft) {
 	if d.Text != "" {
 		rememberInput(attached.conversation, conversationmodel.Input{Draft: d})
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "unsent answer saved to input history", false)
+		setNotice(&attached.feedback, presentationTime(clock), "unsent answer saved to input history", false)
 	}
 }
-func resolveQuestionCall(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, c *sessioncontrol.Question, outcome string) {
+func resolveQuestionCall(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, c *sessioncontrol.Question, outcome string) {
 	if c.Resolved {
 		return
 	}
 	if questions.activeCall() == c {
-		mainEditor := hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
+		mainEditor := hideQuestionEditor(questions, attached.conversation, (*editor), control.Thread)
 		if !attached.presentation.DisplayingSide() {
 			*editor = mainEditor
 		}
 	}
 	for _, d := range c.Resolve(outcome) {
-		saveUnsentAnswer(attached, terminal, clock, d)
+		saveUnsentAnswer(attached, clock, d)
 	}
-	discardQuestionEditors(terminal.Prompts, c)
+	discardQuestionEditors(questions, c)
 	if c.Sudo != nil {
 		if c.CancelPassword() {
-			recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: authentication canceled")
+			recordApproval(attached, approvals, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: authentication canceled")
 		}
 		questions.Remove(c.Call)
 		delete(questions.handles, c.Call)
@@ -272,53 +295,53 @@ func recordSyncQuestionAnswer(attached *attachedPresentation, at time.Time, c *s
 		v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: cmp.Or(attached.session.KnownCaller(c.Thread), "Main"), Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: at, Native: native}}})
 	}
 }
-func endSyncQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, turn string) {
+func endSyncQuestions(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, turn string) {
 	for _, c := range slices.Clone(questions.calls()) {
 		if c.Turn == turn && (len(c.RequestID) > 0 || c.Sudo != nil) {
-			resolveQuestionCall(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "interrupted")
+			resolveQuestionCall(attached, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "interrupted")
 		}
 	}
 }
 
-func (session *nativeSession) answerQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, intent sessionpresentation.AnswerIntent) bool {
+func (session *nativeSession) answerQuestion(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, intent sessionpresentation.AnswerIntent) bool {
 	defer func() {
-		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
+		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
 	q, err := attached.presentation.AnswerQuestion(intent, session.questions.Questions)
 	if err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		return false
 	}
 	if q == session.questions.Current() {
-		(*editor) = resumeQuestion(&session.questions, attached.conversation, terminal, session.Client.Thread, q)
+		(*editor) = resumeQuestion(&session.questions, attached.conversation, session.Client.Thread, q)
 	}
 	return true
 }
 
-func (session *nativeSession) submitQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, intent sessionpresentation.QuestionSubmitIntent) error {
+func (session *nativeSession) submitQuestions(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, intent sessionpresentation.QuestionSubmitIntent) error {
 	defer func() {
-		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
+		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
 	record, err := attached.presentation.SubmitQuestions(intent, session.questions.Questions)
 	if err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		return nil
 	}
 	c := session.questions.handles[record]
-	secrets := terminal.Prompts.SecretState(c.ID)
-	return session.submitQuestionAnswers(attached, terminal, picker, editor, side, clock, overlay, parent, c, secrets.Editors, secrets.Answers)
+	secrets := session.questions.secretState(c.ID)
+	return session.submitQuestionAnswers(attached, picker, editor, side, clock, overlay, parent, c, secrets.Editors, secrets.Answers)
 }
 
 // submitQuestionAnswers delivers admitted final values through the existing host
 // authority. Secret inputs are transient arguments, never server editor state.
-func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, c *sessioncontrol.Question, secretEditors map[int]composer.State, secretAnswers map[int][]string) error {
+func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, c *sessioncontrol.Question, secretEditors map[int]composer.State, secretAnswers map[int][]string) error {
 	defer func() {
-		pruneDraftImages(session.ownedImages, (*editor), attached.conversation, &session.questions, &session.approvals, terminal.Prompts, side, attached.hooks.nativeImages)
+		pruneDraftImages(session.ownedImages, (*editor), attached.conversation, &session.questions, &session.approvals, side, attached.hooks.nativeImages)
 		session.questions.AutoOpen = true
-		autoOpenQuestions(attached, terminal, picker, editor, &session.questions, &session.approvals, session.Client.Thread, overlay)
+		autoOpenQuestions(attached, picker, editor, &session.questions, &session.approvals, session.Client.Thread, overlay)
 	}()
 	if c.Sudo != nil {
-		return session.submitSudoPassword(attached, terminal, picker, clock, editor, parent, c, secretAnswers)
+		return session.submitSudoPassword(attached, picker, clock, editor, parent, c, secretAnswers)
 	}
 	answerDraft := questionAnswerAttachments(c.Call, secretEditors, secretAnswers)
 	if len(c.RequestID) > 0 {
@@ -326,7 +349,7 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 			return err
 		}
 		if session.questions.Active == c.Call {
-			(*editor) = hideQuestionEditor(&session.questions, attached.conversation, terminal, (*editor), session.Client.Thread)
+			(*editor) = hideQuestionEditor(&session.questions, attached.conversation, (*editor), session.Client.Thread)
 		}
 		c.Submitted()
 		clear(secretEditors)
@@ -345,16 +368,16 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 			if session.Client.Requests.WorkSide(c.Thread) {
 				target := session.Client.Requests.Side(c.Thread)
 				target.Drafts.Unsent = append(target.Drafts.Unsent, d)
-				return flushBTW(attached, terminal, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+				return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
 			}
 			attached.conversation.Unsent = append(attached.conversation.Unsent, d)
-			return session.flushInput(attached, terminal, picker, clock, editor, parent)
+			return session.flushInput(attached, picker, clock, editor, parent)
 		}
 		return nil
 	}
 	reply := conversationbinding.QuestionReplies(c.Call)
 	if session.questions.Active == c.Call {
-		(*editor) = hideQuestionEditor(&session.questions, attached.conversation, terminal, (*editor), session.Client.Thread)
+		(*editor) = hideQuestionEditor(&session.questions, attached.conversation, (*editor), session.Client.Thread)
 	}
 	c.Submitted()
 	if reply == "" {
@@ -368,11 +391,11 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 		target := session.Client.Requests.Side(c.Thread)
 
 		target.Drafts.Unsent = append(target.Drafts.Unsent, input)
-		return flushBTW(attached, terminal, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
 	}
 	attached.conversation.Unsent = append(attached.conversation.Unsent, input)
 	renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
-	return session.flushInput(attached, terminal, picker, clock, editor, parent)
+	return session.flushInput(attached, picker, clock, editor, parent)
 }
 
 // Answers use composer attachment snapshots. Keep the async reply envelope

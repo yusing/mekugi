@@ -20,14 +20,14 @@ func TestNativeViewQueuedImageClaimsEndAtReceiptOrDisconnect(t *testing.T) {
 		t.Run(map[bool]string{false: "receipt", true: "disconnect"}[disconnect], func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.startSession("main", "/workspace")
-			n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+			n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 			defer n.close()
 			if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 				t.Fatal(refusal)
 			}
 			u.attached.hooks.nativeImages, u.attached.hooks.restoreInput = n.imageClaims, n.restore
 			prune := func() {
-				pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
+				pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.side, n.imageClaims)
 			}
 			n.retiring = func(*nativeSessionView) error { prune(); return nil }
 			path, borrowed := filepath.Join(t.TempDir(), "owned.png"), pasteTestImage(t)
@@ -36,7 +36,7 @@ func TestNativeViewQueuedImageClaimsEndAtReceiptOrDisconnect(t *testing.T) {
 			}
 			u.ownedImages = map[string]bool{path: true}
 			u.attached.conversation.QueueInput(conversation.Input{Origin: "view", Text: "[Image 1] [Image 2]", Images: []composer.Token{{Start: 0, End: 9, Path: path}, {Start: 10, End: 19, Path: borrowed}}}, true)
-			editQueued(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock)
+			editQueued(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock)
 			prune()
 			if _, err := os.Stat(path); err != nil {
 				t.Fatal("withdrawal lost image before client copied it:", err)
@@ -65,7 +65,7 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	workspace := t.TempDir()
 	u.startSession("main", workspace)
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: workspace, Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 		t.Fatal(refusal)
@@ -95,7 +95,7 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 		t.Helper()
 		editor := new(composer.Editor)
 		editor.Replace(prepared.Draft)
-		if err := u.nativeSession.submitBTW(&v.attached, v.shell, &v.picker, &editor, u.clock, &u.side, false, &composerPreparation{ctx: t.Context(), input: prepared}); err != nil {
+		if err := u.nativeSession.submitBTW(&v.attached, &v.picker, &editor, u.clock, &u.side, false, &composerPreparation{ctx: t.Context(), input: prepared}); err != nil {
 			t.Fatal(err)
 		}
 		return editor
@@ -121,7 +121,7 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	replacement := prepare(oneoff)
 	editor := submit(replacement)
 	copy := replacement.Draft.Images[0].Path
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.side, n.imageClaims)
 	if !replacement.Admitted() || v.picker.sideTask == nil {
 		t.Fatal("replacement lost its admitted pending payload")
 	}
@@ -130,8 +130,8 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	}
 	view := publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, true)
 	action := sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: view.Menu.Choices[0].Identity()}
-	u.nativeSession.applyMenuResult(&v.attached, v.shell, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
+	u.nativeSession.applyMenuResult(&v.attached, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.side, n.imageClaims)
 	if v.picker.sideTask != nil {
 		t.Fatal("cancel kept pending replacement state")
 	}
@@ -149,8 +149,8 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	previous := u.side
 	view = publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, true)
 	action = sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: view.Menu.Choices[1].Identity()}
-	u.nativeSession.applyMenuResult(&v.attached, v.shell, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side, n.imageClaims)
+	u.nativeSession.applyMenuResult(&v.attached, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.side, n.imageClaims)
 	if u.side == previous || u.side.Pending.Origin != "view" || v.picker.sideTask != nil || strings.Contains(strings.Join(u.side.Pending.Attachments, ""), "changed after replacement preparation") {
 		t.Fatal("confirmed replacement lost origin or re-acquired its snapshot")
 	}

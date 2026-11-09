@@ -33,7 +33,7 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 	for _, width := range []int{35, 100} {
 		u, _ := newAppServerTestUI()
 		u.replayDebugDirectory = path
-		u.nativeSession.showSessionMetrics(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker)
+		u.nativeSession.showSessionMetrics(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker)
 		screen := vt.NewEmulator(width, 24)
 		defer screen.Close()
 		if err := u.testPaint(screen, width, 24); err != nil {
@@ -96,7 +96,7 @@ func sessionMetricsFixture(t *testing.T) transportcapture.MetricsSnapshot {
 
 func sessionMetricField(t *testing.T, u *appServerUI, group, label, want string) {
 	t.Helper()
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	for _, field := range u.shell.Main.Panel.Fields {
 		if field.Group == group && field.Label == label {
 			if field.Value != want {
@@ -116,7 +116,7 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 		t.Fatal("session command did not open a local dialog")
 	}
 	*u.statusPanel.Metrics = sessionMetricsFixture(t)
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	sessionMetricField(t, u, "Requests", "Attempts", "3")
 	sessionMetricField(t, u, "Usage", "Average output", "1.2 tok/s")
 	sessionMetricField(t, u, "Usage", "Measured duration", "10.000 s")
@@ -167,7 +167,7 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 
 func TestAppServerSessionMetricsSelectionSurvivesRetention(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.nativeSession.showSessionMetrics(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker)
+	u.nativeSession.showSessionMetrics(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker)
 	*u.statusPanel.Metrics = sessionMetricsFixture(t)
 	u.statusPanelKey("\x1b[C")
 	u.statusPanelKey("\x1b[C")
@@ -193,7 +193,7 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 	now := time.Unix(100, 0)
 	u.clock = func() time.Time { return now }
 	u.sessionCapture = capture
-	u.nativeSession.showSessionMetrics(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker)
+	u.nativeSession.showSessionMetrics(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker)
 	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"r","object":"response","status":"completed","output":[]}`))
@@ -219,7 +219,7 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 		u.shell.Transcript.Painter.Theme = theme
 		for tab := range 3 {
 			u.shell.Main.Panel.Tab = tab
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			for _, size := range [][2]int{{90, 25}, {30, 15}, {12, 8}, {1, 1}, {0, 0}} {
 				for _, row := range u.statusPanelFrame(size[0], size[1]) {
 					if ansi.StringWidth(row) > size[0] {
@@ -271,8 +271,8 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.attached.cwd = "/workspace"
 			u.replayDebugDirectory = tc.debug
-			u.nativeSession.showSessionMetrics(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker)
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			u.nativeSession.showSessionMetrics(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, &u.statusPanel, &u.resumePicker)
+			settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			m := u.statusPanel.Metrics
 			u.shell.Main.Panel.Tab = tc.tab
 			if !tc.missing {
@@ -293,7 +293,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			if tc.empty {
 				m.Exchanges = nil
 			}
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+			settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			u.shell.Main.Panel.Top = tc.top
 			assertNativeUISnapshot(t, "native-session-"+tc.name, u.statusPanelFrame(tc.width, tc.height))
 		})
@@ -306,7 +306,7 @@ func TestSessionMetricsRemoteSelection(t *testing.T) {
 	p := u.statusPanel
 	*p.Metrics = sessionMetricsFixture(t)
 	action := func(tab int, sequence uint64) {
-		applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: tab, Exchange: sequence})
+		applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: tab, Exchange: sequence})
 	}
 	action(2, 8)
 	action(1, p.MetricExchange)
@@ -356,8 +356,8 @@ func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
 		t.Fatalf("opened features = %+v", p.Features)
 	}
 	coordination.ObserveFeature(thread, control.FeatureWaitAll)
-	applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelRefresh})
-	applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: 3})
+	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelRefresh})
+	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: 3})
 	if p.MetricTab != 3 {
 		t.Fatal("Features view was rejected")
 	}
@@ -376,7 +376,7 @@ func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
 func featureMetricsFixture() *sessionpresentation.FeatureMetrics {
 	return &sessionpresentation.FeatureMetrics{
 		Thread: "Main", Agents: 3,
-		Self: sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 3, SelfCompactions: 2, Spawns: 4, SpawnPreloads: 3, PreloadRejections: 1, Messages: 6, SideQuestions: 1, SideQuestionRejections: 1, Waits: 5, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}},
+		Self:        sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 3, SelfCompactions: 2, Spawns: 4, SpawnPreloads: 3, PreloadRejections: 1, Messages: 6, SideQuestions: 1, SideQuestionRejections: 1, Waits: 5, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}},
 		Descendants: sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 7, SelfCompactions: 4, CompactionPreloads: 2, Spawns: 1, Finals: 8, CompletionChanges: 5, Messages: 2, SideQuestions: 2, SideQuestionFailures: 1, Waits: 3}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 2, Occurrences: 4, SavedTokens: -20, Unmeasured: 1}},
 	}
 }

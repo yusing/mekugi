@@ -34,9 +34,9 @@ import (
 
 func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "see ")
-	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "first\nquote", "")
-	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "second", "")
+	insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "see ")
+	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "first\nquote", "")
+	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "second", "")
 	if want := "see [Selected message] [Selected message 2] "; u.Text != want {
 		t.Fatalf("draft = %q, want %q", u.Text, want)
 	}
@@ -63,9 +63,9 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 
 func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "explain ")
-	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "diff hunk @amber1:42-45", "+new\n-old", "a.go")
-	d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
+	insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "explain ")
+	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "diff hunk @amber1:42-45", "+new\n-old", "a.go")
+	d := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	if err := d.Draft.IdentifyAttachments("selected-submission"); err != nil {
 		t.Fatal(err)
 	}
@@ -116,14 +116,14 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 
 func TestComposerSelectionOverBudgetIsExplicit(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("a", attachments.Budget/2+1), "")
+	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("a", attachments.Budget/2+1), "")
 	if len(u.Selections) != 0 || u.Text != "" {
 		t.Fatalf("oversized selection inserted: %q", u.Text)
 	}
 	for range 3 {
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("b\n", attachments.Budget/5), "")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("b\n", attachments.Budget/5), "")
 	}
-	d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
+	d := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	frames, ok := attachments.Decode(d.Attachments[0])
 	if !ok || !strings.Contains(frames[len(frames)-1], "CONTENT NOT ATTACHED (attachment budget exceeded)") || d.AttachmentNotice == "" {
 		t.Fatalf("omission missing: ok=%v notice=%q last=%q", ok, d.AttachmentNotice, frames[len(frames)-1][:40])
@@ -229,13 +229,13 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 func TestComposerSelectionReviewEdges(t *testing.T) {
 	t.Run("rejected pending submission retains unique quotes", func(t *testing.T) {
 		u, w := newAppServerTestUI()
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "first quote", "")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "first quote", "")
 		appServerTestKeys(t, u, "\r")
 		requests := appServerTurnRequests(t, w)
 		if len(requests) != 1 || requests[0].Method != "turn/start" {
 			t.Fatalf("start requests = %+v", requests)
 		}
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "second quote", "")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "second quote", "")
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, requests[0].ID))
 		appServerTestKeys(t, u, "\r")
 		requests = appServerTurnRequests(t, w)
@@ -258,33 +258,33 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 	})
 	t.Run("pending labels stay distinct", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "one", "")
-		u.attached.conversation.Queued = append(u.attached.conversation.Queued, prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take()))
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "two", "")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "one", "")
+		u.attached.conversation.Queued = append(u.attached.conversation.Queued, prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take()))
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "two", "")
 		if u.Text != "[Selected message 2] " {
 			t.Fatalf("queued label reused: %q", u.Text)
 		}
 	})
 	t.Run("hidden question releases parked labels", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "main quote", "")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "main quote", "")
 		questionTestAsync(t, u, "parked", "Which scope?")
-		openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
-		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-		u.nativeSession.deleteDraftRange(&u.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, 0, len(u.Text))
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "replacement quote", "")
+		openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
+		u.nativeSession.deleteDraftRange(&u.attached, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, 0, len(u.Text))
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "replacement quote", "")
 		if u.Text != "[Selected message] " {
 			t.Fatalf("inactive parked editor reserved a label: %q", u.Text)
 		}
 	})
 	t.Run("omissions never overflow the envelope", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("a", attachments.Budget/2-1024), "")
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("b", attachments.Budget/2-3072), "")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("a", attachments.Budget/2-1024), "")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("b", attachments.Budget/2-3072), "")
 		for range 40 {
-			insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "tiny but over budget", "")
+			insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "tiny but over budget", "")
 		}
-		d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
+		d := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 		frames, ok := attachments.Decode(d.Attachments[0])
 		if !ok || len(d.Attachments[0]) > attachments.Budget || !strings.Contains(frames[len(frames)-1], "remaining mentions: CONTENT NOT ATTACHED") {
 			t.Fatalf("envelope %d bytes decoded=%v", len(d.Attachments[0]), ok)
@@ -292,10 +292,10 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 	})
 	t.Run("resume recalls quotes", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "why ")
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "diff hunk @amber1:3", strings.Repeat("x\n", attachments.Chunk), "a.go")
-		insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "short", "")
-		d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
+		insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "why ")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "diff hunk @amber1:3", strings.Repeat("x\n", attachments.Chunk), "a.go")
+		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "short", "")
+		d := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 		frames, _ := attachments.Decode(d.Attachments[0])
 		restored := composer.RestoreSelections(d.Text, frames)
 		if len(restored) != 2 || restored[0].Text != strings.Repeat("x\n", attachments.Chunk) || restored[0].Source != "a.go" || d.Text[restored[1].Start:restored[1].End] != "[Selected message]" || restored[1].Text != "short" {

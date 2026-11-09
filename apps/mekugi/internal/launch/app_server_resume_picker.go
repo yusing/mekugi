@@ -6,7 +6,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	json "encoding/json/v2"
@@ -33,23 +33,23 @@ type appServerResumePicker struct {
 
 // /resume follows /clear's rule: the current thread must be idle, so no turn,
 // submission or stacked input can be stranded on the thread being left.
-func resumeCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, restoring **appServerActivityRestore, resumePicker **appServerResumePicker, environment []string, approvalMode bool, text string) error {
+func resumeCommand(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, restoring **appServerActivityRestore, resumePicker **appServerResumePicker, environment []string, approvalMode bool, text string) error {
 	fields := strings.Fields(text)
 	if len(fields) > 2 {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /resume or /resume THREAD_ID", true)
+		setNotice(&attached.feedback, presentationTime(clock), "Use /resume or /resume THREAD_ID", true)
 		return nil
 	}
 	if control.Thread == "" || (*restoring) != nil || control.Replacement.Pending() {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
+		setNotice(&attached.feedback, presentationTime(clock), "Wait for the session to be ready", false)
 		return nil
 	}
 	if sessionBusy(&control.Live, attached.conversation) {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "/resume is disabled while a task is in progress", true)
+		setNotice(&attached.feedback, presentationTime(clock), "/resume is disabled while a task is in progress", true)
 		return nil
 	}
-	prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
+	prepareDraft(picker, attached.cwd, environment, (*editor).Take())
 	if len(fields) == 2 {
-		return resumeSession(attached, terminal, control, picker, clock, resumePicker, approvalMode, fields[1])
+		return resumeSession(attached, control, picker, clock, resumePicker, approvalMode, fields[1])
 	}
 	return openResumePicker(attached, control, picker, clock, resumePicker, false)
 }
@@ -87,7 +87,7 @@ func loadResumePage(control *sessioncontrol.Client[appServerRequest], clock func
 	return nil
 }
 
-func (session *nativeSession) resumePickerResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, quit *bool, m appserver.Message) error {
+func (session *nativeSession) resumePickerResponse(clock func() time.Time, resumePicker **appServerResumePicker, m appserver.Message) error {
 	p := (*resumePicker)
 	if p == nil || string(m.ID) != p.request {
 		return nil
@@ -138,14 +138,10 @@ func (session *nativeSession) resumePickerResponse(attached *attachedPresentatio
 		rows = append(rows, row)
 	}
 	p.Append(rows, result.NextCursor, len(result.Data))
-	if len(rows) == 0 && p.View().CanPage {
+	if len(p.View().Rows) == 0 && p.View().CanPage {
 		return loadResumePage(&session.Client, clock, resumePicker, false)
 	}
-	if attached.view != "" {
-		return nil
-	}
-	publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
-	return session.applyResumeAction(attached, terminal, picker, editor, clock, side, panel, resumePicker, quit, terminal.Main.Resume.PageDemand())
+	return nil
 }
 
 // A failed page stops automatic paging, so the failure stays visible rather
@@ -155,18 +151,15 @@ func (p *appServerResumePicker) failed(problem string) {
 	p.Fail(problem)
 }
 
-func closeResumePicker(presentation *sessionpresentation.Model, terminal *terminalsession.Attachment) {
+func closeResumePicker(presentation *sessionpresentation.Model) {
 	presentation.CloseResume()
-	if terminal != nil {
-		terminal.Selection = nil
-	}
 }
 
 // resumeSession switches this UI to a saved thread. The old presentation
 // stays usable until Codex confirms the new thread, as for /clear.
-func resumeSession(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time, resumePicker **appServerResumePicker, approvalMode bool, id string) error {
+func resumeSession(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time, resumePicker **appServerResumePicker, approvalMode bool, id string) error {
 	if id == control.Thread {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Already viewing this session", false)
+		setNotice(&attached.feedback, presentationTime(clock), "Already viewing this session", false)
 		return nil
 	}
 	if reattachSession(attached, id) {
@@ -175,7 +168,7 @@ func resumeSession(attached *attachedPresentation, terminal *terminalsession.Att
 	control.Replacement.Resume(id)
 	if err := openSession(attached, control, picker, clock, resumePicker, approvalMode); err != nil {
 		control.Replacement.Finish()
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not resume session: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Could not resume session: "+err.Error(), true)
 		return nil
 	}
 	return nil
@@ -195,7 +188,7 @@ func reattachSession(attached *attachedPresentation, thread string) bool {
 // A failed switch keeps the current thread, including events it buffered.
 // Input typed for the new session returns to the composer rather than
 // reaching the old thread.
-func resumeSessionFailed(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, message string) error {
+func resumeSessionFailed(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, dispatch func(appserver.Message) error, resumePending *[]appserver.Message, message string) error {
 
 	_ = attached.hooks.reserveThread("")
 
@@ -213,33 +206,32 @@ func resumeSessionFailed(attached *attachedPresentation, terminal *terminalsessi
 	}
 	control.Replacement.Finish()
 	control.ResumeEffort = false
-	restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
+	restoreDrafts(attached, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
 	attached.conversation.Unsent, attached.conversation.Queued = nil, nil
 	attached.presentation.Status.SetText("Ready")
-	setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not "+operation+" session: "+message, true)
+	setNotice(&attached.feedback, presentationTime(clock), "Could not "+operation+" session: "+message, true)
 	return replayResumePending(dispatch, resumePending)
 }
 
-func (session *nativeSession) applyResumeAction(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, quit *bool, action sessionpresentation.ResumeAction) error {
+func (session *nativeSession) applyResumeAction(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, quit *bool, action sessionpresentation.ResumeAction) error {
 	if action.Kind == sessionpresentation.ResumeNoAction {
 		return nil
 	}
 	defer func() {
-		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
+		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
 	}()
 	if err := attached.presentation.AdmitResume(action); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		return nil
 	}
 	p := (*resumePicker)
 	switch action.Kind {
 	case sessionpresentation.ResumeSearch:
 		p.Query = action.Query
-		if attached.view != "" {
-			return nil
+		if len(p.View().Rows) == 0 && p.View().CanPage {
+			return loadResumePage(&session.Client, clock, resumePicker, false)
 		}
-		publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
-		return session.applyResumeAction(attached, terminal, picker, editor, clock, side, panel, resumePicker, quit, terminal.Main.Resume.PageDemand())
+
 	case sessionpresentation.ResumeToggleWorkspace:
 		if p.Workspace != "" {
 			p.All = !p.All
@@ -249,29 +241,29 @@ func (session *nativeSession) applyResumeAction(attached *attachedPresentation, 
 		return loadResumePage(&session.Client, clock, resumePicker, false)
 	case sessionpresentation.ResumeChoose:
 		if !p.Startup && sessionBusy(&session.Client.Live, attached.conversation) {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "/resume is disabled while a task is in progress", true)
+			setNotice(&attached.feedback, presentationTime(clock), "/resume is disabled while a task is in progress", true)
 			return nil
 		}
 		if reattachSession(attached, action.Thread) {
 			return nil
 		}
 		(*resumePicker) = nil
-		closeResumePicker(attached.presentation, terminal)
+		closeResumePicker(attached.presentation)
 		if p.Startup {
 			session.Client.Startup.Thread = action.Thread
 			return openSession(attached, &session.Client, picker, clock, resumePicker, session.approvalMode)
 		}
-		return resumeSession(attached, terminal, &session.Client, picker, clock, resumePicker, session.approvalMode, action.Thread)
+		return resumeSession(attached, &session.Client, picker, clock, resumePicker, session.approvalMode, action.Thread)
 	case sessionpresentation.ResumeDismiss:
 		(*resumePicker) = nil
-		closeResumePicker(attached.presentation, terminal)
+		closeResumePicker(attached.presentation)
 		if p.Startup {
 			session.Client.Startup.Thread = ""
 			return openSession(attached, &session.Client, picker, clock, resumePicker, session.approvalMode)
 		}
 	case sessionpresentation.ResumeCancel:
 		(*resumePicker) = nil
-		closeResumePicker(attached.presentation, terminal)
+		closeResumePicker(attached.presentation)
 		if p.Startup {
 			(*quit) = true
 		}

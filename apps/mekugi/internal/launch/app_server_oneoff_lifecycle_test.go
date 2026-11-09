@@ -109,7 +109,7 @@ func TestOneoffUnexpectedCloseRetiresRoot(t *testing.T) {
 	questionTestMessage(t, u, "root-question", "item/tool/requestUserInput", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "itemId": "ask", "questions": []any{map[string]any{"id": "scope", "header": "Scope", "question": "Root question?", "options": []any{map[string]any{"label": "Yes", "description": "yes"}}}}})
 	approvalTestCommand(t, u, "root-approval", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "itemId": "command"})
 	appServerTestNotify(t, u, "thread/closed", map[string]any{"threadId": "oneoff"})
-	if err := closeSide(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
+	if err := closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
 		t.Fatal(err)
 	}
 	archive := btwTestRequest(t, wire, "thread/archive", "oneoff")
@@ -130,7 +130,7 @@ func TestOneoffAsyncRejectedStart(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
 	selectSideThread(t, u, u.attached.presentation.View().Main)
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
 	request := btwTestRequest(t, wire, "turn/start", "oneoff")
@@ -152,7 +152,7 @@ func TestOneoffAsyncCommitIdentity(t *testing.T) {
 				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
 			}
 			selectSideThread(t, u, u.attached.presentation.View().Main)
-			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+			openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "1\r")
 			method := "turn/steer"
@@ -203,7 +203,7 @@ func TestOneoffAnswerDuringToolInput(t *testing.T) {
 	defer transform.Close()
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "function_call", "name": "unobserved", "call_id": "call", "status": "in_progress"}})
 	selectSideThread(t, u, u.attached.presentation.View().Main)
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
 	if wire.Len() != 0 || len(u.side.Drafts.Unsent) != 1 {
@@ -220,7 +220,7 @@ func TestOneoffAnswerDuringToolInput(t *testing.T) {
 	}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.function_call_arguments.done", "item_id": "emitting"})
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": "emitting", "type": "function_call"}})
-	if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+	if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
 		t.Fatal(err)
 	}
 	_ = btwTestRequest(t, wire, "turn/steer", "oneoff")
@@ -253,7 +253,7 @@ func oneoffTestAsync(t *testing.T, u *appServerUI, thread, turn, item string) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": map[string]any{"id": item, "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
 }
 func oneoffTestAnswer(t *testing.T, u *appServerUI) {
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
 }
@@ -266,7 +266,7 @@ func TestOneoffSupplementDrain(t *testing.T) {
 	u.audience.Attach("main")
 	u.audience.Observe("oneoff", "", "/root", false)
 	u.audience.Collect(activitypresentation.Supplement{Thread: "oneoff", Source: "oneoff-script-failure", Kind: "error", Text: "ONEOFF_EXEC_SCRIPT_FAILED"})
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+	applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 	for _, e := range u.attached.childSource.Entries {
 		if strings.Contains(e.Source.Text, "ONEOFF_EXEC_SCRIPT_FAILED") {
 			return
@@ -347,7 +347,7 @@ func TestOneoffInputWaitsForItsAssistantMessage(t *testing.T) {
 			if answer {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
 				selectSideThread(t, u, u.attached.presentation.View().Main)
-				openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+				openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 				questionTestPaint(t, u, 80)
 				appServerTestKeys(t, u, "1\r")
 			} else {
@@ -360,7 +360,7 @@ func TestOneoffInputWaitsForItsAssistantMessage(t *testing.T) {
 			appServerTestKeys(t, u, "main request\r")
 			_ = btwTestRequest(t, wire, "turn/start", "main")
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
-			if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+			if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
 				t.Fatal(err)
 			}
 			_ = btwTestRequest(t, wire, "turn/steer", "oneoff")
@@ -386,7 +386,7 @@ func TestOneoffSteerPassesChildAnswerWaitingForMessage(t *testing.T) {
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": "child-message", "delta": "Working"})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
 	selectSideThread(t, u, u.attached.presentation.View().Main)
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
 	if wire.Len() != 0 || len(u.side.Drafts.Unsent) != 1 {
@@ -399,7 +399,7 @@ func TestOneoffSteerPassesChildAnswerWaitingForMessage(t *testing.T) {
 		t.Fatal("parent steer consumed the child answer")
 	}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": map[string]any{"type": "message"}})
-	if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+	if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
 		t.Fatal(err)
 	}
 	_ = btwTestRequest(t, wire, "turn/steer", "oneoff-child")

@@ -7,7 +7,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -23,7 +23,7 @@ type appServerShellEdits struct {
 	running map[[2]string]*executionobservation.ShellOperation
 }
 
-func (session *nativeSession) captureShellEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, parent context.Context, command string) *executionobservation.ShellOperation {
+func (session *nativeSession) captureShellEdit(attached *attachedPresentation, parent context.Context, command string) *executionobservation.ShellOperation {
 	if session.retained.Store == nil {
 		return nil
 	}
@@ -40,7 +40,7 @@ func (session *nativeSession) captureShellEdit(attached *attachedPresentation, t
 		namespace, err = session.retained.Store.NamespaceForThread(session.Client.Thread)
 		return err
 	}); err != nil {
-		setNotice(&attached.feedback, terminal, time.Now(), "Shell change capture failed: "+err.Error(), true)
+		setNotice(&attached.feedback, time.Now(), "Shell change capture failed: "+err.Error(), true)
 		return nil
 	}
 	edit := executionobservation.PrepareShell(ctx, session.retained, session.changeSource, session.snapshots, session.recovered, session.publishChanges, session.execWindows, session.audience, session.captureNotice, executionobservation.ShellInput{
@@ -50,24 +50,24 @@ func (session *nativeSession) captureShellEdit(attached *attachedPresentation, t
 	if edit == nil {
 		return nil
 	}
-	restoreDiffThread(attached, terminal, session.review, session.reviewSource, session.preparePane, binding.ThreadInfo{ID: session.Client.Thread, Cwd: attached.cwd})
+	restoreDiffThread(attached, session.review, session.reviewSource, binding.ThreadInfo{ID: session.Client.Thread, Cwd: attached.cwd})
 	edit.Begin(session.review)
 	return edit
 }
 
 // Capture completion before presentation can discard an event from a thread
 // the user has left. The observation retains its original workspace and scope.
-func observeShellMessage(edits *appServerShellEdits, attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, message appserver.Message) {
+func observeShellMessage(edits *appServerShellEdits, attached *attachedPresentation, clock func() time.Time, message appserver.Message) {
 	if message.Method != "item/started" && message.Method != "item/completed" || edits.pending == nil && len(edits.running) == 0 {
 		return
 	}
 	var event binding.Notification
 	if json.Unmarshal(message.Params, &event) == nil {
-		observeShellEdit(edits, attached, terminal, clock, event.ThreadID, message.Method, event.Item)
+		observeShellEdit(edits, attached, clock, event.ThreadID, message.Method, event.Item)
 	}
 }
 
-func observeShellEdit(edits *appServerShellEdits, attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, thread, method string, item binding.ThreadItem) {
+func observeShellEdit(edits *appServerShellEdits, attached *attachedPresentation, clock func() time.Time, thread, method string, item binding.ThreadItem) {
 	if item.Type != "commandExecution" || item.Source != "userShell" || item.ID == "" {
 		return
 	}
@@ -99,6 +99,6 @@ func observeShellEdit(edits *appServerShellEdits, attached *attachedPresentation
 	}
 	host := binding.ToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
 	if err := edit.Complete(host, output); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell change capture failed: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Shell change capture failed: "+err.Error(), true)
 	}
 }

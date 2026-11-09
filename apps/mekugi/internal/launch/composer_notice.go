@@ -22,17 +22,12 @@ import (
 )
 
 // Successful feedback is transient; actionable errors remain until editing.
-func setNotice(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, at time.Time, text string, alert bool) {
+func setNotice(feedback *noticepresentation.Model, at time.Time, text string, alert bool) {
 	feedback.Set(text, alert, at)
-	terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 }
 
-func expireNotice(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, now time.Time) bool {
-	if !feedback.Expire(now) {
-		return false
-	}
-	terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	return true
+func expireNotice(feedback *noticepresentation.Model, now time.Time) bool {
+	return feedback.Expire(now)
 }
 
 // Claims retain only the identity they published and their independent queues.
@@ -71,18 +66,16 @@ func (d *nativeCriticalNoticeDelivery) finish(receipt terminalsession.NoticeRece
 	d.progress.Finish(attached && receipt.Content)
 }
 
-func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, audience *sessioncontrol.Audience, issues *requestexecution.Failures) (delivery *nativeCriticalNoticeDelivery) {
+func applyCriticalNotices(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, audience *sessioncontrol.Audience, issues *requestexecution.Failures) (delivery *nativeCriticalNoticeDelivery) {
 	if issues != nil {
 		thread := control.Thread
 		if attached.presentation.DisplayingSide() && *side != nil {
 			thread = (*side).Thread
 		}
-		if attached.feedback.ClearSucceeded(issues.Notices, thread) {
-			terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-		}
+		attached.feedback.ClearSucceeded(issues.Notices, thread)
 	}
 	defer func() {
-		view := publishPresentation(attached, terminal, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side))
+		view := publishPresentation(attached, control, picker, editor, settings, tiers, title, backend, (*restoring) != nil, (*side))
 		if delivery != nil {
 			delivery.attachment, delivery.feedback = view.Version.Attachment, attached.feedback.Revision
 		}
@@ -94,9 +87,5 @@ func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsess
 	delivery = &nativeCriticalNoticeDelivery{id: rand.Text(), errors: claim.Errors, progress: claim.Progress}
 	attached.feedback.Receive(claim, presentationTime(clock))
 	delivery.refreshProgress(attached, presentationTime(clock))
-	if len(claim.Errors.Messages) > 0 {
-		terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	}
-
 	return delivery
 }

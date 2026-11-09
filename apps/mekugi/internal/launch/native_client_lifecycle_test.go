@@ -298,7 +298,7 @@ func TestNativeTrackedDeliveriesReleaseClientPacing(t *testing.T) {
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "first\nsecond\n"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	serverCLIAwait(t, func() bool {
-		u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
+		u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 		return u.attached.session.Commands()[[3]string{"main", "t", "cmd"}] == nil
 	})
 	publish()
@@ -315,7 +315,7 @@ func TestNativeTrackedDeliveriesReleaseClientPacing(t *testing.T) {
 func TestNativeActivityBurstPreservesAttachment(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, u.Thread); refusal != "" {
 		t.Fatal(refusal)
@@ -389,7 +389,7 @@ func TestNativeAppliedEffectsAcknowledgedBeforePaint(t *testing.T) {
 				c.calls = nil // The original paint receipt has already been sent.
 			}
 			u.issues.CleanupNotice("", "", "planning", "new unseen cleanup progress")
-			delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
+			delivery := applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 			if delivery == nil || len(u.issues.Notices.Pending()) != 1 {
 				t.Fatal("pending progress fixture unavailable")
 			}

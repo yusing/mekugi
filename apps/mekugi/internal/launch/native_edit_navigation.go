@@ -6,38 +6,29 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
-// openActivityEdit resolves an exact admitted invocation without consulting the
-// Diff painter, retained storage, or current workspace contents.
-func openActivityEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, changes *changecapture.Service, u *terminalsession.Attachment, view *activityui.View, seq uint64, path string) bool {
-	pages, selected := activityEditPages(attached, terminal, changes, view, seq, path)
+func (files *detailFiles) openActivityEdit(attached *attachedPresentation, source *sessionpresentation.ActivitySource, changes *changecapture.Service, seq uint64, path string) bool {
+	pages, selected := activityEditPages(attached, source, changes, seq, path)
 	for _, page := range pages {
-		if page.ID == selected {
-			if page.Lang == "diff" && files.openDiff != nil {
-				files.openDiff(page)
-				return true
-			}
-			openDetails(attached, terminal, files, u, view, pages)
-			for i, page := range u.Dialog.Pages {
-				if page.ID == selected {
-					u.Dialog.ShowPage(i)
-					break
-				}
-			}
+		if page.ID != selected {
+			continue
+		}
+		if page.Lang == "diff" && files.openDiff != nil {
+			files.openDiff(page)
 			return true
 		}
+		files.openDetailSelection(&attached.session, attached.presentation.View().Version, source, pages, false)
+		files.selected = selected
+		return true
 	}
 	return false
 }
 
-func activityEditPages(attached *attachedPresentation, terminal *terminalsession.Attachment, changes *changecapture.Service, view *activityui.View, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
-	for _, entry := range activitySource(attached, terminal, view).Entries {
+func activityEditPages(attached *attachedPresentation, source *sessionpresentation.ActivitySource, changes *changecapture.Service, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
+	for _, entry := range source.Entries {
 		native := entry.Source.Native
 		if entry.Source.Seq != seq || native == nil {
 			continue

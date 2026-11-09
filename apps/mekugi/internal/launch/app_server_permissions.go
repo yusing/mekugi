@@ -6,7 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -70,7 +70,7 @@ func (p *composerPicker) permissionsResponse(attached *attachedPresentation, con
 	return nil
 }
 
-func choosePermission(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, picker *composerPicker, choice completion.Choice) {
+func choosePermission(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, restoring bool, clock func() time.Time, picker *composerPicker, choice completion.Choice) {
 	selection := picker.permissionSelection
 	change, err := selection.Choose(choice.Name)
 	if err != nil {
@@ -78,9 +78,9 @@ func choosePermission(attached *attachedPresentation, terminal *terminalsession.
 		return
 	}
 	selection.Closed = true // Transfer the input gate to the admitted host update.
-	accepted, err := updateSettings(attached, terminal, control, applied, tiers, panes, restoring, clock, change)
+	accepted, err := updateSettings(attached, control, applied, tiers, panes, restoring, clock, change)
 	if err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Permission update failed: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Permission update failed: "+err.Error(), true)
 	}
 	if accepted {
 		picker.cancelPermissionSelection()

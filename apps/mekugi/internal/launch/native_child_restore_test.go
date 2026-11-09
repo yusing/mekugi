@@ -132,7 +132,7 @@ func TestNativeIndependentChildRestoredActivity(t *testing.T) {
 				if refusal := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeSkillDetails, Caller: "Main"}); refusal != "" {
 					t.Fatal(refusal)
 				}
-				if view.shell.Dialog == nil || len(view.shell.Dialog.Pages) != 1 || view.shell.Dialog.Pages[0].Body != "- commit" {
+				if nativeDetailFrame(view).Details == nil || len(nativeDetailFrame(view).Details.View.Pages) != 1 || nativeDetailFrame(view).Details.View.Pages[0].Body != "- commit" {
 					t.Fatal("runtime skills did not open their authored details")
 				}
 			}

@@ -67,7 +67,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		if len(result.Demands) > 0 {
 			source := activitySource(&u.main.attached, u.main.shell, result.Selection.View)
 			if source == nil {
-				setNotice(&u.main.attached.feedback, u.main.shell, presentationTime(u.main.clock), sessionpresentation.ErrStaleIntent.Error(), true)
+				setNotice(&u.main.attached.feedback, presentationTime(u.main.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 				return true
 			}
 			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))

@@ -41,7 +41,7 @@ func TestNativePredictionProducerEligibility(t *testing.T) {
 	response.Body.Close()
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	viewContext, disconnect := context.WithCancel(t.Context())
 	defer disconnect()
@@ -106,9 +106,9 @@ func TestNativePredictionProducerEligibility(t *testing.T) {
 	}
 	assertIdle()
 	setFocus(true)
-	v.shell.Main.PredictionsDisabled = true
+	v.attached.predictionsDisabled = true
 	assertIdle()
-	v.shell.Main.PredictionsDisabled = false
+	v.attached.predictionsDisabled = false
 	c.editor("main").InsertText("private draft")
 	complete()
 	assertIdle()

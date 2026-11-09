@@ -19,12 +19,12 @@ func checkNativePathCopy(t *testing.T, workspace, target, want string, retire bo
 	if refusal := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeFileDetails, Path: target}); refusal != "" {
 		t.Fatal(refusal)
 	}
-	if view.shell.Dialog != nil {
+	if view.files.id.Selection != 0 && !view.files.pendingFile {
 		t.Fatal("nonregular path opened a dialog before acquisition")
 	}
 	results := view.files.fileReads
 	if retire {
-		view.files.closeOutput(view.shell)
+		view.files.closeOutput()
 	}
 	select {
 	case result := <-results:
@@ -33,7 +33,7 @@ func checkNativePathCopy(t *testing.T, workspace, target, want string, retire bo
 		ready <- result
 		view.files.fileReads = ready
 		frame := nativeDetailFrame(view)
-		if frame.Details != nil || view.shell.Dialog != nil {
+		if frame.Details != nil || view.files.id.Selection != 0 && !view.files.pendingFile {
 			t.Fatal("nonregular path published a dialog")
 		}
 	case <-time.After(5 * time.Second):
@@ -100,7 +100,7 @@ func TestMarkdownSymlinkFileAndBrokenTarget(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		main.detailFiles.openMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, activitySource(&main.attached, main.shell, main.shell.Transcript), u.Attachment, main.shell.Transcript, "linked.go:1")
+		main.detailFiles.openTerminalMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, activitySource(&main.attached, main.shell, main.shell.Transcript), u.Attachment, main.shell.Transcript, "linked.go:1")
 		awaitMarkdownFile(t, u)
 		if u.Dialog == nil || u.Frame.Clipboard != "" {
 			t.Fatal("file symlink did not retain dialog behavior")
@@ -135,7 +135,7 @@ func TestNativePathCopyRetainsAdmissionCapacity(t *testing.T) {
 	}
 	select {
 	case result := <-view.files.fileReads:
-		view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, workspace, view.shell, result)
+		view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, workspace, result)
 	case <-time.After(5 * time.Second):
 		t.Fatal("directory acquisition did not finish")
 	}
@@ -182,12 +182,12 @@ func TestNativeFileOpenLeaseAndLocations(t *testing.T) {
 			}
 			results := view.files.fileReads
 			if test.retired {
-				view.files.closeOutput(view.shell)
+				view.files.closeOutput()
 			}
 			for view.files.fileReads != nil || test.retired {
 				select {
 				case result := <-results:
-					view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, workspace, view.shell, result)
+					view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, workspace, result)
 				case <-time.After(5 * time.Second):
 					t.Fatal("file acquisition timed out")
 				}

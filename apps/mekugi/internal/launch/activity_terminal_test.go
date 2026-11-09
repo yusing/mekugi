@@ -13,8 +13,12 @@ import (
 
 func TestActivityRendererConsumesOnlyDeliveredFacts(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root", Kind: "error", Text: "delivered"}}, nil)
+	applyActivity(&u.attached, &u.approvals, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root", Kind: "error", Text: "delivered"}}, nil)
 	render := func() string { return strings.Join(u.shell.Transcript.RenderFeed(80, 20).Lines, "\n") }
+	if strings.Contains(render(), "delivered") {
+		t.Fatal("semantic admission mutated the renderer")
+	}
+	publishActivity(&u.attached, u.shell)
 	if !strings.Contains(render(), "delivered") {
 		t.Fatal("application did not deliver its admitted source")
 	}

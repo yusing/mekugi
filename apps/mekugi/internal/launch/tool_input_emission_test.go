@@ -43,7 +43,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			}
 			emissionTestEvent(t, transform, map[string]any{"type": delta, "output_index": 0, "item_id": "emitting", "delta": "input"})
 			questionTestAsync(t, u, "question", "Who receives it?")
-			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+			openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "1\r")
 			if requests := appServerTurnRequests(t, wire); len(requests) != 0 || len(u.attached.conversation.Unsent) != 1 {
@@ -54,7 +54,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 				done = "response.function_call_arguments.done"
 			}
 			emissionTestEvent(t, transform, map[string]any{"type": done, "item_id": "emitting"})
-			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			if requests := appServerTurnRequests(t, wire); len(requests) != 0 {
@@ -63,7 +63,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			// Neither native execution nor turn completion is needed, but the
 			// host must receive the complete item before steering can preempt it.
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
-			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)
@@ -94,7 +94,7 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 			if tc.answer {
 				questionTestAsync(t, u, "question", "Who receives it?")
-				openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+				openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 				questionTestPaint(t, u, 70)
 			}
 			appServerTestKeys(t, u, "1\r")
@@ -112,7 +112,7 @@ func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	defer transform.Close()
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 	questionTestAsync(t, u, "question", "Who receives it?")
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
 	appServerTestKeys(t, u, "Stop and change direction\r")
@@ -154,7 +154,7 @@ func TestAssistantMessageDefersInputUntilBoundary(t *testing.T) {
 				appServerTestKeys(t, u, "next turn\t")
 				if answer {
 					questionTestAsync(t, u, "question", "Who receives it?")
-					openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+					openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 					questionTestPaint(t, u, 70)
 					appServerTestKeys(t, u, "1\r")
 				} else {
@@ -167,7 +167,7 @@ func TestAssistantMessageDefersInputUntilBoundary(t *testing.T) {
 				emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.done", "item_id": "message", "text": "The latest trace is complete."})
 				flush := func() {
 					t.Helper()
-					if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+					if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -208,7 +208,7 @@ func TestAssistantMessageBoundaryIsNotRearmed(t *testing.T) {
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": first})
 			if answer {
 				questionTestAsync(t, u, "question", "Who receives it?")
-				openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+				openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 				questionTestPaint(t, u, 70)
 				appServerTestKeys(t, u, "1\r")
 			} else {
@@ -229,14 +229,14 @@ func TestAssistantMessageBoundaryIsNotRearmed(t *testing.T) {
 				t.Fatal("input waiting for a later boundary joined the earlier batch")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"turn"}}`, requests[0].ID))
-			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			if wire.Len() != 0 {
 				t.Fatal("later input did not retain its own message boundary")
 			}
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": "second", "type": "message"}})
-			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			appServerOneRequest(t, wire, "turn/steer", "later instruction")
@@ -276,7 +276,7 @@ func TestAssistantMessageIdentityAtBoundary(t *testing.T) {
 			}
 			emissionTestEvent(t, transform, done)
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"id": "next", "type": "message"}})
-			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 			appServerOneRequest(t, wire, "turn/steer", "change direction")
@@ -308,7 +308,7 @@ func TestInputBoundaryRetainsStreamedIdentity(t *testing.T) {
 					emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": "message", "delta": "Finishing this message"})
 					if answer {
 						questionTestAsync(t, u, "question", "Who receives it?")
-						openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+						openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 						questionTestPaint(t, u, 70)
 						appServerTestKeys(t, u, "1\r")
 					} else {
@@ -326,7 +326,7 @@ func TestInputBoundaryRetainsStreamedIdentity(t *testing.T) {
 					// Non-message generation must not strand an already-accepted input
 					// until response or host-turn completion.
 					emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"type": "reasoning", "id": "reasoning"}})
-					if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+					if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 						t.Fatal(err)
 					}
 					if requests := appServerTurnRequests(t, wire); len(requests) != 1 || requests[0].Method != "turn/steer" || u.Turn != "turn" {
@@ -356,7 +356,7 @@ func TestInputBoundaryWaitsForDelivery(t *testing.T) {
 				emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 2, "item": map[string]any{"type": kind, "role": "assistant"}})
 				if answer {
 					questionTestAsync(t, u, "question", "Who receives it?")
-					openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+					openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 					questionTestPaint(t, u, 70)
 					appServerTestKeys(t, u, "1\r")
 				} else {
@@ -371,7 +371,7 @@ func TestInputBoundaryWaitsForDelivery(t *testing.T) {
 				}
 				flush := func() {
 					t.Helper()
-					if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+					if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -421,7 +421,7 @@ func TestExecutionFreeMessagesObserveInputBoundary(t *testing.T) {
 		t.Fatal("execution-free assistant message was interrupted")
 	}
 	emissionTestEvent(t, prepared, map[string]any{"type": "response.output_item.done", "item": item})
-	if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+	if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 		t.Fatal(err)
 	}
 	appServerOneRequest(t, wire, "turn/steer", "change direction")

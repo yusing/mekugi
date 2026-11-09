@@ -26,7 +26,9 @@ func TestNativePaneStateRejectsFIFOWithoutWaiting(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- preferences.open(&terminalTest(ui).Shell, ui.shell.Main, "/workspace", "thread", true) }()
+	go func() {
+		done <- preferences.openTerminal(&terminalTest(ui).Shell, ui.shell.Main, "/workspace", "thread", true)
+	}()
 	select {
 	case err := <-done:
 		if err == nil || !strings.Contains(err.Error(), "regular file") {

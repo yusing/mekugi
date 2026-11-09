@@ -3,11 +3,12 @@ package launch
 import (
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/backends/codex/appserver"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -101,7 +102,7 @@ func TestTemporaryUsageLimitWaitingAndClose(t *testing.T) {
 						deliverCompletion("continued")
 					}
 					if closure == "explicit" {
-						check(closeSide(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages))
+						check(closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages))
 						btwTestReply(t, u, btwTestRequest(t, wire, "thread/archive", "side"), `{}`)
 					} else {
 						appServerTestNotify(t, u, closure, map[string]any{"threadId": "side"})
@@ -164,7 +165,7 @@ func TestTemporaryUsageLimitExplicitInputSupersedesWait(t *testing.T) {
 					appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "completed"}})
 					b.Drafts.Queued = append(b.Drafts.Queued, conversationmodel.Input{Text: "queued follow-up"})
 					flush := func() {
-						check(flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{}, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations))
+						check(flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{}, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations))
 					}
 					flush()
 					if wire.Len() != 0 || b.Waiting == "" {

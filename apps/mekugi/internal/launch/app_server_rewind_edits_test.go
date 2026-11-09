@@ -225,7 +225,7 @@ func TestAppServerRewindFailureRetiresPendingCapture(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			u := newShellEditTestUI(t)
 			w := u.Host.Input.(*appServerTestInput)
-			if err := u.nativeSession.dispatchShell(&u.attached, u.shell, u.clock, u.ctx, "printf after > captured.txt"); err != nil {
+			if err := u.nativeSession.dispatchShell(&u.attached, u.clock, u.ctx, "printf after > captured.txt"); err != nil {
 				t.Fatal(err)
 			}
 			if u.shellEdits.pending == nil {

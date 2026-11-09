@@ -39,7 +39,7 @@ func TestComposerCommandEnterAndDismiss(t *testing.T) {
 	u, _ = newAppServerTestUI()
 	appServerTestKeys(t, u, "/")
 	u.pickerKey("\x1b")
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	if u.picker.Open || u.Text != "/" {
 		t.Fatal("Escape must dismiss without changing the draft")
 	}
@@ -117,7 +117,7 @@ func TestComposerCommandSmallFrame(t *testing.T) {
 				t.Fatalf("row exceeds width %d: %q", width, row)
 			}
 		}
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 		if u.shell.Main.Menu.Top > u.shell.Main.Menu.Selected || u.shell.Main.Menu.Top+u.shell.Main.Menu.RowCount <= u.shell.Main.Menu.Selected {
 			t.Fatal("selection outside visible viewport")
 		}
@@ -129,7 +129,7 @@ func TestComposerCommandMouseSelection(t *testing.T) {
 	shell := terminalTest(u)
 	appServerTestKeys(t, u, "/sk")
 	u.renderPicker(80, 4)
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	u.shell.Main.Menu.Rect = terminalsession.Rect{0, 0, 80, 4}
 	if err := shell.mouse("\x1b[<0;2;2M"); err != nil {
 		t.Fatal(err)

@@ -235,7 +235,7 @@ func TestNativeDetailWorkspaceAdmissionAndLocalFiles(t *testing.T) {
 		for v.files.fileReads != nil {
 			select {
 			case result := <-v.files.fileReads:
-				v.files.loadedMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, v.shell, result)
+				v.files.loadedMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, result)
 			case <-deadline:
 				t.Fatal("local detail acquisition stalled")
 			}

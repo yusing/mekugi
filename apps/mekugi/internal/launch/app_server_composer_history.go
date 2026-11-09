@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -21,15 +21,15 @@ func rememberInput(conversation *conversationmodel.Session, draft conversationmo
 func draftSnapshot(editor *composer.Editor) conversationmodel.Input {
 	return conversationmodel.Input{Draft: editor.Draft.Editable()}
 }
-func recordDraft(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side) {
+func recordDraft(attached *attachedPresentation, editor *composer.Editor, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side) {
 	editor.Record()
-	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side, attached.hooks.nativeImages)
+	setNotice(&attached.feedback, presentationTime(clock), "", false)
+	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, side, attached.hooks.nativeImages)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file
 // lifetime to Codex; only this session's never-submitted files are reclaimed.
-func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversation *conversationmodel.Session, questions *nativeQuestionDock, approvals *nativeApprovalDock, prompts *terminalsession.Prompts, side *sessioncontrol.Side, nativeImages func(func(string))) {
+func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversation *conversationmodel.Session, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side, nativeImages func(func(string))) {
 	used := make(map[string]bool)
 	if nativeImages != nil {
 		nativeImages(func(path string) { used[path] = true })
@@ -65,7 +65,7 @@ func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversati
 	}
 	for _, c := range questions.Calls {
 		call := questions.handles[c]
-		for _, e := range prompts.SecretState(call.ID).Editors {
+		for _, e := range questions.secretState(call.ID).Editors {
 			stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 		}
 		for _, question := range call.Questions {

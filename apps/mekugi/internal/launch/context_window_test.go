@@ -109,7 +109,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 		t.Fatal("child context arrived without evidence")
 	}
 	restoreContextUsage(child, binding.ThreadInfo{ID: "child", Path: path})
-	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, u.attached.session.Roster())
+	applyActivity(&u.attached, &u.approvals, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, u.attached.session.Roster())
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "20K/400K • 5%" {
 		t.Fatal(got)
 	}

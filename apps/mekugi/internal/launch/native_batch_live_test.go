@@ -63,13 +63,13 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) { assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n")) })
 	}
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("child", "/root/editor", "child"), false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("child", "/root/editor", "child"), false)
 	revealNativeDock(terminalTest(u))
 	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/editor")
 	paint("native-batch-child-replaces-transcript", 140, 48)
 	u.testActivity(u.shell.Agents).setDisplayFilter(false, u.shell.Agents.Selected)
 	paint("native-batch-main-child-only", 140, 48)
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("main", "/root", "one", "two", "three"), false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("main", "/root", "one", "two", "three"), false)
 	revealNativeDock(terminalTest(u))
 	paint("native-batch-main-overflow", 140, 48)
 	for _, key := range []byte("\x02e") {
@@ -81,12 +81,12 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	paint("native-batch-short-summary", 80, 18)
 	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/editor")
 	paint("native-batch-narrow-activity", 80, 28)
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
 	revealNativeDock(terminalTest(u))
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "main", Workspace: "/workspace"}, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "main", Workspace: "/workspace"}, false)
 	revealNativeDock(terminalTest(u))
 	paint("native-batch-restored-transcripts", 140, 48)
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("child", "/root/editor", "child", "second", "third"), false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("child", "/root/editor", "child", "second", "third"), false)
 	revealNativeDock(terminalTest(u))
 	for _, key := range []byte("\x02e") {
 		if err := terminalTest(u).key(key); err != nil {
@@ -150,24 +150,24 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	// A quick completed edit must never produce even one transcript-replacing
 	// frame on the real terminal, including after its reveal deadline.
 	quick := nativeBatchPreview("quick", "/root", "quick")
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), quick, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), quick, false)
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("pending edit flashed a dock")
 	}
 	quick.Complete = true
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), quick, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), quick, false)
 	revealNativeDock(terminalTest(u))
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("completed quick edit popped a dock")
 	}
 	deleted := previewmodel.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: previewmodel.PreviewEdit,
 		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), deleted, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), deleted, false)
 	revealNativeDock(terminalTest(u))
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("deletion-only call replaced transcript with an empty dock")
 	}
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "deleted", Workspace: "/workspace"}, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "deleted", Workspace: "/workspace"}, false)
 	p := nativeBatchPreview("main", "/root", "one")
 	// A rewrite's not-yet-received baseline suffix must not displace its
 	// arriving additions, including after publication clips a large diff.
@@ -182,9 +182,9 @@ func TestNativeBatchLivePTY(t *testing.T) {
 		return boundPreview(next)
 	}
 	p = rewrite(rewritten.String())
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 	revealNativeDock(terminalTest(u))
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("child", "/root/editor", "child"), false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("child", "/root/editor", "child"), false)
 	revealNativeDock(terminalTest(u))
 	frame := paint(140, 48)
 	if !strings.Contains(frame, "one_line_40") || !strings.Contains(frame, "child_line_40") || strings.Contains(frame, "OTHER_ACTIVITY") || strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "EDITOR_TRANSCRIPT") {
@@ -200,7 +200,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 		t.Fatal("source scroll did not pause live viewport")
 	}
 	p = rewrite(rewritten.String() + "streaming_tip\n")
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 	revealNativeDock(terminalTest(u))
 	if frame = paint(140, 48); strings.Contains(frame, "streaming_tip") {
 		t.Fatal("new input stole paused viewport")
@@ -216,7 +216,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	scroll := nativeBatchPreview("scroll", "/root", "scroll")
 	scroll.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/scroll.txt", "/workspace/scroll.txt",
 		"retained\n"+strings.Repeat("old baseline source\n", 60), strings.Repeat("new source\n", 30)+"retained\n")}
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), scroll, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), scroll, false)
 	paint(140, 48)
 	pageDown := func() {
 		for _, key := range []byte("\x02\x1b[6~") {
@@ -235,11 +235,11 @@ func TestNativeBatchLivePTY(t *testing.T) {
 			t.Fatal("live diff shook after scrolling to the deleted suffix bottom")
 		}
 	}
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "scroll", Workspace: "/workspace"}, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "scroll", Workspace: "/workspace"}, false)
 	p.Complete = true
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 	revealNativeDock(terminalTest(u))
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("next", "/root", "two", "three"), false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), nativeBatchPreview("next", "/root", "two", "three"), false)
 	revealNativeDock(terminalTest(u))
 	if len(terminalTest(u).Live.Order) != 3 {
 		t.Fatal("new edit evicted completed batch member")
@@ -251,7 +251,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame = paint(80, 18); !strings.Contains(frame, "enlarge for diff") || strings.Contains(frame, "three_line") {
 		t.Fatal("short terminal squeezed below minimum file height")
 	}
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "next"}, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "next"}, false)
 	revealNativeDock(terminalTest(u))
 	terminalTest(u).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
 	frame = paint(140, 48)
@@ -262,7 +262,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame = paint(140, 48); !strings.Contains(frame, "child_line_40") {
 		t.Fatal("child preview was lost while viewing Main")
 	}
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
 	revealNativeDock(terminalTest(u))
 	if frame = paint(140, 48); !strings.Contains(frame, "EDITOR_TRANSCRIPT") || strings.Contains(frame, "LIVE ·") {
 		t.Fatal("withdrawal did not restore Activity")
@@ -282,7 +282,7 @@ func TestUISnapshotNativeBatchDeletionPresentation(t *testing.T) {
 			if mixed {
 				preview.Files = append(preview.Files, nativeBatchPreview("kept", "/root", "kept").Files...)
 			}
-			applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
+			applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 			revealNativeDock(terminalTest(u))
 			screen := vt.NewEmulator(140, 48)
 			defer screen.Close()

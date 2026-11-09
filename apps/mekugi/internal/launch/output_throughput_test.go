@@ -193,13 +193,13 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		first.Begin()
 		time.Sleep(time.Second)
 		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		if usagepresentation.OutputThroughputLabel(u.attached.session.Agent("/root").OutputThroughput) != "30.0 tok/s" {
 			t.Fatal("main did not refresh")
 		}
 		next := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		next.Begin()
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		if got := usagepresentation.OutputThroughputLabel(u.attached.session.Agent("/root").OutputThroughput); got != "30.0 tok/s" {
 			t.Fatalf("previous rate disappeared: %s", got)
 		}
@@ -253,7 +253,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 						t.Fatal(err)
 					}
 					synctest.Wait()
-					applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+					applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 					if got := u.attached.session.Agent("/root").OutputThroughput; got != previous {
 						t.Fatalf("%s replaced measured rate: %+v, want %+v", kind, got, previous)
 					}
@@ -274,7 +274,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				}
 				_ = w.Close()
 				<-done
-				applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+				applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 				requireRoundThroughput(t, proxy.usage, u.Thread, 40, true)
 				if root.OutputThroughput.OutputTokens != 130 || out.Code != http.StatusOK {
 					t.Fatalf("terminal measurement or delivery changed: %+v, %d", root.OutputThroughput, out.Code)
@@ -348,7 +348,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			if mode == "without usage" {
 				u.presentationState = new(sessionpresentation.Service)
 				u.attached.presentation = u.presentationState.Session(u.attached.session.Scope())
-				attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
+				attachPresentation(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
 			}
 			if mode == "without activity" {
 				u.activity = nil
@@ -357,7 +357,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			u.settings.Model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 			u.attached.session.Agent("/root").OutputThroughput = rate
-			before := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+			before := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 			frame, _ := u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)

@@ -593,7 +593,7 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 				}
 				for range 2 {
 					synctest.Wait()
-					if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
+					if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
 						t.Fatal(err)
 					}
 				}

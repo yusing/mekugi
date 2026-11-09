@@ -61,11 +61,14 @@ func (hooks *executionHooks) bind(native *nativeViews, api *sessionapi.Server, c
 // scoped presentation and feedback. Retiring a view does not retire execution.
 type attachedPresentation struct {
 	*executionPresentation
-	feedback     noticepresentation.Model
-	presentation *sessionpresentation.Model
-	view         string
-	effects      *nativeViewEffects
-	grants       sessioncontrol.ApprovalGrants
+	feedback            noticepresentation.Model
+	presentation        *sessionpresentation.Model
+	view                string
+	effects             *nativeViewEffects
+	grants              sessioncontrol.ApprovalGrants
+	interruptLocked     bool
+	predictionsDisabled bool
+	liveHidden          bool
 }
 
 func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, hooks *executionHooks) attachedPresentation {

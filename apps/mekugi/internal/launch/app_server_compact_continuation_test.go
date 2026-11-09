@@ -46,7 +46,7 @@ func TestAppServerCompactContinuationSurvivesDeferredAdmission(t *testing.T) {
 		}
 		close(admission)
 		flush := func() {
-			if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -72,7 +72,7 @@ func nativeTestCancel(t *testing.T, u *appServerUI) *nativeClient {
 	c := nativeTestPromptClient(u)
 	defer c.renderer.terminal.Diff.Close()
 	*c.editor("main") = *u.Editor
-	c.renderer.terminal.Main.InterruptLocked = u.shell.Main.InterruptLocked
+	c.renderer.terminal.Main.InterruptLocked = u.attached.interruptLocked
 	c.refresh(time.Now())
 	nativeTestInput(c, "\x03")
 	if len(c.calls) == 0 {
@@ -88,9 +88,9 @@ func nativeTestCancel(t *testing.T, u *appServerUI) *nativeClient {
 		if err != nil || !active {
 			t.Fatalf("native interrupt admission: active=%v err=%v", active, err)
 		}
-		if intent.Mode == sessioncontrol.RestoreWaiting && cancelQueuedCompact(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock) {
-			u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
-			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		if intent.Mode == sessioncontrol.RestoreWaiting && cancelQueuedCompact(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock) {
+			u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+			settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			continue
 		}
 		if err := u.applyInput(u.shell, func(yield func(terminalsession.InputEffect) bool) {
@@ -248,7 +248,7 @@ func TestAppServerCompactQueuedCancelBeforeRunPreservesMain(t *testing.T) {
 	for _, locked := range []bool{false, true} {
 		t.Run(fmt.Sprint("locked=", locked), func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.shell.Main.InterruptLocked = locked
+			u.attached.interruptLocked = locked
 			appServerTestTurn(t, u, "work")
 			appServerTestKeys(t, u, "/compact\t")
 			appServerTestKeys(t, u, "after compact\r")
@@ -605,7 +605,7 @@ func TestAppServerCompactSteerInterruptsWaitingQuestion(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "turn")
 	questionTestSync(t, u, "question", false)
-	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
 	appServerTestKeys(t, u, "/compact\r")
 	requests := appServerTurnRequests(t, w)
 	found := false

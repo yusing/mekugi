@@ -43,11 +43,11 @@ func TestPreviewLifecycleUsesPresentationTime(t *testing.T) {
 	if pane.Views["z"] != nil {
 		t.Fatal("restoration reopened expired completion")
 	}
-	pane.EndTurn("main", "turn", finished)
+	pane.Resync(previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"main": true, "child": true}}}, []string{"a"})
 	if pane.Views["a"] == nil {
 		t.Fatal("Main retirement removed child")
 	}
-	pane.EndTurn("child", "turn", finished)
+	pane.Resync(previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"main": true, "child": true}}}, nil)
 	if pane.Tick(finished.Add(time.Hour)) || len(pane.Order) != 0 {
 		t.Fatal("turn retirement retained preview work")
 	}

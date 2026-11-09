@@ -14,7 +14,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -73,7 +73,7 @@ func (p *composerPicker) completionTarget(draft composer.Draft, shellMode bool) 
 	return p.FindTarget(draft)
 }
 
-func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string) {
+func (p *composerPicker) refreshPicker(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string) {
 	if p.presets != nil {
 		p.pollPresets()
 		return
@@ -91,7 +91,7 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 		p.Open = false
 		return
 	}
-	if terminal.Main.Pasting() || terminal != nil && terminal.Decoder.Pending() || !utf8.ValidString(editor.Text) {
+	if !utf8.ValidString(editor.Text) {
 		return
 	}
 	draft := draftSnapshot(editor)
@@ -132,11 +132,11 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal 
 	if p.Kind == "manage" {
 		target = completion.Target{Kind: '$', Query: p.Query}
 	}
-	p.acquireTarget(attached, terminal, clock, requests, parent, target, bindingOnly)
+	p.acquireTarget(attached, clock, requests, parent, target, bindingOnly)
 }
 
 // acquireTarget continues the existing acquisition without retaining a client draft.
-func (p *composerPicker) acquireTarget(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], parent context.Context, target completion.Target, bindingOnly bool) {
+func (p *composerPicker) acquireTarget(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], parent context.Context, target completion.Target, bindingOnly bool) {
 	wasOpen := p.Open
 	if !p.Activate(target, bindingOnly) {
 		p.cancelScan()
@@ -185,10 +185,10 @@ func (p *composerPicker) acquireTarget(attached *attachedPresentation, terminal 
 	if p.Pending != nil {
 		return
 	}
-	p.requestPicker(attached, terminal, clock, requests, target, cwd)
+	p.requestPicker(attached, clock, requests, target, cwd)
 }
 
-func (p *composerPicker) requestPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], target completion.Target, cwd string) {
+func (p *composerPicker) requestPicker(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], target completion.Target, cwd string) {
 	method := "fuzzyFileSearch"
 	params := map[string]any{"query": target.Query, "roots": []string{cwd}}
 	if target.Kind == '$' {
@@ -201,14 +201,14 @@ func (p *composerPicker) requestPicker(attached *attachedPresentation, terminal 
 		p.Problem = "Search failed: " + err.Error()
 		if target.Kind == '$' {
 			p.SkillsCwd, p.SkillsProblem = cwd, p.Problem
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "Skill attachment unavailable: "+p.Problem+". References remain text.", true)
+			setNotice(&attached.feedback, presentationTime(clock), "Skill attachment unavailable: "+p.Problem+". References remain text.", true)
 		}
 	}
 }
 
-func (p *composerPicker) pickerMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string, method string, m appserver.Message) bool {
+func (p *composerPicker) pickerMessage(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string, method string, m appserver.Message) bool {
 	if method == "skills/config/write" {
-		p.skillToggleResponse(attached, terminal, clock, m)
+		p.skillToggleResponse(attached, clock, m)
 		return true
 	}
 	if method != "skills/list" && method != "fuzzyFileSearch" {
@@ -331,28 +331,28 @@ func (p *composerPicker) pickerMessage(attached *attachedPresentation, terminal 
 			if !available {
 				label = "Skill attachment unavailable: "
 			}
-			setNotice(&attached.feedback, terminal, presentationTime(clock), label+problem+". Unavailable references remain text.", true)
+			setNotice(&attached.feedback, presentationTime(clock), label+problem+". Unavailable references remain text.", true)
 		}
 	}
 	p.Resolve(target, cwd, attached.cwd, choices, problem)
 	if attached.view == "" {
-		p.refreshPicker(attached, terminal, clock, requests, editor, parent, environment)
+		p.refreshPicker(attached, clock, requests, editor, parent, environment)
 	} else {
-		p.acquireTarget(attached, terminal, clock, requests, parent, p.Target, !p.Open)
+		p.acquireTarget(attached, clock, requests, parent, p.Target, !p.Open)
 	}
 	return true
 }
 
-func (session *nativeSession) acceptCompletion(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, choice completion.Choice) bool {
+func (session *nativeSession) acceptCompletion(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, side *sessioncontrol.Side, clock func() time.Time, overlay bool, parent context.Context, choice completion.Choice) bool {
 	p := picker
 	target := p.Target
 	if picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()) != target {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
-		picker.refreshPicker(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
+		setNotice(&attached.feedback, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
+		picker.refreshPicker(attached, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
 		return false
 	}
 	if target.Kind == '/' {
-		session.deleteDraftRange(attached, terminal, picker, editor, side, clock, overlay, target.Start, target.End)
+		session.deleteDraftRange(attached, picker, editor, side, clock, overlay, target.Start, target.End)
 		(*editor).InsertText(choice.Name + " ")
 		(*editor).Run, p.Open = composer.NoRun, false
 		// Enter continues through the existing local command dispatcher.
@@ -360,11 +360,11 @@ func (session *nativeSession) acceptCompletion(attached *attachedPresentation, t
 	}
 	if target.Kind == '$' && choice.Preset {
 		if !presetsAvailable(attached, &session.Client, session.restoring != nil) || p.presetCatalog == nil || !p.presetCatalog.Loaded || choice.ID < 1 || choice.ID > 10 {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "Presets are unavailable in this conversation", true)
+			setNotice(&attached.feedback, presentationTime(clock), "Presets are unavailable in this conversation", true)
 			return false
 		}
 		input := p.presetCatalog.Slots[choice.ID-1].Input
-		session.deleteDraftRange(attached, terminal, picker, editor, side, clock, overlay, target.Start, target.End)
+		session.deleteDraftRange(attached, picker, editor, side, clock, overlay, target.Start, target.End)
 		(*editor).InsertText(input)
 		(*editor).Run, p.Open = composer.NoRun, false
 		return true
@@ -390,7 +390,7 @@ func (session *nativeSession) acceptCompletion(attached *attachedPresentation, t
 		}
 	}
 	// One undo step restores the original token, not a half-completed edit.
-	session.deleteDraftRange(attached, terminal, picker, editor, side, clock, overlay, target.Start, target.End)
+	session.deleteDraftRange(attached, picker, editor, side, clock, overlay, target.Start, target.End)
 	(*editor).InsertText(text)
 	if imagePath != "" {
 		(*editor).Images = append((*editor).Images, composer.Token{Start: target.Start, End: target.Start + len(text), Path: imagePath})
@@ -412,6 +412,6 @@ func (session *nativeSession) acceptCompletion(attached *attachedPresentation, t
 	return true
 }
 
-func pickerVisible(picker *composerPicker, presentation *sessionpresentation.Model, terminal *terminalsession.Attachment) bool {
-	return presentation.View().ReadOnly == sessionpresentation.Editable && picker.Open && (terminal == nil || terminal.Focus == 0)
+func pickerVisible(picker *composerPicker, presentation *sessionpresentation.Model) bool {
+	return presentation.View().ReadOnly == sessionpresentation.Editable && picker.Open
 }

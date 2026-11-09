@@ -21,7 +21,7 @@ func nativeTestAnswers(t *testing.T, u *appServerUI, input sessionapi.NativeAnsw
 	if len(preparations) > 0 {
 		prepared = preparations[0]
 	}
-	refusal, err := u.nativeSession.applyNativeAnswers(&u.attached, u.shell, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, input, prepared, t.Context(), false)
+	refusal, err := u.nativeSession.applyNativeAnswers(&u.attached, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, input, prepared, t.Context(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestNativeSecretAnswerPrivacyAndPasswordValidation(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.startSession("main", "/workspace")
 			request := &sessioncontrol.ShellApprovalRequest{Kind: kind, Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-			openSudoPassword(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Subject: "sudo id"}, Guard: request})
+			openSudoPassword(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Subject: "sudo id"}, Guard: request})
 			call := nativePendingQuestions(u.attached.conversation)[0]
 			input := nativeTestAnswerBatch(call)
 			input.Answers[0].Secret = "fixture\nsecret"
@@ -98,7 +98,7 @@ func TestNativeSecretAnswerPrivacyAndPasswordValidation(t *testing.T) {
 					t.Fatal("secret escaped into publication or retained state", err)
 				}
 			}
-			if len(u.shell.Prompts.SecretState(call.ID).Answers) != 0 || len(u.shell.Prompts.SecretState(call.ID).Editors) != 0 {
+			if len(u.questions.secretState(call.ID).Answers) != 0 || len(u.questions.secretState(call.ID).Editors) != 0 {
 				t.Fatal("server retained transient secret answers")
 			}
 		})
@@ -110,10 +110,10 @@ func TestNativeSyncAnswersKeepNotesAndOtherEditor(t *testing.T) {
 	u.startSession("main", "/workspace")
 	questionTestSync(t, u, "first", false)
 	first := nativePendingQuestions(u.attached.conversation)[0]
-	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
 	questionTestSync(t, u, "second", false)
-	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	openQuestionCall(&u.questions, &u.approvals, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread, u.questions.calls()[1])
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
+	openQuestionCall(&u.questions, &u.approvals, u.attached.conversation, &u.picker, &u.Editor, u.Thread, u.questions.calls()[1])
 	u.Text = "unrelated editor"
 	input := nativeTestAnswerBatch(first)
 	input.Answers[0].Draft = composer.Draft{Text: "explicit note"}

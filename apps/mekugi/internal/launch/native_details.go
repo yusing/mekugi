@@ -1,11 +1,11 @@
 package launch
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-	"time"
 )
 
 func (v *nativeSessionView) reserveFileCopy() *nativeEffectReservation {
@@ -22,7 +22,7 @@ func (v *nativeSessionView) reserveFileCopy() *nativeEffectReservation {
 }
 
 func (v *nativeSessionView) openNoticeDetails(text string) string {
-	openBlocks(&v.attached, v.shell, &v.files, v.shell, v.shell.Transcript, []activityui.Block{{Kind: "error", Body: text}})
+	v.files.openDetailSelection(&v.attached.session, v.attached.presentation.View().Version, v.attached.source, activity.DetailPages([]activity.Value{{Kind: "error", Body: text}}), false)
 	v.detailDemand = nil
 	return ""
 }
@@ -49,13 +49,10 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 			request.Agent, request.Caller = false, "Main"
 		}
 	}
-	terminal := v.shell.Transcript
+	source := v.attached.source
 	if request.Agent {
-		terminal = v.shell.Agents
+		source = v.attached.childSource
 	}
-	// Legacy semantic adapters consume the same detached Activity publications as
-	// native painting. The selected source and contributed detail owner stay real.
-	publishActivity(&v.attached, v.shell)
 	v.files.openDiff = nil
 	if !v.remoteHuman && time.Now().UnixMilli() < v.viewerLease.DiffOpenExpires {
 		v.files.openDiff = func(page activity.DetailPage) {
@@ -64,7 +61,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 				id = v.diffOpen.ID + 1
 			}
 			v.diffOpen = &sessionapi.NativeDiffOpen{ID: id, Path: page.Path, Title: page.Verb, Source: page.Code}
-			v.files.closeOutput(v.shell)
+			v.files.closeOutput()
 		}
 	}
 	switch request.Kind {
@@ -75,7 +72,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		if copyReservation == nil {
 			return "Clipboard delivery capacity is exhausted."
 		}
-		if !v.files.openMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, activitySource(&v.attached, v.shell, terminal), v.shell, terminal, request.Path) {
+		if !v.files.openMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, source, request.Path) {
 			copyReservation.release()
 			return "The local file target is unavailable."
 		}
@@ -98,28 +95,28 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 			}
 		}
 	case sessionapi.NativeErrorDetails:
-		openErrorDetails(&v.attached, v.shell, &v.files, v.shell, terminal)
+		v.files.openErrorDetails(&v.attached, source)
 	case sessionapi.NativeSkillDetails:
-		openSkills(&v.attached, v.shell, &v.files, v.shell, terminal, request.Caller)
+		v.files.openSkills(&v.attached, source, request.Caller)
 	case sessionapi.NativeEntryDetails:
 		if len(request.Sources) == 0 && request.Path == "" {
-			for _, entry := range activitySource(&v.attached, v.shell, terminal).Entries {
+			for _, entry := range source.Entries {
 				n := entry.Source.Native
 				if entry.Source.Seq == request.Source && entry.Source.Kind == "compaction" && n != nil && n.SummaryPending {
 					read := v.attached.hooks.compaction(n.Thread, n.Item)
-					v.files.openCompactionSummary(&v.attached.session, v.attached.presentation, v.attached.cwd, v.shell, terminal, read)
+					v.files.openCompactionSummary(&v.attached.session, v.attached.presentation, v.attached.cwd, source, read)
 					v.detailDemand = nil
 					return ""
 				}
 			}
 		}
 		if request.Edit || request.Path != "" {
-			if !openActivityEdit(&v.attached, v.shell, &v.files, v.changes, v.shell, terminal, request.Source, request.Path) {
+			if !v.files.openActivityEdit(&v.attached, source, v.changes, request.Source, request.Path) {
 				return sessionpresentation.ErrStaleIntent.Error()
 			}
 			break
 		}
-		if !request.Agent && len(request.Sources) == 0 && openActivityReply(&v.attached, v.shell, &v.files, v.shell, request.Source) {
+		if !request.Agent && len(request.Sources) == 0 && v.files.openActivityReply(&v.attached, request.Source) {
 			break
 		}
 		sources := request.Sources
@@ -128,7 +125,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		}
 		var pages []activity.DetailPage
 		for _, seq := range sources {
-			next := entryDetailPages(activitySource(&v.attached, v.shell, terminal), seq)
+			next := entryDetailPages(source, seq)
 			if len(next) == 0 {
 				return sessionpresentation.ErrStaleIntent.Error()
 			}
@@ -136,7 +133,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 			// Source-only row details also expose retained edits, without replacing
 			// the Activity pages needed by source and output disclosures.
 			if request.Source == seq && request.Operation == 0 && request.Output == 0 && len(request.Sources) == 0 {
-				if edits, _ := activityEditPages(&v.attached, v.shell, v.changes, terminal, seq, ""); len(edits) > 0 {
+				if edits, _ := activityEditPages(&v.attached, source, v.changes, seq, ""); len(edits) > 0 {
 					pages = append(pages, edits...)
 				}
 			}
@@ -154,9 +151,9 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		if selected < 0 && request.Operation != 0 {
 			return sessionpresentation.ErrStaleIntent.Error()
 		}
-		openDetails(&v.attached, v.shell, &v.files, v.shell, terminal, pages)
+		v.files.openDetailSelection(&v.attached.session, view.Version, source, pages, false)
 		if selected >= 0 {
-			v.shell.Dialog.ShowPage(selected)
+			v.files.selected = pages[selected].ID
 		}
 	default:
 		return "The detail action is unavailable."
@@ -172,29 +169,30 @@ func (v *nativeSessionView) publishDetails(frame *sessionapi.NativeFrame) {
 	}()
 	select {
 	case result := <-v.files.fileReads:
-		v.files.loadedMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, v.shell, result)
+		v.files.loadedMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, result)
 	default:
 	}
-	dialog := v.shell.Dialog
-	if dialog == nil {
+	if v.files.id.Selection == 0 || v.files.pendingFile {
 		return
 	}
-	if dialog.ID.Attachment != frame.View.Version.Attachment {
-		v.files.closeOutput(v.shell)
+	if v.files.id.Attachment != frame.View.Version.Attachment {
+		v.files.closeOutput()
 		v.detailDemand = nil
 		return
 	}
-	v.files.prepareOutput(&v.attached.session, v.shell)
-	if v.shell.Dialog == nil {
-		return
-	}
-	view, ok := v.files.details.DetailView(dialog.ID)
+	view, ok := v.files.detailView(&v.attached.session)
 	if !ok {
 		return
 	}
-	frame.Details = &sessionapi.NativeDetails{Source: frame.View.Main, View: view, Output: dialog.Output, File: dialog.File, Agent: dialog.View == v.shell.Agents}
-	if dialog.Page >= 0 && dialog.Page < len(dialog.Pages) {
-		frame.Details.Selected = dialog.Pages[dialog.Page].ID
+	frame.Details = &sessionapi.NativeDetails{Source: frame.View.Main, View: view, File: v.files.file, Agent: v.files.agent, Selected: v.files.selected}
+	for _, page := range view.Pages {
+		if page.ID == v.files.selected && page.Retained {
+			request := sessionpresentation.DetailOutputRequest{ID: view.ID, Page: page.ID, Version: page.OutputVersion}
+			if output, ok := v.files.details.DetailOutput(request); ok {
+				frame.Details.Output = &output
+			}
+			break
+		}
 	}
 	if v.detailDemand != nil {
 		frame.Details.Output = nil

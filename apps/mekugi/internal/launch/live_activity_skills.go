@@ -4,16 +4,18 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func openSkills(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, surface *terminalsession.Attachment, view *activityui.View, agent string) {
-	names := slices.Clone(activitySource(attached, terminal, view).ActiveSkills()[agent])
+func (files *detailFiles) openSkills(attached *attachedPresentation, source *sessionpresentation.ActivitySource, agent string) {
+	names := slices.Clone(source.ActiveSkills()[agent])
 	if len(names) == 0 {
 		return
 	}
 	slices.Sort(names)
-	openBlocks(attached, terminal, files, surface, view, []activityui.Block{{Kind: "op", Verb: "Skill", Label: activityui.SkillLabel(names), Body: "- " + strings.Join(names, "\n- ")}})
+	pages := activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "op", Verb: "Skill", Label: activityui.SkillLabel(names), Body: "- " + strings.Join(names, "\n- ")}})
+	files.openDetailSelection(&attached.session, attached.presentation.View().Version, source, pages, false)
 }

@@ -11,11 +11,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
-	"github.com/yusing/mekugi/contracts/scope"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -35,11 +33,9 @@ import (
 // nativeSession owns the serialized execution loop and invocation-lifetime collaborators.
 // Helpers borrow explicit view slots and editors, keeping Main's slots independent.
 type nativeSession struct {
-	preparer      *executionobservation.Preparer
-	attached      attachedPresentation
-	terminalViews terminalsession.Views
-	preparePane   func(*scope.Store)
-	reviewSource  *changecapture.Service
+	preparer     *executionobservation.Preparer
+	attached     attachedPresentation
+	reviewSource *changecapture.Service
 	*composer.Editor
 	history  *history.Service
 	segments *reports.Service
@@ -84,27 +80,24 @@ type nativeSession struct {
 	shellEdits            appServerShellEdits
 	pendingEditReceipts   []*changepresentation.Receipt
 	issues                *requestexecution.Failures
-	shell                 *terminalsession.Attachment
-	detailFiles
-	streams              terminalsession.Streams
-	activity             *activitymodel.Service
-	observations         *binding.Observation
-	retainedSession      history.Session
-	ctx                  context.Context
-	quitRequested        bool
-	archived             bool
-	exitUsage            binding.TokenUsage
-	resumeArgv           []string
-	replayDebugDirectory string
-	serviceTiers         *inferencegateway.Tiers
-	models               []appServerModel
-	modelsLoading        bool
-	ownedImages          map[string]bool
-	panes                *nativePreferences
-	restoring            *appServerActivityRestore
-	presentationState    *sessionpresentation.Service
-	settings             preferences.Applied
-	dispatch             func(appserver.Message) error
+	activity              *activitymodel.Service
+	observations          *binding.Observation
+	retainedSession       history.Session
+	ctx                   context.Context
+	quitRequested         bool
+	archived              bool
+	exitUsage             binding.TokenUsage
+	resumeArgv            []string
+	replayDebugDirectory  string
+	serviceTiers          *inferencegateway.Tiers
+	models                []appServerModel
+	modelsLoading         bool
+	ownedImages           map[string]bool
+	panes                 *nativePreferences
+	restoring             *appServerActivityRestore
+	presentationState     *sessionpresentation.Service
+	settings              preferences.Applied
+	dispatch              func(appserver.Message) error
 }
 
 // Freeze the current retained session when a detail read is admitted, even after replacement.

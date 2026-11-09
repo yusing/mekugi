@@ -7,55 +7,77 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func (files *detailFiles) openDetailSelection(session *sessionpresentation.Attachment, version sessionpresentation.Version, source *sessionpresentation.ActivitySource, u *terminalsession.Attachment, view *activityui.View, pages []activitypresentation.DetailPage, processes bool) {
-	u.Selection = nil
+func (files *detailFiles) openDetailSelection(session *sessionpresentation.Attachment, version sessionpresentation.Version, source *sessionpresentation.ActivitySource, pages []activitypresentation.DetailPage, processes bool) {
 	files.stopFileRead()
-	id := files.details.OpenDetails(version, source, pages, processes, session.RunningProcesses())
-	u.Dialog = &terminalsession.ContentDialog{ID: id, View: view, Processes: processes}
+	files.id = files.details.OpenDetails(version, source, pages, processes, session.RunningProcesses())
+	files.agent = source != nil && source.Audience != sessionpresentation.MainAudience
+	files.selected, files.file = "", nil
+	if view, ok := files.details.DetailView(files.id); ok && len(view.Pages) > 0 {
+		files.selected = view.Pages[0].ID
+	}
+}
+
+func (files *detailFiles) closeOutput() {
+	files.details.Clear()
+	files.stopFileRead()
+	files.id, files.selected, files.file = sessionpresentation.DetailID{}, "", nil
+}
+
+func (files *detailFiles) replaceDetails(session *sessionpresentation.Attachment, pages []activitypresentation.DetailPage) {
+	files.details.RefreshDetails(files.id, pages, session.RunningProcesses())
+}
+
+func (files *detailFiles) detailView(session *sessionpresentation.Attachment) (sessionpresentation.DetailView, bool) {
+	if session.Scope() == nil {
+		files.closeOutput()
+		return sessionpresentation.DetailView{}, false
+	}
+	if _, current := files.details.RefreshDetails(files.id, nil, session.RunningProcesses()); !current {
+		files.closeOutput()
+		return sessionpresentation.DetailView{}, false
+	}
+	return files.details.DetailView(files.id)
+}
+
+// Terminal adapters project the same semantic selection into a real renderer.
+func (files *detailFiles) openTerminalDetailSelection(session *sessionpresentation.Attachment, version sessionpresentation.Version, source *sessionpresentation.ActivitySource, u *terminalsession.Attachment, view *activityui.View, pages []activitypresentation.DetailPage, processes bool) {
+	u.Selection = nil
+	files.openDetailSelection(session, version, source, pages, processes)
+	u.Dialog = &terminalsession.ContentDialog{ID: files.id, View: view, Processes: processes}
 	files.prepareOutput(session, u)
 }
 
-func (files *detailFiles) closeOutput(u *terminalsession.Attachment) {
-	if u.Dialog != nil {
-		files.details.CloseDetails(u.Dialog.ID)
-	} else {
-		files.details.Clear()
-	}
-	files.stopFileRead()
+func (files *detailFiles) closeTerminalOutput(u *terminalsession.Attachment) {
+	files.closeOutput()
 	u.Dialog = nil
 }
 
-func (files *detailFiles) replaceDetails(session *sessionpresentation.Attachment, terminal *terminalsession.Attachment, pages []activitypresentation.DetailPage) {
-	if terminal.Dialog == nil {
-		return
-	}
-	files.details.RefreshDetails(terminal.Dialog.ID, pages, session.RunningProcesses())
-	terminal.Dialog.Invalidate()
-	files.prepareOutput(session, terminal)
-}
-
-// prepareOutput resolves the selected content before the renderer lays out.
-// The terminal consumes one snapshot and owns no source or retained-output handle.
+// prepareOutput resolves content before real terminal layout, preserving its
+// frozen selection and locally selected page independently of the server.
 func (files *detailFiles) prepareOutput(session *sessionpresentation.Attachment, terminal *terminalsession.Attachment) {
+	if files.id.Selection == 0 || files.pendingFile {
+		terminal.Dialog = nil
+		return
+	}
 	d := terminal.Dialog
-	if session.Scope() == nil {
-		files.closeOutput(terminal)
-		return
-	}
-	if d == nil || d.Selection != nil {
-		return
-	}
-	revision, current := files.details.RefreshDetails(d.ID, nil, session.RunningProcesses())
-	if !current {
-		files.closeOutput(terminal)
-		return
-	}
-	if d.Revision != revision {
-		view, ok := files.details.DetailView(d.ID)
-		if !ok {
-			files.closeOutput(terminal)
-			return
+	if d == nil || d.ID != files.id {
+		view := terminal.Transcript
+		if files.agent {
+			view = terminal.Agents
 		}
+		d = &terminalsession.ContentDialog{ID: files.id, View: view}
+		terminal.Dialog = d
+	}
+	d.File = files.file
+	if d.Selection != nil {
+		return
+	}
+	view, current := files.detailView(session)
+	if !current {
+		terminal.Dialog = nil
+		return
+	}
+	if d.Revision != view.Revision {
 		d.Update(view)
 	}
 	if len(d.Pages) == 0 {

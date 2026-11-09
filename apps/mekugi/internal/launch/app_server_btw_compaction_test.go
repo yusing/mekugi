@@ -212,7 +212,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			if u.BTW.Busy || u.BTW.Pending.Text != "" || u.BTW.Status != conversationmodel.SideCompactionRequired || u.Turn != "main-turn" || u.attached.presentation.Status.Text != "Working" {
 				t.Fatalf("failure state = %+v Main=%s/%s", u.BTW, u.Turn, u.attached.presentation.Status.Text)
 			}
-			if err := u.nativeSession.submitBTW(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, nil); err != nil {
+			if err := u.nativeSession.submitBTW(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if w.Len() != 0 || u.Text != before {

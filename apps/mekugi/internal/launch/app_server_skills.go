@@ -5,7 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	json "encoding/json/v2"
@@ -25,12 +25,12 @@ import (
 
 // Source: codex-rs/tui/src/chatwidget/skills.rs:29:136 and
 // bottom_pane/skills_toggle_view.rs:98:299@86be5320b068ef67b56348b02aa8c33706955da6.
-func (p *composerPicker) closeSkillsModal(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, editor *composer.Editor) {
+func (p *composerPicker) closeSkillsModal(attached *attachedPresentation, clock func() time.Time, editor *composer.Editor) {
 	p.toggleOwnsManager = false
 	if p.Kind == "manage" {
 		enabled, disabled := p.SkillChanges()
 		if enabled+disabled > 0 {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), fmt.Sprintf("%d skills enabled, %d skills disabled", enabled, disabled), false)
+			setNotice(&attached.feedback, presentationTime(clock), fmt.Sprintf("%d skills enabled, %d skills disabled", enabled, disabled), false)
 		}
 		p.SkillsLoaded = false // Codex reloads the catalog after leaving management.
 	}
@@ -38,11 +38,11 @@ func (p *composerPicker) closeSkillsModal(attached *attachedPresentation, termin
 	p.Dismissed = p.completionTarget(editor.Draft, attached.conversation.ShellMode())
 }
 
-func (p *composerPicker) chooseSkillsAction(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side, choice completion.Choice) {
+func (p *composerPicker) chooseSkillsAction(attached *attachedPresentation, editor *composer.Editor, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side, choice completion.Choice) {
 	if choice.Name == "list" {
 		p.Kind, p.Open = "", false
 		p.Dismissed = completion.Target{}
-		insertDraft(attached, editor, terminal, clock, owned, questions, approvals, side, "$")
+		insertDraft(attached, editor, clock, owned, questions, approvals, side, "$")
 	} else {
 		p.toggleOwnsManager = false
 		p.openMenu("manage")
@@ -72,7 +72,7 @@ func (p *composerPicker) skillSaveOwnsManager(workspace string) bool {
 	return p.toggleOwnsManager && p.Kind == "manage" && p.toggleCwd == workspace
 }
 
-func (p *composerPicker) skillToggleResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, m appserver.Message) {
+func (p *composerPicker) skillToggleResponse(attached *attachedPresentation, clock func() time.Time, m appserver.Message) {
 	if string(m.ID) != p.toggleID {
 		return
 	}
@@ -97,7 +97,7 @@ func (p *composerPicker) skillToggleResponse(attached *attachedPresentation, ter
 	if ownsManager {
 		p.Problem = problem
 	} else if problem != "" {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), problem, true)
+		setNotice(&attached.feedback, presentationTime(clock), problem, true)
 	}
 	if !updated || cwd != attached.cwd {
 		return
@@ -168,7 +168,7 @@ func (p *composerPicker) skillBindingQuery(d conversationmodel.Input, final bool
 	return ""
 }
 
-func (p *composerPicker) waitForSkillBindings(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], parts []conversationmodel.Input) bool {
+func (p *composerPicker) waitForSkillBindings(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], parts []conversationmodel.Input) bool {
 	if p.SkillsLoaded && p.SkillsCwd == attached.cwd {
 		return false
 	}
@@ -178,7 +178,7 @@ func (p *composerPicker) waitForSkillBindings(attached *attachedPresentation, te
 	for _, part := range parts {
 		if query := p.skillBindingQuery(part, true); query != "" {
 			if p.Pending == nil && filepath.IsAbs(attached.cwd) {
-				p.requestPicker(attached, terminal, clock, requests, completion.Target{Kind: '$', Query: query}, attached.cwd)
+				p.requestPicker(attached, clock, requests, completion.Target{Kind: '$', Query: query}, attached.cwd)
 			}
 			return p.SkillsProblem == "" || p.SkillsCwd != attached.cwd
 		}

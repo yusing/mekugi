@@ -57,7 +57,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	apply := func() {
 		t.Helper()
 		for _, event := range review.TakePreviews(sub) {
-			applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
+			applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 		}
 		if u.review.Failure != "" {
 			t.Fatal(u.review.Failure)
@@ -71,7 +71,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 		slices.Sort(result)
 		return result
 	}
-	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace})
+	restoreTestDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace})
 	u.review.IncludeThread(workspace, "child", false)
 	apply()
 	if got := paths(); !slices.Equal(got, []string{"child.go", "root.go"}) {
@@ -113,13 +113,13 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 		t.Fatal("retained change did not reach its Activity command")
 	}
 
-	resetDiffScope(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, u.ctx)
+	resetTestDiffScope(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, u.ctx)
 	select {
 	case <-sub.Gap():
 	default:
 		t.Fatal("root switch retained old mailbox")
 	}
-	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "next", Cwd: workspace})
+	restoreTestDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "next", Cwd: workspace})
 	review.Observe(workspace, "old-child", "main", false)
 	review.Observe(workspace, "new-child", "next", false)
 	sub = review.Subscribe()

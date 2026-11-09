@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
@@ -51,7 +50,7 @@ type appServerStatusConfig struct {
 	Instructions []string `json:"instructionSources"`
 }
 
-func (session *nativeSession) showStatus(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) error {
+func (session *nativeSession) showStatus(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) error {
 	var rows []sessionpresentation.StatusField
 	group := "Model"
 	add := func(label, value string) {
@@ -100,7 +99,7 @@ func (session *nativeSession) showStatus(attached *attachedPresentation, termina
 	(*panel) = report
 	report.Render(statusNotice("Loading account…"))
 
-	session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
+	session.deleteDraftRange(attached, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
 	return requestStatus(session.Client.Requests, "account/read", map[string]any{"refreshToken": false}, report)
 }
 
@@ -277,12 +276,12 @@ func (limit appServerStatusLimit) rows(id string) []sessionpresentation.StatusFi
 	return rows
 }
 
-func applyPanelAction(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, panel **appServerStatusReport, capture *transportcapture.Recorder, action sessionpresentation.PanelAction) {
+func applyPanelAction(attached *attachedPresentation, clock func() time.Time, panel **appServerStatusReport, capture *transportcapture.Recorder, action sessionpresentation.PanelAction) {
 	if action.Kind == sessionpresentation.PanelNoAction {
 		return
 	}
 	if err := attached.presentation.AdmitPanel(action); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		return
 	}
 	switch action.Kind {

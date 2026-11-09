@@ -49,7 +49,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			case "attachment":
 				d := conversationmodel.Input{Files: []composer.Token{{Path: "/missing/setup.sh"}}}
 				d.SnapshotFiles("/missing")
-				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), d.AttachmentNotice, true)
+				setNotice(&u.attached.feedback, presentationTime(u.clock), d.AttachmentNotice, true)
 				frames, ok := attachments.Decode(d.Attachments[0])
 				if !ok || strings.Contains(strings.Join(frames, "\n"), d.AttachmentNotice) || !strings.Contains(strings.Join(frames, "\n"), "CONTENT NOT ATTACHED") {
 					t.Fatal("UI warning leaked into the model attachment result")
@@ -96,7 +96,7 @@ func TestComposerErrorClearsOnSuccessfulModelRequest(t *testing.T) {
 	u.Turn = "still-running"
 	u.clock = time.Now
 	defer terminalTest(u).Diff.Close()
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "previous request failed", true)
+	setNotice(&u.attached.feedback, presentationTime(u.clock), "previous request failed", true)
 	u.testMainFrame(80, 8, 0)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -118,7 +118,7 @@ func TestComposerErrorClearsOnSuccessfulModelRequest(t *testing.T) {
 		if err := executor.ExecuteHTTP(t.Context(), t.Context(), request, headers, &output); err != nil {
 			t.Fatal(err)
 		}
-		applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
+		applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 		rows, _ := u.testMainFrame(80, 8, 0)
 		if thread == "unrelated" {
 			if !u.attached.feedback.Alert || !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "[x]") {
@@ -137,7 +137,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC) }
 			u.attached.presentation.Status.Text = "Ready"
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
+			setNotice(&u.attached.feedback, presentationTime(u.clock), "File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.testMainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
 			if !strings.Contains(rows[u.shell.Main.NoticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.shell.Main.NoticeDismiss.Y]), "[x]") {
@@ -146,9 +146,9 @@ func TestUISnapshotComposerError(t *testing.T) {
 		})
 	}
 	u, _ := newAppServerTestUI()
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "failed", true)
+	setNotice(&u.attached.feedback, presentationTime(u.clock), "failed", true)
 	u.testMainFrame(80, 8, 0)
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "done", false)
+	setNotice(&u.attached.feedback, presentationTime(u.clock), "done", false)
 	u.testMainFrame(80, 8, 0)
 	if u.shell.Main.NoticeDetails.W != 0 || u.shell.Main.NoticeDismiss.W != 0 {
 		t.Fatal("stale error controls survived feedback")

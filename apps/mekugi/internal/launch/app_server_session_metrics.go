@@ -5,7 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
@@ -22,7 +22,7 @@ type sessionMetricsPanel struct {
 	deduplicate  bool
 }
 
-func (session *nativeSession) showSessionMetrics(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) {
+func (session *nativeSession) showSessionMetrics(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) {
 	(*panel) = newStatusReport(attached.presentation, session.replayDebugDirectory)
 	(*panel).Workspace = attached.cwd
 	(*panel).metrics = &sessionMetricsPanel{thread: attached.presentation.DisplayedThread(), deduplicate: session.deduplicateOutput}
@@ -30,7 +30,7 @@ func (session *nativeSession) showSessionMetrics(attached *attachedPresentation,
 		(*panel).metrics.coordination = session.preparer.ThreadControl.Coordination()
 	}
 	(*panel).Metrics = new(transportcapture.MetricsSnapshot)
-	session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
+	session.deleteDraftRange(attached, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
 	refreshSessionMetrics((*panel), session.sessionCapture, presentationTime(clock), true)
 }
 func refreshSessionMetrics(p *appServerStatusReport, capture *transportcapture.Recorder, at time.Time, force bool) bool {

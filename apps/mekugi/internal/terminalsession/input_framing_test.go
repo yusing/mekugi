@@ -88,3 +88,6 @@ func TestDecoderCompleteKeySequence(t *testing.T) {
 		})
 	}
 }
+
+func (d *Decoder) Pasting() bool { return d.paste }
+func (d *Decoder) Pending() bool { return d.sequence != "" }

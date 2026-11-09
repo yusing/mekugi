@@ -4,8 +4,6 @@ import (
 	"slices"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -36,26 +34,4 @@ func deliverActivity(view *activityui.View, source *sessionpresentation.Activity
 	}
 	display := session.View()
 	view.Update(publication, activityui.Display{MainCaller: display.Info.Caller, Caller: display.Displayed.Caller, SideCaller: display.SideThread.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
-}
-
-func publishActivity(attached *attachedPresentation, terminal *terminalsession.Attachment) {
-	attached.session.ProjectSide(attached.childSource, attached.presentation.View().SideThread, attached.conversation.Side)
-	refreshRosterRoles(&attached.session, attached.childSource)
-	session := attached.presentation
-	if terminal.Transcript != nil {
-		terminal.Transcript.StatusLabel = textsanitize.Safe(terminalsession.StatusText(session.View().Status.State), false)
-	}
-	deliverActivity(terminal.Transcript, attached.source, session, nil, nil)
-	deliverActivity(terminal.Agents, attached.childSource, session, attached.source, terminal.Transcript)
-}
-
-// activitySource resolves only a renderer already bound to this attachment.
-func activitySource(attached *attachedPresentation, terminal *terminalsession.Attachment, view *activityui.View) *sessionpresentation.ActivitySource {
-	if view == terminal.Transcript {
-		return attached.source
-	}
-	if view == terminal.Agents {
-		return attached.childSource
-	}
-	return nil
 }

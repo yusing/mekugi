@@ -206,7 +206,7 @@ func TestGPGUnlock(t *testing.T) {
 				case <-time.After(10 * time.Second):
 					t.Fatal("GPG did not request its passphrase")
 				}
-				addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+				addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
 				if call := u.questions.activeCall(); call == nil || call.Thread != "main" || call.Turn != "turn" {
 					t.Fatal("GPG question lost native thread/turn ownership")
 				}
@@ -223,13 +223,13 @@ func TestGPGUnlock(t *testing.T) {
 					case <-time.After(5 * time.Second):
 						t.Fatal("cancelled GPG left its secret request alive")
 					}
-					expireApprovals(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts)
+					expireApprovals(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts)
 				case "cancel-owner":
-					endSyncQuestions(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, "unrelated-turn")
+					endSyncQuestions(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, "unrelated-turn")
 					if u.questions.activeCall() == nil {
 						t.Fatal("unrelated turn cancelled GPG authentication")
 					}
-					if err := applyInterruption(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, sessioncontrol.Interrupt{Turn: "turn"}); err != nil {
+					if err := applyInterruption(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, sessioncontrol.Interrupt{Turn: "turn"}); err != nil {
 						t.Fatal(err)
 					}
 					if !strings.Contains(input.String(), "turn/interrupt") {

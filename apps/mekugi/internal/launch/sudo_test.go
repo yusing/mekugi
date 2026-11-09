@@ -112,7 +112,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 				case <-time.After(10 * time.Second):
 					t.Fatal("sudo did not request approval or a password")
 				}
-				addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
+				addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 				questionTestPaint(t, u, 80)
 				for _, key := range keys {
 					appServerTestKeys(t, u, string(key))
@@ -149,12 +149,12 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 	u.attached.presentation.Status.Text, u.settings.Model, u.settings.Effort = "Ready", "snapshot-model", "high"
 	u.startSession("main", "/workspace")
 	u.Turn = "turn"
-	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Kind: "sudo", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
+	addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Kind: "sudo", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 	rows, _ := u.testMainFrame(80, 20, 0)
 	assertNativeUISnapshot(t, "native-sudo-approval", rows)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
-	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
+	addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1234-secret")
 	rows, _ = u.testMainFrame(80, 20, 0)
@@ -164,12 +164,12 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 func TestSudoPasswordWithdrawal(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	request := &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
+	addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "private-draft")
 	request.Outcome = "withdrawn"
 	close(request.Done)
-	if !expireApprovals(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) || u.questions.activeCall() != nil || len(u.InputHistory) != 0 || len(u.questions.calls()) != 0 {
+	if !expireApprovals(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) || u.questions.activeCall() != nil || len(u.InputHistory) != 0 || len(u.questions.calls()) != 0 {
 		t.Fatal("withdrawal retained a secret draft")
 	}
 	if len(request.Reply) != 0 {
@@ -180,7 +180,7 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u, input := newAppServerTestUI()
 	request := &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-	openSudoPassword(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, Guard: request})
+	openSudoPassword(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, Guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
 	neutral, err := json.Marshal(u.attached.conversation)
@@ -195,8 +195,8 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	if _, err := u.key("\x07"); err != nil || u.Text != "fixture-secret" {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
-	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	if u.shell.Prompts.Secret.Text != "" || u.Editor != &u.attached.conversation.Editor {
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
+	if u.questions.secret.Text != "" || u.Editor != &u.attached.conversation.Editor {
 		t.Fatal("hiding authentication did not return to the ordinary editor")
 	}
 	replaceAppServerTestSession(t, u, "replacement")
@@ -209,7 +209,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	if !strings.Contains(input.String(), "turn/start") {
 		t.Fatal("old-session password blocked new-session input")
 	}
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)
 	if u.Text != "fixture-secret" {
 		t.Fatal("session switch lost the password draft")

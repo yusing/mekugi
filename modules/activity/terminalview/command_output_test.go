@@ -30,9 +30,7 @@ func TestCommandOutputRevealAndSettlement(t *testing.T) {
 		t.Fatal("settled frame kept publishing")
 	}
 	frame.Tail[0] = "mutated"
-	p.Invalidate()
-	frame, changed = p.Advance()
-	if !changed || frame.Tail[0] != "3" {
+	if p.Snapshot().Tail[0] != "3" {
 		t.Fatal("detached frame changed the cursor")
 	}
 }

@@ -8,8 +8,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -29,7 +27,7 @@ import (
 // Source: codex-rs/tui/src/chatwidget/{input_queue,input_flow,input_restore}.rs
 // @86be5320b068ef67b56348b02aa8c33706955da6.
 
-func prepareDraft(picker *composerPicker, terminal *terminalsession.Attachment, workspace string, environment []string, draft composer.Draft) conversationmodel.Input {
+func prepareDraft(picker *composerPicker, workspace string, environment []string, draft composer.Draft) conversationmodel.Input {
 	d := conversationmodel.Input{Draft: draft}
 	d.ReplyCount = len(binding.QuestionReplies(d.Text))
 	picker.bindSkills(workspace, &d, true)
@@ -37,16 +35,15 @@ func prepareDraft(picker *composerPicker, terminal *terminalsession.Attachment, 
 		d.SnapshotFiles(workspace)
 	}
 	snapshotDraftSkills(workspace, environment, &d)
-	terminal.Main.CursorColumn = nil
 	return d
 }
 
 // restoreDrafts returns input to the composer ahead of the current draft.
-func restoreDrafts(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, parts ...conversationmodel.Input) {
-	applyInputRestoration(attached, terminal, questions, approvals, picker, turn, clock, attached.conversation.RestoreInput(parts...))
+func restoreDrafts(attached *attachedPresentation, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, parts ...conversationmodel.Input) {
+	applyInputRestoration(attached, questions, approvals, picker, turn, clock, attached.conversation.RestoreInput(parts...))
 }
 
-func applyInputRestoration(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, restored conversationmodel.InputRestoration) {
+func applyInputRestoration(attached *attachedPresentation, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, restored conversationmodel.InputRestoration) {
 	if len(restored.Detached) > 0 {
 		attached.hooks.restoreInput(attached.executionPresentation, restored.Detached)
 	}
@@ -59,30 +56,24 @@ func applyInputRestoration(attached *attachedPresentation, terminal *terminalses
 		}
 	}
 	if restored.Parked {
-		if restored.Changed {
-			terminal.Main.PromptColumn = nil
-		}
 		if approvals.Open {
-			terminal.Prompts.Reopen()
-			focusPrompt(picker, terminal)
+			focusPrompt(picker)
 		}
-	} else if restored.Changed {
-		terminal.Main.CursorColumn = nil
 	}
 }
 
 // editQueued returns all locally waiting input to the composer as one stack.
 // Already-sent steers remain host-owned until committed or interrupted.
-func editQueued(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) {
+func editQueued(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) {
 	attached.threadInput.reset()
 	parts := attached.conversation.TakeWaiting()
 	control.Compaction.CancelQueued(true)
-	restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
+	restoreDrafts(attached, questions, approvals, picker, control.Turn, clock, parts...)
 }
 
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
-func (session *nativeSession) flushInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, clock func() time.Time, editor **composer.Editor, parent context.Context) error {
+func (session *nativeSession) flushInput(attached *attachedPresentation, picker *composerPicker, clock func() time.Time, editor **composer.Editor, parent context.Context) error {
 	attached.conversation.Unsent = pendingQuestionReplies(attached.conversation.Unsent)
 	attached.conversation.Queued = pendingQuestionReplies(attached.conversation.Queued)
 	if session.restoring != nil || !session.Client.AcceptsInput() {
@@ -95,7 +86,7 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, termina
 	}
 	next := attached.presentation.NextInput(&session.Client.Live, attached.conversation, session.controlObservations, attached.cwd)
 	if next.Interrupt {
-		return applyInterruption(attached, terminal, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, session.Client.Interrupt())
+		return applyInterruption(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, session.Client.Interrupt())
 	}
 	if len(next.Batch.Parts) == 0 && !next.Continue {
 		return nil
@@ -105,8 +96,8 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, termina
 	if !compacting && (!next.Steer || session.Client.LocalStop != "" || childInput) {
 		ready, err := attached.threadInput.prepare(parent, session.Client.Thread, session.Client.Requests)
 		if err != nil {
-			restoreDrafts(attached, terminal, &session.questions, &session.approvals, picker, session.Client.Turn, clock, next.Batch.Parts...)
-			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			restoreDrafts(attached, &session.questions, &session.approvals, picker, session.Client.Turn, clock, next.Batch.Parts...)
+			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 			return nil
 		}
 		if !ready {
@@ -114,15 +105,15 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, termina
 			return nil
 		}
 	}
-	if picker.waitForSkillBindings(attached, terminal, clock, session.Client.Requests, next.Batch.Parts) {
+	if picker.waitForSkillBindings(attached, clock, session.Client.Requests, next.Batch.Parts) {
 		attached.conversation.ReturnBatch(next.Batch)
-		picker.refreshPicker(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
+		picker.refreshPicker(attached, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
 		return nil
 	}
-	return sendConversationInput(attached, terminal, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings.Model, session.serviceTiers, session.skillEnvironment, session.ownedImages, &session.guardHookCheck, next.Batch.Parts, next.Steer)
+	return sendConversationInput(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings.Model, session.serviceTiers, session.skillEnvironment, session.ownedImages, &session.guardHookCheck, next.Batch.Parts, next.Steer)
 }
 
-func sendConversationInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, parts []conversationmodel.Input, steer bool) error {
+func sendConversationInput(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, parts []conversationmodel.Input, steer bool) error {
 	defer attached.threadInput.reset()
 	defer attached.presentation.PruneInput(&control.Live, attached.conversation)
 	if len(parts) == 1 && parts[0].Compact != nil {
@@ -147,8 +138,8 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 	}
 	input, err := prepareSubmissionInput(&s.Draft, id)
 	if err != nil {
-		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		restoreDrafts(attached, questions, approvals, picker, control.Turn, clock, parts...)
+		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		return nil
 	}
 	if len(parts) == 0 {
@@ -187,7 +178,7 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 		if strings.HasPrefix(attached.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(attached.feedback.Text, "Skill catalog incomplete:") {
 			notice = attached.feedback.Text + " " + notice
 		}
-		setNotice(&attached.feedback, terminal, presentationTime(clock), notice, true)
+		setNotice(&attached.feedback, presentationTime(clock), notice, true)
 	}
 	if admission := attached.threadInput; admission != nil && admission.effect != nil {
 		effect, driver := admission.effect, admission.driver
@@ -195,7 +186,7 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 		admission.effect = nil // The host request owner now retains the outcome.
 	}
 	if _, err := control.Requests.SendInput(request, appServerRequest{}); err != nil {
-		applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.ApplyInputResult(&control.Live, attached.conversation, control.SubmissionFailed()))
+		applyInputEffects(attached, questions, approvals, picker, control.Turn, clock, attached.presentation.ApplyInputResult(&control.Live, attached.conversation, control.SubmissionFailed()))
 		return err
 	}
 	for _, part := range parts {
@@ -206,15 +197,15 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 	return nil
 }
 
-func submissionResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, method string, failure *appserver.Error) {
+func submissionResponse(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, method string, failure *appserver.Error) {
 	message := ""
 	if failure != nil {
 		message = failure.Message
 	}
-	applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.AcknowledgeInput(&control.Live, attached.conversation, method, message, failure != nil))
+	applyInputEffects(attached, questions, approvals, picker, control.Turn, clock, attached.presentation.AcknowledgeInput(&control.Live, attached.conversation, method, message, failure != nil))
 }
 
-func applyInputEffects(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, effects sessionpresentation.InputEffects) {
+func applyInputEffects(attached *attachedPresentation, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, effects sessionpresentation.InputEffects) {
 	for i, text := range effects.History {
 		if h := attached.inputHistory; h != nil {
 			history := attached.conversation.Editor.InputHistory
@@ -228,9 +219,9 @@ func applyInputEffects(attached *attachedPresentation, terminal *terminalsession
 		attached.source.RemovePendingInput(effects.Withdrawn)
 		attached.presentation.SettleWithdrawnInput(effects, len(attached.source.Model.Entries) > 0)
 	}
-	applyInputRestoration(attached, terminal, questions, approvals, picker, turn, clock, effects.Restored)
+	applyInputRestoration(attached, questions, approvals, picker, turn, clock, effects.Restored)
 	if effects.Notice != "" {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), effects.Notice, effects.NoticeError)
+		setNotice(&attached.feedback, presentationTime(clock), effects.Notice, effects.NoticeError)
 	}
 }
 
@@ -239,8 +230,8 @@ func commitSteer(attached *attachedPresentation, control *sessioncontrol.Live, i
 	attached.presentation.CommitInput(control, attached.conversation, item.ClientID, text)
 }
 
-func settleInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, turn string, interrupted bool) {
+func settleInput(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, turn string, interrupted bool) {
 	for _, effects := range attached.presentation.SettleInput(&control.Live, attached.conversation, turn, interrupted) {
-		applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, effects)
+		applyInputEffects(attached, questions, approvals, picker, control.Turn, clock, effects)
 	}
 }

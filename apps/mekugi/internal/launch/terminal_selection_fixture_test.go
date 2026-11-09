@@ -17,17 +17,17 @@ func openSelectionTarget(attached *attachedPresentation, terminal *terminalsessi
 	}
 	view := attached.presentation.View()
 	if target.Version != view.Version || target.Thread != view.Displayed.ID || target.Workspace != view.Info.Workspace || target.Workspace != attached.cwd || activitySource(attached, terminal, target.View) == nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 		return
 	}
 	switch {
 	case target.Link != "":
-		if !files.openMarkdownFile(&attached.session, attached.presentation, attached.cwd, activitySource(attached, terminal, target.View), surface, target.View, target.Link) {
+		if !files.openTerminalMarkdownFile(&attached.session, attached.presentation, attached.cwd, activitySource(attached, terminal, target.View), surface, target.View, target.Link) {
 			link := target.Link
 			if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
 				link = parsed.Path
 			}
-			copyText(&attached.feedback, terminal, clock, surface, link)
+			copyText(&attached.feedback, clock, surface, link)
 		}
 	case target.Entry != 0:
 		if target.View == terminal.Transcript && openActivityReply(attached, terminal, files, surface, target.Entry) {

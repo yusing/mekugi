@@ -162,7 +162,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 	nativePublication := claudePublication{frame: sessionapi.Frame{Session: sessionapi.Session{Thread: native.info.Thread}}}
 	publishGeneration := func() {
 		t.Helper()
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		u.testMainFrame(100, 8, 0)
 		facts, _ := native.runtime.Metrics()
 		root, members := native.execution.shared.Family("parent")

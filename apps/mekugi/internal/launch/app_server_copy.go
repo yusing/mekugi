@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -21,8 +21,8 @@ import (
 
 // Source: codex-rs/tui/src/chatwidget/copy_picker.rs:10:105@1cc7e236.
 // Reuse the transcript and OSC 52 owner rather than a second clipboard backend.
-func (session *nativeSession) showCopyPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) {
-	session.deleteDraftRange(attached, terminal, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
+func (session *nativeSession) showCopyPicker(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) {
+	session.deleteDraftRange(attached, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
 	var response string
 	var answerOwner *sessioncontrol.Side
 	if attached.presentation.View().BTW != nil {
@@ -64,7 +64,7 @@ func (session *nativeSession) showCopyPicker(attached *attachedPresentation, ter
 		}
 	}
 	if strings.TrimSpace(response) == "" {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "No agent response to copy", true)
+		setNotice(&attached.feedback, presentationTime(clock), "No agent response to copy", true)
 		return
 	}
 	picker.cancelScan()

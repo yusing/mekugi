@@ -262,7 +262,7 @@ func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if u.statusPanel == nil || u.Text != "" || shell.Decoder.Pasting() {
+	if u.statusPanel == nil || u.Text != "" || shell.Main.Pasting() {
 		t.Fatal("paste affected panel or composer")
 	}
 	if err := shell.key('q'); err != nil {
@@ -467,11 +467,11 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 
 // Fixtures publish source transitions before driving the actual terminal owner.
 func (u *appServerUI) statusPanelFrame(width, height int) []string {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.shell.Main.Panel.Render(&u.shell.Transcript.Painter.Painter, width, height)
 }
 func (u *appServerUI) statusPanelKey(key string) bool {
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	if !u.shell.Main.Panel.Open() {
 		return false
 	}
@@ -479,8 +479,8 @@ func (u *appServerUI) statusPanelKey(key string) bool {
 	if clear && terminalTest(u) != nil {
 		terminalTest(u).Selection = nil
 	}
-	applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, u.sessionCapture, action)
+	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, action)
 	u.dirty = true
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return true
 }

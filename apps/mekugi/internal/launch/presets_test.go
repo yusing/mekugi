@@ -20,7 +20,7 @@ import (
 func TestPresetNativeViewPersistenceRecallAndAdmission(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", t.TempDir())
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attachment: "view", Thread: "main", Workspace: u.attached.cwd, Context: t.Context(), ViewContext: t.Context()}, &u.attached, "main"); refusal != "" {
 		t.Fatal(refusal)
@@ -46,7 +46,7 @@ func TestPresetNativeViewPersistenceRecallAndAdmission(t *testing.T) {
 	}
 	choice := v.picker.Choices[0]
 	action := sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: choice.Identity()}
-	u.nativeSession.applyMenuResult(&v.attached, v.shell, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
+	u.nativeSession.applyMenuResult(&v.attached, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
 	if editor.Text != "ordinary draft" || len(v.effects.pending) != 1 || v.effects.pending[0].Recall == nil || *v.effects.pending[0].Recall != "/clear" {
 		t.Fatal("recall changed draft or lost input")
 	}

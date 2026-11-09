@@ -12,7 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandargs"
@@ -115,9 +115,9 @@ func rewindPageResponse(control *sessioncontrol.Client[appServerRequest], picker
 	}
 }
 
-func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, restoring bool, clock func() time.Time, choice completion.Choice, parent context.Context) {
+func chooseRewind(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, restoring bool, clock func() time.Time, choice completion.Choice, parent context.Context) {
 	if restoring || control.Replacement.Pending() || control.Thread != picker.rewindThread || sessionBusy(&control.Live, attached.conversation) {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be idle before rewinding", true)
+		setNotice(&attached.feedback, presentationTime(clock), "Wait for the session to be idle before rewinding", true)
 		return
 	}
 	if picker.Kind == "rewind" {
@@ -131,7 +131,7 @@ func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Atta
 				}
 			}
 			if !hasChanges {
-				revertChosenRewind(attached, terminal, control, picker, clock)
+				revertChosenRewind(attached, control, picker, clock)
 				return
 			}
 		}
@@ -161,14 +161,14 @@ func chooseRewind(attached *attachedPresentation, terminal *terminalsession.Atta
 		picker.Kind, picker.Open, picker.Choices = "", false, nil
 		return
 	}
-	revertChosenRewind(attached, terminal, control, picker, clock)
+	revertChosenRewind(attached, control, picker, clock)
 }
 
-func revertChosenRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time) {
+func revertChosenRewind(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time) {
 	picker.Kind, picker.Open, picker.Choices = "", false, nil
 	picker.cancelScan()
 	if err := requestRewind(control, picker.rewind.turn); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not rewind session: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Could not rewind session: "+err.Error(), true)
 		return
 	}
 	picker.rewindThread = ""
@@ -183,9 +183,9 @@ func requestRewind(control *sessioncontrol.Client[appServerRequest], before stri
 	return nil
 }
 
-func continueRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, restoring bool, clock func() time.Time) {
+func continueRewind(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, restoring bool, clock func() time.Time) {
 	if picker.Open && picker.Kind == "rewind-edits" && !picker.Loading && picker.rewind.problem == "" && picker.rewind.command == "" && !restoring && !control.Replacement.Pending() && control.Thread == picker.rewindThread && !sessionBusy(&control.Live, attached.conversation) {
-		revertChosenRewind(attached, terminal, control, picker, clock)
+		revertChosenRewind(attached, control, picker, clock)
 	}
 }
 
@@ -270,7 +270,7 @@ func rewindSourceResponse(control *sessioncontrol.Client[appServerRequest], pick
 	picker.readRewindSource(control, parent)
 }
 
-func finishRewindRevert(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], clock func() time.Time) {
+func finishRewindRevert(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], clock func() time.Time) {
 	r := control.Rewind
 	if r == nil || !r.Completed || control.Turn != "" || control.Shell.BlocksInput(control.Turn) {
 		return
@@ -279,17 +279,17 @@ func finishRewindRevert(attached *attachedPresentation, terminal *terminalsessio
 	control.Replacement.Finish()
 	if r.Failed {
 		attached.presentation.Status.SetText("Ready")
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Revert incomplete; still in the original session. Inspect the shell output for conflicts and recovery instructions.", true)
+		setNotice(&attached.feedback, presentationTime(clock), "Revert incomplete; still in the original session. Inspect the shell output for conflicts and recovery instructions.", true)
 		return
 	}
 	if err := requestRewind(control, r.BeforeTurn); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Edits reverted, but the conversation could not be rewound: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Edits reverted, but the conversation could not be rewound: "+err.Error(), true)
 		return
 	}
 	attached.presentation.Status.SetText("Rewinding before selected turn…")
 }
 
-func (session *nativeSession) dispatchRewind(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, clock func() time.Time, parent context.Context) {
+func (session *nativeSession) dispatchRewind(attached *attachedPresentation, picker *composerPicker, clock func() time.Time, parent context.Context) {
 	r := session.Client.Rewind
 	if r == nil || r.Sent {
 		return
@@ -303,13 +303,13 @@ func (session *nativeSession) dispatchRewind(attached *attachedPresentation, ter
 		if selection != nil {
 			selection.problem = "saved changes changed; reopen /rewind to refresh"
 		}
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Saved changes changed; reopen /rewind to refresh before reverting", true)
+		setNotice(&attached.feedback, presentationTime(clock), "Saved changes changed; reopen /rewind to refresh before reverting", true)
 		return
 	}
 	command := r.Command
-	if err := session.dispatchShell(attached, terminal, clock, parent, command); err != nil {
+	if err := session.dispatchShell(attached, clock, parent, command); err != nil {
 		session.Client.Rewind = nil
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not revert edits: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Could not revert edits: "+err.Error(), true)
 		return
 	}
 	r.Sent = true

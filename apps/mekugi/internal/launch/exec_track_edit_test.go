@@ -129,7 +129,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			// Seed the same running dock before execution so completion must
 			// actively retire it, rather than simply avoid opening a new card.
 			if !opaque {
-				applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: previewmodel.PreviewRunning, Input: "observing edit"}, false)
+				applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: previewmodel.PreviewRunning, Input: "observing edit"}, false)
 			}
 			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-lc", script)
 			cmd.Dir, cmd.Env = workspace, shell.env
@@ -194,7 +194,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				case <-sub.Ready():
 					for _, event := range testReview(broker).TakePreviews(sub) {
 						if event.Preview != nil {
-							applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), *event.Preview, false)
+							applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), *event.Preview, false)
 							if event.Preview.Complete {
 								if event.Preview.EditReceipt != "" && len(event.Preview.Files) == wantFiles {
 									completed = event.Preview
@@ -391,7 +391,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": firstItem})
 	deadline := time.Now().Add(3 * time.Second)
 	for hub.Tracking([3]string{"main", "turn", "first"}) {
-		u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
+		u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 		if time.Now().After(deadline) {
 			t.Fatal("Activity did not retire the first report")
 		}
@@ -465,7 +465,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			}
 			if shell == "sh" {
 				preview := waitExecScopePreview(t, auto, func(p previewmodel.Preview) bool { return len(p.Files) > 0 && !p.Complete })
-				applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
+				applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 				revealNativeDock(terminalTest(u))
 				if terminalTest(u).Live.Live() == 0 {
 					t.Fatal("source preview did not open before native completion")
@@ -489,7 +489,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							if u.attached.session.Commands()[[3]string{"main", "turn", "test"}] == nil {
 								t.Fatal("edit completion ended enclosing cell or sibling test")
 							}
-							applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), *event.Preview, false)
+							applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), *event.Preview, false)
 							streamDone = streamDone || event.Preview.EditReceipt == ""
 							receiptDone = receiptDone || event.Preview.EditReceipt != ""
 							if !streamDone || !receiptDone {

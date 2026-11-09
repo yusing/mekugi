@@ -130,7 +130,7 @@ func TestUISnapshotPermissionPicker(t *testing.T) {
 func TestNativePermissionSelectionRetiresWithView(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	if refusal := n.attach(sessionapi.NativeRequest{Attach: true, Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}, &u.attached, u.Thread); refusal != "" {
 		t.Fatal(refusal)
@@ -139,7 +139,7 @@ func TestNativePermissionSelectionRetiresWithView(t *testing.T) {
 	publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
 	editor := new(composer.Editor)
 	editor.Text = "/permissions"
-	if handled, err := u.nativeSession.settingsCommand(&v.attached, v.shell, &v.picker, &editor, nil, u.clock, false, editor.Text); !handled || err != nil {
+	if handled, err := u.nativeSession.settingsCommand(&v.attached, &v.picker, &editor, nil, u.clock, false, editor.Text); !handled || err != nil {
 		t.Fatalf("permission selection handled=%v err=%v", handled, err)
 	}
 	request := btwTestRequest(t, wire, "permissionProfile/list", "")

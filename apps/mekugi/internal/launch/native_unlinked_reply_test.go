@@ -42,16 +42,17 @@ func TestNativeIncomingReplyWithoutActivityLink(t *testing.T) {
 	if strings.Contains(rendered, "Summary") || strings.Contains(rendered, "Details") || !strings.Contains(rendered, "A bounded temporary") || strings.Count(rendered, "Confirmed the separate") != 1 {
 		t.Fatalf("expanded reply repeats delimiters or content:\n%s", rendered)
 	}
-	semantic := nativeSessionView{attached: u.attached, shell: u.shell, thread: u.Thread}
+	semantic := nativeSessionView{attached: u.attached, thread: u.Thread}
 	if refusal := semantic.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: u.attached.source.Entries[0].Source.Seq}); refusal != "" {
 		t.Fatal(refusal)
 	}
-	semantic.shell.Dialog.Layout(160)
-	if terminalTest(u).Dialog.Document.Text != body {
+	renderer := nativeDetailTestRenderer(t, u, &semantic)
+	renderer.terminal.Dialog.Layout(160)
+	if renderer.terminal.Dialog.Document.Text != body {
 		t.Fatal("original full-copy body changed")
 	}
 	var details []string
-	for _, line := range terminalTest(u).Dialog.Document.Lines {
+	for _, line := range renderer.terminal.Dialog.Document.Lines {
 		details = append(details, ansi.Strip(line.Text))
 	}
 	shown := strings.Join(details, "\n")
@@ -92,12 +93,13 @@ func TestNativeSideQuestionReplyDisclosure(t *testing.T) {
 		if request.Operation != 3 {
 			t.Fatalf("answer identity lost: %+v", request)
 		}
-		semantic := nativeSessionView{attached: u.attached, shell: u.shell, thread: u.Thread}
+		semantic := nativeSessionView{attached: u.attached, thread: u.Thread}
 		if refusal := semantic.openDetails(request); refusal != "" {
 			t.Fatal(refusal)
 		}
-		semantic.shell.Dialog.Layout(100)
-		if got := semantic.shell.Dialog.Document.Text; got != "## Summary\nOutcome.\n\n## Details\nEvidence." {
+		c.renderer.updateNativeDetailTest(&semantic)
+		c.renderer.terminal.Dialog.Layout(100)
+		if got := c.renderer.terminal.Dialog.Document.Text; got != "## Summary\nOutcome.\n\n## Details\nEvidence." {
 			t.Fatalf("wrong native reply: %q", got)
 		}
 		request.Operation = 99

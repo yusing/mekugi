@@ -100,9 +100,9 @@ func TestNativeUIPreview(t *testing.T) {
 				settled = p.ui.testActivity(p.ui.shell.Agents).testPace(now) || settled
 				settled = p.ui.dirty || settled // Includes keys drained by this tick.
 				p.ui.dirty = false
-				p.ui.nativeSession.flushStreamOutput(&p.ui.attached, p.ui.shell, p.ui.clock, p.ui.ctx) // Rolls output bursts, as each real frame does.
+				p.ui.flushTestStreamOutput(&p.ui.attached, p.ui.shell, p.ui.clock, p.ui.ctx) // Rolls output bursts, as each real frame does.
 				settled = p.ui.dirty || settled
-				noticeExpired := expireNotice(&p.ui.attached.feedback, p.ui.shell, now)
+				noticeExpired := expireNotice(&p.ui.attached.feedback, now)
 				if p.pump(0) {
 					lastStep = now // The script resumes a pace after the command ends.
 					if err := paint(); err != nil {
@@ -121,7 +121,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, p.ui.settings, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishTestPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, p.ui.settings, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -520,13 +520,13 @@ func newNativePreview(t *testing.T) *nativePreview {
 		for _, update := range updates {
 			delivered = append(delivered, sessionreview.FromUpdate(update))
 		}
-		applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "change", Changes: delivered})
+		applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "change", Changes: delivered})
 	}
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {}}}
 	for _, thread := range []string{"main", "t-reviewer", "t-explorer", "t-tester"} {
 		scope.Workspaces[workspace][thread] = true
 	}
-	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
+	applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
 	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: u.attached.session.Roster()})
 	u.attached.presentation.Status.Text = "Ready"
 	p.populate()
@@ -620,7 +620,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 			input := strings.Join(patchLines[:min(lines+2, len(patchLines))], "")
 			p.add("stream "+name, func() {
 				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.attached.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: input})
-				applyReview(&p.ui.attached, p.ui.shell, p.ui.review, p.ui.reviewSource, p.ui.preparePane, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
+				applyTestReview(&p.ui.attached, p.ui.shell, p.ui.review, p.ui.reviewSource, p.ui.preparePane, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 				revealNativeDock(terminalTest(p.ui))
 			})
 		}
@@ -634,7 +634,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 // the router's capturer does, so the saved diff gains the change.
 func (p *nativePreview) apply(edit nativePreviewEdit) {
 	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.attached.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: edit.patch, Complete: true})
-	applyReview(&p.ui.attached, p.ui.shell, p.ui.review, p.ui.reviewSource, p.ui.preparePane, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyTestReview(&p.ui.attached, p.ui.shell, p.ui.review, p.ui.reviewSource, p.ui.preparePane, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(p.ui))
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}
@@ -755,7 +755,7 @@ func (p *nativePreview) pump(wait time.Duration) bool {
 		p.finishCommand(live.thread, live.item, *event.exit)
 		p.live = nil
 	}
-	p.ui.nativeSession.flushStreamOutput(&p.ui.attached, p.ui.shell, p.ui.clock, p.ui.ctx)
+	p.ui.flushTestStreamOutput(&p.ui.attached, p.ui.shell, p.ui.clock, p.ui.ctx)
 	return true
 }
 
@@ -1483,13 +1483,13 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 	defer p.close()
 	p.ui.Text = "Keep my draft"
 	p.until("sync question")
-	openQuestions(&p.ui.attached, p.ui.shell, &p.ui.picker, &p.ui.Editor, &p.ui.questions, &p.ui.approvals, p.ui.Thread)
+	openQuestions(&p.ui.attached, &p.ui.picker, &p.ui.Editor, &p.ui.questions, &p.ui.approvals, p.ui.Thread)
 	rows, _ := p.ui.testMainFrame(72, 28, 0)
 	t.Logf("question dock:\n%s", ansi.Strip(strings.Join(rows, "\n")))
 	questionTestPaint(t, p.ui, 72)
 	appServerTestKeys(t, p.ui, "1\r")
 	p.serve()
-	openQuestions(&p.ui.attached, p.ui.shell, &p.ui.picker, &p.ui.Editor, &p.ui.questions, &p.ui.approvals, p.ui.Thread)
+	openQuestions(&p.ui.attached, &p.ui.picker, &p.ui.Editor, &p.ui.questions, &p.ui.approvals, p.ui.Thread)
 	questionTestPaint(t, p.ui, 72)
 	appServerTestKeys(t, p.ui, "2\r")
 	p.serve()

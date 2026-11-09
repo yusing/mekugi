@@ -9,8 +9,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -34,10 +32,10 @@ type appServerActivityRestore struct {
 	notices  []restoredHistoryNotice
 }
 
-func (session *nativeSession) restorePaneContent(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, root binding.ThreadInfo) error {
+func (session *nativeSession) restorePaneContent(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, root binding.ThreadInfo) error {
 	r := new(appServerActivityRestore)
 	session.restoring = r
-	restoreDiffThread(attached, terminal, session.review, session.reviewSource, session.preparePane, root)
+	restoreDiffThread(attached, session.review, session.reviewSource, root)
 	attached.presentation.Status.SetText("Restoring Activity…")
 	retainedRollout := readRestoredRollout(root, "/root")
 	references := rollout.CompactionReferences(parent, root.ID, root.Path)
@@ -64,7 +62,7 @@ func (session *nativeSession) restorePaneContent(attached *attachedPresentation,
 		entry.Observed = event.at
 		placements = append(placements, &restoredPlacement{entry: entry, turn: event.turn, anchor: event.anchor, at: event.at})
 	}
-	session.restoreMainHistory(attached, terminal, picker, editor, clock, panel, resumePicker, parent, root.Turns, placements, retainedRollout.itemAt)
+	session.restoreMainHistory(attached, picker, editor, clock, panel, resumePicker, parent, root.Turns, placements, retainedRollout.itemAt)
 	restoreCompactionObservations(attached, session.retainedSession, r)
 	r.rendered = true
 	for _, notice := range r.notices {
@@ -74,13 +72,13 @@ func (session *nativeSession) restorePaneContent(attached *attachedPresentation,
 	return finishRestoredContent(attached, &session.Client, picker, &session.restoring, &session.review, session.dispatch, &session.resumePending)
 }
 
-func restoreDiffThread(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), info binding.ThreadInfo) {
+func restoreDiffThread(attached *attachedPresentation, review *sessionreview.Review, source *changecapture.Service, info binding.ThreadInfo) {
 	if review == nil {
 		return
 	}
 	review.IncludeThread(info.Cwd, info.ID, true)
 	review.Projection.Workspace = info.Cwd
-	publishReview(attached, terminal, review, source, prepare)
+	publishReview(attached, review, source)
 }
 
 func restoreHistoryNotice(attached *attachedPresentation, restoring *appServerActivityRestore, message string, incomplete bool) {

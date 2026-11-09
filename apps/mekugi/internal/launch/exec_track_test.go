@@ -738,7 +738,7 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
+		u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 		u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
 
 		u.testActivity(u.shell.Transcript).testPace(time.Now())
@@ -817,7 +817,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	// Drive the UI until it finalizes this invocation before draining writes.
 	deadline := time.Now().Add(2 * time.Second)
 	for u.execTrack.Tracking([3]string{"main", "t", item.ID}) {
-		u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
+		u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 		if time.Now().After(deadline) {
 			t.Fatal("tracked command did not finalize")
 		}
@@ -897,7 +897,7 @@ func TestAppServerTrackedCaptureLiveAndRestored(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	deadline := time.Now().Add(2 * time.Second)
 	for u.execTrack.Tracking([3]string{"main", "t", item.ID}) {
-		u.nativeSession.flushStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
+		u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 		if time.Now().After(deadline) {
 			t.Fatal("tracked command did not finalize")
 		}
@@ -1104,9 +1104,6 @@ func (h *execTrackFixture) view(key [3]string, final bool, text func(string) str
 		h.streams = make(map[[3]string]*activityui.CommandStream)
 	}
 	stream := h.streams[key]
-	if h.ui != nil {
-		stream = h.ui.streams.Command(key, run.Entry.Text).CommandStream
-	}
 	if stream == nil {
 		stream = activityui.NewCommandStream(run.Entry.Text)
 		h.streams[key] = stream

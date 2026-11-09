@@ -88,7 +88,7 @@ func TestAppServerResumeRestoresActiveTurnBeforeSupplements(t *testing.T) {
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	activity.Attach("saved")
 	activity.Collect(activitypresentation.Supplement{Thread: "saved", Source: "late", Kind: "error", Text: "exec script failed: late"})
-	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, activity)
+	applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, activity)
 	var texts []string
 	for _, entry := range u.attached.source.Entries {
 		texts = append(texts, entry.Source.Text)

@@ -226,13 +226,13 @@ func TestReplayChildFileLinksUseSelectedWorkspace(t *testing.T) {
 		t.Fatalf("child replay source or input boundary: %+v", view)
 	}
 	u := p.ui
-	if !u.detailFiles.openMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.childSource, u.shell, u.agents, "relative.md") {
+	if !u.detailFiles.openTerminalMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.childSource, u.shell, u.agents, "relative.md") {
 		t.Fatal("child link was not admitted")
 	}
 	for u.fileReads != nil {
 		select {
 		case result := <-u.fileReads:
-			if changed, _ := u.loadedMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.shell, result); !changed {
+			if changed, _ := u.loadedTerminalMarkdownFile(&u.session, u.presentation, view.SourceWorkspace(), u.shell, result); !changed {
 				t.Fatal("selected child link opened another workspace")
 			}
 		case <-time.After(5 * time.Second):

@@ -89,7 +89,7 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	// Keep rendered paths fixed independently of the isolated filesystem input.
 	preview.Workspace, preview.Files[0].AfterPath = "/workspace", "/workspace/live.txt"
 	u.attached.cwd = preview.Workspace
-	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
+	applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 	revealNativeDock(terminalTest(u))
 	for _, value := range []string{"off", "on"} {
 		appServerTestKeys(t, u, "/live\r")
@@ -118,7 +118,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			}
 			workspace := t.TempDir()
 			preview := previewmodel.Preview{ID: "edit", Workspace: workspace, Caller: caller, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: a.txt\n+VISIBLE_EDIT\n*** End Patch"}
-			applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), projectStockPatchPreview(t.Context(), workspace, preview), false)
+			applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(terminalTest(u))
 			if caller != "/root" {
 				u.testActivity(u.shell.Agents).setDisplayFilter(true, caller)
@@ -146,7 +146,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "/live\r")
 			preview.Complete = true
-			applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), projectStockPatchPreview(t.Context(), workspace, preview), false)
+			applyTestPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(terminalTest(u))
 			terminalTest(u).Live.Tick(time.Now().Add(time.Hour))
 			appServerTestKeys(t, u, "/live\r")

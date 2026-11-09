@@ -36,9 +36,6 @@ type Decoder struct {
 	escapeAt             time.Time
 }
 
-func (d *Decoder) Pasting() bool { return d.paste }
-func (d *Decoder) Pending() bool { return d.sequence != "" }
-
 func (d *Decoder) Feed(key byte, now time.Time) Input {
 	if d.paste {
 		const end = "\x1b[201~"

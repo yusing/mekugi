@@ -235,11 +235,11 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 	u.attached.cwd = root
 	u.Text = "Review "
 	bindComposerFile(u, "@src", "src")
-	draft := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
+	draft := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	if err := os.Rename(filepath.Join(root, "src/original.go"), filepath.Join(root, "src/changed.go")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sendConversationInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{draft}, false); err != nil {
+	if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{draft}, false); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)

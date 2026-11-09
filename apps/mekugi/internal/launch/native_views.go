@@ -15,7 +15,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -36,7 +35,6 @@ type nativeViews struct {
 	api         *sessionapi.Native
 	requests    *sessioncontrol.Requests[appServerRequest]
 	models      *sessionpresentation.Service
-	terminals   terminalsession.Views
 	replacing   string
 	retiring    func(*nativeSessionView) error
 	failure     error
@@ -71,7 +69,6 @@ type nativeSessionView struct {
 	completionTarget      conversation.EditorTarget
 	mainOutput            []activity.OutputResult
 	agentOutput           []activity.OutputResult
-	shell                 *terminalsession.Attachment
 	panel                 *appServerStatusReport
 	resume                *appServerResumePicker
 	effects               nativeViewEffects
@@ -79,9 +76,9 @@ type nativeSessionView struct {
 	notices               *nativeCriticalNoticeDelivery
 }
 
-func newNativeViews(parent context.Context, api *sessionapi.Native, models *sessionpresentation.Service, terminals terminalsession.Views, activity *activitymodel.Service, requests *sessioncontrol.Requests[appServerRequest]) *nativeViews {
+func newNativeViews(parent context.Context, api *sessionapi.Native, models *sessionpresentation.Service, activity *activitymodel.Service, requests *sessioncontrol.Requests[appServerRequest]) *nativeViews {
 	ctx, cancel := context.WithCancel(parent)
-	return &nativeViews{activity: activity, api: api, requests: requests, models: models, terminals: terminals, views: make(map[string]*nativeSessionView), closed: make(chan string, 16), ctx: ctx, cancel: cancel}
+	return &nativeViews{activity: activity, api: api, requests: requests, models: models, views: make(map[string]*nativeSessionView), closed: make(chan string, 16), ctx: ctx, cancel: cancel}
 }
 
 // View reads share the execution ledger, but their correlation ends with the
@@ -119,11 +116,10 @@ func (n *nativeViews) dispose(id string) {
 			}
 		}
 		view.stop()
-		view.files.closeOutput(view.shell)
+		view.files.closeOutput()
 		view.picker.cancelScan()
 		view.picker.cancelPermissionSelection()
 		view.notices.finish(terminalsession.NoticeReceipt{})
-		view.shell.Diff.Close()
 		view.scope.Retire()
 		view.attached = attachedPresentation{}
 		view.picker = composerPicker{}
@@ -140,9 +136,6 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 	}
 	v := &nativeSessionView{remoteHuman: request.RemoteHuman(), thread: request.Thread, startup: request.Startup != "", initial: true, ctx: request.ViewContext}
 	v.attached = attachedPresentation{executionPresentation: execution.executionPresentation, presentation: n.models.Session(v.scope.Scope()), view: request.Attachment, effects: &v.effects, grants: sessioncontrol.NewApprovalGrants(n.guards)}
-	// Transitional semantic adapters borrow independent renderer scratch. No
-	// physical terminal, editor, key decoder or painting lifetime is attached.
-	v.shell, _ = n.terminals.NewAttachment(diffrender.DarkTheme)
 	v.files.context, v.activity = v.ctx, n.activity
 	v.attached.presentation.Attach(sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}, false)
 	v.picker.State, v.picker.MenuState = n.completions.Value(v.scope.Scope()), v.attached.presentation.Menu()
@@ -231,10 +224,10 @@ func (v *nativeSessionView) applyView(operation sessionapi.NativeOperation) stri
 	case operation.Details != nil:
 		return v.openDetails(*operation.Details)
 	case operation.CloseDetails != nil:
-		if v.shell.Dialog == nil || v.shell.Dialog.ID != *operation.CloseDetails {
+		if v.files.id.Selection == 0 || v.files.id != *operation.CloseDetails {
 			return sessionpresentation.ErrStaleIntent.Error()
 		}
-		v.files.closeOutput(v.shell)
+		v.files.closeOutput()
 		v.detailDemand = nil
 	case operation.DetailOutput != nil:
 		if _, ok := v.files.details.DetailOutput(*operation.DetailOutput); !ok {
@@ -297,7 +290,7 @@ func (v *nativeSessionView) complete(input sessionapi.NativeEditorInput, clock f
 	v.predictionDraftEmpty = current.Input == current.Main && input.Target.Call == "" && input.Target.Request == "" && input.Draft.Text == ""
 	editor := new(composer.Editor)
 	editor.Replace(input.Draft)
-	v.picker.refreshPicker(&v.attached, v.shell, clock, requests, editor, v.ctx, environment)
+	v.picker.refreshPicker(&v.attached, clock, requests, editor, v.ctx, environment)
 	if !slices.Equal(editor.Skills, input.Draft.Skills) {
 		skills := slices.Clone(editor.Skills)
 		v.effects.add(sessionapi.NativeEffect{Thread: current.Input.ID, Target: new(input.Target), Skills: &skills})
@@ -309,7 +302,7 @@ func (v *nativeSessionView) complete(input sessionapi.NativeEditorInput, clock f
 func (n *nativeViews) predictionEligibility(execution *attachedPresentation) (focused, disabled, available bool) {
 	disabled = true
 	for _, v := range n.views {
-		if v.ctx.Err() != nil || v.attached.executionPresentation != execution.executionPresentation || v.shell.Main.PredictionsDisabled {
+		if v.ctx.Err() != nil || v.attached.executionPresentation != execution.executionPresentation || v.attached.predictionsDisabled {
 			continue
 		}
 		disabled = false
@@ -365,7 +358,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 			}
 		}
 		replacing := control.Replacement.Pending()
-		continueRewind(&v.attached, v.shell, control, &v.picker, restoring, func() time.Time { return now })
+		continueRewind(&v.attached, control, &v.picker, restoring, func() time.Time { return now })
 		if !replacing && control.Replacement.Pending() {
 			n.replacing = id
 			execution.presentation.BorrowExecutionStatus(v.attached.presentation)
@@ -377,7 +370,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		v.attached.feedback.Expire(now)
 		if v.initial || switched != nil {
 			if layout, err := terminalsession.ReadPreferences(facts.Preferences); err == nil {
-				v.shell.Main.InterruptLocked, v.shell.Main.PredictionsDisabled = layout.InterruptLocked, layout.PredictionsDisabled
+				v.attached.interruptLocked, v.attached.predictionsDisabled = layout.InterruptLocked, layout.PredictionsDisabled
 			}
 		}
 		v.attached.presentation.BorrowExecutionStatus(execution.presentation)
@@ -438,7 +431,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 // with the same client editor lifetime; execution owners are borrowed afresh.
 func (n *nativeViews) replacePresentation(v *nativeSessionView, execution *attachedPresentation) {
 	n.requests.Retire(viewRequestScope(v.attached.view))
-	v.files.closeOutput(v.shell)
+	v.files.closeOutput()
 	v.picker.cancelScan()
 	v.picker.cancelPermissionSelection()
 	if v.picker.sideTask != nil {
@@ -455,7 +448,6 @@ func (n *nativeViews) replacePresentation(v *nativeSessionView, execution *attac
 	v.mainOutput, v.agentOutput = nil, nil
 	v.completionTarget = conversation.EditorTarget{}
 	v.lastExecutionFeedback = 0
-	n.terminals.ReplaceConversation(v.shell)
 }
 
 func (n *nativeViews) invalidateSkills(execution *executionPresentation) {

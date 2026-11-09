@@ -1142,7 +1142,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	defer terminalTest(warningUI).Diff.Close()
 	queueContextWarning(t, warningUI.issues, "child")
 	publishNotice := func() *nativeCriticalNoticeDelivery {
-		delivery := applyCriticalNotices(&warningUI.attached, warningUI.shell, &warningUI.Client, &warningUI.picker, &warningUI.Editor, warningUI.clock, preferences.Applied{}, warningUI.serviceTiers, "", "", &warningUI.restoring, &warningUI.side, warningUI.audience, warningUI.issues)
+		delivery := applyCriticalNotices(&warningUI.attached, &warningUI.Client, &warningUI.picker, &warningUI.Editor, warningUI.clock, preferences.Applied{}, warningUI.serviceTiers, "", "", &warningUI.restoring, &warningUI.side, warningUI.audience, warningUI.issues)
 		if delivery == nil {
 			t.Fatal("notice did not reach the browser's thread")
 		}

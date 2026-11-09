@@ -6,8 +6,6 @@ import (
 
 	"github.com/yusing/mekugi/contracts/observation"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -42,7 +40,7 @@ func restoreThreadSettings(session *sessionpresentation.Attachment, info binding
 }
 
 // sessionEvent owns live enrichment and effects around shared presentation.
-func (session *nativeSession) sessionEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, method string, p binding.Notification) (bool, error) {
+func (session *nativeSession) sessionEvent(attached *attachedPresentation, clock func() time.Time, method string, p binding.Notification) (bool, error) {
 	s := &attached.session
 	if s.KnownCaller(session.Client.Thread) == "" {
 		return false, nil
@@ -60,7 +58,7 @@ func (session *nativeSession) sessionEvent(attached *attachedPresentation, termi
 		}
 	}
 	if method == "hook/started" || method == "hook/completed" {
-		return true, hookEvent(attached, terminal, &session.Client, session.activity, session.review, &session.approvals, &session.pendingEditReceipts, session.retainedSession, clock, method, p)
+		return true, hookEvent(attached, &session.Client, session.activity, session.review, &session.approvals, &session.pendingEditReceipts, session.retainedSession, clock, method, p)
 	}
 	if method == "item/started" {
 		observeShellItem(&session.Client.Shell, session.Client.Thread, p.ThreadID, p.Item)
@@ -100,12 +98,12 @@ func (session *nativeSession) sessionEvent(attached *attachedPresentation, termi
 		}
 	}
 	if method == "turn/completed" {
-		endTurnPreviews(session.execWindows, session.review, attached.cwd, terminal, presentationTime(clock), p.ThreadID, p.Turn.ID)
+		endTurnPreviews(session.execWindows, session.review, attached.cwd, p.ThreadID, p.Turn.ID)
 	}
 	result := sessionpresentation.ReduceObservation(s, attached.presentation, attached.source, attached.childSource, attached.transcript, session.activity.Outputs(s.Scope()), facts)
 	if result.Compaction != nil {
 		if err := retainCompaction(session.retainedSession, *result.Compaction); err != nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "Compaction measurements could not be retained: "+err.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), "Compaction measurements could not be retained: "+err.Error(), true)
 		}
 	}
 	if result.Started && session.review != nil {
@@ -121,29 +119,22 @@ func (session *nativeSession) sessionEvent(attached *attachedPresentation, termi
 		observeCost(session.usage, p.ThreadID, s.Agent(s.Caller(p.ThreadID)))
 	}
 	if result.Publish {
-		session.streams.Deliver(result.Deliveries, terminal.Transcript, terminal.Agents)
-
 		attached.hooks.deliverActivity(attached.executionPresentation, result.Deliveries)
-
-		applyActivity(attached, &session.approvals, terminal, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, nil)
+		applyActivity(attached, &session.approvals, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, nil)
 	}
 	return result.Handled, nil
 }
 
-// flushStreamOutput advances terminal frames and admits changed segment facts.
+// flushStreamOutput admits changed segment facts and publishes output deltas.
 // Reveal-only updates never replace neutral command records. Late output cannot
 // reopen a completed invocation.
-func (session *nativeSession) flushStreamOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, parent context.Context) {
-	session.streams.AdvanceReasoning(presentationTime(clock), terminal.Transcript, terminal.Agents)
+func (session *nativeSession) flushStreamOutput(attached *attachedPresentation, clock func() time.Time, parent context.Context) {
 	s := &attached.session
 	var entries []sessionpresentation.ActivityEntry
-	handled := make(map[[3]string]bool)
 	for key, run := range attached.session.Commands() {
-		tracked, trackedCommand := flushTrackedCommand(attached, terminal, &session.streams, session.execTrack, clock, parent, session.retained, session.segments, &session.commandSegmentWrites, &session.commandSegmentPending, session.issues, key, run)
+		tracked := flushTrackedCommand(attached, session.execTrack, clock, parent, session.retained, session.segments, &session.commandSegmentWrites, &session.commandSegmentPending, session.issues, key, run)
 		entries = append(entries, tracked...)
-		handled[key] = trackedCommand
 	}
-	session.streams.AdvanceCommands(presentationTime(clock), handled, terminal.Transcript, terminal.Agents)
 
 	if len(entries) == 0 {
 		return
@@ -152,7 +143,7 @@ func (session *nativeSession) flushStreamOutput(attached *attachedPresentation, 
 	for i := range entries {
 		entries[i].Seq = s.Activity().NextSequence()
 	}
-	applyActivity(attached, &session.approvals, terminal, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, entries, nil)
+	applyActivity(attached, &session.approvals, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, entries, nil)
 }
 
 // observeCost reads all consumption metrics from the same canonical owner.

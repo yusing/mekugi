@@ -8,20 +8,19 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-func (session *nativeSession) referenceInput(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, intent sessionpresentation.ReferenceIntent) bool {
+func (session *nativeSession) referenceInput(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, intent sessionpresentation.ReferenceIntent) bool {
 	defer func() {
-		settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
+		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, session.overlayOpen(*panel, *resumePicker))
 	}()
 	if attached.effects != nil {
 		if err := attached.presentation.ClientReference(intent); err != nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 			return false
 		}
 		pending := slices.Concat(attached.conversation.Submitted[session.Client.Submission().ID].Parts, attached.conversation.Unsent, attached.conversation.Queued, attached.conversation.Parts(session.Client.Steers()))
@@ -35,7 +34,7 @@ func (session *nativeSession) referenceInput(attached *attachedPresentation, ter
 		// references keep distinct labels through queueing and continuation.
 		selection := composer.Editor{Text: (*editor).Text}
 		if err := selection.InsertSelection(intent.Description, intent.Text, intent.Source, drafts); err != nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 			return false
 		}
 		if len(selection.Selections) == 0 {
@@ -51,11 +50,11 @@ func (session *nativeSession) referenceInput(attached *attachedPresentation, ter
 		return true
 	}
 	if err := attached.presentation.Reference(intent, attached.conversation); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		return false
 	}
-	insertSelection(attached, terminal, &session.Client, editor, &session.questions, &session.approvals, clock, side, &session.ownedImages, intent.Description, intent.Text, intent.Source)
-	picker.refreshPicker(attached, terminal, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
+	insertSelection(attached, &session.Client, editor, &session.questions, &session.approvals, clock, side, &session.ownedImages, intent.Description, intent.Text, intent.Source)
+	picker.refreshPicker(attached, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
 	(*editor).Run = composer.NoRun
 	return true
 }
@@ -67,7 +66,7 @@ func (session *nativeSession) referenceInput(attached *attachedPresentation, ter
 // insertSelection mentions text at the caret as one undoable token. A label
 // already in the draft or pending input gains a counter, so the queued, steered
 // or restored input that joins them still names one quote per mention.
-func insertSelection(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, description, text, source string) {
+func insertSelection(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, description, text, source string) {
 	if text == "" {
 		return
 	}
@@ -76,7 +75,7 @@ func insertSelection(attached *attachedPresentation, terminal *terminalsession.A
 		for i, question := range call.Questions {
 			draft := question.Editor.Snapshot.Draft
 			if question.IsSecret {
-				draft = terminal.Prompts.SecretState(call.ID).Editors[i].Snapshot.Draft
+				draft = questions.secretState(call.ID).Editors[i].Snapshot.Draft
 			}
 			pending = append(pending, conversationmodel.Input{Draft: draft})
 		}
@@ -85,12 +84,11 @@ func insertSelection(attached *attachedPresentation, terminal *terminalsession.A
 		pending = append(pending, conversationmodel.Input{Draft: attached.conversation.PromptEditor.Parked.Snapshot.Draft})
 	}
 	if err := (*editor).InsertSelection(description, text, source, conversationmodel.Drafts(pending)); err != nil {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 		return
 	}
-	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
-	terminal.Main.CursorColumn = nil
-	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side), attached.hooks.nativeImages)
+	setNotice(&attached.feedback, presentationTime(clock), "", false)
+	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, (*side), attached.hooks.nativeImages)
 	if q := questions.Current(); q != nil {
 		q.Edit(!q.Note)
 	}

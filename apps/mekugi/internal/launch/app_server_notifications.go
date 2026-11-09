@@ -10,8 +10,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -41,7 +39,7 @@ type nativeBlockedRequest struct {
 	Turn   string `json:"turnId"`
 }
 
-func (n *nativeNotifications) blockNotification(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, m appserver.Message) {
+func (n *nativeNotifications) blockNotification(feedback *noticepresentation.Model, clock func() time.Time, m appserver.Message) {
 	if n == nil {
 		return
 	}
@@ -54,7 +52,7 @@ func (n *nativeNotifications) blockNotification(feedback *noticepresentation.Mod
 		n.blocked = make(map[string]nativeBlockedRequest)
 	}
 	n.blocked[string(m.ID)] = request
-	n.notify(feedback, terminal, clock, "approval-requested", "Approval requested")
+	n.notify(feedback, clock, "approval-requested", "Approval requested")
 }
 
 func (n *nativeNotifications) resolve(m appserver.Message) {
@@ -73,7 +71,7 @@ func (n *nativeNotifications) resolve(m appserver.Message) {
 	}
 }
 
-func (n *nativeNotifications) writeTitle(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, workspace string, actionRequired, busy bool, now time.Time) {
+func (n *nativeNotifications) writeTitle(feedback *noticepresentation.Model, clock func() time.Time, workspace string, actionRequired, busy bool, now time.Time) {
 	if n == nil || n.out == nil {
 		return
 	}
@@ -94,21 +92,21 @@ func (n *nativeNotifications) writeTitle(feedback *noticepresentation.Model, ter
 		return r
 	}, strings.Join(parts, " "))
 	if title != n.lastTitle {
-		n.writeTerminalSignal(feedback, terminal, clock, "\x1b]0;"+title+"\a")
+		n.writeTerminalSignal(feedback, clock, "\x1b]0;"+title+"\a")
 		n.lastTitle, n.titleWritten = title, true
 	}
 }
 
-func (n *nativeNotifications) clearTerminalTitle(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time) {
+func (n *nativeNotifications) clearTerminalTitle(feedback *noticepresentation.Model, clock func() time.Time) {
 	if n != nil && n.titleWritten {
-		n.writeTerminalSignal(feedback, terminal, clock, "\x1b]0;\a")
+		n.writeTerminalSignal(feedback, clock, "\x1b]0;\a")
 		n.lastTitle, n.titleWritten = "", false
 	}
 }
 
 // OSC 7501 describes the foreground Mekugi client, independently of desktop
 // notification policy and terminal-specific environment hints.
-func (n *nativeNotifications) writeStatus(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, actionRequired, busy bool) {
+func (n *nativeNotifications) writeStatus(feedback *noticepresentation.Model, actionRequired, busy bool) {
 	if n == nil || n.out == nil {
 		return
 	}
@@ -119,20 +117,20 @@ func (n *nativeNotifications) writeStatus(feedback *noticepresentation.Model, te
 		state = "working"
 	}
 	if state != n.lastStatus {
-		n.writeTerminalSignal(feedback, terminal, nil, "\x1b]7501;state="+state+":app=mekugi\x1b\\")
+		n.writeTerminalSignal(feedback, nil, "\x1b]7501;state="+state+":app=mekugi\x1b\\")
 		n.lastStatus = state
 	}
 }
 
-func (n *nativeNotifications) clearTerminalStatus(feedback *noticepresentation.Model, terminal *terminalsession.Attachment) {
-	n.clearTerminalTitle(feedback, terminal, nil)
+func (n *nativeNotifications) clearTerminalStatus(feedback *noticepresentation.Model) {
+	n.clearTerminalTitle(feedback, nil)
 	if n != nil && n.lastStatus != "" {
-		n.writeTerminalSignal(feedback, terminal, nil, "\x1b]7501;state=clear\x1b\\")
+		n.writeTerminalSignal(feedback, nil, "\x1b]7501;state=clear\x1b\\")
 		n.lastStatus = ""
 	}
 }
 
-func (n *nativeNotifications) notificationConfig(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, m appserver.Message) {
+func (n *nativeNotifications) notificationConfig(feedback *noticepresentation.Model, clock func() time.Time, m appserver.Message) {
 	if n == nil {
 		return
 	}
@@ -142,16 +140,16 @@ func (n *nativeNotifications) notificationConfig(feedback *noticepresentation.Mo
 		} `json:"config"`
 	}
 	if m.Error != nil {
-		setNotice(feedback, terminal, presentationTime(clock), "Terminal notification settings could not be read", true)
+		setNotice(feedback, presentationTime(clock), "Terminal notification settings could not be read", true)
 		return
 	}
 	if err := json.Unmarshal(m.Result, &result); err != nil {
-		setNotice(feedback, terminal, presentationTime(clock), "Terminal notification settings could not be read", true)
+		setNotice(feedback, presentationTime(clock), "Terminal notification settings could not be read", true)
 		return
 	}
 	if len(result.Config.TUI) > 0 {
 		if err := json.Unmarshal(result.Config.TUI, &n.settings); err != nil {
-			setNotice(feedback, terminal, presentationTime(clock), "Terminal notification settings could not be read", true)
+			setNotice(feedback, presentationTime(clock), "Terminal notification settings could not be read", true)
 			return
 		}
 	}
@@ -175,7 +173,7 @@ func (n *nativeNotifications) allows(event string) bool {
 	return policy.Allows(event, n.focused)
 }
 
-func (n *nativeNotifications) notify(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, event, message string) {
+func (n *nativeNotifications) notify(feedback *noticepresentation.Model, clock func() time.Time, event, message string) {
 	if n != nil && n.relay != nil {
 		n.relay(event, message)
 		return
@@ -201,16 +199,16 @@ func (n *nativeNotifications) notify(feedback *noticepresentation.Model, termina
 			sequence = "\x1bPtmux;" + strings.ReplaceAll(sequence, "\x1b", "\x1b\x1b") + "\x1b\\"
 		}
 	}
-	n.writeTerminalSignal(feedback, terminal, clock, sequence)
+	n.writeTerminalSignal(feedback, clock, sequence)
 }
 
-func (n *nativeNotifications) writeTerminalSignal(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, sequence string) {
+func (n *nativeNotifications) writeTerminalSignal(feedback *noticepresentation.Model, clock func() time.Time, sequence string) {
 	if n == nil || n.out == nil {
 		return
 	}
 	if _, err := io.WriteString(n.out, sequence); err != nil {
 		// Auxiliary notification failure never interrupts host execution.
 		n.out = nil
-		setNotice(feedback, terminal, presentationTime(clock), "Terminal notifications disabled after an output error", true)
+		setNotice(feedback, presentationTime(clock), "Terminal notifications disabled after an output error", true)
 	}
 }

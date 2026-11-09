@@ -8,16 +8,13 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/contracts/scope"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	"slices"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
-	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
 // Only commands implemented by the native shell belong in this catalog.
@@ -56,31 +53,31 @@ var nativeCommands = []completion.Choice{
 // Clear starts a fresh host thread.
 // Compact uses its native RPC after acknowledged interruption, never a
 // turn/steer text payload. Tab can explicitly queue it instead.
-func (session *nativeSession) sessionCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, provider string, command string) error {
+func (session *nativeSession) sessionCommand(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, provider string, command string) error {
 	if session.Client.Thread == "" || session.restoring != nil || session.Client.Replacement.Pending() {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
+		setNotice(&attached.feedback, presentationTime(clock), "Wait for the session to be ready", false)
 		return nil
 	}
 	if command == "/compact" {
-		return session.submitCompact(attached, terminal, picker, editor, clock, parent, false)
+		return session.submitCompact(attached, picker, editor, clock, parent, false)
 	}
 	if sessionBusy(&session.Client.Live, attached.conversation) {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), command+" is disabled while a task is in progress", true)
+		setNotice(&attached.feedback, presentationTime(clock), command+" is disabled while a task is in progress", true)
 		return nil
 	}
 	if command == "/rewind" {
 		if !session.Client.HasUserTurn {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "/rewind is disabled before the first user turn", false)
+			setNotice(&attached.feedback, presentationTime(clock), "/rewind is disabled before the first user turn", false)
 			return nil
 		}
 		showRewindPicker(&session.Client, picker, session.review)
 		(*editor).Take()
 		return nil
 	}
-	prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, (*editor).Take())
+	prepareDraft(picker, attached.cwd, session.skillEnvironment, (*editor).Take())
 	if command == "/fork" {
 		if err := session.Client.Requests.Fork(&session.Client.Startup, &session.Client.Live, session.settings, provider, session.approvalMode); err != nil {
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "Could not fork session: "+err.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), "Could not fork session: "+err.Error(), true)
 			return nil
 		}
 		attached.presentation.Status.SetText("Forking session…")
@@ -111,16 +108,16 @@ func (session *nativeSession) sessionCommand(attached *attachedPresentation, ter
 	return nil
 }
 
-func (session *nativeSession) submitCompact(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, queue bool) error {
+func (session *nativeSession) submitCompact(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, queue bool) error {
 	if session.Client.Thread == "" || session.restoring != nil || session.Client.Replacement.Pending() {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
+		setNotice(&attached.feedback, presentationTime(clock), "Wait for the session to be ready", false)
 		return nil
 	}
-	draft := prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, (*editor).Take())
+	draft := prepareDraft(picker, attached.cwd, session.skillEnvironment, (*editor).Take())
 	draft.Text = "/compact"
 	draft.Compact = &conversationmodel.CompactIntent{WaitForIdle: queue, Continue: session.Client.Turn != "" || session.Client.Starting()}
 	attached.conversation.Unsent = append(attached.conversation.Unsent, draft)
-	return session.flushInput(attached, terminal, picker, clock, editor, parent)
+	return session.flushInput(attached, picker, clock, editor, parent)
 }
 
 // sessionBusy reports work that leaving the current thread would strand.
@@ -130,37 +127,31 @@ func sessionBusy(control *sessioncontrol.Live, conversation *conversationmodel.S
 
 // A queued compact is a local action, not Main's running turn. Return waiting
 // input for retry without interrupting that turn or an in-flight submission.
-func cancelQueuedCompact(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) bool {
+func cancelQueuedCompact(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) bool {
 	isCompact := func(d conversationmodel.Input) bool { return d.Compact != nil }
 	hasQueued := slices.ContainsFunc(attached.conversation.Unsent, isCompact) || slices.ContainsFunc(attached.conversation.Queued, isCompact)
 	cancelled, interruptionIssued := control.Compaction.CancelQueued(hasQueued)
 	if !cancelled {
 		return false
 	}
-	restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
+	restoreDrafts(attached, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
 	attached.conversation.Unsent, attached.conversation.Queued = nil, nil
 	if interruptionIssued {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Compaction cancelled · input restored · interruption already requested", false)
+		setNotice(&attached.feedback, presentationTime(clock), "Compaction cancelled · input restored · interruption already requested", false)
 	} else {
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Queued compaction cancelled · input restored · Main continues", false)
+		setNotice(&attached.feedback, presentationTime(clock), "Queued compaction cancelled · input restored · Main continues", false)
 	}
 	return true
 }
 
 // resetDiffScope starts the saved Diff over for a resumed root thread; its
 // restoration then includes only that thread and its descendants.
-func resetDiffScope(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), parent context.Context) {
+func resetDiffScope(attached *attachedPresentation, review *sessionreview.Review, source *changecapture.Service, parent context.Context) {
 	if review == nil {
 		return
 	}
 	review.Replace(parent)
-	if terminal != nil {
-		if terminal.Auxiliary != nil {
-			terminal.Auxiliary.Reset()
-		}
-		terminal.Live, terminal.DiffUnseen = previewview.PreviewPane{}, false
-	}
-	publishReview(attached, terminal, review, source, prepare)
+	publishReview(attached, review, source)
 }
 
 func (p *composerPicker) filterCommands(query string) {

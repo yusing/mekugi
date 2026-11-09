@@ -240,7 +240,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 				assertCapturedCommand(t, view, thread, "cmd", "Move", 0)
 				if method == "item/completed" {
 					finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
-					if got := mainFeed(appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, attached: attachedPresentation{executionPresentation: &executionPresentation{source: view.ActivitySource}}}}), 100); !strings.Contains(got, "mv b.go.new b.go · exit 2") || strings.Contains(got, "PRIVATE_NATIVE_SOURCE") {
+					if got := mainFeed(appServerTestFeatures(&appServerUI{shell: &terminalsession.Attachment{Transcript: view.View}, nativeSession: nativeSession{activity: new(activitymodel.Service), attached: attachedPresentation{executionPresentation: &executionPresentation{source: view.ActivitySource}}}}), 100); !strings.Contains(got, "mv b.go.new b.go · exit 2") || strings.Contains(got, "PRIVATE_NATIVE_SOURCE") {
 						t.Fatalf("batch failure missing: %s", got)
 					}
 				}

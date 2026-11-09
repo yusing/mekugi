@@ -264,7 +264,7 @@ func TestAppServerSettingsReasoningWaitsForCatalog(t *testing.T) {
 	appServerTestRequest(t, u, "99", "model/list")
 	// Native views borrow execution while retaining their own presentation value.
 	view := u.attached
-	if err := stepReasoning(&view, u.shell, &u.Client, preferences.Applied{Model: u.settings.Model, Effort: u.settings.Effort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
+	if err := stepReasoning(&view, &u.Client, preferences.Applied{Model: u.settings.Model, Effort: u.settings.Effort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
 		t.Fatal(err)
 	}
 	if w.Len() != 0 || u.attached.reasoning == nil {
@@ -401,7 +401,7 @@ func TestAppServerSettingsPickerEmptyFailureAndPaste(t *testing.T) {
 		t.Fatal("paste escaped modal")
 	}
 	u.pickerKey("\x1b")
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	if u.picker.Open || u.picker.Setting != "" {
 		t.Fatal("Escape did not cancel")
 	}

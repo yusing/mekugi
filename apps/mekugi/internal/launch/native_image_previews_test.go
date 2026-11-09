@@ -312,13 +312,13 @@ func TestReplayImagePreviewsLifecycle(t *testing.T) {
 		t.Fatal("replay did not render generated artifact")
 	}
 	u := p.ui
-	if !u.openMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.activitySource(u.view), u.shell, u.view, path) {
+	if !u.openTerminalMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.activitySource(u.view), u.shell, u.view, path) {
 		t.Fatal("replay image file link was not admitted")
 	}
 	for u.fileReads != nil {
 		select {
 		case result := <-u.fileReads:
-			u.loadedMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.shell, result)
+			u.loadedTerminalMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.shell, result)
 		case <-time.After(time.Second):
 			t.Fatal("replay image file admission stalled")
 		}

@@ -140,7 +140,7 @@ func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	appServerTestTurn(t, u, "t")
 	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "first.png")
-	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "exact quote", "")
+	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "exact quote", "")
 	appServerTestKeys(t, u, "\r")
 	steer := appServerTurnRequests(t, wire)[0]
 	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "second.png")
@@ -206,7 +206,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 			case "picker":
 				appServerTestKeys(t, u, "/")
 			case "locked":
-				u.shell.Main.InterruptLocked = true
+				u.attached.interruptLocked = true
 			}
 			composerShellEscape(t, u)
 			if wire.Len() != 0 || len(u.Steers()) != 1 {
@@ -234,7 +234,7 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 		t.Fatal("Escape bypassed pending settings")
 	}
 	u.Settings = sessioncontrol.Settings{}
-	if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+	if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 		t.Fatal(err)
 	}
 	appServerOneRequest(t, wire, "turn/start", "first")

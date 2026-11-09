@@ -11,7 +11,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -34,7 +34,7 @@ type apiLive struct {
 const apiFrameInterval = 100 * time.Millisecond
 
 // publish is called only by the session owner loop.
-func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], review *sessionreview.Review, reviewSource *changecapture.Service, restoring, childSummary bool, now time.Time) {
+func (w *apiLive) publish(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], review *sessionreview.Review, reviewSource *changecapture.Service, restoring, childSummary bool, now time.Time) {
 	view := attached.presentation.View()
 	waiting := apiWaiting(attached, control)
 	err := w.server.SetSummary(sessionapi.Summary{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started, Status: view.Status.Session, Waiting: waiting, Ready: apiInputRefusal(attached, control, restoring) == ""})
@@ -74,7 +74,7 @@ func (w *apiLive) publish(attached *attachedPresentation, terminal *terminalsess
 	}
 	if err != nil && !w.failed {
 		w.failed = true
-		setNotice(&attached.feedback, terminal, now, "Session publication unavailable: "+err.Error(), true)
+		setNotice(&attached.feedback, now, "Session publication unavailable: "+err.Error(), true)
 	}
 }
 
@@ -96,7 +96,7 @@ func apiInputRefusal(attached *attachedPresentation, control *sessioncontrol.Cli
 
 // applyAPIIntent applies an admitted request through the existing session owners.
 // An error ends the runtime, matching the local control path.
-func (session *nativeSession) applyAPIIntent(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, overlay bool, parent context.Context, intent sessionapi.Intent) (string, error) {
+func (session *nativeSession) applyAPIIntent(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, overlay bool, parent context.Context, intent sessionapi.Intent) (string, error) {
 	if reason := apiIntentRefusal(attached, &session.Client, intent); reason != "" {
 		return reason, nil
 	}
@@ -110,11 +110,11 @@ func (session *nativeSession) applyAPIIntent(attached *attachedPresentation, ter
 			return "The answer was canceled before admission.", nil
 		}
 		for _, answer := range answers {
-			if !session.answerQuestion(attached, terminal, picker, editor, *side, clock, overlay, sessionpresentation.AnswerIntent{Version: attached.presentation.View().Version, AnswerInput: answer}) {
+			if !session.answerQuestion(attached, picker, editor, *side, clock, overlay, sessionpresentation.AnswerIntent{Version: attached.presentation.View().Version, AnswerInput: answer}) {
 				return "This prompt was already answered.", nil
 			}
 		}
-		return "", session.submitQuestions(attached, terminal, picker, editor, *side, clock, overlay, parent, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: intent.Answer.Call, Incomplete: incomplete})
+		return "", session.submitQuestions(attached, picker, editor, *side, clock, overlay, parent, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: intent.Answer.Call, Incomplete: incomplete})
 	case sessionapi.DecideApproval:
 		decision := sessionpresentation.ApprovalIntent{Version: attached.presentation.View().Version, Request: intent.Decide.Approval, Choice: intent.Decide.Choice, Reason: intent.Decide.Reason}
 		_, choice, err := attached.presentation.Approval(decision, &attached.conversation.Approvals)
@@ -124,7 +124,7 @@ func (session *nativeSession) applyAPIIntent(attached *attachedPresentation, ter
 		if choice.Session {
 			return "Reusable approval grants require an attached control view. Use view/intent.", nil
 		}
-		return "", session.decideApproval(attached, terminal, picker, editor, *side, clock, overlay, decision)
+		return "", session.decideApproval(attached, picker, editor, *side, clock, overlay, decision)
 	case sessionapi.Send:
 		// Enter semantics: steer the active turn, or start one while idle.
 		if reason := apiInputRefusal(attached, &session.Client, session.restoring != nil); reason != "" {
@@ -137,7 +137,7 @@ func (session *nativeSession) applyAPIIntent(attached *attachedPresentation, ter
 		}
 		// Unlike Enter in the terminal, this leaves the terminal's notice and
 		// scroll position alone.
-		defer settlePresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, overlay)
+		defer settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, overlay)
 		plan := session.Client.PlanInput(sessioncontrol.SendInput, attached.conversation.Questions.Waiting(session.Client.Thread))
 		var input conversationmodel.Input
 		if intent.Prepared != nil {
@@ -149,27 +149,27 @@ func (session *nativeSession) applyAPIIntent(attached *attachedPresentation, ter
 			}
 			input = conversationmodel.Input{Draft: intent.Prepared.Draft}
 			if len(input.Attachments) == 0 && len(input.Images) == 0 {
-				input = prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, input.Draft)
+				input = prepareDraft(picker, attached.cwd, session.skillEnvironment, input.Draft)
 			}
 			if input.AttachmentNotice != "" {
-				setNotice(&attached.feedback, terminal, presentationTime(clock), input.AttachmentNotice, true)
+				setNotice(&attached.feedback, presentationTime(clock), input.AttachmentNotice, true)
 			}
 		} else {
-			input = prepareDraft(picker, terminal, attached.cwd, session.skillEnvironment, composer.Draft{Text: intent.Text})
+			input = prepareDraft(picker, attached.cwd, session.skillEnvironment, composer.Draft{Text: intent.Text})
 		}
 		attached.conversation.QueueInput(input, plan.Queued)
 		if !plan.Flush {
 			return "", nil
 		}
-		return "", session.flushInput(attached, terminal, picker, clock, editor, parent)
+		return "", session.flushInput(attached, picker, clock, editor, parent)
 	case sessionapi.Stop:
 		// Ctrl-C semantics for Main, even while the terminal displays a side
 		// conversation; the terminal's lock guards only its keyboard.
-		view := publishPresentation(attached, terminal, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
+		view := publishPresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side))
 		if !sessionpresentation.MainInterruptible(&session.Client.Live, attached.conversation) {
 			return "Nothing is running.", nil
 		}
-		return "", session.interruptSession(attached, terminal, picker, editor, clock, side, overlay, sessionpresentation.InterruptIntent{Version: view.Version, Target: session.Client.InterruptTarget(), Mode: sessioncontrol.RestoreWaiting})
+		return "", session.interruptSession(attached, picker, editor, clock, side, overlay, sessionpresentation.InterruptIntent{Version: view.Version, Target: session.Client.InterruptTarget(), Mode: sessioncontrol.RestoreWaiting})
 	}
 	return "This session does not offer that request.", nil
 }

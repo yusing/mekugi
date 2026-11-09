@@ -199,7 +199,7 @@ func (c *nativeClient) applyEffects() {
 			c.streams.Deliver(effect.Deliveries, c.renderer.terminal.Transcript, c.renderer.terminal.Agents)
 		}
 		if notification := effect.Notification; notification != nil {
-			c.notifications.notify(&c.feedback, c.renderer.terminal, nil, notification.Event, notification.Message)
+			c.notifications.notify(&c.feedback, nil, notification.Event, notification.Message)
 		}
 		if navigation := effect.Navigate; navigation != nil && c.event.Frame.View.Displayed.ID == navigation.Displayed && (c.runtime == nil || c.runtime.active == c && c.runtime.activation == navigation.Activation) {
 			c.displayThread(navigation.Thread)

@@ -434,7 +434,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 			u.Text = "/btw Explain "
 			insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, path)
 			u.ownedImages = map[string]bool{path: true}
-			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
+			insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
 			bindComposerFile(u, "@missing.txt", "missing.txt")
 			appServerTestKeys(t, u, "\r")
 			r := btwTestRequest(t, w, "thread/fork", "main")
@@ -664,7 +664,7 @@ func TestSideMainPromptResolutionIsolation(t *testing.T) {
 			selectSideThread(t, u, u.attached.presentation.View().Main)
 			u.Turn = "turn"
 			questionTestSync(t, u, "prompt", secret)
-			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+			openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			if u.questions.activeCall() == nil {
 				t.Fatal("fixture did not open prompt")
 			}
@@ -745,7 +745,7 @@ func TestSideMainApprovalResolutionIsolation(t *testing.T) {
 	appServerTestKeys(t, u, "main draft")
 	u.Turn = "turn"
 	approvalTestCommand(t, u, "approval", map[string]any{"availableDecisions": []string{"accept", "decline"}})
-	if !openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread) {
+	if !openApprovals(&u.approvals, &u.questions, u.attached.conversation, &u.picker, &u.Editor, u.Thread) {
 		t.Fatal("fixture did not open approval")
 	}
 	selectSideThread(t, u, u.attached.presentation.View().SideThread)
@@ -872,7 +872,7 @@ func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
 			appServerTestKeys(t, u, "/btw another question\r")
 			fork = btwTestRequest(t, w, "thread/fork", "main")
 			question := u.BTW
-			if err := closeSide(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
+			if err := closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
 				t.Fatal(err)
 			}
 			btwTestRequest(t, w, "turn/interrupt", "work-side")
@@ -940,7 +940,7 @@ func TestSideCommandAndBTWDockIsolation(t *testing.T) {
 			if err := u.attached.presentation.AdmitCloseSide(*c.calls[0].operation.Side); err != nil {
 				t.Fatal(err)
 			}
-			if err := closeSide(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
+			if err := closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
 				t.Fatal(err)
 			}
 			if u.side != nil || u.BTW != question {

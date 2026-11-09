@@ -29,7 +29,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 				u.attached.conversation.Queued = []conversationmodel.Input{{Text: "next"}}
 			}
 			appServerTestKeys(t, u, "/lock\r")
-			if !u.shell.Main.InterruptLocked || u.Text != "" {
+			if !u.attached.interruptLocked || u.Text != "" {
 				t.Fatal("lock not applied locally")
 			}
 			c := nativeTestCancel(t, u)
@@ -50,7 +50,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			appServerTestKeys(t, u, "/unlock\r")
 			c = nativeTestCancel(t, u)
 			quit := c.quit
-			if u.shell.Main.InterruptLocked {
+			if u.attached.interruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}
 			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.attached.conversation.Queued) != 0 || u.Text != "next") {
@@ -63,7 +63,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	u, wire := newAppServerTestUI()
 
-	u.Turn, u.shell.Main.InterruptLocked = "active", true
+	u.Turn, u.attached.interruptLocked = "active", true
 	c := nativeTestPromptClient(u)
 	defer c.renderer.terminal.Diff.Close()
 	c.renderer.terminal.Main.InterruptLocked = true
@@ -76,8 +76,8 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 		t.Fatal("lock broke draft restoration")
 	}
 	u.Text = "/"
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestNativePickerEscapeDoesNotInterrupt(t *testing.T) {
 func TestNativePickerClickRetainsSubmission(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Text = "/model"
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	c := nativeTestPromptClient(u)
 	defer c.renderer.terminal.Diff.Close()
 	c.editor("main").Replace(u.Editor.Draft)
@@ -130,7 +130,7 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	terminalTest(u).DiffOpen = true
 	terminalTest(u).Focus = 1
 	p := testPanePreferences()
-	if err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "main", false); err != nil {
+	if err := p.openTerminal(&terminalTest(u).Shell, u.shell.Main, "/workspace", "main", false); err != nil {
 		t.Fatal(err)
 	}
 	terminalTest(u).Split = 60
@@ -138,12 +138,13 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	resumed := newAppServerSessionTestUI(t, "/workspace")
-	if err := p.open(&terminalTest(resumed).Shell, resumed.shell.Main, "/workspace", "main", true); err != nil {
+	if err := p.openTerminal(&terminalTest(resumed).Shell, resumed.shell.Main, "/workspace", "main", true); err != nil {
 		t.Fatal(err)
 	}
 	if !resumed.shell.Main.InterruptLocked || !terminalTest(resumed).DiffOpen || terminalTest(resumed).Focus != 1 {
 		t.Fatal("resume lost preferences or revived live child state")
 	}
+	resumed.attached.interruptLocked = resumed.shell.Main.InterruptLocked
 	var frame bytes.Buffer
 	if err := resumed.testPaint(&frame, 120, 35); err != nil {
 		t.Fatal(err)

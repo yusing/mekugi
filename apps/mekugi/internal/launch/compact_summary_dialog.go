@@ -5,10 +5,8 @@ import (
 	"errors"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -30,9 +28,9 @@ func compactionSummaryReader(retained history.Session, path, thread, item string
 
 // Borrow the existing physical-read slot and dialog cancellation/identity owner.
 // Summary reads stay outside observation dispatch and carry no file-copy effect.
-func (u *detailFiles) openCompactionSummary(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, terminal *terminalsession.Attachment, view *activityui.View, read func(context.Context) (string, error)) {
-	u.openDetailSelection(session, model.View().Version, nil, terminal, view, activity.DetailPages([]activity.Value{{Kind: "compaction", Body: "Loading summary…"}}), false)
-	result := markdownFileResult{id: terminal.Dialog.ID, workspace: workspace, summary: true}
+func (u *detailFiles) openCompactionSummary(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, source *sessionpresentation.ActivitySource, read func(context.Context) (string, error)) {
+	u.openDetailSelection(session, model.View().Version, source, activity.DetailPages([]activity.Value{{Kind: "compaction", Body: "Loading summary…"}}), false)
+	result := markdownFileResult{id: u.id, workspace: workspace, summary: true}
 	if u.fileReadSlot == nil {
 		u.fileReadSlot = make(chan struct{}, 1)
 	}
@@ -40,7 +38,7 @@ func (u *detailFiles) openCompactionSummary(session *sessionpresentation.Attachm
 	case u.fileReadSlot <- struct{}{}:
 	default:
 		result.err = errors.New("summary read capacity exhausted; close and reopen after the pending read finishes")
-		u.loadedMarkdownFile(session, model, workspace, terminal, result)
+		u.loadedMarkdownFile(session, model, workspace, result)
 		return
 	}
 	parent := u.context

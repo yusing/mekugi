@@ -113,10 +113,10 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 				t.Fatalf("replay summary has no clickable target: %q", feed.Lines)
 			}
 			_, view, _ := nativeDetailTestViews(t, u)
-			publishActivity(&view.attached, view.shell)
-			feed := view.shell.Transcript.RenderFeed(80, 20)
+			renderer := nativeDetailTestRenderer(t, u, view)
+			feed := renderer.terminal.Transcript.RenderFeed(80, 20)
 			for _, snippet := range feed.Snippets {
-				block, ok := view.shell.Transcript.SnippetBlock(snippet)
+				block, ok := renderer.terminal.Transcript.SnippetBlock(snippet)
 				if !ok || block.Kind != "compaction" || block.Source != view.attached.source.Entries[0].Source.Seq {
 					continue
 				}
@@ -125,11 +125,12 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 				}
 				if mode == "live" || mode == "replacement" {
 					result := <-view.files.fileReads
-					view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, view.attached.cwd, view.shell, result)
+					view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, view.attached.cwd, result)
 				}
+				renderer.updateNativeDetailTest(view)
 				rows := make([]string, 20)
-				view.shell.Dialog.Paint(rows, 80, 20)
-				if got := view.shell.Dialog.Document.Text; got != summary {
+				renderer.terminal.Dialog.Paint(rows, 80, 20)
+				if got := renderer.terminal.Dialog.Document.Text; got != summary {
 					t.Fatalf("%s summary=%q", mode, got)
 				}
 				if mode == "live" {
@@ -137,9 +138,9 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 				}
 				// An open dialog keeps its selected summary after feed aging.
 				view.attached.source.Entries = nil
-				view.files.prepareOutput(&view.attached.session, view.shell)
-				view.shell.Dialog.Paint(make([]string, 20), 80, 20)
-				if view.shell.Dialog.Document.Text != summary {
+				renderer.updateNativeDetailTest(view)
+				renderer.terminal.Dialog.Paint(make([]string, 20), 80, 20)
+				if renderer.terminal.Dialog.Document.Text != summary {
 					t.Fatal("feed aging changed the open summary")
 				}
 				return
@@ -247,11 +248,12 @@ func TestCompactionSummaryReadLeavesInputResponsiveAndRejectsStaleResult(t *test
 	view.openNoticeDetails("replacement dialog")
 	close(release)
 	result := <-old
-	if changed, _ := view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, view.attached.cwd, view.shell, result); changed {
+	if changed, _ := view.files.loadedMarkdownFile(&view.attached.session, view.attached.presentation, view.attached.cwd, result); changed {
 		t.Fatal("late summary replaced another dialog")
 	}
-	view.shell.Dialog.Paint(make([]string, 20), 80, 20)
-	if view.shell.Dialog.Document.Text != "replacement dialog" {
+	renderer := nativeDetailTestRenderer(t, u, view)
+	renderer.terminal.Dialog.Paint(make([]string, 20), 80, 20)
+	if renderer.terminal.Dialog.Document.Text != "replacement dialog" {
 		t.Fatal("replacement dialog changed")
 	}
 }

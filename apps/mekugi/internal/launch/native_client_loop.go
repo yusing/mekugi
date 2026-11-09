@@ -438,7 +438,7 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 			return nil
 		})
 		c := runtime.active
-		c.notifications.clearTerminalStatus(&c.feedback, c.renderer.terminal)
+		c.notifications.clearTerminalStatus(&c.feedback)
 		if suspended && err == nil {
 			// Raw mode and terminal signals are restored before stopping. SIGCONT
 			// resumes here and the next pane publishes the current live state.

@@ -51,7 +51,7 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 	live.Update(preview.Preview{ID: "edit", Thread: "main", Workspace: workspace, Caller: "/root", Status: "streaming", Files: []diffmodel.ReviewFile{file}}, false)
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
 		publisher := apiLive{server: api, coordination: control.New(), started: time.Now()}
-		publisher.publish(&u.attached, u.shell, &u.Client, testReview(live), u.reviewSource, false, false, time.Now())
+		publisher.publish(&u.attached, &u.Client, testReview(live), u.reviewSource, false, false, time.Now())
 		<-ctx.Done()
 		return ctx.Err()
 	}}
@@ -122,14 +122,14 @@ func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
 		publisher := apiLive{server: api, coordination: threads.shared, started: time.Now()}
 		now := time.Now()
-		publisher.publish(&u.attached, u.shell, &u.Client, nil, u.reviewSource, false, false, now)
+		publisher.publish(&u.attached, &u.Client, nil, u.reviewSource, false, false, now)
 		for {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case done := <-refresh:
 				now = now.Add(apiFrameInterval)
-				publisher.publish(&u.attached, u.shell, &u.Client, nil, u.reviewSource, false, false, now)
+				publisher.publish(&u.attached, &u.Client, nil, u.reviewSource, false, false, now)
 				close(done)
 			}
 		}
@@ -254,7 +254,7 @@ func readAPIReviewFile(t *testing.T, endpoint *httptest.Server, rpc *sessionapi.
 
 func apiTestIntent(t *testing.T, u *appServerUI, intent sessionapi.Intent) string {
 	t.Helper()
-	refusal, err := u.nativeSession.applyAPIIntent(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, intent)
+	refusal, err := u.nativeSession.applyAPIIntent(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, u.statusPanel != nil || u.resumePicker != nil, u.ctx, intent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestAPIIntentsActOnMain(t *testing.T) {
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"main-turn"}}`, steer.ID))
 
-	view := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	view := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
 	if !u.attached.presentation.DisplayingSide() || !view.Status.Session.Running || !sessionpresentation.MainInterruptible(&u.Live, u.attached.conversation) {
 		t.Fatalf("Main's status while the side conversation shows = %+v", view.Status.Session)
 	}
@@ -320,14 +320,14 @@ func TestAPIIntentsRejectStaleAndCanceledAdmission(t *testing.T) {
 func TestAPIShellRejectionPreservesLocalDraft(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Text = "local prose"
-	refusal, err := u.nativeSession.submitAPIShell(&u.attached, u.shell, &u.picker, u.clock, u.ctx, "false")
+	refusal, err := u.nativeSession.submitAPIShell(&u.attached, &u.picker, u.clock, u.ctx, "false")
 	if err != nil || refusal != "" {
 		t.Fatalf("shell: %q, %v", refusal, err)
 	}
 	if !strings.Contains(wire.String(), `"method":"thread/shellCommand"`) || u.Text != "local prose" {
 		t.Fatalf("shell dispatch changed draft: %q, %s", u.Text, wire)
 	}
-	shellResponse(&u.attached, u.shell, &u.Client, &u.Editor, u.clock, &u.shellEdits, &appserver.Error{Message: "rejected"})
+	shellResponse(&u.attached, &u.Client, &u.Editor, u.clock, &u.shellEdits, &appserver.Error{Message: "rejected"})
 	if u.Text != "local prose" {
 		t.Fatalf("remote rejection replaced local draft: %q", u.Text)
 	}

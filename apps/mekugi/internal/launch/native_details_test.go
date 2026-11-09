@@ -22,7 +22,7 @@ import (
 
 func nativeDetailTestViews(t *testing.T, u *appServerUI) (*nativeViews, *nativeSessionView, *nativeSessionView) {
 	t.Helper()
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	t.Cleanup(n.close)
 	for _, id := range []string{"first", "second"} {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -136,7 +136,7 @@ func TestNativeFileDialogsOwnReadAndStaleCompletionLifetime(t *testing.T) {
 	n, first, second := nativeDetailTestViews(t, u)
 	first.openNoticeDetails("See first.go")
 	before := first.attached.presentation.View()
-	client := nativeClient{event: sessionapi.NativeEvent{Attachment: "first", Frame: sessionapi.NativeFrame{View: before}}, renderer: nativeClientRenderer{terminal: first.shell}}
+	client := nativeClient{event: sessionapi.NativeEvent{Attachment: "first", Frame: sessionapi.NativeFrame{View: before}}, renderer: *nativeDetailTestRenderer(t, u, first)}
 	client.dialog(terminalsession.DialogIntent{Action: terminalsession.DialogOpenLink, Text: "first.go"})
 	first.attached.feedback.Set("progress before link admission", false, time.Now())
 	after := publishSessionView(&first.attached, &u.Client, &first.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
@@ -158,19 +158,19 @@ func TestNativeFileDialogsOwnReadAndStaleCompletionLifetime(t *testing.T) {
 	if firstResults == secondResults || first.files.fileReadSlot == second.files.fileReadSlot {
 		t.Fatal("native views shared acquisition or capacity")
 	}
-	old := first.files.pendingFile.ID
+	old := first.files.id
 	if refusal := first.openNoticeDetails("replacement detail"); refusal != "" {
 		t.Fatal(refusal)
 	}
 	select {
 	case stale := <-firstResults:
-		if changed, _ := first.files.loadedMarkdownFile(&first.attached.session, first.attached.presentation, first.attached.cwd, first.shell, stale); changed {
+		if changed, _ := first.files.loadedMarkdownFile(&first.attached.session, first.attached.presentation, first.attached.cwd, stale); changed {
 			t.Fatal("stale file completion replaced a new dialog")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("canceled acquisition did not finish")
 	}
-	if first.shell.Dialog.ID == old {
+	if first.files.id == old {
 		t.Fatal("replacement reused a detail identity")
 	}
 	n.retire("first")
@@ -181,7 +181,7 @@ func TestNativeFileDialogsOwnReadAndStaleCompletionLifetime(t *testing.T) {
 	for second.files.fileReads != nil {
 		select {
 		case result := <-secondResults:
-			if changed, _ := second.files.loadedMarkdownFile(&second.attached.session, second.attached.presentation, second.attached.cwd, second.shell, result); !changed {
+			if changed, _ := second.files.loadedMarkdownFile(&second.attached.session, second.attached.presentation, second.attached.cwd, result); !changed {
 				t.Fatal("closing first view canceled second read")
 			}
 		case <-time.After(time.Second):
@@ -198,7 +198,7 @@ func TestNativeProcessDetailsBorrowExecutionCommands(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
 	_, view, _ := nativeDetailTestViews(t, u)
-	view.files.openDetailSelection(&view.attached.session, view.attached.presentation.View().Version, view.attached.childSource, view.shell, view.shell.Agents, nil, true)
+	view.files.openDetailSelection(&view.attached.session, view.attached.presentation.View().Version, view.attached.childSource, nil, true)
 	processNotify(t, u, "main", "process", "printf running", "inProgress")
 	frame := nativeDetailFrame(view)
 	if frame.Details == nil || !frame.Details.View.Processes || len(frame.Details.View.Pages) != 1 || frame.Details.View.Pages[0].Code != "printf running" {
@@ -304,8 +304,7 @@ func TestNativeOutputDisclosureWithCapturedEdits(t *testing.T) {
 			}
 			u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `printf output`", OutputTail: []string{"seven", "eight"}, OutputOmit: 6, Native: native}}})
 			_, view, _ := nativeDetailTestViews(t, u)
-			publishActivity(&view.attached, view.shell)
-			pages := entryDetailPages(activitySource(&view.attached, view.shell, view.shell.Transcript), 1)
+			pages := entryDetailPages(view.attached.source, 1)
 			if len(pages) == 0 {
 				t.Fatal("missing activity pages")
 			}
@@ -434,4 +433,22 @@ func TestNativeMovedEditOpensCanonicalCompanionPath(t *testing.T) {
 			t.Fatalf("move click did not preserve its canonical destination and original source: %+v", frame.DiffOpen)
 		}
 	}
+}
+
+// Native detail tests paint the published frame through an independent client,
+// never through renderer scratch attached to the server view.
+func nativeDetailTestRenderer(t *testing.T, u *appServerUI, view *nativeSessionView) *nativeClientRenderer {
+	t.Helper()
+	terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)
+	t.Cleanup(func() { _ = terminal.Diff.Close() })
+	renderer := &nativeClientRenderer{terminal: terminal, views: u.terminalViews}
+	renderer.updateNativeDetailTest(view)
+	return renderer
+}
+
+func (r *nativeClientRenderer) updateNativeDetailTest(view *nativeSessionView) {
+	frame := nativeDetailFrame(view)
+	frame.Main = view.attached.source.Publication(view.attached.presentation, nil)
+	frame.Agents = view.attached.childSource.Publication(view.attached.presentation, view.attached.source)
+	r.update(frame, frame.View.Draft, frame.View.PromptDraft, time.Now())
 }

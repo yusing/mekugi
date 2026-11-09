@@ -27,7 +27,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	if len(next) != 1 || next[0].Assignment.Text != "Check the edited answer." {
 		t.Fatalf("follow-up was omitted or conflated with spawn: %+v", next)
 	}
-	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
+	applyActivity(&u.attached, &u.approvals, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 40)
@@ -52,7 +52,7 @@ func TestNativeActivityChildResultsStaySeparateAndLinked(t *testing.T) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": coordinationTestCall(t, id, tool, receiver, u.attached.session.Caller(receiver), prompt)})
 	}
 	result := func(agent, answer string) {
-		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: agent, Kind: "final", Text: answer}}, nil)
+		applyActivity(&u.attached, &u.approvals, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: agent, Kind: "final", Text: answer}}, nil)
 	}
 	collab("task-1", "spawn_agent", "child", "Review the first change.")
 	result("/root/reviewer", "FIRST ANSWER")

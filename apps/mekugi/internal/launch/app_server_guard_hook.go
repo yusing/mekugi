@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -45,12 +44,12 @@ func (check *approvalHookCheck) checkThread(requests *sessioncontrol.Requests[ap
 	return false, nil
 }
 
-func (session *nativeSession) guardHookResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, message appserver.Message) error {
+func (session *nativeSession) guardHookResponse(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, message appserver.Message) error {
 	thread := session.guardHookCheck.pendingThread
 	session.guardHookCheck.pendingThread = ""
 	side := session.Client.Requests.Side(thread)
 	if thread != session.Client.Thread && !session.Client.Requests.WorkSide(thread) {
-		return session.flushInput(attached, terminal, picker, clock, editor, parent)
+		return session.flushInput(attached, picker, clock, editor, parent)
 	}
 	var err error
 	if message.Error != nil {
@@ -80,19 +79,19 @@ func (session *nativeSession) guardHookResponse(attached *attachedPresentation, 
 				restoreSideDraft(attached, side, input)
 			}
 			side.Drafts.Unsent = kept
-			setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell guard: "+err.Error(), true)
+			setNotice(&attached.feedback, presentationTime(clock), "Shell guard: "+err.Error(), true)
 			return nil
 		}
 		session.guardHookCheck.readyThread = thread
 		return nil
 	}
 	if err != nil {
-		restoreDrafts(attached, terminal, &session.questions, &session.approvals, picker, session.Client.Turn, clock, append(attached.conversation.Unsent, attached.conversation.Queued...)...)
+		restoreDrafts(attached, &session.questions, &session.approvals, picker, session.Client.Turn, clock, append(attached.conversation.Unsent, attached.conversation.Queued...)...)
 		attached.conversation.Unsent, attached.conversation.Queued = nil, nil
 		attached.presentation.Status.SetText("Ready")
-		setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell guard: "+err.Error(), true)
+		setNotice(&attached.feedback, presentationTime(clock), "Shell guard: "+err.Error(), true)
 		return nil
 	}
 	session.guardHookCheck.readyThread = thread
-	return session.flushInput(attached, terminal, picker, clock, editor, parent)
+	return session.flushInput(attached, picker, clock, editor, parent)
 }

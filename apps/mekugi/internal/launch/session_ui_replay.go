@@ -62,7 +62,7 @@ func newUIReplayPlayback(terminalViews terminalsession.Views, owners replayOwner
 }
 
 func (p *uiReplayPlayback) close() {
-	p.ui.closeOutput(p.ui.shell)
+	p.ui.closeTerminalOutput(p.ui.shell)
 	p.ui.shell.Diff.Close()
 	p.ui.session.Retire()
 	p.ui.links.selectAttachment(0)
@@ -279,7 +279,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 			}
 			continue
 		case result := <-p.ui.fileReads:
-			if changed, path := p.ui.detailFiles.loadedMarkdownFile(&p.ui.session, p.ui.presentation, p.ui.presentation.View().SourceWorkspace(), p.ui.shell, result); changed {
+			if changed, path := p.ui.detailFiles.loadedTerminalMarkdownFile(&p.ui.session, p.ui.presentation, p.ui.presentation.View().SourceWorkspace(), p.ui.shell, result); changed {
 				if path != "" {
 					notice, alert := p.ui.shell.Frame.CopyText(path)
 					p.ui.feedback.Set(notice, alert, p.At)

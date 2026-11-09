@@ -123,7 +123,7 @@ func TestUISnapshotAppServerGitDiagnosticReceipt(t *testing.T) {
 			if target.Block != activityui.EditNavigationSnippet || target.Path != "" {
 				t.Fatalf("diagnostic row lost operation navigation: %+v", target)
 			}
-			pages, selected := activityEditPages(&u.attached, u.shell, u.reviewSource, v, target.Run, target.Path)
+			pages, selected := activityEditPages(&u.attached, activitySource(&u.attached, u.shell, v), u.reviewSource, target.Run, target.Path)
 			if len(pages) != len(files) || selected != pages[0].ID || !strings.Contains(pages[19].Code, "+imported") {
 				t.Fatalf("diagnostic details lost retained files: %+v", pages)
 			}
@@ -201,7 +201,7 @@ func TestUISnapshotAppServerTemporaryCaptureWithoutWriterLabel(t *testing.T) {
 					if target.Block != activityui.EditNavigationSnippet || target.Path != "" || target.Run == 0 {
 						t.Fatalf("omission lost retained capture navigation: %+v", target)
 					}
-					pages, selected := activityEditPages(&u.attached, u.shell, u.reviewSource, v, target.Run, target.Path)
+					pages, selected := activityEditPages(&u.attached, activitySource(&u.attached, u.shell, v), u.reviewSource, target.Run, target.Path)
 					if len(pages) != len(files) || selected != pages[0].ID || pages[200].Path != "/tmp/worktree/file199.go" || !strings.Contains(pages[200].Code, "+created") {
 						t.Fatalf("omitted files lost durable pages: %d pages, selected %q", len(pages), selected)
 					}
@@ -462,7 +462,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}
-	got := mainFeed(appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{executionPresentation: &executionPresentation{source: v.ActivitySource}}}}), 100)
+	got := mainFeed(appServerTestFeatures(&appServerUI{shell: &terminalsession.Attachment{Transcript: v.View}, nativeSession: nativeSession{activity: new(activitymodel.Service), attached: attachedPresentation{executionPresentation: &executionPresentation{source: v.ActivitySource}}}}), 100)
 	if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "git cherry-pick · exit 1") {
 		t.Fatalf("receipt changed rendered failure ownership:\n%s", got)
 	}
@@ -574,7 +574,7 @@ func TestUISnapshotCodeModeCellEditReceipt(t *testing.T) {
 	live.audience.Attach(live.Thread)
 	// Deliver the real producer's annotation before the host item, with no
 	// saved-review publication available to mask a dropped supplement.
-	applyObservedActivity(&live.attached, live.shell, &live.Client, &live.streams, live.usage, live.review, &live.approvals, &live.pendingEditReceipts, live.clock, live.restoring, live.audience)
+	applyObservedActivity(&live.attached, &live.Client, live.usage, live.review, &live.approvals, &live.pendingEditReceipts, live.clock, live.restoring, live.audience)
 	if len(live.pendingEditReceipts) != 1 || !slices.Equal(live.pendingEditReceipts[0].Calls, calls) {
 		t.Fatalf("receipt did not retain nested host identities: %+v", live.pendingEditReceipts)
 	}
@@ -608,7 +608,7 @@ func TestUISnapshotCodeModeCellEditReceipt(t *testing.T) {
 	event := activitypresentation.Supplement{Thread: restored.Thread, Source: "late-receipt", Kind: activitypresentation.SupplementEditReceipt, Text: observedReceipt.Text, Calls: observedReceipt.Calls}
 	for range 2 {
 		restored.audience.Collect(event)
-		applyObservedActivity(&restored.attached, restored.shell, &restored.Client, &restored.streams, restored.usage, restored.review, &restored.approvals, &restored.pendingEditReceipts, restored.clock, nil, restored.audience)
+		applyObservedActivity(&restored.attached, &restored.Client, restored.usage, restored.review, &restored.approvals, &restored.pendingEditReceipts, restored.clock, nil, restored.audience)
 	}
 	assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "thread-1", "edit-exec", "Edit", 0)
 	if len(restored.attached.source.Entries) != 1 {

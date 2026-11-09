@@ -76,13 +76,13 @@ func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	info := binding.ThreadInfo{ID: "main", CreatedAt: 100, UpdatedAt: 900}
-	u.nativeSession.restoreMainHistory(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, info.Turns, nil, nil)
+	u.nativeSession.restoreMainHistory(&u.attached, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, info.Turns, nil, nil)
 	agent := u.attached.session.Agent("/root")
 	if !agent.Started.IsZero() || !agent.LastResponse.IsZero() {
 		t.Fatal("empty restored thread started timer")
 	}
 	info.Turns = []binding.HistoryTurn{{ID: "a", StartedAt: 200, CompletedAt: 250}, {ID: "b", StartedAt: 300, CompletedAt: 350}}
-	u.nativeSession.restoreMainHistory(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, info.Turns, nil, nil)
+	u.nativeSession.restoreMainHistory(&u.attached, &u.picker, &u.Editor, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, info.Turns, nil, nil)
 	if !agent.Started.Equal(historyTime(200)) || !agent.LastResponse.Equal(historyTime(350)) {
 		t.Fatalf("restored timer used metadata instead of turns: %+v", agent)
 	}
@@ -164,14 +164,14 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	if len(terminalTest(u).Live.Order) != 0 {
 		t.Fatal("app-server reconstructed a duplicate projection")
 	}
-	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(u))
 	card := terminalTest(u).Live.Views["patch"].Current
 	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
 		t.Fatalf("shared preview lost: %+v", card)
 	}
 	preview.Complete = true
-	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(u))
 	if !terminalTest(u).Live.Views["patch"].Complete {
 		t.Fatal("shared completion lost")
@@ -184,18 +184,18 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		}
 	}
 	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
-	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(u))
 	if terminalTest(u).Live.Views["exec"] != nil {
 		t.Fatal("completion-only shell preview flashed a dock")
 	}
 	preview.Complete = false
-	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(u))
 	if terminalTest(u).Live.Views["exec"] == nil {
 		t.Fatal("child preview missing from shared dock")
 	}
-	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "turn", TurnRevision: 1, Status: "completed"})
+	applyTestReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "turn", TurnRevision: 1, Status: "completed"})
 	if terminalTest(u).DiffOpen {
 		t.Fatal("completed turn opened saved diff")
 	}

@@ -48,15 +48,15 @@ func TestAppServerTerminalTitleLifecycle(t *testing.T) {
 	if out.Len() != 0 || u.notifications.lastTitle != "Mekugi [ ! ] Action Required project" {
 		t.Fatal("completion cleared a pending async question")
 	}
-	resolveQuestionCall(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, u.questions.calls()[len(u.questions.calls())-1], "answered")
+	resolveQuestionCall(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, u.questions.calls()[len(u.questions.calls())-1], "answered")
 	title("Mekugi project")
 	out.Reset()
-	u.notifications.clearTerminalTitle(&u.attached.feedback, u.shell, u.clock)
+	u.notifications.clearTerminalTitle(&u.attached.feedback, u.clock)
 	if out.String() != "\x1b]0;\a" {
 		t.Fatalf("cleanup = %q", out.String())
 	}
 	out.Reset()
-	u.notifications.clearTerminalTitle(&u.attached.feedback, u.shell, u.clock)
+	u.notifications.clearTerminalTitle(&u.attached.feedback, u.clock)
 	if out.Len() != 0 {
 		t.Fatal("cleanup repeated")
 	}
@@ -108,7 +108,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	if got := out.String(); got != "\x1b]0;Mekugi [ ! ] Action Required project\a" {
 		t.Fatalf("unanswered title = %q", got)
 	}
-	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
 	if u.questions.Count(u.Thread) != 0 || u.questions.calls()[0].Resolved || !u.questions.calls()[0].Sent {
@@ -117,7 +117,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	if rows := testQuestionRows(u, 80, 10); len(rows) != 0 {
 		t.Fatalf("answered question still has a dock: %q", rows)
 	}
-	if preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
+	if preview := strings.Join(conversationui.Pending(publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
 		t.Fatalf("uncommitted answer has no pending preview: %q", preview)
 	}
 	out.Reset()
@@ -180,7 +180,7 @@ func TestNativeTerminalStatusLifecycle(t *testing.T) {
 	write(false, true, "working")
 	write(false, false, "idle")
 	out.Reset()
-	c.notifications.clearTerminalStatus(&c.feedback, c.renderer.terminal)
+	c.notifications.clearTerminalStatus(&c.feedback)
 	if got := out.String(); got != "\x1b]0;\a\x1b]7501;state=clear\x1b\\" {
 		t.Fatalf("cleanup = %q", got)
 	}

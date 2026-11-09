@@ -21,9 +21,6 @@ func (p *CommandOutput) Write(delta string) {
 	p.dirty = true
 }
 
-// Invalidate makes an admitted source change visible without adding output.
-func (p *CommandOutput) Invalidate() { p.dirty = true }
-
 func (p *CommandOutput) Advance() (OutputFrame, bool) {
 	changed := p.dirty
 	if p.instant {

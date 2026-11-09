@@ -265,7 +265,7 @@ func (p *uiReplayPlayback) applyInput(effects iter.Seq[terminalsession.InputEffe
 				continue
 			}
 			pages := activitypresentation.DetailPages([]activitypresentation.Value{block.Value})
-			p.ui.openDetailSelection(&p.ui.session, view.Version, p.ui.activitySource(target.View), p.ui.shell, target.View, pages, false)
+			p.ui.openTerminalDetailSelection(&p.ui.session, view.Version, p.ui.activitySource(target.View), p.ui.shell, target.View, pages, false)
 		default:
 			return nil
 		}
@@ -278,7 +278,7 @@ func (p *uiReplayPlayback) outputIntent(intent terminalsession.DialogIntent) {
 	u := p.ui
 	switch intent.Action {
 	case terminalsession.DialogClose:
-		u.detailFiles.closeOutput(u.shell)
+		u.detailFiles.closeTerminalOutput(u.shell)
 	case terminalsession.DialogCopy:
 		text, alert := u.shell.Frame.CopyText(intent.Text)
 		u.feedback.Set(text, alert, p.At)
@@ -287,7 +287,7 @@ func (p *uiReplayPlayback) outputIntent(intent terminalsession.DialogIntent) {
 			u.feedback.Set(err.Error(), true, p.At)
 		}
 	case terminalsession.DialogOpenLink:
-		u.detailFiles.openMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.activitySource(u.shell.Dialog.View), u.shell, u.shell.Dialog.View, intent.Text)
+		u.detailFiles.openTerminalMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.activitySource(u.shell.Dialog.View), u.shell, u.shell.Dialog.View, intent.Text)
 	}
 	p.publish()
 }

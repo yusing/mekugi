@@ -87,19 +87,3 @@ func (p *PreviewPane) Resync(scope previewmodel.Scope, ids []string) {
 		}
 	}
 }
-
-// EndTurn retires presentation only, independently of host execution and capture.
-// Source: apps/mekugi/internal/router/app_server_turn_lifecycle.go:17:29@630ce384.
-func (p *PreviewPane) EndTurn(thread, turn string, now time.Time) {
-	for id, pending := range p.pending {
-		if pending.preview.Thread == thread && pending.preview.Turn == turn {
-			delete(p.pending, id)
-		}
-	}
-	for _, id := range slices.Clone(p.Order) {
-		view := p.Views[id]
-		if view != nil && view.Current.Thread == thread && view.Current.Turn == turn {
-			p.Update(previewmodel.Preview{ID: id, Workspace: view.Current.Workspace, Thread: thread, Turn: turn}, now)
-		}
-	}
-}

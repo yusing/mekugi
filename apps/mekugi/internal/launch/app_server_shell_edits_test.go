@@ -36,7 +36,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item string) *executionobservation.ShellOperation {
 	t.Helper()
 	u.Text = "!" + command
-	if err := u.nativeSession.submitShell(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
+	if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
 		t.Fatal(err)
 	}
 	edit := u.shellEdits.pending
@@ -45,7 +45,7 @@ func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item strin
 	}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.Thread, "turnId": u.Turn,
 		"item": binding.ThreadItem{ID: item, Type: "commandExecution", Source: "userShell", Command: command, Status: "inProgress"}})
-	shellResponse(&u.attached, u.shell, &u.Client, &u.Editor, u.clock, &u.shellEdits, nil)
+	shellResponse(&u.attached, &u.Client, &u.Editor, u.clock, &u.shellEdits, nil)
 	if edit != nil && u.shellEdits.running[[2]string{u.Thread, item}] != edit {
 		t.Fatalf("shell start was not matched: pending=%+v running=%+v notice=%s", u.shellEdits.pending, u.shellEdits.running, u.attached.feedback.Text)
 	}
@@ -152,10 +152,10 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 	}
 	// A rejected request closes its window without capturing external edits.
 	u.Text = "!printf rejected > saved.txt"
-	if err := u.nativeSession.submitShell(&u.attached, u.shell, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
+	if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
 		t.Fatal(err)
 	}
-	shellResponse(&u.attached, u.shell, &u.Client, &u.Editor, u.clock, &u.shellEdits, &appserver.Error{Message: "rejected"})
+	shellResponse(&u.attached, &u.Client, &u.Editor, u.clock, &u.shellEdits, &appserver.Error{Message: "rejected"})
 	if u.shellEdits.pending != nil {
 		t.Fatal("rejected shell retained its observation")
 	}
@@ -184,7 +184,7 @@ func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	t.Cleanup(u.retainedSession.Close)
 	writeTestFile(t, path, "after\n")
 	exit := 0
-	observeShellEdit(&u.shellEdits, &u.attached, u.shell, u.clock, thread, "item/completed", binding.ThreadItem{ID: "shell-original", Type: "commandExecution", Source: "userShell", Status: "completed", ExitCode: &exit})
+	observeShellEdit(&u.shellEdits, &u.attached, u.clock, thread, "item/completed", binding.ThreadItem{ID: "shell-original", Type: "commandExecution", Source: "userShell", Status: "completed", ExitCode: &exit})
 	if u.attached.feedback.Alert {
 		t.Fatal(u.attached.feedback.Text)
 	}

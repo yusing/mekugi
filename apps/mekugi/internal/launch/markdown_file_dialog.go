@@ -75,7 +75,11 @@ type detailFiles struct {
 	links        markdownLinkChecks
 	fileReadSlot chan struct{}
 	fileReads    <-chan markdownFileResult
-	pendingFile  *terminalsession.ContentDialog
+	pendingFile  bool
+	id           sessionpresentation.DetailID
+	agent        bool
+	selected     string
+	file         *activitypresentation.DetailFile
 	copyFilePath func(string)
 	externalFile bool
 	openFile     func(string, int, int)
@@ -99,26 +103,25 @@ type markdownFileResult struct {
 // openMarkdownFile admits a selection before starting one bounded physical read.
 // Its loading dialog remains hidden until the path is known to be regular.
 // Retiring a dialog cannot release the slot of a still-blocked filesystem call.
-func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, source *sessionpresentation.ActivitySource, terminal *terminalsession.Attachment, view *activityui.View, target string) bool {
+func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, source *sessionpresentation.ActivitySource, target string) bool {
 	path, ok := markdownFileTarget(workspace, target)
 	if !ok {
 		return false
 	}
 	display := pathdisplay.ForWorkspace(workspace, path)
-	u.openDetailSelection(session, model.View().Version, source, terminal, view, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}), false)
-	d := terminal.Dialog
-	u.pendingFile, terminal.Dialog = d, nil
-	d.File = &activitypresentation.DetailFile{Path: display}
-	result := markdownFileResult{id: d.ID, workspace: workspace, path: path}
+	u.openDetailSelection(session, model.View().Version, source, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}), false)
+	u.pendingFile = true
+	u.file = &activitypresentation.DetailFile{Path: display}
+	result := markdownFileResult{id: u.id, workspace: workspace, path: path}
 	if u.fileReadSlot == nil {
 		u.fileReadSlot = make(chan struct{}, 1)
 	}
 	select {
 	case u.fileReadSlot <- struct{}{}:
 	default:
-		terminal.Dialog, u.pendingFile = d, nil
+		u.pendingFile = false
 		result.err = fmt.Errorf("local file read capacity exhausted; close and reopen after the pending read finishes")
-		u.finishMarkdownFile(session, terminal, result)
+		u.finishMarkdownFile(session, result)
 		return true
 	}
 	parent := u.context
@@ -163,21 +166,17 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	return true
 }
 
-func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, terminal *terminalsession.Attachment, result markdownFileResult) (changed bool, copyPath string) {
-	d := terminal.Dialog
-	if u.pendingFile != nil {
-		d = u.pendingFile
-	}
-	if d == nil || d.ID != result.id {
+func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, result markdownFileResult) (changed bool, copyPath string) {
+	if u.id.Selection == 0 || u.id != result.id {
 		return false, ""
 	}
 	_, current := u.details.DetailView(result.id)
 	if !current || session.Scope() == nil || model.View().Version.Attachment != result.id.Attachment || workspace != result.workspace {
-		u.closeOutput(terminal)
+		u.closeOutput()
 		return true, ""
 	}
 	if result.classified {
-		terminal.Dialog, u.pendingFile = d, nil
+		u.pendingFile = false
 		return true, ""
 	}
 	if result.summary {
@@ -186,30 +185,29 @@ func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment
 			block.Kind, block.Body = "error", result.err.Error()
 		}
 		u.stopFileRead()
-		u.replaceDetails(session, terminal, activitypresentation.DetailPages([]activitypresentation.Value{block}))
+		u.replaceDetails(session, activitypresentation.DetailPages([]activitypresentation.Value{block}))
 		return true, ""
 	}
 	if result.copyPath {
 		if u.copyFilePath != nil {
 			u.copyFilePath(result.path)
-			u.closeOutput(terminal)
+			u.closeOutput()
 			return true, ""
 		}
-		u.closeOutput(terminal)
+		u.closeOutput()
 		return true, result.path
 	}
 	if u.openFile != nil {
 		open := u.openFile
-		u.closeOutput(terminal)
+		u.closeOutput()
 		open(result.path, result.first, result.last)
 		return true, ""
 	}
-	terminal.Dialog, u.pendingFile = d, nil
-	return u.finishMarkdownFile(session, terminal, result), ""
+	u.pendingFile = false
+	return u.finishMarkdownFile(session, result), ""
 }
 
-func (u *detailFiles) finishMarkdownFile(session *sessionpresentation.Attachment, terminal *terminalsession.Attachment, result markdownFileResult) bool {
-	d := terminal.Dialog
+func (u *detailFiles) finishMarkdownFile(session *sessionpresentation.Attachment, result markdownFileResult) bool {
 	display := pathdisplay.ForWorkspace(result.workspace, result.path)
 	block := activitypresentation.Value{Kind: "reads", Verb: "Read", Path: display + result.location, SyntaxPath: result.path, Reads: []activitymodel.Read{{Path: display + result.location}}}
 	content := textsanitize.Safe(result.source, false)
@@ -228,13 +226,13 @@ func (u *detailFiles) finishMarkdownFile(session *sessionpresentation.Attachment
 		pages = []activitypresentation.Value{rendered, block}
 	}
 	u.stopFileRead()
-	d.File = &activitypresentation.DetailFile{Path: display, Source: result.source, First: result.first, Last: result.last}
+	u.file = &activitypresentation.DetailFile{Path: display, Source: result.source, First: result.first, Last: result.last}
 	if result.err == nil && result.image {
-		d.File.ImagePath = result.path
+		u.file.ImagePath = result.path
 	}
 	// Publish source now; layout applies tabs and the reveal after any frozen
 	// loading selection is cleared. Changing chrome here would dismiss it.
-	u.replaceDetails(session, terminal, activitypresentation.DetailPages(pages))
+	u.replaceDetails(session, activitypresentation.DetailPages(pages))
 	return true
 }
 
@@ -327,7 +325,24 @@ func (u *detailFiles) stopFileRead() {
 		u.cancelRead = nil
 	}
 	u.fileReads = nil
-	u.pendingFile = nil
+	u.pendingFile = false
 	u.copyFilePath = nil
 	u.openFile = nil
+}
+
+func (u *detailFiles) openTerminalMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, source *sessionpresentation.ActivitySource, terminal *terminalsession.Attachment, view *activityui.View, target string) bool {
+	if !u.openMarkdownFile(session, model, workspace, source, target) {
+		return false
+	}
+	terminal.Selection, terminal.Dialog = nil, nil
+	u.prepareOutput(session, terminal)
+	return true
+}
+
+func (u *detailFiles) loadedTerminalMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, terminal *terminalsession.Attachment, result markdownFileResult) (bool, string) {
+	changed, path := u.loadedMarkdownFile(session, model, workspace, result)
+	if changed {
+		u.prepareOutput(session, terminal)
+	}
+	return changed, path
 }

@@ -20,7 +20,7 @@ func TestUISnapshotToolGenerationComposer(t *testing.T) {
 	u.controlObservations.SetToolInput(&generation, "", "main", sessioncontrol.GenerationItem{ID: "item"}, true)
 	u.controlObservations.IdentifyToolInput(&generation, sessioncontrol.GenerationItem{ID: "item"}, "exec", true, `await tools.mcp__threadcontrol__spawn_agent({message:"long`)
 	refresh := func(want string) string {
-		applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
+		applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		publishActivity(&u.attached, u.shell)
 		rows, _ := u.testMainFrame(100, 8, 0)
 		if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, want) {

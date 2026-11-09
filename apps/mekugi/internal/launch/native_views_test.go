@@ -42,7 +42,7 @@ func TestNativeViewsBorrowExecutionAndDisposeIndependently(t *testing.T) {
 	u.startSession("main", "/workspace")
 	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.Text = "private local draft"
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	firstContext, disconnect := context.WithCancel(t.Context())
 	defer disconnect()
@@ -94,7 +94,7 @@ func TestNativeViewsBorrowExecutionAndDisposeIndependently(t *testing.T) {
 func TestNativeViewOutputDemandUsesBorrowedSource(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	request := sessionapi.NativeRequest{Attach: true, Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}
 	if refusal := n.attach(request, &u.attached, u.Thread); refusal != "" {
@@ -120,7 +120,7 @@ func TestNativeViewOutputDemandUsesBorrowedSource(t *testing.T) {
 func TestNativeStartupViewHasNoFabricatedThread(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Thread, u.attached.cwd = "", "/workspace"
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	defer n.close()
 	request := sessionapi.NativeRequest{Attach: true, Attachment: "startup", Startup: "operation", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}
 	if refusal := n.attach(request, &u.attached, ""); refusal != "" {
@@ -142,7 +142,7 @@ func nativeSideSettingsTest(t *testing.T) (*appServerUI, *appServerTestInput, *n
 	fork := btwTestRequest(t, wire, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
 	selectSideThread(t, u, u.attached.presentation.View().Main)
-	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.terminalViews, u.activity, u.Requests)
+	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	t.Cleanup(n.close)
 	request := sessionapi.NativeRequest{Attach: true, Attachment: "view", Thread: "main", Workspace: "/workspace", Context: t.Context(), ViewContext: t.Context()}
 	if refusal := n.attach(request, &u.attached, u.Thread); refusal != "" {
@@ -164,7 +164,7 @@ func TestNativeSideReasoningWaitsForCatalog(t *testing.T) {
 	u, wire, view := nativeSideSettingsTest(t)
 	u.modelsLoading = true
 	appServerTestRequest(t, u, "99", "model/list")
-	if err := stepReasoning(&view.attached, view.shell, &u.Client, preferences.Applied{Model: u.settings.Model, Effort: u.settings.Effort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
+	if err := stepReasoning(&view.attached, &u.Client, preferences.Applied{Model: u.settings.Model, Effort: u.settings.Effort}, &u.serviceTiers, u.panes, false, u.clock, u.models, u.modelsLoading, true); err != nil {
 		t.Fatal(err)
 	}
 	appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}}`)
@@ -179,7 +179,7 @@ func TestNativeSidePickerWaitsForCatalog(t *testing.T) {
 	appServerTestRequest(t, u, "99", "model/list")
 	requestEditor := new(composer.Editor)
 	requestEditor.Text = "/model"
-	if handled, err := u.nativeSession.settingsCommand(&view.attached, view.shell, &view.picker, &requestEditor, u.side, u.clock, false, "/model"); err != nil || !handled {
+	if handled, err := u.nativeSession.settingsCommand(&view.attached, &view.picker, &requestEditor, u.side, u.clock, false, "/model"); err != nil || !handled {
 		t.Fatalf("settings command handled=%v err=%v", handled, err)
 	}
 	appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}}`)

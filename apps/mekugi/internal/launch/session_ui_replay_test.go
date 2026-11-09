@@ -302,5 +302,5 @@ func (u *replayAttachment) testActivity(view *activityui.View) *activityAdapter 
 
 func openReplayBlocks(p *uiReplayPlayback, view *activityui.View, pages []activityui.Block) {
 	u := p.ui
-	u.detailFiles.openDetailSelection(&u.session, u.presentation.View().Version, u.activitySource(view), u.shell, view, activitypresentation.DetailPages(activityui.Values(pages)), false)
+	u.detailFiles.openTerminalDetailSelection(&u.session, u.presentation.View().Version, u.activitySource(view), u.shell, view, activitypresentation.DetailPages(activityui.Values(pages)), false)
 }
