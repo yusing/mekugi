@@ -8,13 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type inspectionRuntime struct {
 	control.Runtime
-	thread string
-	err    error
+	thread  string
+	err     error
+	metrics *control.SessionMetrics
 }
 
 type retainedInspectionNative struct{ control.Native }
@@ -47,7 +49,11 @@ func TestInspectCompletedAgentWithoutRuntime(t *testing.T) {
 
 func (r *inspectionRuntime) Inspect(_ context.Context, thread string) (control.SessionDetails, error) {
 	r.thread = thread
-	return control.SessionDetails{Model: new("applied-model"), ReasoningEffort: new("high"), ServiceTier: new("priority"), ContextTokens: new(uint64(123)), ContextWindow: new(uint64(1000)), Compactions: new(uint64(2))}, r.err
+	details := control.SessionDetails{Model: new("applied-model"), ReasoningEffort: new("high"), ServiceTier: new("priority"), ContextTokens: new(uint64(123)), ContextWindow: new(uint64(1000)), Compactions: new(uint64(2))}
+	if r.metrics != nil {
+		details.SessionMetrics = *r.metrics
+	}
+	return details, r.err
 }
 
 func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {
@@ -93,12 +99,8 @@ func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if metrics := wait.(control.WaitResult).Metrics["/root/child"]; metrics.ContextTokens == nil || metrics.Compactions == nil || *metrics.Compactions != 2 {
-		t.Fatalf("wait metrics = %+v", metrics)
-	}
-	data, err := json.Marshal(wait.(control.WaitResult).Metrics)
-	if err != nil || string(data) != `{"/root/child":{"context_tokens":123,"context_window":1000,"compactions":2}}` {
-		t.Fatalf("wait metrics wire = %s, err=%v", data, err)
+	if wait.(control.WaitResult).Metrics != nil {
+		t.Fatalf("wait acknowledgement included metrics: %+v", wait)
 	}
 	runtime.thread = ""
 	for _, raw := range []string{`{"target":"/foreign"}`, `{"target":"/root","unknown":true}`, `{}`} {
@@ -125,7 +127,7 @@ func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {
 	if metrics := result.(map[string]any)["metrics"].(control.SessionMetrics); metrics.ContextTokens != nil || metrics.Compactions != nil {
 		t.Fatalf("unavailable metrics = %+v", metrics)
 	}
-	data, err = json.Marshal(result.(map[string]any)["metrics"])
+	data, err := json.Marshal(result.(map[string]any)["metrics"])
 	if err != nil || string(data) != `{"context_tokens":null,"context_window":null,"compactions":null}` {
 		t.Fatalf("unavailable followup wire = %s, err=%v", data, err)
 	}
@@ -134,9 +136,141 @@ func TestInspectUsesAdmittedTargetAndRuntimeFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err = json.Marshal(wait.(control.WaitResult).Metrics)
-	if err != nil || string(data) != `{"/root/child":{"context_tokens":null,"context_window":null,"compactions":null}}` {
-		t.Fatalf("unavailable wait wire = %s, err=%v", data, err)
+	if wait.(control.WaitResult).Metrics != nil {
+		t.Fatalf("wait acknowledgement included unavailable metrics: %+v", wait)
+	}
+}
+
+func TestWaitMetricsImmediateCompletion(t *testing.T) {
+	driver, host, _, caller := reconciliationFixture(t)
+	driver.host = instructionNative{Native: host, owner: &inspectionRuntime{}}
+	if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.DispatchPending(t.Context(), "child"); err != nil {
+		t.Fatal(err)
+	}
+	caller.Call = "wait"
+	result, err := driver.waitAgent(t.Context(), caller, []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait := result.(control.WaitResult)
+	metrics := wait.Metrics["/root/child"]
+	if wait.State != "completed" || wait.Event == nil || metrics.ContextTokens == nil || *metrics.ContextTokens != 123 || metrics.Compactions == nil || *metrics.Compactions != 2 {
+		t.Fatalf("immediate outcome lost metrics: %+v", wait)
+	}
+}
+
+func TestWaitMetricsSampleDeliveredOutcomes(t *testing.T) {
+	for _, test := range []struct {
+		name, args, state, compact string
+	}{
+		{"completion", `{}`, "completed", ""},
+		{"all completions", `{"wait_mode":"all"}`, "completed", ""},
+		{"timeout", `{"timeout_ms":1000}`, "timeout", ""},
+		{"message", `{}`, "completed", ""},
+		{"progress", `{"yield_time_ms":300000}`, "yielded", ""},
+		{"unavailable", `{}`, "completed", ""},
+		{"compact success", `{"compact":true,"timeout_ms":1000}`, "timeout", "completed"},
+		{"compact failure", `{"compact":true,"timeout_ms":1000}`, "timeout", "failed"},
+		{"compact skipped", `{"compact":true,"timeout_ms":1000}`, "timeout", "skipped"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			driver, host, _, caller := reconciliationFixture(t)
+			runtime := &inspectionRuntime{}
+			driver.host = &progressNative{Native: instructionNative{Native: host, owner: runtime}, chunks: 1}
+			caller.Call = "wait"
+			result, err := driver.waitAgent(t.Context(), caller, []byte(test.args))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ack := result.(control.WaitResult)
+			wire, err := json.Marshal(ack)
+			if err != nil || ack.Metrics != nil || bytes.Contains(wire, []byte(`"metrics"`)) || runtime.thread != "" {
+				t.Fatalf("acknowledgement sampled metrics: %s err=%v inspected=%q", wire, err, runtime.thread)
+			}
+			if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
+				t.Fatal(err)
+			}
+			if test.compact == "skipped" {
+				if err := driver.control.RejectCompaction(t.Context(), caller.Thread, caller.Turn, caller.Item, "cost estimate"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if stop, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil || stop == nil {
+				t.Fatalf("local stop: %v %v", stop, err)
+			}
+			if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}); err != nil {
+				t.Fatal(err)
+			}
+			if test.compact != "" && test.compact != "skipped" {
+				compact, err := driver.control.ClaimEffect(t.Context(), caller.Thread, caller.Call+":compact")
+				if err != nil || compact == nil {
+					t.Fatalf("compact effect: %v %v", compact, err)
+				}
+				if err := driver.Wake(t.Context(), caller.Thread, time.Now().Add(time.Hour)); err != nil || runtime.thread != "" {
+					t.Fatalf("wake crossed compact barrier: %v inspected=%q", err, runtime.thread)
+				}
+				receipt := control.Receipt{}
+				if test.compact == "failed" {
+					receipt.Error = "reset failed"
+				}
+				if err := driver.control.EffectAcknowledged(t.Context(), caller.Thread, compact.ID, receipt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Facts change while the caller is stopped. Only the delivered outcome samples them.
+			runtime.metrics = &control.SessionMetrics{ContextTokens: new(uint64(456)), ContextWindow: new(uint64(1000)), Compactions: new(uint64(3))}
+			if test.name == "unavailable" {
+				runtime.err = errors.New("inactive runtime")
+			}
+			switch test.name {
+			case "completion", "all completions":
+				if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
+					t.Fatal(err)
+				}
+				if err := driver.DispatchPending(t.Context(), "child"); err != nil {
+					t.Fatal(err)
+				}
+			case "message", "unavailable":
+				child := control.Identity{Thread: "child", Session: "child-session", Turn: "child-turn", Call: "message", Item: "child-exec"}
+				if _, err := driver.controlAction(t.Context(), child, []byte(`{"target":"/root","message":"ready"}`), "send_message"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := driver.Wake(t.Context(), caller.Thread, time.Now().Add(time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			input := host.inputs[len(host.inputs)-1]
+			if input.Wake == nil || input.Wake.State != test.state || test.compact != "" && input.Wake.Compaction.State != test.compact {
+				t.Fatalf("delivered outcome = %+v", input.Wake)
+			}
+			// Use the retained host output and normal provider projection, not a synthetic metrics map.
+			projected, err := ProjectLocalIdentities(responses.MustMarshalJSON([]any{map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": "wait_agent", "output": input.RetainedWaitOutput()}}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var items []struct{ Output string }
+			if err := json.Unmarshal(projected, &items, json.MatchCaseInsensitiveNames(true)); err != nil {
+				t.Fatal(err)
+			}
+			var delivered control.WaitResult
+			if err := json.Unmarshal([]byte(items[0].Output), &delivered); err != nil {
+				t.Fatal(err)
+			}
+			metrics, found := delivered.Metrics["agent:main/child"]
+			if !found || runtime.thread != "child" {
+				t.Fatalf("delivered metrics missing: %s inspected=%q", items[0].Output, runtime.thread)
+			}
+			if test.name == "unavailable" {
+				if metrics.ContextTokens != nil || metrics.ContextWindow != nil || metrics.Compactions != nil {
+					t.Fatalf("unavailable metrics = %+v", metrics)
+				}
+			} else if metrics.ContextTokens == nil || *metrics.ContextTokens != 456 || metrics.Compactions == nil || *metrics.Compactions != 3 {
+				t.Fatalf("delivered stale metrics: %s", items[0].Output)
+			}
+		})
 	}
 }
 

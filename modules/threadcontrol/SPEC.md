@@ -115,9 +115,12 @@ native request metadata remains unchanged on the provider wire.
   omitted mode means `"any"`; omitted compaction means false.
 
 Follow-up acknowledgements include the target's current context and compaction
-metrics. Immediate wait results and terminal resumed wait outputs include those same metrics
-for each descendant, keyed by visible agent name. Unavailable observations
-are `null` without failing an otherwise successful coordination operation.
+metrics. Wait acknowledgements (`waiting` or `compacting`) omit metrics. Immediate
+outcomes and delivered post-wait outputs, including timeout, addressed-message and
+progress wakes, include fresh metrics for each selected descendant, keyed by visible
+agent name. Compaction waits sample metrics after the checkpoint settles, when the
+original wait delivers an outcome. Unavailable observations are `null` without
+failing an otherwise successful coordination operation.
 Dispatched wait metrics freeze with that wait's existing checkpoint so a resumed
 runtime can confirm the exact retained continuation without replacing its facts.
 

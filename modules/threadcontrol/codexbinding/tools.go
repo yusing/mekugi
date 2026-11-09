@@ -201,7 +201,9 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 		if result.State == "waiting" {
 			result.Instructions = "Let this enclosing execution finish now. Mekugi ends the host turn and delivers the outcome as a later wait_agent output. New input supersedes this wait."
 		}
-		d.waitMetrics(ctx, caller.Thread, &result)
+		if result.Settled() {
+			d.waitMetrics(ctx, caller.Thread, &result)
+		}
 	}
 	return result, err
 }

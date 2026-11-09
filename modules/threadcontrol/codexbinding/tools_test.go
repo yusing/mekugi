@@ -312,6 +312,9 @@ func TestWaitAgentWaitsAfterImmediateTimeout(t *testing.T) {
 		if wait.State != test.state || wait.ID != test.id {
 			t.Fatalf("%s(%s) = %+v; want %s id=%s", test.call, test.arguments, wait, test.state, test.id)
 		}
+		if _, found := wait.Metrics["/root/child"]; found != (test.state == "timeout") {
+			t.Fatalf("metrics belong to the timeout outcome, not the waiting acknowledgement: %+v", wait)
+		}
 		member, _ := driver.control.Member(caller.Thread)
 		if member.Wait == nil || member.Wait.ID != test.id || member.Wait.State != test.retainedState {
 			t.Fatalf("retained wait = %+v", member.Wait)

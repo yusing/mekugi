@@ -53,9 +53,6 @@ func (d *Driver) sessionMetrics(ctx context.Context, thread string) control.Sess
 
 func (d *Driver) waitMetrics(ctx context.Context, thread string, result *control.WaitResult) {
 	result.Metrics = make(map[string]control.SessionMetrics, len(result.Targets))
-	if result.State == "yielded" {
-		return
-	}
 	for _, target := range result.Targets {
 		result.Metrics[target] = control.SessionMetrics{}
 	}
