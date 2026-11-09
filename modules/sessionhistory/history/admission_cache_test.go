@@ -25,8 +25,7 @@ func TestAdmissionWarmReplacementCostIgnoresCorpusSize(t *testing.T) {
 						return err
 					}
 				}
-				_, err := tx.FileSizes()
-				return err
+				return tx.Admit(Limits{}, "entry-0", 1)
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -43,6 +42,44 @@ func TestAdmissionWarmReplacementCostIgnoresCorpusSize(t *testing.T) {
 			}
 			if calls > 16*4 {
 				t.Fatalf("16 warmed admission/replacements classified %d names in %d-record corpus", calls, records)
+			}
+		})
+	}
+}
+
+func TestAdmissionFreshPeersDoNotEnumerateCorpus(t *testing.T) {
+	for _, records := range []int{16, 128} {
+		t.Run(fmt.Sprint(records), func(t *testing.T) {
+			calls := 0
+			store := retentionFixtureStore(t, t.TempDir(), recordkind.Spec{ID: "entry", Match: func(n string) bool {
+				calls++
+				return strings.HasPrefix(n, "entry-")
+			}})
+			if err := store.Transaction(t.Context(), nil, func(tx *Transaction) error {
+				for i := range records {
+					if err := tx.Write(fmt.Sprint("entry-", i), "entry-pending-", []byte("x")); err != nil {
+						return err
+					}
+				}
+				return tx.Admit(Limits{}, "entry-0", 1)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			calls = 0
+			for size := 1; size <= 16; size++ {
+				// Fresh handles share no process-local inventory or totals.
+				peer := store.service.Attach(store.directory)
+				if err := peer.Transaction(t.Context(), nil, func(tx *Transaction) error {
+					if err := tx.Admit(Limits{}, "entry-0", int64(size)); err != nil {
+						return err
+					}
+					return tx.Write("entry-0", "entry-pending-", []byte(strings.Repeat("x", size)))
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if calls > 16*4 {
+				t.Fatalf("16 fresh peers classified %d names in %d-record corpus", calls, records)
 			}
 		})
 	}
@@ -72,7 +109,7 @@ func TestAdmissionCacheMatchesFreshUsageAcrossPublications(t *testing.T) {
 			t.Fatal(err)
 		}
 		if err := store.Transaction(t.Context(), nil, func(tx *Transaction) error {
-			for _, name := range []string{"entry-a", "entry-new", "separate-a", SessionName("owner")} {
+			for _, name := range []string{"entry-a", "entry-new", "separate-a", SessionName("owner"), "unregistered", "storage-revision"} {
 				for _, size := range []int64{1, 12, 31} {
 					for _, limits := range []Limits{{}, {Total: 10}, {Kinds: map[string]int64{"entry": 0, "separate": 5}}} {
 						used, limit := store.Usage(limits, fresh, name, size)
@@ -102,6 +139,8 @@ func TestAdmissionCacheMatchesFreshUsageAcrossPublications(t *testing.T) {
 	write(store, "entry-a", "1234567890")
 	write(store, "entry-b", "12345")
 	write(store, "separate-a", "12345678")
+	// Existing uncounted records must not contribute replacement credit.
+	write(store, "unregistered", strings.Repeat("x", 64))
 	check("initial")
 	write(store, "entry-a", "123456789012345678")
 	check("local growth")

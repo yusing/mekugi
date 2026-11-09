@@ -59,7 +59,11 @@ func TestStoreTransactionSharesDurableRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := writes.Snapshot().Bytes, uint64(len(catalog)+len("first.jsonsecond.json")+len(revision)); got != want {
+	accounting, err := history.ReadRecord(filepath.Join(directory, "storage-accounting"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := writes.Snapshot().Bytes, uint64(len(catalog)+len("first.jsonsecond.json")+len(revision)+len(accounting)); got != want {
 		t.Fatalf("publication bytes = %d, want %d (one revision)", got, want)
 	}
 	peer := fixtureStore(directory, managedRecord)

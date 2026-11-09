@@ -11,6 +11,8 @@ type Record struct {
 // Spec declares recognition and semantic inspection of one retained record kind.
 // Nil Dependencies means the kind has no shared retained dependencies.
 type Spec struct {
+	// ID also identifies the persisted byte-accounting classification. A
+	// recognition change that reclassifies existing records needs a new ID.
 	ID           string
 	Match        func(string) bool
 	Dependencies func(Record) ([]string, error)

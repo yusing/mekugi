@@ -54,9 +54,13 @@ func TestPersistenceUsageCoalescesBurstAndRetainsDeltas(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		accounting, err := os.ReadFile(filepath.Join(store.directory, "storage-accounting"))
+		if err != nil {
+			t.Fatal(err)
+		}
 		// The first usage transaction publishes one revision, its usage record
-		// and the retained session catalog.
-		if got, want := store.writes.Snapshot().Bytes, uint64(len(record)+len(catalog)+len(revision)); got != want {
+		// and catalog, plus the shared byte totals, once for the entire burst.
+		if got, want := store.writes.Snapshot().Bytes, uint64(len(record)+len(catalog)+len(revision)+len(accounting)); got != want {
 			t.Fatalf("burst wrote %d bytes, want one publication of %d", got, want)
 		}
 		for range 3 {

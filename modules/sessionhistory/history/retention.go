@@ -253,16 +253,13 @@ func (s *maintenance) commitStoragePrune(ctx context.Context, plan *storagePrune
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := tx.AdvanceRevision(); err != nil {
-			return err
-		}
 		// Dependency order retires referrers before their payloads. Owner
 		// retirement is published in this same protected commit.
 		for _, name := range names {
 			if !deleted[name] {
 				continue
 			}
-			if err := os.Remove(filepath.Join(s.directory, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := tx.remove(name); err != nil {
 				return err
 			}
 			freed += plan.snapshot.files[name]
@@ -282,7 +279,7 @@ func (s *maintenance) commitStoragePrune(ctx context.Context, plan *storagePrune
 		// removals of already-retired names. This avoids quadratic catalog
 		// rewrites while preserving surviving dependencies and other owners.
 		if candidate.name != "" && len(candidate.files) == len(names) {
-			if err := os.Remove(filepath.Join(s.directory, candidate.name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := tx.remove(candidate.name); err != nil {
 				return err
 			}
 			freed += plan.snapshot.files[candidate.name]
@@ -378,10 +375,7 @@ func (s *maintenance) cleanupSessions(ctx context.Context) error {
 			return err
 		}
 		if plan.pressure != nil {
-			if err := tx.AdvanceRevision(); err != nil {
-				return err
-			}
-			if err := os.Remove(filepath.Join(s.directory, "retention-pressure")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := tx.remove("retention-pressure"); err != nil {
 				return err
 			}
 		}

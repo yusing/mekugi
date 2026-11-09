@@ -282,7 +282,11 @@ func TestRestoreRetriesSmallerAdmissionsInSourceOrder(t *testing.T) {
 	}
 	var used int64
 	for name, data := range tree(t, scope.Store.Directory()) {
-		if name != "store.lock" && name != "storage-revision" {
+		_, managed, err := owner.Kind(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if managed || history.CatalogName(name) {
 			used += int64(len(data))
 		}
 	}

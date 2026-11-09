@@ -32,9 +32,15 @@ The default shared budget is 4 GiB, including ownership catalogs. Encoded record
 are bounded to 32 MiB. Owners contribute additional budgets; commentary uses a
 separate 16 MiB budget and retained output is bounded to 256 MiB. Admission
 reports required bytes, the limiting budget, and an actionable error.
-Admission reuses the store's revision-validated sizes and budget totals. Successful
-local publications update that view; peer revisions and incomplete effects
-invalidate it before further admission.
+The publication owner maintains durable per-kind byte totals under the shared
+store lock. Admission reads those revision-bound totals and only the named
+replacement's size; fresh workers and peer publications do not enumerate retained
+history. Initial migration, a changed set of record owners, or an interrupted or
+untracked publication rebuilds accounting once before admission. Normal writes and
+bounded retirement batches maintain their actual byte deltas, including completed
+effects before a later operation fails. Revision invalidation precedes effects;
+accounting publication precedes unlock, so an interrupted writer cannot expose
+stale totals as current.
 
 Inactive session data expires after 14 days. Budget pressure selects the least
 recently active eligible sessions. Active process leases and shared dependencies

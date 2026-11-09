@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/libraries/persistence"
 )
 
@@ -28,30 +27,9 @@ type Store struct {
 	catalog   *retainedCatalog
 }
 
-// Sizes and their derived totals are one revision-validated publication view.
+// An explicitly requested inventory is cached only for its publication view.
 type storageFiles struct {
-	sizes  map[string]int64
-	kinds  map[string]int64
-	shared int64
-}
-
-func (f *storageFiles) set(name string, kind recordkind.Spec, size int64) {
-	delta := size - f.sizes[name]
-	f.sizes[name] = size
-	if !kind.SeparateBudget {
-		f.shared += delta
-	}
-	if kind.ID != "" {
-		f.kinds[kind.ID] += delta
-	}
-}
-
-func (f *storageFiles) usage(kind recordkind.Spec) storageUsage {
-	usage := storageUsage{kind: kind, total: f.shared, own: f.kinds[kind.ID]}
-	if kind.SeparateBudget {
-		usage.total = usage.own
-	}
-	return usage
+	sizes map[string]int64
 }
 
 // Directory is the selected retained path shared by this publication handle.
@@ -61,10 +39,12 @@ func (s *Store) Directory() string { return s.directory }
 // retained in records or held across delivery. Participants cannot open nested
 // transactions through this handle.
 type Transaction struct {
-	store   *Store
-	writes  *persistence.Counter
-	active  bool
-	revised bool
+	store           *Store
+	writes          *persistence.Counter
+	active          bool
+	revised         bool
+	accounting      *storageAccounting
+	accountingDirty bool
 }
 
 // Transaction serializes one operation across processes and publishes in caller
@@ -95,6 +75,7 @@ func (s *Store) Transaction(ctx context.Context, writes *persistence.Counter, fn
 	}
 	tx := &Transaction{store: s, writes: writes, active: true}
 	defer func() { tx.active = false }()
+	defer func() { err = errors.Join(err, tx.commitAccounting()) }()
 	return fn(tx)
 }
 
@@ -132,6 +113,11 @@ func (tx *Transaction) Revision() (string, error) {
 // still invalidate before every effect, including effects after a failed write.
 // Source: internal/router/storage_prune.go:57:72@efcbf71f advanceStorageRevision.
 func (tx *Transaction) AdvanceRevision() error {
+	tx.accounting = nil // External effects have no known byte delta.
+	return tx.advanceRevision()
+}
+
+func (tx *Transaction) advanceRevision() error {
 	if err := tx.check(); err != nil {
 		return err
 	}
@@ -193,6 +179,14 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 			}
 		}
 	}
+	accounting, err := tx.accountingView(false)
+	if err != nil {
+		return err
+	}
+	oldSize := int64(0)
+	if info != nil {
+		oldSize = info.Size()
+	}
 	revision, err := tx.Revision()
 	if err != nil {
 		return err
@@ -201,15 +195,19 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 	if revision == s.revision {
 		files = s.files
 	}
-	if err := tx.AdvanceRevision(); err != nil {
+	if err := tx.advanceRevision(); err != nil {
 		return err
 	}
 	if err := persistence.AtomicFile(path, pattern, data, tx.writes); err != nil {
+		tx.accounting = nil
 		return err
+	}
+	if accounting != nil && (managed || CatalogName(name)) {
+		accounting.Bytes[kind.ID] += int64(len(data)) - oldSize
 	}
 	if files != nil {
 		if managed || CatalogName(name) {
-			files.set(name, kind, int64(len(data)))
+			files.sizes[name] = int64(len(data))
 		}
 		s.files = files
 	}
@@ -239,9 +237,9 @@ func (tx *Transaction) FileSizes() (map[string]int64, error) {
 	if err != nil {
 		return nil, err
 	}
-	files := &storageFiles{sizes: make(map[string]int64), kinds: make(map[string]int64)}
+	files := &storageFiles{sizes: make(map[string]int64)}
 	for _, entry := range entries {
-		kind, managed, err := s.service.Kind(entry.Name())
+		_, managed, err := s.service.Kind(entry.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -255,7 +253,7 @@ func (tx *Transaction) FileSizes() (map[string]int64, error) {
 		if !info.Mode().IsRegular() {
 			return nil, errors.New("session storage contains a non-regular managed record; cleanup refused")
 		}
-		files.set(entry.Name(), kind, info.Size())
+		files.sizes[entry.Name()] = info.Size()
 	}
 	s.revision, s.files = revision, files
 	return files.sizes, nil

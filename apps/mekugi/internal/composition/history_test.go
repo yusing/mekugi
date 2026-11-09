@@ -3,6 +3,7 @@ package composition
 import (
 	"context"
 	json "encoding/json/v2"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,49 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+func BenchmarkPeerAdmission(b *testing.B) {
+	for _, records := range []int{128, 120000} {
+		b.Run(fmt.Sprint(records), func(b *testing.B) {
+			runtime, err := Frontends(b.Context(), false, true, "", nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { _ = runtime.Close(context.WithoutCancel(b.Context())) })
+			directory := b.TempDir()
+			for i := range records {
+				if err := os.WriteFile(filepath.Join(directory, fmt.Sprintf("call-%064x.json", i)), []byte("{}"), 0600); err != nil {
+					b.Fatal(err)
+				}
+			}
+			store := runtime.History.Attach(directory)
+			migrationStarted := time.Now()
+			if err := store.Transaction(b.Context(), nil, func(tx *history.Transaction) error {
+				return tx.Admit(history.Limits{}, "threadcontrol-tree-benchmark", 0)
+			}); err != nil {
+				b.Fatal(err)
+			}
+			migration := time.Since(migrationStarted)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				for writer := range 2 {
+					owner := runtime.History.Attach(directory)
+					if err := owner.Transaction(b.Context(), nil, func(tx *history.Transaction) error {
+						name := "threadcontrol-tree-benchmark"
+						data := []byte(fmt.Sprint(i, writer))
+						if err := tx.Admit(history.Limits{}, name, int64(len(data))); err != nil {
+							return err
+						}
+						return tx.Write(name, "benchmark-pending-", data)
+					}); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+			b.ReportMetric(float64(migration.Nanoseconds()), "migration-ns")
+		})
+	}
+}
 
 func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
 	for _, live := range []bool{false, true} {

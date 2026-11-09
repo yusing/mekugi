@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,6 +59,8 @@ type nativeThreadsProvider struct {
 	usageLimit                              bool
 	temporaryUsage                          bool
 	concurrentChildren                      bool
+	compactLatency                          bool
+	compactIssued, compactContinued         time.Time
 	limited                                 map[string]bool
 	calls                                   map[string]int
 	users                                   int
@@ -300,6 +303,15 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 	}
 	switch {
+	case p.compactLatency && parent && step == 1:
+		p.compactIssued = time.Now()
+		program = `text(await tools.mcp__threadcontrol__compact({}));`
+	case p.compactLatency && parent && step == 2:
+		p.compactContinued = time.Now()
+		if !strings.Contains(string(body), `"name":"compact"`) || !strings.Contains(string(body), "completed") {
+			failure = "standalone compaction did not deliver its retained continuation"
+		}
+		answer = "MANAGED_PARENT_RESUMED"
 	case grandchild:
 		inherited, assigned := false, false
 		for _, item := range request.Input {
@@ -902,6 +914,7 @@ func TestNativeThreadsAttachmentResetServerOwnedCodex(t *testing.T) {
 type nativeThreadsScenario struct {
 	deniedMessageSource                                                                                                                                               bool
 	messageSources                                                                                                                                                    bool
+	compactionRecords                                                                                                                                                 int
 	concurrentChildren                                                                                                                                                bool
 	attachments, attachmentReload                                                                                                                                     bool
 	deduplication                                                                                                                                                     bool
@@ -935,6 +948,23 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(configRoot, "auth.json"), auth, 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Native world-state preparation reads account policy independently of the
+	// inference gateway. Keep its fake account local too, rather than timing
+	// repeated failed requests to the real backend on every fresh turn.
+	var policyRequests atomic.Uint64
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/codex/settings/user" || r.URL.Path == "/wham/settings/user" {
+			policyRequests.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"commit_attribution_enabled":false}`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer backend.Close()
+	if err := os.WriteFile(filepath.Join(configRoot, "config.toml"), []byte("chatgpt_base_url = "+strconv.Quote(backend.URL)+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	bundled := exec.CommandContext(ctx, codex, "debug", "models", "--bundled")
@@ -1017,6 +1047,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	fixture.messageSources = scenario.messageSources
 	fixture.deniedMessageSource = scenario.deniedMessageSource
 	fixture.concurrentChildren = scenario.concurrentChildren
+	fixture.compactLatency = scenario.compactionRecords > 0
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
 	fixture.deduplication = scenario.deduplication
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1040,6 +1071,10 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	defer os.RemoveAll(socketDirectory)
 	socket := filepath.Join(socketDirectory, "s")
 	stateDirectory := t.TempDir()
+	var compactionPeer func() func()
+	if scenario.compactionRecords > 0 {
+		compactionPeer = prepareCompactionLatencyStore(t, filepath.Join(stateDirectory, "mekugi", "replay"), scenario.compactionRecords)
+	}
 	capturePath := ""
 	if scenario.headless {
 		capturePath = filepath.Join(t.TempDir(), "capture.jsonl")
@@ -1322,6 +1357,14 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}})
 	if err != nil {
 		t.Fatal("root input:", err)
+	}
+	if scenario.compactionRecords > 0 {
+		stop := compactionPeer()
+		defer stop()
+		measureCompactionDelivery(t, connection, fixture)
+		reportCompactionRollout(t, configRoot)
+		t.Logf("local native account-policy requests: %d", policyRequests.Load())
+		return
 	}
 	for {
 		event, err = connection.Next()

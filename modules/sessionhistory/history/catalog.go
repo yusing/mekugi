@@ -195,7 +195,7 @@ func (tx *Transaction) Retain(thread string, limits Limits, names ...string) err
 // protection. Other unregistered leaf entries can own retained dependencies.
 func coordinationName(name string) bool {
 	switch name {
-	case "store.lock", "storage-revision", "retention-pressure", "retention-sweep", "retention-snapshot.lock", "retention-maintenance.lock", "capture-order":
+	case "store.lock", "storage-revision", "storage-accounting", "retention-pressure", "retention-sweep", "retention-snapshot.lock", "retention-maintenance.lock", "capture-order":
 		return true
 	}
 	if tail, ok := strings.CutSuffix(name, ".lock"); ok && CatalogName(tail+".json") {

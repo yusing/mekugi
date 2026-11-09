@@ -96,17 +96,24 @@ func (u storageUsage) required(limits Limits, size int64) (int64, int64) {
 
 // Admit checks capacity under serialization and only requests reclamation.
 func (tx *Transaction) Admit(limits Limits, replacement string, size int64) error {
-	files, err := tx.FileSizes()
+	accounting, err := tx.accountingView(true)
 	if err != nil {
 		return err
 	}
-	kind, _, err := tx.store.service.Kind(replacement)
+	kind, managed, err := tx.store.service.Kind(replacement)
 	if replacement != "" && !CatalogName(replacement) && err != nil {
 		return err
 	}
-	usage := tx.store.files.usage(kind)
-	usage.total += size - files[replacement]
-	usage.own += size - files[replacement]
+	previous := int64(0)
+	if managed || CatalogName(replacement) {
+		previous, err = tx.store.recordSize(replacement)
+		if err != nil {
+			return err
+		}
+	}
+	usage := tx.store.accountingUsage(accounting, kind)
+	usage.total += size - previous
+	usage.own += size - previous
 	required, limit := usage.required(limits, size)
 	if required <= limit {
 		return nil
@@ -114,11 +121,11 @@ func (tx *Transaction) Admit(limits Limits, replacement string, size int64) erro
 	if size > limit && !kind.Keep {
 		return capacityError("session storage write", size, limit, "A single record cannot fit; reduce the retained output or split the operation.")
 	}
-	request := storagePressureRequest{Name: replacement, Growth: max(0, size-files[replacement])}
+	request := storagePressureRequest{Name: replacement, Growth: max(0, size-previous)}
 	if err := tx.requestStoragePrune(request); err != nil {
 		return err
 	}
-	used, _ := tx.store.files.usage(kind).required(limits, files[replacement])
+	used, _ := tx.store.accountingUsage(accounting, kind).required(limits, previous)
 	return &PressureError{
 		error: capacityError("retained session storage", required, limit,
 			"Background cleanup was requested. Retry retaining this evidence after maintenance frees space; do not rerun the host operation. Running sessions and shared history were preserved."),
