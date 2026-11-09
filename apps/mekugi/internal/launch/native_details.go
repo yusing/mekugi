@@ -63,11 +63,7 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 			if v.diffOpen != nil {
 				id = v.diffOpen.ID + 1
 			}
-			path := page.DisplayPath
-			if path == "" {
-				path = page.Path
-			}
-			v.diffOpen = &sessionapi.NativeDiffOpen{ID: id, Path: path, Title: page.Verb, Source: page.Code}
+			v.diffOpen = &sessionapi.NativeDiffOpen{ID: id, Path: page.Path, Title: page.Verb, Source: page.Code}
 			v.files.closeOutput(v.shell)
 		}
 	}

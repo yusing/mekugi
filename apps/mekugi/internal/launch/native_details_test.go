@@ -408,3 +408,30 @@ func TestNativeEditDetailsUseCapableCompanion(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeMovedEditOpensCanonicalCompanionPath(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	seq := u.attached.source.LastSeq + 1
+	const path = "snapshots/updated.txt"
+	const display = "snapshots/{previous.txt.new=>updated.txt}"
+	const code = "diff --git a/snapshots/previous.txt.new b/snapshots/updated.txt\nsimilarity index 100%\nrename from snapshots/previous.txt.new\nrename to snapshots/updated.txt\n"
+	u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
+		{Seq: seq, Agent: "Main", Kind: "tool", Text: "Moved `" + display + "` +0 -0", Native: &sessionpresentation.NativeItem{
+			Thread: "main", Item: "move", CapturedEdit: &changehistory.Receipt{Thread: "main", Calls: []string{"move"}, Pages: []activitydetail.Page{
+				{ID: "move:1", Verb: "Move", Path: path, DisplayPath: display, Language: "diff", Code: code},
+			}},
+		}},
+	}})
+	_, view, _ := nativeDetailTestViews(t, u)
+	view.viewerLease.DiffOpenExpires = time.Now().Add(time.Minute).UnixMilli()
+	for _, selected := range []string{display, path} {
+		if refusal := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: seq, Path: selected, Edit: true}); refusal != "" {
+			t.Fatal(refusal)
+		}
+		frame := nativeDetailFrame(view)
+		if frame.Details != nil || frame.DiffOpen == nil || frame.DiffOpen.Path != path || frame.DiffOpen.Source != code {
+			t.Fatalf("move click did not preserve its canonical destination and original source: %+v", frame.DiffOpen)
+		}
+	}
+}

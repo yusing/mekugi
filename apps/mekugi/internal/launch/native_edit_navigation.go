@@ -71,7 +71,7 @@ func activityEditPages(attached *attachedPresentation, terminal *terminalsession
 			}
 		}
 		for _, page := range pages {
-			if path == "" || page.Path == path {
+			if path == "" || page.Path == path || page.DisplayPath == path {
 				return withPreparedSource(pages), page.ID
 			}
 		}

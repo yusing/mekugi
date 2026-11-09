@@ -410,7 +410,8 @@ means ordinary standalone dialogs; remote-human views never publish this intent.
 Diff panes negotiate `diff_open_supported` / `diff_open: true` independently of
 file opening when they can reveal a selected edit, including from a hidden pane. The latest
 `diff_open: {id, path, title}` follows the same activation, deduplication and lease
-rules as file opening. It represents the exact clicked diff, not cumulative review.
+rules as file opening. Its path is the selected file's canonical path (the destination
+for moves), never a formatted move label. It represents the exact clicked diff, not cumulative review.
 Source is excluded from observations and terminal frames. `native/content` reads
 it with `{kind: "native-diff", attachment, revision: id, seq: activation}` and a
 byte `offset`, returning ordinary bounded `lines` and `next`. Replacement or stale
