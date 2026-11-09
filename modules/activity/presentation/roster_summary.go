@@ -34,13 +34,6 @@ func CompactRoster(entries []Entry, caller string) []Value {
 					}
 				}
 				if n := len(out); n > 0 && out[n-1].Kind == "summary" {
-					prior := out[n-1].Label
-					if prior != "" {
-						if compact.Label != "" {
-							prior += ", " + compact.Label
-						}
-						compact.Label = prior
-					}
 					out = out[:n-1]
 				}
 				if compact.Label == "" {

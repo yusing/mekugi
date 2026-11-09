@@ -242,7 +242,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 	}
 }
 
-func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
+func TestRosterReplacesConsecutiveReasoning(t *testing.T) {
 	v := newActivityAdapter()
 	v.ChildrenOnly = true
 	v.testAudience()
@@ -258,7 +258,7 @@ func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
 	}
 	for _, live := range []bool{false, true} {
 		summary, _ := v.testCurrent(sessionpresentation.ActivityAgent{Name: "/root/worker", Responding: live}, time.Now())
-		if got := ansi.Strip(summary); got != "First, Second" {
+		if got := ansi.Strip(summary); got != "Second" {
 			t.Fatalf("live=%v: inline = %q", live, got)
 		}
 	}

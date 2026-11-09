@@ -82,6 +82,41 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 			}
 		}
 	}
+	// Repeated updates replace the roster headline while retaining transcript history.
+	source := &sessionpresentation.ActivitySource{Model: new(activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent]), Audience: sessionpresentation.ChildAudience}
+	source.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Thread: "cold", AgentLifecycle: activity.AgentLifecycle{Responding: true}}}})
+	for i, step := range []struct{ item, turn, text, phase, want string }{
+		{"one", "first", "**Inspecting**", "summary", "Inspecting"},
+		{"one", "first", "**Inspecting**\n\nDetails.\n\n**Validating**", "summary", "Validating"},
+		{"two", "first", "**Finishing**", "summary", "Finishing"},
+		{"two", "first", "**Finishing**", "item/completed", "Finishing"},
+		{"three", "fresh", "**Fresh work**", "summary", "Fresh work"},
+	} {
+		source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: "/root/worker", Kind: "reasoning", CallID: step.item, Text: step.text,
+			Native: &sessionpresentation.NativeItem{Thread: "cold", Turn: step.turn, Item: step.item, Phase: step.phase, Live: true}}}})
+		frame.Agents = &activity.Publication{Roster: append([]activity.AgentRow{frame.Agents.Roster[0]}, source.Publication(new(sessionpresentation.Model), nil).Roster...)}
+		if err := machine.publishFrame(frame); err != nil {
+			t.Fatal(err)
+		}
+		run("wait", "--fn", `(() => { const row = [...document.querySelectorAll('#panel-content button')].find(row => row.textContent.includes('worker')); return row?.textContent.includes('`+step.want+`') && ['Inspecting','Validating','Finishing','Fresh work'].filter(label => row.textContent.includes(label)).length === 1; })()`)
+		if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+			run("screenshot", filepath.Join(artifacts, "roster-reasoning-"+step.want+"-"+strings.ReplaceAll(step.phase, "/", "-")+".png"))
+		}
+		if step.phase == "item/completed" {
+			source.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Thread: "cold", AgentLifecycle: activity.AgentLifecycle{Final: true}}}})
+			frame.Agents = &activity.Publication{Roster: append([]activity.AgentRow{frame.Agents.Roster[0]}, source.Publication(new(sessionpresentation.Model), nil).Roster...)}
+			frame.Members[1].Status = threadcontrol.Completed
+			if err := machine.publishFrame(frame); err != nil {
+				t.Fatal(err)
+			}
+			run("wait", "--fn", `(() => { const row = [...document.querySelectorAll('#panel-content button')].find(row => row.textContent.includes('worker')); return row?.textContent.includes('Done') && !row.textContent.includes('Finishing'); })()`)
+			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+				run("screenshot", filepath.Join(artifacts, "roster-reasoning-settled.png"))
+			}
+			source.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Thread: "cold", AgentLifecycle: activity.AgentLifecycle{Responding: true}}}})
+			frame.Members[1].Status = threadcontrol.Working
+		}
+	}
 	// Cold restoration keeps the admitted member without an attached child feed.
 	frame.Agents = &activity.Publication{Roster: frame.Agents.Roster[:1]}
 	frame.Members[1].Status = threadcontrol.Paused

@@ -52,13 +52,13 @@ func TestRosterValuesRetainAllOperationOutcomes(t *testing.T) {
 	}
 }
 
-func TestRosterReasoningCombinesSharedHeadings(t *testing.T) {
+func TestRosterReasoningUsesLatestHeading(t *testing.T) {
 	item := activity.ItemContent{Kind: "reasoning", Text: "# First\n\nChecking callers.\n\n# Second\n\nChecking outcomes."}
 	entry := activity.Entry{Facts: item.Facts, Values: item.Values()}
 	publication := &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{Summary: []activity.Entry{entry}}}}}
 	values := projectRoster(publication, "/root").Agents[0].Activity.Values
-	if len(values) != 1 || values[0].Label != entry.Values[0].ReasoningLabel()+", "+entry.Values[1].ReasoningLabel() || values[0].Body != "" {
-		t.Fatalf("reasoning headings lost or retained body exposed: %+v", values)
+	if len(values) != 1 || values[0].Label != entry.Values[1].ReasoningLabel() || values[0].Body != "" {
+		t.Fatalf("latest reasoning heading lost or retained body exposed: %+v", values)
 	}
 }
 
@@ -95,5 +95,47 @@ func TestRosterDiagnosticUsesBoundedSharedPreview(t *testing.T) {
 	block := terminalview.Block{Value: entry.Values[0]}
 	if !strings.Contains(ansi.Strip(painter.Summary([]terminalview.Block{block}, 80)), summary.Label) || painter.DialogPage(block, 80).Text != diagnostic {
 		t.Fatal("bounded roster preview changed the full retained diagnostic")
+	}
+}
+
+func TestRosterReasoningReplacesAcrossUpdatesAndTurns(t *testing.T) {
+	for _, restored := range []bool{false, true} {
+		source := &sessionpresentation.ActivitySource{Model: new(activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent]), Audience: sessionpresentation.ChildAudience}
+		source.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", AgentLifecycle: activity.AgentLifecycle{Responding: true}}}})
+		for i, step := range []struct{ item, turn, text, phase, want string }{
+			{"one", "first", "**Inspecting**", "summary", "Inspecting"},
+			{"one", "first", "**Inspecting**\n\nDetails.\n\n**Validating**", "summary", "Validating"},
+			{"two", "first", "**Finishing**", "summary", "Finishing"},
+			{"two", "first", "**Finishing**", "item/completed", "Finishing"},
+			{"three", "fresh", "**Fresh work**", "summary", "Fresh work"},
+			{"three", "fresh", "**Fresh work**", "item/completed", "Fresh work"},
+			{"four", "fresh", strings.Repeat("An untitled paragraph. ", 10), "summary", "Thinking"},
+			{"four", "fresh", strings.Repeat("An untitled paragraph. ", 10), "item/completed", "Thought"},
+		} {
+			source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: "/root/worker", Kind: "reasoning", CallID: step.item, Text: step.text,
+				Native: &sessionpresentation.NativeItem{Thread: "worker", Turn: step.turn, Item: step.item, Phase: step.phase, Live: !restored}}}})
+			publication := source.Publication(new(sessionpresentation.Model), nil)
+			values := projectRoster(publication, "/root").Agents[0].Activity.Values
+			if len(values) != 1 || values[0].Verb+values[0].Label != step.want || values[0].Body != "" {
+				t.Fatalf("restored=%v step=%d: %+v", restored, i, values)
+			}
+			var blocks []terminalview.Block
+			for _, entry := range publication.Roster[0].Agent.Summary {
+				for _, value := range entry.Values {
+					blocks = append(blocks, terminalview.Block{Value: value})
+				}
+			}
+			painter := terminalview.Painter{}
+			terminalWant := step.want
+			if terminalWant == "Thinking" {
+				terminalWant += "…"
+			}
+			if got := ansi.Strip(painter.Summary(blocks, 80)); got != terminalWant {
+				t.Fatalf("terminal step=%d: %q", i, got)
+			}
+		}
+		if len(source.Entries) != 4 || !strings.Contains(source.Entries[0].Source.Text, "Inspecting") {
+			t.Fatal("roster replacement discarded transcript history")
+		}
 	}
 }

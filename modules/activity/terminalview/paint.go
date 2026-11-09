@@ -1278,20 +1278,14 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		style := p.statusStyle(block.Live)
 		return style + block.progressText(style) + terminalui.Reset
 	case "summary":
-		var headers []string
-		for i := len(blocks) - 1; i >= 0 && blocks[i].Kind == "summary"; i-- {
-			if label := blocks[i].Label; label != "" {
-				headers = append(headers, ansi.Strip(p.Inline(label)))
-				continue
-			}
-			section := blocks[i]
-			section.Collapsed, section.Thought, section.Hovered = true, 0, false
-			if rows := p.blockRows(section, max(1, width)+2); len(rows) > 0 {
-				headers = append(headers, strings.TrimPrefix(ansi.Strip(rows[0]), "• "))
-			}
+		if block.Label != "" {
+			return p.statusStyle(block.Live) + ansi.Strip(p.Inline(block.Label)) + terminalui.Reset
 		}
-		slices.Reverse(headers)
-		return p.statusStyle(block.Live) + strings.Join(headers, ", ") + terminalui.Reset
+		block.Collapsed, block.Thought, block.Hovered = true, 0, false
+		if rows := p.blockRows(block, max(1, width)+2); len(rows) > 0 {
+			return p.statusStyle(block.Live) + strings.TrimPrefix(ansi.Strip(rows[0]), "• ") + terminalui.Reset
+		}
+		return ""
 	case "final":
 		text := p.MarkdownPreview(block.Body)
 		// The roster's status glyph already marks a sent final answer.

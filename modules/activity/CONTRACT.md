@@ -527,8 +527,9 @@ Timing prefers request start, then item start, then first visible summary. Turn 
 settles that turn's unfinished summaries; an older turn's completion preserves a
 known newer turn's thinking and final-answer selection. Raw/encrypted reasoning
 is never a substitute.
-Roster status uses collapsed section labels without body or duration, retaining
-short text when it fits and Thinking/Thought otherwise. Only live waiting/reasoning
+Roster status replaces earlier reasoning with the latest collapsed section label,
+without body or duration, retaining short text when it fits and Thinking/Thought
+otherwise. Only live waiting/reasoning
 animates; completion and history do not restart it.
 
 Ctrl-E cycles the displayed transcript through default, expanded events, and

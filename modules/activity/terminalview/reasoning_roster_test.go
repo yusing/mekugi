@@ -82,8 +82,8 @@ func TestReasoningRosterConsecutiveSummaries(t *testing.T) {
 		{Kind: "summary", Body: "**Validating**\n\n" + reasoningSnapshotBody},
 		{Kind: "filter"},
 	}
-	if got := ansi.Strip(p.Summary(blocks, 80)); got != "Inspecting, Validating" {
-		t.Fatalf("consecutive titles lost order or included body: %q", got)
+	if got := ansi.Strip(p.Summary(blocks, 80)); got != "Validating" {
+		t.Fatalf("latest title lost or included earlier reasoning: %q", got)
 	}
 	blocks = append(blocks, Block{Kind: "op", Verb: "Read", Label: "next.go"})
 	if got := ansi.Strip(p.Summary(blocks, 80)); !strings.HasPrefix(got, "Read next.go") {
