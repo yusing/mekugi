@@ -106,7 +106,8 @@ native request metadata remains unchanged on the provider wire.
   Claude retains native compaction without this argument. Context-usage reminders appear starting at 50%;
   agents choose safe checkpoints where discarding obsolete context materially
   reduces what remaining work must carry. Small steps, preloads and waiting
-  transitions alone do not call for compaction; notices are not automatic triggers.
+  transitions alone do not call for compaction. Notices below 90% are not compaction
+  triggers; the 90% notice instructs the agent to compact now.
 - `wait_agent` accepts `wait_mode?: "any" | "all"`,
   `timeout_ms?: integer`, `yield_time_ms?: integer`, and `compact?: boolean`. Codex also accepts `reload`
   when `compact:true`; invalid selections reject before wait registration.

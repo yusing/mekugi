@@ -45,6 +45,9 @@ func (s *Store) Project(session, thread string, sample Sample, target func(strin
 		if mark := target(current.last); mark.Index >= 0 {
 			current.level, current.last = level, mark.Key
 			notice.Text = fmt.Sprintf("Mekugi context usage: %d%% (%d/%d tokens).", percent, sample.Tokens, sample.Window)
+			if level >= 90 {
+				notice.Text += " You must compact now."
+			}
 			notice.Reminder = "<system-reminder>\n" + notice.Text + "\n</system-reminder>"
 			mark.Text = notice.Reminder
 			current.marks = append(current.marks, mark)

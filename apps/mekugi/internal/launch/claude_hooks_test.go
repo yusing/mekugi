@@ -518,6 +518,15 @@ func TestClaudeContextWarningSharesToolBatchMilestone(t *testing.T) {
 	if claim := b.owners.Notifications.Claim(b.info.Thread, nil); claim == nil || len(claim.Errors.Messages) != 0 || len(claim.Progress.Messages) != 1 || claim.Progress.Messages[0].ID == "" {
 		t.Fatalf("context milestone is not an identified progress event: %+v", claim)
 	}
+	if err := b.event(t.Context(), jsontext.Value(`{"type":"mekugi_live_metrics","session_id":"native-session","message_id":"msg-1","context_tokens":180000,"context_window":200000,"modelUsage":null,"total_cost_usd":null}`)); err != nil {
+		t.Fatal(err)
+	}
+	for _, wantReminder := range []bool{true, false} {
+		result, err := b.batch(t.Context(), claudeHook{Event: "PostToolUse"})
+		if err != nil || strings.Contains(string(result), "Mekugi context usage: 90% (180000/200000 tokens). You must compact now.") != wantReminder {
+			t.Fatalf("urgent tool batch milestone: %s, %v", result, err)
+		}
+	}
 }
 
 func TestClaudeLaunchInterruptReceiptReducesTerminal(t *testing.T) {

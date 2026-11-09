@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"io"
 	"slices"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/responses"
+	modelresponses "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -39,6 +41,59 @@ func queueContextWarning(t *testing.T, issues *requestexecution.Failures, thread
 	}
 	if prepared != nil {
 		prepared.Close()
+	}
+}
+
+func TestContextUrgentInstructionPreparedRequest(t *testing.T) {
+	var tokens, compactions uint64
+	window := uint64(1000)
+	var events []string
+	preparer := executionobservation.New(executionobservation.Config{
+		Registry: sharedProxyTestRegistry(t), Control: new(sessioncontrol.Observations),
+		Event: func(_, _, _, text string) { events = append(events, text) },
+		Inspect: func(context.Context, string) (control.SessionDetails, error) {
+			return control.SessionDetails{ContextTokens: &tokens, ContextWindow: &window, Compactions: &compactions}, nil
+		},
+	})
+	for _, test := range []struct {
+		name                string
+		tokens, compactions uint64
+		input, want         string
+	}{
+		{"below", 899, 0, `[{"role":"user","content":"continue"}]`, "Mekugi context usage: 89% (899/1000 tokens)."},
+		{"threshold", 900, 0, `[{"type":"function_call_output","call_id":"call","output":"done"}]`, "Mekugi context usage: 90% (900/1000 tokens). You must compact now."},
+		{"already emitted", 950, 0, `[{"type":"function_call_output","call_id":"next","output":"done"}]`, ""},
+		{"reset", 0, 1, `[{"role":"user","content":"after compaction"}]`, ""},
+		{"above after reset", 950, 1, `[{"role":"user","content":"continue after compaction"}]`, "Mekugi context usage: 95% (950/1000 tokens). You must compact now."},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tokens, compactions = test.tokens, test.compactions
+			before := len(events)
+			request := &responses.Request{Fields: map[string]jsontext.Value{"input": jsontext.Value(test.input)}}
+			prepared, err := preparer.Prepare(t.Context(), request, requestexecution.Preparation{Session: "session", Thread: "main", MetadataValid: true, Metadata: responses.TurnMetadata{RequestKind: "turn"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if prepared != nil {
+				prepared.Close()
+			}
+			var items []map[string]jsontext.Value
+			if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
+				t.Fatal(err)
+			}
+			if test.want == "" {
+				if len(items) != 1 || len(events) != before {
+					t.Fatalf("unexpected repeated milestone: input=%s events=%v", request.Fields["input"], events[before:])
+				}
+				return
+			}
+			if len(items) != 2 || modelresponses.StringField(items[1], "role") != "developer" || modelresponses.StringField(items[1], "content") != "<system-reminder>\n"+test.want+"\n</system-reminder>" {
+				t.Fatalf("model-facing milestone: %s", request.Fields["input"])
+			}
+			if !slices.Equal(events[before:], []string{test.want}) {
+				t.Fatalf("progress differs from model instruction: %v", events[before:])
+			}
+		})
 	}
 }
 
