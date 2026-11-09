@@ -131,7 +131,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		if in.Dialog != nil && in.Dialog.Processes {
 			panelHeight := min(max(0, ih-4), max(in.Dialog.Chrome()+1, ih/2))
 			if !in.Dialog.ProcessDetail {
-				panelHeight = min(panelHeight, in.Dialog.Chrome()+len(in.Dialog.Pages))
+				panelHeight = min(panelHeight, in.Dialog.Chrome()+len(in.Dialog.Pages)+1)
 			}
 			ih -= panelHeight
 			processRect = Rect{plan.Layout.Main.X, plan.Layout.Main.Y + ih, iw, panelHeight}

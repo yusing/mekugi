@@ -262,13 +262,17 @@ func TestRunningProcessesDetailNavigation(t *testing.T) {
 	wire.Reset()
 	appServerTestKeys(t, u, "/ps\r")
 	d := terminalTest(u).Dialog
-	for _, last := range []int{5, 24} {
+	for _, last := range []int{4, 24} {
 		if last == 24 {
 			d.Key("G")
 		}
 		processDialog(u, 44, 10)
-		d.Mouse(0, 3, 8, false) // Last visible body row, immediately above footer.
-		d.Mouse(0, 3, 8, true)
+		d.Mouse(0, 3, 8, false) // Padding does not select a hidden process.
+		if d.ProcessDetail {
+			t.Fatal("padding opened a process")
+		}
+		d.Mouse(0, 3, 7, false) // Last visible body row.
+		d.Mouse(0, 3, 7, true)
 		if d.Page != last || !d.ProcessDetail || d.Selection != nil {
 			t.Fatalf("last visible row did not open process %d", last)
 		}

@@ -35,6 +35,10 @@ func (d *ContentDialog) PaintProcesses(rows []string, rect Rect) {
 		d.Selection = nil
 	}
 	d.rect, d.rows, d.theme = rect, rect.H-d.Chrome(), d.View.Painter.Theme
+	padding := !d.ProcessDetail && d.rows > 1
+	if padding {
+		d.rows--
+	}
 	if d.Selection == nil {
 		d.Layout(rect.W - 4)
 	}
@@ -59,6 +63,9 @@ func (d *ContentDialog) PaintProcesses(rows []string, rect Rect) {
 			row = d.Selection.Row(d.Selection.DocumentY(i), d.theme)
 		}
 		lines = append(lines, row)
+	}
+	if padding {
+		lines = append(lines, "")
 	}
 	footer := d.footer(rect.W)
 	if d.Selection != nil {
@@ -226,7 +233,7 @@ func (d *ContentDialog) processMouse(button, x, y int, release bool) DialogInten
 	case 65:
 		return d.processKey("\x1b[B")
 	case 0:
-		if d.rect.Contains(x, y) && y >= d.rect.Y+d.Chrome()-1 && y < d.rect.Y+d.rect.H-1 {
+		if d.rect.Contains(x, y) && y >= d.rect.Y+d.Chrome()-1 && y < d.rect.Y+d.Chrome()-1+d.rows {
 			index := y - d.rect.Y - d.Chrome() + 1 + d.top
 			if index < len(d.Pages) {
 				d.ShowPage(index)
