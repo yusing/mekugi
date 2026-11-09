@@ -30,6 +30,18 @@ prefix. Run it with:
 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestSideCacheEligibilityLiveOpenAI$' TEST_FLAGS='-tags=codex_e2e,e2e -count=1 -v'
 ```
 
+`TestRewindCacheEligibilityLiveOpenAI` uses both tags and checks the first request
+after terminal `/rewind` against a warmed retained prefix. It verifies same native
+thread and provider affinity, retained/excluded history, prepared fields and
+cached input. This opt-in feasibility check currently fails: rewind refreshes
+environment instructions and the observed first request misses cache. A failure
+is evidence to investigate, not authorization to suppress fresh environment facts.
+Provider cache hits are not guaranteed even with an identical prefix.
+
+```sh
+make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestRewindCacheEligibilityLiveOpenAI$' TEST_FLAGS='-tags=codex_e2e,e2e -count=1 -v'
+```
+
 Compile these fixtures without making live requests:
 
 ```sh
