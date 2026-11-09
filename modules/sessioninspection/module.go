@@ -8,6 +8,6 @@ import (
 
 var Module = module.Descriptor[Deps, *query.Service, codexbinding.Bindings, module.NoViews]{
 	ID: "sessioninspection", Summary: "Query retained calls, outcomes and static corpus findings",
-	Lifetime: module.Stateless, HostsInspection: true,
+	Requires: []module.ID{"sessionhistory", "changehistory"}, Lifetime: module.Invocation, HostsInspection: true,
 	New: newService, Bindings: codexbinding.Codex,
 }

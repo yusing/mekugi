@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"path/filepath"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/yusing/mekugi/libraries/persistence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -32,7 +34,7 @@ type replayRecord struct {
 }
 
 func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (replayRecord, bool, error) {
-	record, found, err := s.publication.ReadHostCall(workspace, callID, commentary)
+	record, found, err := fixtureCapturedRecord(s.publication, workspace, callID, commentary)
 	if err != nil || !found {
 		return replayRecord{}, found, err
 	}
@@ -42,8 +44,89 @@ func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string
 	if s == nil {
 		return legacycall.History{}, false, nil
 	}
-	value, found, err := s.publication.LookupHostCall(ctx, workspace, callID)
-	return value, found, err
+	var record replayRecord
+	var found bool
+	err := s.publication.Transaction(ctx, nil, func(*history.Transaction) error {
+		var err error
+		record, found, err = s.read(workspace, callID, false)
+		return err
+	})
+	return record.History, found, err
+}
+
+// Assertions detach the selected fixture's values. Production consumers retain
+// references and load only the text their own projection needs.
+func fixtureCapturedRecord(store *history.Store, workspace, call string, commentary bool) (legacycall.Record, bool, error) {
+	record, found, err := store.ReadAttachedHostCall(workspace, call, commentary)
+	if err != nil || !found {
+		return record.Record, found, err
+	}
+	root, err := evidence.Root(record)
+	if err != nil || root == "" {
+		return record.Record, found, err
+	}
+	snapshot, err := evidence.Read(&evidence.Source{Store: store}, root)
+	if err != nil {
+		return record.Record, false, err
+	}
+	files := func(values []evidence.File) ([]legacycall.File, error) {
+		var result []legacycall.File
+		for _, v := range values {
+			text, err := v.Text()
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, legacycall.File{Origin: v.Origin, AlsoManaged: v.AlsoManaged, Path: v.Path, Kind: string(v.Kind), Content: text, Size: v.Size, Hash: v.Hash, Link: v.Link, Stamp: v.Stamp, Error: v.Error, CopyOf: v.CopyOf})
+		}
+		return result, nil
+	}
+	if len(snapshot.Observation) > 0 {
+		record.History.ExecObservation = new(legacycall.Observation)
+		if err := jsonv2.Unmarshal(snapshot.Observation, record.History.ExecObservation); err != nil {
+			return record.Record, false, err
+		}
+		record.History.ExecObservation.Files, err = files(snapshot.Files)
+		if err != nil {
+			return record.Record, false, err
+		}
+	}
+	if len(snapshot.Baseline) > 0 {
+		record.History.ResolvedBaseline = new(legacycall.Baseline)
+		if err := jsonv2.Unmarshal(snapshot.Baseline, record.History.ResolvedBaseline); err != nil {
+			return record.Record, false, err
+		}
+		record.History.ResolvedBaseline.Files, err = files(snapshot.BaselineFiles)
+		if err != nil {
+			return record.Record, false, err
+		}
+	}
+	for _, patch := range snapshot.Patches {
+		value := legacycall.NativePatch{Input: patch.Input}
+		for _, file := range patch.Files {
+			if file.BeforeRef != nil {
+				file.Before, err = file.BeforeRef.Read()
+				if err != nil {
+					return record.Record, false, err
+				}
+			}
+			if file.TargetBeforeRef != nil {
+				file.TargetBefore, err = file.TargetBeforeRef.Read()
+				if err != nil {
+					return record.Record, false, err
+				}
+			}
+			value.Files = append(value.Files, legacycall.NativeFile{BeforePath: file.BeforePath, AfterPath: file.AfterPath, Before: file.Before, Exists: file.Exists, Error: file.Error, TargetBefore: file.TargetBefore, TargetExists: file.TargetExists, TargetError: file.TargetError})
+		}
+		record.History.NativePatches = append(record.History.NativePatches, value)
+	}
+	reviews, err := evidence.LoadReviews(snapshot.Reviews, nil, changes.MaxReadBytes)
+	if err != nil {
+		return record.Record, false, err
+	}
+	for _, file := range reviews {
+		record.History.ReviewFiles = append(record.History.ReviewFiles, legacycall.ReviewFile(file))
+	}
+	return record.Record, true, nil
 }
 func (s *mekugiReplayStore) write(r replayRecord) error {
 	return requestexecution.StoragePublicationError(s.transaction.PublishHostCall(s.session.Thread, s.retentionLimits(), legacycall.Record{Version: r.Version, Workspace: r.Workspace, CallID: r.CallID, Commentary: r.Commentary, CaptureOrder: r.CaptureOrder, History: r.History, Snapshots: r.Snapshots}, r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0))

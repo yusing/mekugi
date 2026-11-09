@@ -252,7 +252,7 @@ func TestModulePublicationScopedReadAndFrozenRecovery(t *testing.T) {
 			return err
 		}
 		var err error
-		omitted, err = resolver.Resolve(t.Context(), reference.View{Scope: retainedScope, Retain: func(names ...string) error { return tx.Retain("owner", history.Limits{}, names...) }}, selection)
+		omitted, err = resolver.Resolve(t.Context(), reference.View{Scope: retainedScope, Read: f.selected.Store.ReadRetained, Retain: func(names ...string) error { return tx.Retain("owner", history.Limits{}, names...) }}, selection)
 		return err
 	})
 	if err != nil {
@@ -296,7 +296,7 @@ func TestModuleLegacyEmptyViewRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		omitted, err := resolver.Resolve(t.Context(), reference.View{Scope: scope.Retained{Directory: f.selected.Store.Directory(), Namespace: "owner", Thread: "owner"}, Retain: func(...string) error { return nil }}, data)
+		omitted, err := resolver.Resolve(t.Context(), reference.View{Scope: scope.Retained{Directory: f.selected.Store.Directory(), Namespace: "owner", Thread: "owner"}, Read: f.selected.Store.ReadRetained, Retain: func(...string) error { return nil }}, data)
 		if err != nil || omitted.Stdout != legacy[1:] {
 			t.Fatalf("legacy frozen=%v recovery: %+v, %v", frozen, omitted, err)
 		}
@@ -607,7 +607,7 @@ func TestModuleWorkspaceIndependentSelectionAndMutation(t *testing.T) {
 	if err != nil || !slices.Contains(names, legacycall.Name(filepath.Join(root, "bar"), "first-call", false)) || !slices.Contains(names, legacycall.Name(root, "first-call", false)) {
 		t.Fatalf("mixed-workspace frozen dependencies: %v, %v", names, err)
 	}
-	omitted, err := resolver.Resolve(t.Context(), reference.View{Scope: retainedScope}, selection)
+	omitted, err := resolver.Resolve(t.Context(), reference.View{Scope: retainedScope, Read: f.selected.Store.ReadRetained}, selection)
 	if err != nil || prepared.Referenced.Stdout+omitted.Stdout != full.Stdout {
 		t.Fatalf("mixed-workspace frozen continuation: %+v, %v", omitted, err)
 	}

@@ -12,6 +12,7 @@ import (
 type View struct {
 	Scope  scope.Retained
 	Retain func(names ...string) error
+	Read   func(name string, limit int64) ([]byte, error)
 }
 
 // Resolver owns the meaning and canonical encoding of an evidence selection.

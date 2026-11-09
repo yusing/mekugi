@@ -22,6 +22,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -65,12 +66,22 @@ type mekugiHistory struct {
 
 	// legacy keeps frozen inventory and coverage metadata at the retained record owner.
 	legacy *legacycall.History
+	// New capture evidence is lazy and feature-owned. ReviewFiles is the frozen
+	// inline input accepted from historical records and old adapter fixtures.
+	reviewFiles []evidence.Review
 
 	confirmed  bool
 	nativeCell *nativetrace.Cell
 	// sequence orders a request-visible view (or the bounded memory cache).
 	// It is never durable: replay derives recovery order from the input.
 	sequence uint64
+}
+
+func (h mekugiHistory) reviews() []evidence.Review {
+	if h.reviewFiles != nil {
+		return h.reviewFiles
+	}
+	return evidence.InlineReviews(h.ReviewFiles)
 }
 
 // confirmsReport accepts only the exact retained report, either directly or in
@@ -148,7 +159,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		commentary bool
 	}
 	type lookupResult struct {
-		history legacycall.History
+		history mekugiHistory
 		found   bool
 		err     error
 	}
@@ -176,8 +187,11 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 				}
 				result := lookupResult{err: ctx.Err()}
 				if result.err == nil {
-					record, found, err := p.Retained.Store.ReadHostCall(workspace, key.id, key.commentary)
-					result = lookupResult{history: record.History, found: found, err: err}
+					record, found, err := p.Retained.Store.ReadAttachedHostCall(workspace, key.id, key.commentary)
+					result = lookupResult{found: found, err: err}
+					if err == nil && found {
+						result.history, result.err = decodeObservation(p.Retained, record)
+					}
 				}
 				retained[key] = result
 			}
@@ -274,7 +288,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		if !known {
 			if p.Retained.Store != nil {
 				lookup := retained[lookupKey{id: callID}]
-				history, known = legacyHistory(lookup.history), lookup.found
+				history, known = lookup.history, lookup.found
 				if lookup.err != nil {
 					return nil, lookup.err
 				}

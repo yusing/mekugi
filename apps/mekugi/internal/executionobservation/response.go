@@ -349,7 +349,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 			item.SetInput(retained.CarrierPayload)
 			return retained.CarrierPayload != originalInput, nil
 		}
-		patches := nativePatchesInCall(name, originalInput, t.directory)
+		patches := nativePatchesInCall(name, originalInput, t.directory, captureSource(observationScope(t.ctx, t.owners.Retained)))
 		t.primePreviewSources(item.ID, patches)
 		execs, dynamic := commandanalysis.LiteralExecCommands(originalInput, t.directory, t.sessionShell)
 		// Source-resolved edit operands acquire baselines; a cell that may write

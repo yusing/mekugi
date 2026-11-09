@@ -15,8 +15,10 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
 // publishEditReceipt reads committed filesystem changes. It never accepts a
@@ -30,7 +32,7 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 		} else if found {
 			selected.Namespace = scope.Namespace
 		}
-		record, found, err := selected.Store.ReadHostCall(workspace, callID, false)
+		record, found, err := selected.Store.ReadAttachedHostCall(workspace, callID, false)
 		if err != nil {
 			return err
 		}
@@ -49,17 +51,25 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 			}
 			history := legacyHistory(record.History)
 			history.ReviewFiles = nil
+			history.reviewFiles = []evidence.Review{}
 			for _, member := range index.Changes[id].Calls {
-				part, found, err := selected.Store.ReadHostCall(workspace, member.ID, false)
+				part, found, err := selected.Store.ReadAttachedHostCall(workspace, member.ID, false)
 				if err != nil {
 					return err
 				}
 				if !found {
 					return fmt.Errorf("edit receipt interval is unavailable")
 				}
-				history.ReviewFiles = append(history.ReviewFiles, legacyHistory(part.History).ReviewFiles...)
+				reviews, err := evidence.Reviews(captureSource(selected), part)
+				if err != nil {
+					return err
+				}
+				history.reviewFiles = append(history.reviewFiles, reviews...)
 			}
-			receipt := sessionreview.CapturedReceipt(workspace, record.History, history.ReviewFiles)
+			receipt, err := sessionreview.CapturedRetainedReceipt(workspace, record.History, history.reviews())
+			if err != nil {
+				return err
+			}
 			if receipt == nil && history.ToolName == applyPatchToolName && displayID != "" {
 				receipt = changepresentation.NewReceipt(workspace, receiptEvidence(history))
 				receipt.Calls = []string{displayID}
@@ -109,7 +119,7 @@ func agentEditNotice(ctx context.Context, selected changes.Scope, source changes
 	var ids []string
 	seen := make(map[string]bool)
 	for _, derived := range calls {
-		record, found, err := selected.Store.LookupHostCall(ctx, workspace, derived)
+		record, found, err := lookupObservation(ctx, selected, workspace, derived)
 		if err != nil {
 			return "", err
 		}
@@ -117,13 +127,13 @@ func agentEditNotice(ctx context.Context, selected changes.Scope, source changes
 			continue
 		}
 		if record.ExecOutcome != nil && record.ExecOutcome.SharedWith != "" {
-			record, found, err = selected.Store.LookupHostCall(ctx, workspace, record.ExecOutcome.SharedWith)
+			record, found, err = lookupObservation(ctx, selected, workspace, record.ExecOutcome.SharedWith)
 			if err != nil {
 				return "", err
 			}
 		}
-		authored := authoredChangeHistory(legacyHistory(record))
-		if len(authored.ReviewFiles) == 0 {
+		authored := authoredChangeHistory(record)
+		if len(authored.reviews()) == 0 {
 			intervals, err := readExecIntervals(ctx, selected, source, workspace, callID, history.ExecObservation != nil && history.ExecObservation.CodeMode)
 			if err != nil {
 				return "", err
@@ -159,7 +169,13 @@ func agentEditNotice(ctx context.Context, selected changes.Scope, source changes
 
 // receiptEvidence translates observation facts into renderer-neutral receipt input.
 func receiptEvidence(value mekugiHistory) changepresentation.ReceiptEvidence {
-	evidence := changepresentation.ReceiptEvidence{Files: value.ReviewFiles, Source: value.Source, ChangeID: value.ChangeID}
+	files, counts, truncated, err := evidence.ReceiptFiles(value.reviews(), changepresentation.MaxReceiptDiffBytes)
+	if err != nil {
+		files = []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("", "", err.Error())}
+		counts = nil
+		truncated = nil
+	}
+	evidence := changepresentation.ReceiptEvidence{Files: files, Counts: counts, Truncated: truncated, Source: value.Source, ChangeID: value.ChangeID}
 	evidence.Source = binding.EditReceiptSource(value.ToolName, value.Source)
 	if value.ExecOutcome != nil {
 		evidence.Labels, evidence.DeletedDirectories = value.ExecOutcome.Labels, value.ExecOutcome.DeletedDirectories

@@ -33,7 +33,7 @@ func publishObservations(ctx context.Context, selected changes.Scope, source cha
 		for _, id := range slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
 			return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
 		}) {
-			if err := publishObservation(tx, selected, legacycall.Record{Version: 1, Workspace: workspace, CallID: id, History: retainedHistory(histories[id])}); err != nil {
+			if err := publishCapturedObservation(tx, selected, workspace, id, histories[id]); err != nil {
 				return err
 			}
 		}

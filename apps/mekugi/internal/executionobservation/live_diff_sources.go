@@ -2,6 +2,7 @@ package executionobservation
 
 import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
 )
 
 // Prime the final preview with the bounded baseline captured before the host
@@ -14,6 +15,24 @@ func (t *mekugiResponseTransform) primePreviewSources(itemID string, patches []c
 	}
 	for _, patch := range patches {
 		for _, file := range patch.Files {
+			if file.BeforeRef != nil {
+				if file.BeforeRef.Size > projection.FileLimit {
+					file.Error = "baseline exceeds preview bound"
+				} else if text, err := file.BeforeRef.Read(); err != nil {
+					file.Error = err.Error()
+				} else {
+					file.Before = text
+				}
+			}
+			if file.TargetBeforeRef != nil {
+				if file.TargetBeforeRef.Size > projection.FileLimit {
+					file.TargetError = "baseline exceeds preview bound"
+				} else if text, err := file.TargetBeforeRef.Read(); err != nil {
+					file.TargetError = err.Error()
+				} else {
+					file.TargetBefore = text
+				}
+			}
 			if file.Error == "" {
 				worker.Prime(file.BeforePath, file.Before, file.Exists)
 			}

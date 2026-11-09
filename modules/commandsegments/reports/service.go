@@ -88,7 +88,7 @@ func read(directory, workspace, id string) (retained, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return result, err
 	}
-	old, found, err := legacycall.Read(directory, workspace, id, false, history.MaxRecordBytes)
+	old, found, err := history.ReadHostRecord(directory, workspace, id, false)
 	if err != nil {
 		return result, err
 	}
@@ -109,7 +109,7 @@ func read(directory, workspace, id string) (retained, error) {
 	if result.report != nil && !result.report.equal(report) {
 		return result, errors.New("conflicting durable command segment reports")
 	}
-	result.legacy = &old
+	result.legacy = &old.Record
 	result.names = append(result.names, legacycall.Name(workspace, id, false))
 	if result.report == nil {
 		result.report = &report

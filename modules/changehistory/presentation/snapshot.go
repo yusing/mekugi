@@ -267,6 +267,8 @@ func (b *Builder) Add(attempt Attempt) error {
 				if prior.evidence != nil && attempt.Receipt.evidence != nil && prior.workspace == attempt.Receipt.workspace {
 					evidence := *prior.evidence
 					evidence.Files = append(slices.Clone(evidence.Files), attempt.Receipt.evidence.Files...)
+					evidence.Counts = append(slices.Clone(evidence.Counts), attempt.Receipt.evidence.Counts...)
+					evidence.Truncated = append(slices.Clone(evidence.Truncated), attempt.Receipt.evidence.Truncated...)
 					merged.evidence = &evidence
 					merged.Text = ReceiptText(prior.workspace, evidence)
 				} else {

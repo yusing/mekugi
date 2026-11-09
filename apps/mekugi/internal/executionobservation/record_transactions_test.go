@@ -129,6 +129,8 @@ func TestRecordTransactionsInterruptedForkRetriesBeforeScopePublication(t *testi
 		t.Fatal(err)
 	}
 	evidence := snapshotTestHistory()
+	largeBaseline := strings.Repeat("retained fork baseline\n", 5000)
+	evidence.ExecObservation.Files[0].Content = largeBaseline
 	evidence.ChangeID, evidence.CorrelationID = id, "capture"
 	if err := store.put(parent, "/w", map[string]mekugiHistory{"evidence": evidence}); err != nil {
 		t.Fatal(err)
@@ -183,5 +185,13 @@ func TestRecordTransactionsInterruptedForkRetriesBeforeScopePublication(t *testi
 	text, err := reopened.changes.Read(fork, reopened.scoped(fork).changeScope(), changes.Query{Workspace: "/w", IDs: []string{id}, View: "summary", MaxTokens: 8000})
 	if err != nil || !strings.Contains(text, "missing before") {
 		t.Fatalf("fork lost inherited partial capture: %q %v", text, err)
+	}
+	retained, found, err := lookupObservation(fork, reopened.scoped(fork).changeScope(), "/w", "evidence")
+	if err != nil || !found || retained.ExecObservation.Files[0].ContentRef == nil {
+		t.Fatalf("fork lost chunked baseline reference: found=%v error=%v", found, err)
+	}
+	baseline, err := retained.ExecObservation.Files[0].Text()
+	if err != nil || baseline != largeBaseline {
+		t.Fatalf("fork lost transitive text dependency: %v", err)
 	}
 }

@@ -29,7 +29,7 @@ func newDiagnostics(t *testing.T, sections ...diagnosticsection.Contribution) *d
 	t.Helper()
 	script := new(moduletest.Scripted)
 	history := moduletest.New(t, sessionhistory.Module, sessionhistory.Deps{}, module.Slots{RecordKinds: diagnostics.Module.Contributes.RecordKinds}, script)
-	inspection := moduletest.New(t, sessioninspection.Module, sessioninspection.Deps{}, module.Slots{}, script)
+	inspection := moduletest.New(t, sessioninspection.Module, sessioninspection.Deps{History: history}, module.Slots{}, script)
 	return moduletest.New(t, diagnostics.Module, diagnostics.Deps{History: history, Inspection: inspection}, module.Slots{DiagnosticSections: sections}, script)
 }
 

@@ -266,7 +266,7 @@ Path("target.txt").write_text("after\n")
 		writeTestFile(t, target, "after\n")
 	})
 	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
-	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	reviews, complete, coverage := testReviewFiles(t, result.Files), result.Complete, result.Coverage
 	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 1 || reviews[0].AfterPath != target || reviews[0].Origin != "" ||
 		!strings.Contains(reviews[0].Diff, "-before\n+after\n") {
 		t.Fatalf("RTK proxy direct review = %+v complete=%v coverage=%q", reviews, complete, coverage)
@@ -378,7 +378,7 @@ func nodeSupportsRecursiveReaddir(binary, workspace string) bool {
 func assertExactInterpreterReviews(t *testing.T, workspace string, observation *changecapture.Observation, want map[string][]string) {
 	t.Helper()
 	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
-	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	reviews, complete, coverage := testReviewFiles(t, result.Files), result.Complete, result.Coverage
 	if !complete || coverage != changecapture.CoverageExact {
 		t.Fatalf("interpreter evidence complete=%v coverage=%q files=%+v; want exact", complete, coverage, reviews)
 	}

@@ -92,7 +92,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 			continue
 		}
 		derived := legacycall.ExecCallID(member.callID, member.history.ExecObservation.CodeMode)
-		retained, found, err := selected.Store.LookupHostCall(ctx, workspace, derived)
+		retained, found, err := lookupObservation(ctx, selected, workspace, derived)
 		if err != nil {
 			return err
 		}
@@ -101,7 +101,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 				return errors.New("retained stock exec_command observation is inconsistent")
 			}
 			if member.native && retained.ChangeID != "" {
-				completed := legacyHistory(retained)
+				completed := retained
 				completed.confirmed = true
 				updates, err := source.Repair(ctx, selected, workspace, changePublications(map[string]mekugiHistory{derived: completed}))
 				if err != nil {
@@ -110,7 +110,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 				notifyChanges(publish, updates)
 			}
 			if retained.ChangeID == "" && retained.Attempt > 1 {
-				completed := legacyHistory(retained)
+				completed := retained
 				completed.confirmed = true
 				if _, err := source.Repair(ctx, selected, workspace, changePublications(map[string]mekugiHistory{derived: completed})); err != nil {
 					return changeError(err)
@@ -182,9 +182,9 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		observation.AddCreatedPath(path.Data, path.Tree)
 	}
 	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
-	comparison := changecapture.Comparison{Excluded: view.excluded, Workspace: workspace, Claims: view.claims}
+	comparison := changecapture.Comparison{Evidence: captureSource(selected), Excluded: view.excluded, Workspace: workspace, Claims: view.claims}
 	for _, interval := range intervals {
-		for _, file := range interval.before.ReviewFiles {
+		for _, file := range interval.before.reviews() {
 			if file.Incomplete == "" {
 				comparison.PriorChanges = true
 				break
@@ -246,7 +246,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		Source:          observation.SourceLabel(),
 		CorrelationID:   correlation,
 		Attempt:         len(intervals) + 1,
-		ReviewFiles:     reviews,
+		reviewFiles:     reviews,
 		Report:          strings.Join(reports, "\n"),
 		ExecOutcome:     outcome,
 		HostResults:     hostResults,
@@ -264,7 +264,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 			record.Source = first.history.ToolName
 		}
 	}
-	if len(intervals) != 0 && (len(reviews) != 0 || slices.ContainsFunc(intervals, func(interval execInterval) bool { return len(interval.before.ReviewFiles) != 0 })) {
+	if len(intervals) != 0 && (len(reviews) != 0 || slices.ContainsFunc(intervals, func(interval execInterval) bool { return len(interval.before.reviews()) != 0 })) {
 		record.ChangeID = intervals[0].before.ChangeID
 	}
 	if len(reviews) != 0 && selected.Store != nil {

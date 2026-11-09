@@ -93,6 +93,7 @@ func resolveChangeSelection(ctx context.Context, view reference.View, data []byt
 		return command.OmittedOutput{}, err
 	}
 	store := changeSelectionStore(view.Scope)
+	store.readRecord = view.Read
 	options := changeReadOptions{workspace: selection.Workspace, ids: selection.IDs, paths: selection.Paths, resolvedPaths: selection.ResolvedPaths, view: selection.View, mine: selection.Mine, overlapLabels: selection.OverlapLabels}
 	var text string
 	var err error

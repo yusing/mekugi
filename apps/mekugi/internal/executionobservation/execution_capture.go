@@ -12,7 +12,7 @@ import (
 
 // Source: apps/mekugi/internal/router/mekugi_response_transform.go:340:385@470b8a37.
 func executionCaptureEnvironment(ctx context.Context, directory string, selected changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, patches []changecapture.PatchObservation) changecapture.Options {
-	env := changecapture.Options{Directory: directory}
+	env := changecapture.Options{Directory: directory, Evidence: captureSource(observationScope(ctx, selected))}
 	if selected.Store != nil {
 		env.Changes = storeChangeResolver(ctx, selected, source)
 		env.Workspaces = snapshots

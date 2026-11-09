@@ -12,11 +12,11 @@ import (
 func changePublications(histories map[string]mekugiHistory) map[string]changes.Publication {
 	result := make(map[string]changes.Publication, len(histories))
 	for id, value := range histories {
-		managed := len(value.ReviewFiles) != 0
-		for _, file := range value.ReviewFiles {
+		managed := len(value.reviews()) != 0
+		for _, file := range value.reviews() {
 			managed = managed && file.Origin != ""
 		}
-		result[id] = changes.Publication{ChangeID: value.ChangeID, CorrelationID: value.CorrelationID, ExecutingThread: value.ExecutingThread, Sequence: value.sequence, Managed: managed, Confirmed: value.confirmed, NoEffect: value.ChangeID == "" && len(value.ReviewFiles) == 0 && value.ExecOutcome != nil && value.ExecOutcome.Coverage == capture.CoverageExact}
+		result[id] = changes.Publication{ChangeID: value.ChangeID, CorrelationID: value.CorrelationID, ExecutingThread: value.ExecutingThread, Sequence: value.sequence, Managed: managed, Confirmed: value.confirmed, NoEffect: value.ChangeID == "" && len(value.reviews()) == 0 && value.ExecOutcome != nil && value.ExecOutcome.Coverage == capture.CoverageExact}
 	}
 	return result
 }

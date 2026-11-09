@@ -115,7 +115,7 @@ func PrepareClaudeTool(ctx context.Context, retained changes.Scope, source chang
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(workdir, path)
 		}
-		observation = changecapture.Named([]string{path}, input.Workspace)
+		observation = changecapture.Named([]string{path}, input.Workspace, options.Evidence)
 		observation.Labels = []string{input.ToolName}
 	}
 	call := "claude:" + input.Thread + ":" + input.ToolUseID

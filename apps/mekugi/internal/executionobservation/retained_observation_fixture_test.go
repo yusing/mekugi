@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"path/filepath"
+	"testing"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -26,18 +29,36 @@ type replayRecord struct {
 }
 
 func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (replayRecord, bool, error) {
-	record, found, err := s.publication.ReadHostCall(workspace, callID, commentary)
+	record, found, err := s.publication.ReadAttachedHostCall(workspace, callID, commentary)
 	if err != nil || !found {
 		return replayRecord{}, found, err
 	}
-	return replayRecord{Version: record.Version, Workspace: record.Workspace, CallID: record.CallID, Commentary: record.Commentary, CaptureOrder: record.CaptureOrder, History: legacyHistory(record.History)}, true, nil
+	value, err := decodeObservation(s.changeScope(), record)
+	if err != nil {
+		return replayRecord{}, false, err
+	}
+	// Fixture assertions consume detached values; production readers stay lazy.
+	if record.Version == 3 {
+		value.ReviewFiles, err = evidence.LoadReviews(value.reviews(), nil, changes.MaxReadBytes)
+		if err != nil {
+			return replayRecord{}, false, err
+		}
+	}
+	value.reviewFiles = nil
+	return replayRecord{Version: record.Version, Workspace: record.Workspace, CallID: record.CallID, Commentary: record.Commentary, CaptureOrder: record.CaptureOrder, History: value}, true, nil
 }
 func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string) (mekugiHistory, bool, error) {
 	if s == nil {
 		return mekugiHistory{}, false, nil
 	}
-	value, found, err := s.publication.LookupHostCall(ctx, workspace, callID)
-	return legacyHistory(value), found, err
+	var record replayRecord
+	var found bool
+	err := s.publication.Transaction(ctx, nil, func(*history.Transaction) error {
+		var err error
+		record, found, err = s.read(workspace, callID, false)
+		return err
+	})
+	return record.History, found, err
 }
 func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id string) (bool, error) {
 	if s == nil {
@@ -46,6 +67,9 @@ func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id str
 	return s.publication.HasCommentary(ctx, workspace, id)
 }
 func (s *mekugiReplayStore) write(r replayRecord) error {
+	if r.Version == 3 {
+		return publishCapturedObservation(s.transaction, s.changeScope(), r.Workspace, r.CallID, r.History)
+	}
 	return publishObservation(s.transaction, s.changeScope(), legacycall.Record{Version: r.Version, Workspace: r.Workspace, CallID: r.CallID, Commentary: r.Commentary, CaptureOrder: r.CaptureOrder, History: retainedHistory(r.History), Snapshots: r.Snapshots})
 }
 func (s *mekugiReplayStore) prepareHandleScope(ctx context.Context, metadata codexresponses.TurnMetadata) (context.Context, error) {
@@ -197,3 +221,12 @@ func testResponseStore(t *mekugiResponseTransform) *mekugiReplayStore {
 
 const maxReplayRecordBytes = history.MaxRecordBytes
 const defaultReplayStorageBytes = history.DefaultStorageBytes
+
+func testReviewFiles(t testing.TB, reviews []evidence.Review) []diffmodel.ReviewFile {
+	t.Helper()
+	files, err := evidence.LoadReviews(reviews, nil, changes.MaxReadBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}

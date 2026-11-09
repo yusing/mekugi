@@ -18,12 +18,14 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	changehistory "github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
 // Comparison supplies concurrent exclusions and an eligible workspace fallback.
 // A nil Workspaces compares only the named baseline. Claims come from prior
 // completed windows covering the same physical paths and Git authority.
 type Comparison struct {
+	Evidence   *evidence.Source
 	Excluded   []string
 	Workspaces *Workspaces
 	Workspace  string
@@ -39,7 +41,7 @@ type Comparison struct {
 // Outcome holds capture facts; callers supply host status and publication references.
 type Result struct {
 	Outcome
-	Files []diffmodel.ReviewFile
+	Files []evidence.Review
 	// Endpoints are the named states already read for this comparison. Other
 	// open writers can resume from this boundary without a later file read.
 	Endpoints     []File
@@ -70,7 +72,7 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 				result.SnapshotError = errors.Join(result.SnapshotError, fmt.Errorf("no before checkpoint for %s", directory))
 				continue
 			}
-			files, claims, err := comparison.Workspaces.since(ctx, directory, checkpoints[directory], comparison.Claims)
+			files, claims, err := comparison.Workspaces.since(ctx, directory, checkpoints[directory], comparison.Claims, comparison.Evidence)
 			result.Claims = result.Claims.Merge(claims)
 			result.SnapshotError = errors.Join(result.SnapshotError, err)
 			for _, file := range files {
@@ -79,7 +81,7 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 				}
 				seen[file.physicalPath] = true
 				for _, endpoint := range []*File{&file.before, &file.after} {
-					if len(endpoint.Content) > budget {
+					if comparison.Evidence == nil && len(endpoint.Content) > budget {
 						endpoint.Content, endpoint.Error = "", "capture budget exhausted"
 					} else {
 						budget -= len(endpoint.Content)
@@ -93,7 +95,7 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 	if comparison.PriorChanges {
 		interval.RepeatedPaths = false
 	}
-	result.Files, result.Complete, result.Coverage, result.Endpoints = reconcile(interval, comparison.Excluded, snapshot)
+	result.Files, result.Complete, result.Coverage, result.Endpoints = reconcile(ctx, interval, comparison.Excluded, snapshot, comparison.Evidence)
 	if observation.Unresolved {
 		result.Complete, result.Coverage = false, CoveragePartial
 	}
@@ -119,11 +121,19 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 	return result
 }
 
-func reconcile(observation Observation, excluded []string, snapshot []execSnapshotChange) (reviews []diffmodel.ReviewFile, complete bool, coverage string, endpoints []File) {
+func reconcile(ctx context.Context, observation Observation, excluded []string, snapshot []execSnapshotChange, source *evidence.Source) (reviews []evidence.Review, complete bool, coverage string, endpoints []File) {
 	var changes []execSnapshotChange
 	complete = true
 	coverage = CoverageExact
 	budget := MaxContentBytes
+	reviewBudget := MaxContentBytes
+	appendReview := func(file diffmodel.ReviewFile) {
+		review := evidence.RetainReview(ctx, source, file, &reviewBudget)
+		if review.Incomplete != "" {
+			complete = false
+		}
+		reviews = append(reviews, review)
+	}
 	after := make(map[string]File, len(observation.Files))
 	metadata := make(map[string]File, len(observation.Files))
 	// Preserve leaf symlinks as filesystem entries. Resolving their parents
@@ -179,15 +189,18 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			if before.Error != "" && current.Error == "" && current.Kind == Text {
 				// Keep the witnessed endpoint recoverable without presenting it
 				// as an authored diff from an unknown before-state.
-				review = diffmodel.RenderUnbasedReviewFile(current.Path, current.Content, reason)
+				text, err := current.Text()
+				if err == nil {
+					review = diffmodel.RenderUnbasedReviewFile(current.Path, text, reason)
+				}
 			}
-			reviews = append(reviews, review)
+			appendReview(review)
 			complete = false
 			return
 		}
 		if before.Kind == Other || current.Kind == Other {
 			if before.Kind != current.Kind {
-				reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(before.Path, before.Path, "not a regular file"))
+				appendReview(diffmodel.RenderIncompleteReviewFile(before.Path, before.Path, "not a regular file"))
 				complete = false
 			}
 			return
@@ -215,7 +228,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 		}
 		current, supplied := observation.endpoints[before.Path]
 		if !supplied {
-			current = ReadFile(before.Path, &budget)
+			current = ReadFileIn(ctx, before.Path, &budget, source)
 		}
 		after[before.Path] = current
 		endpoints = append(endpoints, current)
@@ -245,7 +258,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 				return nil
 			}
 			if walked++; walked > maxExecListingEntries {
-				reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(listing.Root, listing.Root, "destination listing exceeds its bound"))
+				appendReview(diffmodel.RenderIncompleteReviewFile(listing.Root, listing.Root, "destination listing exceeds its bound"))
 				complete = false
 				return filepath.SkipAll
 			}
@@ -259,7 +272,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			}
 			if stamp, listed := listing.Entries[relative]; listed {
 				if info, err := entry.Info(); err != nil || execFileStamp(info) != stamp {
-					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, path, "modified; before content unavailable"))
+					appendReview(diffmodel.RenderIncompleteReviewFile(path, path, "modified; before content unavailable"))
 					complete = false
 				}
 				return nil
@@ -278,9 +291,9 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 					continue
 				}
 				if errors.Is(err, os.ErrNotExist) {
-					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, "", "deleted; before content unavailable"))
+					appendReview(diffmodel.RenderIncompleteReviewFile(path, "", "deleted; before content unavailable"))
 				} else {
-					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, path, "destination unavailable: "+err.Error()))
+					appendReview(diffmodel.RenderIncompleteReviewFile(path, path, "destination unavailable: "+err.Error()))
 				}
 				complete = false
 			}
@@ -326,7 +339,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 	// files carry no evidence of which deletion an addition came from.
 	paired := make(map[int]bool)
 	for index, deleted := range changes {
-		if !FilePresent(deleted.before) || FilePresent(deleted.after) || deleted.before.Kind == Text && deleted.before.Content == "" {
+		if !FilePresent(deleted.before) || FilePresent(deleted.after) || deleted.before.Kind == Text && deleted.before.TextSize() == 0 {
 			continue
 		}
 		for other, added := range changes {
@@ -335,7 +348,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			}
 			paired[index], paired[other] = true, true
 			review := RenderReview(deleted.before.Path, added.after.Path, deleted.before, added.after)
-			reviews = append(reviews, review)
+			appendReview(review)
 			break
 		}
 	}
@@ -353,15 +366,15 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 		review := RenderReview(beforePath, afterPath, changed.before, changed.after)
 		if beforePath == "" && changed.before.CopyOf != "" {
 			// A created copy names its source when the content matches.
-			source, captured := after[changed.before.CopyOf]
+			copySource, captured := after[changed.before.CopyOf]
 			if !captured && observation.endpoints == nil {
-				source = ReadFile(changed.before.CopyOf, &budget)
+				copySource = ReadFileIn(ctx, changed.before.CopyOf, &budget, source)
 			}
-			if source.Error == "" && FilePresent(source) && SameContent(source, changed.after) {
+			if copySource.Error == "" && FilePresent(copySource) && SameContent(copySource, changed.after) {
 				review.CopyFrom = changed.before.CopyOf
 			}
 		}
-		reviews = append(reviews, review)
+		appendReview(review)
 	}
 	deferredChanged := false
 	for _, omission := range observation.Omitted {
@@ -374,7 +387,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			if observation.WindowStart.IsZero() || execRemoteFilesystem(filepath.Dir(omission.Path)) {
 				review := diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; filesystem clock incomparable")
 				review.Origin = omission.Origin
-				reviews = append(reviews, review)
+				appendReview(review)
 				complete = false
 				deferredChanged = true
 				continue
@@ -385,7 +398,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			}
 			// These paths existed during provider enumeration. A missing
 			// after-state is therefore a possible deletion, not a no-op.
-			current := ReadFile(omission.Path, &budget)
+			current := ReadFileIn(ctx, omission.Path, &budget, source)
 			var review diffmodel.ReviewFile
 			switch {
 			case current.Error != "":
@@ -393,19 +406,26 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			case current.Kind == Absent:
 				review = diffmodel.RenderIncompleteReviewFile(omission.Path, "", "deleted; before content unavailable")
 			case current.Kind == Text || current.Kind == Symlink:
-				review = diffmodel.RenderUnbasedReviewFile(omission.Path, ReviewText(current), "managed baseline unavailable")
+				text, err := ReviewText(current)
+				if err != nil {
+					review = diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, err.Error())
+				} else {
+					review = diffmodel.RenderUnbasedReviewFile(omission.Path, text, "managed baseline unavailable")
+				}
 			default:
 				review = diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable")
 			}
 			review.Origin = omission.Origin
-			reviews = append(reviews, review)
+			appendReview(review)
 			deferredChanged = true
 			continue
 		}
-		reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, omission.Reason))
+		appendReview(diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, omission.Reason))
 		complete = false
 	}
-	reviews, complete = boundExecReviews(reviews, complete)
+	if source == nil {
+		reviews, complete = boundExecReviews(reviews, complete)
+	}
 	for i := range reviews {
 		file := &reviews[i]
 		meta, ok := metadata[cmp.Or(file.AfterPath, file.BeforePath)]
@@ -446,7 +466,11 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 // ReviewInterval closes only named paths with supplied observed endpoints. It
 // reuses ordinary reconciliation, provenance and size bounds without rereading
 // the filesystem or making a host-completion claim.
-func ReviewInterval(before, endpoints []File) ([]diffmodel.ReviewFile, []File) {
+func ReviewInterval(before, endpoints []File, sources ...*evidence.Source) ([]evidence.Review, []File) {
+	var source *evidence.Source
+	if len(sources) > 0 {
+		source = sources[0]
+	}
 	observation := Observation{endpoints: make(map[string]File)}
 	var boundaries []File
 	budget := MaxContentBytes
@@ -455,7 +479,7 @@ func ReviewInterval(before, endpoints []File) ([]diffmodel.ReviewFile, []File) {
 			if file.Path != boundary.Path {
 				continue
 			}
-			if len(boundary.Content) > budget {
+			if source == nil && len(boundary.Content) > budget {
 				boundary.Content, boundary.Error = "", "overlapping writer boundary exceeds capture bound"
 			} else {
 				budget -= len(boundary.Content)
@@ -466,13 +490,13 @@ func ReviewInterval(before, endpoints []File) ([]diffmodel.ReviewFile, []File) {
 			break
 		}
 	}
-	reviews, _, _, _ := reconcile(observation, nil, nil)
+	reviews, _, _, _ := reconcile(context.Background(), observation, nil, nil, source)
 	return reviews, boundaries
 }
 
 // boundExecReviews keeps the encoded reviews within the derived record's
 // bound, replacing the largest diffs with incomplete entries.
-func boundExecReviews(reviews []diffmodel.ReviewFile, complete bool) ([]diffmodel.ReviewFile, bool) {
+func boundExecReviews(reviews []evidence.Review, complete bool) ([]evidence.Review, bool) {
 	sizes := make([]int, len(reviews))
 	total := 0
 	for index, review := range reviews {
@@ -487,7 +511,7 @@ func boundExecReviews(reviews []diffmodel.ReviewFile, complete bool) ([]diffmode
 			}
 		}
 		review := reviews[largest]
-		reviews[largest] = diffmodel.RenderIncompleteReviewFile(review.BeforePath, review.AfterPath, "review exceeds the record bound")
+		reviews[largest] = evidence.Inline(diffmodel.RenderIncompleteReviewFile(review.BeforePath, review.AfterPath, "review exceeds the record bound"))
 		size := len(responses.MustMarshalJSON(reviews[largest]))
 		total -= sizes[largest] - size
 		sizes[largest] = size

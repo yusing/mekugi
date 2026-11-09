@@ -75,6 +75,13 @@ changes:
 					next.unknown = next.unknown || next.coverage != "" && next.coverage != "exact"
 				}
 				for _, file := range history.ReviewFiles {
+					if err := file.Text.Verify(); err != nil {
+						err = fmt.Errorf("change %s: %w", id, err)
+						if options.unavailable.skip(id, err) {
+							continue changes
+						}
+						return "", err
+					}
 					next.unknown = next.unknown || file.Incomplete != ""
 					added, removed := file.LineCounts()
 					if added < 0 || file.Binary || file.Incomplete != "" {

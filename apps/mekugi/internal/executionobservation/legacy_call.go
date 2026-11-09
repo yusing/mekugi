@@ -82,7 +82,9 @@ func legacyMetadata(v legacycall.History) *legacycall.History {
 func legacyNativePatch(v legacycall.NativePatch) changecapture.PatchObservation {
 	return changecapture.PatchObservation{
 		Input: v.Input,
-		Files: legacySlice(v.Files, func(v legacycall.NativeFile) changecapture.PatchFile { return changecapture.PatchFile(v) }),
+		Files: legacySlice(v.Files, func(v legacycall.NativeFile) changecapture.PatchFile {
+			return changecapture.PatchFile{BeforePath: v.BeforePath, AfterPath: v.AfterPath, Before: v.Before, Exists: v.Exists, Error: v.Error, TargetBefore: v.TargetBefore, TargetExists: v.TargetExists, TargetError: v.TargetError}
+		}),
 	}
 }
 
@@ -206,7 +208,9 @@ func retainedHistory(v mekugiHistory) legacycall.History {
 func retainedNativePatch(v changecapture.PatchObservation) legacycall.NativePatch {
 	return legacycall.NativePatch{
 		Input: v.Input,
-		Files: legacySlice(v.Files, func(v changecapture.PatchFile) legacycall.NativeFile { return legacycall.NativeFile(v) }),
+		Files: legacySlice(v.Files, func(v changecapture.PatchFile) legacycall.NativeFile {
+			return legacycall.NativeFile{BeforePath: v.BeforePath, AfterPath: v.AfterPath, Before: v.Before, Exists: v.Exists, Error: v.Error, TargetBefore: v.TargetBefore, TargetExists: v.TargetExists, TargetError: v.TargetError}
+		}),
 	}
 }
 

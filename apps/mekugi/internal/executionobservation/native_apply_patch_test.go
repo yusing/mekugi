@@ -384,10 +384,11 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 		"*** Begin Patch\n*** Delete File: source.txt\n*** End Patch\n",
 		"*** Begin Patch\n*** Update File: source.txt\n*** Move to: destination.txt\n@@\n-before\n+after\n*** End Patch\n",
 	} {
-		observation, err := changecapture.Patch(patch, workspace)
-		if err != nil {
-			t.Fatal(err)
+		patches := changecapture.Patches([]string{patch}, workspace)
+		if len(patches) != 1 {
+			t.Fatalf("patch baseline missing: %d", len(patches))
 		}
+		observation := patches[0]
 		if reviews, _, complete := changecapture.ReviewPatchEndpoints(observation.Files); !complete || len(reviews) != 0 {
 			t.Fatalf("unchanged deletion or move fabricated a diff: %+v, complete=%t", reviews, complete)
 		}
@@ -417,10 +418,11 @@ func TestNativePatchReviewShowsOnlyObservedPartialCodeModeEffect(t *testing.T) {
 		}
 	}
 	patch := "*** Begin Patch\n*** Update File: first.txt\n@@\n-old\n+new\n*** Update File: second.txt\n@@\n-old\n+new\n*** End Patch\n"
-	observation, err := changecapture.Patch(patch, workspace)
-	if err != nil {
-		t.Fatal(err)
+	patches := changecapture.Patches([]string{patch}, workspace)
+	if len(patches) != 1 {
+		t.Fatalf("patch baseline missing: %d", len(patches))
 	}
+	observation := patches[0]
 	if err := os.WriteFile(first, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

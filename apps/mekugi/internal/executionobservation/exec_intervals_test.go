@@ -59,10 +59,11 @@ func TestLegacyMetadataSurvivesIntervalPublication(t *testing.T) {
 	id := execIntervalID("writer", false, 0)
 	check := func(call string, baseline bool) {
 		t.Helper()
-		got, found, err := selected.Store.LookupHostCall(f.ctx, f.workspace, call)
+		value, found, err := lookupObservation(f.ctx, selected, f.workspace, call)
 		if err != nil || !found {
 			t.Fatalf("lookup %s: %v, %v", call, found, err)
 		}
+		got := retainedHistory(value)
 		if got.ExecObservation == nil || !reflect.DeepEqual(got.ExecObservation.Inventory, inventory) ||
 			got.ExecOutcome == nil || got.ExecOutcome.Unswept != old.ExecOutcome.Unswept {
 			t.Fatalf("%s lost historical metadata: %+v", call, got)
@@ -581,7 +582,7 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 					t.Fatal("later finalizer must lock the interrupted writer before workspace publication")
 				}
 				resumeID := execIntervalID("earlier", false, 0) + ":resume"
-				resume, found, err := selected.Store.LookupHostCall(f.ctx, f.workspace, resumeID)
+				resume, found, err := lookupObservation(f.ctx, selected, f.workspace, resumeID)
 				if err != nil || !found || resume.ExecObservation == nil || len(resume.ExecObservation.Files) != 1 || resume.ExecObservation.Files[0].Content != "C\n" {
 					t.Errorf("terminal publication lost its endpoint: found=%v error=%v", found, err)
 				}

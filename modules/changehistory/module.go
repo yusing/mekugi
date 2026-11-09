@@ -9,6 +9,7 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/codexbinding"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/changehistory/internal/retained"
 	"github.com/yusing/mekugi/modules/changehistory/terminalview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -27,7 +28,7 @@ var Module = module.Descriptor[Deps, *capture.Service, codexbinding.Bindings, te
 	Contributes: module.Contributions[*capture.Service]{
 		Guidance:    []guidance.Section{{Command: changes.Command.Name, Text: commandGuidance}},
 		Commands:    []command.Definition[*capture.Service]{{Spec: changes.Command.Spec, Run: (*capture.Service).Execute}},
-		RecordKinds: retained.RecordKinds(), References: retained.ChangeReferences(),
+		RecordKinds: append(retained.RecordKinds(), evidence.RecordKinds()...), References: retained.ChangeReferences(),
 	},
 	Views: terminalview.Views,
 	New:   newService, Bindings: codexbinding.Codex,

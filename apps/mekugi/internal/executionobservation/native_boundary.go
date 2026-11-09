@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
-	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -46,15 +45,15 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 		if request.Tool == "Bash" && len(cuts) == 0 {
 			return
 		}
-		var eager legacycall.History
+		var eager mekugiHistory
 		eagerPatch := false
 		if request.Tool == applyPatchToolName {
 			var err error
-			eager, _, err = incoming.scope.Store.LookupHostCall(ctx, incoming.workspace, incoming.ref)
+			eager, _, err = lookupObservation(ctx, incoming.scope, incoming.workspace, incoming.ref)
 			if err != nil {
 				return
 			}
-			eagerPatch = slices.ContainsFunc(eager.NativePatches, func(p legacycall.NativePatch) bool { return p.Input == call.Input })
+			eagerPatch = slices.ContainsFunc(eager.NativePatches, func(p changecapture.PatchObservation) bool { return p.Input == call.Input })
 		}
 		directory := request.CWD
 		if call.Command.Workdir != "" {
@@ -187,10 +186,10 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 			return
 		}
 		id := nativeBoundaryID(incoming.ref, request.Item)
-		if _, found, err := incoming.scope.Store.LookupHostCall(ctx, incoming.workspace, id); err != nil || found {
+		if _, found, err := lookupObservation(ctx, incoming.scope, incoming.workspace, id); err != nil || found {
 			return
 		}
-		observed := changecapture.NamedUntil(paths, incoming.workspace, deadline)
+		observed := changecapture.NamedUntil(paths, incoming.workspace, deadline, captureSource(incoming.scope))
 		files := observed.Files
 		for _, omitted := range observed.Omitted {
 			files = append(files, changecapture.File{Path: omitted.Path, Error: omitted.Reason})
@@ -207,7 +206,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 			// The cell's earlier named shell writes are transferred with the
 			// patch window. Keep their witnessed before-state before excluding
 			// these paths from command reconciliation.
-			earliest := legacyPointer(eager.ExecObservation, legacyObservation)
+			earliest := eager.ExecObservation
 			for _, prior := range priorCalls {
 				if prior.ID == request.Item {
 					break
@@ -215,7 +214,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 				if prior.Tool != nativeExecCommandToolName {
 					continue
 				}
-				boundary, found, err := incoming.scope.Store.LookupHostCall(ctx, incoming.workspace, nativeBoundaryID(incoming.ref, prior.ID))
+				boundary, found, err := lookupObservation(ctx, incoming.scope, incoming.workspace, nativeBoundaryID(incoming.ref, prior.ID))
 				if err != nil {
 					return
 				}
@@ -258,7 +257,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 			}
 		}
 		err := incoming.scope.Store.Transaction(ctx, incoming.scope.Writes, func(tx *history.Transaction) error {
-			if err := publishObservation(tx, incoming.scope, legacycall.Record{Version: 1, Workspace: incoming.workspace, CallID: id, History: retainedHistory(baseline)}); err != nil {
+			if err := publishCapturedObservation(tx, incoming.scope, incoming.workspace, id, baseline); err != nil {
 				return err
 			}
 			for _, interval := range intervals {
@@ -289,7 +288,7 @@ func (p *Preparer) prepareTerminalBoundary(ctx context.Context, workspace string
 		return nil, nil
 	}
 	boundary := parts[cut.number].before
-	reviews, files := changecapture.ReviewInterval(boundary.ExecObservation.Files, endpoints)
+	reviews, files := changecapture.ReviewInterval(boundary.ExecObservation.Files, endpoints, captureSource(cut.scope))
 	if len(files) == 0 {
 		return nil, nil
 	}
@@ -301,10 +300,10 @@ func (p *Preparer) prepareTerminalBoundary(ctx context.Context, workspace string
 	// B-to-C effect and closes those terminal-writer paths, even if a later
 	// writer restores B before normal host-result reconciliation.
 	closed := mekugiHistory{ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: boundary.ExecutingThread, Caller: boundary.Caller, Source: boundary.Source,
-		ChangeID: boundary.ChangeID, CorrelationID: boundary.CorrelationID, Attempt: len(parts) + 1, ReviewFiles: reviews,
+		ChangeID: boundary.ChangeID, CorrelationID: boundary.CorrelationID, Attempt: len(parts) + 1, reviewFiles: reviews,
 		ExecObservation: &changecapture.Observation{Files: files, Excluded: paths, CodeMode: cut.codeMode}}
 	id := execIntervalID(cut.writer, cut.codeMode, len(parts))
-	return &execIntervalContinuation{scope: cut.scope, record: legacycall.Record{Version: 1, Workspace: workspace, CallID: id, History: retainedHistory(closed)}}, nil
+	return &execIntervalContinuation{scope: cut.scope, workspace: workspace, call: id, value: closed}, nil
 }
 
 // loadNativeBoundaries joins pre-execution evidence with actual native calls.
@@ -319,7 +318,7 @@ func (p *Preparer) loadNativeBoundaries(ctx context.Context, workspace, callID s
 		if tool.Tool != applyPatchToolName && tool.Tool != nativeExecCommandToolName {
 			continue
 		}
-		baseline, found, err := p.Retained.Store.LookupHostCall(ctx, workspace, nativeBoundaryID(callID, tool.ID))
+		baseline, found, err := lookupObservation(ctx, p.Retained, workspace, nativeBoundaryID(callID, tool.ID))
 		if err != nil {
 			return err
 		}
@@ -343,10 +342,10 @@ func (p *Preparer) loadNativeBoundaries(ctx context.Context, workspace, callID s
 								path = before.AfterPath
 							}
 							if slices.Contains(baseline.ExecObservation.Excluded, path) {
-								patch.Files[i].Before, patch.Files[i].Exists, patch.Files[i].Error = actual.Before, actual.Exists, actual.Error
+								patch.Files[i].Before, patch.Files[i].BeforeRef, patch.Files[i].Exists, patch.Files[i].Error = actual.Before, actual.BeforeRef, actual.Exists, actual.Error
 							}
 							if before.AfterPath != before.BeforePath && slices.Contains(baseline.ExecObservation.Excluded, before.AfterPath) {
-								patch.Files[i].TargetBefore, patch.Files[i].TargetExists, patch.Files[i].TargetError = actual.TargetBefore, actual.TargetExists, actual.TargetError
+								patch.Files[i].TargetBefore, patch.Files[i].TargetBeforeRef, patch.Files[i].TargetExists, patch.Files[i].TargetError = actual.TargetBefore, actual.TargetBeforeRef, actual.TargetExists, actual.TargetError
 							}
 						}
 					}
@@ -354,7 +353,7 @@ func (p *Preparer) loadNativeBoundaries(ctx context.Context, workspace, callID s
 				patches = append(patches, patch)
 				remaining = slices.Delete(remaining, i, i+1)
 			} else if found && len(baseline.NativePatches) == 1 && baseline.NativePatches[0].Input == tool.Input {
-				patches = append(patches, legacyNativePatch(baseline.NativePatches[0]))
+				patches = append(patches, baseline.NativePatches[0])
 			} else if tool.LocalEnvironment {
 				// Actual targets with no witnessed before-state remain incomplete.
 				// Never learn a baseline from bytes read after the native edit.
@@ -388,12 +387,12 @@ func (p *Preparer) loadNativeBoundaries(ctx context.Context, workspace, callID s
 	return nil
 }
 
-func rebaseNativeFiles(files []changecapture.File, boundary []legacycall.File) []changecapture.File {
+func rebaseNativeFiles(files []changecapture.File, boundary []changecapture.File) []changecapture.File {
 	files = slices.Clone(files)
 	for _, file := range boundary {
 		for i := range files {
 			if files[i].Path == file.Path {
-				before := legacyFile(file)
+				before := file
 				before.Origin, before.AlsoManaged = files[i].Origin, files[i].AlsoManaged
 				files[i] = before
 			}

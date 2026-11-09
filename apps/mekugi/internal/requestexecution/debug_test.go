@@ -18,7 +18,7 @@ func TestDebugInstructionSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inspection, err := query.New(nil)
+	inspection, err := query.New(historyService, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

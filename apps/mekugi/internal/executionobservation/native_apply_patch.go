@@ -13,16 +13,17 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
-func nativePatchesInCall(name, input, workspace string) []changecapture.PatchObservation {
+func nativePatchesInCall(name, input, workspace string, sources ...*evidence.Source) []changecapture.PatchObservation {
 	var patches []string
 	if name == applyPatchToolName {
 		patches = []string{input}
 	} else if name == "exec" {
 		patches = binding.LiteralPatchInputs(input)
 	}
-	return changecapture.Patches(patches, workspace)
+	return changecapture.Patches(patches, workspace, sources...)
 }
 
 func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread, callID string, history mekugiHistory, result binding.ExecutionResult) error {
@@ -87,7 +88,7 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 			continue
 		}
 		correlation := callID + "\x00" + strconv.Itoa(index)
-		reviews, observed, complete := changecapture.ReviewPatchEndpoints(windowFiles[index])
+		reviews, observed, complete := changecapture.ReviewPatchEndpoints(windowFiles[index], captureSource(observationScope(ctx, p.Retained)))
 		endpoints = append(endpoints, observed...)
 		// Attempts remain durable, but IDs select actual or incomplete file
 		// evidence, not successful no-ops or rejected patches with no effects.
@@ -115,7 +116,7 @@ func (p *Preparer) finalizeNativePatches(ctx context.Context, workspace, thread,
 			Attempt:          1,
 			sequence:         uint64(index + 1),
 			AlreadySatisfied: success && len(reviews) == 0 && len(history.NativePatches) == 1,
-			ReviewFiles:      reviews,
+			reviewFiles:      reviews,
 			Report:           result.Text,
 			CarrierKind:      codeModeCarrierCustom,
 			CarrierName:      applyPatchToolName,

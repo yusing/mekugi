@@ -297,7 +297,7 @@ func (s *Session) streams(ctx context.Context, value record.Record) (command.Omi
 	var output command.OmittedOutput
 	err := s.store.Transaction(ctx, s.writes, func(tx *history.Transaction) error {
 		var err error
-		output, err = s.service.changes.Resolve(ctx, reference.View{Scope: s.scope, Retain: func(names ...string) error { return tx.Retain(s.scope.Thread, s.limits, names...) }}, value.Changes)
+		output, err = s.service.changes.Resolve(ctx, reference.View{Scope: s.scope, Read: s.store.ReadRetained, Retain: func(names ...string) error { return tx.Retain(s.scope.Thread, s.limits, names...) }}, value.Changes)
 		return err
 	})
 	return output, err

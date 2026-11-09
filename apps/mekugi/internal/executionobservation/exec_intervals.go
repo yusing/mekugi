@@ -10,6 +10,7 @@ import (
 	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -137,7 +138,7 @@ func readExecIntervals(ctx context.Context, selected changes.Scope, source chang
 		if expected[id] == "" {
 			return nil, errors.New("invalid named capture interval membership")
 		}
-		before, found, err := selected.Store.LookupHostCall(ctx, workspace, id)
+		before, found, err := lookupObservation(ctx, selected, workspace, id)
 		if err != nil {
 			return nil, err
 		}
@@ -148,18 +149,18 @@ func readExecIntervals(ctx context.Context, selected changes.Scope, source chang
 			return nil, errors.New("invalid named capture interval")
 		}
 		resume := id + ":resume"
-		after, resumed, err := selected.Store.LookupHostCall(ctx, workspace, resume)
+		after, resumed, err := lookupObservation(ctx, selected, workspace, resume)
 		if err != nil {
 			return nil, err
 		}
 		if resumed && (after.CorrelationID != before.CorrelationID || after.ChangeID != before.ChangeID || after.ExecObservation == nil) {
 			return nil, errors.New("invalid named capture continuation")
 		}
-		value := execInterval{call: id, resume: resume, before: legacyHistory(before)}
+		value := execInterval{call: id, resume: resume, before: before}
 		if resumed {
-			value.after = legacyPointer(after.ExecObservation, legacyObservation)
+			value.after = after.ExecObservation
 		}
-		for _, file := range before.ReviewFiles {
+		for _, file := range before.reviews() {
 			bytes += len(file.Diff)
 		}
 		for _, observation := range []*changecapture.Observation{value.before.ExecObservation, value.after} {
@@ -219,19 +220,19 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observati
 	}
 	for _, files := range changecapture.PatchWindowFiles(patches) {
 		for _, file := range files {
-			add := func(path, content string, exists bool, reason string) {
+			add := func(path, content string, ref *evidence.Text, exists bool, reason string) {
 				if path == "" {
 					return
 				}
-				boundary := changecapture.File{Path: path, Content: content, Size: int64(len(content)), Error: reason}
+				boundary := changecapture.File{Path: path, Content: content, ContentRef: ref, Size: int64(len(content)), Error: reason}
 				if exists {
 					boundary.Kind = changecapture.Text
 				}
 				boundaries = append(boundaries, boundary)
 			}
-			add(file.BeforePath, file.Before, file.Exists, file.Error)
+			add(file.BeforePath, file.Before, file.BeforeRef, file.Exists, file.Error)
 			if file.AfterPath != file.BeforePath {
-				add(file.AfterPath, file.TargetBefore, file.TargetExists, file.TargetError)
+				add(file.AfterPath, file.TargetBefore, file.TargetBeforeRef, file.TargetExists, file.TargetError)
 			}
 		}
 	}
@@ -269,7 +270,7 @@ func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall s
 	if !active {
 		return nil
 	}
-	original, found, err := cut.scope.Store.LookupHostCall(ctx, workspace, cut.writer)
+	original, found, err := lookupObservation(ctx, cut.scope, workspace, cut.writer)
 	if err != nil {
 		return err
 	}
@@ -285,13 +286,13 @@ func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall s
 	if cut.number == maxExecIntervals {
 		return nil
 	}
-	observation := rebaseExecIntervals(legacyPointer(original.ExecObservation, legacyObservation), intervals)
+	observation := rebaseExecIntervals(original.ExecObservation, intervals)
 	// Same-cell patches own these paths. Cutting the command's excluded
 	// baseline would record those already attributed patch effects again.
 	observation.Files = slices.DeleteFunc(observation.Files, func(file changecapture.File) bool {
 		return slices.Contains(observation.Excluded, file.Path)
 	})
-	reviews, files := changecapture.ReviewInterval(observation.Files, boundaries)
+	reviews, files := changecapture.ReviewInterval(observation.Files, boundaries, captureSource(cut.scope))
 	if len(files) == 0 {
 		return nil
 	}
@@ -300,9 +301,9 @@ func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall s
 	if err != nil {
 		return err
 	}
-	prefix := mekugiHistory{legacy: legacyMetadata(original), ToolName: nativeExecCommandToolName, Script: execObservationScript(*observation), Root: workspace,
+	prefix := mekugiHistory{legacy: original.legacy, ToolName: nativeExecCommandToolName, Script: execObservationScript(*observation), Root: workspace,
 		ExecutingThread: original.ExecutingThread, Caller: original.Caller, Source: observation.SourceLabel(),
-		ChangeID: id, CorrelationID: correlation, Attempt: cut.number + 1, ReviewFiles: reviews,
+		ChangeID: id, CorrelationID: correlation, Attempt: cut.number + 1, reviewFiles: reviews,
 		ExecObservation: &changecapture.Observation{Files: files, CodeMode: cut.codeMode}}
 	if terminal {
 		for _, file := range files {
@@ -311,7 +312,7 @@ func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall s
 	}
 	if err := cut.scope.Store.Transaction(ctx, cut.scope.Writes, func(tx *history.Transaction) error {
 		callID := execIntervalID(cut.writer, cut.codeMode, cut.number)
-		if err := publishObservation(tx, cut.scope, legacycall.Record{Version: 1, Workspace: workspace, CallID: callID, History: retainedHistory(prefix)}); err != nil {
+		if err := publishCapturedObservation(tx, cut.scope, workspace, callID, prefix); err != nil {
 			return err
 		}
 		_, err := p.Changes.Publish(tx, cut.scope, workspace, map[string]changes.Publication{callID: {ChangeID: id, CorrelationID: correlation, Dependency: true}})
@@ -328,8 +329,9 @@ func (p *Preparer) splitExecInterval(ctx context.Context, workspace, patchCall s
 }
 
 type execIntervalContinuation struct {
-	scope  changes.Scope
-	record legacycall.Record
+	scope           changes.Scope
+	workspace, call string
+	value           mekugiHistory
 }
 
 func prepareExecIntervalContinuations(ctx context.Context, workspace string, cuts []execIntervalCut, endpoints []changecapture.File) ([]execIntervalContinuation, error) {
@@ -351,14 +353,14 @@ func prepareExecIntervalContinuations(ctx context.Context, workspace string, cut
 
 func prepareExecIntervalContinuation(ctx context.Context, workspace string, cut execIntervalCut, endpoints []changecapture.File) (*execIntervalContinuation, error) {
 	id := execIntervalID(cut.writer, cut.codeMode, cut.number)
-	prefix, found, err := cut.scope.Store.LookupHostCall(ctx, workspace, id)
+	prefix, found, err := lookupObservation(ctx, cut.scope, workspace, id)
 	if err != nil {
 		return nil, err
 	}
 	if !found || prefix.ExecObservation == nil {
 		return nil, errors.New("named capture boundary missing")
 	}
-	if _, resumed, err := cut.scope.Store.LookupHostCall(ctx, workspace, id+":resume"); err != nil {
+	if _, resumed, err := lookupObservation(ctx, cut.scope, workspace, id+":resume"); err != nil {
 		return nil, err
 	} else if resumed {
 		return nil, nil
@@ -377,18 +379,18 @@ func prepareExecIntervalContinuation(ctx context.Context, workspace string, cut 
 			}
 		}
 	}
-	resume := mekugiHistory{legacy: legacyMetadata(prefix), ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: prefix.ExecutingThread,
+	resume := mekugiHistory{legacy: prefix.legacy, ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: prefix.ExecutingThread,
 		ChangeID: prefix.ChangeID, CorrelationID: prefix.CorrelationID, Attempt: prefix.Attempt,
 		ExecObservation: &changecapture.Observation{Files: files, CodeMode: cut.codeMode}}
-	return &execIntervalContinuation{scope: cut.scope, record: legacycall.Record{Version: 1, Workspace: workspace, CallID: id + ":resume", History: retainedHistory(resume)}}, nil
+	return &execIntervalContinuation{scope: cut.scope, workspace: workspace, call: id + ":resume", value: resume}, nil
 }
 
 func (c execIntervalContinuation) publish(tx *history.Transaction, source changes.Service) error {
-	if err := publishObservation(tx, c.scope, c.record); err != nil {
+	if err := publishCapturedObservation(tx, c.scope, c.workspace, c.call, c.value); err != nil {
 		return err
 	}
-	_, err := source.Publish(tx, c.scope, c.record.Workspace, map[string]changes.Publication{c.record.CallID: {
-		ChangeID: c.record.History.ChangeID, CorrelationID: c.record.History.CorrelationID, Dependency: true,
+	_, err := source.Publish(tx, c.scope, c.workspace, map[string]changes.Publication{c.call: {
+		ChangeID: c.value.ChangeID, CorrelationID: c.value.CorrelationID, Dependency: true,
 	}})
 	return err
 }

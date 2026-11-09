@@ -37,7 +37,7 @@ func execFixerTestCapturedFiles(observation *changecapture.Observation) map[stri
 func execFixerTestAssertExact(t *testing.T, root string, observation *changecapture.Observation, wantPaths []string) []diffmodel.ReviewFile {
 	t.Helper()
 	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
-	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	reviews, complete, coverage := testReviewFiles(t, result.Files), result.Complete, result.Coverage
 	if !complete || coverage != changecapture.CoverageExact {
 		t.Fatalf("reconciliation complete=%v coverage=%q reviews=%+v", complete, coverage, reviews)
 	}

@@ -31,7 +31,7 @@ func TestBunFormatterOutsideWorkspaceContinuesCapturedChain(t *testing.T) {
 		if !result.Complete || len(result.Files) != 1 {
 			t.Fatalf("%s capture: %+v", step.command, result)
 		}
-		if err := composition.ApplyWithHighlight(result.Files[0], false, false); err != nil {
+		if err := composition.ApplyWithHighlight(result.Files[0].ReviewFile, false, false); err != nil {
 			t.Fatalf("%s broke composition: %v", step.command, err)
 		}
 	}

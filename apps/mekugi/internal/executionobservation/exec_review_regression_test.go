@@ -23,7 +23,7 @@ func TestExecBackupStarRetainsOperandDirectories(t *testing.T) {
 	observation := execProducerCapture(t, root, command)
 	execProducerRun(t, execProducerCommand(t, "bash"), root, command)
 	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
-	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	reviews, complete, coverage := testReviewFiles(t, result.Files), result.Complete, result.Coverage
 	if !complete || coverage != changecapture.CoverageExact {
 		t.Fatalf("backup coverage: %v %s", complete, coverage)
 	}
@@ -61,7 +61,7 @@ func TestExecInPlaceBackupGlobReconcilesExactBackupReview(t *testing.T) {
 
 			result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
 
-			reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+			reviews, complete, coverage := testReviewFiles(t, result.Files), result.Complete, result.Coverage
 			if !complete || coverage != changecapture.CoverageExact {
 				t.Fatalf("reconciliation complete=%v coverage=%q; want exact evidence (reviews=%+v)", complete, coverage, reviews)
 			}
@@ -129,7 +129,7 @@ func TestExecLnSfnCapturesReplacedSymlinkNotChild(t *testing.T) {
 
 	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
 
-	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	reviews, complete, coverage := testReviewFiles(t, result.Files), result.Complete, result.Coverage
 	if !complete || coverage != changecapture.CoverageExact {
 		t.Fatalf("reconciliation complete=%v coverage=%q reviews=%+v", complete, coverage, reviews)
 	}

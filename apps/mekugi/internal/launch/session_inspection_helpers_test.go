@@ -29,7 +29,7 @@ func testInspector(metrics *evidence.Service, diagnostics *capture.Service) *que
 	if c.NewAX != nil || c.ProviderUsage != nil {
 		contributions = append(contributions, c)
 	}
-	service, err := query.New(contributions)
+	service, err := query.New(testHistory(), contributions)
 	if err != nil {
 		panic(err)
 	}

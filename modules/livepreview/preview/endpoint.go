@@ -53,7 +53,7 @@ func SelectEndpoints(ctx context.Context, observation changecapture.Observation)
 			if available == nil {
 				available = make(map[string]bool)
 				for _, file := range observation.Files {
-					available[file.Path] = file.Error == "" && len(file.Content) <= projection.FileLimit && (file.Kind == changecapture.Text || file.Kind == changecapture.Absent)
+					available[file.Path] = file.Error == "" && file.TextSize() <= projection.FileLimit && (file.Kind == changecapture.Text || file.Kind == changecapture.Absent)
 				}
 			}
 			for _, entry := range plan.Scope {
@@ -138,8 +138,11 @@ func ProjectCaptured(ctx context.Context, observation changecapture.Observation)
 	defer cancel()
 	ctx = projection.WithSources(ctx, true)
 	for _, file := range observation.Files {
-		if file.Error == "" && (file.Kind == changecapture.Text || file.Kind == changecapture.Absent) && len(file.Content) <= projection.FileLimit {
-			projection.Prime(ctx, projection.ReadFile, file.Path, file.Content, file.Kind != changecapture.Absent)
+		if file.Error == "" && (file.Kind == changecapture.Text || file.Kind == changecapture.Absent) && file.TextSize() <= projection.FileLimit {
+			text, err := file.Text()
+			if err == nil {
+				projection.Prime(ctx, projection.ReadFile, file.Path, text, file.Kind != changecapture.Absent)
+			}
 		}
 	}
 	expected := make(map[string]diffmodel.ReviewFile)
@@ -283,7 +286,11 @@ func (w *Endpoint) Advance(ctx context.Context, settled bool) bool {
 			if file.Diff != "" && !file.Binary && !file.Link {
 				// Predictions are compact; compare that projection without
 				// shrinking the observed evidence shown below or retained later.
-				comparison.Diff = diffmodel.RenderReviewPreviewFile(beforePath, afterPath, changecapture.ReviewText(before), changecapture.ReviewText(after)).Diff
+				beforeText, beforeErr := changecapture.ReviewText(before)
+				afterText, afterErr := changecapture.ReviewText(after)
+				if beforeErr == nil && afterErr == nil {
+					comparison.Diff = diffmodel.RenderReviewPreviewFile(beforePath, afterPath, beforeText, afterText).Diff
+				}
 			}
 			if comparison == target {
 				w.matched[before.Path] = true

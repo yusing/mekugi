@@ -103,19 +103,25 @@ changes:
 			return nil, fmt.Errorf("change %s is missing in workspace %q; session data may have expired after 14 days of inactivity or been removed under storage pressure", id, workspace)
 		}
 		start, startBytes := len(captures), bytes
+		skip := func(err error) bool {
+			if !unavailable.skip(id, err) {
+				return false
+			}
+			captures = slices.Delete(captures, start, len(captures))
+			calls = slices.Delete(calls, start, len(calls))
+			for key := range dropped {
+				if key[0] >= start {
+					delete(dropped, key)
+				}
+			}
+			bytes = startBytes
+			return true
+		}
 		var limitErr error
 		for _, call := range change.Calls {
 			record, err := read(id, call.ID)
 			if err != nil {
-				if unavailable.skip(id, err) {
-					captures = slices.Delete(captures, start, len(captures))
-					calls = slices.Delete(calls, start, len(calls))
-					for key := range dropped {
-						if key[0] >= start {
-							delete(dropped, key)
-						}
-					}
-					bytes = startBytes
+				if skip(err) {
 					continue changes
 				}
 				return nil, err
@@ -137,9 +143,22 @@ changes:
 					}
 				}
 			}
-			for _, file := range record.History.ReviewFiles {
+			for _, review := range record.History.ReviewFiles {
+				file := review.ReviewFile
 				file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
 				if keeps(file) {
+					if review.DiffBytes() > changes.MaxReadBytes-bytes {
+						limitErr = errors.New("change history exceeds 64 MiB")
+						break
+					}
+					loaded, err := review.Load()
+					if err != nil {
+						if skip(fmt.Errorf("change %s: %w", id, err)) {
+							continue changes
+						}
+						return nil, err
+					}
+					file.Diff = loaded.Diff
 					if limitErr = retain(file.Diff); limitErr != nil {
 						break
 					}
@@ -171,7 +190,26 @@ changes:
 				}
 			}
 		}
+		failed := make(map[string]bool)
+		fail := func(id string, err error) bool {
+			if !unavailable.skip(id, fmt.Errorf("change %s: %w", id, err)) {
+				return false
+			}
+			failed[id] = true
+			for _, capture := range captures {
+				if capture.id == id {
+					for _, file := range capture.files {
+						bytes -= len(file.Diff)
+					}
+				}
+			}
+			return true
+		}
+	loading:
 		for i := range captures {
+			if failed[captures[i].id] {
+				continue
+			}
 			var record *capturedRecord
 			for j, file := range captures[i].files {
 				if !dropped[[2]int{i, j}] || !keeps(file) {
@@ -181,6 +219,9 @@ changes:
 				if record == nil {
 					reread, err := read(captures[i].id, calls[i])
 					if err != nil {
+						if fail(captures[i].id, err) {
+							continue loading
+						}
 						return nil, err
 					}
 					if len(reread.History.ReviewFiles) != len(captures[i].files) {
@@ -188,13 +229,25 @@ changes:
 					}
 					record = &reread
 				}
-				captures[i].files[j].Diff = record.History.ReviewFiles[j].Diff
+				review := record.History.ReviewFiles[j]
+				if review.DiffBytes() > changes.MaxReadBytes-bytes {
+					return nil, errors.New("change history exceeds 64 MiB")
+				}
+				loaded, err := review.Load()
+				if err != nil {
+					if fail(captures[i].id, err) {
+						continue loading
+					}
+					return nil, err
+				}
+				captures[i].files[j].Diff = loaded.Diff
 				if err := retain(captures[i].files[j].Diff); err != nil {
 					return nil, err
 				}
 			}
 			captures[i].files = slices.DeleteFunc(captures[i].files, func(file diffmodel.ReviewFile) bool { return !keeps(file) })
 		}
+		captures = slices.DeleteFunc(captures, func(capture changeCapture) bool { return failed[capture.id] })
 	}
 	slices.SortStableFunc(captures, func(a, b changeCapture) int { return cmp.Compare(a.order, b.order) })
 	return captures, nil

@@ -97,7 +97,7 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
 	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
 	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })
-	inspection := c.Add(sessioninspection.Module, func() sessioninspection.Deps { return sessioninspection.Deps{} })
+	inspection := c.Add(sessioninspection.Module, func() sessioninspection.Deps { return sessioninspection.Deps{History: history.Value()} })
 	diagnosis := c.Add(diagnostics.Module, func() diagnostics.Deps {
 		return diagnostics.Deps{History: history.Value(), Inspection: inspection.Value()}
 	})

@@ -17,6 +17,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
@@ -35,7 +36,7 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 		} else if found {
 			continue
 		}
-		record, found, err := retained.Store.ReadHostCall(event.Workspace, call, false)
+		record, found, err := retained.Store.ReadAttachedHostCall(event.Workspace, call, false)
 		if err != nil {
 			return err
 		}
@@ -43,22 +44,46 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 			return fmt.Errorf("change %s has a missing or inconsistent attempt", event.ID)
 		}
 		history := record.History
-		files := make([]diffmodel.ReviewFile, len(history.ReviewFiles))
-		for i, file := range history.ReviewFiles {
-			files[i] = diffmodel.ReviewFile(file)
+		source := &evidence.Source{Store: retained.Store}
+		root, err := evidence.Root(record)
+		if err != nil {
+			return err
 		}
-		files = slices.DeleteFunc(files, func(file diffmodel.ReviewFile) bool {
-			return !changes.AuthoredReview(file) && !changes.GitDiagnosticReview(file)
-		})
+		var reviews []evidence.Review
+		hasObservation, codeMode := history.ExecObservation != nil, false
+		if hasObservation {
+			codeMode = history.ExecObservation.CodeMode
+		}
+		if root == "" {
+			reviews, err = evidence.Reviews(source, record)
+		} else {
+			manifest, readErr := evidence.Open(source, root)
+			if readErr != nil {
+				return readErr
+			}
+			reviews, err = evidence.ReadReviews(source, manifest.Reviews)
+			if err == nil {
+				hasObservation, codeMode, err = manifest.ObservationMode()
+			}
+		}
+		if err != nil {
+			return err
+		}
+		files, err := evidence.LoadReviews(reviews, func(file diffmodel.ReviewFile) bool {
+			return changes.AuthoredReview(file) || changes.GitDiagnosticReview(file)
+		}, changes.MaxReadBytes)
+		if err != nil {
+			return err
+		}
 		item, _, _ := strings.Cut(history.CorrelationID, "\x00")
 		attempt := presentation.Attempt{AttemptIdentity: identity, Operation: activitydetail.Operation{Thread: cmp.Or(history.ExecutingThread, event.Thread), Item: item}}
 		if (history.ExecOutcome != nil || history.ToolName == "apply_patch" && len(history.HostResults) > 1) && history.ExecutingThread != "" {
 			attempt.Receipt = CapturedReceipt(event.Workspace, history, files)
-		} else if writer, interval := strings.CutSuffix(history.CorrelationID, "\x00exec"); interval && history.ExecObservation != nil {
+		} else if writer, interval := strings.CutSuffix(history.CorrelationID, "\x00exec"); interval && hasObservation {
 			// A writer interval becomes visible only with its terminal membership.
 			// Borrow that operation's real host identity without altering the
 			// earlier immutable boundary or fabricating an intermediate completion.
-			terminal, found, err := retained.Store.ReadHostCall(event.Workspace, legacycall.ExecCallID(writer, history.ExecObservation.CodeMode), false)
+			terminal, found, err := retained.Store.ReadHostCall(event.Workspace, legacycall.ExecCallID(writer, codeMode), false)
 			if err != nil {
 				return err
 			}
@@ -128,10 +153,25 @@ func reconcileReview(ctx context.Context, retained changes.Scope, service change
 // CapturedReceipt correlates retained command identity for live annotations and
 // restored review publications before producing feature presentation.
 func CapturedReceipt(workspace string, value legacycall.History, files []diffmodel.ReviewFile) *presentation.Receipt {
+	return capturedReceipt(workspace, value, presentation.ReceiptEvidence{Files: files})
+}
+
+// CapturedRetainedReceipt detaches a bounded excerpt and exact counts. It never
+// expands a large captured batch just to publish its Activity receipt.
+func CapturedRetainedReceipt(workspace string, value legacycall.History, reviews []evidence.Review) (*presentation.Receipt, error) {
+	files, counts, truncated, err := evidence.ReceiptFiles(reviews, presentation.MaxReceiptDiffBytes)
+	if err != nil {
+		return nil, err
+	}
+	return capturedReceipt(workspace, value, presentation.ReceiptEvidence{Files: files, Counts: counts, Truncated: truncated}), nil
+}
+
+func capturedReceipt(workspace string, value legacycall.History, input presentation.ReceiptEvidence) *presentation.Receipt {
 	if value.ExecOutcome == nil && value.ToolName != "apply_patch" {
 		return nil
 	}
-	evidence := presentation.ReceiptEvidence{Files: files, Source: binding.EditReceiptSource(value.ToolName, value.Source), ChangeID: value.ChangeID}
+	evidence := input
+	evidence.Source, evidence.ChangeID = binding.EditReceiptSource(value.ToolName, value.Source), value.ChangeID
 	if value.ExecOutcome != nil {
 		evidence.Labels, evidence.DeletedDirectories = value.ExecOutcome.Labels, value.ExecOutcome.DeletedDirectories
 	}

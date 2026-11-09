@@ -14,7 +14,11 @@ import (
 // ReceiptEvidence contains captured facts needed for a source-text edit summary.
 // It carries no request, backend or retained-store handles.
 type ReceiptEvidence struct {
-	Files                      []diffmodel.ReviewFile
+	Files []diffmodel.ReviewFile
+	// Counts preserve exact totals when Files contains detached bounded excerpts.
+	Counts [][2]int
+	// Truncated marks excerpts whose full omitted-row count is unavailable.
+	Truncated                  []bool
 	Labels, DeletedDirectories []string
 	Source, ChangeID           string
 }
@@ -23,6 +27,17 @@ type ReceiptEvidence struct {
 // can be combined before rendering their diagnostic stat row.
 func NewReceipt(workspace string, evidence ReceiptEvidence) *Receipt {
 	evidence.Files = slices.Clone(evidence.Files)
+	evidence.Counts = slices.Clone(evidence.Counts)
+	evidence.Truncated = slices.Clone(evidence.Truncated)
+	if len(evidence.Truncated) != len(evidence.Files) {
+		evidence.Truncated = make([]bool, len(evidence.Files))
+	}
+	if len(evidence.Counts) != len(evidence.Files) {
+		evidence.Counts = make([][2]int, len(evidence.Files))
+		for i, file := range evidence.Files {
+			evidence.Counts[i][0], evidence.Counts[i][1] = file.LineCounts()
+		}
+	}
 	evidence.Labels = slices.Clone(evidence.Labels)
 	evidence.DeletedDirectories = slices.Clone(evidence.DeletedDirectories)
 	return &Receipt{Text: ReceiptText(workspace, evidence), workspace: workspace, evidence: &evidence}
@@ -65,7 +80,13 @@ func ReceiptText(workspace string, evidence ReceiptEvidence) string {
 			directories[root] = count
 		}
 	}
-	for _, file := range evidence.Files {
+	for index, file := range evidence.Files {
+		counts := func() (int, int) {
+			if len(evidence.Counts) == len(evidence.Files) {
+				return evidence.Counts[index][0], evidence.Counts[index][1]
+			}
+			return file.LineCounts()
+		}
 		if !changes.AuthoredReview(file) {
 			if changes.GitDiagnosticReview(file) {
 				path := file.AfterPath
@@ -79,7 +100,7 @@ func ReceiptText(workspace string, evidence ReceiptEvidence) string {
 				if file.Incomplete != "" || file.Binary {
 					gitCountsKnown = false
 				} else {
-					added, removed := file.LineCounts()
+					added, removed := counts()
 					gitAdded, gitRemoved = gitAdded+added, gitRemoved+removed
 				}
 			}
@@ -134,7 +155,7 @@ func ReceiptText(workspace string, evidence ReceiptEvidence) string {
 		if file.Binary {
 			summary += " binary"
 		} else {
-			added, removed := file.LineCounts()
+			added, removed := counts()
 			summary += fmt.Sprintf(" +%d -%d", added, removed)
 		}
 		if len(evidence.Labels) != 0 {
@@ -143,7 +164,8 @@ func ReceiptText(workspace string, evidence ReceiptEvidence) string {
 			summary += " · " + evidence.Source
 		}
 		if !file.Binary {
-			if hunks := editReceiptHunks(file.Diff, &budget); hunks != "" {
+			truncated := len(evidence.Truncated) == len(evidence.Files) && evidence.Truncated[index]
+			if hunks := editReceiptHunks(file.Diff, &budget, truncated); hunks != "" {
 				summary += "\n" + markdownsyntax.SourceFence("diff", hunks)
 			}
 		}
@@ -202,9 +224,14 @@ func captureGapSummary(reasons map[string]int) string {
 }
 
 // editReceiptHunks keeps hunk rows only; file headers repeat the summary.
-func editReceiptHunks(diff string, budget *int) string {
+func editReceiptHunks(diff string, budget *int, truncated bool) string {
+	const omitted = "… more diff content\n"
 	_, hunks, ok := strings.Cut(diff, "\n@@ ")
 	if !ok || *budget <= 0 {
+		if truncated {
+			*budget -= len(omitted)
+			return omitted
+		}
 		return ""
 	}
 	lines := strings.Split(strings.TrimSuffix("@@ "+hunks, "\n"), "\n")
@@ -218,7 +245,9 @@ func editReceiptHunks(diff string, budget *int) string {
 		kept.WriteByte('\n')
 		shown++
 	}
-	if hidden := len(lines) - shown; hidden > 0 {
+	if truncated {
+		kept.WriteString(omitted)
+	} else if hidden := len(lines) - shown; hidden > 0 {
 		fmt.Fprintf(&kept, "… %d more diff lines\n", hidden)
 	}
 	*budget -= kept.Len()

@@ -20,6 +20,7 @@ import (
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/agentmetrics"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessioninspection"
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
 	"github.com/yusing/mekugi/testsupport/moduletest"
@@ -56,7 +57,7 @@ func scripted(t *testing.T, calls []binding.RolloutCall, contributions ...inspec
 	script := &moduletest.Scripted{ReadRollout: func(context.Context, string, func(binding.RolloutEvent) error) (binding.Rollout, error) {
 		return binding.Rollout{ThreadID: "thread-original", Source: []byte(`"cli"`), Calls: calls}, nil
 	}}
-	service := moduletest.New(t, sessioninspection.Module, sessioninspection.Deps{}, module.Slots{Inspection: contributions}, script)
+	service := moduletest.New(t, sessioninspection.Module, sessioninspection.Deps{History: inspectionHistory(t)}, module.Slots{Inspection: contributions}, script)
 	if script.RolloutRegistrations != 1 {
 		t.Fatalf("rollout registrations = %d", script.RolloutRegistrations)
 	}
@@ -256,7 +257,7 @@ func TestDescriptorBindsOfflineDecoder(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := &moduletest.Scripted{ReadRollout: rollout.Inspect}
-	service := moduletest.New(t, sessioninspection.Module, sessioninspection.Deps{}, module.Slots{}, script)
+	service := moduletest.New(t, sessioninspection.Module, sessioninspection.Deps{History: inspectionHistory(t)}, module.Slots{}, script)
 	request := options(filepath.Join(directory, "absent-retained"))
 	request.Session, request.Limit, request.Field = path, 50, "output"
 	before := tree(t, directory)
@@ -399,4 +400,13 @@ func TestDescriptorPatchOutcomeRequiresCompletedEvidence(t *testing.T) {
 			}
 		})
 	}
+}
+
+func inspectionHistory(t testing.TB) *history.Service {
+	t.Helper()
+	service, err := history.NewService(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service
 }

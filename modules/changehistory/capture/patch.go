@@ -3,6 +3,7 @@ package capture
 // Source: apps/mekugi/internal/router/native_apply_patch.go:27:511@1e6d58c6.
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -24,16 +26,7 @@ type PatchObservation struct {
 	Files []PatchFile
 }
 
-type PatchFile struct {
-	BeforePath   string `json:",omitempty"`
-	AfterPath    string `json:",omitempty"`
-	Before       string `json:",omitempty"`
-	Exists       bool   `json:",omitzero"`
-	Error        string `json:",omitempty"`
-	TargetBefore string `json:",omitempty"`
-	TargetExists bool   `json:",omitzero"`
-	TargetError  string `json:",omitempty"`
-}
+type PatchFile = evidence.PatchFile
 
 type nativePatchPath struct {
 	before string
@@ -66,22 +59,22 @@ func PatchBoundary(input, workspace string, files []File) (PatchObservation, err
 		byPath[file.Path] = file
 	}
 	budget := MaxContentBytes
-	read := func(path string) (string, bool, string) {
+	read := func(path string) (string, *evidence.Text, bool, string) {
 		if file, found := byPath[path]; found {
 			if file.Error != "" {
-				return "", FilePresent(file), file.Error
+				return "", nil, FilePresent(file), file.Error
 			}
 			if file.Kind == Absent || file.Kind == Text {
 				size := len(responses.MustMarshalJSON(file.Content))
 				if size > budget {
-					return "", FilePresent(file), "native patch baseline exceeds capture bound"
+					return "", nil, FilePresent(file), "native patch baseline exceeds capture bound"
 				}
 				budget -= size
-				return file.Content, FilePresent(file), ""
+				return file.Content, file.ContentRef, FilePresent(file), ""
 			}
-			return "", true, "native patch baseline is not text"
+			return "", nil, true, "native patch baseline is not text"
 		}
-		return "", false, "native patch baseline unavailable"
+		return "", nil, false, "native patch baseline unavailable"
 	}
 	observation := PatchObservation{Input: input}
 	for _, path := range paths {
@@ -90,12 +83,12 @@ func PatchBoundary(input, workspace string, files []File) (PatchObservation, err
 		if target == "" {
 			target = path.after
 		}
-		file.Before, file.Exists, file.Error = read(target)
+		file.Before, file.BeforeRef, file.Exists, file.Error = read(target)
 		if file.BeforePath == "" && file.Exists {
 			file.BeforePath = target
 		}
 		if path.before != "" && path.after != "" && path.before != path.after {
-			file.TargetBefore, file.TargetExists, file.TargetError = read(path.after)
+			file.TargetBefore, file.TargetBeforeRef, file.TargetExists, file.TargetError = read(path.after)
 		}
 		observation.Files = append(observation.Files, file)
 	}
@@ -190,17 +183,21 @@ func ReadPatchFile(path string) (content string, exists bool, err error) {
 	return content, true, err
 }
 
-func Patch(input, workspace string) (PatchObservation, error) {
+func patchWithin(ctx context.Context, input, workspace string, source *evidence.Source, total *int) (PatchObservation, error) {
 	paths, err := nativePatchPaths(input, workspace)
 	if err != nil {
 		return PatchObservation{}, err
 	}
 	observation := PatchObservation{Input: input, Files: make([]PatchFile, 0, len(paths))}
-	total := len(input)
+	*total += len(input)
 	for _, path := range paths {
 		capturePath := path.before
 		if capturePath == "" {
 			capturePath = path.after
+		}
+		if err := ctx.Err(); err != nil {
+			observation.Files = append(observation.Files, PatchFile{BeforePath: path.before, AfterPath: path.after, Error: "capture deadline"})
+			continue
 		}
 		before, exists, captureErr := ReadPatchFile(capturePath)
 		file := PatchFile{BeforePath: path.before, AfterPath: path.after, Before: before, Exists: exists}
@@ -216,8 +213,27 @@ func Patch(input, workspace string) (PatchObservation, error) {
 				file.TargetError = captureErr.Error()
 			}
 		}
-		total += len(file.BeforePath) + len(file.AfterPath) + len(file.Before) + len(file.Error) + len(file.TargetBefore) + len(file.TargetError)
-		if total > maxNativePatchTotalBytes {
+		if source != nil {
+			spill := func(text *string, ref **evidence.Text, reason *string) {
+				if len(*text) <= evidence.InlineBytes && len(*text) <= MaxContentBytes-*total {
+					*total += len(*text)
+					return
+				}
+				saved, err := source.SaveText(ctx, *text)
+				if err != nil {
+					*text, *reason = "", "retain patch baseline: "+err.Error()
+					return
+				}
+				*text, *ref = "", saved
+			}
+			spill(&file.Before, &file.BeforeRef, &file.Error)
+			spill(&file.TargetBefore, &file.TargetBeforeRef, &file.TargetError)
+		}
+		*total += len(file.BeforePath) + len(file.AfterPath) + len(file.Error) + len(file.TargetError)
+		if source == nil {
+			*total += len(file.Before) + len(file.TargetBefore)
+		}
+		if source == nil && *total > maxNativePatchTotalBytes {
 			return PatchObservation{}, errors.New("apply_patch baseline exceeds capture capacity")
 		}
 		observation.Files = append(observation.Files, file)
@@ -227,8 +243,17 @@ func Patch(input, workspace string) (PatchObservation, error) {
 
 // ReviewPatchEndpoints returns the same observed endpoints used for the review.
 // Continuing named observations can share this boundary without a second read.
-func ReviewPatchEndpoints(files []PatchFile) ([]diffmodel.ReviewFile, []File, bool) {
-	reviews := make([]diffmodel.ReviewFile, 0, len(files))
+func ReviewPatchEndpoints(files []PatchFile, sources ...*evidence.Source) ([]evidence.Review, []File, bool) {
+	var source *evidence.Source
+	if len(sources) > 0 {
+		source = sources[0]
+	}
+	ctx := context.Background()
+	budget, reviewBudget := MaxContentBytes, MaxContentBytes
+	reviews := make([]evidence.Review, 0, len(files))
+	appendReview := func(file diffmodel.ReviewFile) {
+		reviews = append(reviews, evidence.RetainReview(ctx, source, file, &reviewBudget))
+	}
 	var endpoints []File
 	endpoint := func(path, text string, exists bool, err error) {
 		file := File{Path: path, Content: text, Size: int64(len(text))}
@@ -238,7 +263,7 @@ func ReviewPatchEndpoints(files []PatchFile) ([]diffmodel.ReviewFile, []File, bo
 		if err != nil {
 			file.Error = err.Error()
 		}
-		endpoints = append(endpoints, file)
+		endpoints = append(endpoints, retainFile(ctx, file, &budget, source))
 	}
 	complete := true
 	appendDifference := func(pathBefore, pathAfter, before, after string, existedBefore, existsAfter bool) {
@@ -251,9 +276,25 @@ func ReviewPatchEndpoints(files []PatchFile) ([]diffmodel.ReviewFile, []File, bo
 		if !existsAfter {
 			pathAfter = ""
 		}
-		reviews = append(reviews, diffmodel.RenderReviewFile(pathBefore, pathAfter, before, after))
+		appendReview(diffmodel.RenderReviewFile(pathBefore, pathAfter, before, after))
 	}
 	for _, file := range files {
+		if file.BeforeRef != nil {
+			text, err := file.BeforeRef.Read()
+			if err != nil {
+				file.Error = err.Error()
+			} else {
+				file.Before = text
+			}
+		}
+		if file.TargetBeforeRef != nil {
+			text, err := file.TargetBeforeRef.Read()
+			if err != nil {
+				file.TargetError = err.Error()
+			} else {
+				file.TargetBefore = text
+			}
+		}
 		readPath := file.AfterPath
 		if readPath == "" {
 			readPath = file.BeforePath
@@ -279,7 +320,7 @@ func ReviewPatchEndpoints(files []PatchFile) ([]diffmodel.ReviewFile, []File, bo
 					reason += err.Error()
 				}
 			}
-			reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(file.BeforePath, file.AfterPath, reason))
+			appendReview(diffmodel.RenderIncompleteReviewFile(file.BeforePath, file.AfterPath, reason))
 			complete = false
 			continue
 		}
@@ -293,6 +334,11 @@ func ReviewPatchEndpoints(files []PatchFile) ([]diffmodel.ReviewFile, []File, bo
 		}
 		appendDifference(file.BeforePath, file.BeforePath, file.Before, sourceAfter, file.Exists, sourceExists)
 		appendDifference(file.AfterPath, file.AfterPath, file.TargetBefore, after, file.TargetExists, afterExists)
+	}
+	for _, review := range reviews {
+		if review.Incomplete != "" {
+			complete = false
+		}
 	}
 	return reviews, endpoints, complete
 }
@@ -315,13 +361,13 @@ func PatchWindowFiles(observations []PatchObservation) [][]PatchFile {
 	}
 	files := make([][]PatchFile, len(observations))
 	seen := make(map[string]bool)
-	appendPath := func(index int, path, before string, exists bool, reason string) {
+	appendPath := func(index int, path, before string, ref *evidence.Text, exists bool, reason string) {
 		if path == "" || seen[path] {
 			return
 		}
 		seen[path] = true
 		files[index] = append(files[index], PatchFile{
-			BeforePath: path, AfterPath: path, Before: before, Exists: exists, Error: reason,
+			BeforePath: path, AfterPath: path, Before: before, BeforeRef: ref, Exists: exists, Error: reason,
 		})
 	}
 	for index, observation := range observations {
@@ -336,9 +382,9 @@ func PatchWindowFiles(observations []PatchObservation) [][]PatchFile {
 			if path == "" {
 				path = file.AfterPath
 			}
-			appendPath(index, path, file.Before, file.Exists, file.Error)
+			appendPath(index, path, file.Before, file.BeforeRef, file.Exists, file.Error)
 			if move {
-				appendPath(index, file.AfterPath, file.TargetBefore, file.TargetExists, file.TargetError)
+				appendPath(index, file.AfterPath, file.TargetBefore, file.TargetBeforeRef, file.TargetExists, file.TargetError)
 			}
 		}
 	}
@@ -347,18 +393,56 @@ func PatchWindowFiles(observations []PatchObservation) [][]PatchFile {
 
 // Patches captures complete literal inputs under one aggregate baseline bound.
 // Invalid or unavailable inputs never establish a pre-edit baseline.
-func Patches(inputs []string, workspace string) []PatchObservation {
-	observations := make([]PatchObservation, 0, len(inputs))
-	total := 0
+func Patches(inputs []string, workspace string, sources ...*evidence.Source) []PatchObservation {
+	var source *evidence.Source
+	if len(sources) > 0 {
+		source = sources[0]
+	}
+	if source == nil {
+		return patchesWithin(context.Background(), inputs, workspace, nil)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), execCaptureHold)
+	defer cancel()
+	done := make(chan []PatchObservation, 1)
+	select {
+	case execCaptureSlots <- struct{}{}:
+		go func() { defer func() { <-execCaptureSlots }(); done <- patchesWithin(ctx, inputs, workspace, source) }()
+	case <-ctx.Done():
+	}
+	select {
+	case observations := <-done:
+		if ctx.Err() == nil {
+			return observations
+		}
+	case <-ctx.Done():
+	}
+	var missing []PatchObservation
 	for _, input := range inputs {
-		observation, err := Patch(input, workspace)
+		paths, err := nativePatchPaths(input, workspace)
 		if err != nil {
 			continue
 		}
-		for _, file := range observation.Files {
-			total += len(file.Before) + len(file.BeforePath) + len(file.AfterPath) + len(file.Error) + len(file.TargetBefore) + len(file.TargetError)
+		observation := PatchObservation{Input: input}
+		for _, path := range paths {
+			observation.Files = append(observation.Files, PatchFile{BeforePath: path.before, AfterPath: path.after, Error: "capture deadline"})
 		}
-		if total > maxNativePatchTotalBytes {
+		missing = append(missing, observation)
+	}
+	return missing
+}
+
+func patchesWithin(ctx context.Context, inputs []string, workspace string, source *evidence.Source) []PatchObservation {
+	observations := make([]PatchObservation, 0, len(inputs))
+	total := 0
+	for _, input := range inputs {
+		observation, err := patchWithin(ctx, input, workspace, source, &total)
+		if err != nil {
+			if source == nil && total > maxNativePatchTotalBytes {
+				return nil
+			}
+			continue
+		}
+		if source == nil && total > maxNativePatchTotalBytes {
 			return nil
 		}
 		observations = append(observations, observation)

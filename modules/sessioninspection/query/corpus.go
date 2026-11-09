@@ -138,7 +138,7 @@ func (s *Service) Corpus(ctx context.Context, options CorpusOptions) (Corpus, er
 			result.Excluded["model"]++
 			continue
 		}
-		session, err := inspectCorpusSession(ctx, path, calls, observations, options.ReplayDirectory, since, until, options.Model, options.Limit)
+		session, err := s.inspectCorpusSession(ctx, path, calls, observations, options.ReplayDirectory, since, until, options.Model, options.Limit)
 		if err != nil {
 			result.Unavailable = append(result.Unavailable, Unavailable{path, err.Error()})
 			continue
@@ -183,7 +183,7 @@ func classifyCorpusSession(observation Rollout) string {
 	}
 	return "unknown"
 }
-func inspectCorpusSession(ctx context.Context, path string, calls []Call, observation Rollout, replayDirectory string, since, until time.Time, model string, limit int) (CorpusSession, error) {
+func (s *Service) inspectCorpusSession(ctx context.Context, path string, calls []Call, observation Rollout, replayDirectory string, since, until time.Time, model string, limit int) (CorpusSession, error) {
 	session := CorpusSession{Path: path, ThreadID: observation.ThreadID, Models: observation.Models, Findings: []Finding{},
 		ProviderUsage: inspection.Usage{State: "unavailable"}}
 	admit := func(finding Finding) {
@@ -218,7 +218,7 @@ func inspectCorpusSession(ctx context.Context, path string, calls []Call, observ
 		var record legacycall.Record
 		found := false
 		if root != "" {
-			record, found, err = legacycall.Read(replayDirectory, root, call.ID, false, 32<<20)
+			record, found, err = s.readCall(replayDirectory, root, call.ID)
 			if err != nil {
 				return session, err
 			}

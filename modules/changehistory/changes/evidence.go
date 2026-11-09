@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
 // Source: internal/router/authored_changes.go@[1a1981ba] retained provenance.
@@ -20,15 +21,16 @@ func GitDiagnosticReview(file diffmodel.ReviewFile) bool {
 	return file.Origin == "git" || strings.HasPrefix(file.Origin, "git ")
 }
 
-// AuthoredEvidence omits observer/managed evidence and recomputes its coverage.
+// AuthoredReviews omits observer/managed evidence and recomputes its coverage.
 // Unfiltered input retains its existing coverage and slice.
-func AuthoredEvidence(files []diffmodel.ReviewFile, coverage string) ([]diffmodel.ReviewFile, string) {
-	if !slices.ContainsFunc(files, func(file diffmodel.ReviewFile) bool { return !AuthoredReview(file) }) {
+// Filtering needs no text reads or whole-batch materialization.
+func AuthoredReviews(files []evidence.Review, coverage string) ([]evidence.Review, string) {
+	if !slices.ContainsFunc(files, func(file evidence.Review) bool { return !AuthoredReview(file.ReviewFile) }) {
 		return files, coverage
 	}
-	files = slices.DeleteFunc(slices.Clone(files), func(file diffmodel.ReviewFile) bool { return !AuthoredReview(file) })
+	files = slices.DeleteFunc(slices.Clone(files), func(file evidence.Review) bool { return !AuthoredReview(file.ReviewFile) })
 	coverage = "exact"
-	if slices.ContainsFunc(files, func(file diffmodel.ReviewFile) bool { return file.Incomplete != "" }) {
+	if slices.ContainsFunc(files, func(file evidence.Review) bool { return file.Incomplete != "" }) {
 		coverage = "partial"
 	}
 	return files, coverage

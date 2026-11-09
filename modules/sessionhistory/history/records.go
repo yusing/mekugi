@@ -5,11 +5,32 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 // MaxRecordBytes is the retained wire-record bound.
 const MaxRecordBytes = 32 << 20
+
+// ReadRetained borrows this store's admitted directory for a bounded record read.
+// Binary feature records need not be UTF-8; their owner validates the payload.
+func (s *Store) ReadRetained(name string, limit int64) ([]byte, error) {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name || limit < 0 || limit > MaxRecordBytes {
+		return nil, errors.New("invalid retained record read")
+	}
+	file, err := persistence.OpenRetained(filepath.Join(s.directory, name), int(limit))
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err == nil && int64(len(data)) > limit {
+		err = errors.New("retained record exceeds read bound")
+	}
+	return data, err
+}
 
 // ReadRecord reads one regular, bounded UTF-8 retained record without effects.
 // On a read or validation failure, returned bytes are for resource accounting

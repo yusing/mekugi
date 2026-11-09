@@ -58,7 +58,7 @@ Capture, retain, review, apply, and revert filesystem change evidence
 - Resources: private workspace checkpoints and bounded warm-up tasks.
 - Contributes: `commands`, `guidance`, `record-kinds`, `references`, `terminal-auxiliary`.
 - Commands: `mchanges`.
-- Records: `changes`.
+- Records: `changes`, `change-stage`, `change-evidence`, `change-file`, `change-text`.
 - References: `changes`.
 - Codex connections: `executable-frontend`.
 
@@ -161,8 +161,8 @@ Own retained session publication, namespaces, allocation, leases, and retention
 
 Query retained calls, outcomes and static corpus findings
 
-- Composition: selected; lifetime: `stateless`.
-- Requires: none.
+- Composition: selected; lifetime: `invocation`.
+- Requires: `sessionhistory`, `changehistory`.
 - Hosts: `inspection`.
 - Codex connections: `rollout`.
 

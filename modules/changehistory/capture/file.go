@@ -3,6 +3,8 @@ package capture
 // Source: apps/mekugi/internal/router/exec_observation.go:38:1250@1e6d58c6.
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -17,6 +19,7 @@ import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
 func execFileStamp(info os.FileInfo) string {
@@ -34,6 +37,12 @@ func WatchFileStamp(path string, info os.FileInfo) string {
 // ReadFile reads one path without following a final symlink or
 // blocking on a FIFO.
 func ReadFile(path string, budget *int) File {
+	return ReadFileIn(context.Background(), path, budget, nil)
+}
+
+// ReadFileIn retains the same per-file admission while spilling large text before
+// the next file is read. The aggregate budget bounds resident inline evidence.
+func ReadFileIn(ctx context.Context, path string, budget *int, source *evidence.Source) File {
 	snapshot := File{Path: path}
 	info, err := os.Lstat(path)
 	switch {
@@ -67,7 +76,7 @@ func ReadFile(path string, budget *int) File {
 		snapshot.Stamp, snapshot.Error = execFileStamp(info), "file exceeds the 8 MiB capture bound"
 		return snapshot
 	}
-	if budget != nil && int(info.Size()) > *budget {
+	if source == nil && budget != nil && int(info.Size()) > *budget {
 		snapshot.Stamp, snapshot.Error = execFileStamp(info), "capture budget exhausted"
 		return snapshot
 	}
@@ -82,12 +91,26 @@ func ReadFile(path string, budget *int) File {
 		snapshot.Stamp, snapshot.Error = execFileStamp(info), "file changed while it was captured"
 		return snapshot
 	}
-	data, err := io.ReadAll(io.LimitReader(file, MaxFileBytes+1))
+	var buffer bytes.Buffer
+	buffer.Grow(int(info.Size()) + 1)
+	_, err = buffer.ReadFrom(io.LimitReader(file, MaxFileBytes+1))
+	data := buffer.Bytes()
 	if err != nil || len(data) > MaxFileBytes {
 		snapshot.Stamp, snapshot.Error = execFileStamp(info), "file could not be read within the capture bound"
 		return snapshot
 	}
-	snapshot.Kind, snapshot.Size, snapshot.Content, snapshot.Hash = execDataKind(data, budget)
+	snapshot.Kind, snapshot.Size, snapshot.Content, snapshot.Hash = execDataKind(data, nil)
+	return retainFile(ctx, snapshot, budget, source)
+}
+
+func retainFile(ctx context.Context, snapshot File, budget *int, source *evidence.Source) File {
+	if source != nil && (len(snapshot.Content) > evidence.InlineBytes || budget != nil && len(snapshot.Content) > *budget) {
+		if err := snapshot.Spill(ctx, source); err != nil {
+			snapshot.Content, snapshot.Error = "", "retain baseline: "+err.Error()
+		}
+	} else if budget != nil {
+		*budget -= len(snapshot.Content)
+	}
 	return snapshot
 }
 
@@ -118,6 +141,9 @@ func SameContent(before, after File) bool {
 	}
 	switch before.Kind {
 	case Text:
+		if before.ContentRef != nil || after.ContentRef != nil {
+			return before.TextSize() == after.TextSize() && before.TextDigest() == after.TextDigest()
+		}
 		return before.Content == after.Content
 	case Binary:
 		return before.Hash == after.Hash
@@ -132,18 +158,21 @@ func FilePresent(snapshot File) bool {
 	return snapshot.Kind != Absent && snapshot.Kind != Directory
 }
 
-func ReviewText(snapshot File) string {
+func ReviewText(snapshot File) (string, error) {
 	if snapshot.Kind == Symlink {
-		return "-> " + snapshot.Link + "\n"
+		return "-> " + snapshot.Link + "\n", nil
 	}
-	return snapshot.Content
+	return snapshot.Text()
 }
 
 func execSnapshotHash(snapshot File) (int64, string) {
 	if snapshot.Kind == Binary {
 		return snapshot.Size, snapshot.Hash
 	}
-	text := ReviewText(snapshot)
+	if snapshot.ContentRef != nil {
+		return int64(snapshot.ContentRef.Size), snapshot.ContentRef.Digest
+	}
+	text, _ := ReviewText(snapshot)
 	sum := sha256.Sum256([]byte(text))
 	return int64(len(text)), hex.EncodeToString(sum[:])
 }
@@ -155,7 +184,12 @@ func RenderReview(beforePath, afterPath string, before, after File) diffmodel.Re
 		afterSize, afterHash := execSnapshotHash(after)
 		return diffmodel.RenderBinaryReviewFile(beforePath, afterPath, beforeSize, afterSize, beforeHash, afterHash)
 	}
-	review := diffmodel.RenderReviewFile(beforePath, afterPath, ReviewText(before), ReviewText(after))
+	beforeText, beforeErr := ReviewText(before)
+	afterText, afterErr := ReviewText(after)
+	if err := errors.Join(beforeErr, afterErr); err != nil {
+		return diffmodel.RenderIncompleteReviewFile(beforePath, afterPath, err.Error())
+	}
+	review := diffmodel.RenderReviewFile(beforePath, afterPath, beforeText, afterText)
 	review.Link = before.Kind == Symlink || after.Kind == Symlink
 	return review
 }

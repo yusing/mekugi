@@ -3,6 +3,7 @@ package retained
 // Source: internal/router/mchanges.go@[1a1981ba] retained change behavior.
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
@@ -376,7 +378,7 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 	if options.view == "net" {
 		return s.renderNetChanges(ctx, options, index)
 	}
-	var output strings.Builder
+	var output bytes.Buffer
 	type counts struct {
 		added, removed int
 		incomplete     bool
@@ -398,7 +400,9 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 	matched := false
 	var summary []changeCapture
 	summaryBytes := 0
+targets:
 	for _, id := range options.ids {
+		start, summaryStart, summaryBytesStart, matchedStart := output.Len(), len(summary), summaryBytes, matched
 		if output.Len() > changes.MaxReadBytes {
 			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 		}
@@ -424,7 +428,7 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 				break
 			}
 			records[i] = record
-			excludedOnly = excludedOnly && len(record.History.ReviewFiles) != 0 && !slices.ContainsFunc(record.History.ReviewFiles, changes.AuthoredReview)
+			excludedOnly = excludedOnly && len(record.History.ReviewFiles) != 0 && !slices.ContainsFunc(record.History.ReviewFiles, func(f evidence.Review) bool { return changes.AuthoredReview(f.ReviewFile) })
 		}
 		if readErr != nil {
 			if options.unavailable.skip(id, readErr) {
@@ -482,7 +486,7 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 					fmt.Fprintf(&output, "%s incomplete captured scope\n", id)
 				}
 			}
-			if slices.ContainsFunc(history.ReviewFiles, changes.AuthoredReview) {
+			if slices.ContainsFunc(history.ReviewFiles, func(f evidence.Review) bool { return changes.AuthoredReview(f.ReviewFile) }) {
 				status = "applied"
 			}
 			if options.view == "history" && len(change.Calls) == 1 {
@@ -517,7 +521,8 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 					output.WriteByte('\n')
 				}
 			}
-			for _, file := range history.ReviewFiles {
+			for _, review := range history.ReviewFiles {
+				file := review.ReviewFile
 				if file.BeforePath != "" && !filepath.IsAbs(file.BeforePath) {
 					file.BeforePath = filepath.Join(index.workspaceFor(id), file.BeforePath)
 				}
@@ -530,6 +535,20 @@ func (s *store) renderChanges(ctx context.Context, options changeReadOptions, in
 				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 					continue
 				}
+				if review.DiffBytes() > changes.MaxReadBytes-output.Len()-summaryBytes {
+					return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
+				}
+				loaded, err := review.Load()
+				if err != nil {
+					if options.unavailable.skip(id, fmt.Errorf("change %s: %w", id, err)) {
+						output.Truncate(start)
+						summary = summary[:summaryStart]
+						summaryBytes, matched = summaryBytesStart, matchedStart
+						continue targets
+					}
+					return "", err
+				}
+				file.Diff = loaded.Diff
 				matched = true
 				if options.view == "summary" {
 					summaryBytes += len(file.Diff)

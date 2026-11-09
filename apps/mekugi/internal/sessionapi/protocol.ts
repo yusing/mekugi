@@ -1244,6 +1244,7 @@ export type AgentRow = {
 
 export type Presentation_Publication = {
   "Files": Array<File>;
+  "Diagnostics": Array<Chunk>;
   "Unfiltered": Record<string, File>;
   "Counts": Presentation_Counts;
 };

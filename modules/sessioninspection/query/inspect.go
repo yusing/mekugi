@@ -139,7 +139,7 @@ func (s *Service) Inspect(ctx context.Context, options SingleOptions) (Result, e
 		var record legacycall.Record
 		found := false
 		if root != "" {
-			record, found, err = legacycall.Read(options.ReplayDirectory, root, call.ID, false, 32<<20)
+			record, found, err = s.readCall(options.ReplayDirectory, root, call.ID)
 			if err != nil {
 				return Result{}, fmt.Errorf("call %q: %w", call.ID, err)
 			}
@@ -147,7 +147,7 @@ func (s *Service) Inspect(ctx context.Context, options SingleOptions) (Result, e
 		var observed []legacycall.History
 		if found && len(record.History.NativePatches) != 0 {
 			for index := range record.History.NativePatches {
-				derived, exists, readErr := legacycall.Read(options.ReplayDirectory, root, legacycall.PatchCallID(call.ID, index), false, 32<<20)
+				derived, exists, readErr := s.readCall(options.ReplayDirectory, root, legacycall.PatchCallID(call.ID, index))
 				if readErr != nil {
 					return Result{}, fmt.Errorf("call %q patch %d: %w", call.ID, index+1, readErr)
 				}
@@ -165,7 +165,7 @@ func (s *Service) Inspect(ctx context.Context, options SingleOptions) (Result, e
 		var effects *legacycall.History
 		if found && record.History.ExecObservation != nil {
 			derivedID := legacycall.ExecCallID(call.ID, record.History.ExecObservation.CodeMode)
-			derived, exists, readErr := legacycall.Read(options.ReplayDirectory, root, derivedID, false, 32<<20)
+			derived, exists, readErr := s.readCall(options.ReplayDirectory, root, derivedID)
 			if readErr != nil {
 				return Result{}, fmt.Errorf("call %q effects: %w", call.ID, readErr)
 			}

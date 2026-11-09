@@ -1,13 +1,78 @@
 package capture
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+func TestWorkspaceSnapshotSymlinkTargetsIgnoreTextBudgetAndClassification(t *testing.T) {
+	for _, target := range []string{"old-target", "old-\xff"} {
+		t.Run(fmt.Sprintf("utf8=%v", utf8.ValidString(target)), func(t *testing.T) {
+			isolateSnapshotGit(t)
+			workspace := t.TempDir()
+			path, regular := filepath.Join(workspace, "link"), filepath.Join(workspace, "regular")
+			if err := os.Symlink(target, path); err != nil {
+				t.Fatal(err)
+			}
+			writeTestFile(t, regular, target) // The same Git object can have both modes.
+			snapshots := newWorkspaces(t.Context(), t.TempDir())
+			t.Cleanup(snapshots.Close)
+			tree := snapshots.Checkpoint(t.Context(), workspace)
+			if tree == "" {
+				t.Fatal("missing checkpoint")
+			}
+			repo := snapshots.repo(workspace)
+			states, err := repo.states(t.Context(), tree, []string{path, regular})
+			if err != nil {
+				t.Fatal(err)
+			}
+			service, err := history.NewService(evidence.RecordKinds())
+			if err != nil {
+				t.Fatal(err)
+			}
+			store, err := service.Open(t.Context(), t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := &evidence.Source{Store: store, Thread: "links"}
+			budget := 0
+			blobs, err := repo.blobs(t.Context(), []workspaceSnapshotEntry{states[path], states[regular]}, &budget, source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := workspaceSnapshotFile(path, states[path], blobs)
+			if before.Kind != Symlink || before.Link != target || before.Error != "" {
+				t.Fatalf("lost target after spilling/classification: %+v", before)
+			}
+			if utf8.ValidString(target) && workspaceSnapshotFile(regular, states[regular], blobs).ContentRef == nil {
+				t.Fatal("regular side did not exercise exhausted inline budget")
+			}
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("new-target", path); err != nil {
+				t.Fatal(err)
+			}
+			result := Reconcile(t.Context(), Observation{Files: []File{before}}, Comparison{Evidence: source})
+			if !result.Complete || len(result.Files) != 1 {
+				t.Fatalf("changed link disappeared: complete=%v files=%d", result.Complete, len(result.Files))
+			}
+			file, err := result.Files[0].Load()
+			if err != nil || !file.Link || !strings.Contains(file.Diff, "--> "+target) || !strings.Contains(file.Diff, "+-> new-target") {
+				t.Fatalf("link review lost target: %+v, %v", file, err)
+			}
+		})
+	}
+}
 
 func TestWorkspaceSnapshotRecoversFromPrunedState(t *testing.T) {
 	isolateSnapshotGit(t)

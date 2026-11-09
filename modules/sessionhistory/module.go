@@ -24,7 +24,7 @@ var Module = module.Descriptor[Deps, *history.Service, module.NoBindings, module
 		history.HookRecord,
 		history.CompactionRecord,
 		{ID: "call", Match: func(name string) bool { return legacycall.ValidName(name, false) }, Dependencies: func(record recordkind.Record) ([]string, error) {
-			return legacycall.Dependencies(record.Name, record.Data)
+			return history.HostDependencies(record.Name, record.Data)
 		}},
 		{ID: "snapshot", Match: legacycall.ValidSnapshotName},
 		{ID: "commentary", Match: func(name string) bool { return legacycall.ValidName(name, true) }, SeparateBudget: true, Limit: 16 << 20},

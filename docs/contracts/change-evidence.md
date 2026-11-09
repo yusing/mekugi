@@ -41,10 +41,15 @@ An admitted workspace remains the capture identity after its directory is remove
 Commands with an explicit surviving working directory can still capture named
 edits under that identity; change IDs resolve the original workspace for retained reads.
 
-New records retain bounded inline file evidence. Private workspace checkpoints
-are comparison state, not record evidence. Historical snapshot-backed records
-remain readable and retain their dependencies until their last owner expires;
-missing or corrupt evidence is unavailable, never an empty diff.
+New records retain bounded per-file evidence with chunked text owned by change
+history. Larger batches do not lose eligible files merely because their combined
+text exceeds an inline envelope. Per-file size, acquisition deadlines, metadata
+and storage admission remain bounded, with explicit incomplete evidence on
+acquisition failure. Private workspace checkpoints are comparison state, not
+record evidence. Historical inline and snapshot-backed records remain readable
+and retain their dependencies until their last owner expires; missing or corrupt
+evidence is unavailable, never an empty diff. Cold selections load selected file
+text without reconstructing an aggregate capture envelope.
 
 ## Capture scope
 
@@ -172,7 +177,8 @@ before the next named writer starts. This preserves both operations even when th
 later writer restores earlier bytes. Acquisition shares one 500 ms deadline from
 helper entry through input decoding, transport, correlation and reads. Host/helper
 process startup is excluded from this bound. Capture retains an aggregate 8 MiB
-text budget and the existing encoded-observation bound. It reads only shared named writer paths
+inline-text budget, spilling eligible per-file text to chunked retained evidence.
+It reads only shared named writer paths
 and actual patch targets. Missing or exhausted acquisition remains partial and
 never rejects command execution or replaces approval decisions.
 Known text endpoints remain recoverable with `mchanges ID --history PATH` even

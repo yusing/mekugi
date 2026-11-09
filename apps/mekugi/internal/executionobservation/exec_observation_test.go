@@ -150,7 +150,7 @@ func TestExecObservationReconcilesDeclaredEffects(t *testing.T) {
 			observation := observeTestCommand(t, workspace, test.command)
 			test.run(t, workspace)
 			result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
-			reviews, complete := result.Files, result.Complete
+			reviews, complete := testReviewFiles(t, result.Files), result.Complete
 			if !complete {
 				t.Fatalf("incomplete evidence: %+v", reviews)
 			}
@@ -209,7 +209,7 @@ func TestExecObservationFollowsShellSemantics(t *testing.T) {
 				t.Fatalf("%s: %v\n%s", test.command, err, output)
 			}
 			result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
-			reviews, complete := result.Files, result.Complete
+			reviews, complete := testReviewFiles(t, result.Files), result.Complete
 			if complete == test.partial {
 				t.Fatalf("complete = %v: %+v", complete, reviews)
 			}
@@ -288,7 +288,7 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 	}
 	writeTestFile(t, target, "after\n")
 	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
-	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	reviews, complete, coverage := testReviewFiles(t, result.Files), result.Complete, result.Coverage
 	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 1 || reviews[0].Origin != "" ||
 		!strings.Contains(reviews[0].Diff, "-before\n+after\n") {
 		t.Fatalf("same-cell direct review = %+v complete=%v coverage=%q", reviews, complete, coverage)

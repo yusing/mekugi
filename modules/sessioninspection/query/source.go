@@ -6,6 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // CallEvidence interprets immutable host evidence at the backend boundary.
@@ -32,12 +33,16 @@ type Rollout struct {
 type Source func(context.Context, string, func(inspection.Event) error) (Rollout, error)
 
 type Service struct {
+	history       *history.Service
 	source        Source
 	contributions inspection.Contribution
 }
 
-func New(contributions []inspection.Contribution) (*Service, error) {
-	s := new(Service)
+func New(retained *history.Service, contributions []inspection.Contribution) (*Service, error) {
+	if retained == nil {
+		return nil, errors.New("inspection history is unavailable")
+	}
+	s := &Service{history: retained}
 	for _, c := range contributions {
 		if c.NewAX == nil && c.ProviderUsage == nil {
 			return nil, errors.New("empty inspection contribution")

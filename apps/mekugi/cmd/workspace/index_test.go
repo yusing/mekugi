@@ -29,7 +29,7 @@ func TestModuleIndexWorkspaceReferences(t *testing.T) {
 		records[string(entry.Descriptor.ID)] = entry.Descriptor.Records
 	}
 	for owner, want := range map[string][]string{
-		"changehistory": {"changes"}, "outputrecovery": {"cursor", "output"}, "commandsegments": {"commandsegments"}, "usage": {"usage"},
+		"changehistory": {"changes", "change-stage", "change-evidence", "change-file", "change-text"}, "outputrecovery": {"cursor", "output"}, "commandsegments": {"commandsegments"}, "usage": {"usage"},
 	} {
 		if !slices.Equal(records[owner], want) {
 			t.Fatalf("%s records=%v, want %v", owner, records[owner], want)

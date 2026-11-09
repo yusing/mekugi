@@ -24,7 +24,7 @@ func testInstructionRetention(t testing.TB) (*diagnostic.Service, *diagnostic.In
 	if err != nil {
 		t.Fatal(err)
 	}
-	inspection, err := query.New(nil)
+	inspection, err := query.New(historyService, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

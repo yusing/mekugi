@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"reflect"
 	"slices"
 
@@ -35,7 +36,8 @@ func (e *HostConflict) Error() string {
 // ReadHostCall validates the selected historical envelope and its dependencies.
 // Callers that join several owners use their existing publication transaction.
 func (s *Store) ReadHostCall(workspace, callID string, commentary bool) (legacycall.Record, bool, error) {
-	return legacycall.Read(s.directory, workspace, callID, commentary, MaxRecordBytes)
+	record, found, err := s.ReadAttachedHostCall(workspace, callID, commentary)
+	return record.Record, found, err
 }
 
 func (s *Store) LookupHostCall(ctx context.Context, workspace, callID string) (value legacycall.History, found bool, err error) {
@@ -151,15 +153,24 @@ func mergeHostHistory(old, next legacycall.History) (legacycall.History, error) 
 // ordered is supplied by the evidence owner; history does not infer edit success.
 // Source: apps/mekugi/internal/router/mekugi_store.go:220:255@d002a0dc.
 func (tx *Transaction) PublishHostCall(thread string, limits Limits, r legacycall.Record, ordered bool) error {
+	return tx.PublishAttachedHostCall(thread, limits, HostRecord{Record: r}, ordered)
+}
+
+// PublishAttachedHostCall publishes feature dependency identities with unchanged
+// host facts. Attachment owners must publish their payloads before this call.
+func (tx *Transaction) PublishAttachedHostCall(thread string, limits Limits, r HostRecord, ordered bool) error {
 	if err := tx.check(); err != nil {
 		return err
 	}
 	r.History = normalizeHostHistory(r.History)
-	previous, exists, err := tx.store.ReadHostCall(r.Workspace, r.CallID, r.Commentary)
+	previous, exists, err := tx.store.ReadAttachedHostCall(r.Workspace, r.CallID, r.Commentary)
 	if err != nil {
 		return err
 	}
 	if exists {
+		if !slices.Equal(previous.Attachments, r.Attachments) {
+			return &HostConflict{Field: "attachments"}
+		}
 		r.CaptureOrder = previous.CaptureOrder
 		r.History, err = mergeHostHistory(previous.History, r.History)
 		if err != nil {
@@ -175,6 +186,18 @@ func (tx *Transaction) PublishHostCall(thread string, limits Limits, r legacycal
 			return err
 		}
 	}
+	if len(r.Attachments) > 0 {
+		r.Version = 3
+		// Missing dependencies cannot become usable through a host reference.
+		for _, name := range r.Attachments {
+			if !tx.store.registered(name) {
+				return fmt.Errorf("unregistered host attachment %q", name)
+			}
+			if _, err := ReadRecord(filepath.Join(tx.store.directory, name)); err != nil {
+				return err
+			}
+		}
+	}
 	data, err := responses.MarshalJSON(r)
 	if err != nil {
 		return err
@@ -187,7 +210,7 @@ func (tx *Transaction) PublishHostCall(thread string, limits Limits, r legacycal
 	if r.Commentary {
 		prefix = "commentary-"
 	}
-	if err := tx.Retain(thread, limits, name); err != nil {
+	if err := tx.Retain(thread, limits, append(slices.Clone(r.Attachments), name)...); err != nil {
 		return &PublicationError{Err: err}
 	}
 	if err := tx.Admit(limits, name, int64(len(data))); err != nil {

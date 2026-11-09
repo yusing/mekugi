@@ -48,7 +48,7 @@ func lookupShellTestRecord(t *testing.T, store *mekugiReplayStore, workspace, th
 		}
 		for _, host := range record.History.HostResults {
 			if host.CallID == item {
-				retained, found, err := store.publication.ReadHostCall(workspace, record.CallID, false)
+				retained, found, err := fixtureCapturedRecord(store.publication, workspace, record.CallID, false)
 				if err != nil || !found {
 					t.Fatalf("retained shell record: %v, %v", found, err)
 				}

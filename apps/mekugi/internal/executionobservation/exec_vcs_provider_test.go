@@ -303,7 +303,7 @@ func assertExecVCSTestFileContent(t *testing.T, path, want string) {
 func reconcileExecVCSTestExact(t *testing.T, observation *changecapture.Observation) []diffmodel.ReviewFile {
 	t.Helper()
 	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
-	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	reviews, complete, coverage := testReviewFiles(t, result.Files), result.Complete, result.Coverage
 	if !complete || coverage != changecapture.CoverageExact {
 		t.Fatalf("VCS review complete=%v coverage=%q files=%+v; want exact", complete, coverage, reviews)
 	}

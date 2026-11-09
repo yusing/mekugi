@@ -21,6 +21,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
 const (
@@ -38,7 +39,7 @@ const (
 	maxExecListingEntries = execscope.ListingLimit
 )
 
-type FileKind string
+type FileKind = evidence.FileKind
 
 const (
 	Absent    FileKind = ""
@@ -51,27 +52,7 @@ const (
 
 // File is the bounded state of one path. Binary content keeps only
 // size and hash; symlinks keep their target, never the target's content.
-type File struct {
-	Origin      string `json:",omitempty"`
-	AlsoManaged string `json:",omitempty"`
-	Path        string
-	Kind        FileKind `json:",omitempty"`
-	Content     string   `json:",omitempty"`
-	Size        int64    `json:",omitzero"`
-	Hash        string   `json:",omitempty"`
-	Link        string   `json:",omitempty"`
-	// Stamp identifies an uncaptured regular file, so an unchanged file is not
-	// reported just because its content was over a bound.
-	Stamp string `json:",omitempty"`
-	Error string `json:",omitempty"`
-	// WatchStamp is the live preview's capture-time metadata baseline. It is
-	// not durable evidence and must not replace content comparison.
-	WatchStamp string `json:"-"`
-	// Move-only operands have retained evidence, but no arriving source to stream.
-	WatchMoveOnly bool `json:"-"`
-	// CopyOf names the source a copy command writes into this path.
-	CopyOf string `json:",omitempty"`
-}
+type File = evidence.File
 
 // Omission records scope that was not captured at all.
 type Omission struct {
@@ -314,6 +295,8 @@ const (
 
 // Options is the router state a capture consults.
 type Options struct {
+	// Evidence spills bounded file text into the admitted retained store.
+	Evidence *evidence.Source
 	// Workspaces supplies the invocation-owned fallback for unnamed effects.
 	Workspaces *Workspaces
 	// PreviewOnly keeps source-derived display baselines out of durable edits.
@@ -518,6 +501,7 @@ func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, c
 		}
 	}
 	capture := newExecCapture(started.Add(execCaptureHold))
+	capture.evidence = env.Evidence
 	capture.scopeRoots = observation.Roots
 	for _, managed := range []bool{false, true} {
 		for _, entry := range scope {
@@ -528,7 +512,9 @@ func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, c
 		}
 	}
 	observation.Files, observation.Omitted, observation.Listings = capture.files, capture.omitted, capture.listings
-	boundExecObservation(observation)
+	if env.Evidence == nil {
+		boundExecObservation(observation)
+	}
 	if len(observation.Files) == 0 && len(observation.Omitted) == 0 && len(observation.Listings) == 0 {
 		return observation, false
 	}
@@ -608,6 +594,7 @@ type Listing struct {
 }
 
 type execCapture struct {
+	evidence     *evidence.Source
 	origin       string
 	moveOnly     bool
 	deadline     time.Time
@@ -682,7 +669,9 @@ func (c *execCapture) addCopy(path, source string) {
 		c.omit(path, reason)
 		return
 	}
-	snapshot := ReadFile(path, &c.budget)
+	ctx, cancel := context.WithDeadline(context.Background(), c.deadline)
+	defer cancel()
+	snapshot := ReadFileIn(ctx, path, &c.budget, c.evidence)
 	snapshot.CopyOf = source
 	snapshot.Origin = c.origin
 	snapshot.WatchMoveOnly = c.moveOnly

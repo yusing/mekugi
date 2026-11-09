@@ -120,7 +120,7 @@ func TestAuthoredChangesLegacyObservationNoiseExcluded(t *testing.T) {
 	}
 }
 
-func TestAuthoredChangesInlineEvidenceSurvivesRestart(t *testing.T) {
+func TestAuthoredChangesOwnedEvidenceSurvivesRestart(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -133,8 +133,8 @@ func TestAuthoredChangesInlineEvidenceSurvivesRestart(t *testing.T) {
 		t.Fatalf("new shared snapshots: %v", blobs)
 	}
 	data, err := os.ReadFile(filepath.Join(store.directory, legacycall.Name("/w", "inline", false)))
-	if err != nil || !strings.Contains(string(data), "before\\r\\n") {
-		t.Fatalf("evidence not inline: %v", err)
+	if err != nil || strings.Contains(string(data), "before\\r\\n") || !strings.Contains(string(data), "change-evidence-") {
+		t.Fatalf("evidence not feature-owned: %v", err)
 	}
 	reopened, err := openMekugiReplayStore(store.directory)
 	if err != nil {

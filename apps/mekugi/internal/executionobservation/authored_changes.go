@@ -10,7 +10,8 @@ func authoredChangeHistory(value mekugiHistory) mekugiHistory {
 	if value.ExecOutcome != nil {
 		coverage = value.ExecOutcome.Coverage
 	}
-	value.ReviewFiles, coverage = changes.AuthoredEvidence(value.ReviewFiles, coverage)
+	value.reviewFiles, coverage = changes.AuthoredReviews(value.reviews(), coverage)
+	value.ReviewFiles = nil
 	if value.ExecOutcome != nil && value.ExecOutcome.Coverage != coverage {
 		outcome := *value.ExecOutcome
 		outcome.Coverage = coverage

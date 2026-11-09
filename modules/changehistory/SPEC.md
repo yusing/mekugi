@@ -46,7 +46,8 @@ earliest witnessed checkpoint from supplied request sequences and reduces admitt
 host outcomes without treating an outer cell's success as nested-command success.
 The application coordinates window completion with host and command-segment facts;
 replay cannot reopen those windows. Patch batches share
-one aggregate capture bound and one endpoint window. The
+one resident-text budget and one endpoint window; eligible per-file text spills
+to retained storage instead of exhausting a whole-batch text allowance. The
 [change-evidence contract](../../docs/contracts/change-evidence.md) owns scope,
 coverage, attribution, fallback limits, and acceptance cases.
 
@@ -367,9 +368,14 @@ retained reconciliation.
 
 ## Records
 
-Bounded capture observations and outcomes retain their existing call-envelope
-encoding. Provisional file stamps are excluded from durable comparison and storage.
-Private checkpoints never substitute for retained inline evidence.
+New captures use feature-owned per-file evidence and chunked text, referenced by
+the immutable host record. Acquisition keeps at most 8 MiB of inline text per
+collection; individual endpoints remain bounded to 8 MiB. Larger batches preserve
+eligible files without rebuilding one aggregate text envelope. File metadata is
+bounded separately, and selected review projections retain their 64 MiB bound.
+Cold readers select paths before loading diff text. Provisional file stamps are
+excluded from durable comparison and storage. Private checkpoints never substitute
+for retained evidence.
 
 Change indexes retain identities, ordered attempt membership, allocation state,
 pending evidence dependencies, and retirement markers. Pending interval boundaries
@@ -378,8 +384,11 @@ without becoming completed attempts. A terminal writer with no captured changes
 releases its pending reservation while preserving allocation high-water marks.
 Missing retained boundaries are errors.
 Historical record names, namespace ownership, and selection encodings remain
-readable. Immutable call envelopes remain the source of captured evidence, decoded
-through the shared historical codec.
+readable through the frozen historical codec. New host envelopes carry original
+host facts and neutral dependency identities; this module decodes their capture
+attachments. Forks, recovered selections and retention adopt the complete
+dependency graph. Acquisition stages protect shared text before final publication,
+including abandoned captures until ordinary orphan expiry.
 
 Repair adopts only verified durable attempts. Evidence, index and fork publication
 follow the shared [publication contract](../../docs/contracts/record-publication.md#cross-owner-publication).

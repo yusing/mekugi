@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -107,6 +108,7 @@ func RunStorageInspection(service *history.Service, segments *reports.Service, c
 		var found bool
 		var err error
 		var dependencies []string
+		var attached history.HostRecord
 		if reports.IsID(*callID) {
 			selected, exists, readErr := segments.Inspect(*replayDir, *workspace, *callID)
 			found, err = exists, readErr
@@ -117,7 +119,8 @@ func RunStorageInspection(service *history.Service, segments *reports.Service, c
 				}
 			}
 		} else {
-			r, found, err = legacycall.Read(*replayDir, *workspace, *callID, false, history.MaxRecordBytes)
+			attached, found, err = publication.ReadAttachedHostCall(*workspace, *callID, false)
+			r = attached.Record
 			if err == nil && found {
 				dependencies, err = publication.Dependencies(result.Target)
 			}
@@ -144,6 +147,35 @@ func RunStorageInspection(service *history.Service, segments *reports.Service, c
 			value = r.History.ReviewFiles
 		case "refs":
 			value = dependencies
+		}
+		if attached.Version == 3 && *field != "refs" {
+			value = attached
+			root, err := evidence.Root(attached)
+			if err != nil {
+				return fail(err)
+			}
+			if root != "" && *field != "" && *field != "all" {
+				snapshot, err := evidence.Read(&evidence.Source{Store: publication}, root)
+				if err != nil {
+					return fail(err)
+				}
+				switch *field {
+				case "baseline":
+					value = struct {
+						Metadata jsontext.Value
+						Files    []evidence.File
+					}{snapshot.Baseline, snapshot.BaselineFiles}
+				case "exec":
+					value = struct {
+						Metadata jsontext.Value
+						Files    []evidence.File
+					}{snapshot.Observation, snapshot.Files}
+				case "patches":
+					value = snapshot.Patches
+				case "review":
+					value = snapshot.Reviews
+				}
+			}
 		}
 		data, err = json.Marshal(value, json.Deterministic(true))
 		if err != nil {

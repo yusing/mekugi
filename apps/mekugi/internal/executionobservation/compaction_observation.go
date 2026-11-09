@@ -85,10 +85,10 @@ func retainedCallWorkspace(store *history.Store, thread string) (string, error) 
 		if err != nil {
 			return "", err
 		}
-		var record legacycall.Record
+		var record history.HostRecord
 		// Persisted command hashes use the version-1 numeric byte-array format.
 		if json.Unmarshal(data, &record, jsonv1.FormatByteArrayAsArray(true)) != nil ||
-			(record.Version != 1 && record.Version != 2) || record.Commentary || legacycall.Name(record.Workspace, record.CallID, false) != name {
+			(record.Version != 1 && record.Version != 2 && record.Version != 3) || record.Commentary || legacycall.Name(record.Workspace, record.CallID, false) != name {
 			return "", errors.New("invalid retained call workspace evidence")
 		}
 		if record.History.ExecutingThread != thread {

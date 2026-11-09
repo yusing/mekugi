@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
 // Workspace snapshots bound the file effects of writer calls whose targets
@@ -701,7 +702,7 @@ func (r *workspaceSnapshotRepo) ignored(ctx context.Context, paths []string) ([]
 // Claimed paths start from the state an overlapping call already recorded,
 // so one effect is attributed once. It returns the changes and every changed
 // path's current state for claiming onto calls that are still open.
-func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Claims) ([]execSnapshotChange, Claims, error) {
+func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Claims, sink *evidence.Source) ([]execSnapshotChange, Claims, error) {
 	repo := s.repo(workspace)
 	if repo == nil || tree == "" {
 		return nil, nil, nil
@@ -767,7 +768,7 @@ func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Clai
 		delete(changed, path)
 	}
 	latest := make(Claims, len(changed))
-	oids := make(map[*workspaceSnapshotRepo][]string)
+	entries := make(map[*workspaceSnapshotRepo][]workspaceSnapshotEntry)
 	beforeRepos := make(map[string]*workspaceSnapshotRepo)
 	for path, change := range changed {
 		relative, err := filepath.Rel(repo.physicalWorkspace, path)
@@ -791,17 +792,17 @@ func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Clai
 				if i == 0 {
 					source = beforeRepo
 				}
-				oids[source] = append(oids[source], side.oid)
+				entries[source] = append(entries[source], side)
 			}
 		}
 	}
 	contents := make(map[*workspaceSnapshotRepo]map[string]workspaceSnapshotBlob)
 	budget := MaxContentBytes
 	// Deterministic store order also makes aggregate budget admission stable.
-	stores := slices.Collect(maps.Keys(oids))
+	stores := slices.Collect(maps.Keys(entries))
 	slices.SortFunc(stores, func(a, b *workspaceSnapshotRepo) int { return strings.Compare(a.gitDir, b.gitDir) })
 	for _, source := range stores {
-		blobs, err := source.blobs(ctx, oids[source], &budget)
+		blobs, err := source.blobs(ctx, entries[source], &budget, sink)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -854,13 +855,25 @@ func (r *workspaceSnapshotRepo) states(ctx context.Context, tree string, paths [
 }
 
 type workspaceSnapshotBlob struct {
+	file  *File
 	data  []byte
+	link  string
 	size  int64
 	error string
 }
 
 // blobs reads bounded content with the same limits as named capture.
-func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string, budget *int) (map[string]workspaceSnapshotBlob, error) {
+func (r *workspaceSnapshotRepo) blobs(ctx context.Context, entries []workspaceSnapshotEntry, budget *int, sink *evidence.Source) (map[string]workspaceSnapshotBlob, error) {
+	var oids []string
+	links, regular := make(map[string]bool), make(map[string]bool)
+	for _, entry := range entries {
+		oids = append(oids, entry.oid)
+		if entry.mode == "120000" {
+			links[entry.oid] = true
+		} else {
+			regular[entry.oid] = true
+		}
+	}
 	slices.Sort(oids)
 	oids = slices.Compact(oids)
 	blobs := make(map[string]workspaceSnapshotBlob, len(oids))
@@ -882,37 +895,77 @@ func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string, budget
 		switch {
 		case size > MaxFileBytes:
 			blobs[oid] = workspaceSnapshotBlob{size: size, error: "file exceeds the 8 MiB capture bound"}
-		case size > int64(*budget):
+		case sink == nil && size > int64(*budget):
 			blobs[oid] = workspaceSnapshotBlob{size: size, error: "capture budget exhausted"}
 		default:
-			*budget -= int(size)
+			if sink == nil {
+				*budget -= int(size)
+			}
 			wanted = append(wanted, oid)
 		}
 	}
 	if len(wanted) == 0 {
 		return blobs, nil
 	}
-	output, err = r.run(ctx, strings.NewReader(strings.Join(wanted, "\n")+"\n"), "cat-file", "--batch")
+	// Drain one bounded object at a time. A private Git batch must not become
+	// another aggregate in-memory snapshot before spilling its contents.
+	command := r.command(ctx, strings.NewReader(strings.Join(wanted, "\n")+"\n"), "cat-file", "--batch")
+	stdout, err := command.StdoutPipe()
 	if err != nil {
 		return nil, err
 	}
-	for len(output) != 0 {
-		end := bytes.IndexByte(output, '\n')
-		if end < 0 {
-			return nil, errors.New("unexpected snapshot object output")
-		}
-		fields := strings.Fields(string(output[:end]))
-		output = output[end+1:]
-		if len(fields) != 3 {
-			continue // A missing object leaves its path unavailable.
-		}
-		size, err := strconv.Atoi(fields[2])
-		if err != nil || size+1 > len(output) {
-			return nil, errors.New("unexpected snapshot object output")
-		}
-		blobs[fields[0]] = workspaceSnapshotBlob{data: output[:size], size: int64(size)}
-		output = output[size+1:]
+	if err := command.Start(); err != nil {
+		return nil, err
 	}
+	readErr := func() error {
+		reader := bufio.NewReader(stdout)
+		for range wanted {
+			header, err := reader.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			fields := strings.Fields(header)
+			if len(fields) == 2 && fields[1] == "missing" {
+				continue
+			}
+			if len(fields) != 3 {
+				return errors.New("unexpected snapshot object output")
+			}
+			size, err := strconv.Atoi(fields[2])
+			if err != nil || size < 0 || size > MaxFileBytes {
+				return errors.New("snapshot object exceeds per-file bound")
+			}
+			data := make([]byte, size+1)
+			if _, err := io.ReadFull(reader, data); err != nil {
+				return err
+			}
+			if data[size] != '\n' {
+				return errors.New("unexpected snapshot object separator")
+			}
+			blob := workspaceSnapshotBlob{size: int64(size)}
+			// Link targets are metadata, not regular-file text. Preserve their
+			// bytes even after the text budget is exhausted or classification
+			// would make the same object binary. An object can serve both kinds.
+			if links[fields[0]] {
+				blob.link = string(data[:size])
+			}
+			if sink == nil {
+				blob.data = data[:size]
+			} else if regular[fields[0]] {
+				file := retainFile(ctx, execDataSnapshot("", data[:size], nil), budget, sink)
+				blob.file = &file
+			}
+			blobs[fields[0]] = blob
+		}
+		return nil
+	}()
+	if readErr != nil {
+		_ = command.Process.Kill()
+	}
+	if err := errors.Join(readErr, command.Wait()); err != nil {
+		return nil, err
+	}
+
 	return blobs, nil
 }
 
@@ -927,7 +980,12 @@ func workspaceSnapshotFile(path string, entry workspaceSnapshotEntry, blobs map[
 	case blob.error != "":
 		return File{Path: path, Kind: Text, Size: blob.size, Error: blob.error}
 	case entry.mode == "120000":
-		return File{Path: path, Kind: Symlink, Link: string(blob.data)}
+		return File{Path: path, Kind: Symlink, Link: blob.link}
+	}
+	if blob.file != nil {
+		file := *blob.file
+		file.Path = path
+		return file
 	}
 	return execDataSnapshot(path, blob.data, nil)
 }

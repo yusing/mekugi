@@ -108,12 +108,22 @@ func (tx *Transaction) Retain(thread string, limits Limits, names ...string) err
 	// A fork, retained change selection or recovered output adopts the call's
 	// shared snapshots together with its envelope, under the same store lock.
 	names = slices.Clone(names)
-	for _, name := range slices.Clone(names) {
+	seen := make(map[string]bool, len(names))
+	for i := 0; i < len(names); i++ {
+		name := names[i]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
 		dependencies, err := s.Dependencies(name)
 		if err != nil {
 			return err
 		}
-		names = append(names, dependencies...)
+		for _, dependency := range dependencies {
+			if !seen[dependency] {
+				names = append(names, dependency)
+			}
+		}
 	}
 	name := SessionName(thread)
 	revision, err := tx.Revision()

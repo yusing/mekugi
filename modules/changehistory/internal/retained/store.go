@@ -8,15 +8,16 @@ import (
 	"errors"
 
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 type store struct {
 	publication *history.Store
+	readRecord  func(string, int64) ([]byte, error)
 	directory   string
 	session     scope.Retained
 	limits      history.Limits
@@ -59,7 +60,7 @@ func marshalIndex(value any) ([]byte, error) {
 
 type capturedHistory struct {
 	legacycall.History
-	ReviewFiles []diffmodel.ReviewFile
+	ReviewFiles []evidence.Review
 }
 type capturedRecord struct {
 	legacycall.Record
@@ -67,22 +68,53 @@ type capturedRecord struct {
 }
 
 func (s *store) read(workspace, call string, commentary bool) (capturedRecord, bool, error) {
-	old, found, err := legacycall.Read(s.directory, workspace, call, commentary, history.MaxRecordBytes)
+	old, found, err := history.ReadHostRecord(s.directory, workspace, call, commentary)
 	if err != nil || !found {
 		return capturedRecord{}, found, err
 	}
 	projected := capturedHistory{History: old.History}
-	for _, file := range old.History.ReviewFiles {
-		projected.ReviewFiles = append(projected.ReviewFiles, diffmodel.ReviewFile(file))
+	source := &evidence.Source{Store: s.publication, Read: s.readRecord}
+	root, err := evidence.Root(old)
+	if err != nil {
+		return capturedRecord{}, false, err
 	}
-	return capturedRecord{Record: old, History: projected}, true, nil
+	if root == "" {
+		projected.ReviewFiles, err = evidence.Reviews(source, old)
+		if err != nil {
+			return capturedRecord{}, false, err
+		}
+	} else {
+		manifest, err := evidence.Open(source, root)
+		if err != nil {
+			return capturedRecord{}, false, err
+		}
+		projected.ReviewFiles, err = evidence.ReadReviews(source, manifest.Reviews)
+		if err != nil {
+			return capturedRecord{}, false, err
+		}
+		if len(manifest.Observation) != 0 {
+			observation := new(legacycall.Observation)
+			if err := json.Unmarshal(manifest.Observation, observation, json.RejectUnknownMembers(true)); err != nil {
+				return capturedRecord{}, false, err
+			}
+			files, err := evidence.ReadFiles(source, manifest.Files)
+			if err != nil {
+				return capturedRecord{}, false, err
+			}
+			for _, file := range files {
+				observation.Files = append(observation.Files, legacycall.File{Path: file.Path, Kind: string(file.Kind), Link: file.Link})
+			}
+			projected.ExecObservation = observation
+		}
+	}
+	return capturedRecord{Record: old.Record, History: projected}, true, nil
 }
 func authoredChangeHistory(value capturedHistory) capturedHistory {
 	coverage := ""
 	if value.ExecOutcome != nil {
 		coverage = value.ExecOutcome.Coverage
 	}
-	value.ReviewFiles, coverage = changes.AuthoredEvidence(value.ReviewFiles, coverage)
+	value.ReviewFiles, coverage = changes.AuthoredReviews(value.ReviewFiles, coverage)
 	if value.ExecOutcome != nil && value.ExecOutcome.Coverage != coverage {
 		outcome := *value.ExecOutcome
 		outcome.Coverage = coverage

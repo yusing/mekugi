@@ -149,8 +149,10 @@ Session catalogs, durable namespace identity, allocation high-water marks and
 published host facts belong here. Retained calls, their historical snapshot
 dependencies and generated-commentary provenance use the shared frozen
 [historical codec](../../libraries/legacycall), preserving identity and encoding.
-Commentary keeps its independent budget. New feature records use their owner's
-codec rather than extending the historical mixed envelopes. Cross-owner ordering
+New host envelopes preserve host facts and name feature-owned attachments without
+interpreting their payloads. Dependency adoption follows those owners' transitive
+graphs. Commentary keeps its independent budget. New feature records use their
+owner's codec rather than extending the historical mixed envelopes. Cross-owner ordering
 follows the [publication contract](../../docs/contracts/record-publication.md#cross-owner-publication).
 
 The invocation's bounded call cache uses the same neutral historical facts.
