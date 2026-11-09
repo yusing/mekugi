@@ -11,8 +11,9 @@ or implement it.
 Session resume is product-local: Mekugi resumes only Mekugi sessions, and stock Codex only stock
 Codex sessions. Do not design or retain cross-product resume compatibility.
 
-Record observed Mekugi friction as a Plane work item in the MEKUGI project's FIXME state, with
-impact and a concrete next step. Mekugi friction is a failure or cost caused by Mekugi itself: its
+Delegates report discovered issues to their parent instead of creating Plane items. Main records
+observed Mekugi friction in the MEKUGI project's FIXME state, with impact and a concrete next step.
+Mekugi friction is a failure or cost caused by Mekugi itself: its
 tools, injected model guidance, interface, or session handling. Agent decisions governed by user or
 project instructions belong to those owners, not Plane. Distinguish current failures from fixed
 history and do not equate investigation time with waste.
