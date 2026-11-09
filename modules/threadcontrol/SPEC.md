@@ -396,8 +396,9 @@ capture rows per record; clipped paths and omitted rows remain readable through 
 `mchanges` command shown in each report. Git effects retain diagnostic provenance and use
 `--history`, not authored diff counts. `more:true` leaves omitted captures eligible for later
 yields. Capture gaps remain explicit. Payload and cursor freeze before dispatch, and only
-confirmed delivery advances the cursor; uncertain delivery and cold reconciliation reuse
-the same retained output.
+confirmed delivery advances the cursor in that recipient context; uncertain delivery and cold
+reconciliation reuse the same retained output. Reset, rewind and resumed contexts do not inherit
+consumption of earlier progress.
 
 The retained wait acknowledges `{state:"waiting"}` with delivery instructions at
 the MCP boundary. Agents let that enclosing execution finish; the host turn ends
@@ -499,7 +500,12 @@ After successful logical settlement, the receiving parent's input worker acquire
 the selected retained evidence before injecting the answer and completed reload
 reader/result together. Automatic completion attachments share a 4,000-token
 budget, including labels, diagnostics and an exact `mread` continuation for omitted
-evidence. Explicit preload and compaction reloads retain their full-content behavior.
+evidence. Captured intervals already reported by confirmed yields in the receiving context
+are omitted, without dropping later intervals under the same change ID or unreported captures.
+Yield summaries are not full patches: explicit `mchanges`, preload and compaction reloads retain
+their full-content behavior. Context replacement makes earlier intervals eligible again.
+Replacement after preparation also restores unfiltered captured evidence at receiver
+projection. Both retained variants obey the same output bound.
 The next inference consumes the retained snapshot without another acquisition turn.
 When the answer satisfies a selected wait, its reply, attachment and finished-wait
 notice publish together after host-confirmed wake delivery. Existing reload history

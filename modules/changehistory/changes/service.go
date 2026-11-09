@@ -2,6 +2,7 @@ package changes
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/persistence"
@@ -27,6 +28,18 @@ type Query struct {
 	View       string
 	Mine       bool
 	MaxTokens  int
+	// Yielded omits acknowledged capture prefixes from automatic completion reads.
+	// Explicit mchanges, preload and reload queries leave this nil.
+	Yielded map[string]int
+}
+
+// CaptureKey joins progress and retained reads by immutable publication identity.
+// Legacy records without capture order cannot be safely suppressed.
+func CaptureKey(workspace, caller, change string, order uint64) string {
+	if order == 0 {
+		return ""
+	}
+	return workspace + "\x00" + caller + "\x00" + change + "\x00" + strconv.FormatUint(order, 10)
 }
 
 // Publication associates already-published evidence with an allocated change.

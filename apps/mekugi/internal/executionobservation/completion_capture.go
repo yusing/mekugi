@@ -15,9 +15,28 @@ import (
 // diagnostics and its continuation. Explicit preloads and reloads remain full.
 const CompletionTokens = 4000
 
-// ReadCompletion captures selected changes once and retains only the omitted
-// suffix for recovery. The original selection stays with the bounded snapshot.
+// ReadCompletion freezes bounded attachment variants before injection. Filtered
+// results keep a full fallback; each variant retains its omitted suffix separately.
 func ReadCompletion(ctx context.Context, selection, directory string, changes compact.ChangeReader, retained *recovery.Session) (compact.Snapshot, error) {
+	if changes.YieldContext == "" {
+		changes.Yielded = nil
+	}
+	snapshot, err := readCompletion(ctx, selection, directory, changes, retained)
+	if err != nil || len(changes.Yielded) == 0 {
+		return snapshot, err
+	}
+	// Freeze both bounded variants before injection. A reset can occur while
+	// delivery is queued or before the next inference hydrates its reference.
+	changes.Yielded = nil
+	full, err := readCompletion(ctx, selection, directory, changes, retained)
+	if err != nil {
+		return compact.Snapshot{}, err
+	}
+	snapshot.CompletionContext, snapshot.FullCompletion = changes.YieldContext, full.Completion
+	return snapshot, nil
+}
+
+func readCompletion(ctx context.Context, selection, directory string, changes compact.ChangeReader, retained *recovery.Session) (compact.Snapshot, error) {
 	if err := compact.CompletionSources(selection); err != nil {
 		return compact.Snapshot{}, err
 	}
@@ -26,6 +45,9 @@ func ReadCompletion(ctx context.Context, selection, directory string, changes co
 		return compact.Snapshot{}, err
 	}
 	var body strings.Builder
+	if len(changes.Yielded) != 0 {
+		body.WriteString("Captures already reported by yield summaries omitted; explicit mchanges reads retain full diffs.\n")
+	}
 	result := &compact.CapturedSource{}
 	for _, source := range snapshot.Sources {
 		body.WriteString(source.Text())

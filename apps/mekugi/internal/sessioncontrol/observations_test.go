@@ -123,3 +123,25 @@ func TestApprovalFeedbackFollowsSuccessfulDelivery(t *testing.T) {
 		t.Fatal("completed turn retained feedback")
 	}
 }
+
+func TestContextIdentityTracksHistoryReplacement(t *testing.T) {
+	var observed Observations
+	initial := observed.ContextIdentity("root")
+	if initial == "" || observed.ContextIdentity("root") != initial || observed.ContextIdentity("child") == initial {
+		t.Fatal("context identity is unstable or shared between threads")
+	}
+	observed.RefreshContext("root")
+	refreshed := observed.ContextIdentity("root")
+	if refreshed == initial {
+		t.Fatal("rewind or reset reused the old history identity")
+	}
+	observed.ObserveCompactionContext("root", "window")
+	compacted := observed.ContextIdentity("root")
+	observed.ObserveCompactionContext("root", "window")
+	if compacted == refreshed || compacted != observed.ContextIdentity("root") {
+		t.Fatal("native window did not invalidate exactly once")
+	}
+	if new(Observations).ContextIdentity("root") == initial || (*Observations)(nil).ContextIdentity("root") != "" {
+		t.Fatal("cold or missing owner reused a context")
+	}
+}

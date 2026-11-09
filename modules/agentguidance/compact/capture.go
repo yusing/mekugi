@@ -30,6 +30,9 @@ type Snapshot struct {
 	Selection  string
 	Sources    []CapturedSource
 	Completion *CapturedSource `json:",omitempty"`
+	// Filtered completions retain a full bounded variant for context replacement.
+	CompletionContext string          `json:",omitempty"`
+	FullCompletion    *CapturedSource `json:",omitempty"`
 }
 
 type CapturedSource struct {
@@ -270,6 +273,9 @@ func (w captureWriter) Write(p []byte) (int, error) {
 type ChangeReader struct {
 	Service changes.Service
 	Scope   changes.Scope
+	// Yielded is used only by automatic completion attachments, never explicit reads.
+	Yielded      map[string]int
+	YieldContext string
 }
 
 func (r ChangeReader) read(ctx context.Context, source Source, directory, script string) CapturedSource {
@@ -303,6 +309,7 @@ func (r ChangeReader) read(ctx context.Context, source Source, directory, script
 	if query.Mine || len(query.Paths) != 0 || query.View != "net" {
 		return fail(errors.New("changes source requires only explicit IDs/ranges"))
 	}
+	query.Yielded = r.Yielded
 	result.Stdout, err = r.Service.Read(ctx, r.Scope, query)
 	if err != nil {
 		return fail(err)

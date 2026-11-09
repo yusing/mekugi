@@ -23,6 +23,12 @@ type PreparedCompletion struct {
 	Reload []activity.ReloadSource
 }
 
+// PreparedInputContext keeps a filtered attachment usable if retained input is
+// bundled into a later context. Ordinary initial preloads need only Text.
+type PreparedInputContext struct {
+	Text, Identity, Full string
+}
+
 func (r *Requests[T]) Thread(ctx context.Context, thread string) (control.ThreadInfo, error) {
 	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": false}, nil)
 	var response struct {

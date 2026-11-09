@@ -1,7 +1,9 @@
 package sessioncontrol
 
 import (
+	"crypto/rand"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -41,6 +43,7 @@ type Observations struct {
 	nextTool          uint64
 	feedbackMu        sync.Mutex
 	feedback          map[[2]string][]string
+	contextIdentity   string
 	contextRevision   map[string]uint64
 	contextCompaction map[string]string
 }
@@ -81,6 +84,20 @@ func (o *Observations) RefreshContext(thread string) {
 	o.contextRevision[thread]++
 }
 
+// ContextIdentity distinguishes live history across reset, rewind and cold resume.
+// The invocation identity prevents restored cursors matching a reused revision.
+func (o *Observations) ContextIdentity(thread string) string {
+	if o == nil || thread == "" {
+		return ""
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.contextIdentity == "" {
+		o.contextIdentity = rand.Text()
+	}
+	return o.contextIdentity + ":" + thread + ":" + strconv.FormatUint(o.contextRevision[thread], 10)
+}
+
 func (o *Observations) ContextRevision(thread string) uint64 {
 	if o == nil {
 		return 0
@@ -88,6 +105,18 @@ func (o *Observations) ContextRevision(thread string) uint64 {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.contextRevision[thread]
+}
+
+// ContextMatches checks the incoming native window before instruction projection
+// observes it. This does not advance or replace the existing context revision.
+func (o *Observations) ContextMatches(thread, identity, reference string) bool {
+	if o == nil || identity == "" {
+		return false
+	}
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return identity == o.contextIdentity+":"+thread+":"+strconv.FormatUint(o.contextRevision[thread], 10) &&
+		(reference == "" || reference == o.contextCompaction[thread])
 }
 
 func (o *Observations) SetToolInput(generation *Generation, workspace, thread string, item GenerationItem, active bool) {

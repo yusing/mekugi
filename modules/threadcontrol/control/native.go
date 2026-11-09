@@ -18,6 +18,10 @@ type Native interface {
 	Create(context.Context, string, string, Settings) (Receipt, error)
 }
 
+// ContextReader supplies the receiving runtime's current history identity.
+// An unavailable identity disables automatic evidence suppression.
+type ContextReader interface{ ContextIdentity(string) string }
+
 // ModelDiscovery is an optional application-owned native catalog acquisition.
 // It starts no logical member or work generation and returns spawn identifiers.
 type ModelDiscovery interface {

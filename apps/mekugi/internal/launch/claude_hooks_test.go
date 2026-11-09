@@ -22,6 +22,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/claude"
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -253,6 +254,97 @@ func TestClaudeLaunchHooksPublishSharedNativeEvidence(t *testing.T) {
 	}
 	if err := b.execution.AttachChild(t.Context(), "parent", "child"); err == nil {
 		t.Fatal("Claude child was attachable")
+	}
+}
+
+func TestClaudeCompletionContextOmitsYieldedEvidenceAtReceiver(t *testing.T) {
+	for _, reset := range []string{"none", "before preparation", "before wake"} {
+		t.Run(reset, func(t *testing.T) {
+			f := newClaudeHookFixture(t)
+			b, ctx := f.bridge, t.Context()
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			args := jsontext.Value(`{"command":"printf yielded > captured.txt"}`)
+			f.hook(t, "PreToolUse", "Bash", "capture", args, nil)
+			check(os.WriteFile(filepath.Join(b.settings.Workspace, "captured.txt"), []byte("yielded\n"), 0600))
+			f.hook(t, "PostToolUse", "Bash", "capture", args, jsontext.Value(`{"stdout":"","stderr":"","interrupted":false}`))
+			index, err := b.owners.Changes.Service.Inspect(b.selected, b.settings.Workspace)
+			check(err)
+			var id string
+			seen := make(map[string]int)
+			for changeID, change := range index.Changes {
+				id = changeID
+				for _, call := range change.Calls {
+					record, found, err := b.selected.Store.ReadHostCall(b.settings.Workspace, call.ID, false)
+					check(err)
+					if !found {
+						t.Fatal("missing capture")
+					}
+					seen[changes.CaptureKey(b.settings.Workspace, record.History.Caller, id, record.CaptureOrder)] = 1
+				}
+			}
+			if len(seen) == 0 {
+				t.Fatal("missing captured progress")
+			}
+			shared := b.execution.shared
+			caller, err := b.identity("spawn-nested")
+			check(err)
+			spawn, err := shared.ReserveSpawn(ctx, caller, control.SpawnRequest{Name: "nested", Message: "work", Settings: b.settings})
+			check(err)
+			for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
+				_, err = shared.ClaimEffect(ctx, "child", spawn.ID)
+				check(err)
+				check(shared.EffectAcknowledged(ctx, "child", spawn.ID, control.Receipt{Phase: phase, Thread: "nested", Session: "nested-session", Turn: "nested-turn"}))
+			}
+			caller.Call, caller.Item = "yield", "yield-item"
+			now := time.Now()
+			_, err = shared.RegisterWait(ctx, caller, control.WaitAny, nil, new(int64(300000)), now)
+			check(err)
+			check(shared.Execution(ctx, "child", caller.Turn, caller.Item, "", true))
+			stop, err := shared.ClaimLocalStop(ctx, "child", caller.Turn, caller.Item)
+			check(err)
+			if stop == nil {
+				t.Fatal("yield was not admitted")
+			}
+			check(shared.HostCompleted(ctx, "child", caller.Turn, control.Completed, control.HostFailure{}))
+			_, err = shared.PrepareWake(ctx, "child", now.Add(5*time.Minute))
+			check(err)
+			_, err = shared.ClaimEffect(ctx, "child", caller.Call)
+			check(err)
+			check(shared.RetainWaitProgress(ctx, "child", caller.Call, b.runtime.ContextIdentity("child"), control.WaitProgress{}, seen))
+			check(shared.EffectAcknowledged(ctx, "child", caller.Call, control.Receipt{Turn: caller.Turn}))
+			compactContext := func() {
+				check(b.runtime.ObserveMetrics(ctx, jsontext.Value(`{"type":"system","subtype":"compact_boundary","session_id":"native-session","uuid":"replacement"}`)))
+			}
+			if reset == "before preparation" {
+				compactContext()
+			}
+			b.runtime.SetInputContext(b.completionContext)
+			selection, err := json.Marshal(map[string]any{"sources": []compact.Source{{Changes: []string{id}}}})
+			check(err)
+			_, err = b.runtime.Input(ctx, control.NativeInput{Thread: "child", ID: "completion", Kind: "FINAL_ANSWER", Outcome: control.Completed, Sender: "/root/child/nested", Message: "Done\n" + compact.CompactMetadataStart + string(selection) + compact.CompactMetadataEnd})
+			check(err)
+			if reset == "before wake" {
+				compactContext()
+			}
+			_, err = b.runtime.Input(ctx, control.NativeInput{Thread: "child", ID: "wake", Kind: "MESSAGE", Run: true})
+			check(err)
+			f.mu.Lock()
+			text := string(f.inputs[len(f.inputs)-1].Message)
+			f.mu.Unlock()
+			if strings.Contains(text, "+yielded") != (reset != "none") {
+				t.Fatalf("wrong receiving context attachment: %s", text)
+			}
+			full, err := b.owners.Changes.Service.Read(ctx, b.selected, changes.Query{Workspace: b.settings.Workspace, IDs: []string{id}, View: "net"})
+			check(err)
+			if !strings.Contains(full, "+yielded") {
+				t.Fatal("explicit read lost yielded capture")
+			}
+		})
 	}
 }
 

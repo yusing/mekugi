@@ -108,6 +108,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	api.BindRequests(session.Client.Requests)
 	api.BindCoordination(threads.shared, threads.driver.DeliverMessages)
 	if session.preparer != nil {
+		session.Client.Requests.InputContext = session.controlObservations.ContextIdentity
 		session.Client.Requests.PrepareCompletion = session.preparer.PrepareCompletion
 		session.Client.Requests.AdmitSideFork = session.preparer.AdmitSideFork
 	}

@@ -240,35 +240,17 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		owners.Usage.ObserveCumulative(info.Thread, report)
 	}
 	runtime.SetEventSink(bridge.reduceEvent)
-	runtime.SetInputContext(func(ctx context.Context, input control.NativeInput) (string, error) {
+	runtime.SetInputContext(func(ctx context.Context, input control.NativeInput) (sessioncontrol.PreparedInputContext, error) {
 		member, ok := e.shared.Member(input.Thread)
 		if !ok || member.Session != info.Session || !member.AudienceAdmitted {
-			return "", control.ErrNotAdmitted
+			return sessioncontrol.PreparedInputContext{}, control.ErrNotAdmitted
 		}
 		if input.Kind == "FINAL_ANSWER" {
-			_, selection, found := compact.SplitCompactReload(input.Message)
-			if !found {
-				if compact.ReloadText(input.Message) != input.Message {
-					return "Completion changes unavailable: incomplete reload metadata", nil
-				}
-				return "", nil
-			}
-			if err := compact.CompletionSources(selection); err != nil {
-				return "Completion changes unavailable: " + err.Error(), nil
-			}
-			retained, err := owners.Recovery.AttachStore(selected.Store, selected.Namespace, selected.Thread, selected.Limits, selected.Writes)
-			if err != nil {
-				return "Completion changes unavailable: " + err.Error(), nil
-			}
-			snapshot, err := executionobservation.ReadCompletion(ctx, selection, settings.Workspace, compact.ChangeReader{Service: owners.Changes.Service, Scope: e.retained}, retained)
-			if err != nil {
-				return "Completion changes unavailable: " + err.Error(), nil
-			}
-			return snapshot.Completion.Text(), nil
+			return bridge.completionContext(ctx, input)
 		}
 		// Inherited full-session context already belongs to the SDK transcript.
-		// Acquire only this child's selected initial sources, once in its ledger.
-		return claudePreload(ctx, member.Preload.Selection, settings.Workspace, environment, compact.ChangeReader{Service: owners.Changes.Service, Scope: e.retained})
+		text, err := claudePreload(ctx, member.Preload.Selection, settings.Workspace, environment, compact.ChangeReader{Service: owners.Changes.Service, Scope: e.retained})
+		return sessioncontrol.PreparedInputContext{Text: text}, err
 	})
 	defer func() { runtime.TransportClosed(runErr) }()
 	audience := sessioncontrol.NewAudience(nil)
@@ -407,4 +389,37 @@ func (p *claudePublication) update(root string, members []control.Participant, m
 	}
 	p.frame.Session.Caller, p.frame.Status, p.frame.FamilyRoot, p.frame.Members = caller, label, root, members
 	return true
+}
+
+// completionContext uses the same retained reader as Codex; the runtime selects
+// its frozen full variant if the receiving context changes before consumption.
+func (b *claudeBridge) completionContext(ctx context.Context, input control.NativeInput) (sessioncontrol.PreparedInputContext, error) {
+	fail := func(message string) (sessioncontrol.PreparedInputContext, error) {
+		return sessioncontrol.PreparedInputContext{Text: "Completion changes unavailable: " + message}, nil
+	}
+	_, selection, found := compact.SplitCompactReload(input.Message)
+	if !found {
+		if compact.ReloadText(input.Message) != input.Message {
+			return fail("incomplete reload metadata")
+		}
+		return sessioncontrol.PreparedInputContext{}, nil
+	}
+	if err := compact.CompletionSources(selection); err != nil {
+		return fail(err.Error())
+	}
+	retained, err := b.owners.Recovery.AttachStore(b.session.Store, b.session.Namespace, b.session.Thread, b.session.Limits, b.session.Writes)
+	if err != nil {
+		return fail(err.Error())
+	}
+	identity := b.runtime.ContextIdentity(input.Thread)
+	reader := compact.ChangeReader{Service: b.owners.Changes.Service, Scope: b.selected, YieldContext: identity, Yielded: b.execution.shared.YieldCursor(input.Thread, identity)}
+	snapshot, err := executionobservation.ReadCompletion(ctx, selection, b.settings.Workspace, reader, retained)
+	if err != nil {
+		return fail(err.Error())
+	}
+	prepared := sessioncontrol.PreparedInputContext{Text: snapshot.Completion.Text(), Identity: snapshot.CompletionContext}
+	if snapshot.FullCompletion != nil {
+		prepared.Full = snapshot.FullCompletion.Text()
+	}
+	return prepared, nil
 }

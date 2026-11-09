@@ -379,12 +379,12 @@ func TestClaudeInitialContextSurvivesStartedUntilNativeConsumption(t *testing.T)
 		return jsontext.Value(`{"status":"queued"}`), nil
 	})
 	runtime, selected, settings := claudeFixture(t, native)
-	runtime.SetInputContext(func(_ context.Context, input control.NativeInput) (string, error) {
+	runtime.SetInputContext(func(_ context.Context, input control.NativeInput) (PreparedInputContext, error) {
 		acquisitions++
 		if input.ID != "initial" || input.Message != "original assignment" {
 			t.Fatalf("context callback changed input authority: %+v", input)
 		}
-		return "frozen source body", nil
+		return PreparedInputContext{Text: "frozen source body"}, nil
 	})
 	input := control.NativeInput{Thread: "child", ID: "initial", Sender: "/root", Kind: "NEW_TASK", Message: "original assignment", Run: true, Settings: &settings}
 	if _, err := runtime.Input(t.Context(), input); err != nil {
@@ -429,9 +429,9 @@ func TestClaudeCompletionReloadUsesRetainedInputContext(t *testing.T) {
 		return jsontext.Value(`{"status":"queued"}`), nil
 	})
 	runtime, selected, settings := claudeFixture(t, native)
-	runtime.SetInputContext(func(context.Context, control.NativeInput) (string, error) {
+	runtime.SetInputContext(func(context.Context, control.NativeInput) (PreparedInputContext, error) {
 		reads++
-		return "frozen captured diff", nil
+		return PreparedInputContext{Text: "already yielded", Identity: runtime.ContextIdentity("child"), Full: "frozen captured diff"}, nil
 	})
 	input := control.NativeInput{Thread: "child", ID: "final", Sender: "/root/child/nested", Kind: "FINAL_ANSWER", Outcome: control.Completed,
 		Message: "finished\n" + compact.CompactMetadataStart + `{"sources":[{"changes":["blue1"]}]}` + compact.CompactMetadataEnd}

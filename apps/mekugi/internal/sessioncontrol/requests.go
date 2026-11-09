@@ -53,6 +53,7 @@ type Requests[T any] struct {
 	InheritedEffort          func(model, effort string) (string, error)
 	CaptureConfiguredCatalog func([]byte)
 	CatalogPending           bool
+	InputContext             func(string) string
 	PrepareCompletion        func(context.Context, control.NativeInput) (PreparedCompletion, error)
 	AdmitSideFork            func(source, thread, workspace string)
 	preparation              atomic.Pointer[PreparedThread]
@@ -67,6 +68,13 @@ type Requests[T any] struct {
 	questions                chan *AgentQuestion
 	closed                   chan struct{}
 	closeOnce                sync.Once
+}
+
+func (r *Requests[T]) ContextIdentity(thread string) string {
+	if r.InputContext == nil {
+		return ""
+	}
+	return r.InputContext(thread)
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {

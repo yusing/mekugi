@@ -76,7 +76,8 @@ func (p *Preparer) completionSnapshot(ctx context.Context, thread, selection str
 	if err != nil {
 		return "", 1, err
 	}
-	snapshot, err := ReadCompletion(ctx, selection, member.Settings.Workspace, compact.ChangeReader{Service: p.Changes, Scope: selected}, store)
+	contextID := p.Control.ContextIdentity(thread)
+	snapshot, err := ReadCompletion(ctx, selection, member.Settings.Workspace, compact.ChangeReader{Service: p.Changes, Scope: selected, Yielded: p.ThreadControl.Coordination().YieldCursor(thread, contextID), YieldContext: contextID}, store)
 	if err != nil {
 		return "", 1, err
 	}

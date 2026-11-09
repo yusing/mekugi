@@ -431,6 +431,12 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		if captured.Completion != nil && len(captured.Sources) != 0 {
 			return nil, errors.New("reload snapshot mixes completion and source results")
 		}
+		if captured.CompletionContext != "" && !p.Control.ContextMatches(thread, captured.CompletionContext, metadata.ContextWindowID) {
+			if captured.FullCompletion == nil {
+				return nil, errors.New("completion snapshot has no full-context fallback")
+			}
+			captured.Completion = captured.FullCompletion
+		}
 		if captured.Completion == nil && len(selected) != len(captured.Sources) {
 			return nil, errors.New("reload snapshot source count mismatch")
 		}

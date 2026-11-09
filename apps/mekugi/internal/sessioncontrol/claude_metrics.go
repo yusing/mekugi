@@ -170,6 +170,7 @@ func (r *ClaudeRuntime) ObserveMetrics(ctx context.Context, raw jsontext.Value) 
 			return nil
 		}
 		m.Compactions = append(m.Compactions, event.UUID)
+		r.generationInputs.ObserveCompactionContext(r.ledger.Info.Thread, event.UUID)
 		m.ContextTokens = nil
 	case event.Type == "result" && event.UUID == r.metricResult && event.UUID != m.LastResult:
 		m.LastResult = event.UUID

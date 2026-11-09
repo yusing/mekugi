@@ -154,7 +154,7 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 		}
 		paths = append(paths, filepath.Clean(path))
 	}
-	captures, err := s.loadChangeCaptures(ctx, options.workspace, index, options.ids, paths, options.unavailable)
+	captures, err := s.loadChangeCaptures(ctx, options.workspace, index, options.ids, paths, options.unavailable, options.yielded)
 	if err != nil {
 		return "", err
 	}
@@ -234,7 +234,11 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 	if !matched && len(failures) == 0 {
 		fmt.Fprintf(&output, "no captured files match paths after -- in workspace %q\n", options.workspace)
 	} else if output.Len() == 0 && len(failures) == 0 {
-		output.WriteString("no net changes in selected captured history\n")
+		if len(options.yielded) != 0 {
+			output.WriteString("no new net changes after previously yielded captures\n")
+		} else {
+			output.WriteString("no net changes in selected captured history\n")
+		}
 	}
 	if len(failures) > 0 {
 		return output.String(), &partialChangeReadError{errors.Join(failures...)}

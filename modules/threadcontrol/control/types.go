@@ -58,6 +58,7 @@ type Member struct {
 	Limits                                                Limits
 	Instructions                                          []guidance.Fragment
 	Wait                                                  *Wait
+	YieldContext                                          string         `json:",omitzero"`
 	YieldSeen                                             map[string]int `json:",omitzero"`
 	RecoveryWait                                          *Wait
 	Stop                                                  *LocalStop
@@ -103,6 +104,7 @@ type Wait struct {
 	YieldAt                  *time.Time
 	Yielded                  bool
 	Progress                 *WaitProgress
+	YieldContext             string         `json:",omitzero"`
 	YieldSeen                map[string]int `json:",omitzero"`
 	Terminal                 *Event
 	Compaction               *Effect

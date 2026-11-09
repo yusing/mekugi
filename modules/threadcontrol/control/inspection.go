@@ -6,15 +6,15 @@ import (
 )
 
 // YieldCursor borrows immutable counts; acknowledgement replaces the map.
-func (s *Service) YieldCursor(thread string) map[string]int {
+func (s *Service) YieldCursor(thread, contextID string) map[string]int {
 	member, ok := s.member(thread)
-	if !ok {
+	if !ok || contextID == "" || member.YieldContext != contextID {
 		return nil
 	}
 	return member.YieldSeen
 }
 
-func (s *Service) RetainWaitProgress(ctx context.Context, thread, id string, progress WaitProgress, seen map[string]int) error {
+func (s *Service) RetainWaitProgress(ctx context.Context, thread, id, contextID string, progress WaitProgress, seen map[string]int) error {
 	frozen, err := detach(struct {
 		Progress WaitProgress
 		Seen     map[string]int
@@ -30,7 +30,7 @@ func (s *Service) RetainWaitProgress(ctx context.Context, thread, id string, pro
 		if wait.Progress != nil {
 			return unchanged
 		}
-		wait.Progress, wait.YieldSeen = &frozen.Progress, frozen.Seen
+		wait.Progress, wait.YieldSeen, wait.YieldContext = &frozen.Progress, frozen.Seen, contextID
 		return nil
 	})
 }

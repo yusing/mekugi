@@ -47,9 +47,14 @@ func TestClaudeMetricsRetainNativeFactsWithoutDoubleCounting(t *testing.T) {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Second)
+			beforeContext := runtime.ContextIdentity("child")
 			boundary := `{"type":"system","subtype":"compact_boundary","session_id":"native-session","uuid":"compact-1"}`
 			emit(boundary)
+			afterContext := runtime.ContextIdentity("child")
 			emit(boundary)
+			if afterContext != runtime.ContextIdentity("child") || (turn == 1) != (beforeContext != afterContext) {
+				t.Fatal("Claude compaction did not replace history identity exactly once")
+			}
 			result := fmt.Sprintf(`{"type":"result","subtype":"success","session_id":"native-session","uuid":"result-%d","user_message_uuid":%q,"num_turns":2,"result":"done","modelUsage":{"native-model":{"inputTokens":%d,"cacheReadInputTokens":%d,"cacheCreationInputTokens":%d,"outputTokens":%d,"thinkingTokens":%d}},"total_cost_usd":%g}`, turn, input.UUID, 100*turn, 200*turn, 50*turn, 20*turn, 5*turn, .25*float64(turn))
 			emit(result)
 			emit(result)

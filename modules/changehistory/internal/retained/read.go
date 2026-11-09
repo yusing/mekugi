@@ -30,6 +30,7 @@ const changesReadUsage = "mchanges --list [ID[..ID] ...] [--max-tokens N] | mcha
 type changeReadOptions struct {
 	// Only initial reads collect unavailable targets; frozen recovery stays strict.
 	unavailable   changeReadFailures
+	yielded       map[string]int
 	overlapLabels map[string]string
 	mine          bool
 	view          string

@@ -316,6 +316,10 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			if effect.Kind == "wake" {
 				effect.State = "completed"
 				if member.Wait.Yielded {
+					if member.YieldContext != member.Wait.YieldContext {
+						member.YieldSeen = nil
+					}
+					member.YieldContext = member.Wait.YieldContext
 					member.YieldSeen = maps.Clone(member.YieldSeen)
 					if member.YieldSeen == nil {
 						member.YieldSeen = make(map[string]int)

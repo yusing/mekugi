@@ -60,6 +60,7 @@ type claudeReceipt struct {
 	Input                                        *control.NativeInput `json:",omitzero"`
 	Bundled                                      []string             `json:",omitzero"`
 	Context                                      string               `json:",omitzero"`
+	ContextIdentity, ContextFull                 string               `json:",omitzero"`
 	Terminal                                     *claudeTerminal      `json:",omitzero"`
 	CompactResult, CompactBoundary, CompactError string
 }
@@ -95,7 +96,7 @@ type ClaudeRuntime struct {
 	answer           string
 	active           map[string]bool
 	closed           error
-	inputContext     func(context.Context, control.NativeInput) (string, error)
+	inputContext     func(context.Context, control.NativeInput) (PreparedInputContext, error)
 	eventSink        func(context.Context, ClaudeEvent) error
 	lastTerminal     *claudeTerminal
 	admissions       int
@@ -256,7 +257,7 @@ func (r *ClaudeRuntime) CurrentTurn() string {
 
 // SetInputContext installs launch's initial-context acquisition before admission.
 // The selected body is retained with the unchanged operation identity before IPC.
-func (r *ClaudeRuntime) SetInputContext(acquire func(context.Context, control.NativeInput) (string, error)) {
+func (r *ClaudeRuntime) SetInputContext(acquire func(context.Context, control.NativeInput) (PreparedInputContext, error)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.inputContext = acquire
@@ -410,7 +411,7 @@ func (r *ClaudeRuntime) dispatchInput(ctx context.Context, input control.NativeI
 	acquire := r.inputContext
 	valid := r.identity(input.Thread) == nil && input.ID != "" && r.closed == nil
 	r.mu.Unlock()
-	var inputContext string
+	var inputContext PreparedInputContext
 	if valid && acquire != nil && (input.Run && input.Settings != nil || input.Kind == "FINAL_ANSWER" && input.Outcome == control.Completed) {
 		var previous claudeReceipt
 		if err := r.read(claudeRecordName(input.Thread, "input", input.ID), &previous); errors.Is(err, os.ErrNotExist) {
@@ -446,11 +447,11 @@ func (r *ClaudeRuntime) dispatchInput(ctx context.Context, input control.NativeI
 		}
 		fragments = append(fragments, text)
 		if pending.Context != "" {
-			fragments = append(fragments, pending.Context)
+			fragments = append(fragments, pending.contextText(r.ContextIdentity(input.Thread)))
 		}
 	}
 	if receipt.Context != "" {
-		fragments = append(fragments, receipt.Context)
+		fragments = append(fragments, receipt.contextText(r.ContextIdentity(input.Thread)))
 	}
 	text, err := claudeInputText(*receipt.Input)
 	r.mu.Unlock()
@@ -537,7 +538,7 @@ func claudeInputText(input control.NativeInput) (string, error) {
 	return "Thread Control " + tool + "\nSender: " + projected.Sender + "\n" + output, nil
 }
 
-func (r *ClaudeRuntime) retainInput(ctx context.Context, input control.NativeInput, inputContext string) (*claudeReceipt, bool, error) {
+func (r *ClaudeRuntime) retainInput(ctx context.Context, input control.NativeInput, inputContext PreparedInputContext) (*claudeReceipt, bool, error) {
 	r.mu.Lock()
 	for input.Run && r.retiring != nil && r.admissions == 0 && r.closed == nil {
 		changed := r.changed
@@ -600,7 +601,7 @@ func (r *ClaudeRuntime) retainInput(ctx context.Context, input control.NativeInp
 	}
 	uuid[6], uuid[8] = uuid[6]&15|64, uuid[8]&63|128
 	receipt := &claudeReceipt{Version: 1, Thread: input.Thread, Session: r.ledger.Info.Session, ID: input.ID, Digest: digest, UUID: fmt.Sprintf("%x-%x-%x-%x-%x", uuid[:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:]), Run: input.Run, Accepted: !input.Run, Input: &input}
-	receipt.Context = inputContext
+	receipt.Context, receipt.ContextIdentity, receipt.ContextFull = inputContext.Text, inputContext.Identity, inputContext.Full
 	if input.Run {
 		reserved := make(map[string]bool)
 		for _, pending := range r.pending {
@@ -1062,6 +1063,7 @@ func (r *ClaudeRuntime) consume(ctx context.Context, uuid string, terminal claud
 	}
 	accepted := *receipt
 	accepted.Accepted, accepted.Consumed, accepted.Input, accepted.Context = true, true, nil, ""
+	accepted.ContextIdentity, accepted.ContextFull = "", ""
 	accepted.Terminal = &terminal
 	name := r.ledger.Pending[uuid]
 	retained := r.ledger.Retained
@@ -1075,6 +1077,7 @@ func (r *ClaudeRuntime) consume(ctx context.Context, uuid string, terminal claud
 		}
 		copy := *pending
 		copy.Input, copy.Context, copy.Consumed = nil, "", true
+		copy.ContextIdentity, copy.ContextFull = "", ""
 		cleared[bundled], names[bundled] = copy, r.ledger.Pending[bundled]
 		consumed = append(consumed, control.MessageItemID(copy.ID))
 	}
@@ -1123,6 +1126,7 @@ func (r *ClaudeRuntime) cancelled(ctx context.Context, uuid, evidence, nativeUUI
 	}
 	cancelled := *receipt
 	cancelled.Cancelled, cancelled.Input, cancelled.Context, cancelled.Terminal = true, nil, "", &terminal
+	cancelled.ContextIdentity, cancelled.ContextFull = "", ""
 	ending := r.turn == receipt.Turn
 	for pendingUUID, pending := range r.pending {
 		if pendingUUID != uuid && pending.Run && pending.Turn == r.turn {
@@ -1165,4 +1169,16 @@ func (r *ClaudeRuntime) cancelled(ctx context.Context, uuid, evidence, nativeUUI
 	close(r.changed)
 	r.changed = make(chan struct{})
 	return event, nil
+}
+
+// ContextIdentity uses the same invocation-local history owner as native input.
+func (r *ClaudeRuntime) ContextIdentity(thread string) string {
+	return r.generationInputs.ContextIdentity(thread)
+}
+
+func (receipt *claudeReceipt) contextText(identity string) string {
+	if receipt.ContextIdentity != "" && receipt.ContextIdentity != identity {
+		return receipt.ContextFull
+	}
+	return receipt.Context
 }

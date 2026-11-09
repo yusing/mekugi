@@ -1,6 +1,7 @@
 package codexbinding
 
 import (
+	"context"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -10,7 +11,19 @@ import (
 
 type progressNative struct {
 	control.Native
-	reads int
+	reads     int
+	contextID string
+}
+
+type progressRuntime struct {
+	control.Runtime
+	contextID string
+}
+
+func (r progressRuntime) ContextIdentity(string) string { return r.contextID }
+func (n *progressNative) Resume(ctx context.Context, thread string) (control.Runtime, error) {
+	runtime, err := n.Native.Resume(ctx, thread)
+	return progressRuntime{runtime, n.contextID}, err
 }
 
 func (n *progressNative) WaitProgress(_ string, seen map[string]int) (control.WaitProgress, map[string]int) {
@@ -24,13 +37,16 @@ func (n *progressNative) WaitProgress(_ string, seen map[string]int) (control.Wa
 func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		driver, host, _, caller := reconciliationFixture(t)
-		source := &progressNative{Native: host}
+		source := &progressNative{Native: host, contextID: "context"}
 		driver.host = source
 		if err := driver.Start(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 		defer driver.Stop(t.Context())
-		for i := range 2 {
+		for i := range 3 {
+			if i == 2 {
+				source.contextID = "reset"
+			}
 			caller.Call += "-wait"
 			if _, err := driver.waitAgent(t.Context(), caller, []byte(`{"yield_time_ms":300000}`)); err != nil {
 				t.Fatal(err)
@@ -52,10 +68,10 @@ func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 				t.Fatal(failures)
 			}
 			input := host.inputs[len(host.inputs)-1]
-			if input.Wake == nil || input.Wake.State != "yielded" || input.Wake.Progress == nil || source.reads != i+1 || len(input.Wake.Progress.Agents) != 1-i {
+			if input.Wake == nil || input.Wake.State != "yielded" || input.Wake.Progress == nil || source.reads != i+1 || len(input.Wake.Progress.Agents) != (i+1)%2 {
 				t.Fatalf("yield output: %+v reads=%d", input, source.reads)
 			}
-			if driver.control.YieldCursor(caller.Thread)["capture"] != 1 {
+			if driver.control.YieldCursor(caller.Thread, source.contextID)["capture"] != 1 {
 				t.Fatal("delivery did not retain cursor")
 			}
 			caller.Turn = host.nextTurn

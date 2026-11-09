@@ -37,9 +37,9 @@ func TestWaitYieldUsesRetainedWake(t *testing.T) {
 				t.Fatalf("yield fabricated an outcome: %+v", wake)
 			}
 			progress := WaitProgress{Agents: []AgentProgress{{Task: "/root/child", Changes: "mchanges amber1 --summary", Status: "working"}}}
-			must(t, s.RetainWaitProgress(t.Context(), "root", caller.Call, progress, map[string]int{"capture": 2}))
+			must(t, s.RetainWaitProgress(t.Context(), "root", caller.Call, "context", progress, map[string]int{"capture": 2}))
 			must(t, s.EffectAcknowledged(t.Context(), "root", caller.Call, Receipt{Uncertain: true, Error: "lost acknowledgement"}))
-			if len(s.YieldCursor("root")) != 0 {
+			if len(s.YieldCursor("root", "context")) != 0 {
 				t.Fatal("uncertain delivery consumed capture cursor")
 			}
 			root, _ := s.Member("root")
@@ -50,7 +50,7 @@ func TestWaitYieldUsesRetainedWake(t *testing.T) {
 				t.Fatal("restore lost frozen yield or rearmed it")
 			}
 			must(t, restored.EffectAcknowledged(t.Context(), "root", caller.Call, Receipt{Reconciled: true, Turn: "next"}))
-			if restored.YieldCursor("root")["capture"] != 2 || restored.WaitPublication("root").State != "yielded" {
+			if restored.YieldCursor("root", "context")["capture"] != 2 || restored.WaitPublication("root").State != "yielded" {
 				t.Fatal("confirmed yield lost progress cursor or presentation reason")
 			}
 		})

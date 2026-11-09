@@ -26,11 +26,10 @@ func (p Publication) Progress(callers map[string]bool, seen map[string]int) iter
 			if chunk.Change != "" && callers[chunk.Caller] && (changes.AuthoredReview(chunk.Review) || changes.GitDiagnosticReview(chunk.Review)) {
 				// One change can gain late writer intervals. Each retained
 				// record has its own capture identity, even out of ID order.
-				identity := fmt.Sprint(chunk.CaptureOrder)
-				if chunk.CaptureOrder == 0 {
-					identity = chunk.Key
+				key := changes.CaptureKey(chunk.Workspace, chunk.Caller, chunk.Change, chunk.CaptureOrder)
+				if key == "" {
+					key = chunk.Workspace + "\x00" + chunk.Caller + "\x00" + chunk.Change + "\x00" + chunk.Key
 				}
-				key := chunk.Workspace + "\x00" + chunk.Caller + "\x00" + chunk.Change + "\x00" + identity
 				groups[key] = append(groups[key], chunk)
 			}
 		}
