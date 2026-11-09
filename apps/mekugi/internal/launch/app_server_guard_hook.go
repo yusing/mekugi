@@ -51,13 +51,23 @@ func (session *nativeSession) guardHookResponse(attached *attachedPresentation, 
 	if thread != session.Client.Thread && !session.Client.Requests.WorkSide(thread) {
 		return session.flushInput(attached, picker, clock, editor, parent)
 	}
+	// Cancellation restores the input while the observational host read may
+	// still be in flight. Its result must not grant a later turn readiness or
+	// replace the canceled operation's status with a guard failure.
+	if side != nil {
+		if side.Pending.Text == "" && len(side.Drafts.Unsent) == 0 {
+			return nil
+		}
+	} else if len(attached.conversation.Unsent)+len(attached.conversation.Queued) == 0 {
+		return nil
+	}
 	var err error
 	if message.Error != nil {
 		err = fmt.Errorf("read approval hook: %s", message.Error.Message)
 	} else {
 		err = shellhook.Validate(message.Result, attached.cwd, session.guardHookCheck.hash)
 	}
-	if side != nil && side.OneOff {
+	if side != nil {
 		if err != nil {
 			if thread == side.Thread && len(side.Drafts.Unsent) == 0 {
 				side.Busy, side.Starting = false, false

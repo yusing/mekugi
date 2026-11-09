@@ -3,10 +3,73 @@ package launch
 import (
 	json "encoding/json/v2"
 	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 )
+
+func TestUISnapshotGuardHookEscapeBeforeStart(t *testing.T) {
+	for _, oneoff := range []bool{false, true} {
+		for _, failed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("oneoff=%t/failed=%t", oneoff, failed), func(t *testing.T) {
+				u, wire := newAppServerTestUI()
+				u.guardHookCheck.hash = "guard"
+				thread := "main"
+				if oneoff {
+					thread = "oneoff"
+					u.Turn = "main-turn"
+					appServerTestKeys(t, u, "/oneoff task\r")
+					fork := btwTestRequest(t, wire, "thread/fork", "main")
+					btwTestReply(t, u, fork, `{"thread":{"id":"oneoff"}}`)
+				} else {
+					appServerTestKeys(t, u, "task\r")
+				}
+				check := appServerOneRequest(t, wire, "hooks/list", "")
+				appServerTestKeys(t, u, "\x1b")
+				ageTerminalEscape(terminalTest(u))
+				if err := terminalTest(u).flushEscape(); err != nil {
+					t.Fatal(err)
+				}
+				rows, _ := u.mainFrame(80, 20, 0)
+				if oneoff {
+					rows = u.sideFrame(80, 20)
+				}
+				frame := ansi.Strip(strings.Join(rows, "\n"))
+				if wire.Len() != 0 || strings.TrimSpace(u.Text) != "task" || strings.Contains(frame, "approval guard") {
+					t.Fatalf("canceled input retained guard: draft=%q wire=%s frame=\n%s", u.Text, wire.String(), frame)
+				}
+				if !failed {
+					t.Log(frame)
+					uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/guard-interrupt-oneoff-%t.txt", oneoff), frame+"\n")
+				}
+				result := fmt.Sprintf(`"result":%s`, guardHookTestResult(t, u.attached.cwd, guardHookTestEntry("guard")))
+				notice, alert := u.attached.feedback.Text, u.attached.feedback.Alert
+				if failed {
+					result = `"error":{"code":-1,"message":"unavailable"}`
+				}
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, check.ID, result))
+				if wire.Len() != 0 || u.guardHookCheck.readyThread != "" || u.attached.feedback.Text != notice || u.attached.feedback.Alert != alert {
+					t.Fatalf("canceled check affected later work: ready=%q notice=%q wire=%s", u.guardHookCheck.readyThread, u.attached.feedback.Text, wire.String())
+				}
+				appServerTestKeys(t, u, "\r")
+				check = appServerOneRequest(t, wire, "hooks/list", "")
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, check.ID, guardHookTestResult(t, u.attached.cwd, guardHookTestEntry("guard"))))
+				requests := appServerTurnRequests(t, wire)
+				if len(requests) != 1 || requests[0].Method != "turn/start" || !strings.Contains(requests[0].text(), "task") {
+					t.Fatalf("guarded retry did not start: %+v", requests)
+				}
+				start := requests[0]
+				if start.Params.ThreadID != thread || oneoff && u.Turn != "main-turn" {
+					t.Fatalf("guarded retry changed identity: %+v main=%q", start.Params, u.Turn)
+				}
+			})
+		}
+	}
+}
 
 func guardHookTestResult(t *testing.T, cwd string, hooks ...map[string]any) []byte {
 	t.Helper()
@@ -19,6 +82,27 @@ func guardHookTestResult(t *testing.T, cwd string, hooks ...map[string]any) []by
 
 func guardHookTestEntry(hash string) map[string]any {
 	return map[string]any{"key": shellhook.Key, "eventName": "preToolUse", "handlerType": "command", "currentHash": hash, "matcher": "^Bash$", "trustStatus": "trusted", "enabled": true, "async": false}
+}
+
+func TestAppServerGuardHookEscapeRunningTurn(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.guardHookCheck.hash = "guard"
+	appServerTestTurn(t, u, "running")
+	appServerTestKeys(t, u, "\x1b")
+	ageTerminalEscape(terminalTest(u))
+	if err := terminalTest(u).flushEscape(); err != nil {
+		t.Fatal(err)
+	}
+	interrupt := appServerOneRequest(t, wire, "turn/interrupt", "")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
+	appServerTestTurnEnd(t, u, "running", "interrupted")
+	rows, _ := u.mainFrame(80, 20, 0)
+	frame := ansi.Strip(strings.Join(rows, "\n"))
+	if wire.Len() != 0 || !strings.Contains(frame, "Interrupted") || strings.Contains(frame, "approval guard") {
+		t.Fatalf("interruption started a guard check: wire=%s frame=\n%s", wire.String(), frame)
+	}
+	appServerTestKeys(t, u, "next\r")
+	appServerOneRequest(t, wire, "hooks/list", "")
 }
 
 func TestAppServerGuardHookChecksBeforeEachNewTurn(t *testing.T) {

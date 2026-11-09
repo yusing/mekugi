@@ -164,6 +164,8 @@ func (m *Model) RestoreInterruptedInput(conversation *conversationmodel.Session,
 	}
 	if intent.Pending || intent.Turn != "" {
 		m.Status.SetText("Interrupting…")
+	} else if intent.RestoreWaiting {
+		m.Status.Set("Ready", false)
 	}
 	return restored
 }
