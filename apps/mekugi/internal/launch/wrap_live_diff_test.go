@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 )
@@ -81,6 +82,10 @@ func TestAutoWrapProcess(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
+		}
+		if os.Getenv("MEKUGI_AUTO_WRAP_HOOK_CHOICE") != "" {
+			// Earlier startup output must not acknowledge a later hook decision.
+			fmt.Fprintln(os.Stdout, "Ready")
 		}
 		code, err := wrapCodex(t.Context(), routerArgs, args)
 		if stopServer != nil {
@@ -370,6 +375,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			defer cancel()
 			cmd := exec.CommandContext(ctx, launcher, "-test.run=^TestAutoWrapProcess$", "--", "router")
 			var output []byte
+			var sent []string
 			if test.terminal {
 				tty, startErr := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
 				if startErr != nil {
@@ -379,16 +385,22 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				read := make(chan []byte, 1)
 				go func() {
 					var data bytes.Buffer
+					screen := vt.NewEmulator(100, 24)
+					stopReplies := startEmulatorReplies(io.Discard, screen)
 					buf := make([]byte, 8192)
 					quit, answeredHook := false, false
 					for {
 						n, readErr := tty.Read(buf)
 						data.Write(buf[:n])
-						if test.hookChoice != "" && !answeredHook && bytes.Contains(data.Bytes(), []byte("Trust this hook?")) {
+						_, _ = screen.Write(buf[:n])
+						visible := screen.String()
+						promptOpen := strings.Contains(visible, "Trust this hook?")
+						if test.hookChoice != "" && !answeredHook && promptOpen {
+							sent = append(sent, test.hookChoice+"\r")
 							_, _ = tty.Write([]byte(test.hookChoice + "\r"))
 							answeredHook = true
-						}
-						if !test.failure && !quit && (test.hookChoice == "" || answeredHook) && bytes.Contains(data.Bytes(), []byte("Ready")) {
+						} else if !test.failure && !quit && (test.hookChoice == "" || answeredHook) && !promptOpen && strings.Contains(visible, "╭─ Ready") {
+							sent = append(sent, "/quit\r")
 							_, _ = tty.Write([]byte("/quit\r"))
 							quit = true
 						}
@@ -396,6 +408,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 							break
 						}
 					}
+					stopReplies()
 					read <- data.Bytes()
 				}()
 				err = cmd.Wait()
@@ -408,6 +421,13 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 					t.Fatalf("unexpected app-server exit lost its status or diagnostic: %v\n%s", err, output)
 				}
 			} else if err != nil {
+				if test.hookChoice != "" {
+					screen := vt.NewEmulator(100, 24)
+					stopReplies := startEmulatorReplies(io.Discard, screen)
+					defer stopReplies()
+					_, _ = screen.Write(output)
+					t.Fatalf("wrapper: %v; sent inputs: %q\n%s", err, sent, screen.String())
+				}
 				t.Fatalf("wrapper: %v\n%s", err, output)
 			}
 			if test.guard {
