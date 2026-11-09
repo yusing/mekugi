@@ -88,4 +88,44 @@ func TestWebUIBrowserAttachmentEvents(t *testing.T) {
 	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 		run("screenshot", filepath.Join(artifacts, "attachment-events-content.png"))
 	}
+	// The selected One-off uses the same parsed attachment event through the
+	// remote control projection, rather than the ordinary Main subscription.
+	request, ok := machine.views.Load("same-thread")
+	if !ok {
+		t.Fatal("browser did not attach its semantic view")
+	}
+	side := sessionpresentation.Thread{ID: "oneoff", Caller: "/oneoff"}
+	sideEvent := event
+	sideEvent.Agent = side.Caller
+	frame := sessionapi.NativeFrame{
+		View: sessionpresentation.View{
+			Version:    sessionpresentation.Version{Attachment: 1, Revision: 2},
+			Info:       sessionpresentation.MainInfo{Workspace: machine.workdir},
+			Main:       sessionpresentation.Thread{ID: "same-thread", Caller: "/root"},
+			SideThread: side, Displayed: side, Input: side,
+			Side: &sessionpresentation.SideToken{ID: 1, Key: "oneoff", Label: "One-off"},
+		},
+		Main: publication, Agents: &activity.Publication{Entries: []activity.Entry{sideEvent}},
+	}
+	if err := machine.api.Native().Publish(request.(sessionapi.NativeRequest).Attachment, frame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `document.querySelector('[role=tab][aria-selected=true]')?.textContent.includes('One-off') && document.querySelector('[data-entry="1"]')?.querySelectorAll('[data-ai-element=tool]').length === 5`)
+	for _, width := range []string{"1280", "390"} {
+		run("set", "viewport", width, "900")
+		for _, theme := range []string{"light", "dark"} {
+			run("eval", `document.documentElement.dataset.theme = '`+theme+`'`)
+			run("wait", "--fn", `(() => { const row = document.querySelector('[data-entry="1"]'); return row.querySelectorAll('[data-ai-element=tool]').length === 5 && ['source.go', 'review', 'commit', 'missing.go', 'not found'].every(part => row.innerText.includes(part)) && [...row.querySelectorAll('[data-ai-element=tool]')].every(item => { const box = item.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth; }); })()`)
+			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+				run("screenshot", filepath.Join(artifacts, "oneoff-attachments-"+width+"-"+theme+".png"))
+			}
+		}
+	}
+	run("eval", `document.querySelector('[data-entry="1"] button[aria-label="Output: 2 lines"]').click()`)
+	run("wait", "--fn", `document.querySelector('[data-entry="1"] pre')?.textContent.includes('last line')`)
+	run("eval", `[...document.querySelectorAll('[data-entry="1"] button[aria-label="Output: 2 lines"]')].slice(1).forEach(button => button.click())`)
+	run("wait", "--fn", `document.querySelector('[data-entry="1"]').innerText.includes('Check callers.') && document.querySelector('[data-entry="1"]').innerText.includes('Preserve intent.')`)
+	if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+		run("screenshot", filepath.Join(artifacts, "oneoff-attachments-content.png"))
+	}
 }

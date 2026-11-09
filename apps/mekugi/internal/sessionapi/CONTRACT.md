@@ -231,8 +231,10 @@ native-only. Remote publications omit native integration facts and redact secret
 question content throughout prompts, Activity and details, using the shared
 public projection policy. They also omit terminal renderer state that remote
 clients read through `session/subscribe`: review, agent feeds, live previews,
-output windows and pacing. Main remains only while a side conversation is
-displayed. A raw command sent without editor metadata leaves every draft
+output windows and pacing. While a side conversation is displayed, `conversation`
+carries that caller's complete entries using the ordinary browser entry schema,
+including read targets, grouped attachment parameters and detail affordances.
+Main and other callers remain excluded. A raw command sent without editor metadata leaves every draft
 unchanged. Attachment submissions retain the ordered descriptors, limits and
 preparation ownership defined below.
 

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -131,10 +132,43 @@ func TestRemoteFrameOmitsTerminalRendererState(t *testing.T) {
 	if remote := frame.remote(); remote.Main != nil || remote.Agents != nil {
 		t.Fatal("displayed child repeated the parent's terminal feeds")
 	}
-	frame.View.SideThread = sessionpresentation.Thread{ID: "side", Caller: "/root"}
+	frame.View.SideThread = sessionpresentation.Thread{ID: "side", Caller: "/oneoff"}
 	frame.View.Displayed = frame.View.SideThread
-	if frame.remote().Main == nil {
-		t.Fatal("a displayed side conversation lost its only publication")
+	frame.Main.Entries = []activity.Entry{{Facts: activity.Facts{Seq: 1, Agent: "Main", Text: "Main only"}}}
+	frame.Agents.Entries = []activity.Entry{
+		{Facts: activity.Facts{Seq: 2, Agent: "/oneoff", Text: "Repeated answer", Images: []string{"/private/image.png"}}},
+		{Facts: activity.Facts{Seq: 3, Agent: "/root/worker", Text: "Other agent"}},
+		{Facts: activity.Facts{Seq: 4, Agent: "/oneoff", Text: "Repeated answer"}},
+		{Facts: activity.Facts{Seq: 5, Agent: "/oneoff", Text: "Hidden", Suppressed: true}},
+		{Facts: activity.Facts{Seq: 6, Agent: "/oneoff", Text: "Question\nsecret"}, Values: []activity.Value{{Body: "secret", Questions: []activity.Question{{Text: "secret", Secret: true}}}}},
+		{Facts: activity.Facts{Seq: 7, Agent: "/oneoff", Kind: "tool"}, Values: []activity.Value{{Kind: "reads", Verb: "Read", Reads: []activityfeed.Read{{Path: "source.go"}}}}},
+		{Facts: activity.Facts{Seq: 8, Agent: "/oneoff", Kind: "attachments"}, Values: activity.AttachmentEvents([]activity.Value{
+			{Kind: "op", Verb: "Attached", Path: "attached.go", Tail: []string{"retained file content"}},
+			{Kind: "op", Verb: "Attached skill", Label: "review", Tail: []string{"retained skill content"}},
+			{Kind: "op", Verb: "Attach failed", Path: "missing.go", Label: "not found"},
+		})},
+		{Facts: activity.Facts{Seq: 9, Agent: "/oneoff", Kind: "user", Text: "Side task"}},
+	}
+	remote = frame.remote()
+	if len(remote.Conversation) != 6 || remote.Conversation[0].Seq != 2 || remote.Conversation[1].Seq != 4 || remote.Conversation[2].Text != "Question" || remote.Conversation[2].Values[0].Body != "" || remote.Agents != nil || remote.Main != nil {
+		t.Fatalf("side publication lost identity, isolation or redaction: %+v", remote.Conversation)
+	}
+	if len(remote.Conversation[0].Images) != 1 || remote.Conversation[0].Images[0] == "/private/image.png" || len(frame.Agents.Entries[0].Images) != 1 {
+		t.Fatal("side publication exposed image sources or mutated native images")
+	}
+	read := remote.Conversation[3].Values[0]
+	group := remote.Conversation[4].Values[0]
+	if read.Verb != "Read" || len(read.Reads) != 1 || read.Reads[0].Path != "source.go" || len(group.Params) != 3 || group.DetailsAvailable == nil || !group.Failed {
+		t.Fatalf("side read or attachment projection lost semantic content: read=%+v group=%+v", read, group)
+	}
+	if group.Params[0].Path != "attached.go" || group.Params[0].Tail[0] != "retained file content" || group.Params[1].Label != "review" || group.Params[1].Tail[0] != "retained skill content" || group.Params[2].Path != "missing.go" || group.Params[2].Label != "not found" {
+		t.Fatalf("side attachment members lost source content: %+v", group.Params)
+	}
+	if remote.Conversation[5].Turn != 1 || remote.Conversation[5].Position != 5 {
+		t.Fatal("side task lost the ordinary transcript's user-turn semantics")
+	}
+	if len(frame.Agents.Entries) != 8 || frame.Agents.Entries[4].Values[0].Body != "secret" || frame.Main.Entries[0].Text != "Main only" {
+		t.Fatal("side projection mutated retained native or Main content")
 	}
 }
 

@@ -28,6 +28,7 @@ type NativeFrame struct {
 	View              sessionpresentation.View      `json:"view"`
 	Main              *activity.Publication         `json:"main"`
 	Agents            *activity.Publication         `json:"agents"`
+	Conversation      []entry                       `json:"conversation,omitzero"` // Remote selected-side entries use the ordinary browser projection.
 	Review            *changes.ReviewView           `json:"review"`
 	Family            *Family                       `json:"family"`
 	Live              []preview.Preview             `json:"live"`

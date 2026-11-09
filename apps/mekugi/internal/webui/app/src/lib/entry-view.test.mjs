@@ -51,6 +51,79 @@ const edit = (path, sources) => ({ kind: "op", verb: "Edit", path, sources, effe
 const tags = (html, name) => html.split(`>${name}<`).length - 1;
 const text = (html) => html.replace(/<!--[^]*?-->/g, "").replace(/<[^>]+>/g, "");
 
+test("shared transcript values preserve repeated identities, reads and attachment members", () => {
+  const entries = [
+    {
+      kind: "user",
+      turn: 1,
+      text: "User request",
+      values: [{ kind: "text", body: "User request" }],
+    },
+    { kind: "text", text: "Same answer", values: [{ kind: "text", body: "Same answer" }] },
+    { kind: "text", text: "Same answer", values: [{ kind: "text", body: "Same answer" }] },
+    {
+      kind: "tool",
+      text: "Run\n```sh\nprintf once\n```",
+      values: [{ kind: "op", verb: "Run", code: "printf once", lang: "sh" }],
+    },
+    { kind: "tool", values: [{ kind: "reads", verb: "Read", reads: [{ path: "source.go" }] }] },
+    {
+      kind: "attachments",
+      values: [
+        {
+          kind: "attachments",
+          verb: "Attach",
+          label: "2 files, 1 skill",
+          params: [
+            { kind: "op", verb: "Attached", path: "attached.go", tail: ["retained file content"] },
+            {
+              kind: "op",
+              verb: "Attached skill",
+              label: "review",
+              tail: ["retained skill content"],
+            },
+            {
+              kind: "op",
+              verb: "Attach failed",
+              path: "missing.go",
+              label: "not found",
+              failed: true,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  const html = entries
+    .map(
+      (entry, seq) =>
+        render(EntryView, {
+          props: {
+            entry: { seq, agent: "/oneoff", ...entry },
+            owner: "/oneoff",
+            at: "",
+            stamp: "",
+          },
+        }).body,
+    )
+    .join("");
+  const rendered = text(html);
+  assert.equal(rendered.split("User request").length - 1, 1);
+  assert.equal(rendered.split("Same answer").length - 1, 2);
+  assert.equal(rendered.split("printf once").length - 1, 1);
+  for (const part of [
+    "Read",
+    "source.go",
+    "attached.go",
+    "review",
+    "missing.go",
+    "not found",
+    "retained file content",
+    "retained skill content",
+  ])
+    assert.ok(rendered.includes(part), part);
+});
+
 test("deferred JSON retains its formatted disclosure count", () => {
   const html = view([
     { kind: "op", verb: "Run", code: "{", lang: "json", fenced: true, codeLines: 4 },

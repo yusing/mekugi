@@ -458,6 +458,7 @@ export type NativeFrame = {
   "view": View;
   "main": (Publication | null);
   "agents": (Publication | null);
+  "conversation"?: Array<entry>;
   "review": (ReviewView | null);
   "family": (Family | null);
   "live": Array<Preview>;

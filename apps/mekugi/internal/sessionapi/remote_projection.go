@@ -65,19 +65,6 @@ func publicEntries(entries []activity.Entry) []activity.Entry {
 	return out
 }
 
-func publicActivity(p *activity.Publication) *activity.Publication {
-	if p == nil {
-		return nil
-	}
-	out := *p
-	out.Entries, out.MainSummary = publicEntries(p.Entries), publicEntries(p.MainSummary)
-	out.Roster = slices.Clone(p.Roster)
-	for i := range out.Roster {
-		out.Roster[i].Agent.Summary = publicEntries(out.Roster[i].Agent.Summary)
-	}
-	return &out
-}
-
 func publicCall(call prompt.CallView) prompt.CallView {
 	call.Questions = slices.Clone(call.Questions)
 	for i, q := range call.Questions {
@@ -162,14 +149,25 @@ func (f NativeFrame) remote() NativeFrame {
 	if call := f.View.Questions.Call; call != nil {
 		f.View.Questions.Call = new(publicCall(*call))
 	}
-	// Every revision repeats the complete frame. Remote views take transcripts
-	// from session/subscribe, so terminal renderer state stays native: only a
-	// displayed side conversation, which has no shared publication, keeps Main.
-	var side *activity.Publication
-	if f.View.SideThread.ID != "" && f.View.Displayed.ID == f.View.SideThread.ID {
-		side = publicActivity(f.Main)
+	// Ordinary remote transcripts use session/subscribe. The selected side
+	// shares its caller-filtered Activity entries through the same browser
+	// projection, including grouped attachments, reads and detail affordances.
+	f.Conversation = nil
+	if f.View.SideThread.ID != "" && f.View.Displayed.ID == f.View.SideThread.ID && f.Agents != nil {
+		var turns uint64
+		for _, entry := range f.Agents.Entries {
+			if entry.Agent == f.View.Displayed.Caller && !entry.Hidden() {
+				projected := projectEntry(entry, false, f.View.Displayed.Caller, f.View.Displayed.Caller)
+				projected.Position = len(f.Conversation)
+				if entry.Kind == "user" {
+					turns++
+					projected.Turn = turns
+				}
+				f.Conversation = append(f.Conversation, projected)
+			}
+		}
 	}
-	f.Main, f.Agents, f.Review, f.Live, f.FileLinks, f.Activity = side, nil, nil, nil, nil, nil
+	f.Main, f.Agents, f.Review, f.Live, f.FileLinks, f.Activity = nil, nil, nil, nil, nil, nil
 	if f.Family != nil {
 		f.Family = new(*f.Family)
 		f.Family.Agents = nil

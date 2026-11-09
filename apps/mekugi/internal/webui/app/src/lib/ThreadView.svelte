@@ -23,7 +23,6 @@
   import LiveSource from "./LiveSource.svelte";
   import { basename, duration, statusText } from "./format";
   import type { Machine } from "./hub.svelte";
-  import NativeTranscript from "./NativeTranscript.svelte";
   import PlaybackBar from "./PlaybackBar.svelte";
   import Prompt from "./Prompt.svelte";
   import ReferenceSelection from "./ReferenceSelection.svelte";
@@ -694,16 +693,12 @@
           {#if live && !ended && !recorded && frame}
             <ReferenceSelection root={feed} />
           {/if}
-          {#if live && side && frame}
-            <NativeTranscript
-              publication={frame.main}
-              label={sview?.Side?.Label || "Side conversation"}
-            />
-          {:else if session}
-            {#key owner}
+          {#if session}
+            {#key side ? sview?.Displayed.ID : owner}
               <Transcript
-                {entries}
-                {owner}
+                entries={side ? (frame?.conversation ?? []) : entries}
+                owner={side ? sview!.Displayed.Caller : owner}
+                retained={!side}
                 caller={recorded?.name}
                 {start}
                 span={playback?.until ?? 0}
@@ -720,14 +715,14 @@
                           Source: seq,
                           Output: 0,
                           Sources: [],
-                          Agent: !!recorded,
+                          Agent: side || !!recorded,
                           Path: "",
-                          Caller: owner,
+                          Caller: side ? sview.Displayed.Caller : owner,
                         },
                       })
                   : undefined}
               ></Transcript>
-              {#if live && !ended && !recorded && frame}<LiveSource
+              {#if live && !ended && !recorded && !side && frame}<LiveSource
                   previews={stream.live}
                   {owner}
                 />{/if}

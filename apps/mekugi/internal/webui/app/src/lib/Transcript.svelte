@@ -28,6 +28,7 @@
     jumps,
     empty,
     live = false,
+    retained = true,
     ondetails,
     header,
     painted,
@@ -40,6 +41,7 @@
     jumps: number;
     empty: string;
     live?: boolean;
+    retained?: boolean;
     ondetails?: (seq: number) => unknown;
     header?: Snippet;
     painted?: (seq: number) => Attachment<HTMLElement> | undefined;
@@ -117,8 +119,8 @@
     if (following) oldest = rows[Math.max(0, rows.length - pageSize)]?.entry.seq;
   });
   let paging = false;
-  const canEarlier = $derived(first > 0 || !!stream.history(caller).earlier);
-  const pageError = $derived(stream.historyErrors[caller ?? ""]);
+  const canEarlier = $derived(first > 0 || (retained && !!stream.history(caller).earlier));
+  const pageError = $derived(retained && stream.historyErrors[caller ?? ""]);
   async function earlier() {
     if (!scroller || !column || paging || !canEarlier) return;
     paging = true;
@@ -356,7 +358,7 @@
       <Alert
         >{pageError}<Button variant="quiet" onclick={earlier}>Retry earlier entries</Button></Alert
       >
-    {:else if entries.length && !canEarlier && stream.history(caller).loaded?.length}
+    {:else if retained && entries.length && !canEarlier && stream.history(caller).loaded?.length}
       <p class="ml-19 text-small text-muted">Beginning of retained history</p>
     {/if}
     {#each visible as row (row.entry.seq)}

@@ -734,6 +734,10 @@ func TestWebUISemanticBrowser(t *testing.T) {
 			waitAction(`document.querySelector('[aria-label="Conversation"] span [role=tab]')`)
 			run("click", `[aria-label="Conversation"] span [role=tab]`)
 			run("wait", "--fn", `document.querySelector('[aria-label="Conversation"] span [role=tab]')?.getAttribute('aria-selected') === 'true' && !!document.querySelector('button[aria-label="Close side"]')`)
+			// Count rendered occurrences, not just articles: source Text and Values
+			// used to paint the same message and command twice inside one article.
+			run("wait", "--fn", `(() => { const text = document.querySelector('[aria-label="Transcript"]').innerText; return !text.includes('browser first input') && !text.includes('Browser host answer 1') && !text.includes('sleep 101') && text.split('initial task').length === 2 && text.split('printf oneoff').length === 2 && text.split('One-off repeated answer').length === 3; })()`)
+			run("wait", "--fn", `(() => { const text = document.querySelector('[aria-label="Transcript"]').innerText; return ['Read', 'source.go'].every(part => text.includes(part)); })()`)
 			waitAction(`document.querySelector('button[aria-label="Close side"]')`)
 			run("focus", `[aria-label="Conversation"] span [role=tab]`)
 			run("press", "Tab")
@@ -748,14 +752,18 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		}
 	}
 	viewport("1280", "720")
-	// The fork retains the authored response and user input in its native
-	// transcript. Only the response receives a copy action.
-	run("wait", "--text", "Browser host answer 1")
+	// The selected fork shows its own authored responses, not Main's transcript.
+	run("wait", "--text", "One-off repeated answer")
 	run("find", "first", `[aria-label="Transcript"] button[aria-label="Copy response"]`, "click")
-	run("wait", "--fn", `window.copiedResponse === 'Browser host answer 1\n\nAutomatic https://example.com/auto and [Website](https://example.com/markdown). [Workspace notes](notes.md)'`)
-	run("wait", "--fn", `(() => { const rows = Array.from(document.querySelectorAll('[aria-label="Transcript"] article')).filter(row => row.textContent.includes('browser first input')); return rows.length > 0 && rows.every(row => !row.querySelector('button[aria-label="Copy response"]')); })()`)
+	run("wait", "--fn", `window.copiedResponse === 'One-off repeated answer'`)
+	run("wait", "--fn", `(() => { const rows = Array.from(document.querySelectorAll('[aria-label="Transcript"] article')).filter(row => row.textContent.includes('initial task')); return rows.length === 1 && rows.every(row => !row.querySelector('button[aria-label="Copy response"]')); })()`)
+	// Details retain the selected side source through the shared browser consumer.
+	run("eval", `Array.from(document.querySelectorAll('[aria-label="Transcript"] [data-entry]')).find(row => row.textContent.includes('source.go')).querySelector('button[aria-label="Details"]').click()`)
+	run("wait", "--fn", `document.querySelector('[aria-labelledby="details-heading"]')?.textContent.includes('oneoff read output')`)
+	button("Close details")
 	run("find", "role", "tab", "click", "--name", "Main", "--exact")
 	run("wait", "--fn", "Array.from(document.querySelectorAll('[role=tab]')).find(tab => tab.textContent.trim() === 'Main')?.getAttribute('aria-selected') === 'true'")
+	run("wait", "--fn", `(() => { const text = document.querySelector('[aria-label="Transcript"]').innerText; return text.includes('Browser host answer 1') && !text.includes('One-off repeated answer') && !text.includes('initial task'); })()`)
 	button("Close side")
 	run("wait", "--fn", `!document.querySelector('[role=tablist][aria-label=Conversation]')`)
 	run("upload", "input[type=file]", laterUpload)
@@ -1138,16 +1146,17 @@ func serveWebUISemanticHost(t *testing.T) {
 		}
 		fmt.Fprintf(log, "%s %s\n", request.Method, request.Params)
 		var params struct {
-			Thread      string         `json:"threadId"`
-			Process     string         `json:"processId"`
-			Turn        string         `json:"turnId"`
-			Input       jsontext.Value `json:"input"`
-			Model       string         `json:"model"`
-			Effort      string         `json:"effort"`
-			Tier        jsontext.Value `json:"serviceTier"`
-			Permissions string         `json:"permissions"`
-			Approval    any            `json:"approvalPolicy"`
-			Reviewer    string         `json:"approvalsReviewer"`
+			Thread       string         `json:"threadId"`
+			Process      string         `json:"processId"`
+			Turn         string         `json:"turnId"`
+			Input        jsontext.Value `json:"input"`
+			Model        string         `json:"model"`
+			Effort       string         `json:"effort"`
+			Tier         jsontext.Value `json:"serviceTier"`
+			Permissions  string         `json:"permissions"`
+			Approval     any            `json:"approvalPolicy"`
+			Reviewer     string         `json:"approvalsReviewer"`
+			ExcludeTurns bool           `json:"excludeTurns"`
 		}
 		if len(request.Params) != 0 {
 			if err := json.Unmarshal(request.Params, &params); err != nil {
@@ -1219,6 +1228,11 @@ func serveWebUISemanticHost(t *testing.T) {
 			thread := threads[params.Thread]
 			thread.ID = fmt.Sprintf("fork-%d", forks)
 			threads[thread.ID] = thread
+			// Codex retains the fork's history but omits it from this response
+			// when requested. Subsequent thread/read still returns that history.
+			if params.ExcludeTurns {
+				thread.Turns = nil
+			}
 			result["thread"] = thread
 		case "thread/backgroundTerminals/terminate":
 			stops++
@@ -1262,6 +1276,13 @@ func serveWebUISemanticHost(t *testing.T) {
 				answer += "\n\nAutomatic https://example.com/auto and [Website](https://example.com/markdown). [Workspace notes](notes.md)"
 			}
 			history := binding.HistoryTurn{ID: id, Status: "completed", Items: []binding.ThreadItem{{ID: fmt.Sprintf("user-%d", inputs), Type: "userMessage", Content: content}, {ID: fmt.Sprintf("answer-%d", inputs), Type: "agentMessage", Text: answer}}}
+			if strings.Contains(string(content), "initial task") {
+				history.Items[1].Text = "One-off repeated answer"
+				history.Items = append(history.Items, binding.ThreadItem{ID: fmt.Sprintf("repeated-answer-%d", inputs), Type: "agentMessage", Text: "One-off repeated answer"})
+				history.Items = append(history.Items, binding.ThreadItem{ID: fmt.Sprintf("command-%d", inputs), Type: "commandExecution", Command: "printf oneoff", Status: "completed", ExitCode: new(0)})
+				history.Items = append(history.Items, binding.ThreadItem{ID: fmt.Sprintf("read-%d", inputs), Type: "commandExecution", Command: "cat source.go", AggregatedOutput: new(strings.Repeat("oneoff read output\n", 80)), CommandActions: []binding.CommandAction{{Type: "read", Command: "cat source.go", Path: "source.go"}}, Status: "completed", ExitCode: new(0)})
+
+			}
 			thread.Turns = append(thread.Turns, history)
 			threads[thread.ID] = thread
 			turn = &history
