@@ -135,7 +135,7 @@ func TestWaitMixedOutcomesProjection(t *testing.T) {
 			Result: []byte(`{"content":[{"type":"text","text":` + strconv.Quote(result) + `}]}`),
 		})
 		value := projectValues([]activitypresentation.Value{*entry.Native.Wait}, false)[0]
-		if value.WaitReason != "completed" || len(value.Waits) != len(statuses) {
+		if value.WaitReason != "" || len(value.Waits) != len(statuses) {
 			t.Fatalf("mixed outcomes = %+v", value)
 		}
 		for i, status := range statuses {

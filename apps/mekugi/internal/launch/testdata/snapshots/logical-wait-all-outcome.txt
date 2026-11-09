@@ -1,6 +1,6 @@
 ↔ Waiting for worker
 
-↔ Finished waiting for worker: paused: completed
+↔ Finished waiting for worker: paused
 
 
 

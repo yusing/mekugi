@@ -651,10 +651,7 @@ func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
 			syncLogicalWork(&u.attached, &u.Live, threads, *at)
 			rows, _ := u.testMainFrame(100, 15, 0)
 			want := "Finished waiting for worker: " + string(status)
-			if status != control.Completed {
-				want += ": completed"
-			}
-			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, want) || strings.Contains(text, "completed: completed") {
+			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, want) || strings.Contains(text, string(status)+": completed") {
 				t.Fatalf("stopped-target wake was invisible: %s", text)
 			}
 		})
@@ -708,7 +705,7 @@ func TestUISnapshotLogicalWaitAllOutcome(t *testing.T) {
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
 			syncLogicalWork(&u.attached, &u.Live, threads, *at)
 			rows, _ := u.testMainFrame(80, 10, 0)
-			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for worker: "+reason+": completed") {
+			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for worker: "+reason) || strings.Contains(text, reason+": completed") {
 				t.Fatalf("aggregate wake was invisible: %s", text)
 			}
 			snapshot := "logical-wait-all-outcome"

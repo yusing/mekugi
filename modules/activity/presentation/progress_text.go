@@ -8,10 +8,12 @@ import (
 	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
-// ProgressReason omits an aggregate reason already stated by every target.
-// Mixed outcomes keep their independent aggregate completion reason.
+// ProgressReason omits completion already expressed by target outcomes,
+// and other aggregate reasons already stated by every target.
 func (b Value) ProgressReason() string {
-	if len(b.WaitTargets) > 0 && !slices.ContainsFunc(b.WaitTargets, func(target WaitTarget) bool { return target.Status != b.WaitReason }) {
+	if len(b.WaitTargets) > 0 && !slices.ContainsFunc(b.WaitTargets, func(target WaitTarget) bool {
+		return target.Status == "" || b.WaitReason != "completed" && target.Status != b.WaitReason
+	}) {
 		return ""
 	}
 	return b.WaitReason

@@ -308,3 +308,26 @@ func TestCompletionExchangeContext(t *testing.T) {
 		})
 	}
 }
+
+func TestWaitProgressReasonPreservesTargetOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		reason   string
+		statuses []string
+		want     string
+	}{
+		{"completed", []string{"paused", "completed"}, ""},
+		{"completed", []string{"delivery failed"}, ""},
+		{"completed", []string{""}, "completed"},
+		{"timeout", []string{"paused"}, "timeout"},
+		{"paused", []string{"paused"}, ""},
+		{"completed", nil, "completed"},
+	} {
+		v := Value{WaitReason: tc.reason}
+		for _, status := range tc.statuses {
+			v.WaitTargets = append(v.WaitTargets, WaitTarget{Status: status})
+		}
+		if got := v.ProgressReason(); got != tc.want {
+			t.Errorf("reason=%s statuses=%v: got %q, want %q", tc.reason, tc.statuses, got, tc.want)
+		}
+	}
+}
