@@ -1,0 +1,18 @@
+┌ 1 Main · 0 loaded skills ────────────────────────────────────────────────────┐
+│  Resume a previous session                                                   │
+│  Filter: Cwd All · /work                                                     │
+│  Type to search                                                              │
+│                                                                              │
+│  Updated  Branch  Conversation                                               │
+│› -        main    Saved conversation 00                                      │
+│  -        main    Saved conversation 01                                      │
+│  -        main    Saved conversation 02                                      │
+│  -        main    Saved conversation 03                                      │
+│  -        main    Saved conversation 04                                      │
+│  -        main    Saved conversation 05                                      │
+│  -        main    Saved conversation 06                                      │
+│  -        main    Saved conversation 07                                      │
+│  ↓ more                                                                      │
+│  enter resume · esc start new · tab cwd/all · ctrl+c quit · ↑/↓ browse       │
+└──────────────────────────────────────────────────────────────────────────────┘
+ 1 Main  2 Diff  3 Agents   ^B 1-3 views · ^E expand events

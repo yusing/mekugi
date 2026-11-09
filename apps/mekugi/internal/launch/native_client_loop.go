@@ -188,6 +188,7 @@ type nativeClient struct {
 	prediction             [3]string
 	predictionRevision     uint64
 	detailHydrating        bool
+	resumePaging           bool
 	localDetails           sessionpresentation.Details
 	localDetailID          sessionpresentation.DetailID
 	effect                 uint64
@@ -421,6 +422,10 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 							c.hydrating = true
 							c.enqueue(sessionapi.NativeOperation{Output: &sessionapi.NativeOutputDemand{Agent: c.event.Frame.View.Displayed.ID != c.event.Frame.View.Main.ID, Demands: painted.Demands}}, nil, func(error) { c.hydrating = false })
 						} else if len(painted.Demands) == 0 {
+							if demand := c.renderer.terminal.Main.Resume.PageDemand(); demand.Kind != sessionpresentation.ResumeNoAction && !c.resumePaging {
+								c.resumePaging = true
+								c.enqueue(sessionapi.NativeOperation{Resume: &demand}, nil, func(error) { c.resumePaging = false })
+							}
 							c.links.request(c.ctx, painted.Source, painted.FileLinkDemands)
 							runtime.previews.request(runtime.ctx, source, painted.ImageDemands)
 							c.dirty = false
