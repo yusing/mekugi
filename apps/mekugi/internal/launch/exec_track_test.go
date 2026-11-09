@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"debug/buildinfo"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -56,12 +57,31 @@ var execTrackTestHelper = sync.OnceValues(func() (string, error) {
 	}
 	execTrackHelperDirectory = directory
 	helper := filepath.Join(directory, "mekugi-exec")
-	output, err := exec.Command("go", "build", "-trimpath", "-o", helper, "github.com/yusing/mekugi/apps/mekugi/cmd/mekugi-exec").CombinedOutput()
+	// This disposable fixture needs no revision metadata. Staged exports have no
+	// repository and may sit below unrelated or incomplete ancestor .git entries.
+	output, err := exec.Command("go", "build", "-buildvcs=false", "-trimpath", "-o", helper, "github.com/yusing/mekugi/apps/mekugi/cmd/mekugi-exec").CombinedOutput()
 	if err != nil {
 		return "", errors.Join(err, errors.New(string(output)))
 	}
 	return helper, nil
 })
+
+func TestExecTrackHelperOmitsVCSMetadata(t *testing.T) {
+	t.Parallel()
+	helper, err := execTrackTestHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := buildinfo.ReadFile(helper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs" || strings.HasPrefix(setting.Key, "vcs.") {
+			t.Fatalf("disposable helper includes VCS metadata: %s=%s", setting.Key, setting.Value)
+		}
+	}
+}
 
 type execTrackShell struct {
 	hub       *execTrackFixture
