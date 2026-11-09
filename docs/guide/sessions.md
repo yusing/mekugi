@@ -46,13 +46,16 @@ ordinary reads after reset. Temporary task-state JSON is optional and read selec
 never automatically loaded in full. Claude delegates retain native compaction.
 
 Agent checkpoints estimate the next uncached input cost and skip reset when it
-would exceed the latest observed input cost. Selected sources may be read for this
-check even when reset is skipped. The estimate assumes unchanged source files;
+would exceed the latest observed input cost, including that request's cache discount.
+This compares one next input, not the cost of all remaining work. Selected sources
+may be read for this check, but are not attached unless reset succeeds.
+The estimate assumes no cache hits after reset and unchanged source files;
 unavailable cost evidence permits reset with a notice. A preflight that produces no
 usable capture skips reset rather than retrying denied or canceled acquisition.
-A skipped reset preserves the
-wait and its deadline, reporting the reason with the eventual outcome. Manual and
-context-full compaction are unaffected.
+The transcript immediately shows **Compaction skipped** with the reason and states
+that context was not reset and reload sources were not attached. A skipped reset
+preserves the wait and its deadline; the eventual model-facing outcome includes the
+same reason. Manual `/compact` and context-full compaction bypass this cost check.
 
 Selected reload and fresh-delegate preload text can include `@path` references to
 required files, including inside JSON state. Bare paths do not trigger reads. The

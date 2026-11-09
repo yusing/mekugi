@@ -136,6 +136,10 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	if item.Tool == "wait_agent" && result.State == "registered" {
 		result.State = "waiting"
 	}
+	// Older checkpoints used a scheduling acknowledgement for the same work.
+	if (item.Tool == "compact" || item.Tool == "wait_agent") && result.State == "scheduled" {
+		result.State = "compacting"
+	}
 	c.State = cmp.Or(result.State, c.State)
 	c.ID = result.ID
 	switch item.Tool {
@@ -170,9 +174,9 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 			c.State = "completed"
 		}
 	case "compact":
-		c.Confirmed = result.State == "scheduled"
+		c.Confirmed = result.State == "compacting"
 	case "wait_agent":
-		c.Confirmed = slices.Contains([]string{"scheduled", "waiting", "completed", "timeout", "canceled", "paused", "yielded"}, result.State)
+		c.Confirmed = slices.Contains([]string{"compacting", "waiting", "completed", "timeout", "canceled", "paused", "yielded"}, result.State)
 		if c.Confirmed && len(result.Targets) > 0 {
 			c.Targets = nil
 			for _, target := range result.Targets {

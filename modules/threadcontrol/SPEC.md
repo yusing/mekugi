@@ -98,7 +98,7 @@ native request metadata remains unchanged on the provider wire.
   usage/window, and completed compactions. Unavailable observations are `null`,
   distinct from a measured zero. Inspection uses live session facts or retained
   observations without starting work or restoring an inactive runtime.
-- `compact` schedules an authenticated self-directed context checkpoint and then
+- `compact` requests an authenticated self-directed context checkpoint and then
   continues unfinished work once. Codex accepts optional `reload:{"sources":[...]}`
   using [selected-source recovery](../agentguidance/SPEC.md#compaction-context).
   Claude retains native compaction without this argument. Context-usage reminders appear starting at 50%;
@@ -413,7 +413,7 @@ a stale stop. Stop disposition and terminal reduction serialize per work generat
 A local host-turn completion checkpoints logical waiting, not task completion:
 no final answer, completion event/notice, idle transition or released reservation.
 Agent-requested compaction registers its intent and optional wait atomically,
-including when an outcome is already ready. Its scheduled acknowledgement requires
+including when an outcome is already ready. Its `compacting` acknowledgement requires
 the same authenticated successful enclosing execution and settled host turn as a
 local wait. Failed execution retires the checkpoint without claiming events; yielded
 execution remains pending. Results and addressed messages stay retained behind the
@@ -429,14 +429,17 @@ are assumed unchanged across reset. Unavailable cost evidence permits reset with
 cost rejection skips only reset and preserves the original wait and deadline.
 Attempted preflight without a usable capture also skips reset, preserving the wait
 without automatically retrying denied or canceled acquisition.
-The rejection reaches the model in the eventual wait output, not an immediate
+Rejection records a `skipped` compaction outcome and immediately displays its reason,
+including that context was not reset and selected sources were not attached.
+Preflight reads supply only the estimate, never attachment presentation or model
+reload context. The rejection reaches the model in the eventual wait output, not an immediate
 inference. Manual, automatic and Claude compaction are unchanged. Future hook and
 outcome text is unmeasured.
 
 Compound native compaction failure preserves the wait and events, surfaces an immediate
 notice, and includes the failed compaction outcome in eventual delivery. Failure
 alone does not start inference. Human input and interruption supersede undispatched
-continuations. Uncertain native dispatch pauses for reconciliation and is never
+continuations without changing an already-settled reset outcome. Uncertain native dispatch pauses for reconciliation and is never
 repeated automatically. These semantics apply to Codex roots/delegates and Claude
 delegates.
 

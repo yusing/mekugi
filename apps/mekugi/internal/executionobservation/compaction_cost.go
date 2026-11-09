@@ -105,6 +105,8 @@ func (p *Preparer) prepareCompactionCost(ctx context.Context, request *codexresp
 		check.known = len(sources) == 0
 		return check
 	}
+	// Preflight reads measure a possible reload. They do not attach context or
+	// publish attachment outcomes before the reset has actually succeeded.
 	outputs, err := p.compactSnapshots(ctx, request.Fields["input"], check.calls, thread, metadata, false, &attachmentPreparation{})
 	if err != nil {
 		return check
@@ -141,28 +143,28 @@ func (t *mekugiResponseTransform) checkCompactionCost(request *codexresponses.Re
 	}
 	if !check.known {
 		if len(check.calls) > 0 {
-			return t.owners.ThreadControl.Coordination().RejectCompaction(t.ctx, t.shellThreadID, t.shellTurnID, t.localWaitItem, "Self-compaction skipped: preflight reload did not produce usable evidence; failed or canceled reads were not repeated.")
+			return t.owners.ThreadControl.Coordination().RejectCompaction(t.ctx, t.shellThreadID, t.shellTurnID, t.localWaitItem, "Preflight did not produce usable evidence; failed or canceled reads were not repeated. Context was not reset; reload sources were not attached.")
 		}
 		reason := check.unknown
 		if reason == "" {
 			reason = "reload acquisition did not supply complete evidence"
 		}
-		t.owners.notice(t.sessionID, t.shellThreadID, "compaction_cost", "Self-compaction cost estimate unavailable: "+reason+"; reset remains scheduled.")
+		t.owners.notice(t.sessionID, t.shellThreadID, "compaction_cost", "Self-compaction cost estimate unavailable: "+reason+"; proceeding with reset.")
 		return nil
 	}
 	tokens, err := requestexecution.EstimateResetInput(request, check.reload)
 	if err != nil {
-		t.owners.notice(t.sessionID, t.shellThreadID, "compaction_cost", "Self-compaction cost estimate unavailable: prepared input could not be measured; reset remains scheduled.")
+		t.owners.notice(t.sessionID, t.shellThreadID, "compaction_cost", "Self-compaction cost estimate unavailable: prepared input could not be measured; proceeding with reset.")
 		return nil
 	}
 	current, cold, known := t.owners.Usage.CompareInputCost(t.shellThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"]), tokens)
 	if !known {
-		t.owners.notice(t.sessionID, t.shellThreadID, "compaction_cost", "Self-compaction cost estimate unavailable: input pricing is unavailable at the estimated size; reset remains scheduled.")
+		t.owners.notice(t.sessionID, t.shellThreadID, "compaction_cost", "Self-compaction cost estimate unavailable: input pricing is unavailable at the estimated size; proceeding with reset.")
 		return nil
 	}
 	if cold.Total() <= current.Total() {
 		return nil
 	}
-	reason := fmt.Sprintf("Self-compaction skipped: estimated next input cost $%.6f exceeds current observed input cost $%.6f (%d reset tokens; assumes no cache hits after reset and unchanged reload sources).", cold.Total(), current.Total(), tokens)
+	reason := fmt.Sprintf("Estimated uncached next input $%.6f exceeds last observed input $%.6f, including its cache discount (%d reset tokens; assumes no cache hits after reset and unchanged reload sources). Context was not reset; reload sources were not attached.", cold.Total(), current.Total(), tokens)
 	return t.owners.ThreadControl.Coordination().RejectCompaction(t.ctx, t.shellThreadID, t.shellTurnID, t.localWaitItem, reason)
 }

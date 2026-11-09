@@ -122,6 +122,16 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 		lifecycle.ObserveActive(true, now)
 	}
 	wait := threads.shared.WaitPublication(live.Thread)
+	if wait != nil && wait.Compaction != nil {
+		input := attached.threadInput
+		if input.compactID != wait.ID || input.compactState != wait.Compaction.State {
+			if entry, ok := sessionpresentation.CompactionOutcomeEntry(live.Thread, "/root", live.Thread+":"+wait.ID, wait.Compaction, now); ok {
+				entry.Seq = attached.session.Activity().NextSequence()
+				sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+			}
+			input.compactID, input.compactState = wait.ID, wait.Compaction.State
+		}
+	}
 	if wait != nil && wait.Standalone {
 		wait = nil
 	}
@@ -214,19 +224,20 @@ func syncLogicalWork(attached *attachedPresentation, live *sessioncontrol.Live, 
 // One pending admission borrows the driver; payloads stay in Conversation until
 // reconciliation completes. The host event loop keeps serving receipts/cancel.
 type threadInput struct {
-	driver            *threadbinding.Driver
-	pending           chan humanInputAdmission
-	cancel            context.CancelFunc
-	ready             bool
-	admitted          bool
-	caller, role      string
-	id                string
-	waitID, waitState string
-	completions       []logicalCompletion
-	effect            *threadcontrol.Effect
-	interruptions     *threadcontrol.Interruptions
-	restoration       chan error
-	restoreErr        error
+	driver                  *threadbinding.Driver
+	pending                 chan humanInputAdmission
+	cancel                  context.CancelFunc
+	ready                   bool
+	admitted                bool
+	caller, role            string
+	id                      string
+	waitID, waitState       string
+	compactID, compactState string
+	completions             []logicalCompletion
+	effect                  *threadcontrol.Effect
+	interruptions           *threadcontrol.Interruptions
+	restoration             chan error
+	restoreErr              error
 }
 
 type humanInputAdmission struct {

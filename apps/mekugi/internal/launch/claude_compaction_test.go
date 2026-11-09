@@ -41,8 +41,8 @@ func TestClaudeCompoundCompactionKeepsWaitBehindNativeSettlement(t *testing.T) {
 				request, _ := json.Marshal(map[string]any{"name": "wait_agent", "toolUseID": "wait", "arguments": args})
 				result, err := b.request(ctx, "tool", request)
 				check(err)
-				if !strings.Contains(string(result), "scheduled") {
-					t.Fatalf("checkpoint was not scheduled: %s", result)
+				if !strings.Contains(string(result), "compacting") {
+					t.Fatalf("checkpoint was not admitted: %s", result)
 				}
 				f.hook(t, "PostToolUse", "mcp__threadcontrol__wait_agent", "wait", args, result)
 				var tool struct {

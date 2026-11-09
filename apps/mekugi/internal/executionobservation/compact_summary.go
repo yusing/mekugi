@@ -340,7 +340,7 @@ func compactReaderPrefix(reference string) string {
 
 // Hydrate only authenticated completed reload results. Original host history and
 // its short retained reference remain untouched for observation and replay.
-func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, calls map[string]bool, thread string, metadata codexresponses.TurnMetadata, prewarm bool, optional *attachmentPreparation) (map[string]jsontext.Value, error) {
+func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, calls map[string]bool, thread string, metadata codexresponses.TurnMetadata, publish bool, optional *attachmentPreparation) (map[string]jsontext.Value, error) {
 	outputs := make(map[string]jsontext.Value)
 	if len(calls) == 0 && !bytes.Contains(input, []byte(compact.SnapshotPrefix)) {
 		return outputs, nil
@@ -469,7 +469,7 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 			parts = nil
 		}
 		outputs[id] = responses.MustMarshalJSON(parts)
-		if !prewarm && metadata.RequestKind == responses.Turn {
+		if publish && metadata.RequestKind == responses.Turn {
 			p.Audience.Collect(activity.Supplement{Thread: thread, Source: "reload-result:" + id + ":" + reference, Kind: "compact_reload", Text: "Compaction reload", ReloadSources: reloads})
 		}
 	}

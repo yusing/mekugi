@@ -1,6 +1,7 @@
 package sessionpresentation
 
 import (
+	json "encoding/json/v2"
 	"fmt"
 	"strings"
 	"time"
@@ -76,9 +77,11 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 	}
 	if c.Confirmed {
 		switch c.Action {
+		case "Compact":
+			entry.Text = "Compaction requested"
 		case "Wait":
 			wait := &activitypresentation.Value{Kind: "progress", From: entry.Agent, Body: "Waiting for"}
-			if c.State != "waiting" && c.State != "scheduled" {
+			if c.State != "waiting" && c.State != "compacting" {
 				wait.Body = "Finished waiting for"
 				wait.WaitReason = c.State
 			}
@@ -91,7 +94,7 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 				}
 				wait.WaitTargets = append(wait.WaitTargets, activitypresentation.WaitTarget{Name: target.Name, Status: target.Status})
 			}
-			if (c.State == "waiting" || c.State == "scheduled") && c.TimeoutMS != nil {
+			if (c.State == "waiting" || c.State == "compacting") && c.TimeoutMS != nil {
 				wait.WaitTimeout = (time.Duration(*c.TimeoutMS) * time.Millisecond).String()
 			}
 			entry.Text = wait.ProgressText()
@@ -112,6 +115,46 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 		entry.Native.Wait.Body = entry.Text
 	}
 	return entry
+}
+
+// CompactionOutcomeEntry reports the reset's outcome independently of a pending
+// compound wait. The retained operation identity also deduplicates restoration.
+func CompactionOutcomeEntry(thread, agent, id string, result *control.CompactionResult, at time.Time) (ActivityEntry, bool) {
+	if id == "" || result == nil {
+		return ActivityEntry{}, false
+	}
+	kind, text := "progress", ""
+	switch result.State {
+	case "skipped":
+		text = "Compaction skipped"
+	case "failed":
+		kind, text = "error", "Compaction not performed"
+	case "canceled":
+		text = "Compaction canceled"
+	default:
+		return ActivityEntry{}, false
+	}
+	if result.Error != "" {
+		text += ": " + result.Error
+	}
+	return ActivityEntry{Agent: agent, Kind: kind, Text: text, Observed: at, Completed: at,
+		Native: &NativeItem{Thread: thread, Item: "threadcontrol:compact:" + id, Phase: "item/completed"}}, true
+}
+
+// RetainedCompactionEntry consumes only a host-admitted standalone checkpoint
+// output. Its caller retains namespace and client-authored provenance checks.
+func RetainedCompactionEntry(thread, agent, name, output string, at time.Time) (ActivityEntry, bool) {
+	if name != "compact" && name != "wait_agent" {
+		return ActivityEntry{}, false
+	}
+	var result struct {
+		ID         string                    `json:"id"`
+		Compaction *control.CompactionResult `json:"compaction"`
+	}
+	if json.Unmarshal([]byte(output), &result) != nil {
+		return ActivityEntry{}, false
+	}
+	return CompactionOutcomeEntry(thread, agent, result.ID, result.Compaction, at)
 }
 
 func listed(count int, noun string) string {

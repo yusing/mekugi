@@ -3,6 +3,7 @@ package sessionpresentation
 // Source: apps/mekugi/internal/router/app_server_events.go:149:374@7166de95.
 import (
 	"cmp"
+	json "encoding/json/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -323,6 +324,16 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 
 		case "mcpToolCall":
 			entries = append(entries, s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item))
+		case "functionCallOutput":
+			if method == "item/completed" && item.Server == "threadcontrol" {
+				var output string
+				if json.Unmarshal(item.Result, &output) == nil {
+					if entry, ok := RetainedCompactionEntry(p.ThreadID, agent, item.Tool, output, now); ok {
+						entry.Seq = s.Activity().NextSequence()
+						entries = append(entries, entry)
+					}
+				}
+			}
 		case "imageView", "imageGeneration":
 			if text, images := ImagePresentation(item, method, in.Workspace); text != "" {
 				native.Images = images

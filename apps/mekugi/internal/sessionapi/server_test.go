@@ -13,6 +13,7 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -115,6 +116,21 @@ func TestWaitOutcomeProjection(t *testing.T) {
 		values := projectValues([]activitypresentation.Value{*entry.Native.Wait}, false)
 		if values[0].WaitReason != tc.reason || values[0].WaitTimeout != tc.timeout {
 			t.Fatalf("projected wait = %+v, want reason %q and timeout %q", values[0], tc.reason, tc.timeout)
+		}
+	}
+}
+
+func TestCompactionRejectionProjection(t *testing.T) {
+	const reason = "Estimated uncached input $0.219230 exceeds last observed input $0.186530. Context was not reset; reload sources were not attached."
+	for _, caller := range []string{"/root", "/root/worker"} {
+		entry, ok := sessionpresentation.CompactionOutcomeEntry("thread", caller, "thread:checkpoint", &threadcontrol.CompactionResult{State: "skipped", Error: reason}, time.Unix(100, 0))
+		if !ok {
+			t.Fatal("rejection was not projected")
+		}
+		content := sessionpresentation.ActivityContent(entry)
+		values := projectValues(content.Values(), false)
+		if len(values) != 1 || values[0].Body != "Compaction skipped: "+reason || values[0].Kind != "progress" {
+			t.Fatalf("rejection missing from shared API: %+v", values)
 		}
 	}
 }

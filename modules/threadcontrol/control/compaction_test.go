@@ -14,7 +14,7 @@ func TestCompactionCheckpointAdmission(t *testing.T) {
 			selection := `{"sources":[{"path":"task.json","ranges":[[2,4]]}]}`
 			result, err := s.RegisterCompaction(t.Context(), id, "", nil, nil, time.Now(), true, selection)
 			must(t, err)
-			if result.State != "scheduled" {
+			if result.State != "compacting" {
 				t.Fatal(result)
 			}
 			turn, handle, success := id.Turn, "", evidence == "success"
@@ -130,7 +130,7 @@ func TestCompoundCompactionRetainsWaitAndEvents(t *testing.T) {
 					}
 					result, err := s.RegisterCompaction(ctx, id, mode, timeout, nil, now, false, "")
 					must(t, err)
-					if result.State != "scheduled" || result.Event != nil {
+					if result.State != "compacting" || result.Event != nil {
 						t.Fatalf("ready outcome bypassed compact: %+v", result)
 					}
 					stop(t, s, id)

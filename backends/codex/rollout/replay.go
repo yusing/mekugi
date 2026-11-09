@@ -187,6 +187,8 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 		Client                                             string         `json:"client_id"`
 		Tool                                               string         `json:"tool"`
 		Server                                             string         `json:"server"`
+		Name, Namespace                                    string
+		ToolOutput                                         jsontext.Value `json:"output"`
 		Arguments, Result, Error                           jsontext.Value
 		Questions                                          []observation.Question `json:"questions"`
 		Changes                                            map[string]struct {
@@ -208,6 +210,13 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	switch i.Type {
 	case "mcpToolCall":
 		i.Server, i.Arguments, i.Result, i.Error = p.Server, p.Arguments, p.Result, p.Error
+	case "functionCallOutput":
+		// Host-produced standalone outputs retain checkpoint outcomes. Other
+		// function results are not coordination observations.
+		if p.Namespace != "threadcontrol" || p.Name != "compact" && p.Name != "wait_agent" {
+			return i, false, nil
+		}
+		i.Server, i.Tool, i.Result = p.Namespace, p.Name, p.ToolOutput
 	case "imageGeneration":
 		i.SavedPath = p.SavedPath
 	case "userMessage", "reasoning", "contextCompaction", "imageView":

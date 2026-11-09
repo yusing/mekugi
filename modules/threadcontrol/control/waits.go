@@ -82,7 +82,7 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 	if compact := wait.Compaction; compact != nil {
 		result.Compaction = &CompactionResult{State: compact.State, Error: compact.Error, Reload: compact.Message}
 		if compact.State == "registered" {
-			result.State = "scheduled"
+			result.State = "compacting"
 		}
 	}
 	if wait.Terminal != nil {
@@ -341,7 +341,7 @@ func (s *Service) RejectCompaction(ctx context.Context, thread, turn, item, reas
 		if wait == nil || wait.State != "registered" || wait.Turn != turn || wait.Item != item || wait.Generation != member.Generation || wait.Compaction == nil || wait.Compaction.State != "registered" || wait.Stop != "eligible" {
 			return unchanged
 		}
-		wait.Compaction.State, wait.Compaction.Error = "failed", reason
+		wait.Compaction.State, wait.Compaction.Error = "skipped", reason
 		return nil
 	})
 }
@@ -444,8 +444,11 @@ func cancelSubscription(tree *Tree, member *Member) {
 			}
 		}
 	}
-	if wait.Compaction != nil && !hostOwned(wait.Compaction.State) {
-		wait.Compaction.State = "canceled"
+	if compact := wait.Compaction; compact != nil {
+		switch compact.State {
+		case "registered", "pending", "paused":
+			compact.State = "canceled"
+		}
 	}
 	wait.State, wait.Stop = "canceled", ""
 }
@@ -498,5 +501,5 @@ func (s *Service) WaitPublication(thread string) *WaitResult {
 
 // CompactionPending holds deliveries from checkpoint registration through settlement.
 func (wait *Wait) CompactionPending() bool {
-	return wait != nil && wait.Compaction != nil && (hostOwned(wait.Compaction.State) || wait.Compaction.State == "registered" && wait.State == "registered" || wait.Stop == "committed" && wait.Compaction.State != "completed" && wait.Compaction.State != "failed" && wait.Compaction.State != "canceled")
+	return wait != nil && wait.Compaction != nil && (hostOwned(wait.Compaction.State) || wait.Compaction.State == "registered" && wait.State == "registered" || wait.Stop == "committed" && wait.Compaction.State != "completed" && wait.Compaction.State != "failed" && wait.Compaction.State != "skipped" && wait.Compaction.State != "canceled")
 }

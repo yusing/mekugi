@@ -27,6 +27,27 @@ func TestCompareInputCostUsesLatestActualInput(t *testing.T) {
 	}
 }
 
+func TestCompactionCostCacheDiscountComparisons(t *testing.T) {
+	// Historical token counts and reset estimates. Output tokens are irrelevant:
+	// the gate compares one next input, not total or amortized task cost.
+	for _, test := range []struct {
+		input, cached, reset uint64
+		current, cold        float64
+	}{
+		{179490, 179200, 29828, .182100, .298280},
+		{184541, 184320, 21923, .186530, .219230},
+		{222741, 222464, 25212, .225234, .252120},
+		{181341, 181120, 26989, .183330, .269890},
+	} {
+		u := New()
+		u.Observation("root", "root", "gpt-6-astra", "default").Observe(inference.Usage{InputTokens: test.input, UncachedInputTokens: test.input - test.cached})
+		current, cold, known := u.CompareInputCost("root", "gpt-6-astra", "default", test.reset)
+		if !known || math.Abs(current.Total()-test.current) > 1e-12 || math.Abs(cold.Total()-test.cold) > 1e-12 || cold.Total() <= current.Total() {
+			t.Fatalf("cache-discount comparison: current=%+v cold=%+v known=%t", current, cold, known)
+		}
+	}
+}
+
 func TestCompareInputCostPinsRatesAndRequestOrdering(t *testing.T) {
 	u := New()
 	observe := func(start int64, input uint64) {

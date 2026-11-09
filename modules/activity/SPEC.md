@@ -47,6 +47,10 @@ Failed, queued and uncertain operations never invent delivery. Original tool
 evidence remains in detached details; authored traffic dialogs show and copy the
 delivered message. Live, resumed history and replay share
 this interpretation; unrelated MCP calls retain ordinary MCP presentation.
+Compaction acknowledgements show a request, not a completed reset or a scheduled
+job. A skipped reset immediately shows its reason, independently of a compound
+wait's outcome; restored checkpoint outputs and replay retain that reason.
+Cost-estimation reads do not count as attached reload context.
 
 Attribution requires validated stable thread relationships and canonical agent
 identity, never routing-session IDs or message text. Request preparation precedes

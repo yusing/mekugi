@@ -30,6 +30,8 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 			}
 			defer session.Close()
 			p.ThreadControl, p.Usage = bare.ThreadControl, accounting.New()
+			p.Audience.Observe(caller.Thread, "", "/root", false)
+			p.Audience.Attach(caller.Thread)
 			var notice string
 			p.Notice = func(_, _, _, message string) { notice = message }
 			counts := inference.Usage{InputTokens: 1000}
@@ -93,6 +95,9 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 				if err := prepared.checkCompactionCost(&request); err != nil {
 					t.Fatal(err)
 				}
+				if _, events := p.Audience.Take(caller.Thread); len(events) != 0 {
+					t.Fatalf("cost preflight published attachments without a reset: %+v", events)
+				}
 				return prepared
 			}
 			prepared := prepare()
@@ -147,7 +152,7 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 				}
 				return
 			}
-			if (member.Wait.Compaction.State == "failed") != rejected || prepared.LocalWaitItem() != caller.Item {
+			if (member.Wait.Compaction.State == "skipped") != rejected || prepared.LocalWaitItem() != caller.Item {
 				t.Fatalf("gate state: %+v local=%q", member.Wait, prepared.LocalWaitItem())
 			}
 			if !rejected {
@@ -162,6 +167,9 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 			}
 			if !readFailed && !strings.Contains(member.Wait.Compaction.Error, "assumes no cache hits") {
 				t.Fatal("estimate assumptions missing")
+			}
+			if !strings.Contains(member.Wait.Compaction.Error, "Context was not reset; reload sources were not attached.") {
+				t.Fatal("rejection did not explain the unchanged context and reload")
 			}
 			if _, err := service.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil {
 				t.Fatal(err)

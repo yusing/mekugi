@@ -212,7 +212,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	if reloadCalls == nil && bytes.Contains(request.Fields["input"], []byte(compact.SnapshotPrefix)) {
 		reloadCalls = make(map[string]bool)
 	}
-	reloadOutputs, err := p.compactSnapshots(ctx, request.Fields["input"], reloadCalls, threadID, metadata, prewarm, &attachments)
+	reloadOutputs, err := p.compactSnapshots(ctx, request.Fields["input"], reloadCalls, threadID, metadata, !prewarm, &attachments)
 	if err != nil {
 		return nil, err
 	}

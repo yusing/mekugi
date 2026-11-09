@@ -16,6 +16,7 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -297,6 +298,58 @@ func coordinationActivityItems(t *testing.T) []binding.ThreadItem {
 		items = append(items, binding.ThreadItem{ID: operation.tool, Type: "mcpToolCall", Server: "threadcontrol", Tool: operation.tool, Status: "completed", Arguments: jsontext.Value(operation.args), Result: result})
 	}
 	return items
+}
+
+func TestCompactionRejectionRestoredAndReplay(t *testing.T) {
+	for _, name := range []string{"compact", "wait_agent"} {
+		for _, state := range []string{"skipped", "failed"} {
+			t.Run(name+"/"+state, func(t *testing.T) {
+				const reason = "Estimated uncached input exceeds the last cached input. Context was not reset; reload sources were not attached."
+				wake := control.NativeInput{ID: "main:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: state, Error: reason, Reload: `{"sources":[{"path":"state.json"}]}`}}}
+				output := wake.RetainedWaitOutput()
+				for _, provenance := range []string{"owned", "missing", "tool-call", "foreign"} {
+					payload := map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": name, "output": output}
+					if provenance == "tool-call" {
+						payload["call_id"] = "ordinary"
+					}
+					if provenance == "foreign" {
+						payload["namespace"] = "other"
+					}
+					record := rolloutRecord(1, "response_item", payload)
+					record["metadata"] = map[string]any{"client_authored": provenance != "missing"}
+					u := newAppServerSessionTestUI(t, t.TempDir())
+					root := binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd, Path: writeTestRollout(t, "main", record, record)}
+					if err := u.restoreContent(root); err != nil {
+						t.Fatal(err)
+					}
+					text := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(100).Lines, "\n"))
+					want := 0
+					if provenance == "owned" {
+						want = 1
+					}
+					if strings.Count(text, "reload sources were not attached") != want || strings.Contains(text, "Attached") || strings.Contains(text, "scheduled") {
+						t.Fatalf("restored %s outcome:\n%s", provenance, text)
+					}
+				}
+				path := replayTestWrite(t, t.TempDir(), "compaction.jsonl", replayTestMeta("main"), replayTestItem("main", "continued", replayTestEpoch, replayTestEpoch+1, map[string]any{
+					"type": "FunctionCallOutput", "id": "outcome", "namespace": "threadcontrol", "name": name, "output": output,
+				}))
+				source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+				t.Cleanup(p.close)
+				if err := p.advance(p.Until); err != nil {
+					t.Fatal(err)
+				}
+				painted := replayPlaybackTestPaint(t, p, 100, 30)
+				if !strings.Contains(painted, "reload sources were not attached") || strings.Contains(painted, "Attached") {
+					t.Fatalf("replay lost rejection:\n%s", painted)
+				}
+			})
+		}
+	}
 }
 
 func TestThreadControlTrafficLiveRestoredReplay(t *testing.T) {

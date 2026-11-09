@@ -116,10 +116,13 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				r.events = append(r.events, event)
 			}
 		case "response_item/function_call_output":
-			if record.Metadata.ClientAuthored && p.CallID == nil && p.Namespace == "threadcontrol" && p.Name == "followup_task" {
+			if record.Metadata.ClientAuthored && p.CallID == nil && p.Namespace == "threadcontrol" {
 				var output string
 				if json.Unmarshal(p.Output, &output) == nil {
-					if input, ok := sessioncontrol.FollowupDelivery(output); ok {
+					if entry, ok := sessionpresentation.RetainedCompactionEntry(info.ID, agent, p.Name, output, record.Timestamp); ok {
+						event.entry = entry
+						r.events = append(r.events, event)
+					} else if input, ok := sessioncontrol.FollowupDelivery(output); p.Name == "followup_task" && ok {
 						input.Thread = info.ID
 						event.entry = nativeDeliveryEntry(input, control.MessageItemID(input.ID), record.Timestamp, record.Metadata.Inherited)
 						r.events = append(r.events, event)

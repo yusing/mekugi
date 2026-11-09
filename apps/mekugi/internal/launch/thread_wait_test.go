@@ -21,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func logicalWaitUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
@@ -750,5 +751,122 @@ func TestStandaloneCompactionOmitsAgentWaitPresentation(t *testing.T) {
 	syncLogicalWork(&u.attached, &u.Live, threads, *at)
 	if u.attached.threadInput.waitID == caller.Call || u.attached.session.Lifecycle("main").Wait != nil {
 		t.Fatal("standalone continuation published an agent-wait outcome")
+	}
+}
+
+func TestUISnapshotCompactionRejection(t *testing.T) {
+	for _, standalone := range []bool{false, true} {
+		name := "wait"
+		if standalone {
+			name = "standalone"
+		}
+		t.Run(name, func(t *testing.T) {
+			u, threads, at := logicalWaitUI(t, nil)
+			s, ctx := threads.shared, t.Context()
+			caller := control.Identity{Thread: "main", Session: "session", Turn: "checkpoint", Call: "compact", Item: "compact-exec"}
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			check(s.RequestStarted(ctx, caller, true))
+			result, err := s.RegisterCompaction(ctx, caller, "", nil, nil, *at, standalone, `{"sources":[{"path":"state.json"}]}`)
+			check(err)
+			payload, _ := json.Marshal(result)
+			envelope, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(payload)}}})
+			tool := "wait_agent"
+			if standalone {
+				tool = "compact"
+			}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": caller.Turn, "item": binding.ThreadItem{
+				ID: caller.Call, Type: "mcpToolCall", Server: "threadcontrol", Tool: tool, Status: "completed", Arguments: []byte(`{"compact":true}`), Result: envelope,
+			}})
+			check(s.Execution(ctx, caller.Thread, caller.Turn, caller.Item, "", true))
+			const reason = "Estimated uncached next input $0.219230 exceeds last observed input $0.186530, including its cache discount (21923 reset tokens; assumes no cache hits after reset and unchanged reload sources). Context was not reset; reload sources were not attached."
+			check(s.RejectCompaction(ctx, caller.Thread, caller.Turn, caller.Item, reason))
+			// The rejection is visible before host settlement or a compound wake.
+			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			count := len(u.attached.source.Entries)
+			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			if len(u.attached.source.Entries) != count {
+				t.Fatal("unchanged rejection was republished")
+			}
+			rows := u.testActivity(u.shell.Transcript).testRenderConversation(100).Lines
+			text := ansi.Strip(strings.Join(rows, "\n"))
+			for _, want := range []string{"Compaction skipped", "$0.219230", "$0.186530", "Context was not reset", "reload sources were not attached"} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("rejection omitted %q:\n%s", want, text)
+				}
+			}
+			if strings.Count(text, "Compaction skipped") != 1 || strings.Contains(text, "scheduled") || strings.Contains(text, "Attached") {
+				t.Fatalf("misleading checkpoint display:\n%s", text)
+			}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/compaction-rejection-"+name+".txt", append(rows, "plain after rejection"), 100)
+			_, err = s.ClaimLocalStop(ctx, caller.Thread, caller.Turn, caller.Item)
+			check(err)
+			check(s.HostCompleted(ctx, caller.Thread, caller.Turn, control.Completed, control.HostFailure{}))
+			wake, err := s.PrepareWake(ctx, caller.Thread, *at)
+			check(err)
+			if (wake != nil) != standalone {
+				t.Fatal("rejection changed the compound wait or standalone continuation")
+			}
+		})
+	}
+}
+
+func TestCompactionOutcomeSurvivesWaitCancellation(t *testing.T) {
+	for _, outcome := range []string{"completed", "failed", "skipped"} {
+		for _, action := range []string{"input", "interrupt"} {
+			t.Run(outcome+"/"+action, func(t *testing.T) {
+				u, threads, at := logicalWaitUI(t, nil)
+				s, ctx := threads.shared, t.Context()
+				id := control.Identity{Thread: "main", Session: "session", Turn: "checkpoint", Call: "checkpoint", Item: "checkpoint-exec"}
+				check := func(err error) {
+					t.Helper()
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				check(s.RequestStarted(ctx, id, true))
+				_, err := s.RegisterCompaction(ctx, id, "", nil, nil, *at, false, "")
+				check(err)
+				check(s.Execution(ctx, id.Thread, id.Turn, id.Item, "", true))
+				if outcome == "skipped" {
+					check(s.RejectCompaction(ctx, id.Thread, id.Turn, id.Item, "cost veto"))
+				}
+				_, err = s.ClaimLocalStop(ctx, id.Thread, id.Turn, id.Item)
+				check(err)
+				check(s.HostCompleted(ctx, id.Thread, id.Turn, control.Completed, control.HostFailure{}))
+				if outcome != "skipped" {
+					effect, err := s.ClaimEffect(ctx, id.Thread, id.Call+":compact")
+					check(err)
+					if effect == nil {
+						t.Fatal("no compact dispatch")
+					}
+					receipt := control.Receipt{}
+					if outcome == "failed" {
+						receipt.Error = "native reset failed"
+					}
+					check(s.EffectAcknowledged(ctx, id.Thread, effect.ID, receipt))
+				}
+				syncLogicalWork(&u.attached, &u.Live, threads, *at)
+				if action == "input" {
+					_, err = s.HumanInput(ctx, id.Thread, "human-followup")
+				} else {
+					_, err = s.HumanInterrupt(ctx, id.Thread, "")
+				}
+				check(err)
+				syncLogicalWork(&u.attached, &u.Live, threads, *at)
+				if got := s.WaitPublication(id.Thread).Compaction.State; got != outcome {
+					t.Fatalf("canceling wait changed completed reset outcome: %s -> %s", outcome, got)
+				}
+				for _, entry := range u.attached.source.Entries {
+					if strings.Contains(entry.Source.Text, "Compaction canceled") {
+						t.Fatalf("settled reset mislabeled after cancellation: %q", entry.Source.Text)
+					}
+				}
+			})
+		}
 	}
 }

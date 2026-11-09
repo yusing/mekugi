@@ -25,6 +25,24 @@ func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
 	}
 }
 
+func TestUnsuccessfulCompactionDoesNotAttachReload(t *testing.T) {
+	for _, name := range []string{"compact", "wait_agent"} {
+		for _, state := range []string{"skipped", "failed", "canceled", "registered"} {
+			t.Run(name+"/"+state, func(t *testing.T) {
+				p := newManagedMekugiProxy(t)
+				output := mustTestJSON(t, map[string]any{"id": "root:checkpoint", "compaction": control.CompactionResult{State: state, Reload: `{"sources":[{"path":"selected.txt"}]}`}})
+				request := codexresponses.Request{Fields: map[string]jsontext.Value{"input": mustTestJSON(t, []any{map[string]any{
+					"type": "function_call_output", "namespace": "threadcontrol", "name": name, "output": string(output),
+				}})}}
+				reader, calls, events, err := p.preparePreloadInput(&request, "root", "root", codexresponses.TurnMetadata{ThreadID: "root", RequestKind: "turn"}, false)
+				if err != nil || len(reader) != 0 || len(calls) != 0 || len(events) != 0 {
+					t.Fatalf("unsuccessful reset reloaded sources: reader=%s calls=%v events=%v err=%v", reader, calls, events, err)
+				}
+			})
+		}
+	}
+}
+
 func testContextReload(t *testing.T, kind string) {
 	completion := kind == "completion"
 	reset := kind == "compact" || kind == "wait_agent"
