@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -41,6 +43,9 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 		block.Running = !view.Done
 	}
 	page := terminalui.DialogPage{Title: p.DialogPageTitle(block, p.now(), width), Live: block.Live || !view.Done}
+	if block.Path != "" || block.Kind == "reads" && block.Verb != "Search" && block.Verb != "Web Search" && block.Verb != "Skill" {
+		page.TitlePath = dialogTarget(p, block)
+	}
 	var detail []string
 	if block.Hook != nil {
 		detail = append(detail, textsanitize.Safe(block.Hook.HandlerType, false))
@@ -358,7 +363,12 @@ func (p *Painter) DetailDocument(detail presentation.DetailPage, output *activit
 		// The terminal dialog reserves its image viewport after the path.
 		page.Lines = nil
 	}
-	page.Lines = append([]terminalui.DialogLine{{Text: terminalui.StyledPath(textsanitize.Safe(file.Path, false)), Wrap: true}, {}}, page.Lines...)
+	path := textsanitize.Safe(file.Path, false)
+	shown := terminalui.StyledPath(pathterminal.Truncate(path, width))
+	if p.CopySource && !p.LayoutOnly {
+		shown = terminalui.AttachCopy(shown, []terminalui.CopySpan{{CopyFragment: terminalui.CopyFragment{Prefix: path, Width: ansi.StringWidth(shown)}}})
+	}
+	page.Lines = append([]terminalui.DialogLine{{Text: shown}, {}}, page.Lines...)
 	if detail.Kind != "error" {
 		page.Text = file.Source
 		for i := range page.Lines {

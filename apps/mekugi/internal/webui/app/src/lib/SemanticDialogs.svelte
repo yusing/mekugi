@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Path from "./Path.svelte";
   import { tick } from "svelte";
   import Alert from "./ui/Alert.svelte";
   import AutoPage from "./AutoPage.svelte";
@@ -238,7 +239,10 @@
                 onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
               >
                 <span class="grid min-w-0 gap-0.5">
-                  <span class="font-medium wrap-anywhere">{choice.Display || choice.Name}</span>
+                  <span class="font-medium wrap-anywhere"
+                    >{#if choice.Path}<Path path={choice.Path} />{:else}{choice.Display ||
+                        choice.Name}{/if}</span
+                  >
                   {#if choice.Description}<span class="text-small text-muted"
                       >{choice.Description}</span
                     >{/if}
@@ -305,9 +309,7 @@
             <span class="grid min-w-0 gap-0.5">
               <span class="font-medium wrap-anywhere">{saved.Title || saved.ID}</span>
               <span class="flex min-w-0 gap-3 text-small text-muted">
-                <span class="min-w-0 truncate text-left font-mono" dir="rtl" title={saved.Workspace}
-                  ><bdi dir="ltr">{saved.Workspace}</bdi></span
-                >
+                <span class="min-w-0 font-mono"><Path path={saved.Workspace} /></span>
                 {#if saved.Branch}<span class="shrink-0 font-mono whitespace-nowrap"
                     >{saved.Branch}</span
                   >{/if}
@@ -462,7 +464,9 @@
                         field.Alert && "text-negative",
                       ]}
                     >
-                      <span class={["block", field.Path && "font-mono"]}>{field.Value}</span>
+                      <span class={["block", field.Path && "font-mono"]}
+                        >{#if field.Path}<Path path={field.Value} />{:else}{field.Value}{/if}</span
+                      >
                       {#if field.Detail}<span class="mt-0.5 block text-small text-muted"
                           >{field.Detail}</span
                         >{/if}

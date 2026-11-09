@@ -1,10 +1,37 @@
 package terminalsession
 
 import (
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	"testing"
 )
+
+func TestResumePathsKeepSuffixAndIdentity(t *testing.T) {
+	const path = "/home/dev/projects/very-long-workspace/distinctive-project"
+	for _, all := range []bool{false, true} {
+		view := sessionpresentation.View{Resume: &sessionpresentation.ResumeView{ID: 1, Workspace: path, All: all, Rows: []sessionpresentation.ResumeRow{{ID: "saved-thread", Workspace: path + "/other-project", Title: "saved title"}}}}
+		var picker ResumePicker
+		picker.Update(view)
+		width := 50
+		if all {
+			width = 100
+		}
+		rows := picker.Render(new(terminalui.Painter), width, 20, "")
+		want := "distinctive-project"
+		if all {
+			want = "other-project"
+		}
+		if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, want) || strings.Contains(text, "/home/dev") {
+			t.Fatalf("resume path lost suffix: %q", text)
+		}
+		if action := picker.Key("\r"); action.Thread != "saved-thread" || view.Resume.Workspace != path {
+			t.Fatal("painting rebound the resume target")
+		}
+	}
+}
 
 func TestResumePickerDetachedNavigationAndPageDemand(t *testing.T) {
 	v := sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Resume: &sessionpresentation.ResumeView{ID: 1, CanPage: true, PageAfter: "second", Rows: []sessionpresentation.ResumeRow{{ID: "first"}, {ID: "second"}}}}

@@ -206,7 +206,7 @@ func (l *Changes) Render(focused bool, filtering bool, callerFilter string, widt
 				if file.Status.Directory {
 					stats = ""
 				}
-				stats = " " + diffrender.FileLabel(file.Status, l.path(file.File), l.Workspace, theme) + stats
+				stats = " " + diffrender.FileLabel(file.Status, l.path(file.File), l.Workspace, theme, contentWidth-ansi.StringWidth(graph.String()+label+stats)-1) + stats
 			} else {
 				stats = fmt.Sprintf(" "+diffrender.Subtle+"%df"+diffrender.SubtleReset, len(node.Files)) + stats
 			}
@@ -218,7 +218,6 @@ func (l *Changes) Render(focused bool, filtering bool, callerFilter string, widt
 			}
 			// The tree glyph extends the graph.
 			graph.WriteString(diffrender.Subtle + branch + diffrender.SubtleReset + " ")
-			label = diffrender.FileLabel(file.Status, l.path(file.File), l.Workspace, theme)
 			stats = diffrender.CountStats(diffmodel.Counts{Added: file.Added, Removed: file.Removed}, theme)
 			if file.Unknown {
 				stats = diffrender.CountStats(diffmodel.Counts{Added: -1, Removed: -1}, theme)
@@ -226,6 +225,7 @@ func (l *Changes) Render(focused bool, filtering bool, callerFilter string, widt
 			if file.Status.Directory {
 				stats = ""
 			}
+			label = diffrender.FileLabel(file.Status, l.path(file.File), l.Workspace, theme, contentWidth-ansi.StringWidth(graph.String()+stats))
 		}
 		prefix := graph.String()
 		available := max(0, contentWidth-ansi.StringWidth(prefix)-ansi.StringWidth(stats))

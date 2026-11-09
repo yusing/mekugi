@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -148,10 +150,9 @@ func changeLabel(r ChangeRow, width int) string {
 	case r.Verb == "" && r.Code == "":
 		return r.Label
 	case r.From != "":
-		from := fitPath(r.From, (width-3)/2)
-		return terminalui.StyledPath(from) + terminalui.Dim + " → " + terminalui.Undim + terminalui.StyledPath(fitPath(r.Label, width-3-ansi.StringWidth(from)))
+		return pathterminal.TruncateMove(terminalui.StyledPath(r.From)+terminalui.Dim, terminalui.Undim+terminalui.StyledPath(r.Label), width)
 	}
-	return terminalui.StyledPath(fitPath(r.Label, width))
+	return terminalui.StyledPath(pathterminal.Truncate(r.Label, width))
 }
 
 // countText colors a row's added and removed line counts as edit rows do.

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -156,6 +158,13 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 				style = bold + accent
 			}
 			wrapValue := func(width int) []string {
+				if field.Path {
+					row := pathterminal.Truncate(value, width)
+					if painter.CopySource && !painter.LayoutOnly {
+						row = terminalui.AttachCopy(row, []terminalui.CopySpan{{ID: uint64(index + 1), Prefix: ansi.Strip(value), Width: ansi.StringWidth(row)}})
+					}
+					return []string{row}
+				}
 				return painter.CopyWrapped(panelWrap(value, width), terminalui.CopyFragment{ID: uint64(index + 1), Text: ansi.Strip(value)}, 0)
 			}
 			// Reserve a bounded label column for wrapping. Actual alignment is measured

@@ -6,6 +6,8 @@ import (
 	"path"
 	"strings"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -28,21 +30,23 @@ func statusCode(s diffmodel.Status, theme Theme) (string, string) {
 // FileLabel prefixes a file label with its colored status; a rename
 // also names its source. Every file row (tree, flat list, Changes tab,
 // streaming title) uses this format.
-func FileLabel(status diffmodel.Status, label, workspace string, theme Theme) string {
+func FileLabel(status diffmodel.Status, label, workspace string, theme Theme, width int) string {
 	if status.Directory {
 		label = strings.TrimSuffix(label, "/") + "/"
 	}
 	code, color := statusCode(status, theme)
 	label = textsanitize.Safe(label, false)
+	room := max(0, width-len(code)-1)
 	if status.Before != "" && status.After != "" && status.Before != status.After {
 		// The source's base name when it stayed in the same folder.
 		from := pathdisplay.ForWorkspace(workspace, status.Before)
 		if path.Dir(status.Before) == path.Dir(status.After) {
 			from = path.Base(status.Before)
 		}
-		label = textsanitize.Safe(from, false) + " → " + label
+		from = textsanitize.Safe(from, false)
+		label = pathterminal.TruncateMove(from, label, room)
 	}
-	return color + code + "\x1b[39m " + label
+	return color + code + "\x1b[39m " + pathterminal.Truncate(label, room)
 }
 
 // CountStats shows known line counts; unknown counts are not zero.

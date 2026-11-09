@@ -3,4 +3,4 @@
 │   third                          │
 │   fourth                         │
 │   fifth                          │
-╰── /worksp… • snapshot-mod… • 0% ─╯
+╰── …rkspace • snapshot-mod… • 0% ─╯

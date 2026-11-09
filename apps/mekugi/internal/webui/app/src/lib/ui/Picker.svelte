@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+  import Path from "../Path.svelte";
   import { Combobox } from "bits-ui";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import { cn } from "$lib/utils.js";
@@ -24,6 +25,7 @@
     text,
     title = label,
     entry,
+    path = false,
     disabled = false,
     class: extra = "",
     onchange,
@@ -35,6 +37,7 @@
     text?: string;
     title?: string;
     entry?: string;
+    path?: boolean;
     disabled?: boolean;
     class?: string;
     onchange?: (value: string) => void;
@@ -79,7 +82,11 @@
 {#snippet triggerLabel()}
   {#if icon}<span class="flex flex-none"><Icon name={icon} size={14} /></span>{/if}
   <span class="sr-only">{label}:</span>
-  <span class="min-w-0 flex-1 truncate text-left text-ink">{text ?? current?.label ?? value}</span>
+  <span class="min-w-0 flex-1 truncate text-left text-ink"
+    >{#if path && value}<Path path={text ?? current?.label ?? value} {title} />{:else}{text ??
+        current?.label ??
+        value}{/if}</span
+  >
 {/snippet}
 
 {#snippet choices()}
@@ -88,9 +95,14 @@
       {#if group.label}<Select.GroupHeading>{group.label}</Select.GroupHeading>{/if}
       {#each group.choices as choice (choice.value)}
         <Select.Item value={choice.value} label={choice.label}>
-          <span class="block truncate">{choice.label}</span>
+          <span class="block min-w-0"
+            >{#if path}<Path
+                path={choice.label}
+                title={choice.detail ?? choice.value}
+              />{:else}<span class="block truncate">{choice.label}</span>{/if}</span
+          >
           {#if choice.detail}<span class="block truncate text-small text-muted"
-              >{choice.detail}</span
+              >{#if path}<Path path={choice.detail} />{:else}{choice.detail}{/if}</span
             >{/if}
         </Select.Item>
       {/each}

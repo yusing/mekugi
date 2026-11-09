@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Path from "./Path.svelte";
   import Alert from "./ui/Alert.svelte";
   import AttachmentPreview, { type PreviewTarget } from "./AttachmentPreview.svelte";
   import { tick } from "svelte";
@@ -92,7 +93,7 @@
             {/if}
             <span
               class={["min-w-0 truncate text-ink", "path" in item && "font-mono"]}
-              title={name(item)}>{name(item)}</span
+              title={name(item)}><Path path={name(item)} /></span
             >
             {#if "file" in item}<span class="tabular-nums">{bytes(item.file.size)}</span>{/if}
             <button

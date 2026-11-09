@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Path from "./Path.svelte";
   import { basename, statusText } from "./format";
   import { hub, type Machine } from "./hub.svelte";
   import Mark from "./Mark.svelte";
@@ -120,9 +121,14 @@
                     onclick={onnavigate}
                   >
                     <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span class="truncate">{name(s)}</span>
+                      <span class="truncate"
+                        >{#if !s.title && s.workspace}<Path
+                            path={name(s)}
+                            title={s.workspace}
+                          />{:else}{name(s)}{/if}</span
+                      >
                       {#if s.workspace}<span class="truncate text-small font-normal text-muted"
-                          >{basename(s.workspace)}</span
+                          ><Path path={basename(s.workspace)} title={s.workspace} /></span
                         >{/if}
                     </span>
                     {#if s.replay}<Tag>Replay</Tag>{/if}

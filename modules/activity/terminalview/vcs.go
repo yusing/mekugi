@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -25,12 +27,13 @@ func (p *Painter) vcsRow(block Block, width int) []string {
 	if block.ExitCode != 0 {
 		tail += terminalui.Dim + " · " + terminalui.Undim + exitText(block.ExitCode)
 	}
-	heading := p.vcsHeading(block.Verb, head)
+	room := width - ansi.StringWidth(lead) - 1 - ansi.StringWidth(tail)
+	heading, paths := p.vcsHeading(block.Verb, head, max(1, room))
 	if heading == "" {
 		return terminalui.Hang(lead, tail, width)
 	}
 	// Below a readable width the heading wraps rather than shrinking to a stub.
-	if room := width - ansi.StringWidth(lead) - 1 - ansi.StringWidth(tail); ansi.StringWidth(heading) > room && room >= 16 {
+	if !paths && ansi.StringWidth(heading) > room && room >= 16 {
 		heading = ansi.Truncate(heading, room, "…") + terminalui.Reset
 	}
 	return terminalui.Hang(lead, heading+" "+tail, width)
@@ -39,13 +42,15 @@ func (p *Painter) vcsRow(block Block, width int) []string {
 // vcsHeading styles a VCS heading: a leading span is the subject or scope,
 // later spans are paths, and connecting words are muted. A commit's
 // autosquash marker, such as "amend!", reads as a marker, not subject text.
-func (p *Painter) vcsHeading(verb, head string) string {
+func (p *Painter) vcsHeading(verb, head string, width int) (string, bool) {
 	var out strings.Builder
+	paths := false
 	for i := 0; i < len(head); {
 		if code, end, ok := markdownsyntax.CodeSpan(head, i); ok {
 			switch {
 			case i > 0 || verb == "Stage":
-				out.WriteString(terminalui.StyledPath(code))
+				paths = true
+				out.WriteString(terminalui.StyledPath(pathterminal.Truncate(code, max(1, width-ansi.StringWidth(out.String())))))
 			case verb == "Commit":
 				for _, marker := range []string{"amend! ", "fixup! ", "squash! "} {
 					if rest, found := strings.CutPrefix(code, marker); found {
@@ -69,14 +74,14 @@ func (p *Painter) vcsHeading(verb, head string) string {
 		out.WriteString(terminalui.Dim + text + terminalui.Undim)
 		i += len(text)
 	}
-	return out.String()
+	return out.String(), paths
 }
 
 // vcsSummary is a VCS row's roster summary: its verb and heading, the
 // changed lines its rows name, and its source.
 func (p *Painter) vcsSummary(block Block) string {
 	head, source, _ := presentation.VCSSource(block.Label)
-	detail := p.vcsHeading(block.Verb, head)
+	detail, _ := p.vcsHeading(block.Verb, head, ansi.StringWidth(head))
 	if counts := editCounts(presentation.ChangeTotals(block.Changes)); counts != "" {
 		detail = strings.TrimSpace(detail + " " + countText(counts))
 	}

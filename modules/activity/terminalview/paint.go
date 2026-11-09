@@ -2,6 +2,7 @@ package terminalview
 
 import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/activity/presentation"
@@ -335,7 +336,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		if suffix := " " + workdirLabel(block.Workdir); ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
 		} else {
-			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), workdirLabel(block.Workdir), width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), workdirLabel(pathterminal.Truncate(block.Workdir, width-block.cell(block.RowVerb())-5)), width)...)
 		}
 	}
 	if block.Verb != "Run" && !block.Skipped && len(lines) > 0 {
@@ -530,7 +531,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			if last {
 				room -= ansi.StringWidth(count)
 			}
-			return fitPath(read.Path, room)
+			return pathterminal.Truncate(read.Path, room)
 		}
 		item := func(path string, read activitymodel.Read) string {
 			item := terminalui.StyledPath(path)
@@ -608,7 +609,11 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 		}
 		if block.Path != "" {
-			path := terminalui.StyledPath(textsanitize.Safe(block.Path, false))
+			room := width - block.cell(block.Verb)
+			if label != "" {
+				room -= 3 + ansi.StringWidth(label)
+			}
+			path := terminalui.StyledPath(pathterminal.Truncate(textsanitize.Safe(block.Path, false), room))
 			if label != "" {
 				path += terminalui.Dim + " · " + terminalui.Undim + label
 			}
@@ -796,7 +801,7 @@ func (p *Painter) editRow(block Block, width, lead int) (string, bool) {
 	if column > 0 {
 		room = min(room, column)
 	}
-	path = fitPath(path, room)
+	path = pathterminal.Truncate(path, room)
 	row := terminalui.StyledPath(path)
 	if plain != "" {
 		pad := 1
@@ -834,16 +839,6 @@ func statBar(added, removed, scale int) string {
 	}
 	return terminalui.Green + strings.Repeat("━", green) + terminalui.Red + strings.Repeat("━", filled-green) + "\x1b[39m" +
 		terminalui.Dim + strings.Repeat("━", statBarCells-filled) + terminalui.Undim
-}
-
-// fitPath shortens a path wider than width from its start, dropping whole
-// leading directories so its nearest directories and file name remain.
-func fitPath(path string, width int) string {
-	// Below this, eliding leaves too little of the name; rows wrap instead.
-	if width < 16 {
-		return path
-	}
-	return terminalui.TruncatePath(path, width)
 }
 
 // readDetails uses observed per-range counts only when they account for the
@@ -896,7 +891,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		}
 	}
 	if block.ShowWorkdir && block.Workdir != "" {
-		label = strings.TrimSpace(label + " " + workdirLabel(block.Workdir))
+		label = strings.TrimSpace(label + " " + workdirLabel(pathterminal.Truncate(block.Workdir, width-block.cell(block.RowVerb())-6-ansi.StringWidth(label))))
 	}
 	color, exit := block.runColor(), ""
 	if block.ExitCode != 0 {

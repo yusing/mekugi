@@ -94,6 +94,17 @@ func TestVCSRowsShowTheirResult(t *testing.T) {
 	}
 }
 
+func TestVCSPathTruncationKeepsSuffix(t *testing.T) {
+	var p Painter
+	block := Block{Kind: "op", Verb: "Stage", Label: "`internal/a/very/long/directory/distinctive.go` · git"}
+	if got := vcsRows(&p, block, 36); !strings.Contains(got, "…") || !strings.Contains(got, "distinctive.go · git") || strings.Contains(got, "internal/") {
+		t.Fatalf("stage path did not retain suffix: %q", got)
+	}
+	if block.Label != "`internal/a/very/long/directory/distinctive.go` · git" {
+		t.Fatal("painting changed staged target")
+	}
+}
+
 func TestVCSStatusRowsUseTwoCellCodes(t *testing.T) {
 	var p Painter
 	status := Block{Kind: "op", Verb: "Status", Label: "`working tree` · git", Tail: []string{"x", "y"}, Changes: []ChangeRow{

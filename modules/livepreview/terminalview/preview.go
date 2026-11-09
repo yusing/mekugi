@@ -327,7 +327,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 	if err := p.prepare(now); err != nil {
 		return nil, err
 	}
-	header := ansi.Truncate(diffrender.Gutter(false, theme)+p.Title(workspace, theme, width), max(0, width-1), "")
+	header := ansi.Truncate(diffrender.Gutter(false, theme)+p.Title(workspace, theme, width-3), max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1
 	var footer []string
@@ -479,7 +479,8 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 // Edits use the file navigator's status letter and live line counts.
 func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int) string {
 	glyph := terminalui.Amber + "◐" + terminalui.Reset
-	var label string
+	var label, filePath, fileStats string
+	var fileStatus diffmodel.Status
 	reason, unavailable := strings.CutPrefix(p.Current.Status, previewmodel.PreviewUnavailable)
 	switch {
 	case unavailable:
@@ -491,8 +492,8 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 			path = file.BeforePath
 		}
 		added, removed := file.LineCounts()
-		label = diffrender.FileLabel(diffmodel.StatusOf(file), pathdisplay.ForWorkspace(workspace, path), workspace, theme) +
-			diffrender.CountStats(diffmodel.Counts{Added: added, Removed: removed}, theme)
+		filePath, fileStatus = pathdisplay.ForWorkspace(workspace, path), diffmodel.StatusOf(file)
+		fileStats = diffrender.CountStats(diffmodel.Counts{Added: added, Removed: removed}, theme)
 	case p.Current.Status == previewmodel.PreviewPending:
 		label = "scoped effects"
 	default:
@@ -515,6 +516,10 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 			label += " " + diffrender.Subtle + "· preview" + diffrender.SubtleReset
 		}
 	}
+	suffix := label
+	if filePath != "" {
+		label = diffrender.FileLabel(fileStatus, filePath, workspace, theme, width) + fileStats + suffix
+	}
 	label = glyph + " " + label
 	caller := pathdisplay.AgentDisplayName(p.Current.Caller)
 	if caller == "" {
@@ -526,6 +531,10 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 	// Put attribution first so narrow panes do not silently lose the caller.
 	// The caller keeps the agents pane's color for the same canonical path.
 	caller = ansi.Truncate(textsanitize.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(label)), "…")
+	if filePath != "" {
+		room := width - ansi.StringWidth(caller) - 3 - 2 - ansi.StringWidth(fileStats+suffix)
+		label = glyph + " " + diffrender.FileLabel(fileStatus, filePath, workspace, theme, room) + fileStats + suffix
+	}
 	if color := terminalui.AgentColor(p.Current.Caller); color != "" {
 		caller = color + caller + "\x1b[0m"
 	}

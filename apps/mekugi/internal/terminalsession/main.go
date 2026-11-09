@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -225,7 +227,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	}
 	if boxed {
 		cwd := strings.ReplaceAll(textsanitize.Safe(presentation.SourceWorkspace(), false), "\n", " ")
-		cwd = ansi.Truncate(cwd, max(1, (width-10)/3), "…")
+		cwd = pathterminal.Truncate(cwd, max(1, (width-10)/3))
 		captionWidth := max(0, width-7)
 		if cwd != "" {
 			captionWidth = max(0, width-10-ansi.StringWidth(cwd))

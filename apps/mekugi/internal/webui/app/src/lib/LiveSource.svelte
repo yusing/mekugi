@@ -1,7 +1,7 @@
 <script lang="ts">
+  import Path from "./Path.svelte";
   import { untrack } from "svelte";
   import { workspacePath } from "./diff";
-  import { basename } from "./format";
   import DiffView from "./DiffView.svelte";
   import AgentName from "./AgentName.svelte";
   import type { Preview } from "./protocol";
@@ -133,14 +133,12 @@
             </div>
             {#each preview.Files as file, i (i)}
               {@const path = workspacePath(file.AfterPath || file.BeforePath, preview.Workspace)}
-              {@const name = basename(path)}
               <div class="flex min-h-0 flex-1 flex-col">
                 <h3
                   class="mt-2 flex min-w-0 flex-none font-mono text-code whitespace-nowrap"
                   title={path}
                 >
-                  {#if path !== name}<span class="truncate">{path.slice(0, -name.length)}</span
-                    >{/if}<span class="max-w-full shrink-0 truncate">{name}</span>
+                  <Path {path} />
                 </h3>
                 <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain" use:follow>
                   <DiffView {file} workspace={preview.Workspace} wrap />

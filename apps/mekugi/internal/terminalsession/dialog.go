@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -177,7 +179,7 @@ func (d *Dialog) tabRow(width int) string {
 		page := d.pages[i]
 		label := fmt.Sprintf(" %d %s", i+1, page.Name)
 		if page.Path != "" {
-			label += " " + terminalui.StyledPath(terminalui.TruncatePath(page.Path, cell-ansi.StringWidth(label)-2))
+			label += " " + terminalui.StyledPath(pathterminal.Truncate(page.Path, cell-ansi.StringWidth(label)-2))
 		} else if page.Code != "" {
 			label += " " + strings.SplitN(page.Code, "\n", 2)[0]
 		}

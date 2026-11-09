@@ -51,6 +51,9 @@ The root displays as `main`; children display their path below `/root/` or
 depend only on canonical identity and survive reconnects. Shared path decoration
 emphasizes the filename without changing the supplied display path. Callers still
 resolve workspace-relative display and authority before painting.
+Bounded path labels elide leading cells, preserving the distinguishing suffix,
+including when a filename alone cannot fit. Full operational paths and source
+copy targets remain unchanged; prose and code retain their own layout.
 
 ## Authored Markdown
 

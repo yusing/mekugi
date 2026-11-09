@@ -2,13 +2,16 @@ package terminalsession
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/activity/presentation"
-	"strings"
-	"time"
 )
 
 func resumePickerAge(now time.Time, updated int64) string {
@@ -49,7 +52,7 @@ func (p *ResumePicker) Render(painter *terminalui.Painter, width, height int, se
 	if view.Workspace != "" {
 		filter += option("Cwd", !view.All) + " " + option("All", view.All)
 		if !view.All {
-			filter += dim + " · " + reset + panelText(view.Workspace)
+			filter += dim + " · " + reset + pathterminal.Truncate(panelText(view.Workspace), max(0, width-ansi.StringWidth(filter)-3))
 		}
 	} else {
 		filter += option("All", true)
@@ -131,7 +134,7 @@ func (p *ResumePicker) Render(painter *terminalui.Painter, width, height int, se
 			text += pad(branch, branchWidth) + "  "
 		}
 		if showCwd {
-			text += pad(cwd, cwdWidth) + "  "
+			text += pad(pathterminal.Truncate(cwd, cwdWidth), cwdWidth) + "  "
 		}
 		return text + title
 	}

@@ -52,8 +52,9 @@ component libraries, typography, geometry and interaction mechanics are means.
   its right gutter (Details, then Copy) using `rowAction` and `revealed`. Only a
   failure message takes space under the row.
 - Columns shared through a grid or subgrid size to their widest row. A row with
-  nothing for a column spans its neighbour into it, so a path in an activity row
-  wraps only where the row runs out.
+  nothing for a column spans its neighbour into it. Path labels use the shared
+  `Path` component to elide the leading end when space runs out, keeping the
+  distinctive suffix and the complete source for selection, copy and tooltips.
 - Toolbar rows prefer icon buttons. Choose container breakpoints from measured
   widths, not guesses: the composer's tools fit one row on desktop with the side
   panel open, and on phones Stop and Send stay on the tools row.
@@ -115,7 +116,7 @@ component libraries, typography, geometry and interaction mechanics are means.
 - Session metrics use compact, grouped label/value tables. Measurements align
   with tabular numerals; explanatory prose spans the section instead of leaving
   an empty label column. Preserve zero values, units, paths and server-provided
-  details, with long content wrapping on phones. Their view and exchange
+  details, with long nonpath content wrapping on phones. Their view and exchange
   navigation stays pinned under the dialog title while long content scrolls.
   A comparison group puts its title in the column-heading row and
   right-aligns its value columns.

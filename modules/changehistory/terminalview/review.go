@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -121,7 +123,7 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []p
 		source = diffrender.LineSource{Path: file.Path, Content: diffrender.GutterWidth}
 		fileNumber++
 		action := ""
-		pathLabel := pathdisplay.ForWorkspace(workspace, file.Path)
+		pathLabel, beforePath := pathdisplay.ForWorkspace(workspace, file.Path), ""
 		incomplete := false
 		for _, chunk := range file.Chunks {
 			incomplete = incomplete || chunk.Review.Incomplete != ""
@@ -131,30 +133,36 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []p
 			if action == "" && chunk.Status == "" {
 				action = fileAction(chunk.Review, workspace)
 				if chunk.Review.BeforePath != "" && chunk.Review.AfterPath != "" && chunk.Review.BeforePath != chunk.Review.AfterPath {
-					pathLabel, action = action, ""
+					beforePath = pathdisplay.ForWorkspace(workspace, chunk.Review.BeforePath)
+					pathLabel, action = pathdisplay.ForWorkspace(workspace, chunk.Review.AfterPath), ""
 				}
 			}
 		}
 		if incomplete {
 			render.Counts[i] = diffmodel.Counts{-1, -1}
 		}
-		label := fmt.Sprintf("%d/%d  %s", fileNumber, fileCount, pathLabel)
+		prefix := fmt.Sprintf("%d/%d  ", fileNumber, fileCount)
+		suffix := ""
 		if action != "" {
-			label += " · " + action
+			suffix = " · " + action
 		}
 		counts := render.Counts[i]
 		statsWidth := len(fmt.Sprintf(" +%d -%d", counts.Added, counts.Removed))
 		if incomplete {
 			statsWidth = len(" counts unavailable")
 		}
-		headings := strings.Split(ansi.Wrap(textsanitize.Safe(label, false), max(1, width-3-statsWidth), ""), "\n")
-		for j, heading := range headings {
-			if j == 0 {
-				heading = diffrender.Header(heading, width-3, counts, theme)
-			} else {
-				heading = "\x1b[1m" + heading + "\x1b[22m"
-			}
-			if err := appendLine(heading, file.Highlighted, j > 0); err != nil {
+		room := width - 3 - statsWidth - ansi.StringWidth(prefix+suffix)
+		pathLabel = textsanitize.Safe(pathLabel, false)
+		fitted := pathterminal.Truncate(pathLabel, room)
+		if beforePath != "" {
+			fitted = pathterminal.TruncateMove(textsanitize.Safe(beforePath, false), pathLabel, room)
+		}
+		label := prefix + fitted + suffix
+		if err := appendLine(diffrender.Header(label, width-3, counts, theme), file.Highlighted, false); err != nil {
+			return Render{}, err
+		}
+		if room < 1 {
+			if err := appendLine(pathterminal.Truncate(textsanitize.Safe(pathLabel, false), width-3), file.Highlighted, true); err != nil {
 				return Render{}, err
 			}
 		}
@@ -201,7 +209,7 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []p
 					if review.AfterPath == "" {
 						status = "D"
 					}
-					label = status + " " + pathdisplay.ForWorkspace(workspace, cmp.Or(review.AfterPath, review.BeforePath)) + "/"
+					label = status + " " + pathterminal.Truncate(pathdisplay.ForWorkspace(workspace, cmp.Or(review.AfterPath, review.BeforePath))+"/", width-5)
 				} else {
 					if origin := r.originLabel(presentation.Origin{Caller: chunk.Caller, Source: chunk.Source}); origin != "" && chunk.Change != "" {
 						label += " · " + origin

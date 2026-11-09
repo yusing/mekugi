@@ -182,8 +182,7 @@ func TestEditGroupLongSourceWrapping(t *testing.T) {
 func TestOperationGroupWrapping(t *testing.T) {
 	for _, width := range []int{24, 40} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			// Wide enough rows shorten the path's middle rather than wrap it.
-			wraps := width < 30
+			// Paths give up their prefix, even when a filename alone cannot fit.
 			p := activityui.Painter{}
 			blocks := activityui.GroupOperations([]activityui.Block{
 				{Kind: "op", Verb: "Edit", Label: "`internal/router/long_activity_filename.go` +13 -11 · python3", EditSource: "python3", EditHeader: true},
@@ -194,7 +193,7 @@ func TestOperationGroupWrapping(t *testing.T) {
 			for _, block := range []activityui.Block{blocks[0], blocks[2]} {
 				rows := p.Block(block, width)
 				// A source that does not fit follows on its own row.
-				if wraps && len(rows) < 2 || !wraps && (len(rows) > 2 || len(rows) == 2 && strings.TrimSpace(ansi.Strip(rows[1])) != "via python3") {
+				if len(rows) > 2 || len(rows) == 2 && strings.TrimSpace(ansi.Strip(rows[1])) != "via python3" {
 					t.Fatalf("unexpected operation layout at width %d: %q", width, plainLines(rows))
 				}
 				for i, row := range rows {
@@ -206,8 +205,7 @@ func TestOperationGroupWrapping(t *testing.T) {
 					}
 				}
 				compact := strings.Join(strings.Fields(ansi.Strip(strings.Join(rows, ""))), "")
-				if wraps && !strings.Contains(compact, "internal/router/long_activity_filename.go") ||
-					!wraps && (!strings.Contains(compact, "…/long_acti") || !strings.Contains(compact, "name.go")) {
+				if !strings.Contains(compact, "…") || !strings.Contains(compact, "name.go") || strings.Contains(compact, "internal/") {
 					t.Errorf("operation lost its path: %q", compact)
 				}
 			}
@@ -326,9 +324,9 @@ func TestFitPathDropsLeadingDirectories(t *testing.T) {
 	path := "internal/router/toolplugin/tests/tools.test.ts"
 	for width, want := range map[int]string{
 		60: "Read   internal/router/toolplugin/tests/tools.test.ts L1–85",
-		50: "Read   …/toolplugin/tests/tools.test.ts L1–85",
-		44: "Read   …/tests/tools.test.ts L1–85",
-		33: "Read   …/tools.test.ts L1–85",
+		50: "Read   …outer/toolplugin/tests/tools.test.ts L1–85",
+		44: "Read   …toolplugin/tests/tools.test.ts L1–85",
+		33: "Read   …tests/tools.test.ts L1–85",
 	} {
 		block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: path, Ranges: []string{"1:85"}}}}
 		if got := strings.Join(plainLines(p.Block(block, width)), "\n"); got != want {
@@ -484,7 +482,7 @@ func TestMergedReadsCountContentPerTarget(t *testing.T) {
 	}
 	got := plainLines(p.Block(blocks[0], 80))
 	want := []string{
-		"Read   …/tools.test.ts L1147–1167 (19 lines), L1738–1788 (50 lines), L1–85",
+		"Read   …tests/tools.test.ts L1147–1167 (19 lines), L1738–1788 (50 lines), L1–85",
 		"       plugins/inspect_file.ts  L135–185 (50 lines)",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {

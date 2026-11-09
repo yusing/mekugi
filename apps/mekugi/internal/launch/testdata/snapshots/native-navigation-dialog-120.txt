@@ -5,7 +5,7 @@
 
       ╭─ Read ─────────────────────────────────────────────────────────────────────────────────────── 3 / 5 [×] ─╮
       │ 1 line                                                                                                   │
-      │  1 Read …/navigation.go    2 Read …/paint.go         3 Read …/路径/日本語.go   4 Read …/frame.go         │
+      │  1 Read …er/navigation.go  2 Read …ctivity/paint.go  3 Read …l/路径/日本語.go  4 Read …iffview/frame.go  │
       ├──────────────────────────────────────────────────────────────────────────────────────────────────────────┤
       │ 1 │ page 3 only                                                                                          │
       │                                                                                                          │

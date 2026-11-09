@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -163,7 +165,7 @@ func TestDialogFiveTabsSub16CellPathBudget(t *testing.T) {
 		if room != 15 {
 			t.Fatalf("fixture must exercise a sub-16-cell path budget, got %d", room)
 		}
-		if cell, want := ansi.Cut(row, tab.from, tab.to), terminalui.TruncatePath(tabs[tab.page].Path, room); !strings.Contains(cell, want) {
+		if cell, want := ansi.Cut(row, tab.from, tab.to), pathterminal.Truncate(tabs[tab.page].Path, room); !strings.Contains(cell, want) {
 			t.Fatalf("tab dropped its path: want %q in %q", want, cell)
 		}
 	}

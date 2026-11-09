@@ -2,8 +2,9 @@
 package terminalview
 
 import (
-	"path/filepath"
 	"strings"
+
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -164,15 +165,5 @@ func Picker(p completion.View, layout *terminalui.ChoiceListLayout, options Pick
 }
 
 func fileLabel(path string, width int) string {
-	path = promptText(path)
-	if ansi.StringWidth(path) <= width {
-		return path
-	}
-	name := filepath.Base(path)
-	if ansi.StringWidth(name)+2 <= width {
-		return ansi.Truncate(filepath.Dir(path), width-ansi.StringWidth(name)-1, "…") + string(filepath.Separator) + name
-	}
-	left := max(0, (width-1)/2)
-	right := max(0, width-1-left)
-	return ansi.Cut(name, 0, left) + "…" + ansi.Cut(name, max(0, ansi.StringWidth(name)-right), ansi.StringWidth(name))
+	return pathterminal.Truncate(promptText(path), width)
 }

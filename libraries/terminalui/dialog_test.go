@@ -11,6 +11,24 @@ import (
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
+func TestDialogFitsOnlyPathFromLeft(t *testing.T) {
+	path := StyledPath("/home/dev/projects/very-long-directory/distinctive.go")
+	page := DialogPage{Title: "Read · " + path + " · 2s", TitlePath: path}
+	rows := new(Painter).Dialog(DialogFrame{Page: page}, 40, 8)
+	if line := ansi.Strip(rows[0]); !strings.Contains(line, "Read · …") || !strings.Contains(line, "distinctive.go · 2s") || strings.Contains(line, "/home/") {
+		t.Fatalf("path title did not retain suffix and nonpath facts: %q", line)
+	}
+	if !strings.Contains(page.Title, "/home/dev") {
+		t.Fatal("painting changed the full title")
+	}
+	page.TitlePath = ""
+	page.Title = "An ordinary long title whose ending should be hidden"
+	rows = new(Painter).Dialog(DialogFrame{Page: page}, 40, 8)
+	if line := ansi.Strip(rows[0]); !strings.Contains(line, "An ordinary long title") || strings.Contains(line, "hidden") {
+		t.Fatalf("nonpath title truncation changed: %q", line)
+	}
+}
+
 func TestUISnapshotDialogSurfaceStyles(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

@@ -53,7 +53,7 @@ func TestComposerWorkspaceStatus(t *testing.T) {
 	workspace := "/workspace/" + strings.Repeat("long-directory/", 6) + "project"
 	u.attached.cwd = workspace
 	rows, _ := u.testMainFrame(36, 8, 0)
-	if line := ansi.Strip(rows[len(rows)-1]); !strings.Contains(line, "/worksp…") || strings.Contains(line, workspace) {
+	if line := ansi.Strip(rows[len(rows)-1]); !strings.Contains(line, "…project") || strings.Contains(line, workspace) {
 		t.Fatalf("long workspace was not abbreviated: %q", line)
 	}
 	appServerTestKeys(t, u, "/status\r")

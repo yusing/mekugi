@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Path from "./Path.svelte";
   import Code from "./Code.svelte";
   import Alert from "./ui/Alert.svelte";
   import { onDestroy, tick, untrack } from "svelte";
@@ -402,7 +403,8 @@
               onkeydown={() => {}}
             >
               <span class="max-w-1/2 flex-none truncate font-mono"
-                >{choice.Display || choice.Name}</span
+                >{#if choice.Path}<Path path={choice.Path} />{:else}{choice.Display ||
+                    choice.Name}{/if}</span
               >
               {#if choice.Description}<span
                   class={[

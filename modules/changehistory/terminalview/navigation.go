@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -124,30 +126,31 @@ func (n *Navigation) Render(files []presentation.File, counts []diffmodel.Counts
 		}
 		entry := n.Entries[index]
 		indent := strings.Repeat("  ", min(entry.Depth, 4))
-		label, stats := "", ""
+		prefix, label, stats := indent, textsanitize.Safe(entry.Label, false), ""
 		if entry.File < 0 {
 			arrow := "▼"
 			if n.Collapsed[entry.Folder] {
 				arrow = "▶"
 			}
-			label = indent + theme.Accent() + arrow + "\x1b[39m " + textsanitize.Safe(entry.Label, false)
+			prefix += theme.Accent() + arrow + "\x1b[39m "
 			stats = fmt.Sprintf(" "+diffrender.Subtle+"(%d)"+diffrender.SubtleReset, entry.Count)
 		} else {
 			file := files[entry.File]
-			label = indent + textsanitize.Safe(entry.Label, false)
-			if len(file.Chunks) > 0 {
-				label = indent + diffrender.FileLabel(file.Status, entry.Label, n.Workspace, theme)
-			}
 			if entry.File < len(counts) && !file.Status.Directory {
 				stats = diffrender.CountStats(counts[entry.File], theme)
 			}
 			if entry.File < len(n.Dots) {
 				stats = n.Dots[entry.File] + stats
 			}
+			if len(file.Chunks) > 0 {
+				label = diffrender.FileLabel(file.Status, entry.Label, n.Workspace, theme, contentWidth-ansi.StringWidth(prefix+stats))
+			}
 		}
 		available := max(0, contentWidth-ansi.StringWidth(stats))
-		label = ansi.Truncate(label, available, "…")
-		line := ansi.Truncate(label+stats, contentWidth, "")
+		if entry.File < 0 || len(files[entry.File].Chunks) == 0 {
+			label = pathterminal.Truncate(label, available-ansi.StringWidth(prefix))
+		}
+		line := ansi.Truncate(prefix+label+stats, contentWidth, "")
 		if (n.Focused && index == n.Cursor) || (!n.Focused && entry.File == selected && entry.File >= 0) {
 			line = liveDiffSelectRow(line, contentWidth, theme)
 		} else if index == n.Hover-1 {

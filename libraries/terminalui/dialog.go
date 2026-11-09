@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	ansiparser "github.com/charmbracelet/x/ansi/parser"
@@ -15,12 +17,13 @@ import (
 // DialogPage is a supplied source document for a terminal dialog. Lines stay unwrapped, so a long live stream costs a layout only
 // for the rows in view.
 type DialogPage struct {
-	Title  string // Styled verb and target.
-	Live   bool   // Output is still streaming.
-	Detail string // Styled facts: line spans, line count, exit.
-	Lines  []DialogLine
-	Text   string // Plain output, or source without output, for copying.
-	digits int    // Width of the line-number column.
+	Title     string // Styled verb and target.
+	TitlePath string // Styled path within Title, fitted only when painted.
+	Live      bool   // Output is still streaming.
+	Detail    string // Styled facts: line spans, line count, exit.
+	Lines     []DialogLine
+	Text      string // Plain output, or source without output, for copying.
+	digits    int    // Width of the line-number column.
 }
 
 // DialogLine is one numbered source/output line, a logical unnumbered error
@@ -287,7 +290,13 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	if room < 1 {
 		right, room = " "+DialogClose+" ", width-8-DialogCloseWidth
 	}
-	title := ansi.Truncate(f.Page.Title, room, "…") + Reset
+	title := f.Page.Title
+	if target := f.Page.TitlePath; target != "" {
+		if before, after, ok := strings.Cut(title, target); ok {
+			title = before + pathterminal.Truncate(target, room-ansi.StringWidth(before+after)) + after
+		}
+	}
+	title = ansi.Truncate(title, room, "…") + Reset
 	fill := max(0, width-6-ansi.StringWidth(title)-ansi.StringWidth(right))
 	lines := []string{edge("╭─ ") + title + " " + edge(strings.Repeat("─", fill)) + right + edge("─╮")}
 	row := func(text string, thumb bool, gutterStyle string) string {

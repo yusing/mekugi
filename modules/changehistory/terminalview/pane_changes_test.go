@@ -210,7 +210,7 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	l.Expanded = map[string]bool{"apple1": true}
 	l.Rebuild(&c.view.View, c.workspace)
 	rows := l.Render(false, false, "", 40, 5, diffrender.DarkTheme)
-	file := diffrender.FileLabel(diffmodel.Status{Before: "/w/broker.go", After: "/w/broker.go", Edited: true}, "broker.go", "/w", diffrender.DarkTheme)
+	file := diffrender.FileLabel(diffmodel.Status{Before: "/w/broker.go", After: "/w/broker.go", Edited: true}, "broker.go", "/w", diffrender.DarkTheme, 80)
 	if !strings.Contains(rows[3], file) || !strings.Contains(ansi.Strip(rows[3]), "├ M broker.go +1 -1") {
 		t.Fatalf("file row = %q, want shared label %q", rows[3], file)
 	}
@@ -250,7 +250,7 @@ func TestLiveDiffFileStatus(t *testing.T) {
 		{"binary rename with edit", []diffmodel.ReviewFile{diffmodel.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 4, "abc", "abd")}, "RM old.bin → a.go"},
 		{"mchanges conflict", []diffmodel.ReviewFile{conflicted}, "UU a.go"},
 	} {
-		if got := ansi.Strip(diffrender.FileLabel(diffmodel.StatusOf(tc.regions...), "a.go", "/w", diffrender.DarkTheme)); got != tc.want {
+		if got := ansi.Strip(diffrender.FileLabel(diffmodel.StatusOf(tc.regions...), "a.go", "/w", diffrender.DarkTheme, 80)); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
 	}

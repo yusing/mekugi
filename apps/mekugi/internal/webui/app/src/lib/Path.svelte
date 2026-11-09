@@ -1,8 +1,9 @@
 <script lang="ts">
-  // A workspace path that may wrap after a slash, never mid-name.
-  let { path }: { path: string } = $props();
-
-  const parts = $derived(path.split(/(?<=\/)/));
+  // Geometry-only elision. Keep the full source and its original LTR order for
+  // selection, accessibility and copy while the overflow marker sits on the left.
+  let { path, title = path }: { path: string; title?: string } = $props();
 </script>
 
-{#each parts as part, i (i)}{part}<wbr />{/each}
+<span class="inline-block max-w-full min-w-0 truncate text-left align-bottom" dir="rtl" {title}
+  ><bdi dir="ltr">{path}</bdi></span
+>

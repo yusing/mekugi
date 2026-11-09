@@ -1,1 +1,1 @@
-Read   …/dialog.go L42–80 (39 lines)
+Read   …activity/dialog.go L42–80 (39 lines)

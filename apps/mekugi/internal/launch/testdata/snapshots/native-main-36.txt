@@ -13,4 +13,4 @@
 │ ❯ Add narrow-screen coverage.    │
 │   Keep the interaction assertions│
 │   .                              │
-╰── /worksp… • snapshot-mod… • 0% ─╯
+╰── …project • snapshot-mod… • 0% ─╯

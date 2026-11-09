@@ -1,6 +1,5 @@
 <script lang="ts">
   import { breakable, highlight } from "./highlight";
-  import Path from "./Path.svelte";
 
   // Code text, highlighted once its grammar has loaded. Until then, or when
   // lang names no known grammar, it is plain text. wrap lets paths break after
@@ -21,4 +20,5 @@
   );
 </script>
 
-{#if html}{@html html}{:else if wrap}<Path path={code} />{:else}{code}{/if}
+{#if html}{@html html}{:else if wrap}{#each code.split(/(?<=\/)/) as part, i (i)}{part}<wbr
+    />{/each}{:else}{code}{/if}

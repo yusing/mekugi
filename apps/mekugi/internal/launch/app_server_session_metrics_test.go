@@ -28,7 +28,7 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
-func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
+func TestSessionMetricsElidedDirectoryCopy(t *testing.T) {
 	const path = "/tmp/mekugi debug/a-long-session-directory/mekugi-debug-3106556733"
 	for _, width := range []int{35, 100} {
 		u, _ := newAppServerTestUI()
@@ -42,15 +42,15 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 		t.Cleanup(func() { terminalTest(u).Diff.Close() })
 		x1, y1, x2, y2 := -1, -1, -1, -1
 		for y, row := range strings.Split(screen.String(), "\n") {
-			if before, _, ok := strings.Cut(row, "/tmp/"); ok {
+			if before, _, ok := strings.Cut(row, "…"); ok {
 				x1, y1 = ansi.StringWidth(before), y
 			}
 			if before, _, ok := strings.Cut(row, "3106556733"); ok {
 				x2, y2 = ansi.StringWidth(before)+len("3106556733")-1, y
 			}
 		}
-		if x1 < 0 || y2 <= y1 {
-			t.Fatalf("wrapped directory missing at width %d: %s", width, screen.String())
+		if x1 < 0 || y2 != y1 {
+			t.Fatalf("elided directory missing at width %d: %s", width, screen.String())
 		}
 		if width == 35 {
 			x1, y1, x2, y2 = x2, y2, x1, y1
@@ -58,7 +58,7 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 		selectionTestDrag(t, terminalTest(u), x1, y1, x2, y2)
 		terminalTest(u).selectionAction('c')
 		if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x07"; terminalTest(u).Frame.Clipboard != want {
-			t.Fatalf("wrapped directory copy = %q, want %q", terminalTest(u).Frame.Clipboard, want)
+			t.Fatalf("elided directory copy = %q, want %q", terminalTest(u).Frame.Clipboard, want)
 		}
 	}
 }

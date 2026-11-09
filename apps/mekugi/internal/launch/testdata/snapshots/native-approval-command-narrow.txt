@@ -17,4 +17,4 @@
 
 ╭─ approving · turn waiting ───────╮
 │ ❯                                │
-╰── /worksp… • snapshot-mod… • 0% ─╯
+╰── …rkspace • snapshot-mod… • 0% ─╯

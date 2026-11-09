@@ -133,7 +133,7 @@ func TestCollapsedReadCountsLinesAfterTarget(t *testing.T) {
 	path := "internal/router/toolplugin/tests/tools.test.ts"
 	block := Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: path, Ranges: []string{"1:85"}}}, Tail: make([]string, 84), Collapsed: true}
 	rows := p.Block(block, 50)
-	if got, want := ansi.Strip(strings.Join(rows, "\n")), "Read   …/tests/tools.test.ts L1–85 (84 lines)"; got != want {
+	if got, want := ansi.Strip(strings.Join(rows, "\n")), "Read   …lugin/tests/tools.test.ts L1–85 (84 lines)"; got != want {
 		t.Fatalf("fitted read = %q, want %q", got, want)
 	}
 	block.Hovered = true

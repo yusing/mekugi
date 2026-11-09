@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Path from "./Path.svelte";
   import AgentName from "./AgentName.svelte";
   import UserImage from "./UserImage.svelte";
   import Excerpt from "./Excerpt.svelte";
@@ -392,7 +393,7 @@
                       class="mt-1 w-44 max-w-full truncate font-mono text-tiny text-muted"
                       title={paths[i]}
                     >
-                      {basename(paths[i])}
+                      <Path path={basename(paths[i])} title={paths[i]} />
                     </p>{/if}
                 </div>
               {/each}

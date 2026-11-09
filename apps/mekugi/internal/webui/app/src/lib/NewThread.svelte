@@ -324,6 +324,7 @@
               title={workspace}
               icon="folder"
               entry="Workspace path"
+              path
               text={basename(workspace) || "Choose a workspace"}
               bind:value={workspace}
               groups={[

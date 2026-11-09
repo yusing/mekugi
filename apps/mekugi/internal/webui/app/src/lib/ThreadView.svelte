@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Path from "./Path.svelte";
   let selectedQuestion = $state("");
   const questionChannel = $derived(
     (semantic.prompts?.questions ?? []).flatMap((call) =>
@@ -449,7 +450,9 @@
         aria-describedby={workspace ? "thread-workspace" : undefined}
         tabindex="-1"
       >
-        {#if session}{title}
+        {#if session}{#if !session.title && session.workspace}<Path
+              path={title}
+            />{:else}{title}{/if}
         {:else if gone}Thread unavailable
         {:else}<span class="sr-only">Loading thread</span><span
             class="{skeleton} inline-block w-40 text-transparent"
@@ -459,7 +462,8 @@
       {#if workspace}<span
           id="thread-workspace"
           class="min-w-0 flex-1 truncate text-small text-muted"
-          title={workspace}><span class="sr-only">Working directory: </span>{workspace}</span
+          title={workspace}
+          ><span class="sr-only">Working directory: </span><Path path={workspace} /></span
         >{/if}
     </div>
     {#if live && !ended && !recorded && frame}

@@ -1,10 +1,34 @@
 package terminalsession
 
 import (
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	"testing"
 )
+
+func TestStatusPanelPathRetainsSource(t *testing.T) {
+	const path = "/home/dev/projects/workspace/.worktrees/distinctive-workspace"
+	view := sessionpresentation.View{Panel: &sessionpresentation.PanelView{ID: 1, Fields: []sessionpresentation.StatusField{{Group: "Session", Label: "Directory", Value: path, Path: true}}}}
+	var panel StatusPanel
+	panel.Update(view)
+	rows := panel.Render(&terminalui.Painter{CopySource: true}, 40, 20)
+	var found bool
+	for _, row := range rows {
+		plain, spans := terminalui.ExtractCopy(row)
+		if strings.Contains(ansi.Strip(plain), "distinctive-workspace") {
+			found = true
+			if len(spans) != 1 || spans[0].Prefix != path {
+				t.Fatalf("shortened path lost full copy source: %+v", spans)
+			}
+		}
+	}
+	if !found || view.Panel.Fields[0].Value != path {
+		t.Fatal("path suffix missing or operational path changed")
+	}
+}
 
 func TestStatusPanelNavigationTracksPublishedIdentity(t *testing.T) {
 	v := sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 2}, Panel: &sessionpresentation.PanelView{ID: 1, Fields: []sessionpresentation.StatusField{{Group: "Session", Value: "value"}}}}

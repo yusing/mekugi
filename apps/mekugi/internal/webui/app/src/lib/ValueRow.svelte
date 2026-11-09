@@ -220,9 +220,9 @@
   <div class={["min-w-0 wrap-break-word [&_code]:text-code", !status && "col-span-2"]}>
     {#if reads.length}
       {#each reads as read, i (i)}
-        <span class="block font-mono text-code"
+        <span class="flex min-w-0 font-mono text-code"
           ><Path path={read.path} />{#if read.ranges?.length}<span
-              class="whitespace-nowrap text-muted">:{read.ranges.join(",")}</span
+              class="shrink-0 whitespace-nowrap text-muted">:{read.ranges.join(",")}</span
             >{/if}</span
         >
       {/each}
@@ -321,7 +321,11 @@
               <span class="font-mono {changeCodes[change.code ?? ''] ?? 'text-kind-write'}"
                 >{change.code ?? change.verb ?? ""}</span
               >
-              <span class="truncate font-mono">{change.label}</span>
+              <span class="min-w-0 font-mono"
+                >{#if change.code || change.verb}<Path path={change.label ?? ""} />{:else}<span
+                    class="block truncate">{change.label}</span
+                  >{/if}</span
+              >
               {#if change.added || change.removed}
                 <span class="font-mono tabular-nums"
                   >{@html `${count("+", String(change.added ?? 0))} ${count("−", String(change.removed ?? 0))}`}</span

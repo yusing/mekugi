@@ -551,12 +551,16 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 					}
 				}
 				for _, name := range []string{tc.before, tc.after} {
-					if name != "" && !strings.Contains(text, filepath.Base(name)) {
+					base := filepath.Base(name)
+					if width == 40 && len(base) > 8 {
+						base = base[len(base)-8:]
+					}
+					if name != "" && !strings.Contains(text, base) {
 						t.Fatalf("width %d: heading lost path %q:\n%s", width, name, text)
 					}
 				}
-				if width == 40 && len(lines) == 1 {
-					t.Fatalf("width %d: wrapped heading lost its continuation: %+v", width, render)
+				if width == 40 && !strings.Contains(text, "…") {
+					t.Fatalf("width %d: narrow heading did not elide paths from the left: %+v", width, render)
 				}
 				for _, line := range lines {
 					if !utf8.ValidString(line) || ansi.StringWidth(line) > width-1 || !strings.Contains(line, "\x1b[1m") {

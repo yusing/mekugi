@@ -1,5 +1,4 @@
-Read   file.go
+Read   …e.go L1–20
        (timeout
        1m30s)
-       L1–20
        · 500ms

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Path from "./Path.svelte";
   import { untrack } from "svelte";
   import Alert from "./ui/Alert.svelte";
   import type { NativeDetails } from "../../../../sessionapi/protocol";
@@ -62,7 +63,7 @@
       bind:this={heading}
       title={display.file?.Path}
     >
-      {display.file?.Path || "Activity details"}
+      {#if display.file}<Path path={display.file.Path} />{:else}Activity details{/if}
     </h2>
     <ReferenceSelection
       root={content}
