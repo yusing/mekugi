@@ -88,7 +88,7 @@ func (b *Builder) appendCaptures(captures []Chunk) bool {
 		b.next.maxCaptureOrder = max(b.next.maxCaptureOrder, chunk.CaptureOrder)
 	}
 	v.RefreshVisible()
-	b.next.Publication = Publication{Files: v.Files, Unfiltered: v.Visible,
+	b.next.Publication = Publication{Files: v.Files, Diagnostics: b.next.Publication.Diagnostics, Unfiltered: v.Visible,
 		Counts: Counts{Callers: callers, Net: NetCounts(&v)}, initialized: true}
 	return true
 }

@@ -262,6 +262,10 @@ known counts. Unavailable counts remain explicit. Exact-operation details includ
 these diagnostic files; saved Diff composition, authored totals and rewind selection
 exclude them.
 
+Wait progress borrows the same immutable captures before Diff-pane filtering, including
+net-zero and temporary edits. Git captures remain separately marked diagnostics, available
+through `mchanges ID --history`, without becoming authored files or edit totals.
+
 Each attached session publishes one immutable retained-review snapshot for saved
 Diff, exact-operation details and edit totals. Detail requests use that snapshot
 without reopening storage. [Session-review loading](../../apps/mekugi/internal/sessionreview/SPEC.md)

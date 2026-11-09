@@ -71,7 +71,7 @@ func selectedEvent(tree *Tree, wait *Wait) *Effect {
 }
 
 func (tree *Tree) waitResult(wait *Wait) *WaitResult {
-	result := &WaitResult{ID: wait.ID, Standalone: wait.Standalone, UsageLimit: wait.UsageLimit, Capacity: wait.Capacity, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
+	result := &WaitResult{Progress: wait.Progress, ID: wait.ID, Standalone: wait.Standalone, UsageLimit: wait.UsageLimit, Capacity: wait.Capacity, Mode: wait.Mode, Events: slices.Clone(wait.Terminals), State: wait.PublicState(), EffectiveMS: wait.EffectiveMS, Metrics: wait.Metrics}
 	result.Timed = wait.Deadline != nil
 	if wait.UsageLimit && wait.Deadline != nil {
 		result.Deadline = new(*wait.Deadline)
@@ -107,7 +107,7 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 }
 
 func (wait *WaitResult) Settled() bool {
-	return wait != nil && (wait.State == "completed" || wait.State == "timeout" || wait.State == "canceled" || wait.State == "paused" || wait.State == "failed")
+	return wait != nil && (wait.State == "completed" || wait.State == "timeout" || wait.State == "canceled" || wait.State == "paused" || wait.State == "failed" || wait.State == "yielded")
 }
 
 // StatusText is shared by ordinary and temporary conversation publications.
@@ -223,21 +223,24 @@ func (tree *Tree) selectAllWaitOutcomes(wait *Wait) bool {
 	return true
 }
 
-func (s *Service) RegisterWait(ctx context.Context, caller Identity, mode WaitMode, timeout *int64, now time.Time) (result WaitResult, err error) {
-	return s.registerWait(ctx, caller, mode, timeout, now, false, false, "")
+func (s *Service) RegisterWait(ctx context.Context, caller Identity, mode WaitMode, timeout, yield *int64, now time.Time) (result WaitResult, err error) {
+	return s.registerWait(ctx, caller, mode, timeout, yield, now, false, false, "")
 }
 
 // RegisterCompaction registers the checkpoint and optional wait in one transaction.
-func (s *Service) RegisterCompaction(ctx context.Context, caller Identity, mode WaitMode, timeout *int64, now time.Time, standalone bool, reload string) (WaitResult, error) {
-	return s.registerWait(ctx, caller, mode, timeout, now, true, standalone, reload)
+func (s *Service) RegisterCompaction(ctx context.Context, caller Identity, mode WaitMode, timeout, yield *int64, now time.Time, standalone bool, reload string) (WaitResult, error) {
+	return s.registerWait(ctx, caller, mode, timeout, yield, now, true, standalone, reload)
 }
 
-func (s *Service) registerWait(ctx context.Context, caller Identity, mode WaitMode, timeout *int64, now time.Time, compact, standalone bool, reload string) (result WaitResult, err error) {
+func (s *Service) registerWait(ctx context.Context, caller Identity, mode WaitMode, timeout, yield *int64, now time.Time, compact, standalone bool, reload string) (result WaitResult, err error) {
 	if mode == "" {
 		mode = WaitAny
 	}
 	if mode != WaitAny && mode != WaitAll {
 		return result, errors.New("wait_mode must be any or all")
+	}
+	if yield != nil && (*yield < int64((5*time.Minute)/time.Millisecond) || *yield > int64((1<<63-1)/int64(time.Millisecond))) {
+		return result, errors.New("yield_time_ms must be at least 300000 and fit a duration")
 	}
 	registered := false
 	defer func() {
@@ -280,6 +283,9 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, mode WaitMo
 		}
 		wait := &Wait{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered", Item: caller.Item, Targets: selected, Mode: mode}
 		wait.Standalone = standalone
+		if yield != nil {
+			wait.YieldAt = new(now.Add(time.Duration(*yield) * time.Millisecond))
+		}
 		if compact {
 			wait.Compaction = &Effect{ID: caller.Call + ":compact", Caller: caller.Thread, Target: caller.Thread, CallerTurn: caller.Turn, Generation: member.Generation, Kind: "compact", State: "registered", Message: reload}
 		}
@@ -353,7 +359,10 @@ func (s *Service) PrepareWake(ctx context.Context, thread string, now time.Time)
 			return unchanged
 		}
 		if !wait.Standalone && !tree.selectWaitOutcome(wait) && (wait.Deadline == nil || now.Before(*wait.Deadline)) {
-			return unchanged
+			if wait.YieldAt == nil || now.Before(*wait.YieldAt) {
+				return unchanged
+			}
+			wait.Yielded = true
 		}
 		wait.State = "queued"
 		result = new(wait.Effect)
@@ -444,6 +453,10 @@ func cancelSubscription(tree *Tree, member *Member) {
 func (tree *Tree) wakeResult(wait *Wait) *WaitResult {
 	result := tree.waitResult(wait)
 	result.State = "timeout"
+	if wait.Yielded {
+		result.State = "yielded"
+		result.Targets = nil // Yield output names only agents with captured changes.
+	}
 	if wait.Standalone || wait.UsageLimit || result.Event != nil || len(result.Events) != 0 {
 		result.State = "completed"
 	}
@@ -467,6 +480,7 @@ func (s *Service) WaitPublication(thread string) *WaitResult {
 		return nil
 	}
 	result := tree.waitResult(wait)
+	result.Progress = nil
 	result.Metrics = nil // Display facts do not borrow frozen continuation payloads.
 	result.Turn, result.Stop = wait.Turn, wait.Stop
 	result.EffectiveMS = nil
@@ -475,6 +489,9 @@ func (s *Service) WaitPublication(thread string) *WaitResult {
 	}
 	if !wait.Standalone && wait.State == "completed" && result.Event == nil && len(result.Events) == 0 {
 		result.State = "timeout"
+		if wait.Yielded {
+			result.State = "yielded"
+		}
 	}
 	return result
 }

@@ -5,6 +5,36 @@ import (
 	"errors"
 )
 
+// YieldCursor borrows immutable counts; acknowledgement replaces the map.
+func (s *Service) YieldCursor(thread string) map[string]int {
+	member, ok := s.member(thread)
+	if !ok {
+		return nil
+	}
+	return member.YieldSeen
+}
+
+func (s *Service) RetainWaitProgress(ctx context.Context, thread, id string, progress WaitProgress, seen map[string]int) error {
+	frozen, err := detach(struct {
+		Progress WaitProgress
+		Seen     map[string]int
+	}{progress, seen})
+	if err != nil {
+		return err
+	}
+	return s.update(ctx, thread, func(_ *Tree, member *Member) error {
+		wait := member.Wait
+		if wait == nil || wait.ID != id || wait.State != "dispatching" || !wait.Yielded {
+			return errors.New("wait progress requires the claimed yield")
+		}
+		if wait.Progress != nil {
+			return unchanged
+		}
+		wait.Progress, wait.YieldSeen = &frozen.Progress, frozen.Seen
+		return nil
+	})
+}
+
 // RetainWaitMetrics freezes the exact dispatched continuation in its existing
 // wait checkpoint so uncertain delivery can reconcile after restart.
 func (s *Service) RetainWaitMetrics(ctx context.Context, thread, id string, metrics map[string]SessionMetrics) error {

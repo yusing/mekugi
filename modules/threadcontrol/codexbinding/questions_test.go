@@ -25,7 +25,7 @@ func TestSideQuestionKeepsLogicalStateAndOrdinaryDelivery(t *testing.T) {
 			target := "child"
 			switch state {
 			case "waiting":
-				if _, err := driver.control.RegisterWait(t.Context(), caller, control.WaitAll, nil, time.Now()); err != nil {
+				if _, err := driver.control.RegisterWait(t.Context(), caller, control.WaitAll, nil, nil, time.Now()); err != nil {
 					t.Fatal(err)
 				}
 				target = "root"

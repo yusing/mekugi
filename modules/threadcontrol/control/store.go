@@ -423,7 +423,7 @@ func (s *Service) Due(thread string, now time.Time) []string {
 	if !ok {
 		return nil
 	}
-	if wait := member.Wait; wait != nil && member.Status == Waiting && !member.HostRunning && wait.State == "registered" && wait.Deadline != nil && !wait.CompactionPending() && !now.Before(*wait.Deadline) {
+	if wait := member.Wait; wait != nil && member.Status == Waiting && !member.HostRunning && wait.State == "registered" && !wait.CompactionPending() && (wait.Deadline != nil && !now.Before(*wait.Deadline) || wait.YieldAt != nil && !now.Before(*wait.YieldAt)) {
 		return []string{thread}
 	}
 	return nil

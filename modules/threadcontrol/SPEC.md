@@ -106,13 +106,13 @@ native request metadata remains unchanged on the provider wire.
   reduces what remaining work must carry. Small steps, preloads and waiting
   transitions alone do not call for compaction; notices are not automatic triggers.
 - `wait_agent` accepts `wait_mode?: "any" | "all"`,
-  `timeout_ms?: integer`, and `compact?: boolean`. Codex also accepts `reload`
+  `timeout_ms?: integer`, `yield_time_ms?: integer`, and `compact?: boolean`. Codex also accepts `reload`
   when `compact:true`; invalid selections reject before wait registration.
   Each wait snapshots all current descendants;
   omitted mode means `"any"`; omitted compaction means false.
 
 Follow-up acknowledgements include the target's current context and compaction
-metrics. Immediate wait results and resumed wait outputs include those same metrics
+metrics. Immediate wait results and terminal resumed wait outputs include those same metrics
 for each descendant, keyed by visible agent name. Unavailable observations
 are `null` without failing an otherwise successful coordination operation.
 Dispatched wait metrics freeze with that wait's existing checkpoint so a resumed
@@ -378,6 +378,24 @@ outcome or addressed message wakes the caller. Explicit timeout values above the
 reject and lower values clamp to its minimum. Retain requested/effective duration
 and the deadline captured when waiting begins. Zero effective duration times out immediately when
 no selected event exists. Later timeout delivery waits for host settlement.
+
+Optional `yield_time_ms` enables a progress wake after at least 300,000 milliseconds;
+omission disables yielding. The interval starts at registration. Completion, addressed
+messages and an elapsed timeout take precedence. Host settlement and compaction retain
+their ordinary barriers. A yield resumes the caller with `state:"yielded"`, not a task
+completion; another wait call waits again. It neither consumes completion notifications
+nor creates a second subscription or timer.
+
+Progress reports available captured changes not delivered by that caller's earlier yields,
+with `mchanges` IDs and current observed activity/status. Agents without new captures are
+omitted. Late writer intervals remain eligible even under an already-reported change ID.
+The progress payload is bounded to approximately 12 KiB, including at most eight file
+capture rows per record; clipped paths and omitted rows remain readable through the exact
+`mchanges` command shown in each report. Git effects retain diagnostic provenance and use
+`--history`, not authored diff counts. `more:true` leaves omitted captures eligible for later
+yields. Capture gaps remain explicit. Payload and cursor freeze before dispatch, and only
+confirmed delivery advances the cursor; uncertain delivery and cold reconciliation reuse
+the same retained output.
 
 The retained wait acknowledges `{state:"waiting"}` with delivery instructions at
 the MCP boundary. Agents let that enclosing execution finish; the host turn ends

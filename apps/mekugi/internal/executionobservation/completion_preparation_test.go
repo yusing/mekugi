@@ -120,7 +120,7 @@ func TestCompletionInjectionCarriesPreparedEvidenceWithoutAnotherRead(t *testing
 	if err := service.RequestStarted(t.Context(), caller, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, time.Now(), true, ""); err != nil {
+	if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), true, ""); err != nil {
 		t.Fatal(err)
 	}
 	items := []any{map[string]any{"type": "custom_tool_call", "call_id": caller.Call, "id": caller.Item, "name": "exec"},

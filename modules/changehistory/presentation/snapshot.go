@@ -56,6 +56,7 @@ type Counts struct {
 // and caller filtering cannot alter its unfiltered composition or totals.
 type Publication struct {
 	Files       []File
+	Diagnostics []Chunk // Captured Git effects, excluded from authored Diff/counts.
 	Unfiltered  map[string]File
 	Counts      Counts
 	initialized bool
@@ -75,7 +76,7 @@ func (p Publication) With(files []File) Publication {
 	v := View{Files: p.Files, Visible: p.Unfiltered, Initialized: p.initialized}
 	v.Merge(files)
 	v.RefreshVisible()
-	return Publication{Files: v.Files, Unfiltered: v.Visible,
+	return Publication{Files: v.Files, Diagnostics: p.Diagnostics, Unfiltered: v.Visible,
 		Counts: Counts{Callers: CallerCounts(v.Files), Net: NetCounts(&v)}, initialized: true}
 }
 
@@ -249,10 +250,16 @@ func (b *Builder) Add(attempt Attempt) error {
 		}
 		b.next.order = slices.Clone(b.next.order)
 		b.next.receipts = slices.Clone(b.next.receipts)
+		b.next.Publication.Diagnostics = slices.Clone(b.next.Publication.Diagnostics)
 	}
 	b.next.bytes = bytes
 	b.next.attempts[attempt.Key] = attempt
 	b.next.order = append(b.next.order, attempt.Key)
+	for _, chunk := range attempt.Chunks {
+		if changes.GitDiagnosticReview(chunk.Review) {
+			b.next.Publication.Diagnostics = append(b.next.Publication.Diagnostics, chunk)
+		}
+	}
 	if attempt.Receipt != nil {
 		for i, prior := range b.next.receipts {
 			if len(prior.Calls) != 0 && prior.Thread == attempt.Receipt.Thread && slices.Equal(prior.Calls, attempt.Receipt.Calls) {

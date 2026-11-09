@@ -58,6 +58,14 @@ func (e *threadExecution) Runtime(thread string) (control.Runtime, error) {
 	return e.hub.Requests(thread)
 }
 
+func (e *threadExecution) WaitProgress(thread string, seen map[string]int) (control.WaitProgress, map[string]int) {
+	wait := e.shared.WaitPublication(thread)
+	if wait == nil {
+		return control.WaitProgress{Error: "Wait is unavailable"}, nil
+	}
+	return e.hub.WaitProgress(thread, wait.Targets, seen)
+}
+
 func (e *threadExecution) Confirm(ctx context.Context, input control.NativeInput) error {
 	if runtime, err := e.Runtime(input.Thread); err == nil {
 		return runtime.Confirm(ctx, input)

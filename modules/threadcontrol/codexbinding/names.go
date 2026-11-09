@@ -85,7 +85,7 @@ func projectResultFields(fields map[string]jsontext.Value) (bool, error) {
 				}
 				projected = responses.MustMarshalJSON(rows)
 			}
-		case "event":
+		case "event", "progress":
 			projected, err = visibleResultNames(value)
 		}
 		if err != nil {

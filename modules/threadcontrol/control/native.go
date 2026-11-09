@@ -24,6 +24,12 @@ type ModelDiscovery interface {
 	DiscoverModels(context.Context, Identity) ([]ModelOption, error)
 }
 
+// ProgressReader borrows admitted capture and activity publications. Seen counts
+// identify immutable capture chunks already delivered by this caller's yields.
+type ProgressReader interface {
+	WaitProgress(string, map[string]int) (WaitProgress, map[string]int)
+}
+
 type ModelOption struct {
 	ID            string `json:"id"`
 	Name          string `json:"name,omitempty"`

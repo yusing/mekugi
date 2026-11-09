@@ -174,6 +174,18 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 						callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
 					}
 				}
+				if input.Wake != nil && input.Wake.State == "yielded" && input.Wake.Progress == nil && callErr == nil {
+					progress := control.WaitProgress{Error: "Captured progress is unavailable"}
+					var seen map[string]int
+					if source, ok := d.native().(control.ProgressReader); ok {
+						progress, seen = source.WaitProgress(input.Thread, d.control.YieldCursor(input.Thread))
+					}
+					if err := d.control.RetainWaitProgress(ctx, input.Thread, input.Wake.ID, progress, seen); err != nil {
+						callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
+					} else {
+						input.Wake.Progress = &progress
+					}
+				}
 				if callErr == nil {
 					receipt.Turn, callErr = owner.Input(ctx, input)
 				}

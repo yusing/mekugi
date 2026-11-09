@@ -66,7 +66,7 @@ func logicalWaitRunningUI(t *testing.T, timeout *int64) (*appServerUI, *threadEx
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
 	caller.Call = "wait"
-	registration, err := service.RegisterWait(t.Context(), caller, "", timeout, *at)
+	registration, err := service.RegisterWait(t.Context(), caller, "", timeout, nil, *at)
 	check(err)
 	payload, err := json.Marshal(registration)
 	check(err)
@@ -677,7 +677,7 @@ func TestUISnapshotLogicalWaitAllOutcome(t *testing.T) {
 			check(err)
 			caller := control.Identity{Thread: "main", Session: "session", Turn: "next", Call: "wait-all", Item: "exec"}
 			check(service.RequestStarted(t.Context(), caller, true))
-			_, err = service.RegisterWait(t.Context(), caller, control.WaitAll, nil, *at)
+			_, err = service.RegisterWait(t.Context(), caller, control.WaitAll, nil, nil, *at)
 			check(err)
 			check(service.Execution(t.Context(), "main", "next", "exec", "", true))
 			_, err = service.ClaimLocalStop(t.Context(), "main", "next", "exec")
@@ -732,7 +732,7 @@ func TestStandaloneCompactionOmitsAgentWaitPresentation(t *testing.T) {
 	}
 	caller := control.Identity{Thread: "main", Session: "session", Turn: "checkpoint-turn", Call: "compact", Item: "compact-exec"}
 	check(s.RequestStarted(ctx, caller, true))
-	_, err := s.RegisterCompaction(ctx, caller, "", nil, *at, true, "")
+	_, err := s.RegisterCompaction(ctx, caller, "", nil, nil, *at, true, "")
 	check(err)
 	check(s.Execution(ctx, caller.Thread, caller.Turn, caller.Item, "", true))
 	_, err = s.ClaimLocalStop(ctx, caller.Thread, caller.Turn, caller.Item)

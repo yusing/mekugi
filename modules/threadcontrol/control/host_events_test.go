@@ -57,7 +57,7 @@ func TestHostEventLogicalStateTable(t *testing.T) {
 			child(t, s, "worker", "leaf", "/root/worker/leaf", "lt")
 			id := identity("worker", "wt")
 			timeout := int64(50)
-			original, err := s.RegisterWait(ctx, id, "", &timeout, now)
+			original, err := s.RegisterWait(ctx, id, "", &timeout, nil, now)
 			must(t, err)
 			must(t, s.AnswerCompleted(ctx, id.Thread, id.Turn, "answer", "retained answer"))
 			if tc.state != "registered" {
@@ -113,7 +113,7 @@ func TestHostEventLogicalStateTable(t *testing.T) {
 					repeated.Item = "other-cell"
 				}
 				var result WaitResult
-				result, err = s.RegisterWait(ctx, repeated, "", &timeout, now.Add(time.Second))
+				result, err = s.RegisterWait(ctx, repeated, "", &timeout, nil, now.Add(time.Second))
 				if err == nil && result.ID != original.ID {
 					t.Fatalf("re-execution replaced wait: %+v", result)
 				}

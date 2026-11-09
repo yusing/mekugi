@@ -117,6 +117,8 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"inspect", `{}`},
 		{"inspect", `{"target":"/root","unknown":true}`},
 		{"wait_agent", `{"target":[]}`},
+		{"wait_agent", `{"yield_time_ms":299999}`},
+		{"wait_agent", `{"yield_time_ms":true}`},
 		{"wait_agent", `{"target":"all"}`},
 		{"wait_agent", `{"target":["child"]}`},
 		{"wait_agent", `{"timeout_ms":1.5}`},

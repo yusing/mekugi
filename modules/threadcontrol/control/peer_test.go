@@ -13,7 +13,7 @@ func TestForeignMessageWakesBothModesThroughCompaction(t *testing.T) {
 				caller, now := identity("root", "rt"), time.Now()
 				child(t, s, "root", "child", "/root/child", "ct")
 				remote := RemoteTarget{Session: "foreign-root", Thread: "foreign", Task: "/root/worker", Turn: "ft", Generation: 1, Status: Working}
-				_, err := s.registerWait(t.Context(), caller, mode, nil, now, compact, false, "")
+				_, err := s.registerWait(t.Context(), caller, mode, nil, nil, now, compact, false, "")
 				must(t, err)
 				stop(t, s, caller)
 				if compact {

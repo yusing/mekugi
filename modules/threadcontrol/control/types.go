@@ -58,6 +58,7 @@ type Member struct {
 	Limits                                                Limits
 	Instructions                                          []guidance.Fragment
 	Wait                                                  *Wait
+	YieldSeen                                             map[string]int `json:",omitzero"`
 	RecoveryWait                                          *Wait
 	Stop                                                  *LocalStop
 	Preload                                               ContextPreload `json:",omitzero"`
@@ -99,6 +100,10 @@ type Wait struct {
 	Recovery                 map[string]uint64
 	RequestedMS, EffectiveMS *int64
 	Deadline                 *time.Time
+	YieldAt                  *time.Time
+	Yielded                  bool
+	Progress                 *WaitProgress
+	YieldSeen                map[string]int `json:",omitzero"`
 	Terminal                 *Event
 	Compaction               *Effect
 	Standalone               bool
@@ -189,6 +194,7 @@ type CompactionResult struct {
 }
 
 type WaitResult struct {
+	Progress     *WaitProgress             `json:"progress,omitempty"`
 	Instructions string                    `json:"instructions,omitempty"`
 	Compaction   *CompactionResult         `json:"compaction,omitempty"`
 	Metrics      map[string]SessionMetrics `json:"metrics,omitempty"`
@@ -206,6 +212,20 @@ type WaitResult struct {
 	Event        *Event                    `json:"event,omitempty"`
 	Targets      []string                  `json:"targets,omitempty"`
 	EffectiveMS  *int64                    `json:"effective_ms,omitempty"`
+}
+
+// WaitProgress contains bounded observations, never an assignment outcome.
+type WaitProgress struct {
+	Agents []AgentProgress `json:"agents,omitempty"`
+	More   bool            `json:"more,omitempty"`
+	Error  string          `json:"error,omitempty"`
+}
+
+type AgentProgress struct {
+	Task     string `json:"task"`
+	Status   string `json:"status"`
+	Activity string `json:"activity,omitempty"`
+	Changes  string `json:"changes"`
 }
 
 func (tree *Tree) Effect(caller, id string) *Effect {

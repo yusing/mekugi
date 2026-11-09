@@ -172,7 +172,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	case "compact":
 		c.Confirmed = result.State == "scheduled"
 	case "wait_agent":
-		c.Confirmed = slices.Contains([]string{"scheduled", "waiting", "completed", "timeout", "canceled", "paused"}, result.State)
+		c.Confirmed = slices.Contains([]string{"scheduled", "waiting", "completed", "timeout", "canceled", "paused", "yielded"}, result.State)
 		if c.Confirmed && len(result.Targets) > 0 {
 			c.Targets = nil
 			for _, target := range result.Targets {

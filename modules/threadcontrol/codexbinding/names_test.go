@@ -51,6 +51,7 @@ func TestProjectRetainedAgentNames(t *testing.T) {
 		{"completion_guard", "Operation ID: retained\nActive descendants: /root/a, /root/a/b. Call wait_agent before completing.", "Operation ID: retained\nActive descendants: agent:main/a, agent:main/a/b. Call wait_agent before completing."},
 		{"wait_agent", `{"id":"retained","events":[{"task":"/root/a","status":"failed"},{"task":"/root/b","status":"completed"}]}`, `{"events":[{"status":"failed","task":"agent:main/a"},{"status":"completed","task":"agent:main/b"}]}`},
 		{"wait_agent", `{"id":"retained","targets":["/root/child"],"event":{"task":"/root/child","message":"/root/file"}}`, `{"targets":["agent:main/child"],"event":{"task":"agent:main/child","message":"/root/file"}}`},
+		{"wait_agent", `{"id":"retained","state":"yielded","progress":{"agents":[{"task":"/root/child","changes":"/root/file"}]}}`, `{"state":"yielded","progress":{"agents":[{"task":"agent:main/child","changes":"/root/file"}]}}`},
 	} {
 		item := map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": tc.name, "output": tc.source}
 		input := responses.MustMarshalJSON([]any{item})

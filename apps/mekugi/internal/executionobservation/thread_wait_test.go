@@ -23,7 +23,7 @@ func TestFailedWaitExecutionAllowsRetry(t *testing.T) {
 	}
 	for _, state := range []string{"Script failed", "Script terminated", "Script completed"} {
 		caller.Call, caller.Item = state, "item-"+state
-		_, err := service.RegisterWait(t.Context(), caller, "", nil, time.Now())
+		_, err := service.RegisterWait(t.Context(), caller, "", nil, nil, time.Now())
 		check(err)
 		request := codexresponses.Request{Fields: map[string]jsontext.Value{"input": mustTestJSON(t, []any{
 			map[string]any{"type": "custom_tool_call", "call_id": caller.Call, "id": caller.Item, "name": "exec"},
@@ -51,7 +51,7 @@ func TestFailedWaitExecutionAllowsRetry(t *testing.T) {
 				t.Fatalf("injected input retained a stale stop: item=%q member=%+v", item, member)
 			}
 			caller.Call, caller.Item = "fresh-wait", "fresh-exec"
-			if _, err := service.RegisterWait(t.Context(), caller, "", nil, time.Now()); err != nil {
+			if _, err := service.RegisterWait(t.Context(), caller, "", nil, nil, time.Now()); err != nil {
 				t.Fatalf("superseded input prevented a fresh wait: %v", err)
 			}
 		} else {
@@ -108,7 +108,7 @@ func TestCompactionExecutionRetainsAttributedArrivals(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					_, err := service.RegisterCompaction(t.Context(), caller, "", nil, time.Now(), standalone, "")
+					_, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), standalone, "")
 					check(err)
 					items := []any{
 						map[string]any{"type": "custom_tool_call", "call_id": caller.Call, "id": caller.Item, "name": "exec"},
@@ -217,7 +217,7 @@ func TestCompactionExecutionHumanInputStillSupersedes(t *testing.T) {
 	for _, role := range []string{"user", "developer", "assistant"} {
 		t.Run(role, func(t *testing.T) {
 			p, service, caller := threadWaitFixture(t)
-			if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, time.Now(), true, ""); err != nil {
+			if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), true, ""); err != nil {
 				t.Fatal(err)
 			}
 			if err := service.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
@@ -249,7 +249,7 @@ func TestCompactionExecutionCompletionEvidenceAdmission(t *testing.T) {
 		for _, later := range []string{"", "custom_tool_call", "function_call", "human-call-id", "failed-result"} {
 			t.Run(fmt.Sprintf("standalone=%t/later=%s", standalone, later), func(t *testing.T) {
 				p, service, caller := threadWaitFixture(t)
-				if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, time.Now(), standalone, ""); err != nil {
+				if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), standalone, ""); err != nil {
 					t.Fatal(err)
 				}
 				input := control.NativeInput{ID: "child-result", Thread: caller.Thread, Kind: "FINAL_ANSWER", Outcome: control.Completed, Message: "ready\n" + compact.CompactMetadataStart + `{"sources":[{"changes":["amber3"]}]}` + compact.CompactMetadataEnd}

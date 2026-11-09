@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 )
 
@@ -194,6 +195,11 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 			effect.State = "canceled"
 			return nil, nil
 		}
+		// Preceding injections may have settled after PrepareWake queued a
+		// progress wake. Preserve their ordinary outcome/message precedence.
+		if member.Wait.Yielded && tree.selectWaitOutcome(member.Wait) {
+			member.Wait.Yielded = false
+		}
 	case "initial", "followup", "human":
 		if !member.AudienceAdmitted || !member.Reserved() || member.Generation != effect.Generation {
 			return nil, errors.New("execution has no active logical audience reservation")
@@ -304,6 +310,13 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 		case "initial", "followup", "wake", "human", "completion":
 			if effect.Kind == "wake" {
 				effect.State = "completed"
+				if member.Wait.Yielded {
+					member.YieldSeen = maps.Clone(member.YieldSeen)
+					if member.YieldSeen == nil {
+						member.YieldSeen = make(map[string]int)
+					}
+					maps.Copy(member.YieldSeen, member.Wait.YieldSeen)
+				}
 			}
 			if receipt.Reconciled {
 				break

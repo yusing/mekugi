@@ -60,7 +60,7 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 				selection = `{"sources":[{"skill":"example/references/check.md"}]}`
 			}
 			standalone := mode != "wait" && mode != "denied-wait"
-			if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, time.Now(), standalone, selection); err != nil {
+			if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), standalone, selection); err != nil {
 				t.Fatal(err)
 			}
 			items := []any{

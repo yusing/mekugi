@@ -34,6 +34,10 @@ type Family struct {
 // Family borrows ordinary raw publications in the selected logical family.
 // A runtime's lifetime parent does not grant membership after thread switching.
 func (h *Hub) Family(thread string) (*Family, *changes.ReviewView) {
+	return h.family(thread, true)
+}
+
+func (h *Hub) family(thread string, forDiff bool) (*Family, *changes.ReviewView) {
 	if thread == "" {
 		return nil, nil
 	}
@@ -106,7 +110,7 @@ func (h *Hub) Family(thread string) (*Family, *changes.ReviewView) {
 		cache.groups[familyRoot] = state
 	}
 	cache.mu.Unlock()
-	return state.project(rootFrame, frames, selectedFrame.Session.Workspace, &cache.revision)
+	return state.project(rootFrame, frames, selectedFrame.Session.Workspace, &cache.revision, forDiff)
 }
 
 // Retain only active logical families across the admitted runtime registry.
@@ -134,7 +138,7 @@ type familySource struct {
 	owner *managedSession
 }
 
-func (p *familyState) project(root *Frame, frames map[string]familySource, workspace string, revision *atomic.Uint64) (*Family, *changes.ReviewView) {
+func (p *familyState) project(root *Frame, frames map[string]familySource, workspace string, revision *atomic.Uint64, forDiff bool) (*Family, *changes.ReviewView) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	rosterSame := p.family != nil && p.family.Root == root.Session.Thread && len(p.sources) == len(frames) && slices.Equal(p.members, root.Members)
@@ -151,7 +155,7 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 	}
 	if !reviewSame {
 		// Source: apps/mekugi/internal/launch/native_children.go:119:157@ab359afb publishChild.
-		var chunks []changes.Chunk
+		var chunks, diagnostics []changes.Chunk
 		seen := make(map[string]bool)
 		var combined *changes.ReviewView
 		ids := slices.Sorted(maps.Keys(frames))
@@ -179,9 +183,17 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 					}
 				}
 			}
+			for _, chunk := range view.Diagnostics {
+				key := chunk.Workspace + "\x00" + chunk.Key
+				if !seen[key] {
+					seen[key] = true
+					diagnostics = append(diagnostics, chunk)
+				}
+			}
 		}
 		if combined != nil {
 			combined.Publication = combined.Publication.With(changes.GroupCaptures(chunks))
+			combined.Diagnostics = diagnostics
 			combined.Revision = revision.Add(1)
 		}
 		p.review, p.diffs = combined, make(map[string]*changes.ReviewView)
@@ -309,8 +321,8 @@ func (p *familyState) project(root *Frame, frames map[string]familySource, works
 		p.family = &family
 	}
 	p.sources, p.members = frames, root.Members
-	if p.review == nil {
-		return p.family, nil
+	if p.review == nil || !forDiff {
+		return p.family, p.review
 	}
 	if diff := p.diffs[workspace]; diff != nil {
 		return p.family, diff

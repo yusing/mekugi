@@ -350,7 +350,7 @@ func TestSelectedCompletionWakesWithoutSchedulerDelay(t *testing.T) {
 			}
 		}
 		caller.Call = "wait"
-		_, err := driver.control.RegisterWait(t.Context(), caller, "", nil, time.Now())
+		_, err := driver.control.RegisterWait(t.Context(), caller, "", nil, nil, time.Now())
 		check(err)
 		check(driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
 		_, err = driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)
@@ -421,7 +421,7 @@ func TestConcurrentCompletionsDrainBeforeAllWaitWake(t *testing.T) {
 			check(first.control.EffectAcknowledged(t.Context(), "root", spawn.ID, control.Receipt{Phase: phase, Thread: "sibling", Session: "sibling-session", Turn: "sibling-turn"}))
 		}
 		caller.Call = "wait-all"
-		_, err = first.control.RegisterWait(t.Context(), caller, control.WaitAll, nil, time.Now())
+		_, err = first.control.RegisterWait(t.Context(), caller, control.WaitAll, nil, nil, time.Now())
 		check(err)
 		check(first.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true))
 		stop, err := first.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item)

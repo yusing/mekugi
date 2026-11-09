@@ -164,6 +164,7 @@ func TestProjectCoordinationWaitDispositions(t *testing.T) {
 		{"completed event", `{"target":["child"]}`, `{"state":"completed","event":{"task":"/root/child","status":"completed"}}`, "completed", []Target{{Name: "/root/child", Status: "completed"}}},
 		{"timeout", `{"target":["child"]}`, `{"state":"timeout"}`, "timeout", []Target{{Name: "child"}}},
 		{"paused", `{"target":["child"]}`, `{"state":"paused"}`, "paused", []Target{{Name: "child"}}},
+		{"yielded", `{}`, `{"state":"yielded"}`, "yielded", nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, ok := ProjectCoordination(coordinationItem("wait_agent", tt.args, tt.result))
