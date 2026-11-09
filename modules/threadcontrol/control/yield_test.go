@@ -110,3 +110,64 @@ func TestWaitYieldPreservesEarlierOutcomesAndCompaction(t *testing.T) {
 		})
 	}
 }
+
+func TestSkippedYieldRetainsWaitAuthority(t *testing.T) {
+	for _, mode := range []WaitMode{WaitAny, WaitAll} {
+		for _, reason := range []string{"unchanged", "completion", "message", "timeout"} {
+			t.Run(string(mode)+"/"+reason, func(t *testing.T) {
+				s, _ := fixture(t)
+				child(t, s, "root", "child", "/root/child", "ct")
+				caller, now := identity("root", "rt"), time.Unix(100, 0)
+				_, err := s.RegisterWait(t.Context(), caller, mode, nil, new(int64(600000)), now)
+				must(t, err)
+				stop(t, s, caller)
+				now = now.Add(10 * time.Minute)
+				wake, err := claimWake(t, s, t.Context(), "root", now)
+				must(t, err)
+				if wake == nil || wake.State != "yielded" {
+					t.Fatal("missing candidate yield")
+				}
+				var messageID string
+				switch reason {
+				case "completion":
+					must(t, s.HostCompleted(t.Context(), "child", "ct", Completed, HostFailure{}))
+				case "message":
+					effect, err := s.PrepareAction(t.Context(), identity("child", "ct"), "/root", "message", "new message")
+					must(t, err)
+					messageID = effect.ID
+				case "timeout":
+					// Expiry may cross the capture acquisition boundary.
+					must(t, s.update(t.Context(), "root", func(_ *Tree, member *Member) error {
+						member.Wait.Deadline = new(now)
+						return nil
+					}))
+				}
+				must(t, s.SkipUnchangedYield(t.Context(), "root", caller.Call, now))
+				member, _ := s.Member("root")
+				if member.Wait.Yielded || member.HostRunning || member.Status != Waiting || member.Wait.Stop != "committed" || member.Wait.ID != caller.Call {
+					t.Fatalf("empty progress lost the logical wait: %+v", member)
+				}
+				if reason == "unchanged" {
+					if member.Wait.State != "registered" || !member.Wait.YieldAt.Equal(now.Add(10*time.Minute)) || len(s.Due("root", now)) != 0 || s.WaitPublication("root").Settled() {
+						t.Fatalf("empty progress settled or immediately rearmed: %+v", member.Wait)
+					}
+					return
+				}
+				if reason == "completion" {
+					deliver(t, s, "child")
+				} else if reason == "message" {
+					settle(t, s, "child", messageID, Receipt{})
+				}
+				if reason != "timeout" {
+					_, err := s.PrepareWake(t.Context(), "root", now)
+					must(t, err)
+				}
+				claimed, err := s.ClaimEffect(t.Context(), "root", caller.Call)
+				must(t, err)
+				if claimed == nil || claimed.Wake.State == "yielded" || reason == "timeout" && claimed.Wake.State != "timeout" || reason == "message" && claimed.Wake.Event.Kind != "message" {
+					t.Fatalf("empty progress lost %s authority: %+v", reason, claimed)
+				}
+			})
+		}
+	}
+}

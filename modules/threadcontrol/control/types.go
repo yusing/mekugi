@@ -102,6 +102,7 @@ type Wait struct {
 	RequestedMS, EffectiveMS *int64
 	Deadline                 *time.Time
 	YieldAt                  *time.Time
+	YieldMS                  int64 `json:",omitzero"`
 	Yielded                  bool
 	Progress                 *WaitProgress
 	YieldContext             string         `json:",omitzero"`

@@ -270,9 +270,8 @@ func TestStoppedTargetAfterRestartKeepsResultConsumed(t *testing.T) {
 	must(t, restored.Restore(t.Context(), session))
 	hostStarted(t, restored, "root", "resumed")
 	wait, err := restored.RegisterWait(t.Context(), identity("root", "resumed"), "", nil, nil, time.Now())
-	must(t, err)
-	if wait.State != "completed" || wait.Event == nil || wait.Event.Status != Completed || wait.Event.Message != "" {
-		t.Fatalf("stopped target lost its terminal status: %+v", wait)
+	if err == nil || wait.Event != nil {
+		t.Fatalf("already-read history became a fresh wait target: %+v %v", wait, err)
 	}
 	tree, err = restored.Snapshot("root")
 	must(t, err)
@@ -637,8 +636,8 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 					}
 					must(t, s.HostCompleted(t.Context(), "stopped", "stopped-turn", status, HostFailure{}))
 					deliver(t, s, "stopped")
-					// The result was already read before this wait; its stopped
-					// state must still avoid an indefinite subscription.
+					// A selected target must settle even when its result is read
+					// during the wait. Earlier read history is not a new target.
 					must(t, s.InputConsumed(t.Context(), id, []string{MessageItemID("stopped:1:stopped-turn:final")}))
 				}
 				if !during {
@@ -646,6 +645,12 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 				}
 				result, err := s.RegisterWait(t.Context(), id, "", new(int64(100)), nil, now)
 				must(t, err)
+				if !during && status != Paused {
+					if result.State != "waiting" || !slices.Equal(result.Targets, []string{"/root/running"}) {
+						t.Fatalf("already-read history selected: %+v", result)
+					}
+					return
+				}
 				if during {
 					stop(t, s, id)
 					settle()
@@ -665,6 +670,66 @@ func TestStoppedTargetsSettleWaits(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestWaitSelectionKeepsUnreadResults(t *testing.T) {
+	for _, mode := range []WaitMode{WaitAny, WaitAll} {
+		for _, delivered := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/delivered=%t", mode, delivered), func(t *testing.T) {
+				s, _ := fixture(t)
+				child(t, s, "root", "old", "/root/old", "ot")
+				child(t, s, "root", "unread", "/root/unread", "ut")
+				child(t, s, "root", "working", "/root/working", "wt")
+				caller := identity("root", "rt")
+				must(t, s.HostCompleted(t.Context(), "old", "ot", Completed, HostFailure{}))
+				deliver(t, s, "old")
+				must(t, s.InputConsumed(t.Context(), caller, []string{MessageItemID("old:1:ot:final")}))
+				must(t, s.HostCompleted(t.Context(), "unread", "ut", Failed, HostFailure{}))
+				if delivered {
+					deliver(t, s, "unread")
+				}
+				wait, err := s.RegisterWait(t.Context(), caller, mode, nil, nil, time.Now())
+				must(t, err)
+				if !slices.Equal(wait.Targets, []string{"/root/unread", "/root/working"}) {
+					t.Fatalf("lost unread result or included read history: %+v", wait)
+				}
+				if mode == WaitAny && delivered {
+					if wait.State != "completed" || wait.Event == nil || wait.Event.Source != "unread" {
+						t.Fatalf("unread failure did not wake: %+v", wait)
+					}
+				} else if wait.State != "waiting" {
+					t.Fatalf("wait lost selection authority: %+v", wait)
+				}
+			})
+		}
+	}
+}
+
+func TestWaitMessageWithoutUnsettledTargets(t *testing.T) {
+	for _, mode := range []WaitMode{WaitAny, WaitAll} {
+		t.Run(string(mode), func(t *testing.T) {
+			s, _ := fixture(t)
+			caller := identity("root", "rt")
+			child(t, s, "root", "old", "/root/old", "ot")
+			must(t, s.HostCompleted(t.Context(), "old", "ot", Completed, HostFailure{}))
+			deliver(t, s, "old")
+			must(t, s.InputConsumed(t.Context(), caller, []string{MessageItemID("old:1:ot:final")}))
+			effect, err := s.ReceiveMessage(t.Context(), Origin{Session: "remote", Thread: "sender", Task: "/root", Status: Completed}, "root", "message", "independent notification")
+			must(t, err)
+			wait, err := s.RegisterWait(t.Context(), caller, mode, nil, nil, time.Now())
+			must(t, err)
+			if wait.State != "waiting" || len(wait.Targets) != 0 {
+				t.Fatalf("pending message invented targets or an outcome: %+v", wait)
+			}
+			stop(t, s, caller)
+			settle(t, s, "root", effect.ID, Receipt{})
+			wake, err := claimWake(t, s, t.Context(), "root", time.Now())
+			must(t, err)
+			if wake == nil || wake.Event == nil || wake.Event.Source != "sender" || wake.Event.Message != "independent notification" || len(wake.Targets) != 0 {
+				t.Fatalf("independent notification was lost: %+v", wake)
+			}
+		})
 	}
 }
 
@@ -768,7 +833,7 @@ func TestWaitAllMessageTimeoutAndStoppedTargets(t *testing.T) {
 			if reason == "timeout" && (wake.State != "timeout" || len(wake.Events) != 0) {
 				t.Fatalf("timeout wake: %+v", wake)
 			}
-			if reason == "stopped" && (len(wake.Events) != 2 || wake.Events[1].Status != Paused) {
+			if reason == "stopped" && (len(wake.Events) != 1 || wake.Events[0].Status != Paused) {
 				t.Fatalf("stopped outcomes: %+v", wake)
 			}
 		})

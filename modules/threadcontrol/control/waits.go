@@ -47,14 +47,26 @@ func resolve(tree *Tree, caller *Member, target string) (*Member, error) {
 }
 
 func descendants(tree *Tree, caller *Member) ([]string, error) {
+	unread := make(map[string]bool)
+	message := false
+	for _, effect := range tree.Effects {
+		if effect.Target != caller.Thread || effect.Consumed || effect.ClaimedBy != "" || !(effect.delivered() || effect.State == "pending" || hostOwned(effect.State) || effect.State == "paused") {
+			continue
+		}
+		if effect.Kind == "final" {
+			unread[effect.source()] = true
+		} else if effect.Kind == "message" {
+			message = true
+		}
+	}
 	selected := []string{}
 	for id, member := range tree.Members {
-		if strings.HasPrefix(member.Task, caller.Task+"/") {
+		if strings.HasPrefix(member.Task, caller.Task+"/") && (member.Reserved() || member.HostRunning || unread[id]) {
 			selected = append(selected, id)
 		}
 	}
 	slices.Sort(selected)
-	if len(selected) == 0 {
+	if len(selected) == 0 && !message {
 		return nil, errors.New("wait selection is empty")
 	}
 	return selected, nil
@@ -206,6 +218,9 @@ func (tree *Tree) selectAllWaitOutcomes(wait *Wait) bool {
 			outcomes[effect.Caller] = effect
 		}
 	}
+	if len(wait.Targets) == 0 {
+		return false // An addressed message may still be awaiting delivery.
+	}
 	for _, id := range wait.Targets {
 		member := tree.Members[id]
 		if member == nil || member.HostRunning || member.Status != Completed && member.Status != Failed && member.Status != Interrupted && member.Status != Paused || pending[id] {
@@ -267,6 +282,12 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, mode WaitMo
 		if caller.Call == "" || caller.Item == "" {
 			return errors.New("wait requires enclosing host-call identity")
 		}
+		if _, err := tree.transitionHost(member, hostEvent{kind: hostEventWaitRegistration, turn: caller.Turn, item: caller.Item, call: caller.Call, compact: compact, standalone: standalone}); err != nil {
+			if err == unchanged {
+				result = *tree.waitResult(member.Wait)
+			}
+			return err
+		}
 		var selected []string
 		if !standalone {
 			var err error
@@ -275,15 +296,10 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, mode WaitMo
 				return err
 			}
 		}
-		if _, err := tree.transitionHost(member, hostEvent{kind: hostEventWaitRegistration, turn: caller.Turn, item: caller.Item, call: caller.Call, compact: compact, standalone: standalone}); err != nil {
-			if err == unchanged {
-				result = *tree.waitResult(member.Wait)
-			}
-			return err
-		}
 		wait := &Wait{ID: caller.Call, Caller: caller.Thread, Target: caller.Thread, Generation: member.Generation, Turn: caller.Turn, CallerTurn: caller.Turn, Kind: "wake", State: "registered", Item: caller.Item, Targets: selected, Mode: mode}
 		wait.Standalone = standalone
 		if yield != nil {
+			wait.YieldMS = *yield
 			wait.YieldAt = new(now.Add(time.Duration(*yield) * time.Millisecond))
 		}
 		if compact {
@@ -458,7 +474,6 @@ func (tree *Tree) wakeResult(wait *Wait) *WaitResult {
 	result.State = "timeout"
 	if wait.Yielded {
 		result.State = "yielded"
-		result.Targets = nil // Yield output names only agents with captured changes.
 	}
 	if wait.Standalone || wait.UsageLimit || result.Event != nil || len(result.Events) != 0 {
 		result.State = "completed"

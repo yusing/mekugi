@@ -177,13 +177,6 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 				callErr = owner.Interrupt(ctx, effect.Target, effect.Turn)
 			} else {
 				input := nativeInput(action)
-				if input.Wake != nil && input.Wake.Metrics == nil {
-					input.Wake = new(*input.Wake)
-					d.waitMetrics(ctx, input.Thread, input.Wake)
-					if err := d.control.RetainWaitMetrics(ctx, input.Thread, input.Wake.ID, input.Wake.Metrics); err != nil {
-						callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
-					}
-				}
 				if input.Wake != nil && input.Wake.State == "yielded" && input.Wake.Progress == nil && callErr == nil {
 					contextID := ""
 					if contexts, ok := owner.(control.ContextReader); ok {
@@ -194,10 +187,20 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 					if source, ok := d.native().(control.ProgressReader); ok {
 						progress, seen = source.WaitProgress(input.Thread, d.control.YieldCursor(input.Thread, contextID))
 					}
+					if len(progress.Agents) == 0 {
+						return d.control.SkipUnchangedYield(ctx, input.Thread, input.Wake.ID, time.Now())
+					}
 					if err := d.control.RetainWaitProgress(ctx, input.Thread, input.Wake.ID, contextID, progress, seen); err != nil {
 						callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
 					} else {
 						input.Wake.Progress = &progress
+					}
+				}
+				if input.Wake != nil && input.Wake.Metrics == nil && callErr == nil {
+					input.Wake = new(*input.Wake)
+					d.waitMetrics(ctx, input.Thread, input.Wake)
+					if err := d.control.RetainWaitMetrics(ctx, input.Thread, input.Wake.ID, input.Wake.Metrics); err != nil {
+						callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
 					}
 				}
 				if callErr == nil {

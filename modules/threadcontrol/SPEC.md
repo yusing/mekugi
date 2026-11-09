@@ -110,7 +110,7 @@ native request metadata remains unchanged on the provider wire.
 - `wait_agent` accepts `wait_mode?: "any" | "all"`,
   `timeout_ms?: integer`, `yield_time_ms?: integer`, and `compact?: boolean`. Codex also accepts `reload`
   when `compact:true`; invalid selections reject before wait registration.
-  Each wait snapshots all current descendants;
+  Each wait snapshots descendants with unsettled work or unread outcomes;
   omitted mode means `"any"`; omitted compaction means false.
 
 Follow-up acknowledgements include the target's current context and compaction
@@ -359,7 +359,10 @@ registered or queued wait; a child turn requires its retained work reservation.
 Observed attributed items in admitted model input consume only their exact
 unclaimed notifications, so reading input does not generate a later duplicate wake.
 
-Each wait snapshots all current local descendants once; an empty family rejects.
+Each wait snapshots local descendants with unsettled work or unread outcomes once.
+Already-settled, read history is not selected, reported or displayed as awaited work.
+Unread addressed messages retain their authority independently of that selection;
+without selected work or a pending message, registration rejects.
 In `any` mode, a queued descendant outcome returns immediately, leaving others queued.
 In `all` mode, every selected agent must settle before completion; failures and
 interruptions count as settled. Pending result deliveries finish before the wait
@@ -381,12 +384,15 @@ reject and lower values clamp to its minimum. Retain requested/effective duratio
 and the deadline captured when waiting begins. Zero effective duration times out immediately when
 no selected event exists. Later timeout delivery waits for host settlement.
 
-Optional `yield_time_ms` enables a progress wake after at least 300,000 milliseconds;
-omission disables yielding. The interval starts at registration. Completion, addressed
+Optional `yield_time_ms` checks progress at intervals of at least 300,000 milliseconds;
+omission disables yielding. An interval without new captured changes keeps the same
+logical wait pending, without inference or a finished-wait publication. The interval
+starts at registration. Completion, addressed
 messages and an elapsed timeout take precedence. Host settlement and compaction retain
 their ordinary barriers. A yield resumes the caller with `state:"yielded"`, not a task
 completion; another wait call waits again. It neither consumes completion notifications
-nor creates a second subscription or timer.
+nor creates a second subscription or timer. Its targets remain the actual wait
+selection; progress rows include only agents with new captures.
 
 Progress reports available captured changes not delivered by that caller's earlier yields,
 with `mchanges` IDs and current observed activity/status. Agents without new captures are

@@ -12,6 +12,7 @@ import (
 type progressNative struct {
 	control.Native
 	reads     int
+	chunks    int
 	contextID string
 }
 
@@ -28,21 +29,22 @@ func (n *progressNative) Resume(ctx context.Context, thread string) (control.Run
 
 func (n *progressNative) WaitProgress(_ string, seen map[string]int) (control.WaitProgress, map[string]int) {
 	n.reads++
-	if seen["capture"] != 0 {
+	if seen["capture"] >= n.chunks {
 		return control.WaitProgress{}, nil
 	}
-	return control.WaitProgress{Agents: []control.AgentProgress{{Task: "/root/child", Status: "working", Activity: "testing", Changes: "mchanges amber1 --summary"}}}, map[string]int{"capture": 1}
+	return control.WaitProgress{Agents: []control.AgentProgress{{Task: "/root/child", Status: "working", Activity: "testing", Changes: "mchanges amber1 --summary"}}}, map[string]int{"capture": n.chunks}
 }
 
 func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		driver, host, _, caller := reconciliationFixture(t)
-		source := &progressNative{Native: host, contextID: "context"}
+		source := &progressNative{Native: host, contextID: "context", chunks: 1}
 		driver.host = source
 		if err := driver.Start(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 		defer driver.Stop(t.Context())
+		host.inputs = nil
 		for i := range 3 {
 			if i == 2 {
 				source.contextID = "reset"
@@ -61,20 +63,39 @@ func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 				t.Fatal(err)
 			}
 			host.nextTurn = caller.Turn + "-next"
+			if i == 1 {
+				for range 3 {
+					time.Sleep(5 * time.Minute)
+					driver.Tick(time.Now(), []string{caller.Thread})
+					synctest.Wait()
+					member, _ := driver.control.Member(caller.Thread)
+					if len(host.inputs) != 1 || member.Wait.ID != caller.Call || member.Wait.State != "registered" || member.Status != control.Waiting || member.HostRunning || driver.control.WaitPublication(caller.Thread).Settled() {
+						t.Fatalf("unchanged interval woke inference: inputs=%+v member=%+v", host.inputs, member)
+					}
+				}
+				// A later interval under the same capture ID must remain eligible.
+				source.chunks++
+			}
 			time.Sleep(5 * time.Minute)
 			driver.Tick(time.Now(), []string{caller.Thread})
 			synctest.Wait()
 			if failures := driver.Failures(); len(failures) != 0 {
 				t.Fatal(failures)
 			}
-			input := host.inputs[len(host.inputs)-1]
-			if input.Wake == nil || input.Wake.State != "yielded" || input.Wake.Progress == nil || source.reads != i+1 || len(input.Wake.Progress.Agents) != (i+1)%2 {
+			if len(host.inputs) != i+1 {
+				t.Fatalf("expected one bounded progress wake: %+v", host.inputs)
+			}
+			input := host.inputs[i]
+			if input.Wake == nil || input.Wake.State != "yielded" || input.Wake.Progress == nil || len(input.Wake.Progress.Agents) != 1 {
 				t.Fatalf("yield output: %+v reads=%d", input, source.reads)
 			}
-			if driver.control.YieldCursor(caller.Thread, source.contextID)["capture"] != 1 {
+			if driver.control.YieldCursor(caller.Thread, source.contextID)["capture"] != source.chunks {
 				t.Fatal("delivery did not retain cursor")
 			}
 			caller.Turn = host.nextTurn
+		}
+		if source.reads != 6 {
+			t.Fatalf("unexpected progress polling: %d", source.reads)
 		}
 	})
 }
@@ -88,6 +109,31 @@ func TestWaitYieldValidationPreservesPriorState(t *testing.T) {
 		if member, _ := driver.control.Member(caller.Thread); member.Wait != nil {
 			t.Fatal("rejection registered a wait")
 		}
+	}
+}
+
+func TestWaitYieldUnavailableProgressStaysPending(t *testing.T) {
+	driver, host, _, caller := reconciliationFixture(t) // No capture reader.
+	caller.Call = "wait-without-progress"
+	_, err := driver.control.RegisterWait(t.Context(), caller, control.WaitAny, nil, new(int64(300000)), time.Now().Add(-5*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
+		t.Fatal(err)
+	}
+	if stop, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil || stop == nil {
+		t.Fatalf("stop: %v %v", stop, err)
+	}
+	if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}); err != nil {
+		t.Fatal(err)
+	}
+	host.inputs = nil
+	if err := driver.Wake(t.Context(), caller.Thread, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if len(host.inputs) != 0 || driver.control.WaitPublication(caller.Thread).State != "waiting" {
+		t.Fatalf("unavailable captures woke native inference: %+v", host.inputs)
 	}
 }
 
