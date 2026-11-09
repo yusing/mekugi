@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 )
@@ -150,53 +151,63 @@ func TestMergedCommandDirectoryCheckpointsKeepEarliestAdmission(t *testing.T) {
 	}
 }
 
+// These scope fixtures exercise real Git and cross-store evidence, not forwarding
+// latency. Keep subprocess scheduling outside the fake clock so host contention
+// cannot consume the shared acquisition/reconciliation deadline. Owners and their
+// cleanup stay inside each bubble; production timeout tests retain real time.
 func TestOverlappingDirectoryClaimsSharePhysicalEvidence(t *testing.T) {
 	isolateSnapshotGit(t)
-	workspace, external := t.TempDir(), t.TempDir()
-	sub := filepath.Join(external, "sub")
-	path := filepath.Join(sub, "source.txt")
-	writeTestFile(t, path, "before\n")
-	alias := filepath.Join(workspace, "linked")
-	if err := os.Symlink(sub, alias); err != nil {
-		t.Fatal(err)
-	}
-	// Different runtime owners have independent private object stores.
-	first, second := newWorkspaces(t.Context(), t.TempDir()), newWorkspaces(t.Context(), t.TempDir())
-	t.Cleanup(first.Close)
-	t.Cleanup(second.Close)
-	capture := func(directory string, snapshots *Workspaces) Observation {
-		t.Helper()
-		observation, ok := Capture(t.Context(), []commandanalysis.Command{{Command: "custom-generator", Workdir: directory, Shell: "bash"}}, false, false, Options{Directory: workspace, Workspaces: snapshots})
-		if !ok || observation == nil || observation.Checkpoints[directory] == "" || !slices.Contains(observation.Roots, sub) && directory == alias {
-			t.Fatalf("missing external physical scope: %+v", observation)
-		}
-		return *observation
-	}
-	for _, directory := range []string{sub, alias} {
-		t.Run(filepath.Base(directory), func(t *testing.T) {
-			writeTestFile(t, path, "before\n")
-			a, b := capture(external, first), capture(directory, second)
-			writeTestFile(t, path, "after\n")
-			initial := Reconcile(t.Context(), a, Comparison{Workspace: workspace, Workspaces: first})
-			if initial.SnapshotError != nil || len(initial.Files) != 1 || initial.Coverage != CoverageExact {
-				t.Fatalf("first writer: %+v", initial)
-			}
-			duplicate := Reconcile(t.Context(), b, Comparison{Workspace: workspace, Workspaces: second, Claims: initial.Claims})
-			if duplicate.SnapshotError != nil || len(duplicate.Files) != 0 || duplicate.Coverage != CoverageExact {
-				t.Fatalf("overlapping scope duplicated claimed effects: %+v", duplicate)
-			}
-			// The original baseline equals disk again. Claims must still supply
-			// the previous endpoint, including bytes from the other private store.
-			writeTestFile(t, path, "before\n")
-			restored := Reconcile(t.Context(), b, Comparison{Workspace: workspace, Workspaces: second, Claims: initial.Claims})
-			if restored.SnapshotError != nil || len(restored.Files) != 1 || !strings.Contains(restored.Files[0].Diff, "-after\n+before\n") {
-				t.Fatalf("claimed cross-store restore missing: %+v", restored)
-			}
-			writeTestFile(t, path, "latest\n")
-			latest := Reconcile(t.Context(), b, Comparison{Workspace: workspace, Workspaces: second, Claims: initial.Claims})
-			if latest.SnapshotError != nil || len(latest.Files) != 1 || !strings.Contains(latest.Files[0].Diff, "-after\n+latest\n") {
-				t.Fatalf("claimed cross-store update missing: %+v", latest)
-			}
+	for _, useAlias := range []bool{false, true} {
+		t.Run(map[bool]string{false: "sub", true: "linked"}[useAlias], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				workspace, external := t.TempDir(), t.TempDir()
+				sub := filepath.Join(external, "sub")
+				path := filepath.Join(sub, "source.txt")
+				writeTestFile(t, path, "before\n")
+				alias := filepath.Join(workspace, "linked")
+				if err := os.Symlink(sub, alias); err != nil {
+					t.Fatal(err)
+				}
+				// Different runtime owners have independent private object stores.
+				first, second := newWorkspaces(t.Context(), t.TempDir()), newWorkspaces(t.Context(), t.TempDir())
+				t.Cleanup(first.Close)
+				t.Cleanup(second.Close)
+				capture := func(directory string, snapshots *Workspaces) Observation {
+					t.Helper()
+					observation, ok := Capture(t.Context(), []commandanalysis.Command{{Command: "custom-generator", Workdir: directory, Shell: "bash"}}, false, false, Options{Directory: workspace, Workspaces: snapshots})
+					if !ok || observation == nil || observation.Checkpoints[directory] == "" || !slices.Contains(observation.Roots, sub) && directory == alias {
+						t.Fatalf("missing external physical scope: %+v", observation)
+					}
+					return *observation
+				}
+				directory := sub
+				if useAlias {
+					directory = alias
+				}
+				writeTestFile(t, path, "before\n")
+				a, b := capture(external, first), capture(directory, second)
+				writeTestFile(t, path, "after\n")
+				initial := Reconcile(t.Context(), a, Comparison{Workspace: workspace, Workspaces: first})
+				if initial.SnapshotError != nil || len(initial.Files) != 1 || initial.Coverage != CoverageExact {
+					t.Fatalf("first writer: %+v", initial)
+				}
+				duplicate := Reconcile(t.Context(), b, Comparison{Workspace: workspace, Workspaces: second, Claims: initial.Claims})
+				if duplicate.SnapshotError != nil || len(duplicate.Files) != 0 || duplicate.Coverage != CoverageExact {
+					t.Fatalf("overlapping scope duplicated claimed effects: %+v", duplicate)
+				}
+				// The original baseline equals disk again. Claims must still supply
+				// the previous endpoint, including bytes from the other private store.
+				writeTestFile(t, path, "before\n")
+				restored := Reconcile(t.Context(), b, Comparison{Workspace: workspace, Workspaces: second, Claims: initial.Claims})
+				if restored.SnapshotError != nil || len(restored.Files) != 1 || !strings.Contains(restored.Files[0].Diff, "-after\n+before\n") {
+					t.Fatalf("claimed cross-store restore missing: %+v", restored)
+				}
+				writeTestFile(t, path, "latest\n")
+				latest := Reconcile(t.Context(), b, Comparison{Workspace: workspace, Workspaces: second, Claims: initial.Claims})
+				if latest.SnapshotError != nil || len(latest.Files) != 1 || !strings.Contains(latest.Files[0].Diff, "-after\n+latest\n") {
+					t.Fatalf("claimed cross-store update missing: %+v", latest)
+				}
+			})
 		})
 	}
 }
@@ -284,54 +295,56 @@ func TestNestedGitClaimsDoNotInventEnclosingDeletions(t *testing.T) {
 
 func TestSnapshotAliasesRespectNamedEvidenceAndExclusions(t *testing.T) {
 	isolateSnapshotGit(t)
-	base := t.TempDir()
-	workspace, external, alias := filepath.Join(base, "workspace"), filepath.Join(base, "z-external"), filepath.Join(base, "a-alias")
-	if err := os.Mkdir(workspace, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(external, "sub", "source.txt")
-	writeTestFile(t, path, "before\n")
-	if err := os.Symlink(external, alias); err != nil {
-		t.Fatal(err)
-	}
-	snapshots := newWorkspaces(t.Context(), t.TempDir())
-	t.Cleanup(snapshots.Close)
-	observation, ok := Capture(t.Context(), []commandanalysis.Command{
-		{Command: "printf after > sub/source.txt", Workdir: external, Shell: "bash"},
-		{Command: "custom-generator", Workdir: alias, Shell: "bash"},
-	}, false, false, Options{Directory: workspace, Workspaces: snapshots})
-	if !ok || observation == nil || len(observation.Files) != 1 || len(observation.Checkpoints) != 2 {
-		t.Fatalf("missing named and alias checkpoint scopes: %+v", observation)
-	}
-	writeTestFile(t, path, "after\n")
-	result := Reconcile(t.Context(), *observation, Comparison{Workspace: workspace, Workspaces: snapshots})
-	if result.SnapshotError != nil || len(result.Files) != 1 || result.Files[0].AfterPath != path || result.Coverage != CoverageExact {
-		t.Fatalf("alias duplicated named evidence or replaced its lexical path: %+v", result)
-	}
-	for _, root := range []string{path, filepath.Join(alias, "sub", "source.txt"), external, alias} {
-		// Overlapping windows exclude only unnamed fallback effects; same-call
-		// patch ownership excludes named evidence as well.
-		unnamed := *observation
-		unnamed.Files = nil
-		result := Reconcile(t.Context(), unnamed, Comparison{Workspace: workspace, Workspaces: snapshots, Excluded: []string{root}})
-		if result.SnapshotError != nil || len(result.Files) != 0 {
-			t.Fatalf("alias escaped overlapping scope %s: %+v", root, result)
-		}
-		patched := *observation
-		patched.Excluded = []string{root}
-		result = Reconcile(t.Context(), patched, Comparison{Workspace: workspace, Workspaces: snapshots})
-		if result.SnapshotError != nil || len(result.Files) != 0 {
-			t.Fatalf("alias escaped same-call patch scope %s: %+v", root, result)
-		}
-	}
-	// Removed parents retain alias identity through their existing ancestor.
-	for _, target := range []string{path, filepath.Dir(path)} {
-		if err := os.Remove(target); err != nil {
+	synctest.Test(t, func(t *testing.T) {
+		base := t.TempDir()
+		workspace, external, alias := filepath.Join(base, "workspace"), filepath.Join(base, "z-external"), filepath.Join(base, "a-alias")
+		if err := os.Mkdir(workspace, 0o700); err != nil {
 			t.Fatal(err)
 		}
-	}
-	result = Reconcile(t.Context(), *observation, Comparison{Workspace: workspace, Workspaces: snapshots})
-	if result.SnapshotError != nil || len(result.Files) != 1 || result.Files[0].BeforePath != path || result.Files[0].AfterPath != "" {
-		t.Fatalf("removed parent directory broke physical deduplication: %+v", result)
-	}
+		path := filepath.Join(external, "sub", "source.txt")
+		writeTestFile(t, path, "before\n")
+		if err := os.Symlink(external, alias); err != nil {
+			t.Fatal(err)
+		}
+		snapshots := newWorkspaces(t.Context(), t.TempDir())
+		t.Cleanup(snapshots.Close)
+		observation, ok := Capture(t.Context(), []commandanalysis.Command{
+			{Command: "printf after > sub/source.txt", Workdir: external, Shell: "bash"},
+			{Command: "custom-generator", Workdir: alias, Shell: "bash"},
+		}, false, false, Options{Directory: workspace, Workspaces: snapshots})
+		if !ok || observation == nil || len(observation.Files) != 1 || len(observation.Checkpoints) != 2 {
+			t.Fatalf("missing named and alias checkpoint scopes: %+v", observation)
+		}
+		writeTestFile(t, path, "after\n")
+		result := Reconcile(t.Context(), *observation, Comparison{Workspace: workspace, Workspaces: snapshots})
+		if result.SnapshotError != nil || len(result.Files) != 1 || result.Files[0].AfterPath != path || result.Coverage != CoverageExact {
+			t.Fatalf("alias duplicated named evidence or replaced its lexical path: %+v", result)
+		}
+		for _, root := range []string{path, filepath.Join(alias, "sub", "source.txt"), external, alias} {
+			// Overlapping windows exclude only unnamed fallback effects; same-call
+			// patch ownership excludes named evidence as well.
+			unnamed := *observation
+			unnamed.Files = nil
+			result := Reconcile(t.Context(), unnamed, Comparison{Workspace: workspace, Workspaces: snapshots, Excluded: []string{root}})
+			if result.SnapshotError != nil || len(result.Files) != 0 {
+				t.Fatalf("alias escaped overlapping scope %s: %+v", root, result)
+			}
+			patched := *observation
+			patched.Excluded = []string{root}
+			result = Reconcile(t.Context(), patched, Comparison{Workspace: workspace, Workspaces: snapshots})
+			if result.SnapshotError != nil || len(result.Files) != 0 {
+				t.Fatalf("alias escaped same-call patch scope %s: %+v", root, result)
+			}
+		}
+		// Removed parents retain alias identity through their existing ancestor.
+		for _, target := range []string{path, filepath.Dir(path)} {
+			if err := os.Remove(target); err != nil {
+				t.Fatal(err)
+			}
+		}
+		result = Reconcile(t.Context(), *observation, Comparison{Workspace: workspace, Workspaces: snapshots})
+		if result.SnapshotError != nil || len(result.Files) != 1 || result.Files[0].BeforePath != path || result.Files[0].AfterPath != "" {
+			t.Fatalf("removed parent directory broke physical deduplication: %+v", result)
+		}
+	})
 }
