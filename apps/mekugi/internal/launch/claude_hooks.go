@@ -183,7 +183,7 @@ func (b *claudeBridge) request(ctx context.Context, method string, raw jsontext.
 					}
 				}, b.windows, nil, nil, executionobservation.ClaudeToolInput{Thread: identity.Thread, Turn: identity.Turn, Namespace: b.selected.Namespace, Workspace: b.settings.Workspace, Workdir: hook.Cwd, Caller: caller, ToolUseID: hook.ID, ToolName: hook.Tool, Shell: "bash", Arguments: hook.Input})
 				if err != nil {
-					return json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": hook.Event, "additionalContext": err.Error()}})
+					return json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": hook.Event, "additionalContext": "Capture failed: " + err.Error()}})
 				}
 				b.captures[hook.ID] = &claudeToolCapture{operation: operation}
 			}
@@ -195,7 +195,7 @@ func (b *claudeBridge) request(ctx context.Context, method string, raw jsontext.
 		case "PostToolUse", "PostToolUseFailure":
 			receipt, err := b.complete(hook)
 			if err != nil {
-				receipt = err.Error()
+				receipt = strings.TrimSpace(receipt + "\nCapture failed: " + err.Error())
 			}
 			b.mu.Lock()
 			for _, pending := range b.pendingReceipts {
@@ -346,7 +346,7 @@ func (b *claudeBridge) event(ctx context.Context, raw jsontext.Value) error {
 		if capture != nil {
 			receipt, err := capture.operation.Complete(executionobservation.ClaudeToolOutcome{Terminal: true, Succeeded: task.Status == "completed", Status: task.Status, Output: task.Summary})
 			if err != nil {
-				receipt = err.Error()
+				receipt = strings.TrimSpace(receipt + "\nCapture failed: " + err.Error())
 			}
 			b.mu.Lock()
 			if err == nil {

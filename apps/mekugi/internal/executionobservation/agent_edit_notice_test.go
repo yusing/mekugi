@@ -2,8 +2,7 @@ package executionobservation
 
 import (
 	"context"
-
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"errors"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -73,7 +72,8 @@ func assertEditNotice(t *testing.T, ctx context.Context, proxy *Preparer, worksp
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "mchanges " + record.ChangeID + " --summary\n" + summary
+	t.Logf("receipt bytes: old=%d new=%d", len("mchanges "+record.ChangeID+" --summary\n"+summary), len(record.ChangeID))
+	want := record.ChangeID
 	if len(parts) != 2 || parts[1]["type"] != "input_text" || parts[1]["text"] != want || !strings.Contains(summary, filename) {
 		t.Fatalf("notice = %+v, want %q", parts, want)
 	}
@@ -104,6 +104,37 @@ func TestAgentEditNoticeNativePatchProjectionAndReplay(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertEditNotice(t, transform.ctx, proxy, workspace, &request, "patch-call", legacycall.PatchCallID("patch-call", 0), original, "file.txt", true)
+	}
+}
+
+func TestAgentEditNoticeIncompletePatchProjection(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	workspace := t.TempDir()
+	target := filepath.Join(workspace, "file.txt")
+	writeTestFile(t, target, "old\n")
+	if err := os.Truncate(target, changecapture.MaxFileBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
+	transform := prepareNativeStockTransform(t, proxy, workspace, "partial-patch")
+	retainPatchObservation(t, transform, patch)
+	writeTestFile(t, target, "new\n")
+	original := "native patch result"
+	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{
+		map[string]any{"type": "custom_tool_call", "id": "patch-item", "call_id": "patch-call", "name": applyPatchToolName, "input": patch, "status": "completed"},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "patch-call", "output": original},
+	})}}
+	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
+		t.Fatal(err)
+	}
+	parts := projectedEditOutput(t, &request, "patch-call")
+	if len(parts) != 2 || parts[0]["text"] != original {
+		t.Fatalf("native result changed: %+v", parts)
+	}
+	notice, _ := parts[1]["text"].(string)
+	if !strings.Contains(notice, "Capture incomplete:") || !strings.Contains(notice, "bounded regular file") || strings.Contains(notice, "--summary") {
+		t.Fatalf("missing capture warning: %q", notice)
 	}
 }
 
@@ -204,7 +235,7 @@ func TestAgentEditNoticeShellContinuation(t *testing.T) {
 	assertEditNotice(t, transform.ctx, proxy, workspace, &request, "stdin-call", "shell-call:exec:1", completed, "file.txt", true)
 }
 
-func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
+func TestAgentEditNoticeRetainsOnlyIDsForLargeCapture(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	workspace := t.TempDir()
@@ -231,7 +262,77 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(notice, "mchanges "+strings.Join(ids, " ")+" --summary\n") || !strings.Contains(notice, "summary truncated") || len(notice) > changepresentation.MaxReceiptDiffBytes {
+	if notice != strings.Join(ids, " ") {
 		t.Fatalf("notice lost IDs or exceeded its bound: %q", notice)
+	}
+}
+
+// Automatic receipts inspect metadata, never render the explicit summary view.
+type noReceiptRead struct{ changes.Service }
+
+func (noReceiptRead) Read(context.Context, changes.Scope, changes.Query) (string, error) {
+	panic("automatic receipt rendered change details")
+}
+
+type failedReceiptInspect struct{ changes.Service }
+
+func (failedReceiptInspect) Inspect(changes.Scope, string) (changes.Snapshot, error) {
+	return changes.Snapshot{}, errors.New("capture index unavailable")
+}
+
+func TestAgentEditNoticeCaptureDiagnosticsWithoutStatistics(t *testing.T) {
+	for _, scenario := range []string{"complete", "incomplete", "scope-only", "command-failed", "receipt-failure"} {
+		t.Run(scenario, func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			store := testProxyStore(proxy)
+			workspace := t.TempDir()
+			call := legacycall.ExecCallID("edit", false)
+			record := mekugiHistory{ChangeID: "amber1", CorrelationID: "edit\x00exec",
+				ReviewFiles: []diffmodel.ReviewFile{{AfterPath: "file", Diff: "add file\n+new\n"}},
+				ExecOutcome: &changecapture.Outcome{Coverage: "exact", Status: "completed"}}
+			switch scenario {
+			case "incomplete":
+				record.ReviewFiles[0].Incomplete = "baseline unavailable"
+			case "scope-only":
+				record.ChangeID, record.ReviewFiles = "", nil
+				record.ExecOutcome.Coverage, record.ExecOutcome.ScopeReason = "partial", "workspace checkpoint unavailable"
+			case "command-failed":
+				record.ExecOutcome.Status, record.ExecOutcome.Exit = "failed", new(7)
+			}
+			if record.ChangeID != "" {
+				id, err := store.changes.Reserve(t.Context(), store.changeScope(), workspace, "author", record.CorrelationID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				record.ChangeID = id
+				record.ExecutingThread = "author"
+			}
+			if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: record}); err != nil {
+				t.Fatal(err)
+			}
+			var source changes.Service = noReceiptRead{store.changes}
+			if scenario == "receipt-failure" {
+				source = failedReceiptInspect{source}
+			}
+			notice, err := agentEditNotice(t.Context(), store.changeScope(), source, workspace, "edit", mekugiHistory{ExecObservation: &changecapture.Observation{}})
+			if scenario == "receipt-failure" {
+				if err == nil || !strings.Contains(err.Error(), "capture index unavailable") {
+					t.Fatalf("missing capture failure: %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			want := record.ChangeID
+			if scenario == "incomplete" {
+				want += "\nCapture incomplete: baseline unavailable"
+			}
+			if scenario == "scope-only" {
+				want = "Capture incomplete: workspace checkpoint unavailable"
+			}
+			if notice != want {
+				t.Fatalf("notice = %q, want %q", notice, want)
+			}
+		})
 	}
 }

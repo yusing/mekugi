@@ -132,8 +132,11 @@ func TestClaudeNativeToolCapture(t *testing.T) {
 				}
 				return
 			}
-			if !strings.Contains(receipt, "mchanges "+retained.ChangeID+" --summary") || !strings.Contains(receipt, "target.txt") || published != 1 {
+			if !strings.HasPrefix(receipt, retained.ChangeID) || published != 1 {
 				t.Fatalf("missing durable receipt: %q, publications=%d", receipt, published)
+			}
+			if scenario != "partial" && receipt != retained.ChangeID {
+				t.Fatalf("successful capture receipt contains more than its ID: %q", receipt)
 			}
 			if len(live) != 1 || live[0].Kind != activitypresentation.SupplementEditReceipt || live[0].Thread != input.Thread || !slices.Equal(live[0].Calls, []string{input.ToolUseID}) {
 				t.Fatalf("live receipt lost native host identity: %+v", live)
@@ -263,7 +266,7 @@ func TestClaudeCaptureReceiptWaitsForPublication(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "file.txt"), "later unrelated effect\n")
 	source.fail = false
 	receipt, err := operation.Complete(outcome)
-	if err != nil || !strings.Contains(receipt, "file.txt") {
+	if err != nil || receipt == "" {
 		t.Fatalf("publication retry: %q, %v", receipt, err)
 	}
 	retained, _, _ := store.lookup(ctx, workspace, legacycall.ExecCallID(operation.operation.call, false))
@@ -294,8 +297,12 @@ func TestClaudeNamedTargetFollowsSymlink(t *testing.T) {
 	defer operation.Discard()
 	writeTestFile(t, filepath.Join(workspace, "link"), "after\n")
 	receipt, err := operation.Complete(ClaudeToolOutcome{Terminal: true, Succeeded: true, Status: "completed"})
-	if err != nil || !strings.Contains(receipt, "ignored.generated") {
+	if err != nil || receipt == "" {
 		t.Fatalf("named write-through target lost: %q, %v", receipt, err)
+	}
+	summary, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{receipt}, View: "summary"})
+	if err != nil || !strings.Contains(summary, "ignored.generated") {
+		t.Fatalf("named write-through evidence lost: %q, %v", summary, err)
 	}
 }
 

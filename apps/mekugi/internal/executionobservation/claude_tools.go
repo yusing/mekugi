@@ -158,7 +158,7 @@ func (o *ClaudeToolOperation) Complete(outcome ClaudeToolOutcome) (string, error
 	}
 	receipt, err := agentEditNotice(ctx, operation.retained, operation.changeSource, operation.workspace, operation.call, operation.history)
 	if err != nil {
-		return "", err
+		return receipt, err
 	}
 	o.receipt, o.settled = receipt, true
 	return receipt, nil

@@ -434,7 +434,10 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 			continue
 		}
 		notice, err := agentEditNotice(ctx, p.Retained, p.Changes, workspace, completed.callID, completed.history)
-		if err != nil || notice == "" {
+		if err != nil {
+			notice = strings.TrimSpace(notice + "\nCapture receipt unavailable: " + err.Error())
+		}
+		if notice == "" {
 			continue // Auxiliary evidence must not interfere with stock results.
 		}
 		output, projected, err := codexresponses.AppendOutputNotice(item["output"], notice)

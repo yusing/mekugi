@@ -209,17 +209,17 @@ func TestClaudeLaunchHooksPublishSharedNativeEvidence(t *testing.T) {
 			t.Fatal(err)
 		}
 		fields := strings.Fields(response.Specific.Context)
-		if len(fields) < 3 || fields[0] != "mchanges" {
+		if len(fields) != 1 {
 			t.Fatalf("missing native receipt: %s", result)
 		}
 		parent := b.selected
 		parent.Thread = "parent"
-		text, err := b.owners.Changes.Service.Read(t.Context(), parent, changes.Query{Workspace: b.settings.Workspace, IDs: []string{fields[1]}})
+		text, err := b.owners.Changes.Service.Read(t.Context(), parent, changes.Query{Workspace: b.settings.Workspace, IDs: []string{fields[0]}})
 		if err != nil || !strings.Contains(text, "+observed") {
 			t.Fatalf("parent handoff: %q %v", text, err)
 		}
 		own, err := b.owners.Changes.Service.Read(t.Context(), parent, changes.Query{Workspace: b.settings.Workspace, View: "list"})
-		if err != nil || strings.Contains(own, fields[1]) {
+		if err != nil || strings.Contains(own, fields[0]) {
 			t.Fatalf("child changes leaked into parent implicit list: %q %v", own, err)
 		}
 	}
@@ -231,7 +231,7 @@ func TestClaudeLaunchHooksPublishSharedNativeEvidence(t *testing.T) {
 		args := jsontext.Value(background.args)
 		f.hook(t, "PreToolUse", background.tool, background.id, args, nil)
 		ack := f.hook(t, "PostToolUse", background.tool, background.id, args, jsontext.Value(background.ack))
-		if strings.Contains(string(ack), "mchanges") {
+		if !strings.Contains(string(ack), `"additionalContext":""`) {
 			t.Fatalf("%s acknowledgement finalized: %s", background.tool, ack)
 		}
 		if err := os.WriteFile(filepath.Join(b.settings.Workspace, background.file), []byte("done\n"), 0600); err != nil {
@@ -242,7 +242,20 @@ func TestClaudeLaunchHooksPublishSharedNativeEvidence(t *testing.T) {
 			t.Fatal(err)
 		}
 		flushed := f.hook(t, "PostToolBatch", "", "", nil, nil)
-		if !strings.Contains(string(flushed), "mchanges") || !strings.Contains(string(flushed), background.file) {
+		var response struct {
+			Specific struct {
+				Context string `json:"additionalContext"`
+			} `json:"hookSpecificOutput"`
+		}
+		if err := json.Unmarshal(flushed, &response); err != nil {
+			t.Fatal(err)
+		}
+		ids := strings.Fields(response.Specific.Context)
+		if len(ids) != 1 {
+			t.Fatalf("expected only capture ID: %s", flushed)
+		}
+		diff, err := b.owners.Changes.Service.Read(t.Context(), b.selected, changes.Query{Workspace: b.settings.Workspace, IDs: ids})
+		if err != nil || !strings.Contains(diff, background.file) || !strings.Contains(diff, "+done") {
 			t.Fatalf("settled %s receipt not delivered to next hook: %s", background.tool, flushed)
 		}
 		b.mu.Lock()
@@ -254,6 +267,17 @@ func TestClaudeLaunchHooksPublishSharedNativeEvidence(t *testing.T) {
 	}
 	if err := b.execution.AttachChild(t.Context(), "parent", "child"); err == nil {
 		t.Fatal("Claude child was attachable")
+	}
+}
+
+func TestClaudeHookCaptureFailureIsNotCommandFailure(t *testing.T) {
+	f := newClaudeHookFixture(t)
+	args := jsontext.Value(`{"command":"printf observed > file.txt"}`)
+	f.hook(t, "PreToolUse", "Bash", "discarded", args, nil)
+	f.bridge.captures["discarded"].operation.Discard()
+	result := f.hook(t, "PostToolUse", "Bash", "discarded", args, jsontext.Value(`{"stdout":"command succeeded"}`))
+	if !strings.Contains(string(result), "Capture failed: native tool capture was discarded") || strings.Contains(string(result), "command failed") {
+		t.Fatalf("capture failure mislabeled: %s", result)
 	}
 }
 

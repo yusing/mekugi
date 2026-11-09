@@ -352,7 +352,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), "+parent evidence") || !strings.Contains(string(body), "THREAD="+result.Thread) || !strings.Contains(string(body), "mekugi-tools-") || !strings.Contains(string(body), "mchanges "+strings.Fields(childList)[0]) {
+	if !strings.Contains(string(body), "+parent evidence") || !strings.Contains(string(body), "THREAD="+result.Thread) || !strings.Contains(string(body), "mekugi-tools-") || !strings.Contains(string(body), strings.Fields(childList)[0]) {
 		t.Fatalf("native provider input omitted private frontend identity or shared receipts: %s", body)
 	}
 	var effortRequests []struct {

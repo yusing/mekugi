@@ -216,9 +216,11 @@ processes or reuse another workspace's allocation.
 Completed changes can publish a bounded user-visible Create/Edit summary from
 the same retained files and hunks as `mchanges`, including effects of failed
 commands and both endpoints of moves. After persistence, a separate text part
-adds the change ID and summary statistics to the agent-visible result; original
-host content remains intact. Partial edits expose only retained evidence.
-Unchanged or unfinished calls produce neither summary nor change notice;
+adds only the capture IDs to the agent-visible result; original host content
+remains intact. Incomplete or failed capture emits an explicit capture warning,
+independent of command exit status. Details remain available through `mchanges`
+and interactive receipts. Partial edits expose only retained evidence.
+Complete no-effect or unfinished calls produce neither summary nor change notice;
 continuations receive theirs when the edit finishes.
 
 [Duplicate-output projection](../../modules/outputdeduplication/SPEC.md) can

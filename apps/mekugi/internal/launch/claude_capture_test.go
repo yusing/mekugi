@@ -95,13 +95,21 @@ func TestClaudeLaunchNativeCaptureWorkingDirectories(t *testing.T) {
 				if err := json.Unmarshal(result, &response); err != nil {
 					t.Fatal(err)
 				}
-				fields := strings.Fields(response.Specific.Context)
-				if len(fields) < 3 || fields[0] != "mchanges" {
+				idLine, warning, _ := strings.Cut(response.Specific.Context, "\n")
+				if scenario.removedWorkspace {
+					if warning != "Capture incomplete: workspace checkpoint unavailable" {
+						t.Fatalf("missing checkpoint warning: %q", warning)
+					}
+				} else if warning != "" {
+					t.Fatalf("unexpected capture warning: %q", warning)
+				}
+				fields := strings.Fields(idLine)
+				if len(fields) != 1 {
 					t.Fatalf("missing retained receipt: %s", result)
 				}
 				parent := b.selected
 				parent.Thread = "parent"
-				diff, err := b.owners.Changes.Service.Read(t.Context(), parent, changes.Query{Workspace: workspace, IDs: []string{fields[1]}})
+				diff, err := b.owners.Changes.Service.Read(t.Context(), parent, changes.Query{Workspace: workspace, IDs: []string{fields[0]}})
 				path := filepath.Join(directories[i], "target.ipynb")
 				if scenario.tool == "PowerShell" {
 					path, _ = filepath.Rel(workspace, path)
@@ -110,7 +118,7 @@ func TestClaudeLaunchNativeCaptureWorkingDirectories(t *testing.T) {
 					t.Fatalf("native cwd effect or retained workspace lost: %s, %v", diff, err)
 				}
 				own, err := b.owners.Changes.Service.Read(t.Context(), parent, changes.Query{Workspace: workspace, View: "list"})
-				if err != nil || strings.Contains(own, fields[1]) {
+				if err != nil || strings.Contains(own, fields[0]) {
 					t.Fatalf("child attribution leaked into parent implicit selection: %q, %v", own, err)
 				}
 			}

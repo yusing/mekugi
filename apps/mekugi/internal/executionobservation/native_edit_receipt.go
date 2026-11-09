@@ -2,6 +2,7 @@ package executionobservation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -88,6 +89,7 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 func agentEditNotice(ctx context.Context, selected changes.Scope, source changes.Service, workspace, callID string, history mekugiHistory) (string, error) {
 	selected = observationScope(ctx, selected)
 	var calls []string
+	var captureErr error
 	for index := range history.NativePatches {
 		calls = append(calls, legacycall.PatchCallID(callID, index))
 	}
@@ -111,34 +113,65 @@ func agentEditNotice(ctx context.Context, selected changes.Scope, source changes
 			}
 			return nil
 		}); err != nil {
-			return "", err
+			captureErr = errors.Join(captureErr, err)
 		}
 		slices.Sort(calls)
 		calls = slices.Compact(calls)
 	}
 	var ids []string
+	var warnings []string
+	warned := make(map[string]bool)
+	addWarnings := func(record mekugiHistory) {
+		for _, file := range record.reviews() {
+			if file.Incomplete != "" && !warned[file.Incomplete] {
+				warned[file.Incomplete] = true
+				warnings = append(warnings, file.Incomplete)
+			}
+		}
+		if outcome := record.ExecOutcome; outcome != nil && outcome.Coverage == "partial" {
+			reason := outcome.ScopeReason
+			if reason == "" {
+				reason = "partial file evidence"
+			}
+			if !warned[reason] {
+				warned[reason] = true
+				warnings = append(warnings, reason)
+			}
+		}
+	}
 	seen := make(map[string]bool)
 	for _, derived := range calls {
 		record, found, err := lookupObservation(ctx, selected, workspace, derived)
 		if err != nil {
-			return "", err
+			captureErr = errors.Join(captureErr, err)
+			continue
 		}
 		if !found {
 			continue
 		}
 		if record.ExecOutcome != nil && record.ExecOutcome.SharedWith != "" {
-			record, found, err = lookupObservation(ctx, selected, workspace, record.ExecOutcome.SharedWith)
+			shared := record.ExecOutcome.SharedWith
+			record, found, err = lookupObservation(ctx, selected, workspace, shared)
 			if err != nil {
-				return "", err
+				captureErr = errors.Join(captureErr, err)
+				continue
+			}
+			if !found {
+				captureErr = errors.Join(captureErr, fmt.Errorf("shared capture %s unavailable", shared))
+				continue
 			}
 		}
 		authored := authoredChangeHistory(record)
-		if len(authored.reviews()) == 0 {
+		addWarnings(authored)
+		if authored.ExecOutcome != nil || len(authored.reviews()) == 0 {
 			intervals, err := readExecIntervals(ctx, selected, source, workspace, callID, history.ExecObservation != nil && history.ExecObservation.CodeMode)
 			if err != nil {
-				return "", err
+				captureErr = errors.Join(captureErr, err)
 			}
-			if len(intervals) == 0 {
+			for _, interval := range intervals {
+				addWarnings(authoredChangeHistory(interval.before))
+			}
+			if err == nil && len(intervals) == 0 && len(authored.reviews()) == 0 {
 				continue
 			}
 		}
@@ -149,22 +182,19 @@ func agentEditNotice(ctx context.Context, selected changes.Scope, source changes
 		seen[id] = true
 		ids = append(ids, id)
 	}
-	if len(ids) == 0 {
-		return "", nil
+	// Success needs only durable IDs, not a composed diff or per-file statistics.
+	notice := strings.Join(ids, " ")
+	if len(warnings) != 0 {
+		warning := strings.Join(warnings, "; ")
+		const prefix = "\nCapture incomplete: "
+		const truncated = " [truncated; inspect mchanges --history]"
+		limit := max(0, changepresentation.MaxReceiptDiffBytes-len(notice)-len(prefix)-len(truncated))
+		if len(warning) > limit {
+			warning = strings.ToValidUTF8(warning[:limit], "") + truncated
+		}
+		notice = strings.TrimSpace(notice + prefix + warning)
 	}
-	// Put every ID before the bounded statistics, including multi-patch cells.
-	header := "mchanges " + strings.Join(ids, " ") + " --summary\n"
-	summary, err := source.Read(ctx, selected, changes.Query{Workspace: workspace, IDs: ids, View: "summary"})
-	if err != nil {
-		return "", err
-	}
-	const truncated = "[summary truncated; run the mchanges command above for full statistics]"
-	budget := changepresentation.MaxReceiptDiffBytes - len(header) - len(truncated)
-	if len(summary) > budget {
-		end := strings.LastIndexByte(summary[:max(0, budget)], '\n')
-		summary = summary[:end+1] + truncated
-	}
-	return header + summary, nil
+	return notice, captureErr
 }
 
 // receiptEvidence translates observation facts into renderer-neutral receipt input.
