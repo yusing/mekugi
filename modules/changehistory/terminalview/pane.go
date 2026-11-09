@@ -53,8 +53,12 @@ func (c *Pane) SetWorkspace(workspace string) {
 	c.refreshChanges()
 }
 func (c *Pane) SetTheme(theme diffrender.Theme) {
-	c.dirty = c.dirty || c.theme != theme
+	if c.theme == theme {
+		return
+	}
 	c.theme = theme
+	c.navigation.Dots = c.callerDots()
+	c.dirty = true
 }
 func (c *Pane) NavigatorWidth(width int) int { return c.navigation.Width(width) }
 func (c *Pane) NavigatorColumns() int        { return c.navigation.Columns }

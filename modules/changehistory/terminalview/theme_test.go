@@ -2,6 +2,8 @@ package terminalview
 
 // Source: internal/livediff/theme_test.go@[ebde9ad5]
 import (
+	"bytes"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +19,42 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestUISnapshotSavedDiffCallerDotsThemeSwitch(t *testing.T) {
+	c := liveDiffChangesController(t, 120, 12, []presentation.Chunk{
+		liveDiffCapture("one", "a.go", 1, "old\n", "new\n", presentation.Origin{Change: "amber1", Caller: "/root"}),
+		liveDiffCapture("two", "b.go", 2, "before\n", "after\n", presentation.Origin{Change: "apple1", Caller: "/root/worker"}),
+	})
+	c.Key("n")
+	c.Key("/")
+	c.Key(".") // Keep both callers visible while retaining an active path filter.
+	c.frame(t)
+	before := c.navigation
+	before.Dots = nil
+	selected, revision := c.view.Selected, c.publicationRevision
+	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.LightTheme, diffrender.DarkTheme} {
+		t.Run(strconv.Itoa(int(theme)), func(t *testing.T) {
+			c.SetTheme(theme)
+			var output bytes.Buffer
+			if err := c.Paint(t.Context(), &output, 120, 12); err != nil {
+				t.Fatal(err)
+			}
+			for _, caller := range []string{"/root", "/root/worker"} {
+				_, color := CallerStyle(theme)(caller)
+				if !strings.Contains(output.String(), color+"●\x1b[0m") {
+					t.Fatalf("missing recolored dot for %s in %q", caller, output.String())
+				}
+			}
+			after := c.navigation
+			after.Dots = nil
+			if !reflect.DeepEqual(before, after) || c.view.Selected != selected || c.publicationRevision != revision {
+				t.Fatal("theme switch changed navigation, selection or publication revision")
+			}
+			rows := c.navigation.Render(c.files, c.rendering.Counts, c.view.Selected, 30, 6, theme)
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/caller_dots_theme_"+strconv.Itoa(int(theme))+".txt", append(rows, "plain"), 30)
+		})
+	}
+}
 
 func testThemeChunk(key, path, diff string) presentation.Chunk {
 	return presentation.Chunk{
