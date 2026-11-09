@@ -160,6 +160,10 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	run("find", "label", "Access token", "fill", strings.Repeat("f", 64))
 	run("find", "role", "button", "click", "--name", "Connect", "--exact")
 	run("find", "text", "Disclosure thread", "click", "--exact")
+	// The bounded initial feed can leave the first fixture entry in retained
+	// history. Read from the top through the same paging path as a reader.
+	run("wait", "--fn", `!!document.querySelector('[data-entry="22"]')`)
+	run("eval", `(() => { const scroller = document.querySelector('[aria-label="Transcript"] .overflow-y-auto'); scroller.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); scroller.scrollTop = 0; })()`)
 	run("wait", "--text", "Interrupt requested for /root/worker")
 	for _, width := range []string{"1280", "768", "390"} {
 		run("set", "viewport", width, "900")
