@@ -20,6 +20,133 @@ func TestToolGenerationLabels(t *testing.T) {
 	}
 }
 
+// Keep this inventory aligned with the stock execution builtins in
+// backends/codex/binding/execution_source.go and threadcontrol's ToolCatalog.
+// new_context is deliberately omitted: PrepareStockExecution removes it.
+func TestToolGenerationCatalog(t *testing.T) {
+	for _, test := range []struct{ name, want string }{
+		{"exec", "Emitting JavaScript"},
+		{"wait", "Waiting for JavaScript"},
+		{"write_stdin", "Interacting with a command"},
+		{"view_image", "Viewing an image"},
+		{"list_mcp_resources", "Listing resources"},
+		{"list_mcp_resource_templates", "Listing resource templates"},
+		{"read_mcp_resource", "Reading resource"},
+		{"get_context_remaining", "Checking remaining context"},
+		{"clock.curr_time", "Checking time"},
+		{"clock.sleep", "Sleeping"},
+		{"curr_time", "Checking time"},
+		{"sleep", "Sleeping"},
+		{"web.run", "Browsing the web"},
+		{"image_gen.imagegen", "Generating an image"},
+		{"mcp__threadcontrol.spawn_agent", "Spawning subagent"},
+		{"mcp__threadcontrol.followup_task", "Assigning follow-up to"},
+		{"mcp__threadcontrol.send_message", "Sending message to"},
+		{"mcp__threadcontrol.interrupt_agent", "Interrupting agent"},
+		{"mcp__threadcontrol.inspect", "Inspecting agent"},
+		{"mcp__threadcontrol.list_agents", "Listing agents"},
+		{"mcp__threadcontrol.list_models", "Listing models"},
+		{"mcp__threadcontrol.compact", "Compacting context"},
+		{"mcp__threadcontrol.wait_agent", "Waiting for agents"},
+	} {
+		for _, name := range []string{test.name, strings.ReplaceAll(test.name, ".", "__")} {
+			for _, prefix := range []string{"", "functions.", "tools."} {
+				g := NewToolGeneration(prefix+name, false)
+				g.Append(`{`)
+				if got := g.Label(); got != test.want {
+					t.Errorf("%s%s: %q, want %q", prefix, name, got, test.want)
+				}
+			}
+		}
+	}
+}
+
+func TestToolGenerationIdentityRefinement(t *testing.T) {
+	for _, test := range []struct{ name, input, want string }{
+		{"mcp__threadcontrol__followup_task", `{"target":"worker","message":"long`, "Assigning follow-up to `worker`"},
+		{"mcp__threadcontrol__send_message", `{"message":"hello","target":"agent:main/reviewer"}`, "Sending message to `agent:main/reviewer`"},
+		{"mcp__threadcontrol__interrupt_agent", `{"target":"worker"`, "Interrupting agent `worker`"},
+		{"mcp__threadcontrol__inspect", `{"target":"worker"}`, "Inspecting agent `worker`"},
+		{"mcp__threadcontrol__list_agents", `{"path_prefix":"agent:main/team"}`, "Listing agents `agent:main/team`"},
+		{"view_image", `{"path":"/tmp/picture.png"}`, "Viewing an image `/tmp/picture.png`"},
+		{"view_image", `{"path":"/tmp/\ud83d\ude00.png"}`, "Viewing an image `/tmp/😀.png`"},
+		{"view_image", `{"path":"/tmp/😀.png"}`, "Viewing an image `/tmp/😀.png`"},
+		{"list_mcp_resources", `{"server":"docs"}`, "Listing resources `docs`"},
+		{"list_mcp_resource_templates", `{"server":"docs"}`, "Listing resource templates `docs`"},
+		{"read_mcp_resource", `{"uri":"resource://docs/intro"}`, "Reading resource `resource://docs/intro`"},
+		{"wait", `{"cell_id":"cell-1"}`, "Waiting for JavaScript `cell-1`"},
+		{"mcp__other__spawn_agent", `{"task_name":"decoy"}`, "Calling `mcp__other__spawn_agent`"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, nested := range []bool{false, true} {
+				for _, split := range []bool{false, true} {
+					g := NewToolGeneration(test.name, false)
+					input := test.input
+					if nested {
+						g = NewToolGeneration("", true)
+						input = "await tools." + test.name + "(" + input
+					}
+					if split {
+						for _, c := range input {
+							g.Append(string(c))
+						}
+					} else {
+						g.Append(input)
+					}
+					if got := g.Label(); got != test.want {
+						t.Errorf("nested=%v split=%v: %q, want %q", nested, split, got, test.want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestToolGenerationTargetIsLiteralAndLocal(t *testing.T) {
+	for _, input := range []string{
+		`{target:"unfinished`,
+		`{target:computed}`,
+		"{target:`agent:${name}`}",
+		`{metadata:{target:"decoy"},message:"long`,
+		`{message:"target: decoy"}`,
+		`{target:"first", ...{target:"second"}}`,
+		`{target:"first", ["target"]:"second"}`,
+		`{target:"first", get target(){return "second"}}`,
+		`{target:"first", target}`,
+		`{target:"first", ...overrides}`,
+	} {
+		for _, nested := range []bool{false, true} {
+			for _, split := range []bool{false, true} {
+				g := NewToolGeneration("mcp__threadcontrol__send_message", false)
+				source := input
+				if nested {
+					g = NewToolGeneration("", true)
+					source = "tools.mcp__threadcontrol__send_message(" + input
+				}
+				if split {
+					for _, c := range source {
+						g.Append(string(c))
+					}
+				} else {
+					g.Append(source)
+				}
+				if got := g.Label(); got != "Sending message to" {
+					t.Errorf("%s nested=%v split=%v: %q", input, nested, split, got)
+				}
+			}
+		}
+	}
+	g := NewToolGeneration("", true)
+	g.Append(`await tools.mcp__threadcontrol__inspect({target:"first"}); await tools.view_image({path:"second`)
+	if got := g.Label(); got != "Viewing an image" {
+		t.Fatal(got)
+	}
+	g.Append(`.png"})`)
+	if got := g.Label(); got != "Viewing an image `second.png`" {
+		t.Fatal(got)
+	}
+}
+
 func TestToolGenerationIncompleteJavaScript(t *testing.T) {
 	for _, test := range []struct{ source, want string }{
 		{`await tools.exec_command({cmd: "long`, "Executing a command"},
@@ -83,16 +210,22 @@ func TestToolGenerationSpawnRefinement(t *testing.T) {
 }
 
 func TestToolGenerationPayloadChunksDoNotReparse(t *testing.T) {
-	for _, quote := range []string{"\"", "`"} {
-		g := NewToolGeneration("", true)
-		g.Append(`await tools.exec_command({cmd:` + quote)
-		g.input.Grow(1 << 20)
-		payload := strings.Repeat("x", 1024)
-		if allocations := testing.AllocsPerRun(100, func() { g.Append(payload) }); allocations != 0 {
-			t.Fatalf("quoted payload chunks allocated parser work: %v", allocations)
-		}
-		if got := g.Label(); got != "Executing a command" {
-			t.Fatal(got)
+	for _, test := range []struct{ name, prefix, want string }{
+		{"", `await tools.exec_command({cmd:`, "Executing a command"},
+		{"", `await tools.mcp__threadcontrol.send_message({message:`, "Sending message to"},
+		{"mcp__threadcontrol.send_message", `{message:`, "Sending message to"},
+	} {
+		for _, quote := range []string{"\"", "`"} {
+			g := NewToolGeneration(test.name, test.name == "")
+			g.Append(test.prefix + quote)
+			g.input.Grow(1 << 20)
+			payload := strings.Repeat("x", 1024)
+			if allocations := testing.AllocsPerRun(100, func() { g.Append(payload) }); allocations != 0 {
+				t.Fatalf("%s quoted payload chunks allocated parser work: %v", test.name, allocations)
+			}
+			if got := g.Label(); got != test.want {
+				t.Fatal(got)
+			}
 		}
 	}
 }

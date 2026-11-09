@@ -37,8 +37,18 @@ func TestUISnapshotToolGenerationComposer(t *testing.T) {
 	}
 	rows, _ := u.testMainFrame(100, 8, 0)
 	assertNativeUISnapshot(t, "composer-tool-generation", rows)
+	// Refine another nested operation through the same producer, detached
+	// presentation and both terminal consumers, without adding a tool row.
+	u.controlObservations.IdentifyToolInput(&generation, sessioncontrol.GenerationItem{ID: "item"}, "", false, `null}); await tools.mcp__threadcontrol__inspect({target:"review`)
+	if rows := refresh("Inspecting agent"); !strings.Contains(rows, "Inspecting agent") || strings.Contains(rows, "worker") {
+		t.Fatalf("next tool inherited the old name: %q", rows)
+	}
+	u.controlObservations.IdentifyToolInput(&generation, sessioncontrol.GenerationItem{ID: "item"}, "", false, `er"})`)
+	if rows := refresh("Inspecting agent `reviewer`"); !strings.Contains(rows, "Inspecting agent reviewer") {
+		t.Fatalf("target refinement not delivered: %q", rows)
+	}
 	u.controlObservations.EndGeneration(&generation)
-	if rows := refresh("Working"); strings.Contains(rows, "Spawning subagent") {
+	if rows := refresh("Working"); strings.Contains(rows, "Inspecting agent") {
 		t.Fatalf("generation survived transport completion: %q", rows)
 	}
 }

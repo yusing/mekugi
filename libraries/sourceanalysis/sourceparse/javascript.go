@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
@@ -149,6 +150,17 @@ func JavaScriptString(source string) (string, bool) {
 			case 'b', 'f', 'n', 'r', 't', 'v', 'x', 'u':
 			default:
 				return "", false
+			}
+		}
+		// JavaScript and JSON encode non-BMP characters as UTF-16 pairs;
+		// strconv.UnquoteChar only accepts individual Unicode scalar values.
+		if len(rest) >= 12 && strings.HasPrefix(rest, `\u`) && rest[6:8] == `\u` {
+			high, highErr := strconv.ParseUint(rest[2:6], 16, 16)
+			low, lowErr := strconv.ParseUint(rest[8:12], 16, 16)
+			if highErr == nil && lowErr == nil && high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff {
+				value.WriteRune(utf16.DecodeRune(rune(high), rune(low)))
+				rest = rest[12:]
+				continue
 			}
 		}
 		char, _, tail, err := strconv.UnquoteChar(rest, quote)

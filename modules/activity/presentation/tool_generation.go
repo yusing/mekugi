@@ -8,7 +8,7 @@ import (
 )
 
 // ToolGeneration describes input being authored, never an executed operation.
-// It retains source only for JavaScript cells and spawn-name refinement.
+// It retains source only for JavaScript cells and literal identity refinement.
 type ToolGeneration struct {
 	name, task     string
 	javascript     bool
@@ -23,24 +23,12 @@ func NewToolGeneration(name string, javascript bool) *ToolGeneration {
 }
 
 func (g *ToolGeneration) Label() string {
-	name := strings.TrimPrefix(strings.TrimPrefix(g.name, "functions."), "tools.")
-	name = strings.ReplaceAll(name, ".", "__")
-	switch name {
-	case "request_user_input", "request_user_input_async", "AskUserQuestion":
-		return "Asking user question"
-	case "mcp__threadcontrol__spawn_agent":
+	label, _ := generationIdentity(g.name)
+	if label != "" {
 		if g.task != "" {
-			return "Spawning subagent `" + strings.ReplaceAll(g.task, "`", "") + "`"
+			return label + " `" + strings.ReplaceAll(g.task, "`", "") + "`"
 		}
-		return "Spawning subagent"
-	case "apply_patch":
-		return "Emitting a patch"
-	case "exec_command", "Bash":
-		return "Executing a command"
-	case "write_stdin":
-		return "Interacting with a command"
-	case "view_image":
-		return "Viewing an image"
+		return label
 	}
 	if g.javascript && g.name == "" {
 		return "Emitting JavaScript"
@@ -48,11 +36,71 @@ func (g *ToolGeneration) Label() string {
 	return "Calling `" + strings.ReplaceAll(g.name, "`", "") + "`"
 }
 
+// generationIdentity owns display wording and the optional literal argument that
+// refines it. Payloads (commands, messages, prompts) are not tool identities.
+func generationIdentity(name string) (label, key string) {
+	name = strings.TrimPrefix(strings.TrimPrefix(name, "functions."), "tools.")
+	name = strings.ReplaceAll(name, ".", "__")
+	switch name {
+	case "request_user_input", "request_user_input_async", "AskUserQuestion":
+		return "Asking user question", ""
+	case "mcp__threadcontrol__spawn_agent":
+		return "Spawning subagent", "task_name"
+	case "mcp__threadcontrol__followup_task":
+		return "Assigning follow-up to", "target"
+	case "mcp__threadcontrol__send_message":
+		return "Sending message to", "target"
+	case "mcp__threadcontrol__interrupt_agent":
+		return "Interrupting agent", "target"
+	case "mcp__threadcontrol__inspect":
+		return "Inspecting agent", "target"
+	case "mcp__threadcontrol__list_agents":
+		return "Listing agents", "path_prefix"
+	case "mcp__threadcontrol__list_models":
+		return "Listing models", ""
+	case "mcp__threadcontrol__compact":
+		return "Compacting context", ""
+	case "mcp__threadcontrol__wait_agent":
+		return "Waiting for agents", ""
+	case "exec":
+		return "Emitting JavaScript", ""
+	case "wait":
+		return "Waiting for JavaScript", "cell_id"
+	case "apply_patch":
+		return "Emitting a patch", ""
+	case "exec_command", "Bash":
+		return "Executing a command", ""
+	case "write_stdin":
+		return "Interacting with a command", ""
+	case "view_image":
+		return "Viewing an image", "path"
+	case "list_mcp_resources":
+		return "Listing resources", "server"
+	case "list_mcp_resource_templates":
+		return "Listing resource templates", "server"
+	case "read_mcp_resource":
+		return "Reading resource", "uri"
+	case "get_context_remaining":
+		return "Checking remaining context", ""
+	case "clock__curr_time", "curr_time":
+		return "Checking time", ""
+	case "clock__sleep", "sleep":
+		return "Sleeping", ""
+	case "web__run":
+		return "Browsing the web", ""
+	case "image_gen__imagegen":
+		return "Generating an image", ""
+	}
+	return "", ""
+}
+
 // Append reads incomplete syntax without evaluating it. Quoted payload chunks
 // cannot identify another tool, so they do not repeatedly reparse a large body.
 func (g *ToolGeneration) Append(delta string) {
-	if !g.javascript && !strings.HasSuffix(g.name, "spawn_agent") {
-		return
+	if !g.javascript && g.input.Len() == 0 {
+		if _, key := generationIdentity(g.name); key == "" {
+			return
+		}
 	}
 	g.input.WriteString(delta)
 	changed := false
@@ -103,6 +151,7 @@ func (g *ToolGeneration) Append(delta string) {
 	var calleeEnd uint
 	var argumentParent uint
 	var argumentKind string
+	var identityKey string
 	var visit func(*sitter.Node)
 	visit = func(node *sitter.Node) {
 		if node.Kind() == "${" {
@@ -120,6 +169,7 @@ func (g *ToolGeneration) Append(delta string) {
 		if node.Kind() == "member_expression" {
 			if name := generationToolName(node, source); name != "" && generationCall(node) {
 				g.name, g.task, calleeEnd = name, "", node.EndByte()
+				_, identityKey = generationIdentity(name)
 				argumentKind = ""
 				if parent := node.Parent(); parent != nil {
 					if parent.Kind() == "ERROR" {
@@ -141,16 +191,26 @@ func (g *ToolGeneration) Append(delta string) {
 				}
 			}
 		}
-		if node.Kind() == "pair" && node.StartByte() >= calleeEnd && strings.HasSuffix(g.name, "spawn_agent") {
-			key, value := node.ChildByFieldName("key"), node.ChildByFieldName("value")
-			parent := node.Parent()
-			if key != nil && value != nil && parent != nil && parent.StartByte() == argumentParent && parent.Kind() == argumentKind {
-				name := key.Utf8Text(source)
-				if key.Kind() == "string" {
-					name, _ = sourceparse.JavaScriptString(name)
-				}
-				if name == "task_name" {
-					g.task, _ = sourceparse.JavaScriptString(value.Utf8Text(source))
+		if parent := node.Parent(); identityKey != "" && parent != nil && node.StartByte() >= calleeEnd && parent.StartByte() == argumentParent && parent.Kind() == argumentKind {
+			switch node.Kind() {
+			case "spread_element", "method_definition", "shorthand_property_identifier":
+				// These members can replace an earlier literal identity. Do not
+				// evaluate them or keep a name that may no longer be supplied.
+				g.task = ""
+			case "pair":
+				key, value := node.ChildByFieldName("key"), node.ChildByFieldName("value")
+				if key != nil && value != nil {
+					name := key.Utf8Text(source)
+					if key.Kind() == "computed_property_name" {
+						g.task = ""
+					} else {
+						if key.Kind() == "string" {
+							name, _ = sourceparse.JavaScriptString(name)
+						}
+						if name == identityKey {
+							g.task, _ = sourceparse.JavaScriptString(value.Utf8Text(source))
+						}
+					}
 				}
 			}
 		}

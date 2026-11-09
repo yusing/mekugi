@@ -41,3 +41,18 @@ func TestParseSourceTreeCancellationModesPreserveSyntax(t *testing.T) {
 		})
 	}
 }
+
+func TestJavaScriptStringSurrogatePairs(t *testing.T) {
+	for _, quote := range []string{"\"", "'", "`"} {
+		for _, source := range []string{`/tmp/\ud83d\ude00.png`, "/tmp/😀.png"} {
+			if got, ok := JavaScriptString(quote + source + quote); !ok || got != "/tmp/😀.png" {
+				t.Fatalf("%s: %q, %v", source, got, ok)
+			}
+		}
+		for _, source := range []string{`\ud83d`, `\ude00`, `\ud83d\u0041`, `\ude00\ud83d`, `\ud83d\uZZZZ`} {
+			if got, ok := JavaScriptString(quote + source + quote); ok {
+				t.Fatalf("invalid pair %s decoded as %q", source, got)
+			}
+		}
+	}
+}
