@@ -204,14 +204,15 @@ func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
 				t.Fatalf("steering input = %+v", got)
 			}
 			btwTestReply(t, u, steer, `{}`)
-			if !u.side.OneOff && (u.side.Question != "question\n\nchange direction" || len(u.side.Answer) != 1 || u.side.Answer[0].Text != "partial") {
+			if !u.side.OneOff && (len(u.side.Answer) != 1 || u.side.Answer[0].Text != "partial") {
 				t.Fatalf("steering reset the exchange: %+v", u.side.SideAnswer)
 			}
-			if !u.side.OneOff {
-				frame := strings.Join(u.sideFrame(100, 24), "\n")
-				if !strings.Contains(frame, "change direction") || !strings.Contains(frame, "partial") {
-					t.Fatalf("steering absent from Side transcript: %s", frame)
-				}
+			frame := strings.Join(u.sideFrame(100, 24), "\n")
+			if !strings.Contains(frame, "change direction") || !u.side.OneOff && !strings.Contains(frame, "partial") {
+				t.Fatalf("steering absent from Side transcript: %s", frame)
+			}
+			if u.side.Question != "question\n\nchange direction" {
+				t.Fatalf("steering lost from exchange: %+v", u.side.SideAnswer)
 			}
 			appServerTestKeys(t, u, "rejected steer\r")
 			rejected := btwTestRequest(t, w, "turn/steer", "work-side")
@@ -226,8 +227,14 @@ func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
 			appServerTestKeys(t, u, "new question\r")
 			_ = btwTestRequest(t, w, "turn/start", "work-side")
 			btwTestReply(t, u, late, `{}`)
-			if !u.side.OneOff && (u.side.Question != "new question" || !strings.Contains(u.side.History[0].Question, "late steer")) {
+			if u.side.Question != "new question" || !strings.Contains(u.side.History[0].Question, "late steer") {
 				t.Fatal("late steering acknowledgement changed a newer exchange")
+			}
+			frame = strings.Join(u.sideFrame(100, 30), "\n")
+			for _, want := range []string{"change direction", "late steer", "new question"} {
+				if !strings.Contains(frame, want) {
+					t.Fatalf("retained exchange lost %q: %s", want, frame)
+				}
 			}
 			if u.Turn != "main-turn" {
 				t.Fatal("side input changed Main's turn")

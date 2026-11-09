@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 )
 
@@ -269,6 +270,37 @@ func TestSideReplyHistoryAdmission(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestOneoffSteeringExchangeAdmission(t *testing.T) {
+	for _, tc := range []struct {
+		name, thread string
+		input        conversationmodel.Input
+		closed       bool
+		want         string
+	}{
+		{name: "ordinary", thread: "oneoff", input: conversationmodel.Input{Text: "steer"}, want: "task\n\nsteer"},
+		{name: "async reply", thread: "oneoff", input: conversationmodel.Input{Text: "reply", ReplyCount: 1}, want: "task"},
+		{name: "root companion", thread: "oneoff", input: conversationmodel.Input{Text: "image", Question: &prompt.Call{Thread: "oneoff"}}, want: "task"},
+		{name: "child companion", thread: "child", input: conversationmodel.Input{Text: "image", Question: &prompt.Call{Thread: "child"}}, want: "task"},
+		{name: "closed", thread: "oneoff", input: conversationmodel.Input{Text: "steer"}, closed: true, want: "task"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := NewRequests[struct{}](&requestTransport{id: "steer"})
+			side := &Side{SideAnswer: &conversationmodel.SideAnswer{OneOff: true, ID: 1, Question: "task"}, Thread: "oneoff", Turn: "turn"}
+			if _, err := requests.ReplySide(side, tc.thread, "turn", tc.input); err != nil {
+				t.Fatal(err)
+			}
+			response, _ := requests.Take("steer")
+			side.Closed = tc.closed
+			if _, err := requests.ObserveSide(appserver.Message{Result: []byte(`{}`)}, response, "main"); err != nil {
+				t.Fatal(err)
+			}
+			if side.Question != tc.want {
+				t.Fatalf("exchange = %q, want %q", side.Question, tc.want)
+			}
+		})
 	}
 }
 

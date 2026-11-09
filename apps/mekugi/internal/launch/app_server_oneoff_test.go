@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -185,6 +186,52 @@ func TestUISnapshotOneoffCompleted(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Workspace inspected. Main is unchanged.", "phase": "final_answer"}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
 	uisnapshot.Assert(t, "testdata/snapshots/oneoff-completed.txt", strings.Join(u.sideFrame(100, 24), "\n")+"\n")
+}
+
+func TestUISnapshotOneoffSteering(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	screen := vt.NewEmulator(100, 24)
+	defer screen.Close()
+	frameText := func() string {
+		t.Helper()
+		if err := u.testPaint(screen, 100, 24); err != nil {
+			t.Fatal(err)
+		}
+		return screen.String() + "\n"
+	}
+	u.startSession("main", "/workspace")
+	u.Turn = "main-turn"
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local)
+	u.clock = func() time.Time { return now }
+	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
+	oneoffTestStart(t, u, wire)
+	appServerTestKeys(t, u, "Inspect only the composer owner\r")
+	steer := btwTestRequest(t, wire, "turn/steer", "oneoff")
+	if steer.Params.ExpectedTurnID != "oneoff-turn" {
+		t.Fatalf("steering target = %+v", steer.Params)
+	}
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	btwTestReply(t, u, steer, `{}`)
+	// The native echo must not duplicate the side exchange's accepted input.
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "steer", "type": "userMessage", "content": []map[string]any{{"type": "text", "text": "Inspect only the composer owner"}}}})
+	if frame := frameText(); strings.Contains(frame, "Inspect only") || u.Turn != "main-turn" {
+		t.Fatalf("steering leaked into Main: %s", frame)
+	}
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	frame := frameText()
+	if strings.Count(frame, "Inspect only the composer owner") != 1 {
+		t.Fatalf("accepted steering missing or duplicated: %s", frame)
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/oneoff-steering.txt", frame)
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
+	appServerTestKeys(t, u, "Now check its tests\r")
+	start := btwTestRequest(t, wire, "turn/start", "oneoff")
+	btwTestReply(t, u, start, `{"turn":{"id":"next-turn"}}`)
+	frame = frameText()
+	if strings.Count(frame, "Inspect only the composer owner") != 1 || !strings.Contains(frame, "Now check its tests") {
+		t.Fatalf("next exchange lost retained steering: %s", frame)
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/oneoff-steering-retained.txt", frame)
 }
 
 func TestOneoffGuardAdmissionAndFailure(t *testing.T) {

@@ -324,7 +324,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				if root && method == "turn/start" {
 					s.Busy = false
 				}
-			} else if method == "turn/steer" && root && !s.OneOff && !s.Closed {
+			} else if method == "turn/steer" && root && !s.Closed && input.Question == nil && input.ReplyCount == 0 {
 				s.AppendQuestion(response.SideExchange, *input)
 			} else if method == "turn/start" {
 				var result struct {
