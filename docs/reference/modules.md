@@ -225,7 +225,7 @@ Coordinate native agent threads and retained descendant waits
 - Composition: selected; lifetime: `invocation`.
 - Requires: `sessionhistory`, `agentguidance`.
 - Contributes: `record-kinds`.
-- Records: `threadcontrol`, `threadcontrol-import`.
+- Records: `threadcontrol`, `threadcontrol-import`, `threadcontrol-message`.
 - Codex connections: `mcp-tools`.
 
 ## [transportdiagnostics](../../modules/transportdiagnostics/SPEC.md)

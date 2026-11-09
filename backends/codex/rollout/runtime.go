@@ -31,6 +31,9 @@ type Runtime struct {
 // Admission is the host's durable canonical settings, distinct from the coarse
 // sandbox summary in app-server thread/start and settings notifications.
 type Admission struct {
+	ActivePermissionProfile *struct {
+		ID string `json:"id"`
+	} `json:"active_permission_profile,omitempty"`
 	Model             string         `json:"model"`
 	Provider          string         `json:"model_provider_id"`
 	Workspace         string         `json:"cwd"`

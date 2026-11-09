@@ -34,7 +34,7 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 	entries := []struct{ name, description, schema string }{
 		{"spawn_agent", "Create an agent with an attributed assignment. For fork_turns=none, preload known required startup sources. Returns the confirmed thread identity and logical agent name.", `{"type":"object","properties":{
 			"task_name":{"type":"string","description":"Task-name segment under this agent. Use lowercase ASCII letters, digits, underscores and hyphens; for example, trace_roster_metrics. Must be nonempty and unique under this parent."},
-			"message":{"type":"string","description":"Nonempty assignment for the new agent. Include the task, constraints and expected result, especially when fork_turns=none supplies no surrounding conversation."},
+			"message":{"type":"string","description":"Nonempty assignment for the new agent. Include the task, constraints and expected result, especially when fork_turns=none supplies no surrounding conversation. @path snapshots files under recipient cwd/permissions; \\@path stays literal."},
 			"agent_type":{"type":"string","description":"Role from the available agent_type roles. Omit for the default role on a fresh child or inherited role on a full-history fork."},
 			"fork_turns":{"type":"string","enum":["all","none"],"description":"Conversation context to inherit: all (default) copies the full history and inherits model and effort; none starts fresh and permits authorized model/effort overrides and preload."},
 			"model":{"type":"string","description":"Model override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions. ` + modelGuidance + `"},
@@ -47,8 +47,8 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 		{"inspect", "Inspect an admitted agent: applied model, reasoning effort, service tier, context usage/window and completed compactions. Includes idle or completed agents; uses retained observations without starting work; unavailable observations are null.", `{"type":"object","properties":{"target":{"type":"string","description":"Agent identifier: agent:main, a returned logical name, unambiguous relative task name, or thread ID. For another active Mekugi session, use an exact session/thread ID."}},"required":["target"],"additionalProperties":false}`},
 		{"compact", "Compact at a safe checkpoint when discarding obsolete context materially reduces what the remaining work must carry, or when the 90% context-usage notice requires it. A small completed step, preload or waiting transition alone is not a reason to compact. Automatically continue unfinished work. Call alone and let the enclosing execution finish. Context-usage reminders below 90% are not compaction triggers.", compactSchema},
 		{"wait_agent", "Wait for an agent outcome or addressed message. Selects local descendants with unsettled work or unread outcomes once. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. New input supersedes the wait.", `{"type":"object","properties":{"wait_mode":{"type":"string","enum":["any","all"],"description":"Omit or use any to return on the first descendant completion or failure. Use all to wait until every descendant settles. Addressed messages wake either mode."},"compact":{"type":"boolean","description":"Set true only when the compact tool's checkpoint criteria apply, not merely because you are waiting. Compacts before delivering this wait's outcome, including an already-ready outcome. The timeout starts at wait registration. Compaction failure or cost rejection is included in the eventual wait result; pending waits remain waiting."}` + waitReload + `,"yield_time_ms":{"type":"integer","minimum":300000,"description":"Check progress at this interval; minimum 300000 (5 minutes). Omit to disable. Wakes only for new captured changes, with mchanges IDs and current activity/status; unchanged intervals keep waiting. Call wait_agent again after yielding to continue waiting."},"timeout_ms":{"type":"integer","description":"Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline. Omission waits indefinitely. Explicit values below the host minimum are clamped; values above its maximum are rejected."}},"additionalProperties":false}`},
-		{"send_message", "Queue attributed input without starting idle work. Set btw=true to ask an independent side question and return its answer.", `{"type":"object","properties":{"target":{"type":"string","description":"Recipient's logical name, unambiguous relative task name, or thread ID. For another active Mekugi session, use its exact session/thread ID."},"message":{"type":"string","description":"Nonempty attributed message or independent side question."},"btw":{"type":"boolean","description":"Ask an independent answer-only question from the running or waiting target's existing context. It cannot use tools or investigate, and is not delivered to or steering the working agent. Defaults to false."}},"required":["target","message"],"additionalProperties":false}`},
-		{"followup_task", "Start or steer an admitted non-root agent with a new assignment.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."},"message":{"type":"string","description":"Nonempty follow-up assignment. Starts idle work, steers a running turn, or supersedes a pending wait."}},"required":["target","message"],"additionalProperties":false}`},
+		{"send_message", "Queue attributed input without starting idle work. Set btw=true to ask an independent side question and return its answer.", `{"type":"object","properties":{"target":{"type":"string","description":"Recipient's logical name, unambiguous relative task name, or thread ID. For another active Mekugi session, use its exact session/thread ID."},"message":{"type":"string","description":"Nonempty attributed message or independent side question. @path snapshots files under recipient cwd/permissions; \\@path stays literal."},"btw":{"type":"boolean","description":"Ask an independent answer-only question from the running or waiting target's existing context. It cannot use tools or investigate, and is not delivered to or steering the working agent. Defaults to false."}},"required":["target","message"],"additionalProperties":false}`},
+		{"followup_task", "Start or steer an admitted non-root agent with a new assignment.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."},"message":{"type":"string","description":"Nonempty follow-up assignment. Starts idle work, steers a running turn, or supersedes a pending wait. @path snapshots files under recipient cwd/permissions; \\@path stays literal."}},"required":["target","message"],"additionalProperties":false}`},
 		{"interrupt_agent", "Interrupt a non-root agent, retaining it for later work.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."}},"required":["target"],"additionalProperties":false}`},
 	}
 	result := make([]*mcp.Tool, 0, len(entries))
@@ -258,6 +258,16 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 		if err != nil {
 			return nil, fmt.Errorf("btw needs the target's live runtime: %w", err)
 		}
+		sources, err := d.freezeMessage(ctx, caller, "btw", message, target, owner)
+		if err != nil {
+			return nil, err
+		}
+		if sources != "" {
+			message, err = d.control.MessageText(caller.Thread, sources, message)
+			if err != nil {
+				return nil, err
+			}
+		}
 		d.control.ObserveFeature(caller.Thread, control.FeatureMessage, control.FeatureSideQuestion)
 		dispatched = true
 		answer, err := owner.SideQuestion(ctx, target, message)
@@ -292,7 +302,22 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	if err := d.Reconcile(ctx, target.Thread); err != nil {
 		return nil, err
 	}
-	action, err := d.control.PrepareAction(ctx, caller, args.Target, kind, message)
+	target, err = d.control.ActionTarget(caller, args.Target, kind, message)
+	if err != nil {
+		return nil, err
+	}
+	sources := ""
+	if messageSelection(message) != "" {
+		owner, readErr := d.native().Resume(ctx, target.Thread)
+		if readErr != nil {
+			return nil, readErr
+		}
+		sources, err = d.freezeMessage(ctx, caller, kind, message, target, owner)
+		if err != nil {
+			return nil, err
+		}
+	}
+	action, err := d.control.PrepareActionWithSources(ctx, caller, args.Target, kind, message, sources)
 	if err != nil {
 		return nil, err
 	}

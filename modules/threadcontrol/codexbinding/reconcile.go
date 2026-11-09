@@ -24,7 +24,11 @@ func (d *Driver) Reconcile(ctx context.Context, thread string) error {
 		}
 		switch kind {
 		case "compact", "message", "final", "assignment_input", "wake", "initial", "followup", "interrupt", "human", "completion":
-			err = d.native().Confirm(ctx, nativeInput(input))
+			var prepared control.NativeInput
+			prepared, err = d.prepareNativeInput(input)
+			if err == nil {
+				err = d.native().Confirm(ctx, prepared)
+			}
 			if err == nil {
 				err = d.control.EffectAcknowledged(context.WithoutCancel(ctx), action.Caller, action.ID, control.Receipt{Reconciled: true, Phase: action.Phase})
 			}

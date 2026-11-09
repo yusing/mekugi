@@ -30,10 +30,11 @@ type Service struct {
 }
 
 type treeOwner struct {
-	session  history.Session
-	mutation sync.Mutex
-	state    atomic.Pointer[Tree]
-	changed  chan struct{}
+	session      history.Session
+	mutation     sync.Mutex
+	state        atomic.Pointer[Tree]
+	changed      chan struct{}
+	messageReads sync.Map
 }
 
 const checkpointVersion = 4
@@ -67,6 +68,9 @@ func RecordKinds() []recordkind.Spec {
 			}
 			var files []string
 			for _, effect := range tree.Effects {
+				if effect.Sources != "" {
+					files = append(files, effect.Sources)
+				}
 				if effect.Child != nil && effect.Child.Import != "" {
 					files = append(files, effect.Child.Import)
 				}
@@ -74,6 +78,7 @@ func RecordKinds() []recordkind.Spec {
 			return files, nil
 		}},
 		{ID: "threadcontrol-import", Match: func(name string) bool { return strings.HasPrefix(name, "threadcontrol-import-") }, MaxRecordBytes: history.MaxRecordBytes},
+		{ID: "threadcontrol-message", Match: func(name string) bool { return strings.HasPrefix(name, "threadcontrol-message-") }, MaxRecordBytes: history.MaxRecordBytes},
 	}
 }
 

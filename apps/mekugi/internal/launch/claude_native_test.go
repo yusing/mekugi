@@ -117,10 +117,12 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 		t.Fatal(err)
 	}
 	for path, body := range map[string][]byte{
-		filepath.Join(claudeConfig, "settings.json"): nativeSettings,
-		filepath.Join(claudeConfig, "CLAUDE.md"):     []byte("excluded-native-instruction-fixture"),
-		excluded:                                     []byte("excluded-native-instruction-fixture"),
-		filepath.Join(workspace, "CLAUDE.md"):        []byte("included-native-instruction-fixture"),
+		filepath.Join(claudeConfig, "settings.json"):   nativeSettings,
+		filepath.Join(claudeConfig, "CLAUDE.md"):       []byte("excluded-native-instruction-fixture"),
+		excluded:                                       []byte("excluded-native-instruction-fixture"),
+		filepath.Join(workspace, "CLAUDE.md"):          []byte("included-native-instruction-fixture"),
+		filepath.Join(workspace, "message-source.txt"): []byte("CLAUDE_MESSAGE_SOURCE"),
+		filepath.Join(workspace, "literal-source"):     []byte("CLAUDE_LITERAL_MUST_NOT_ATTACH"),
 	} {
 		if err := os.WriteFile(path, body, 0600); err != nil {
 			t.Fatal(err)
@@ -271,7 +273,7 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("concurrent parent write: %s, %v", output, err)
 	}
-	result, err := driver.SpawnPrepared(ctx, control.Identity{Thread: "parent", Session: "parent-session", Turn: "parent-turn", Call: "native-spawn", Item: "native-spawn"}, threadbinding.PreparedChild{TaskName: "native", Message: "Execute the requested checks and finish.", Settings: settings})
+	result, err := driver.SpawnPrepared(ctx, control.Identity{Thread: "parent", Session: "parent-session", Turn: "parent-turn", Call: "native-spawn", Item: "native-spawn"}, threadbinding.PreparedChild{TaskName: "native", Message: `Execute the requested checks and finish. @message-source.txt @missing-message-source.txt \@literal-source`, Settings: settings})
 	if err != nil {
 		t.Fatalf("prepared native child: %+v %v", result, err)
 	}
@@ -354,6 +356,9 @@ func testClaudeNativePreparedRuntime(t *testing.T, approval, reviewer, compact s
 	}
 	if !strings.Contains(string(body), "+parent evidence") || !strings.Contains(string(body), "THREAD="+result.Thread) || !strings.Contains(string(body), "mekugi-tools-") || !strings.Contains(string(body), strings.Fields(childList)[0]) {
 		t.Fatalf("native provider input omitted private frontend identity or shared receipts: %s", body)
+	}
+	if !strings.Contains(string(body), "CLAUDE_MESSAGE_SOURCE") || !strings.Contains(string(body), "missing-message-source.txt") || !strings.Contains(string(body), "exit_code=1") || strings.Contains(string(body), "CLAUDE_LITERAL_MUST_NOT_ATTACH") {
+		t.Fatal("native Claude assignment lost captured sources, read failure or literal escape")
 	}
 	var effortRequests []struct {
 		Output struct {

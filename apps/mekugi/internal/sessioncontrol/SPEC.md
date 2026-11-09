@@ -42,6 +42,13 @@ Agent side questions reuse the restricted side fork through the same request own
 without a human dock, and settle on the answer before fork cleanup. Claude runtimes
 use native correlated side requests. Neither enters primary submission, draft,
 assignment or wait handling.
+Agent-message file snapshots use this same request ledger for bounded native
+`command/exec` reads under the recipient's active permission profile and workspace.
+Fresh children use their admitted preparation until their first turn. An
+unselectable permission profile produces a visible read failure, never a broader
+fallback. Claude uses its existing admitted unsandboxed source reader. Neither
+backend starts model inference to acquire message files; Thread Control retains
+the immutable result for delivery and confirmation.
 Prepared-child resume preserves retained host identity and checks canonical
 authority before execution. History confirmation can read the retained source
 without a live host connection. Ordinary child input waits for logical admission

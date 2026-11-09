@@ -35,6 +35,16 @@ type Snapshot struct {
 	FullCompletion    *CapturedSource `json:",omitempty"`
 }
 
+// Text retains each source's reader identity, status and diagnostics.
+func (s Snapshot) Text() string {
+	var text strings.Builder
+	for _, source := range s.Sources {
+		text.WriteString(source.Text())
+		text.WriteByte('\n')
+	}
+	return text.String()
+}
+
 type CapturedSource struct {
 	Command  string
 	Stdout   string
@@ -74,6 +84,23 @@ func Capture(ctx context.Context, request command.Request, changes ChangeReader)
 // ReadSources acquires the shared selection in an admitted runtime environment.
 // The caller owns policy admission and durable context retention.
 func ReadSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader) (Snapshot, error) {
+	return readSources(ctx, selection, directory, environment, changes, nil)
+}
+
+// SourceRunner executes a reader under its receiving runtime's permissions.
+// Output must be bounded by limit; an overflow must not look like a complete read.
+type SourceRunner func(ctx context.Context, script string, limit int) (CapturedSource, error)
+
+// ReadSourcesWithRunner shares selection, nesting and capture bounds with reloads,
+// while leaving process execution and permissions with the receiving runtime.
+func ReadSourcesWithRunner(ctx context.Context, selection, directory string, run SourceRunner) (Snapshot, error) {
+	if run == nil {
+		return Snapshot{}, errors.New("source runner is unavailable")
+	}
+	return readSources(ctx, selection, directory, nil, ChangeReader{}, run)
+}
+
+func readSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader, run SourceRunner) (Snapshot, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	budget := &captureBudget{remaining: history.MaxRecordBytes, cancel: cancel}
@@ -108,6 +135,16 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 				budget.take(len(result.Stderr))
 				return result, managedSource
 			}
+		}
+		if run != nil {
+			result, err := run(ctx, script, budget.remaining)
+			result.Command = script
+			if err != nil {
+				result.ExitCode = 1
+				result.Stderr += "\nCONTENT NOT ATTACHED: " + err.Error()
+			}
+			budget.take(len(result.Stdout) + len(result.Stderr))
+			return result, managedSource
 		}
 		var stdout, stderr bytes.Buffer
 		cmd := exec.CommandContext(ctx, "bash", "-c", script)
@@ -200,7 +237,13 @@ func ReadSources(ctx context.Context, selection, directory string, environment [
 	// Host-loaded instructions have no acquisition or result body.
 	results := make([]CapturedSource, len(sources))
 	var readers sync.WaitGroup
-	slots := make(chan struct{}, 8)
+	parallel := 8
+	if run != nil {
+		// Native responses are bounded before materialization. Serialize them so
+		// each command receives the actual remaining shared capture budget.
+		parallel = 1
+	}
+	slots := make(chan struct{}, parallel)
 	commandIndex := 0
 	for i, source := range sources {
 		if source.HostLoaded() {

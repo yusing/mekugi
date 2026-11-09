@@ -47,6 +47,8 @@ type nativeThreadsProvider struct {
 	agentCompact                            bool
 	earlyCompletion                         bool
 	preload                                 bool
+	messageSources                          bool
+	deniedMessageSource                     bool
 	attachChanges                           bool
 	attachments, attachmentReload           bool
 	recoverFailure                          bool
@@ -355,7 +357,14 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if p.preload {
 			fork += `,preload:{sources:[{path:"preload.txt",ranges:[[2,2]]},{path:"missing.txt"},{path:"AGENTS.md"}]}`
 		}
-		program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:"CHILD_ATTRIBUTED_ASSIGNMENT"` + fork + `,cwd:` + strconv.Quote(p.childDirectory) + `}));`
+		assignment := "CHILD_ATTRIBUTED_ASSIGNMENT"
+		if p.messageSources {
+			assignment += ` @message-source.txt @missing-source.txt \@literal`
+			if p.deniedMessageSource {
+				assignment += " @private-source.txt"
+			}
+		}
+		program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:` + strconv.Quote(assignment) + fork + `,cwd:` + strconv.Quote(p.childDirectory) + `}));`
 	case parent && step == 3:
 		if !strings.Contains(string(body), "agent:main/worker") {
 			failure = "spawn omitted confirmed logical child"
@@ -369,6 +378,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	case parent && step == 4:
 		if !strings.Contains(string(body), "CHILD_PROGRESS_ALREADY_READ") {
 			failure = "parent input omitted injected mailbox message"
+		}
+		if p.messageSources && !strings.Contains(string(body), "PARENT_MESSAGE_SOURCE") {
+			failure = "message reference did not acquire the parent recipient's source"
 		}
 		p.waitTurn = metadata.TurnID
 		program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
@@ -488,6 +500,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 6:
 		program = `text(await tools.mcp__threadcontrol__list_agents({path_prefix:"agent:main"})); text(await tools.mcp__threadcontrol__followup_task({target:"agent:main/worker",message:"COLD_CHILD_FOLLOWUP"}));`
+		if p.messageSources {
+			program = `text(await tools.mcp__threadcontrol__followup_task({target:"agent:main/worker",message:"COLD_CHILD_FOLLOWUP @message-source.txt"}));`
+		}
 	case parent && step == 7:
 		program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
 	case parent && step == 8:
@@ -513,6 +528,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				if part.Text == "Message Type: NEW_TASK\nTask name: agent:main/worker\nSender: agent:main\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT" && string(item["role"]) == `"assistant"` && string(item["phase"]) == `"commentary"` && part.Type == "output_text" {
 					assignment = true
 				}
+				if p.messageSources && strings.HasPrefix(part.Text, "Message Type: NEW_TASK\nTask name: agent:main/worker\nSender: agent:main\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT @message-source.txt") && string(item["role"]) == `"assistant"` && part.Type == "output_text" {
+					assignment = true
+				}
 				if string(item["role"]) == `"user"` && part.Type == "input_text" && strings.HasPrefix(part.Text, "<environment_context>") && strings.Contains(part.Text, "<cwd>"+p.childDirectory+"</cwd>") && !strings.Contains(part.Text, "CHILD_ATTRIBUTED_ASSIGNMENT") {
 					environment = true
 				}
@@ -531,6 +549,17 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		if p.preload && (!strings.Contains(string(body), "CHILD_PRELOAD_CONTENT") || !strings.Contains(string(body), "missing.txt") || !strings.Contains(string(body), "exit_code=1") || strings.Contains(string(body), "UNSELECTED_PRELOAD_CONTENT") || strings.Contains(string(body), "PARENT_PRELOAD_CONTENT")) {
 			failure = "initial child inference did not receive selected child-cwd preload and explicit read failure"
+		}
+		if p.messageSources {
+			if !strings.Contains(string(body), "CHILD_MESSAGE_SOURCE") || !strings.Contains(string(body), "NESTED_MESSAGE_SOURCE") || !strings.Contains(string(body), "missing-source.txt") || !strings.Contains(string(body), "exit_code=1") || strings.Contains(string(body), "PARENT_MESSAGE_SOURCE") || strings.Contains(string(body), "ESCAPED_SOURCE_MUST_STAY_LITERAL") {
+				failure = "spawn reference did not deliver bounded child-cwd sources and visible failures"
+			}
+			if p.deniedMessageSource && (strings.Contains(string(body), "FORBIDDEN_MESSAGE_SOURCE") || !strings.Contains(string(body), "private-source.txt") || !strings.Contains(strings.ToLower(string(body)), "permission denied")) {
+				failure = fmt.Sprintf("message source named-profile denial: forbidden_bytes=%t source_path=%t permission_denied=%t", strings.Contains(string(body), "FORBIDDEN_MESSAGE_SOURCE"), strings.Contains(string(body), "private-source.txt"), strings.Contains(strings.ToLower(string(body)), "permission denied"))
+			}
+			if err := os.WriteFile(filepath.Join(p.childDirectory, "message-source.txt"), []byte("CHANGED_CHILD_MESSAGE_SOURCE"), 0600); err != nil {
+				failure = err.Error()
+			}
 		}
 		if p.preload {
 			if err := os.WriteFile(filepath.Join(p.childDirectory, "preload.txt"), []byte("UNSELECTED_PRELOAD_CONTENT\nCHANGED_PRELOAD_CONTENT\n"), 0600); err != nil {
@@ -552,6 +581,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 		}
 		program = `text(await tools.mcp__threadcontrol__send_message({target:"agent:main",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
+		if p.messageSources {
+			program = `text(await tools.mcp__threadcontrol__send_message({target:"agent:main",message:"CHILD_PROGRESS_ALREADY_READ @message-source.txt"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
+		}
 		if p.fullHistory {
 			program += `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"reviewer",message:"GRANDCHILD_ATTRIBUTED_ASSIGNMENT",fork_turns:"all"})); text(await tools.mcp__threadcontrol__wait_agent({}));`
 		}
@@ -594,6 +626,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	case !parent && step == 3:
 		if !strings.Contains(string(body), "COLD_CHILD_FOLLOWUP") || !strings.Contains(string(body), "CHILD_ATTRIBUTED_ASSIGNMENT") {
 			failure = "cold recovery omitted retained history or the explicit follow-up"
+		}
+		if p.messageSources && (!strings.Contains(string(body), "CHANGED_CHILD_MESSAGE_SOURCE") || !strings.Contains(string(body), "NESTED_MESSAGE_SOURCE")) {
+			failure = "cold follow-up did not preserve the old capture and acquire the new source snapshot"
 		}
 		answer = "MANAGED_CHILD_RECOVERED"
 	default:
@@ -828,6 +863,14 @@ func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{preload: true})
 }
 
+func TestNativeThreadsMessageSourcesServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{messageSources: true})
+}
+
+func TestNativeThreadsMessageSourcePermissionsServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{messageSources: true, deniedMessageSource: true})
+}
+
 func TestHeadlessThreadsPreloadServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{headless: true, preload: true})
 }
@@ -857,6 +900,8 @@ func TestNativeThreadsAttachmentResetServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
+	deniedMessageSource                                                                                                                                               bool
+	messageSources                                                                                                                                                    bool
 	concurrentChildren                                                                                                                                                bool
 	attachments, attachmentReload                                                                                                                                     bool
 	deduplication                                                                                                                                                     bool
@@ -953,8 +998,24 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
+	if scenario.messageSources {
+		childDirectory = t.TempDir()
+		for path, body := range map[string]string{
+			filepath.Join(workspace, "message-source.txt"):      "PARENT_MESSAGE_SOURCE",
+			filepath.Join(childDirectory, "message-source.txt"): "CHILD_MESSAGE_SOURCE @nested-message.txt",
+			filepath.Join(childDirectory, "nested-message.txt"): "NESTED_MESSAGE_SOURCE",
+			filepath.Join(childDirectory, "literal"):            "ESCAPED_SOURCE_MUST_STAY_LITERAL",
+			filepath.Join(childDirectory, "private-source.txt"): "FORBIDDEN_MESSAGE_SOURCE",
+		} {
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	fixture := &nativeThreadsProvider{usageLimit: scenario.usageLimit, limited: make(map[string]bool), attachChanges: scenario.attachChanges, multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	fixture.attachments, fixture.attachmentReload = scenario.attachments, scenario.attachmentReload
+	fixture.messageSources = scenario.messageSources
+	fixture.deniedMessageSource = scenario.deniedMessageSource
 	fixture.concurrentChildren = scenario.concurrentChildren
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
 	fixture.deduplication = scenario.deduplication
@@ -1157,9 +1218,13 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	transport := sessionapi.ControlTransport(socket)
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
+	permissionArgs := []string{"--yolo"}
+	if scenario.deniedMessageSource {
+		permissionArgs = []string{"-c", `default_permissions="message-sources"`, "-c", `approval_policy="never"`, "-c", fmt.Sprintf(`permissions.message-sources.filesystem={":root"="read",%q="write",%q="deny"}`, os.TempDir(), filepath.Join(childDirectory, "private-source.txt"))}
+	}
 	connection, err := sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{
 		Workspace: workspace, RouterArgs: []string{"--shell-guard=false"},
-		Args: []string{"--yolo", "-m", "gpt-6-sol", "-c", "features.plugins=false", "-c", `model_reasoning_effort="ultra"`},
+		Args: append(permissionArgs, "-m", "gpt-6-sol", "-c", "features.plugins=false", "-c", `model_reasoning_effort="ultra"`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1394,7 +1459,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if event.Frame.Main != nil {
 		for _, entry := range event.Frame.Main.Entries {
 			childReply = childReply || entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == wantChildReply
-			childMessage = childMessage || entry.Agent == "/root/worker" && entry.Kind == "reply" && entry.Text == "CHILD_PROGRESS_ALREADY_READ"
+			childMessage = childMessage || entry.Agent == "/root/worker" && entry.Kind == "reply" && (entry.Text == "CHILD_PROGRESS_ALREADY_READ" || scenario.messageSources && strings.HasPrefix(entry.Text, "CHILD_PROGRESS_ALREADY_READ @message-source.txt"))
 		}
 	}
 	if !childReply || !childMessage {
@@ -1616,7 +1681,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	serverCLIAwait(t, func() bool { _, err := os.Stat(socket); return err == nil })
 	connection, err = sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{
 		Workspace: workspace, RouterArgs: []string{"--shell-guard=false"},
-		Args: []string{"--yolo", "-c", "features.plugins=false", "-c", `model_reasoning_effort="high"`, "resume", root},
+		Args: append(permissionArgs, "-c", "features.plugins=false", "-c", `model_reasoning_effort="high"`, "resume", root),
 	})
 	if err != nil {
 		t.Fatal("cold root resume:", err)
@@ -1645,7 +1710,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if event.Frame.Main != nil {
 		for _, entry := range event.Frame.Main.Entries {
 			childReply = childReply || entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == wantChildReply
-			childMessage = childMessage || entry.Agent == "/root/worker" && entry.Kind == "reply" && entry.Text == "CHILD_PROGRESS_ALREADY_READ"
+			childMessage = childMessage || entry.Agent == "/root/worker" && entry.Kind == "reply" && (entry.Text == "CHILD_PROGRESS_ALREADY_READ" || scenario.messageSources && strings.HasPrefix(entry.Text, "CHILD_PROGRESS_ALREADY_READ @message-source.txt"))
 		}
 	}
 	if !childReply || !childMessage {

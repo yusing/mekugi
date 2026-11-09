@@ -129,6 +129,35 @@ Task labels and tool arguments confer no authority. Members communicate with
 admitted peers/ancestors and control non-root targets in their tree. Human/session
 control retains root authority. Foreign, retired or conflicting callers reject.
 
+### File references in assignments and messages
+
+The `message` fields of `spawn_agent`, `followup_task` and `send_message` acquire
+explicit `@path` references, including `@"paths with spaces"`. Backslash before
+the at sign (`\@path`) preserves a literal mention; email addresses remain literal.
+The original message and its attribution stay intact, with captured source bodies,
+reader exit statuses and diagnostics appended for the recipient.
+
+Relative root paths use the recipient's current workspace, or the selected child
+cwd for a spawn. Nested paths resolve beside the containing file, using the same
+[selected-source acquisition](../agentguidance/SPEC.md#compaction-context) as
+preloads and reloads: depth 3, bounded reader output and total capture capacity,
+and host-owned `AGENTS.md` exclusion. Duplicate root references acquire once.
+Reads use recipient execution permissions, never the sender's broader access.
+Missing, denied or unsupported reads remain visible rather than becoming empty
+successful attachments. Snapshot publication failure rejects delivery.
+
+Source bytes freeze before the operation returns, including queued messages and
+spawn assignments before first inference. Retries, confirmation and restored
+delivery reuse the retained snapshot rather than reopening paths. A new operation
+captures current content. Large source bodies live outside the copied coordination
+tree, referenced by its retained effect.
+
+The same rules apply to active cross-session messages and `send_message` with
+`btw:true`. Side questions acquire their referenced context before the independent
+answer, without delivering primary input or starting ordinary target work.
+Ordinary messages still leave idle work idle. Explicit preload selections and
+composer attachment behavior remain separate and unchanged.
+
 ### Active-session coordination
 
 Same-tree names resolve first. `send_message` and `inspect` also accept exact

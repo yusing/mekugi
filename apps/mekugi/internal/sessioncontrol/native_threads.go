@@ -376,6 +376,9 @@ func confirmNativeSettings(thread, path string, s control.Settings) error {
 		Effort: s.Effort, Summary: s.Summary, Tier: s.Tier,
 		PermissionProfile: s.PermissionProfile, ApprovalPolicy: s.ApprovalPolicy, ApprovalsReviewer: s.ApprovalsReviewer,
 	}
+	// Selection identity enables later native source reads; effective policy
+	// remains the canonical authority comparison, including older preparations.
+	confirmed.ActivePermissionProfile = nil
 	left, _ := json.Marshal(confirmed)
 	right, _ := json.Marshal(want)
 	if !sameNativeJSON(left, right) {

@@ -176,7 +176,26 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 			if kind == "interrupt" {
 				callErr = owner.Interrupt(ctx, effect.Target, effect.Turn)
 			} else {
-				input := nativeInput(action)
+				if kind == "assignment_input" && action.Effect.Sources == "" {
+					if selection := messageSelection(effect.Message); selection != "" {
+						member, _ := d.control.Member(effect.Target)
+						var sources string
+						sources, callErr = d.control.FreezeAssignmentSources(ctx, *effect, func() (string, error) {
+							return acquireMessageSources(ctx, owner, member, selection)
+						})
+						if callErr == nil {
+							callErr = d.control.RetainActionSources(ctx, effect.Caller, effect.ID, sources)
+							action.Effect.Sources = sources
+						}
+					}
+				}
+				var input control.NativeInput
+				if callErr == nil {
+					input, callErr = d.prepareNativeInput(action)
+				}
+				if callErr != nil {
+					callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: callErr}
+				}
 				if input.Wake != nil && input.Wake.State == "yielded" && input.Wake.Progress == nil && callErr == nil {
 					contextID := ""
 					if contexts, ok := owner.(control.ContextReader); ok {

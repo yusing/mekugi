@@ -97,6 +97,7 @@ type ClaudeRuntime struct {
 	active           map[string]bool
 	closed           error
 	inputContext     func(context.Context, control.NativeInput) (PreparedInputContext, error)
+	messageSources   func(context.Context, string) (string, error)
 	eventSink        func(context.Context, ClaudeEvent) error
 	lastTerminal     *claudeTerminal
 	admissions       int

@@ -26,10 +26,10 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 			if tool.Name == "list_models" && !strings.HasPrefix(tool.Description, tc.list) {
 				t.Fatalf("caller claude=%t: %s", tc.claude, tool.Description)
 			}
-			if tool.Name != "spawn_agent" {
+			if tool.Name != "spawn_agent" && tool.Name != "send_message" && tool.Name != "followup_task" {
 				continue
 			}
-			if !strings.Contains(tool.Description, "fork_turns=none") || !strings.Contains(tool.Description, "preload") {
+			if tool.Name == "spawn_agent" && (!strings.Contains(tool.Description, "fork_turns=none") || !strings.Contains(tool.Description, "preload")) {
 				t.Fatalf("caller claude=%t: spawn description omits fresh-child preload: %s", tc.claude, tool.Description)
 			}
 			raw, err := json.Marshal(tool.InputSchema)
@@ -43,6 +43,15 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 			}
 			if err := json.Unmarshal(raw, &schema); err != nil {
 				t.Fatal(err)
+			}
+			message := schema.Properties["message"].Description
+			for _, want := range []string{"@path", "recipient cwd/permissions", `\@path stays literal`} {
+				if !strings.Contains(message, want) {
+					t.Errorf("caller claude=%t: %s message omits %q: %s", tc.claude, tool.Name, want, message)
+				}
+			}
+			if tool.Name != "spawn_agent" {
+				continue
 			}
 			if !strings.Contains(schema.Properties["model"].Description, tc.model) {
 				t.Fatalf("caller claude=%t: model description %q", tc.claude, schema.Properties["model"].Description)

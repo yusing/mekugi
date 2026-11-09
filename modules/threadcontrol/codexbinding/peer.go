@@ -65,6 +65,16 @@ func (d *Driver) messagePeer(ctx context.Context, caller control.Identity, targe
 		if !ok {
 			return nil, control.ErrNotAdmitted
 		}
+		sources, err := d.freezeMessage(ctx, caller, "peer-btw", message, member, peer.Runtime)
+		if err != nil {
+			return nil, err
+		}
+		if sources != "" {
+			message, err = d.control.MessageText(caller.Thread, sources, message)
+			if err != nil {
+				return nil, err
+			}
+		}
 		d.control.ObserveFeature(caller.Thread, control.FeatureSideQuestion)
 		answer, err := peer.Runtime.SideQuestion(ctx, member, peer.Source.Sender()+"\n"+message)
 		if err != nil {
@@ -76,7 +86,20 @@ func (d *Driver) messagePeer(ctx context.Context, caller control.Identity, targe
 		}
 		return map[string]any{"thread_id": target, "task_name": peer.Target.Task, "session_id": peer.Target.Session, "answer": answer}, nil
 	}
-	action, err := peer.Control.ReceiveMessage(ctx, peer.Source, target, caller.Call, message)
+	sources := ""
+	if selection := messageSelection(message); selection != "" {
+		member, ok := peer.Control.Member(peer.Target.Thread)
+		if !ok {
+			return nil, control.ErrNotAdmitted
+		}
+		sources, err = peer.Control.FreezePeerMessage(ctx, peer.Source, target, caller.Call, message, func() (string, error) {
+			return acquireMessageSources(ctx, peer.Runtime, member, selection)
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	action, err := peer.Control.ReceiveMessageWithSources(ctx, peer.Source, target, caller.Call, message, sources)
 	if err != nil {
 		return nil, err
 	}

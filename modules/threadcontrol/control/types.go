@@ -150,6 +150,7 @@ type Tree struct {
 // Creation advances through fixed phases; Turn is frozen at dispatch claim.
 type Effect struct {
 	ID, Caller, CallerTurn, Target, Kind, Message, State, Phase, Turn, Error, ClaimedBy string
+	Sources                                                                             string `json:",omitempty"`
 	CallerGeneration, Generation                                                        uint64
 	Consumed                                                                            bool
 	PreviousStatus, Outcome                                                             Status

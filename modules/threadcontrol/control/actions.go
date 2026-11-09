@@ -38,34 +38,74 @@ func (s *Service) Target(caller Identity, target string) (*Member, error) {
 }
 
 func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, kind, message string) (result Effect, err error) {
+	return s.prepareAction(ctx, caller, target, kind, message, "")
+}
+
+func (s *Service) PrepareActionWithSources(ctx context.Context, caller Identity, target, kind, message, sources string) (Effect, error) {
+	return s.prepareAction(ctx, caller, target, kind, message, sources)
+}
+
+// ActionTarget checks the same admission as PrepareAction before asynchronous
+// file acquisition. Publication repeats the check after acquisition completes.
+func (s *Service) ActionTarget(caller Identity, target, kind, message string) (*Member, error) {
+	owner, err := s.owner(caller.Thread)
+	if err != nil {
+		return nil, err
+	}
+	receiver, _, err := owner.state.Load().actionTarget(caller, target, kind, message)
+	if err != nil {
+		return nil, err
+	}
+	return detach(receiver)
+}
+
+func (tree *Tree) actionTarget(caller Identity, target, kind, message string) (*Member, *Effect, error) {
+	member, err := admitted(tree, caller)
+	if err != nil {
+		return nil, nil, err
+	}
+	if caller.Call == "" || (kind != "message" && kind != "followup" && kind != "interrupt") {
+		return nil, nil, errors.New("control action requires a host call and known operation")
+	}
+	receiver, err := resolve(tree, member, target)
+	if err != nil {
+		return nil, nil, err
+	}
+	if kind != "message" && receiver.Parent == "" {
+		return nil, nil, errors.New("root control belongs to the human session controller")
+	}
+	if old := tree.Effect(caller.Thread, caller.Call); old != nil {
+		if old.CallerTurn != caller.Turn || old.Target != receiver.Thread || old.Kind != kind || old.Message != message {
+			return nil, nil, errors.New("conflicting repeated control call")
+		}
+		return receiver, old, nil
+	}
+	if kind == "followup" {
+		for _, effect := range tree.Effects {
+			if effect.Target == receiver.Thread && effect.Kind == "human" && hostOwned(effect.State) {
+				return nil, nil, errors.New("human input requires host settlement before follow-up")
+			}
+		}
+	}
+	if kind == "message" && receiver.Parent != "" && !receiver.AudienceAdmitted {
+		return nil, nil, errors.New("target has not entered the application audience")
+	}
+	return receiver, nil, nil
+}
+
+func (s *Service) prepareAction(ctx context.Context, caller Identity, target, kind, message, sources string) (result Effect, err error) {
 	created := false // A repeated call reuses its action.
 	err = s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
-		if _, err := admitted(tree, caller); err != nil {
-			return err
-		}
-		if caller.Call == "" || (kind != "message" && kind != "followup" && kind != "interrupt") {
-			return errors.New("control action requires a host call and known operation")
-		}
-		receiver, err := resolve(tree, member, target)
+		receiver, old, err := tree.actionTarget(caller, target, kind, message)
 		if err != nil {
 			return err
 		}
-		if kind != "message" && receiver.Parent == "" {
-			return errors.New("root control belongs to the human session controller")
-		}
-		if old := tree.Effect(caller.Thread, caller.Call); old != nil {
-			if old.CallerTurn != caller.Turn || old.Target != receiver.Thread || old.Kind != kind || old.Message != message {
+		if old != nil {
+			if old.Sources != sources {
 				return errors.New("conflicting repeated control call")
 			}
 			result = *old
 			return unchanged
-		}
-		if kind == "followup" {
-			for _, effect := range tree.Effects {
-				if effect.Target == receiver.Thread && effect.Kind == "human" && hostOwned(effect.State) {
-					return errors.New("human input requires host settlement before follow-up")
-				}
-			}
 		}
 		if kind == "followup" && receiver.Status == Paused {
 			for i := range tree.Effects {
@@ -81,9 +121,6 @@ func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, ki
 				}
 			}
 		}
-		if kind == "message" && receiver.Parent != "" && !receiver.AudienceAdmitted {
-			return errors.New("target has not entered the application audience")
-		}
 		receiver = tree.edit(receiver.Thread)
 		if kind != "message" {
 			if _, err := tree.transitionHost(receiver, hostEvent{kind: hostEventControl}); err != nil {
@@ -97,6 +134,7 @@ func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, ki
 			}
 		}
 		result = Effect{ID: caller.Call, Caller: caller.Thread, CallerTurn: caller.Turn, CallerGeneration: member.Generation, Target: receiver.Thread, Kind: kind, Message: message, State: "pending", Generation: receiver.Generation, PreviousStatus: receiver.Status}
+		result.Sources = sources
 		tree.Effects = append(tree.Effects, result)
 		created = true
 		return nil

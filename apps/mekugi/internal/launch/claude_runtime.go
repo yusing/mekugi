@@ -240,6 +240,10 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 		owners.Usage.ObserveCumulative(info.Thread, report)
 	}
 	runtime.SetEventSink(bridge.reduceEvent)
+	runtime.SetMessageSourceReader(func(ctx context.Context, selection string) (string, error) {
+		snapshot, err := compact.ReadSources(ctx, selection, settings.Workspace, environment, compact.ChangeReader{})
+		return snapshot.Text(), err
+	})
 	runtime.SetInputContext(func(ctx context.Context, input control.NativeInput) (sessioncontrol.PreparedInputContext, error) {
 		member, ok := e.shared.Member(input.Thread)
 		if !ok || member.Session != info.Session || !member.AudienceAdmitted {

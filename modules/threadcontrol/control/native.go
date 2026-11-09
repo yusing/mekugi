@@ -22,6 +22,12 @@ type Native interface {
 // An unavailable identity disables automatic evidence suppression.
 type ContextReader interface{ ContextIdentity(string) string }
 
+// MessageSourceReader snapshots selected files without starting a model turn.
+// Implementations execute reads under the recipient's permissions and workspace.
+type MessageSourceReader interface {
+	ReadMessageSources(context.Context, *Member, string) (string, error)
+}
+
 // ModelDiscovery is an optional application-owned native catalog acquisition.
 // It starts no logical member or work generation and returns spawn identifiers.
 type ModelDiscovery interface {
