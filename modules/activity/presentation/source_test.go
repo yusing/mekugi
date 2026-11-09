@@ -423,6 +423,53 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 	}
 }
 
+func TestLegacyHeadTailReadDisplay(t *testing.T) {
+	for _, tc := range []struct{ source, want string }{
+		{"head -20 source.go", "Read `source.go`"},
+		{"tail -20 source.go", "Read `source.go`"},
+		{"head '-20' 'source file.go' other.go", "Read `source file.go`\n\nRead `other.go`"},
+		{"tail -20 source\\ file.go", "Read `source file.go`"},
+		{"tail -20 first.go last.go", "Read `first.go`\n\nRead `last.go`"},
+		{`head -20 "$file"`, "Read `\"$file\"`"},
+		{"tail -20 *.go", "Read `*.go`"},
+		{"head -0 source.go", "Read `source.go`"},
+		{"tail -020 source.go", "Read `source.go`"},
+		{"head -20 first.go && tail -5 last.go", "Read `first.go`\n\nRead `last.go`"},
+		{"head -20 first.go; echo done; tail -5 last.go", "Read `first.go`\n\nRun `echo done`\n\nRead `last.go`"},
+		{"env LANG=C /usr/bin/head -20 source.go", "Read `source.go`"},
+		{"sh -c 'tail -20 source.go'", "Read `source.go`"},
+	} {
+		if got := shellSource(tc.source); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.source, got, tc.want)
+		}
+	}
+	for _, source := range []string{
+		"head -20", "tail -20 -", "head -20 ''", "tail -20 --version",
+		"head -20 source.go -q", "tail -20 source.go -f", "head -n 20 source.go",
+		"tail -20c source.go", "head --20 source.go", "tail -+20 source.go",
+		"head -18446744073709551616 source.go", `head -"$count" source.go`,
+		"tail -20 $(generate)", `head -20 "${file:-fallback}"`,
+		"head -20 source.go > copy.go", "tail -20 < source.go",
+		"rg needle source.go | head -20 other.go",
+	} {
+		if got, want := shellSource(source), "Run\n"+markdownsyntax.SourceFence("bash", source); got != want {
+			t.Errorf("unsupported read %q: got %q, want %q", source, got, want)
+		}
+	}
+	for _, source := range []string{"rg needle source.go", "ls src"} {
+		for _, filter := range []string{"head -20", "tail -20"} {
+			if got, want := shellSource(source+" | "+filter), shellSource(source); got != want {
+				t.Errorf("output filter %q: got %q, want %q", filter, got, want)
+			}
+		}
+	}
+	values := Operations(ShellSource("head -20 /work/source.go && tail -5 /work/other.go", "/work"))
+	if len(values) != 1 || values[0].Verb != "Read" || len(values[0].Reads) != 2 ||
+		values[0].Reads[0].Path != "source.go" || values[0].Reads[1].Path != "other.go" {
+		t.Fatalf("shared read projection = %+v", values)
+	}
+}
+
 func TestSubagentCatHeadReadDisplay(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"cat foo | head", "Read `foo`"},

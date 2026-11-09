@@ -36,7 +36,8 @@ func sourceReadCommand(script string, call *syntax.CallExpr, cwd string) (string
 	}
 	command = shellsyntax.CommandName(command)
 	patterns := command == "rg" || command == "grep" || command == "ls" ||
-		command == "cat" || command == "mcat" || command == "sed" || command == "nl" || command == "inspect_file"
+		command == "cat" || command == "mcat" || command == "sed" || command == "nl" || command == "inspect_file" ||
+		command == "head" || command == "tail"
 	var argv []string
 	for i, arg := range call.Args {
 		value, literal := shellsyntax.Literal(arg)
@@ -87,6 +88,23 @@ func sourceReadCommand(script string, call *syntax.CallExpr, cwd string) (string
 				value += " " + spec.Range
 			}
 			add(label, value)
+		}
+	case "head", "tail":
+		if len(argv) < 3 {
+			return "", false // Stdin-only bounds belong to pipeline filters.
+		}
+		bound, numeric := strings.CutPrefix(argv[1], "-")
+		if !numeric || bound == "" || strings.Trim(bound, "0123456789") != "" {
+			return "", false
+		}
+		if _, err := strconv.ParseUint(bound, 10, 64); err != nil {
+			return "", false
+		}
+		for _, path := range argv[2:] {
+			if path == "" || strings.HasPrefix(path, "-") {
+				return "", false
+			}
+			add("Read", pathdisplay.ForWorkspace(cwd, path))
 		}
 	case "nl":
 		if len(argv) != 3 || argv[1] != "-ba" || argv[2] == "" || strings.HasPrefix(argv[2], "-") {

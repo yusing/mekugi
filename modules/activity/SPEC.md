@@ -101,7 +101,7 @@ Classification describes the visible operation, not its effects:
 
 | Label | Recognized source |
 | --- | --- |
-| Read | Simple `cat`, valid `mcat`, bounded `sed -n` print programs, `nl -ba FILE`, single-file `cat`/`nl` piped to those print ranges, or `cat` piped to bounded `head` |
+| Read | Simple `cat`, valid `mcat`, legacy numeric `head -N FILE` and `tail -N FILE` reads, bounded `sed -n` print programs, `nl -ba FILE`, single-file `cat`/`nl` piped to those print ranges, or `cat` piped to bounded `head` |
 | Search | Literal `rg` and `grep`, showing query and target rather than execution flags |
 | List | Simple listings, with `ls` path operands or `.` when absent |
 | Inspect | `inspect_file`, including options and multiple paths |
