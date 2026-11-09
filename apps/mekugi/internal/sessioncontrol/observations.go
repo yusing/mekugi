@@ -98,6 +98,17 @@ func (o *Observations) SetAssistantMessage(generation *Generation, workspace, th
 	o.setInput(generation, workspace, thread, item, active, false)
 }
 
+// IdentifyGenerationItem retains identities learned between admission and
+// delivery. It never admits a new item or releases an unfinished boundary.
+func (o *Observations) IdentifyGenerationItem(generation *Generation, item GenerationItem) {
+	if o == nil {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.generations[generation].identifyItem(item)
+}
+
 // IdentifyToolInput enriches the existing request-scoped input observation.
 // Unknown tools keep their supplied identity rather than disappearing.
 func (o *Observations) IdentifyToolInput(generation *Generation, item GenerationItem, name string, javascript bool, delta string) {
@@ -107,7 +118,7 @@ func (o *Observations) IdentifyToolInput(generation *Generation, item Generation
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	input := o.generations[generation]
-	key := input.itemKey(item)
+	key := input.identifyItem(item)
 	value, exists := input.items[key]
 	if !exists || !value.tool {
 		return
@@ -152,7 +163,7 @@ func (o *Observations) setInput(generation *Generation, workspace, thread string
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	input := o.generations[generation]
-	item = input.itemKey(item)
+	item = input.identifyItem(item)
 	if active {
 		if o.generations == nil {
 			o.generations = make(map[*Generation]generatingInput)
@@ -176,8 +187,8 @@ func (o *Observations) setInput(generation *Generation, workspace, thread string
 	}
 }
 
-func (input generatingInput) itemKey(item GenerationItem) GenerationItem {
-	for admitted := range input.items {
+func (input generatingInput) identifyItem(item GenerationItem) GenerationItem {
+	for admitted, value := range input.items {
 		// Indices disambiguate items when both events carry them. Otherwise,
 		// a stable ID joins an indexed event to an ID-only counterpart.
 		matches := admitted.ID != "" && admitted.ID == item.ID
@@ -185,7 +196,18 @@ func (input generatingInput) itemKey(item GenerationItem) GenerationItem {
 			matches = admitted.Index == item.Index
 		}
 		if matches {
-			return admitted
+			identified := admitted
+			if identified.ID == "" {
+				identified.ID = item.ID
+			}
+			if !identified.Indexed && item.Indexed {
+				identified.Index, identified.Indexed = item.Index, true
+			}
+			if identified != admitted {
+				delete(input.items, admitted)
+				input.items[identified] = value
+			}
+			return identified
 		}
 	}
 	return item

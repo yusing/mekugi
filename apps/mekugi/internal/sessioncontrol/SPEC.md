@@ -322,7 +322,8 @@ generation through delivery of the completed tool item; ordinary steers remain
 available during tool-input generation. Delivered message completion or generation
 settlement releases that input's message gate, even if another message starts.
 Item correlation joins the available output index and stable provider ID,
-including streams that omit either on completion. This includes failed or
+including identities learned from intervening deltas or content-part events
+when admission or completion omits either. This includes failed or
 interrupted streams. Generation completion is independent of host execution,
 preview availability and command completion. Request cleanup removes only its own
 generation observations. Side-thread membership survives pending cleanup, never

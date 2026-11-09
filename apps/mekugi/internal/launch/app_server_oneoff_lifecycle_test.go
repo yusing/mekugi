@@ -342,7 +342,8 @@ func TestOneoffInputWaitsForItsAssistantMessage(t *testing.T) {
 			transform := prepareEmissionTest(t, proxy, "", "oneoff")
 			defer transform.Close()
 			item := map[string]any{"id": "message", "type": "message"}
-			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
+			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{"type": "message"}})
+			emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": "message", "delta": "Working"})
 			if answer {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
 				selectSideThread(t, u, u.attached.presentation.View().Main)
@@ -382,6 +383,7 @@ func TestOneoffSteerPassesChildAnswerWaitingForMessage(t *testing.T) {
 	defer transform.Close()
 	item := map[string]any{"id": "child-message", "type": "message"}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
+	emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": "child-message", "delta": "Working"})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
@@ -396,7 +398,7 @@ func TestOneoffSteerPassesChildAnswerWaitingForMessage(t *testing.T) {
 	if len(u.side.Drafts.Unsent) != 1 || u.side.Drafts.Unsent[0].Question.Thread != "oneoff-child" {
 		t.Fatal("parent steer consumed the child answer")
 	}
-	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
+	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": map[string]any{"type": "message"}})
 	if err := flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
 		t.Fatal(err)
 	}

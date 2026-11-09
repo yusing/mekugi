@@ -72,6 +72,14 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 	}
 	if t.owners.Control != nil {
+		// Deltas and content-part events can bridge an index-only admission to
+		// an ID-only completion (or vice versa). Keep that join before delivery;
+		// only the delivered completion below releases the input boundary.
+		identity := envelope.ItemID
+		if envelope.Type.ItemEvent() {
+			identity = item.ID
+		}
+		t.owners.Control.IdentifyGenerationItem(&t.generation, generationItemKey(envelope.Index, identity))
 		switch envelope.Type {
 		case responseevents.OutputItemAdded:
 			if item.Type == "message" {

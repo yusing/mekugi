@@ -36,7 +36,12 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			transform := prepareEmissionTest(t, proxy, "", u.Thread)
 			defer transform.Close()
 			item := map[string]any{"id": "emitting", "type": kind, "name": "unobserved", "call_id": "call", "status": "in_progress"}
-			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
+			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{"type": kind, "name": "unobserved"}})
+			delta := "response.custom_tool_call_input.delta"
+			if kind == "function_call" {
+				delta = "response.function_call_arguments.delta"
+			}
+			emissionTestEvent(t, transform, map[string]any{"type": delta, "output_index": 0, "item_id": "emitting", "delta": "input"})
 			questionTestAsync(t, u, "question", "Who receives it?")
 			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			questionTestPaint(t, u, 70)
@@ -276,6 +281,60 @@ func TestAssistantMessageIdentityAtBoundary(t *testing.T) {
 			}
 			appServerOneRequest(t, wire, "turn/steer", "change direction")
 		})
+	}
+}
+
+func TestInputBoundaryRetainsStreamedIdentity(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		for _, answer := range []bool{false, true} {
+			for _, indexedStart := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/answer=%v/indexedStart=%v", thread, answer, indexedStart), func(t *testing.T) {
+					u, wire := newAppServerTestUI()
+					u.Thread, u.Turn = thread, "turn"
+					proxy := newManagedMekugiProxy(t)
+					setTestAppServerIntegration(u, proxy)
+					transform := prepareEmissionTest(t, proxy, "", thread)
+					defer transform.Close()
+					item := map[string]any{"type": "message", "role": "assistant"}
+					added := map[string]any{"type": "response.output_item.added", "item": item}
+					if indexedStart {
+						added["output_index"] = 0
+					} else {
+						item["id"] = "message"
+					}
+					emissionTestEvent(t, transform, added)
+					// A text delta supplies the identity omitted at admission. Later
+					// completion can carry only that newly observed identity.
+					emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": "message", "delta": "Finishing this message"})
+					if answer {
+						questionTestAsync(t, u, "question", "Who receives it?")
+						openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+						questionTestPaint(t, u, 70)
+						appServerTestKeys(t, u, "1\r")
+					} else {
+						appServerTestKeys(t, u, "change direction\r")
+					}
+					if wire.Len() != 0 || len(u.attached.conversation.Unsent) != 1 {
+						t.Fatal("input was not accepted behind the active message")
+					}
+					done := map[string]any{"type": "response.output_item.done", "item": map[string]any{"type": "message", "id": "message"}}
+					if !indexedStart {
+						done["output_index"] = 0
+						done["item"] = map[string]any{"type": "message"}
+					}
+					emissionTestEvent(t, transform, done)
+					// Non-message generation must not strand an already-accepted input
+					// until response or host-turn completion.
+					emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"type": "reasoning", "id": "reasoning"}})
+					if err := u.nativeSession.flushInput(&u.attached, u.shell, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+						t.Fatal(err)
+					}
+					if requests := appServerTurnRequests(t, wire); len(requests) != 1 || requests[0].Method != "turn/steer" || u.Turn != "turn" {
+						t.Fatalf("completed message stranded accepted input during non-message work: %+v", requests)
+					}
+				})
+			}
+		}
 	}
 }
 

@@ -33,14 +33,15 @@ import (
 // Hold actual input deltas, rather than holding provider admission or a
 // completed tool result. The installed Codex still executes every host tool.
 type answerInterruptCodexProvider struct {
-	t           *testing.T
-	mu          sync.Mutex
-	turn        int
-	mode, input string
-	socket      bool
-	anonymous   bool
-	gate        chan struct{}
-	requests    chan []byte
+	t                *testing.T
+	mu               sync.Mutex
+	turn             int
+	mode, input      string
+	socket           bool
+	anonymous        bool
+	streamedIdentity bool
+	gate             chan struct{}
+	requests         chan []byte
 }
 
 func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, body []byte, _ http.Header, _ string) (*inferencegateway.Response, error) {
@@ -74,10 +75,18 @@ func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, 
 				_, err := io.WriteString(writer, routerFaultSSE(events...))
 				return err == nil
 			}
+			added := map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item}
+			delta := map[string]any{"type": "response.output_text.delta", "item_id": item["id"], "output_index": 0, "content_index": 0, "delta": "The latest trace"}
+			if p.streamedIdentity {
+				if p.mode == "message" {
+					delete(item, "id") // The delta supplies the ID before ID-only completion.
+				} else {
+					delete(added, "output_index") // The delta supplies the index instead.
+				}
+			}
 			if !emit(
 				map[string]any{"type": "response.created", "response": map[string]any{"id": "message-emission", "status": "in_progress", "output": []any{}}},
-				map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item},
-				map[string]any{"type": "response.output_text.delta", "item_id": item["id"], "output_index": 0, "content_index": 0, "delta": "The latest trace"},
+				added, delta,
 			) {
 				return
 			}
@@ -91,16 +100,28 @@ func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, 
 			if p.anonymous {
 				delete(item, "id")
 			}
+			done := map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item}
+			if p.streamedIdentity {
+				if p.mode == "message" {
+					delete(done, "output_index")
+				} else {
+					delete(item, "id")
+				}
+			}
 			if !emit(
 				map[string]any{"type": "response.output_text.delta", "item_id": item["id"], "output_index": 0, "content_index": 0, "delta": " is complete."},
 				map[string]any{"type": "response.output_text.done", "item_id": item["id"], "output_index": 0, "content_index": 0, "text": "The latest trace is complete."},
-				map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item},
+				done,
 			) {
 				return
 			}
 			// Consecutive HTTP messages test that accepted input retains the first
 			// message's boundary even when the next message starts in the same read.
-			if !p.socket {
+			if p.streamedIdentity {
+				if !emit(map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"id": "reasoning", "type": "reasoning", "summary": []any{}}}) {
+					return
+				}
+			} else if !p.socket {
 				if !emit(
 					map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"id": "next-message", "type": "message", "role": "assistant", "status": "in_progress", "content": []any{}}},
 					map[string]any{"type": "response.output_text.delta", "output_index": 1, "content_index": 0, "item_id": "next-message", "delta": "Another message is streaming"},
@@ -224,19 +245,20 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 		t.Fatal("installed Codex is required for answer interruption acceptance")
 	}
 	for _, tc := range []struct {
-		mode      string
-		socket    bool
-		anonymous bool
-	}{{"apply_patch", false, false}, {"exec", false, false}, {"message", false, false}, {"steer", false, false}, {"message", true, false}, {"steer", true, false}, {"message", false, true}, {"steer", true, true}} {
+		mode             string
+		socket           bool
+		anonymous        bool
+		streamedIdentity bool
+	}{{"apply_patch", false, false, false}, {"exec", false, false, false}, {"message", false, false, false}, {"steer", false, false, false}, {"message", true, false, false}, {"steer", true, false, false}, {"message", false, true, false}, {"steer", true, true, false}, {"message", false, false, true}, {"steer", false, false, true}, {"message", true, false, true}, {"steer", true, false, true}} {
 		mode := tc.mode
-		t.Run(fmt.Sprintf("%s/socket=%v/anonymous=%v", mode, tc.socket, tc.anonymous), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/socket=%v/anonymous=%v/streamedIdentity=%v", mode, tc.socket, tc.anonymous, tc.streamedIdentity), func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			workspace := t.TempDir()
 			gatePath := filepath.Join(workspace, "release")
 			startedPath := filepath.Join(workspace, "started")
 			countPath := filepath.Join(workspace, "count")
 			patchPath := filepath.Join(workspace, "answer-patch.txt")
-			provider := &answerInterruptCodexProvider{t: t, mode: mode, socket: tc.socket, anonymous: tc.anonymous, gate: make(chan struct{}), requests: make(chan []byte, 8)}
+			provider := &answerInterruptCodexProvider{t: t, mode: mode, socket: tc.socket, anonymous: tc.anonymous, streamedIdentity: tc.streamedIdentity, gate: make(chan struct{}), requests: make(chan []byte, 8)}
 			if mode == "apply_patch" {
 				provider.input = "*** Begin Patch\n*** Add File: " + patchPath + "\n+input-survived\n*** End Patch"
 			} else {
