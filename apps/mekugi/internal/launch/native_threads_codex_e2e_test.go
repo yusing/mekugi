@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"io"
@@ -1586,21 +1587,26 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	if scenario.preload {
 		attached, failed, internal := false, false, false
+		groupedFailure := false
 		var operations []string
 		if childEvent.Frame.Main != nil {
 			for _, entry := range childEvent.Frame.Main.Entries {
-				for _, value := range entry.Values {
-					if value.Kind == "op" {
-						operations = append(operations, fmt.Sprintf("%s path=%q reload=%t exited=%t exit=%d code=%.180q", value.Verb, value.Path, value.AutoReload, value.Exited, value.ExitCode, value.Code))
+				for _, group := range entry.Values {
+					groupedFailure = groupedFailure || group.Kind == "attachments" && group.FailedOutcome()
+					internal = internal || group.Kind == "attachments" && (group.Code != "" || len(group.Tail) > 0 || group.AutoReload)
+					for _, value := range presentation.Originals(group) {
+						if value.Kind == "op" {
+							operations = append(operations, fmt.Sprintf("%s path=%q reload=%t exited=%t exit=%d code=%.180q", value.Verb, value.Path, value.AutoReload, value.Exited, value.ExitCode, value.Code))
+						}
+						attached = attached || value.Verb == "Attached" && value.Path == "preload.txt" && value.Exited && value.ExitCode == 0
+						failed = failed || value.Verb == "Attached" && value.Path == "missing.txt" && value.Exited && value.ExitCode == 1
+						internal = internal || value.Verb == "Run" && strings.Contains(value.Code, "mreload") || value.Verb == "Attached" && (value.Code != "" || len(value.Tail) > 0 || value.AutoReload)
 					}
-					attached = attached || value.Verb == "Attached" && value.Path == "preload.txt" && value.Exited && value.ExitCode == 0
-					failed = failed || value.Verb == "Attached" && value.Path == "missing.txt" && value.Exited && value.ExitCode == 1
-					internal = internal || value.Verb == "Run" && strings.Contains(value.Code, "mreload") || value.Verb == "Attached" && (len(value.Tail) > 0 || value.AutoReload)
 				}
 			}
 		}
-		if !attached || !failed || internal {
-			t.Fatalf("preload attachment presentation: attached=%t failed=%t internal=%t operations=%v", attached, failed, internal, operations)
+		if !attached || !failed || !groupedFailure || internal {
+			t.Fatalf("preload attachment presentation: attached=%t failed=%t groupedFailure=%t internal=%t operations=%v", attached, failed, groupedFailure, internal, operations)
 		}
 	}
 	if fullHistory {
