@@ -98,9 +98,24 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 					segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: "last\n"},
 					segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(2)},
 					segmenttransport.Message{Type: segmenttransport.Done, Code: new(2)},
-					segmenttransport.Message{Type: segmenttransport.Closed},
 				)
+				// A segment's exit is visible before transport closure. Hold that
+				// boundary explicitly so rendered output cannot stand in for settlement.
+				awaitMain(t, u, "exit 2")
+				entry := u.attached.source.Entries[0]
+				if !entry.Source.Native.SegmentsPending || u.attached.session.Commands()[key] == nil || !hub.Tracking(key) {
+					t.Fatal("segment exit settled the report before closure")
+				}
+				report.send(segmenttransport.Message{Type: segmenttransport.Closed})
 				report.conn.Close()
+				deadline := time.Now().Add(2 * time.Second)
+				for u.attached.session.Commands()[key] != nil || hub.Tracking(key) {
+					u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
+					if time.Now().After(deadline) {
+						t.Fatalf("closed report did not retire: command=%t tracking=%t", u.attached.session.Commands()[key] != nil, hub.Tracking(key))
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
 				frame = awaitMain(t, u, "exit 2")
 			} else {
 				now = now.Add(time.Nanosecond)
@@ -109,7 +124,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 			}
 			entry := u.attached.source.Entries[0]
 			if entry.Source.Seq != seq || entry.Source.Native.SegmentsPending || (len(entry.Source.Native.Segments) == 2) != closeReport || u.attached.session.Commands()[key] != nil || hub.Tracking(key) {
-				t.Fatalf("report did not settle on its original identity: %+v", entry.Source)
+				t.Fatalf("report did not settle on its original identity: seq=%d want=%d pending=%t segments=%d wantSeparate=%t command=%t tracking=%t", entry.Source.Seq, seq, entry.Source.Native.SegmentsPending, len(entry.Source.Native.Segments), closeReport, u.attached.session.Commands()[key] != nil, hub.Tracking(key))
 			}
 			if !strings.Contains(frame, "exit 2") || !strings.Contains(frame, "last") || strings.Count(frame, "Repeated fixture output") != 1 {
 				t.Fatalf("settlement lost outcome, output or annotation:\n%s", frame)
