@@ -36,6 +36,7 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 	responses := make(chan appserver.Message)
 	requests := make(chan resumeTestRequest, 64)
 	heldPages := make(chan sessionpresentation.ResumeAction, 1)
+	canceled := make(chan struct{}, 1)
 	release := make(chan struct{})
 	replace := make(chan struct{})
 	var hold atomic.Bool
@@ -86,6 +87,9 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 					}
 					if err := apply(*action); err != nil {
 						return err
+					}
+					if action.Kind == sessionpresentation.ResumeCancel {
+						canceled <- struct{}{}
 					}
 				}
 				reply = request.Reply
@@ -151,6 +155,9 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 		cancel()
 		select {
 		case <-done:
+			if got := c.editor("main").Text; got != "" {
+				t.Errorf("resume input leaked into the composer: %q", got)
+			}
 		case <-time.After(5 * time.Second):
 			t.Error("native client did not stop")
 		}
@@ -275,9 +282,12 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 	restarted := next("")
 	page(restarted, 0, 25, "search")
 	await("Saved conversation 07")
-	send("z")
+	send("needle")
 	search := next("search")
-	await("Searching")
+	await("Search: needle")
+	send("\x7f\x7f\b\b\b\bneedle\x7f\b")
+	await("Search: need ")
+	snapshot("native-resume-burst-search")
 	page(search, 25, 26, "scan") // No matching row: server scanning stays independent.
 	scanned := next("scan")
 	page(scanned, 26, 27, "")
@@ -300,4 +310,19 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 	page(replacement, 0, 1, "")
 	await("Saved conversation 00")
 	quiet(4)
+	// Cancellation must pass a stalled semantic page request and discard edits
+	// still waiting for its publication, rather than type them into the composer.
+	send("\t")
+	restarted = next("")
+	hold.Store(true)
+	page(restarted, 0, 1, "cancel")
+	awaitHeld("saved-00")
+	send("needle\x03")
+	select {
+	case <-canceled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("resume cancellation waited for page admission")
+	}
+	release <- struct{}{}
+	quiet(5)
 }

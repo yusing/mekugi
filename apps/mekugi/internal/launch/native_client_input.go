@@ -27,17 +27,21 @@ type nativeSelectionCapture struct {
 	ready     bool
 }
 
-// Queued editor input owns the destination visible when it arrived, including
-// keys waiting behind an asynchronous menu continuation.
+// Queued input owns the editor or resume chooser visible when it arrived,
+// including keys waiting behind an asynchronous semantic publication.
 type nativeClientInput struct {
 	event             terminalsession.Input
 	thread, displayed sessionpresentation.Thread
 	target            conversation.EditorTarget
+	resume            uint64
 }
 
 func (c *nativeClient) queueInput(event terminalsession.Input) {
 	_, target := c.selectedEditor()
 	c.input = append(c.input, nativeClientInput{event: event, thread: c.event.Frame.View.Input, displayed: c.event.Frame.View.Displayed, target: target})
+	if resume := c.event.Frame.View.Resume; resume != nil {
+		c.input[len(c.input)-1].resume = resume.ID
+	}
 }
 
 // Dependent local work retains its input destination while observing the latest
@@ -91,7 +95,7 @@ func (c *nativeClient) withInput(thread, displayed sessionpresentation.Thread, t
 	c.refreshView(time.Now())
 }
 
-// A menu/panel continuation owns the key that opened it. Only subsequent editor
+// A menu/panel continuation or resume edit owns the key that opened it. Subsequent
 // input waits for that semantic result; terminal navigation and cancellation do
 // not acquire the editor and remain independent.
 func (c *nativeClient) drainInput() {
@@ -100,11 +104,17 @@ func (c *nativeClient) drainInput() {
 	}
 	for i := 0; i < len(c.input); {
 		pending := c.request(nativeSemanticCall)
-		dependent := pending != nil && pending.next != nil || slices.ContainsFunc(c.calls, func(call *nativeClientCall) bool { return call.next != nil })
+		dependent := func(call *nativeClientCall) bool {
+			return call != nil && (call.next != nil || call.operation.Resume != nil && call.operation.Resume.Kind != sessionpresentation.ResumePage)
+		}
 		queued := c.input[i]
 		event := queued.event
 		independent := event.Kind == terminalsession.ColorInput || event.Kind == terminalsession.FocusInput || event.Kind == terminalsession.MouseInput || event.Kind == terminalsession.KeyInput && (event.Text == "\x03" || event.Text == "\x02" || strings.HasPrefix(event.Text, "\x1b["))
-		if dependent && !independent {
+		if resume := c.event.Frame.View.Resume; !independent && queued.resume != 0 && (resume == nil || resume.ID != queued.resume) {
+			c.input = slices.Delete(c.input, i, i+1)
+			continue
+		}
+		if (dependent(pending) || slices.ContainsFunc(c.calls, dependent)) && !independent {
 			i++
 			continue
 		}

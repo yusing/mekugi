@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -110,7 +111,7 @@ func nativeCallLane(operation sessionapi.NativeOperation) int {
 		return nativeAcquisitionCall
 	case operation.Receipt != nil:
 		return nativeReceiptCall
-	case operation.Interrupt != nil:
+	case operation.Interrupt != nil || operation.Resume != nil && operation.Resume.Kind == sessionpresentation.ResumeCancel:
 		return nativeCancellationCall
 	case operation.Preferences != nil:
 		return nativePreferenceCall

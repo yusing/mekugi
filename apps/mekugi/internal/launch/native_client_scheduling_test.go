@@ -319,6 +319,35 @@ func testNativeClientPreparationOwner(t *testing.T, input string) {
 	}
 }
 
+func TestNativeClientResumeEditsKeepOriginalChooser(t *testing.T) {
+	for _, replaced := range []bool{false, true} {
+		t.Run(fmt.Sprint(replaced), func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.startSession("main", "/workspace")
+			c := nativeTestPromptClient(u)
+			c.event.Frame.View.Resume = &sessionpresentation.ResumeView{ID: 7}
+			c.refresh(time.Now())
+			for _, key := range []string{"n", "e", "\x7f"} {
+				c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: key})
+			}
+			c.drainInput()
+			if len(c.calls) != 1 || c.calls[0].operation.Resume.Query != "n" || len(c.input) != 2 {
+				t.Fatal("dependent resume edits did not wait for the first query publication")
+			}
+			c.calls = nil
+			c.event.Frame.View.Resume = nil
+			if replaced {
+				c.event.Frame.View.Resume = &sessionpresentation.ResumeView{ID: 8}
+			}
+			c.refresh(time.Now())
+			c.drainInput()
+			if len(c.input) != 0 || len(c.calls) != 0 || c.editor("main").Text != "" {
+				t.Fatal("queued edits escaped their original resume chooser")
+			}
+		})
+	}
+}
+
 func TestNativeClientContinuationKeepsOriginatingEditor(t *testing.T) {
 	for _, destination := range []string{"side", "new-question"} {
 		t.Run(destination, func(t *testing.T) {
