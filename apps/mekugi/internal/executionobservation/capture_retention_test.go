@@ -67,7 +67,7 @@ func TestLargeNamedCaptureRetainsEveryFileAcrossRestart(t *testing.T) {
 	resident := 0
 	for _, file := range observation.Files {
 		resident += len(file.Content)
-		if file.Error != "" || file.ContentRef == nil {
+		if file.Error != "" || file.ContentRef == nil && file.Content != data {
 			t.Fatalf("baseline %s: error=%q retained=%v", file.Path, file.Error, file.ContentRef != nil)
 		}
 	}
@@ -103,6 +103,11 @@ func TestLargeNamedCaptureRetainsEveryFileAcrossRestart(t *testing.T) {
 	base, found, err := lookupObservation(f.ctx, cold, f.workspace, "large")
 	if err != nil || !found || base.Script != script || base.CarrierPayload != original.CarrierPayload || len(base.ExecObservation.Files) != 27 {
 		t.Fatalf("cold original host facts: found=%v error=%v", found, err)
+	}
+	for _, file := range base.ExecObservation.Files {
+		if file.ContentRef == nil {
+			t.Fatalf("published baseline was not chunked: %s", file.Path)
+		}
 	}
 	completed, found, err := lookupObservation(f.ctx, cold, f.workspace, legacycall.ExecCallID("large", false))
 	if err != nil || !found || len(completed.reviews()) != 27 || completed.ExecOutcome.Coverage != changecapture.CoverageExact {

@@ -106,11 +106,14 @@ func ReadFileIn(ctx context.Context, path string, budget *int, source *evidence.
 func retainFile(ctx context.Context, snapshot File, budget *int, source *evidence.Source) File {
 	if source == nil && budget != nil && len(snapshot.Content) > *budget {
 		snapshot.Content, snapshot.Error = "", "capture budget exhausted"
-	} else if source != nil && (len(snapshot.Content) > evidence.InlineBytes || budget != nil && len(snapshot.Content) > *budget) {
+	} else if source != nil && (budget == nil && len(snapshot.Content) > evidence.InlineBytes || budget != nil && len(snapshot.Content) > *budget) {
 		if err := snapshot.Spill(ctx, source); err != nil {
 			snapshot.Content, snapshot.Error = "", "retain baseline: "+err.Error()
 		}
 	} else if budget != nil {
+		// Acquisition uses the collection's resident allowance. Per-record
+		// chunking belongs to publication, not the filesystem read deadline:
+		// an unrelated store transaction must not discard small batches.
 		*budget -= len(snapshot.Content)
 	}
 	return snapshot

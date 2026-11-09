@@ -6,9 +6,92 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+func TestBoundedCommandCaptureDoesNotWaitForPublication(t *testing.T) {
+	service, err := history.NewService(evidence.RecordKinds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := service.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := &evidence.Source{Store: store, Thread: "bounded-command"}
+	workspace := t.TempDir()
+	value := "package fixture\n" + strings.Repeat("// retained baseline\n", 2000)
+	var names []string
+	for i := range 6 {
+		name := fmt.Sprintf("file%d.go", i)
+		names = append(names, name)
+		writeTestFile(t, filepath.Join(workspace, name), value)
+	}
+	locked, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- store.Transaction(t.Context(), nil, func(*history.Transaction) error {
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	<-locked
+	// A sibling publication must not consume the filesystem acquisition hold
+	// when all six baselines fit the existing resident-text allowance.
+	command := "gofmt -w " + strings.Join(names, " ") + "; go test ./..."
+	observation, observed := Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, Options{Directory: workspace, Evidence: source})
+	var inputs []string
+	for _, name := range names[:2] {
+		inputs = append(inputs, "*** Begin Patch\n*** Update File: "+name+"\n@@\n-package fixture\n+package edited\n*** End Patch")
+	}
+	patches := Patches(inputs, workspace, source)
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !observed || observation == nil || observation.Reason == "capture deadline" || len(observation.Files) != len(names) {
+		t.Fatalf("bounded capture lost baselines behind publication: %+v", observation)
+	}
+	for _, file := range observation.Files {
+		if file.Error != "" || file.Content != value {
+			t.Fatalf("baseline unavailable: %s: %s", file.Path, file.Error)
+		}
+	}
+	if len(patches) != len(inputs) {
+		t.Fatalf("patch capture lost inputs: %d", len(patches))
+	}
+	for _, patch := range patches {
+		if len(patch.Files) != 1 || patch.Files[0].Error != "" || patch.Files[0].Before != value {
+			t.Fatalf("patch baseline blocked on publication: %+v", patch)
+		}
+	}
+	// Publication still converts resident acquisition text to durable chunks.
+	var root string
+	if err := store.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
+		var err error
+		root, err = evidence.Write(tx, source, evidence.Snapshot{Files: observation.Files})
+		return err
+	}); err != nil || root == "" {
+		t.Fatalf("publish acquired baselines: %q, %v", root, err)
+	}
+	cold := &evidence.Source{Read: store.ReadRetained}
+	manifest, err := evidence.Open(cold, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := evidence.ReadFiles(cold, manifest.Files)
+	if err != nil || len(files) != len(names) {
+		t.Fatalf("cold baseline recovery: files=%d, %v", len(files), err)
+	}
+	for _, file := range files {
+		writeTestFile(t, file.Path, "unrelated live contents\n")
+		if text, err := file.Text(); err != nil || text != value || file.ContentRef == nil {
+			t.Fatalf("cold baseline is not retained chunked evidence: %s, %v", file.Path, err)
+		}
+	}
+}
 
 func TestRetainedPatchBatchPreservesLargeBaselines(t *testing.T) {
 	for _, test := range []struct {

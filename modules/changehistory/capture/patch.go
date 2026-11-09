@@ -215,7 +215,7 @@ func patchWithin(ctx context.Context, input, workspace string, source *evidence.
 		}
 		if source != nil {
 			spill := func(text *string, ref **evidence.Text, reason *string) {
-				if len(*text) <= evidence.InlineBytes && len(*text) <= MaxContentBytes-*total {
+				if len(*text) <= MaxContentBytes-*total {
 					*total += len(*text)
 					return
 				}
