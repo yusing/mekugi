@@ -74,6 +74,7 @@ func (d *Driver) capture(ctx context.Context, id control.Identity) (settings con
 		settings.Workspace, settings.Model, settings.Provider = runtime.Workspace, runtime.Model, admission.Provider
 		settings.RuntimeRoots, settings.Effort, settings.Summary, settings.Tier = admission.RuntimeRoots, runtime.Effort, admission.Summary, admission.Tier
 		settings.PermissionProfile, settings.ApprovalPolicy, settings.ApprovalsReviewer = runtime.PermissionProfile, runtime.ApprovalPolicy, runtime.ApprovalsReviewer
+		settings.PermissionID = ""
 		if runtime.ActivePermissionProfile != nil {
 			settings.PermissionID = runtime.ActivePermissionProfile.ID
 		}

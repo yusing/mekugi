@@ -5,6 +5,7 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -91,6 +92,87 @@ func TestAdmitRequestCodexV2Limits(t *testing.T) {
 			_, err = service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "reviewer", Message: "independent review", Settings: member.Settings, Limits: limits})
 			if err != nil {
 				t.Fatalf("nested review rejected by a Mekugi cap: %v", err)
+			}
+		})
+	}
+}
+
+func TestAdmittedMainSpawnsAfterLongTurn(t *testing.T) {
+	for _, resumed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("resumed=%t", resumed), func(t *testing.T) {
+			retained, err := history.NewService(control.RecordKinds())
+			if err != nil {
+				t.Fatal(err)
+			}
+			store, err := retained.Open(t.Context(), t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			workspace := t.TempDir()
+			path := filepath.Join(workspace, "root.jsonl")
+			policy := `{"type":"managed","file_system":{"type":"restricted","entries":[{"path":{"type":"path","path":"/denied"},"access":"deny"}]},"network":"restricted"}`
+			header := fmt.Sprintf("{\"type\":\"session_meta\",\"payload\":{\"id\":\"root\"}}\n"+`{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_id":"root","thread_settings":{"model":"model","model_provider_id":"selected-provider","cwd":%q,"runtime_workspace_roots":[%q],"permission_profile":%s,"approval_policy":"on-request","service_tier":"flex","reasoning_summary":"detailed"}}}`+"\n", workspace, workspace, policy)
+			turn := fmt.Sprintf(`{"type":"turn_context","payload":{"turn_id":"root-turn","model":"model","cwd":%q,"permission_profile":%s,"approval_policy":"on-request","effort":"high"}}`+"\n", workspace, policy)
+			initialTurn := strings.Replace(turn, `"effort":"high"`, `"effort":"high","active_permission_profile":{"id":"previous-profile"}`, 1)
+			roleTestFile(t, path, header+initialTurn)
+			service := control.New()
+			driver, err := NewDriver(service)
+			if err != nil {
+				t.Fatal(err)
+			}
+			host := &reconciliationHost{}
+			native := uniqueChildren{instructionNative: instructionNative{Native: host, owner: instructionRuntime{info: control.ThreadInfo{Thread: "root", Session: "root-session", Path: path}}}, created: new(0)}
+			if err := driver.Connect(native, host); err != nil {
+				t.Fatal(err)
+			}
+			caller := control.Identity{Thread: "root", Session: "root-session", Turn: "root-turn", Call: "spawn", Item: "exec"}
+			if err := driver.AdmitRequest(t.Context(), session, caller, true); err != nil {
+				t.Fatal(err)
+			}
+			root, _ := service.Member(caller.Thread)
+			if root.Settings.PermissionID != "previous-profile" {
+				t.Fatal("initial host profile selector was not admitted")
+			}
+			padding := strings.Repeat("{\"type\":\"response_item\",\"payload\":{}}\n", (9<<20)/38)
+			if resumed {
+				roleTestFile(t, path, header+padding+turn)
+			} else {
+				roleTestFile(t, path, header+turn+padding)
+			}
+			if resumed {
+				service = control.New()
+				if err := service.Restore(t.Context(), session); err != nil {
+					t.Fatal(err)
+				}
+				driver, err = NewDriver(service)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := driver.Connect(native, host); err != nil {
+					t.Fatal(err)
+				}
+				if err := driver.AdmitRequest(t.Context(), session, caller, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			driver.models = []Model{{Name: "model", Root: new("ROOT"), Child: new("CHILD")}}
+			result, err := driver.Call(t.Context(), caller, "spawn_agent", jsontext.Value(`{"task_name":"reviewer","message":"review this change","fork_turns":"none"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertForkJSON(t, result, `{"state":"confirmed","task_name":"agent:main/reviewer","thread_id":"child-1"}`)
+			child, ok := service.Member("child-1")
+			if !ok || child.Settings.Provider != "selected-provider" || child.Settings.Tier == nil || *child.Settings.Tier != "flex" || child.Settings.Summary == nil || *child.Settings.Summary != "detailed" || child.Settings.Effort == nil || *child.Settings.Effort != "high" || len(child.Settings.RuntimeRoots) != 1 || child.Settings.RuntimeRoots[0] != workspace || string(child.Settings.ApprovalPolicy) != `"on-request"` {
+				t.Fatalf("selected session authority was not inherited: %+v", child)
+			}
+			assertForkJSON(t, child.Settings.PermissionProfile, policy)
+			if child.Settings.PermissionID != "" {
+				t.Fatalf("cleared host profile selector inherited stale ID %q", child.Settings.PermissionID)
 			}
 		})
 	}

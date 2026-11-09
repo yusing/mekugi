@@ -1,9 +1,13 @@
 package rollout
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"io"
+	"iter"
+	"slices"
 )
 
 // Runtime is an exact admitted turn-context record, not a reconstructed policy
@@ -42,7 +46,17 @@ type Admission struct {
 // ReadAdmission requires a snapshot owned by this thread. Inherited snapshots
 // cannot confirm a newly created child's policy, even in an admitted rollout.
 func ReadAdmission(thread, path string) (Admission, error) {
-	for line := range reverseRecords(thread, path) {
+	f, stat, ok := Open(thread, path)
+	if !ok {
+		return Admission{}, errors.New("host-owned admission settings are unavailable in the admitted rollout")
+	}
+	defer f.Close()
+	// Canonical settings can precede a long turn. Unlike turn observations,
+	// they must not age out of the bounded observational tail.
+	for line, err := range reverseRecordPages(f, stat.Size()) {
+		if err != nil {
+			return Admission{}, err
+		}
 		var record struct {
 			Type    string `json:"type"`
 			Payload struct {
@@ -63,15 +77,79 @@ func ReadAdmission(thread, path string) (Admission, error) {
 	return Admission{}, errors.New("host-owned admission settings are unavailable in the admitted rollout")
 }
 
-// ReadRuntime never substitutes a neighboring turn when the invoking turn is
-// missing, partially written, or outside the bounded identity-validated tail.
+// Read newest-first in pages, stopping as soon as the owned snapshot is found.
+// Memory follows one record, not the rollout size; a split record is assembled
+// once. An unfinished final record is not evidence, just as in reverseRecords.
+func reverseRecordPages(source io.ReaderAt, size int64) iter.Seq2[[]byte, error] {
+	return func(yield func([]byte, error) bool) {
+		page := make([]byte, 64<<10)
+		var fragments [][]byte
+		complete := false
+		for end := size; end > 0; {
+			start := max(int64(0), end-int64(len(page)))
+			data := page[:end-start]
+			if _, err := source.ReadAt(data, start); err != nil {
+				yield(nil, err)
+				return
+			}
+			end = start
+			for len(data) > 0 {
+				before, part, found := bytes.CutLast(data, []byte{'\n'})
+				if !complete {
+					if !found {
+						break
+					}
+					complete = true
+					data = before
+					continue
+				}
+				if !found {
+					part = data
+				}
+				if len(fragments) > 0 {
+					fragments = append(fragments, bytes.Clone(part))
+					if found || start == 0 {
+						slices.Reverse(fragments)
+						joined := bytes.Join(fragments, nil)
+						if !yield(joined, nil) {
+							return
+						}
+						fragments = nil
+					}
+				} else if found || start == 0 {
+					if !yield(part, nil) {
+						return
+					}
+				} else {
+					fragments = append(fragments, bytes.Clone(part))
+				}
+				if !found {
+					break
+				}
+				data = before
+			}
+		}
+	}
+}
+
+// ReadRuntime requires the exact invoking turn, even after a long turn has
+// moved its context outside the observational tail. Missing or partially
+// written context never substitutes a neighboring turn's authority.
 // Source: codex-rs/protocol/src/protocol.rs:3426 TurnContextItem
 // @0df4aa67781ae45a3c97befa4db48b734afe46d9.
 func ReadRuntime(thread, path, turn string) (Runtime, error) {
 	if thread == "" || turn == "" {
 		return Runtime{}, errors.New("runtime snapshot requires thread and turn identity")
 	}
-	for line := range reverseRecords(thread, path) {
+	f, stat, ok := Open(thread, path)
+	if !ok {
+		return Runtime{}, errors.New("invoking turn context is unavailable in the admitted rollout")
+	}
+	defer f.Close()
+	for line, err := range reverseRecordPages(f, stat.Size()) {
+		if err != nil {
+			return Runtime{}, err
+		}
 		var record struct {
 			Type    string  `json:"type"`
 			Payload Runtime `json:"payload"`
