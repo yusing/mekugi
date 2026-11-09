@@ -78,6 +78,8 @@ Default token budgets are 6000 for file reads (`mcat`), 8000 for retained-output
 (`mread`), and 4000 for symbol queries and structural outlines. Explicit token limits override
 these defaults up to 15500; `mcat -n` retains its default token ceiling.
 It preserves context reuse and batching of ready related edits without replacing the stock editor.
+Scripts or substantial text expected to be reused go to one temporary file outside the
+repository that later calls edit, invoke, reference or preload instead of resending the content.
 Review handoffs include the requested scope and explicit IDs or same-agent inclusive ranges;
 the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence
 does not assert the current workspace state.
