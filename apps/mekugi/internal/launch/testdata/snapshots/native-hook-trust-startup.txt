@@ -1,0 +1,22 @@
+Mekugi dev • codex v0.162.0
+
+
+
+
+
+
+
+
+  ! Trust this hook?
+  bash scripts/startup.sh
+  Trust: modified
+  Source: .codex/hooks.json
+  Event: sessionStart
+  Hooks can execute commands. Trust only hooks you have reviewed.
+  › 1. Continue without trusting                                              
+    2. Trust this hook
+  1–2 choose · enter confirm · esc hide
+
+╭─ approving · turn waiting ───────────────────────────────────────────────────╮
+│ ❯                                                                            │
+╰────────────────────────────────────────────── /workspace • test (high) • 0% ─╯

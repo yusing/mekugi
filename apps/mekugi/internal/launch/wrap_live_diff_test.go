@@ -141,6 +141,7 @@ func TestAutoWrapProcess(t *testing.T) {
 				Method string         `json:"method"`
 				Params struct {
 					Cwds   []string       `json:"cwds"`
+					Thread string         `json:"threadId"`
 					Config map[string]any `json:"config"`
 					Input  []struct {
 						Type string `json:"type"`
@@ -158,10 +159,16 @@ func TestAutoWrapProcess(t *testing.T) {
 			case "config/read":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"config":{"compact_prompt":"Fixture caller handover."},"layers":[{"name":{"type":"sessionFlags"},"config":{"hooks":{"PreToolUse":[],"state":{}}}}]}}`+"\n", request.ID)
 			case "hooks/list":
+				if request.Params.Thread == "auto-wrap" {
+					request.Params.Cwds = []string{os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE")}
+				}
 				if len(request.Params.Cwds) != 1 {
 					t.Fatal("hook discovery did not select one absolute workspace")
 				}
 				var hooks []map[string]any
+				if os.Getenv("MEKUGI_AUTO_WRAP_HOOK_CHOICE") != "" && !preflight {
+					hooks = append(hooks, map[string]any{"key": "caller-modified", "eventName": "sessionStart", "enabled": true, "trustStatus": "modified", "handlerType": "command", "command": "bash scripts/startup.sh", "sourcePath": request.Params.Cwds[0] + "/.codex/hooks.json", "currentHash": "sha256:modified"})
+				}
 				if preflight {
 					hooks = append(hooks, map[string]any{"key": "caller-fixture", "eventName": "preToolUse", "enabled": true, "trustStatus": "trusted", "matcher": "Bash", "handlerType": "command"})
 				} else {
@@ -172,6 +179,8 @@ func TestAutoWrapProcess(t *testing.T) {
 					t.Fatal(err)
 				}
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":%s}`+"\n", request.ID, result)
+			case "config/batchWrite":
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{}}`+"\n", request.ID)
 			case "model/list":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"data":[]}}`+"\n", request.ID)
 			case "environment/info":
@@ -267,15 +276,18 @@ func TestAutoWrapProcess(t *testing.T) {
 
 func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 	for _, test := range []struct {
-		name      string
-		terminal  bool
-		optOut    bool
-		failure   bool
-		guard     bool
-		config    string
-		guardFlag string
+		name       string
+		terminal   bool
+		optOut     bool
+		failure    bool
+		guard      bool
+		config     string
+		guardFlag  string
+		hookChoice string
 	}{
 		{name: "terminal", terminal: true},
+		{name: "terminal-hook-decline", terminal: true, hookChoice: "1"},
+		{name: "terminal-hook-trust", terminal: true, hookChoice: "2"},
 		{name: "terminal-env-zero", terminal: true, optOut: true},
 		{name: "redirected"},
 		{name: "terminal-failure", terminal: true, failure: true},
@@ -312,6 +324,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			herdrMarker := filepath.Join(dir, "herdr-invoked")
 			rpcMarker := filepath.Join(dir, "app-server-rpc")
 			t.Setenv("MEKUGI_AUTO_WRAP_PROCESS", "1")
+			t.Setenv("MEKUGI_AUTO_WRAP_HOOK_CHOICE", test.hookChoice)
 			t.Setenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE", "0")
 			if !test.terminal {
 				t.Setenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE", "1")
@@ -367,11 +380,15 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				go func() {
 					var data bytes.Buffer
 					buf := make([]byte, 8192)
-					quit := false
+					quit, answeredHook := false, false
 					for {
 						n, readErr := tty.Read(buf)
 						data.Write(buf[:n])
-						if !test.failure && !quit && bytes.Contains(data.Bytes(), []byte("Ready")) {
+						if test.hookChoice != "" && !answeredHook && bytes.Contains(data.Bytes(), []byte("Trust this hook?")) {
+							_, _ = tty.Write([]byte(test.hookChoice + "\r"))
+							answeredHook = true
+						}
+						if !test.failure && !quit && (test.hookChoice == "" || answeredHook) && bytes.Contains(data.Bytes(), []byte("Ready")) {
 							_, _ = tty.Write([]byte("/quit\r"))
 							quit = true
 						}
@@ -417,8 +434,18 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 					t.Fatalf("terminal wrapper did not render native Main: %q", output)
 				}
 				calls, readErr := os.ReadFile(rpcMarker)
-				if readErr != nil || !bytes.Contains(calls, []byte("initialize\ninitialized\nenvironment/info\nthread/start\n")) {
+				handshake := "initialize\ninitialized\nenvironment/info\nthread/start\n"
+				if readErr != nil || !bytes.Contains(calls, []byte(handshake)) {
 					t.Fatalf("native app-server handshake: %q, %v", calls, readErr)
+				}
+				if !test.failure && !bytes.Contains(calls, []byte("hooks/list\n")) {
+					t.Fatalf("hook inventory not requested: %s", calls)
+				}
+				if test.hookChoice != "" && bytes.Contains(calls, []byte("config/batchWrite\n")) != (test.hookChoice == "2") {
+					t.Fatalf("hook trust decision: %s", calls)
+				}
+				if test.hookChoice != "" && (!bytes.Contains(output, []byte("Trust: modified")) || !bytes.Contains(output, []byte("bash scripts/startup.sh"))) {
+					t.Fatal("rendered startup hook review omitted changed trust status or command")
 				}
 			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte("1 Main")) {
 				t.Fatalf("redirected wrapper unexpectedly rendered the integrated UI: %q", output)

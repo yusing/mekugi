@@ -1349,6 +1349,39 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		t.Fatal("family answer was not delivered")
 	}
 
+	sharedChild.Questions = nil
+	sharedChild.Prompts = nil
+	if err := alpha.publishFrame(sharedChild); err != nil {
+		t.Fatal(err)
+	}
+	frame.Prompts, frame.Questions = nil, nil
+	if err := alpha.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+
+	// Hook trust uses the ordinary approval surface, not a separate browser flow.
+	family, _ = alpha.hub.Family("same-thread")
+	hookUI, _ := hookTrustTestStartup(t, "modified")
+	hookFrame := sessionapi.NativeFrame{Family: family, View: sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: mainThread, Input: mainThread, Displayed: mainThread, Info: sessionpresentation.MainInfo{Workspace: alpha.workdir}}, Approvals: nativePendingApprovals(hookUI.attached.conversation)}
+	if err := alpha.api.Native().Publish(rootRequest.Attachment, hookFrame); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--text", "Trust this hook?")
+	run("wait", "--text", "Trust: modified")
+	run("wait", "--text", "Continue without trusting")
+	run("wait", "--fn", `document.querySelectorAll('[data-prompt]').length === 1`)
+	for _, state := range []struct{ width, theme string }{{"1280", "Light"}, {"390", "Dark"}} {
+		run("set", "viewport", "1280", "900")
+		theme(state.theme)
+		run("set", "viewport", state.width, "900")
+		run("wait", "--fn", `document.querySelector('[data-prompt]')?.getBoundingClientRect().width > 0`)
+		if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+			run("screenshot", filepath.Join(directory, "hook-trust-"+strings.ToLower(state.theme)+"-"+state.width+".png"))
+		}
+	}
+	run("set", "viewport", "1280", "720")
+	theme("Light")
+
 	// Approvals use the same captured semantic view, retaining denial input on refusal.
 	approvalFrame := sessionapi.NativeFrame{Family: family, View: sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 1, Revision: 1}, Main: mainThread, Input: mainThread, Displayed: mainThread, Info: sessionpresentation.MainInfo{Workspace: alpha.workdir}}, Approvals: []prompt.ApprovalView{{ID: "remote-approval", Agent: "/root/unpaged-worker", Thread: "same-thread", Title: "Approve remote command", Details: []string{"Keep the existing command"}, Choices: []prompt.Choice{{ID: 20, Label: "Reject command", Deny: true}}}}}
 	if err := alpha.api.Native().Publish(rootRequest.Attachment, approvalFrame); err != nil {
@@ -1375,15 +1408,6 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	}
 	approvalFrame.Approvals = nil
 	if err := alpha.api.Native().Publish(rootRequest.Attachment, approvalFrame); err != nil {
-		t.Fatal(err)
-	}
-	sharedChild.Questions = nil
-	sharedChild.Prompts = nil
-	if err := alpha.publishFrame(sharedChild); err != nil {
-		t.Fatal(err)
-	}
-	frame.Prompts, frame.Questions = nil, nil
-	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
 	approvalFrame.Family, _ = alpha.hub.Family("same-thread")

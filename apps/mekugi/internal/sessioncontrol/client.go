@@ -26,7 +26,7 @@ type Client[T any] struct {
 // Calls admits feature requests after auxiliary execution and acknowledgement
 // settle. The existing channel and ledger retain queued delivery ownership.
 func (u *Client[T]) Calls() <-chan *HostCall {
-	if u.Shell.BlocksInput(u.Turn) || u.Compaction.Pending() {
+	if u.HookReview || u.Shell.BlocksInput(u.Turn) || u.Compaction.Pending() {
 		return nil
 	}
 	return u.Requests.Calls()

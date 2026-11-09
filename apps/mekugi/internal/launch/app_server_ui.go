@@ -37,6 +37,7 @@ import (
 
 // Codex approval policy and the invocation-local Shell guard are independent.
 func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, skillsManager bool, resumeThread string, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution) (func() error, error) {
+	session.reviewHooks = threads.headless == nil
 	if api == nil {
 		return nil, errors.New("server session requires a control API")
 	}
@@ -1004,6 +1005,7 @@ type appServerRequest struct {
 	label    string
 	title    *sessioncontrol.NameSave
 	status   *appServerStatusReport
+	hook     *sessioncontrol.Approval
 }
 
 func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, m appserver.Message) (err error) {
@@ -1176,6 +1178,9 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				applyInputEffects(attached, &session.questions, &session.approvals, picker, session.Client.Turn, clock, attached.presentation.AcknowledgeInterrupt(&session.Client.Live, attached.conversation, method, failure, m.Error != nil))
 			}
 			return nil
+		}
+		if method == "hooks/trust/list" || method == "hooks/trust/write" {
+			return session.hookTrustResponse(attached, picker, editor, clock, response.Owner.hook, m)
 		}
 		if method == "approval/hooks" {
 			return session.guardHookResponse(attached, picker, editor, clock, parent, m)
@@ -1367,6 +1372,11 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				return err
 			}
 			startAttachedSession(attached, session.observations, session.Client.Thread, result.Thread.Cwd)
+			if session.shouldReviewHooks() {
+				if err := session.beginHookTrust(); err != nil {
+					return err
+				}
+			}
 			if method == "thread/start" {
 				restoreDiffThread(attached, session.review, session.reviewSource, result.Thread)
 			}

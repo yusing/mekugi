@@ -9,6 +9,7 @@ type Live struct {
 	Waiting, LocalStop       string // Detached logical wait and stopped host-turn identities.
 	WaitLabel                string
 	HasUserTurn              bool
+	HookReview               bool // Startup trust must settle before any execution.
 	Rewind                   *RewindOperation
 	Compaction               Compaction
 	Settings                 Settings
@@ -32,7 +33,7 @@ func (h *Live) Starting() bool {
 // SideForkBlocked waits for Main's submitted input and settings to be visible
 // in a new fork. Compaction does not submit input or own the fork's lifetime.
 func (h *Live) SideForkBlocked() bool {
-	return h.AwaitingTurn || h.Shell.phase == shellStarting || h.InputPending() || h.Settings.Pending()
+	return h.HookReview || h.AwaitingTurn || h.Shell.phase == shellStarting || h.InputPending() || h.Settings.Pending()
 }
 
 // AuxiliaryTurn identifies host work that does not start or finish an assignment.
@@ -74,24 +75,24 @@ func (h *Live) CompactResponse(failed bool) {
 // AcceptsInput is the host gate. Questions and history restoration retain
 // their own owners and are checked by the adapter before this gate.
 func (h *Live) AcceptsInput() bool {
-	return h.Thread != "" && !h.Replacement.Pending() && !h.Starting() &&
+	return h.Thread != "" && !h.HookReview && !h.Replacement.Pending() && !h.Starting() &&
 		!h.InputPending() && !h.SteerInterruptAckPending && !h.Compaction.Pending() &&
 		!h.Settings.BlocksInput() && !h.Shell.BlocksInput(h.Turn) &&
 		(h.Turn == "" || h.Turn != h.Interruption.Target)
 }
 
 func (h *Live) AcceptsShell() bool {
-	return !h.Replacement.Pending() && !h.Shell.Pending && !h.Shell.wake && h.Shell.origin == nil &&
+	return !h.HookReview && !h.Replacement.Pending() && !h.Shell.Pending && !h.Shell.wake && h.Shell.origin == nil &&
 		!h.Starting() && !h.Compaction.Pending() && !h.InputPending() &&
 		h.Interruption.Target == "" && !h.SteerInterruptAckPending
 }
 
 func (h *Live) AcceptsSettings() bool {
-	return h.Thread != "" && !h.Starting() && !h.Replacement.Pending()
+	return h.Thread != "" && !h.HookReview && !h.Starting() && !h.Replacement.Pending()
 }
 
 func (h *Live) Busy(waitingInput bool) bool {
-	return h.Turn != "" || h.LocalStop != "" || h.Starting() || h.Compaction.Pending() ||
+	return h.HookReview || h.Turn != "" || h.LocalStop != "" || h.Starting() || h.Compaction.Pending() ||
 		h.InputPending() || h.Settings.Pending() || h.Shell.Pending || h.Shell.Continuation() || waitingInput
 }
 

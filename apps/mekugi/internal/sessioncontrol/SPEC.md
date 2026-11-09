@@ -349,6 +349,19 @@ request; terminal layout, cursor state and painted readiness remain separate.
 The response uses the existing request transport, and failed delivery leaves the
 prompt pending. Session grants apply only to the same guard kind and exact
 command identity, including its workdir.
+
+Interactive startup and session replacement discover the admitted thread's hook
+trust through Codex before accepting execution. The confirmed thread can attach
+while waiting for consent, allowing browser and terminal clients to use the same
+approval UI. Untrusted and modified hooks use the shared approval dock
+with their command, source and event. Continue without trusting is initially
+selected and writes nothing. Trust saves only the exact host-provided approval
+hash through native configuration writes and reloads user configuration; failed
+writes keep the decision pending. Enabled flags and unrelated settings remain
+unchanged. Prepared child runtimes and headless runs use Codex's existing trust
+state without unattended approval prompts or implicit trust grants. An explicit
+caller hook-trust bypass retains its native meaning.
+
 Question handles likewise retain their original host or local authentication
 request. Secret answers are supplied only for delivery and never retained in
 control state or published views. Cancellation and expiry settle that original

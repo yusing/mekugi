@@ -19,6 +19,7 @@ type Approval struct {
 	Responses []map[string]any
 	Guard     *ShellApprovalRequest
 	Delegate  *DelegateApprovalRequest
+	Hook      *HookTrust
 }
 
 type ApprovalGrants struct {

@@ -37,7 +37,10 @@ const apiFrameInterval = 100 * time.Millisecond
 func (w *apiLive) publish(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], review *sessionreview.Review, reviewSource *changecapture.Service, restoring, childSummary bool, now time.Time) {
 	view := attached.presentation.View()
 	waiting := apiWaiting(attached, control)
-	err := w.server.SetSummary(sessionapi.Summary{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started, Status: view.Status.Session, Waiting: waiting, Ready: apiInputRefusal(attached, control, restoring) == ""})
+	// A confirmed thread waiting for hook consent is attachable, not executable.
+	// Browser session creation must finish so its existing approval UI can open.
+	ready := apiInputRefusal(attached, control, restoring) == "" || control.HookReview && waiting > 0 && !restoring
+	err := w.server.SetSummary(sessionapi.Summary{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started, Status: view.Status.Session, Waiting: waiting, Ready: ready})
 	if err == nil && now.Sub(w.projected) >= apiFrameInterval {
 		w.projected = now
 		if view.Version.Attachment != w.attachment {
@@ -88,6 +91,8 @@ func apiInputRefusal(attached *attachedPresentation, control *sessioncontrol.Cli
 	switch {
 	case control.Thread == "" || restoring || control.Replacement.Pending():
 		return "Wait for the session to be ready."
+	case control.HookReview:
+		return "Review hook trust before starting work."
 	case !attached.conversation.DraftView().Available:
 		return "Answer the open prompt first."
 	}

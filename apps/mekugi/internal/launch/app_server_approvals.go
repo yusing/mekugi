@@ -331,6 +331,20 @@ func (session *nativeSession) decideApproval(attached *attachedPresentation, pic
 // applyApproval also settles decisions covered by an existing exact-command
 // grant; those carry their admitted authority rather than a new renderer intent.
 func (session *nativeSession) applyApproval(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, grants sessioncontrol.ApprovalGrants, a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
+	if a.Hook != nil {
+		if a.Hook.Saving {
+			return nil
+		}
+		if choice.Approve {
+			if err := session.Client.Requests.TrustHook(a, appServerRequest{label: "hooks/trust/write", hook: a}); err != nil {
+				setNotice(&attached.feedback, presentationTime(clock), "Could not save hook trust: "+err.Error(), true)
+			}
+			return nil
+		}
+		endApproval(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts, a, choice.Outcome)
+		session.continueAfterHookTrust()
+		return session.flushInput(attached, picker, clock, editor, session.ctx)
+	}
 	outcome, delivered, err := a.Decide(choice, reason, grants, session.Client.Requests, session.controlObservations)
 	if err != nil {
 		return err

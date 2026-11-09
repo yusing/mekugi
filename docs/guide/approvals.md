@@ -9,6 +9,14 @@ choose, Enter confirms, Esc hides without answering. Typing/pasting in Mekugi-mo
 command approvals selects denial with an optional reason; feedback reaches the current
 turn. Your draft/attachments return afterward.
 
+At interactive startup or session replacement, Mekugi asks about untrusted hooks
+and hooks whose hash has changed, before accepting work. Review the command, source
+and event in the approval dock. **Continue without trusting**, the initial terminal
+choice, leaves trust unchanged. **Trust this hook** persists Codex's current
+hash, so unchanged hooks need no further approval on later launches. A failed
+save leaves the prompt open for retry or decline. Trust does not enable disabled
+hooks. Headless runs and prepared child runtimes do not grant trust automatically.
+
 The guard asks before supported Git/GitHub/Mercurial/SVN/Jujutsu remote writes in
 interactive Mekugi mode, even with `--yolo`; headless/noninteractive runs have no guard.
 It needs `mekugi-exec` beside `mekugi`, synchronous native command hooks, and unsandboxed execution.
