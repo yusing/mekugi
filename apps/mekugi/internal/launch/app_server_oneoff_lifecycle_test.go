@@ -6,12 +6,198 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 func oneoffTestChild(t *testing.T, u *appServerUI) {
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "oneoff-child", "parentThreadId": "oneoff", "agentNickname": "worker"}})
+}
+
+func TestOneoffEscapeInterruptRetainsConversation(t *testing.T) {
+	for _, order := range []string{"ack-first", "completion-first", "rejected", "close-before-ack", "close-after-ack"} {
+		t.Run(order, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.startSession("main", "/workspace")
+			u.Turn = "main-turn"
+			oneoffTestStart(t, u, wire)
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Retained partial result", "phase": "commentary"}})
+			appServerTestKeys(t, u, "keep this draft")
+			original := u.side
+			// Exercise the actual native renderer's key-to-Session-API operation.
+			c := nativeTestPromptClient(u)
+			defer c.renderer.terminal.Diff.Close()
+			c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b"})
+			if len(c.calls) != 1 || c.calls[0].operation.Interrupt == nil || c.calls[0].operation.Side != nil {
+				t.Fatalf("One-off Escape did not issue semantic interruption: %+v", c.calls)
+			}
+			intent := *c.calls[0].operation.Interrupt
+			interrupt := func() {
+				t.Helper()
+				if err := u.nativeSession.interruptSession(&u.attached, &u.picker, &u.Editor, u.clock, &u.side, false, intent); err != nil {
+					t.Fatal(err)
+				}
+			}
+			interrupt()
+			r := btwTestRequest(t, wire, "turn/interrupt", "oneoff")
+			if r.Params.TurnID != "oneoff-turn" {
+				t.Fatalf("interrupted wrong turn: %+v", r)
+			}
+			interrupt()
+			if wire.Len() != 0 || u.side != original || original.Closed || u.Text != "keep this draft" || u.Turn != "main-turn" {
+				t.Fatal("interruption repeated, closed One-off, lost text, or affected Main")
+			}
+			if order == "rejected" {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"not now"}}`, r.ID))
+				if original.Interruption.Target != "" || original.Turn != "oneoff-turn" || !original.Busy || wire.Len() != 0 {
+					t.Fatal("rejection ended work or archived the conversation")
+				}
+				if err := terminalTest(u).send("\x1b"); err != nil {
+					t.Fatal(err)
+				}
+				_ = btwTestRequest(t, wire, "turn/interrupt", "oneoff")
+				return
+			}
+			if order == "close-before-ack" {
+				sideTestClose(t, u)
+				if u.side != nil || wire.Len() != 0 {
+					t.Fatal("explicit close failed or duplicated pending interruption")
+				}
+				btwTestReply(t, u, r, `{}`)
+				_ = btwTestRequest(t, wire, "thread/archive", "oneoff")
+				return
+			}
+			if order == "close-after-ack" {
+				btwTestReply(t, u, r, `{}`)
+				sideTestClose(t, u)
+				if u.side != nil || wire.Len() != 0 {
+					t.Fatal("explicit close failed or duplicated acknowledged interruption")
+				}
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "interrupted"}})
+				_ = btwTestRequest(t, wire, "thread/archive", "oneoff")
+				return
+			}
+			if order == "ack-first" {
+				btwTestReply(t, u, r, `{}`)
+				if !original.Busy || original.Turn != "oneoff-turn" || wire.Len() != 0 {
+					t.Fatal("interrupt acknowledgement completed or archived work")
+				}
+			}
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "interrupted"}})
+			frame := strings.Join(u.sideFrame(100, 24), "\n")
+			for _, text := range []string{"One-off", "Retained partial result", "keep this draft", "interrupted"} {
+				if !strings.Contains(frame, text) {
+					t.Fatalf("interrupted frame lost %q:\n%s", text, frame)
+				}
+			}
+			if original.Busy || original.Turn != "" || u.side != original || wire.Len() != 0 {
+				t.Fatal("completion did not preserve idle One-off")
+			}
+			appServerTestKeys(t, u, "\r")
+			start := btwTestRequest(t, wire, "turn/start", "oneoff")
+			btwTestReply(t, u, start, `{"turn":{"id":"followup"}}`)
+			if order == "completion-first" {
+				btwTestReply(t, u, r, `{}`)
+			}
+			interrupt() // Delayed original intent must not interrupt the successor.
+			if original.Turn != "followup" || wire.Len() != 0 || original.Closed {
+				t.Fatal("late interruption crossed into a successor turn")
+			}
+		})
+	}
+}
+
+func TestOneoffEscapeDuringAdmission(t *testing.T) {
+	for _, stage := range []string{"fork", "start", "fork-error", "start-error"} {
+		t.Run(stage, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			appServerTestKeys(t, u, "/oneoff preserve task\r")
+			pending := btwTestRequest(t, wire, "thread/fork", "main")
+			if strings.HasPrefix(stage, "start") {
+				btwTestReply(t, u, pending, `{"thread":{"id":"oneoff"}}`)
+				pending = btwTestRequest(t, wire, "turn/start", "oneoff")
+			}
+			appServerTestKeys(t, u, "later draft")
+			if err := terminalTest(u).send("\x1b"); err != nil {
+				t.Fatal(err)
+			}
+			if u.side == nil || !u.side.Interruption.BeforeStart || wire.Len() != 0 {
+				t.Fatal("pending admission closed or interrupted before identity arrived")
+			}
+			if strings.HasSuffix(stage, "-error") {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"rejected admission"}}`, pending.ID))
+				if u.side.Interruption.BeforeStart || u.side.Interruption.Target != "" || u.side.Busy || wire.Len() != 0 || !strings.Contains(u.Text, "preserve task") || !strings.Contains(u.Text, "later draft") {
+					t.Fatal("rejected admission left interruption pending or lost retry text")
+				}
+				return
+			}
+			if stage == "fork" {
+				btwTestReply(t, u, pending, `{"thread":{"id":"oneoff"}}`)
+				if wire.Len() != 0 || u.side.Busy || !strings.Contains(u.Text, "preserve task") || !strings.Contains(u.Text, "later draft") {
+					t.Fatal("fork cancellation started the task or lost draft text")
+				}
+			} else {
+				btwTestReply(t, u, pending, `{"turn":{"id":"pending-turn"}}`)
+				request := btwTestRequest(t, wire, "turn/interrupt", "oneoff")
+				if request.Params.TurnID != "pending-turn" || u.Text != "later draft" {
+					t.Fatal("late start cancellation changed identity or text")
+				}
+			}
+		})
+	}
+}
+
+func TestOneoffEscapePendingReplyFailure(t *testing.T) {
+	for _, failure := range []string{"rejected", "missing-turn", "malformed-turn"} {
+		t.Run(failure, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.startSession("main", "/workspace")
+			oneoffTestStart(t, u, wire)
+			oneoffTestAsync(t, u, "oneoff", "oneoff-turn", "followup-question")
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
+			selectSideThread(t, u, u.attached.presentation.View().Main)
+			oneoffTestAnswer(t, u)
+			start := btwTestRequest(t, wire, "turn/start", "oneoff")
+			if !strings.Contains(fmt.Sprint(start.Params.Input), "Small") {
+				t.Fatal("follow-up answer did not reach its own pending start")
+			}
+			selectSideThread(t, u, u.attached.presentation.View().SideThread)
+			appServerTestKeys(t, u, "newer draft")
+			if err := terminalTest(u).send("\x1b"); err != nil {
+				t.Fatal(err)
+			}
+			if !u.side.Interruption.BeforeStart || wire.Len() != 0 {
+				t.Fatal("Escape did not defer cancellation of the pending reply")
+			}
+			wantNotice := "Codex returned no one-off reply turn identity"
+			switch failure {
+			case "rejected":
+				wantNotice = "reply rejected"
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"reply rejected"}}`, start.ID))
+			case "missing-turn":
+				btwTestReply(t, u, start, `{}`)
+			case "malformed-turn":
+				btwTestReply(t, u, start, `{"turn":{"id":7}}`)
+			}
+			if u.side.Interruption.BeforeStart || u.side.Interruption.Target != "" || u.side.Starting || u.side.Busy {
+				t.Fatalf("failed follow-up retained interruption/admission state: %+v", u.side)
+			}
+			if wire.Len() != 0 || u.side.Closed || u.side.Drafts.Editor.Text != "newer draft" {
+				t.Fatal("failed follow-up resubmitted, closed One-off, or lost the newer draft")
+			}
+			if !u.attached.feedback.Alert || !strings.Contains(u.attached.feedback.Text, wantNotice) {
+				t.Fatalf("failed follow-up lost error feedback: %+v", u.attached.feedback)
+			}
+			call := u.questions.calls()[0]
+			if call.Sent || u.questions.Count("oneoff") != 1 || !strings.Contains(strings.Join(call.Questions[0].Answer, "\n"), "Small") {
+				t.Fatal("failed follow-up lost its rejected answer or retry admission")
+			}
+			selectSideThread(t, u, u.attached.presentation.View().Main)
+			oneoffTestAnswer(t, u)
+			_ = btwTestRequest(t, wire, "turn/start", "oneoff")
+		})
+	}
 }
 
 func TestOneoffChildIsolation(t *testing.T) {
@@ -53,9 +239,7 @@ func TestOneoffClosedKnownChild(t *testing.T) {
 					t.Fatalf("closed side recovery: status=%q frame=\n%s", u.side.Status, frame)
 				}
 			}
-			if err := terminalTest(u).send("\x1b"); err != nil {
-				t.Fatal(err)
-			}
+			sideTestClose(t, u)
 			if u.side != nil {
 				t.Fatal("oneoff did not close")
 			}
@@ -234,9 +418,7 @@ func TestOneoffCloseRunningCommand(t *testing.T) {
 	u.startSession("main", "/workspace")
 	oneoffTestStart(t, u, wire)
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "sleep 10", "status": "inProgress"}})
-	if err := terminalTest(u).send("\x1b"); err != nil {
-		t.Fatal(err)
-	}
+	sideTestClose(t, u)
 	request := btwTestRequest(t, wire, "turn/interrupt", "oneoff")
 	btwTestReply(t, u, request, `{}`)
 	request = btwTestRequest(t, wire, "thread/archive", "oneoff")

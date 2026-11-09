@@ -59,7 +59,7 @@ func TestUISnapshotSideComposerMetrics(t *testing.T) {
 					t.Fatalf("Side metrics leaked to Main: %+v", caption)
 				}
 				selectSideThread(t, u, u.attached.presentation.View().SideThread)
-				composerShellEscape(t, u)
+				sideTestClose(t, u)
 				appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "side", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 9999}}})
 				if u.attached.session.KnownCaller("side") != "" {
 					t.Fatal("closed side retained metrics")

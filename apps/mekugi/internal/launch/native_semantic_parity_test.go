@@ -384,6 +384,49 @@ func TestNativeBTWControlSocket(t *testing.T) {
 			if c.editor("main").Text != "" {
 				t.Fatalf("side cleanup polluted the next BTW command: %q", c.editor("main").Text)
 			}
+			c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b"})
+			sendLocal()
+			await(func() bool { return event.Frame.View.BTW == nil })
+			submit("/oneoff ONEOFF_INTERRUPT_TASK")
+			await(func() bool {
+				return event.Frame.View.InterruptAvailable && event.Frame.View.Interrupt.Turn == "answer-turn" && event.Frame.View.Interrupt.Thread == event.Frame.View.SideThread.ID
+			})
+			oneoff := event.Frame.View.SideThread
+			c.editor("side:" + oneoff.ID).InsertText("retained One-off draft")
+			c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b"})
+			if len(c.calls) != 1 || c.calls[0].operation.Interrupt == nil || c.calls[0].operation.Side != nil {
+				t.Fatalf("active One-off Escape did not bind interruption: %+v", c.calls)
+			}
+			sendLocal()
+			await(func() bool { return event.Frame.View.Status.Composer.Text == "interrupted" })
+			if event.Frame.View.SideThread != oneoff || event.Frame.View.Side == nil || c.editor("side:"+oneoff.ID).Text != "retained One-off draft" || event.Frame.View.InterruptAvailable {
+				t.Fatalf("native interruption state: thread=%+v want=%+v side=%+v draft=%q interrupt=%+v available=%t", event.Frame.View.SideThread, oneoff, event.Frame.View.Side, c.editor("side:"+oneoff.ID).Text, event.Frame.View.Interrupt, event.Frame.View.InterruptAvailable)
+			}
+			body, err = os.ReadFile(logPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			interrupted, archived := false, false
+			for line := range strings.SplitSeq(string(body), "\n") {
+				method, params, ok := strings.Cut(line, " ")
+				if !ok || method != "turn/interrupt" && method != "thread/archive" {
+					continue
+				}
+				var target struct {
+					Thread string `json:"threadId"`
+					Turn   string `json:"turnId"`
+				}
+				if err := json.Unmarshal([]byte(params), &target); err != nil {
+					t.Fatalf("decode %s parameters: %v", method, err)
+				}
+				if target.Thread == oneoff.ID {
+					interrupted = interrupted || method == "turn/interrupt" && target.Turn == "answer-turn"
+					archived = archived || method == "thread/archive"
+				}
+			}
+			if !interrupted || archived {
+				t.Fatalf("One-off host interruption/retention mismatch: %s, %v", body, err)
+			}
 		})
 	}
 }
@@ -433,6 +476,16 @@ func serveNativeParityHost(t *testing.T) {
 			result["turn"] = map[string]any{"id": "answer-turn"}
 		}
 		write(map[string]any{"id": request.ID, "result": result})
+		if request.Method == "turn/interrupt" {
+			var params struct {
+				Thread string `json:"threadId"`
+				Turn   string `json:"turnId"`
+			}
+			if err := json.Unmarshal(request.Params, &params); err != nil {
+				t.Fatal(err)
+			}
+			write(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": params.Turn, "status": "interrupted"}}})
+		}
 		if request.Method == "turn/start" {
 			var params struct {
 				Thread string `json:"threadId"`
@@ -441,6 +494,9 @@ func serveNativeParityHost(t *testing.T) {
 				t.Fatal(err)
 			}
 			write(map[string]any{"method": "item/completed", "params": map[string]any{"threadId": params.Thread, "turnId": "answer-turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "BTW answer"}}})
+			if strings.Contains(string(request.Params), "ONEOFF_INTERRUPT_TASK") {
+				continue
+			}
 			write(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": params.Thread, "turn": map[string]any{"id": "answer-turn", "status": "completed"}}})
 		}
 	}

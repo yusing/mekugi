@@ -99,6 +99,7 @@ type MainInputs struct {
 	Restoring, SideRunning bool
 	BTWRunning             bool
 	SideThreads            []string
+	SideInterrupt          sessioncontrol.InterruptTarget
 	Processes              int
 }
 
@@ -210,6 +211,9 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 			v.Pending.Queued = nil
 		}
 		v.Interrupt, v.InterruptAvailable = sessioncontrol.InterruptTarget{}, false
+		if in.SideInterrupt.Thread != "" {
+			v.Interrupt, v.InterruptAvailable = in.SideInterrupt, true
+		}
 		v.Admission = m.inputAdmission(in.Control, true, in.Restoring)
 		v.Status.State = Label{Text: side.Status, Alert: side.Alert, Running: in.SideRunning}
 		v.Status.Composer = v.Status.State

@@ -37,6 +37,7 @@ type Request[T any] struct {
 	SideInput     *conversationmodel.Input
 	SideDraft     *composer.Draft
 	SideExchange  uint64
+	SideInterrupt string // Observed turn, distinct from close/archive cleanup.
 	Prediction    *Prediction
 	call          *HostCall
 	input         *InputRequest

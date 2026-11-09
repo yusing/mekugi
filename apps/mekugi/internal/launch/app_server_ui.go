@@ -605,6 +605,15 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 			}
 			err = session.Client.Requests.StopProcess(operation.StopProcess.Thread, operation.StopProcess.ID, appServerRequest{view: view.attached.view})
 		case operation.Interrupt != nil:
+			if operation.Interrupt.Target.Thread != session.Client.Thread {
+				if _, admissionErr := view.attached.presentation.ResolveSideInterrupt(*operation.Interrupt, session.side); admissionErr != nil {
+					return admissionErr.Error(), nil
+				}
+				var update sessioncontrol.SideUpdate
+				update, err = session.Client.Requests.InterruptSide(session.side)
+				applySideUpdate(&session.attached, &session.Client, session.clock, update)
+				break
+			}
 			active, admissionErr := view.attached.presentation.ResolveInterrupt(*operation.Interrupt, &session.Client.Live, &session.attached.session)
 			if admissionErr != nil {
 				return admissionErr.Error(), nil

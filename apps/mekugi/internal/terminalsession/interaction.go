@@ -301,7 +301,7 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 				return
 			}
 		}
-		if key == "\x1b" && main.session.Side != nil {
+		if key == "\x1b" && main.session.Side != nil && !(main.session.InterruptAvailable && main.session.Interrupt.Thread == main.session.SideThread.ID) {
 			yield(InputEffect{Side: &sessionpresentation.CloseSideIntent{Version: main.session.Version, Key: main.session.Side.Key, Exchange: main.session.Side.ID}})
 			return
 		}

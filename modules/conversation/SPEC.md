@@ -433,9 +433,11 @@ its turn is ready. Failures remain visible and rejected input retains attachment
 for retry in the same conversation. Rejected attachment companions for a One-off
 descendant retain their original recipient in the waiting queue. Enter in an empty
 One-off composer retries one companion; closing the slot cancels queued retries.
-The selected composer shows loading, working and failure state. Escape closes the
-slot after dismissing selection or menus, interrupting only its running turn and
-archiving its host thread while retaining its history in Codex storage.
+The selected composer shows loading, working and failure state. After dismissing
+selection or menus, Escape interrupts active work in the displayed side conversation
+without closing it or clearing its draft. Idle Escape and explicit close close the
+slot, interrupting only its running turn and archiving its host thread while
+retaining its history in Codex storage.
 
 [Session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md#session-replacement-and-exit)
 retains delayed fork/start correlation and cleanup after close or Main replacement.

@@ -20,7 +20,7 @@ import (
 func TestTemporaryUsageLimitWaitingAndClose(t *testing.T) {
 	for _, command := range []string{"/oneoff question"} {
 		for _, timed := range []bool{false, true} {
-			for _, closure := range []string{"explicit", "thread/closed", "thread/archived"} {
+			for _, closure := range []string{"explicit", "thread/closed", "thread/archived", "interrupt"} {
 				t.Run(fmt.Sprintf("%s/%t/%s", command, timed, closure), func(t *testing.T) {
 					check := func(err error) {
 						t.Helper()
@@ -98,7 +98,12 @@ func TestTemporaryUsageLimitWaitingAndClose(t *testing.T) {
 						check(err)
 						deliverCompletion("continued")
 					}
-					if closure == "explicit" {
+					if closure == "interrupt" {
+						check(terminalTest(u).send("\x1b"))
+						if u.side == nil || u.side.Closed || u.side.Waiting != "" || u.side.Busy || wire.Len() != 0 {
+							t.Fatal("Escape did not cancel the logical wait while retaining One-off")
+						}
+					} else if closure == "explicit" {
 						check(closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages))
 						btwTestReply(t, u, btwTestRequest(t, wire, "thread/archive", "side"), `{}`)
 					} else {

@@ -61,7 +61,8 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   keeps completed results available. Main stays usable and receives no one-off
   transcript; file edits and other external effects still affect the shared
   workspace. Only one One-off is open; creating another offers Replace or Cancel.
-  Esc closes it and interrupts its running turn. One-off and BTW retain native history in
+  Esc interrupts active work without closing the conversation or clearing its draft.
+  While idle, Esc closes it. One-off and BTW retain native history in
   internal threads hidden from normal session selection, archived when their
   operations close. Closed slots are not restored on resume.
 - `/btw QUESTION` opens an independent temporary answer dock on Main. It stays

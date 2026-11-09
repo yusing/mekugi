@@ -92,10 +92,11 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 	}
 	picker.refreshPresetCatalog(attached, control, restoring)
 	return m.Publish(sessionpresentation.MainInputs{
-		ToolInput:  attached.session.ToolInput,
-		Retry:      attached.session.RetryStatus(control.Thread),
-		BTWRunning: control.BTW != nil && (control.BTW.Busy || control.BTW.Starting),
-		Info:       info, ClientEditors: clientEditors,
+		ToolInput:     attached.session.ToolInput,
+		Retry:         attached.session.RetryStatus(control.Thread),
+		BTWRunning:    control.BTW != nil && (control.BTW.Busy || control.BTW.Starting),
+		SideInterrupt: side.InterruptTarget(),
+		Info:          info, ClientEditors: clientEditors,
 		Menu: picker.menuView(attached.cwd, draft, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,
 		SideThreads: control.Requests.SideThreads(side), SideRunning: side != nil && (side.Busy || side.Starting), Processes: runningProcessCount(&attached.session),
 	}, caption)

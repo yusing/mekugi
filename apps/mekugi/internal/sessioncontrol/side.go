@@ -2,6 +2,8 @@
 package sessioncontrol
 
 import (
+	"fmt"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -23,6 +25,7 @@ type Side struct {
 	Source, Model, Effort, Tier string
 	ForkPending                 bool
 	Busy, Starting, Closed      bool
+	Interruption                Interruption
 	release                     forkRelease
 	Settings                    Settings
 	LowReasoning                bool
@@ -35,7 +38,19 @@ func (s *Side) PrepareSettings(change map[string]any) SettingsPlan {
 }
 
 func (s *Side) Ready(replacing bool) bool {
-	return s != nil && !s.Closed && !s.Unloaded() && s.Waiting == "" && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
+	return s != nil && !s.Closed && !s.Unloaded() && s.Waiting == "" && !s.Interruption.BeforeStart && s.Interruption.Target == "" && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
+}
+
+// InterruptTarget keeps a pending fork/start identifiable after host admission.
+func (s *Side) InterruptTarget() InterruptTarget {
+	if s == nil || s.Closed || s.Unloaded() || !s.Busy && !s.Starting {
+		return InterruptTarget{}
+	}
+	thread := s.Thread
+	if thread == "" {
+		thread = "side:" + s.Key
+	}
+	return InterruptTarget{Thread: thread, Turn: s.Turn, Start: fmt.Sprintf("%s:%d", s.Key, s.ID), Wait: s.Waiting}
 }
 
 func (s *Side) Close() {
@@ -71,6 +86,7 @@ func (s *Side) Complete(turn string) bool {
 		return false
 	}
 	s.Turn, s.Busy = "", false
+	s.Interruption.Finish()
 	return true
 }
 

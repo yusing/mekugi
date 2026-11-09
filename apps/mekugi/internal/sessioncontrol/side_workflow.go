@@ -94,6 +94,7 @@ type SideMain struct {
 
 func (s *Side) fail(message string) SideUpdate {
 	s.Busy, s.Starting, s.ForkPending = false, false, false
+	s.Interruption.Finish()
 	return SideUpdate{Handled: true, Side: s, Restore: s.SideAnswer.Fail(message, s.Closed)}
 }
 
@@ -218,6 +219,45 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 	return SideUpdate{TurnRequested: true}, r.sendSide(s, method, params, main.Input)
 }
 
+// InterruptSide stops side work without releasing its fork or editor.
+func (r *Requests[T]) InterruptSide(s *Side) (SideUpdate, error) {
+	update := SideUpdate{Handled: true, Side: s}
+	if s.Closed || s.Unloaded() {
+		return update, nil
+	}
+	if s.Starting {
+		s.Interruption.BeforeStart = true
+		s.Status = "Interrupting…"
+		return update, nil
+	}
+	if s.Waiting != "" {
+		if r.InterruptWait == nil {
+			return update, errors.New("Side interruption is unavailable")
+		}
+		r.InterruptWait(s.Thread, s.Waiting)
+		s.Waiting, s.Busy, s.Status = "", false, "interrupted"
+	}
+	if s.Turn == "" {
+		s.Interruption.Finish()
+		s.Busy, s.ForkPending, s.Status = false, false, "interrupted"
+		update.Restore, s.Pending = s.Pending, conversationmodel.Input{}
+		return update, nil
+	}
+	if s.Interruption.Target == s.Turn {
+		return update, nil
+	}
+	var owner T
+	id, err := r.Send("turn/interrupt", map[string]any{"threadId": s.Thread, "turnId": s.Turn}, "", owner)
+	if err == nil {
+		s.Interruption.BeforeStart, s.Interruption.Target = false, s.Turn
+		s.Status = "Interrupting…"
+		request := r.pending[id]
+		request.Side, request.SideInterrupt = s, s.Turn
+		r.pending[id] = request
+	}
+	return update, err
+}
+
 func (r *Requests[T]) ReleaseSide(s *Side) error {
 	if s.Closed {
 		r.interruptSideUsageWaits(s)
@@ -227,6 +267,9 @@ func (r *Requests[T]) ReleaseSide(s *Side) error {
 			r.CloseSide(s.Thread)
 		}
 		return nil
+	}
+	if s.Interruption.Target != "" && s.Interruption.Target == s.Turn {
+		return nil // Explicit close shares an already issued interruption.
 	}
 	method := s.Release()
 	if method == "" {
@@ -264,6 +307,21 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			return SideUpdate{}, nil
 		}
 		update := SideUpdate{Handled: true, Side: s}
+		if response.SideInterrupt != "" {
+			if s.Interruption.Target == response.SideInterrupt && m.Error != nil {
+				s.Interruption.Finish()
+				s.Status = "Working"
+				update.Notice, update.NoticeError = "Could not interrupt side conversation: "+m.Error.Message, true
+			}
+			if s.Closed {
+				if s.Turn == response.SideInterrupt {
+					s.Turn = ""
+				}
+				s.Interruption.Finish()
+				return update, r.ReleaseSide(s)
+			}
+			return update, nil // Acknowledgement is not turn completion.
+		}
 		if method == "turn/interrupt" {
 			s.InterruptAcknowledged()
 			if m.Error != nil {
@@ -323,6 +381,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				}
 				if root && method == "turn/start" {
 					s.Busy = false
+					s.Interruption.Finish()
 				}
 			} else if method == "turn/steer" && root && !s.Closed && input.Question == nil && input.ReplyCount == 0 {
 				s.AppendQuestion(response.SideExchange, *input)
@@ -338,6 +397,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 					}
 					if root {
 						s.Busy = false
+						s.Interruption.Finish()
 					}
 					if !s.Closed {
 						update.Restore, update.Notice = *input, "Codex returned no one-off reply turn identity"
@@ -358,6 +418,9 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			}
 			if s.Closed {
 				return update, r.ReleaseSide(s)
+			}
+			if s.Interruption.BeforeStart {
+				return r.InterruptSide(s)
 			}
 			update.Flush = true
 			return update, nil
@@ -408,6 +471,9 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 		if s.Closed {
 			return update, r.ReleaseSide(s)
+		}
+		if s.Interruption.BeforeStart {
+			return r.InterruptSide(s)
 		}
 		update.Flush = true
 		return update, nil
@@ -515,6 +581,9 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			failure = p.Turn.Error.Message
 		}
 		s.SideAnswer.Complete(p.Turn.Status, failure)
+		if s.Closed {
+			return update, r.ReleaseSide(s)
+		}
 	case "error":
 		if p.Error != nil && p.TurnID == s.Turn && s.Turn != "" && !s.Closed {
 			if strings.Contains(p.Error.Message, conversationmodel.SideCompactionRequired) {

@@ -94,9 +94,10 @@ The side header target uses the same display intent and transcript
 as Main and subagents; closing returns display to Main without changing Main work.
 [Replay](../../../../modules/sessionreplay/SPEC.md) is read-only even while Main is
 displayed. Display intents name their view version and target identity, so stale actions
-cannot affect a replacement session. Interruption names Main’s observed
-turn or pending start and explicitly chooses restoration or expedition of
-uncommitted steers. Ctrl-C carries that captured identity and cancels queued
+cannot affect a replacement session. Interruption names the observed turn or pending
+start. Main interruption explicitly chooses restoration or expedition of uncommitted
+steers; active displayed-side interruption retains its conversation and draft. Ctrl-C
+carries that captured identity and cancels queued
 compaction before interrupting Main. The same admission applies to every consumer, and replay
 rejects host operations. View values are
 detached data without terminal or backend types. A highlighted roster row is not

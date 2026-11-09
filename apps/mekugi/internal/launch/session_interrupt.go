@@ -15,6 +15,15 @@ func (session *nativeSession) interruptSession(attached *attachedPresentation, p
 	defer func() {
 		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, overlay)
 	}()
+	if intent.Target.Thread != session.Client.Thread {
+		if _, err := attached.presentation.ResolveSideInterrupt(intent, *side); err != nil {
+			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
+			return nil
+		}
+		update, err := session.Client.Requests.InterruptSide(*side)
+		applySideUpdate(attached, &session.Client, clock, update)
+		return err
+	}
 	unsent := attached.conversation.Unsent
 	active, err := attached.presentation.ResolveInterrupt(intent, &session.Client.Live, &attached.session)
 	if err != nil {

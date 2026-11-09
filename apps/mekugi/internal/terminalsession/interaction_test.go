@@ -168,3 +168,43 @@ func TestOuterEscapeUsesPublishedInterruptionAdmission(t *testing.T) {
 		t.Fatal("empty visible queues suppressed admitted interruption")
 	}
 }
+
+func TestOuterEscapeDisplayedSide(t *testing.T) {
+	for _, kind := range []string{"active", "locked", "idle"} {
+		t.Run(kind, func(t *testing.T) {
+			var main Main
+			v := sessionpresentation.View{Side: &sessionpresentation.SideToken{Key: "side", ID: 1}, SideThread: sessionpresentation.Thread{ID: "side"}}
+			if kind == "active" || kind == "locked" {
+				v.InterruptAvailable = true
+				v.Interrupt.Thread = "side"
+			}
+			main.Update(v)
+			main.InterruptLocked = kind == "locked"
+			in := FrameInput{Main: &main, Prompts: &Prompts{}, Transcript: activityui.NewView(), Shell: &Shell{}}
+			seen := false
+			for effect := range in.Send(&Interaction{}, "\x1b") {
+				if effect.Menu != nil {
+					continue
+				}
+				seen = true
+				switch kind {
+				case "active":
+					if effect.Interrupt == nil || effect.Side != nil {
+						t.Fatal("active side closed instead of interrupting")
+					}
+				case "locked":
+					if !effect.Locked || effect.Interrupt != nil || effect.Side != nil {
+						t.Fatal("locked side accepted Escape")
+					}
+				default:
+					if effect.Side == nil || effect.Interrupt != nil {
+						t.Fatal("idle side lost Escape close")
+					}
+				}
+			}
+			if !seen {
+				t.Fatal("Escape produced no effect")
+			}
+		})
+	}
+}

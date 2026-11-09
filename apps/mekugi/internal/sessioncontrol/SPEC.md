@@ -279,6 +279,11 @@ its notifications never become Main observations. Closing Side drops its
 visible exchange, not pending host correlation. Once explicit close cleanup
 completes, root and descendant notification mappings release their operation;
 outstanding requests retain only their own acknowledgement correlation.
+Displayed-side interruption is distinct from close: it retains the fork, transcript and
+draft, targets the observed exchange and turn, and waits for turn completion
+rather than treating interrupt acknowledgement as completion. An interrupted
+pending fork does not start its task; a pending turn is interrupted once its host
+identity arrives. Repeated Escape does not repeat the host request.
 An unexpected host close stops submissions but retains root identity until the
 visible slot is dismissed, so its prompts and descendant activity retire together.
 The temporary `/btw` answer has a separate operation and exchange from the
