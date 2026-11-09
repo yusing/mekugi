@@ -288,6 +288,25 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 	send("\x7f\x7f\b\b\b\bneedle\x7f\b")
 	await("Search: need ")
 	snapshot("native-resume-burst-search")
+	// Separate PTY writes and rendered resize acknowledgements exercise read
+	// boundaries inside a character, not merely a multibyte string in one read.
+	send("\x7f\x7f\x7f\x7f\xe7")
+	resize(19)
+	await("Type to search")
+	quiet(3)
+	send("\x95")
+	resize(20)
+	await("Type to search")
+	quiet(3)
+	send("\x8cneedle\x7f\x7f")
+	await("Search: 界need ")
+	resize(18)
+	await("Search: 界need ")
+	snapshot("native-resume-unicode-search")
+	send("\x7f\x7f\x7f\x7f\x7f")
+	await("Saved conversation 07")
+	send("界needle")
+	await("Search: 界needle")
 	page(search, 25, 26, "scan") // No matching row: server scanning stays independent.
 	scanned := next("scan")
 	page(scanned, 26, 27, "")
@@ -317,12 +336,19 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 	hold.Store(true)
 	page(restarted, 0, 1, "cancel")
 	awaitHeld("saved-00")
-	send("needle\x03")
+	send("界needle\xe7\x03")
 	select {
 	case <-canceled:
 	case <-time.After(5 * time.Second):
 		t.Fatal("resume cancellation waited for page admission")
 	}
 	release <- struct{}{}
+	quiet(5)
+	// The same physical decoder also feeds ordinary composer editing.
+	send("\xc3")
+	quiet(5)
+	send("\xa9界😀")
+	await("é界😀")
+	send("\x7f\x7f\x7f")
 	quiet(5)
 }

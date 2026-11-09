@@ -1,0 +1,18 @@
+┌ 1 Main · 0 loaded skills ────────────────────────────────────────────────────┐
+│  Resume a previous session                                                   │
+│  Filter: Cwd All                                                             │
+│  Search: 界need                                                              │
+│                                                                              │
+│                                                                              │
+│  Searching…                                                                  │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│  enter resume · esc clear search · tab cwd/all · ctrl+c quit · ↑/↓ browse    │
+└──────────────────────────────────────────────────────────────────────────────┘
+ 1 Main  2 Diff  3 Agents   ^B 1-3 views · ^E expand events

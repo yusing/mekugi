@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type InputKind uint8
@@ -34,6 +35,7 @@ type Decoder struct {
 	discard, replyEscape bool
 	sequence             string
 	escapeAt             time.Time
+	text                 string
 }
 
 func (d *Decoder) Feed(key byte, now time.Time) Input {
@@ -89,6 +91,26 @@ func (d *Decoder) Feed(key byte, now time.Time) Input {
 		d.reply, d.discard, d.replyEscape = nil, false, false
 		return input
 	}
+	// Ordinary text must cross key/JSON boundaries as complete UTF-8, even
+	// when a terminal read ends inside a character. Controls interrupt a
+	// partial character instead of being swallowed by it.
+	if key < utf8.RuneSelf || key >= 0xc0 {
+		d.text = ""
+	}
+	if key >= utf8.RuneSelf && (d.sequence == "" || d.sequence == "\x1b") {
+		d.text += string([]byte{key})
+		if !utf8.FullRuneInString(d.text) {
+			return Input{}
+		}
+		text := d.text
+		d.text = ""
+		if !utf8.ValidString(text) {
+			return Input{}
+		}
+		text = d.sequence + text
+		d.sequence = ""
+		return Input{KeyInput, text}
+	}
 	if d.sequence == "\x1b" && key == ']' {
 		d.sequence, d.reply = "", []byte{27, ']'}
 		return Input{}
@@ -127,7 +149,7 @@ func (d *Decoder) Feed(key byte, now time.Time) Input {
 
 // Escape completes a lone Escape only after its sequence deadline.
 func (d *Decoder) Escape(now time.Time) bool {
-	if d.sequence != "\x1b" || now.Sub(d.escapeAt) < 40*time.Millisecond {
+	if d.sequence != "\x1b" || d.text != "" || now.Sub(d.escapeAt) < 40*time.Millisecond {
 		return false
 	}
 	d.sequence = ""

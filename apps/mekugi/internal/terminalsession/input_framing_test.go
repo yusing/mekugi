@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestDecoderPasteFraming(t *testing.T) {
@@ -72,7 +73,7 @@ func TestDecoderPasteFraming(t *testing.T) {
 }
 
 func TestDecoderCompleteKeySequence(t *testing.T) {
-	for _, key := range []string{"\x1b[D", "\x1b[1;5D", "\x1bOH", "\x1bb"} {
+	for _, key := range []string{"\x1b[D", "\x1b[1;5D", "\x1bOH", "\x1bb", "é", "界", "😀", "\x1bé", "\x1b界"} {
 		t.Run(key, func(t *testing.T) {
 			var decoder Decoder
 			for i, b := range []byte(key) {
@@ -89,5 +90,35 @@ func TestDecoderCompleteKeySequence(t *testing.T) {
 	}
 }
 
+func TestDecoderFragmentedUTF8(t *testing.T) {
+	var decoder Decoder
+	now := time.Unix(1, 0)
+	var text strings.Builder
+	for _, b := range []byte("é界😀e\u0301") {
+		event := decoder.Feed(b, now)
+		if !utf8.ValidString(event.Text) {
+			t.Fatalf("partial UTF-8 escaped: %+v", event)
+		}
+		text.WriteString(event.Text)
+		now = now.Add(time.Second) // Read gaps must not flush partial text.
+		if decoder.Escape(now) {
+			t.Fatal("text became Escape")
+		}
+	}
+	if text.String() != "é界😀e\u0301" {
+		t.Fatalf("decoded %q", text.String())
+	}
+	for _, reset := range []string{"\x03", "\x7f", "\x1b[D", "a", "é"} {
+		decoder.Feed(0xe7, now)
+		var got strings.Builder
+		for _, b := range []byte(reset) {
+			got.WriteString(decoder.Feed(b, now).Text)
+		}
+		if got.String() != reset || decoder.Pending() {
+			t.Fatalf("partial character swallowed %q: %q", reset, got.String())
+		}
+	}
+}
+
 func (d *Decoder) Pasting() bool { return d.paste }
-func (d *Decoder) Pending() bool { return d.sequence != "" }
+func (d *Decoder) Pending() bool { return d.sequence != "" || d.text != "" }
