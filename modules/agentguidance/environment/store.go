@@ -33,7 +33,7 @@ func (s *Store) Snapshot(ctx context.Context, selected Context, previousRevision
 	}
 	current := s.threads[selected.Thread]
 	if current != nil && current.pending && current.context.Workspace == selected.Workspace && current.context.Revision == previousRevision {
-		// Bind the fork's first native session/window without re-stamping its
+		// Bind the fork or rewind reload window without re-stamping its
 		// inherited facts. An earlier explicit reset invalidates the seed.
 		current.context, current.pending = selected, false
 	}
@@ -56,6 +56,28 @@ func (s *Store) Inherit(source string, selected Context) {
 		return
 	}
 	s.threads[selected.Thread] = &entry{context: selected, source: parent, pending: true}
+}
+
+// Rewind retains only the admitted workspace's immutable facts across the next
+// native reload window. Context revisions still advance for all other consumers.
+func (s *Store) Rewind(selected Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.threads[selected.Thread]
+	if current == nil || selected.Workspace == "" || current.context.Workspace != selected.Workspace || selected.Revision != current.context.Revision+1 {
+		return
+	}
+	current.context.Revision, current.pending = selected.Revision, true
+}
+
+// CancelReuse discards only pending inheritance/rebind state. Ordinary snapshots
+// still refresh on the actual native reset, not a possibly failed reset request.
+func (s *Store) CancelReuse(thread string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if current := s.threads[thread]; current != nil && current.pending {
+		delete(s.threads, thread)
+	}
 }
 
 func (e *entry) load(ctx context.Context, workspace string) Snapshot {

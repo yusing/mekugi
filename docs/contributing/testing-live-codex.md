@@ -33,10 +33,10 @@ make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestSideCacheEl
 `TestRewindCacheEligibilityLiveOpenAI` uses both tags and checks the first request
 after terminal `/rewind` against a warmed retained prefix. It verifies same native
 thread and provider affinity, retained/excluded history, prepared fields and
-cached input. This opt-in feasibility check currently fails: rewind refreshes
-environment instructions and the observed first request misses cache. A failure
-is evidence to investigate, not authorization to suppress fresh environment facts.
-Provider cache hits are not guaranteed even with an identical prefix.
+cached input. Confirmed same-workspace rewind preserves the immutable environment
+snapshot while the native context/history revision still advances. Later resets
+and workspace changes refresh independently. Provider cache availability can
+still cause this opt-in check to fail despite an identical prefix.
 
 ```sh
 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestRewindCacheEligibilityLiveOpenAI$' TEST_FLAGS='-tags=codex_e2e,e2e -count=1 -v'

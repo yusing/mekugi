@@ -1414,6 +1414,9 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			}
 			restoreContextUsage(attached.session.Agent("/root"), result.Thread)
 			session.controlObservations.RefreshContext(result.Thread.ID)
+			if method == "thread/revert" && session.preparer != nil {
+				session.preparer.AdmitRewind(result.Thread.ID, result.Thread.Cwd)
+			}
 			restoreCompactionMetrics(&attached.session, result.Thread)
 			restoreUsage(session.usage, result.Thread)
 			observeCost(session.usage, session.Client.Thread, attached.session.Agent("/root"))

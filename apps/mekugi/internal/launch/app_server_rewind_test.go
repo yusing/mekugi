@@ -119,11 +119,17 @@ func TestAppServerRewindFailure(t *testing.T) {
 	for _, response := range []string{`"error":{"code":-1,"message":"invalid turn"}`, `"result":{"thread":{"id":"foreign"}}`, `"result":{"thread":{}}`} {
 		t.Run(response, func(t *testing.T) {
 			u, w := newResumeSessionTestUI(t)
+			u.controlObservations = new(sessioncontrol.Observations)
+			u.controlObservations.RefreshContext("main")
 			rewindTestTurns(t, u, w)
 			appServerTestKeys(t, u, "\r\r")
 			rewind := resumeTestOne(t, w, "thread/revert")
 			appServerTestKeys(t, u, "waiting")
+			revision := u.controlObservations.ContextRevision("main")
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, rewind.ID, response))
+			if u.controlObservations.ContextRevision("main") != revision {
+				t.Fatal("rejected rewind refreshed context")
+			}
 			if u.Thread != "main" || u.Text != "waiting" || u.Replacement.Pending() || u.picker.Kind != "" || w.Len() != 0 {
 				t.Fatal("rejected rewind changed session or input")
 			}

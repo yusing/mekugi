@@ -150,7 +150,11 @@ Snapshots are acquired against the admitted execution workspace before generatin
 Fresh, resumed, cleared, compacted and authoritatively changed workspaces refresh lazily;
 ordinary requests reuse the current snapshot and prewarm never acquires one. Confirmed
 same-workspace Side and One-off forks inherit the source snapshot with its original observation
-time, then refresh independently. Different-workspace children acquire their own snapshots,
+time, then refresh independently. Confirmed same-workspace rewind also preserves the
+current immutable snapshot through its native runtime reload, without suppressing
+context/history reset identity. Rewind does not revive a snapshot invalidated by an
+earlier reset. A subsequent reset (including compaction before the next turn),
+resume or workspace change refreshes independently. Different-workspace children acquire their own snapshots,
 replacing inherited copies. Native cwd, execution shell,
 date/timezone and permission context remain intact. Claude retains its native environment
 supply without an additional snapshot.

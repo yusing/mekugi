@@ -24,6 +24,12 @@ var Codex = Bindings{
 			ForkEnvironment: func(source string, admitted binding.EnvironmentContext) {
 				service.Environment.Inherit(source, environment.Context{Thread: admitted.Thread, Workspace: admitted.Workspace, Revision: admitted.Revision})
 			},
+			RewindEnvironment: func(admitted binding.EnvironmentContext) {
+				service.Environment.Rewind(environment.Context{Thread: admitted.Thread, Workspace: admitted.Workspace, Revision: admitted.Revision})
+			},
+			CancelEnvironmentReuse: func(thread string) {
+				service.Environment.CancelReuse(thread)
+			},
 			Threads:           projectThreadInstructions,
 			BeforePreparation: beforePreparation,
 			ForExecution: func(input binding.InstructionInput) (binding.InstructionUpdate, error) {

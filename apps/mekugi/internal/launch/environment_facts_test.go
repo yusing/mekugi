@@ -304,3 +304,58 @@ func TestEnvironmentFactsNativeResetProviderInput(t *testing.T) {
 		t.Fatal("duplicate reset rescanned facts")
 	}
 }
+
+func TestEnvironmentFactsRewindProviderInput(t *testing.T) {
+	for _, compactBeforeTurn := range []bool{false, true} {
+		t.Run(strconv.FormatBool(compactBeforeTurn), func(t *testing.T) {
+			workspace := gitTestWorkspace(t)
+			proxy := newManagedMekugiProxy(t)
+			headers := serverMetadataHeaders(t, "turn", map[string]jsonv1.RawMessage{workspace: nil})
+			forward := func(window string) string {
+				metadata, _ := codexresponses.DecodeTurnMetadata(headers)
+				metadata.ContextWindowID = window
+				headers.Set(codexresponses.TurnMetadataHeader, string(responses.MustMarshalJSON(metadata)))
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed"}`)}}}
+				var output bytes.Buffer
+				if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), headers, "rewind-facts", provider, &output, nil, proxy); err != nil {
+					t.Fatal(err)
+				}
+				return environmentFacts(t, provider.forwarded[0])
+			}
+			first := forward("initial")
+			writeTestFile(t, filepath.Join(workspace, "after-rewind"), "new")
+			before := proxy.control.ContextRevision("thread-1")
+			proxy.control.RefreshContext("thread-1")
+			proxy.preparer().AdmitRewind("thread-1", workspace)
+			if compactBeforeTurn {
+				metadata, _ := codexresponses.DecodeTurnMetadata(serverCompactionMetadataHeaders(t))
+				metadata.ThreadID = "thread-1"
+				metadata.Directories = map[string]jsonv1.RawMessage{workspace: nil}
+				request := serverRequest(t, func(fields map[string]any) {
+					fields["stream"] = true
+					fields["parallel_tool_calls"] = false
+					fields["tools"] = []any{}
+					fields["input"] = []any{map[string]string{"role": "user", "content": "Summarize."}}
+				})
+				_, err := proxy.preparer().Prepare(t.Context(), &request, requestexecution.Preparation{Session: "rewind-facts", Thread: "thread-1", Metadata: metadata, MetadataValid: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			next := forward("reloaded")
+			if (next == first) == compactBeforeTurn {
+				t.Fatalf("rewind reuse=%t after compaction=%t", next == first, compactBeforeTurn)
+			}
+			if proxy.control.ContextRevision("thread-1") <= before {
+				t.Fatal("environment reuse suppressed history reset identity")
+			}
+			if forward("reloaded") != next {
+				t.Fatal("ordinary request refreshed rebound facts")
+			}
+			writeTestFile(t, filepath.Join(workspace, "after-reset"), "new")
+			if refreshed := forward("later-reset"); refreshed == next || !strings.Contains(refreshed, "after-reset") {
+				t.Fatal("later native reset did not refresh workspace facts")
+			}
+		})
+	}
+}

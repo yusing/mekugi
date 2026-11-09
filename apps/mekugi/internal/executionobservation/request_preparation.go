@@ -140,6 +140,16 @@ func (p *Preparer) AdmitSideFork(source, thread, workspace string) {
 	}
 }
 
+// AdmitRewind preserves facts only after the host confirms same-thread history
+// replacement. Fresh/resumed contexts and later workspace changes remain distinct.
+func (p *Preparer) AdmitRewind(thread, workspace string) {
+	if p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.RewindEnvironment != nil {
+		p.Registry.Guidance.RewindEnvironment(binding.EnvironmentContext{
+			Thread: thread, Workspace: workspace, Revision: p.Control.ContextRevision(thread),
+		})
+	}
+}
+
 func (t *mekugiResponseTransform) Usage() *accounting.Observation { return t.usageTracker }
 
 func (p *Preparer) projectThreadInstructions(request *codexresponses.Request, instructions []guidance.Replacement) error {

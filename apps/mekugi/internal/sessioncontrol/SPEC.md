@@ -236,7 +236,11 @@ and selects the first turn to exclude along with all later conversation.
 Native `thread/revert` replaces history in the same thread; current settings,
 pending input, logical family membership and descendant runtimes stay in place.
 Codex internally reloads the caller's runtime, so caller-owned process handles
-must not be assumed to survive.
+must not be assumed to survive. Same-workspace rewind preserves the current
+immutable environment-instruction snapshot for provider prefix reuse, not the
+discarded conversation. Native identity and cache affinity stay unchanged; actual
+provider cache hits remain subject to availability. Context/history reset revisions
+still advance, and later resets or workspace changes refresh facts independently.
 
 After choosing a turn, a second dialog offers Keep edits (the default) or Revert
 captured edits when there are changes to choose between. Without captures at or
