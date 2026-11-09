@@ -63,7 +63,7 @@ func (r Record[S]) Publish() Entry {
 	facts.Spans = slices.Clone(facts.Spans)
 	facts.Images = slices.Clone(facts.Images)
 	facts.Outputs = maps.Clone(facts.Outputs)
-	return Entry{Facts: facts, Revision: r.Revision, Values: r.Values}
+	return Entry{Facts: facts, Revision: r.Revision, Values: AttachmentEvents(r.Values)}
 }
 
 // PublishedEntries reuses detached entries by their owning record revisions.

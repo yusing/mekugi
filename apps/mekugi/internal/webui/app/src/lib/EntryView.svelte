@@ -456,6 +456,14 @@
                       )}{/if}<ValueRow value={file} {onload} />{/each}
                 </div>
               </details>
+            {:else if value.kind === "attachments"}
+              {#each value.params ?? [] as param, parameter (parameter)}
+                <ValueRow
+                  value={{ ...param, verb: parameter === 0 ? "Attach" : "" }}
+                  {onload}
+                  outputLang={outputLanguage(value.params ?? [], parameter)}
+                />
+              {/each}
             {:else if !pending(value)}
               <ValueRow {value} {onload} outputLang={outputLanguage(entry.values, index)} />
             {/if}

@@ -144,7 +144,7 @@ func TestUISnapshotCompactReloadAttachments(t *testing.T) {
 		t.Fatal("aggregate success confirmed sources before capture", got)
 	}
 	complete()
-	awaitMain(t, u, "Attached skill commit (auto reloaded)")
+	awaitMain(t, u, "commit (auto reloaded)")
 	finishPacing(u.testActivity(u.shell.Transcript))
 	rows := u.testActivity(u.shell.Transcript).RenderFeed(100, 24).Lines
 	assertNativeUISnapshot(t, "compact-reload-attachments", rows)

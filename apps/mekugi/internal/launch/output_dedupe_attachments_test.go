@@ -248,7 +248,7 @@ func TestSelectionLargeDiffFenceSurvivesModelProjection(t *testing.T) {
 	proxy.inputProjections = testInputProjections()
 	request := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	changed, ids := requestexecution.ProjectFileAttachments(request)
-	if !changed || len(ids) != 2 || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
+	if !changed || len(ids) != 3 || ids[0] != snapshot.ReceiptID(snapshot.Frames[0]) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
 		t.Fatal("projected mixed envelope did not expand")
 	}
 	items := duplicateTestItems(t, request)

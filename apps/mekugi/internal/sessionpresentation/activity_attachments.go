@@ -61,7 +61,27 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 		}
 		// Each envelope is a submitted snapshot; only its chunks belong together.
 		clear(indexes)
+		clear(seen)
 		for _, frame := range snapshot.Frames {
+			if selection, ok := attachments.ParseSelection(frame); ok {
+				key := "selection\x00" + selection.Label + "\x00" + selection.Source
+				index, exists := indexes[key]
+				if !exists {
+					index = len(blocks)
+					indexes[key] = index
+					blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: "Attached selection", AttachmentKind: "selection", AttachmentID: snapshot.ReceiptID(frame), Label: textsanitize.Safe(selection.Label, false), Path: pathdisplay.ForWorkspace(cwd, selection.Source)})
+				}
+				contents[index] += selection.Body
+				continue
+			}
+			if attachments.SelectionFrame(frame) {
+				blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: "Attach failed", AttachmentKind: "selection", Label: textsanitize.Safe("selection "+strings.TrimPrefix(frame, attachments.SelectionPrefix), false)})
+				continue
+			}
+			if strings.HasPrefix(frame, "Attached skill references:") {
+				blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: "Attach failed", AttachmentKind: "omission", Label: "skill references · attachment budget exceeded"})
+				continue
+			}
 			if name, source, rest := attachments.ParseSkillFrame(frame); name != "" {
 				verb, label := "Attached skill", name
 				if after, ok0 := strings.CutPrefix(rest, ": CONTENT NOT ATTACHED ("); ok0 {
@@ -74,16 +94,16 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 				}
 				key := verb + "\x00skill\x00" + name + "\x00" + source
 				if verb == "Attached skill" {
-					appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false), AttachmentID: snapshot.ReceiptID(frame)}, source)
+					appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, AttachmentKind: "skill", Label: textsanitize.Safe(label, false), AttachmentID: snapshot.ReceiptID(frame)}, source)
 					continue
 				}
 				if !seen[key] {
 					seen[key] = true
-					blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false)})
+					blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: verb, AttachmentKind: "skill", Label: textsanitize.Safe(label, false)})
 				}
 				continue
 			}
-			verb, label, path := "Attached", "", ""
+			verb, label, path, kind := "Attached", "", "", "file"
 			rest := strings.TrimPrefix(frame, "Attached file ")
 			quoted, err := strconv.QuotedPrefix(rest)
 			if err == nil {
@@ -103,18 +123,18 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 					continue
 				}
 			} else if frame == "Attached file references: remaining contents NOT ATTACHED (attachment budget exceeded). Read remaining referenced files separately if needed." {
-				verb, label = "Attach failed", "remaining files · attachment budget exceeded"
+				verb, label, kind = "Attach failed", "remaining files · attachment budget exceeded", "omission"
 			} else {
 				continue
 			}
 			key := verb + "\x00" + path + "\x00" + label
 			if verb == "Attached" {
-				appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), AttachmentID: snapshot.ReceiptID(frame)}, path)
+				appendContent(key, rest, activitypresentation.Value{Kind: "op", Verb: verb, AttachmentKind: kind, Path: pathdisplay.ForWorkspace(cwd, path), AttachmentID: snapshot.ReceiptID(frame)}, path)
 				continue
 			}
 			if !seen[key] {
 				seen[key] = true
-				blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), Label: textsanitize.Safe(label, false)})
+				blocks = append(blocks, activitypresentation.Value{Kind: "op", Verb: verb, AttachmentKind: kind, Path: pathdisplay.ForWorkspace(cwd, path), Label: textsanitize.Safe(label, false)})
 			}
 		}
 	}

@@ -174,6 +174,7 @@ type entry struct {
 }
 
 type value struct {
+	Params           []value                          `json:"params,omitzero"`
 	Failed           bool                             `json:"failed,omitzero"`
 	Kind             string                           `json:"kind,omitzero"`
 	Verb             string                           `json:"verb,omitzero"`
@@ -380,6 +381,9 @@ func projectValues(values []activitypresentation.Value, summaries bool) []value 
 			Subsumed: v.Subsumed, Effect: v.Effect, Pending: v.Pending, Skipped: v.Skipped, FoldSource: v.TemporarySource(), Duration: v.Duration.Milliseconds(), Thought: v.Thought.Milliseconds(), From: v.From, To: v.To,
 			WaitReason: v.ProgressReason(), WaitTimeout: v.WaitTimeout,
 			EditOutcome: v.EditOutcome, Running: v.Running, Live: v.Live, Tail: v.Tail, TailOmitted: v.TailOmitted, TailClipped: v.TailClipped, SourceOmitted: v.SourceOmitted,
+		}
+		if v.Kind == "attachments" {
+			p.Params = projectValues(v.Members, summaries)
 		}
 		if preview := v.PreviewCode(); preview != v.Code {
 			p.CodePreview, _, _ = strings.Cut(preview, "\n")

@@ -30,7 +30,7 @@ func (v *View) discloseBlock(block Block) Block {
 	if v.Expansion == 0 {
 		return block
 	}
-	if block.Kind == "summary" || v.Expansion == 2 && (block.Kind == "op" || block.Kind == "reads") {
+	if block.Kind == "summary" || v.Expansion == 2 && (block.Kind == "op" || block.Kind == "reads" || block.Kind == "attachments") {
 		block.Collapsed = false
 		block.Expanded = true
 		block.SourceRows, block.TailRows = 0, 0

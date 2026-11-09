@@ -226,10 +226,12 @@ func (entry ItemContent) Values() (blocks []Value) {
 	case "tool":
 		if n := entry.Details; n != nil && len(n.Reload) != 0 {
 			for _, source := range n.Reload {
-				block := Value{Kind: "op", Verb: "Attached", Path: source.Path, AutoReload: !source.Preload}
+				block := Value{Kind: "op", Verb: "Attached", AttachmentKind: "file", Path: source.Path, AutoReload: !source.Preload}
 				if source.Changes != "" {
+					block.AttachmentKind = "change"
 					block.Verb, block.Label, block.Path = "Attached changes", textsanitize.Safe(source.Changes, false), ""
 				} else if source.Skill != "" {
+					block.AttachmentKind = "skill"
 					block.Verb, block.Label, block.Path = "Attached skill", textsanitize.Safe(source.Skill, false), ""
 				}
 				blocks = append(blocks, block)

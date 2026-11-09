@@ -56,6 +56,11 @@ func compactEntry(full entry) entry {
 	used := 0
 	for i := 0; i < len(full.Values); i++ {
 		v := full.Values[i]
+		if len(v.Params) > 0 {
+			params := compactEntry(entry{Kind: "attachments", Values: v.Params})
+			v.Params = params.Values
+			p.AutoContent = p.AutoContent || params.AutoContent
+		}
 		if v.HiddenEdits > 0 {
 			end := min(len(full.Values), i+v.HiddenEdits)
 			v = value{Kind: v.Kind, Verb: v.Verb, Sources: v.Sources, Effect: v.Effect, HiddenEdits: end - i}

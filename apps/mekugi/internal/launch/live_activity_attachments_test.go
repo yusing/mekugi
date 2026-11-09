@@ -62,10 +62,10 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := ansi.Strip(screen.String())
-	if !strings.Contains(plain, "Attached attached.txt") || strings.Contains(plain, path) {
+	if !strings.Contains(plain, "attached.txt (1501 lines)") || strings.Contains(plain, path) {
 		t.Fatalf("attachment path not displayed workspace-relative: %s", plain)
 	}
-	attached, failed, response := strings.Index(plain, "Attached"), strings.Index(plain, "Attach failed"), strings.Index(plain, "Agent response")
+	attached, failed, response := strings.Index(plain, "Attach attached.txt"), strings.Index(plain, "missing.txt"), strings.Index(plain, "Agent response")
 	if attached < 0 || failed < attached || response < failed || strings.Contains(plain, "private file contents") || strings.Contains(plain, attachments.Prefix) {
 		t.Fatalf("incorrect receipt rendering/order: %s", plain)
 	}

@@ -92,7 +92,9 @@ func (s Snapshot) ReceiptID(frame string) string {
 		return ""
 	}
 	var key string
-	if name, _, rest := ParseSkillFrame(frame); name != "" && strings.HasPrefix(rest, " (UTF-8 bytes ") {
+	if selection, ok := ParseSelection(frame); ok {
+		key = SelectionPrefix + strconv.Quote(selection.Label) + " " + strconv.Quote(selection.Source)
+	} else if name, _, rest := ParseSkillFrame(frame); name != "" && strings.HasPrefix(rest, " (UTF-8 bytes ") {
 		key = strings.TrimSuffix(frame, rest)
 	} else if rest, ok := strings.CutPrefix(frame, "Attached file "); ok {
 		quoted, err := strconv.QuotedPrefix(rest)

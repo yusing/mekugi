@@ -86,29 +86,31 @@ func SkillLoads[S Source](record Record[S]) []string {
 	}
 	unconfirmed := facts.Unconfirmed || slices.ContainsFunc(record.Values, func(b Value) bool { return b.BatchExit && b.ExitCode != 0 })
 	var names []string
-	for _, block := range record.Values {
-		if block.AutoReload && !block.Exited || block.Running || block.Skipped || block.ExitCode != 0 || unconfirmed && !block.Segment {
-			continue
-		}
-		if block.Kind == "op" && block.Verb == "Attached skill" && block.Label != "" {
-			if facts.Kind != "tool" || block.Exited {
-				names = append(names, block.Label)
+	for _, value := range record.Values {
+		for _, block := range Originals(value) {
+			if block.AutoReload && !block.Exited || block.Running || block.Skipped || block.ExitCode != 0 || unconfirmed && !block.Segment {
+				continue
 			}
-		}
-		if block.Kind != "reads" || block.Verb != "Skill" && block.Verb != "Read" {
-			continue
-		}
-		for _, read := range block.Reads {
-			if block.Verb == "Skill" {
-				for field := range strings.FieldsSeq(read.Path) {
-					if !strings.HasPrefix(field, "-") {
-						name, _, _ := strings.Cut(field, "/")
-						names = append(names, name)
-						break
-					}
+			if block.Kind == "op" && block.Verb == "Attached skill" && block.Label != "" {
+				if facts.Kind != "tool" || block.Exited {
+					names = append(names, block.Label)
 				}
-			} else if filepath.Base(read.Path) == "SKILL.md" && filepath.Dir(read.Path) != "." {
-				names = append(names, filepath.Base(filepath.Dir(read.Path)))
+			}
+			if block.Kind != "reads" || block.Verb != "Skill" && block.Verb != "Read" {
+				continue
+			}
+			for _, read := range block.Reads {
+				if block.Verb == "Skill" {
+					for field := range strings.FieldsSeq(read.Path) {
+						if !strings.HasPrefix(field, "-") {
+							name, _, _ := strings.Cut(field, "/")
+							names = append(names, name)
+							break
+						}
+					}
+				} else if filepath.Base(read.Path) == "SKILL.md" && filepath.Dir(read.Path) != "." {
+					names = append(names, filepath.Base(filepath.Dir(read.Path)))
+				}
 			}
 		}
 	}

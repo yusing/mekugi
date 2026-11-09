@@ -446,6 +446,9 @@ func (v *View) ClickTarget(block *Block, snippet Snippet, width int) bool {
 // still running, carrying source a row may clip, or standing for several
 // reads. Edits open their captured change instead, and questions their dock.
 func OutputBlock(block Block) bool {
+	if block.Kind == "attachments" {
+		return block.Disclosure() != nil
+	}
 	if block.DetailCode != "" {
 		return true
 	}

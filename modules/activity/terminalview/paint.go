@@ -39,7 +39,10 @@ func VerbColor(verb string) string {
 	case "Attached":
 		return terminalui.Green
 	case "Attach":
-		return terminalui.Red
+		if verb == "Attach failed" {
+			return terminalui.Red
+		}
+		return terminalui.Green
 	case "Read", "Inspect", "View", "Open", "List", "Check", "Diff", "Status":
 		return "\x1b[38;5;75m"
 	case "Commit", "Committed", "Stage":
@@ -276,6 +279,21 @@ func liveActivityIndent(lines []string, prefix string) []string {
 // Block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
+	if block.Kind == "attachments" {
+		var rows []string
+		for i, member := range block.Members {
+			child := Block{Value: member}
+			child.Collapsed = !block.Expanded
+			child.Expanded = block.Expanded
+			child.GroupHeader = "Attach"
+			child.GroupStart = i == 0
+			if member.Verb == "Attach failed" {
+				child.Exited, child.ExitCode = true, 1
+			}
+			rows = append(rows, p.Block(child, width)...)
+		}
+		return rows
+	}
 	if block.Effect {
 		block.Effect = false
 		return liveActivityIndent(p.Block(block, width-2), "  ")
@@ -1240,6 +1258,9 @@ func Verb(verb string) string {
 // cell is the width of a row's verb column: the column its adjacent
 // operations share, or Verb's default column.
 func (b Block) cell(verb string) int {
+	if b.GroupHeader == "Attach" {
+		return len("Attach ")
+	}
 	if b.VerbColumn > 0 {
 		return max(b.VerbColumn, ansi.StringWidth(verb)+1)
 	}
@@ -1248,6 +1269,9 @@ func (b Block) cell(verb string) int {
 
 // lead is a row's bold verb in color, padded to its column.
 func (b Block) lead(color, verb string) string {
+	if b.GroupHeader == "Attach" && b.GroupStart {
+		return Verb("Attach")
+	}
 	if b.GroupHeader != "" && !b.EditOperation() && !b.GroupStart {
 		return strings.Repeat(" ", b.cell(verb))
 	}
@@ -1274,6 +1298,8 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 	}
 
 	switch block.Kind {
+	case "attachments":
+		return SummaryVerb("Attach") + block.Label + more
 	case "progress":
 		style := p.statusStyle(block.Live)
 		return style + block.progressText(style) + terminalui.Reset

@@ -90,12 +90,14 @@ func RefreshDetails(pages []DetailPage, sources map[uint64]DetailSource) []Detai
 			refreshed = append(refreshed, page)
 			continue
 		}
-		if page.AttachmentID != "" {
-			for _, current := range source.Values {
-				if current.AttachmentID == page.AttachmentID {
-					page.Value = current
-					page.Source = source.Seq
-					break
+		if page.AttachmentID != "" || len(source.Values) == 1 && source.Values[0].Kind == "attachments" {
+			for _, value := range source.Values {
+				for _, current := range Originals(value) {
+					if page.AttachmentID != "" && current.AttachmentID == page.AttachmentID || page.AttachmentID == "" && current.Operation == page.Operation {
+						page.Value = current
+						page.Source = source.Seq
+						break
+					}
 				}
 			}
 			page.Revision = source.Revision

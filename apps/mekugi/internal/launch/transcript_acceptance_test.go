@@ -64,7 +64,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 		t.Fatal("recorded async question did not become visible")
 	}
 	frame := replayPlaybackTestPaint(t, p, 120, 40)
-	for _, want := range []string{"Review the attachment", "Attached review.txt", "Public inspection summary", "Who receives it?"} {
+	for _, want := range []string{"Review the attachment", "Attach review.txt", "Public inspection summary", "Who receives it?"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q in replay frame:\n%s", want, frame)
 		}

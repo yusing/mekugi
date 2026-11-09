@@ -47,6 +47,7 @@ type Value struct {
 	DetailCode                                    string `json:",omitempty"` // Original tool evidence, displayed only in details.
 	Repeated                                      string
 	AutoReload                                    bool   // Native compaction reader, distinct from a submitted attachment.
+	AttachmentKind                                string // file, skill, change, selection or omission.
 	AttachmentID                                  string // Durable submitted snapshot and source, shared by its chunks.
 	Ended, Started                                time.Time
 	Duration                                      time.Duration
@@ -82,7 +83,7 @@ type Value struct {
 
 // FailedOutcome shares operation failure semantics across full and compact rows.
 func (b Value) FailedOutcome() bool {
-	return b.Failed || b.ExitCode != 0 || b.Hook != nil &&
+	return b.Failed || b.Verb == "Attach failed" || b.ExitCode != 0 || b.Hook != nil &&
 		(b.Hook.Failed() || slices.Contains([]string{"blocked", "stopped"}, b.Hook.Status))
 }
 
@@ -143,6 +144,13 @@ type Disclosure struct {
 // Source: apps/mekugi/internal/webui/app/src/lib/kinds.ts:58@5bbc778a8 hasDetails.
 func (b Value) Disclosure() *Disclosure {
 	switch b.Kind {
+	case "attachments":
+		for _, member := range b.Members {
+			if member.Disclosure() != nil || member.Output != 0 || len(member.Tail) > 0 || member.Code != "" {
+				return &Disclosure{}
+			}
+		}
+		return nil
 	case "compaction":
 		if b.CompactionMethod == observation.ContextReset {
 			return nil
@@ -191,8 +199,8 @@ func (b Value) EditPath() string {
 // ReadOutput reports a file or skill read, whose output is what the agent
 // read rather than a result to watch, so it starts collapsed.
 func (b Value) ReadOutput() bool {
-	return b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads" ||
-		b.Kind == "op" && (b.Verb == "Attached" || b.Verb == "Attached skill")
+	return b.Kind == "attachments" || b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads" ||
+		b.Kind == "op" && (b.Verb == "Attached" || b.Verb == "Attached skill" || b.Verb == "Attached selection")
 }
 
 // MarkdownOutput reports skill content, rather than a skill program's output.

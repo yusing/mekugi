@@ -23,9 +23,10 @@ func TestUISnapshotPreloadAttachments(t *testing.T) {
 	}}}
 	p := Painter{Theme: diffrender.DarkTheme}
 	var rows []string
-	for _, value := range item.Values() {
+	for _, value := range presentation.AttachmentEvents(item.Values()) {
 		rows = append(rows, p.Block(Block{Value: value}, 100)...)
 	}
+	rows = append(rows, p.Summary([]Block{{Value: presentation.AttachmentEvents(item.Values())[0]}}, 100))
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/preload-attachments-ansi.txt", append(rows, "plain after attachments"), 100)
 }
 

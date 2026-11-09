@@ -95,7 +95,9 @@
   const codeLines = $derived(value.codeLines ?? code?.split("\n").length ?? 0);
   // An operation's label names its subject, as an attached skill's name does
   // beside its optional source path; a read's targets are its subject.
-  const reads = $derived(value.kind === "op" && value.label ? [] : (value.reads ?? []));
+  const reads = $derived(
+    value.kind === "op" && (value.label || value.path) ? [] : (value.reads ?? []),
+  );
   // A long one-line program shows an excerpt, as a longer one shows its first
   // line, with its full source behind the Script disclosure.
   const programExcerpt = 80;
@@ -226,6 +228,7 @@
       {/each}
     {:else if value.path}
       <span class="font-mono text-code"><Path path={value.path} /></span>
+      {#if value.label}<span class="ml-2 text-muted">{@html label}</span>{/if}
     {:else if headline !== undefined}
       <code
         ><Code

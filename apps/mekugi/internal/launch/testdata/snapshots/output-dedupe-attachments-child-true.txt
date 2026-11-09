@@ -2,19 +2,19 @@
 │ review snapshots
 
 ● Thread thread                                                         12:34:56
-│ ├ Attached /workspace/file.txt (601 lines)
-│ └ Attached skill guide (21 lines)
+│ Attach /workspace/file.txt (601 lines)
+│        guide (21 lines)
 
 ● Thread thread · user                                                  12:34:56
 │ review snapshots
 
 ● Thread thread                                                         12:34:56
-│ ├ Attached /workspace/file.txt · 600 lines repeated (602 lines)
-│ └ Attached skill guide · repeated (21 lines)
+│ Attach /workspace/file.txt · 600 lines repeated (602 lines)
+│        guide · repeated (21 lines)
 
 ● Thread thread · user                                                  12:34:56
 │ review snapshots
 
 ● Thread thread                                                         12:34:56
-│ ├ Attached /workspace/file.txt (602 lines)
-│ └ Attached skill guide (21 lines)
+│ Attach /workspace/file.txt (602 lines)
+│        guide (21 lines)

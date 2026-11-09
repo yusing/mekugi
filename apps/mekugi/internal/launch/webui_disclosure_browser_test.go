@@ -75,7 +75,7 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 		t.Fatal(err)
 	}
 	skills := activity.ItemContent{Seq: 16, Agent: "Main", Kind: "attachments", Details: &activity.ItemDetails{Attachments: sessionpresentation.AttachmentValues(machine.workdir, skillContent)}}
-	publication.Entries = append(publication.Entries, activity.Entry{Facts: skills.Facts, Values: skills.Values()})
+	publication.Entries = append(publication.Entries, activity.Entry{Facts: skills.Facts, Values: activity.AttachmentEvents(skills.Values())})
 	for i, command := range []string{
 		`python3 -I -c 'print("ok")'`,
 		"bun --input-type=module <<'JS'\nconst items = [1, 2, 3]\nfor (const item of items) {\n  const doubled = item * 2\n  console.log(doubled)\n}\nconsole.log(\"done\")\nJS\n",
@@ -197,7 +197,7 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 		run("screenshot", filepath.Join(artifacts, "thoughts-expanded.png"))
 	}
 	run("eval", `document.querySelector('[data-entry="16"]').scrollIntoView({block:'center'})`)
-	run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-entry="16"] [data-ai-element=tool]')]; return rows.length === 2 && ['review', 'commit'].every((name, i) => rows[i].innerText.includes('Attached skill') && rows[i].innerText.includes(name)) && rows[0].querySelector('button[aria-label="Output: 4 lines"]') && rows[1].querySelector('button[aria-label="Output: 6 lines"]'); })()`)
+	run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-entry="16"] [data-ai-element=tool]')]; return rows.length === 2 && ['review', 'commit'].every((name, i) => rows[i].innerText.includes(name)) && rows[0].querySelector('button[aria-label="Output: 4 lines"]') && rows[1].querySelector('button[aria-label="Output: 6 lines"]'); })()`)
 	run("click", `[data-entry="16"] button[aria-label="Output: 6 lines"]`)
 	run("wait", "--fn", `(() => { const rows = document.querySelectorAll('[data-entry="16"] [data-ai-element=tool]'); return rows[1].querySelector('pre')?.textContent.includes('Use conventional subjects.') && !rows[0].querySelector('pre'); })()`)
 	run("click", `[data-entry="16"] button[aria-label="Output: 4 lines"]`)

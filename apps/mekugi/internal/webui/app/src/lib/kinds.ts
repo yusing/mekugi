@@ -21,6 +21,7 @@ const families: Record<string, Family> = {
   diff: "read",
   skill: "read",
   attached: "read",
+  attach: "read",
   "attached skill": "read",
   edit: "write",
   edited: "write",
@@ -49,7 +50,12 @@ export function annotates(value: Value): boolean {
 }
 
 export function failed(value: Value): boolean {
-  return (value.exitCode ?? 0) !== 0 || !!value.hook?.hasError || value.hook?.status === "failed";
+  return (
+    !!value.failed ||
+    (value.exitCode ?? 0) !== 0 ||
+    !!value.hook?.hasError ||
+    value.hook?.status === "failed"
+  );
 }
 
 export function isUser(entry: Entry): boolean {

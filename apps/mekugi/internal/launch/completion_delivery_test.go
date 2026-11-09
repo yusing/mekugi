@@ -63,7 +63,7 @@ func TestFinalWaitAndPreparedChangesPublishTogether(t *testing.T) {
 			check(service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "continued", Error: failure}))
 			flush()
 			text := publication()
-			for _, expected := range []string{"Completed work.", "Attached changes", "amber1..3"} {
+			for _, expected := range []string{"Completed work.", "Attach", "amber1..3"} {
 				if !strings.Contains(text, expected) {
 					t.Fatalf("coherent delivery lost %q:\n%s", expected, text)
 				}
