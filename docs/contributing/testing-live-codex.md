@@ -20,7 +20,7 @@ make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestCompactRelo
 ```
 
 `TestSideCacheEligibilityLiveOpenAI` also requires both tags. It warms Main, then checks
-that the first `/btw`, `/side` and `/oneoff` requests preserve the prepared prefix and
+that the first `/btw` and `/oneoff` requests preserve the prepared prefix and
 report cached input. Each command runs with Main-first and fork-first continuations,
 checking each branch's prepared prefix, native thread identity, separate history and
 cached input. Provider cache availability can still cause a miss despite an identical

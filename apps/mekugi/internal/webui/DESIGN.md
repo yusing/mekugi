@@ -104,7 +104,7 @@ component libraries, typography, geometry and interaction mechanics are means.
 
 - Panel tabs are text tabs; the selected tab is underlined in
   the accent colour. A lone tab still reads as a tab. Segments are for toggles
-  inside content, such as Main and Side or the resume scope.
+  inside content, such as Main and One-off or the resume scope.
 - In dialogs, labels use `Field`. Cancel is quiet and comes first, the submit is
   primary, destructive confirmation uses `danger`, and failures use `Alert`, not
   the warning `Notice`. Dialogs and menus share Nova corner radii, spacing and

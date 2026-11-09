@@ -18,7 +18,7 @@ import (
 )
 
 func TestTemporaryUsageLimitWaitingAndClose(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff question"} {
+	for _, command := range []string{"/oneoff question"} {
 		for _, timed := range []bool{false, true} {
 			for _, closure := range []string{"explicit", "thread/closed", "thread/archived"} {
 				t.Run(fmt.Sprintf("%s/%t/%s", command, timed, closure), func(t *testing.T) {
@@ -32,9 +32,6 @@ func TestTemporaryUsageLimitWaitingAndClose(t *testing.T) {
 					defer terminalTest(u).Diff.Close()
 					appServerTestKeys(t, u, command+"\r")
 					btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
-					if command == "/side" {
-						appServerTestKeys(t, u, "question\r")
-					}
 					btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
 					retained, err := history.NewService(control.RecordKinds())
 					check(err)
@@ -123,7 +120,7 @@ func TestTemporaryUsageLimitWaitingAndClose(t *testing.T) {
 }
 
 func TestTemporaryUsageLimitExplicitInputSupersedesWait(t *testing.T) {
-	for _, command := range []string{"/btw question", "/side", "/oneoff question"} {
+	for _, command := range []string{"/btw question", "/oneoff question"} {
 		for _, resumed := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/%t", command, resumed), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
@@ -138,9 +135,6 @@ func TestTemporaryUsageLimitExplicitInputSupersedesWait(t *testing.T) {
 					defer terminalTest(u).Diff.Close()
 					appServerTestKeys(t, u, command+"\r")
 					btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
-					if command == "/side" {
-						appServerTestKeys(t, u, "question\r")
-					}
 					btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
 					b := u.side
 					if command == "/btw question" {

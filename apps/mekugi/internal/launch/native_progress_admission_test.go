@@ -107,7 +107,7 @@ func TestNativeProgressAdmitsEffortAndReferenceAtOwner(t *testing.T) {
 		return count
 	}
 	await(func() bool { return selections() == 1 })
-	send(event.Target(), sessionapi.NativeOperation{Command: new("/side")})
+	send(event.Target(), sessionapi.NativeOperation{Command: new("/oneoff initial task")})
 	await(func() bool {
 		return event.Frame.View.SideThread.ID != "" && event.Frame.View.Displayed == event.Frame.View.SideThread
 	})
@@ -196,6 +196,7 @@ func serveNativeProgressHost(t *testing.T) {
 			continue
 		}
 		result := map[string]any{}
+		sideStart := false
 		switch request.Method {
 		case "config/read":
 			result["layers"] = []any{}
@@ -212,19 +213,30 @@ func serveNativeProgressHost(t *testing.T) {
 			result["thread"] = map[string]any{"id": "side"}
 		case "turn/start":
 			var params struct {
-				Input []struct {
+				Thread string `json:"threadId"`
+				Input  []struct {
 					Text string `json:"text"`
 				} `json:"input"`
 			}
-			if err := json.Unmarshal(request.Params, &params); err != nil || len(params.Input) != 1 || params.Input[0].Text != "original input" {
-				t.Fatalf("untrimmed host input: %+v, %v", params.Input, err)
+			if err := json.Unmarshal(request.Params, &params); err != nil {
+				t.Fatal(err)
+			}
+			if params.Thread == "side" {
+				sideStart = true
+				result["turn"] = map[string]any{"id": "side-turn"}
+				break
+			}
+			if len(params.Input) != 1 || params.Input[0].Text != "original input" {
+				t.Fatalf("untrimmed host input: %+v", params.Input)
 			}
 			result["turn"] = map[string]any{"id": "original"}
 		case "turn/interrupt":
 			t.Fatal("completed original action reached host interruption")
 		}
 		write(map[string]any{"id": request.ID, "result": result})
-		if request.Method == "turn/start" {
+		if sideStart {
+			write(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "completed"}}})
+		} else if request.Method == "turn/start" {
 			write(map[string]any{"method": "turn/started", "params": map[string]any{"threadId": "main", "turn": map[string]any{"id": "original"}}})
 			write(map[string]any{"method": "item/completed", "params": map[string]any{"threadId": "main", "turnId": "original", "item": map[string]any{"id": "user", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "original input"}}}}})
 		}

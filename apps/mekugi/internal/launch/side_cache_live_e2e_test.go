@@ -38,7 +38,7 @@ func TestSideCacheEligibilityLiveOpenAI(t *testing.T) {
 	if err != nil {
 		t.Fatal("live Codex authentication required")
 	}
-	for _, command := range []string{"/btw", "/side", "/oneoff"} {
+	for _, command := range []string{"/btw", "/oneoff"} {
 		for _, order := range []string{"main-first", "fork-first"} {
 			t.Run(strings.TrimPrefix(command, "/")+"/"+order, func(t *testing.T) {
 				t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -87,15 +87,7 @@ func TestSideCacheEligibilityLiveOpenAI(t *testing.T) {
 					t.Fatal("Main did not establish a cached prefix before the fork")
 				}
 				prompt := "Without using tools, join these parts with no spaces and reply with only the result: SIDE, _, READY."
-				if command == "/side" {
-					terminal.send("/side\r")
-					terminal.awaitMatch("Side ready", func(frame string) bool {
-						return strings.Contains(frame, "1 Side") && strings.Contains(frame, "Ready")
-					})
-					terminal.send(prompt + "\r")
-				} else {
-					terminal.send(command + " " + prompt + "\r")
-				}
+				terminal.send(command + " " + prompt + "\r")
 				terminal.await("SIDE_READY")
 				if command == "/btw" {
 					terminal.await("/btw · completed")

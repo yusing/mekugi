@@ -1528,8 +1528,7 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 		attached.session.Activity().Agent(p.Thread.ID).ParentThread = p.Thread.ParentThreadID
 	}
 	if method == "thread/started" && session.Client.Requests.WorkSide(p.Thread.ID) {
-		side := session.Client.Requests.Side(p.Thread.ID)
-		p.Thread.Path = side.Caller() + strings.TrimPrefix(p.Thread.Path, "/root")
+		p.Thread.Path = sessionpresentation.SideCaller + strings.TrimPrefix(p.Thread.Path, "/root")
 		attached.session.Caller(p.Thread.ID)
 		attached.session.Activity().Agent(p.Thread.ID).Isolated = true
 	}

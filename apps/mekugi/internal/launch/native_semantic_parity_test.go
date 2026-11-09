@@ -252,7 +252,7 @@ func TestNativeBTWControlSocket(t *testing.T) {
 				sendLocal()
 			}
 			await(func() bool { return event.Frame.View.Main.ID == "main" })
-			submit("/side")
+			submit("/oneoff initial task")
 			await(func() bool { return event.Frame.View.SideThread.ID == "fork-1" })
 			if c.editor("main").Text != "" || c.feedback.Text != "" {
 				t.Fatalf("side command remained in Main after selection changed: draft=%q notice=%q", c.editor("main").Text, c.feedback.Text)
@@ -265,6 +265,11 @@ func TestNativeBTWControlSocket(t *testing.T) {
 			await(func() bool { return c.effect > beforeCopy })
 			if main.Text != "parked Main draft" || c.editor("side:"+side.ID).Text != "" {
 				t.Fatalf("Side command cleanup crossed editors: main=%q side=%q", main.Text, c.editor("side:"+side.ID).Text)
+			}
+			if event.Frame.View.Menu != nil {
+				c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b"})
+				sendLocal()
+				await(func() bool { return event.Frame.View.Menu == nil })
 			}
 			main.Take()
 			send(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: event.Frame.View.Version, Thread: event.Frame.View.Main}})
@@ -362,8 +367,10 @@ func TestNativeBTWControlSocket(t *testing.T) {
 				t.Fatalf("Main progress prevented closing Side: %v", err)
 			}
 			await(func() bool { return event.Frame.View.Side == nil })
-			submit("/side")
-			await(func() bool { return event.Frame.View.Side != nil && event.Frame.View.Side.Key != closeSide.Key })
+			submit("/oneoff initial task")
+			await(func() bool {
+				return event.Frame.View.Side != nil && event.Frame.View.Side.Key != closeSide.Key && event.Frame.View.Status.Composer.Text == "completed"
+			})
 			if _, err := connection.Send(t.Context(), target, sessionapi.NativeOperation{Side: &closeSide}); err == nil {
 				t.Fatal("stale Side dismissal closed a replacement owner")
 			}

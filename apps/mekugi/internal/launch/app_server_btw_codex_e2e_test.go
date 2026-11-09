@@ -279,15 +279,6 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 				}
 				terminal.await("Working")
 			}
-			terminal.send("/side\r")
-			terminal.awaitMatch("empty side ready", func(frame string) bool { return strings.Contains(frame, "1 Side") && strings.Contains(frame, "Ready") })
-			select {
-			case request := <-p.requests:
-				t.Fatalf("empty fork sampled: %s", request.key)
-			default:
-			}
-			terminal.send("\x1b")
-			terminal.awaitMatch("empty Side closed", func(frame string) bool { return !strings.Contains(frame, "1 Side") })
 			terminal.send("/btw Side question\r")
 			side := next()
 			mainMetadata, _ := codexresponses.DecodeTurnMetadata(main.headers)

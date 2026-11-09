@@ -163,7 +163,7 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 		v.BTWRunning = in.BTWRunning
 	}
 	if in.Conversation.Side != nil {
-		v.Side = &SideToken{ID: in.Conversation.Side.ID, Key: in.Conversation.Side.Key, Label: in.Conversation.Side.Label()}
+		v.Side = &SideToken{ID: in.Conversation.Side.ID, Key: in.Conversation.Side.Key, Label: "One-off"}
 	}
 	state := m.Status
 	base := Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,

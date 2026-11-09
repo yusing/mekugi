@@ -707,7 +707,7 @@ func (p *nativeThreadsProvider) serveTemporaryUsage(t *testing.T, w http.Respons
 }
 
 func TestNativeTemporaryUsageLimitInputServerOwnedCodex(t *testing.T) {
-	for _, command := range []string{"/btw initial question", "/side", "/oneoff initial question"} {
+	for _, command := range []string{"/btw initial question", "/oneoff initial question"} {
 		t.Run(strings.Fields(command)[0][1:], func(t *testing.T) {
 			testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{temporaryUsageCommand: command})
 		})
@@ -1203,13 +1203,6 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		await(func() bool { return !event.Frame.Facts.Busy && contains("MAIN_SEEDED") })
 		if _, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Command: &command}); err != nil {
 			t.Fatal("temporary conversation command:", err)
-		}
-		if command == "/side" {
-			await(func() bool {
-				return event.Frame.View.SideThread.ID != "" && event.Frame.View.Displayed == event.Frame.View.SideThread &&
-					!event.Frame.View.Status.Composer.Running && event.Frame.View.Loading == ""
-			})
-			submit("initial question")
 		}
 		await(func() bool { return contains("Usage limit") })
 		if strings.HasPrefix(command, "/btw") {

@@ -14,7 +14,7 @@ import (
 )
 
 func TestSideForkUsesOwningNativeRuntime(t *testing.T) {
-	for _, command := range []string{"/btw question", "/side", "/oneoff task"} {
+	for _, command := range []string{"/btw question", "/oneoff task"} {
 		t.Run(command, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()

@@ -48,8 +48,15 @@ func TestAppServerSideSettingsNativeCodex(t *testing.T) {
 		t.Fatal(terminal.ctx.Err())
 	}
 	terminal.await("completed")
-	terminal.send("/side\r")
-	terminal.awaitMatch("side ready", func(frame string) bool { return strings.Contains(frame, "1 Side") && strings.Contains(frame, "Ready") })
+	terminal.send("/oneoff Initial settings task\r")
+	select {
+	case <-p.requests:
+	case <-terminal.ctx.Done():
+		t.Fatal(terminal.ctx.Err())
+	}
+	terminal.awaitMatch("One-off idle", func(frame string) bool {
+		return strings.Contains(frame, "1 One-off") && strings.Contains(frame, "completed")
+	})
 	terminal.send("\x1b[1;2B")
 	terminal.await("Settings saved for next turn")
 	terminal.send("/model gpt-6-sol\r")

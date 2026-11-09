@@ -31,9 +31,9 @@ func publishPresentation(attached *attachedPresentation, control *sessioncontrol
 	}
 	if side != nil {
 		id := cmp.Or(side.Thread, "side:"+side.Key)
-		m.SetSide(sessionpresentation.Thread{ID: id, Caller: side.Caller()})
+		m.SetSide(sessionpresentation.Thread{ID: id, Caller: sessionpresentation.SideCaller})
 		if side.Thread != "" {
-			attached.session.RegisterThread(observation.Thread{ID: side.Thread, Path: side.Caller()})
+			attached.session.RegisterThread(observation.Thread{ID: side.Thread, Path: sessionpresentation.SideCaller})
 			agent := attached.session.Activity().Agent(side.Thread)
 			agent.Isolated = true
 			if !agent.SettingsLive {
@@ -60,7 +60,7 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 		m.RestrictChildInput(attached.threadInput == nil || !attached.threadInput.admitted)
 	}
 	if side != nil {
-		m.SetSide(sessionpresentation.Thread{ID: cmp.Or(side.Thread, "side:"+side.Key), Caller: side.Caller()})
+		m.SetSide(sessionpresentation.Thread{ID: cmp.Or(side.Thread, "side:"+side.Key), Caller: sessionpresentation.SideCaller})
 	} else {
 		m.SetSide(sessionpresentation.Thread{})
 	}

@@ -15,7 +15,7 @@ import (
 )
 
 func TestUISnapshotSideComposerMetrics(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff inspect"} {
+	for _, command := range []string{"/oneoff inspect"} {
 		t.Run(command, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				u, w := newAppServerTestUI()
@@ -28,9 +28,6 @@ func TestUISnapshotSideComposerMetrics(t *testing.T) {
 				appServerTestKeys(t, u, command+"\r")
 				fork := btwTestRequest(t, w, "thread/fork", "main")
 				btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"side-model","reasoningEffort":"low","serviceTier":"flex"}`)
-				if command == "/side" {
-					appServerTestKeys(t, u, "question\r")
-				}
 				start := btwTestRequest(t, w, "turn/start", "side")
 				btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
 				u.testMainFrame(120, 12, 0)
@@ -54,7 +51,7 @@ func TestUISnapshotSideComposerMetrics(t *testing.T) {
 					if strings.Contains(ansi.Strip(rows[len(rows)-1]), "main-model") {
 						t.Fatal("Side borrowed Main's settings")
 					}
-					uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/side-composer-metrics-%s-%d.txt", u.side.Label(), width), rows, width)
+					uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/side-composer-metrics-One-off-%d.txt", width), rows, width)
 				}
 				selectSideThread(t, u, u.attached.presentation.View().Main)
 				u.testMainFrame(120, 12, 0)

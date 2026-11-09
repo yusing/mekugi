@@ -15,6 +15,13 @@ func TestComposerCommandCatalog(t *testing.T) {
 	if !u.picker.Open || len(u.picker.Choices) != len(nativeCommands) || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("catalog = %+v, requests = %s", u.picker, wire.Bytes())
 	}
+	commands := make(map[string]bool)
+	for _, choice := range u.picker.Choices {
+		commands[choice.Name] = true
+	}
+	if commands["/side"] || !commands["/oneoff"] || !commands["/btw"] {
+		t.Fatalf("transient command catalog = %+v", commands)
+	}
 	frame := ansi.Strip(strings.Join(u.renderPicker(80, 8), "\n"))
 	if !strings.Contains(frame, "/model") || !strings.Contains(frame, u.picker.Choices[0].Description) {
 		t.Fatalf("missing command labels/descriptions: %s", frame)
@@ -23,6 +30,18 @@ func TestComposerCommandCatalog(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[B\t")
 	if u.Text != completed || u.picker.Open || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("Tab did not complete locally: draft=%q picker=%+v", u.Text, u.picker)
+	}
+}
+
+func TestRemovedSideCommand(t *testing.T) {
+	for _, command := range []string{"/side", "/side question"} {
+		t.Run(command, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			appServerTestKeys(t, u, command+"\r")
+			if wire.Len() != 0 || u.side != nil || u.BTW != nil || u.Text != command || !u.attached.feedback.Alert || !strings.Contains(u.attached.feedback.Text, "Unknown command /side") {
+				t.Fatalf("removed command was admitted or lost rejection/draft: wire=%s draft=%q feedback=%q", wire.String(), u.Text, u.attached.feedback.Text)
+			}
+		})
 	}
 }
 

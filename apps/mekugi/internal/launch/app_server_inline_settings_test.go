@@ -48,9 +48,10 @@ func TestAppServerInlineModelInvalidKeepsDraft(t *testing.T) {
 
 func TestAppServerInlineModelSideSpeedKeepsMainScope(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, wire, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
+	oneoffTestSettle(t, u, wire, "side")
 	appServerTestKeys(t, u, "/model --speed=fast\r")
 	if wire.Len() != 0 || u.Text != "/model --speed=fast" || !strings.Contains(u.attached.feedback.Text, "Main") {
 		t.Fatal("speed selection escaped its Main-only scope")

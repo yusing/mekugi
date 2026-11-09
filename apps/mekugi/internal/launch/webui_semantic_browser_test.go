@@ -655,6 +655,8 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === '' && !document.querySelector('[role=alert]')")
 	closeDialog()
 	suggest("/")
+	run("wait", "--fn", `(() => { const text = document.querySelector('#completions')?.textContent ?? ''; return text.includes('/oneoff') && text.includes('/btw') && !text.includes('/side'); })()`)
+	capture("transient-commands")
 	run("press", "Escape")
 	run("wait", "--fn", "!document.querySelector('#completions')")
 	suggest("/stat")
@@ -704,7 +706,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", `window.copiedResponse === 'Browser host answer 2'`)
 	button("Close answer")
 	run("wait", "--fn", "!document.querySelector('[aria-label=\"Side answer\"]')")
-	message("/side")
+	message("/oneoff initial task")
 	run("wait", "--fn", `document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]').length === 2`)
 	// Selection and closing retain separate hit targets and keyboard focus.
 	for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"phone", "390", "844"}} {
@@ -741,7 +743,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 			}
 			run("press", "Enter")
 			run("wait", "--fn", `!document.querySelector('[role=tablist][aria-label=Conversation]')`)
-			message("/side")
+			message("/oneoff initial task")
 			run("wait", "--fn", `document.querySelectorAll('[role=tablist][aria-label=Conversation] [role=tab]').length === 2`)
 		}
 	}
@@ -767,7 +769,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	waitRecovery()
 	button("Retry intact")
 	waitRecovered()
-	run("wait", "--text", "Browser host answer 3")
+	run("wait", "--text", "Browser later input answer")
 	run("upload", "input[type=file]", laterUpload)
 	message("browser discard input")
 	waitRecovery()
@@ -1253,6 +1255,9 @@ func serveWebUISemanticHost(t *testing.T) {
 			id := fmt.Sprintf("turn-%d", inputs)
 			content := params.Input
 			answer := fmt.Sprintf("Browser host answer %d", inputs)
+			if key == "browser later input" {
+				answer = "Browser later input answer"
+			}
 			if inputs == 1 {
 				answer += "\n\nAutomatic https://example.com/auto and [Website](https://example.com/markdown). [Workspace notes](notes.md)"
 			}

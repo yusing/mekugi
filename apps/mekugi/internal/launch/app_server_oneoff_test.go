@@ -9,8 +9,26 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+// Close explicitly so cleanup fixtures do not depend on context-sensitive Escape.
+func sideTestClose(t *testing.T, u *appServerUI) {
+	t.Helper()
+	v := u.attached.presentation.View()
+	in := sessionpresentation.CloseSideIntent{Version: v.Version, Key: v.Side.Key, Exchange: v.Side.ID}
+	if err := applyCloseSide(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, false, &u.ownedImages, in); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func oneoffTestSettle(t *testing.T, u *appServerUI, wire *appServerTestInput, thread string) {
+	t.Helper()
+	start := btwTestRequest(t, wire, "turn/start", thread)
+	btwTestReply(t, u, start, `{"turn":{"id":"initial-oneoff-turn"}}`)
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "initial-oneoff-turn", "status": "completed"}})
+}
 
 func oneoffTestStart(t *testing.T, u *appServerUI, wire *appServerTestInput) {
 	t.Helper()
@@ -111,9 +129,7 @@ func TestOneoffQuestionApprovalAndClose(t *testing.T) {
 	wire.Reset()
 	selectSideThread(t, u, u.attached.presentation.View().SideThread)
 	questionTestMessage(t, u, "closing-question", "item/tool/requestUserInput", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "itemId": "closing", "questions": []any{map[string]any{"id": "scope", "header": "Scope", "question": "Close?", "options": []any{map[string]any{"label": "Yes", "description": "Close"}}}}})
-	if err := terminalTest(u).send("\x1b"); err != nil {
-		t.Fatal(err)
-	}
+	sideTestClose(t, u)
 	request := btwTestRequest(t, wire, "turn/interrupt", "oneoff")
 	if u.side != nil || u.questions.Count("oneoff") != 0 {
 		t.Fatal("closed oneoff retained prompts")
@@ -234,6 +250,37 @@ func TestUISnapshotOneoffSteering(t *testing.T) {
 	uisnapshot.Assert(t, "testdata/snapshots/oneoff-steering-retained.txt", frame)
 }
 
+func TestOneoffDeferredSteerStartsOwnExchangeBeforeNewerInput(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.attached.cwd = t.TempDir()
+	u.Turn = "main-turn"
+	oneoffTestStart(t, u, wire)
+	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
+	skills := btwTestRequest(t, wire, "skills/list", "")
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
+	appServerTestKeys(t, u, "newer question\r")
+	btwTestReply(t, u, skills, fmt.Sprintf(`{"data":[{"cwd":%q,"skills":[]}]}`, u.attached.cwd))
+	deferred := btwTestRequest(t, wire, "turn/start", "oneoff")
+	if deferred.Params.Environments != nil || len(deferred.Params.Input) != 2 || deferred.Params.Input[1].Text != "use $review please" {
+		t.Fatalf("deferred input bypassed One-off start lifecycle: %+v", deferred.Params)
+	}
+	if u.Text != "newer question" || wire.Len() != 0 {
+		t.Fatalf("start admission consumed or submitted newer input: draft=%q wire=%s", u.Text, wire.String())
+	}
+	btwTestReply(t, u, deferred, `{"turn":{"id":"second-turn"}}`)
+	// One-off retains input during start admission for submission when ready.
+	appServerTestKeys(t, u, "\r")
+	newer := btwTestRequest(t, wire, "turn/steer", "oneoff")
+	if newer.Params.ExpectedTurnID != "second-turn" || len(newer.Params.Input) != 1 || newer.Params.Input[0].Text != "newer question" {
+		t.Fatalf("newer input lost, reordered or retargeted: %+v", newer.Params)
+	}
+	btwTestReply(t, u, newer, `{}`)
+	frame := strings.Join(u.sideFrame(100, 24), "\n")
+	if !strings.Contains(frame, "use $review please") || !strings.Contains(frame, "newer question") || u.Turn != "main-turn" {
+		t.Fatalf("deferred questions missing or Main changed: turn=%q frame=%s", u.Turn, frame)
+	}
+}
+
 func TestOneoffGuardAdmissionAndFailure(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
@@ -320,9 +367,7 @@ func TestUISnapshotOneoffSyncQuestionImageCompanion(t *testing.T) {
 				t.Fatal("retry rejection resubmitted or discarded companion")
 			}
 			closed := u.side
-			if err := terminalTest(u).send("\x1b"); err != nil {
-				t.Fatal(err)
-			}
+			sideTestClose(t, u)
 			if u.side != nil || len(closed.Drafts.Queued) != 0 {
 				t.Fatal("close retained retry payload")
 			}

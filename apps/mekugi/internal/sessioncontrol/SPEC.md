@@ -282,15 +282,15 @@ outstanding requests retain only their own acknowledgement correlation.
 An unexpected host close stops submissions but retains root identity until the
 visible slot is dismissed, so its prompts and descendant activity retire together.
 The temporary `/btw` answer has a separate operation and exchange from the
-Side/One-off slot. Both can run concurrently, with independent follow-ups and
+One-off slot. Both can run concurrently, with independent follow-ups and
 cancellation. Main replacement closes both; closing either leaves the other intact.
 Main compaction does not delay their forks, input, answers or cleanup; new forks
 still wait for Main's submitted input and settings to settle.
 The existing request ledger correlates side replies and notifications to the
-side operation, independently of any renderer. An empty `/side` forks without
-starting a turn; `/oneoff TASK` creates the same owned internal fork and starts
-its task. Side forks retain native history for authenticated request preparation,
-remain hidden from normal session selection, and are archived on cleanup. Their
+side operation, independently of any renderer. `/oneoff TASK` creates an owned
+internal fork and starts its task. These forks retain native history for
+authenticated request preparation, remain hidden from normal session selection,
+and are archived on cleanup. Their
 history remains in Codex storage. The first side request preserves Main's reusable cached prefix
 when its model and context remain compatible. Continuing Main or the fork in either order preserves
 each thread's own prefix and history without importing the other branch's turns. Source cache
@@ -304,9 +304,9 @@ audience. Activity with unresolved ancestry remains outside Main until metadata
 settles its audience. Closing the slot retires their visible activity and prompts without
 answering them or claiming that their host processes completed. Queued answers wait
 for their own thread's assistant-message and tool-input generation, independently of Main.
-Side and One-off forks initially preserve Main’s effective settings without changing Main,
+One-off forks initially preserve Main’s effective settings without changing Main,
 except inherited ultra uses the selected model's stock ordinary equivalent, as for delegates.
-While either is selected, model and reasoning commands, pickers and shifted-arrow
+While One-off is selected, model and reasoning commands, pickers and shifted-arrow
 reasoning controls target that fork. Host confirmation and active-turn repair stay
 with the original fork through view switches; Main's settings remain independent.
 That operation borrows

@@ -40,7 +40,7 @@ func admitCacheTestFork(t *testing.T, requests *sessioncontrol.Requests[appServe
 }
 
 func TestSideCachePreparedPrefix(t *testing.T) {
-	for _, command := range []string{"btw", "side", "oneoff"} {
+	for _, command := range []string{"btw", "oneoff"} {
 		for _, bodyKey := range []bool{true, false} {
 			name := command
 			if !bodyKey {

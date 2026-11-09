@@ -28,7 +28,6 @@ var nativeCommands = []completion.Choice{
 	{Name: "/skills", Description: "List or manage skills"},
 	{Name: "/presets", Description: "Save and recall numbered prompts or slash commands"},
 	{Name: "/oneoff", Description: "Run a task in an isolated work-capable fork"},
-	{Name: "/side", Description: "Open a fresh side conversation"},
 	{Name: "/btw", Description: "Ask a side question without changing Main"},
 	{Name: "/ps", Description: "Show running processes"},
 	{Name: "/predictions", Description: "Enable or disable next-message suggestions: on|off"},

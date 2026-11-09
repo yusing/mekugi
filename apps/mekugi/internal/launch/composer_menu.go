@@ -8,7 +8,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -41,11 +40,8 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 	case sessionpresentation.MenuSettings:
 		view.Setting = p.Setting
 	case sessionpresentation.MenuSideReplace:
-		view.Title = "Replace Side?"
-		if p.sideTask != nil {
-			view.Title = "Replace with One-off?"
-		}
-		view.Explanation = "Replace closes only Side, interrupts its running answer and creates a fresh snapshot of Main."
+		view.Title = "Replace One-off?"
+		view.Explanation = "Replace closes only One-off, interrupts its running work and creates a fresh snapshot of Main."
 	case sessionpresentation.MenuArchive:
 		view.Title = "Archive this session?"
 		view.Explanation = archivePrompt(control)
@@ -80,26 +76,20 @@ func (session *nativeSession) applyMenuResult(attached *attachedPresentation, pi
 			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 			return true
 		}
-		if result.Action.Choice.ID == 2 && (side == nil || *side == nil || (*side).Key != picker.sideTarget) {
+		if result.Action.Choice.ID == 2 && (picker.sideTask == nil || side == nil || *side == nil || (*side).Key != picker.sideTarget) {
 			setNotice(&attached.feedback, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return true
 		}
 		picker.Open, picker.Kind, picker.Choices = false, "", nil
 		if result.Action.Choice.ID == 2 {
-			pending := conversationmodel.Input{}
-			oneoff := picker.sideTask != nil
+			pending := prepareDraft(picker, attached.cwd, session.skillEnvironment, sideTaskDraft(*picker.sideTask))
+			pending.Origin = attached.view
+			pending.Delivery = picker.sideTaskDelivery
 			sourceEditor := *editor
-			if oneoff {
-				pending = prepareDraft(picker, attached.cwd, session.skillEnvironment, sideTaskDraft(*picker.sideTask))
-				pending.Origin = attached.view
-				pending.Delivery = picker.sideTaskDelivery
-			}
 			err := closeSide(attached, &session.Client, editor, &session.questions, &session.approvals, side, &session.ownedImages)
 			if err == nil {
-				if oneoff {
-					sourceEditor.Take()
-				}
-				err = openFreshSide(attached, &session.Client, editor, side, session.settings, presentationTime(clock), oneoff, pending)
+				sourceEditor.Take()
+				err = openFreshSide(attached, &session.Client, editor, side, session.settings, presentationTime(clock), pending)
 			}
 			if err != nil {
 				setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)

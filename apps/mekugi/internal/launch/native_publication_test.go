@@ -266,7 +266,7 @@ func TestNativeEditorEffectKeepsOriginatingDraft(t *testing.T) {
 			u.startSession("main", "/workspace")
 			c := nativeTestPromptClient(u)
 			main := c.editor("main")
-			main.InsertText("/side")
+			main.InsertText("/oneoff initial task")
 			_, target := c.selectedEditor()
 			if changed {
 				main.InsertText(" newer")
@@ -276,11 +276,11 @@ func TestNativeEditorEffectKeepsOriginatingDraft(t *testing.T) {
 			event := c.event
 			event.Frame.View.Input = sessionpresentation.Thread{ID: "side"}
 			event.Frame.View.Displayed = event.Frame.View.Input
-			event.Frame.Effects = []sessionapi.NativeEffect{{ID: 1, Thread: "main", Target: &target, Action: &composer.Action{Kind: composer.DeleteAction, End: len("/side")}}}
+			event.Frame.Effects = []sessionapi.NativeEffect{{ID: 1, Thread: "main", Target: &target, Action: &composer.Action{Kind: composer.DeleteAction, End: len("/oneoff initial task")}}}
 			c.accept(event)
 			want := ""
 			if changed {
-				want = "/side newer"
+				want = "/oneoff initial task newer"
 			}
 			if main.Text != want || side.Text != "private side draft" || c.effect != 1 {
 				t.Fatalf("effect lost its owner or revision guard: main=%q side=%q receipt=%d", main.Text, side.Text, c.effect)

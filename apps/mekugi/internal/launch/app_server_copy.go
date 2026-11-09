@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
@@ -28,9 +29,6 @@ func (session *nativeSession) showCopyPicker(attached *attachedPresentation, pic
 	if attached.presentation.View().BTW != nil {
 		answerOwner = session.Client.BTW
 	}
-	if answerOwner == nil && attached.presentation.DisplayingSide() && *side != nil && !(*side).OneOff {
-		answerOwner = *side
-	}
 	if answerOwner != nil {
 		answers := answerOwner.Answer
 		if answerOwner.Busy || answerOwner.Starting {
@@ -48,7 +46,7 @@ func (session *nativeSession) showCopyPicker(attached *attachedPresentation, pic
 	} else {
 		source, thread, agent := attached.source, session.Client.Thread, "Main"
 		if attached.presentation.DisplayingSide() {
-			source, thread, agent = attached.childSource, (*side).Thread, (*side).Caller()
+			source, thread, agent = attached.childSource, (*side).Thread, sessionpresentation.SideCaller
 		}
 		for _, entry := range slices.Backward(source.Entries) {
 			n := entry.Source.Native

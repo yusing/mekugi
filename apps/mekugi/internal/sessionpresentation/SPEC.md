@@ -36,7 +36,7 @@ refreshes owner state nor advances its version. Repeated publication of unchange
 facts keeps the version; nested values returned to consumers are detached copies.
 Menu identity, active kind and preferred choice belong to this attachment;
 completion targets and choices remain Conversation values.
-The current side answer and its running state share this publication. Side and BTW dismissal
+The current side answer and its running state share this publication. One-off and BTW dismissal
 names its captured conversation and exchange, so unrelated progress cannot prevent
 closing it or redirect a delayed dismissal to a replacement conversation. Closing
 the side removes its visible exchange immediately while Control retains any
@@ -122,7 +122,7 @@ chooser, detail acquisition and delivery receipts. Client editors remain local.
 Input, prompt, dialog, display and history actions remain admissible across
 unrelated status, output and feedback publications. Their owners check the
 originating attachment and the bound destination, work, editor or overlay identity.
-Navigation does not retarget an action already bound to Main, Side or an Activity
+Navigation does not retarget an action already bound to Main, One-off or an Activity
 source. Pending acquisition and editor consequences remain with that original owner.
 Reference insertion retains its original input thread and editor; opening details
 uses the captured feed and source even after display navigation.
@@ -384,8 +384,8 @@ and generation; candidates remain hidden until host confirmation.
 The live composer's runtime supplies its turn state and user-only feedback;
 observational child views retain a read-only label. Its caption uses the displayed thread's model, effort,
 effective tier, context and output rate; missing child settings never borrow Main's.
-Side and One-off use that same caption projection. Their confirmed fork settings,
-live settings updates, effective per-thread tier and usage stay scoped to their
+One-off uses that same caption projection. Its confirmed fork settings,
+live settings updates, effective per-thread tier and usage stay scoped to its
 own identity; switching back to Main restores Main's metrics. Closing a side
 conversation retires its displayed metrics.
 Child captions additionally show the admitted role alongside that child's
@@ -404,7 +404,7 @@ history baseline remains unknown rather than reporting zero completed compaction
 
 Live tool-input generation replaces generic Working with Activity's identified
 call in the session status and editable composer, including admitted children,
-Side and One-off. Labels refine as arguments arrive and disappear when generation
+One-off. Labels refine as arguments arrive and disappear when generation
 ends; they are not restored from history. Retry, compaction, shell, polling,
 logical waits and prompt/read-only overrides retain their status precedence.
 

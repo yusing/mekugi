@@ -17,7 +17,7 @@ func TestUISnapshotSideSettingsNotice(t *testing.T) {
 		name, command, result, notice string
 		failure                       bool
 	}{
-		{"idle", "/side", "", "Settings saved for next turn", false},
+		{"idle", "/oneoff task", "", "Settings saved for next turn", false},
 		{"applied", "/oneoff task", `{"status":"applied"}`, "Settings updated", false},
 		{"finished", "/oneoff task", `{"status":"targetUnavailable"}`, "Settings saved for next turn", false},
 		{"rejected", "/oneoff task", "", "Settings update failed: rejected", true},
@@ -30,11 +30,14 @@ func TestUISnapshotSideSettingsNotice(t *testing.T) {
 			if u.side.OneOff {
 				btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
 			}
+			if test.name == "idle" {
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "completed"}})
+			}
 			appServerTestKeys(t, u, "/effort high\r")
 			request := btwTestRequest(t, wire, "thread/settings/update", "side")
 			btwTestReply(t, u, request, `{}`)
 			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "side", "threadSettings": map[string]any{"model": "test", "effort": "high"}})
-			if u.side.OneOff {
+			if test.name != "idle" {
 				request = btwTestRequest(t, wire, "turn/settings/update", "side")
 				if test.failure {
 					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
@@ -96,7 +99,7 @@ func TestAppServerSettingsReasoningKeys(t *testing.T) {
 }
 
 func TestAppServerSideSettings(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff task"} {
+	for _, command := range []string{"/oneoff task"} {
 		t.Run(command, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.settings.Model, u.settings.Effort = "main-model", "high"
@@ -137,7 +140,7 @@ func TestAppServerSideSettings(t *testing.T) {
 
 func TestAppServerSideSettingsDuringFork(t *testing.T) {
 	u, w := newAppServerTestUI()
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	btwTestRequest(t, w, "thread/fork", "main")
 	appServerTestKeys(t, u, "/model custom\r")
 	if w.Len() != 0 || u.Settings.Pending() || u.Text != "/model custom" {

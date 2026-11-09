@@ -406,58 +406,53 @@ their execution lifetimes. Restoration never automatically resubmits input.
 
 ## Side questions
 
-`/side` opens a fresh ephemeral snapshot of Main in the shared tab bar. Only one
-side conversation is open at a time. `/oneoff TASK` uses the same slot for a
-work-capable ephemeral fork, selects it on submission, and labels it One-off.
-Creating either kind when the slot is occupied offers Replace or Cancel;
-Replace closes the previous side before creating a distinct host thread, while
-Cancel leaves it unchanged.
-Selecting Side displays its conversation through the shared Main-pane transcript
-and routes ordinary composer input to Side. Main and Side retain separate drafts;
-selecting a subagent remains read-only. Side settings are the effective model,
-reasoning effort and service tier captured from Main when its snapshot is created.
-Model and reasoning settings target the selected fork; Main-only commands require
-returning to Main. `/side`, `/oneoff`,
-`/fork` and `/btw` are unavailable in Side and One-off, including command completion.
+`/oneoff TASK` opens a work-capable ephemeral snapshot of Main in the shared tab
+bar, selects it on submission, and labels it One-off. Only one One-off conversation
+is open at a time. Creating another offers Replace or Cancel; Replace closes the
+previous fork before creating a distinct host thread, while Cancel preserves the
+conversation and requested task.
+Selecting One-off displays its conversation through the shared Main-pane transcript
+and routes composer input to its separate draft. Admitted live children have their
+own editable composers; historical and replay views remain read-only.
+Model and reasoning settings target the selected fork; Main-only commands
+require returning to Main. `/oneoff`, `/fork` and `/btw` are unavailable in One-off,
+including command completion.
 
 Pending Main input settles before the snapshot; already-running Main work continues.
 Later Main activity does not enter follow-ups. Codex owns ephemeral history and
-context. Side answers request no tools, disable environment access and use read-only
-permissions without approvals; Codex does not guarantee that non-environment tools
-are unavailable. Answer-only Side events never enter Main's questions, notifications
-or transcript.
-One-off inherits Main's tools, environments and permissions and uses the ordinary
-Activity, change-evidence, questions and approval workflows with its own host
-identities. Its instructions limit work to requests in the fork. Main remains
+context. One-off inherits Main's tools, environments and permissions and uses the
+ordinary Activity, change-evidence, questions and approval workflows with its own
+host identities. Its instructions limit work to requests in the fork. Main remains
 independently usable, and no one-off result is submitted back to Main. Tool edits
 and other external effects remain real and may affect their shared workspace.
 
-Completed Side and One-off results remain selectable while idle. One-off supports
-host compaction independently of Main. Composer input steers a running Side or
-One-off turn through its own host identity. Input during fork/start admission stays
-in the draft until its turn is ready. Failures remain visible and rejected input retains
-attachments for retry in the same conversation. Rejected attachment companions
-for a One-off descendant retain their original recipient in the waiting queue.
-Enter in an empty One-off composer retries one companion; closing the slot cancels
-queued retries.
-If an answer-only Side requires compaction, Main stays
-untouched: compact Main and create a fresh side snapshot.
-The selected side composer shows loading, answering and failure state. Escape closes
-Side after dismissing selection or menus, interrupting only its running turn and
+Completed One-off results remain selectable while idle. One-off supports host
+compaction independently of Main. Composer input steers its running turn through
+its own host identity. Input during fork/start admission stays in the draft until
+its turn is ready. Failures remain visible and rejected input retains attachments
+for retry in the same conversation. Rejected attachment companions for a One-off
+descendant retain their original recipient in the waiting queue. Enter in an empty
+One-off composer retries one companion; closing the slot cancels queued retries.
+The selected composer shows loading, working and failure state. Escape closes the
+slot after dismissing selection or menus, interrupting only its running turn and
 archiving its host thread while retaining its history in Codex storage.
 
 [Session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md#session-replacement-and-exit)
 retains delayed fork/start correlation and cleanup after close or Main replacement.
 The transient conversation retains at most 256 KiB and 256 items across questions
-and answers, dropping oldest exchanges with a truncation notice. Side membership,
+and answers, dropping oldest exchanges with a truncation notice. Fork membership,
 answers and drafts are invocation-local and are not restored on resume.
 
 `/btw QUESTION` owns a separate answer-only thread and temporary answer dock.
 It snapshots Main independently and never reuses, replaces, blocks or closes the
-Side/One-off slot. Repeated `/btw` requests follow up its own conversation.
+One-off slot. Repeated `/btw` requests follow up its own conversation.
+BTW answers request no tools, disable environment access and use read-only
+permissions without approvals; Codex does not guarantee that non-environment tools
+are unavailable. Their events do not enter Main's questions, notifications or
+transcript. If compaction is required, close the dock, compact Main and ask again.
 Its dock is mounted only on Main and stays alive when another thread is displayed.
-Escape on Main closes only its dock before affecting the displayed conversation. Main,
-Side and One-off input remain usable while the answer runs. Its bounded answer
+Escape on Main closes only its dock before affecting the displayed conversation.
+Main and One-off input remain usable while the answer runs. Its bounded answer
 history, pending request, failure recovery and delayed cleanup have independent
 lifetimes. Rejected BTW input returns to Main. Main replacement closes both transient conversations.
 

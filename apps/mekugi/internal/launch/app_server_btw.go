@@ -36,46 +36,37 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 		b.Drafts.Queued = b.Drafts.Queued[1:]
 		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
 	}
-	oneoff := sideCommand(text) == "/oneoff"
-	if text == "/side" || oneoff {
+	if sideCommand(text) == "/oneoff" {
 		if session.Client.Thread == "" || session.restoring != nil || session.Client.Replacement.Pending() {
 			setNotice(&attached.feedback, presentationTime(clock), "Wait for the conversation to load before opening a side conversation", false)
 			return nil
 		}
-		if oneoff && strings.TrimSpace(strings.TrimPrefix(text, "/oneoff")) == "" {
+		if strings.TrimSpace(strings.TrimPrefix(text, "/oneoff")) == "" {
 			setNotice(&attached.feedback, presentationTime(clock), "Use /oneoff TASK", false)
 			return nil
 		}
-		if oneoff && !preparation.admit((*editor).Draft, &session.ownedImages) {
+		if !preparation.admit((*editor).Draft, &session.ownedImages) {
 			setNotice(&attached.feedback, presentationTime(clock), "The prepared input was canceled or is unavailable.", true)
 			return nil
 		}
 		picker.sideTask = nil
 		if *side != nil {
-			if oneoff {
-				draft := preparation.snapshot((*editor).Draft.Clone())
-				picker.sideTask = &draft
-				picker.sideTaskDelivery = attached.effects.input()
-			}
-			if !oneoff {
-				session.deleteDraftRange(attached, picker, editor, *side, clock, overlay, 0, len((*editor).Text))
-			}
+			draft := preparation.snapshot((*editor).Draft.Clone())
+			picker.sideTask = &draft
+			picker.sideTaskDelivery = attached.effects.input()
 			picker.sideTarget = (*side).Key
 			picker.openMenu("side-replace")
-			picker.Choices = []completion.Choice{{ID: 1, Name: "Cancel", Description: "Keep the current side conversation"}, {ID: 2, Name: "Replace", Description: "Close Side and create a fresh snapshot of Main"}}
+			picker.Choices = []completion.Choice{{ID: 1, Name: "Cancel", Description: "Keep the current One-off conversation"}, {ID: 2, Name: "Replace", Description: "Close One-off and create a fresh snapshot of Main"}}
 			return nil
 		}
 		draft := preparation.take(*editor)
-		if oneoff {
-			pending := prepareDraft(picker, attached.cwd, session.skillEnvironment, sideTaskDraft(draft))
-			pending.Origin = attached.view
-			pending.Delivery = attached.effects.input()
-			if err := openFreshSide(attached, &session.Client, editor, side, session.settings, presentationTime(clock), true, pending); err != nil {
-				return err
-			}
-			return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+		pending := prepareDraft(picker, attached.cwd, session.skillEnvironment, sideTaskDraft(draft))
+		pending.Origin = attached.view
+		pending.Delivery = attached.effects.input()
+		if err := openFreshSide(attached, &session.Client, editor, side, session.settings, presentationTime(clock), pending); err != nil {
+			return err
 		}
-		return openFreshSide(attached, &session.Client, editor, side, session.settings, presentationTime(clock), false, conversationmodel.Input{})
+		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
 	}
 
 	question := text
@@ -400,12 +391,12 @@ func closeSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 	return control.Requests.ReleaseSide(b)
 }
 
-func openFreshSide(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, side **sessioncontrol.Side, settings preferences.Applied, now time.Time, oneoff bool, pending conversationmodel.Input) error {
-	answer := &conversationmodel.SideAnswer{OneOff: oneoff}
+func openFreshSide(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, side **sessioncontrol.Side, settings preferences.Applied, now time.Time, pending conversationmodel.Input) error {
+	answer := &conversationmodel.SideAnswer{OneOff: true}
 	answer.Begin(strings.TrimSpace(pending.Text), pending)
 	attached.conversation.Side = answer
 	*side = &sessioncontrol.Side{SideAnswer: answer, ForkPending: true, Busy: true}
-	target := sessionpresentation.Thread{ID: "side:" + answer.Key, Caller: answer.Caller()}
+	target := sessionpresentation.Thread{ID: "side:" + answer.Key, Caller: sessionpresentation.SideCaller}
 	attached.presentation.SetSide(target)
 	if err := attached.presentation.Display(sessionpresentation.DisplayIntent{Version: attached.presentation.View().Version, Thread: target}); err != nil {
 		return err
@@ -420,9 +411,6 @@ func openFreshSide(attached *attachedPresentation, control *sessioncontrol.Clien
 
 // sideCommand admits exact command boundaries shared by Main and the side composer.
 func sideCommand(text string) string {
-	if text == "/side" {
-		return text
-	}
 	for _, command := range []string{"/btw", "/oneoff"} {
 		if text == command || strings.HasPrefix(text, command+" ") || strings.HasPrefix(text, command+"\n") || strings.HasPrefix(text, command+"\t") {
 			return command

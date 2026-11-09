@@ -171,17 +171,3 @@ func (s *SideAnswer) bound() {
 		retain(&s.Answer[i].Text)
 	}
 }
-
-// Label and Caller identify the shared side destination without changing host identity.
-func (s *SideAnswer) Label() string {
-	if s.OneOff {
-		return "One-off"
-	}
-	return "Side"
-}
-func (s *SideAnswer) Caller() string {
-	if s.OneOff {
-		return "/oneoff"
-	}
-	return "/side"
-}

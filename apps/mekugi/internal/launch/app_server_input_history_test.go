@@ -16,14 +16,11 @@ import (
 )
 
 func TestSideInputHistoryAcknowledgedAndPublished(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff first"} {
+	for _, command := range []string{"/oneoff first"} {
 		t.Run(command, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			appServerTestKeys(t, u, command+"\r")
 			btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
-			if command == "/side" {
-				appServerTestKeys(t, u, "first\r")
-			}
 			start := btwTestRequest(t, wire, "turn/start", "side")
 			if len(u.Editor.InputHistory) != 0 {
 				t.Fatal("unacknowledged Side input entered history")
@@ -58,9 +55,8 @@ func TestSideInputHistoryAcknowledgedAndPublished(t *testing.T) {
 
 func TestSideInputHistoryRejectAndRetry(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff rejected\r")
 	btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"old-side"}}`)
-	appServerTestKeys(t, u, "rejected\r")
 	start := btwTestRequest(t, wire, "turn/start", "old-side")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"rejected"}}`, start.ID))
 	if u.Text != "rejected" || len(u.Editor.InputHistory) != 0 {
@@ -75,8 +71,9 @@ func TestSideInputHistoryRejectAndRetry(t *testing.T) {
 
 func TestSideInputHistoryRolloverKeepsAttachmentIdentity(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
+	oneoffTestSettle(t, u, wire, "side")
 	client := nativeTestPromptClient(u)
 	for i := range 101 {
 		draft := composer.Draft{Text: "[Image 1]", Images: []composer.Token{{Start: 0, End: 9, Path: fmt.Sprintf("/image-%d.png", i)}}}

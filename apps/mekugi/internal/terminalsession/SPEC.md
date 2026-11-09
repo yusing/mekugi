@@ -475,19 +475,18 @@ clipboard content. Streaming and other threads cannot replace that response.
 Enter copies and Escape cancels; absent responses show an explicit empty state.
 Copying during work neither interrupts nor submits input.
 
-The single side conversation has a selectable Side or One-off tab beside Main in
-the shared tab bar. It uses the existing tab selection styling and remains
-available without the optional Agents pane. The tab disappears when Side closes.
-It uses the same Main-pane transcript, scrolling, selection and copying as other
-threads. Selected Side input targets its own draft; Main and subagent selection
-remain available. `/side` creates a fresh snapshot, offering Replace/Cancel when
-one exists. `/oneoff TASK` selects a work-capable fork in that same slot; its
-completed result stays available while idle. The shared choice menu preserves the
-prior conversation and requested task on cancellation.
-Escape dismisses selection and menus before closing Side under
+The One-off conversation has a selectable tab beside Main in the shared tab bar.
+It uses existing tab selection styling and remains available without the optional
+Agents pane. Its tab disappears on close. It uses the same Main-pane transcript,
+scrolling, selection and copying as other threads, with its own composer draft.
+Main and subagent selection remain available. `/oneoff TASK` selects a work-capable
+snapshot of Main; its completed result stays available while idle. Creating another
+One-off offers Replace/Cancel, preserving the prior conversation and requested task
+on cancellation.
+Escape dismisses selection and menus before closing the conversation under
 [Conversation's cleanup contract](../../../../modules/conversation/SPEC.md#side-questions).
 An independent `/btw` answer dock appears only on Main above the composer, without replacing
-the displayed transcript. Escape closes that dock before Side; Page Up/Down
+the displayed transcript. Escape closes that dock before the One-off slot; Page Up/Down
 scroll its answer, and `/copy` selects its latest completed response while open.
 
 ## Preferences

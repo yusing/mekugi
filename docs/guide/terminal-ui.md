@@ -5,7 +5,7 @@ Panes, composer controls and dialogs of the native terminal UI.
 In a standalone terminal, Main starts at full width, with Agents below. Toggle Diff to split the view;
 close it to restore full width. Click a child to switch the displayed transcript.
 Live subagents use their own composer, prompts and settings. Main, children and
-Side retain separate drafts; historical views remain read-only. Narrow terminals show one pane.
+One-off retain separate drafts; historical views remain read-only. Narrow terminals show one pane.
 
 | Action | Shortcut |
 | --- | --- |
@@ -56,28 +56,24 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   beside a native file, or from the workspace for uploads, selections and managed
   skills. The selected source counts as depth 1; depth 3 is the last acquired level.
   Deeper or failed reads show omission notices. Directory trees are not expanded.
-- `/side` creates a fresh answer-only snapshot with a Side tab beside Main. Only one
-  Side is open; repeat `/side` to choose Replace or Cancel. Select Side to read or
-  reply with its own draft.
-  Esc closes it and interrupts only its answer. Side, One-off and BTW retain native
-  history in internal threads, hidden from normal session selection and archived
-  when their operations close. Closed slots are not restored on resume. If
-  compaction is needed, compact Main and create a fresh side.
-- `/oneoff TASK` runs isolated work in the same side slot, inheriting Main's tools
-  and permissions. It selects One-off immediately and keeps the completed result
-  available. Main stays usable and receives no one-off transcript; file edits and
-  other external effects still affect the shared workspace. Replace or Cancel
-  chooses what happens when Side or One-off is already open.
+- `/oneoff TASK` opens an isolated work-capable snapshot with a One-off tab beside
+  Main, inheriting Main's tools and permissions. It selects One-off immediately and
+  keeps completed results available. Main stays usable and receives no one-off
+  transcript; file edits and other external effects still affect the shared
+  workspace. Only one One-off is open; creating another offers Replace or Cancel.
+  Esc closes it and interrupts its running turn. One-off and BTW retain native history in
+  internal threads hidden from normal session selection, archived when their
+  operations close. Closed slots are not restored on resume.
 - `/btw QUESTION` opens an independent temporary answer dock on Main. It stays
-  alive but hidden while viewing Side/One-off. Return to Main for `/side`,
-  `/oneoff`, `/fork` and `/btw`; repeat `/btw` for a follow-up. Esc on Main
-  closes only that dock.
+  alive but hidden while viewing One-off. Return to Main for `/oneoff`, `/fork`
+  and `/btw`; repeat `/btw` for a follow-up. Esc on Main closes only that dock.
+  If its answer requires compaction, close the dock, compact Main and ask again.
 - `/model`, `/effort` (or `/reasoning`), and `/tier` open pickers or accept values.
   Combine choices with `/model MODEL --reasoning=high --speed=fast`; omit MODEL
   to keep it, and use `--speed=standard` to clear the tier.
   `/tier default` clears the tier. Changes reach upcoming steps without editing config.
-  Model and reasoning controls, including Shift+Up/Down, target the selected Main,
-  Side or One-off conversation independently. Service-tier controls target Main.
+  Model and reasoning controls, including Shift+Up/Down, target the selected Main
+  or One-off conversation independently. Service-tier controls target Main.
 - `/permissions` lists Main's permission profiles. Select one, or use
   `/permissions PROFILE --approval-policy=on-request --reviewer=user`.
   Changes apply from the next turn, after Codex confirms them. Queued input waits
@@ -115,7 +111,7 @@ Click an attachable child to read its full transcript; click Main to return.
 Claude delegate rows remain noninteractive and show only available metrics.
 Each runtime keeps its own composer draft, prompts and settings. The child composer
 shows its role, model, reasoning effort and service tier. Historical views remain
-read-only. The Side tab selects a separate editable conversation.
+read-only. The One-off tab selects a separate editable conversation.
 In Agents, arrows navigate threads and `a` returns to Main. In the transcript,
 Esc resumes following. The roster shows active time, round trips,
 throughput, usage, estimated API cost, and composed captured edits. Usage/rates survive

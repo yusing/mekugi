@@ -33,7 +33,7 @@ func TestSideForkWaitsForEffectiveCatalog(t *testing.T) {
 	u.Requests.CatalogPending = true
 	u.settings.Model, u.settings.Effort = "selected", "ultra"
 	appServerTestRequest(t, u, "42", "config/read")
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	if wire.Len() != 0 {
 		t.Fatalf("fork before config: %s", wire.String())
 	}
@@ -174,16 +174,13 @@ func TestAppServerBTWBusyRetainsDraft(t *testing.T) {
 }
 
 func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff  question  "} {
+	for _, command := range []string{"/oneoff  question  "} {
 		t.Run(command, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.Turn = "main-turn"
 			appServerTestKeys(t, u, command+"\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			if command == "/side" {
-				appServerTestKeys(t, u, "  question  \r")
-			}
 			start := btwTestRequest(t, w, "turn/start", "work-side")
 			if got := start.Params.Input; len(got) != 2 || got[1].Text != "question" {
 				t.Fatalf("start input = %+v", got)
@@ -240,36 +237,6 @@ func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
 				t.Fatal("side input changed Main's turn")
 			}
 		})
-	}
-}
-
-func TestSideDeferredSteerStartsOwnExchangeBeforeNewerInput(t *testing.T) {
-	u, w := newAppServerTestUI()
-	u.attached.cwd = t.TempDir()
-	appServerTestKeys(t, u, "/side\r")
-	fork := btwTestRequest(t, w, "thread/fork", "main")
-	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
-	appServerTestKeys(t, u, "original question\r")
-	start := btwTestRequest(t, w, "turn/start", "side")
-	btwTestReply(t, u, start, `{"turn":{"id":"first-turn"}}`)
-	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
-	skills := btwTestRequest(t, w, "skills/list", "")
-	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"first-turn","status":"completed"}}}`)
-	appServerTestKeys(t, u, "newer question\r")
-	btwTestReply(t, u, skills, fmt.Sprintf(`{"data":[{"cwd":%q,"skills":[]}]}`, u.attached.cwd))
-	deferred := btwTestRequest(t, w, "turn/start", "side")
-	if deferred.Params.Environments == nil || len(deferred.Params.Environments) != 0 || u.side.Question != "use $review please" || len(u.side.History) != 1 {
-		t.Fatalf("deferred input bypassed Side start lifecycle: %+v, %+v", deferred.Params, u.side.SideAnswer)
-	}
-	btwTestReply(t, u, deferred, `{"turn":{"id":"second-turn"}}`)
-	newer := btwTestRequest(t, w, "turn/steer", "side")
-	if len(newer.Params.Input) != 1 || newer.Params.Input[0].Text != "newer question" {
-		t.Fatalf("newer input lost or reordered: %+v", newer.Params.Input)
-	}
-	btwTestReply(t, u, newer, `{}`)
-	frame := strings.Join(u.sideFrame(100, 24), "\n")
-	if !strings.Contains(frame, "use $review please") || !strings.Contains(frame, "newer question") {
-		t.Fatalf("deferred questions missing from transcript: %s", frame)
 	}
 }
 
@@ -481,14 +448,15 @@ func selectSideThread(t *testing.T, u *appServerUI, thread sessionpresentation.T
 
 func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 	u, w := newAppServerTestUI()
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	if !u.attached.presentation.DisplayingSide() {
 		t.Fatal("fresh side not selected")
 	}
 	btwTestReply(t, u, fork, `{"thread":{"id":"first-side"}}`)
+	oneoffTestSettle(t, u, w, "first-side")
 	if w.Len() != 0 || u.side.Thread != "first-side" {
-		t.Fatal("empty side started a turn or lost identity")
+		t.Fatal("settled One-off sent a request or lost identity")
 	}
 	appServerTestKeys(t, u, "side draft")
 	selectSideThread(t, u, u.attached.presentation.View().Main)
@@ -502,7 +470,7 @@ func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	u.Editor.Take()
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	if w.Len() != 0 || u.picker.Kind != sessionpresentation.MenuSideReplace {
 		t.Fatal("replacement did not ask")
 	}
@@ -510,7 +478,7 @@ func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 	if w.Len() != 0 || u.side.Thread != "first-side" {
 		t.Fatal("cancel changed Side")
 	}
-	appServerTestKeys(t, u, "/side\r\x1b[B\r")
+	appServerTestKeys(t, u, "\r\x1b[B\r")
 	lines := bytes.Split(bytes.TrimSpace(w.Bytes()), []byte{'\n'})
 	if len(lines) != 2 {
 		t.Fatalf("replacement requests = %s", w.String())
@@ -527,6 +495,7 @@ func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 		t.Fatalf("wrong replacement: %+v %+v", interrupt, replacement)
 	}
 	btwTestReply(t, u, replacement, `{"thread":{"id":"second-side"}}`)
+	_ = btwTestRequest(t, w, "turn/start", "second-side")
 	btwTestReply(t, u, interrupt, `{}`)
 	btwTestRequest(t, w, "thread/archive", "first-side")
 	if u.side.Thread != "second-side" || u.Thread != "main" || u.attached.conversation.Editor.Text != "" {
@@ -541,40 +510,13 @@ func TestAppServerSideFreshReplacementAndDraftIsolation(t *testing.T) {
 	}
 }
 
-func TestUISnapshotSideHeaderAndTranscript(t *testing.T) {
-	u, w := newAppServerTestUI()
-	u.startSession("main", "/workspace")
-	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local)
-	u.clock = func() time.Time { return now }
-	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
-	appServerTestKeys(t, u, "/side\r")
-	fork := btwTestRequest(t, w, "thread/fork", "main")
-	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
-	appServerTestKeys(t, u, "First question\r")
-	start := btwTestRequest(t, w, "turn/start", "side")
-	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-	appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "side", "turnId": "side-turn", "itemId": "a", "delta": "**First answer**"})
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "completed"}})
-	for _, width := range []int{100, 40} {
-		rows := u.sideFrame(width, 24)
-		text := strings.Join(rows, "\n")
-		if !strings.Contains(text, "First question") || !strings.Contains(text, "First answer") || !strings.Contains(text, "Side") {
-			t.Fatalf("side absent: %s", text)
-		}
-		uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/side-header-%d.txt", width), text+"\n")
-	}
-	selectSideThread(t, u, u.attached.presentation.View().Main)
-	uisnapshot.Assert(t, "testdata/snapshots/side-header-main.txt", strings.Join(u.sideFrame(100, 24), "\n")+"\n")
-	appServerTestKeys(t, u, "/side\r")
-	uisnapshot.Assert(t, "testdata/snapshots/side-replace.txt", strings.Join(u.sideFrame(100, 24), "\n")+"\n")
-}
-
 func TestSideTabClickAndAcquiredInputIsolation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
+	oneoffTestSettle(t, u, w, "side")
 	u.testMainFrame(80, 24, 0)
 	v := u.attached.presentation.View()
 	intent := sessionpresentation.ComposerIntent{Thread: v.Input.ID, Version: v.Version, Target: v.EditorTarget(), Operation: sessionpresentation.EditExternally}
@@ -586,12 +528,12 @@ func TestSideTabClickAndAcquiredInputIsolation(t *testing.T) {
 		t.Fatal("acquisition lost its original Side target or changed Main selection")
 	}
 	frame := strings.Join(u.sideFrame(80, 24), "\n")
-	if !strings.Contains(frame, "1 Main  Side") || strings.Contains(frame, "Agents · Side") {
+	if !strings.Contains(frame, "1 Main  One-off") || strings.Contains(frame, "Agents · One-off") {
 		t.Fatalf("side tab misplaced: %s", frame)
 	}
 	tab := terminalTest(u).SideTab
 	for _, hit := range u.shell.Agents.Hits {
-		if hit.Agent == "/side" {
+		if hit.Agent == "/oneoff" {
 			t.Fatal("Side retained a roster header target")
 		}
 	}
@@ -622,9 +564,10 @@ func TestUISnapshotSideTabs(t *testing.T) {
 	u.startSession("main", "/workspace")
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
+	oneoffTestSettle(t, u, w, "side")
 	for _, width := range []int{40, 100} {
 		var rows []string
 		for _, target := range []sessionpresentation.Thread{u.attached.presentation.View().Main, u.attached.presentation.View().SideThread} {
@@ -665,9 +608,10 @@ func TestSideMainPromptResolutionIsolation(t *testing.T) {
 		t.Run(fmt.Sprint(secret), func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.startSession("main", t.TempDir())
-			appServerTestKeys(t, u, "/side\r")
+			appServerTestKeys(t, u, "/oneoff initial task\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
+			oneoffTestSettle(t, u, w, "side")
 			selectSideThread(t, u, u.attached.presentation.View().Main)
 			u.Turn = "turn"
 			questionTestSync(t, u, "prompt", secret)
@@ -692,41 +636,14 @@ func TestSideMainPromptResolutionIsolation(t *testing.T) {
 		})
 	}
 }
-func TestSideProjectionOrderingAfterFeedTrim(t *testing.T) {
-	u, w := newAppServerTestUI()
-	appServerTestKeys(t, u, "/side\r")
-	fork := btwTestRequest(t, w, "thread/fork", "main")
-	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
-	appServerTestKeys(t, u, "why?\r")
-	start := btwTestRequest(t, w, "turn/start", "side")
-	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-	addTraffic := func(n int) {
-		for range n {
-			seq := u.attached.session.Activity().NextSequence()
-			u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: seq, Agent: "/root/child", Kind: "text", Text: fmt.Sprint(seq)}}})
-		}
-	}
-	addTraffic(1000)
-	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"side","turnId":"side-turn","itemId":"answer","delta":"side answer"}}`)
-	addTraffic(1000)
-	u.sideFrame(100, 24)
-	var texts []string
-	for _, e := range u.attached.childSource.Entries {
-		if e.Source.Side {
-			texts = append(texts, e.Source.Text)
-		}
-	}
-	if len(texts) != 2 || texts[0] != "why?" || texts[1] != "side answer" {
-		t.Fatalf("side order after child traffic: %q", texts)
-	}
-}
 
 func TestSideSearchResponseKeepsOwner(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.startSession("main", t.TempDir())
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
+	oneoffTestSettle(t, u, w, "side")
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	appServerTestKeys(t, u, "@a")
 	search := pickerRequests(t, w)
@@ -745,9 +662,10 @@ func TestSideSearchResponseKeepsOwner(t *testing.T) {
 func TestSideMainApprovalResolutionIsolation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.startSession("main", t.TempDir())
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
+	oneoffTestSettle(t, u, w, "side")
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	appServerTestKeys(t, u, "main draft")
 	u.Turn = "turn"
@@ -766,13 +684,14 @@ func TestSideMainApprovalResolutionIsolation(t *testing.T) {
 func TestForeignSideDisplayPreservesReplaceMenu(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.startSession("main", t.TempDir())
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
+	oneoffTestSettle(t, u, w, "side")
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	stale := sessionpresentation.DisplayIntent{Version: u.attached.presentation.View().Version, Thread: u.attached.presentation.View().SideThread}
 	stale.Version.Attachment++
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	if u.picker.Kind != sessionpresentation.MenuSideReplace {
 		t.Fatal("fixture menu absent")
 	}
@@ -787,7 +706,7 @@ func TestForeignSideDisplayPreservesReplaceMenu(t *testing.T) {
 func TestSideMainForkReplacementCleanup(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	u.settings.Effort = "high"
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	sideFork := btwTestRequest(t, w, "thread/fork", "main")
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	appServerTestKeys(t, u, "/btw question\r")
@@ -814,9 +733,10 @@ func TestSideMainForkReplacementCleanup(t *testing.T) {
 func TestSideSwitchRetiresRewindPickerRead(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	rewindTestUser(t, u)
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
+	oneoffTestSettle(t, u, w, "side")
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	appServerTestKeys(t, u, "/rewind\r")
 	read := resumeTestOne(t, w, "thread/read")
@@ -829,16 +749,13 @@ func TestSideSwitchRetiresRewindPickerRead(t *testing.T) {
 }
 
 func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff inspect"} {
+	for _, command := range []string{"/oneoff inspect"} {
 		t.Run(command, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.clock = func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.Local) }
 			appServerTestKeys(t, u, command+"\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			if command == "/side" {
-				appServerTestKeys(t, u, "side task\r")
-			}
 			start := btwTestRequest(t, w, "turn/start", "work-side")
 			btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
 			owner := u.side
@@ -860,7 +777,7 @@ func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
 			for _, width := range []int{40, 100} {
 				u.sideFrame(width, 24)
 				rows := terminalTest(u).Frame.Rows
-				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/btw-alongside-%s-%d.txt", owner.Label(), width), rows, width)
+				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/btw-alongside-One-off-%d.txt", width), rows, width)
 			}
 			selectSideThread(t, u, u.attached.presentation.View().Main)
 			appServerTestKeys(t, u, "kept side draft")
@@ -893,16 +810,14 @@ func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
 }
 
 func TestSideCommandAndBTWDockIsolation(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff task"} {
+	for _, command := range []string{"/oneoff task"} {
 		t.Run(command, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, command+"\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			if command != "/side" {
-				start := btwTestRequest(t, w, "turn/start", "work-side")
-				btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
-			}
+			start := btwTestRequest(t, w, "turn/start", "work-side")
+			btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
 			appServerTestKeys(t, u, "\r")
 			if w.Len() != 0 || strings.Contains(u.attached.feedback.Text, "/btw") {
 				t.Fatal("empty Side input suggested an unavailable command or submitted")
@@ -958,15 +873,12 @@ func TestSideCommandAndBTWDockIsolation(t *testing.T) {
 }
 
 func TestSideRejectedInputRetriesOwnThreadWhileBTWBusy(t *testing.T) {
-	for _, command := range []string{"/side", "/oneoff question"} {
+	for _, command := range []string{"/oneoff question"} {
 		t.Run(command, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, command+"\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			if command == "/side" {
-				appServerTestKeys(t, u, "question\r")
-			}
 			start := btwTestRequest(t, w, "turn/start", "work-side")
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"temporary failure"}}`, start.ID))
 			if strings.TrimSpace(u.Text) != "question" {

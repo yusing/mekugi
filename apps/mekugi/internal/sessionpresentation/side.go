@@ -8,6 +8,8 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
+const SideCaller = "/oneoff"
+
 type SideToken struct {
 	ID    uint64
 	Key   string

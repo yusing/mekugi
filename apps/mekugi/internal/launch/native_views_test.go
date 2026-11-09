@@ -138,9 +138,10 @@ func nativeSideSettingsTest(t *testing.T) (*appServerUI, *appServerTestInput, *n
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
 	u.settings.Model, u.settings.Effort = "test", "low"
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, wire, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
+	oneoffTestSettle(t, u, wire, "side")
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	n := newNativeViews(t.Context(), sessionapi.NewLive().Native(), u.presentationState, u.activity, u.Requests)
 	t.Cleanup(n.close)
@@ -190,9 +191,10 @@ func TestNativeSidePickerWaitsForCatalog(t *testing.T) {
 
 func TestSettingsCommandRetainsInputThread(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff initial task\r")
 	fork := btwTestRequest(t, wire, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
+	oneoffTestSettle(t, u, wire, "side")
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	captured := u.attached.presentation.View()
 	selectSideThread(t, u, captured.SideThread)
@@ -210,10 +212,9 @@ func TestSettingsCommandRetainsInputThread(t *testing.T) {
 func TestDeferredSideReasoningRetainsTurn(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.settings.Model, u.settings.Effort = "test", "low"
-	appServerTestKeys(t, u, "/side\r")
+	appServerTestKeys(t, u, "/oneoff old work\r")
 	fork := btwTestRequest(t, wire, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
-	appServerTestKeys(t, u, "old work\r")
 	start := btwTestRequest(t, wire, "turn/start", "side")
 	btwTestReply(t, u, start, `{"turn":{"id":"old-turn"}}`)
 	u.modelsLoading = true
