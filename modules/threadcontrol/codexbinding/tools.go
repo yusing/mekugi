@@ -294,7 +294,11 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	if err != nil {
 		return nil, err
 	}
-	err = d.dispatchPending(ctx, target.Thread, target.Thread)
+	if kind == "followup" {
+		err = d.confirmFollowup(ctx, caller, action)
+	} else {
+		err = d.dispatchPending(ctx, target.Thread, target.Thread, nil)
+	}
 	err = errors.Join(err, d.Wake(ctx, target.Thread, time.Now()))
 	if target.Parent != "" {
 		err = errors.Join(err, d.Wake(ctx, target.Parent, time.Now()))
@@ -315,6 +319,41 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 		response["previous_status"] = action.PreviousStatus
 	}
 	return response, nil
+}
+
+// Follow-ups acknowledge their own host-confirmed start/steer, not a pending
+// intent or the completion of later input queued for the same target.
+func (d *Driver) confirmFollowup(ctx context.Context, caller control.Identity, action control.Effect) error {
+	through := &control.EffectRef{Caller: caller.Thread, ID: action.ID, Target: action.Target}
+	for {
+		changed, err := d.control.Changes(caller.Thread)
+		if err != nil {
+			return err
+		}
+		if err := d.dispatchPending(ctx, action.Target, action.Target, through); err != nil {
+			return err
+		}
+		current, err := d.control.Effect(caller.Thread, action.ID)
+		if err != nil {
+			return err
+		}
+		switch current.State {
+		case "confirmed":
+			return nil
+		case "pending", "queued", "dispatching":
+		default:
+			err := fmt.Errorf("follow-up is %s; no repeated dispatch was issued", current.State)
+			if current.Error != "" {
+				err = errors.Join(err, errors.New(current.Error))
+			}
+			return err
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (d *Driver) listAgents(caller control.Identity, raw jsontext.Value) (any, error) {

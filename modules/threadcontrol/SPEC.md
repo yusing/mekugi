@@ -83,6 +83,8 @@ native request metadata remains unchanged on the provider wire.
   actual running turn, or supersede an unsent wait/wake before reconciling host
   state. Original caller attribution remains attached. Action results identify
   the resolved target thread and visible agent name, including when input used an alias.
+  Follow-ups return after their own host-confirmed start or steer, including when
+  lifecycle dispatch owns the acknowledgement, without draining later queued input.
 - `send_message` queues attributed input without starting an idle thread. A
   matching message can satisfy an existing selected wait. Optional `btw:true`
   instead returns an independent side answer without delivering primary input.

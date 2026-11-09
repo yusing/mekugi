@@ -192,6 +192,149 @@ func TestSpawnWaitsForLifecycleOwnedPhase(t *testing.T) {
 	}
 }
 
+func TestFollowupWaitsForLifecycleAcknowledgement(t *testing.T) {
+	for _, running := range []bool{false, true} {
+		for _, outcome := range []string{"confirmed", "failed", "uncertain", "canceled"} {
+			t.Run(fmt.Sprintf("running=%t/%s", running, outcome), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					driver, _, _, caller := reconciliationFixture(t)
+					if !running {
+						if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
+							t.Fatal(err)
+						}
+					}
+					caller.Call = "followup"
+					if _, err := driver.control.PrepareAction(t.Context(), caller, "child", "followup", "next"); err != nil {
+						t.Fatal(err)
+					}
+					claimed, err := driver.control.ClaimEffect(t.Context(), caller.Thread, caller.Call)
+					if err != nil || claimed == nil {
+						t.Fatalf("claim=%+v err=%v", claimed, err)
+					}
+					ctx, cancel := context.WithCancel(t.Context())
+					defer cancel()
+					done := make(chan error, 1)
+					start := time.Now()
+					go func() {
+						result, err := driver.Call(ctx, caller, "followup_task", []byte(`{"target":"child","message":"next"}`))
+						if err == nil && !strings.Contains(string(result), `"state":"confirmed"`) {
+							err = fmt.Errorf("unconfirmed follow-up: %s", result)
+						}
+						done <- err
+					}()
+					synctest.Wait()
+					select {
+					case err := <-done:
+						t.Fatalf("follow-up returned before host acknowledgement: %v", err)
+					default:
+					}
+					if outcome == "canceled" {
+						cancel()
+						if err := <-done; !errors.Is(err, context.Canceled) {
+							t.Fatal(err)
+						}
+						retained, _ := driver.control.Effect(caller.Thread, caller.Call)
+						if retained.State != "dispatching" {
+							t.Fatalf("cancellation lost host ownership: %+v", retained)
+						}
+						return
+					}
+					receipt := control.Receipt{Turn: "followup-turn"}
+					if running {
+						receipt.Turn = "child-turn"
+					}
+					if outcome != "confirmed" {
+						receipt.Error, receipt.Uncertain = "host rejected the assignment", outcome == "uncertain"
+					}
+					if err := driver.control.EffectAcknowledged(t.Context(), caller.Thread, caller.Call, receipt); err != nil {
+						t.Fatal(err)
+					}
+					err = <-done
+					if outcome == "confirmed" && err != nil || outcome != "confirmed" && (err == nil || !strings.Contains(err.Error(), receipt.Error)) {
+						t.Fatalf("outcome %s: %v", outcome, err)
+					}
+					if elapsed := time.Since(start); elapsed != 0 {
+						t.Fatalf("acknowledgement waited for a timer: %v", elapsed)
+					}
+				})
+			})
+		}
+	}
+}
+
+type followupQueueHost struct {
+	*reconciliationHost
+	driver *Driver
+	caller control.Identity
+}
+
+func TestFollowupWaitsForOrderedPrerequisite(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		driver, _, _, caller := reconciliationFixture(t)
+		caller.Call = "prior-message"
+		if _, err := driver.control.PrepareAction(t.Context(), caller, "child", "message", "prior input"); err != nil {
+			t.Fatal(err)
+		}
+		claimed, err := driver.control.ClaimEffect(t.Context(), caller.Thread, caller.Call)
+		if err != nil || claimed == nil {
+			t.Fatalf("claim=%+v err=%v", claimed, err)
+		}
+		caller.Call = "followup"
+		done := make(chan error, 1)
+		started := time.Now()
+		go func() {
+			result, err := driver.Call(t.Context(), caller, "followup_task", []byte(`{"target":"child","message":"next"}`))
+			if err == nil && !strings.Contains(string(result), `"state":"confirmed"`) {
+				err = fmt.Errorf("unconfirmed follow-up: %s", result)
+			}
+			done <- err
+		}()
+		synctest.Wait()
+		select {
+		case err := <-done:
+			t.Fatalf("follow-up returned before its prerequisite: %v", err)
+		default:
+		}
+		if err := driver.control.EffectAcknowledged(t.Context(), caller.Thread, "prior-message", control.Receipt{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(started); elapsed != 0 {
+			t.Fatalf("follow-up waited after prerequisite confirmation: %v", elapsed)
+		}
+	})
+}
+
+func (h *followupQueueHost) Resume(context.Context, string) (control.Runtime, error) { return h, nil }
+
+func (h *followupQueueHost) Input(ctx context.Context, input control.NativeInput) (string, error) {
+	if !input.Run {
+		return "", errors.New("later input must not delay or fail the follow-up")
+	}
+	if _, err := h.driver.control.PrepareAction(ctx, h.caller, "child", "message", "later input"); err != nil {
+		return "", err
+	}
+	return h.reconciliationHost.Input(ctx, input)
+}
+
+func TestFollowupDoesNotDrainLaterInput(t *testing.T) {
+	driver, host, _, caller := reconciliationFixture(t)
+	later := caller
+	later.Call = "later-message"
+	driver.host = &followupQueueHost{reconciliationHost: host, driver: driver, caller: later}
+	caller.Call = "followup"
+	result, err := driver.Call(t.Context(), caller, "followup_task", []byte(`{"target":"child","message":"next"}`))
+	if err != nil || !strings.Contains(string(result), `"state":"confirmed"`) {
+		t.Fatalf("follow-up depended on later input: %s, %v", result, err)
+	}
+	effect, err := driver.control.Effect(later.Thread, later.Call)
+	if err != nil || effect.State != "pending" {
+		t.Fatalf("later input was dispatched by follow-up: %+v, %v", effect, err)
+	}
+}
+
 func (*reconciliationRuntime) Inspect(context.Context, string) (control.SessionDetails, error) {
 	return control.SessionDetails{}, nil
 }

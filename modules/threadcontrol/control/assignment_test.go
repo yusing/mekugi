@@ -80,10 +80,17 @@ func TestInitialAssignmentSerializesFollowupAndInterrupt(t *testing.T) {
 			caller.Call = "followup"
 			_, err = s.PrepareAction(ctx, caller, "new", "followup", "More work.")
 			must(t, err)
+			changed, err := s.Changes("root")
+			must(t, err)
 			action, err := s.ClaimEffect(ctx, "root", caller.Call)
 			must(t, err)
 			if action != nil {
 				t.Fatal("followup raced pending initial assignment")
+			}
+			select {
+			case <-changed:
+				t.Fatal("blocked followup republished unchanged state, waking its own waiter")
+			default:
 			}
 			if interrupt {
 				caller.Call = "interrupt"

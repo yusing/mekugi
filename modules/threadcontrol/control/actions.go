@@ -151,10 +151,15 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 		}
 	}
 	if member != nil && member.Wait.CompactionPending() && effect.Kind != "compact" && effect.Kind != "interrupt" {
-		return nil, nil
+		return nil, unchanged
+	}
+	blocked := unchanged
+	if effect.Kind == "interrupt" {
+		// Interruption may already have canceled undispatched work above.
+		blocked = nil
 	}
 	if member != nil && member.Wait != nil && effect.Kind != "wake" && hostOwned(member.Wait.State) {
-		return nil, nil
+		return nil, blocked
 	}
 	before := true
 	for _, other := range tree.Effects {
@@ -169,7 +174,7 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 			continue
 		}
 		if hostOwned(other.State) || before && other.State == "pending" && effect.Kind != "compact" {
-			return nil, nil
+			return nil, blocked
 		}
 	}
 	switch effectStep(*effect) {

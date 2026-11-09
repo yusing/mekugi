@@ -5,6 +5,7 @@ package codexbinding
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -59,16 +60,25 @@ func (d *Driver) Coordination() *control.Service { return d.control }
 // DispatchPending delivers already-admitted controls released by host settlement.
 // Claims serialize each target; an unresolved effect leaves its successors queued.
 func (d *Driver) DispatchPending(ctx context.Context, thread string) error {
-	return d.dispatchPending(ctx, thread, "")
+	return d.dispatchPending(ctx, thread, "", nil)
 }
 
 // Explicit controls drain only their target's ordered prerequisites, not sibling
 // operations whose latency or failure must not determine this call's result.
-func (d *Driver) dispatchPending(ctx context.Context, thread, target string) error {
+func (d *Driver) dispatchPending(ctx context.Context, thread, target string, through *control.EffectRef) error {
 	for {
 		pendingEffects, recoveryReady, err := d.control.PendingEffects(thread)
 		if err != nil {
 			return err
+		}
+		if through != nil {
+			last := slices.IndexFunc(pendingEffects, func(effect control.EffectRef) bool {
+				return effect.Caller == through.Caller && effect.ID == through.ID
+			})
+			if last < 0 {
+				return nil
+			}
+			pendingEffects = pendingEffects[:last+1]
 		}
 		progressed := false
 		for _, pending := range pendingEffects {
@@ -89,7 +99,7 @@ func (d *Driver) dispatchPending(ctx context.Context, thread, target string) err
 			break // Re-read to include controls queued during this dispatch.
 		}
 		if !progressed {
-			if !recoveryReady {
+			if through != nil || !recoveryReady {
 				return nil
 			}
 			// Settlement can promote recovery while a result was held behind
@@ -210,7 +220,7 @@ func (d *Driver) Wake(ctx context.Context, thread string, now time.Time) error {
 	if err != nil || wake == nil {
 		return err
 	}
-	return d.dispatchPending(ctx, thread, thread)
+	return d.dispatchPending(ctx, thread, thread, nil)
 }
 
 func (d *Driver) native() control.Native {

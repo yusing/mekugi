@@ -232,7 +232,7 @@ func (s *Service) HumanInput(ctx context.Context, thread, id string) (result *Ef
 		}
 		tree.Effects = append(tree.Effects, Effect{ID: id, Caller: thread, Target: thread, Kind: "human", State: "pending", Generation: member.Generation, PreviousStatus: previous})
 		result, err = tree.claimEffect(thread, id)
-		if err == nil && result == nil {
+		if (err == nil || err == unchanged) && result == nil {
 			err = errors.New("another control operation requires settlement before human input")
 		}
 		return err
