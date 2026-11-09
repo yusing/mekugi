@@ -180,3 +180,67 @@ func TestConnectorRotationCancelsPendingUpstreamHandshake(t *testing.T) {
 		t.Fatalf("rotation did not close downstream: message %s, read error %v", data, err)
 	}
 }
+
+func TestConnectorCancellationWhileAwaitingInitializationResponse(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"rotate", "close", "deadline"} {
+		t.Run(operation, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(t.Context(), initializeTimeout+2*time.Second)
+			defer cancel()
+			started, upstreamDone, handlerDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			socket, _ := upstream(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer close(upstreamDone)
+				conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{sessionapi.RPCSubprotocol}})
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer conn.CloseNow()
+				if _, _, err := conn.Read(ctx); err != nil {
+					t.Error(err)
+					return
+				}
+				close(started)
+				// Leave initialization unanswered, but observe connector retirement.
+				_, _, _ = conn.Read(ctx)
+			}))
+			bridge, path := connect(t, socket)
+			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer close(handlerDone)
+				bridge.ServeHTTP(w, r)
+			}))
+			defer remote.Close()
+			conn := dial(t, remote.URL, nil)
+			message := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"version":"` + sessionapi.ProtocolVersion + `","token":"` + readToken(t, path) + `"}}`
+			if err := conn.Write(ctx, websocket.MessageText, []byte(message)); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-started:
+			case <-ctx.Done():
+				t.Fatal("upstream did not receive initialization")
+			}
+			var err error
+			switch operation {
+			case "rotate":
+				err = bridge.Rotate()
+			case "close":
+				err = bridge.Close()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := conn.Read(ctx); err == nil || ctx.Err() != nil {
+				t.Fatalf("initialization wait did not close downstream: %v", err)
+			}
+			for label, done := range map[string]<-chan struct{}{"upstream": upstreamDone, "handler": handlerDone} {
+				select {
+				case <-done:
+				case <-ctx.Done():
+					t.Fatalf("initialization cancellation left %s blocked", label)
+				}
+			}
+		})
+	}
+}

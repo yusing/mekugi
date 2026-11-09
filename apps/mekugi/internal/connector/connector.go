@@ -323,9 +323,19 @@ func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := upstream.Write(initializeCtx, websocket.MessageText, data); err != nil {
 		return
 	}
+	upstream.SetReadLimit(sessionapi.RPCPublicationLimit)
+	// Deliver initialization before a queued downstream write can fail and
+	// cancel the opposite relay. In particular, refusal may close upstream
+	// while its response is still waiting to be forwarded to the caller.
+	typ, reader, err := upstream.Reader(initializeCtx)
+	if err != nil || typ != websocket.MessageText {
+		return
+	}
+	if sessionapi.WriteMessage(initializeCtx, downstream, typ, reader, writeTimeout) != nil {
+		return
+	}
 	stopInitialize()
 	downstream.SetReadLimit(sessionapi.RPCMessageLimit)
-	upstream.SetReadLimit(sessionapi.RPCPublicationLimit)
 	// Each direction has one reader and writer. Cancellation releases blocked
 	// reads/writes, and both loops are joined before this connection retires.
 	done := make(chan struct{}, 2)
