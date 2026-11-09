@@ -34,7 +34,9 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
@@ -600,17 +602,23 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			program += `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"reviewer",message:"GRANDCHILD_ATTRIBUTED_ASSIGNMENT",fork_turns:"all"})); text(await tools.mcp__threadcontrol__wait_agent({}));`
 		}
 	case !parent && step == 2:
-		receipt := false
 		changeID := ""
 		for _, item := range request.Input {
 			if string(item["type"]) == `"function_call_output"` || string(item["type"]) == `"custom_tool_call_output"` {
-				receipt = receipt || strings.Contains(string(item["output"]), "mchanges ")
-				if selected := regexp.MustCompile(`mchanges ([a-z]+[1-9][0-9]*)`).FindStringSubmatch(string(item["output"])); len(selected) == 2 {
-					changeID = selected[1]
+				for part, text := range binding.ExecutionOutputTexts(item["output"]) {
+					if part == 0 {
+						continue // Original host output is not a capture receipt.
+					}
+					ids, _, _ := strings.Cut(text, "\n")
+					for _, id := range strings.Fields(ids) {
+						if _, _, err := changes.ParseID(id); err == nil {
+							changeID = id
+						}
+					}
 				}
 			}
 		}
-		if !receipt {
+		if changeID == "" {
 			failure = "child shell tool output omitted its retained capture receipt"
 		}
 		if !strings.Contains(string(body), p.childDirectory) {
