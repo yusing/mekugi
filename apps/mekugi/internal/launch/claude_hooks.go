@@ -311,10 +311,15 @@ func (b *claudeBridge) batch(ctx context.Context, hook claudeHook) (jsontext.Val
 	if stopped {
 		return json.Marshal(map[string]any{"continue": false, "stopReason": "Waiting for the admitted Thread Control outcome"})
 	}
+	checkpoint, err := b.execution.shared.ToolBoundarySummaries(ctx, control.Identity{Thread: b.info.Thread, Session: b.info.Session, Turn: b.runtime.CurrentTurn()})
+	if err != nil {
+		return nil, err
+	}
 	b.mu.Lock()
 	receipts := strings.Join(b.pendingReceipts, "\n")
 	b.pendingReceipts = nil
 	b.mu.Unlock()
+	receipts = strings.TrimSpace(receipts + "\n" + checkpoint)
 	if details, err := b.runtime.Inspect(ctx, b.info.Thread); err == nil && details.ContextTokens != nil && details.ContextWindow != nil {
 		sample := contextnotice.Sample{Tokens: *details.ContextTokens, Window: *details.ContextWindow}
 		if details.Compactions != nil {

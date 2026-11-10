@@ -109,7 +109,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		if tool.Name == "wait_agent" && (!strings.Contains(tool.Description, "ends the host turn") || !strings.Contains(tool.Description, "later wait_agent output")) {
 			t.Fatalf("wait description: %q", tool.Description)
 		}
-		if tool.Name == "wait_agent" && (!strings.Contains(tool.Description, "unsettled work or unread outcomes") || !strings.Contains(schema.Properties["yield_time_ms"].Description, "unchanged intervals keep waiting")) {
+		if tool.Name == "wait_agent" && (!strings.Contains(tool.Description, "unsettled work or unread outcomes") || !strings.Contains(schema.Properties["yield_time_ms"].Description, "changed-agent summary collection")) {
 			t.Fatalf("wait catalog lost selection or quiet-interval semantics: %q %q", tool.Description, schema.Properties["yield_time_ms"].Description)
 		}
 	}

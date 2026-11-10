@@ -36,6 +36,13 @@ Server-owned thread coordination submits asynchronous host calls to that same
 event loop and ledger. Cancellation before dispatch prevents execution; after
 dispatch it releases observation with an uncertain outcome. Shutdown releases
 waiting callers without replaying their operations.
+Developer progress checkpoints use Codex's retained assistant-item injection, never
+human input or start-or-steer. Active turns consume the attributed item at their
+existing input boundary; idle turns retain it without starting work. Late replies
+remain subject to the checkpoint's exact turn and generation. Native execution
+retains its tool results and continuation handles. Claude supplies these
+checkpoints through its existing completed-tool-batch context hook instead of queued
+input that could interrupt work or start a later turn.
 Coordination inspection uses the same event-loop handoff to read current applied
 settings and session metrics, without issuing a host request or copying a UI frame.
 Agent side questions reuse the restricted side fork through the same request owner,

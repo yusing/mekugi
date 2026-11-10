@@ -65,12 +65,12 @@ func TestCompletionInjectionOmitsYieldedCaptures(t *testing.T) {
 			}
 			publication := changepresentation.Publication{Files: []changepresentation.File{{Chunks: []changepresentation.Chunk{{Workspace: f.workspace, CaptureOrder: record.CaptureOrder, Review: file, Origin: changepresentation.Origin{Change: id, Caller: "/root/worker"}}}}}}
 			seen := make(map[string]int)
-			// The bounded progress producer omits the second capture's cursor.
-			// Session API tests separately exercise the actual 12 KiB bound.
+			// Omitted progress evidence must remain eligible for completion.
+			// Launch tests exercise the combined-output recovery bound.
 			progress := control.WaitProgress{More: scenario == "bounded out"}
 			for capture := range publication.Progress(map[string]bool{"/root/worker": true}, nil) {
 				seen[capture.Key] = capture.Chunks
-				progress.Agents = append(progress.Agents, control.AgentProgress{Task: capture.Caller, Changes: capture.Summary})
+				progress.Agents = append(progress.Agents, control.AgentProgress{Task: capture.Caller, Changes: capture.Change})
 			}
 			p := newManagedMekugiProxy(t)
 			setTestProxyStore(p, f.store)

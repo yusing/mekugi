@@ -58,6 +58,9 @@ func (s *Service) PendingEffects(thread string) ([]EffectRef, bool, error) {
 	}
 	for _, member := range tree.Members {
 		if member.Wait != nil {
+			for _, summary := range member.Wait.Summaries {
+				appendPending(summary)
+			}
 			if member.Wait.Compaction != nil {
 				appendPending(*member.Wait.Compaction)
 			}

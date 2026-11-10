@@ -164,6 +164,17 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 	}
 	member := tree.edit(effect.Target)
 	effect = tree.Effect(caller, id)
+	if effect.Kind == "summary" {
+		wait := tree.Members[caller].Wait
+		if wait.State != "registered" || !wait.Yielded {
+			effect.State = "canceled"
+			return nil, nil
+		}
+		tree.resolveStoppedSummaries(wait)
+		if effect.State == "failed" {
+			return nil, nil
+		}
+	}
 	if effect.Kind == "interrupt" {
 		if effect.Generation != member.Generation {
 			// The captured work has already settled. A delayed claim must not
@@ -216,7 +227,7 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 		if member.HostRunning || member.Wait == nil || member.Wait.State != "registered" || member.Wait.Stop != "committed" || member.Generation != effect.Generation {
 			return nil, unchanged
 		}
-	case "create", "assignment_input", "admit", "message", "final":
+	case "create", "assignment_input", "admit", "message", "final", "summary":
 	case "completion":
 		if member.HostRunning || member.Status != Working || member.Generation != effect.Generation || member.Turn != effect.CallerTurn || member.Stop == nil || member.Stop.Wait != effect.ID {
 			effect.State = "canceled"
@@ -237,7 +248,7 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 		// Preceding injections may have settled after PrepareWake queued a
 		// progress wake. Preserve their ordinary outcome/message precedence.
 		if member.Wait.Yielded && tree.selectWaitOutcome(member.Wait) {
-			member.Wait.Yielded = false
+			member.Wait.Yielded, member.Wait.Progress, member.Wait.YieldSeen, member.Wait.Summaries = false, nil, nil, nil
 		}
 	case "initial", "followup", "human":
 		if !member.AudienceAdmitted || !member.Reserved() || member.Generation != effect.Generation {

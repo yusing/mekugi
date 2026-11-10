@@ -369,6 +369,20 @@ func claudeDispatchError(outcome binding.DispatchOutcome, method string, err err
 }
 
 func (r *ClaudeRuntime) Input(ctx context.Context, input control.NativeInput) (string, error) {
+	if input.Kind == "PROGRESS_CHECKPOINT" {
+		// Native priority=now interrupts tools; priority=next may start a new
+		// turn if the old one ends first. The existing PostToolBatch hook instead
+		// consumes the retained coordination slot in this exact running turn.
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if err := r.identity(input.Thread); err != nil {
+			return "", claudeDispatchError(binding.NotDispatched, "checkpoint", err)
+		}
+		if !r.running || r.closed != nil || r.turn == "" || r.turn != input.TargetTurn {
+			return "", claudeDispatchError(binding.NotDispatched, "checkpoint", errors.New("checkpoint host turn is no longer running"))
+		}
+		return r.turn, nil
+	}
 	receipt, err := r.dispatchInput(ctx, input)
 	if err != nil {
 		return "", err

@@ -105,6 +105,7 @@ type Wait struct {
 	YieldMS                  int64 `json:",omitzero"`
 	Yielded                  bool
 	Progress                 *WaitProgress
+	Summaries                []Effect       `json:",omitzero"`
 	YieldContext             string         `json:",omitzero"`
 	YieldSeen                map[string]int `json:",omitzero"`
 	Terminal                 *Event
@@ -219,16 +220,16 @@ type WaitResult struct {
 
 // WaitProgress contains bounded observations, never an assignment outcome.
 type WaitProgress struct {
-	Agents []AgentProgress `json:"agents,omitempty"`
-	More   bool            `json:"more,omitempty"`
-	Error  string          `json:"error,omitempty"`
+	Agents   []AgentProgress `json:"agents,omitempty"`
+	Recovery string          `json:"next_call,omitempty"`
+	More     bool            `json:"more,omitempty"`
+	Error    string          `json:"error,omitempty"`
 }
 
 type AgentProgress struct {
-	Task     string `json:"task"`
-	Status   string `json:"status"`
-	Activity string `json:"activity,omitempty"`
-	Changes  string `json:"changes"`
+	Task    string `json:"task"`
+	Summary string `json:"summary"`
+	Changes string `json:"changes"`
 }
 
 func (tree *Tree) Effect(caller, id string) *Effect {
@@ -238,6 +239,11 @@ func (tree *Tree) Effect(caller, id string) *Effect {
 		}
 	}
 	if member := tree.Members[caller]; member != nil && member.Wait != nil {
+		for i := range member.Wait.Summaries {
+			if member.Wait.Summaries[i].ID == id {
+				return &member.Wait.Summaries[i]
+			}
+		}
 		if member.Wait.ID == id {
 			return &member.Wait.Effect
 		}
@@ -253,6 +259,7 @@ func (tree *Tree) Actions() []Effect {
 	actions := append([]Effect(nil), tree.Effects...)
 	for _, member := range tree.Members {
 		if member.Wait != nil {
+			actions = append(actions, member.Wait.Summaries...)
 			if member.Wait.Compaction != nil {
 				actions = append(actions, *member.Wait.Compaction)
 			}
@@ -269,6 +276,11 @@ func (tree *Tree) edit(thread string) *Member {
 		member := *current
 		if current.Wait != nil {
 			member.Wait = new(*current.Wait)
+			member.Wait.Summaries = append([]Effect(nil), current.Wait.Summaries...)
+			if current.Wait.Progress != nil {
+				member.Wait.Progress = new(*current.Wait.Progress)
+				member.Wait.Progress.Agents = append([]AgentProgress(nil), current.Wait.Progress.Agents...)
+			}
 			if current.Wait.Compaction != nil {
 				member.Wait.Compaction = new(*current.Wait.Compaction)
 			}

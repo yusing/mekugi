@@ -375,10 +375,17 @@ func (s *Service) PrepareWake(ctx context.Context, thread string, now time.Time)
 			return unchanged
 		}
 		if !wait.Standalone && !tree.selectWaitOutcome(wait) && (wait.Deadline == nil || now.Before(*wait.Deadline)) {
-			if wait.YieldAt == nil || now.Before(*wait.YieldAt) {
+			if len(wait.Summaries) != 0 {
+				tree.resolveStoppedSummaries(wait)
+				if !wait.summariesReady() {
+					return nil
+				}
+			} else if wait.YieldAt == nil || now.Before(*wait.YieldAt) {
 				return unchanged
 			}
 			wait.Yielded = true
+		} else {
+			wait.Yielded, wait.Progress, wait.YieldSeen, wait.Summaries = false, nil, nil, nil
 		}
 		wait.State = "queued"
 		result = new(wait.Effect)

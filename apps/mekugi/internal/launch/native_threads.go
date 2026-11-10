@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,8 +16,10 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -32,6 +35,7 @@ type threadExecution struct {
 	driver        *threadbinding.Driver
 	approvals     *sessioncontrol.DelegateApprovals
 	retained      changes.Scope
+	recovery      *recovery.Service
 	windows       *executionobservation.Windows
 	deduplication *transportcapture.OutputDeduplicationTotals
 	tools         []binding.MCPServer
@@ -64,6 +68,29 @@ func (e *threadExecution) WaitProgress(thread string, seen map[string]int) (cont
 		return control.WaitProgress{Error: "Wait is unavailable"}, nil
 	}
 	return e.hub.WaitProgress(thread, wait.Targets, seen)
+}
+
+func (e *threadExecution) BoundWaitProgress(ctx context.Context, thread string, progress control.WaitProgress) (control.WaitProgress, error) {
+	raw, err := json.Marshal(progress)
+	if err != nil || len(raw) <= 12<<10 {
+		return progress, err
+	}
+	if e.recovery == nil || e.retained.Store == nil {
+		return progress, errors.New("progress recovery storage is unavailable")
+	}
+	namespace, err := e.retained.Store.NamespaceForThread(thread)
+	if err != nil {
+		return progress, err
+	}
+	store, err := e.recovery.AttachStore(e.retained.Store, namespace, thread, recovery.DefaultLimits(), e.retained.Writes)
+	if err != nil {
+		return progress, err
+	}
+	ref, err := store.Publish(ctx, command.OmittedOutput{Stdout: string(raw)}, 0)
+	if err != nil {
+		return progress, err
+	}
+	return control.WaitProgress{More: true, Recovery: "mread " + ref}, nil
 }
 
 func (e *threadExecution) Confirm(ctx context.Context, input control.NativeInput) error {

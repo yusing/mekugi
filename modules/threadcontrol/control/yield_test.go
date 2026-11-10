@@ -36,7 +36,7 @@ func TestWaitYieldUsesRetainedWake(t *testing.T) {
 			if wake == nil || wake.State != "yielded" || wake.Event != nil || len(wake.Events) != 0 {
 				t.Fatalf("yield fabricated an outcome: %+v", wake)
 			}
-			progress := WaitProgress{Agents: []AgentProgress{{Task: "/root/child", Changes: "mchanges amber1 --summary", Status: "working"}}}
+			progress := WaitProgress{Agents: []AgentProgress{{Task: "/root/child", Changes: "mchanges amber1 --summary"}}}
 			must(t, s.RetainWaitProgress(t.Context(), "root", caller.Call, "context", progress, map[string]int{"capture": 2}))
 			must(t, s.EffectAcknowledged(t.Context(), "root", caller.Call, Receipt{Uncertain: true, Error: "lost acknowledgement"}))
 			if len(s.YieldCursor("root", "context")) != 0 {

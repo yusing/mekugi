@@ -240,6 +240,23 @@ func TestWaitMetricsSampleDeliveredOutcomes(t *testing.T) {
 			if err := driver.Wake(t.Context(), caller.Thread, time.Now().Add(time.Hour)); err != nil {
 				t.Fatal(err)
 			}
+			if test.name == "progress" {
+				if runtime.thread != "" {
+					t.Fatal("summary collection sampled final delivery metrics early")
+				}
+				member, _ := driver.control.Member(caller.Thread)
+				slot := member.Wait.Summaries[0]
+				if _, err := driver.control.ClaimEffect(t.Context(), caller.Thread, slot.ID); err != nil {
+					t.Fatal(err)
+				}
+				args, _ := json.Marshal(map[string]string{"target": "agent:main", "message": control.ProgressReplyPrefix + slot.ID + "\nFrozen changes; validation not run."})
+				if _, err := driver.Call(t.Context(), control.Identity{Thread: "child", Session: "child-session", Turn: "child-turn", Call: "summary", Item: "summary"}, "send_message", args); err != nil {
+					t.Fatal(err)
+				}
+				if err := driver.Wake(t.Context(), caller.Thread, time.Now().Add(time.Hour)); err != nil {
+					t.Fatal(err)
+				}
+			}
 			input := host.inputs[len(host.inputs)-1]
 			if input.Wake == nil || input.Wake.State != test.state || test.compact != "" && input.Wake.Compaction.State != test.compact {
 				t.Fatalf("delivered outcome = %+v", input.Wake)

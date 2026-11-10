@@ -430,16 +430,37 @@ completion; another wait call waits again. It neither consumes completion notifi
 nor creates a second subscription or timer. Its targets remain the actual wait
 selection; progress rows include only agents with new captures.
 
-Progress reports available captured changes not delivered by that caller's earlier yields,
-with `mchanges` IDs and current observed activity/status. Agents without new captures are
-omitted. Late writer intervals remain eligible even under an already-reported change ID.
-The progress payload is bounded to approximately 12 KiB, including at most eight file
-capture rows per record; clipped paths and omitted rows remain readable through the exact
-`mchanges` command shown in each report. Git effects retain diagnostic provenance and use
-`--history`, not authored diff counts. `more:true` leaves omitted captures eligible for later
-yields. Capture gaps remain explicit. Payload and cursor freeze before dispatch, and only
-confirmed delivery advances the cursor in that recipient context; uncertain delivery and cold
-reconciliation reuse the same retained output. Reset, rewind and resumed contexts do not inherit
+Use progress yields when intermediate changes could reveal a mistaken approach, not
+merely to check liveness. A due interval freezes new retained capture identities and
+requests developer-authored summaries only from changed agents. Late writer intervals
+remain eligible under already-reported change IDs; changes arriving during collection
+belong to a later batch. The request and combined output identify each frozen retained
+record order and inclusive chunk range alongside its change ID. These interval labels
+are provenance, not extra mchanges command arguments: a bare ID may later include
+additional records. Missing interval evidence remains a valid summary result.
+Human-facing activity and roster labels are unchanged.
+
+Checkpoint requests continue existing work at native tool boundaries without interrupting
+or replaying operations. Normal execution-cell and process continuation handles survive.
+Developers use existing context and completed tool results, identifying missing evidence
+rather than performing summary-only investigation. They describe consequential changes,
+rationale, assumptions, deviations, risks, observed validation and blockers. Two or three
+sentences and roughly 256 tokens are advisory, not an enforced limit.
+
+Replies correlate to the frozen wait, agent and work identity through the existing
+coordination route. They neither publish ordinary message events nor finish assignments.
+The same pending wait collects every slot before one combined yield; stopped agents or
+failed checkpoint deliveries report their actual unavailable reason. There is no collection
+timeout. Normal completion, addressed messages, explicit deadlines, cancellation and
+compaction retain precedence. Abandoned or duplicate replies cannot revive a collection.
+
+Each progress entry contains only agent identity, substantive summary and exact `mchanges`
+selection. Developer claims supplement capture evidence, not independent verification.
+The combined progress payload is bounded to approximately 12 KiB. Larger payloads retain
+all entries and full summaries through an exact `mread` recovery command; omitted capture
+evidence is not acknowledged as delivered. Capture gaps remain explicit. Only confirmed
+combined delivery advances the recipient-context cursor. Uncertain delivery and cold
+reconciliation reuse frozen output; reset, rewind and resumed contexts do not inherit
 consumption of earlier progress.
 
 The retained wait acknowledges with empty content at the MCP boundary; registration

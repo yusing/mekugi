@@ -10,7 +10,7 @@ import (
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
-func TestWaitProgressUsesUnfilteredCapturesAndCurrentActivity(t *testing.T) {
+func TestWaitProgressUsesUnfilteredCapturesWithoutActivity(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Workspace: "/project"}, Agents: familyActivity("root", "main")})
 	add := reviewChunk(2, "/root/child", "", "/project/a", "", "one\n")
@@ -24,7 +24,7 @@ func TestWaitProgressUsesUnfilteredCapturesAndCurrentActivity(t *testing.T) {
 	}
 	targets := []string{"/root/child", "/root/quiet"}
 	progress, seen := h.WaitProgress("root", targets, nil)
-	if len(progress.Agents) != 1 || len(seen) != 3 || progress.Agents[0].Task != "/root/child" || progress.Agents[0].Status == "" || progress.Agents[0].Activity != "checking tests" || !strings.Contains(progress.Agents[0].Changes, scratch.Change) {
+	if len(progress.Agents) != 1 || len(seen) != 3 || progress.Agents[0].Task != "/root/child" || !strings.Contains(progress.Agents[0].Changes, scratch.Change) {
 		t.Fatalf("missing capture/status or included unchanged agent: %+v %v", progress, seen)
 	}
 	if repeated, cursor := h.WaitProgress("root", targets, seen); len(repeated.Agents) != 0 || len(cursor) != 0 {
@@ -39,7 +39,7 @@ func TestWaitProgressUsesUnfilteredCapturesAndCurrentActivity(t *testing.T) {
 	frame.Agents = familyActivity("child", "running follow-up")
 	child.server.frame.Store(&frame)
 	next, cursor := h.WaitProgress("root", targets, seen)
-	if len(next.Agents) != 1 || len(cursor) != 2 || next.Agents[0].Activity != "running follow-up" || !strings.Contains(next.Agents[0].Changes, late.Change) || !strings.Contains(next.Agents[0].Changes, "extended") {
+	if len(next.Agents) != 1 || len(cursor) != 2 || !strings.Contains(next.Agents[0].Changes, late.Change) || !strings.Contains(next.Agents[0].Changes, extension.Change) {
 		t.Fatalf("late or extended capture was lost: %+v %v", next, cursor)
 	}
 	maps.Copy(seen, cursor)
@@ -48,22 +48,18 @@ func TestWaitProgressUsesUnfilteredCapturesAndCurrentActivity(t *testing.T) {
 	}
 }
 
-func TestWaitProgressBoundsOutputWithoutConsumingOmittedCaptures(t *testing.T) {
+func TestWaitProgressFreezesAllSelectionsBeforeCombinedOutputBounding(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	var captures []changes.Chunk
-	for i := range 300 {
+	for i := range 3000 {
 		captures = append(captures, reviewChunk(uint64(i+1), "/root/child", "", fmt.Sprintf("/project/%04d-%s", i, strings.Repeat("長", 150)), "", "line\n"))
 	}
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Workspace: "/project"}})
 	familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/child", Workspace: "/project"}, Agents: familyActivity("child", strings.Repeat("activity", 500)), Review: familyReview(captures...)})
-	seen := make(map[string]int)
-	for len(seen) < len(captures) {
-		progress, cursor := h.WaitProgress("root", []string{"/root/child"}, seen)
-		raw, err := json.Marshal(progress)
-		if err != nil || len(raw) > (12<<10)+20 || len(cursor) == 0 || !progress.More && len(seen)+len(cursor) != len(captures) {
-			t.Fatalf("invalid bounded progress: bytes=%d cursor=%d seen=%d more=%t err=%v", len(raw), len(cursor), len(seen), progress.More, err)
-		}
-		maps.Copy(seen, cursor)
+	progress, cursor := h.WaitProgress("root", []string{"/root/child"}, nil)
+	raw, err := json.Marshal(progress)
+	if err != nil || len(cursor) != len(captures) || len(progress.Agents) != 1 || len(strings.Fields(strings.SplitN(progress.Agents[0].Changes, "\n", 2)[0])) != len(captures) || len(raw) <= 12<<10 {
+		t.Fatalf("freeze dropped bounded-out selections: bytes=%d cursor=%d err=%v", len(raw), len(cursor), err)
 	}
 }
 
@@ -80,7 +76,7 @@ func TestWaitProgressIncludesRetainedGitDiagnosticsWithoutAuthoredCounts(t *test
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Workspace: "/project"}, Review: view})
 	familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/child", Workspace: "/project"}, Agents: familyActivity("child", "checking out"), Review: view})
 	progress, cursor := h.WaitProgress("root", []string{"/root/child"}, nil)
-	if len(progress.Agents) != 1 || len(cursor) != 1 || !strings.Contains(progress.Agents[0].Changes, "mchanges "+git.Change+" --history") || !strings.Contains(progress.Agents[0].Changes, "diagnostic: git checkout") {
+	if len(progress.Agents) != 1 || len(cursor) != 1 || !strings.HasPrefix(progress.Agents[0].Changes, git.Change+"\n") {
 		t.Fatalf("Git capture missing provenance or duplicated: %+v", progress)
 	}
 	_, diff := h.Family("root")
@@ -121,7 +117,7 @@ func TestWaitProgressKeepsDiagnosticsAcrossAuthoredAppend(t *testing.T) {
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Workspace: "/project"}})
 	familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/child", Workspace: "/project"}, Agents: familyActivity("child", "editing"), Review: &changes.ReviewView{Publication: updated.Publication, Workspace: "/project", Coverage: "complete", Revision: 1}})
 	progress, _ := h.WaitProgress("root", []string{"/root/child"}, nil)
-	if len(progress.Agents) != 1 || !strings.Contains(progress.Agents[0].Changes, git.Change+" --history") || !strings.Contains(progress.Agents[0].Changes, another.Change+" --history") || len(base.Publication.Diagnostics) != 1 {
+	if len(progress.Agents) != 1 || !strings.Contains(progress.Agents[0].Changes, git.Change) || !strings.Contains(progress.Agents[0].Changes, another.Change) || len(base.Publication.Diagnostics) != 1 {
 		t.Fatalf("authored append lost or mutated diagnostics: %+v", progress)
 	}
 }

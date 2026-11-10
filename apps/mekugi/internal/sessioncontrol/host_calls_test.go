@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"testing/synctest"
 
@@ -47,6 +48,47 @@ func TestHostCallSharesLedgerAndSettlesOnce(t *testing.T) {
 			t.Fatalf("result=%s err=%v sends=%d", got.value, got.err, len(transport.sends))
 		}
 	})
+}
+
+func TestProgressCheckpointUsesAttributedInjectionWithoutStartingWork(t *testing.T) {
+	for _, rejected := range []bool{false, true} {
+		t.Run(fmt.Sprint(rejected), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				transport := &requestTransport{id: "checkpoint"}
+				requests := NewRequests[struct{}](transport)
+				result := make(chan error, 1)
+				go func() {
+					turn, err := requests.Input(t.Context(), control.NativeInput{Thread: "child", TargetTurn: "active", ID: "slot", Kind: "PROGRESS_CHECKPOINT", Message: "frozen changes", Sender: "/root", Recipient: "/root/child"})
+					if err == nil && turn != "" {
+						err = fmt.Errorf("checkpoint changed host turn: %s", turn)
+					}
+					result <- err
+				}()
+				requests.Dispatch(<-requests.Calls())
+				raw, _ := json.Marshal(transport.sends[0].params)
+				var params struct {
+					Items []NativeMessage `json:"items"`
+				}
+				if err := json.Unmarshal(raw, &params); err != nil {
+					t.Fatal(err)
+				}
+				if transport.sends[0].method != "thread/inject_items" || len(params.Items) != 1 || params.Items[0].Role != "assistant" || !strings.Contains(params.Items[0].Content[0].Text, "PROGRESS_CHECKPOINT") || params.Items[0].Metadata.Kinds[0] != "multi_agent.inter_agent_message" {
+					t.Fatalf("unsafe checkpoint request: %s", raw)
+				}
+				message := appserver.Message{ID: jsontext.Value(`checkpoint`), Result: jsontext.Value(`{}`)}
+				if rejected {
+					message.Error = &appserver.Error{Code: -32600, Message: "no active turn"}
+				}
+				requests.CompleteCall(message)
+				if err := <-result; (err != nil) != rejected {
+					t.Fatalf("rejected=%v error=%v", rejected, err)
+				}
+				if len(transport.sends) != 1 {
+					t.Fatal("failed injection started or replayed work")
+				}
+			})
+		})
+	}
 }
 
 func TestHostCallCancellationAndUncertainDispatch(t *testing.T) {

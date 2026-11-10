@@ -2,6 +2,8 @@ package codexbinding
 
 import (
 	"context"
+	json "encoding/json/v2"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -14,17 +16,69 @@ type progressNative struct {
 	reads     int
 	chunks    int
 	contextID string
+	driver    *Driver
+	requests  int
+}
+
+func TestWaitSummaryGuidanceReachesBothToolCatalogs(t *testing.T) {
+	for _, claude := range []bool{false, true} {
+		found := false
+		for _, tool := range ToolCatalog(claude) {
+			if tool.Name != "wait_agent" {
+				continue
+			}
+			found = true
+			raw, err := json.Marshal(tool.InputSchema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var schema struct {
+				Properties map[string]struct {
+					Description string `json:"description"`
+					Minimum     int    `json:"minimum"`
+				} `json:"properties"`
+			}
+			if err := json.Unmarshal(raw, &schema); err != nil {
+				t.Fatal(err)
+			}
+			yield := schema.Properties["yield_time_ms"]
+			if yield.Minimum != 300000 || !strings.Contains(yield.Description, "not liveness") || !strings.Contains(yield.Description, "delivery waits for all replies") || !strings.Contains(yield.Description, "omit to disable") {
+				t.Fatalf("claude=%t effective yield guidance=%+v", claude, yield)
+			}
+		}
+		if !found {
+			t.Fatal("wait catalog missing")
+		}
+	}
 }
 
 type progressRuntime struct {
 	control.Runtime
 	contextID string
+	source    *progressNative
 }
 
 func (r progressRuntime) ContextIdentity(string) string { return r.contextID }
 func (n *progressNative) Resume(ctx context.Context, thread string) (control.Runtime, error) {
 	runtime, err := n.Native.Resume(ctx, thread)
-	return progressRuntime{runtime, n.contextID}, err
+	return progressRuntime{runtime, n.contextID, n}, err
+}
+
+func (n *progressNative) Runtime(thread string) (control.Runtime, error) {
+	runtime, err := n.Native.Runtime(thread)
+	return progressRuntime{runtime, n.contextID, n}, err
+}
+
+func (r progressRuntime) Input(ctx context.Context, input control.NativeInput) (string, error) {
+	if input.Kind != "PROGRESS_CHECKPOINT" {
+		return r.Runtime.Input(ctx, input)
+	}
+	r.source.requests++
+	member, _ := r.source.driver.control.Member(input.Thread)
+	waiter, _ := r.source.driver.control.Member("root")
+	args, _ := json.Marshal(map[string]string{"target": "agent:main", "message": control.ProgressReplyPrefix + waiter.Wait.Summaries[0].ID + "\nChanged behavior for the requested scope; tests not run."})
+	_, err := r.source.driver.Call(ctx, control.Identity{Thread: input.Thread, Session: member.Session, Turn: input.TargetTurn, Call: "summary", Item: "summary"}, "send_message", args)
+	return input.TargetTurn, err
 }
 
 func (n *progressNative) WaitProgress(_ string, seen map[string]int) (control.WaitProgress, map[string]int) {
@@ -32,13 +86,13 @@ func (n *progressNative) WaitProgress(_ string, seen map[string]int) (control.Wa
 	if seen["capture"] >= n.chunks {
 		return control.WaitProgress{}, nil
 	}
-	return control.WaitProgress{Agents: []control.AgentProgress{{Task: "/root/child", Status: "working", Activity: "testing", Changes: "mchanges amber1 --summary"}}}, map[string]int{"capture": n.chunks}
+	return control.WaitProgress{Agents: []control.AgentProgress{{Task: "/root/child", Changes: "amber1"}}}, map[string]int{"capture": n.chunks}
 }
 
 func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		driver, host, _, caller := reconciliationFixture(t)
-		source := &progressNative{Native: host, contextID: "context", chunks: 1}
+		source := &progressNative{Native: host, contextID: "context", chunks: 1, driver: driver}
 		driver.host = source
 		if err := driver.Start(t.Context()); err != nil {
 			t.Fatal(err)
@@ -94,7 +148,7 @@ func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 			}
 			caller.Turn = host.nextTurn
 		}
-		if source.reads != 6 {
+		if source.reads != 6 || source.requests != 3 {
 			t.Fatalf("unexpected progress polling: %d", source.reads)
 		}
 	})

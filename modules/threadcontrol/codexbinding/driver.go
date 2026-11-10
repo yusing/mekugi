@@ -113,19 +113,23 @@ func (d *Driver) dispatchPending(ctx context.Context, thread, target string, thr
 }
 
 func (d *Driver) dispatchClaimedAction(ctx context.Context, effect *control.Effect) error {
-	if effect.Kind != "compact" {
+	if effect.Kind != "compact" && effect.Kind != "summary" {
 		return d.dispatchAction(ctx, effect)
 	}
-	// Native compaction settles asynchronously so human supersession and
+	// Native auxiliary dispatch settles asynchronously so human supersession and
 	// reviewer outcomes remain reducible while its host turn is running.
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.lifecycle == nil || d.lifecycle.Err() != nil {
-		return errors.New("compaction requires the active lifecycle owner")
+		return errors.New("auxiliary dispatch requires the active lifecycle owner")
 	}
 	d.auxiliary.Go(func() {
 		err := d.dispatchAction(d.lifecycle, effect)
-		d.enqueue(hostObservation{thread: effect.Target, method: "compaction/settled", err: err})
+		if effect.Kind == "summary" {
+			d.enqueue(hostObservation{thread: effect.Caller, method: "", err: err})
+		} else {
+			d.enqueue(hostObservation{thread: effect.Target, method: "compaction/settled", err: err})
+		}
 	})
 	return nil
 }
@@ -164,7 +168,7 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 			return err
 		}
 		var owner control.Runtime
-		if effect.Origin != nil {
+		if effect.Origin != nil || kind == "summary" {
 			owner, callErr = d.native().Runtime(effect.Target)
 		} else {
 			owner, callErr = d.native().Resume(ctx, effect.Target)
@@ -209,10 +213,20 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 					if len(progress.Agents) == 0 {
 						return d.control.SkipUnchangedYield(ctx, input.Thread, input.Wake.ID, time.Now())
 					}
-					if err := d.control.RetainWaitProgress(ctx, input.Thread, input.Wake.ID, contextID, progress, seen); err != nil {
-						callErr = &binding.DispatchError{Outcome: binding.NotDispatched, Cause: err}
-					} else {
-						input.Wake.Progress = &progress
+					err := d.control.BeginWaitSummaries(ctx, input.Thread, input.Wake.ID, contextID, progress, seen)
+					if err == nil {
+						d.enqueue(hostObservation{thread: input.Thread})
+					}
+					return err
+				}
+				if input.Wake != nil && input.Wake.State == "yielded" && input.Wake.Progress != nil && callErr == nil {
+					if writer, ok := d.native().(control.ProgressWriter); ok {
+						var progress control.WaitProgress
+						progress, callErr = writer.BoundWaitProgress(ctx, input.Thread, *input.Wake.Progress)
+						if callErr == nil {
+							callErr = d.control.RetainProgressOutput(ctx, input.Thread, input.Wake.ID, progress)
+							input.Wake.Progress = &progress
+						}
 					}
 				}
 				if input.Wake != nil && input.Wake.Metrics == nil && callErr == nil {
@@ -234,6 +248,9 @@ func (d *Driver) dispatchAction(ctx context.Context, effect *control.Effect) err
 		receipt.Uncertain = !known || failure.Outcome == binding.Uncertain
 	}
 	receipt.Phase = effect.Phase
+	if kind == "summary" {
+		return d.control.AcknowledgeSummary(context.WithoutCancel(ctx), effect.Caller, effect.ID, receipt)
+	}
 	acknowledged := d.control.EffectAcknowledged(context.WithoutCancel(ctx), effect.Caller, effect.ID, receipt)
 	if failure, ok := errors.AsType[*binding.DispatchError](callErr); ok && failure.Outcome == binding.NotDispatched && errors.Is(callErr, context.Canceled) && ctx.Err() == nil && acknowledged == nil {
 		return nil
@@ -282,6 +299,8 @@ func nativeInput(action control.Action) control.NativeInput {
 	case "completion":
 		input.Kind, input.Run = "COMPLETION_GUARD", true
 		input.Message = completionGuardMessage(effect.Message)
+	case "summary":
+		input.Kind, input.TargetTurn = "PROGRESS_CHECKPOINT", effect.Turn
 	case "wake":
 		input.Run = true
 		if input.Wake != nil && input.Wake.Standalone {

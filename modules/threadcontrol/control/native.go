@@ -40,6 +40,12 @@ type ProgressReader interface {
 	WaitProgress(string, map[string]int) (WaitProgress, map[string]int)
 }
 
+// ProgressWriter retains oversized combined yields with the existing output
+// recovery owner. No per-developer summary limit applies.
+type ProgressWriter interface {
+	BoundWaitProgress(context.Context, string, WaitProgress) (WaitProgress, error)
+}
+
 type ModelOption struct {
 	ID            string `json:"id"`
 	Name          string `json:"name,omitempty"`
