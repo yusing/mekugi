@@ -248,10 +248,17 @@ func (t *mekugiResponseTransform) splitExecIntervals(patchCall string, observati
 	if len(boundaries) == 0 {
 		return nil
 	}
+	identities := make(changecapture.PathIdentities)
+	physical := make(map[string]string, len(boundaries))
+	for _, boundary := range boundaries {
+		physical[boundary.Path] = identities.File(boundary.Path)
+	}
 	var candidates []execIntervalCut
 	t.owners.Windows.state().mu.Lock()
 	for _, window := range t.owners.Windows.state().windows {
-		if window.ref != patchCall && window.group != t.execGroup && window.closed.IsZero() && window.scope.Store != nil && slices.ContainsFunc(boundaries, func(file changecapture.File) bool { return window.coversInterval(file.Path) }) {
+		if window.ref != patchCall && window.group != t.execGroup && window.closed.IsZero() && window.scope.Store != nil && slices.ContainsFunc(boundaries, func(file changecapture.File) bool {
+			return window.coversInterval(file.Path) || window.coversInterval(physical[file.Path])
+		}) {
 			candidates = append(candidates, execIntervalCut{writer: window.ref, workspace: window.workspace, scope: window.scope})
 		}
 	}

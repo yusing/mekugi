@@ -138,25 +138,8 @@ func reconcile(ctx context.Context, observation Observation, excluded []string, 
 	metadata := make(map[string]File, len(observation.Files))
 	// Preserve leaf symlinks as filesystem entries. Resolving their parents
 	// identifies directory aliases without conflating a link with its target.
-	directories := make(map[string]string)
-	var physicalDirectory func(string) string
-	physicalDirectory = func(path string) string {
-		if physical, found := directories[path]; found {
-			return physical
-		}
-		physical, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			physical = filepath.Clean(path)
-			if parent := filepath.Dir(path); errors.Is(err, os.ErrNotExist) && parent != path {
-				physical = filepath.Join(physicalDirectory(parent), filepath.Base(path))
-			}
-		}
-		directories[path] = physical
-		return physical
-	}
-	identity := func(path string) string {
-		return filepath.Join(physicalDirectory(filepath.Dir(path)), filepath.Base(path))
-	}
+	directories := make(PathIdentities)
+	identity := directories.File
 	roots := make(map[string]string)
 	within := func(path, root string) bool {
 		if changehistory.PathWithin(path, root) {
@@ -166,7 +149,7 @@ func reconcile(ctx context.Context, observation Observation, excluded []string, 
 		if !found {
 			physicalRoot = identity(root)
 			if info, err := os.Stat(root); err == nil && info.IsDir() {
-				physicalRoot = physicalDirectory(root)
+				physicalRoot = directories.directory(root)
 			}
 			roots[root] = physicalRoot
 		}

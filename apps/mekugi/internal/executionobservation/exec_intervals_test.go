@@ -399,7 +399,7 @@ func TestPrivateArtifactWriterDoesNotClaimIsolatedWorktree(t *testing.T) {
 }
 
 func TestCheckpointIntervalsKeepAuthoredWorkspace(t *testing.T) {
-	for _, mode := range []string{"eager", "dynamic-native", "terminal-native"} {
+	for _, mode := range []string{"eager", "dynamic-native", "terminal-native", "eager-writer-alias", "eager-patch-alias", "dynamic-native-writer-alias", "dynamic-native-patch-alias", "terminal-native-writer-alias", "terminal-native-patch-alias"} {
 		t.Run(mode, func(t *testing.T) {
 			isolateSnapshotGit(t)
 			f := newMChangesSliceFixture(t, "cross-workspace-interval")
@@ -407,18 +407,32 @@ func TestCheckpointIntervalsKeepAuthoredWorkspace(t *testing.T) {
 			edit := testProxyWithStore(f.store, writer.Windows.ForRuntime())
 			selected := observationScope(f.ctx, writer.Retained)
 			directory := t.TempDir()
+			writerDirectory := directory
+			if strings.HasSuffix(mode, "-alias") {
+				alias := filepath.Join(t.TempDir(), "alias")
+				if err := os.Symlink(directory, alias); err != nil {
+					t.Fatal(err)
+				}
+				if strings.HasSuffix(mode, "-writer-alias") {
+					writerDirectory = alias
+					mode = strings.TrimSuffix(mode, "-writer-alias")
+				} else {
+					directory = alias
+					mode = strings.TrimSuffix(mode, "-patch-alias")
+				}
+			}
 			path := filepath.Join(directory, "selected.txt")
 			writeTestFile(t, path, "A\n")
 			seed := f.reserve(t, f.thread, "create")
 			f.publish(t, seed, "create", "create", mekugiHistory{ExecutingThread: f.thread, ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", path, "", "A\n")}})
-			observation, _ := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: "custom-generator", Workdir: directory, Shell: "bash"}}, false, true, changecapture.Options{Directory: f.workspace, Workspaces: writer.Checkpoints})
-			if observation == nil || observation.Checkpoints[directory] == "" || len(observation.Files) != 0 {
+			observation, _ := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: "custom-generator", Workdir: writerDirectory, Shell: "bash"}}, false, true, changecapture.Options{Directory: f.workspace, Workspaces: writer.Checkpoints})
+			if observation == nil || observation.Checkpoints[writerDirectory] == "" || len(observation.Files) != 0 {
 				t.Fatal("missing external checkpoint fixture")
 			}
 			trace := newNativeTraceFixture(t)
 			trace.turn = "turn"
 			edit.NativeTrace = nativetrace.NewWithNotice(trace.root, nil)
-			arguments := responses.MustMarshalJSON(map[string]string{"cmd": "custom-generator", "workdir": directory})
+			arguments := responses.MustMarshalJSON(map[string]string{"cmd": "custom-generator", "workdir": writerDirectory})
 			writerSource := "await tools.exec_command(" + string(arguments) + ");"
 			original := mekugiHistory{ToolName: "exec", Script: writerSource, Root: f.workspace, ExecutingThread: f.thread, ExecObservation: observation}
 			if err := publishObservations(f.ctx, selected, writer.Changes, nil, f.workspace, map[string]mekugiHistory{"writer": original}); err != nil {
@@ -488,6 +502,10 @@ func TestCheckpointIntervalsKeepAuthoredWorkspace(t *testing.T) {
 			if err := finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.Recovery, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
 				t.Fatal(err)
 			}
+			terminal, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("writer", true))
+			if err != nil || !found || terminal.ExecOutcome.Coverage != changecapture.CoverageExact || len(terminal.ReviewFiles) != 0 {
+				t.Fatalf("terminal writer duplicated the patch effect: %+v, %v", terminal, err)
+			}
 			patchHistory, _, err := f.store.lookup(f.ctx, directory, legacycall.PatchCallID("patch", 0))
 			if err != nil || patchHistory.ChangeID == "" || len(patchHistory.ReviewFiles) != 1 || !strings.Contains(patchHistory.ReviewFiles[0].Diff, "-"+before+"\n+C") {
 				t.Fatalf("interrupter attribution: %+v, %v", patchHistory, err)
@@ -507,6 +525,14 @@ func TestCheckpointIntervalsKeepAuthoredWorkspace(t *testing.T) {
 			net, err := reopened.changes.Read(f.ctx, reopened.scoped(f.ctx).changeScope(), changes.Query{Workspace: directory, IDs: ids, View: "net", Paths: []string{path}})
 			if err != nil || net != stdout {
 				t.Fatalf("cold cross-workspace composition: %q, %v", net, err)
+			}
+			// Reverting only A-to-B must not silently undo the independent
+			// B-to-C patch. Their same-line changes require an ordinary conflict.
+			writeTestFile(t, path, "C\n")
+			stdout, stderr, status = f.run(t, "mchanges revert "+prefix.ChangeID)
+			data, err := os.ReadFile(path)
+			if status != 1 || err != nil || !strings.Contains(string(data), "C\n") || !strings.Contains(string(data), "<<<<<<< workspace") {
+				t.Fatalf("writer revert erased independent patch: %q, %q, %d, file=%q, %v", stdout, stderr, status, data, err)
 			}
 		})
 	}

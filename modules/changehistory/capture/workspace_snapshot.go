@@ -866,10 +866,11 @@ func (r *workspaceSnapshotRepo) states(ctx context.Context, tree string, paths [
 // evidence, not permission to learn a before-state from the live workspace.
 // named is the original scope; observation can also contain rebased intervals.
 func (s *Workspaces) IntervalBefore(ctx context.Context, workspace string, observation Observation, named, endpoints []File, claims Claims, sink *evidence.Source) ([]File, Claims) {
+	identities := make(PathIdentities)
 	before := slices.Clone(observation.Files)
 	known := make(map[string]bool, len(named))
 	for _, file := range named {
-		known[file.Path] = true
+		known[identities.File(file.Path)] = true
 	}
 	positions := make(map[string]int, len(before))
 	for i, file := range before {
@@ -891,18 +892,24 @@ func (s *Workspaces) IntervalBefore(ctx context.Context, workspace string, obser
 	checkpoints[workspace] = observation.Tree
 	selected := make(map[string][]string)
 	for _, endpoint := range endpoints {
-		if known[endpoint.Path] ||
-			slices.ContainsFunc(observation.Excluded, func(root string) bool { return changes.PathWithin(endpoint.Path, root) }) {
+		physical := identities.File(endpoint.Path)
+		if known[physical] ||
+			slices.ContainsFunc(observation.Excluded, func(root string) bool {
+				if info, err := os.Stat(root); err == nil && info.IsDir() {
+					return changes.PathWithin(physical, identities.directory(root))
+				}
+				return changes.PathWithin(physical, identities.File(root))
+			}) {
 			continue
 		}
 		root := ""
 		for directory := range checkpoints {
-			if len(directory) > len(root) && changes.PathWithin(endpoint.Path, directory) {
+			if (root == "" || len(identities.directory(directory)) > len(identities.directory(root))) && changes.PathWithin(physical, identities.directory(directory)) {
 				root = directory
 			}
 		}
-		if root != "" && !nestedCheckpointRepository(root, endpoint.Path) {
-			known[endpoint.Path] = true
+		if root != "" && !nestedCheckpointRepository(identities.directory(root), physical) {
+			known[physical] = true
 			boundaries[endpoint.Path] = endpoint
 			if index, found := positions[endpoint.Path]; found {
 				reused[endpoint.Path] = before[index]
@@ -940,8 +947,7 @@ func (s *Workspaces) IntervalBefore(ctx context.Context, workspace string, obser
 			keep(file)
 			if endpoint := boundaries[file.Path]; file.Error == "" && endpoint.Error == "" {
 				repo := s.repo(directory)
-				relative, _ := filepath.Rel(directory, file.Path)
-				claimed[filepath.Join(repo.physicalWorkspace, relative)] = snapshotClaim{repo: repo, file: &endpoint}
+				claimed[identities.File(file.Path)] = snapshotClaim{repo: repo, file: &endpoint}
 			}
 		}
 	}
@@ -985,14 +991,15 @@ func (s *Workspaces) checkpointFiles(ctx context.Context, workspace, tree string
 		return nil, ctx.Err()
 	}
 	physical := make([]string, 0, len(paths))
+	identities := make(PathIdentities)
 	var fresh []string
 	retained := make(map[string]File)
 	for _, path := range paths {
-		relative, err := filepath.Rel(workspace, path)
+		key := identities.File(path)
+		relative, err := filepath.Rel(repo.physicalWorkspace, key)
 		if err != nil || !filepath.IsLocal(relative) {
 			return nil, errors.New("checkpoint path outside its workspace")
 		}
-		key := filepath.Join(repo.physicalWorkspace, relative)
 		physical = append(physical, key)
 		if file, found := reused[path]; found {
 			retained[key] = file
@@ -1071,15 +1078,24 @@ func (s *Workspaces) checkpointFiles(ctx context.Context, workspace, tree string
 // Its witnessed endpoint is now the writer's baseline; older shared claims
 // must not replace it at the next cut. Callers serialize publication and claims.
 func (c Claims) Forget(endpoints []File) {
+	paths := make(map[string]bool, len(endpoints))
+	for _, endpoint := range endpoints {
+		paths[endpoint.Path] = true
+		delete(c, endpoint.Path)
+	}
 	seen := make(map[*workspaceSnapshotRepo]bool)
-	for _, claim := range c {
+	for path, claim := range c {
+		// Reuse admitted aliases: callers can hold the window registry lock,
+		// so retirement must not resolve directories from the live filesystem.
+		if claim.file != nil && paths[claim.file.Path] {
+			delete(c, path)
+		}
 		if seen[claim.repo] {
 			continue
 		}
 		seen[claim.repo] = true
 		for _, endpoint := range endpoints {
-			relative, err := filepath.Rel(claim.repo.workspace, endpoint.Path)
-			if err == nil && filepath.IsLocal(relative) {
+			if relative, err := filepath.Rel(claim.repo.workspace, endpoint.Path); err == nil && filepath.IsLocal(relative) {
 				delete(c, filepath.Join(claim.repo.physicalWorkspace, relative))
 			}
 		}

@@ -118,6 +118,14 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 		}
 		var terminal []execIntervalCut
 		var missing []execIntervalCut
+		identities := make(changecapture.PathIdentities)
+		physical := make(map[string]string, len(paths))
+		for _, path := range paths {
+			physical[path] = identities.File(path)
+		}
+		covers := func(writer *execWindow, path string) bool {
+			return writer.coversInterval(path) || writer.coversInterval(physical[path])
+		}
 		ended := make(map[string]bool)
 		var shared []string
 		if !priorWriter {
@@ -128,7 +136,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 				state.mu.Lock()
 				for _, writer := range state.windows {
 					if writer.ref != incoming.ref && writer.group != incoming.group && writer.closed.IsZero() && writer.scope.Store != nil &&
-						!slices.ContainsFunc(cuts, func(c execIntervalCut) bool { return c.writer == writer.ref }) && slices.ContainsFunc(paths, writer.coversInterval) {
+						!slices.ContainsFunc(cuts, func(c execIntervalCut) bool { return c.writer == writer.ref }) && slices.ContainsFunc(paths, func(path string) bool { return covers(writer, path) }) {
 						missing = append(missing, execIntervalCut{writer: writer.ref, workspace: writer.workspace, scope: writer.scope})
 					}
 				}
@@ -140,7 +148,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 				var overlap []string
 				if writer != nil {
 					for _, path := range paths {
-						if writer.coversInterval(path) {
+						if covers(writer, path) {
 							overlap = append(overlap, path)
 						}
 					}

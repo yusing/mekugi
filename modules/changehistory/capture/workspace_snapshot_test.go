@@ -84,6 +84,52 @@ func TestCheckpointIntervalSelectionAndClaims(t *testing.T) {
 	}
 }
 
+func TestCheckpointIntervalsShareParentIdentity(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reverse=%v", reverse), func(t *testing.T) {
+			isolateSnapshotGit(t)
+			physical := t.TempDir()
+			alias := filepath.Join(t.TempDir(), "alias")
+			if err := os.Symlink(physical, alias); err != nil {
+				t.Fatal(err)
+			}
+			workspace, endpointRoot := alias, physical
+			if reverse {
+				workspace, endpointRoot = physical, alias
+			}
+			writeTestFile(t, filepath.Join(physical, "file"), "A\n")
+			writeTestFile(t, filepath.Join(physical, "excluded"), "excluded\n")
+			writeTestFile(t, filepath.Join(physical, "nested", "file"), "nested\n")
+			if err := os.Symlink("file", filepath.Join(physical, "link")); err != nil {
+				t.Fatal(err)
+			}
+			snapshots := newWorkspaces(t.Context(), t.TempDir())
+			t.Cleanup(snapshots.Close)
+			tree := snapshots.Checkpoint(t.Context(), workspace)
+			if tree == "" {
+				t.Fatal("missing checkpoint")
+			}
+			// A newly witnessed nested repository excludes its old tree entries.
+			writeTestFile(t, filepath.Join(physical, "nested", ".git"), "gitdir: elsewhere\n")
+			observation := Observation{Tree: tree, Excluded: []string{filepath.Join(workspace, "excluded")}}
+			endpoints := []File{
+				{Path: filepath.Join(endpointRoot, "file"), Kind: Text, Content: "B\n"},
+				{Path: filepath.Join(endpointRoot, "link"), Kind: Symlink, Link: "new-target"},
+				{Path: filepath.Join(endpointRoot, "excluded"), Kind: Text},
+				{Path: filepath.Join(endpointRoot, "nested", "file"), Kind: Text},
+			}
+			before, claims := snapshots.IntervalBefore(t.Context(), workspace, observation, nil, endpoints, nil, nil)
+			if len(before) != 2 || before[0].Content != "A\n" || before[0].Error != "" || before[1].Kind != Symlink || before[1].Link != "file" || before[1].Error != "" {
+				t.Fatalf("alias membership changed scope or leaf identity: %+v", before)
+			}
+			claims.Forget([]File{{Path: filepath.Join(workspace, "file")}})
+			if len(claims) != 1 || claims[filepath.Join(physical, "link")].file == nil {
+				t.Fatalf("claim retirement lost physical membership: %+v", claims)
+			}
+		})
+	}
+}
+
 func TestWorkspaceSnapshotSymlinkTargetsIgnoreTextBudgetAndClassification(t *testing.T) {
 	for _, target := range []string{"old-target", "old-\xff"} {
 		t.Run(fmt.Sprintf("utf8=%v", utf8.ValidString(target)), func(t *testing.T) {

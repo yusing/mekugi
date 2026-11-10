@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"syscall"
@@ -21,6 +22,30 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
+
+// PathIdentities resolves parent directories, preserving a leaf symlink as its
+// own filesystem entry. Missing descendants retain their nearest existing parent.
+type PathIdentities map[string]string
+
+func (p PathIdentities) directory(path string) string {
+	if physical, found := p[path]; found {
+		return physical
+	}
+	physical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		physical = filepath.Clean(path)
+		if parent := filepath.Dir(path); errors.Is(err, os.ErrNotExist) && parent != path {
+			physical = filepath.Join(p.directory(parent), filepath.Base(path))
+		}
+	}
+	p[path] = physical
+	return physical
+}
+
+// File returns the physical parent identity without following the leaf entry.
+func (p PathIdentities) File(path string) string {
+	return filepath.Join(p.directory(filepath.Dir(path)), filepath.Base(path))
+}
 
 func execFileStamp(info os.FileInfo) string {
 	return strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10) + ":" + execFileIdentity(info)
