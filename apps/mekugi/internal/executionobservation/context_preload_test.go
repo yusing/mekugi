@@ -25,6 +25,140 @@ func TestContextPreloadUsesNativeReloadAndRetainedResults(t *testing.T) {
 	}
 }
 
+func TestAdmittedDelegateStartsWithCompleteRelevantSources(t *testing.T) {
+	usePreloadTestFrontend(t)
+	p := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, p)
+	selected, err := p.Retained.Store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer selected.Close()
+	workspace := t.TempDir()
+	bodies := map[string]string{
+		"IMPLEMENTATION.md": "# Complete implementation guidance\nPreserve authority and rejection behavior.\nLoad testing guidance when selecting checks.\n",
+		"SKILL.md":          "# Complete task skill\nUse the owner command.\nPreserve errors and inspect uncertain writes before retrying.\n",
+		"owner.go":          "package owner\n\n// Current owner evidence.\nconst Contract = \"retained\"\n",
+	}
+	for name, body := range bodies {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "LATER.md"), []byte("LATER_PHASE_ONLY"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	selection := string(mustTestJSON(t, map[string]any{"sources": []compact.Source{
+		"@IMPLEMENTATION.md", "@SKILL.md", "@owner.go",
+	}}))
+	retained, err := history.NewService(control.RecordKinds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := retained.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentSession, err := store.SelectSession(t.Context(), nil, selected.Limits, "parent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parentSession.Close()
+	service := control.New()
+	if err := service.AdmitRoot(t.Context(), parentSession, &control.Member{Thread: "parent", Session: "parent-session", Task: "/root", AudienceAdmitted: true, Turn: "pt", Generation: 1, Status: control.Working, HostRunning: true}); err != nil {
+		t.Fatal(err)
+	}
+	caller := control.Identity{Thread: "parent", Session: "parent-session", Turn: "pt", Call: "spawn"}
+	effect, err := service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "worker", Message: "Implement the owner contract", Settings: control.Settings{Workspace: workspace}, Preload: selection})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
+		if _, err := service.ClaimEffect(t.Context(), "parent", effect.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.EffectAcknowledged(t.Context(), "parent", effect.ID, control.Receipt{Phase: phase, Thread: "root", Session: "routing", Turn: "wt"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p.ThreadControl, err = threadbinding.NewDriver(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, _ := service.Member("root")
+	assignment := map[string]any{"type": "message", "role": "assistant", "id": member.Preload.Item, "content": effect.Message}
+	items := []any{assignment}
+	parse := func() codexresponses.Request {
+		r, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": items, "tools": testExecResponsesTools()}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	metadata := codexresponses.TurnMetadata{ThreadID: "root", RequestKind: "turn"}
+	request := parse()
+	pending, _, _, err := p.preparePreloadInput(&request, "routing", "root", metadata, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reader map[string]jsontext.Value
+	if err := json.Unmarshal(pending, &reader); err != nil {
+		t.Fatal(err)
+	}
+	var program string
+	if err := json.Unmarshal(reader["input"], &program); err != nil || !codexresponses.MatchesCompactReadProgram(program, compact.CaptureCommand(selection)) {
+		t.Fatalf("admitted child did not schedule its startup selection: %s, %v", program, err)
+	}
+	snapshot, err := compact.ReadSources(t.Context(), selection, workspace, nil, compact.ChangeReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range snapshot.Sources {
+		if source.ExitCode != 0 {
+			t.Fatalf("startup source failed: %+v", source)
+		}
+	}
+	items = append(items, reader, map[string]any{"type": "custom_tool_call_output", "call_id": reader["call_id"], "output": compactTestSnapshot(t, p, snapshot)})
+	// Completed startup reads are immutable context, not a request for the child
+	// to orient itself again. Exercise model-input projection and its reuse.
+	var inputBytes int
+	for range 2 {
+		request = parse()
+		pending, _, _, err := p.preparePreloadInput(&request, "routing", "root", metadata, false)
+		if err != nil || len(pending) != 0 {
+			t.Fatalf("completed startup sources scheduled another acquisition: %s, %v", pending, err)
+		}
+		// Execution-free projection exercises the same retained-source expansion
+		// without needing a live native instruction-provenance owner.
+		request.Fields["tools"] = mustTestJSON(t, []any{})
+		transform, err := p.prepareModelRequest(t.Context(), &request, "routing", "root", metadata, true, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if transform != nil {
+			transform.Close()
+		}
+		visible := request.Fields["input"]
+		for name, body := range bodies {
+			encoded := mustTestJSON(t, body)
+			if bytes.Count(visible, encoded[1:len(encoded)-1]) != 1 {
+				t.Fatalf("complete source %s not supplied exactly once: %s", name, visible)
+			}
+		}
+		for _, hidden := range []string{string(reader["call_id"]), compact.SnapshotPrefix, "LATER_PHASE_ONLY"} {
+			if bytes.Contains(visible, []byte(hidden)) {
+				t.Fatalf("startup leaked acquisition or unrelated context %q: %s", hidden, visible)
+			}
+		}
+		inputBytes = len(visible)
+	}
+	commands, err := compact.ReadCommands(selection)
+	if err != nil || len(commands) != len(bodies) {
+		t.Fatalf("startup command count: %d, %v", len(commands), err)
+	}
+	t.Logf("startup fixture: %d complete source reads in 1 scheduled capture; 0 model-visible acquisition calls; %d projected input bytes; repeated preparation schedules 0 reads", len(commands), inputBytes)
+}
+
 func TestUnsuccessfulCompactionDoesNotAttachReload(t *testing.T) {
 	for _, name := range []string{"compact", "wait_agent"} {
 		for _, state := range []string{"skipped", "failed", "canceled", "registered"} {

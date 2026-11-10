@@ -123,6 +123,11 @@ original wait delivers an outcome. Unavailable observations are `null` without
 failing an otherwise successful coordination operation.
 Dispatched wait metrics freeze with that wait's existing checkpoint so a resumed
 runtime can confirm the exact retained continuation without replacing its facts.
+The follow-up tool description directs callers to reuse these metrics, inspect only
+missing or stale observations, and choose fresh context with `fork_turns:"none"`
+or ask the target to checkpoint itself with needed reload sources. A follow-up does
+not compact the target. Metrics inform the decision; no universal token cutoff or
+automatic compaction is imposed.
 
 Host MCP thread/session/turn/call/item metadata binds each call to admitted ownership.
 Task labels and tool arguments confer no authority. Members communicate with
@@ -275,7 +280,8 @@ and inherited history without rereading. Compaction retires the initial preload
 when its assignment leaves context and selects subsequent reloads normally.
 
 The spawn tool description directs agents to preload known, assignment-relevant startup
-instructions, skills, task files and retained changes for fresh children. This supplies exact source
+instructions and skills in full, plus relevant owner evidence, task files and retained changes
+for fresh children, not abbreviated policy copies. Later-phase sources wait until needed. This supplies exact source
 content at the first inference without child discovery/read turns or unrelated parent history.
 Agents omit preload for full-history forks or when no startup sources are known,
 and leave `AGENTS.md` to the host.

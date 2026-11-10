@@ -88,9 +88,16 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	descriptions := make(map[string]string)
+	for _, tool := range ToolCatalog(false) {
+		descriptions[tool.Name] = tool.Description
+	}
 	var names []string
 	for _, tool := range catalog.Tools {
 		names = append(names, tool.Name)
+		if tool.Description != descriptions[tool.Name] {
+			t.Errorf("effective %s description differs from its owning catalog", tool.Name)
+		}
 		raw, err := json.Marshal(tool.InputSchema)
 		if err != nil {
 			t.Fatal(err)
