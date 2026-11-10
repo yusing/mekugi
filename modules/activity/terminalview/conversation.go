@@ -99,16 +99,12 @@ func (v *View) RenderConversation(width int) Feed {
 				last = j
 			}
 		}
-		for _, same := range []func(activitypresentation.Entry) bool{tools} {
-			if !same(v.entries[i]) {
-				continue
-			}
-			for ; j < len(v.entries) && (!v.Visible(v.entries[j]) || same(v.entries[j])); j++ {
+		if tools(v.entries[i]) {
+			for ; j < len(v.entries) && (!v.Visible(v.entries[j]) || tools(v.entries[j])); j++ {
 				if v.Visible(v.entries[j]) {
 					last = j
 				}
 			}
-			break
 		}
 		entry := v.entries[i]
 		items = append(items, conversationItem{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == v.conversationSpeaker() && entry.Kind == "reasoning", lead: -1})
