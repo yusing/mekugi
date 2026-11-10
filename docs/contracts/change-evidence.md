@@ -173,6 +173,11 @@ writer-after-edit intervals. Each interval keeps its originating operation. Writ
 pending until that writer's terminal result; the intervening edit can complete independently.
 Checkpoint-backed intervals read only the later operation's selected paths from
 the witnessed checkpoint, without refreshing it or broadening authored scope.
+Paths outside a checkpoint are absent only when a bounded pre-writer filesystem
+inventory also excludes them. Omitted roots, unavailable inventories and historical
+checkpoints without that evidence remain unknown; a later absent boundary cannot
+prove the earlier writer had no effect. Inventories share checkpoint acquisition
+and metadata bounds and do not expand content admission.
 Unavailable boundaries or checkpoints retain incomplete evidence rather than an invented chain.
 A synchronous native pre-tool boundary can close a terminated overlapping writer
 before the next named writer starts. This preserves both operations even when the

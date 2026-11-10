@@ -139,11 +139,23 @@ func TestCaptureExecutionDirectoriesReuseCoveredScope(t *testing.T) {
 }
 
 func TestMergedCommandDirectoryCheckpointsKeepEarliestAdmission(t *testing.T) {
-	first := Observation{Checkpoints: map[string]string{"/external": "first"}}
-	second := Observation{Checkpoints: map[string]string{"/external": "second", "/other": "other"}}
+	first := Observation{Checkpoints: map[string]string{"/external": "first"}, CheckpointOmissions: map[string][]string{"/external": {"/external/omitted"}}}
+	second := Observation{Checkpoints: map[string]string{"/external": "second", "/other": "other"}, CheckpointOmissions: map[string][]string{"/external": {}, "/other": {}}}
 	merged := Merge([]Member{{Observation: second, Sequence: 20}, {Observation: first, Sequence: 10}})
 	if merged.Checkpoints["/external"] != "first" || merged.Checkpoints["/other"] != "other" {
 		t.Fatalf("merged checkpoints lost admission order: %+v", merged.Checkpoints)
+	}
+	if !slices.Equal(merged.CheckpointOmissions["/external"], first.CheckpointOmissions["/external"]) || merged.CheckpointOmissions["/other"] == nil {
+		t.Fatalf("inventory lost checkpoint admission order: %+v", merged.CheckpointOmissions)
+	}
+	merged.CheckpointOmissions["/external"] = nil
+	if first.CheckpointOmissions["/external"] == nil {
+		t.Fatal("merge mutated original inventory")
+	}
+	first.CheckpointOmissions = nil
+	merged = Merge([]Member{{Observation: second, Sequence: 20}, {Observation: first, Sequence: 10}})
+	if _, found := merged.CheckpointOmissions["/external"]; found {
+		t.Fatal("later inventory supplied earlier missing coverage")
 	}
 	merged.Checkpoints["/external"] = "mutated"
 	if first.Checkpoints["/external"] != "first" || second.Checkpoints["/external"] != "second" {

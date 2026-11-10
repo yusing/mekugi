@@ -103,7 +103,7 @@ func TestWorkspaceCanceledRepackKeepsSizeCheckDue(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { _, err := repo.snapshot(ctx); done <- err }()
+	go func() { _, err := repo.snapshot(ctx, false); done <- err }()
 	for {
 		if _, err := os.Stat(marker); err == nil {
 			break
@@ -127,7 +127,7 @@ func TestWorkspaceCanceledRepackKeepsSizeCheckDue(t *testing.T) {
 	if err := os.WriteFile(sentinel, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, _ = repo.snapshot(t.Context())
+	_, _ = repo.snapshot(t.Context(), false)
 	if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
 		t.Fatalf("failed retry bypassed disk-cap fallback: %v", err)
 	}

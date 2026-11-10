@@ -102,6 +102,11 @@ type Observation struct {
 	// Checkpoints cover explicit command directories outside the workspace's
 	// comparison, including nested repositories. Workspace remains the identity.
 	Checkpoints map[string]string `json:",omitempty"`
+	// CheckpointOmissions holds complete pre-writer inventories of physical
+	// roots omitted from each checkpoint. Missing entries mean unknown coverage.
+	// An empty inventory proves absence outside the tree; historical captures
+	// without an inventory retain their conservative unknown-baseline behavior.
+	CheckpointOmissions map[string][]string `json:",omitempty"`
 }
 
 // A successful mktemp report supplies an absent endpoint. Large temporary
@@ -182,9 +187,11 @@ func Merge(members []Member) Observation {
 	}
 	var tree string
 	var earliest uint64
+	var omissions map[string][]string
 	for _, member := range members {
 		if member.Tree != "" && (tree == "" || member.Sequence < earliest) {
 			tree, earliest = member.Tree, member.Sequence
+			omissions = maps.Clone(member.CheckpointOmissions)
 		}
 	}
 	merged.Commands = slices.Clone(merged.Commands)
@@ -197,6 +204,10 @@ func Merge(members []Member) Observation {
 	merged.Listings = slices.Clone(merged.Listings)
 	merged.Excluded = slices.Clone(merged.Excluded)
 	merged.Checkpoints = maps.Clone(merged.Checkpoints)
+	merged.CheckpointOmissions = omissions
+	for directory, omitted := range omissions {
+		merged.CheckpointOmissions[directory] = slices.Clone(omitted)
+	}
 	checkpointOrder := make(map[string]uint64)
 	for _, member := range members {
 		for directory, tree := range member.Checkpoints {
@@ -205,6 +216,13 @@ func Merge(members []Member) Observation {
 					merged.Checkpoints = make(map[string]string)
 				}
 				merged.Checkpoints[directory], checkpointOrder[directory] = tree, member.Sequence
+				delete(merged.CheckpointOmissions, directory)
+				if omitted, found := member.CheckpointOmissions[directory]; found {
+					if merged.CheckpointOmissions == nil {
+						merged.CheckpointOmissions = make(map[string][]string)
+					}
+					merged.CheckpointOmissions[directory] = slices.Clone(omitted)
+				}
 			}
 		}
 	}
@@ -323,8 +341,18 @@ func Capture(ctx context.Context, commands []commandanalysis.Command, dynamic, c
 			directories = append(directories, env.Directory)
 		}
 		directories = append(directories, slices.Sorted(maps.Keys(observation.Checkpoints))...)
+		inventoryBudget := maxExecObservationBytes - len(responses.MustMarshalJSON(observation))
 		for _, directory := range directories {
-			tree := env.Workspaces.Checkpoint(ctx, directory)
+			checkpoint := env.Workspaces.checkpoint(ctx, directory, true)
+			tree := checkpoint.tree
+			inventoryBytes := len(responses.MustMarshalJSON(checkpoint.omissions)) + len(responses.MustMarshalJSON(directory)) + 2
+			if checkpoint.omissions != nil && inventoryBytes <= inventoryBudget {
+				inventoryBudget -= inventoryBytes
+				if observation.CheckpointOmissions == nil {
+					observation.CheckpointOmissions = make(map[string][]string)
+				}
+				observation.CheckpointOmissions[directory] = checkpoint.omissions
+			}
 			if directory == env.Directory {
 				observation.Tree = tree
 			} else {

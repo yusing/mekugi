@@ -28,10 +28,13 @@ func TestMergedSiblingCheckpointUsesAdmissionOrder(t *testing.T) {
 	}
 	writeTestFile(t, path, "after\n")
 	merged := Merge([]Member{
-		{Commands: []commandanalysis.Command{{Command: "second"}}, Tree: second, Sequence: 20},
-		{Commands: []commandanalysis.Command{{Command: "first"}}, Tree: first, Sequence: 10},
+		{Commands: []commandanalysis.Command{{Command: "second"}}, Tree: second, CheckpointOmissions: map[string][]string{workspace: {}}, Sequence: 20},
+		{Commands: []commandanalysis.Command{{Command: "first"}}, Tree: first, CheckpointOmissions: map[string][]string{workspace: {path}}, Sequence: 10},
 		{Commands: []commandanalysis.Command{{Command: "unwitnessed"}}, Sequence: 1},
 	})
+	if !slices.Equal(merged.CheckpointOmissions[workspace], []string{path}) {
+		t.Fatal("main checkpoint borrowed later inventory")
+	}
 	result := Reconcile(t.Context(), merged, Comparison{Workspace: workspace, Workspaces: snapshots})
 	if merged.Tree != first || !slices.Equal(merged.Commands, []commandanalysis.Command{{Command: "second"}, {Command: "first"}, {Command: "unwitnessed"}}) || result.SnapshotError != nil || len(result.Files) != 1 || !strings.Contains(result.Files[0].Diff, "-before") || !strings.Contains(result.Files[0].Diff, "+after") {
 		t.Fatalf("batch lost admission boundary or member order: observation=%+v result=%+v", merged, result)

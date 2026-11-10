@@ -189,7 +189,7 @@ func (r *workspaceSnapshotRepo) startWarm() {
 	owner.warmups.Go(func() {
 		ctx, cancel := context.WithTimeout(owner.ctx, workspaceSnapshotWarm)
 		defer cancel()
-		_, err := r.snapshot(ctx)
+		_, err := r.snapshot(ctx, false)
 		r.mu.Lock()
 		r.warming, r.warmed = false, err == nil
 		if err != nil {
@@ -204,9 +204,20 @@ func (r *workspaceSnapshotRepo) startWarm() {
 // snapshot is available in time. A missing checkpoint only narrows coverage
 // to the source-named targets; it never blocks the call.
 func (s *Workspaces) Checkpoint(ctx context.Context, workspace string) string {
+	return s.checkpoint(ctx, workspace, false).tree
+}
+
+// omissions is nil without a complete inventory; an empty slice witnesses that
+// no filesystem entries were omitted. Paths are physical roots, not content.
+type workspaceCheckpoint struct {
+	tree      string
+	omissions []string
+}
+
+func (s *Workspaces) checkpoint(ctx context.Context, workspace string, inventory bool) workspaceCheckpoint {
 	repo := s.repo(workspace)
 	if repo == nil {
-		return ""
+		return workspaceCheckpoint{}
 	}
 	ctx, cancel := context.WithTimeout(ctx, workspaceSnapshotWait)
 	defer cancel()
@@ -216,7 +227,7 @@ func (s *Workspaces) Checkpoint(ctx context.Context, workspace string) string {
 	select {
 	case <-ready:
 	case <-ctx.Done():
-		return ""
+		return workspaceCheckpoint{}
 	}
 	repo.mu.Lock()
 	usable, retry := repo.warmed, time.Since(repo.failed) >= workspaceSnapshotRetry
@@ -227,9 +238,9 @@ func (s *Workspaces) Checkpoint(ctx context.Context, workspace string) string {
 			// not end snapshots for the workspace.
 			repo.startWarm()
 		}
-		return ""
+		return workspaceCheckpoint{}
 	}
-	tree, err := repo.snapshot(ctx)
+	checkpoint, err := repo.snapshot(ctx, inventory)
 	if err != nil {
 		if ctx.Err() != nil {
 			// Let a large refresh finish outside forwarding; the next
@@ -239,26 +250,26 @@ func (s *Workspaces) Checkpoint(ctx context.Context, workspace string) string {
 			repo.mu.Unlock()
 			repo.startWarm()
 		}
-		return ""
+		return workspaceCheckpoint{}
 	}
-	return tree
+	return checkpoint
 }
 
-func (r *workspaceSnapshotRepo) snapshot(ctx context.Context) (string, error) {
+func (r *workspaceSnapshotRepo) snapshot(ctx context.Context, inventory bool) (workspaceCheckpoint, error) {
 	select {
 	case r.gate <- struct{}{}:
 		defer func() { <-r.gate }()
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return workspaceCheckpoint{}, ctx.Err()
 	}
 	if err := os.MkdirAll(filepath.Dir(r.lockPath), 0o700); err != nil {
-		return "", err
+		return workspaceCheckpoint{}, err
 	}
 	// Router processes sharing a store serialize on the private index.
 	lock := flock.New(r.lockPath, flock.SetPermissions(0o600))
 	locked, err := lock.TryLockContext(ctx, 10*time.Millisecond)
 	if err != nil || !locked {
-		return "", errors.Join(err, ctx.Err())
+		return workspaceCheckpoint{}, errors.Join(err, ctx.Err())
 	}
 	defer lock.Unlock()
 	now := time.Now()
@@ -273,21 +284,21 @@ func (r *workspaceSnapshotRepo) snapshot(ctx context.Context) (string, error) {
 		if r.storeBytes(ctx) > workspaceSnapshotStoreBytes {
 			_ = r.repack(ctx) // Best effort; the existing size cap still applies.
 			if ctx.Err() != nil {
-				return "", ctx.Err()
+				return workspaceCheckpoint{}, ctx.Err()
 			}
 			size := r.storeBytes(ctx)
 			if ctx.Err() != nil {
-				return "", ctx.Err()
+				return workspaceCheckpoint{}, ctx.Err()
 			}
 			if size > workspaceSnapshotStoreBytes {
 				if err := errors.Join(os.RemoveAll(r.gitDir), os.Remove(r.index)); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return "", err
+					return workspaceCheckpoint{}, err
 				}
 				r.git = ""
 			}
 		}
 		if ctx.Err() != nil {
-			return "", ctx.Err()
+			return workspaceCheckpoint{}, ctx.Err()
 		}
 		// Interrupted maintenance remains due for the longer background warmup.
 		r.snapshots = 0
@@ -295,22 +306,22 @@ func (r *workspaceSnapshotRepo) snapshot(ctx context.Context) (string, error) {
 	if r.git == "" {
 		r.owner.pruneIdle(filepath.Dir(r.lockPath))
 		if err := r.setup(ctx); err != nil {
-			return "", err
+			return workspaceCheckpoint{}, err
 		}
 	}
 	r.snapshots++
 	if err := r.refreshPrivate(); err != nil {
-		return "", err
+		return workspaceCheckpoint{}, err
 	}
-	tree, err := r.refresh(ctx)
+	checkpoint, err := r.refresh(ctx, inventory)
 	if err != nil && ctx.Err() == nil && strings.Contains(err.Error(), "fatal:") {
 		// A seeded index can depend on state private to the repository, such
 		// as a split index, an unmerged entry, or a pruned object. Start from
 		// an empty index instead; comparisons are limited to the workspace.
 		_ = os.Remove(r.index)
-		tree, err = r.refresh(ctx)
+		checkpoint, err = r.refresh(ctx, inventory)
 	}
-	return tree, err
+	return checkpoint, err
 }
 
 // repack runs under the snapshot's gate and private-index lock. Checkpoint
@@ -396,30 +407,103 @@ func (s *Workspaces) pruneIdle(keep string) {
 	}
 }
 
-func (r *workspaceSnapshotRepo) refresh(ctx context.Context) (string, error) {
+func (r *workspaceSnapshotRepo) refresh(ctx context.Context, inventory bool) (workspaceCheckpoint, error) {
 	var err error
+	var incomplete bool
 	if r.plain {
-		err = r.addPlain(ctx)
+		err = r.addPlain(ctx, &incomplete)
 	} else {
-		err = r.add(ctx, nil, "add", "-A", "--ignore-errors", "--", r.pathspec)
+		err = r.add(ctx, &incomplete, nil, "add", "-A", "--ignore-errors", "--", r.pathspec)
 	}
 	if err == nil {
-		err = r.renormalize(ctx)
+		err = r.renormalize(ctx, &incomplete)
 	}
 	if err != nil {
-		return "", err
+		return workspaceCheckpoint{}, err
 	}
 	output, err := r.run(ctx, nil, "write-tree")
 	if err != nil {
-		return "", err
+		return workspaceCheckpoint{}, err
 	}
-	return strings.TrimSpace(string(output)), nil
+	checkpoint := workspaceCheckpoint{tree: strings.TrimSpace(string(output))}
+	if inventory && !incomplete {
+		checkpoint.omissions = r.omittedPaths(ctx)
+	}
+	return checkpoint, nil
+}
+
+// omittedPaths witnesses the filesystem entries not represented by the private
+// index. Git's untracked listing is insufficient: it skips special files and
+// may omit unreadable directories. Walk only directories containing indexed
+// paths, collapsing everything else to its root. Errors or the existing entry
+// bound leave absence unknown; this inventory never expands content admission.
+func (r *workspaceSnapshotRepo) omittedPaths(ctx context.Context) []string {
+	paths, truncated, err := r.list(ctx, workspaceSnapshotPlainFiles, "ls-files", "-z", "--cached", "--", r.pathspec)
+	if err != nil || truncated {
+		return nil
+	}
+	indexed, directories := make(map[string]bool, len(paths)), make(map[string]bool)
+	for _, path := range paths {
+		physical := filepath.Join(r.worktree, filepath.FromSlash(path))
+		indexed[physical] = true
+		for parent := filepath.Dir(physical); changes.PathWithin(parent, r.physicalWorkspace); parent = filepath.Dir(parent) {
+			directories[parent] = true
+			if parent == r.physicalWorkspace {
+				break
+			}
+		}
+	}
+	omitted := make([]string, 0)
+	remaining, bytes := workspaceSnapshotPlainFiles, MaxContentBytes
+	var walk func(string) error
+	walk = func(directory string) error {
+		file, err := os.Open(directory)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			entries, err := file.ReadDir(min(128, remaining+1))
+			remaining -= len(entries)
+			if remaining < 0 {
+				return errors.New("checkpoint inventory bound exceeded")
+			}
+			for _, entry := range entries {
+				path := filepath.Join(directory, entry.Name())
+				switch {
+				case entry.IsDir() && directories[path]:
+					if err := walk(path); err != nil {
+						return err
+					}
+				case !indexed[path] || entry.IsDir():
+					bytes -= len(path)
+					if bytes < 0 {
+						return errors.New("checkpoint inventory byte bound exceeded")
+					}
+					omitted = append(omitted, path)
+				}
+			}
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if walk(r.physicalWorkspace) != nil {
+		return nil
+	}
+	return omitted
 }
 
 // renormalize rehashes a seeded index once when the repository declares
 // attributes: seeded entries hold Git's converted content, while snapshots
 // record the bytes on disk.
-func (r *workspaceSnapshotRepo) renormalize(ctx context.Context) error {
+func (r *workspaceSnapshotRepo) renormalize(ctx context.Context, incomplete *bool) error {
 	marker := filepath.Join(r.gitDir, workspaceSnapshotSeeded)
 	if _, err := os.Stat(marker); err != nil {
 		return nil
@@ -429,7 +513,7 @@ func (r *workspaceSnapshotRepo) renormalize(ctx context.Context) error {
 		return err
 	}
 	if len(attributes) != 0 {
-		if err := r.add(ctx, nil, "add", "--renormalize", "--ignore-errors", "--", r.pathspec); err != nil {
+		if err := r.add(ctx, incomplete, nil, "add", "--renormalize", "--ignore-errors", "--", r.pathspec); err != nil {
 			return err
 		}
 	}
@@ -544,7 +628,7 @@ func workspaceSnapshotWrite(path string, content []byte) error {
 
 // addPlain refreshes known files and admits bounded new files. A first
 // snapshot of a workspace too large to bound is unavailable rather than swept.
-func (r *workspaceSnapshotRepo) addPlain(ctx context.Context) error {
+func (r *workspaceSnapshotRepo) addPlain(ctx context.Context, incomplete *bool) error {
 	if _, err := os.Stat(r.index); errors.Is(err, os.ErrNotExist) {
 		_, truncated, err := r.list(ctx, workspaceSnapshotPlainFiles, "ls-files", "-z", "--others", "--exclude-standard")
 		if err != nil {
@@ -553,9 +637,9 @@ func (r *workspaceSnapshotRepo) addPlain(ctx context.Context) error {
 		if truncated {
 			return fmt.Errorf("workspace has more than %d files and no Git repository", workspaceSnapshotPlainFiles)
 		}
-		return r.add(ctx, nil, "add", "-A", "--ignore-errors", "--", ".")
+		return r.add(ctx, incomplete, nil, "add", "-A", "--ignore-errors", "--", ".")
 	}
-	if err := r.add(ctx, nil, "add", "-u", "--ignore-errors", "--", "."); err != nil {
+	if err := r.add(ctx, incomplete, nil, "add", "-u", "--ignore-errors", "--", "."); err != nil {
 		return err
 	}
 	entries, _, err := r.list(ctx, workspaceSnapshotPlainFiles, "ls-files", "-z", "--others", "--directory", "--no-empty-directory", "--exclude-standard")
@@ -596,14 +680,15 @@ func (r *workspaceSnapshotRepo) addPlain(ctx context.Context) error {
 		stdin.WriteString(path)
 		stdin.WriteByte(0)
 	}
-	return r.add(ctx, &stdin, "add", "--ignore-errors", "--pathspec-from-file=-", "--pathspec-file-nul")
+	return r.add(ctx, incomplete, &stdin, "add", "--ignore-errors", "--pathspec-from-file=-", "--pathspec-file-nul")
 }
 
 // add tolerates per-file indexing errors, such as an unreadable file, which
 // leave that path's previous state; a fatal error fails the snapshot.
-func (r *workspaceSnapshotRepo) add(ctx context.Context, stdin io.Reader, args ...string) error {
+func (r *workspaceSnapshotRepo) add(ctx context.Context, incomplete *bool, stdin io.Reader, args ...string) error {
 	_, err := r.run(ctx, stdin, args...)
 	if _, ok := errors.AsType[*exec.ExitError](err); ok && ctx.Err() == nil && !strings.Contains(err.Error(), "fatal:") {
+		*incomplete = true
 		return nil
 	}
 	return err
@@ -935,7 +1020,7 @@ func (s *Workspaces) IntervalBefore(ctx context.Context, workspace string, obser
 	}
 	for _, directory := range slices.Sorted(maps.Keys(selected)) {
 		paths := selected[directory]
-		files, err := s.checkpointFiles(ctx, directory, checkpoints[directory], paths, reused, claims, &budget, sink)
+		files, err := s.checkpointFiles(ctx, directory, checkpoints[directory], paths, reused, observation.CheckpointOmissions[directory], claims, &budget, sink)
 		if err != nil {
 			for _, path := range paths {
 				keep(File{Path: path, Origin: origin, Error: "overlapping writer checkpoint unavailable: " + err.Error()})
@@ -969,7 +1054,7 @@ func nestedCheckpointRepository(root, path string) bool {
 	return false
 }
 
-func (s *Workspaces) checkpointFiles(ctx context.Context, workspace, tree string, paths []string, reused map[string]File, claims Claims, budget *int, sink *evidence.Source) ([]File, error) {
+func (s *Workspaces) checkpointFiles(ctx context.Context, workspace, tree string, paths []string, reused map[string]File, omissions []string, claims Claims, budget *int, sink *evidence.Source) ([]File, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1041,6 +1126,12 @@ func (s *Workspaces) checkpointFiles(ctx context.Context, workspace, tree string
 			continue
 		}
 		if _, witnessed := states[path]; !witnessed {
+			if omissions != nil && !slices.ContainsFunc(omissions, func(root string) bool { return changes.PathWithin(path, root) }) {
+				// The pre-writer inventory, not a later absent boundary, proves
+				// this path did not exist outside the bounded checkpoint.
+				states[path] = workspaceSnapshotEntry{}
+				continue
+			}
 			// Absence from a bounded tree can mean an unadmitted path, not an
 			// absent file. Do not invent a creation outside checkpoint coverage.
 			retained[path] = File{Error: "path was not retained in before checkpoint"}

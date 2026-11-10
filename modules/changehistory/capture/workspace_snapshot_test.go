@@ -6,11 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -127,6 +129,193 @@ func TestCheckpointIntervalsShareParentIdentity(t *testing.T) {
 				t.Fatalf("claim retirement lost physical membership: %+v", claims)
 			}
 		})
+	}
+}
+
+func TestCheckpointIntervalAbsentBoundary(t *testing.T) {
+	isolateSnapshotGit(t)
+	workspace := t.TempDir()
+	existing, created := filepath.Join(workspace, "existing"), filepath.Join(workspace, "created")
+	writeTestFile(t, existing, "before\n")
+	snapshots := newWorkspaces(t.Context(), t.TempDir())
+	t.Cleanup(snapshots.Close)
+	observation, _ := Capture(t.Context(), []commandanalysis.Command{{Command: "custom-generator", Workdir: workspace, Shell: "bash"}}, false, false, Options{Directory: workspace, Workspaces: snapshots})
+	tree := observation.Tree
+	if tree == "" {
+		t.Fatal("missing checkpoint")
+	}
+	for _, scenario := range []struct {
+		name       string
+		historical bool
+		tree       string
+		endpoint   File
+		claims     Claims
+		wantText   string
+		wantGap    bool
+	}{
+		{name: "new-file", tree: tree, endpoint: File{Path: created}},
+		{name: "real-deletion", tree: tree, endpoint: File{Path: existing}, wantText: "before\n"},
+		{name: "historical-absent-boundary", historical: true, tree: tree, endpoint: File{Path: created}, wantGap: true},
+		{name: "unavailable-before", historical: true, tree: tree, endpoint: File{Path: created, Kind: Text, Content: "unknown origin\n"}, wantGap: true},
+		{name: "unreadable-boundary", tree: tree, endpoint: File{Path: created, Error: "unreadable"}, wantGap: true},
+		{name: "missing-checkpoint", endpoint: File{Path: created}, wantGap: true},
+		{name: "claimed-deletion", tree: tree, endpoint: File{Path: created}, claims: Claims{created: {repo: snapshots.repo(workspace), file: &File{Path: created, Kind: Text, Content: "claimed\n"}}}, wantText: "claimed\n"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			endpoints := []File{scenario.endpoint}
+			observed := *observation
+			observed.Tree = scenario.tree
+			if scenario.historical {
+				observed.CheckpointOmissions = nil
+			}
+			before, claims := snapshots.IntervalBefore(t.Context(), workspace, observed, nil, endpoints, scenario.claims, nil)
+			if len(before) != 1 || before[0].Content != scenario.wantText || (before[0].Error != "") != (scenario.wantGap && scenario.endpoint.Error == "") {
+				t.Fatalf("before=%+v", before)
+			}
+			reviews, boundaries := ReviewInterval(before, endpoints)
+			if len(boundaries) != 1 {
+				t.Fatal("lost continuation boundary")
+			}
+			if scenario.wantGap {
+				if len(claims) != 0 || len(reviews) != 1 || reviews[0].Incomplete == "" {
+					t.Fatalf("unknown coverage accepted: claims=%d reviews=%+v", len(claims), reviews)
+				}
+			} else if scenario.wantText != "" {
+				if len(claims) != 1 || len(reviews) != 1 || reviews[0].BeforePath != scenario.endpoint.Path || reviews[0].AfterPath != "" || reviews[0].Incomplete != "" {
+					t.Fatalf("lost witnessed deletion: %+v", reviews)
+				}
+			} else if len(claims) != 1 || len(reviews) != 0 {
+				t.Fatalf("invented pre-creation effect: %+v", reviews)
+			}
+		})
+	}
+}
+
+func TestCheckpointIntervalUnretainedDeletionBeforeCreation(t *testing.T) {
+	isolateSnapshotGit(t)
+	workspace := t.TempDir()
+	writeTestFile(t, filepath.Join(workspace, "seed"), "seed\n")
+	snapshots := newWorkspaces(t.Context(), t.TempDir())
+	t.Cleanup(snapshots.Close)
+	if snapshots.Checkpoint(t.Context(), workspace) == "" {
+		t.Fatal("missing initial checkpoint")
+	}
+	for i := range workspaceSnapshotPlainAdds + 1 {
+		writeTestFile(t, filepath.Join(workspace, "burst", fmt.Sprint(i)), "unretained before\n")
+	}
+	path := filepath.Join(workspace, "burst", "0")
+	observation, _ := Capture(t.Context(), []commandanalysis.Command{{Command: "custom-generator", Workdir: workspace, Shell: "bash"}}, false, false, Options{Directory: workspace, Workspaces: snapshots})
+	tree := observation.Tree
+	if !slices.Equal(observation.CheckpointOmissions[workspace], []string{filepath.Join(workspace, "burst")}) {
+		t.Fatalf("unadmitted directory was not collapsed: %v", observation.CheckpointOmissions)
+	}
+	states, err := snapshots.repo(workspace).states(t.Context(), tree, []string{path})
+	if err != nil || tree == "" || len(states) != 0 {
+		t.Fatalf("fixture did not omit the existing file: tree=%q states=%v err=%v", tree, states, err)
+	}
+	// The open writer deletes an existing, unretained file. A later creation
+	// witnesses absence, but that cannot establish the writer's before-state.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	endpoints := []File{{Path: path}}
+	before, claims := snapshots.IntervalBefore(t.Context(), workspace, *observation, nil, endpoints, nil, nil)
+	reviews, _ := ReviewInterval(before, endpoints)
+	if len(before) != 1 || before[0].Error == "" || len(claims) != 0 || len(reviews) != 1 || reviews[0].Incomplete == "" {
+		t.Fatalf("unavailable before-state became complete: before=%+v claims=%d reviews=%+v", before, len(claims), reviews)
+	}
+}
+
+func TestCheckpointAbsenceInventory(t *testing.T) {
+	for _, git := range []bool{false, true} {
+		t.Run(fmt.Sprintf("git=%v", git), func(t *testing.T) {
+			isolateSnapshotGit(t)
+			workspace := t.TempDir()
+			if git {
+				command := exec.Command("git", "-C", workspace, "init", "--quiet")
+				command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+				if output, err := command.CombinedOutput(); err != nil {
+					t.Fatalf("git init: %s %v", output, err)
+				}
+			}
+			writeTestFile(t, filepath.Join(workspace, "indexed", "file"), "before\n")
+			writeTestFile(t, filepath.Join(workspace, ".gitignore"), "ignored/\n")
+			writeTestFile(t, filepath.Join(workspace, "ignored", "file"), "ignored\n")
+			if err := os.Mkdir(filepath.Join(workspace, "empty"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			// Git does not list special files as untracked; they still existed.
+			pipe := filepath.Join(workspace, "pipe")
+			if output, err := exec.Command("mkfifo", pipe).CombinedOutput(); err != nil {
+				t.Fatalf("mkfifo: %s %v", output, err)
+			}
+			snapshots := newWorkspaces(t.Context(), t.TempDir())
+			t.Cleanup(snapshots.Close)
+			observation, _ := Capture(t.Context(), []commandanalysis.Command{{Command: "custom-generator", Workdir: workspace, Shell: "bash"}}, false, false, Options{Directory: workspace, Workspaces: snapshots})
+			omitted := observation.CheckpointOmissions[workspace]
+			// Collapse ignored directories, never enumerate their contents.
+			if !slices.Contains(omitted, filepath.Join(workspace, "ignored")) || !slices.Contains(omitted, pipe) || !slices.Contains(omitted, filepath.Join(workspace, "empty")) {
+				t.Fatalf("inventory lost omitted entry roots: %v", omitted)
+			}
+			if err := os.Remove(pipe); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(filepath.Join(workspace, "empty")); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"empty", "pipe", "indexed/new", "new-directory/new"} {
+				path := filepath.Join(workspace, name)
+				before, _ := snapshots.IntervalBefore(t.Context(), workspace, *observation, nil, []File{{Path: path}}, nil, nil)
+				gap := name == "empty" || name == "pipe"
+				if len(before) != 1 || (before[0].Error != "") != gap {
+					t.Fatalf("%s: before=%+v", name, before)
+				}
+			}
+			if os.Geteuid() != 0 {
+				directory := filepath.Join(workspace, "indexed")
+				if err := os.Chmod(directory, 0); err != nil {
+					t.Fatal(err)
+				}
+				omitted := snapshots.repo(workspace).omittedPaths(t.Context())
+				if err := os.Chmod(directory, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if omitted != nil {
+					t.Fatalf("unreadable directory became absence: %v", omitted)
+				}
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			if got := snapshots.repo(workspace).omittedPaths(ctx); got != nil {
+				t.Fatalf("canceled inventory became absence: %v", got)
+			}
+		})
+	}
+}
+
+func TestCheckpointAbsenceInventoryKeepsEntryBound(t *testing.T) {
+	isolateSnapshotGit(t)
+	workspace := t.TempDir()
+	seed := filepath.Join(workspace, "seed")
+	writeTestFile(t, seed, "seed\n")
+	snapshots := newWorkspaces(t.Context(), t.TempDir())
+	t.Cleanup(snapshots.Close)
+	tree := snapshots.Checkpoint(t.Context(), workspace)
+	repo := snapshots.repo(workspace)
+	states, err := repo.states(t.Context(), tree, []string{seed})
+	if err != nil || states[seed].oid == "" {
+		t.Fatalf("missing fixture tree: %v", err)
+	}
+	// Populate only the private index, avoiding thousands of fixture files.
+	var entries strings.Builder
+	for i := range workspaceSnapshotPlainFiles {
+		fmt.Fprintf(&entries, "100644 %s\tfile-%d\n", states[seed].oid, i)
+	}
+	if _, err := repo.run(t.Context(), strings.NewReader(entries.String()), "update-index", "--index-info"); err != nil {
+		t.Fatal(err)
+	}
+	if omitted := repo.omittedPaths(t.Context()); omitted != nil {
+		t.Fatalf("oversized inventory established absence: %v", omitted)
 	}
 }
 

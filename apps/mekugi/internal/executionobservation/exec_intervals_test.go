@@ -274,6 +274,10 @@ func TestCheckpointWriterPatchIntervals(t *testing.T) {
 				if status != 1 || !strings.Contains(stderr, "checkpoint unavailable") || len(prefix.ReviewFiles) != 1 || prefix.ReviewFiles[0].Incomplete == "" || writer.ExecOutcome.Coverage != changecapture.CoveragePartial {
 					t.Fatalf("missing checkpoint claimed complete evidence: %q, %q, %d; %+v", stdout, stderr, status, prefix)
 				}
+				stdout, stderr, status = f.run(t, "mchanges "+strings.Join(ids, " ")+" --summary -- file.go")
+				if status != 0 || !strings.Contains(stdout, "?\t-\t-\tfile.go") || !strings.Contains(stdout, "checkpoint unavailable") || stderr != "" {
+					t.Fatalf("missing checkpoint lost partial-coverage status: %q, %q, %d", stdout, stderr, status)
+				}
 				return
 			}
 			if status != 0 || stderr != "" || !strings.Contains(stdout, want) || strings.Contains(stdout, "+var value=1\n") || len(prefix.ReviewFiles) != 1 || !strings.Contains(prefix.ReviewFiles[0].Diff, "+var value = 1\n") {
@@ -991,6 +995,136 @@ func TestUnrelatedPatchKeepsWriterCoverageTruthful(t *testing.T) {
 			stdout, stderr, status = f.run(t, "mchanges "+patchHistory.ChangeID)
 			if status != 0 || stderr != "" || !strings.Contains(stdout, "-other before\n+other after\n") || strings.Contains(stdout, "own.go") {
 				t.Fatalf("independent patch evidence: %q, %q, %d", stdout, stderr, status)
+			}
+		})
+	}
+}
+
+func TestCheckpointWriterOverlappingCreation(t *testing.T) {
+	for _, scenario := range []string{"creation", "unretained-deletion", "historical-checkpoint"} {
+		t.Run(scenario, func(t *testing.T) {
+			unretained := scenario == "unretained-deletion"
+			isolateSnapshotGit(t)
+			f := newMChangesSliceFixture(t, "overlapping-creation")
+			writer := testProxyWithStore(f.store, &Windows{})
+			edit := testProxyWithStore(f.store, writer.Windows.ForRuntime())
+			selected := observationScope(f.ctx, writer.Retained)
+			own, created := filepath.Join(f.workspace, "own.go"), filepath.Join(f.workspace, "created.go")
+			writeTestFile(t, own, "package fixture\nvar value=1\n")
+			if unretained {
+				if writer.Checkpoints.Checkpoint(f.ctx, f.workspace) == "" {
+					t.Fatal("missing seed checkpoint")
+				}
+				for i := range 256 {
+					writeTestFile(t, filepath.Join(f.workspace, fmt.Sprintf("burst-%d", i)), "unretained\n")
+				}
+				writeTestFile(t, created, "existing before writer\n")
+			}
+			observation, _ := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: "gofmt -w own.go; make test", Workdir: f.workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: f.workspace, Workspaces: writer.Checkpoints})
+			if observation == nil || observation.Tree == "" || len(observation.Files) != 1 {
+				t.Fatal("missing named writer and fallback fixture")
+			}
+			if scenario == "historical-checkpoint" {
+				observation.CheckpointOmissions = nil
+			}
+			original := mekugiHistory{ToolName: nativeExecCommandToolName, Root: f.workspace, ExecutingThread: f.thread, ExecObservation: observation}
+			if err := publishObservations(f.ctx, selected, writer.Changes, nil, f.workspace, map[string]mekugiHistory{"writer": original}); err != nil {
+				t.Fatal(err)
+			}
+			writer.Windows.open(&execWindow{ref: "writer", group: "writer", workspace: f.workspace, roots: observation.Roots, paths: observation.ScopePaths(), scope: selected})
+			writeTestFile(t, own, "package fixture\nvar value = 1\n")
+			if unretained {
+				if err := os.Remove(created); err != nil {
+					t.Fatal(err)
+				}
+			}
+			patch := "*** Begin Patch\n*** Add File: created.go\n+package fixture\n+var created=1\n*** End Patch\n"
+			later := mekugiHistory{ToolName: applyPatchToolName, Root: f.workspace, ExecutingThread: f.thread, NativePatches: changecapture.Patches([]string{patch}, f.workspace)}
+			if err := publishObservations(f.ctx, selected, edit.Changes, nil, f.workspace, map[string]mekugiHistory{"patch": later}); err != nil {
+				t.Fatal(err)
+			}
+			edit.Windows.open(&execWindow{ref: "patch", group: "patch", workspace: f.workspace, roots: []string{f.workspace}, paths: []string{created}, scope: selected})
+			transform := &mekugiResponseTransform{owners: edit, ctx: f.ctx, directory: f.workspace, execGroup: "patch"}
+			if err := transform.splitExecIntervals("patch", nil, later.NativePatches); err != nil {
+				t.Fatal(err)
+			}
+			writeTestFile(t, created, "package fixture\nvar created=1\n")
+			if err := edit.finalizeNativePatches(f.ctx, f.workspace, f.thread, "patch", later, binding.ExecutionResult{Terminal: true, Succeeded: true}); err != nil {
+				t.Fatal(err)
+			}
+			// A named formatter overlaps the still-running test command after creation.
+			formatted, _ := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: "gofmt -w created.go", Workdir: f.workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: f.workspace, Workspaces: edit.Checkpoints})
+			formatHistory := mekugiHistory{ToolName: nativeExecCommandToolName, Root: f.workspace, ExecutingThread: f.thread, ExecObservation: formatted}
+			if err := publishObservations(f.ctx, selected, edit.Changes, nil, f.workspace, map[string]mekugiHistory{"format": formatHistory}); err != nil {
+				t.Fatal(err)
+			}
+			edit.Windows.open(&execWindow{ref: "format", group: "format", workspace: f.workspace, roots: formatted.Roots, paths: formatted.ScopePaths(), scope: selected})
+			if err := transform.splitExecIntervals("format", formatted, nil); err != nil {
+				t.Fatal(err)
+			}
+			writeTestFile(t, created, "package fixture\nvar created = 1\n")
+			for _, completion := range []execCompletion{
+				{callID: "format", history: formatHistory, result: binding.ExecutionResult{Terminal: true, Succeeded: true}},
+				{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: false}},
+			} {
+				if err := finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.Recovery, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{completion}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var ids []string
+			for _, call := range []string{legacycall.ExecCallID("writer", false), legacycall.PatchCallID("patch", 0), legacycall.ExecCallID("format", false)} {
+				completed, found, err := f.store.lookup(f.ctx, f.workspace, call)
+				if err != nil || !found || completed.ChangeID == "" {
+					t.Fatalf("completion %s: %+v, %v", call, completed, err)
+				}
+				ids = append(ids, completed.ChangeID)
+			}
+			stdout, stderr, status := f.run(t, "mchanges "+strings.Join(ids, " "))
+			if scenario != "creation" {
+				if status != 1 || !strings.Contains(stderr, "path was not retained in before checkpoint") {
+					t.Fatalf("unretained deletion became complete: %q %q %d", stdout, stderr, status)
+				}
+				stdout, stderr, status = f.run(t, "mchanges "+strings.Join(ids, " ")+" --summary -- created.go")
+				if status != 0 || stderr != "" || !strings.Contains(stdout, "?\t-\t-\tcreated.go") {
+					t.Fatalf("missing unknown summary: %q %q %d", stdout, stderr, status)
+				}
+				stdout, stderr, status = f.run(t, "mchanges "+ids[0]+" --history -- created.go")
+				if status != 0 || stderr != "" || !strings.Contains(stdout, "incomplete history") {
+					t.Fatalf("lost historical gap: %q %q %d", stdout, stderr, status)
+				}
+				writeTestFile(t, created, "unrelated live bytes\n")
+				reopened, err := openMekugiReplayStore(f.store.directory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(reopened.snapshots.Close)
+				_, err = reopened.changes.Read(f.ctx, reopened.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: ids, View: "net"})
+				if err == nil || !strings.Contains(err.Error(), "path was not retained in before checkpoint") {
+					t.Fatalf("cold read repaired unknown history: %v", err)
+				}
+				return
+			}
+			if status != 0 || stderr != "" || !strings.Contains(stdout, "+var created = 1\n") || !strings.Contains(stdout, "-var value=1\n+var value = 1\n") {
+				t.Fatalf("overlap poisoned retained composition: %q, %q, %d", stdout, stderr, status)
+			}
+			net := stdout
+			stdout, stderr, status = f.run(t, "mchanges "+ids[0]+" -- created.go")
+			if status != 0 || stderr != "" || strings.Contains(stdout, "var created") {
+				t.Fatalf("writer stole overlapping creation/formatting: %q, %q, %d", stdout, stderr, status)
+			}
+			stdout, stderr, status = f.run(t, "mchanges "+ids[0]+" --history -- created.go")
+			if status != 0 || stderr != "" || strings.Contains(stdout, "delete ") || strings.Contains(stdout, "incomplete history") {
+				t.Fatalf("writer retained an invented deletion: %q, %q, %d", stdout, stderr, status)
+			}
+			writeTestFile(t, created, "unrelated live bytes\n")
+			reopened, err := openMekugiReplayStore(f.store.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(reopened.snapshots.Close)
+			cold, err := reopened.changes.Read(f.ctx, reopened.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: ids, View: "net"})
+			if err != nil || cold != net {
+				t.Fatalf("cold composition changed retained evidence: %q, %v", cold, err)
 			}
 		})
 	}
