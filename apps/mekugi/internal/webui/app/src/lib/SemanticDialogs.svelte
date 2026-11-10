@@ -239,10 +239,7 @@
                 onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
               >
                 <span class="grid min-w-0 gap-0.5">
-                  <span class="font-medium wrap-anywhere"
-                    >{#if choice.Path}<Path path={choice.Path} />{:else}{choice.Display ||
-                        choice.Name}{/if}</span
-                  >
+                  <span class="font-medium wrap-anywhere">{choice.Display || choice.Name}</span>
                   {#if choice.Description}<span class="text-small text-muted"
                       >{choice.Description}</span
                     >{/if}

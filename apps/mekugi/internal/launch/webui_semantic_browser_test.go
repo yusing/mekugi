@@ -101,6 +101,10 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
+	// Keep the developer's managed skills out of the fixture's skill catalog.
+	if err := os.WriteFile(filepath.Join(bin, "skills-mgr"), []byte("#!/bin/sh\necho '<skills></skills>'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
@@ -666,12 +670,31 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	button("Send")
 	run("wait", "--text", "Session status")
 	closeDialog()
-	// A completed file keeps its mention and attaches its host path.
+	// A completed file keeps its mention and attaches its host path. Only file
+	// choices fit their path; skills keep their display names in completion
+	// and management, never their SKILL.md sources.
 	suggest("see @note")
+	run("wait", "--fn", `document.querySelector('#completions [role=option] [dir=rtl] > bdi')?.textContent === 'notes.md'`)
+	capture("file-completion")
 	run("press", "Enter")
 	run("wait", "--fn", "document.querySelector('#composer-text')?.value === 'see @notes.md ' && !document.querySelector('[role=alert]')")
 	button("Remove notes.md")
 	run("find", "label", "Message", "fill", "")
+	skillLabels := func(rows string) string {
+		return `(() => { const rows = [...document.querySelectorAll(` + strconv.Quote(rows) + `)]; return rows.some(row => row.textContent.includes('Review Board')) && rows.some(row => row.textContent.includes('audit-trail (fixture)')) && !rows.some(row => row.textContent.includes('SKILL.md') || row.querySelector('bdi')); })()`
+	}
+	suggest("$")
+	run("wait", "--fn", skillLabels("#completions [role=option]"))
+	capture("skill-completion")
+	run("press", "Escape")
+	run("wait", "--fn", "!document.querySelector('#completions')")
+	message("/skills")
+	waitAction(`Array.from(document.querySelectorAll('[role=dialog] button')).find(button => button.textContent.trim() === 'manage')`)
+	run("find", "role", "button", "click", "--name", "manage", "--exact")
+	run("wait", "--fn", skillLabels("[role=dialog][data-slot=dialog-content][data-state=open] ul button"))
+	capture("skill-management")
+	closeDialog()
+	run("wait", "--fn", "document.querySelector('#composer-text')?.value === ''")
 	// Main's model and effort are composer menus of the thread's own choices.
 	// Changing them leaves the draft in place.
 	run("find", "label", "Message", "fill", "kept draft")
@@ -1256,6 +1279,12 @@ func serveWebUISemanticHost(t *testing.T) {
 			result["data"] = []map[string]any{{"model": "fixture-a", "supportedReasoningEfforts": efforts}, {"model": "fixture-b", "supportedReasoningEfforts": efforts}}
 		case "fuzzyFileSearch":
 			result["files"] = []map[string]any{{"root": cwd, "path": "notes.md"}}
+		case "skills/list":
+			skills := filepath.Join(cwd, ".agents", "skills")
+			result["data"] = []map[string]any{{"cwd": cwd, "skills": []map[string]any{
+				{"name": "fixture:audit-trail", "path": filepath.Join(skills, "audit-trail", "SKILL.md"), "description": "Audit fixture", "enabled": true},
+				{"name": "review", "path": filepath.Join(skills, "review", "SKILL.md"), "description": "Review fixture", "interface": map[string]string{"displayName": "Review Board"}, "enabled": true},
+			}}}
 		case "thread/list":
 			result["data"] = []map[string]any{{"id": "saved", "preview": "Saved fixture", "cwd": cwd, "updatedAt": 1}}
 		case "thread/read", "thread/resume":

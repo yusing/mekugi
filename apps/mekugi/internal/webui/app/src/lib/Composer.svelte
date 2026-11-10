@@ -107,6 +107,8 @@
   const completion = $derived(
     dismissed === completionIdentity ? undefined : semantic.completionMenu,
   );
+  // Only @ choices are files; skills keep their display names beside a source path.
+  const fileChoices = $derived(completion?.Target.Kind === "@".charCodeAt(0));
   let active = $state(0);
   $effect(() => {
     const menu = completion;
@@ -406,7 +408,7 @@
               onkeydown={() => {}}
             >
               <span class="max-w-1/2 flex-none truncate font-mono"
-                >{#if choice.Path}<Path path={choice.Path} />{:else}{choice.Display ||
+                >{#if fileChoices}<Path path={choice.Path} />{:else}{choice.Display ||
                     choice.Name}{/if}</span
               >
               {#if choice.Description}<span
