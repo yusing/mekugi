@@ -61,6 +61,23 @@ func TestChildReplySummaryFallbackFollowsFeature(t *testing.T) {
 	}
 }
 
+func TestSideQuestionReplyPreservesFullSource(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{"## Summary\nDone.\n\n## Details\nEvery step.", "## Summary\nDone.\n\nSupporting evidence.", "Unstructured answer."} {
+		item := activitypresentation.ItemContent{Seq: 1, Agent: "/root", Kind: "progress", SideQuestion: &activitypresentation.SideQuestion{From: "/root", To: "/root/worker", Question: "Ready?", Answer: body, Answered: true}}
+		for _, enabled := range []bool{true, false} {
+			entry := projectEntry(activitypresentation.Entry{Facts: item.Facts, Values: item.Values()}, enabled, "/root", "/root")
+			if len(entry.Values) != 3 || entry.Values[1].Body != "Ready?" || entry.Values[2].Body != body {
+				t.Fatalf("question or full-copy answer changed: %+v", entry.Values)
+			}
+			answer := entry.Values[2]
+			if !enabled && (answer.Summary != "" || answer.Details != "") {
+				t.Fatalf("disabled preference retained summary presentation: %+v", answer)
+			}
+		}
+	}
+}
+
 // A compound command's result row repeats nothing its listed steps already
 // show, and names the command only when no step is listed.
 func TestBatchResultRow(t *testing.T) {

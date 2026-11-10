@@ -428,7 +428,21 @@
                       <AgentName name={value.to ?? ""} current={owner} />
                     </Trace.Line>
                   </Message.Header>
-                  <Excerpt text={value.body ?? ""} noun="message" />
+                  {#if value.summary}
+                    {@const context = referenceContext(value.body ?? "")}
+                    <Markdown text={value.summary} {context} />
+                    <details class="group/disclosure">
+                      <summary class="{summary} {caret} min-h-6 text-small text-muted"
+                        >Details</summary
+                      >
+                      <Markdown text={value.details ?? value.body ?? ""} {context} />
+                    </details>
+                  {:else}
+                    <Excerpt
+                      text={value.details ?? value.body ?? ""}
+                      noun={value.details ? "reply" : "message"}
+                    />
+                  {/if}
                 </Message.Content>
               </Message.Root>
             {:else if value.kind === "progress" && (value.from || value.waits?.length)}

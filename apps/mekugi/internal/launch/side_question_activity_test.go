@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"encoding/base64"
 	json "encoding/json/v2"
 	"fmt"
 	"strings"
@@ -194,6 +195,10 @@ func TestUISnapshotSideQuestionReplySummary(t *testing.T) {
 					terminalTest(u).Dialog.Layout(100)
 					if terminalTest(u).Dialog.Document.Text != childReplySummaryBody {
 						t.Fatal("full-copy answer changed")
+					}
+					terminalTest(u).outputKey("y")
+					if terminalTest(u).Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(childReplySummaryBody))+"\x07" {
+						t.Fatal("side-question copy lost the complete original answer")
 					}
 					opened = true
 					terminalTest(u).outputKey("\x1b")

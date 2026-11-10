@@ -33,6 +33,12 @@ func TestWebUIBrowserSideQuestion(t *testing.T) {
 	u.startSession(u.Thread, u.attached.cwd)
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": u.Thread, "turn": map[string]any{"id": "turn"}})
 	u.attached.session.Lifecycle(u.Thread).Responding = true
+	summaryEnabled := true
+	answers := map[string]string{
+		"long":        strings.Repeat("Long supporting details.\n\n", 12),
+		"structured":  "## Summary\nParser review complete.\n\n[evidence]: https://example.com/evidence\n\n## Details\nSupporting parser evidence. See [evidence].",
+		"sectionless": "## Summary\nSectionless parser review.\n\n" + strings.Repeat("Sectionless supporting paragraph.\n\n", 12),
+	}
 	observe := func(status string) {
 		item := sideQuestionActivityItem(t, status)
 		method := "item/completed"
@@ -40,9 +46,9 @@ func TestWebUIBrowserSideQuestion(t *testing.T) {
 			method = "item/started"
 		} else if status == "failed" {
 			item.ID = "failed-side-question"
-		} else if status == "long" {
-			item.ID, item.Status = "long-side-question", "completed"
-			result, err := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": `{"thread_id":"worker-thread","task_name":"/root/worker","answer":` + fmt.Sprintf("%q", strings.Repeat("Long supporting details.\n\n", 12)) + `}`}}})
+		} else if answer, ok := answers[status]; ok {
+			item.ID, item.Status = status+"-side-question", "completed"
+			result, err := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": `{"thread_id":"worker-thread","task_name":"/root/worker","answer":` + fmt.Sprintf("%q", answer) + `}`}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -54,7 +60,7 @@ func TestWebUIBrowserSideQuestion(t *testing.T) {
 		if len(agents.Roster) != 1 || !agents.Roster[0].Agent.Responding {
 			t.Fatalf("expected a working questioner: %+v", agents.Roster)
 		}
-		if err := machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Side question thread", Caller: "/root", Workspace: u.attached.cwd}, Input: &sessionapi.Input{}, Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: agents}); err != nil {
+		if err := machine.publishFrame(sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Side question thread", Caller: "/root", Workspace: u.attached.cwd}, Input: &sessionapi.Input{}, Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: agents, ChildReplySummary: summaryEnabled}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -110,4 +116,34 @@ func TestWebUIBrowserSideQuestion(t *testing.T) {
 	if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
 		run("screenshot", filepath.Join(directory, "side-question-expanded-dark-390.png"))
 	}
+	run("eval", `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Show less').focus()`)
+	run("press", "Enter")
+	observe("structured")
+	observe("sectionless")
+	run("eval", `(() => { const scroller = document.querySelector('[aria-label="Transcript"] .overflow-y-auto'); scroller.scrollTop = scroller.scrollHeight; })()`)
+	run("eval", `window.structuredReply = () => [...document.querySelectorAll('[data-entry]')].find(row => row.textContent.includes('Parser review complete.')); window.sectionlessReply = () => [...document.querySelectorAll('[data-entry]')].find(row => row.textContent.includes('Sectionless parser review.'));`)
+	for _, width := range []int{1280, 390} {
+		run("set", "viewport", fmt.Sprint(width), "900")
+		for _, theme := range []string{"light", "dark"} {
+			run("set", "media", theme)
+			run("wait", "--fn", `(() => { const row = window.structuredReply(); const short = window.sectionlessReply(); const clipped = short?.querySelector('.overflow-clip'); return row?.innerText.includes('Parser review complete.') && row.innerText.includes('Are the parser tests ready?') && !row.innerText.includes('Supporting parser evidence.') && !row.querySelector('h2') && row.querySelector('summary')?.textContent === 'Details' && short?.innerText.includes('Sectionless parser review.') && !short.querySelector('h2') && !short.querySelector('details') && short.querySelector('button[aria-expanded="false"]')?.textContent.trim() === 'Show full reply' && clipped?.getBoundingClientRect().height <= 110 && clipped.firstElementChild.getBoundingClientRect().height > 154 && document.documentElement.scrollWidth <= window.innerWidth; })()`)
+			run("eval", `window.structuredReply().scrollIntoView({block:'center'})`)
+			if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+				run("screenshot", filepath.Join(directory, fmt.Sprintf("side-question-summary-%s-%d.png", theme, width)))
+			}
+		}
+	}
+	// Native disclosure remains keyboard operable and preserves reference definitions.
+	run("eval", `window.structuredReply().querySelector('summary').focus()`)
+	run("press", "Enter")
+	run("wait", "--fn", `(() => { const row = window.structuredReply(); return row.querySelector('details').open && row.innerText.includes('Supporting parser evidence.') && row.innerText.split('Parser review complete.').length === 2 && row.querySelector('details a[href="https://example.com/evidence"]'); })()`)
+	run("eval", `window.sectionlessReply().querySelector('button[aria-expanded]').focus()`)
+	run("press", "Enter")
+	run("wait", "--fn", `window.sectionlessReply().innerText.split('Sectionless supporting paragraph.').length === 13`)
+	if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+		run("screenshot", filepath.Join(directory, "side-question-summary-expanded.png"))
+	}
+	summaryEnabled = false
+	observe("structured")
+	run("wait", "--fn", `(() => { const row = window.structuredReply(); return row.querySelector('h2')?.textContent === 'Summary' && !row.querySelector('details') && window.sectionlessReply().querySelector('h2')?.textContent === 'Summary'; })()`)
 }
