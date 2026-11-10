@@ -185,6 +185,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		http.Error(w, "unexpected summary inference", 500)
 		return
 	}
+	if request.PreviousResponse == "" {
+		environmentFacts(t, body)
+	}
 	if p.concurrentChildren {
 		p.serveConcurrentChildren(t, w, r, metadata.ThreadID, body)
 		return

@@ -485,11 +485,22 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 							wantParent = "turn"
 							wantInput = "next"
 						}
+						wantItems := 1
+						if i == 1 {
+							environmentFacts(t, responses.MustMarshalJSON(request))
+							wantItems++
+							if len(warmInput.([]any)) != 0 {
+								// Facts must precede the warmed user context, so that
+								// conversation prefix cannot be reused on first inference.
+								wantParent = ""
+								wantItems++
+							}
+						}
 						if responses.StringField(request, "previous_response_id") != wantParent {
 							t.Errorf("parent = %s", request["previous_response_id"])
 						}
 						var input []map[string]json.RawMessage
-						if err := json.Unmarshal(request["input"], &input); err != nil || len(input) != 1 || responses.StringField(input[0], "content") != wantInput {
+						if err := json.Unmarshal(request["input"], &input); err != nil || len(input) != wantItems || responses.StringField(input[len(input)-1], "content") != wantInput {
 							t.Errorf("incremental history = %s", request["input"])
 						}
 					}

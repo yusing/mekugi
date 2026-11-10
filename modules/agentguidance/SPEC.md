@@ -18,7 +18,8 @@ conflicts, and selected-skill identities without changing caller authority.
 
 Mekugi preserves the caller's base `instructions` value and every system or developer message,
 except for complete explicit omission blocks, pinned inherited stock-prompt conflicts, and the
-marked Mekugi workflow section appended to base instructions.
+marked Mekugi workflow section appended to base instructions. Its owned environment
+supplement is projected separately after static instructions as described below.
 Independent-thread role projection additionally consumes Thread Control's admitted
 content provenance and detached logical caller. It adapts only authenticated role
 parts to the replacement MCP interface and selected workspace. Effective mode
@@ -145,8 +146,13 @@ branches exist, the count of further unpushed commits are included. Hooks config
 status excludes file use the applicable Git configuration scopes; other facts remain
 configuration-isolated. Git account identity, email and remote URLs are excluded. Unavailable facts and truncation are explicit; acquisition neither
 fetches nor mutates a repository and optional failures do not block inference.
-The supplement is replaced in the owned base-instruction layer, preserving native
-conversation items and tool/result history boundaries.
+The supplement is a developer input immediately before the first user message,
+after the static instruction prefix. Without a user message it follows the leading
+instructions and precedes conversation/tool history.
+Refresh removes inherited copies from base instructions and developer text before
+inserting the current snapshot once. Static contents, native conversation items
+and tool/result history boundaries remain intact; ordinary continuations reuse
+the confirmed provider prefix.
 
 Snapshots are acquired against the admitted execution workspace before generating inference.
 Fresh, resumed, cleared, compacted and authoritatively changed workspaces refresh lazily;

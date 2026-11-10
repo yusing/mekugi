@@ -128,25 +128,6 @@ func TestRewindCacheEligibilityLiveOpenAI(t *testing.T) {
 		equal := responses.SameJSONValue(before.Fields[field], after.Fields[field])
 		t.Logf("post-rewind %s unchanged=%t", field, equal)
 		if !equal {
-			if field == "instructions" {
-				withoutEnvironment := func(raw []byte) string {
-					var text string
-					if err := json.Unmarshal(raw, &text); err != nil {
-						t.Fatal(err)
-					}
-					prefix, rest, found := strings.Cut(text, "<mekugi_environment_facts>")
-					if !found {
-						t.Fatal("missing environment facts in prepared instructions")
-					}
-					_, suffix, found := strings.Cut(rest, "</mekugi_environment_facts>")
-					if !found {
-						t.Fatal("unterminated environment facts")
-					}
-					return prefix + suffix
-				}
-				t.Logf("instructions outside environment facts unchanged=%t",
-					withoutEnvironment(before.Fields[field]) == withoutEnvironment(after.Fields[field]))
-			}
 			t.Errorf("rewind changed shared %s", field)
 		}
 	}

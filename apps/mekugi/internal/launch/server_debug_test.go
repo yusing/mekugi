@@ -239,6 +239,8 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	headers := codexAuthHeaders()
 	headers.Set(codexresponses.RoutingSessionHeader, "debug-session")
 	maps.Copy(headers, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil}))
+	// The registry is shared with parallel fixtures, but mutable thread facts are not.
+	headers.Set(codexresponses.ThreadIDHeader, t.Name())
 	conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
 		t.Fatal(err)

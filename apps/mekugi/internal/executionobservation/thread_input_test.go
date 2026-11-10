@@ -65,6 +65,12 @@ func TestThreadInputConsumedWithoutExecution(t *testing.T) {
 				Input []map[string]jsontext.Value `json:"input"`
 			}
 			check(json.Unmarshal(wire, &forwarded))
+			if kind == responses.Turn {
+				if len(forwarded.Input) != 3 || !bytes.Contains(forwarded.Input[0]["content"], []byte("mekugi_environment_facts")) {
+					t.Fatalf("missing environment prefix: %s", wire)
+				}
+				forwarded.Input = forwarded.Input[1:]
+			}
 			if len(forwarded.Input) != 2 || responses.StringField(forwarded.Input[0], "id") != "" || responses.StringField(forwarded.Input[0], "content") != "progress" {
 				t.Fatalf("invalid provider message: %s", wire)
 			}

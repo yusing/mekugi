@@ -55,8 +55,9 @@ func duplicateTestPrepare(t *testing.T, proxy *observationFixture, input []any, 
 		t.Fatal(err)
 	}
 	metadata.RequestKind = "turn"
-	metadata.Directories = map[string]jsonv1.RawMessage{t.TempDir(): nil}
-	transform, err := proxy.prepareRequest(t.Context(), &request, "session", "thread", metadata, true)
+	// These projection-only requests share one admitted context. Changing the
+	// workspace on each call would refresh facts and invalidate its prefix.
+	transform, err := proxy.prepareRequest(t.Context(), &request, t.Name(), "thread", metadata, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,9 @@ func duplicateTestItems(t *testing.T, request *codexresponses.Request) []map[str
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		t.Fatal(err)
 	}
-	return items
+	return slices.DeleteFunc(items, func(item map[string]jsonv1.RawMessage) bool {
+		return strings.HasPrefix(responses.StringField(item, "content"), "<mekugi_environment_facts>")
+	})
 }
 
 func TestDuplicateOutputPreparedMatching(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -179,6 +180,10 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			if err := json.Unmarshal(wire, &modelRequest); err != nil {
 				t.Fatal(err)
 			}
+			if !tc.withoutGuidance {
+				environmentFacts(t, wire)
+				modelRequest.Input = slices.Delete(modelRequest.Input, 1, 2)
+			}
 			wantSource, wantRepeat := body, body
 			if tc.projected {
 				wantSource, wantRepeat = "O1:\n"+body, "See O1\n"
@@ -200,11 +205,6 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			}
 			if tc.withoutGuidance {
 				wantInstructions, wantContent = instructions, input[0]["content"].(string)
-			}
-			if !tc.withoutGuidance {
-				environmentFacts(t, wire)
-				before, _, _ := strings.Cut(modelRequest.Instructions, "\n\n<mekugi_environment_facts>")
-				modelRequest.Instructions = before
 			}
 			if modelRequest.Instructions != wantInstructions || modelRequest.Input[0].Content != wantContent {
 				t.Fatalf("provider guidance: instructions=%q content=%q", modelRequest.Instructions, modelRequest.Input[0].Content)

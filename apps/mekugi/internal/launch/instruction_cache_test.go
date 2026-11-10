@@ -40,7 +40,6 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 		defer upstream.CloseNow()
 		var warmedTools json.RawMessage
 		var warmedInstructions string
-		var observed string
 		for index, id := range ids {
 			request, err := providerSocketRead(ctx, upstream)
 			if err != nil {
@@ -51,15 +50,14 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				t.Error("provider received omitted or conflicting instructions")
 			}
 			if id != "warm" {
-				facts := environmentFacts(t, responses.MustMarshalJSON(request))
-				base, _, _ := strings.Cut(responses.StringField(request, "instructions"), "\n\n<mekugi_environment_facts>")
-				if base != warmedInstructions {
+				if responses.StringField(request, "instructions") != warmedInstructions {
 					t.Error("continuation changed or lost base workflow")
 				}
-				if observed != "" && observed != facts {
-					t.Error("ordinary continuation or model switch rescanned facts")
+				if id == "turn" {
+					environmentFacts(t, responses.MustMarshalJSON(request))
+				} else if bytes.Contains(request["input"], []byte("mekugi_environment_facts")) {
+					t.Error("continuation resent the confirmed environment prefix")
 				}
-				observed = facts
 			}
 			var input []json.RawMessage
 			_ = json.Unmarshal(request["input"], &input)
@@ -89,7 +87,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				if !responses.SameJSONValue(warmedTools, request["tools"]) {
 					t.Error("first turn changed the warmed tool catalog")
 				}
-				if responses.StringField(request, "previous_response_id") != "warm" || len(input) != 1 {
+				if responses.StringField(request, "previous_response_id") != "warm" || len(input) != 2 {
 					t.Errorf("first turn discarded warmed prefix: parent=%q items=%d", responses.StringField(request, "previous_response_id"), len(input))
 				}
 			case "next", "astra", "astra-next":
@@ -131,7 +129,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 }
 
 // Provider history reuses only confirmed leading conversation items. Lazily
-// acquired environment data stays in the independently supplied base layer.
+// acquired environment data follows the warmed static prefix on the first turn.
 
 func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.T) {
 	original := json.RawMessage(`{"role":"developer","content":"rules"}`)

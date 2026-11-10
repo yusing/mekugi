@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"html"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,8 +31,40 @@ func environmentFacts(t *testing.T, raw []byte) string {
 		t.Fatal(err)
 	}
 	instructions := responses.StringField(fields, "instructions")
-	if strings.Count(instructions, "<mekugi_environment_facts>") != 1 {
-		t.Fatal("provider input must contain one environment supplement")
+	if strings.Contains(instructions, "<mekugi_environment_facts>") {
+		t.Fatal("mutable environment facts invalidated the static base instructions")
+	}
+	var items []map[string]jsontext.Value
+	if err := json.Unmarshal(fields["input"], &items); err != nil {
+		t.Fatal(err)
+	}
+	boundary, supplement := len(items), -1
+	for index, item := range items {
+		if responses.StringField(item, "role") == "user" && boundary == len(items) {
+			boundary = index
+		}
+		if responses.StringField(item, "role") != "developer" {
+			continue
+		}
+		if bytes.Contains(item["content"], []byte("mekugi_environment_facts")) {
+			if supplement >= 0 {
+				t.Fatal("inherited environment supplement survived")
+			}
+			supplement = index
+			instructions = responses.StringField(item, "content")
+		}
+	}
+	if boundary == len(items) {
+		for index, item := range items {
+			role := responses.StringField(item, "role")
+			if responses.StringField(item, "type") != "additional_tools" && role != "developer" && role != "system" {
+				boundary = index
+				break
+			}
+		}
+	}
+	if supplement < 0 || supplement != boundary-1 || strings.Count(instructions, "<mekugi_environment_facts>") != 1 {
+		t.Fatal("provider input must contain one environment supplement immediately before the first user message (or after the static prefix without one)")
 	}
 	_, body, found := strings.Cut(instructions, "<mekugi_environment_facts>\n")
 	if !found {
@@ -156,7 +189,7 @@ func TestEnvironmentFactsPrewarmDoesNotAcquire(t *testing.T) {
 	if _, err := proxy.Prepare(t.Context(), &request, requestexecution.Preparation{Session: "environment-prewarm", Thread: "thread-1", Metadata: metadata, MetadataValid: valid, Prewarm: true}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(responses.StringField(request.Fields, "instructions"), "<mekugi_environment_facts>") {
+	if bytes.Contains(responses.MustMarshalJSON(request.Fields), []byte("mekugi_environment_facts")) {
 		t.Fatal("prewarm acquired environment facts")
 	}
 	// No prewarm acquisition may freeze the unborn state before inference.
@@ -171,6 +204,161 @@ func TestEnvironmentFactsPrewarmDoesNotAcquire(t *testing.T) {
 	}
 	if facts := environmentFacts(t, provider.forwarded[0]); strings.Contains(facts, "\nHEAD: unborn\n") {
 		t.Fatal("prewarm cached stale facts")
+	}
+}
+
+func TestEnvironmentFactsOrderedProviderPrefix(t *testing.T) {
+	const inherited = "<mekugi_environment_facts>\nparent facts\n</mekugi_environment_facts>"
+	for _, multipart := range []bool{false, true} {
+		t.Run(strconv.FormatBool(multipart), func(t *testing.T) {
+			workspace := t.TempDir()
+			proxy := newManagedMekugiProxy(t)
+			headers := serverMetadataHeaders(t, "turn", map[string]jsonv1.RawMessage{workspace: nil})
+			const staticText = "Static permissions and role.\n"
+			var staticContent any = staticText + "\ntrailing policy"
+			var inheritedStaticContent any = staticText + inherited + "\ntrailing policy"
+			if multipart {
+				staticContent = []map[string]string{{"type": "input_text", "text": "Static permissions and role.\n"}, {"type": "input_text", "text": ""}, {"type": "input_image", "image_url": "data:image/png;base64,AA=="}}
+				inheritedStaticContent = []map[string]string{{"type": "input_text", "text": "Static permissions and role.\n"}, {"type": "input_text", "text": inherited}, {"type": "input_image", "image_url": "data:image/png;base64,AA=="}}
+			}
+			static := responses.MustMarshalJSON(map[string]any{"type": "message", "role": "developer", "id": "static", "content": staticContent})
+			inheritedStatic := responses.MustMarshalJSON(map[string]any{"type": "message", "role": "developer", "id": "static", "content": inheritedStaticContent})
+			history := []jsontext.Value{
+				responses.MustMarshalJSON(map[string]string{"role": "user", "content": "task"}),
+				responses.MustMarshalJSON(map[string]string{"type": "function_call", "call_id": "call", "name": "lookup", "arguments": "{}"}),
+				responses.MustMarshalJSON(map[string]string{"type": "function_call_output", "call_id": "call", "output": inherited}),
+				responses.MustMarshalJSON(map[string]string{"role": "assistant", "content": "answer"}),
+			}
+			var content any = inherited
+			if multipart {
+				content = []map[string]string{{"type": "input_text", "text": inherited}}
+			}
+			request := serverRequest(t, func(fields map[string]any) {
+				fields["instructions"] = "Static base.\n\n" + inherited + "\n\nStatic suffix."
+				fields["tools"] = []any{}
+				fields["input"] = append([]jsontext.Value{responses.MustMarshalJSON(map[string]any{"role": "developer", "content": content}), inheritedStatic}, history...)
+			})
+			forward := func(request codexresponses.Request) codexresponses.Request {
+				request.Fields = maps.Clone(request.Fields)
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed"}`)}}}
+				var output bytes.Buffer
+				if err := executeRequest(t.Context(), t.Context(), request, headers, "ordered-facts", provider, &output, nil, proxy); err != nil {
+					t.Fatal(err)
+				}
+				environmentFacts(t, provider.forwarded[0])
+				got, err := codexresponses.ParseRequest(provider.forwarded[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if responses.StringField(got.Fields, "instructions") != "Static base.\n\nStatic suffix." {
+					t.Fatal("legacy environment cleanup changed static base")
+				}
+				var items []jsontext.Value
+				if err := json.Unmarshal(got.Fields["input"], &items); err != nil {
+					t.Fatal(err)
+				}
+				if len(items) != len(history)+2 || !responses.SameJSONValue(items[0], static) {
+					t.Fatal("static developer prefix changed or inherited context survived")
+				}
+				for index, original := range history {
+					if !responses.SameJSONValue(items[index+2], original) {
+						t.Fatalf("projection changed history item %d: got %s, want %s", index, items[index+2], original)
+					}
+				}
+				return got
+			}
+			first := forward(request)
+			repeated := forward(first)
+			if !bytes.Equal(first.Fields["input"], repeated.Fields["input"]) {
+				t.Fatal("repeated provider preparation was not idempotent")
+			}
+			proxy.control.RefreshContext("thread-1")
+			refreshed := forward(first)
+			if !bytes.Equal(first.Fields["instructions"], refreshed.Fields["instructions"]) || bytes.Equal(first.Fields["input"], refreshed.Fields["input"]) {
+				t.Fatal("refresh did not isolate mutable facts from the static prefix")
+			}
+		})
+	}
+}
+
+func TestEnvironmentFactsSideForkProviderInput(t *testing.T) {
+	workspace := gitTestWorkspace(t)
+	proxy := newManagedMekugiProxy(t)
+	forward := func(thread string) string {
+		headers := serverMetadataHeaders(t, "turn", map[string]jsonv1.RawMessage{workspace: nil})
+		headers.Set(codexresponses.ThreadIDHeader, thread)
+		provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed"}`)}}}
+		var output bytes.Buffer
+		if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), headers, "side-facts", provider, &output, nil, proxy); err != nil {
+			t.Fatal(err)
+		}
+		return environmentFacts(t, provider.forwarded[0])
+	}
+	first := forward("thread-1")
+	writeTestFile(t, filepath.Join(workspace, "after-fork"), "new")
+	proxy.preparer().AdmitSideFork("thread-1", "side", workspace)
+	if forward("side") != first {
+		t.Fatal("confirmed same-workspace side fork lost its original snapshot")
+	}
+	proxy.control.RefreshContext("side")
+	if refreshed := forward("side"); refreshed == first || !strings.Contains(refreshed, "after-fork") {
+		t.Fatal("side reset did not refresh independently")
+	}
+	if forward("thread-1") != first {
+		t.Fatal("side reset changed Main's snapshot")
+	}
+}
+
+func TestEnvironmentFactsProviderInputForms(t *testing.T) {
+	for _, input := range []any{"task", nil, []any{}} {
+		t.Run(string(responses.MustMarshalJSON(input)), func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t)
+			request := serverRequest(t, func(fields map[string]any) {
+				fields["input"], fields["tools"] = input, []any{}
+			})
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed"}`)}}}
+			var output bytes.Buffer
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), t.Name(), provider, &output, nil, proxy); err != nil {
+				t.Fatal(err)
+			}
+			environmentFacts(t, provider.forwarded[0])
+			var got struct {
+				Input []struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"input"`
+			}
+			if err := json.Unmarshal(provider.forwarded[0], &got); err != nil {
+				t.Fatal(err)
+			}
+			if input == "task" {
+				if len(got.Input) != 2 || got.Input[1].Role != "user" || got.Input[1].Content != "task" {
+					t.Fatal("string input lost its user message")
+				}
+			} else if len(got.Input) != 1 {
+				t.Fatal("empty input gained a fabricated user message")
+			}
+		})
+	}
+}
+
+func TestEnvironmentFactsMalformedProviderInput(t *testing.T) {
+	for _, text := range []string{"<mekugi_environment_facts>", "</mekugi_environment_facts>", "</mekugi_environment_facts><mekugi_environment_facts>", "<mekugi_environment_facts><mekugi_environment_facts></mekugi_environment_facts>"} {
+		for _, developer := range []bool{false, true} {
+			proxy := newManagedMekugiProxy(t)
+			request := serverRequest(t, func(fields map[string]any) {
+				if developer {
+					fields["input"] = append([]any{map[string]any{"role": "developer", "content": []map[string]string{{"type": "input_text", "text": text}}}}, fields["input"].([]any)...)
+				} else {
+					fields["instructions"] = text
+				}
+			})
+			provider := new(serverFakeProvider)
+			var output bytes.Buffer
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), t.Name(), provider, &output, nil, proxy); err == nil || len(provider.forwarded) != 0 {
+				t.Fatal("malformed environment markers reached the provider")
+			}
+		}
 	}
 }
 
