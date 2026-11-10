@@ -27,9 +27,11 @@
     onopened: (machine: string, session: string, initial?: InitialInput) => void;
   } = $props();
   let mode = $state<"new" | "resume" | "replay">("new");
-  let options = $state<StartOptions>();
-  let loaded = $state<string>();
-  let loadError = $state<string>();
+  // The latest acquisition of a machine's start options. A failure keeps its
+  // machine identity, so only Retry reads again; a superseded read is dropped.
+  let acquired = $state.raw<{ machine: string; options?: StartOptions; error?: string }>();
+  const options = $derived(acquired?.machine === machine.id ? acquired.options : undefined);
+  const loadError = $derived(acquired?.machine === machine.id ? acquired.error : undefined);
   let workspace = $state("");
   let model = $state("");
   let effort = $state("");
@@ -59,23 +61,22 @@
   // once it answers.
   $effect(() => {
     const target = machine;
-    if (target.connection !== "open" || loaded === target.id) return;
+    if (acquired?.machine !== target.id) acquired = undefined;
+    if (target.connection !== "open" || acquired) return;
     untrack(() => load(target));
   });
   async function load(target: Machine) {
-    loaded = target.id;
-    loadError = undefined;
-    options = undefined;
+    const acquisition = { machine: target.id };
+    acquired = acquisition;
     const result = await hub.startOptions(target);
-    if (disposed || machine !== target) return;
+    if (disposed || machine.id !== target.id || acquired !== acquisition) return;
     if ("error" in result) {
-      loadError = result.error;
-      loaded = undefined;
+      acquired = { ...acquisition, error: result.error };
       return;
     }
-    options = result.options;
-    workspace = options.workspaces[0] ?? "";
-    model = options.defaultModel;
+    acquired = { ...acquisition, options: result.options };
+    workspace = result.options.workspaces[0] ?? "";
+    model = result.options.defaultModel;
     effort = "";
   }
 

@@ -1577,6 +1577,178 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	t.Log("Built UI passed two-machine identity, routing, reconnect, reload persistence, token replacement, and disconnect acceptance")
 }
 
+// A refused start-options read is attempted once and then waits for Retry.
+// Reads left behind by machine switches never become another acquisition's
+// options or failure, including after returning to the same machine.
+func TestWebUIBrowserStartOptions(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_WEBUI_BROWSER") != "1" {
+		t.Skip("set MEKUGI_TEST_WEBUI_BROWSER=1 after make webui, with agent-browser installed")
+	}
+	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
+	browser := browserFixtureCommand(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	page := httptest.NewServer(webui.Handler())
+	defer page.Close()
+	type optionsReply struct {
+		note string
+		err  error
+	}
+	alpha := newWebUIBrowserMachine(t, ctx, page.URL, "Alpha", strings.Repeat("a", 64))
+	alphaReads := make(chan chan optionsReply, 16)
+	alphaOptions := func(ctx context.Context) (sessionapi.StartOptions, error) {
+		reply := make(chan optionsReply, 1)
+		alphaReads <- reply
+		select {
+		case result := <-reply:
+			return sessionapi.StartOptions{Models: []sessionapi.ModelGroup{{Models: []sessionapi.Model{{ID: "fixture"}}}}, Note: result.note}, result.err
+		case <-ctx.Done():
+			return sessionapi.StartOptions{}, ctx.Err()
+		}
+	}
+	alpha.startOptions.Store(&alphaOptions)
+	beta := newWebUIBrowserMachine(t, ctx, page.URL, "Beta", strings.Repeat("b", 64))
+	betaOptions := func(context.Context) (sessionapi.StartOptions, error) {
+		return sessionapi.StartOptions{Models: []sessionapi.ModelGroup{{Models: []sessionapi.Model{{ID: "fixture"}}}}, Note: "Beta options note"}, nil
+	}
+	beta.startOptions.Store(&betaOptions)
+	reads := 0
+	read := func() chan optionsReply {
+		t.Helper()
+		select {
+		case reply := <-alphaReads:
+			reads++
+			return reply
+		case <-ctx.Done():
+			t.Fatalf("waiting for Alpha start-options read %d", reads+1)
+			return nil
+		}
+	}
+	identity, err := exec.CommandContext(ctx, browser, "session", "id", "--scope", "worktree", "--prefix", "webui-start-options").CombinedOutput()
+	if err != nil {
+		t.Fatalf("browser session identity: %v: %s", err, identity)
+	}
+	name := strings.TrimSpace(string(identity))
+	defer func() {
+		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		_ = exec.CommandContext(cleanup, browser, "--session", name, "close").Run()
+	}()
+	run := func(args ...string) string {
+		t.Helper()
+		output, err := exec.CommandContext(ctx, browser, append([]string{"--session", name}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("browser %s failed: %v: %s", strings.Join(args[:min(2, len(args))], " "), err, output)
+		}
+		return string(output)
+	}
+	button := func(label string) { t.Helper(); run("find", "role", "button", "click", "--name", label, "--exact") }
+	screenshot := func(file string) {
+		if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+			run("screenshot", filepath.Join(artifacts, file))
+		}
+	}
+	// No further read reaches Alpha while the page stays idle.
+	quiet := func(want int) {
+		t.Helper()
+		run("wait", "1000")
+		select {
+		case <-alphaReads:
+			t.Fatalf("Alpha received an automatic start-options read after %d", want)
+		default:
+		}
+		if reads != want {
+			t.Fatalf("Alpha start-options reads = %d, want %d", reads, want)
+		}
+	}
+	const loading = "Loading workspaces and models…"
+	shows := func(text string) bool {
+		t.Helper()
+		return strings.TrimSpace(run("eval", fmt.Sprintf(`document.querySelector('[aria-labelledby="new-heading"]').innerText.includes(%q)`, text))) == "true"
+	}
+	choose := func(label string) {
+		t.Helper()
+		run("find", "role", "combobox", "click", "--name", "Execution machine", "--exact")
+		run("wait", "--fn", fmt.Sprintf(`Array.from(document.querySelectorAll('[role=listbox][aria-label=Machine] [role=option]')).some(option => option.textContent.trim() === %q)`, label))
+		run("find", "role", "option", "click", "--name", label, "--exact")
+		run("wait", "--fn", fmt.Sprintf(`document.querySelector('[aria-labelledby="new-heading"] textarea')?.placeholder === 'Message main on %s'`, label))
+	}
+
+	run("open", page.URL)
+	run("find", "label", "Machine name", "fill", "Alpha")
+	run("find", "label", "Connector URL", "fill", alpha.remote.URL)
+	run("find", "label", "Access token", "fill", strings.Repeat("a", 64))
+	button("Connect")
+	refused := optionsReply{err: fmt.Errorf("fixture options refused")}
+	read() <- refused
+	run("wait", "--text", "Start options are unavailable.")
+	quiet(1)
+	screenshot("start-options-refused.png")
+	button("Retry")
+	read() <- refused
+	run("wait", "--text", "Start options are unavailable.")
+	quiet(2)
+
+	// A read left behind by switching to Beta and back stays superseded.
+	button("Retry")
+	stale := read()
+	run("wait", "--text", loading)
+	button("Machines")
+	button("Add machine")
+	run("find", "label", "Machine name", "fill", "Beta")
+	run("find", "label", "Connector URL", "fill", beta.remote.URL)
+	run("find", "label", "Access token", "fill", strings.Repeat("b", 64))
+	button("Connect")
+	run("wait", "--fn", "!document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')")
+	choose("Beta")
+	run("wait", "--text", "Beta options note")
+	choose("Alpha")
+	current := read()
+	stale <- optionsReply{note: "Alpha stale note"}
+	run("wait", "500")
+	if shows("Alpha stale note") || !shows(loading) {
+		t.Fatal("a superseded Alpha success became the current acquisition")
+	}
+	choose("Beta")
+	run("wait", "--text", "Beta options note")
+	if shows("Alpha stale note") || shows("Start options are unavailable.") {
+		t.Fatal("Alpha state leaked into Beta's start options")
+	}
+	choose("Alpha")
+	latest := read()
+	current <- refused
+	run("wait", "500")
+	if shows("Start options are unavailable.") || !shows(loading) {
+		t.Fatal("a superseded Alpha failure replaced the current acquisition")
+	}
+	latest <- optionsReply{note: "Alpha current note"}
+	run("wait", "--text", "Alpha current note")
+	screenshot("start-options-current.png")
+	quiet(5)
+
+	// An unavailable machine cannot acquire options, but selecting it still
+	// abandons the previous machine's pending attempt.
+	choose("Beta")
+	run("wait", "--text", "Beta options note")
+	if err := beta.bridge.Load().Close(); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `document.querySelector('[aria-labelledby="new-heading"]').innerText.includes('Beta:')`)
+	choose("Alpha")
+	abandoned := read()
+	choose("Beta")
+	abandoned <- optionsReply{note: "Alpha abandoned note"}
+	choose("Alpha")
+	fresh := read()
+	run("wait", "--text", loading)
+	if shows("Alpha abandoned note") {
+		t.Fatal("switching through an unavailable machine retained an abandoned attempt")
+	}
+	fresh <- optionsReply{note: "Alpha fresh note"}
+	run("wait", "--text", "Alpha fresh note")
+	quiet(7)
+}
+
 type webUIBrowserMachine struct {
 	hub          *sessionapi.Hub
 	frames       sync.Map
@@ -1591,6 +1763,8 @@ type webUIBrowserMachine struct {
 	views        sync.Map
 	workdir      string
 	start        func(string)
+	// startOptions replaces the launcher's start options when set.
+	startOptions atomic.Pointer[func(context.Context) (sessionapi.StartOptions, error)]
 }
 
 func (m *webUIBrowserMachine) publishFrame(frame sessionapi.Frame) error {
@@ -1617,7 +1791,14 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 	machine := &webUIBrowserMachine{intents: make(chan sessionapi.Intent, 16), controls: make(chan sessionapi.NativeRequest, 16), workdir: directory}
 	launcher := &nativeReattachLauncher{prepare: func(_ context.Context, _ string, input sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
 		return &sessionapi.PreparedInput{Draft: composer.Draft{Text: input.Text}}, nil
-	}, run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+	}}
+	launcher.options = func(ctx context.Context) (sessionapi.StartOptions, error) {
+		if options := machine.startOptions.Load(); options != nil {
+			return (*options)(ctx)
+		}
+		return (&nativeReattachLauncher{}).StartOptions(ctx)
+	}
+	launcher.run = func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
 		machine.sessions.Store(start.Resume, api)
 		if start.Resume == "same-thread" {
 			machine.api = api
@@ -1693,7 +1874,7 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 				return ctx.Err()
 			}
 		}
-	}}
+	}
 	listener, err := sessionapi.ListenControl(filepath.Join(directory, "control.sock"))
 	if err != nil {
 		t.Fatal(err)

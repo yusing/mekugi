@@ -25,9 +25,13 @@ import (
 type nativeReattachLauncher struct {
 	run     func(context.Context, sessionapi.Start, *sessionapi.Server) error
 	prepare func(context.Context, string, sessionapi.InputRequest) (*sessionapi.PreparedInput, error)
+	options func(context.Context) (sessionapi.StartOptions, error)
 }
 
-func (*nativeReattachLauncher) StartOptions(context.Context) (sessionapi.StartOptions, error) {
+func (l *nativeReattachLauncher) StartOptions(ctx context.Context) (sessionapi.StartOptions, error) {
+	if l.options != nil {
+		return l.options(ctx)
+	}
 	return sessionapi.StartOptions{Models: []sessionapi.ModelGroup{{Models: []sessionapi.Model{{ID: "fixture"}}}}}, nil
 }
 
