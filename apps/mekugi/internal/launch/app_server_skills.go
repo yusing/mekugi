@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -145,18 +147,16 @@ func (p *composerPicker) skillBindingQuery(d conversationmodel.Input, final bool
 	if strings.HasPrefix(d.Text, "!") || d.Question != nil {
 		return ""
 	}
-	at := 0
 	spans := sessionpresentation.DraftSpans(d.Draft)
-	for word := range strings.FieldsSeq(d.Text) {
-		start := at + strings.Index(d.Text[at:], word)
-		at = start + len(word)
-		name, ok := strings.CutPrefix(word, "$")
-		if !ok || name == "" || !p.SkillQueryCompletable(name) || !final && at == len(d.Text) {
+	for token := range attachments.ReferenceTokens(d.Text) {
+		ref, err := attachments.ParseReference(token.Text)
+		name, _, _ := strings.Cut(ref.Skill, "/")
+		if err != nil || name == "" || !p.SkillQueryCompletable(name) || !final && token.End == len(d.Text) {
 			continue
 		}
 		bound := false
 		for _, span := range spans {
-			if start < span.End && at > span.Start {
+			if token.Start < span.End && token.End > span.Start {
 				bound = true
 				break
 			}

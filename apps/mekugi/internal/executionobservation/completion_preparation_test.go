@@ -126,7 +126,7 @@ func TestCompletionInjectionOmitsYieldedCaptures(t *testing.T) {
 			case "late interval":
 				f.publish(t, id, "edit", "late-call", mekugiHistory{Caller: "/root/worker", ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("late.txt", "late.txt", "before\n", "new-content\n")}})
 			}
-			selection := string(mustTestJSON(t, map[string]any{"sources": []any{map[string]any{"changes": ids}}}))
+			selection := string(mustTestJSON(t, map[string]any{"sources": []string{"mchanges:" + strings.Join(ids, ",")}}))
 			input := control.NativeInput{Thread: f.thread, ID: "final", Kind: "FINAL_ANSWER", Outcome: control.Completed, Sender: "/root/worker", Recipient: "/root", Message: "Finished.\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}
 			wire := new(completionTransport)
 			requests := sessioncontrol.NewRequests[struct{}](wire)
@@ -224,8 +224,14 @@ func TestCompletionInjectionCarriesPreparedEvidenceWithoutAnotherRead(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	selection := string(mustTestJSON(t, map[string]any{"sources": []any{map[string]any{"changes": []string{id}}}}))
+	selection := string(mustTestJSON(t, map[string]any{"sources": []string{"mchanges:" + id}}))
 	input := control.NativeInput{Thread: f.thread, ID: "final", Kind: "FINAL_ANSWER", Outcome: control.Completed, SourceGeneration: 1, ParentTurn: "child-turn", Sender: "/root/worker", Recipient: "/root", Message: "Finished.\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}
+	oldSelection := string(mustTestJSON(t, map[string]any{"sources": []compact.SourceIdentity{{Changes: []string{id}}}}))
+	oldInput := input
+	oldInput.Message = strings.Replace(input.Message, selection, oldSelection, 1)
+	if prepared, err := p.PrepareCompletion(t.Context(), oldInput); err != nil || len(prepared.Items) != 0 || reader.reads.Load() != 0 {
+		t.Fatalf("new object completion triggered acquisition: %+v %v", prepared, err)
+	}
 	wire := new(completionTransport)
 	requests := sessioncontrol.NewRequests[struct{}](wire)
 	requests.PrepareCompletion = p.PrepareCompletion

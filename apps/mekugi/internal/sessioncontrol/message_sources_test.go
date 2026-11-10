@@ -42,7 +42,7 @@ func TestNativeMessageSourcePermissionsAndBounds(t *testing.T) {
 				err  error
 			}, 1)
 			go func() {
-				text, err := requests.ReadMessageSources(t.Context(), member, `{"sources":[{"path":"source"},{"path":"denied"}]}`)
+				text, err := requests.ReadMessageSources(t.Context(), member, `{"sources":["@source","@denied"]}`)
 				result <- struct {
 					text string
 					err  error
@@ -93,7 +93,7 @@ func TestNativeMessageSourcesDoNotWidenUnknownPermissions(t *testing.T) {
 	requests := NewRequests[string](&requestTransport{id: "source-host-call"})
 	defer requests.Close()
 	member := &control.Member{Thread: "child", Settings: control.Settings{Workspace: t.TempDir(), PermissionProfile: jsontext.Value(`{"type":"restricted"}`)}}
-	if _, err := requests.ReadMessageSources(context.Background(), member, `{"sources":[{"path":"private"}]}`); err == nil {
+	if _, err := requests.ReadMessageSources(context.Background(), member, `{"sources":["@private"]}`); err == nil {
 		t.Fatal("unselectable permissions silently widened")
 	}
 }

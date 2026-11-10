@@ -90,7 +90,7 @@ func (p *Preparer) prepareCompactionCost(ctx context.Context, request *codexresp
 		}
 	}
 	selection, err := json.Marshal(struct {
-		Sources []compact.Source `json:"sources"`
+		Sources []compact.SourceIdentity `json:"sources"`
 	}{sources})
 	if err != nil {
 		return check

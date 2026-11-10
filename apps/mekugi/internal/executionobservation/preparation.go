@@ -159,7 +159,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	var reload jsonv1.RawMessage
 	var reloadCalls map[string]bool
 	var attachments attachmentPreparation
-	var historical []compact.Source
+	var historical []compact.SourceIdentity
 	if bytes.Contains(request.Fields["input"], []byte(compact.Prefix)) {
 		if !metadataValid {
 			return nil, errors.New("compaction recovery requires valid metadata")

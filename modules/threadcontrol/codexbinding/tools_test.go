@@ -23,6 +23,15 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 		{true, "Use list_models for Codex choices", "List the selected Codex catalog's model IDs"},
 	} {
 		for _, tool := range ToolCatalog(tc.claude) {
+			raw, err := json.Marshal(tool.InputSchema)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, syntax := range []string{"mchanges:", "#L", "$skill", "@path"} {
+				if strings.Contains(tool.Description+string(raw), syntax) {
+					t.Errorf("%s repeats source syntax instead of shared guidance: %s", tool.Name, syntax)
+				}
+			}
 			if tool.Name == "list_models" && !strings.HasPrefix(tool.Description, tc.list) {
 				t.Fatalf("caller claude=%t: %s", tc.claude, tool.Description)
 			}
@@ -31,10 +40,6 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 			}
 			if tool.Name == "spawn_agent" && (!strings.Contains(tool.Description, "fork_turns=none") || !strings.Contains(tool.Description, "preload")) {
 				t.Fatalf("caller claude=%t: spawn description omits fresh-child preload: %s", tc.claude, tool.Description)
-			}
-			raw, err := json.Marshal(tool.InputSchema)
-			if err != nil {
-				t.Fatal(err)
 			}
 			var schema struct {
 				Properties map[string]struct {
@@ -45,7 +50,7 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 				t.Fatal(err)
 			}
 			message := schema.Properties["message"].Description
-			for _, want := range []string{"@path", "recipient cwd/permissions", `\@path stays literal`} {
+			for _, want := range []string{"File source references", "recipient cwd/permissions"} {
 				if !strings.Contains(message, want) {
 					t.Errorf("caller claude=%t: %s message omits %q: %s", tc.claude, tool.Name, want, message)
 				}
@@ -379,6 +384,10 @@ func TestWaitAgentWaitsAfterImmediateTimeout(t *testing.T) {
 
 func TestResetReloadAdmission(t *testing.T) {
 	for _, test := range []struct{ tool, args string }{
+		{"compact", `{"reload":{"sources":[{"path":"task.json","ranges":[[2,4]]}]}}`},
+		{"compact", `{"reload":{"sources":[{"skill":"native","path":"/native/SKILL.md"}]}}`},
+		{"compact", `{"reload":{"sources":[{"changes":["amber1"]}]}}`},
+		{"wait_agent", `{"compact":true,"reload":{"sources":[{"path":"task.json"}]}}`},
 		{"compact", `{"reload":{"sources":[{"path":"task.json","ranges":[[2]]}]}}`},
 		{"compact", `{"reload":{"sources":[{"unknown":"task.json"}]}}`},
 		{"wait_agent", `{"reload":{"sources":[]}}`},
@@ -393,7 +402,7 @@ func TestResetReloadAdmission(t *testing.T) {
 			if member.Wait != nil {
 				t.Fatal("rejection changed wait")
 			}
-			if _, err := driver.Call(t.Context(), caller, "compact", []byte(`{"reload":{"sources":[{"path":"task.json","ranges":[[2,4]]}]}}`)); err != nil {
+			if _, err := driver.Call(t.Context(), caller, "compact", []byte(`{"reload":{"sources":["@task.json#L2-L4"]}}`)); err != nil {
 				t.Fatal(err)
 			}
 		})

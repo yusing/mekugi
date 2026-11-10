@@ -23,16 +23,51 @@ import (
 const SnapshotPrefix = "Reload snapshot: mread "
 
 // CaptureCommand uses the authenticated worker's existing retained-output
-// delivery. Source bytes never pass through stock tool output windows.
-func CaptureCommand(selection string) string { return "mreload " + commandargs.Quote(selection) }
+// delivery. Source bytes never pass through stock tool output windows. Internal
+// native metadata stays separate from the reference-string selection.
+func CaptureCommand(selection string) string {
+	if _, err := Sources(selection); err == nil {
+		return "mreload " + commandargs.Quote(selection)
+	}
+	sources, err := StoredSources(selection)
+	if err != nil {
+		return "mreload " + commandargs.Quote(selection)
+	}
+	command := "mreload " + commandargs.Quote(Selection(sources))
+	paths := make(map[string]string)
+	for _, source := range sources {
+		if source.Skill != "" && source.Path != "" {
+			paths[source.Skill] = source.Path
+		}
+	}
+	if len(paths) > 0 {
+		data, _ := json.Marshal(paths, json.Deterministic(true))
+		command = nativeSkillsEnvironment + "=" + commandargs.Quote(string(data)) + " " + command
+	}
+	return command
+}
+
+const nativeSkillsEnvironment = "MEKUGI_NATIVE_SKILLS"
 
 type Snapshot struct {
-	Selection  string
-	Sources    []CapturedSource
-	Completion *CapturedSource `json:",omitempty"`
+	Selection string
+	Sources   []CapturedSource
+	// Skill paths are resolved native identities, never selectable source fields.
+	NativeSkills map[string]string `json:",omitempty"`
+	Completion   *CapturedSource   `json:",omitempty"`
 	// Filtered completions retain a full bounded variant for context replacement.
 	CompletionContext string          `json:",omitempty"`
 	FullCompletion    *CapturedSource `json:",omitempty"`
+}
+
+func (s Snapshot) SelectedSources() ([]SourceIdentity, error) {
+	sources, err := StoredSources(s.Selection)
+	for i := range sources {
+		if sources[i].Skill != "" && sources[i].Path == "" {
+			sources[i].Path = s.NativeSkills[sources[i].Skill]
+		}
+	}
+	return sources, err
 }
 
 // Text retains each source's reader identity, status and diagnostics.
@@ -83,11 +118,22 @@ func (s CapturedSource) Text() string {
 	return body
 }
 
-func Capture(ctx context.Context, request command.Request, changes ChangeReader) (command.Output, error) {
+// Readers borrows admitted acquisition owners. Skills returns native metadata
+// only; Run, when supplied, retains the receiving runtime's read permissions.
+type Readers struct {
+	Changes ChangeReader
+	Skills  func(context.Context) (map[string][]string, error)
+	Run     SourceRunner
+}
+
+func (r Readers) Capture(ctx context.Context, request command.Request) (command.Output, error) {
 	if len(request.Args) != 1 {
 		return command.Output{}, errors.New("mreload requires one reload selection")
 	}
-	snapshot, err := ReadSources(ctx, request.Args[0], "", nil, changes)
+	if _, err := Sources(request.Args[0]); err != nil {
+		return command.Output{}, err
+	}
+	snapshot, err := r.Read(ctx, request.Args[0], "", nil)
 	if err != nil {
 		return command.Output{}, err
 	}
@@ -104,7 +150,11 @@ func Capture(ctx context.Context, request command.Request, changes ChangeReader)
 // ReadSources acquires the shared selection in an admitted runtime environment.
 // The caller owns policy admission and durable context retention.
 func ReadSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader) (Snapshot, error) {
-	return readSources(ctx, selection, directory, environment, changes, nil)
+	return (Readers{Changes: changes}).Read(ctx, selection, directory, environment)
+}
+
+func (r Readers) Read(ctx context.Context, selection, directory string, environment []string) (Snapshot, error) {
+	return readSources(ctx, selection, directory, environment, r.Changes, r.Run, r.Skills)
 }
 
 // SourceRunner executes a reader under its receiving runtime's permissions.
@@ -117,23 +167,66 @@ func ReadSourcesWithRunner(ctx context.Context, selection, directory string, run
 	if run == nil {
 		return Snapshot{}, errors.New("source runner is unavailable")
 	}
-	return readSources(ctx, selection, directory, nil, ChangeReader{}, run)
+	return (Readers{Run: run}).Read(ctx, selection, directory, nil)
 }
 
-func readSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader, run SourceRunner) (Snapshot, error) {
+func readSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader, run SourceRunner, catalog func(context.Context) (map[string][]string, error)) (Snapshot, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	budget := &captureBudget{remaining: history.MaxRecordBytes, cancel: cancel}
-	sources, err := Sources(selection)
+	sources, err := StoredSources(selection)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	commands, err := ReadCommands(selection)
-	if err != nil {
-		return Snapshot{}, err
+	knownSkills := sync.OnceValues(func() (map[string]string, error) {
+		var paths map[string]string
+		vars := environment
+		if vars == nil {
+			vars = os.Environ()
+		}
+		for _, variable := range vars {
+			if value, ok := strings.CutPrefix(variable, nativeSkillsEnvironment+"="); ok {
+				if err := json.Unmarshal([]byte(value), &paths); err != nil {
+					return nil, fmt.Errorf("invalid native skill identities: %w", err)
+				}
+			}
+		}
+		return paths, nil
+	})
+	nativeSkills := sync.OnceValues(func() (map[string][]string, error) {
+		if catalog == nil {
+			return nil, nil
+		}
+		return catalog(ctx)
+	})
+	resolve := func(source SourceIdentity) SourceIdentity {
+		if source.Skill != "" && source.Path == "" {
+			known, err := knownSkills()
+			if err != nil {
+				source.Problem = err.Error()
+				return source
+			}
+			name, _, _ := strings.Cut(source.Skill, "/")
+			source.Path = known[source.Skill]
+			if source.Path == "" {
+				source.Path = known[name]
+			}
+			if source.Path == "" {
+				paths, err := nativeSkills()
+				switch {
+				case len(paths[name]) > 1:
+					source.Problem = fmt.Sprintf("ambiguous native skill %q; select its file explicitly", name)
+				case len(paths[name]) == 1:
+					source.Path = paths[name][0]
+				case err != nil:
+					source.Problem = "native skill identity unavailable: " + err.Error()
+				}
+			}
+		}
+		return source
 	}
 	// Nested reads use the same admitted process environment and capture budget.
-	acquire := func(source Source, script string) (CapturedSource, bool) {
+	acquire := func(source SourceIdentity, script string) (CapturedSource, bool) {
 		managedSource := source.Skill != "" && source.Path == ""
 		// A native metadata placeholder identifies a managed skill. Resolve
 		// it inside the admitted reader, preserving the selected source identity.
@@ -145,11 +238,7 @@ func readSources(ctx context.Context, selection, directory string, environment [
 			_, err := os.Stat(filepath.Join(filepath.Dir(path), ".skills-mgr-placeholder"))
 			if err == nil {
 				managedSource = true
-				data, _ := json.Marshal(struct {
-					Sources []Source `json:"sources"`
-				}{[]Source{{Skill: source.Skill, Ranges: source.Ranges}}})
-				managed, _ := ReadCommands(string(data))
-				script = managed[0]
+				script = (SourceIdentity{Skill: source.Skill, Ranges: source.Ranges}).readCommand()
 			} else if !os.IsNotExist(err) {
 				result := CapturedSource{Command: script, Stderr: err.Error(), ExitCode: 1}
 				budget.take(len(result.Stderr))
@@ -187,13 +276,23 @@ func readSources(ctx context.Context, selection, directory string, environment [
 		body, base, command string
 		depth               int
 	}
-	var readSource func(Source, string, int, map[string]capturedFile) CapturedSource
-	readSource = func(source Source, script string, depth int, seen map[string]capturedFile) CapturedSource {
+	var readSource func(SourceIdentity, int, map[string]capturedFile) CapturedSource
+	readSource = func(source SourceIdentity, depth int, seen map[string]capturedFile) CapturedSource {
+		source = resolve(source)
+		if source.HostLoaded() {
+			return CapturedSource{}
+		}
+		script := source.readCommand()
+		if source.Changes != nil && run == nil {
+			result := changes.read(ctx, source, directory, script)
+			budget.take(len(result.Stdout) + len(result.Stderr))
+			return result
+		}
 		path := source.readPath()
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(directory, path)
 		}
-		key := source.Skill + "\x00" + filepath.Clean(path)
+		key := source.Skill + "\x00" + filepath.Clean(path) + fmt.Sprint(source.Ranges)
 		var result CapturedSource
 		var body, base string
 		if prior, ok := seen[key]; ok {
@@ -213,30 +312,31 @@ func readSources(ctx context.Context, selection, directory string, environment [
 			}
 		}
 		seen[key] = capturedFile{body, base, result.Command, depth}
+		if source.Changes != nil {
+			return result // Captured diffs are evidence, not reference-bearing text.
+		}
 
 		for reference := range attachments.References(body) {
 			if ctx.Err() != nil {
 				return result
 			}
-			path := reference
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(base, path)
+			nested := resolve(sourceReference(reference))
+			if nested.Path != "" {
+				if !filepath.IsAbs(nested.Path) {
+					nested.Path = filepath.Join(base, nested.Path)
+				}
+				nested.Path = filepath.Clean(nested.Path)
 			}
-			path = filepath.Clean(path)
-			nested := Source{Path: path}
 			if nested.HostLoaded() {
 				continue
 			}
-			data, _ := json.Marshal(struct {
-				Sources []Source `json:"sources"`
-			}{[]Source{nested}})
-			commands, _ := ReadCommands(string(data))
-			child := CapturedSource{Command: commands[0]}
+			command := nested.readCommand()
+			child := CapturedSource{Command: command}
 			if depth >= attachments.MaxDepth {
 				child.Stderr, child.ExitCode = "CONTENT NOT ATTACHED: nested attachment depth limit 3 exceeded", 1
 				budget.take(len(child.Stderr))
 			} else {
-				child = readSource(nested, commands[0], depth+1, seen)
+				child = readSource(nested, depth+1, seen)
 				if child.Command == "" {
 					continue
 				}
@@ -264,13 +364,10 @@ func readSources(ctx context.Context, selection, directory string, environment [
 		parallel = 1
 	}
 	slots := make(chan struct{}, parallel)
-	commandIndex := 0
 	for i, source := range sources {
 		if source.HostLoaded() {
 			continue
 		}
-		script := commands[commandIndex]
-		commandIndex++
 		select {
 		case slots <- struct{}{}:
 		case <-ctx.Done():
@@ -279,12 +376,7 @@ func readSources(ctx context.Context, selection, directory string, environment [
 		}
 		readers.Go(func() {
 			defer func() { <-slots }()
-			if source.Changes != nil {
-				results[i] = changes.read(ctx, source, directory, script)
-				budget.take(len(results[i].Stdout) + len(results[i].Stderr))
-				return
-			}
-			results[i] = readSource(source, script, 1, map[string]capturedFile{})
+			results[i] = readSource(source, 1, map[string]capturedFile{})
 		})
 	}
 	readers.Wait()
@@ -294,7 +386,13 @@ func readSources(ctx context.Context, selection, directory string, environment [
 	if err := ctx.Err(); err != nil {
 		return Snapshot{}, err
 	}
-	return Snapshot{Selection: selection, Sources: results}, nil
+	resolvedSkills := make(map[string]string)
+	for _, source := range sources {
+		if source = resolve(source); source.Skill != "" && source.Path != "" {
+			resolvedSkills[source.Skill] = source.Path
+		}
+	}
+	return Snapshot{Selection: selection, Sources: results, NativeSkills: resolvedSkills}, nil
 }
 
 type captureBudget struct {
@@ -341,7 +439,7 @@ type ChangeReader struct {
 	YieldContext string
 }
 
-func (r ChangeReader) read(ctx context.Context, source Source, directory, script string) CapturedSource {
+func (r ChangeReader) read(ctx context.Context, source SourceIdentity, directory, script string) CapturedSource {
 	result := CapturedSource{Command: script}
 	fail := func(err error) CapturedSource {
 		result.Stderr, result.ExitCode = "mchanges: "+err.Error()+"\n", 1

@@ -44,8 +44,8 @@ import (
 
 // Frontends composes feature-owned commands and records for the authenticated
 // frontend host, including retained host facts and Activity snapshots.
-func Frontends(ctx context.Context, liveReports, childReplySummary bool, captureDirectory string, threads *control.Service) (*Runtime, error) {
-	c, bind := frontendDeclarations(liveReports, childReplySummary, captureDirectory, threads)
+func Frontends(ctx context.Context, liveReports, childReplySummary bool, captureDirectory string, threads *control.Service, nativeSkills func(context.Context, string) (map[string][]string, error)) (*Runtime, error) {
+	c, bind := frontendDeclarations(liveReports, childReplySummary, captureDirectory, threads, nativeSkills)
 	runtime, err := c.Activate(ctx, new(binding.Registry))
 	if err != nil {
 		return nil, err
@@ -57,13 +57,13 @@ func Frontends(ctx context.Context, liveReports, childReplySummary bool, capture
 // NativeRenderer borrows only statically selected painters. It constructs no
 // history, capture, host, provider or guard owner.
 func NativeRenderer(childReplySummary bool) (terminalsession.Views, error) {
-	c, _ := frontendDeclarations(false, childReplySummary, "", nil)
+	c, _ := frontendDeclarations(false, childReplySummary, "", nil, nil)
 	views, err := c.RendererViews()
 	views.ChildReplySummary = childReplySummary
 	return views, err
 }
 
-func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory string, threads *control.Service) (*Composition, func(*Runtime)) {
+func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory string, threads *control.Service, nativeSkills func(context.Context, string) (map[string][]string, error)) (*Composition, func(*Runtime)) {
 	var c Composition
 	conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
 	activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
@@ -77,7 +77,7 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 		return changehistory.Deps{History: history.Value(), Directory: captureDirectory}
 	})
 	c.Add(agentguidance.Module, func() agentguidance.Deps {
-		return agentguidance.Deps{ChildReplySummary: childReplySummary, Changes: changes.Value().Service, History: history.Value()}
+		return agentguidance.Deps{ChildReplySummary: childReplySummary, Changes: changes.Value().Service, History: history.Value(), NativeSkills: nativeSkills}
 	})
 	thread := c.Add(threadcontrol.Module, func() threadcontrol.Deps { return threadcontrol.Deps{History: history.Value(), Shared: threads} })
 	replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {

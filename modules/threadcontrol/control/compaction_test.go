@@ -11,7 +11,7 @@ func TestCompactionCheckpointAdmission(t *testing.T) {
 		t.Run(evidence, func(t *testing.T) {
 			s, _ := fixture(t)
 			id := identity("root", "rt")
-			selection := `{"sources":[{"path":"task.json","ranges":[[2,4]]}]}`
+			selection := `{"sources":["@task.json#L2-L4"]}`
 			result, err := s.RegisterCompaction(t.Context(), id, "", nil, nil, time.Now(), true, selection)
 			must(t, err)
 			if result.State != "compacting" {

@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"context"
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -26,7 +27,7 @@ import (
 
 // Exercise the actual selection, capture, publication and hydration producers;
 // only the native host lifecycle events are supplied by this renderer fixture.
-func compactReloadUI(t *testing.T, sources []compact.Source, child bool) (*appServerUI, string, func()) {
+func compactReloadUI(t *testing.T, sources []compact.SourceIdentity, child bool) (*appServerUI, string, func()) {
 	t.Helper()
 	usePreloadTestFrontend(t)
 	workspace := t.TempDir()
@@ -45,7 +46,7 @@ func compactReloadUI(t *testing.T, sources []compact.Source, child bool) (*appSe
 			t.Fatal(err)
 		}
 	}
-	selection := string(mustTestJSON(t, map[string]any{"sources": sources}))
+	selection := compact.Selection(sources)
 	script := compact.CaptureCommand(selection)
 	u := newAppServerSessionTestUI(t, workspace)
 	u.Turn = "turn"
@@ -101,7 +102,16 @@ func compactReloadUI(t *testing.T, sources []compact.Source, child bool) (*appSe
 	}
 	complete := func() {
 		t.Helper()
-		captured, err := compact.Capture(t.Context(), command.Request{Args: []string{selection}}, compact.ChangeReader{})
+		readers := compact.Readers{Skills: func(context.Context) (map[string][]string, error) {
+			paths := make(map[string][]string)
+			for _, source := range sources {
+				if source.Skill != "" {
+					paths[source.Skill] = append(paths[source.Skill], source.Path)
+				}
+			}
+			return paths, nil
+		}}
+		captured, err := readers.Capture(t.Context(), command.Request{Args: []string{selection}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,7 +145,7 @@ func compactReloadUI(t *testing.T, sources []compact.Source, child bool) (*appSe
 }
 
 func TestUISnapshotCompactReloadAttachments(t *testing.T) {
-	u, script, complete := compactReloadUI(t, []compact.Source{{Path: "guide.txt"}, {Path: "skills/commit/SKILL.md", Skill: "commit"}}, false)
+	u, script, complete := compactReloadUI(t, []compact.SourceIdentity{{Path: "guide.txt"}, {Path: "skills/commit/SKILL.md", Skill: "commit"}}, false)
 	item := binding.ThreadItem{ID: "capture", Type: "commandExecution", Command: script, Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	item.Status, item.ExitCode = "completed", new(0)
@@ -152,7 +162,7 @@ func TestUISnapshotCompactReloadAttachments(t *testing.T) {
 }
 
 func TestUISnapshotChildReloadAttachments(t *testing.T) {
-	u, script, complete := compactReloadUI(t, []compact.Source{{Path: "guide.txt"}, {Path: "skills/missing/SKILL.md", Skill: "missing"}, {Changes: []string{"amber1..3"}}}, true)
+	u, script, complete := compactReloadUI(t, []compact.SourceIdentity{{Path: "guide.txt"}, {Path: "skills/missing/SKILL.md", Skill: "missing"}, {Changes: []string{"amber1..3"}}}, true)
 	item := binding.ThreadItem{ID: "capture", Type: "commandExecution", Command: script, Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	if got := approvalTestTranscript(t, u); !strings.Contains(got, "Attached guide.txt") || strings.Contains(got, "mreload") {
@@ -168,7 +178,7 @@ func TestUISnapshotChildReloadAttachments(t *testing.T) {
 }
 
 func TestUISnapshotCompactReloadApprovalLifecycle(t *testing.T) {
-	u, script, complete := compactReloadUI(t, []compact.Source{{Path: "SKILL.md", Skill: "commit"}}, false)
+	u, script, complete := compactReloadUI(t, []compact.SourceIdentity{{Path: "SKILL.md", Skill: "commit"}}, false)
 	approvalTestCommand(t, u, 7, map[string]any{"command": script, "availableDecisions": []string{"accept", "decline"}})
 	if got := approvalTestTranscript(t, u); !strings.Contains(got, "Attached skill") || !strings.Contains(got, "Approving") || strings.Contains(got, "auto reloaded") {
 		t.Fatalf("pending attachment: %s", got)
@@ -185,7 +195,7 @@ func TestUISnapshotCompactReloadApprovalLifecycle(t *testing.T) {
 }
 
 func TestCompactReloadLoadsOnlySuccessfulSkills(t *testing.T) {
-	u, script, complete := compactReloadUI(t, []compact.Source{{Path: "skills/commit/SKILL.md", Skill: "commit"}, {Path: "skills/missing/SKILL.md", Skill: "missing"}}, false)
+	u, script, complete := compactReloadUI(t, []compact.SourceIdentity{{Path: "skills/commit/SKILL.md", Skill: "commit"}, {Path: "skills/missing/SKILL.md", Skill: "missing"}}, false)
 	item := binding.ThreadItem{ID: "capture", Type: "commandExecution", Command: script, Status: "completed", ExitCode: new(0)}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	complete()

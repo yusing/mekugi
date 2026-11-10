@@ -204,13 +204,13 @@ selected by the agent, never an automatic whole-artifact reload. Select only fie
 needed for the next operation, using focused line ranges or ordinary JSON extraction;
 remove obsolete facts instead of accumulating task history.
 
-Sources are file paths with optional inclusive line ranges, skills with optional
-native paths, or explicit `mchanges` IDs/ranges. Skill references use
-`skill: "name/references/file.md"`; a native `SKILL.md` path anchors that reference,
-or `path` can name the native reference file directly. Skill ranges use the
-selected reader's inclusive line ranges. A `changes` source supplies an
-array such as `["amber1..3", "birch2"]`, exclusive with file/skill fields, and captures
-the composed retained diff in the admitted caller namespace. Unavailable IDs and
+Selections use the [source-reference syntax](#source-reference-syntax) below.
+Native skill identity comes from the selected runtime's native catalog, not a
+caller-supplied skill path. Catalog resolution supplies metadata only; source
+bytes still use the receiving reader's permissions. Ambiguous or unavailable
+native identities retain explicit diagnostics. Historical source records remain
+readable without admitting the former object syntax for new selections.
+Captured-change references read the admitted caller namespace. Unavailable IDs and
 incomplete chains retain available output and explicit diagnostics. Selection never
 performs an automatic inventory. An empty selection is valid. There is no fixed
 source-count limit; oversized captures fail explicitly and require smaller selections.
@@ -228,8 +228,8 @@ incomplete file read reports its failure and, when available, an `mread` continu
 its omitted rows are not included in the preload. Skill and change selections retain
 their own readers.
 
-Successfully selected file and skill text also resolves nested `@path` references,
-including JSON string values and `@"paths with spaces"`. Plain paths remain data.
+Successfully selected file and skill text also resolves nested references using
+the same grammar, including JSON string values.
 Relative references resolve beside a native source, or in the admitted workspace
 for managed skills. Only selected rows are scanned, never omitted rows or captured
 diffs. The root counts as depth 1; references beyond depth 3 retain visible errors.
@@ -258,6 +258,32 @@ fail before provider access.
 Mekugi no longer discovers, loads or injects compaction prompts. Stock Codex may
 still read a caller-configured `experimental_compact_prompt_file` during its own
 startup, even though native reset does not use it.
+
+### Source-reference syntax
+
+Preload, reload, attachments and selected nested text share one reference language.
+Each consumer retains its supported source kinds and acquisition policy.
+
+| Source | Reference |
+| --- | --- |
+| File | `@path/to/file` |
+| Selected file lines | `@path/to/file#L2-L4,L8-L10` |
+| Skill | `$skill-name` |
+| Skill reference | `$skill-name/references/file.md` |
+| Composed captured changes | `mchanges:blue1,blue3..blue7,blue10,birch2..5` |
+
+Line ranges are inclusive and may also follow skill references. Quote paths
+containing spaces after the marker, for example `@"path with spaces"#L2-L4`.
+Captured changes mix individual IDs and inclusive ranges, separated by commas
+without spaces. A range may abbreviate a same-chain endpoint (`birch2..5`).
+Keep IDs/ranges in one reference to request one composed diff; separate references
+request separate results.
+
+Preload/reload retain the JSON envelope `{"sources":[REFERENCE,...]}` with string
+entries only, for example `{"sources":["@file#L2-L4","$skill-name","mchanges:blue1,blue3..7,birch2"]}`.
+There are no source-object alternatives. Bare paths, email addresses and escaped
+markers remain literal. Shared model guidance supplies this syntax once; tool
+descriptions keep only operation-specific acquisition and delivery rules.
 
 ## Lifecycle, Codex connection, records, and failure
 

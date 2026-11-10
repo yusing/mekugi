@@ -77,6 +77,33 @@ func TestSnapshotSourcesUploadAndPaths(t *testing.T) {
 	}
 }
 
+func TestSubmittedReferenceRangesAndNestedSelection(t *testing.T) {
+	workspace := t.TempDir()
+	for name, body := range map[string]string{
+		"with spaces.txt": "UNSELECTED @missing\nSELECTED @child#L2-L2\nUNSELECTED TAIL\n",
+		"child":           "UNSELECTED CHILD\nNESTED SELECTED\n",
+	} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	draft := Draft{Text: `Read @"with spaces.txt"#L2-L2 @"with spaces.txt"#L2-L2 @child#L9-L2 \@literal mchanges:amber1`}
+	draft.SnapshotFiles(workspace)
+	if len(draft.Attachments) != 1 {
+		t.Fatalf("submitted references not acquired: %+v", draft)
+	}
+	frames, ok := attachments.Decode(draft.Attachments[0])
+	joined := strings.Join(frames, "\n")
+	if !ok || strings.Count(joined, "SELECTED @child") != 1 || !strings.Contains(joined, "NESTED SELECTED") || !strings.Contains(joined, "invalid source reference") {
+		t.Fatalf("range, deduplication, nesting or diagnostic lost: %s", joined)
+	}
+	for _, excluded := range []string{"UNSELECTED", "@missing", "@literal", "amber1"} {
+		if strings.Contains(joined, excluded) {
+			t.Fatalf("unselected source acquired: %s", joined)
+		}
+	}
+}
+
 func TestNestedAttachmentSnapshots(t *testing.T) {
 	dir := t.TempDir()
 	for name, body := range map[string]string{

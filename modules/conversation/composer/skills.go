@@ -77,7 +77,7 @@ func (d *Draft) SnapshotSkillSources(workspace string, read func(name, path stri
 		if err == nil && workspace != "" {
 			base := workspace
 			if skill.Path != "" && !managed {
-				base = filepath.Dir(skill.Path)
+				base = filepath.Dir((attachments.Reference{Skill: skill.Name, Path: skill.Path}).ReadPath())
 			}
 			frames, more = d.appendNestedAttachments(frames, attachmentBody(frames[before:]), base, 1, files)
 			if !more {

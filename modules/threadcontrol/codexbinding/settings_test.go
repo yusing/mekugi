@@ -54,8 +54,9 @@ func TestPrepareChildModelEffortAndContext(t *testing.T) {
 		{name: "full model override refused", options: SpawnOptions{Model: new("other")}, fail: true},
 		{name: "full effort override refused", options: SpawnOptions{ReasoningEffort: new("low")}, fail: true},
 		{name: "full preload refused", options: SpawnOptions{Preload: []byte(`{"sources":[]}`)}, fail: true},
-		{name: "fresh preload", model: "parent", effort: "high", options: SpawnOptions{ForkTurns: new("none"), Preload: []byte(`{"sources":[{"path":"context.go","ranges":[[2,4]]},{"skill":"review"}]}`)}},
+		{name: "fresh preload", model: "parent", effort: "high", options: SpawnOptions{ForkTurns: new("none"), Preload: []byte(`{"sources":["@context.go#L2-L4","$review"]}`)}},
 		{name: "malformed preload refused", options: SpawnOptions{ForkTurns: new("none"), Preload: []byte(`{"source":[]}`)}, fail: true},
+		{name: "object preload refused", options: SpawnOptions{ForkTurns: new("none"), Preload: []byte(`{"sources":[{"path":"context.go"}]}`)}, fail: true},
 		{name: "null preload refused", options: SpawnOptions{ForkTurns: new("none"), Preload: []byte(`null`)}, fail: true},
 		{name: "unsupported effort refused", options: SpawnOptions{ForkTurns: new("none"), Model: new("other"), ReasoningEffort: new("high")}, fail: true},
 	} {

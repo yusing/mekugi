@@ -19,6 +19,10 @@ func Name(reference string) string {
 	return fmt.Sprintf("compact-%x.json", sha256.Sum256([]byte(reference)))
 }
 
+func ReaderPrefix(reference string) string {
+	return strings.TrimSuffix(Name(reference), ".json")[:40] + "-"
+}
+
 var Kind = recordkind.Spec{ID: "compact", Match: recordkind.HashedName("compact-", ".json")}
 
 type Record struct {

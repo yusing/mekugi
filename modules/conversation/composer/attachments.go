@@ -18,9 +18,11 @@ import (
 // AttachmentSource describes a host path or uploaded text bytes. Upload names
 // are display labels only; their data never passes through filesystem lookup.
 type AttachmentSource struct {
-	Path string
-	Name string
-	Data []byte
+	Path      string
+	Name      string
+	Data      []byte
+	Reference string
+	Ranges    [][2]int
 }
 
 // UploadAttachment keeps uploaded bytes in the ordinary file binding for draft
@@ -33,12 +35,32 @@ func UploadAttachment(name string, data []byte) Token {
 // SnapshotFiles runs only when the user submits/queues a composer draft.
 // Queued and accepted-but-resent input carries the same immutable text.
 func (d *Draft) SnapshotFiles(cwd string) {
+	// Submitted reference strings use the same grammar as selected-source tools.
+	// Existing bound uploads, selections and skill tokens retain their authority.
+	spans := d.Spans()
+	if !strings.HasPrefix(d.Text, "!") {
+		for token := range attachments.ReferenceTokens(d.Text) {
+			if !strings.HasPrefix(token.Text, "@") || slices.ContainsFunc(spans, func(span Span) bool { return token.Start < span.End && token.End > span.Start }) {
+				continue
+			}
+			ref, _ := attachments.ParseReference(token.Text)
+			d.Files = append(d.Files, Token{Start: token.Start, End: token.End, Path: ref.Path, Text: token.Text, Source: "reference"})
+		}
+		slices.SortFunc(d.Files, func(a, b Token) int { return a.Start - b.Start })
+	}
 	sources := make([]AttachmentSource, len(d.Files))
 	for i, file := range d.Files {
 		if file.Source == "upload" {
 			sources[i] = AttachmentSource{Name: file.Name, Data: []byte(file.Text)}
 		} else {
 			sources[i].Path = file.Path
+			if file.Source == "reference" {
+				sources[i].Reference = file.Text
+			} else if file.Start >= 0 && file.End > file.Start && file.End <= len(d.Text) {
+				if ref, err := attachments.ParseReference(d.Text[file.Start:file.End]); err == nil && ref.Path != "" {
+					sources[i].Ranges = ref.Ranges
+				}
+			}
 		}
 	}
 	d.SnapshotSources(cwd, sources)
@@ -53,6 +75,21 @@ func (d *Draft) SnapshotSources(cwd string, sources []AttachmentSource) {
 	var frames []string
 	seen := make(map[string]attachmentFile)
 	for index, source := range sources {
+		if source.Reference != "" {
+			ref, err := attachments.ParseReference(source.Reference)
+			if err != nil || ref.Path == "" {
+				if err == nil {
+					err = fmt.Errorf("file attachment requires a file reference")
+				}
+				var more bool
+				frames, more = d.appendAttachmentSnapshot(frames, nil, fmt.Sprintf("Attached file %q", source.Reference), err)
+				if !more {
+					break
+				}
+				continue
+			}
+			source.Path, source.Ranges = ref.Path, ref.Ranges
+		}
 		var next []string
 		var err error
 		var header string
@@ -64,10 +101,10 @@ func (d *Draft) SnapshotSources(cwd string, sources []AttachmentSource) {
 				path = filepath.Join(cwd, path)
 			}
 			path = filepath.Clean(path)
-			snapshotPath = path
-			if prior, ok := seen[path]; ok {
+			snapshotPath = attachmentPathKey(path, source.Ranges)
+			if prior, ok := seen[snapshotPath]; ok {
 				if prior.depth > 1 {
-					seen[path] = attachmentFile{prior.body, 1}
+					seen[snapshotPath] = attachmentFile{prior.body, 1}
 					var more bool
 					frames, more = d.appendNestedAttachments(frames, prior.body, filepath.Dir(path), 1, seen)
 					if !more {
@@ -76,8 +113,8 @@ func (d *Draft) SnapshotSources(cwd string, sources []AttachmentSource) {
 				}
 				continue
 			}
-			seen[path] = attachmentFile{depth: 1}
-			next, err = pathFrames(path)
+			seen[snapshotPath] = attachmentFile{depth: 1}
+			next, err = pathRangeFrames(path, source.Ranges)
 			base = filepath.Dir(path)
 			header = fmt.Sprintf("Attached file %q", path)
 		} else {
@@ -168,19 +205,26 @@ type attachmentFile struct {
 
 func (d *Draft) appendNestedAttachments(frames []string, content, base string, depth int, seen map[string]attachmentFile) ([]string, bool) {
 	for reference := range attachments.References(content) {
-		path := reference
+		if !strings.HasPrefix(reference, "@") {
+			continue // Composer nesting retains its file-only acquisition policy.
+		}
+		ref, parseErr := attachments.ParseReference(reference)
+		path := ref.Path
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(base, path)
 		}
 		path = filepath.Clean(path)
+		key := attachmentPathKey(path, ref.Ranges)
 		var next []string
 		var err error
-		if depth >= attachments.MaxDepth {
+		if parseErr != nil {
+			err = parseErr
+		} else if depth >= attachments.MaxDepth {
 			err = fmt.Errorf("nested attachment depth limit 3 exceeded")
 		} else {
-			if prior, ok := seen[path]; ok {
+			if prior, ok := seen[key]; ok {
 				if prior.depth > depth+1 {
-					seen[path] = attachmentFile{prior.body, depth + 1}
+					seen[key] = attachmentFile{prior.body, depth + 1}
 					var more bool
 					frames, more = d.appendNestedAttachments(frames, prior.body, filepath.Dir(path), depth+1, seen)
 					if !more {
@@ -189,8 +233,8 @@ func (d *Draft) appendNestedAttachments(frames []string, content, base string, d
 				}
 				continue
 			}
-			seen[path] = attachmentFile{depth: depth + 1}
-			next, err = pathFrames(path)
+			seen[key] = attachmentFile{depth: depth + 1}
+			next, err = pathRangeFrames(path, ref.Ranges)
 		}
 		before := len(frames)
 		var more bool
@@ -200,7 +244,7 @@ func (d *Draft) appendNestedAttachments(frames []string, content, base string, d
 		}
 		if err == nil {
 			body := attachmentBody(frames[before:])
-			seen[path] = attachmentFile{body, depth + 1}
+			seen[key] = attachmentFile{body, depth + 1}
 			frames, more = d.appendNestedAttachments(frames, body, filepath.Dir(path), depth+1, seen)
 			if !more {
 				return frames, false
@@ -280,7 +324,14 @@ func FileFrames(path, content string) []string {
 	})
 }
 
-func pathFrames(path string) ([]string, error) {
+func attachmentPathKey(path string, ranges [][2]int) string {
+	if len(ranges) == 0 {
+		return path
+	}
+	return (attachments.Reference{Path: path, Ranges: ranges}).String()
+}
+
+func pathRangeFrames(path string, ranges [][2]int) ([]string, error) {
 	if !filepath.IsAbs(path) {
 		return nil, fmt.Errorf("no absolute workspace for relative path")
 	}
@@ -289,6 +340,9 @@ func pathFrames(path string) ([]string, error) {
 		return nil, err
 	}
 	if info.IsDir() {
+		if len(ranges) > 0 {
+			return nil, fmt.Errorf("line ranges require a regular file")
+		}
 		content, err := DirectoryTree(path)
 		if err != nil {
 			return nil, err
@@ -298,6 +352,23 @@ func pathFrames(path string) ([]string, error) {
 		}), nil
 	}
 	data, err := ReadFile(path)
+	if err == nil && len(ranges) > 0 {
+		lines := strings.SplitAfter(string(data), "\n")
+		if len(data) == 0 || lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
+		var selected strings.Builder
+		for _, span := range ranges {
+			if span[0] < 1 || span[1] < span[0] || span[1] > len(lines) {
+				return nil, fmt.Errorf("selected line range exceeds the %d-line file", len(lines))
+			}
+			for _, line := range lines[span[0]-1 : span[1]] {
+				selected.WriteString(line)
+			}
+		}
+		data = []byte(selected.String())
+		path = strings.TrimPrefix((attachments.Reference{Path: path, Ranges: ranges}).String(), "@")
+	}
 	return FileFrames(path, string(data)), err
 }
 

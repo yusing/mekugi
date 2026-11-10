@@ -93,7 +93,7 @@ func TestPreloadMcatRecoveryInAdmittedThread(t *testing.T) {
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
-	selection, err := json.Marshal(map[string]any{"sources": []compact.Source{{Path: path}}})
+	selection, err := json.Marshal(map[string]any{"sources": []string{"@" + path}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestPreloadMcatRecoveryInAdmittedThread(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	captured, err := compact.Capture(t.Context(), command.Request{Args: []string{string(selection)}}, compact.ChangeReader{})
+	captured, err := (compact.Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
 	if err != nil {
 		t.Fatal(err)
 	}

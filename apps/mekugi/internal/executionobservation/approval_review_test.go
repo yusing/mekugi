@@ -38,7 +38,7 @@ func TestApprovalReviewRestoresCompactionAtProvider(t *testing.T) {
 				t.Fatal(err)
 			}
 			proxy.ThreadControl = driver
-			ref, err := moduletest.StoreCompact(ctx, proxy.Retained, "parent", "exact retained handover", `{"sources":[{"path":"must-not-be-read.txt"}]}`)
+			ref, err := moduletest.StoreCompact(ctx, proxy.Retained, "parent", "exact retained handover", `{"sources":["@must-not-be-read.txt"]}`)
 			if err != nil {
 				t.Fatal(err)
 			}

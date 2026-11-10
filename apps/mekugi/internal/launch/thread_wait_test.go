@@ -771,7 +771,7 @@ func TestUISnapshotCompactionRejection(t *testing.T) {
 				}
 			}
 			check(s.RequestStarted(ctx, caller, true))
-			result, err := s.RegisterCompaction(ctx, caller, "", nil, nil, *at, standalone, `{"sources":[{"path":"state.json"}]}`)
+			result, err := s.RegisterCompaction(ctx, caller, "", nil, nil, *at, standalone, `{"sources":["@state.json"]}`)
 			check(err)
 			payload, _ := json.Marshal(result)
 			envelope, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(payload)}}})

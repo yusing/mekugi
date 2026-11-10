@@ -1,6 +1,7 @@
 package compact
 
 import (
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -9,11 +10,14 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 // SelectionSchema describes the shared compaction and delegate source selection.
-// ReadCommands enforces exclusive changes sources; Claude's worker cannot compile `not`.
-const SelectionSchema = `{"type":"object","properties":{"sources":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"skill":{"type":"string"},"changes":{"type":"array","items":{"type":"string"},"minItems":1},"ranges":{"type":"array","items":{"type":"array","items":{"type":"integer"},"minItems":2,"maxItems":2}}},"additionalProperties":false}}},"required":["sources"],"additionalProperties":false}`
+const SelectionSchema = `{"type":"object","properties":{"sources":{"type":"array","items":{"type":"string"}}},"required":["sources"],"additionalProperties":false}`
+
+// Source is the public reference-string selection, with no object alternative.
+type Source = string
 
 // ReadCommands interprets selection metadata, never summary prose or file content.
 func ReadCommands(selection string) ([]string, error) {
@@ -27,84 +31,130 @@ func ReadCommands(selection string) ([]string, error) {
 
 	var commands []string
 	for _, source := range selected {
-		path := source.readPath()
-		if path != "" && !filepath.IsAbs(path) {
-			path = "./" + path
-		}
-		args := []string{"mcat", "--", path}
-		valid := len(source.Path) <= 4096 && len(source.Skill) <= 256 && !strings.ContainsRune(source.Path, 0)
-		if source.Changes != nil {
-			valid = len(source.Changes) > 0 && source.Path == "" && source.Skill == "" && len(source.Ranges) == 0
-			args = append([]string{"mchanges"}, source.Changes...)
-		} else if source.Path == "" {
-			valid = valid && validSkillReference(source.Skill)
-			args = []string{"skills-mgr", "get", "--codex", source.Skill}
-		} else if source.Skill != "" {
-			valid = valid && validSkillReference(source.Skill)
-		}
-		for _, span := range source.Ranges {
-			valid = valid && span[0] > 0 && span[1] >= span[0]
-			args = append(args, fmt.Sprintf("%d:%d", span[0], span[1]))
-		}
-		if !valid {
-			args = []string{"bash", "-c", "printf '%s\\n' " + commandargs.Quote(fmt.Sprintf("CONTENT NOT ATTACHED: invalid reload source %.256q", source.Path+source.Skill)) + "; exit 1"}
-		}
-		for i := range args {
-			args[i] = commandargs.Quote(args[i])
-		}
-		commands = append(commands, strings.Join(args, " "))
+		commands = append(commands, source.readCommand())
 	}
 	return commands, nil
 }
 
-func (s Source) readPath() string {
-	if _, reference, ok := strings.Cut(s.Skill, "/"); ok && filepath.Base(s.Path) == "SKILL.md" {
-		return filepath.Join(filepath.Dir(s.Path), reference)
+func (source SourceIdentity) readCommand() string {
+	path := source.readPath()
+	if path != "" && !filepath.IsAbs(path) {
+		path = "./" + path
 	}
-	return s.Path
-}
-
-func validSkillReference(skill string) bool {
-	if skill == "" || strings.HasPrefix(skill, "-") || strings.ContainsAny(skill, "\x00\r\n\\") {
-		return false
+	args := []string{"mcat", "--", path}
+	valid := source.Problem == "" && len(source.Path) <= 4096 && len(source.Skill) <= 256 && !strings.ContainsRune(source.Path, 0)
+	if source.Changes != nil {
+		valid = valid && len(source.Changes) > 0 && source.Path == "" && source.Skill == "" && len(source.Ranges) == 0
+		args = append([]string{"mchanges"}, source.Changes...)
+	} else if source.Path == "" {
+		valid = valid && attachments.ValidSkillReference(source.Skill)
+		args = []string{"skills-mgr", "get", "--codex", source.Skill}
+	} else if source.Skill != "" {
+		valid = valid && attachments.ValidSkillReference(source.Skill)
 	}
-	for part := range strings.SplitSeq(skill, "/") {
-		if part == "" || part == "." || part == ".." {
-			return false
+	for _, span := range source.Ranges {
+		valid = valid && span[0] > 0 && span[1] >= span[0]
+		args = append(args, fmt.Sprintf("%d:%d", span[0], span[1]))
+	}
+	if !valid {
+		problem := source.Problem
+		if problem == "" {
+			problem = fmt.Sprintf("invalid reload source %.256q", source.Path+source.Skill)
 		}
+		args = []string{"bash", "-c", "printf '%s\\n' " + commandargs.Quote("CONTENT NOT ATTACHED: "+problem) + "; exit 1"}
 	}
-	return true
+	for i := range args {
+		args[i] = commandargs.Quote(args[i])
+	}
+	return strings.Join(args, " ")
 }
 
-// Source is selected context identity, independent of its command and outcome.
-type Source struct {
+func (s SourceIdentity) readPath() string {
+	return (attachments.Reference{Path: s.Path, Skill: s.Skill}).ReadPath()
+}
+
+// SourceIdentity is internal resolved identity, not the public selection wire format.
+// Its object codec is retained solely for native identities and older records.
+// Public sources are reference strings, decoded by Sources.
+type SourceIdentity struct {
 	Path    string   `json:"path,omitempty"`
 	Skill   string   `json:"skill,omitempty"`
 	Ranges  [][2]int `json:"ranges,omitempty"`
 	Changes []string `json:"changes,omitzero"`
+	Problem string   `json:"-"`
+}
+
+func sourceReference(text string) SourceIdentity {
+	ref, err := attachments.ParseReference(text)
+	if err != nil {
+		return SourceIdentity{Problem: err.Error()}
+	}
+	return SourceIdentity{Path: ref.Path, Skill: ref.Skill, Ranges: ref.Ranges, Changes: ref.Changes}
+}
+
+func (s SourceIdentity) Reference() string {
+	if s.Problem != "" || s.Changes != nil && (s.Path != "" || s.Skill != "" || len(s.Ranges) != 0) {
+		return "invalid retained source identity"
+	}
+	return (attachments.Reference{Path: s.Path, Skill: s.Skill, Ranges: s.Ranges, Changes: s.Changes}).String()
+}
+
+// Selection encodes reference strings, never the internal source-object codec.
+func Selection(sources []SourceIdentity) string {
+	refs := make([]string, len(sources))
+	for i, source := range sources {
+		refs[i] = source.Reference()
+	}
+	data, _ := json.Marshal(struct {
+		Sources []Source `json:"sources"`
+	}{refs})
+	return string(data)
 }
 
 // HostLoaded sources are supplied by Codex's instruction discovery.
-func (s Source) HostLoaded() bool {
+func (s SourceIdentity) HostLoaded() bool {
 	return s.Changes == nil && filepath.Base(s.readPath()) == "AGENTS.md"
 }
 
 // ReloadSources excludes host-owned instructions while Sources preserves the
 // original order for interpreting already retained capture results.
-func ReloadSources(selection string) ([]Source, error) {
-	sources, err := Sources(selection)
-	return slices.DeleteFunc(sources, Source.HostLoaded), err
+func ReloadSources(selection string) ([]SourceIdentity, error) {
+	sources, err := StoredSources(selection)
+	return slices.DeleteFunc(sources, SourceIdentity.HostLoaded), err
 }
 
-func Sources(selection string) ([]Source, error) {
+func Sources(selection string) ([]SourceIdentity, error) {
 	if selection == "" {
 		return nil, nil
 	}
 	var selected struct {
-		Sources []Source `json:"sources"`
+		Sources []jsontext.Value `json:"sources"`
 	}
 	if json.Unmarshal([]byte(selection), &selected, json.RejectUnknownMembers(true)) != nil || selected.Sources == nil {
 		return nil, errors.New("invalid compaction reload selection")
+	}
+	sources := make([]SourceIdentity, len(selected.Sources))
+	for i, raw := range selected.Sources {
+		var ref Source
+		if raw.Kind() != '"' || json.Unmarshal(raw, &ref) != nil {
+			return nil, errors.New("invalid compaction reload selection")
+		}
+		sources[i] = sourceReference(ref)
+	}
+	return sources, nil
+}
+
+// StoredSources reads already retained identities, including the historical
+// object codec. New tool arguments and completion selections use Sources only.
+func StoredSources(selection string) ([]SourceIdentity, error) {
+	if sources, err := Sources(selection); err == nil {
+		return sources, nil
+	}
+	var selected struct {
+		Sources []SourceIdentity `json:"sources"`
+	}
+	if json.Unmarshal([]byte(selection), &selected, json.RejectUnknownMembers(true)) != nil || selected.Sources == nil {
+		return nil, errors.New("invalid retained source selection")
 	}
 	return selected.Sources, nil
 }
@@ -115,6 +165,20 @@ func CompletionSources(selection string) error {
 	if err != nil {
 		return err
 	}
+	return completionSources(sources)
+}
+
+// StoredCompletionSources recognizes admitted completion history without
+// reopening the historical object selection dialect to new model answers.
+func StoredCompletionSources(selection string) error {
+	sources, err := StoredSources(selection)
+	if err != nil {
+		return err
+	}
+	return completionSources(sources)
+}
+
+func completionSources(sources []SourceIdentity) error {
 	for _, source := range sources {
 		if len(source.Changes) == 0 || source.Path != "" || source.Skill != "" || len(source.Ranges) != 0 {
 			return errors.New("completion reload requires explicit captured-change IDs/ranges")

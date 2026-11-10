@@ -13,6 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -126,7 +127,7 @@ func (p *Preparer) readCompact(ctx context.Context, reference string) (compact.R
 type compactPreparation struct {
 	reader  jsontext.Value
 	calls   map[string]bool
-	sources []compact.Source
+	sources []compact.SourceIdentity
 }
 
 func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata, prewarm bool) (compactPreparation, error) {
@@ -152,7 +153,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		return compactPreparation{}, err
 	}
 	var pending jsontext.Value
-	var explicit []compact.Source
+	var explicit []compact.SourceIdentity
 	var contextReference string
 	readCalls := make(map[string]bool)
 	for _, item := range items {
@@ -265,17 +266,23 @@ func compactReaderInput(items []map[string]jsontext.Value, calls map[string]bool
 // The stock interpreter and nested readers keep the actual thread's permissions,
 // approvals and continuations. Completed results stay in native history.
 func compactReaderCall(record compact.Record, items []map[string]jsontext.Value, thread string) (jsontext.Value, []string, error) {
-	prefix := compactReaderPrefix(record.Reference)
+	prefix := compact.ReaderPrefix(record.Reference)
 	sources, err := compact.ReloadSources(record.Selection)
 	if err != nil {
 		return nil, nil, err
 	}
 	reader := compact.CaptureCommand(record.Selection)
+	// Existing reader identities retain their exact historical program, even
+	// though newly scheduled reads always use reference-string selections.
+	legacyReader := "mreload " + commandargs.Quote(record.Selection)
 	threadHash := sha256.Sum256([]byte(thread))
 	var calls []string
 	ownID := fmt.Sprintf("%s%x", prefix, threadHash[:8])
 	id := ownID
 	for _, item := range items {
+		if responses.StringField(item, "type") == "custom_tool_call" && strings.HasPrefix(responses.StringField(item, "call_id"), prefix) && codexresponses.MatchesCompactReadProgram(responses.StringField(item, "input"), legacyReader) {
+			reader = legacyReader
+		}
 		if responses.StringField(item, "type") == "custom_tool_call" && codexresponses.MatchesCompactReadProgram(responses.StringField(item, "input"), reader) && strings.HasPrefix(responses.StringField(item, "call_id"), prefix) {
 			id = responses.StringField(item, "call_id")
 			break
@@ -334,10 +341,6 @@ func compactReaderCall(record compact.Record, items []map[string]jsontext.Value,
 	return responses.MustMarshalJSON(call), calls, nil
 }
 
-func compactReaderPrefix(reference string) string {
-	return strings.TrimSuffix(compact.Name(reference), ".json")[:40] + "-"
-}
-
 // Hydrate only authenticated completed reload results. Original host history and
 // its short retained reference remain untouched for observation and replay.
 func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, calls map[string]bool, thread string, metadata codexresponses.TurnMetadata, publish bool, optional *attachmentPreparation) (map[string]jsontext.Value, error) {
@@ -359,7 +362,7 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 	assignments := make(map[string]string)
 	for id := range references {
 		if strings.HasPrefix(id, "threadcontrol_") {
-			assignments[compactReaderPrefix(id)] = id
+			assignments[compact.ReaderPrefix(id)] = id
 		}
 	}
 	if len(calls) == 0 && len(assignments) == 0 {
@@ -424,7 +427,7 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		if err := json.Unmarshal([]byte(snapshot.Stdout), &captured); err != nil {
 			return nil, err
 		}
-		selected, err := compact.Sources(captured.Selection)
+		selected, err := captured.SelectedSources()
 		if err != nil {
 			return nil, err
 		}

@@ -28,7 +28,7 @@ import (
 func BenchmarkPeerAdmission(b *testing.B) {
 	for _, records := range []int{128, 120000} {
 		b.Run(fmt.Sprint(records), func(b *testing.B) {
-			runtime, err := Frontends(b.Context(), false, true, "", nil)
+			runtime, err := Frontends(b.Context(), false, true, "", nil, nil)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -85,7 +85,7 @@ func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
 				}
 			}
 			t.Setenv("TMPDIR", temp)
-			runtime, err := Frontends(t.Context(), live, true, "", nil)
+			runtime, err := Frontends(t.Context(), live, true, "", nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +154,7 @@ func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 }
 
 func TestFrontendsRetainedRequestTimingContribution(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false, true, "", nil)
+	runtime, err := Frontends(t.Context(), false, true, "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestFrontendsRetainedRequestTimingContribution(t *testing.T) {
 }
 
 func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false, true, "", nil)
+	runtime, err := Frontends(t.Context(), false, true, "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 }
 
 func TestFrontendsRetainsHistoricalWaitSnapshots(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false, true, "", nil)
+	runtime, err := Frontends(t.Context(), false, true, "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestFrontendsRetainsHistoricalWaitSnapshots(t *testing.T) {
 
 func TestFrontendsOwnsWorkspaceCapture(t *testing.T) {
 	directory := t.TempDir()
-	runtime, err := Frontends(t.Context(), false, true, directory, nil)
+	runtime, err := Frontends(t.Context(), false, true, directory, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

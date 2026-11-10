@@ -191,7 +191,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 			threads.setup = &threadSetup{options: options, settings: settings, executable: executable, args: slices.Clone(args), environment: slices.Clone(environment), approvals: approvals}
 		}
 	}
-	frontends, err := composition.Frontends(ctx, appUI, options.ChildReplySummary, captureDirectory, shared)
+	frontends, err := composition.Frontends(ctx, appUI, options.ChildReplySummary, captureDirectory, shared, sessionapi.ReadNativeSkillCatalog)
 	if err != nil {
 		return 1, err
 	}

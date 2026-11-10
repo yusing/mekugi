@@ -55,7 +55,7 @@ func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexres
 			}
 		}
 		if captured := prepared.skills; captured != nil {
-			sources, err := compact.Sources(captured.Selection)
+			sources, err := captured.SelectedSources()
 			if err != nil {
 				return "", err
 			}
@@ -112,7 +112,7 @@ func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexres
 	return nil
 }
 
-func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexresponses.Request, thread string, metadata codexresponses.TurnMetadata, prewarm bool, historical []compact.Source) (attachmentPreparation, error) {
+func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexresponses.Request, thread string, metadata codexresponses.TurnMetadata, prewarm bool, historical []compact.SourceIdentity) (attachmentPreparation, error) {
 	if p.ContextAttachments == nil || prewarm || metadata.RequestKind != responses.Turn || metadata.WindowNumber == 0 || metadata.ContextWindowID == "" {
 		return attachmentPreparation{}, nil
 	}
@@ -155,7 +155,7 @@ func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexr
 		}
 	}
 	explicit := maps.Clone(selected)
-	var sources []compact.Source
+	var sources []compact.SourceIdentity
 	for _, value := range values {
 		for _, skill := range value.Skills {
 			key := skill.Name + "\x00" + skill.Path
@@ -163,7 +163,7 @@ func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexr
 				continue
 			}
 			selected[key] = true
-			sources = append(sources, compact.Source{Skill: skill.Name, Path: skill.Path})
+			sources = append(sources, compact.SourceIdentity{Skill: skill.Name, Path: skill.Path})
 		}
 	}
 	selection, err := snapshot.Recall.Publish("reader-selection", func() (string, error) {
@@ -171,7 +171,7 @@ func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexr
 			return "", nil
 		}
 		data, err := json.Marshal(struct {
-			Sources []compact.Source `json:"sources"`
+			Sources []compact.SourceIdentity `json:"sources"`
 		}{sources})
 		return string(data), err
 	})

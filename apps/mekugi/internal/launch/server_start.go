@@ -23,13 +23,14 @@ import (
 )
 
 type serverLauncher struct {
-	headless *headless.Stream
-	workers  frontends.WorkerImage
-	threads  *threadcontrol.Service
-	hub      *sessionapi.Hub
-	mu       sync.Mutex
-	selected *modelcatalog.Selection
-	catalog  *sessionapi.StartOptions
+	headless     *headless.Stream
+	workers      frontends.WorkerImage
+	threads      *threadcontrol.Service
+	hub          *sessionapi.Hub
+	sourceSocket string
+	mu           sync.Mutex
+	selected     *modelcatalog.Selection
+	catalog      *sessionapi.StartOptions
 }
 
 func (l *serverLauncher) PrepareInput(ctx context.Context, workspace string, input sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
@@ -168,7 +169,7 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	if start.Replay != nil {
 		return runServerReplay(ctx, *start.Replay, api)
 	}
-	execution := &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers, headless: l.headless}
+	execution := &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers, sourceSocket: l.sourceSocket, headless: l.headless}
 	if start.Native != nil {
 		code, err := runServerSession(ctx, start.Native.RouterArgs, start.Native.Args, api, start.Workspace, execution)
 		if l.headless != nil {

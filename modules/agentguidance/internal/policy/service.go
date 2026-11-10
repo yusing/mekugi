@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 type Service struct {
 	Changes           changes.Service
 	History           *history.Service
+	NativeSkills      func(context.Context, string) (map[string][]string, error)
 	Environment       environment.Store
 	ContextNotices    contextnotice.Store
 	ChildReplySummary bool

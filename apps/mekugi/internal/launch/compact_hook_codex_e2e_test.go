@@ -271,7 +271,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 	}
 	continuation := map[string]any{"threadId": thread, "input": appserver.Input("Continue normally.")}
 	if !automatic {
-		wake := control.NativeInput{ID: "fixture:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "completed", Reload: `{"sources":[{"path":"selected.json","ranges":[[1,1]]},{"path":"missing.json","ranges":[[1,1]]}]}`}}}
+		wake := control.NativeInput{ID: "fixture:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "completed", Reload: `{"sources":["@selected.json#L1-L1","@missing.json#L1-L1"]}`}}}
 		continuation["input"] = []any{}
 		continuation["toolOutput"] = map[string]any{"namespace": "threadcontrol", "name": "compact", "output": wake.RetainedWaitOutput(), "retain": true}
 	}

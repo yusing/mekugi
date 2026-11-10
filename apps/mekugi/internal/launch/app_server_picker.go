@@ -23,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/presets"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 // Source: codex-rs/tui/src/bottom_pane/chat_composer.rs:2094:2250,2744:2805
@@ -225,25 +226,7 @@ func (p *composerPicker) pickerMessage(attached *attachedPresentation, clock fun
 	if m.Error != nil {
 		problem = "Search failed: " + m.Error.Message
 	} else if method == "skills/list" {
-		var result struct {
-			Data []struct {
-				Cwd    string `json:"cwd"`
-				Skills []struct {
-					Name             string `json:"name"`
-					Path             string `json:"path"`
-					Description      string `json:"description"`
-					ShortDescription string `json:"shortDescription"`
-					Interface        *struct {
-						ShortDescription string `json:"shortDescription"`
-						DisplayName      string `json:"displayName"`
-					} `json:"interface"`
-					Enabled bool `json:"enabled"`
-				} `json:"skills"`
-				Errors []struct {
-					Message string `json:"message"`
-				} `json:"errors"`
-			} `json:"data"`
-		}
+		var result binding.SkillCatalog
 		err = json.Unmarshal(m.Result, &result)
 		for _, entry := range result.Data {
 			if filepath.Clean(entry.Cwd) != filepath.Clean(cwd) {

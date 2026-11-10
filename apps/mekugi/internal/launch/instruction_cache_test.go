@@ -70,6 +70,9 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				if responses.StringField(request, "instructions") != proxy.registry.FrontendGuidance.Workflow {
 					t.Error("prewarm did not deliver workflow in base instructions")
 				}
+				if strings.Count(warmedInstructions, "mchanges:") != 1 || bytes.Contains(request["input"], []byte("mchanges:")) || bytes.Contains(request["tools"], []byte("mchanges:")) {
+					t.Error("source-reference syntax must reach the provider once, in shared workflow only")
+				}
 				if bytes.Contains(request["input"], []byte("Keep command output in tool results")) {
 					t.Error("workflow remains in tool description")
 				}

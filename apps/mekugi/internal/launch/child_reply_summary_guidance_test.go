@@ -22,7 +22,7 @@ func TestChildReplySummaryGuidanceInvocation(t *testing.T) {
 			t.Fatal(err)
 		}
 		options = options.ResolveFeatures(launchoptions.Features{ChildReplySummary: new(enabled)})
-		runtime, err := composition.Frontends(t.Context(), false, options.ChildReplySummary, "", nil)
+		runtime, err := composition.Frontends(t.Context(), false, options.ChildReplySummary, "", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

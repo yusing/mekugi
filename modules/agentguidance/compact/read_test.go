@@ -56,11 +56,11 @@ func TestReloadRejectsOversizedCapture(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	selection, err := json.Marshal(map[string]any{"sources": []Source{{Path: path}}})
+	selection, err := json.Marshal(map[string]any{"sources": []string{"@" + path}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}}, ChangeReader{})
+	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,9 +78,9 @@ func TestReloadRejectsOversizedCapture(t *testing.T) {
 }
 
 func TestReloadSelectionHasNoSourceCountLimit(t *testing.T) {
-	sources := make([]Source, 40)
+	sources := make([]SourceIdentity, 40)
 	for i := range sources {
-		sources[i] = Source{Path: strings.Repeat("a/", 250) + "guide.md"}
+		sources[i] = SourceIdentity{Path: strings.Repeat("a/", 250) + "guide.md"}
 	}
 	data, err := json.Marshal(map[string]any{"sources": sources})
 	if err != nil {
@@ -104,8 +104,8 @@ func TestReloadReportsIncompleteSelectedContent(t *testing.T) {
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
-	selection, _ := json.Marshal(map[string]any{"sources": []Source{{Path: path}, {Path: path + ".missing"}}})
-	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}}, ChangeReader{})
+	selection, _ := json.Marshal(map[string]any{"sources": []string{"@" + path, "@" + path + ".missing"}})
+	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,12 +136,12 @@ func TestReloadExcludesHostInstructionsAndPreservesSourceOrder(t *testing.T) {
 	if err := os.WriteFile(path, []byte("selected body\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	selection, _ := json.Marshal(map[string]any{"sources": []Source{
-		{Path: "AGENTS.md"}, {Path: path},
-		{Path: filepath.Join(dir, "AGENTS.md"), Ranges: [][2]int{{1, 10}}},
-		{Path: path + ".missing"}, {Path: "nested/../nested/AGENTS.md"},
+	selection, _ := json.Marshal(map[string]any{"sources": []string{
+		"@AGENTS.md", "@" + path,
+		"@" + filepath.Join(dir, "AGENTS.md") + "#L1-L10",
+		"@" + path + ".missing", "@nested/../nested/AGENTS.md",
 	}})
-	output, err := Capture(t.Context(), command.Request{Args: []string{string(selection)}}, ChangeReader{})
+	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestReloadReadsDashFile(t *testing.T) {
 		want   string
 	}{{"whole", nil, "first\nsecond\n"}, {"range", [][2]int{{2, 2}}, "second\n"}} {
 		t.Run(tc.name, func(t *testing.T) {
-			selection, _ := json.Marshal(map[string]any{"sources": []Source{{Path: "-", Ranges: tc.ranges}}})
+			selection, _ := json.Marshal(map[string]any{"sources": []SourceIdentity{{Path: "-", Ranges: tc.ranges}}})
 			commands, err := ReadCommands(string(selection))
 			if err != nil {
 				t.Fatal(err)
@@ -212,7 +212,7 @@ func TestReloadRefreshesManagedMetadataSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	selection, _ := json.Marshal(map[string]any{"sources": []Source{{Skill: "selected", Path: path}}})
+	selection, _ := json.Marshal(map[string]any{"sources": []SourceIdentity{{Skill: "selected", Path: path}}})
 	for _, body := range []string{"first instructions", "current instructions"} {
 		if err := os.WriteFile(filepath.Join(directory, "current"), []byte(body), 0600); err != nil {
 			t.Fatal(err)
@@ -235,7 +235,7 @@ func TestReloadMcatQuotedRangesAndLimits(t *testing.T) {
 	for i := range many {
 		many[i] = [2]int{1, 1}
 	}
-	selection, err := json.Marshal(map[string]any{"sources": []Source{
+	selection, err := json.Marshal(map[string]any{"sources": []SourceIdentity{
 		{Path: path, Ranges: [][2]int{{1, 1}, {3, 3}}},
 		{Path: path, Ranges: many},
 		{Path: path, Ranges: [][2]int{{3, 1}}},
@@ -268,7 +268,7 @@ func TestReloadNestedSelectedText(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	selection, _ := json.Marshal(map[string]any{"sources": []Source{{Path: "state.json", Ranges: [][2]int{{1, 1}}}, {Path: "missing"}}})
+	selection, _ := json.Marshal(map[string]any{"sources": []SourceIdentity{{Path: "state.json", Ranges: [][2]int{{1, 1}}}, {Path: "missing"}}})
 	snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
 	if err != nil {
 		t.Fatal(err)
@@ -323,19 +323,19 @@ func TestReloadSkillReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	for _, source := range []Source{
+	for _, source := range []SourceIdentity{
 		{Skill: "chosen/references/guide.md", Ranges: [][2]int{{2, 2}}},
 		{Skill: "chosen", Path: reference, Ranges: [][2]int{{2, 2}}},
 		{Skill: "chosen/references/guide.md", Path: filepath.Join(dir, "SKILL.md"), Ranges: [][2]int{{2, 2}}},
 	} {
-		selection, _ := json.Marshal(map[string]any{"sources": []Source{source}})
+		selection, _ := json.Marshal(map[string]any{"sources": []SourceIdentity{source}})
 		snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
 		if err != nil || snapshot.Sources[0].ExitCode != 0 || !strings.Contains(snapshot.Sources[0].Stdout, "reference") || strings.Contains(snapshot.Sources[0].Stdout, "first") {
 			t.Fatalf("%+v: %+v %v", source, snapshot, err)
 		}
 	}
 	for _, skill := range []string{"chosen/../secret", "chosen//reference", "chosen/./reference", "-flag", "/absolute"} {
-		selection, _ := json.Marshal(map[string]any{"sources": []Source{{Skill: skill}}})
+		selection, _ := json.Marshal(map[string]any{"sources": []SourceIdentity{{Skill: skill}}})
 		commands, err := ReadCommands(string(selection))
 		if err != nil || !strings.Contains(commands[0], "CONTENT NOT ATTACHED") {
 			t.Fatalf("unsafe skill %q: %v %v", skill, commands, err)
@@ -377,7 +377,7 @@ func TestReloadManagedNestedWorkspaceAndNativeHostExclusion(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	selection, _ := json.Marshal(map[string]any{"sources": []Source{
+	selection, _ := json.Marshal(map[string]any{"sources": []SourceIdentity{
 		{Skill: "chosen", Path: "placeholder/SKILL.md"},
 		{Skill: "chosen/references/AGENTS.md", Path: "SKILL.md"},
 	}})

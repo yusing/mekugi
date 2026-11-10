@@ -51,6 +51,7 @@ acknowledgements cannot reactivate a retired subscription.
 | Method | Purpose / body |
 | --- | --- |
 | `session/options` | Execution-machine workspaces and offered models |
+| `source/skills` | Selected running thread's native skill identity metadata; native endpoint only |
 | `session/list` | Current session-list value |
 | `session/read` | One confirmed thread's list entry |
 | `session/page` | A bounded retained-feed, roster, saved-review or live-preview metadata page |

@@ -35,7 +35,7 @@ func TestNativeCompactionDeliveryLatency(t *testing.T) {
 // conceal corpus-sized admission work.
 func prepareCompactionLatencyStore(t *testing.T, directory string, records int) func() func() {
 	t.Helper()
-	runtime, err := composition.Frontends(t.Context(), false, true, "", nil)
+	runtime, err := composition.Frontends(t.Context(), false, true, "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

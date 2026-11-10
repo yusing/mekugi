@@ -33,7 +33,7 @@ func TestSuppliedSourcesThroughNativeDeliveryAndPreparedRequest(t *testing.T) {
 	member := &control.Member{Thread: "root", Settings: control.Settings{Workspace: t.TempDir(), PermissionProfile: jsontext.Value(`{"type":"disabled"}`)}}
 	sources := make(chan string, 1)
 	go func() {
-		text, err := requests.ReadMessageSources(t.Context(), member, `{"sources":[{"path":"supplied.txt"}]}`)
+		text, err := requests.ReadMessageSources(t.Context(), member, `{"sources":["@supplied.txt"]}`)
 		if err != nil {
 			sources <- "ERROR: " + err.Error()
 			return
@@ -158,10 +158,10 @@ func TestSuppliedSourcesShareHydratedReloadAndCompletion(t *testing.T) {
 			t.Fatal(err)
 		}
 		p.InputProjections = []binding.InputProjection{outputdeduplication.Module.Bindings.InputProjection(service)}
-		selection := `{"sources":[{"path":"selected.txt"}]}`
+		selection := `{"sources":["@selected.txt"]}`
 		source := compact.CapturedSource{Command: "cat selected.txt", Stdout: "short supplied source"}
 		if completion {
-			selection = `{"sources":[{"changes":["amber1"]}]}`
+			selection = `{"sources":["mchanges:amber1"]}`
 			source.Command = "mchanges amber1"
 		}
 		ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "handover", selection)

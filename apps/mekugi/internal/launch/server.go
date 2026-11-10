@@ -53,7 +53,7 @@ func RunServer(ctx context.Context, args []string, stderr io.Writer) int {
 	defer listener.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	launcher := &serverLauncher{threads: control.New()}
+	launcher := &serverLauncher{threads: control.New(), sourceSocket: *socket}
 	defer func() {
 		if err := launcher.workers.Close(); err != nil {
 			fmt.Fprintln(stderr, "mekugi server worker cleanup:", err)

@@ -159,7 +159,7 @@ func instructionReplacements(member control.Member, text string) []guidance.Repl
 
 // Feature-owned guidance describes the admitted logical tree and actual tools.
 // Model/custom role text takes precedence over the stock fallback role baseline.
-const CompletionChangesGuidance = "To attach retained changes to your parent, end your ordinary final answer with a new-line " + compact.CompactMetadataStart + "{\"sources\":[{\"changes\":[\"blue1..blue10\"]}]}" + compact.CompactMetadataEnd + " block using your selected mchanges IDs/ranges. Submit answer and selection together; omit the block when no attachment is needed.\n"
+const CompletionChangesGuidance = "To attach retained changes to your parent, end your ordinary final answer with a new-line " + compact.CompactMetadataStart + "SELECTION_JSON" + compact.CompactMetadataEnd + " block containing only captured-change source references. Submit answer and selection together; omit the block when no attachment is needed.\n"
 
 func collaborationGuidance(member control.Member, baseline string) (string, error) {
 	if strings.Contains(baseline, "functions.collaboration.") || strings.Contains(baseline, "mekugi_collaboration.") {

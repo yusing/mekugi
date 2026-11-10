@@ -62,7 +62,7 @@ func newClaudeHookFixture(t *testing.T) *claudeHookFixture {
 	ctx := t.Context()
 	shared := control.New()
 	directory := t.TempDir()
-	owners, err := composition.Frontends(ctx, false, false, directory, shared)
+	owners, err := composition.Frontends(ctx, false, false, directory, shared, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestClaudeCompletionContextOmitsYieldedEvidenceAtReceiver(t *testing.T) {
 				compactContext()
 			}
 			b.runtime.SetInputContext(b.completionContext)
-			selection, err := json.Marshal(map[string]any{"sources": []compact.Source{{Changes: []string{id}}}})
+			selection, err := json.Marshal(map[string]any{"sources": []string{"mchanges:" + id}})
 			check(err)
 			_, err = b.runtime.Input(ctx, control.NativeInput{Thread: "child", ID: "completion", Kind: "FINAL_ANSWER", Outcome: control.Completed, Sender: "/root/child/nested", Message: "Done\n" + compact.CompactMetadataStart + string(selection) + compact.CompactMetadataEnd})
 			check(err)

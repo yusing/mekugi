@@ -52,7 +52,7 @@ func TestFeatureUseSeparatesSelfFromAllDescendants(t *testing.T) {
 }
 
 func TestCompactionFeatureCounts(t *testing.T) {
-	for _, selection := range []string{"", `{"sources":[]}`, `{"sources":[{"path":"AGENTS.md"}]}`, `{"sources":[{"path":"task.json","ranges":[[2,4]]}]}`} {
+	for _, selection := range []string{"", `{"sources":[]}`, `{"sources":["@AGENTS.md"]}`, `{"sources":["@task.json#L2-L4"]}`} {
 		t.Run(selection, func(t *testing.T) {
 			s, _ := fixture(t)
 			id := identity("root", "rt")
@@ -64,7 +64,7 @@ func TestCompactionFeatureCounts(t *testing.T) {
 				}
 			}
 			// Another call in the same cell cannot replace the checkpoint selection.
-			result, err := s.RegisterCompaction(t.Context(), id, "", nil, nil, time.Now(), true, `{"sources":[{"path":"other"}]}`)
+			result, err := s.RegisterCompaction(t.Context(), id, "", nil, nil, time.Now(), true, `{"sources":["@other"]}`)
 			must(t, err)
 			if result.Compaction.Reload != selection {
 				t.Fatal("repeated registration replaced selection")

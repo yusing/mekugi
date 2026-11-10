@@ -74,9 +74,9 @@ func TestFinalDeliveryCountsSuppliedEditRanges(t *testing.T) {
 		name, selection string
 		want            uint64
 	}{
-		{"changes", `{"sources":[{"changes":["blue1..blue3"]}]}`, 1},
+		{"changes", `{"sources":["mchanges:blue1..blue3"]}`, 1},
 		{"empty", `{"sources":[]}`, 0},
-		{"file", `{"sources":[{"path":"main.go"}]}`, 0},
+		{"file", `{"sources":["@main.go"]}`, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -109,7 +109,7 @@ func TestFinalDeliveryCountsSuppliedEditRanges(t *testing.T) {
 
 func TestReconciledFinalDeliveryCountsEditRange(t *testing.T) {
 	driver, host, _, _ := reconciliationFixture(t)
-	text := "Done.\n" + compact.CompactMetadataStart + `{"sources":[{"changes":["blue1..blue3"]}]}` + compact.CompactMetadataEnd
+	text := "Done.\n" + compact.CompactMetadataStart + `{"sources":["mchanges:blue1..blue3"]}` + compact.CompactMetadataEnd
 	if err := driver.control.AnswerCompleted(t.Context(), "child", "child-turn", "answer", text); err != nil {
 		t.Fatal(err)
 	}

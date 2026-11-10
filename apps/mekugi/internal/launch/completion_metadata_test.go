@@ -2,9 +2,10 @@ package launch
 
 import (
 	"fmt"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -12,7 +13,7 @@ import (
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
 
-const completionTestTrailer = compact.CompactMetadataStart + `{"sources":[{"changes":["blue1..blue10"]}]}` + compact.CompactMetadataEnd
+const completionTestTrailer = compact.CompactMetadataStart + `{"sources":["mchanges:blue1..blue10"]}` + compact.CompactMetadataEnd
 
 func completionTestDelta(t *testing.T, u *appServerUI, delta string) {
 	t.Helper()

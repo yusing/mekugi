@@ -32,6 +32,7 @@ type rpcMethod struct {
 
 var rpcMethods = map[string]rpcMethod{
 	"session/options":     {limit: 1024},
+	"source/skills":       {limit: 1024, native: true},
 	"session/list":        {limit: 1024},
 	"session/read":        {limit: 1024},
 	"session/page":        {limit: 1024},
@@ -698,6 +699,9 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 		return value, failure, nil
 	}
 	switch method {
+	case "source/skills":
+		value, failure := h.nativeSkillCatalog(ctx, params.Thread)
+		return value, failure, nil
 	case "session/options":
 		value, err := h.startOptions(ctx)
 		return value, err, nil

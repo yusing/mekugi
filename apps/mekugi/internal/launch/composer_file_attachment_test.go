@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -23,6 +24,56 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestComposerReferenceSourcesUseSharedGrammarAndFreeze(t *testing.T) {
+	workspace := t.TempDir()
+	native := filepath.Join(workspace, "guide", "SKILL.md")
+	if err := os.MkdirAll(filepath.Join(filepath.Dir(native), "references"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for path, body := range map[string]string{
+		filepath.Join(workspace, "source"): "UNSELECTED FILE\nSELECTED FILE\n",
+		native:                             "UNSELECTED SKILL ROOT\n",
+		filepath.Join(filepath.Dir(native), "references", "info.md"): "SELECTED SKILL REFERENCE @nested#L2-L2\n",
+		filepath.Join(filepath.Dir(native), "references", "nested"):  "UNSELECTED NESTED\nSELECTED NESTED\n",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u, wire := newAppServerTestUI()
+	u.attached.cwd = workspace
+	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, workspace
+	u.picker.Skills = []completion.Choice{{Name: "guide", Path: native, Enabled: true}}
+	draft := prepareDraft(&u.picker, workspace, nil, composer.Draft{Text: "Read @source#L2-L2 $guide/references/info.md"})
+	if len(draft.Skills) != 1 || draft.Skills[0].Name != "guide/references/info.md" {
+		t.Fatalf("skill reference not bound to native catalog identity: %+v", draft.Skills)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "source"), []byte("CHANGED AFTER PREPARATION"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, nil, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{draft}, false); err != nil {
+		t.Fatal(err)
+	}
+	requests := appServerTurnRequests(t, wire)
+	if len(requests) != 1 {
+		t.Fatalf("reference submission: %+v", requests)
+	}
+	var bodies strings.Builder
+	for _, part := range requests[0].Params.Input {
+		if frames, ok := attachments.Decode(part.Text); ok {
+			bodies.WriteString(strings.Join(frames, "\n"))
+		}
+	}
+	for _, want := range []string{"SELECTED FILE", "SELECTED SKILL REFERENCE", "SELECTED NESTED"} {
+		if !strings.Contains(bodies.String(), want) {
+			t.Fatalf("source not delivered: %s", bodies.String())
+		}
+	}
+	if strings.Contains(bodies.String(), "UNSELECTED") || strings.Contains(bodies.String(), "CHANGED AFTER PREPARATION") {
+		t.Fatalf("reference selection or immutable queue changed: %s", bodies.String())
+	}
+}
 
 func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	cwd := t.TempDir()

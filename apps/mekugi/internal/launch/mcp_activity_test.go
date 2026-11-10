@@ -305,7 +305,7 @@ func TestCompactionRejectionRestoredAndReplay(t *testing.T) {
 		for _, state := range []string{"skipped", "failed"} {
 			t.Run(name+"/"+state, func(t *testing.T) {
 				const reason = "Estimated uncached input exceeds the last cached input. Context was not reset; reload sources were not attached."
-				wake := control.NativeInput{ID: "main:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: state, Error: reason, Reload: `{"sources":[{"path":"state.json"}]}`}}}
+				wake := control.NativeInput{ID: "main:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: state, Error: reason, Reload: `{"sources":["@state.json"]}`}}}
 				output := wake.RetainedWaitOutput()
 				for _, provenance := range []string{"owned", "missing", "tool-call", "foreign"} {
 					payload := map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": name, "output": output}

@@ -75,7 +75,7 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 			}
 			selection := ""
 			if mode == "reload" || mode == "yielded" || mode == "superseded" || strings.HasPrefix(mode, "denied") || mode == "canceled" || mode == "source-error" || bypass {
-				selection = `{"sources":[{"path":"selected.txt"}]}`
+				selection = `{"sources":["@selected.txt"]}`
 			}
 			if mode == "optional-skill" || mode == "skill-ref" {
 				p.CompactionAttachments = func(context.Context, string) ([]composer.ContextAttachment, error) {
@@ -83,7 +83,7 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 				}
 			}
 			if mode == "skill-ref" {
-				selection = `{"sources":[{"skill":"example/references/check.md"}]}`
+				selection = `{"sources":["$example/references/check.md"]}`
 			}
 			standalone := mode != "wait" && mode != "denied-wait" && mode != "context-above-40-wait"
 			if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), standalone, selection); err != nil {

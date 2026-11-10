@@ -18,7 +18,7 @@ import (
 func TestCompactRecoveryAuthorityAndPrewarm(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
-	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "retained handover", `{"sources":[{"path":"selected.txt"}]}`)
+	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "retained handover", `{"sources":["@selected.txt"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestPendingCompactForkHasIndependentCallIdentity(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
 	workspace := t.TempDir()
-	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "handover", `{"sources":[{"path":"selected.txt"}]}`)
+	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "handover", `{"sources":["@selected.txt"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestPendingCompactForkHasIndependentCallIdentity(t *testing.T) {
 }
 
 func TestCompactReaderCallIDsFitOpenAI(t *testing.T) {
-	record := compact.Record{Reference: "mekugi:compact:thread:amber", Selection: `{"sources":[{"path":"selected.txt"}]}`}
+	record := compact.Record{Reference: "mekugi:compact:thread:amber", Selection: `{"sources":["@selected.txt"]}`}
 	raw, _, err := compactReaderCall(record, nil, "01a162ad-ee92-71d2-b3f0-256e1e49b1d1")
 	if err != nil {
 		t.Fatal(err)
@@ -130,14 +130,14 @@ func TestCompactReaderCallIDsFitOpenAI(t *testing.T) {
 }
 
 func TestCompactHostInstructionsSkipAcquisitionButRecognizeHistory(t *testing.T) {
-	record := compact.Record{Reference: "mekugi:compact:thread:amber", Selection: `{"sources":[{"path":"AGENTS.md"}]}`}
+	record := compact.Record{Reference: "mekugi:compact:thread:amber", Selection: `{"sources":["@AGENTS.md"]}`}
 	if pending, _, err := compactReaderCall(record, nil, "root"); err != nil || len(pending) != 0 {
 		t.Fatalf("host-only selection scheduled acquisition: %s, %v", pending, err)
 	}
 	// A completed acquisition retained before exclusion must still be identified
 	// so its original AGENTS.md result cannot reappear as ordinary tool output.
 	prior := record
-	prior.Selection = `{"sources":[{"path":"selected.txt"}]}`
+	prior.Selection = `{"sources":["@selected.txt"]}`
 	raw, _, err := compactReaderCall(prior, nil, "root")
 	if err != nil {
 		t.Fatal(err)

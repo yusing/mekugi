@@ -25,7 +25,7 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 	const summary = "## Current work\n\nKeep the **first** boundary's exact summary.\n\n```go\nreturn saved\n```\n"
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
-	first, err := moduletest.StoreCompact(t.Context(), p.retained, "main", summary, `{"sources":[{"path":"never-read.txt"}]}`)
+	first, err := moduletest.StoreCompact(t.Context(), p.retained, "main", summary, `{"sources":["@never-read.txt"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}

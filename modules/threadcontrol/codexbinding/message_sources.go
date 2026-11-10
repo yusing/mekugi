@@ -3,26 +3,29 @@ package codexbinding
 import (
 	"context"
 	json "encoding/json/v2"
+	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func messageSelection(message string) string {
-	var sources []compact.Source
+	var sources []string
 	seen := make(map[string]bool)
-	for path := range attachments.References(message) {
-		if !seen[path] {
-			sources = append(sources, compact.Source{Path: path})
-			seen[path] = true
+	for ref := range attachments.References(message) {
+		if !strings.HasPrefix(ref, "@") {
+			continue // Coordination messages admit file attachments, not commands.
+		}
+		if !seen[ref] {
+			sources = append(sources, ref)
+			seen[ref] = true
 		}
 	}
 	if len(sources) == 0 {
 		return ""
 	}
 	data, _ := json.Marshal(struct {
-		Sources []compact.Source `json:"sources"`
+		Sources []string `json:"sources"`
 	}{sources})
 	return string(data)
 }

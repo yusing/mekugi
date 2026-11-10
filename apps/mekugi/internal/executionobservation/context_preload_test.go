@@ -30,7 +30,7 @@ func TestUnsuccessfulCompactionDoesNotAttachReload(t *testing.T) {
 		for _, state := range []string{"skipped", "failed", "canceled", "registered"} {
 			t.Run(name+"/"+state, func(t *testing.T) {
 				p := newManagedMekugiProxy(t)
-				output := mustTestJSON(t, map[string]any{"id": "root:checkpoint", "compaction": control.CompactionResult{State: state, Reload: `{"sources":[{"path":"selected.txt"}]}`}})
+				output := mustTestJSON(t, map[string]any{"id": "root:checkpoint", "compaction": control.CompactionResult{State: state, Reload: `{"sources":["@selected.txt"]}`}})
 				request := codexresponses.Request{Fields: map[string]jsontext.Value{"input": mustTestJSON(t, []any{map[string]any{
 					"type": "function_call_output", "namespace": "threadcontrol", "name": name, "output": string(output),
 				}})}}
@@ -53,9 +53,9 @@ func testContextReload(t *testing.T, kind string) {
 		t.Fatal(err)
 	}
 	defer session.Close()
-	selection := `{"sources":[{"path":"selected.txt"},{"path":"missing.txt"},{"changes":["amber1..3"]}]}`
+	selection := `{"sources":["@selected.txt","@missing.txt","mchanges:amber1..3"]}`
 	if completion {
-		selection = `{"sources":[{"changes":["amber1..3"]}]}`
+		selection = `{"sources":["mchanges:amber1..3"]}`
 	}
 	itemID := control.MessageItemID("parent:spawn:assignment")
 	service := control.New()
@@ -148,7 +148,7 @@ func testContextReload(t *testing.T, kind string) {
 				delete(items[0], "internal_chat_message_metadata_passthrough")
 			}
 			if mode == "invalid-selection" {
-				items[0]["content"] = bytes.ReplaceAll(items[0]["content"], []byte(`\"changes\":[\"amber1..3\"]`), []byte(`\"path\":\"secret.txt\"`))
+				items[0]["content"] = bytes.ReplaceAll(items[0]["content"], []byte(`\"mchanges:amber1..3\"`), []byte(`\"@secret.txt\"`))
 			}
 			if mode == "compacted" {
 				items = []map[string]jsontext.Value{{"type": mustTestJSON(t, "message"), "role": mustTestJSON(t, "assistant"), "id": mustTestJSON(t, control.MessageItemID("unrelated")), "content": mustTestJSON(t, "another message")}}
@@ -210,7 +210,7 @@ func testContextReload(t *testing.T, kind string) {
 			}
 		}
 		t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-		captured, err := compact.ReadSources(t.Context(), `{"sources":[{"path":"selected.txt"}]}`, dir, os.Environ(), compact.ChangeReader{})
+		captured, err := compact.ReadSources(t.Context(), `{"sources":["@selected.txt"]}`, dir, os.Environ(), compact.ChangeReader{})
 		if err != nil {
 			t.Fatal(err)
 		}

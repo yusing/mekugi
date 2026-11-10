@@ -132,8 +132,7 @@ control retains root authority. Foreign, retired or conflicting callers reject.
 ### File references in assignments and messages
 
 The `message` fields of `spawn_agent`, `followup_task` and `send_message` acquire
-explicit `@path` references, including `@"paths with spaces"`. Backslash before
-the at sign (`\@path`) preserves a literal mention; email addresses remain literal.
+explicit file [source references](../agentguidance/SPEC.md#source-reference-syntax).
 The original message and its attribution stay intact, with captured source bodies,
 reader exit statuses and diagnostics appended for the recipient.
 Codex snapshots retain explicit byte boundaries around successful source bodies
@@ -261,10 +260,9 @@ gates before final-model support filtering. Roles may reduce supported
 capabilities, not widen authority or replace provider credentials.
 
 Fresh children accept optional `preload:{"sources":[...]}` with the same source
-selection as [compaction reload](../agentguidance/SPEC.md#compaction-context):
-file `path`, optional inclusive `ranges`, or `skill` with an optional native
-`SKILL.md` path, or `changes` with an array of explicit `mchanges` IDs/ranges
-supplying their composed retained diff. Change sources exclude file/skill fields.
+selection as [compaction reload](../agentguidance/SPEC.md#compaction-context),
+using [source references](../agentguidance/SPEC.md#source-reference-syntax).
+Native skill paths are resolved internally.
 A preload requires explicit `fork_turns:"none"`; an empty sources
 array is valid. Relative file paths resolve in the selected child cwd. Codex
 supplies `AGENTS.md`, which is excluded from acquisition.
@@ -558,8 +556,11 @@ from that turn in order, including an empty payload when none exist, then inject
 `FINAL_ANSWER` through `thread/inject_items`. Failure/interruption retains its actual
 outcome. Injection alone neither starts nor steers its receiver. A completion wake
 follows confirmed delivery and carries identity/status rather than duplicate text.
-Delegates may select explicit `mchanges` IDs/ranges in the existing reload block
-at the end of their ordinary final answer, submitting answer and selection together.
+Delegates may select captured-change [source references](../agentguidance/SPEC.md#source-reference-syntax)
+in the existing reload block at the end of their ordinary final answer,
+submitting answer and selection together.
+Only captured-change references are admitted here; ordinary answer prose never
+starts automatic source acquisition.
 After successful logical settlement, the receiving parent's input worker acquires
 the selected retained evidence before injecting the answer and completed reload
 reader/result together. Automatic completion attachments share a 4,000-token

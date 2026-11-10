@@ -67,8 +67,8 @@ func TestSpawnCountsAcceptedNonemptyPreloads(t *testing.T) {
 		call, preload string
 		want          uint64
 	}{
-		{"with-preload", `,"preload":{"sources":[{"path":"task.md"}]}`, 1},
-		{"with-preload", `,"preload":{"sources":[{"path":"task.md"}]}`, 1}, // Repeated call reuses its spawn.
+		{"with-preload", `,"preload":{"sources":["@task.md"]}`, 1},
+		{"with-preload", `,"preload":{"sources":["@task.md"]}`, 1}, // Repeated call reuses its spawn.
 		{"empty-preload", `,"preload":{"sources":[]}`, 1},
 		{"without-preload", ``, 1},
 	} {
@@ -93,7 +93,7 @@ func TestSpawnCountsAcceptedNonemptyPreloads(t *testing.T) {
 			t.Fatalf("%s: spawn preloads = %d, want %d", tc.call, self.SpawnPreloads, tc.want)
 		}
 	}
-	for _, options := range []string{`"fork_turns":"all","preload":{"sources":[{"path":"task.md"}]}`, `"fork_turns":"none","preload":{"sources":[{"file":"task.md"}]}`} {
+	for _, options := range []string{`"fork_turns":"all","preload":{"sources":["@task.md"]}`, `"fork_turns":"none","preload":{"sources":[{"file":"task.md"}]}`} {
 		caller := admitted
 		caller.Call = "rejected"
 		if _, err := driver.Call(t.Context(), caller, "spawn_agent", jsontext.Value(`{"task_name":"rejected","message":"assignment",`+options+`}`)); err == nil {

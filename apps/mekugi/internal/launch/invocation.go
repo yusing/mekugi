@@ -503,6 +503,9 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	cmd.Env = append(slices.DeleteFunc(codexEnvironmentCapability(environment, guidance != nil && guidance.Environment != nil), func(entry string) bool {
 		return strings.HasPrefix(entry, shellhook.Environment+"=")
 	}), "MEKUGI_BASE_URL="+baseURL)
+	if threads != nil && threads.sourceSocket != "" {
+		cmd.Env = append(cmd.Env, sessionapi.NativeSkillsSocketEnvironment+"="+threads.sourceSocket)
+	}
 	if nativeTrace != nil {
 		cmd.Env = append(cmd.Env, "CODEX_ROLLOUT_TRACE_ROOT="+nativeTrace.Directory())
 	}

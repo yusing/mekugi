@@ -61,7 +61,7 @@ func readSkillAttachment(ctx context.Context, cwd string, environment []string, 
 		data, err := readManagedSkill(ctx, cwd, environment, name)
 		return data, true, err
 	}
-	data, err := composer.ReadFile(path)
+	data, err := composer.ReadFile((attachments.Reference{Skill: name, Path: path}).ReadPath())
 	return data, false, err
 }
 func snapshotDraftSkills(workspace string, environment []string, d *conversationmodel.Input) {

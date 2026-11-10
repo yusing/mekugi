@@ -55,7 +55,7 @@ func claudePreload(ctx context.Context, selection, workspace string, environment
 	if err != nil {
 		return "", err
 	}
-	sources, err := compact.Sources(selection)
+	sources, err := snapshot.SelectedSources()
 	if err != nil {
 		return "", err
 	}

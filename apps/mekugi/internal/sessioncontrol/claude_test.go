@@ -434,7 +434,7 @@ func TestClaudeCompletionReloadUsesRetainedInputContext(t *testing.T) {
 		return PreparedInputContext{Text: "already yielded", Identity: runtime.ContextIdentity("child"), Full: "frozen captured diff"}, nil
 	})
 	input := control.NativeInput{Thread: "child", ID: "final", Sender: "/root/child/nested", Kind: "FINAL_ANSWER", Outcome: control.Completed,
-		Message: "finished\n" + compact.CompactMetadataStart + `{"sources":[{"changes":["blue1"]}]}` + compact.CompactMetadataEnd}
+		Message: "finished\n" + compact.CompactMetadataStart + `{"sources":["mchanges:blue1"]}` + compact.CompactMetadataEnd}
 	for range 2 {
 		if _, err := runtime.Input(t.Context(), input); err != nil {
 			t.Fatal(err)

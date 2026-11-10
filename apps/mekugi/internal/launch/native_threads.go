@@ -30,6 +30,7 @@ import (
 type threadExecution struct {
 	headless      *headless.Stream
 	workers       *frontends.WorkerImage
+	sourceSocket  string
 	hub           *sessionapi.Hub
 	shared        *control.Service
 	driver        *threadbinding.Driver
@@ -141,7 +142,7 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 		}
 		parent = ancestor.Parent
 	}
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), deduplication: e.deduplication, start: &sessioncontrol.PreparedThread{Parent: member.Parent, Settings: settings, Resume: &control.ThreadInfo{Thread: thread, Session: member.Session, Path: member.Path}}}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, sourceSocket: e.sourceSocket, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), deduplication: e.deduplication, start: &sessioncontrol.PreparedThread{Parent: member.Parent, Settings: settings, Resume: &control.ThreadInfo{Thread: thread, Session: member.Session, Path: member.Path}}}
 	id, err := e.hub.StartPrepared(ctx, parent, thread, settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
 		return err
@@ -164,7 +165,7 @@ func (e *threadExecution) Create(ctx context.Context, parent, importPath string,
 	if strings.HasPrefix(settings.Model, "claude:") {
 		return e.createClaude(ctx, parent, importPath, settings)
 	}
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), deduplication: e.deduplication, start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
+	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, sourceSocket: e.sourceSocket, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), deduplication: e.deduplication, start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
 	id, err := e.hub.StartPrepared(ctx, parent, "", settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		_, err := runOwnedInvocation(runtime, nil, nil, api, settings.Workspace, child)
 		return err

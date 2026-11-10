@@ -1,7 +1,6 @@
 package launch
 
 import (
-	"context"
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -41,18 +40,18 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	start := len(u.Text)
 	appServerTestKeys(t, u, "$review")
 	u.Skills = append(u.Skills, composer.Token{Start: start, End: len(u.Text), Name: "review", Path: skillPath})
-	draft := draftSnapshot(u.Editor)
-	draft.SnapshotSkills(func(name, path string) ([]byte, error) {
-		data, _, err := readSkillAttachment(context.Background(), u.attached.cwd, nil, name, path)
-		return data, err
-	})
+	draft := prepareDraft(&u.picker, u.attached.cwd, nil, draftSnapshot(u.Editor).Draft)
 	input := conversationbinding.Input(draft.Draft)
 	foundSkillContents := false
 	for _, part := range input {
 		if raw, ok := part["text"].(string); ok {
 			frames, ok := attachments.Decode(raw)
-			if ok && len(frames) == 1 && frames[0] == composer.SkillFrames("review", skillPath, "Review instruction 世界.\n")[0] {
-				foundSkillContents = true
+			if ok {
+				for _, frame := range frames {
+					if frame == composer.SkillFrames("review", skillPath, "Review instruction 世界.\n")[0] {
+						foundSkillContents = true
+					}
+				}
 			}
 		}
 	}
@@ -64,10 +63,10 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	text, spans, ok := sessionpresentation.UserText(content)
-	if !ok || text != draft.Text || len(spans) != 3 {
+	if !ok || text != draft.Text || len(spans) != 4 {
 		t.Fatalf("lost typed spans or bound literal lookalike: %q %+v", text, spans)
 	}
-	if spans[0].Kind != activitypresentation.ImageToken || spans[1].Kind != activitypresentation.FileToken || spans[2].Kind != activitypresentation.SkillToken {
+	if spans[0].Kind != activitypresentation.FileToken || spans[1].Kind != activitypresentation.ImageToken || spans[2].Kind != activitypresentation.FileToken || spans[3].Kind != activitypresentation.SkillToken {
 		t.Fatalf("lost token kinds: %+v", spans)
 	}
 	check := func(v *activityAdapter) {

@@ -3,7 +3,7 @@
 
 export const protocolVersion = "8" as const;
 export const subprotocol = "mekugi.control.v8" as const;
-export type RPCMethod = "initialize" | "native/activate" | "native/content" | "native/observe" | "native/release" | "native/resolve" | "native/select" | "native/start" | "publication/ack" | "request/cancel" | "session/answer" | "session/control" | "session/decide" | "session/end" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/page" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
+export type RPCMethod = "initialize" | "native/activate" | "native/content" | "native/observe" | "native/release" | "native/resolve" | "native/select" | "native/start" | "publication/ack" | "request/cancel" | "session/answer" | "session/control" | "session/decide" | "session/end" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/page" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "source/skills" | "subscription/cancel" | "view/attach" | "view/intent";
 
 export type NativeObservation = {
   "header"?: (FrontendHeader | null);

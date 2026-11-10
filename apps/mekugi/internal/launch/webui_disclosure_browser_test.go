@@ -96,7 +96,7 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 		}
 		publication.Entries = append(publication.Entries, activity.Entry{Facts: program.Facts, Values: program.Values()})
 	}
-	const reloadCommand = `mreload '{"sources":[{"path":"private-context.md"}]}'`
+	const reloadCommand = `mreload '{"sources":["@private-context.md"]}'`
 	reload := activity.ItemContent{Seq: 23, Agent: "Main", Kind: "tool", Text: activity.ShellSource(reloadCommand, ""), Command: activity.Command{Script: reloadCommand, Display: reloadCommand, Exited: true, Tail: []string{"Reload snapshot: mread pearl"}}, Details: &activity.ItemDetails{CommandText: reloadCommand}}
 	publication.Entries = append(publication.Entries, activity.Entry{Facts: reload.Facts, Values: reload.Values()})
 	var status sessionpresentation.Label

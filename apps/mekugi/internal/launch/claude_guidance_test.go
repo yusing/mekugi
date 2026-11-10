@@ -2,6 +2,12 @@ package launch
 
 import (
 	json "encoding/json/v2"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
@@ -9,11 +15,6 @@ import (
 	"github.com/yusing/mekugi/libraries/outputbudget"
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/testsupport/moduletest"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"testing"
 
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
@@ -69,7 +70,7 @@ func TestClaudeGuidanceAndPreload(t *testing.T) {
 	if _, err := claudeSystemPrompt(control.Settings{Preparation: []byte(`{"layers":`)}, control.Identity{}); err == nil {
 		t.Fatal("invalid captured role configuration was accepted")
 	}
-	body, err := claudePreload(t.Context(), `{"sources":[{"path":"source.txt","ranges":[[2,2]]},{"path":"missing.txt"},{"path":"AGENTS.md"}]}`, child, os.Environ(), compact.ChangeReader{})
+	body, err := claudePreload(t.Context(), `{"sources":["@source.txt#L2-L2","@missing.txt","@AGENTS.md"]}`, child, os.Environ(), compact.ChangeReader{})
 	if err != nil || !strings.Contains(body, "second\n") || strings.Contains(body, "first\n") || !strings.Contains(body, "missing.txt") || !strings.Contains(body, "exit_code=1") || strings.Contains(body, "superseded rules") {
 		t.Fatalf("preload lost cwd, ranges or failures: %q, %v", body, err)
 	}
@@ -105,13 +106,13 @@ func TestContextChangesPreloadCompleteComposition(t *testing.T) {
 	if first == "" || second == "" {
 		t.Fatalf("missing captures: %+v", index)
 	}
-	selection, _ := json.Marshal(map[string]any{"sources": []compact.Source{
-		{Changes: []string{second, first}},
-		{Changes: []string{first + ".." + second}},
-		{Changes: []string{first + "..100"}},
-		{Changes: []string{"apply", first}},
-		{Changes: []string{first}, Path: "selected.txt"},
-		{Path: "selected.txt"},
+	selection, _ := json.Marshal(map[string]any{"sources": []string{
+		"mchanges:" + second + "," + first,
+		"mchanges:" + first + ".." + second,
+		"mchanges:" + first + "..100",
+		"mchanges:apply," + first,
+		"mchanges:" + first + ",@selected.txt",
+		"@selected.txt",
 	}})
 	if err := os.WriteFile(filepath.Join(caller, "selected.txt"), []byte("independent file"), 0600); err != nil {
 		t.Fatal(err)
@@ -165,9 +166,9 @@ func TestContextChangesPreloadCompleteComposition(t *testing.T) {
 		t.Fatalf("Claude context lost change source: %v", err)
 	}
 	t.Run("bounded-completion", func(t *testing.T) {
-		completionSelection, _ := json.Marshal(map[string]any{"sources": []compact.Source{
+		completionSelection := compact.Selection([]compact.SourceIdentity{
 			{Changes: []string{second, first}}, {Changes: []string{first + ".." + second}}, {Changes: []string{first + "..100"}},
-		}})
+		})
 		retained, err := store.recovery.AttachStore(selected.Store, selected.Namespace, selected.Thread, store.retentionLimits(), nil)
 		if err != nil {
 			t.Fatal(err)
@@ -219,7 +220,7 @@ func TestContextChangesPreloadCompleteComposition(t *testing.T) {
 		if _, err := executionobservation.ReadCompletion(t.Context(), string(completionSelection), caller, reader, nil); err == nil {
 			t.Fatal("oversized completion exposed output without recovery")
 		}
-		if _, err := executionobservation.ReadCompletion(t.Context(), `{"sources":[{"path":"selected.txt"}]}`, caller, reader, retained); err == nil {
+		if _, err := executionobservation.ReadCompletion(t.Context(), `{"sources":["@selected.txt"]}`, caller, reader, retained); err == nil {
 			t.Fatal("completion acquired non-change source")
 		}
 	})
@@ -230,7 +231,7 @@ func TestContextChangesPreloadCompleteComposition(t *testing.T) {
 	}
 	for id, change := range latest.Changes {
 		if change.Correlation == "inconsistent" {
-			inconsistent, _ := json.Marshal(map[string]any{"sources": []compact.Source{{Changes: []string{first, second, id}}}})
+			inconsistent, _ := json.Marshal(map[string]any{"sources": []compact.SourceIdentity{{Changes: []string{first, second, id}}}})
 			captured, err := compact.ReadSources(t.Context(), string(inconsistent), caller, os.Environ(), reader)
 			if err != nil || captured.Sources[0].ExitCode == 0 || !strings.Contains(captured.Sources[0].Stderr, "cannot be composed") {
 				t.Fatalf("inconsistent capture: exit=%d diagnostics=%s err=%v", captured.Sources[0].ExitCode, captured.Sources[0].Stderr, err)

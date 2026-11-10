@@ -17,6 +17,7 @@ import (
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/libraries/mcptransport"
@@ -65,7 +66,7 @@ func Run() (exitCode int) {
 		operation = os.Args[1]
 	}
 	if worker != nil || slices.Contains([]string{"inspect-sessions", "replay-session", "inspect-session", "inspect-storage"}, operation) {
-		runtime, err := composition.Frontends(ctx, false, true, "", nil)
+		runtime, err := composition.Frontends(ctx, false, true, "", nil, sessionapi.ReadNativeSkillCatalog)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "mekugi:", err)
 			return 1

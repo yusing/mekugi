@@ -82,12 +82,12 @@ func TestAttachmentContextRefreshesCurrentSkillsAndPreservesSelections(t *testin
 					items = append(items, map[string]jsontext.Value{"type": mustTestJSON(t, "message"), "role": mustTestJSON(t, "user"), "content": mustTestJSON(t, []map[string]string{{"type": "input_text", "text": draft.Text}, {"type": "input_text", "text": draft.Attachments[0]}})})
 					items = append(items, map[string]jsontext.Value{"type": mustTestJSON(t, "message"), "role": mustTestJSON(t, "user"), "content": mustTestJSON(t, attachments.ManagedSkillReference("guide"))})
 				}
-				sources := []compact.Source{{Skill: "guide", Path: skill}}
+				sources := []compact.SourceIdentity{{Skill: "guide", Path: skill}}
 				if explicit {
 					sources = append(sources, sources[0])
 				}
 				selection := string(mustTestJSON(t, struct {
-					Sources []compact.Source `json:"sources"`
+					Sources []compact.SourceIdentity `json:"sources"`
 				}{sources}))
 				if explicit {
 					wake := control.NativeInput{ID: "checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "completed", Reload: selection}}}
@@ -350,7 +350,7 @@ func TestAttachmentPathReloadDoesNotSuppressManagedSkillRefresh(t *testing.T) {
 		}
 	}
 	p.ContextAttachments = attachmentTestContext([]composer.ContextAttachment{{ID: "attached", Skills: []composer.Token{{Name: "guide", Path: path}}}})
-	selection := string(mustTestJSON(t, map[string]any{"sources": []compact.Source{{Path: path}}}))
+	selection := string(mustTestJSON(t, map[string]any{"sources": []compact.SourceIdentity{{Path: path}}}))
 	wake := control.NativeInput{ID: "checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "completed", Reload: selection}}}
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": []map[string]any{{"type": "function_call_output", "namespace": "threadcontrol", "name": "compact", "output": wake.RetainedWaitOutput()}}, "tools": testExecResponsesTools()}))
 	if err != nil {
@@ -366,7 +366,7 @@ func TestAttachmentPathReloadDoesNotSuppressManagedSkillRefresh(t *testing.T) {
 	if err := json.Unmarshal(prepared.reader, &reader); err != nil {
 		t.Fatal(err)
 	}
-	selected := string(mustTestJSON(t, map[string]any{"sources": []compact.Source{{Skill: "guide", Path: path}}}))
+	selected := string(mustTestJSON(t, map[string]any{"sources": []compact.SourceIdentity{{Skill: "guide", Path: path}}}))
 	if !codexresponses.MatchesCompactReadProgram(reader.Input, compact.CaptureCommand(selected)) {
 		t.Fatal("path-only reload suppressed managed refresh")
 	}
@@ -479,7 +479,7 @@ func TestAttachmentRecallPreservesProviderPrefix(t *testing.T) {
 	if len(reader) == 0 || attachmentTestHint(t, initial.Fields["input"]) != "" {
 		t.Fatal("local skill reader froze incomplete provider hints")
 	}
-	selection := string(mustTestJSON(t, map[string]any{"sources": []compact.Source{{Skill: "guide", Path: path}}}))
+	selection := string(mustTestJSON(t, map[string]any{"sources": []compact.SourceIdentity{{Skill: "guide", Path: path}}}))
 	captured, err := compact.ReadSources(t.Context(), selection, dir, nil, compact.ChangeReader{})
 	if err != nil {
 		t.Fatal(err)

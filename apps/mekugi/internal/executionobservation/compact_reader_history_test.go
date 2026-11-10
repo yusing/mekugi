@@ -15,6 +15,7 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/outputdeduplication"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -24,6 +25,8 @@ func TestCompactReloadProviderInputHidesOrchestration(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, p)
 	workspace := t.TempDir()
+	// Saved sessions retain the former source-object codec and exact native
+	// reader program. New selections are covered by the reference-string tests.
 	const selection = `{"sources":[{"path":"AGENTS.md"},{"path":"selected.txt"},{"path":"nested/AGENTS.md"}]}`
 	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "handover", selection)
 	if err != nil {
@@ -45,6 +48,7 @@ func TestCompactReloadProviderInputHidesOrchestration(t *testing.T) {
 	if err := json.Unmarshal(raw, &call); err != nil {
 		t.Fatal(err)
 	}
+	call["input"] = mustTestJSON(t, codexresponses.CompactReadProgram("mreload "+commandargs.Quote(selection)))
 	var generatedID string
 	_ = json.Unmarshal(call["call_id"], &generatedID)
 	items = append(items, call, map[string]jsontext.Value{"type": mustTestJSON(t, "custom_tool_call_output"), "call_id": call["call_id"], "output": mustTestJSON(t, result)})
@@ -116,7 +120,7 @@ func TestCompactReloadDeduplicatesOrdinaryReread(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.InputProjections = []binding.InputProjection{outputdeduplication.Module.Bindings.InputProjection(service)}
-	selection := `{"sources":[{"path":"selected.txt"}]}`
+	selection := `{"sources":["@selected.txt"]}`
 	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "handover", selection)
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +220,7 @@ func compactTestSnapshot(t *testing.T, p *Preparer, snapshot compact.Snapshot) s
 }
 
 func TestCompactReloadWaitsWithoutPartialProviderContext(t *testing.T) {
-	record := compact.Record{Reference: "mekugi:compact:thread:amber", Selection: `{"sources":[{"path":"selected.txt"}]}`}
+	record := compact.Record{Reference: "mekugi:compact:thread:amber", Selection: `{"sources":["@selected.txt"]}`}
 	var items []map[string]jsontext.Value
 	for _, output := range []string{
 		"Script running with cell ID slow\nWall time 10 seconds\nOutput:\n",

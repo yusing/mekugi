@@ -20,4 +20,12 @@ func TestRecoveryGuidanceStaysBackendSpecific(t *testing.T) {
 	if !strings.Contains(guide.Shell, strings.ReplaceAll(base, "<!-- summary-recovery -->", "")) || strings.Contains(guide.Shell, codexWorkflow) {
 		t.Fatal("Claude workflow changed")
 	}
+	for backend, text := range map[string]string{"Codex": guide.Workflow, "Claude": guide.Shell} {
+		if strings.Count(text, "mchanges:") != 1 {
+			t.Fatalf("%s must receive source-reference syntax once", backend)
+		}
+	}
+	if strings.Contains(guide.Descriptions, "mchanges:") {
+		t.Fatal("source-reference syntax belongs in shared workflow, not tool descriptions")
+	}
 }

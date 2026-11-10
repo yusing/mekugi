@@ -210,9 +210,15 @@ envelope a durable identity independent of its contents. Identical submissions
 remain distinct; request refresh, forks and resume preserve the submitted identity.
 Version 1 envelopes remain readable without inventing a submission identity.
 
-Selected text can contain nested `@path` references, including JSON string values
-and `@"paths with spaces"`. Email addresses remain literal. Relative references
-resolve beside the containing host file; uploads, screen selections and managed
+Submitted file [source references](../agentguidance/SPEC.md#source-reference-syntax)
+select whole files or line ranges.
+Selections of different ranges in one file remain distinct. Malformed references
+retain individual omission evidence. Skill references require enabled,
+unambiguous catalog identities; native paths remain internal metadata.
+Captured-change acquisition is not supported by the composer or external input API.
+
+Selected text can contain nested file references, including JSON string values.
+Relative references resolve beside the containing host file; uploads, screen selections and managed
 skills use the active workspace. The selected attachment counts as depth 1;
 depth 3 is the last acquired level. Deeper references produce an explicit omission
 in the snapshot and a composer notice. Nested reads share the attachment budget,
