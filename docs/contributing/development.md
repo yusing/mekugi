@@ -130,6 +130,14 @@ including environment facts, Mekugi guidance, developer messages and tool descri
 content revisions with the time, model and turn each began. They are recorded without `--debug`;
 older or expired threads report them as `unavailable`. Revisions reference `content` by digest.
 
+Add `--ax` to inspect the thread's recent retained request phases without a debug
+bundle. `ax.request_timing` distinguishes local preparation, request send, first
+provider output and completion. Missing phases, including unpairable tool-result
+readiness, are unknown rather than zero. First output is observed transport data,
+not a first-token measurement. This bounded window does not establish lifetime
+coverage or attribute every gap to Mekugi; see
+[request timing](../../modules/transportdiagnostics/SPEC.md#retained-request-timing).
+
 Inspection runs no recorded operations. Rollout and debug-bundle reports omit private
 text unless `--field` selects it; `--field instructions` selects only retained instruction text.
 `--request-id ID --field all` drills into one debug request.
@@ -138,6 +146,7 @@ which may contain request content or credentials.
 
 ```sh
 mekugi inspect-session --thread THREAD_ID
+mekugi inspect-session --thread THREAD_ID --ax
 mekugi inspect-session --thread THREAD_ID --field instructions --text-bytes 65536
 mekugi inspect-session --debug-dir /path/to/debug --field diagnostic --limit 5 --text-bytes 512
 ```

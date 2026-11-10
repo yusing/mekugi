@@ -68,6 +68,7 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				recorder, err := new(transportcapture.Service).Open(transportcapture.Config{Output: capturePath, Mode: "mekugi"})
 				check(err)
 				defer recorder.Close()
+				timingOwner, timingStore := retainTestTimings(t, recorder)
 				preparation := new(lifecyclePreparation)
 				thread, session, turn := "root", "root-session", "root-turn"
 				thirdParty := strings.HasPrefix(kind, "third_party")
@@ -196,10 +197,11 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 					handler = endpoint
 				}
 				finished := make(chan struct{})
-				server := httptest.NewServer(recorder.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedHandler := recorder.Handler(handler)
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					defer close(finished)
-					handler.ServeHTTP(w, r)
-				})))
+					capturedHandler.ServeHTTP(w, r)
+				}))
 				defer server.Close()
 				body := `{"type":"response.create","model":"` + model + `","stream":true,"input":[]}`
 				if transport == "http" {
@@ -290,6 +292,23 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				}
 				if snapshot.Requests.Logical != 1 || snapshot.Requests.Completed != 1 || int(snapshot.Requests.ProviderAttempts) != wantAttempts || snapshot.Capture.MissingProvider != 0 {
 					t.Fatalf("lifecycle capture = %+v", snapshot)
+				}
+				check(recorder.Close())
+				timing := inspectTestTimings(t, timingOwner, timingStore, thread, true)
+				if timing.State != "observed_window" || len(timing.Requests) != 1 {
+					t.Fatalf("retained lifecycle timing: %+v", timing)
+				}
+				requestTiming := timing.Requests[0]
+				if requestTiming.Completed == nil || requestTiming.ToolResultReady != nil || requestTiming.Outcome != "completed" || len(requestTiming.Attempts) != wantAttempts {
+					t.Fatalf("lifecycle phases: %+v", requestTiming)
+				}
+				for _, attempt := range requestTiming.Attempts {
+					if attempt.Sent == nil || attempt.FirstOutput == nil || attempt.Completed == nil {
+						t.Fatalf("provider phases: %+v", attempt)
+					}
+					if attempt.Sent.OffsetMillis < requestTiming.ForwardStarted.OffsetMillis || attempt.FirstOutput.OffsetMillis < attempt.Started.OffsetMillis || attempt.Completed.OffsetMillis > requestTiming.Completed.OffsetMillis {
+						t.Fatalf("phase ordering: %+v", requestTiming)
+					}
 				}
 				raw, err := os.ReadFile(capturePath)
 				check(err)

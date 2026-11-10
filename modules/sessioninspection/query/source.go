@@ -44,7 +44,7 @@ func New(retained *history.Service, contributions []inspection.Contribution) (*S
 	}
 	s := &Service{history: retained}
 	for _, c := range contributions {
-		if c.NewAX == nil && c.ProviderUsage == nil {
+		if c.NewAX == nil && c.ProviderUsage == nil && c.RequestTiming == nil {
 			return nil, errors.New("empty inspection contribution")
 		}
 		if c.NewAX != nil {
@@ -58,6 +58,12 @@ func New(retained *history.Service, contributions []inspection.Contribution) (*S
 				return nil, errors.New("duplicate provider usage inspection contribution")
 			}
 			s.contributions.ProviderUsage = c.ProviderUsage
+		}
+		if c.RequestTiming != nil {
+			if s.contributions.RequestTiming != nil {
+				return nil, errors.New("duplicate request timing inspection contribution")
+			}
+			s.contributions.RequestTiming = c.RequestTiming
 		}
 	}
 	return s, nil

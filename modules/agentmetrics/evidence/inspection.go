@@ -19,6 +19,7 @@ type InspectionReport struct {
 	Completion     AXCompletionMetrics `json:"completion"`
 	Defects        AXDefectMetrics     `json:"defect_assessments"`
 	UnmatchedCalls uint64              `json:"unmatched_calls"`
+	RequestTiming  jsontext.Value      `json:"request_timing"`
 }
 
 type inspectionCollector struct {
@@ -52,7 +53,10 @@ func (c *inspectionCollector) ObserveEdit(edit inspection.Edit) {
 }
 func (c *inspectionCollector) Report(ctx context.Context, options inspection.AXOptions) (jsontext.Value, error) {
 	result := InspectionReport{Scope: "entire supplied rollout; edit metrics require matched observed patches",
-		ThreadID: options.ThreadID, Completion: c.Completion.Result(), Commands: c.Commands.Result(), Edits: c.edits.Metrics, UnmatchedCalls: options.UnmatchedCalls}
+		ThreadID: options.ThreadID, Completion: c.Completion.Result(), Commands: c.Commands.Result(), Edits: c.edits.Metrics, UnmatchedCalls: options.UnmatchedCalls, RequestTiming: options.RequestTiming}
+	if len(result.RequestTiming) == 0 {
+		result.RequestTiming = jsontext.Value(`{"state":"unavailable","reason":"request timing contribution unavailable"}`)
+	}
 	var err error
 	if c.reads != nil {
 		result.Reads = *c.reads

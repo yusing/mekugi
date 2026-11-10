@@ -186,13 +186,14 @@ func (exchange *ResponsesWebSocket) Finish(err error) {
 // Like Transport, this is a transport-boundary observer, not a metrics callback.
 // Its owner calls Finish after terminal usage observation and body consumption.
 type WebSocketAttempt struct {
-	state    *requestState
-	attempt  uint64
-	started  time.Time
-	request  []byte
-	response boundedObservation
-	evidence providerResponseEvidence
-	finished bool
+	state          *requestState
+	attempt        uint64
+	started        time.Time
+	request        []byte
+	response       boundedObservation
+	evidence       providerResponseEvidence
+	finished       bool
+	outputObserved bool
 }
 
 // BeginWebSocketAttempt is a no-op outside a Recorder handler. Headers describe
@@ -215,7 +216,9 @@ func BeginWebSocketAttempt(ctx context.Context, payload []byte, headers, respons
 		headers.Set("x-codex-turn-state", turnState)
 	}
 	state.observeProviderRouting(attempt, headers)
-	return &WebSocketAttempt{state: state, attempt: attempt, started: time.Now(), request: bytes.Clone(payload), evidence: providerHeaderEvidence(responseHeaders)}
+	started := time.Now()
+	state.startTimingAttempt(attempt, "websocket", started)
+	return &WebSocketAttempt{state: state, attempt: attempt, started: started, request: bytes.Clone(payload), evidence: providerHeaderEvidence(responseHeaders)}
 }
 
 func (state *requestState) observeProviderRouting(attempt uint64, headers http.Header) {
@@ -237,6 +240,10 @@ func (attempt *WebSocketAttempt) Message(payload []byte) {
 	if attempt == nil || attempt.finished {
 		return
 	}
+	if len(payload) != 0 && !attempt.outputObserved {
+		attempt.outputObserved = true
+		attempt.state.firstOutput(attempt.attempt)
+	}
 	_, _ = attempt.response.Write(payload)
 }
 
@@ -256,7 +263,7 @@ func (attempt *WebSocketAttempt) HTTPErrorBody(body io.ReadCloser, status int, c
 	if attempt == nil {
 		return body
 	}
-	return &observedResponseBody{ReadCloser: body, finish: func(response observedPayload, err error) {
+	return &observedResponseBody{ReadCloser: body, first: func() { attempt.state.firstOutput(attempt.attempt) }, finish: func(response observedPayload, err error) {
 		if attempt.finished {
 			return
 		}

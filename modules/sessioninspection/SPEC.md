@@ -73,6 +73,12 @@ AX contributions describe the whole supplied rollout regardless of the displayed
 call page. Their calculations and completeness belong to
 [agent metrics](../agentmetrics/SPEC.md). An absent contributor leaves ordinary
 inspection usable and makes an explicit request for that contribution unavailable.
+The `request_timing` section joins the selected thread's recent
+[retained transport phases](../transportdiagnostics/SPEC.md#retained-request-timing)
+from the selected replay store, without requiring a debug bundle. Missing timing
+contributions or records remain unavailable while other AX evidence stays usable.
+Unreadable or invalid optional timing records produce a distinct timing-error
+section without suppressing valid command, edit or other AX observations.
 
 The backend owns [rollout admission and decoding](../../backends/codex/SPEC.md#supplied-offline-rollouts).
 Malformed, conflicting or oversized input fails before a single-session result
@@ -114,8 +120,8 @@ validation belong to [transport diagnostics](../transportdiagnostics/SPEC.md).
 Local bytes never substitute for provider usage. Missing optional contributors
 do not disable unrelated queries.
 
-The inspection slot supplies optional query-local AX collectors and provider-usage
-queries. Each contribution retains ownership of its calculations and report
+The inspection slot supplies optional query-local AX collectors, retained request
+timing and provider-usage queries. Each contribution retains ownership of its calculations and report
 encoding. With zero contributions, ordinary call and corpus queries remain
 available, provider usage remains unavailable, and explicit AX or capture requests
 fail before opening their sources. Debug export can pass its already validated

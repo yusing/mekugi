@@ -49,6 +49,10 @@ independent of call pagination. `--read-log PATH` and `--defects PATH` imply
 - **Command observations:** recorded command start/completion identities,
   endpoints, exit status, and measured duration. Invalid or conflicting
   timestamps cannot establish a complete interval or certain gap.
+- **Request timing:** the selected thread's bounded recent
+  [transport-owned phase evidence](../transportdiagnostics/SPEC.md#retained-request-timing),
+  retained without debug logging and independent of call pagination. Missing
+  phases and historical evidence remain unavailable, not zero or inferred host cost.
 - **Defect assessments:** optional explicit `defect` or `no_defect` verdicts
   for known edit call IDs, each backed by a real bounded evidence artifact.
   The report records artifact path and SHA-256, not its contents. A verdict
@@ -56,8 +60,8 @@ independent of call pagination. `--read-log PATH` and `--defects PATH` imply
 
 Assessment input is bounded to 1 MiB; a read-log event is at most 4096 bytes,
 and the report admits at most 100000 invocation identities. Inspection writes no session,
-read log, evidence artifact, or replay record. AX evidence remains separate from
-sanitized transport metrics.
+read log, evidence artifact, or replay record. Transport timing remains separately
+owned and encoded, exposed under `request_timing` rather than folded into AX counts.
 
 Removing the module from composition disables reader instrumentation and AX
 report contributions. Ordinary frontend execution, other debug artifacts and

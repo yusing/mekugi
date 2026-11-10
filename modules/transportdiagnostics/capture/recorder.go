@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"slices"
 	"strings"
@@ -102,6 +103,7 @@ type captureRecord struct {
 // Recorder owns correlation, sanitized measurement, durable capture, and
 // derived metrics for one router process.
 type Recorder struct {
+	timings             *timingRetention
 	deduplication       *OutputDeduplicationTotals
 	writes              *persistence.Counter
 	lastRequestSequence map[string]uint64
@@ -114,6 +116,7 @@ type Recorder struct {
 }
 
 type requestState struct {
+	timing               RequestTiming
 	requestKind          string
 	providerNotExpected  bool
 	predecessorSequence  uint64
@@ -224,9 +227,13 @@ func (*Service) Open(config Config) (*Recorder, error) {
 	}, nil
 }
 
-// Close flushes the optional durable destination.
+// Close drains retained timing publication and closes the optional destination.
 func (r *Recorder) Close() error {
-	if r == nil || r.file == nil {
+	if r == nil {
+		return nil
+	}
+	r.timings.close()
+	if r.file == nil {
 		return nil
 	}
 	return r.file.Close()
@@ -298,6 +305,14 @@ func (r *Recorder) Transport(next http.RoundTripper) http.RoundTripper {
 		observation := r.observeRequest(requestBody)
 		state.observeProviderRouting(attempt, request.Header)
 		started := time.Now()
+		state.startTimingAttempt(attempt, "http", started)
+		request = request.WithContext(httptrace.WithClientTrace(request.Context(), &httptrace.ClientTrace{
+			WroteRequest: func(info httptrace.WroteRequestInfo) {
+				if info.Err == nil {
+					state.sent(attempt)
+				}
+			},
+		}))
 		response, roundTripErr := next.RoundTrip(request)
 		if roundTripErr != nil {
 			r.recordObservedExchange(state, "provider", attempt, started, time.Now(), observation, observedPayload{}, 0, "", "", roundTripErr, providerResponseEvidence{CachedTokensState: "unavailable"})
@@ -312,6 +327,7 @@ func (r *Recorder) Transport(next http.RoundTripper) http.RoundTripper {
 		}
 		response.Body = &observedResponseBody{
 			ReadCloser: response.Body,
+			first:      func() { state.firstOutput(attempt) },
 			finish: func(body observedPayload, readErr error) {
 				r.recordObservedExchange(state, "provider", attempt, started, time.Now(), observation, body, statusCode, contentType, contentEncoding, readErr, evidence)
 			},
@@ -333,6 +349,7 @@ func (r *Recorder) beginRequest(header http.Header) *requestState {
 	r.mu.Lock()
 	r.requestSequence++
 	state.sequence = r.requestSequence
+	state.timing = RequestTiming{CaptureID: state.captureID, Sequence: state.sequence, Started: time.Now(), Outcome: "unknown"}
 	if state.threadID != "" {
 		// Evicted arrival metadata yields an unavailable comparison, never a
 		// comparison against an older surviving request from that thread.
@@ -523,9 +540,13 @@ func (r *Recorder) recordObservedExchange(state *requestState, boundary string, 
 		}
 	}
 	if boundary == "provider" {
+		state.completeTimingAttempt(attempt, completed, statusCode, exchangeErr != nil)
 		state.addProvider(record)
 	}
 	r.write(record, state)
+	if boundary == "codex" && record.RequestKind != string(responseevents.Prewarm) {
+		r.retainTiming(state, completed)
+	}
 }
 
 func (r *Recorder) write(record captureRecord, state *requestState) {
@@ -585,6 +606,7 @@ func (body *observedReadCloser) Read(destination []byte) (int, error) {
 
 type observedResponseBody struct {
 	io.ReadCloser
+	first    func()
 	mu       sync.Mutex
 	content  boundedObservation
 	finish   func(observedPayload, error)
@@ -600,6 +622,10 @@ func (body *observedResponseBody) Read(destination []byte) (int, error) {
 	}
 	count, err := body.ReadCloser.Read(destination)
 	if count != 0 {
+		if body.first != nil {
+			body.first()
+			body.first = nil
+		}
 		_, _ = body.content.Write(destination[:count])
 	}
 	if err != nil {

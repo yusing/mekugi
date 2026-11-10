@@ -204,7 +204,14 @@ func (s *Service) Inspect(ctx context.Context, options SingleOptions) (Result, e
 		}
 	}
 	if withAX {
-		result.AX, err = collector.Report(ctx, inspection.AXOptions{ThreadID: decoded.ThreadID, ReadLog: options.ReadLog, Defects: options.Defects, UnmatchedCalls: unmatched})
+		var timing jsontext.Value
+		if s.contributions.RequestTiming != nil {
+			timing, err = s.contributions.RequestTiming(ctx, s.history.Attach(options.ReplayDirectory), decoded.ThreadID)
+			if err != nil {
+				return Result{}, err
+			}
+		}
+		result.AX, err = collector.Report(ctx, inspection.AXOptions{ThreadID: decoded.ThreadID, ReadLog: options.ReadLog, Defects: options.Defects, UnmatchedCalls: unmatched, RequestTiming: timing})
 		if err != nil {
 			return Result{}, err
 		}

@@ -24,6 +24,7 @@ func testInspector(metrics *evidence.Service, diagnostics *capture.Service) *que
 	}
 	if diagnostics != nil {
 		c.ProviderUsage = diagnostics.InspectUsage
+		c.RequestTiming = diagnostics.InspectTiming
 	}
 	var contributions []inspection.Contribution
 	if c.NewAX != nil || c.ProviderUsage != nil {

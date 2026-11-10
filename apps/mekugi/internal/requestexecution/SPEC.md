@@ -86,6 +86,10 @@ optional notices and debug bundles remain independent consumers. Retained
 instructions observe the same final projection as debug instruction dumps. Sanitized stream metrics contain classification, not prompt or error
 content. Debug instructions distinguish local projection from the actual wire
 subset. No diagnostic operation retries host execution or provider inference.
+Preparation and outcome hooks also feed
+[retained transport timing](../../../../modules/transportdiagnostics/SPEC.md#retained-request-timing).
+The transport owner correlates and publishes those facts off the delivery path;
+execution retains no additional request ledger or tool-result pairing heuristic.
 
 ## Acceptance
 

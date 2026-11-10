@@ -515,6 +515,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 		if err := s.upstream.Write(startCtx, websocket.MessageText, payload); err != nil {
 			return nil, err
 		}
+		e.observation.Sent()
 	}
 	// Mixed-provider upgrades precede provider selection. Deliver sticky state through the
 	// metadata event Codex consumes, leaving subsequent replay and reset to Codex.

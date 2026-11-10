@@ -22,6 +22,12 @@ type Edit struct {
 type AXOptions struct {
 	ThreadID, ReadLog, Defects string
 	UnmatchedCalls             uint64
+	RequestTiming              jsontext.Value
+}
+
+// RetainedReader borrows the selected session store without opening a writer.
+type RetainedReader interface {
+	ReadRetained(string, int64) ([]byte, error)
 }
 
 // AXCollector owns one query's pairing and report encoding.
@@ -48,9 +54,11 @@ type Usage struct {
 type Contribution struct {
 	NewAX         func() AXCollector
 	ProviderUsage func(context.Context, string, UsageFilter) (map[string]Usage, error)
+	RequestTiming func(context.Context, RetainedReader, string) (jsontext.Value, error)
 }
 
 type Definition[S any] struct {
 	NewAX         func(S) AXCollector
 	ProviderUsage func(S, context.Context, string, UsageFilter) (map[string]Usage, error)
+	RequestTiming func(S, context.Context, RetainedReader, string) (jsontext.Value, error)
 }

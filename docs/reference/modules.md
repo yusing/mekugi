@@ -233,8 +233,9 @@ Coordinate native agent threads and retained descendant waits
 Observe transport bytes, timing, capture health and provider-response evidence
 
 - Composition: selected; lifetime: `invocation`.
-- Requires: none.
-- Contributes: `inspection`, `diagnostic-sections`.
+- Requires: `sessionhistory`.
+- Contributes: `record-kinds`, `inspection`, `diagnostic-sections`.
+- Records: `request-timing`.
 - Codex connections: none.
 
 ## [usage](../../modules/usage/SPEC.md)

@@ -68,11 +68,11 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
 	activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
 	notifications := c.Add(notifications.Module, func() notifications.Deps { return notifications.Deps{} })
-	transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
 	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps {
 		return sessionhistory.Deps{RecordKinds: sessioncontrol.ClaudeRecordKinds()}
 	})
+	transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
 	changes := c.Add(changehistory.Module, func() changehistory.Deps {
 		return changehistory.Deps{History: history.Value(), Directory: captureDirectory}
 	})

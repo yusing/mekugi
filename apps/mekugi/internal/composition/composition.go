@@ -2,6 +2,7 @@ package composition
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -146,6 +147,11 @@ func (c *Composition) Add[D, S any, B interface {
 		if definition.ProviderUsage != nil {
 			contribution.ProviderUsage = func(ctx context.Context, path string, filter inspection.UsageFilter) (map[string]inspection.Usage, error) {
 				return definition.ProviderUsage(handle.Value(), ctx, path, filter)
+			}
+		}
+		if definition.RequestTiming != nil {
+			contribution.RequestTiming = func(ctx context.Context, store inspection.RetainedReader, thread string) (jsontext.Value, error) {
+				return definition.RequestTiming(handle.Value(), ctx, store, thread)
 			}
 		}
 		node.inspection = append(node.inspection, contribution)

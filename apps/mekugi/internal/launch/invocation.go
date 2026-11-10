@@ -264,6 +264,9 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	retained.Writes = writes
 	retained.Limits = history.Limits{Total: history.DefaultStorageBytes, Kinds: map[string]int64{"commentary": 16 << 20}}
+	capture.RetainTimings(retained.Store, retained.Limits, func(thread string, err error) {
+		issues.AddThreadNotice("", thread, "request_timing_storage", "Request timing could not be retained: "+err.Error())
+	})
 	if appUI {
 		threads.retained = retained
 		threads.recovery = recovered

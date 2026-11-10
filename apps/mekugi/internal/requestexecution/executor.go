@@ -383,6 +383,7 @@ func (a *requestAttempt) forward() error {
 	} else {
 		a.providerStarted = time.Now()
 	}
+	transportcapture.ObserveForwardStart(a.startCtx)
 	a.response, err = a.executor.Provider.ForwardExecution(
 		a.startCtx,
 		a.executionCtx,
@@ -586,6 +587,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 	}
 
 	a.finalization.finish(a.executionCtx, requestErr, a.executor.Output, a.executor.Issues)
+	transportcapture.ObserveRequestOutcome(a.startCtx, a.finalization.outcome.String())
 	if requestErr == nil && !a.usageLimited && a.finishUsage && !a.approvalReview && !a.prewarm && a.metadataValid && a.metadata.RequestKind == responses.Turn && a.finalization.outcome == requestOutcomeCompleted && a.finalization.upstreamTerminalState == responses.TerminalCompleted {
 		if a.executor.ThreadControl != nil {
 			if err := a.executor.ThreadControl.ProviderRecovered(context.WithoutCancel(a.executionCtx), a.threadID, a.metadata.TurnID); err != nil {

@@ -4,6 +4,7 @@ package moduletest
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"testing"
 
@@ -82,6 +83,11 @@ func BindInspection[S any](definition inspection.Definition[S], service S) inspe
 	if definition.ProviderUsage != nil {
 		contribution.ProviderUsage = func(ctx context.Context, path string, filter inspection.UsageFilter) (map[string]inspection.Usage, error) {
 			return definition.ProviderUsage(service, ctx, path, filter)
+		}
+	}
+	if definition.RequestTiming != nil {
+		contribution.RequestTiming = func(ctx context.Context, store inspection.RetainedReader, thread string) (jsontext.Value, error) {
+			return definition.RequestTiming(service, ctx, store, thread)
 		}
 	}
 	return contribution

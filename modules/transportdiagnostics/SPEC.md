@@ -10,7 +10,7 @@ presentation below are current design.
 ## Scope
 
 The module owns request correlation, boundary observations, bounded stream
-metadata, sanitized capture, metrics snapshots and retained provider-usage
+metadata, sanitized capture, metrics snapshots, retained request timing and provider-usage
 inspection. It observes HTTP, SSE and WebSocket traffic at the existing
 client/provider boundaries, including retries and automatic steering successors.
 
@@ -182,14 +182,59 @@ capture-identity fields, and does not infer provider usage from duration.
 Cancellation, malformed input and consumer errors propagate without a partial
 success claim. It opens no recorder and makes no provider requests.
 
+### Retained request timing
+
+Ordinary live sessions retain recent request phases without `--debug` or
+`--capture-output`. `inspect-session --ax` joins this evidence by the rollout's
+exact thread identity through the existing inspection contribution. Each request
+keeps its capture identity and invocation-local sequence; retries never join by
+timestamp proximity. Prewarm traffic stays invocation-local and creates no
+retained session history.
+
+Phases record admission, the end of local preparation, provider attempt start,
+successful request send, first observed provider output, provider body/exchange
+completion and downstream completion. Each phase has a UTC timestamp and a
+monotonic millisecond offset from admission. First output means body bytes or a
+WebSocket message observed at the transport boundary, not first generated token.
+HTTP send completion comes from the transport trace; transports without that
+hook leave it unknown. Automatic WebSocket successors have no new send. Multiple
+wire sends within one HTTP transport attempt make its send pairing unknown.
+
+Tool-result-ready remains unavailable: the request boundary cannot causally pair
+a tool result with its next request. Missing phases are `null`, not zero. Only
+paired, ordered offsets establish intervals; gaps do not prove host overhead.
+Outcomes and status remain independent of timing. Local responses, failures,
+cancellation and missing terminals preserve their observed phases.
+
+The private sessionhistory record retains the latest 64 completed observations
+per thread, at most eight provider attempts per request and 512 KiB per record.
+Eviction and omitted attempts are explicit. The kind shares the ordinary storage
+budget and 14-day inactive-session expiry, with an additional 64 MiB ceiling.
+It retains only bounded identity, phase, status and outcome facts, never bodies,
+credentials or raw errors. Forks and unrelated threads do not inherit timings.
+
+One recorder-owned worker publishes completed observations from a 128-entry
+queue, off the delivery path. Each publication reads and replaces one bounded
+thread window through the existing retention transaction; it does not enumerate
+the retained corpus. Lock acquisition has a 100 ms deadline. Queue pressure or
+publication failure emits an auxiliary notice without retrying inference or
+changing delivery. Close drains the queue. Inspection reports a recent observed
+window, never complete lifetime coverage: crashes and failed publications can
+leave gaps. Absent historical, expired or unselected evidence is unavailable.
+Unreadable or invalid timing records instead produce a distinct `error` timing
+section with no accepted timing facts or raw error text. They do not discard
+unrelated AX evidence; cancellation of inspection still propagates.
+
 ## Lifecycle
 
 The composed service is invocation-scoped and resource-free. Live launch opens
 one recorder after debug paths and write accounting are ready. The caller closes
 that recorder after provider teardown and final metrics publication, before debug
 shutdown and bundle release. Reader workers and offline readers acquire no
-recorder or output resources during composition. Restart restores no live metrics,
-keys, correlations or request clocks.
+recorder or output resources during composition. The live recorder owns its
+bounded timing publication worker after binding the selected history store.
+Restart restores no live metrics, keys, correlations or request clocks; offline
+inspection can read the retained timing window.
 Metrics belong to the invocation and expire on shutdown; completion and exit do
 not announce metrics paths. Sanitized capture remains independent of debug logging.
 
