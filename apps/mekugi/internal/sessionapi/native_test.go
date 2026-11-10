@@ -35,6 +35,43 @@ func nativeTestServer(t *testing.T) (*Native, *http.Client) {
 	return s.Native(), client
 }
 
+func TestNativeProfileAttachmentAdmission(t *testing.T) {
+	server := NewLive()
+	hub := NewHub(t.Context(), nil)
+	registerTestSession(hub, "thread", server, Summary{Thread: "thread", Workspace: "/workspace"})
+	identity := ProfileIdentity{Name: "work", Home: "/private/codex"}
+	server.BindProfileIdentity(identity)
+	client, _ := serveControl(t, hub.Handler())
+	for _, bad := range []ProfileIdentity{{Name: "other", Home: identity.Home}, {Name: identity.Name, Home: "/different/home"}} {
+		connection, err := OpenNative(t.Context(), client, "http://mekugi", "thread", bad)
+		if connection != nil {
+			connection.Close()
+		}
+		failure, ok := errors.AsType[*NativeFailure](err)
+		if !ok || failure.Status != 409 {
+			t.Fatalf("mismatched profile admitted: %v", err)
+		}
+	}
+	// A matching selector attaches without reading the profile again. An
+	// omitted selector preserves ordinary attachment behavior.
+	for _, match := range []ProfileIdentity{identity, {}} {
+		done := make(chan error, 1)
+		go func() {
+			request := <-server.Native().Requests()
+			done <- server.Native().Publish(request.Attachment, nativeTestFrame("thread", 1))
+			request.Reply <- ""
+		}()
+		connection, err := OpenNative(t.Context(), client, "http://mekugi", "thread", match)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		connection.Close()
+	}
+}
+
 func nativeTestFrame(thread string, attachment uint64) NativeFrame {
 	return NativeFrame{View: sessionpresentation.View{
 		Version: sessionpresentation.Version{Attachment: attachment, Revision: 1},

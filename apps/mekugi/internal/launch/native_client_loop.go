@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"sync"
 	"syscall"
@@ -70,17 +71,39 @@ func runNativeClient(ctx context.Context, socket string, routerArgs, args []stri
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
 	var connection *sessionapi.NativeConnection
+	profile, _, err := launchoptions.ProfileSelector(args)
+	if err != nil {
+		return err
+	}
+	identity := sessionapi.ProfileIdentity{Name: profile}
+	if profile != "" {
+		home := os.Getenv("CODEX_HOME")
+		if home == "" {
+			home = filepath.Join(os.Getenv("HOME"), ".codex")
+		}
+		identity.Home, err = filepath.Abs(home)
+		if err != nil {
+			return err
+		}
+	}
 	if resume != "" && resume != "--last" && resume != "--pick" {
-		connection, err = sessionapi.OpenNative(ctx, client, "http://mekugi", resume)
+		connection, err = sessionapi.OpenNative(ctx, client, "http://mekugi", resume, identity)
 		if err != nil {
 			refusal, ok := errors.AsType[*sessionapi.NativeFailure](err)
 			if !ok || refusal.Status != http.StatusNotFound {
 				return err
 			}
 		}
+		if connection != nil && profile != "" {
+			fmt.Fprintln(stdout, "Keeping the running profile configuration and environment.")
+		}
 	}
 	if connection == nil {
-		connection, err = sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{Workspace: workspace, RouterArgs: routerArgs, Args: args})
+		start := sessionapi.NativeStart{Workspace: workspace, RouterArgs: routerArgs, Args: args}
+		if profile != "" {
+			start.Environment = os.Environ()
+		}
+		connection, err = sessionapi.StartNative(ctx, client, "http://mekugi", start)
 		if err != nil {
 			return err
 		}

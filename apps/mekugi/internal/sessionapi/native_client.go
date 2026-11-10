@@ -42,11 +42,19 @@ type NativeFailure struct {
 
 func (e *NativeFailure) Error() string { return e.Reason }
 
-func OpenNative(ctx context.Context, client *http.Client, base, thread string) (*NativeConnection, error) {
+func OpenNative(ctx context.Context, client *http.Client, base, thread string, profile ...ProfileIdentity) (*NativeConnection, error) {
 	if thread == "" {
 		return nil, errors.New("native attachment requires a logical thread identity")
 	}
-	return openNativeSubscription(ctx, client, base, "view/attach", RPCParams{Thread: thread})
+	params := RPCParams{Thread: thread}
+	if len(profile) != 0 && profile[0].Name != "" {
+		var err error
+		params.Body, err = json.Marshal(&profile[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return openNativeSubscription(ctx, client, base, "view/attach", params)
 }
 
 // Attach opens another view on this same admitted server connection. The caller

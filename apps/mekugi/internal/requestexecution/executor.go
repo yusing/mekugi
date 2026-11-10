@@ -16,9 +16,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
-	"github.com/yusing/mekugi/providers/grok"
-	"github.com/yusing/mekugi/providers/opencode"
-
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
@@ -195,9 +192,13 @@ func (a *requestAttempt) prepare() error {
 			a.usageRejected, a.finishUsage = true, false
 		}
 		if !stream && a.response.StatusCode >= http.StatusBadRequest {
-			a.finalization.providerFailure = inferencegateway.NewProviderHTTPError("Upstream response", a.response.StatusCode, payload)
+			label := a.response.Provider
+			if label == "" {
+				label = "Upstream response"
+			}
+			a.finalization.providerFailure = inferencegateway.NewProviderHTTPError(label, a.response.StatusCode, payload)
 		} else {
-			a.finalization.providerFailure = inferencegateway.TerminalProviderError(payload, stream)
+			a.finalization.providerFailure = inferencegateway.TerminalProviderError(a.response.Provider, payload, stream)
 		}
 	}
 	a.metadata, a.metadataValid = codexresponses.DecodeTurnMetadata(a.headers)
@@ -283,7 +284,7 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	if !a.approvalReview && a.metadataValid && !a.metadata.ActivityIdentityInvalid &&
 		(a.metadata.RequestKind == responses.Turn || a.prewarm) && (a.metadata.ThreadID == "" || a.metadata.ThreadID == a.threadID) &&
-		!inferencegateway.IsThirdPartyModel(a.request.Model()) && a.executor.SideThreads != nil {
+		inferencegateway.NativeContinuations(a.executor.Provider, a.request.Model()) && a.executor.SideThreads != nil {
 		if key := a.executor.SideThreads.ForkCacheKey(a.threadID); key != "" {
 			// An omitted native body key stays omitted. Provider affinity is
 			// independent of the session identity already used for preparation.
@@ -295,7 +296,7 @@ func (a *requestAttempt) prepareWire() error {
 			a.executor.SideThreads.ObserveCacheKey(a.threadID, a.cacheKey)
 		}
 	}
-	if !grok.IsModel(a.request.Model()) && !opencode.IsModel(a.request.Model()) {
+	if inferencegateway.ApplyOpenAIPolicy(a.executor.Provider, a.request.Model()) {
 		programs, err := standardCyberAccess(a.request.Fields["access_programs"])
 		if err != nil {
 			return err
@@ -305,7 +306,7 @@ func (a *requestAttempt) prepareWire() error {
 	compaction := !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction
 	if !a.approvalReview && a.executor.ReasoningChoices != nil && (compaction || a.executor.SideThreads != nil && a.executor.SideThreads.IsBTWThread(a.threadID)) {
 		fallback, choices, updates := a.executor.ReasoningChoices(a.request.Model())
-		if err := a.request.UseLowReasoning(fallback, choices, updates && !inferencegateway.IsThirdPartyModel(a.request.Model())); err != nil {
+		if err := a.request.UseLowReasoning(fallback, choices, updates && inferencegateway.NativeContinuations(a.executor.Provider, a.request.Model())); err != nil {
 			return err
 		}
 	}
@@ -335,7 +336,7 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	if exchange := a.executor.Exchange; exchange != nil {
 		started := time.Now()
-		reason, err := exchange.State.Reconcile(&a.request, !inferencegateway.IsThirdPartyModel(a.request.Model()))
+		reason, err := exchange.State.Reconcile(&a.request, inferencegateway.NativeContinuations(a.executor.Provider, a.request.Model()))
 		if err != nil {
 			return inferencegateway.ProtocolError(err)
 		}
@@ -353,7 +354,7 @@ func (a *requestAttempt) prepareWire() error {
 func (a *requestAttempt) forward() error {
 	projectedBody := a.forwardBody
 	var err error
-	a.forwardBody, err = a.request.IncrementalBody(a.forwardBody, !inferencegateway.IsThirdPartyModel(a.request.Model()))
+	a.forwardBody, err = a.request.IncrementalBody(a.forwardBody, inferencegateway.NativeContinuations(a.executor.Provider, a.request.Model()))
 	if err != nil {
 		return err
 	}
@@ -410,7 +411,11 @@ func (a *requestAttempt) forward() error {
 		return fmt.Errorf("execute request: %w", ForwardError(err))
 	}
 	if a.usageTracker != nil {
-		a.usageTracker.Price = PinnedOpenCodePrice(a.response.Price)
+		if a.response.UnknownPrice {
+			a.usageTracker.Price = func(string, inference.Usage) accounting.Cost { return accounting.Cost{} }
+		} else {
+			a.usageTracker.Price = PinnedOpenCodePrice(a.response.Price)
+		}
 	}
 	a.hooks.Transport = a.response.Transport
 	a.finalization.upstreamStatusCode = a.response.StatusCode

@@ -171,6 +171,9 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	}
 	execution := &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers, sourceSocket: l.sourceSocket, headless: l.headless}
 	if start.Native != nil {
+		if start.Native.Environment != nil {
+			ctx = context.WithValue(ctx, invocationEnvironmentKey{}, start.Native.Environment)
+		}
 		code, err := runServerSession(ctx, start.Native.RouterArgs, start.Native.Args, api, start.Workspace, execution)
 		if l.headless != nil {
 			if err == nil && code != 0 {

@@ -53,7 +53,7 @@ func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
 	for _, prefix := range [][]string{nil, {"exec"}, {"app-server"}, {"resume"}} {
 		input := append(slices.Clone(prefix), "--disable", "code_mode", "--disable=code_mode_only", "--disable", "token_budget", "--disable", "unrelated", "--", "--disable=code_mode")
 		original := slices.Clone(input)
-		got := codexArgs("http://localhost/v1", input, false, true)
+		got := codexArgs("http://localhost/v1", input, false, true, nil)
 		want := append(slices.Clone(prefix), "--enable", "code_mode", "--enable=code_mode_only", "--enable", "token_budget", "--disable", "unrelated")
 		if !slices.Equal(got[:len(want)], want) || !slices.Equal(got[len(got)-2:], []string{"--", "--disable=code_mode"}) || !slices.Equal(input, original) {
 			t.Fatalf("execution overrides changed unrelated flags, prompt or caller input: %q", got)
@@ -64,7 +64,7 @@ func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
 func TestCodexArgsPreservesArguments(t *testing.T) {
 	for _, openAIAuth := range []bool{true, false} {
 		forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, openAIAuth)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, openAIAuth, nil)
 		index := slices.Index(forwarded, "--")
 		delimiter := slices.Index(args, "--")
 		if delimiter < index || (delimiter-index)%2 != 0 || !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[delimiter:], forwarded[index:]) {
@@ -138,7 +138,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 			}
 		}
 		withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
-		if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, openAIAuth); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
+		if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, openAIAuth, nil); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
 			t.Fatalf("ordinary -c or prompt moved: %q", got)
 		}
 	}
@@ -289,7 +289,7 @@ func TestCodexArgsEnforcesCollaborationModeInstructions(t *testing.T) {
 		{"-c", "include_collaboration_mode_instructions=true", "exec", "--config=include_collaboration_mode_instructions=true", "prompt"},
 		{"resume", "session", "-cinclude_collaboration_mode_instructions=true", "--", "prompt"},
 	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, nil)
 		end := slices.Index(args, "--")
 		if end < 0 {
 			end = len(args)
@@ -306,7 +306,7 @@ func TestCodexArgsEnforcesSkillInstructionsWhenSkillsManagerAvailable(t *testing
 		{"exec", "--config=skills.include_instructions=true", "prompt"},
 		{"resume", "session", "-cskills.include_instructions=true", "--", "prompt"},
 	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, nil)
 		end := slices.Index(args, "--")
 		if end < 0 {
 			end = len(args)
@@ -319,7 +319,7 @@ func TestCodexArgsEnforcesSkillInstructionsWhenSkillsManagerAvailable(t *testing
 
 func TestCodexArgsPreservesSkillInstructionsWithoutSkillsManager(t *testing.T) {
 	forwarded := []string{"exec", "--config=skills.include_instructions=true", "prompt"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, true)
+	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, true, nil)
 	if !slices.Equal(args[:len(forwarded)], forwarded) || slices.Contains(args[len(forwarded):], "skills.include_instructions=false") {
 		t.Fatalf("skill instructions changed without skills-mgr: %q", args)
 	}
@@ -668,7 +668,7 @@ func TestValidateCodexArgs(t *testing.T) {
 		{"--config", `"model_providers".mekugi_wrap.base_url="https://example.com"`},
 		{"-c", `openai_base_url="https://example.com"`}, {"-c", `oss_provider="ollama"`},
 	} {
-		if err := validateCodexArgs(args); err == nil {
+		if err := validateCodexArgs(args, false); err == nil {
 			t.Errorf("accepted provider override: %q", args)
 		}
 	}
@@ -677,7 +677,7 @@ func TestValidateCodexArgs(t *testing.T) {
 		{"exec", "-c", `model="example"`}, {"--", "--oss"},
 		{"--", `-cmodel_provider="other"`}, {"-c"},
 	} {
-		if err := validateCodexArgs(args); err != nil {
+		if err := validateCodexArgs(args, false); err != nil {
 			t.Errorf("rejected ordinary arguments %q: %v", args, err)
 		}
 	}

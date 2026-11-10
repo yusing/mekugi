@@ -20,6 +20,7 @@ type Driver struct {
 	audience     ChildAudience
 	models       []Model
 	catalogError error
+	nativeModels bool
 	lifecycle    context.Context
 	cancel       context.CancelFunc
 	thread       string

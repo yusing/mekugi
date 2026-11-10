@@ -7,6 +7,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -89,6 +90,7 @@ type nativeSession struct {
 	archived              bool
 	exitUsage             binding.TokenUsage
 	resumeArgv            []string
+	profile               *launchoptions.Profile
 	replayDebugDirectory  string
 	serviceTiers          *inferencegateway.Tiers
 	models                []appServerModel

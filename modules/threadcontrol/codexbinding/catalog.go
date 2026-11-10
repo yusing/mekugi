@@ -158,8 +158,19 @@ func (d *Driver) InheritedEffort(model, effort string) (string, error) {
 	}
 	d.mu.RLock()
 	defer d.mu.RUnlock()
+	if d.nativeModels {
+		return effort, nil // The selected native provider/host owns unknown models.
+	}
 	if d.catalogError != nil {
 		return "", d.catalogError
 	}
 	return inheritedEffortForModel(d.models, model, effort)
+}
+
+// UseNativeModels preserves the host's custom-provider unknown-model behavior.
+// Configure before admission; no provider selection is inferred from model IDs.
+func (d *Driver) UseNativeModels() {
+	d.mu.Lock()
+	d.nativeModels = true
+	d.mu.Unlock()
 }

@@ -3,12 +3,16 @@ package inferencegateway
 // Source: apps/mekugi/internal/router/client.go:1:105@[bd606c09] provider routing.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
 
@@ -24,6 +28,7 @@ type Client struct {
 	OpenCode       map[string]*ThirdPartyClient
 	Grok           *ThirdPartyClient
 	Diagnostics    codexresponses.Diagnostics
+	Native         *NativeProvider
 }
 
 func NewClient(baseURL string, supplied *http.Client, diagnostics codexresponses.Diagnostics) *Client {
@@ -32,6 +37,9 @@ func NewClient(baseURL string, supplied *http.Client, diagnostics codexresponses
 }
 
 func (c *Client) ForwardModels(ctx context.Context, headers http.Header, rawQuery string) (*http.Response, error) {
+	if c.Native != nil {
+		return c.Native.models(ctx, headers, rawQuery)
+	}
 	authorization, account, err := openai.Credentials(headers)
 	if err != nil {
 		return nil, &ModelCredentialsError{err: err}
@@ -51,6 +59,18 @@ func (e *ModelCredentialsError) Error() string { return e.err.Error() }
 func (e *ModelCredentialsError) Unwrap() error { return e.err }
 
 func (c *Client) ForwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*Response, error) {
+	if c.Native != nil {
+		response, err := c.Native.forward(startCtx, responseCtx, body, headers)
+		if rejection, ok := errors.AsType[*httptransport.Rejection](err); ok {
+			if _, limited, _ := ProviderWait(rejection.Detail, rejection.Header, time.Now()); limited {
+				return &Response{Response: &http.Response{StatusCode: rejection.Status, Header: rejection.Header, Body: io.NopCloser(bytes.NewReader(rejection.Detail))}, Provider: c.Native.ID, UnknownPrice: true}, nil
+			}
+			failure := NewProviderHTTPError(c.Native.ID, rejection.Status, rejection.Detail)
+			failure.Header = rejection.Header
+			return nil, failure
+		}
+		return response, err
+	}
 	var model struct {
 		Model string `json:"model"`
 	}
@@ -106,8 +126,10 @@ type Forwarder interface {
 // Response carries exchange facts separately from its consumable body.
 type Response struct {
 	*http.Response
-	Price     *opencode.Price
-	Transport string
+	Price        *opencode.Price
+	Transport    string
+	UnknownPrice bool
+	Provider     string
 }
 
 // IsThirdPartyModel selects full-history routing, including Chat, Messages and Responses.

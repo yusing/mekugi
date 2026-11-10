@@ -125,6 +125,7 @@ type Server struct {
 	questionOwner   func(string) *Server
 
 	mu                  sync.Mutex
+	profileIdentity     ProfileIdentity
 	requests            threadcontrol.Runtime
 	coordination        *threadcontrol.Service
 	deliverCoordination func(context.Context, string) error

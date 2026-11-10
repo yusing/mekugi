@@ -49,7 +49,8 @@ type PreparedChild struct {
 // errContextPreload marks a rejected spawn preload selection.
 var errContextPreload = errors.New("context preload")
 
-func prepareChild(settings control.Settings, limits control.Limits, options SpawnOptions, models []Model, layers []ConfigLayer, defaults [3]*string) (PreparedChild, error) {
+func prepareChild(settings control.Settings, limits control.Limits, options SpawnOptions, models []Model, layers []ConfigLayer, defaults [3]*string, nativeModels ...bool) (PreparedChild, error) {
+	native := len(nativeModels) != 0 && nativeModels[0]
 	result := PreparedChild{Settings: settings, Limits: limits, TaskName: options.TaskName, Message: options.Message, FullHistory: true}
 	if strings.TrimSpace(options.Message) == "" {
 		return result, errors.New("empty agent assignment")
@@ -101,10 +102,13 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		settings.Summary, settings.Tier = nil, nil
 	} else if model != nil {
 		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == *model })
-		if i < 0 {
+		if i < 0 && !native {
 			return result, fmt.Errorf("unknown agent model %q", *model)
 		}
-		settings.Model, settings.Effort = *model, models[i].DefaultEffort
+		settings.Model, settings.Effort = *model, nil
+		if i >= 0 {
+			settings.Effort = models[i].DefaultEffort
+		}
 	}
 	if effort != nil {
 		settings.Effort = effort
@@ -134,10 +138,13 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		// must keep their source backend.
 		if claude && options.Model == nil && !result.FullHistory && selection.values.Model != nil && !strings.HasPrefix(*selection.values.Model, "claude:") {
 			i := slices.IndexFunc(models, func(m Model) bool { return m.Name == *selection.values.Model })
-			if i < 0 {
+			if i < 0 && !native {
 				return result, fmt.Errorf("unknown agent model %q", *selection.values.Model)
 			}
-			settings.Model, settings.Effort = *selection.values.Model, models[i].DefaultEffort
+			settings.Model, settings.Effort = *selection.values.Model, nil
+			if i >= 0 {
+				settings.Effort = models[i].DefaultEffort
+			}
 			if effort != nil {
 				settings.Effort = effort
 			}
@@ -170,13 +177,13 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		// Session precedence is already settled. Canonicalize the selected tier
 		// before model support filtering and the strict native admission check.
 		settings.Tier = config.codexTier(settings.Tier)
-		if inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
+		if !native && inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
 			ordinary, err := inheritedEffortForModel(models, settings.Model, *settings.Effort)
 			if err != nil {
 				return result, err
 			}
 			settings.Effort = new(ordinary)
-		} else if settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
+		} else if !native && settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
 			i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
 			if i < 0 || !slices.Contains(models[i].Efforts, *settings.Effort) {
 				return result, fmt.Errorf("unsupported reasoning effort %q for %s", *settings.Effort, settings.Model)
@@ -185,7 +192,7 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	}
 	// Session tier wins over role configuration, but only when the final model
 	// supports it. The default sentinel explicitly clears the provider override.
-	if tier := settings.Tier; tier != nil && *tier != "default" && *tier != "flex" {
+	if tier := settings.Tier; !native && tier != nil && *tier != "default" && *tier != "flex" {
 		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
 		if i < 0 || !slices.Contains(models[i].ServiceTiers, *tier) {
 			settings.Tier = nil

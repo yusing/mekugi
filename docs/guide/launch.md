@@ -10,7 +10,7 @@ Start interactive sessions, choose their execution policy, and run headless auto
 | `mekugi grok` | Plain Grok IDs, such as `grok-4.7` | Grok credentials |
 | `mekugi codex` | Codex models only | `codex login` with ChatGPT authentication |
 
-Standalone requires third-party credentials. Its default follows Grok's model selection
+Without a selected provider profile, standalone requires third-party credentials. Its default follows Grok's model selection
 when authenticated, otherwise the first available OpenCode Go model, then Zen. Mekugi
 flags go **before** `codex`, `grok`, or standalone Codex arguments.
 
@@ -30,7 +30,8 @@ Interactive launches start the local server when absent and attach the [UI](term
 Closing the UI leaves its thread running; exit prints resume/replay commands.
 Ctrl-C cancels the startup wait. Noninteractive commands retain Codex's
 arguments/output/exit status.
-Mekugi needs JavaScript `exec`. Custom inference endpoints and `--oss` are unsupported.
+Mekugi needs JavaScript `exec`. Custom Responses endpoints require a [profile import](configuration.md#codex-profile-imports).
+`--oss` remains unsupported.
 See [launch limits](../../apps/mekugi/internal/launch/SPEC.md) and
 [request integration](../contracts/responses-transport.md); invocation overrides leave config unchanged.
 

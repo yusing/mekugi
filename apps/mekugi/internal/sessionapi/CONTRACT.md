@@ -281,6 +281,11 @@ other undelivered editor state; execution and retained history remain independen
 The private socket also provides native renderer attachments. This endpoint is
 excluded from the connector. `native/start` accepts `workspace`,
 `routerArgs` and `args`, and atomically establishes its initial subscription.
+Profile-selected native starts additionally carry the caller's private `environment`
+array, including Codex home, PATH and authentication-command dependencies. It is
+frozen with family setup, never published or admitted through remote startup.
+`view/attach` optionally accepts a native-only body with profile `name` and `home`;
+a supplied identity must match the running invocation or attachment fails with 409.
 The first snapshot identifies the admitted startup operation until the execution
 owner confirms a logical thread. Startup never invents a thread ID. Subsequent intents carry `startup` until an explicit originating-view switch
 confirms `thread`. Reattachment uses `view/attach` with the selected identity.

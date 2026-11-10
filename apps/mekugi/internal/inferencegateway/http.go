@@ -30,7 +30,7 @@ func ResponsesHandler(lifecycle context.Context, responseStartTimeout time.Durat
 			http.Error(trackedWriter, err.Error(), http.StatusBadRequest)
 			return
 		}
-		startCtx, executionCtx, cancelRequest := RequestContexts(request.Context(), lifecycle, responseStartTimeout)
+		startCtx, executionCtx, cancelRequest := RequestContexts(withProviderQuery(request.Context(), request.URL.RawQuery), lifecycle, responseStartTimeout)
 		defer cancelRequest()
 		if err := execute(startCtx, executionCtx, parsedRequest, request.Header, trackedWriter); err != nil {
 			writeRequestError(trackedWriter, err)
@@ -45,6 +45,9 @@ func writeRequestError(writer *ResponseWriter, requestErr error) {
 			status = http.StatusBadRequest
 		}
 		if rejection, ok := errors.AsType[*ProviderHTTPError](requestErr); ok {
+			copyAuxiliaryResponseHeaders(writer.Header(), rejection.Header)
+			writer.Header().Del("Content-Length")
+			writer.Header().Del("Content-Encoding")
 			writer.Header().Set("Content-Type", "application/json")
 			writer.WriteHeader(rejection.Status)
 			_, _ = writer.Write(responses.MustMarshalJSON(map[string]any{"error": map[string]string{

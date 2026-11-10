@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 
 	json "encoding/json/v2"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
@@ -61,6 +63,21 @@ func TestHeadlessRejectsUnsupportedAuthorizationAndResume(t *testing.T) {
 		code, err := wrapCodex(t.Context(), nil, args)
 		if code != 2 || err == nil {
 			t.Fatalf("%v: code=%d err=%v", args, code, err)
+		}
+	}
+}
+
+func TestHeadlessRejectsProviderArgumentsBeforeReadingPrompt(t *testing.T) {
+	for _, args := range [][]string{
+		{"--yolo", "-c", `model_provider="custom"`},
+		{"--yolo", "--oss"},
+		{"--yolo", "-pwork", "--oss"},
+		{"--yolo", "--profile="},
+	} {
+		input := iotest.ErrReader(errors.New("stdin must not be read"))
+		code, err := runHeadless(t.Context(), nil, args, input, io.Discard)
+		if code != 2 || err == nil {
+			t.Fatalf("%v: code=%d error=%v", args, code, err)
 		}
 	}
 }

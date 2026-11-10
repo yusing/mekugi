@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 )
 
 // Preserve supplied options after native validation, without the old resume
@@ -19,7 +21,7 @@ func appServerResumeArgv(executable string, routerArgs, args []string) []string 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; arg {
 		case "resume", "--last":
-		case "-c", "--config", "-m", "--model", "--enable", "--disable":
+		case "-c", "--config", "-m", "--model", "--enable", "--disable", "-p", "--profile":
 			argv = append(argv, arg, args[i+1])
 			i++
 		default:
@@ -36,6 +38,10 @@ func appServerResumeArgv(executable string, routerArgs, args []string) []string 
 // Without --yolo, Codex's configured approval and sandbox policy applies and
 // the UI answers its approval requests.
 func appServerArgs(args []string) ([]string, string, bool, error) {
+	_, args, err := launchoptions.ProfileSelector(args)
+	if err != nil {
+		return nil, "", false, err
+	}
 	out := []string{"app-server"}
 	yolo := false
 	resume := ""

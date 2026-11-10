@@ -200,7 +200,41 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	provider.ThirdPartyOnly = grokEnabled || standalone
 	provider.OpenAI.StreamIdleTimeout = options.StreamIdleTimeout
 	// Source: apps/mekugi/internal/launch/invocation.go:188:203@[14a6d1f3] provider selection
-	auth, selectedOpenCode, err := launchProviders(ctx, options, openCode)
+	route, err := profileRoute(args, options.Profile)
+	if err != nil {
+		return 2, err
+	}
+	provider.Native = route
+	if route != nil {
+		args, err = resolveProfileRoute(ctx, executable, args, environment, workspace, route)
+		if err != nil {
+			return 2, err
+		}
+		if appUI {
+			threads.driver.UseNativeModels()
+		}
+		client := profileHTTPClient(route)
+		if capture != nil {
+			client.Transport = capture.Transport(client.Transport)
+		}
+		route.HTTPClient = client
+		if route.StreamIdleTimeout == 0 {
+			route.StreamIdleTimeout = options.StreamIdleTimeout
+		} else if options.StreamIdleTimeoutSet {
+			route.StreamIdleTimeout = min(route.StreamIdleTimeout, options.StreamIdleTimeout)
+		}
+		if !options.TimeoutSet {
+			options.Timeout = max(options.Timeout, route.ConnectTimeout)
+		}
+		// No built-in credentials, online catalog, prices or defaults participate.
+		openCode = launchoptions.Settings{}.Providers
+		provider.ThirdPartyOnly = false
+	}
+	providerOptions := options
+	if route != nil {
+		providerOptions.Grok, providerOptions.ThirdParty = false, false
+	}
+	auth, selectedOpenCode, err := launchProviders(ctx, providerOptions, openCode)
 	if err != nil {
 		return 1, err
 	}
@@ -485,7 +519,21 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, args, skillsManagerAvailable, !provider.ThirdPartyOnly)...)
+	if options.Profile != nil {
+		var directory string
+		args, directory, err = prepareProfileCatalog(args, workspace)
+		if err != nil {
+			return stopFailedStartup(err)
+		}
+		if directory != "" {
+			defer func() { runErr = errors.Join(runErr, os.RemoveAll(directory)) }()
+		}
+		if appUI && threads.start == nil {
+			threads.setup.args = slices.Clone(args)
+		}
+	}
+	projectedArgs := codexArgs(baseURL, args, skillsManagerAvailable, !provider.ThirdPartyOnly, route)
+	cmd := exec.CommandContext(ctx, executable, projectedArgs...)
 	if appUI {
 		self, err := os.Executable()
 		if err != nil {
@@ -539,7 +587,15 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		var configuration jsontext.Value
 		prior, disabled, configuration, err = shellhook.Discover(ctx, cmd, guard)
 		if err != nil {
+			if options.Profile != nil {
+				return stopFailedStartup(errors.New("cannot resolve profile host configuration"))
+			}
 			return stopFailedStartup(err)
+		}
+		if route != nil {
+			if err := verifyProfileRoute(configuration, route, baseURL); err != nil {
+				return stopFailedStartup(err)
+			}
 		}
 		resetOverride, err := binding.ContextResetConfig(configuration)
 		if err != nil {
@@ -547,6 +603,14 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 		if resetOverride != "" {
 			cmd.Args = append(cmd.Args, "-c", resetOverride)
+		}
+	} else if route != nil {
+		configuration, err := profileConfigurationProbe(ctx, cmd)
+		if err != nil {
+			return stopFailedStartup(err)
+		}
+		if err := verifyProfileRoute(configuration, route, baseURL); err != nil {
+			return stopFailedStartup(err)
 		}
 	}
 	if helper != "" {
@@ -611,7 +675,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			waitCodex, err = (&nativeSession{preparer: mekugiCalls, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals, deduplicateOutput: options.DeduplicateOutput}).start(prefs, cmd, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
+			waitCodex, err = (&nativeSession{preparer: mekugiCalls, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, profile: options.Profile, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals, deduplicateOutput: options.DeduplicateOutput}).start(prefs, cmd, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
 		} else {
 			err = cmd.Start()
 			waitCodex = cmd.Wait

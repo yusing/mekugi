@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"testing/synctest"
 	"time"
 
@@ -202,21 +204,56 @@ func TestCodexAuxiliaryFailuresNeverRetryWrites(t *testing.T) {
 }
 
 func TestCodexAuxiliaryResponseStartTimeoutCancelsUpstream(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		calls := 0
-		provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
-			calls++
-			<-request.Context().Done()
-			return nil, request.Context().Err()
-		})})
-		mux := http.NewServeMux()
-		inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Second, provider)
-		request := httptest.NewRequest("POST", "/v1/alpha/search", bytes.NewBufferString("{}"))
-		request.Header = codexAuthHeaders()
-		recorder := httptest.NewRecorder()
-		mux.ServeHTTP(recorder, request)
-		if calls != 1 || recorder.Code != http.StatusBadGateway {
-			t.Fatalf("calls=%d status=%d", calls, recorder.Code)
-		}
-	})
+	for _, native := range []bool{false, true} {
+		t.Run(map[bool]string{false: "openai", true: "native"}[native], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				calls := 0
+				client := &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
+					calls++
+					<-request.Context().Done()
+					return nil, request.Context().Err()
+				})}
+				provider := newTestProviderClient(testProviderBaseURL, client)
+				if native {
+					provider.Native = &inferencegateway.NativeProvider{ID: "custom", BaseURL: testProviderBaseURL, HTTPClient: client}
+				}
+				mux := http.NewServeMux()
+				inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Second, provider)
+				request := httptest.NewRequest("POST", "/v1/alpha/search", bytes.NewBufferString("{}"))
+				request.Header = codexAuthHeaders()
+				recorder := httptest.NewRecorder()
+				mux.ServeHTTP(recorder, request)
+				if calls != 1 || recorder.Code != http.StatusBadGateway {
+					t.Fatalf("calls=%d status=%d", calls, recorder.Code)
+				}
+			})
+		})
+	}
+}
+
+func TestCodexAuxiliaryAbortsPartialResponse(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		t.Run(map[bool]string{false: "openai", true: "native"}[native], func(t *testing.T) {
+			client := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+				response := serverHTTPResponse("")
+				response.Body = io.NopCloser(io.MultiReader(strings.NewReader("partial result"), iotest.ErrReader(errors.New("broken stream"))))
+				return response, nil
+			})}
+			provider := newTestProviderClient(testProviderBaseURL, client)
+			if native {
+				provider.Native = &inferencegateway.NativeProvider{ID: "custom", BaseURL: testProviderBaseURL, HTTPClient: client}
+			}
+			mux := http.NewServeMux()
+			inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
+			request := httptest.NewRequest("POST", "/v1/alpha/search", strings.NewReader("{}"))
+			request.Header = codexAuthHeaders()
+			recorder := httptest.NewRecorder()
+			defer func() {
+				if recovered := recover(); recovered != http.ErrAbortHandler || recorder.Body.String() != "partial result" {
+					t.Errorf("partial response did not abort: panic=%v body=%q", recovered, recorder.Body.String())
+				}
+			}()
+			mux.ServeHTTP(recorder, request)
+		})
+	}
 }

@@ -65,9 +65,11 @@ func TestTerminalProviderErrorNotices(t *testing.T) {
 
 func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 	payload := []byte(`{"type":"error","status":400,"error":{"message":"actual detail credential-secret\u001b\n"}}`)
-	err := inferencegateway.TerminalProviderError(payload, true)
-	if err == nil || !strings.Contains(err.Error(), "actual detail credential-secret\x1b\n") {
-		t.Fatalf("incomplete provider error: %v", err)
+	for _, label := range []string{"", "Custom provider"} {
+		err := inferencegateway.TerminalProviderError(label, payload, true)
+		if err == nil || !strings.Contains(err.Error(), "actual detail credential-secret\x1b\n") || !strings.Contains(err.Error(), label) {
+			t.Fatalf("incomplete provider error: %v", err)
+		}
 	}
 	diagnostics := &transportcapture.Stream{}
 	diagnostics.Observe(payload)
@@ -81,7 +83,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 		issues.Report(requestexecution.Failure{
 			Session: "same", Phase: "terminal_validation",
 			Terminal: responseevents.TerminalFailed,
-		}, inferencegateway.TerminalProviderError(body, true))
+		}, inferencegateway.TerminalProviderError("", body, true))
 	}
 	notices := issues.Notices.Pending()
 	if len(notices) != 2 || !strings.Contains(notices[0], "first cause") ||
@@ -89,7 +91,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 		t.Fatalf("distinct causes were merged: %q", notices)
 	}
 	body, _ := json.Marshal(map[string]any{"type": "error", "message": strings.Repeat("x", 3000)})
-	if err := inferencegateway.TerminalProviderError(body, true); err == nil || !strings.Contains(err.Error(), strings.Repeat("x", 3000)) {
+	if err := inferencegateway.TerminalProviderError("", body, true); err == nil || !strings.Contains(err.Error(), strings.Repeat("x", 3000)) {
 		t.Fatalf("provider error truncated: %v", err)
 	}
 }

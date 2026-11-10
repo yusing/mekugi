@@ -13,9 +13,22 @@ import (
 // A startup operation is not a thread identity. It hosts welcome/resume selection
 // before the execution owner confirms a logical thread.
 type NativeStart struct {
-	Workspace  string   `json:"workspace"`
-	RouterArgs []string `json:"routerArgs"`
-	Args       []string `json:"args"`
+	Workspace   string   `json:"workspace"`
+	RouterArgs  []string `json:"routerArgs"`
+	Args        []string `json:"args"`
+	Environment []string `json:"environment,omitempty"`
+}
+
+// ProfileIdentity is private attachment admission, never a public session fact.
+type ProfileIdentity struct {
+	Name string `json:"name"`
+	Home string `json:"home"`
+}
+
+func (s *Server) BindProfileIdentity(identity ProfileIdentity) {
+	s.mu.Lock()
+	s.profileIdentity = identity
+	s.mu.Unlock()
 }
 
 func (h *Hub) startNative(requestContext, viewContext context.Context, body jsontext.Value) (*rpcSubscription, *RPCError) {

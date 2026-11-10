@@ -100,7 +100,11 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		session.skillEnvironment = cmd.Environ()
 	}
 	session.resumeArgv = slices.Clone(session.resumeArgv)
-	session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
+	if session.profile != nil {
+		session.Client.Startup.Config = profileResumeConfig(cmd.Args, session.resumeArgv, session.profile)
+	} else {
+		session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
+	}
 	api.BindRequests(session.Client.Requests)
 	api.BindCoordination(threads.shared, threads.driver.DeliverMessages)
 	if session.preparer != nil {

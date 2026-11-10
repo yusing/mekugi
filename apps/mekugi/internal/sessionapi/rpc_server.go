@@ -762,6 +762,21 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 		selected.runtime.cancel()
 		return nil, nil, nil
 	case "view/attach":
+		if len(params.Body) != 0 {
+			if c.authority != localNativeView {
+				return nil, rpcFailure(403, "Profile attachment is native-only."), nil
+			}
+			var identity ProfileIdentity
+			if err := decodeBody(params.Body, &identity); err != nil {
+				return nil, err, nil
+			}
+			selected.server.mu.Lock()
+			matches := selected.server.profileIdentity == identity
+			selected.server.mu.Unlock()
+			if !matches {
+				return nil, rpcFailure(409, "The supplied profile differs from the running configuration."), nil
+			}
+		}
 		return c.subscribe(ctx, params.Subscription, func(viewContext context.Context) (*rpcSubscription, *RPCError) {
 			return selected.server.Native().attach(ctx, viewContext, target, params.Startup, c.authority)
 		})

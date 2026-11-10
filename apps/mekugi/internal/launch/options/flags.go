@@ -18,17 +18,20 @@ const DefaultRequestTimeout = 10 * time.Minute
 // Config is a parsed invocation configuration. It contains values only;
 // execution derives effective output paths without modifying the selected options.
 type Config struct {
-	Timeout           time.Duration
-	StreamIdleTimeout time.Duration
-	ANSIFaint         string
-	ShellGuard        bool
-	DeduplicateOutput bool
-	ChildReplySummary bool
-	GrokAuthFile      string
-	CaptureOutput     string
-	Debug             bool
-	Grok              bool
-	ThirdParty        bool
+	Timeout              time.Duration
+	StreamIdleTimeout    time.Duration
+	ANSIFaint            string
+	ShellGuard           bool
+	DeduplicateOutput    bool
+	ChildReplySummary    bool
+	GrokAuthFile         string
+	CaptureOutput        string
+	Debug                bool
+	Grok                 bool
+	ThirdParty           bool
+	Profile              *Profile
+	TimeoutSet           bool
+	StreamIdleTimeoutSet bool
 
 	shellGuardSet        bool
 	deduplicateOutputSet bool
@@ -45,6 +48,10 @@ func Parse(args []string) (Config, error) {
 	}
 	flags.Visit(func(item *flag.Flag) {
 		switch item.Name {
+		case "timeout":
+			config.TimeoutSet = true
+		case "stream-idle-timeout":
+			config.StreamIdleTimeoutSet = true
 		case "shell-guard":
 			config.shellGuardSet = true
 		case "deduplicate-output":

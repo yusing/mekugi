@@ -34,7 +34,7 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 	lifecycle, cancel := context.WithCancel(lifecycle)
 	endpoint := &WebSocketEndpoint{cancel: cancel}
 	endpoint.handler = func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithCancel(r.Context())
+		ctx, cancel := context.WithCancel(withProviderQuery(r.Context(), r.URL.RawQuery))
 		defer cancel()
 		stop := context.AfterFunc(lifecycle, cancel)
 		defer stop()
@@ -47,14 +47,14 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 				s.upstream.CloseNow()
 			}
 		}()
-		if provider.Grok == nil && len(provider.OpenCode) == 0 {
+		if (provider.Native != nil && provider.Native.WebSockets) || (provider.Native == nil && provider.Grok == nil && len(provider.OpenCode) == 0) {
 			key := codexresponses.RoutingSessionID(r.Header, codexresponses.Request{})
 			if endpoint.ForkCacheKey != nil {
 				if inherited := endpoint.ForkCacheKey(codexresponses.ThreadID(r.Header)); inherited != "" {
 					key = inherited
 				}
 			}
-			_, handshake, err := openAIWebSocketRequest([]byte(`{}`), r.Header, key)
+			_, handshake, err := provider.webSocketRequest([]byte(`{}`), r.Header, key)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -63,7 +63,7 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 			// not response.metadata. Learn the provider's actual signal first.
 			startCtx, stopStart := context.WithTimeout(ctx, timeout)
 			defer stopStart()
-			upstream, response, err := provider.OpenAI.Dial(startCtx, handshake)
+			upstream, response, err := provider.Dial(startCtx, handshake)
 			if response != nil && response.StatusCode != http.StatusSwitchingProtocols {
 				defer response.Body.Close()
 				attempt := transportcapture.BeginWebSocketRejection(startCtx, handshake, response.Header, response.StatusCode)
@@ -444,7 +444,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 	if err != nil {
 		return nil, err
 	}
-	if string(fields["generate"]) == "false" && (IsThirdPartyModel(responseevents.StringField(fields, "model")) || s.upstreamRejection != nil) {
+	if string(fields["generate"]) == "false" && (!s.provider.NativeContinuations(responseevents.StringField(fields, "model")) || s.upstreamRejection != nil) {
 		// Chat Completions has no non-generating transport warmup. Preserve Codex's
 		// prewarm/history handshake without running and discarding inference.
 		response := map[string]any{"id": "resp_mekugi_warm_" + rand.Text(), "status": "completed", "output": []any{}}
@@ -455,12 +455,12 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 	if s.upstreamRejection != nil {
 		response := s.upstreamRejection
 		s.upstreamRejection = nil
-		return &Response{Response: response, Transport: "websocket"}, nil
+		return &Response{Response: response, Transport: "websocket", UnknownPrice: s.provider.Native != nil}, nil
 	}
-	if IsThirdPartyModel(responseevents.StringField(fields, "model")) {
+	if !s.provider.NativeContinuations(responseevents.StringField(fields, "model")) {
 		return s.provider.ForwardExecution(startCtx, responseCtx, native, headers, cacheKey)
 	}
-	payload, handshake, err := openAIWebSocketRequest(native, headers, cacheKey)
+	payload, handshake, err := s.provider.webSocketRequest(native, headers, cacheKey)
 	if err != nil {
 		return nil, err
 	}
@@ -476,7 +476,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 	}
 	s.upstreamHandshake, s.upstreamResponseHeaders = nil, nil
 	if s.upstream == nil {
-		conn, response, dialErr := s.provider.OpenAI.Dial(startCtx, handshake)
+		conn, response, dialErr := s.provider.Dial(startCtx, handshake)
 
 		if rejected := response; rejected != nil && rejected.StatusCode != http.StatusSwitchingProtocols {
 			attempt := transportcapture.BeginWebSocketAttempt(responseCtx, nil, handshake, rejected.Header)
@@ -486,7 +486,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 			payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 			_ = body.Close()
 			if _, limited, _ := ProviderWait(payload, rejected.Header, time.Now()); limited {
-				return &Response{Response: &http.Response{StatusCode: rejected.StatusCode, Header: rejected.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}, Transport: "websocket"}, nil
+				return &Response{Response: &http.Response{StatusCode: rejected.StatusCode, Header: rejected.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}, Transport: "websocket", UnknownPrice: s.provider.Native != nil}, nil
 			}
 			return nil, &WebSocketStatusError{Status: rejected.StatusCode, body: payload}
 		}
@@ -566,7 +566,11 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 			e.first = message.body
 		}
 	}
-	return &Response{Response: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: e}, Transport: "websocket"}, nil
+	result := &Response{Response: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: e}, Transport: "websocket", UnknownPrice: s.provider.Native != nil}
+	if s.provider.Native != nil {
+		result.Provider = s.provider.Native.ID
+	}
+	return result, nil
 }
 
 func openAIWebSocketRequest(body []byte, headers http.Header, cacheKey string) ([]byte, http.Header, error) {
@@ -594,8 +598,8 @@ func (e *Exchange) Read(buffer []byte) (int, error) {
 	e.first = nil
 	var timer *time.Timer
 	var idle <-chan time.Time
-	if s.provider.OpenAI.StreamIdleTimeout > 0 {
-		timer = time.NewTimer(s.provider.OpenAI.StreamIdleTimeout)
+	if s.provider.streamIdleTimeout() > 0 {
+		timer = time.NewTimer(s.provider.streamIdleTimeout())
 		idle = timer.C
 		defer timer.Stop()
 	}

@@ -26,7 +26,10 @@ func (d *Driver) PrepareSpawn(ctx context.Context, caller binding.MCPIdentity, o
 	if settings.Model != caller.Model || caller.Effort != "" && (settings.Effort == nil || *settings.Effort != caller.Effort) {
 		return PreparedChild{}, errors.New("host MCP metadata and invoking runtime settings disagree")
 	}
-	prepared, err := prepareChild(settings, member.Limits, options, models, config.Layers, [3]*string{config.Config.Agents.Model, config.Config.Agents.Effort, config.Config.Features.MultiAgent.ChildInstructions})
+	d.mu.RLock()
+	nativeModels := d.nativeModels
+	d.mu.RUnlock()
+	prepared, err := prepareChild(settings, member.Limits, options, models, config.Layers, [3]*string{config.Config.Agents.Model, config.Config.Agents.Effort, config.Config.Features.MultiAgent.ChildInstructions}, nativeModels)
 	if errors.Is(err, errContextPreload) {
 		d.control.ObserveFeature(caller.Thread, control.FeaturePreloadRejection)
 	}

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -51,7 +52,8 @@ func runWrap(routerArgs, args []string) int {
 		}
 	}
 	signals := []os.Signal{syscall.SIGTERM}
-	if native || len(args) > 0 && args[0] == "headless" {
+	_, headless := headlessCommand(args)
+	if native || headless {
 		signals = append(signals, os.Interrupt)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), signals...)
@@ -64,11 +66,11 @@ func runWrap(routerArgs, args []string) int {
 }
 
 func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
-	if len(args) > 0 && args[0] == "headless" {
-		return runHeadless(ctx, routerArgs, args[1:], os.Stdin, os.Stdout)
+	if headlessArgs, ok := headlessCommand(args); ok {
+		return runHeadless(ctx, routerArgs, headlessArgs, os.Stdin, os.Stdout)
 	}
 	if interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
-		if err := validateCodexArgs(args); err != nil {
+		if _, _, err := launchoptions.ProfileSelector(args); err != nil {
 			return 2, err
 		}
 		stopProfiling, err := startProfiling(ctx, os.Stderr)
@@ -110,21 +112,41 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	}
 	suppliedArgs := slices.Clone(args)
 	args = expandReasoningShortcuts(args)
-	if err := validateCodexArgs(args); err != nil {
-		return 2, err
-	}
 	options, err := launchoptions.Parse(routerArgs)
 	if err != nil {
 		return 2, err
 	}
 	var settings launchoptions.Settings
+	environment := invocationEnvironment(ctx)
 	if appUI && threads.setup != nil {
 		options, settings = threads.setup.options, threads.setup.settings
+		environment = slices.Clone(threads.setup.environment)
 	} else {
+		if sessionInvocation(args) {
+			options.Profile, args, err = launchoptions.ImportProfile(args, environment)
+			if err != nil {
+				return 2, err
+			}
+		}
+		if options.Profile != nil {
+			if err := validateProfileIntegration(args); err != nil {
+				return 2, err
+			}
+			selected, _ := launchoptions.ConfigOverrides(args)["model_provider"].(string)
+			if selected != "" {
+				if options.Grok {
+					return 2, errors.New("explicit grok selection conflicts with the profile provider")
+				}
+				options.ThirdParty = false
+			}
+		}
 		settings, err = launchoptions.LoadSettings(options.ThirdParty)
 		if err != nil {
 			return 1, err
 		}
+	}
+	if err := validateCodexArgs(args, options.Profile != nil); err != nil {
+		return 2, err
 	}
 	options = options.ResolveFeatures(settings.Features)
 	var resumeThread string
@@ -149,7 +171,11 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	if appUI && threads.setup != nil {
 		executable, args, approvals = threads.setup.executable, slices.Clone(threads.setup.args), threads.setup.approvals
 	} else {
-		executable, err = exec.LookPath("codex")
+		if options.Profile != nil {
+			executable, err = invocationExecutable(environment, workspace)
+		} else {
+			executable, err = exec.LookPath("codex")
+		}
 		if err != nil {
 			return 1, fmt.Errorf("locate codex: %w", err)
 		}
@@ -167,10 +193,6 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		defer stopStartupInterrupts()
 	}
 	stdin, stdout := os.Stdin, os.Stdout
-	environment := os.Environ()
-	if appUI && threads.setup != nil {
-		environment = slices.Clone(threads.setup.environment)
-	}
 	if appUI && threads.start != nil {
 		options, environment, err = threads.setup.childOutputs()
 		if err != nil {
@@ -187,6 +209,9 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	var shared *threadcontrol.Service
 	if appUI {
 		shared = threads.shared
+		if options.Profile != nil {
+			api.BindProfileIdentity(sessionapi.ProfileIdentity{Name: options.Profile.Name, Home: options.Profile.Home})
+		}
 		if threads.setup == nil {
 			threads.setup = &threadSetup{options: options, settings: settings, executable: executable, args: slices.Clone(args), environment: slices.Clone(environment), approvals: approvals}
 		}
@@ -447,7 +472,7 @@ func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, inte
 	})
 }
 
-func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth bool) []string {
+func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth bool, route *inferencegateway.NativeProvider) []string {
 	args = slices.Clone(args)
 	// Codex applies feature toggles after -c overrides. Normalize conflicting
 	// toggles too, without interpreting prompt operands after --.
@@ -483,7 +508,31 @@ func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth
 		"--disable", "sleep_tool",
 		"-c", "features.sleep_tool=false",
 	}
-	if openAIAuth {
+	if route != nil {
+		providers, _ := launchoptions.ConfigOverrides(args)["model_providers"].(map[string]any)
+		if providers == nil {
+			providers = make(map[string]any)
+		}
+		definition, _ := providers[route.ID].(map[string]any)
+		if definition == nil {
+			definition = make(map[string]any)
+			providers[route.ID] = definition
+		}
+		if route.ID == "openai" {
+			overrides = append(overrides, "-c", fmt.Sprintf("openai_base_url=%q", baseURL))
+		} else {
+			definition["base_url"] = baseURL
+		}
+		if route.CatalogURL != "" {
+			definition["model_catalog_url"] = baseURL + "/models"
+		}
+		// The parsed TOML tree contains only representable TOML values. Encoding
+		// the whole top-level value preserves literal provider IDs containing dots.
+		if value, err := launchoptions.TOMLValue(providers); err == nil {
+			overrides = append(overrides, "-c", "model_providers="+value)
+		}
+		overrides = append(overrides, "-c", fmt.Sprintf("model_provider=%q", route.ID))
+	} else if openAIAuth {
 		// Keep stock capabilities and runtime-only internal metadata.
 		overrides = append(overrides, "-c", `model_provider="openai"`, "-c", fmt.Sprintf(`openai_base_url=%q`, baseURL))
 	} else {
@@ -499,7 +548,7 @@ func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth
 	return slices.Insert(args, index, overrides...)
 }
 
-func validateCodexArgs(args []string) error {
+func validateCodexArgs(args []string, profile bool) error {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
@@ -524,6 +573,9 @@ func validateCodexArgs(args []string) error {
 		root, _, _ := strings.Cut(key, ".")
 		root = strings.Trim(strings.TrimSpace(root), `"'`)
 		if root == "model_provider" || root == "model_providers" || root == "openai_base_url" || root == "oss_provider" {
+			if profile && root != "oss_provider" {
+				continue
+			}
 			return errors.New("mekugi codex does not support provider overrides; it overrides config.toml provider selection and uses the router's default upstream")
 		}
 	}

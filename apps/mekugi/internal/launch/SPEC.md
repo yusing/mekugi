@@ -75,7 +75,8 @@ the same options-owned feature resolution path, without a feature service.
   provider response; Grok OAuth validation belongs to its provider.
 - `mekugi grok` selects Grok alone with unprefixed model names.
 
-Mekugi flags precede `codex`. Provider-selection arguments are rejected;
+Mekugi flags precede `codex`. Without a selected profile, provider-selection
+arguments are rejected;
 invocation-local overrides select the application endpoint and preserve Codex's
 built-in OpenAI provider capabilities, including native tools, reasoning updates
 and internal request metadata. Stock WebSockets and prewarming remain available;
@@ -124,6 +125,100 @@ answer approvals.
 Explicit `-c bypass_hook_trust=true` or `false` applies to admitted thread startup
 and its children. `--yolo` alone does not bypass configured hook trust.
 
+## Codex profile overrides
+
+`-p NAME` / `--profile NAME` imports the named profile's settings without upstream
+Codex changes. Launch owns import, precedence and family lifetime; the
+[provider-routing contract](../../../../docs/contracts/provider-routing.md#profile-defined-responses-routing)
+owns interception, authentication, catalogs and transport. The import uses
+invocation overrides, not native Codex profile layering.
+
+### Import and precedence
+
+Launch resolves `NAME.config.toml` under the invocation's effective Codex home.
+Plain-name validation and flag forms match Codex; option operands and everything
+after `--` remain literal. Missing, invalid or repeated selectors and unreadable,
+non-regular or malformed files fail before inference with content-free diagnostics.
+
+The complete parsed TOML becomes initial invocation-local `-c` overrides.
+Typed values preserve nested tables, arrays and literal dotted keys rather than
+flattening them into ambiguous override paths. Unrepresentable top-level dotted
+keys fail rather than changing identity.
+
+Imported values override ordinary base/project configuration. Explicit `-m`,
+`-c`, feature and reasoning flags override imported values. Managed host policy
+remains authoritative. This is CLI-override semantics, not native profile
+layering: relative paths use the invocation workspace, and imported settings do
+not establish a profile-specific configuration writer. No configuration files,
+Codex home or credentials are replaced or rewritten.
+
+Existing mandatory execution integration remains in force. If explicit settings
+conflict with those constraints, reject with the conflicting key instead of
+silently changing the requested behavior. Preserve ordinary approval policy and
+headless's explicit `--yolo` requirement.
+
+### Admission and lifetime
+
+Apply the same profile import to native and redirected session launches,
+headless, and wrapped exec/new/resume/fork. Non-session commands retain existing
+host dispatch. A profile-selected custom provider supersedes automatic standalone
+provider selection; contradictory explicit provider selectors fail. A profile
+without provider selection retains the invocation's existing route.
+
+Read the profile once for a new invocation. Native admission carries the client's
+effective Codex home and environment over the existing peer-admitted control
+channel. This includes PATH and arbitrary authentication-command dependencies,
+not only named API-key variables. Freeze them in the existing family setup,
+apply normal invocation sanitization/instrumentation, and never mutate the daemon
+or expose the snapshot in public frames, diagnostics or retained records.
+No-profile and browser-created invocation behavior is unchanged.
+
+Main, Codex children, Side, One-off and forked/rewound roots inherit the admitted
+configuration and route. Explicit child model/effort choices override those
+inherited fields without selecting a different provider by model-name prefix.
+Claude delegates retain their separate backend. No per-turn profile reloads.
+
+Fresh stopped-session resume reloads the selected profile; explicitly imported
+fields override saved values, and explicit CLI fields override the profile.
+Fields absent from the import retain ordinary resume precedence. This includes
+context, compaction and provider settings, not only model and effort. In-family
+stopped-child resume borrows the frozen family setup.
+
+Live reattachment retains the running configuration and environment. A supplied
+profile selector must match the admitted profile identity; a different selector
+fails rather than silently reconfiguring an active session. Matching attachment
+reports that it keeps the running configuration. Continuation commands preserve
+`-p NAME` and original explicit options, never expanded profile contents or local
+gateway addresses. A later invocation reloads the file. Resume stays product-local.
+
+Existing user-requested configuration writes keep Codex's ordinary user-layer
+destination. Imported overrides remain protected from ineffective lower-layer
+preset writes. Profile-specific writeback and new persistence are not part of
+this implementation. Literal secrets imported through argv have ordinary CLI
+process-inspection exposure; prefer native environment/command authentication and
+never print expanded argv in errors or continuation hints.
+
+### Acceptance
+
+Normal launch consumers cover:
+
+- Equivalent flag forms, missing/repeated selectors, operands and `--` across
+  native, redirected, headless and exec entrypoints.
+- Typed TOML round trips, nested/literal keys, base/project/profile/explicit CLI
+  precedence, host-policy conflicts and unchanged configuration files.
+- Exact model/provider/context/compaction/effort settings through actual startup,
+  including a model unknown to built-in Mekugi catalogs.
+- A pre-existing daemon uses the new caller's environment, PATH and Codex home;
+  simultaneous profiles and children do not mix settings or credentials.
+- Fresh resume, live attach, child resume, Side, One-off and fork/rewind preserve
+  the defined lifetime and explicitness rules; continuation reloads the profile.
+- No-profile launches, approval behavior, headless completion and stock execution
+  retain their existing contracts.
+
+Installed-Codex fixtures use synthetic profiles, local providers and fake auth
+commands for native auth, catalogs, tool execution and resume. Offline checks
+alone do not establish that host boundary.
+
 ## Model catalog
 
 Launch assembles a private third-party catalog from selected provider metadata
@@ -136,8 +231,8 @@ fails startup. OpenAI-only transport, search, service tiers and upgrade schedule
 are excluded from third-party entries.
 
 The private `model_catalog_json` path is pinned in the final invocation layer,
-independent of user catalogs and other processes' shared caches. Profiles and
-`exec --ignore-user-config` retain host-owned selection semantics. Invalid
+independent of user catalogs and other processes' shared caches. No-profile
+`exec --ignore-user-config` retains host-owned selection semantics. Invalid
 catalogs, command failure or private-file failure prevent the main host launch.
 Preparation is bounded to one minute and 8 MiB; its directory is private (0700)
 and file mode is 0600, with both removed on exit or launch failure. User
@@ -156,7 +251,8 @@ OpenAI discovery also sets model metadata to `code_mode_only`, since metadata
 overrides those feature flags. Account discovery and refresh remain available;
 Mekugi does not pin a bundled OpenAI catalog or edit the shared host cache.
 Explicit caller-supplied static catalogs retain host selection semantics and
-must expose the supported interface.
+must expose the supported interface. Profile imports derive private execution-mode
+projections while preserving the source catalog.
 
 Final invocation overrides disable `features.sleep_tool`, including caller feature
 toggles. Thread-control waits and independent clock/timer behavior remain available.

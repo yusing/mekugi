@@ -13,7 +13,7 @@ reads `MEKUGI_E2E_MODEL`, which the Makefile sets; raw `go test` runs must set i
 
 | Fixture | Coverage and limits |
 | --- | --- |
-| OpenAI | Local base-URL override: web-tool exposure, turn metadata, reasoning-effort updates and workspace routing over WebSockets and HTTP/SSE fallback; WebSocket prewarm and side-thread continuity. `TestCodeModeOnlyCatalogNativeCodex` covers account-catalog execution-mode enforcement with a stale shared cache and actual JavaScript tool execution |
+| OpenAI | Local base-URL override: web-tool exposure, turn metadata, reasoning-effort updates and workspace routing over WebSockets and HTTP/SSE fallback; WebSocket prewarm and side-thread continuity. `TestCodeModeOnlyCatalogNativeCodex` covers account-catalog execution-mode enforcement with a stale shared cache, stock JavaScript shell execution, and authenticated standalone web search through its returned tool result, without a profile |
 | Compaction | `TestCompactReloadNativeCodex`: built-in OpenAI manual/automatic summary-free reset over HTTP/WebSockets, selected and missing-source reload, stable tool/cache identity and immutable fresh-resume results. Deterministic local responses establish installed-host behavior, without live-model selection claims |
 | Frontends | Authenticated command through stock `tools.exec_command`: cwd, environment, argv/stdin separation and exit status |
 | mrun | Codex-owned PTY yield and `write_stdin` continuation |
@@ -23,6 +23,7 @@ reads `MEKUGI_E2E_MODEL`, which the Makefile sets; raw `go test` runs must set i
 | Segment reports | Installed execution and measured reports under read-only/workspace-write sandboxes |
 | Router fault | Translation failure after response creation: one upstream request, one terminal failure and durable reference lookup; pre-stream 503 remains retryable |
 | Third-party authentication | Empty isolated Codex credentials, bundled catalog and real Grok adapter with local HTTP/WebSocket mocks; plain/namespaced IDs, one inference and credential separation |
+| Profile routing | `TestProfileLaunchInstalledCodex`: actual profile import, native anonymous/env/literal/managed/command/refresh auth, inherited provider headers/capabilities, static/remote/unknown-model catalogs, HTTP and WebSockets, stock JavaScript child execution/captures and fresh profile resume; synthetic local providers only |
 | Third-party resume | UI and real Grok adapter: saved model restoration after fresh launch/switching, explicit overrides, inferred models and thread identity in both namespaces |
 
 Run affected host checks without changing host policy:

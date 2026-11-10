@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -14,7 +15,11 @@ import (
 // runHeadless borrows the ordinary server runtime without a renderer or a
 // detached daemon. The task owns admission, evidence delivery and family cleanup.
 func runHeadless(ctx context.Context, routerArgs, args []string, input io.Reader, output io.Writer) (int, error) {
-	if err := validateCodexArgs(args); err != nil {
+	profile, _, err := launchoptions.ProfileSelector(args)
+	if err != nil {
+		return 2, err
+	}
+	if err := validateCodexArgs(args, profile != ""); err != nil {
 		return 2, err
 	}
 	_, resume, yolo, err := appServerArgs(expandReasoningShortcuts(args))

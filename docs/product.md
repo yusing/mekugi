@@ -13,13 +13,12 @@ does not make a choice a fixed requirement.
 | Required outcome | Faster delivery, lower cost, fewer model round trips, and better quality than stock Codex, within the explicit scope constraints below. Speed or cost improvements alone do not establish success. |
 | Replaceable design | The current principles, architecture and implementation choices. They can change while the required outcome and specifications remain. |
 | Unresolved constraint | A proposed or unconfirmed restriction, distinct from a fixed requirement. |
-| Planned capability | Intended future behavior, distinct from availability and from proposed interfaces, storage layouts or limits. |
 
 Owner specifications and shared contracts distinguish required capabilities from
 current behavior and design. A redesign updates affected documents and consumers
 together; it does not have to retain a mechanism merely because an existing
 contract describes it. The journeys and supported scope below describe the current
-product, not every planned capability.
+product.
 
 ## Problem
 

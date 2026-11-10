@@ -13,6 +13,7 @@ import (
 // Provider details are included in the caller-facing error and failure records.
 type ProviderHTTPError struct {
 	Status int
+	Header http.Header
 	label  string
 	detail string
 	raw    string
@@ -29,7 +30,7 @@ func (e *ProviderHTTPError) Error() string {
 	return message
 }
 
-func NewProviderHTTPError(label string, status int, body []byte) error {
+func NewProviderHTTPError(label string, status int, body []byte) *ProviderHTTPError {
 	raw := string(body)
 	detail := strings.TrimSpace(string(body))
 	var envelope struct {
@@ -75,7 +76,7 @@ func NewProviderHTTPError(label string, status int, body []byte) error {
 
 // TerminalProviderError extracts caller-facing details without exporting them
 // through sanitized stream diagnostics or changing delivery of the original event.
-func TerminalProviderError(payload []byte, stream bool) error {
+func TerminalProviderError(label string, payload []byte, stream bool) error {
 	var envelope struct {
 		Status   int            `json:"status"`
 		Response jsontext.Value `json:"response"`
@@ -104,7 +105,10 @@ func TerminalProviderError(payload []byte, stream bool) error {
 	if (len(detail.Error) == 0 || string(detail.Error) == "null") && detail.Message == "" {
 		return nil
 	}
-	return NewProviderHTTPError("Upstream response failed", status, body)
+	if label == "" {
+		label = "Upstream response failed"
+	}
+	return NewProviderHTTPError(label, status, body)
 }
 
 // CompatibilityError rejects an unsupported model request before inference.

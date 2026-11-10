@@ -35,6 +35,26 @@ func TestCaptureConfiguredCatalog(t *testing.T) {
 	}
 }
 
+func TestNativeProviderChildUnknownModelAndEffort(t *testing.T) {
+	parent := control.Settings{Workspace: t.TempDir(), Model: "opencode-go:parent", Provider: "custom", Effort: new("high")}
+	options := SpawnOptions{Message: "assignment", ForkTurns: new("none"), Model: new("grok:unknown"), ReasoningEffort: new("ultra")}
+	child, err := prepareChild(parent, control.Limits{}, options, nil, nil, [3]*string{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Settings.Provider != "custom" || child.Settings.Model != "grok:unknown" || child.Settings.Effort == nil || *child.Settings.Effort != "ultra" {
+		t.Fatalf("native model identity/effort changed: %+v", child.Settings)
+	}
+	if _, err := prepareChild(parent, control.Limits{}, options, nil, nil, [3]*string{}); err == nil {
+		t.Fatal("built-in catalog admission changed")
+	}
+	driver := new(Driver)
+	driver.UseNativeModels()
+	if effort, err := driver.InheritedEffort("unknown", "ultra"); err != nil || effort != "ultra" {
+		t.Fatalf("native inherited effort filtered: %q %v", effort, err)
+	}
+}
+
 func TestPrepareChildModelEffortAndContext(t *testing.T) {
 	workspace := t.TempDir()
 	parent := control.Settings{Workspace: workspace, Model: "parent", Effort: new("high"), Provider: "provider", Tier: new("priority"), PermissionProfile: []byte(`{"type":"disabled"}`), ApprovalPolicy: []byte(`"never"`)}

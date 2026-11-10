@@ -40,10 +40,41 @@ func RegisterCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 	}
 	for _, path := range codexAuxiliaryPaths {
 		mux.HandleFunc("POST /v1/"+path, func(writer http.ResponseWriter, request *http.Request) {
-			authorization, account, err := openai.Credentials(request.Header)
-			if err != nil {
-				http.Error(writer, err.Error(), http.StatusBadRequest)
-				return
+			endpoint := "/" + path
+			headers := make(http.Header)
+			forward := provider.OpenAI.Forward
+			if native := provider.Native; native != nil {
+				if strings.HasPrefix(path, "alpha/history/") || strings.HasPrefix(path, "alpha/notes/") {
+					http.Error(writer, "operation unavailable for the selected provider", http.StatusNotFound)
+					return
+				}
+				var err error
+				endpoint, err = native.endpoint(path, request.URL.RawQuery)
+				if err != nil {
+					http.Error(writer, err.Error(), http.StatusBadGateway)
+					return
+				}
+				// Codex owns tool eligibility; forward admitted calls to its selected provider.
+				headers, forward = NativeHeaders(request.Header), native.send
+			} else {
+				authorization, account, err := openai.Credentials(request.Header)
+				if err != nil {
+					http.Error(writer, err.Error(), http.StatusBadRequest)
+					return
+				}
+				headers.Set("Authorization", authorization)
+				headers.Set(openai.AccountIDHeader, account)
+				headers.Set("Content-Type", request.Header.Get("Content-Type"))
+				if encoding := request.Header.Get("Content-Encoding"); encoding != "" {
+					headers.Set("Content-Encoding", encoding)
+				}
+				headers.Set("Accept", "application/json")
+				codexresponses.ForwardHeaders(headers, request.Header)
+				for _, name := range []string{"x-codex-image-turn-id", "x-openai-encrypted-tool-arguments", "x-openai-tool-output-truncation-policy"} {
+					for _, value := range request.Header.Values(name) {
+						headers.Add(name, value)
+					}
+				}
 			}
 			startCtx, executionCtx, cancel := RequestContexts(request.Context(), lifecycle, responseStartTimeout)
 			defer cancel()
@@ -51,27 +82,16 @@ func RegisterCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 			defer cancelUpstream()
 			stopStart := context.AfterFunc(startCtx, cancelUpstream)
 			defer stopStart()
-			upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, "/"+path, request.Body)
+			upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, request.Body)
 			if err != nil {
 				http.Error(writer, "build Codex auxiliary request", http.StatusBadGateway)
 				return
 			}
-			upstream.URL.RawQuery = request.URL.RawQuery
-			upstream.ContentLength = request.ContentLength
-			upstream.Header.Set("Authorization", authorization)
-			upstream.Header.Set(openai.AccountIDHeader, account)
-			upstream.Header.Set("Content-Type", request.Header.Get("Content-Type"))
-			if encoding := request.Header.Get("Content-Encoding"); encoding != "" {
-				upstream.Header.Set("Content-Encoding", encoding)
+			if provider.Native == nil {
+				upstream.URL.RawQuery = request.URL.RawQuery
 			}
-			upstream.Header.Set("Accept", "application/json")
-			codexresponses.ForwardHeaders(upstream.Header, request.Header)
-			for _, name := range []string{"x-codex-image-turn-id", "x-openai-encrypted-tool-arguments", "x-openai-tool-output-truncation-policy"} {
-				for _, value := range request.Header.Values(name) {
-					upstream.Header.Add(name, value)
-				}
-			}
-			response, err := provider.OpenAI.Forward(upstream)
+			upstream.ContentLength, upstream.Header = request.ContentLength, headers
+			response, err := forward(upstream)
 			if err != nil {
 				http.Error(writer, "forward Codex auxiliary request", http.StatusBadGateway)
 				return
@@ -81,8 +101,8 @@ func RegisterCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 				http.Error(writer, "Codex auxiliary request timed out or was canceled", http.StatusBadGateway)
 				return
 			}
-			if provider.OpenAI.StreamIdleTimeout > 0 {
-				response.Body = httptransport.IdleRead(ctx, response.Body, provider.OpenAI.StreamIdleTimeout)
+			if idle := provider.streamIdleTimeout(); idle > 0 {
+				response.Body = httptransport.IdleRead(ctx, response.Body, idle)
 			}
 			copyAuxiliaryResponseHeaders(writer.Header(), response.Header)
 			writer.WriteHeader(response.StatusCode)

@@ -51,6 +51,71 @@ Exact model IDs select tiers: `auto`, `default`, `fast` (sent as `priority`),
 for that thread/model during the invocation. The composer shows the effective tier;
 `/session` shows the provider-returned tier.
 
+## Codex profile imports
+
+Use `mekugi codex -p work` or `--profile work` to import
+`work.config.toml` from `$CODEX_HOME` (default `$HOME/.codex`). The same import
+works with standalone launches, headless and wrapped exec/resume/fork. Names
+contain only ASCII letters, digits, underscores and hyphens. Missing, malformed
+or non-regular files fail before inference without printing their contents.
+
+```toml
+model = "your-upstream-model"
+model_provider = "custom"
+model_reasoning_effort = "high"
+model_context_window = 200000
+model_auto_compact_token_limit = 180000
+[model_providers.custom]
+name = "Custom Responses"
+base_url = "https://provider.example/api/v1"
+wire_api = "responses"
+env_key = "CUSTOM_API_KEY"
+requires_openai_auth = false
+supports_websockets = true
+```
+
+Set the provider's credentials in your environment, then run:
+
+```sh
+mekugi codex -p work
+mekugi headless --yolo -p work < prompt.txt
+mekugi codex -p work exec "Explain this repository"
+```
+
+Imported values become initial invocation-local `-c` overrides. Explicit CLI
+settings win; managed host policy remains authoritative. Relative paths use the
+invocation workspace. This is not native profile layering or profile writeback.
+Source configuration, credentials and catalogs are never rewritten. Existing
+configuration writes still target Codex's ordinary user layer; imported presets
+are protected from ineffective lower-layer writes.
+
+A selected custom provider keeps its original provider/model identity and native
+Responses HTTP/SSE or configured WebSocket transport. Supply its provider ID and
+base URL in the import or explicit overrides. It supersedes automatic standalone
+Grok/OpenCode selection; an explicit contradictory provider selector fails. Other
+provider fields retain normal host merging. Codex owns environment, literal,
+command-backed and requested managed-login authentication, caching and refresh.
+Unknown model IDs need no built-in discovery or OpenAI login. Custom-route prices
+remain unknown. Static or remote catalogs retain their metadata apart from the
+required stock JavaScript execution mode.
+
+The family freezes the admitted profile and caller environment. Children and
+side/forked threads inherit them; later file edits do not reconfigure running
+sessions. Fresh stopped-session resume reloads the selected file; imported fields
+beat saved settings, and explicit CLI fields beat the import. Live attachment
+keeps the running settings and reports this for a matching selector; a different
+profile identity fails. Continuation hints retain the selector, not expanded
+profile contents. Literal secrets in imported argv have normal process-inspection
+exposure; prefer environment or command-backed authentication.
+
+Custom routes require the Responses wire protocol and endpoint substitution;
+AWS signing, gateway OAuth, incompatible managed policy and built-in OpenAI remote
+catalog overrides are unsupported. Stock execution integration remains required.
+`mekugi codex` without a profile retains stock tools, including web search, on
+the normal Codex route.
+See the
+[routing contract](../contracts/provider-routing.md#profile-defined-responses-routing).
+
 ## Options
 
 | Flag | Default | Purpose |

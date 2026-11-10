@@ -66,7 +66,7 @@ func TestRewindCacheEligibilityLiveOpenAI(t *testing.T) {
 	workspace := t.TempDir()
 	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
 		args := codexArgs(server.URL+"/v1", []string{"app-server", "-c", fmt.Sprintf("model=%q", model),
-			"-c", "features.plugins=false", "-c", `model_reasoning_effort="low"`}, false, true)
+			"-c", "features.plugins=false", "-c", `model_reasoning_effort="low"`}, false, true, nil)
 		cmd := exec.CommandContext(ctx, "codex", args...)
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd

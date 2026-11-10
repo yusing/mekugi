@@ -27,8 +27,8 @@ import (
 )
 
 // Real Codex consumes the account catalog through the same handler and launch
-// overrides as production, then executes a stock JavaScript command through
-// Mekugi's normal request admission. No external provider is contacted.
+// overrides as production, then executes stock shell and web-search tools through
+// Mekugi's normal request admission without a profile. No external provider is contacted.
 func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -76,17 +76,35 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var discoveries atomic.Int32
+	var discoveries, searches atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/models" {
+		switch r.URL.Path {
+		case "/alpha/search":
+			searches.Add(1)
+			var request struct {
+				Commands struct {
+					SearchQuery []struct {
+						Query string `json:"q"`
+					} `json:"search_query"`
+				} `json:"commands"`
+			}
+			if err := json.UnmarshalRead(r.Body, &request); err != nil || r.Method != http.MethodPost || len(request.Commands.SearchQuery) != 1 || request.Commands.SearchQuery[0].Query != "fixture lookup" {
+				t.Errorf("stock web search request changed: %+v, error=%v", request, err)
+			}
+			if r.Header.Get("Authorization") != "Bearer fixture-access" || r.Header.Get("Chatgpt-Account-Id") != "fixture-account" {
+				t.Error("stock web search lost host authentication")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"output":"MEKUGI_WEB_SEARCH_FIXTURE_RESULT"}`))
+		case "/models":
+			discoveries.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("ETag", "mixed-account-catalog")
+			_, _ = w.Write(body)
+		default:
 			t.Errorf("unexpected upstream request: %s", r.URL.Path)
 			http.NotFound(w, r)
-			return
 		}
-		discoveries.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("ETag", "mixed-account-catalog")
-		_, _ = w.Write(body)
 	}))
 	defer upstream.Close()
 	client := newTestProviderClient(upstream.URL, upstream.Client())
@@ -102,8 +120,9 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	workspace := t.TempDir()
 	proxy := newManagedMekugiProxy(t)
 	fixture := &toolFrontendCodexProvider{
-		workspace: workspace, program: `text(await tools.exec_command({cmd:"printf MODE_OK"}));`,
-		expected: []string{"MODE_OK"}, finalText: "catalog host accepted",
+		workspace: workspace,
+		program:   `text(await tools.exec_command({cmd:"printf MODE_OK"})); text(await tools.web__run({search_query:[{q:"fixture lookup"}]}));`,
+		expected:  []string{"MODE_OK", "MEKUGI_WEB_SEARCH_FIXTURE_RESULT"}, finalText: "catalog host accepted",
 		observeRequest: func(body []byte, _ http.Header) error {
 			request, err := codexresponses.ParseRequest(body)
 			if err != nil {
@@ -125,10 +144,9 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	}
 	attachTestReplayStore(t, proxy)
 	inference := testResponsesHandler(ctx, time.Minute, fixture, nil, proxy)
+	auxiliary := http.NewServeMux()
+	inferencegateway.RegisterCodexAuxiliaryRoutes(auxiliary, ctx, time.Minute, client)
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for key, values := range codexAuthHeaders() {
-			r.Header[key] = values
-		}
 		if r.URL.Path == "/v1/models" {
 			models(w, r)
 		} else if r.URL.Path == "/v1/responses" && r.Method == http.MethodGet {
@@ -136,7 +154,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 		} else if r.URL.Path == "/v1/responses" && r.Method == http.MethodPost {
 			inference.ServeHTTP(w, r)
 		} else {
-			http.NotFound(w, r)
+			auxiliary.ServeHTTP(w, r)
 		}
 	}))
 	defer router.Close()
@@ -145,10 +163,11 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "-C", workspace,
 		"-c", "features.plugins=false",
 		"-c", "features.code_mode_host=true",
+		"-c", `web_search="live"`,
 		"-c", "chatgpt_base_url=" + strconv.Quote(router.URL),
 		"-c", "model_reasoning_effort=" + strconv.Quote("low"),
 		"Run the execution interface fixture.",
-	}, false, true)
+	}, false, true, nil)
 	cmd := exec.CommandContext(ctx, codex, args...)
 	cmd.Env, cmd.Dir = environment, filepath.Dir(workspace)
 	var stdout, stderr bytes.Buffer
@@ -158,8 +177,8 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
-	if discoveries.Load() < 2 || !fixture.resultSeen || fixture.turns != 2 {
-		t.Fatalf("catalog/host execution: discoveries=%d result=%t turns=%d\nstdout: %s\nstderr: %s",
-			discoveries.Load(), fixture.resultSeen, fixture.turns, &stdout, &stderr)
+	if discoveries.Load() < 2 || searches.Load() != 1 || !fixture.resultSeen || fixture.turns != 2 {
+		t.Fatalf("catalog/host execution: discoveries=%d searches=%d result=%t turns=%d\nstdout: %s\nstderr: %s",
+			discoveries.Load(), searches.Load(), fixture.resultSeen, fixture.turns, &stdout, &stderr)
 	}
 }
