@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -20,6 +21,12 @@ func TestAppServerShellSubmission(t *testing.T) {
 					appServerTestTurn(t, u, "model")
 				}
 				appServerTestKeys(t, u, "!printf '%s' \"$HOME\" | cat > result"+key)
+				if busy && key == "\t" {
+					if w.Len() != 0 || u.Text != "" || len(u.attached.conversation.Queued) != 1 {
+						t.Fatalf("busy Tab executed shell: wire=%s draft=%q", w.String(), u.Text)
+					}
+					appServerTestTurnEnd(t, u, "model", "completed")
+				}
 				var request struct {
 					ID     int    `json:"id"`
 					Method string `json:"method"`
@@ -39,7 +46,7 @@ func TestAppServerShellSubmission(t *testing.T) {
 				if u.Text != "" || len(u.InputHistory) != 1 || len(appServerTurnRequests(t, w)) != 0 {
 					t.Fatal("acknowledgement started model input or lost history")
 				}
-				if busy {
+				if busy && key != "\t" {
 					appServerTestMessage(t, u, `{"method":"item/started","params":{"threadId":"main","turnId":"model","item":{"id":"shell","type":"commandExecution","source":"userShell","command":"pwd","status":"inProgress"}}}`)
 					if u.Turn != "model" || u.Shell.Standalone() {
 						t.Fatal("shell replaced main turn")
@@ -207,5 +214,135 @@ func TestAppServerShellComposer(t *testing.T) {
 	appServerTestKeys(t, u, "x\r")
 	if !strings.Contains(w.String(), `"command":"printf '%s\\n' \"你好\nx$HOME\""`) || u.Text != "" {
 		t.Fatalf("paint/edit changed shell submission: %s draft=%q", w.String(), u.Text)
+	}
+}
+
+func TestAppServerQueuedShellFIFO(t *testing.T) {
+	for _, completionFirst := range []bool{false, true} {
+		t.Run(fmt.Sprint(completionFirst), func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.guardHookCheck.hash = "guard"
+			appServerTestTurn(t, u, "model")
+			appServerTestKeys(t, u, "!printf first\t!printf second\tordinary input\t")
+			if wire.Len() != 0 || len(u.attached.conversation.Queued) != 3 {
+				t.Fatal("busy shell queue executed early")
+			}
+			appServerTestTurnEnd(t, u, "model", "completed")
+			for i, command := range []string{"printf first", "printf second"} {
+				var shell struct {
+					Params struct {
+						Command string `json:"command"`
+					} `json:"params"`
+				}
+				if err := json.Unmarshal(wire.Bytes(), &shell); err != nil || shell.Params.Command != command {
+					t.Fatalf("shell order: params=%+v err=%v", shell.Params, err)
+				}
+				request := appServerOneRequest(t, wire, "thread/shellCommand", "")
+				turn := fmt.Sprintf("shell-%d", i)
+				ack := fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID)
+				if !completionFirst {
+					appServerTestMessage(t, u, ack)
+				}
+				appServerTestTurn(t, u, turn)
+				if wire.Len() != 0 {
+					t.Fatal("queue overtook shell execution")
+				}
+				appServerTestTurnEnd(t, u, turn, "completed")
+				if completionFirst {
+					if wire.Len() != 0 {
+						t.Fatal("queue overtook shell acknowledgement")
+					}
+					appServerTestMessage(t, u, ack)
+				}
+			}
+			check := appServerOneRequest(t, wire, "hooks/list", "")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, check.ID, guardHookTestResult(t, u.attached.cwd, guardHookTestEntry("guard"))))
+			appServerOneRequest(t, wire, "turn/start", "ordinary input")
+		})
+	}
+}
+
+func TestAppServerQueuedShellRetractionAndRejection(t *testing.T) {
+	for _, mixed := range []bool{false, true} {
+		t.Run(fmt.Sprint(mixed), func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			appServerTestTurn(t, u, "model")
+			appServerTestKeys(t, u, "!pwd\t")
+			if mixed {
+				appServerTestKeys(t, u, "prose\t")
+			}
+			editQueued(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock)
+			if wire.Len() != 0 || len(u.attached.conversation.Queued) != 0 {
+				t.Fatal("retraction executed shell")
+			}
+			if mixed {
+				if u.Text != "prose" || len(u.InputHistory) != 1 || u.InputHistory[0].Text != "!pwd" {
+					t.Fatal("shell joined prose on restoration")
+				}
+				return
+			}
+			if u.Text != "!pwd" {
+				t.Fatalf("shell draft not restored: %q", u.Text)
+			}
+			appServerTestKeys(t, u, "\t")
+			appServerTestTurnEnd(t, u, "model", "completed")
+			request := appServerOneRequest(t, wire, "thread/shellCommand", "")
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
+			if u.Text != "!pwd" || wire.Len() != 0 || !u.attached.feedback.Alert {
+				t.Fatal("queued shell rejection lost retry draft")
+			}
+		})
+	}
+}
+
+func TestAppServerQueuedShellWaitsForLogicalWork(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.LocalStop = "logical-wait"
+	appServerTestKeys(t, u, "!pwd\t")
+	if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if wire.Len() != 0 || len(u.attached.conversation.Queued) != 1 {
+		t.Fatal("queued shell superseded logical wait")
+	}
+	u.LocalStop = ""
+	appServerTestTurn(t, u, "resumed")
+	if wire.Len() != 0 {
+		t.Fatal("queued shell steered resumed work")
+	}
+	appServerTestTurnEnd(t, u, "resumed", "completed")
+	appServerOneRequest(t, wire, "thread/shellCommand", "")
+}
+
+func TestAppServerQueuedShellFollowsQueuedMessage(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	appServerTestTurn(t, u, "model")
+	appServerTestKeys(t, u, "first message\t!pwd\tlast message\t")
+	appServerTestTurnEnd(t, u, "model", "completed")
+	request := appServerOneRequest(t, wire, "turn/start", "first message")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
+	appServerTestTurn(t, u, "first")
+	if wire.Len() != 0 {
+		t.Fatal("shell overtook queued model turn")
+	}
+	appServerTestTurnEnd(t, u, "first", "completed")
+	appServerOneRequest(t, wire, "thread/shellCommand", "")
+	if len(u.attached.conversation.Queued) != 1 || u.attached.conversation.Queued[0].Text != "last message" {
+		t.Fatal("shell consumed subsequent prose")
+	}
+}
+
+func TestAppServerQueuedShellRejectsEmptyAndAttachments(t *testing.T) {
+	for _, text := range []string{"!", "!pwd"} {
+		u, wire := newAppServerTestUI()
+		appServerTestTurn(t, u, "model")
+		appServerTestKeys(t, u, text)
+		if text != "!" {
+			u.Images = []composer.Token{{Path: "image.png"}}
+		}
+		appServerTestKeys(t, u, "\t")
+		if wire.Len() != 0 || u.Text != text || len(u.attached.conversation.Queued) != 0 || u.attached.feedback.Text == "" {
+			t.Fatal("invalid shell draft was consumed")
+		}
 	}
 }

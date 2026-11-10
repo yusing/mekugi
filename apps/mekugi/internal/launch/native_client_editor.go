@@ -168,7 +168,7 @@ func (c *nativeClient) applyEffects() {
 				main.Replace(*effect.ShellRestore)
 			} else {
 				main.Remember(*effect.ShellRestore)
-				c.notice = "Shell command rejected · command saved in input history (↑)"
+				c.notice = "Shell command saved in input history (↑)"
 			}
 		}
 		if selection := effect.Selection; selection != nil {

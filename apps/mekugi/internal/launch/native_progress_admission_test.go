@@ -137,6 +137,18 @@ func TestNativeProgressAdmitsEffortAndReferenceAtOwner(t *testing.T) {
 		await(func() bool { return len(event.Frame.Effects) == 0 })
 	}
 	acknowledge()
+	// Native busy Tab must retain shell input without issuing a host command.
+	send(event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: "main", Operation: sessionpresentation.QueueComposer}, Draft: composer.Draft{Text: "!pwd"}}})
+	send(event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: "main", Operation: sessionpresentation.RestoreWaiting, Work: new(event.Frame.View.Interrupt)}}})
+	await(func() bool {
+		for _, effect := range event.Frame.Effects {
+			if effect.ShellRestore != nil && effect.ShellRestore.Text == "!pwd" {
+				return true
+			}
+		}
+		return false
+	})
+	acknowledge()
 	send(event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: "main", Operation: sessionpresentation.QueueComposer}, Draft: composer.Draft{Text: "  waiting input \n"}}})
 	for range nativeSemanticEffects - 1 {
 		send(event.Target(), sessionapi.NativeOperation{Reference: &sessionpresentation.ReferenceIntent{Version: event.Frame.View.Version, Thread: "main", Displayed: event.Frame.View.Main, Text: "retained selection"}})
@@ -230,6 +242,8 @@ func serveNativeProgressHost(t *testing.T) {
 				t.Fatalf("untrimmed host input: %+v", params.Input)
 			}
 			result["turn"] = map[string]any{"id": "original"}
+		case "thread/shellCommand":
+			t.Fatal("busy queued shell reached host before restoration")
 		case "turn/interrupt":
 			t.Fatal("completed original action reached host interruption")
 		}

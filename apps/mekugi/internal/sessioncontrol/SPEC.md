@@ -113,7 +113,7 @@ For conversation input, Enter accepts a steer for an active turn; delivery waits
 until the assistant message active at submission finishes, then uses that active turn
 without waiting for turn completion. Tab queues for the next turn and submits while idle. Logical waiting remains busy for Tab: queued composer input
 waits for the resumed work to finish, while Enter can supersede the wait.
-Shell commands use their immediate-submission behavior below.
+Shell commands follow the native-shell behavior below.
 Alt-Up/Shift-Left restores only locally waiting input into the requesting editor,
 including input queued in another attached view; transmitted steers remain
 host-owned. Explicit queue steering promotes ordinary queued messages through
@@ -181,16 +181,22 @@ stopping their client process does not establish container shutdown.
 
 ### Native shell
 
-With an initial `!`, Enter or Tab immediately submits literal shell syntax, minus
+With an initial `!`, Enter immediately submits literal shell syntax, minus
 the marker and surrounding whitespace, through `thread/shellCommand`, including
-while Main is busy. It never becomes model input or local execution.
+while Main is busy. Tab submits while idle, but queues while busy, including logical
+waiting. Queued shell commands retain FIFO order with queued messages and run only
+after Main work ends, one command at a time. They cannot be promoted to steers or
+combined with prose. They never become model input or local execution.
+Retraction restores a shell draft separately; commands that cannot occupy an empty
+composer remain in input history rather than being joined to other input.
 Empty commands remain editable; attachments must be removed first. Codex uses the
 thread shell/workspace with full access and owns output, interruption and durable
 history. During Main work it injects command/output into that turn; while idle it
 does not start a model reply, and ordinary model input waits for standalone shell
 completion. Acknowledgement settles submission, not execution. Compaction blocks
-shell submission for retry. Rejected commands return to an empty composer or, when
-newer prose exists, local history instead. Observed edits use the ordinary recorder.
+immediate shell submission for retry; queued commands wait. Rejected commands return
+to an empty composer or, when newer prose exists, local history instead. Observed
+edits use the ordinary recorder.
 
 A shell submitted during a logical wait runs before Main resumes. After shell
 acknowledgement and successful host-turn settlement, Main continues once with

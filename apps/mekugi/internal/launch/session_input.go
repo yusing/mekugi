@@ -112,7 +112,7 @@ func (session *nativeSession) applyComposerCommand(attached *attachedPresentatio
 			return false, session.submitBTW(attached, picker, editor, clock, side, session.overlayOpen(*panel, *resumePicker), preparation)
 		}
 		if attached.conversation.ShellMode() {
-			return false, session.submitShell(attached, picker, editor, clock, parent)
+			return false, session.submitShell(attached, picker, editor, clock, parent, false)
 		}
 		if fields := strings.Fields(text); len(fields) > 1 && (fields[0] == "/fork" || fields[0] == "/rewind") {
 			setNotice(&attached.feedback, presentationTime(clock), "Use "+fields[0]+" without arguments", true)
@@ -172,9 +172,12 @@ func (session *nativeSession) applyComposerCommand(attached *attachedPresentatio
 		if text == "/compact" {
 			return false, session.submitCompact(attached, picker, editor, clock, parent, true)
 		}
-		if attached.conversation.ShellMode() || text == "" || strings.HasPrefix(text, "/") || !session.Client.PlanInput(sessioncontrol.QueueNextTurn, false).Queued {
+		if text == "" || strings.HasPrefix(text, "/") || !session.Client.PlanInput(sessioncontrol.QueueNextTurn, false).Queued {
 			intent.Operation = sessionpresentation.SubmitComposer
 			return session.applyComposerCommand(attached, picker, editor, clock, side, panel, resumePicker, parent, files, intent, preparation)
+		}
+		if attached.conversation.ShellMode() {
+			return false, session.submitShell(attached, picker, editor, clock, parent, true)
 		}
 		view := attached.presentation.View()
 		return false, session.submitInput(attached, picker, editor, clock, side, session.overlayOpen(*panel, *resumePicker), parent, sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})

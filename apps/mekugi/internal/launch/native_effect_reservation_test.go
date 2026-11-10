@@ -26,7 +26,7 @@ func TestNativeShellReservationSurvivesHostAcknowledgement(t *testing.T) {
 			reservation := view.effects.reserve(1)
 			view.effects.current = reservation
 			u.Editor = &composer.Editor{Text: "!pwd"}
-			if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
+			if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx, false); err != nil {
 				t.Fatal(err)
 			}
 			view.effects.current = nil

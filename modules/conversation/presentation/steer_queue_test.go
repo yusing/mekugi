@@ -8,7 +8,7 @@ import (
 func TestSteerQueuedPreservesBoundInputAndSpecialEntries(t *testing.T) {
 	m := new(Session)
 	m.QueueInput(Input{Text: "already waiting"}, false)
-	for _, part := range []Input{{Text: "next", Attachments: []string{"snapshot"}, Origin: "browser", Delivery: 7, MessageBoundary: 9}, {Text: "/compact", Compact: new(CompactIntent{})}, {Text: "answer", Question: &prompt.Call{}}} {
+	for _, part := range []Input{{Text: "next", Attachments: []string{"snapshot"}, Origin: "browser", Delivery: 7, MessageBoundary: 9}, {Text: "/compact", Compact: new(CompactIntent{})}, {Text: "answer", Question: &prompt.Call{}}, {Text: "!pwd", ShellCommand: "pwd"}} {
 		m.QueueInput(part, true)
 	}
 	if !m.Queued[0].NextTurn || m.Queued[0].MessageBoundary != 0 || !m.Pending(nil, Waiting).CanSteer || !m.SteerQueued(42) {
@@ -17,7 +17,7 @@ func TestSteerQueuedPreservesBoundInputAndSpecialEntries(t *testing.T) {
 	if len(m.Unsent) != 2 || m.Unsent[1].NextTurn || m.Unsent[1].MessageBoundary != 42 || m.Unsent[1].Origin != "browser" || m.Unsent[1].Delivery != 7 || m.Unsent[1].Attachments[0] != "snapshot" {
 		t.Fatalf("promotion changed retained input: %+v", m.Unsent)
 	}
-	if len(m.Queued) != 2 || m.Queued[0].Text != "/compact" || m.Queued[1].Question == nil || (m.SteerQueued(0) || m.Pending(nil, Waiting).CanSteer) {
+	if len(m.Queued) != 3 || m.Queued[0].Text != "/compact" || m.Queued[1].Question == nil || (m.SteerQueued(0) || m.Pending(nil, Waiting).CanSteer) {
 		t.Fatal("promoted special entries or repeated a message")
 	}
 }
@@ -38,5 +38,17 @@ func TestLiteralCompactInputBatchesAndSteersAsMessage(t *testing.T) {
 	m.QueueInput(command, true)
 	if !m.SteerQueued(0) || len(m.Unsent) != 1 || m.Unsent[0].Compact != nil || len(m.Queued) != 1 || m.Queued[0].Compact == nil {
 		t.Fatal("literal text was treated as a non-steerable command")
+	}
+}
+
+func TestShellQueueBatchBoundaries(t *testing.T) {
+	shell := Input{Text: "!pwd", ShellCommand: "pwd"}
+	stack := []Input{{Text: "before"}, shell, shell, {Text: "after"}}
+	for i := range 4 {
+		batch, rest := Batch(stack)
+		if len(batch) != 1 || len(rest) != 3-i {
+			t.Fatalf("shell joined another input: %+v", batch)
+		}
+		stack = rest
 	}
 }

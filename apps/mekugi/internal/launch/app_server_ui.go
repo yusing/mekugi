@@ -502,7 +502,8 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 					}
 					requestEditor.Replace(request.Prepared.Draft)
 					if strings.HasPrefix(text, "!") {
-						err = session.submitShell(&view.attached, &view.picker, &requestEditor, session.clock, session.ctx)
+						queued := intent.Operation == sessionpresentation.QueueComposer && session.Client.PlanInput(sessioncontrol.QueueNextTurn, false).Queued
+						err = session.submitShell(&view.attached, &view.picker, &requestEditor, session.clock, session.ctx, queued)
 						if requestEditor.Text != "" {
 							return view.attached.feedback.Text, err
 						}

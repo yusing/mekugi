@@ -36,7 +36,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item string) *executionobservation.ShellOperation {
 	t.Helper()
 	u.Text = "!" + command
-	if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
+	if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	edit := u.shellEdits.pending
@@ -152,7 +152,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 	}
 	// A rejected request closes its window without capturing external edits.
 	u.Text = "!printf rejected > saved.txt"
-	if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx); err != nil {
+	if err := u.nativeSession.submitShell(&u.attached, &u.picker, &u.Editor, u.clock, u.ctx, false); err != nil {
 		t.Fatal(err)
 	}
 	shellResponse(&u.attached, &u.Client, &u.Editor, u.clock, &u.shellEdits, &appserver.Error{Message: "rejected"})

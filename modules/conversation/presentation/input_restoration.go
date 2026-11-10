@@ -26,6 +26,9 @@ func (m *Session) RestoreInput(parts ...Input) InputRestoration {
 			}
 		} else if part.Origin != "" {
 			result.Detached = append(result.Detached, part)
+		} else if part.ShellCommand != "" && (len(parts) != 1 || m.Editor.Text != "" || m.Questions.Active != nil || m.Approvals.Open) {
+			// Never concatenate prose or another command onto executable input.
+			m.Editor.Remember(part.Draft)
 		} else {
 			ordinary = append(ordinary, part)
 		}
@@ -133,4 +136,6 @@ func (m *Session) SteerQueued(messageBoundary uint64) bool {
 	return promoted
 }
 
-func steerable(input Input) bool { return input.Question == nil && input.Compact == nil }
+func steerable(input Input) bool {
+	return input.Question == nil && input.Compact == nil && input.ShellCommand == ""
+}

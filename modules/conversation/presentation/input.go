@@ -47,10 +47,12 @@ type Input struct {
 	MessageBoundary uint64
 	// Delivery identifies reserved restoration capacity at the originating view.
 	// It is opaque provenance, not an execution capability or renderer owner.
-	Delivery   uint64
-	Compact    *CompactIntent
-	Question   *prompt.Call
-	ReplyCount int
+	Delivery uint64
+	// ShellCommand keeps queued executable input separate from model messages.
+	ShellCommand string
+	Compact      *CompactIntent
+	Question     *prompt.Call
+	ReplyCount   int
 }
 
 type Submission struct {
@@ -158,8 +160,8 @@ func Batch(stack []Input) ([]Input, []Input) {
 		return nil, nil
 	}
 	n := 1
-	if stack[0].Question == nil && stack[0].Compact == nil {
-		for n < len(stack) && stack[n].Question == nil && stack[n].Compact == nil && stack[n].MessageBoundary == stack[0].MessageBoundary {
+	if steerable(stack[0]) {
+		for n < len(stack) && steerable(stack[n]) && stack[n].MessageBoundary == stack[0].MessageBoundary {
 			n++
 		}
 	}

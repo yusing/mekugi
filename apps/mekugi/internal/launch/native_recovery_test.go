@@ -148,3 +148,33 @@ func TestRemoteRecoveryKeepsQueueDisposition(t *testing.T) {
 		}
 	}
 }
+
+func TestQueuedShellRecoveryKeepsExecutableBoundary(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		t.Run(map[bool]string{false: "native", true: "remote"}[remote], func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.startSession("main", t.TempDir())
+			h := remoteOwnerView(t, u)
+			h.view.remoteHuman = remote
+			h.views.restore(u.attached.executionPresentation, []conversation.Input{
+				{Origin: h.event.Attachment, Text: "!pwd", ShellCommand: "pwd", NextTurn: true},
+				{Origin: h.event.Attachment, Text: "ordinary prose", NextTurn: true},
+			})
+			effects := h.view.effects.publication()
+			if len(effects) != 2 || effects[0].Restore == nil || effects[0].Restore.Text != "ordinary prose" || effects[1].ShellRestore == nil || effects[1].ShellRestore.Text != "!pwd" || effects[1].Recovery == nil || !effects[1].Recovery.Queued {
+				t.Fatalf("shell recovery joined prose or lost disposition: %+v", effects)
+			}
+			if remote {
+				return
+			}
+			client := nativeTestPromptClient(u)
+			frame := client.event
+			frame.Frame.Effects = effects
+			client.accept(frame)
+			editor := client.editor("main")
+			if editor.Text != "ordinary prose" || len(editor.InputHistory) != 1 || editor.InputHistory[0].Text != "!pwd" {
+				t.Fatalf("native recovery merged executable draft: %+v", editor.Draft)
+			}
+		})
+	}
+}

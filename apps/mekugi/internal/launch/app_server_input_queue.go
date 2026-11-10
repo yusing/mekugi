@@ -79,7 +79,8 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, picker 
 	if session.restoring != nil || !session.Client.AcceptsInput() {
 		return nil
 	}
-	if len(attached.conversation.Unsent)+len(attached.conversation.Queued) > 0 {
+	shellNext := len(attached.conversation.Unsent) == 0 && len(attached.conversation.Queued) > 0 && attached.conversation.Queued[0].ShellCommand != ""
+	if !shellNext && len(attached.conversation.Unsent)+len(attached.conversation.Queued) > 0 {
 		if ready, err := session.guardHookCheck.check(&session.Client, attached); !ready || err != nil {
 			return err
 		}
@@ -89,6 +90,21 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, picker 
 		return applyInterruption(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, session.Client.Interrupt())
 	}
 	if len(next.Batch.Parts) == 0 && !next.Continue {
+		return nil
+	}
+	if len(next.Batch.Parts) == 1 && next.Batch.Parts[0].ShellCommand != "" {
+		input := next.Batch.Parts[0]
+		if !session.Client.AcceptsShell() {
+			attached.conversation.ReturnBatch(next.Batch)
+			return nil
+		}
+		if err := session.dispatchShell(attached, clock, parent, input.ShellCommand); err != nil {
+			attached.conversation.ReturnBatch(next.Batch)
+			return err
+		}
+		attached.conversation.Shell = input
+		attached.conversation.ShellFromEditor = true
+		session.guardHookCheck.readyThread = ""
 		return nil
 	}
 	childInput := attached.threadInput != nil && attached.threadInput.caller != "" && attached.threadInput.caller != "/root"

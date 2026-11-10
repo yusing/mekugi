@@ -39,7 +39,7 @@ func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live,
 // Source: codex-rs/tui/src/chatwidget/input_submission.rs:36:67@1cc7e236.
 // Codex owns execution, cancellation and history: active shell results inject
 // into the running turn; standalone results wait in history for the next input.
-func (session *nativeSession) submitShell(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context) error {
+func (session *nativeSession) submitShell(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, queued bool) error {
 	command := strings.TrimSpace(strings.TrimPrefix((*editor).Text, "!"))
 	if command == "" {
 		setNotice(&attached.feedback, presentationTime(clock), "Type a shell command after !", false)
@@ -48,7 +48,7 @@ func (session *nativeSession) submitShell(attached *attachedPresentation, picker
 	if session.Client.Thread == "" || session.restoring != nil {
 		return nil
 	}
-	if !session.Client.AcceptsShell() {
+	if !queued && !session.Client.AcceptsShell() {
 		setNotice(&attached.feedback, presentationTime(clock), "Waiting for the pending request · press Enter again when ready", false)
 		return nil
 	}
@@ -57,6 +57,12 @@ func (session *nativeSession) submitShell(attached *attachedPresentation, picker
 		return nil
 	}
 	delivery := attached.effects.input()
+	if queued {
+		input := conversationmodel.Input{Draft: (*editor).Take(), Origin: attached.view, Delivery: delivery, ShellCommand: command}
+		attached.conversation.QueueInput(input, true)
+		setNotice(&attached.feedback, presentationTime(clock), "Shell command queued", false)
+		return nil
+	}
 	if err := session.dispatchShell(attached, clock, parent, command); err != nil {
 		return err
 	}

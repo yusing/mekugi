@@ -120,6 +120,9 @@ func (e *nativeViewEffects) discardRecovery(id uint64) {
 func (n *nativeViews) restore(execution *executionPresentation, parts []conversation.Input) {
 	byView := make(map[string][]conversation.Input)
 	for _, part := range parts {
+		if part.ShellCommand != "" {
+			continue
+		}
 		byView[part.Origin] = append(byView[part.Origin], part)
 	}
 	for id, inputs := range byView {
@@ -150,6 +153,12 @@ func (n *nativeViews) restore(execution *executionPresentation, parts []conversa
 			view.effects.restore(inputs[i:i+1], sessionapi.NativeEffect{Thread: view.thread, Restore: new(input.Draft)})
 		}
 	}
+	// Restore prose first so a shell never becomes a prefix for later prose.
+	for _, part := range parts {
+		if part.ShellCommand != "" {
+			n.restoreShell(execution, part)
+		}
+	}
 }
 
 func (n *nativeViews) restoreShell(execution *executionPresentation, input conversation.Input) {
@@ -157,7 +166,11 @@ func (n *nativeViews) restoreShell(execution *executionPresentation, input conve
 	if view == nil || view.ctx.Err() != nil || view.attached.executionPresentation != execution {
 		return
 	}
-	view.effects.restore([]conversation.Input{input}, sessionapi.NativeEffect{Thread: view.thread, ShellRestore: new(input.Draft)})
+	effect := sessionapi.NativeEffect{Thread: view.thread, ShellRestore: new(input.Draft)}
+	if input.NextTurn {
+		effect.Recovery = &sessionapi.NativeRecoveryView{Queued: true}
+	}
+	view.effects.restore([]conversation.Input{input}, effect)
 }
 
 func (n *nativeViews) restoreSide(execution *executionPresentation, input conversation.Input, thread string) {
