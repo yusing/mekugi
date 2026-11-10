@@ -82,6 +82,10 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 	if err != nil {
 		return fail(err)
 	}
+	streamFlag := ""
+	if options.stream != "" {
+		streamFlag = " --" + options.stream
+	}
 	store, err := service.Attach(request.Scope, DefaultLimits(), nil)
 	if err != nil {
 		return fail(err)
@@ -156,7 +160,7 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 				if page.NeededTokens > commandargs.MaxOutputTokens {
 					return fmt.Errorf("next row needs ~%d tokens (maximum %d); use mrun with a byte-oriented command", page.NeededTokens, commandargs.MaxOutputTokens)
 				}
-				return fmt.Errorf("next row needs ~%d tokens; retry: mread %s --max-tokens %d", page.NeededTokens, id, page.NeededTokens)
+				return fmt.Errorf("next row needs ~%d tokens; retry: mread %s%s --max-tokens %d", page.NeededTokens, id, streamFlag, page.NeededTokens)
 			}
 			pageTokens := used
 			if page.Text != "" {
@@ -207,7 +211,7 @@ func (service *Service) execute(ctx context.Context, request command.Request) co
 		if options.maxTokens != 8000 {
 			budget = options.maxTokens
 		}
-		return command.Output{Stdout: result.String(), Stderr: diagnostics.String() + NextCall(strings.Join(nextHandles, " "), budget), ExitCode: 1}
+		return command.Output{Stdout: result.String(), Stderr: diagnostics.String() + NextCall(strings.Join(nextHandles, " ")+streamFlag, budget), ExitCode: 1}
 	}
 	status := 0
 	if diagnostics.Len() > 0 {

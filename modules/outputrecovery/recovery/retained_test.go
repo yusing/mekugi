@@ -104,6 +104,63 @@ func TestParseOutputReadDefaultBudgetAndOverride(t *testing.T) {
 	}
 }
 
+func TestReadCommandsPreserveSelectedStream(t *testing.T) {
+	for _, stream := range []string{"stdout", "stderr"} {
+		t.Run(stream, func(t *testing.T) {
+			session := openTestRecovery(t, t.TempDir())
+			publish := func(selected string) string {
+				t.Helper()
+				output := command.OmittedOutput{Stdout: "EXCLUDED stdout\n", Stderr: "EXCLUDED stderr\n", StdoutKind: "rows", StderrKind: "rows"}
+				if stream == "stdout" {
+					output.Stdout = selected
+				} else {
+					output.Stderr = selected
+				}
+				id, err := session.Publish(t.Context(), output, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return id
+			}
+			read := func(args ...string) command.Output {
+				t.Helper()
+				out, err := session.service.Execute(t.Context(), command.Request{Scope: session.scope, Args: args})
+				if err != nil || strings.Contains(out.Stdout, "EXCLUDED") {
+					t.Fatalf("selected read: %+v, %v", out, err)
+				}
+				return out
+			}
+			emitted := func(out command.Output, marker string) []string {
+				t.Helper()
+				_, next, ok := strings.Cut(out.Stderr, marker+": mread ")
+				if out.ExitCode != 1 || !ok {
+					t.Fatalf("expected %s: %+v", marker, out)
+				}
+				return strings.Fields(strings.SplitN(next, "\n", 2)[0])
+			}
+			first := publish(strings.Repeat("first selected evidence\n", 60))
+			second := publish("second selected evidence\n")
+			retry := emitted(read(second, "--"+stream, "--max-tokens", "1"), "retry")
+			if out := read(retry...); out.ExitCode != 0 || !strings.Contains(out.Stdout, "second selected evidence\n") {
+				t.Fatalf("retry: %+v", out)
+			}
+			out := read(first, second, "--"+stream, "--max-tokens", "64")
+			var recovered strings.Builder
+			for range 100 {
+				recovered.WriteString(out.Stdout)
+				if out.ExitCode == 0 {
+					if strings.Count(recovered.String(), "first selected evidence\n") != 60 || strings.Count(recovered.String(), "second selected evidence\n") != 1 {
+						t.Fatalf("lost selected evidence: %q", recovered.String())
+					}
+					return
+				}
+				out = read(emitted(out, "next_call")...)
+			}
+			t.Fatal("recovery did not finish")
+		})
+	}
+}
+
 func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 	t.Parallel()
 	store := openTestRecovery(t, t.TempDir())

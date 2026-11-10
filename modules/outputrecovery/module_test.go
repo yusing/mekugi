@@ -126,11 +126,11 @@ func TestRegisteredRecoveryBindsRowsAndStream(t *testing.T) {
 	if !strings.Contains(first.Stdout, "[rows 41:") || strings.Contains(first.Stdout, "captured diagnostic") {
 		t.Fatalf("row provenance=%+v", first)
 	}
-	inherited := execute(t, executable, selected, next...)
+	inherited := execute(t, executable, selected, next[0], "--max-tokens", "64")
 	if inherited.Stdout == "" || strings.Contains(inherited.Stdout, "captured diagnostic") {
 		t.Fatalf("inherited stream=%+v", inherited)
 	}
-	changed := execute(t, executable, selected, append(next, "--stderr")...)
+	changed := execute(t, executable, selected, next[0], "--stderr", "--max-tokens", "64")
 	if changed.ExitCode != 1 || changed.Stdout != "" || !strings.Contains(changed.Stderr, "continuation already binds a stream") || strings.Contains(changed.Stderr, "next_call:") {
 		t.Fatalf("changed selection=%+v", changed)
 	}

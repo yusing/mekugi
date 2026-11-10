@@ -212,7 +212,7 @@ func mrunRecoverDeliveryStream(t *testing.T, registry *frontends.Registry, invoc
 
 func mrunDeliveryReadReference(t *testing.T, diagnostic string) string {
 	t.Helper()
-	match := regexp.MustCompile(`(?m)^read: incomplete; next_call: mread ([a-z]+[0-9]*)(?: --max-tokens [0-9]+)?$`).FindStringSubmatch(strings.TrimSpace(diagnostic))
+	match := regexp.MustCompile(`(?m)^read: incomplete; next_call: mread ([a-z]+[0-9]*)(?: --(?:stdout|stderr))?(?: --max-tokens [0-9]+)?$`).FindStringSubmatch(strings.TrimSpace(diagnostic))
 	if len(match) != 2 {
 		t.Fatalf("missing single mread continuation in %q", diagnostic)
 	}
