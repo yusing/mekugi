@@ -132,6 +132,12 @@ func mergeHostHistory(old, next legacycall.History) (legacycall.History, error) 
 			metadata := key == "internal_chat_message_metadata_passthrough"
 			finalized := key == "status" && string(before) == `"in_progress"` && (string(compact) == `"completed"` || string(compact) == `"incomplete"`)
 			if !bytes.Equal(before, compact) && !metadata && !finalized {
+				// Input completion reconstructs strings, while later provider items
+				// retain their wire escapes. Compare payload text, not its encoding,
+				// and keep the first retained spelling. Arguments stay opaque text.
+				if (key == "input" || key == "arguments") && before.Kind() == '"' && compact.Kind() == '"' && responses.SameJSONValue(before, compact) {
+					continue
+				}
 				return next, &HostConflict{Field: key}
 			}
 		}

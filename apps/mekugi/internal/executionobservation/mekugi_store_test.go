@@ -419,6 +419,73 @@ func TestMekugiReplayStoreStructuredFieldWhitespaceRetry(t *testing.T) {
 	}
 }
 
+func TestMekugiReplayStorePayloadStringEscapes(t *testing.T) {
+	for _, field := range []string{"input", "arguments"} {
+		t.Run(field, func(t *testing.T) {
+			dir := t.TempDir()
+			store, err := openMekugiReplayStore(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload := `{"x":"<>& café /"}`
+			original := responses.MustMarshalJSON(payload)
+			h := mekugiHistory{UpstreamItem: map[string]json.RawMessage{field: original}}
+			if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": h}); err != nil {
+				t.Fatal(err)
+			}
+			h.UpstreamItem[field] = json.RawMessage(strings.NewReplacer(
+				"<", `\u003c`, ">", `\u003e`, "&", `\u0026`, "é", `\u00e9`, "/", `\/`,
+			).Replace(string(original)))
+			if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": h}); err != nil {
+				t.Fatalf("equivalent payload string escapes conflicted: %v", err)
+			}
+			store, err = openMekugiReplayStore(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, found, err := store.lookup(t.Context(), "/w", "call")
+			if err != nil || !found || !bytes.Equal(got.UpstreamItem[field], original) {
+				t.Fatalf("original payload spelling not retained: found=%v err=%v", found, err)
+			}
+			before := responses.MustMarshalJSON(got)
+			for _, changed := range []json.RawMessage{
+				responses.MustMarshalJSON(payload + " "),
+				responses.MustMarshalJSON(strings.ReplaceAll(payload, ">", `\u003e`)),
+				json.RawMessage(`null`), json.RawMessage(`1`), json.RawMessage(`{}`), json.RawMessage(`""`),
+			} {
+				h.UpstreamItem[field] = changed
+				err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": h})
+				conflict, ok := errors.AsType[*history.HostConflict](err)
+				if !ok || conflict.Field != field {
+					t.Fatalf("changed payload accepted or misclassified: %s, %v", changed, err)
+				}
+				got, found, err := store.lookup(t.Context(), "/w", "call")
+				if err != nil || !found || !bytes.Equal(responses.MustMarshalJSON(got), before) {
+					t.Fatalf("rejected payload changed retained state: found=%v err=%v", found, err)
+				}
+			}
+			for _, pair := range [][2]json.RawMessage{
+				{json.RawMessage(`""`), json.RawMessage(`null`)},
+				{json.RawMessage(`null`), json.RawMessage(`""`)},
+			} {
+				callID := "type-" + string(pair[0])
+				h.UpstreamItem[field] = pair[0]
+				if err := store.put(t.Context(), "/w", map[string]mekugiHistory{callID: h}); err != nil {
+					t.Fatal(err)
+				}
+				h.UpstreamItem[field] = pair[1]
+				if err := store.put(t.Context(), "/w", map[string]mekugiHistory{callID: h}); err == nil {
+					t.Fatal("accepted null/empty-string substitution")
+				}
+				got, found, err := store.lookup(t.Context(), "/w", callID)
+				if err != nil || !found || !bytes.Equal(got.UpstreamItem[field], pair[0]) {
+					t.Fatalf("rejected type change altered retained state: found=%v err=%v", found, err)
+				}
+			}
+		})
+	}
+}
+
 func TestReplayItemConflictReportsSafeCause(t *testing.T) {
 	old := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": responses.MustMarshalJSON("private old script")}}
 	next := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": responses.MustMarshalJSON("private new script")}}

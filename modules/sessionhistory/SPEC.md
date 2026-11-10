@@ -170,6 +170,8 @@ thread identity from cache-key spelling.
 
 Host-record publication preserves original translation facts while merging
 completed status, provider passthrough metadata and generated-commentary identities.
+Equivalent JSON string escapes in tool input and arguments preserve the first retained
+spelling; arguments remain opaque text, including their internal whitespace.
 Other conflicting payload changes fail. Capture consumers decide whether a new
 record needs an order; this owner allocates and preserves it under publication.
 
