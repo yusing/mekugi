@@ -21,5 +21,12 @@ creation/active-session leases:
 make test TEST_PACKAGES='./modules/symbolquery/query ./apps/mekugi/internal/launch' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
-For test CPU/block profiles, pass temporary `-cpuprofile`, `-blockprofile` and `-o` paths through
-`TEST_FLAGS`. Inspect CPU and block profiles with `go tool pprof`; summed blocked time is not wall time.
+For test CPU/block profiles, select one package and set `TEST_SUPPORT_PACKAGES=` so
+the runner does not add another package. Pass temporary `-cpuprofile`, `-blockprofile`
+and `-o` paths through `TEST_FLAGS`:
+
+```sh
+make test TEST_PACKAGES=./modules/symbolquery/query TEST_SUPPORT_PACKAGES= TEST_RUN='^TestNativeSymbol' TEST_FLAGS='-cpuprofile=/tmp/mekugi-symbol.cpu -blockprofile=/tmp/mekugi-symbol.block -o=/tmp/mekugi-symbol.test'
+```
+
+Inspect profiles with `go tool pprof`; summed blocked time is not wall time.
