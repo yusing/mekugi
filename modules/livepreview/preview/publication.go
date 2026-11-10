@@ -72,45 +72,66 @@ func previewDiffWindow(file diffmodel.ReviewFile, workspace string, limit int) s
 	if len(diff) <= limit {
 		return diff
 	}
-	lines := strings.SplitAfter(diff, "\n")
-	end := len(lines)
-	for i := len(lines) - 1; i >= 2; i-- {
-		if strings.HasPrefix(lines[i], "+") {
-			end = i + 1
+	// Keep byte offsets into the diff, not an inventory of every source row.
+	headerEnd := 0
+	for range 2 {
+		next := strings.IndexByte(diff[headerEnd:], '\n')
+		if next < 0 {
+			headerEnd = len(diff)
 			break
 		}
+		headerEnd += next + 1
 	}
-	start, size := end, 0
-	for start > 0 && size+len(lines[start-1]) <= limit {
-		start--
-		size += len(lines[start])
+	end := len(diff)
+	if addition := strings.LastIndex(diff, "\n+") + 1; addition >= headerEnd && addition > 0 {
+		if next := strings.IndexByte(diff[addition:], '\n'); next >= 0 {
+			end = addition + next + 1
+		}
+	}
+	start := max(0, end-limit)
+	if start > 0 && diff[start-1] != '\n' {
+		if next := strings.IndexByte(diff[start:end], '\n'); next >= 0 {
+			start += next + 1
+		} else {
+			start = end
+		}
 	}
 	if start == 0 {
-		return strings.Join(lines[:end], "")
+		return strings.Clone(diff[:end]) // Do not retain an oversized deletion suffix.
 	}
 	// Unified file headers are the first two rows. Source lines that happen
 	// to start with "--- " or "+++ " are still source, not extra headers.
-	header := strings.Join(lines[:min(2, len(lines))], "")
+	header := diff[:headerEnd]
 	hunk := ""
-	for i := start - 1; i >= 0; i-- {
-		if strings.HasPrefix(lines[i], "@@ ") {
-			hunk = lines[i]
-			break
+	hunkStart := strings.LastIndex(diff[:start], "\n@@ ")
+	if hunkStart >= 0 {
+		hunkStart++
+	} else if strings.HasPrefix(diff[:start], "@@ ") {
+		hunkStart = 0
+	}
+	if hunkStart >= 0 {
+		hunkEnd := start
+		if next := strings.IndexByte(diff[hunkStart:start], '\n'); next >= 0 {
+			hunkEnd = hunkStart + next + 1
 		}
+		hunk = diff[hunkStart:hunkEnd]
 	}
 	if len(header)+len(hunk) >= limit {
 		return "" // An older file cannot displace the newer source window.
 	}
-	for start < end && len(header)+len(hunk)+size > limit {
-		if strings.HasPrefix(lines[start], "@@ ") {
-			hunk = lines[start]
+	for start < end && len(header)+len(hunk)+end-start > limit {
+		next := end
+		if newline := strings.IndexByte(diff[start:end], '\n'); newline >= 0 {
+			next = start + newline + 1
 		}
-		size -= len(lines[start])
-		start++
+		if strings.HasPrefix(diff[start:next], "@@ ") {
+			hunk = diff[start:next]
+		}
+		start = next
 	}
-	if size == 0 && end > 0 {
+	if start == end && end > 0 {
 		// Preserve a long source row's UTF-8 suffix and its diff marker.
-		line := strings.TrimSuffix(strings.Join(lines[:end], ""), "\n")
+		line := strings.TrimSuffix(diff[:end], "\n")
 		line = line[strings.LastIndexByte(line, '\n')+1:]
 		budget := limit - len(header) - len(hunk) - 2
 		if budget > 0 && len(line) > 1 {
@@ -121,7 +142,7 @@ func previewDiffWindow(file diffmodel.ReviewFile, workspace string, limit int) s
 			return header + hunk + line[:1] + line[cut:] + "\n"
 		}
 	}
-	return header + hunk + strings.Join(lines[start:end], "")
+	return header + hunk + diff[start:end]
 }
 
 // Cleanup only live state. An unconditional removal would overwrite an atomic
