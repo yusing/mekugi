@@ -16,7 +16,7 @@ func (session *nativeSession) interruptSession(attached *attachedPresentation, p
 		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, (*side), clock, &session.questions, &session.approvals, overlay)
 	}()
 	if intent.Target.Thread != session.Client.Thread {
-		if _, err := attached.presentation.ResolveSideInterrupt(intent, *side); err != nil {
+		if err := attached.presentation.ResolveSideInterrupt(intent, *side); err != nil {
 			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 			return nil
 		}

@@ -14,22 +14,20 @@ import (
 
 func TestUISnapshotSideSettingsNotice(t *testing.T) {
 	for _, test := range []struct {
-		name, command, result, notice string
-		failure                       bool
+		name, result, notice string
+		failure              bool
 	}{
-		{"idle", "/oneoff task", "", "Settings saved for next turn", false},
-		{"applied", "/oneoff task", `{"status":"applied"}`, "Settings updated", false},
-		{"finished", "/oneoff task", `{"status":"targetUnavailable"}`, "Settings saved for next turn", false},
-		{"rejected", "/oneoff task", "", "Settings update failed: rejected", true},
+		{"idle", "", "Settings saved for next turn", false},
+		{"applied", `{"status":"applied"}`, "Settings updated", false},
+		{"finished", `{"status":"targetUnavailable"}`, "Settings saved for next turn", false},
+		{"rejected", "", "Settings update failed: rejected", true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.clock = func() time.Time { return time.Date(2026, 1, 1, 12, 0, 0, 0, time.Local) }
-			appServerTestKeys(t, u, test.command+"\r")
+			appServerTestKeys(t, u, "/oneoff task\r")
 			btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"},"model":"test","reasoningEffort":"low"}`)
-			if u.side.OneOff {
-				btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
-			}
+			btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
 			if test.name == "idle" {
 				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "completed"}})
 			}
@@ -99,42 +97,34 @@ func TestAppServerSettingsReasoningKeys(t *testing.T) {
 }
 
 func TestAppServerSideSettings(t *testing.T) {
-	for _, command := range []string{"/oneoff task"} {
-		t.Run(command, func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			u.settings.Model, u.settings.Effort = "main-model", "high"
-			if err := json.Unmarshal([]byte(`[{"model":"side-model","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]`), &u.models); err != nil {
-				t.Fatal(err)
-			}
-			appServerTestKeys(t, u, command+"\r")
-			fork := btwTestRequest(t, w, "thread/fork", "main")
-			btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"side-model","reasoningEffort":"high"}`)
-			if u.side.OneOff {
-				start := btwTestRequest(t, w, "turn/start", "side")
-				btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-			}
-			appServerTestKeys(t, u, "\x1b[1;2B")
-			assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "side", "effort": "low"})
-			if u.side.Effort != "high" || u.Settings.Pending() {
-				t.Fatal("side intent changed authoritative settings or Main admission")
-			}
-			// Switching views cannot redirect the confirmation or active-turn repair.
-			selectSideThread(t, u, u.attached.presentation.View().Main)
-			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "side", "threadSettings": map[string]any{"model": "side-model", "effort": "low"}})
-			if u.side.OneOff {
-				assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "side", "turnId": "side-turn", "effort": "low"})
-				appServerTestMessage(t, u, `{"id":4,"result":{"status":"applied"}}`)
-			}
-			if u.side.Effort != "low" || u.settings.Effort != "high" || u.settings.Model != "main-model" {
-				t.Fatal("host-confirmed side settings leaked into Main or remained pending")
-			}
-			selectSideThread(t, u, u.attached.presentation.View().SideThread)
-			appServerTestKeys(t, u, "/model custom\r")
-			assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "side", "model": "custom"})
-			if u.side.Model != "side-model" {
-				t.Fatal("model changed before confirmation")
-			}
-		})
+	u, w := newAppServerTestUI()
+	u.settings.Model, u.settings.Effort = "main-model", "high"
+	if err := json.Unmarshal([]byte(`[{"model":"side-model","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]`), &u.models); err != nil {
+		t.Fatal(err)
+	}
+	appServerTestKeys(t, u, "/oneoff task\r")
+	fork := btwTestRequest(t, w, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"side"},"model":"side-model","reasoningEffort":"high"}`)
+	start := btwTestRequest(t, w, "turn/start", "side")
+	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
+	appServerTestKeys(t, u, "\x1b[1;2B")
+	assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "side", "effort": "low"})
+	if u.side.Effort != "high" || u.Settings.Pending() {
+		t.Fatal("side intent changed authoritative settings or Main admission")
+	}
+	// Switching views cannot redirect the confirmation or active-turn repair.
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "side", "threadSettings": map[string]any{"model": "side-model", "effort": "low"}})
+	assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "side", "turnId": "side-turn", "effort": "low"})
+	appServerTestMessage(t, u, `{"id":4,"result":{"status":"applied"}}`)
+	if u.side.Effort != "low" || u.settings.Effort != "high" || u.settings.Model != "main-model" {
+		t.Fatal("host-confirmed side settings leaked into Main or remained pending")
+	}
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	appServerTestKeys(t, u, "/model custom\r")
+	assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "side", "model": "custom"})
+	if u.side.Model != "side-model" {
+		t.Fatal("model changed before confirmation")
 	}
 }
 

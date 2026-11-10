@@ -174,69 +174,62 @@ func TestAppServerBTWBusyRetainsDraft(t *testing.T) {
 }
 
 func TestSideRunningComposerSteersOwnTurn(t *testing.T) {
-	for _, command := range []string{"/oneoff  question  "} {
-		t.Run(command, func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			u.Turn = "main-turn"
-			appServerTestKeys(t, u, command+"\r")
-			fork := btwTestRequest(t, w, "thread/fork", "main")
-			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			start := btwTestRequest(t, w, "turn/start", "work-side")
-			if got := start.Params.Input; len(got) != 2 || got[1].Text != "question" {
-				t.Fatalf("start input = %+v", got)
-			}
-			appServerTestKeys(t, u, "start draft\r")
-			if u.Text != "start draft" || w.Len() != 0 {
-				t.Fatal("start admission consumed the draft")
-			}
-			u.Editor.Take()
-			btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-			appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"work-side","turnId":"side-turn","itemId":"answer","delta":"partial"}}`)
-			appServerTestKeys(t, u, "  change direction  \r")
-			steer := btwTestRequest(t, w, "turn/steer", "work-side")
-			if steer.Params.ExpectedTurnID != "side-turn" || u.Text != "" || u.Turn != "main-turn" {
-				t.Fatalf("wrong steering target or draft: %+v, %q", steer, u.Text)
-			}
-			if got := steer.Params.Input; len(got) != 1 || got[0].Text != "change direction" {
-				t.Fatalf("steering input = %+v", got)
-			}
-			btwTestReply(t, u, steer, `{}`)
-			if !u.side.OneOff && (len(u.side.Answer) != 1 || u.side.Answer[0].Text != "partial") {
-				t.Fatalf("steering reset the exchange: %+v", u.side.SideAnswer)
-			}
-			frame := strings.Join(u.sideFrame(100, 24), "\n")
-			if !strings.Contains(frame, "change direction") || !u.side.OneOff && !strings.Contains(frame, "partial") {
-				t.Fatalf("steering absent from Side transcript: %s", frame)
-			}
-			if u.side.Question != "question\n\nchange direction" {
-				t.Fatalf("steering lost from exchange: %+v", u.side.SideAnswer)
-			}
-			appServerTestKeys(t, u, "rejected steer\r")
-			rejected := btwTestRequest(t, w, "turn/steer", "work-side")
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"turn changed"}}`, rejected.ID))
-			if u.Text != "rejected steer" || !u.side.Busy || u.side.Turn != "side-turn" {
-				t.Fatal("rejected steer lost its draft or ended the turn")
-			}
-			u.Editor.Take()
-			appServerTestKeys(t, u, "late steer\r")
-			late := btwTestRequest(t, w, "turn/steer", "work-side")
-			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"work-side","turn":{"id":"side-turn","status":"completed"}}}`)
-			appServerTestKeys(t, u, "new question\r")
-			_ = btwTestRequest(t, w, "turn/start", "work-side")
-			btwTestReply(t, u, late, `{}`)
-			if u.side.Question != "new question" || !strings.Contains(u.side.History[0].Question, "late steer") {
-				t.Fatal("late steering acknowledgement changed a newer exchange")
-			}
-			frame = strings.Join(u.sideFrame(100, 30), "\n")
-			for _, want := range []string{"change direction", "late steer", "new question"} {
-				if !strings.Contains(frame, want) {
-					t.Fatalf("retained exchange lost %q: %s", want, frame)
-				}
-			}
-			if u.Turn != "main-turn" {
-				t.Fatal("side input changed Main's turn")
-			}
-		})
+	u, w := newAppServerTestUI()
+	u.Turn = "main-turn"
+	appServerTestKeys(t, u, "/oneoff  question  \r")
+	fork := btwTestRequest(t, w, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
+	start := btwTestRequest(t, w, "turn/start", "work-side")
+	if got := start.Params.Input; len(got) != 2 || got[1].Text != "question" {
+		t.Fatalf("start input = %+v", got)
+	}
+	appServerTestKeys(t, u, "start draft\r")
+	if u.Text != "start draft" || w.Len() != 0 {
+		t.Fatal("start admission consumed the draft")
+	}
+	u.Editor.Take()
+	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
+	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"work-side","turnId":"side-turn","itemId":"answer","delta":"partial"}}`)
+	appServerTestKeys(t, u, "  change direction  \r")
+	steer := btwTestRequest(t, w, "turn/steer", "work-side")
+	if steer.Params.ExpectedTurnID != "side-turn" || u.Text != "" || u.Turn != "main-turn" {
+		t.Fatalf("wrong steering target or draft: %+v, %q", steer, u.Text)
+	}
+	if got := steer.Params.Input; len(got) != 1 || got[0].Text != "change direction" {
+		t.Fatalf("steering input = %+v", got)
+	}
+	btwTestReply(t, u, steer, `{}`)
+	frame := strings.Join(u.sideFrame(100, 24), "\n")
+	if !strings.Contains(frame, "change direction") {
+		t.Fatalf("steering absent from Side transcript: %s", frame)
+	}
+	if u.side.Question != "question\n\nchange direction" {
+		t.Fatalf("steering lost from exchange: %+v", u.side.SideAnswer)
+	}
+	appServerTestKeys(t, u, "rejected steer\r")
+	rejected := btwTestRequest(t, w, "turn/steer", "work-side")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"turn changed"}}`, rejected.ID))
+	if u.Text != "rejected steer" || !u.side.Busy || u.side.Turn != "side-turn" {
+		t.Fatal("rejected steer lost its draft or ended the turn")
+	}
+	u.Editor.Take()
+	appServerTestKeys(t, u, "late steer\r")
+	late := btwTestRequest(t, w, "turn/steer", "work-side")
+	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"work-side","turn":{"id":"side-turn","status":"completed"}}}`)
+	appServerTestKeys(t, u, "new question\r")
+	_ = btwTestRequest(t, w, "turn/start", "work-side")
+	btwTestReply(t, u, late, `{}`)
+	if u.side.Question != "new question" || !strings.Contains(u.side.History[0].Question, "late steer") {
+		t.Fatal("late steering acknowledgement changed a newer exchange")
+	}
+	frame = strings.Join(u.sideFrame(100, 30), "\n")
+	for _, want := range []string{"change direction", "late steer", "new question"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("retained exchange lost %q: %s", want, frame)
+		}
+	}
+	if u.Turn != "main-turn" {
+		t.Fatal("side input changed Main's turn")
 	}
 }
 
@@ -749,150 +742,138 @@ func TestSideSwitchRetiresRewindPickerRead(t *testing.T) {
 }
 
 func TestUISnapshotBTWAlongsideActiveSide(t *testing.T) {
-	for _, command := range []string{"/oneoff inspect"} {
-		t.Run(command, func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			u.clock = func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.Local) }
-			appServerTestKeys(t, u, command+"\r")
-			fork := btwTestRequest(t, w, "thread/fork", "main")
-			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			start := btwTestRequest(t, w, "turn/start", "work-side")
-			btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
-			owner := u.side
-			selectSideThread(t, u, u.attached.presentation.View().Main)
-			appServerTestKeys(t, u, "/btw explain independently\r")
-			fork = btwTestRequest(t, w, "thread/fork", "main")
-			btwTestReply(t, u, fork, `{"thread":{"id":"question"}}`)
-			start = btwTestRequest(t, w, "turn/start", "question")
-			btwTestReply(t, u, start, `{"turn":{"id":"question-turn"}}`)
-			selectSideThread(t, u, u.attached.presentation.View().SideThread)
-			if u.side != owner || owner.Turn != "work-turn" || u.BTW == owner || u.BTW.Thread != "question" || !u.attached.presentation.DisplayingSide() {
-				t.Fatal("BTW replaced or reused the active Side operation")
-			}
-			appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"work-side","turnId":"work-turn","itemId":"work-answer","delta":"Side continues working"}}`)
-			appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"question","turnId":"question-turn","itemId":"question-answer","delta":"Independent BTW answer"}}`)
-			if len(u.BTW.Answer) != 1 || u.BTW.Answer[0].Text != "Independent BTW answer" {
-				t.Fatal("BTW output crossed conversations")
-			}
-			for _, width := range []int{40, 100} {
-				u.sideFrame(width, 24)
-				rows := terminalTest(u).Frame.Rows
-				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/btw-alongside-One-off-%d.txt", width), rows, width)
-			}
-			selectSideThread(t, u, u.attached.presentation.View().Main)
-			appServerTestKeys(t, u, "kept side draft")
-			if err := terminalTest(u).send("\x1b"); err != nil {
-				t.Fatal(err)
-			}
-			interrupt := btwTestRequest(t, w, "turn/interrupt", "question")
-			if u.BTW != nil || u.side != owner || owner.Turn != "work-turn" || u.Text != "kept side draft" {
-				t.Fatal("closing BTW disturbed Side")
-			}
-			btwTestReply(t, u, interrupt, `{}`)
-			btwTestRequest(t, w, "thread/archive", "question")
+	u, w := newAppServerTestUI()
+	u.clock = func() time.Time { return time.Date(2026, 10, 21, 12, 0, 0, 0, time.Local) }
+	appServerTestKeys(t, u, "/oneoff inspect\r")
+	fork := btwTestRequest(t, w, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
+	start := btwTestRequest(t, w, "turn/start", "work-side")
+	btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
+	owner := u.side
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	appServerTestKeys(t, u, "/btw explain independently\r")
+	fork = btwTestRequest(t, w, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"question"}}`)
+	start = btwTestRequest(t, w, "turn/start", "question")
+	btwTestReply(t, u, start, `{"turn":{"id":"question-turn"}}`)
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	if u.side != owner || owner.Turn != "work-turn" || u.BTW == owner || u.BTW.Thread != "question" || !u.attached.presentation.DisplayingSide() {
+		t.Fatal("BTW replaced or reused the active Side operation")
+	}
+	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"work-side","turnId":"work-turn","itemId":"work-answer","delta":"Side continues working"}}`)
+	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"question","turnId":"question-turn","itemId":"question-answer","delta":"Independent BTW answer"}}`)
+	if len(u.BTW.Answer) != 1 || u.BTW.Answer[0].Text != "Independent BTW answer" {
+		t.Fatal("BTW output crossed conversations")
+	}
+	for _, width := range []int{40, 100} {
+		u.sideFrame(width, 24)
+		rows := terminalTest(u).Frame.Rows
+		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/btw-alongside-One-off-%d.txt", width), rows, width)
+	}
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	appServerTestKeys(t, u, "kept side draft")
+	if err := terminalTest(u).send("\x1b"); err != nil {
+		t.Fatal(err)
+	}
+	interrupt := btwTestRequest(t, w, "turn/interrupt", "question")
+	if u.BTW != nil || u.side != owner || owner.Turn != "work-turn" || u.Text != "kept side draft" {
+		t.Fatal("closing BTW disturbed Side")
+	}
+	btwTestReply(t, u, interrupt, `{}`)
+	btwTestRequest(t, w, "thread/archive", "question")
 
-			// The Side operation can close while a new BTW fork is pending.
-			u.Editor.Take()
-			appServerTestKeys(t, u, "/btw another question\r")
-			fork = btwTestRequest(t, w, "thread/fork", "main")
-			question := u.BTW
-			if err := closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
-				t.Fatal(err)
-			}
-			btwTestRequest(t, w, "turn/interrupt", "work-side")
-			btwTestReply(t, u, fork, `{"thread":{"id":"new-question"}}`)
-			btwTestRequest(t, w, "turn/start", "new-question")
-			if u.BTW != question || u.side != nil {
-				t.Fatal("closing Side disturbed BTW")
-			}
-		})
+	// The Side operation can close while a new BTW fork is pending.
+	u.Editor.Take()
+	appServerTestKeys(t, u, "/btw another question\r")
+	fork = btwTestRequest(t, w, "thread/fork", "main")
+	question := u.BTW
+	if err := closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
+		t.Fatal(err)
+	}
+	btwTestRequest(t, w, "turn/interrupt", "work-side")
+	btwTestReply(t, u, fork, `{"thread":{"id":"new-question"}}`)
+	btwTestRequest(t, w, "turn/start", "new-question")
+	if u.BTW != question || u.side != nil {
+		t.Fatal("closing Side disturbed BTW")
 	}
 }
 
 func TestSideCommandAndBTWDockIsolation(t *testing.T) {
-	for _, command := range []string{"/oneoff task"} {
-		t.Run(command, func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			appServerTestKeys(t, u, command+"\r")
-			fork := btwTestRequest(t, w, "thread/fork", "main")
-			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			start := btwTestRequest(t, w, "turn/start", "work-side")
-			btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
-			appServerTestKeys(t, u, "\r")
-			if w.Len() != 0 || strings.Contains(u.attached.feedback.Text, "/btw") {
-				t.Fatal("empty Side input suggested an unavailable command or submitted")
+	u, w := newAppServerTestUI()
+	appServerTestKeys(t, u, "/oneoff task\r")
+	fork := btwTestRequest(t, w, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
+	start := btwTestRequest(t, w, "turn/start", "work-side")
+	btwTestReply(t, u, start, `{"turn":{"id":"work-turn"}}`)
+	appServerTestKeys(t, u, "\r")
+	if w.Len() != 0 || strings.Contains(u.attached.feedback.Text, "/btw") {
+		t.Fatal("empty Side input suggested an unavailable command or submitted")
+	}
+	for _, blocked := range []string{"/side", "/fork", "/fork branch", "/oneoff task", "/btw question"} {
+		u.Editor.Take()
+		appServerTestKeys(t, u, blocked)
+		for _, choice := range u.picker.Choices {
+			if sideCommand(choice.Name) != "" || choice.Name == "/fork" {
+				t.Fatalf("unavailable completion: %s", choice.Name)
 			}
-			for _, blocked := range []string{"/side", "/fork", "/fork branch", "/oneoff task", "/btw question"} {
-				u.Editor.Take()
-				appServerTestKeys(t, u, blocked)
-				for _, choice := range u.picker.Choices {
-					if sideCommand(choice.Name) != "" || choice.Name == "/fork" {
-						t.Fatalf("unavailable completion: %s", choice.Name)
-					}
-				}
-				appServerTestKeys(t, u, "\r")
-				if w.Len() != 0 || u.Text != blocked {
-					t.Fatalf("blocked command submitted or consumed: %q %s", u.Text, w.String())
-				}
-				for _, choice := range u.picker.Choices {
-					if choice.Name == "/side" || choice.Name == "/fork" || choice.Name == "/oneoff" || choice.Name == "/btw" {
-						t.Fatalf("unavailable completion: %s", choice.Name)
-					}
-				}
+		}
+		appServerTestKeys(t, u, "\r")
+		if w.Len() != 0 || u.Text != blocked {
+			t.Fatalf("blocked command submitted or consumed: %q %s", u.Text, w.String())
+		}
+		for _, choice := range u.picker.Choices {
+			if choice.Name == "/side" || choice.Name == "/fork" || choice.Name == "/oneoff" || choice.Name == "/btw" {
+				t.Fatalf("unavailable completion: %s", choice.Name)
 			}
-			u.Editor.Take()
-			selectSideThread(t, u, u.attached.presentation.View().Main)
-			btwTestStart(t, u, w)
-			question := u.BTW
-			u.sideFrame(120, 30)
-			if u.attached.presentation.View().BTW == nil || !u.shell.Main.BTW.Open() {
-				t.Fatal("Main lost BTW dock")
-			}
-			selectSideThread(t, u, u.attached.presentation.View().SideThread)
-			u.sideFrame(120, 30)
-			if u.attached.presentation.View().BTW != nil || u.shell.Main.BTW.Open() || u.BTW != question {
-				t.Fatal("Side mounted or closed Main's BTW")
-			}
-			c := nativeTestPromptClient(u)
-			defer c.renderer.terminal.Diff.Close()
-			nativeTestInput(c, "\x03")
-			if len(c.calls) != 1 || c.calls[0].operation.Side == nil {
-				t.Fatal("Side cancellation did not target its side exchange")
-			}
-			if err := u.attached.presentation.AdmitCloseSide(*c.calls[0].operation.Side); err != nil {
-				t.Fatal(err)
-			}
-			if err := closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
-				t.Fatal(err)
-			}
-			if u.side != nil || u.BTW != question {
-				t.Fatal("Side cancellation affected hidden BTW")
-			}
-		})
+		}
+	}
+	u.Editor.Take()
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	btwTestStart(t, u, w)
+	question := u.BTW
+	u.sideFrame(120, 30)
+	if u.attached.presentation.View().BTW == nil || !u.shell.Main.BTW.Open() {
+		t.Fatal("Main lost BTW dock")
+	}
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	u.sideFrame(120, 30)
+	if u.attached.presentation.View().BTW != nil || u.shell.Main.BTW.Open() || u.BTW != question {
+		t.Fatal("Side mounted or closed Main's BTW")
+	}
+	c := nativeTestPromptClient(u)
+	defer c.renderer.terminal.Diff.Close()
+	nativeTestInput(c, "\x03")
+	if len(c.calls) != 1 || c.calls[0].operation.Side == nil {
+		t.Fatal("Side cancellation did not target its side exchange")
+	}
+	if err := u.attached.presentation.AdmitCloseSide(*c.calls[0].operation.Side); err != nil {
+		t.Fatal(err)
+	}
+	if err := closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
+		t.Fatal(err)
+	}
+	if u.side != nil || u.BTW != question {
+		t.Fatal("Side cancellation affected hidden BTW")
 	}
 }
 
 func TestSideRejectedInputRetriesOwnThreadWhileBTWBusy(t *testing.T) {
-	for _, command := range []string{"/oneoff question"} {
-		t.Run(command, func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			appServerTestKeys(t, u, command+"\r")
-			fork := btwTestRequest(t, w, "thread/fork", "main")
-			btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
-			start := btwTestRequest(t, w, "turn/start", "work-side")
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"temporary failure"}}`, start.ID))
-			if strings.TrimSpace(u.Text) != "question" {
-				t.Fatalf("rejected Side input changed command ownership: %q", u.Text)
-			}
-			selectSideThread(t, u, u.attached.presentation.View().Main)
-			btwTestStart(t, u, w)
-			question := u.BTW
-			selectSideThread(t, u, u.attached.presentation.View().SideThread)
-			appServerTestKeys(t, u, "\r")
-			btwTestRequest(t, w, "turn/start", "work-side")
-			if u.BTW != question || !question.Busy {
-				t.Fatal("retry disturbed the independent BTW operation")
-			}
-		})
+	u, w := newAppServerTestUI()
+	appServerTestKeys(t, u, "/oneoff question\r")
+	fork := btwTestRequest(t, w, "thread/fork", "main")
+	btwTestReply(t, u, fork, `{"thread":{"id":"work-side"}}`)
+	start := btwTestRequest(t, w, "turn/start", "work-side")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"temporary failure"}}`, start.ID))
+	if strings.TrimSpace(u.Text) != "question" {
+		t.Fatalf("rejected Side input changed command ownership: %q", u.Text)
+	}
+	selectSideThread(t, u, u.attached.presentation.View().Main)
+	btwTestStart(t, u, w)
+	question := u.BTW
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	appServerTestKeys(t, u, "\r")
+	btwTestRequest(t, w, "turn/start", "work-side")
+	if u.BTW != question || !question.Busy {
+		t.Fatal("retry disturbed the independent BTW operation")
 	}
 }

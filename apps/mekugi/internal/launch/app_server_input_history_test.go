@@ -16,40 +16,36 @@ import (
 )
 
 func TestSideInputHistoryAcknowledgedAndPublished(t *testing.T) {
-	for _, command := range []string{"/oneoff first"} {
-		t.Run(command, func(t *testing.T) {
-			u, wire := newAppServerTestUI()
-			appServerTestKeys(t, u, command+"\r")
-			btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
-			start := btwTestRequest(t, wire, "turn/start", "side")
-			if len(u.Editor.InputHistory) != 0 {
-				t.Fatal("unacknowledged Side input entered history")
-			}
-			btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-			appServerTestKeys(t, u, "second\r")
-			btwTestReply(t, u, btwTestRequest(t, wire, "turn/steer", "side"), `{}`)
-			appServerTestKeys(t, u, "draft\x1b[D\x1b[A")
-			if u.Text != "second" {
-				t.Fatalf("Side recall = %q", u.Text)
-			}
-			appServerTestKeys(t, u, "\x1b[A\x1b[B\x1b[B")
-			if u.Text != "draft" || u.CursorBack != 1 {
-				t.Fatal("Side recall lost the current draft or caret")
-			}
-			client := nativeTestPromptClient(u)
-			client.editor("main").Remember(composer.Draft{Text: "main input"})
-			for range 2 {
-				client.event.Frame.Facts = nativePublicationFacts(&u.attached, nil, binding.TokenUsage{}, "", false, nil, "main", nil)
-				client.acceptFacts("main")
-			}
-			side := client.editor("side:side")
-			if len(side.InputHistory) != 2 || !side.Recall(true) || side.Text != "second" {
-				t.Fatalf("native Side recall = %+v", side)
-			}
-			if len(client.editor("main").InputHistory) != 1 || len(u.attached.conversation.Editor.InputHistory) != 0 {
-				t.Fatal("Side history mixed into Main")
-			}
-		})
+	u, wire := newAppServerTestUI()
+	appServerTestKeys(t, u, "/oneoff first\r")
+	btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
+	start := btwTestRequest(t, wire, "turn/start", "side")
+	if len(u.Editor.InputHistory) != 0 {
+		t.Fatal("unacknowledged Side input entered history")
+	}
+	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
+	appServerTestKeys(t, u, "second\r")
+	btwTestReply(t, u, btwTestRequest(t, wire, "turn/steer", "side"), `{}`)
+	appServerTestKeys(t, u, "draft\x1b[D\x1b[A")
+	if u.Text != "second" {
+		t.Fatalf("Side recall = %q", u.Text)
+	}
+	appServerTestKeys(t, u, "\x1b[A\x1b[B\x1b[B")
+	if u.Text != "draft" || u.CursorBack != 1 {
+		t.Fatal("Side recall lost the current draft or caret")
+	}
+	client := nativeTestPromptClient(u)
+	client.editor("main").Remember(composer.Draft{Text: "main input"})
+	for range 2 {
+		client.event.Frame.Facts = nativePublicationFacts(&u.attached, nil, binding.TokenUsage{}, "", false, nil, "main", nil)
+		client.acceptFacts("main")
+	}
+	side := client.editor("side:side")
+	if len(side.InputHistory) != 2 || !side.Recall(true) || side.Text != "second" {
+		t.Fatalf("native Side recall = %+v", side)
+	}
+	if len(client.editor("main").InputHistory) != 1 || len(u.attached.conversation.Editor.InputHistory) != 0 {
+		t.Fatal("Side history mixed into Main")
 	}
 }
 

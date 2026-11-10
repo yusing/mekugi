@@ -16,23 +16,23 @@ var ErrInterruptUnavailable = errors.New("Original work is unavailable.")
 
 // ResolveSideInterrupt admits only the observed side exchange, including a
 // pending fork whose display identity becomes a native thread before dispatch.
-func (m *Model) ResolveSideInterrupt(intent InterruptIntent, side *sessioncontrol.Side) (bool, error) {
+func (m *Model) ResolveSideInterrupt(intent InterruptIntent, side *sessioncontrol.Side) error {
 	if m.admitOwner(intent.Version) != nil {
-		return false, ErrStaleIntent
+		return ErrStaleIntent
 	}
 	if m.replay {
-		return false, ErrReplayIntent
+		return ErrReplayIntent
 	}
 	if intent.Mode != sessioncontrol.RestoreWaiting && intent.Mode != sessioncontrol.ExpediteSteers || side == nil || side.Closed || side.Unloaded() {
-		return false, ErrInterruptUnavailable
+		return ErrInterruptUnavailable
 	}
 	current := side.InterruptTarget()
 	if intent.Target.Start == "" || intent.Target.Start != current.Start ||
 		intent.Target.Thread != current.Thread && intent.Target.Thread != "side:"+side.Key ||
 		intent.Target.Turn != "" && intent.Target.Turn != current.Turn || intent.Target.Wait != current.Wait {
-		return false, ErrInterruptUnavailable
+		return ErrInterruptUnavailable
 	}
-	return true, nil
+	return nil
 }
 
 // ResolveInterrupt settles a delayed action against its original work. Only a
