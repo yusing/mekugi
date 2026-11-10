@@ -3,10 +3,13 @@ package control
 import (
 	"context"
 	json "encoding/json/v2"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestMessageSnapshotConcurrentAcquisitionAndRestore(t *testing.T) {
@@ -46,6 +49,16 @@ func TestMessageSnapshotConcurrentAcquisitionAndRestore(t *testing.T) {
 	}
 	_, err := s.PrepareActionWithSources(t.Context(), caller, "root", "message", "Read @source", reference)
 	must(t, err)
+	caller.Call = "spawn-with-import"
+	imported, err := s.PublishImport(t.Context(), caller, []byte("retained native fork fixture"))
+	must(t, err)
+	_, err = s.ReserveSpawn(t.Context(), caller, SpawnRequest{Name: "history-child", Import: imported, Message: "Work.", Settings: Settings{Workspace: t.TempDir()}})
+	must(t, err)
+	dependencies, err := session.Store.Dependencies(recordName(session.Namespace))
+	must(t, err)
+	if !slices.Equal(dependencies, []string{reference, imported}) {
+		t.Fatalf("checkpoint lost source or child-import dependency: %v", dependencies)
+	}
 	tree, err := s.Snapshot("root")
 	must(t, err)
 	raw, err := json.Marshal(tree)
@@ -59,6 +72,13 @@ func TestMessageSnapshotConcurrentAcquisitionAndRestore(t *testing.T) {
 	must(t, err)
 	if !strings.Contains(text, "FROZEN_BODY") {
 		t.Fatal("cold restore lost source snapshot")
+	}
+	importPath, err := restored.ImportPath("root", imported)
+	must(t, err)
+	data, err := history.ReadRecord(importPath)
+	must(t, err)
+	if string(data) != "retained native fork fixture" {
+		t.Fatalf("cold restore lost child import: %q", data)
 	}
 }
 

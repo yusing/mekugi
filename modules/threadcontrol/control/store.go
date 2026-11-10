@@ -62,7 +62,13 @@ func (s *Service) AdmitNamespace(ctx context.Context, thread string) error {
 func RecordKinds() []recordkind.Spec {
 	return []recordkind.Spec{
 		{ID: "threadcontrol", Match: func(name string) bool { return strings.HasPrefix(name, "threadcontrol-tree-") }, MaxRecordBytes: history.MaxRecordBytes, Dependencies: func(record recordkind.Record) ([]string, error) {
-			var tree Tree
+			// Retention only needs file references, not message bodies or member state.
+			var tree struct {
+				Effects []struct {
+					Sources string
+					Child   *struct{ Import string }
+				}
+			}
 			if err := json.Unmarshal(record.Data, &tree); err != nil {
 				return nil, err
 			}

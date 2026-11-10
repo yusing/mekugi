@@ -7,11 +7,76 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+func TestCheckpointDependencies(t *testing.T) {
+	dependencies := RecordKinds()[0].Dependencies
+	for _, test := range []struct {
+		name, data string
+		want       []string
+		invalid    bool
+	}{
+		{name: "ordered duplicates", data: `{"Effects":[{"Sources":"source-a","Child":{"Import":"import-a"}},{"Sources":"source-a","Child":{"Import":"import-b"}}]}`, want: []string{"source-a", "import-a", "source-a", "import-b"}},
+		{name: "null effects", data: `{"Effects":null}`},
+		{name: "null values", data: `{"Effects":[null,{"Sources":null,"Child":null},{"Sources":"","Child":{"Import":null}}]}`},
+		{name: "case sensitive", data: `{"effects":[{"Sources":"ignored"}],"Effects":[{"sources":"ignored","child":{"Import":"ignored"},"Child":{"import":"ignored"}}]}`},
+		{name: "skip nondependency types", data: `{"Version":"not an integer","Members":[],"Effects":[{"Message":{},"Child":{"Settings":false,"Import":"import-a"}}]}`, want: []string{"import-a"}},
+		{name: "effects type", data: `{"Effects":{}}`, invalid: true},
+		{name: "effect type", data: `{"Effects":[0]}`, invalid: true},
+		{name: "sources type", data: `{"Effects":[{"Sources":1}]}`, invalid: true},
+		{name: "child type", data: `{"Effects":[{"Child":[]}]}`, invalid: true},
+		{name: "import type", data: `{"Effects":[{"Child":{"Import":false}}]}`, invalid: true},
+		{name: "duplicate effects", data: `{"Effects":[],"Effects":[]}`, invalid: true},
+		{name: "duplicate sources", data: `{"Effects":[{"Sources":"a","Sources":"b"}]}`, invalid: true},
+		{name: "duplicate import", data: `{"Effects":[{"Child":{"Import":"a","Import":"b"}}]}`, invalid: true},
+		{name: "duplicate skipped name", data: `{"Members":{"root":{"Session":"a","Session":"b"}}}`, invalid: true},
+		{name: "duplicate skipped child name", data: `{"Effects":[{"Child":{"Settings":{"Model":"a","Model":"b"}}}]}`, invalid: true},
+		{name: "malformed skipped value", data: `{"Members":{"root":]}`, invalid: true},
+		{name: "trailing data", data: `{"Effects":[]} {}`, invalid: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := dependencies(recordkind.Record{Name: recordName("root"), Data: []byte(test.data)})
+			if (err != nil) != test.invalid || !test.invalid && !slices.Equal(got, test.want) {
+				t.Fatalf("dependencies = %v, %v; want %v, invalid=%v", got, err, test.want, test.invalid)
+			}
+		})
+	}
+	// The narrow retention projection must not weaken ordinary restoration.
+	for _, data := range []string{
+		`{"Version":"not an integer"}`,
+		`{"Version":4,"Root":"root","Members":{"root":{"Thread":"root","Session":"session","Task":"/wrong"}}}`,
+		`{"Version":4,"Root":"root","Members":{"root":{"Thread":"root","Session":"session","Task":"/root"}},"Effects":[{"Message":{}}]}`,
+	} {
+		if _, err := decodeTree([]byte(data), "root"); err == nil {
+			t.Fatalf("ordinary checkpoint decode accepted invalid schema or identity: %s", data)
+		}
+	}
+}
+
+func TestCheckpointDependenciesRejectUnregisteredRecords(t *testing.T) {
+	_, session := fixture(t)
+	for _, effect := range []string{`{"Sources":"unregistered-dependency"}`, `{"Child":{"Import":"unregistered-dependency"}}`} {
+		err := session.Store.Transaction(t.Context(), session.Writes, func(tx *history.Transaction) error {
+			if err := tx.Write("unregistered-dependency", "dependency-pending-", []byte("retained bytes")); err != nil {
+				return err
+			}
+			name := recordName("dependency-test")
+			if err := tx.Write(name, "tree-pending-", []byte(`{"Effects":[`+effect+`]}`)); err != nil {
+				return err
+			}
+			return tx.Retain("root", session.Limits, name)
+		})
+		if err == nil || !strings.Contains(err.Error(), "unregistered retained dependency") {
+			t.Fatalf("unregistered dependency was not rejected through history: %v", err)
+		}
+	}
+}
 
 func fixture(t *testing.T) (*Service, history.Session) {
 	t.Helper()
