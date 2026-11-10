@@ -50,6 +50,12 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "mekugi herdr: unsupported request method")
 		return 2
 	}
+	var native sessionapi.NativeFrontendRequest
+	if request.Method != "session/page" && json.Unmarshal(request.Body, &native, json.RejectUnknownMembers(true)) != nil {
+		fmt.Fprintln(stderr, "mekugi herdr: invalid native request body")
+		return 2
+	}
+	native.PID, native.Instance = *pid, request.Instance
 	fail := func(err error) int {
 		message := err.Error()
 		fmt.Fprintln(stderr, "mekugi herdr:", message[:min(len(message), 1024)])
@@ -77,12 +83,6 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		return fail(err)
 	}
 	defer rpc.Close()
-	var native sessionapi.NativeFrontendRequest
-	if request.Method != "session/page" && json.Unmarshal(request.Body, &native, json.RejectUnknownMembers(true)) != nil {
-		fmt.Fprintln(stderr, "mekugi herdr: invalid native request body")
-		return 2
-	}
-	native.PID, native.Instance = *pid, request.Instance
 	method := request.Method
 	if method == "content" {
 		method = "native/content"

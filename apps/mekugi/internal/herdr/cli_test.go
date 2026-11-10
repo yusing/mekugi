@@ -24,10 +24,21 @@ func TestRunMissingClientAndRequestBounds(t *testing.T) {
 		diagnostic.Reset()
 		return Run(t.Context(), []string{"--pid", fmt.Sprint(os.Getpid()), "--request", request}, &out, &diagnostic)
 	}
-	if code := run(`{"method":"native/observe","body":{"viewer":"panel"}}`); code != 0 || strings.TrimSpace(out.String()) != `{"available":false}` {
-		t.Fatalf("missing native frontend: code=%d output=%s diagnostic=%s", code, &out, &diagnostic)
+	for _, request := range []string{
+		`{"method":"native/observe","body":{"viewer":"panel"}}`,
+		`{"method":"session/page","body":{"kind":"roster","revision":1}}`,
+	} {
+		if code := run(request); code != 0 || strings.TrimSpace(out.String()) != `{"available":false}` {
+			t.Fatalf("missing native frontend: code=%d output=%s diagnostic=%s", code, &out, &diagnostic)
+		}
 	}
-	for _, request := range []string{`{"action":"state"}`, `{"method":"native/start","body":{}}`, strings.Repeat("x", 8193)} {
+	for _, request := range []string{
+		`{"action":"state"}`,
+		`{"method":"native/start","body":{}}`,
+		`{"method":"native/observe","body":{"viewer":42}}`,
+		`{"method":"native/observe","body":{"unknown":true}}`,
+		strings.Repeat("x", 8193),
+	} {
 		if code := run(request); code != 2 || out.Len() != 0 {
 			t.Fatal("unsupported or oversized helper request admitted")
 		}
