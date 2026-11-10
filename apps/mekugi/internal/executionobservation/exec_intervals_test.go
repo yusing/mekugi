@@ -924,6 +924,78 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 	}
 }
 
+func TestUnrelatedPatchKeepsWriterCoverageTruthful(t *testing.T) {
+	for _, writerFirst := range []bool{false, true} {
+		t.Run(fmt.Sprintf("writer-first=%v", writerFirst), func(t *testing.T) {
+			isolateSnapshotGit(t)
+			f := newMChangesSliceFixture(t, "unrelated-writer-endpoint")
+			writer := testProxyWithStore(f.store, &Windows{})
+			edit := testProxyWithStore(f.store, writer.Windows.ForRuntime())
+			selected := observationScope(f.ctx, writer.Retained)
+			own, other := filepath.Join(f.workspace, "own.go"), filepath.Join(f.workspace, "other.txt")
+			writeTestFile(t, own, "package fixture\nvar value=1\n")
+			writeTestFile(t, other, "other before\n")
+			observation, _ := changecapture.Capture(f.ctx, []commandanalysis.Command{{Command: "gofmt -w own.go; make test", Workdir: f.workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: f.workspace, Workspaces: writer.Checkpoints})
+			if observation == nil || observation.Tree == "" || len(observation.Files) != 1 {
+				t.Fatal("missing named writer and fallback fixture")
+			}
+			original := mekugiHistory{ToolName: nativeExecCommandToolName, Root: f.workspace, ExecutingThread: f.thread, ExecObservation: observation}
+			if err := publishObservations(f.ctx, selected, writer.Changes, nil, f.workspace, map[string]mekugiHistory{"writer": original}); err != nil {
+				t.Fatal(err)
+			}
+			writer.Windows.open(&execWindow{ref: "writer", group: "writer", workspace: f.workspace, roots: observation.Roots, paths: observation.ScopePaths(), scope: selected})
+			writeTestFile(t, own, "package fixture\nvar value = 1\n")
+			patch := "*** Begin Patch\n*** Update File: other.txt\n@@\n-other before\n+other after\n*** End Patch\n"
+			later := mekugiHistory{ToolName: applyPatchToolName, Root: f.workspace, ExecutingThread: "other-agent", NativePatches: changecapture.Patches([]string{patch}, f.workspace)}
+			if err := publishObservations(f.ctx, selected, edit.Changes, nil, f.workspace, map[string]mekugiHistory{"patch": later}); err != nil {
+				t.Fatal(err)
+			}
+			edit.Windows.open(&execWindow{ref: "patch", group: "patch", workspace: f.workspace, roots: []string{f.workspace}, paths: []string{other}, scope: selected})
+			transform := &mekugiResponseTransform{owners: edit, ctx: f.ctx, directory: f.workspace, execGroup: "patch"}
+			if err := transform.splitExecIntervals("patch", nil, later.NativePatches); err != nil {
+				t.Fatal(err)
+			}
+			writeTestFile(t, other, "other after\n")
+			finishWriter := func() error {
+				return finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.Recovery, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}})
+			}
+			if writerFirst {
+				if err := finishWriter(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := edit.finalizeNativePatches(f.ctx, f.workspace, "other-agent", "patch", later, binding.ExecutionResult{Terminal: true, Succeeded: true}); err != nil {
+				t.Fatal(err)
+			}
+			if !writerFirst {
+				if err := finishWriter(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			completed, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("writer", false))
+			if err != nil || !found || completed.ExecutingThread != f.thread {
+				t.Fatalf("writer attribution: %+v, %v", completed, err)
+			}
+			wantCoverage, wantStatus := changecapture.CoverageExact, 0
+			if writerFirst {
+				wantCoverage, wantStatus = changecapture.CoveragePartial, 1
+			}
+			stdout, stderr, status := f.run(t, "mchanges "+completed.ChangeID)
+			if completed.ExecOutcome.Coverage != wantCoverage || status != wantStatus || !strings.Contains(stdout, "-var value=1\n+var value = 1\n") || strings.Contains(stdout, "+other after") || writerFirst && !strings.Contains(stderr, "overlapping writer endpoint unavailable") {
+				t.Fatalf("writer coverage lost or invented effects: %q, %q, %d, %+v", stdout, stderr, status, completed.ExecOutcome)
+			}
+			patchHistory, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.PatchCallID("patch", 0))
+			if err != nil || !found || patchHistory.ExecutingThread != "other-agent" {
+				t.Fatalf("patch attribution: %+v, %v", patchHistory, err)
+			}
+			stdout, stderr, status = f.run(t, "mchanges "+patchHistory.ChangeID)
+			if status != 0 || stderr != "" || !strings.Contains(stdout, "-other before\n+other after\n") || strings.Contains(stdout, "own.go") {
+				t.Fatalf("independent patch evidence: %q, %q, %d", stdout, stderr, status)
+			}
+		})
+	}
+}
+
 func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 	for _, kind := range []string{"command", "patch", "writer-first-command", "writer-first-patch"} {
 		t.Run(kind, func(t *testing.T) {
