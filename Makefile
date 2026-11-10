@@ -12,7 +12,7 @@ GO_OUTPUT = $(if $(filter-out go,$(GO)),,$(RTK)) $(GO)
 GO_TEST_RUN = $(WORKSPACE) $(if $(RTK),test,run) $(GO) test
 # Reuse compiled packages across implementation, review, and staged checkouts.
 GO_BUILD_FLAGS ?= -trimpath
-.PHONY: build build-binaries claude-worker claude-worker-check webui webui-check webui-fmt generate check-generated workspace-check docs-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
+.PHONY: build build-binaries claude-worker claude-worker-check webui webui-check webui-fmt generate check-generated workspace-check docs-check install uninstall mekugi-pprof preview-native-ui test test-saved-diff test-live-preview test-host lint test-ui-snapshots update-ui-snapshots
 
 WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace
 BUILD_OUTPUT ?= bin
@@ -110,6 +110,13 @@ preview-native-ui:
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
 	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+
+# Focused semantic owners; TEST_RUN and TEST_FLAGS pass through to test.
+test-saved-diff:
+	$(MAKE) --no-print-directory test TEST_PACKAGES='./modules/changehistory/presentation ./modules/changehistory/terminalview ./libraries/diffrender'
+
+test-live-preview:
+	$(MAKE) --no-print-directory test TEST_PACKAGES='./modules/livepreview/...'
 
 # Installed Codex, isolated local mocks, no installation or live model requests.
 test-host:

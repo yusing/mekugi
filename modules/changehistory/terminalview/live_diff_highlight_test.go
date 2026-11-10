@@ -1,4 +1,6 @@
-package launch
+package terminalview_test
+
+// Source: apps/mekugi/internal/launch/live_diff_highlight_test.go:1:578@[71ea6979c]
 
 import (
 	"fmt"
@@ -395,7 +397,11 @@ func TestLiveDiffRenderLatestCombinedResult(t *testing.T) {
 	v.Update(vPublication)
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
-	text := liveDiffVisibleText(file)
+	var visible strings.Builder
+	for _, chunk := range file.Chunks {
+		visible.WriteString(chunk.Status + "\n" + chunk.Review.UnifiedDiff())
+	}
+	text := visible.String()
 	if len(file.Chunks) != 2 || strings.Contains(text, "FIRST20") ||
 		!strings.Contains(text, "+LATEST20") || !strings.Contains(text, "+LATEST337") {
 		t.Fatalf("result contains intermediate patches instead of final changes: %s", text)

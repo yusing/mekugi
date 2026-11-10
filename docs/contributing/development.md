@@ -66,6 +66,11 @@ without rewriting it; CI runs the same check.
 
 Interpreter and query fixtures use Node.js/ripgrep; lint needs `golangci-lint`/`deadcode` and installs neither.
 Focus tests with `TEST_PACKAGES`/`TEST_RUN`/`TEST_FLAGS`; `-count=1` bypasses caching.
+`make test-saved-diff` checks retained-Diff presentation, rendering and shared diff
+primitives; `make test-live-preview` checks provisional projection, streaming and
+rendering. Both accept `TEST_RUN`/`TEST_FLAGS` without compiling Launch. Launch
+retains host/session integration checks, so run its affected tests when changing
+those boundaries. These focused checks do not replace the snapshot commit gate.
 Make builds use `-trimpath` so unchanged packages reuse the Go build cache across
 worktrees and staged snapshot checks. Set `GO_BUILD_FLAGS=` when absolute source
 paths are needed.

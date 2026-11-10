@@ -89,6 +89,32 @@ func TestFailure(t *testing.T) {
 	}
 }
 
+func TestMakefileFocusedOwnerRecipes(t *testing.T) {
+	for _, tc := range []struct {
+		target, packages string
+	}{
+		{"test-saved-diff", "./modules/changehistory/presentation ./modules/changehistory/terminalview ./libraries/diffrender"},
+		{"test-live-preview", "./modules/livepreview/..."},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			command := exec.Command("make", "--no-print-directory", "-n", tc.target, "RTK=", "TEST_RUN=^FocusedOwner$", "TEST_FLAGS=-count=1")
+			command.Dir = "../../../.."
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("dry run: %v\n%s", err, output)
+			}
+			for _, want := range []string{tc.packages, "-run '^FocusedOwner$'", "-count=1"} {
+				if !bytes.Contains(output, []byte(want)) {
+					t.Fatalf("recipe lost %q:\n%s", want, output)
+				}
+			}
+			if bytes.Contains(output, []byte("./apps/mekugi/internal/launch")) {
+				t.Fatalf("focused owner recipe includes Launch:\n%s", output)
+			}
+		})
+	}
+}
+
 func TestMakefileWorkspaceFixture(t *testing.T) {
 	if os.Getenv("MEKUGI_MAKEFILE_WORKSPACE_FIXTURE") != "1" {
 		return

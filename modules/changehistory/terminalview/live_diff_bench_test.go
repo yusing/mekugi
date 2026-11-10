@@ -1,4 +1,6 @@
-package launch
+package terminalview_test
+
+// Source: apps/mekugi/internal/launch/live_diff_bench_test.go:1:40@[71ea6979c]
 
 import (
 	"fmt"
