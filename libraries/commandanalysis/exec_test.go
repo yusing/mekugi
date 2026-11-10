@@ -46,12 +46,3 @@ func TestStockLiteralExecCommands(t *testing.T) {
 		}
 	}
 }
-
-func TestExecCommandArguments(t *testing.T) {
-	if _, ok := ExecCommandArguments(`{"cmd":"rm a","environment_id":"remote"}`, "/work", "bash"); ok {
-		t.Error("a command for another environment was observed")
-	}
-	if command, ok := ExecCommandArguments(`{"cmd":"rm a"}`, "/work", "bash"); !ok || command.Shell != "bash" {
-		t.Errorf("session shell was not applied: %+v", command)
-	}
-}

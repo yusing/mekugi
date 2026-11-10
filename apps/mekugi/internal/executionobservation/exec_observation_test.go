@@ -1,7 +1,8 @@
 package executionobservation
 
 import (
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -299,16 +300,23 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 // New model calls use exec; retained host evidence keeps its original identity.
 func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, callID, arguments string) {
 	t.Helper()
-	command, ok := commandanalysis.ExecCommandArguments(arguments, transform.directory, transform.sessionShell)
-	if !ok {
+	var args struct {
+		Cmd     string `json:"cmd"`
+		Workdir string `json:"workdir"`
+	}
+	if json.Unmarshal([]byte(arguments), &args) != nil || args.Cmd == "" {
 		t.Fatal("invalid retained command fixture")
 	}
+	if args.Workdir == "" {
+		args.Workdir = transform.directory
+	}
+	command := commandanalysis.Command{Command: args.Cmd, Workdir: args.Workdir, Shell: transform.sessionShell}
 	observation, observed := changecapture.Capture(transform.ctx, []commandanalysis.Command{command}, false, false, executionCaptureEnvironment(transform.ctx, transform.directory, transform.owners.Retained, transform.owners.Changes, transform.owners.Checkpoints, nil))
 	if !observed {
 		return
 	}
 	transform.openExecWindow(callID, observation, nil)
-	item := map[string]json.RawMessage{"type": responses.MustMarshalJSON("function_call"), "call_id": responses.MustMarshalJSON(callID), "name": responses.MustMarshalJSON(nativeExecCommandToolName), "arguments": responses.MustMarshalJSON(arguments)}
+	item := map[string]jsonv1.RawMessage{"type": responses.MustMarshalJSON("function_call"), "call_id": responses.MustMarshalJSON(callID), "name": responses.MustMarshalJSON(nativeExecCommandToolName), "arguments": responses.MustMarshalJSON(arguments)}
 	transform.recordLocal(callID, &mekugiHistory{ToolName: nativeExecCommandToolName, Script: arguments, CarrierKind: codeModeCarrierFunction, CarrierName: nativeExecCommandToolName, CarrierPayload: arguments, ReplayCarrier: true, UpstreamItem: item, ExecObservation: observation, ExecutingThread: transform.shellThreadID, Caller: transform.operationCaller()})
 	if err := transform.commitLocalCall(callID); err != nil {
 		t.Fatal(err)
@@ -325,7 +333,7 @@ func reconcileExecItems(t *testing.T, proxy *Preparer, workspace string, items [
 		t.Fatal(err)
 	}
 	transform, err := proxy.prepareRequest(t.Context(), &request, "exec-session-next", "stock-thread", codexresponses.TurnMetadata{
-		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
+		RequestKind: "turn", Directories: map[string]jsonv1.RawMessage{workspace: nil},
 	}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -464,7 +472,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 					if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
 						t.Fatal(err)
 					}
-					request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
+					request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
 						"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{
 							map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
 						},
@@ -512,7 +520,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 		t.Fatalf("exec command was not observed: %+v", history)
 	}
 	writeTestFile(t, filepath.Join(workspace, "f"), "new\n")
-	request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
+	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
 		"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{
 			map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
 		},

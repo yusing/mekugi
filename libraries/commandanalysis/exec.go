@@ -2,7 +2,6 @@ package commandanalysis
 
 import (
 	"cmp"
-	"encoding/json"
 	"path/filepath"
 	"strings"
 
@@ -19,23 +18,6 @@ type Command struct {
 	Command string
 	Workdir string
 	Shell   string `json:",omitempty"`
-}
-
-// ExecCommandArguments decodes stock exec_command arguments and resolves the
-// working directory against the selected metadata directory. A command without
-// its own shell runs in the session shell. A command for another environment
-// is excluded from local observation.
-func ExecCommandArguments(arguments, directory, sessionShell string) (Command, bool) {
-	var args struct {
-		Cmd           string          `json:"cmd"`
-		Workdir       string          `json:"workdir"`
-		Shell         string          `json:"shell"`
-		EnvironmentID json.RawMessage `json:"environment_id"`
-	}
-	if json.Unmarshal([]byte(arguments), &args) != nil || !LocalEnvironment(args.EnvironmentID) {
-		return Command{}, false
-	}
-	return resolveCommand(Command{Command: args.Cmd, Workdir: args.Workdir, Shell: args.Shell}, directory, sessionShell)
 }
 
 func resolveCommand(command Command, directory, sessionShell string) (Command, bool) {

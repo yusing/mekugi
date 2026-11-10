@@ -24,12 +24,8 @@ observation coverage. Pure polling with no input does not drive a command;
 ambiguous or nonempty process input remains dynamic. Extraction preserves its
 existing source-size and command-count bounds.
 
-The JSON argument reader remains a dependency of the inactive instruction loader;
-normal literal extraction resolves decoded values directly. JSON argument decoding
-retains its existing permissive field semantics. Literal
-source recognition accepts only fully decoded literal objects and excludes any
-explicit environment selector, including null. These input forms deliberately
-have different recognition coverage.
+Literal source recognition accepts only fully decoded literal objects and excludes
+any explicit environment selector, including null.
 
 ## Version-control effects
 

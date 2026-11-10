@@ -1,5 +1,3 @@
 # Production reachability only. Test-inclusive reachability has no exceptions.
-github.com/yusing/mekugi/libraries/commandanalysis.ExecCommandArguments
-
 # Workspace reference collector imports descriptors from generated Go source.
 github.com/yusing/mekugi/contracts/module.Descriptor.Reference
