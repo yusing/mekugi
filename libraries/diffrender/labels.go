@@ -45,8 +45,10 @@ func FileLabel(status diffmodel.Status, label, workspace string, theme Theme, wi
 		}
 		from = textsanitize.Safe(from, false)
 		label = pathterminal.TruncateMove(from, label, room)
+	} else {
+		label = pathterminal.Truncate(label, room)
 	}
-	return color + code + "\x1b[39m " + pathterminal.Truncate(label, room)
+	return color + code + "\x1b[39m " + label
 }
 
 // CountStats shows known line counts; unknown counts are not zero.
