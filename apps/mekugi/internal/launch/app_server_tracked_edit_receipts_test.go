@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/legacycall"
 
@@ -247,7 +249,9 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 	awaitCommandSegments(t, u)
 	restored := newAppServerSessionTestUI(t, workspace)
 	setTestAppServerIntegration(restored, testProxyWithStore(testReplayStore(mekugiReplayStore{directory: store.directory})))
-	restored.review.Projection.Data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
+	data := trackedEditReceiptData(thread, item.ID)
+	data[0].SourceAnchor = activitydetail.SourceAnchor{Call: item.ID, Segment: 2}
+	restored.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}
 	view := restored.testActivity(restored.shell.Transcript)
 	restored.restoreHistory(turns)
@@ -257,6 +261,10 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 	for range 2 {
 		applyCapturedEdits(&restored.attached, restored.review, &restored.pendingEditReceipts)
 		assertTrackedReceiptStats(t, view, 0)
+		blocks := view.blocks(0)
+		if len(blocks) != 3 || blocks[0].EditPath() != "a.go" || blocks[1].EditPath() != "b.go" || blocks[2].ExitCode != 2 {
+			t.Fatalf("restored receipt follows failed test: %+v", blocks)
+		}
 		last := view.blocks(0)[slices.IndexFunc(view.blocks(0), func(b activityui.Block) bool { return b.Segment && b.ExitCode == 2 })]
 		if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.RetainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
 			t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
@@ -399,5 +407,68 @@ func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	}
 	if u.review.Projection.Data.Len() != 0 {
 		t.Fatal("unmatched receipts became durable evidence")
+	}
+}
+
+func TestUISnapshotCapturedWriterBeforeTest(t *testing.T) {
+	for _, audience := range []string{"main", "child"} {
+		for _, state := range []string{"pending", "running", "failed"} {
+			t.Run(audience+"/"+state, func(t *testing.T) {
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				source, view, agent := u.attached.source, u.testActivity(u.shell.Transcript), "Main"
+				if audience == "child" {
+					source, view, agent = u.attached.childSource, u.testActivity(u.shell.Agents), "/root/worker"
+				}
+				sources := []string{"python3 - <<'PY'\np='a.go'\ns=open(p).read().replace('before','after')\nopen(p,'w').write(s)\nPY", "gofmt -w a.go", "make test TEST_PACKAGES=./apps/mekugi/internal/launch"}
+				now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+				var segments []sessionpresentation.ActivitySegment
+				for _, script := range sources {
+					segments = append(segments, sessionpresentation.ActivitySegment{Source: script, Text: execSegmentText(script), Timing: segmenttransport.Timing{Started: now, Ended: now.Add(time.Second), ElapsedNS: int64(time.Second)}})
+				}
+				segments[2].Pending = state == "pending"
+				segments[2].Running = state == "running"
+				if state != "failed" {
+					segments[2].Timing = segmenttransport.Timing{}
+				} else {
+					segments[2].Exit = 2
+					segments[2].Tail = []string{"test failed"}
+				}
+				command := strings.Join(sources, "\n")
+				view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "tool", CallID: "writer", Text: toolActivityShell(command), Native: &sessionpresentation.NativeItem{Thread: audience, Item: "writer", Command: command, Segments: segments, Running: state != "failed"}}}})
+				receipt := &presentation.Receipt{Thread: audience, Calls: []string{"writer"}, Text: "Edit `a.go` +13 -3 · python3, gofmt", SourceAnchor: activitydetail.SourceAnchor{Call: "writer", Segment: 2}}
+				for range 2 {
+					source.ApplyCapturedEdits([]*presentation.Receipt{receipt})
+					blocks := view.blocks(0)
+					if len(blocks) != 4 || blocks[0].Verb != "Run" || blocks[1].Code != sources[1] || blocks[2].EditPath() != "a.go" || blocks[3].Code != sources[2] || blocks[3].Pending != (state == "pending") || blocks[3].Running != (state == "running") {
+						t.Fatalf("writer/edit/test order or state lost: %+v", blocks)
+					}
+					// Browser and terminal receive the same renderer-neutral ordered values.
+					publication := source.Publication(new(sessionpresentation.Model), source)
+					if len(publication.Entries) != 1 || len(publication.Entries[0].Values) != 4 || publication.Entries[0].Values[2].EditPath() != "a.go" {
+						t.Fatalf("detached/browser publication lost ordering: %+v", publication.Entries)
+					}
+				}
+				feed := view.RenderFeed(120, 20)
+				assertNativeUISnapshot(t, "captured-writer-before-test-"+audience+"-"+state, feed.Lines)
+			})
+		}
+	}
+}
+
+func TestCapturedReceiptAnchorsFinalContributingHost(t *testing.T) {
+	view := newActivityAdapter()
+	for i, script := range []string{"python3 -c 'open(\"a.go\",\"w\").write(\"after\")'", "gofmt -w a.go", "go test ./..."} {
+		item := []string{"python", "format", "test"}[i]
+		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: "Main", Kind: "tool", CallID: item, Text: toolActivityShell(script), Native: &sessionpresentation.NativeItem{Thread: "main", Item: item, Command: script, Segments: []sessionpresentation.ActivitySegment{{Source: script, Text: execSegmentText(script), Timing: segmenttransport.Timing{ElapsedNS: int64(time.Second)}}}}}}})
+	}
+	receipt := &presentation.Receipt{Thread: "main", Calls: []string{"python", "format", "test"}, Text: "Edit `a.go` +1 -1 · python3, gofmt", SourceAnchor: activitydetail.SourceAnchor{Call: "format", Segment: 1}}
+	view.ApplyCapturedEdits([]*presentation.Receipt{receipt})
+	for i, want := range []int{1, 2, 1} {
+		if len(view.blocks(i)) != want {
+			t.Fatalf("host %d acquired wrong receipt: %+v", i, view.blocks(i))
+		}
+	}
+	if view.blocks(1)[1].EditPath() != "a.go" {
+		t.Fatalf("capture did not follow formatter: %+v", view.blocks(1))
 	}
 }

@@ -50,6 +50,7 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 			return err
 		}
 		var reviews []evidence.Review
+		var sourceAnchor activitydetail.SourceAnchor
 		hasObservation, codeMode := history.ExecObservation != nil, false
 		if hasObservation {
 			codeMode = history.ExecObservation.CodeMode
@@ -61,6 +62,7 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 			if readErr != nil {
 				return readErr
 			}
+			sourceAnchor = manifest.SourceAnchor
 			reviews, err = evidence.ReadReviews(source, manifest.Reviews)
 			if err == nil {
 				hasObservation, codeMode, err = manifest.ObservationMode()
@@ -83,13 +85,20 @@ func hydrateReview(ctx context.Context, retained changes.Scope, builder *present
 			// A writer interval becomes visible only with its terminal membership.
 			// Borrow that operation's real host identity without altering the
 			// earlier immutable boundary or fabricating an intermediate completion.
-			terminal, found, err := retained.Store.ReadHostCall(event.Workspace, legacycall.ExecCallID(writer, codeMode), false)
+			terminal, found, err := retained.Store.ReadAttachedHostCall(event.Workspace, legacycall.ExecCallID(writer, codeMode), false)
 			if err != nil {
 				return err
 			}
 			if found {
 				attempt.Receipt = CapturedReceipt(event.Workspace, terminal.History, files)
+				sourceAnchor, err = evidence.Anchor(source, terminal)
+				if err != nil {
+					return err
+				}
 			}
+		}
+		if attempt.Receipt != nil {
+			attempt.Receipt.SourceAnchor = sourceAnchor
 		}
 		origin := presentation.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		for n, file := range files {

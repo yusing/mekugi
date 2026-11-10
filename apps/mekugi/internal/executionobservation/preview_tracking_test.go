@@ -44,7 +44,7 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 				report.conn.Close()
 			}
 			hub.await(t, key, func(view segments.Report) bool {
-				return view.LastStarted() >= 1 && (!tc.lastEnded || view.LastStarted() == 2) && (!tc.done || view.Complete()) && (!tc.ended || view.Ended)
+				return view.LastStarted() >= 1 && (!tc.lastEnded || view.LastStarted() == 2 && view.Segments[2].Ended) && (!tc.done || view.Complete()) && (!tc.ended || view.Ended)
 			})
 			if tc.pending || tc.ambiguous {
 				hub.start([3]string{"main", "turn", "two"}, "bash -lc "+quoteShellWord(script))

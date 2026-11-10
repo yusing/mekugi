@@ -1800,6 +1800,7 @@ export type Command = {
   "Results": (number | null);
   "Captured": boolean;
   "CaptureText": string;
+  "CaptureAfter": number;
 };
 
 export type ItemDetails = {

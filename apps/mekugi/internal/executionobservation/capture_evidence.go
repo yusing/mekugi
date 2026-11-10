@@ -43,6 +43,7 @@ func decodeObservation(selected changes.Scope, record history.HostRecord) (mekug
 	if err != nil {
 		return value, err
 	}
+	value.sourceAnchor = snapshot.SourceAnchor
 	if len(snapshot.Observation) > 0 {
 		var metadata observationMetadata
 		if err := json.Unmarshal(snapshot.Observation, &metadata, json.RejectUnknownMembers(true)); err != nil {
@@ -114,7 +115,7 @@ func publishCapturedObservation(tx *history.Transaction, selected changes.Scope,
 	if exists && previous.Version != 3 || value.ExecObservation == nil && value.ResolvedBaseline == nil && len(value.NativePatches) == 0 && len(value.reviews()) == 0 {
 		return publishObservation(tx, selected, legacycall.Record{Version: 1, Workspace: workspace, CallID: call, History: retainedHistory(value)})
 	}
-	snapshot := evidence.Snapshot{Reviews: value.reviews()}
+	snapshot := evidence.Snapshot{Reviews: value.reviews(), SourceAnchor: value.sourceAnchor}
 	if value.ExecObservation != nil {
 		metadata := observationMetadata{Observation: *value.ExecObservation}
 		if value.legacy != nil && value.legacy.ExecObservation != nil {

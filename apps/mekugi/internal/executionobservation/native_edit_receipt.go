@@ -51,6 +51,10 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 				continue
 			}
 			history := legacyHistory(record.History)
+			history.sourceAnchor, err = evidence.Anchor(captureSource(selected), record)
+			if err != nil {
+				return err
+			}
 			history.ReviewFiles = nil
 			history.reviewFiles = []evidence.Review{}
 			for _, member := range index.Changes[id].Calls {
@@ -71,12 +75,15 @@ func publishEditReceipt(ctx context.Context, selected changes.Scope, source chan
 			if err != nil {
 				return err
 			}
+			if receipt != nil {
+				receipt.SourceAnchor = history.sourceAnchor
+			}
 			if receipt == nil && history.ToolName == applyPatchToolName && displayID != "" {
 				receipt = changepresentation.NewReceipt(workspace, receiptEvidence(history))
 				receipt.Calls = []string{displayID}
 			}
 			if receipt != nil && receipt.Text != "" {
-				activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "edit-receipt\x00" + workspace + "\x00" + callID, Kind: activitypresentation.SupplementEditReceipt, Text: receipt.Text, Calls: receipt.Calls})
+				activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "edit-receipt\x00" + workspace + "\x00" + callID, Kind: activitypresentation.SupplementEditReceipt, Text: receipt.Text, Calls: receipt.Calls, SourceAnchor: receipt.SourceAnchor})
 			}
 			return nil
 		}

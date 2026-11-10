@@ -238,6 +238,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 		arguments = string(responses.MustMarshalJSON(map[string]string{"cmd": script}))
 	}
 	record := mekugiHistory{
+		sourceAnchor:    view.anchor,
 		ToolName:        nativeExecCommandToolName,
 		Script:          script,
 		Root:            workspace,

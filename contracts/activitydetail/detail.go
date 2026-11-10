@@ -1,4 +1,4 @@
-// Package activitydetail defines optional renderer-neutral Activity detail pages.
+// Package activitydetail defines renderer-neutral Activity identities and detail pages.
 package activitydetail
 
 type Operation struct {
@@ -18,4 +18,11 @@ type Page struct {
 type Result struct {
 	Pages    []Page
 	Selected string
+}
+
+// SourceAnchor identifies the last observed writer boundary in a captured window.
+// Segment is one-based within Call. It is not a claim of per-file attribution.
+type SourceAnchor struct {
+	Call    string
+	Segment int
 }

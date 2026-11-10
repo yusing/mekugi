@@ -3,6 +3,8 @@ package executionobservation
 import (
 	"context"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	"path/filepath"
@@ -15,7 +17,10 @@ import (
 
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -167,5 +172,90 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 
 			}
 		})
+	}
+}
+
+// Drive segment reports through capture publication, then cold retained hydration.
+// The combined Python/formatter effect belongs before the unrelated test, even
+// while that test has not started and when its eventual result fails.
+func TestExecReceiptWriterBoundaryLiveAndRetained(t *testing.T) {
+	f := newMChangesSliceFixture(t, "writer-anchor")
+	proxy := testProxyWithStore(f.store, &Windows{})
+	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	proxy.Windows.Reports = hub.Observer
+	t.Cleanup(proxy.Windows.Retire)
+	path := filepath.Join(f.workspace, "a.go")
+	writeTestFile(t, path, "before\n")
+	script := "python3 - <<'PY'\np='a.go'\ns=open(p).read().replace('before','after')\nopen(p,'w').write(s)\nPY\ngofmt -w a.go\ngo test ./..."
+	commands := []commandanalysis.Command{{Command: script, Workdir: f.workspace, Shell: "bash"}}
+	observed, ok := changecapture.Capture(f.ctx, commands, false, false, changecapture.Options{Directory: f.workspace})
+	if !ok || observed == nil {
+		t.Fatal("writer scope missing")
+	}
+	proxy.Windows.open(&execWindow{ref: "writer", thread: f.thread, turn: "turn", roots: []string{f.workspace}}, commands...)
+	report := hub.begin(t, [3]string{f.thread, "turn", "writer"}, script)
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)})
+	hub.await(t, [3]string{f.thread, "turn", "writer"}, func(r segments.Report) bool { return len(r.Segments) > 0 && r.Segments[0].Ended })
+	writeTestFile(t, path, "after\n")
+	broker := newLivePreview(t.Context())
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{f.workspace: {f.thread: true}}})
+	sub := testReview(broker).Subscribe()
+	tracking := proxy.Windows.find("writer").tracking
+	capture := &execPreviewCapture{registry: proxy.Windows, ref: "writer", observation: *observed}
+	frame := previewmodel.Preview{Workspace: f.workspace, Thread: f.thread, Turn: "turn"}
+	capture.update(f.ctx, broker, frame, tracking, tracking.state())
+	first := testReview(broker).TakePreviews(sub)
+	first = slices.DeleteFunc(first, func(event sessionreview.Event) bool { return event.Preview == nil })
+	if len(first) != 1 || first[0].Preview.SourceAnchor != (activitydetail.SourceAnchor{Call: "writer", Segment: 1}) {
+		t.Fatalf("first writer boundary missing: %+v", first)
+	}
+	// Formatting can leave the same bytes and counts. Its observed boundary
+	// must still replace the earlier anchor before the pending test.
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 1}, segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)})
+	hub.await(t, [3]string{f.thread, "turn", "writer"}, func(r segments.Report) bool { return len(r.Segments) > 1 && r.Segments[1].Ended })
+	want := activitydetail.SourceAnchor{Call: "writer", Segment: 2}
+	for _, running := range []bool{false, true} {
+		if running {
+			report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 2})
+			hub.await(t, [3]string{f.thread, "turn", "writer"}, func(r segments.Report) bool { return r.LastStarted() == 2 })
+		}
+		state := tracking.state()
+		if state.anchor != want {
+			t.Fatalf("test running=%v: source anchor=%+v, want %+v", running, state.anchor, want)
+		}
+		capture.update(f.ctx, broker, frame, tracking, state)
+	}
+	var live *previewmodel.Preview
+	for _, event := range testReview(broker).TakePreviews(sub) {
+		if event.Preview != nil && event.Preview.EditReceipt != "" {
+			live = event.Preview
+		}
+	}
+	if live == nil || live.SourceAnchor != want || !strings.Contains(live.EditReceipt, "+1 -1") {
+		t.Fatalf("live receipt lost writer boundary: %+v", live)
+	}
+	if !proxy.Windows.find("writer").closed.IsZero() {
+		t.Fatal("observed receipt completed the host")
+	}
+	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 2, Code: new(7)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(7)}, segmenttransport.Message{Type: segmenttransport.Closed})
+	hub.await(t, [3]string{f.thread, "turn", "writer"}, func(r segments.Report) bool { return r.Complete() })
+	h := mekugiHistory{ToolName: nativeExecCommandToolName, Root: f.workspace, ExecutingThread: f.thread, Script: script, ExecObservation: observed}
+	err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: h, result: binding.ExecutionResult{Terminal: true, ExitCode: new(7)}, host: &binding.ToolResult{CallID: "writer", Tool: "exec_command", Status: "completed", ExitCode: new(7)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, found, err := lookupObservation(f.ctx, proxy.Retained, f.workspace, legacycall.ExecCallID("writer", false))
+	if err != nil || !found || record.sourceAnchor != want || record.ChangeID == "" || record.ExecOutcome.Exit == nil || *record.ExecOutcome.Exit != 7 {
+		t.Fatalf("retained capture lost boundary or failure: found=%v err=%v record=%+v", found, err, record)
+	}
+	// A new projection, with no watcher or process, must publish the same anchor.
+	projection := sessionreview.Projection{Retained: proxy.Retained, Changes: proxy.Changes}
+	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{f.workspace: {f.thread: true}}}
+	if _, err := projection.Apply(f.ctx, sessionreview.Event{Kind: "scope", Scope: &scope}); err != nil {
+		t.Fatal(err)
+	}
+	receipts := projection.Data.Receipts()
+	if len(receipts) != 1 || receipts[0].SourceAnchor != want || !strings.Contains(receipts[0].Text, "+1 -1") {
+		t.Fatalf("cold review lost source anchor: %+v", receipts)
 	}
 }

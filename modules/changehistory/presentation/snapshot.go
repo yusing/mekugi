@@ -25,7 +25,8 @@ type AttemptIdentity struct {
 }
 
 // Receipt is an immutable captured-effect projection. Calls retain their order:
-// the first host item anchors the receipt; siblings do not repeat its summary.
+// SourceAnchor selects the last witnessed writer; older receipts use the first
+// host item. Siblings do not repeat its summary.
 type Receipt struct {
 	Thread    string
 	Calls     []string
@@ -33,6 +34,20 @@ type Receipt struct {
 	Pages     []activitydetail.Page
 	workspace string
 	evidence  *ReceiptEvidence
+
+	SourceAnchor activitydetail.SourceAnchor
+}
+
+// AnchorCall preserves the historical default when no witnessed boundary joins
+// this receipt's host membership.
+func (r *Receipt) AnchorCall() string {
+	if slices.Contains(r.Calls, r.SourceAnchor.Call) {
+		return r.SourceAnchor.Call
+	}
+	if len(r.Calls) > 0 {
+		return r.Calls[0]
+	}
+	return ""
 }
 
 type Attempt struct {

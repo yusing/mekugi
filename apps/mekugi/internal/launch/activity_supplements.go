@@ -20,7 +20,7 @@ func takeNativeActivity(a *sessioncontrol.Audience, root string) []sessionpresen
 			entry.ErrorDetail, entry.Text = event.Text, activitypresentation.ErrorPreview(event.Text)
 		}
 		if event.Kind == activitypresentation.SupplementEditReceipt {
-			entry.Native.CapturedEdit = &changepresentation.Receipt{Thread: event.Thread, Calls: event.Calls, Text: event.Text}
+			entry.Native.CapturedEdit = &changepresentation.Receipt{Thread: event.Thread, Calls: event.Calls, Text: event.Text, SourceAnchor: event.SourceAnchor}
 		}
 		entry.ReloadSources = event.ReloadSources
 		entries = append(entries, entry)

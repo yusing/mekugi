@@ -219,7 +219,10 @@ commands and both endpoints of moves. After persistence, a separate text part
 adds only the capture IDs to the agent-visible result; original host content
 remains intact. Incomplete or failed capture emits an explicit capture warning,
 independent of command exit status. Details remain available through `mchanges`
-and interactive receipts. Partial edits expose only retained evidence.
+and interactive receipts. Receipts retain the last witnessed writer's host and
+segment boundary independently of later commands, so live and restored
+Activity place the combined effect after its source commands. That boundary does
+not assign individual files to segments. Partial edits expose only retained evidence.
 Complete no-effect or unfinished calls produce neither summary nor change notice;
 continuations receive theirs when the edit finishes.
 

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -18,6 +20,7 @@ var fileName = recordkind.HashedName("change-file-", ".json")
 // Snapshot is the feature-owned acquisition/review value. Observation and
 // Baseline contain their owner's metadata only; file collections are separate.
 type Snapshot struct {
+	SourceAnchor  activitydetail.SourceAnchor
 	Observation   jsontext.Value
 	Files         []File
 	Baseline      jsontext.Value
@@ -38,6 +41,7 @@ type patchRefs struct {
 
 // Manifest text is bounded metadata. It never expands the referenced texts.
 type Manifest struct {
+	SourceAnchor  activitydetail.SourceAnchor `json:",omitzero"`
 	Version       int
 	Observation   jsontext.Value `json:",omitempty"`
 	Files         []string       `json:",omitempty"`
@@ -105,6 +109,9 @@ func (r fileRecord) validate(source *Source) error {
 }
 
 func (m Manifest) dependencies() ([]string, error) {
+	if (m.SourceAnchor.Call == "") != (m.SourceAnchor.Segment == 0) || m.SourceAnchor.Segment < 0 {
+		return nil, errors.New("invalid capture source anchor")
+	}
 	if m.Version != 1 {
 		return nil, errors.New("invalid capture manifest version")
 	}
@@ -239,7 +246,7 @@ func Write(tx *history.Transaction, source *Source, snapshot Snapshot) (string, 
 		}
 		return refs, nil
 	}
-	m := Manifest{Version: 1, Observation: snapshot.Observation, Baseline: snapshot.Baseline}
+	m := Manifest{Version: 1, Observation: snapshot.Observation, Baseline: snapshot.Baseline, SourceAnchor: snapshot.SourceAnchor}
 	var err error
 	if m.Files, err = files(snapshot.Files); err != nil {
 		return "", err
@@ -401,6 +408,7 @@ func Read(source *Source, name string) (Snapshot, error) {
 		return result, err
 	}
 	result.Observation, result.Baseline = m.Observation, m.Baseline
+	result.SourceAnchor = m.SourceAnchor
 	budget := history.MaxRecordBytes
 	if result.Files, err = readFiles(source, m.Files, &budget); err != nil {
 		return result, err

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -212,5 +214,25 @@ func TestRetainedTextAndReceiptValidation(t *testing.T) {
 	failed := RetainReview(t.Context(), &Source{}, diffmodel.ReviewFile{BeforePath: "/w/file", AfterPath: "/w/file", Diff: strings.Repeat("x", InlineBytes+1), Origin: "git reset", CopyFrom: "/w/source"}, &budget)
 	if failed.Incomplete == "" || failed.Diff != "" || failed.Origin != "git reset" || failed.CopyFrom != "/w/source" {
 		t.Fatalf("retention failure changed provenance: %+v", failed)
+	}
+}
+
+func TestCaptureSourceAnchorRoundTrip(t *testing.T) {
+	source := testSource(t)
+	want := activitydetail.SourceAnchor{Call: "formatter", Segment: 2}
+	root := saveSnapshot(t, source, Snapshot{SourceAnchor: want})
+	cold := &Source{Store: source.Store, Thread: source.Thread}
+	restored, err := Read(cold, root)
+	if err != nil || restored.SourceAnchor != want {
+		t.Fatalf("source anchor=%+v err=%v", restored.SourceAnchor, err)
+	}
+	for _, anchor := range []activitydetail.SourceAnchor{{Call: "writer"}, {Segment: 1}, {Call: "writer", Segment: -1}} {
+		err := source.Store.Transaction(t.Context(), source.Writes, func(tx *history.Transaction) error {
+			_, err := Write(tx, source, Snapshot{SourceAnchor: anchor})
+			return err
+		})
+		if err == nil {
+			t.Fatalf("invalid source anchor accepted: %+v", anchor)
+		}
 	}
 }

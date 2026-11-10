@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -68,7 +70,8 @@ type mekugiHistory struct {
 	legacy *legacycall.History
 	// New capture evidence is lazy and feature-owned. ReviewFiles is the frozen
 	// inline input accepted from historical records and old adapter fixtures.
-	reviewFiles []evidence.Review
+	reviewFiles  []evidence.Review
+	sourceAnchor activitydetail.SourceAnchor
 
 	confirmed  bool
 	nativeCell *nativetrace.Cell

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	"github.com/yusing/mekugi/contracts/scope"
 )
 
@@ -24,6 +26,7 @@ type ReloadSource struct {
 	Preload              bool   `json:",omitzero"`
 }
 type Supplement struct {
+	SourceAnchor                       activitydetail.SourceAnchor
 	ReloadSources                      []ReloadSource
 	Thread, Source, Kind, Text, CallID string
 	Turn                               string

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -67,6 +69,7 @@ type execPreviewCapture struct {
 	observation changecapture.Observation
 	snapshots   *changecapture.Workspaces
 	completed   int
+	anchor      activitydetail.SourceAnchor
 	text        string
 	calls       []string
 	next        time.Time
@@ -97,20 +100,21 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Se
 	} // Keep the boundary pending for retry.
 	files, complete := result.Files, result.Complete
 	// Another writer may have started while the filesystem comparison ran.
-	if current := tracking.state(); current.completed != state.completed || !slices.Equal(current.calls, state.calls) || ctx.Err() != nil {
+	if current := tracking.state(); current.completed != state.completed || current.anchor != state.anchor || !slices.Equal(current.calls, state.calls) || ctx.Err() != nil {
 		return
 	}
 	text := changepresentation.ReceiptText(preview.Workspace, receiptEvidence(mekugiHistory{Source: previewmodel.CaptureTool(c.observation), reviewFiles: files, ExecOutcome: &changecapture.Outcome{Labels: c.observation.Labels}}))
-	if (complete || text != "") && (text != c.text || text != "" && !slices.Equal(state.calls, c.calls)) {
+	if (complete || text != "") && (text != c.text || text != "" && (!slices.Equal(state.calls, c.calls) || state.anchor != c.anchor)) {
 		detached, err := evidence.LoadReviews(files, nil, 64<<20)
 		if err != nil {
 			return
 		}
 		preview.ID, preview.Files = "observed:"+c.ref, detached
 		preview.EditReceipt, preview.HostItems, preview.Complete = text, slices.Clone(state.calls), true
+		preview.SourceAnchor = state.anchor
 		preview.Status, preview.Footer = previewmodel.PreviewRunning, "observed edit"
 		broker.Update(preview, false)
-		c.text, c.calls = text, slices.Clone(state.calls)
+		c.text, c.calls, c.anchor = text, slices.Clone(state.calls), state.anchor
 	}
 	if complete {
 		c.completed = state.completed

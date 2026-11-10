@@ -35,7 +35,7 @@ func attachReview(ctx context.Context, review *sessionreview.Review, retained ch
 // preview joins completed receipts independently of terminal card lifetime.
 func applyPreview(attached *attachedPresentation, review *sessionreview.Review, pending *[]*changepresentation.Receipt, preview previewmodel.Preview) {
 	if preview.Complete && len(preview.HostItems) > 0 {
-		receipt := &changepresentation.Receipt{Thread: preview.Thread, Calls: preview.HostItems, Text: preview.EditReceipt}
+		receipt := &changepresentation.Receipt{Thread: preview.Thread, Calls: preview.HostItems, Text: preview.EditReceipt, SourceAnchor: preview.SourceAnchor}
 		for _, file := range preview.Files {
 			path := file.AfterPath
 			if path == "" {

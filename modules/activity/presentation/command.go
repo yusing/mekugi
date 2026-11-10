@@ -35,6 +35,7 @@ type Command struct {
 	Results                          *int
 	Captured                         bool
 	CaptureText                      string
+	CaptureAfter                     int // Last observed writer segment, one-based; zero keeps historical ordering.
 }
 
 type CommandSegment struct {
@@ -244,8 +245,12 @@ func commandSources(source string, preview bool) ([]Value, bool) {
 func (c Command) SegmentValues(detail bool) []Value {
 	var values []Value
 	awaitingCat := false
+	effectOffset := -1
 	_, classified := ClassifyShell(c.Script, "")
 	for segmentIndex, segment := range c.Segments {
+		if segmentIndex == c.CaptureAfter && c.CaptureAfter > 0 {
+			effectOffset = len(values)
+		}
 		if segment.Text == "" && hiddenCommandSource(cmp.Or(segment.Display, segment.Source)) {
 			continue
 		}
@@ -351,7 +356,10 @@ func (c Command) SegmentValues(detail bool) []Value {
 		}
 	}
 	if !detail && c.CaptureText != "" {
-		values = append(values, c.Effects()...)
+		if effectOffset < 0 {
+			effectOffset = len(values)
+		}
+		values = slices.Insert(values, effectOffset, c.Effects()...)
 	}
 	return FoldStages(values)
 }

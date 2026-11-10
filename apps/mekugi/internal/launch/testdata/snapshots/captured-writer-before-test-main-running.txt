@@ -1,0 +1,7 @@
+├ Ran     │ p='a.go'
+│         │ s=open(p).read().replace('before','after')
+│         │ open(p,'w').write(s)
+│         · via python3 · 1s
+├ Ran     gofmt -w a.go · 1s
+├ Edited  a.go +13 -3 via python3, gofmt
+└ Running make test TEST_PACKAGES=./apps/mekugi/internal/launch

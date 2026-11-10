@@ -177,6 +177,31 @@ test("a run of edits names its shared programs once and keeps each edit's own", 
   assert.equal(tags(html, "rm"), 2);
 });
 
+test("confirmed writer effects precede later pending, running and failed tests", () => {
+  for (const state of [{ pending: true }, { running: true }, { exitCode: 2 }]) {
+    const rendered = text(
+      view([
+        { kind: "op", verb: "Run", code: "python3 edit.py", lang: "bash" },
+        { kind: "op", verb: "Run", code: "gofmt -w a.go", lang: "bash" },
+        { ...edit("a.go", ["python3", "gofmt"]), label: "+13 -3" },
+        { kind: "op", verb: "Run", code: "make test", lang: "bash", ...state },
+      ]),
+    );
+    const positions = ["python3 edit.py", "gofmt -w a.go", "+13 −3", "make test"].map((part) =>
+      rendered.indexOf(part),
+    );
+    assert.ok(
+      positions.every((position) => position >= 0),
+      rendered,
+    );
+    assert.deepEqual(
+      positions.toSorted((a, b) => a - b),
+      positions,
+      rendered,
+    );
+  }
+});
+
 test("captured edits name their program once across the fold, apart from commands", () => {
   const creates = Array.from({ length: 12 }, (_, i) => ({
     ...edit(`/tmp/tree/file${i}.go`, ["cp"]),

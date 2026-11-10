@@ -31,10 +31,11 @@ func (v *ActivitySource) ApplyCapturedEdits(receipts []*changepresentation.Recei
 		if receipt == nil {
 			continue
 		}
-		// Anchor the receipt to the first recorded host call, regardless of
-		// arrival order. Other grouped calls retain actual non-edit operations
-		// and failures, not a duplicate receipt or a bookkeeping placeholder.
-		for index, call := range receipt.Calls {
+		// Anchor to the witnessed last writer, or the first recorded host call
+		// for older evidence, regardless of arrival order. Other grouped calls
+		// retain non-edit operations and failures, not a duplicate receipt.
+		anchor := receipt.AnchorCall()
+		for _, call := range receipt.Calls {
 			i, found := entries[[2]string{receipt.Thread, call}]
 			if !found {
 				continue
@@ -68,7 +69,7 @@ func (v *ActivitySource) ApplyCapturedEdits(receipts []*changepresentation.Recei
 				}
 			}
 			text := receipt.Text
-			if index == 0 && entry.Native.Command != "" {
+			if call == anchor && entry.Native.Command != "" {
 				// Rebuild from the host command so repeated reconciliation never
 				// duplicates receipts or drops neighboring operations.
 				original := activitypresentation.ShellSource(frontends.ShellDisplaySource(DisplayCommand(entry.Native.Command)), entry.Native.CommandCwd)
@@ -93,7 +94,7 @@ func (v *ActivitySource) ApplyCapturedEdits(receipts []*changepresentation.Recei
 					text = strings.Join(parts, "\n\n")
 				}
 			}
-			if index > 0 {
+			if call != anchor {
 				var remaining []string
 				for _, paragraph := range activitymodel.Paragraphs(entry.Text) {
 					block := activitymodel.ParseOperation(paragraph)

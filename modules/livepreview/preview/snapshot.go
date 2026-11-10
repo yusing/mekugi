@@ -1,6 +1,7 @@
 package preview
 
 import (
+	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -25,4 +26,6 @@ type Preview struct {
 	Status      string
 	Footer      string `json:",omitempty"`
 	Tool        string `json:",omitempty"` // The evidenced editing tool, not its host executor.
+
+	SourceAnchor activitydetail.SourceAnchor `json:"-"` // Consumed by source binding, not a live-card renderer.
 }

@@ -43,8 +43,11 @@ func CommandPresentation(entry ActivityEntry) activitypresentation.Command {
 	}
 	if receipt := n.CapturedEdit; receipt != nil {
 		c.Captured = true
-		if len(receipt.Calls) > 0 && receipt.Calls[0] == n.Item {
+		if receipt.AnchorCall() == n.Item {
 			c.CaptureText = receipt.Text
+			if receipt.SourceAnchor.Call == n.Item {
+				c.CaptureAfter = receipt.SourceAnchor.Segment
+			}
 		}
 	}
 	for _, segment := range n.Segments {

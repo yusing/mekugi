@@ -80,8 +80,11 @@ Grouped captures appear once on the owning invocation. They replace successful
 sibling intent in live and restored feeds. When command source, output, timing or
 failure requires retaining the action, captured effects nest beneath that action
 rather than appearing as independent operations. Multi-segment captures instead
-remain independent edit rows belonging to the invocation, without an extra shell
-action or a guess about which segment caused each change.
+remain independent edit rows belonging to the invocation. A witnessed source
+boundary places their combined receipt after the last contributing writer and
+before later unrelated commands, including pending or running tests. This boundary
+retains invocation ownership, not per-file segment attribution. Older evidence
+without that boundary keeps its invocation anchor.
 When one captured segment contains several classified operations, its original
 source remains one action with that segment's output and outcome.
 Command output and timing stay with their action; effects retain their own counts

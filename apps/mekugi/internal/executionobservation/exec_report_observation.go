@@ -3,6 +3,9 @@ package executionobservation
 
 import (
 	"slices"
+	"sync"
+
+	"github.com/yusing/mekugi/contracts/activitydetail"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -15,8 +18,10 @@ import (
 // writer scope. The subscription itself neither captures nor publishes files.
 type execPreviewTrack struct {
 	*segments.Subscription
-	writers    map[string]bool
-	streamable map[string]bool
+	mu            sync.Mutex
+	writers       map[string]bool
+	streamable    map[string]bool
+	writerSources map[string]map[string]bool
 }
 
 func newExecPreviewTrack(observer *segments.Observer, thread, turn string, commands []commandanalysis.Command) *execPreviewTrack {
@@ -28,7 +33,7 @@ func newExecPreviewTrack(observer *segments.Observer, thread, turn string, comma
 	if subscription == nil {
 		return nil
 	}
-	p := &execPreviewTrack{Subscription: subscription, writers: make(map[string]bool)}
+	p := &execPreviewTrack{Subscription: subscription, writers: make(map[string]bool), writerSources: make(map[string]map[string]bool)}
 	for _, command := range commands {
 		plan := execscope.Classify(execscope.Input{Command: command.Command, Directory: command.Workdir, Shell: command.Shell})
 		p.writers[p.Source(command.Command, "")] = plan.Class != execscope.Neutral && (len(plan.Programs) == 0 || slices.ContainsFunc(plan.Programs, func(program execscope.Program) bool { return program.Direct }))
@@ -37,6 +42,7 @@ func newExecPreviewTrack(observer *segments.Observer, thread, turn string, comma
 }
 
 type execPreviewState struct {
+	anchor           activitydetail.SourceAnchor
 	tracked, settled bool
 	completed        int
 	calls            []string
@@ -47,6 +53,8 @@ func (p *execPreviewTrack) state() (state execPreviewState) {
 	if p == nil {
 		return state
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	observed := p.State()
 	state.changed, state.settled = observed.Changed, true
 	allTracked, writing := true, false
@@ -56,6 +64,25 @@ func (p *execPreviewTrack) state() (state execPreviewState) {
 			return execPreviewState{tracked: true, changed: observed.Changed}
 		}
 		match := retained.Report
+		writers := p.writerSources[script]
+		if writers == nil {
+			writers = make(map[string]bool)
+			p.writerSources[script] = writers
+		}
+		if match != nil {
+			for index, segment := range match.Segments {
+				// A report's source is immutable. Live polling and terminal
+				// publication reuse its classification without reparsing it.
+				writer, known := writers[segment.Source]
+				if !known {
+					writer = (activitypresentation.CommandSource{Script: segment.Source, Display: frontends.ShellDisplaySource(segment.Source)}).WritesFilesIn(script)
+					writers[segment.Source] = writer
+				}
+				if segment.Ended && writer {
+					state.anchor = activitydetail.SourceAnchor{Call: retained.Key[2], Segment: index + 1}
+				}
+			}
+		}
 		streamable := p.streamable == nil || p.streamable[script]
 		if match != nil && retained.HostCompleted {
 			state.completed++
@@ -83,7 +110,7 @@ func (p *execPreviewTrack) state() (state execPreviewState) {
 			if p.streamable != nil {
 				writer = p.streamable[p.Source(segment.Source, "")]
 			} else {
-				writer = (activitypresentation.CommandSource{Script: segment.Source, Display: frontends.ShellDisplaySource(segment.Source), Directory: ""}).WritesFilesIn(script)
+				writer = writers[segment.Source]
 			}
 			if streamable && writer && !segment.Ended && !match.Done && (segment.Began || i > last) {
 				state.settled = false

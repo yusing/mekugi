@@ -4,6 +4,8 @@ import (
 	json "encoding/json/v2"
 	"errors"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -34,6 +36,16 @@ func (m Manifest) ObservationMode() (present, codeMode bool, err error) {
 	var mode struct{ CodeMode bool }
 	err = json.Unmarshal(m.Observation, &mode)
 	return true, mode.CodeMode, err
+}
+
+// Anchor reads only the persisted source boundary, never current workspace files.
+func Anchor(source *Source, record history.HostRecord) (activitydetail.SourceAnchor, error) {
+	root, err := Root(record)
+	if err != nil || root == "" {
+		return activitydetail.SourceAnchor{}, err
+	}
+	manifest, err := Open(source, root)
+	return manifest.SourceAnchor, err
 }
 
 // Reviews reads only review metadata, not baselines or review text. Historical

@@ -9,12 +9,37 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
+
+func TestCapturedWriterOrderInBrowserProjection(t *testing.T) {
+	for _, state := range []string{"pending", "running", "failed"} {
+		t.Run(state, func(t *testing.T) {
+			const python = "python3 - <<'PY'\np='a.go'\ns=open(p).read().replace('before','after')\nopen(p,'w').write(s)\nPY"
+			const formatter = "gofmt -w a.go"
+			const test = "make test TEST_PACKAGES=./apps/mekugi/internal/launch"
+			command := activity.Command{Script: python + "\n" + formatter + "\n" + test, Captured: true, CaptureText: "Edit `a.go` +13 -3 · python3, gofmt", CaptureAfter: 2,
+				Segments: []activity.CommandSegment{
+					{Source: python, Display: python, Text: activity.ShellSource(python, ""), Writer: true, Duration: time.Second},
+					{Source: formatter, Display: formatter, Text: activity.ShellSource(formatter, ""), Writer: true, Duration: time.Second},
+					{Source: test, Display: test, Text: activity.ShellSource(test, ""), Pending: state == "pending", Running: state == "running"},
+				}}
+			if state == "failed" {
+				command.Segments[2].ExitCode = 2
+				command.Segments[2].Tail = []string{"test failed"}
+			}
+			entry := projectEntry(activity.Entry{Facts: activity.Facts{Seq: 1, Kind: "tool", Agent: "Main"}, Values: command.SegmentValues(false)}, false, "/root", "/root")
+			if len(entry.Values) != 4 || entry.Values[0].Code == "" || entry.Values[1].Code != formatter || len(entry.Values[2].Sources) == 0 || entry.Values[2].Sources[0] != "python3" || entry.Values[3].Code != test || entry.Values[3].Pending != (state == "pending") || entry.Values[3].Running != (state == "running") {
+				t.Fatalf("browser projection reordered writer, effect or test: %+v", entry.Values)
+			}
+		})
+	}
+}
 
 func openRemoteTest(t *testing.T, s *Server, h http.Handler, frame NativeFrame) (NativeEvent, NativeRequest, *RPCSubscription) {
 	t.Helper()

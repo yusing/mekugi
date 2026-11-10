@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	changes "github.com/yusing/mekugi/modules/changehistory/changes"
 
 	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
@@ -46,6 +48,7 @@ type execWindow struct {
 	// created keeps a completed window's mktemp reports for retried
 	// finalization after its tracking, with retained output, is released.
 	created []segmenttransport.Message
+	anchor  activitydetail.SourceAnchor
 	// claims are snapshot states that overlapping calls already recorded.
 	// This window's snapshot comparison starts from them.
 	claims changecapture.Claims
@@ -316,6 +319,7 @@ func (r *Windows) markBackground(thread, turn string) {
 
 // execWindowView is what finalization learns about concurrent windows.
 type execWindowView struct {
+	anchor     activitydetail.SourceAnchor
 	created    []segmenttransport.Message
 	overlaps   []string
 	excluded   []string
@@ -359,8 +363,12 @@ func (r *Windows) view(refs []string, complete bool) execWindowView {
 		if window := r.find(ref); window != nil {
 			if window.tracking != nil {
 				window.created = window.tracking.CreatedPaths()
+				window.anchor = window.tracking.state().anchor
 			}
 			view.created = append(view.created, window.created...)
+			if window.anchor.Call != "" {
+				view.anchor = window.anchor
+			}
 			if complete && window.closed.IsZero() {
 				if window.tracking != nil {
 					window.tracking.Close()
