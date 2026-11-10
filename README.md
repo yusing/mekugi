@@ -23,10 +23,15 @@ Invocation overrides leave Codex configuration unchanged.
   so work resumes from current source text.
 - **Agent-chosen checkpoints.** Agents can [compact at safe checkpoints](modules/threadcontrol/SPEC.md#operations-and-admission)
   and continue, or compact while waiting for delegates. [Measured usage reminders](modules/agentguidance/SPEC.md#context-usage-notices)
-  arrive from halfway full when usage is measured.
+  arrive from halfway full when usage is measured, with an instruction to compact
+  at 90%. Early checkpoints can [skip a costlier reset](docs/guide/sessions.md#compaction-and-recovery).
 - **Delegates start prepared.** [Fresh agents start with selected files, skills and captured changes](modules/threadcontrol/SPEC.md#prepared-children-and-guidance)
-  already loaded. Parents wait for one or all agents without polling; delegates
-  can coordinate their own children and reply with a short summary and details.
+  already loaded. Parents wait for any or all current descendants without polling;
+  optional progress yields pair developer summaries with captured changes to help
+  catch mistakes before completion, rather than just checking liveness.
+  Delegates can coordinate their own children and reply with a short summary and details.
+  Assignments and messages can [snapshot referenced files](modules/threadcontrol/SPEC.md#file-references-in-assignments-and-messages)
+  under the recipient's permissions, including when coordinating across sessions.
   Agents can also [ask independent side questions](modules/threadcontrol/SPEC.md#independent-side-questions)
   without steering the recipient's work, and coordinate across active sessions.
 - **Facts up front.** Codex agents receive an [observed OS and Git snapshot](modules/agentguidance/SPEC.md#environment-snapshot),
@@ -34,7 +39,7 @@ Invocation overrides leave Codex configuration unchanged.
 - **Fewer output tokens, recoverable reads.** [Session helpers](docs/guide/agent-tools.md)
   bound reads, symbol lookups, outlines and command output. Incomplete retained
   reads name their exact continuation; `mrun` discards output outside its selected window.
-  [Repeated output](modules/outputdeduplication/SPEC.md) becomes a reference to
+  [Repeated output and supplied source bodies](modules/outputdeduplication/SPEC.md) can become references to
   earlier visible text, and [marked instruction blocks](docs/guide/configuration.md#troubleshooting-and-integrations)
   can be omitted. Full results stay in evidence and the UI.
 
@@ -57,7 +62,9 @@ Invocation overrides leave Codex configuration unchanged.
 - **Live activity with its reasons.** Operations appear under the reasoning that
   led to them. Delegates appear with their assignment and reply summary in Main,
   and with progress and metrics in the [Agents pane](docs/guide/terminal-ui.md#agents-pane).
-  Open attachable children to read their transcripts and steer them.
+  The roster identifies supported tool calls as their input is being generated, so
+  a large call is less likely to look stalled. Open attachable children to read
+  their transcripts and steer them.
 - **Catch mistakes before they land.** [Edits stream into the Diff pane](docs/guide/terminal-ui.md#live-diff-pane)
   while the agent writes them. Steer or interrupt the turn, [stop one running command](docs/guide/terminal-ui.md#composer),
   or deny commands before they run.
@@ -68,6 +75,8 @@ Invocation overrides leave Codex configuration unchanged.
 - **Private sudo passwords and GPG passphrases.** Enter secrets in a
   [dedicated dialog](docs/guide/approvals.md), not the conversation. Passwords and
   passphrases stay out of model input and retained history, including for Git signing.
+- **Hook trust prompts.** Review and choose whether to trust new or changed
+  [Codex hooks](docs/guide/approvals.md) before interactive work starts.
 - **Review what happened.** Open saved edits by hunk, [searchable per-command output](docs/guide/terminal-ui.md#output-dialog),
   compaction events, and [usage, throughput and cost](docs/guide/configuration.md#metrics).
   Missing evidence and provisional previews are labeled. Past sessions can be
@@ -75,7 +84,8 @@ Invocation overrides leave Codex configuration unchanged.
   [replayed](docs/contributing/development.md#replay-a-session).
 - **Herdr app panels.** See the agent roster, saved changes and live edits in
   [native Herdr panels](docs/guide/terminal-ui.md#herdr-app-panels) that follow
-  the active space, and select an agent to switch its transcript and composer.
+  the active space, select an agent to switch its transcript and composer, and
+  open file links or edit details in capable companion panels.
 
 ### Work from anywhere
 

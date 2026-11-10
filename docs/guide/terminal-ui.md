@@ -24,7 +24,9 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
 
 ## Composer
 
-- Enter steers; Tab queues. Type `?` in an empty draft for shortcuts.
+- Enter steers; Tab queues. A shell-mode command queued while work is busy runs
+  after that work settles rather than injecting its result into the active turn.
+  Type `?` in an empty draft for shortcuts.
 - `/predictions on|off` controls next-message suggestions in the empty Main composer.
   Tab accepts a suggestion for editing; typing dismisses it. Availability depends
   on the OpenAI account, model and remote configuration, and requires Codex
@@ -127,6 +129,10 @@ saved changes and live edits in its right-hand diff pane. The panels follow the
 active Herdr space, including spaces on another machine. Selecting an
 attachable agent switches that space's Mekugi terminal transcript and composer; each thread
 keeps its draft. Herdr's ordinary agents sidebar remains separate.
+
+With capable companion panels, local file links open in the Files sidebar and
+edit details open in the diff pane, including an original-diff fallback when no
+saved entry exists. Otherwise Mekugi keeps its ordinary dialogs.
 
 While the native panels are connected, Mekugi hides its duplicate terminal roster,
 diff pane, live-edit dock and bottom navigation bar. Disconnecting the panels restores the terminal
