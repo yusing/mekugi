@@ -21,6 +21,7 @@ import (
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 // profileRoute selects only imported/explicit routes, never guessed provider
@@ -116,7 +117,7 @@ func prepareProfileCatalog(args []string, workspace string) ([]string, string, e
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(workspace, path)
 	}
-	file, err := os.Open(path)
+	file, err := sourceparse.Open(path)
 	if err != nil {
 		return nil, "", errors.New("cannot read profile model_catalog_json")
 	}

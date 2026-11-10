@@ -1,12 +1,16 @@
 package launch
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 )
@@ -102,22 +106,59 @@ func TestProfilePrivateCatalogPreservesSource(t *testing.T) {
 	if err := os.WriteFile(source, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
-	args, directory, err := prepareProfileCatalog([]string{"exec", "-c", `model_catalog_json="source.json"`}, workspace)
-	if err != nil {
+	if err := os.Symlink(source, filepath.Join(workspace, "link.json")); err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(directory)
-	derived := launchoptions.ConfigOverrides(args)["model_catalog_json"].(string)
-	actual, err := os.ReadFile(derived)
-	if err != nil || !strings.Contains(string(actual), `"tool_mode":"code_mode_only"`) || !strings.Contains(string(actual), `"literal.key":42`) {
-		t.Fatalf("derived catalog: %s %v", actual, err)
-	}
-	info, err := os.Stat(derived)
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatalf("catalog permissions: %v %v", info, err)
+	for _, path := range []string{"source.json", "link.json"} {
+		t.Run(path, func(t *testing.T) {
+			args, directory, err := prepareProfileCatalog([]string{"exec", "-c", fmt.Sprintf("model_catalog_json=%q", path)}, workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(directory)
+			derived := launchoptions.ConfigOverrides(args)["model_catalog_json"].(string)
+			actual, err := os.ReadFile(derived)
+			if err != nil || !strings.Contains(string(actual), `"tool_mode":"code_mode_only"`) || !strings.Contains(string(actual), `"literal.key":42`) {
+				t.Fatalf("derived catalog: %s %v", actual, err)
+			}
+			info, err := os.Stat(derived)
+			if err != nil || info.Mode().Perm() != 0600 {
+				t.Fatalf("catalog permissions: %v %v", info, err)
+			}
+		})
 	}
 	if original, _ := os.ReadFile(source); string(original) != body {
 		t.Fatal("source catalog changed")
+	}
+}
+
+func TestProfilePrivateCatalogRejectsFIFOWithoutWriter(t *testing.T) {
+	if path := os.Getenv("MEKUGI_TEST_PROFILE_FIFO"); path != "" {
+		args, directory, err := prepareProfileCatalog([]string{"-c", fmt.Sprintf("model_catalog_json=%q", path)}, filepath.Dir(path))
+		if directory != "" {
+			defer os.RemoveAll(directory)
+		}
+		if err == nil || !strings.Contains(err.Error(), "regular file") || args != nil || directory != "" {
+			t.Fatalf("FIFO was not rejected: args=%q directory=%q err=%v", args, directory, err)
+		}
+		return
+	}
+	path := filepath.Join(t.TempDir(), "catalog.fifo")
+	if err := syscall.Mkfifo(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A subprocess bounds the regression itself, and CommandContext always
+	// kills and joins a blocked reader without supplying a FIFO writer.
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, executable, "-test.run=^TestProfilePrivateCatalogRejectsFIFOWithoutWriter$")
+	cmd.Env = append(os.Environ(), "MEKUGI_TEST_PROFILE_FIFO="+path)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("FIFO admission blocked or failed: %v: %s", err, output)
 	}
 }
 
