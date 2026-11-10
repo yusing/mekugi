@@ -25,6 +25,7 @@ type ReviewComposition struct {
 	pathHighlighted       bool
 	regions               []reviewRegion
 	original, current     map[int]string
+	previous              ReviewFile
 }
 
 type reviewRegion struct {
@@ -98,6 +99,13 @@ func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, hidden, highligh
 		for _, row := range hunk.Rows {
 			if row.Kind != '+' {
 				if known, ok := next.current[position]; ok && known != row.Text {
+					// Overlapping observations can retain the same transition twice.
+					// Only an exact repeat of the last accepted text update can be
+					// redundant. Try ordinary composition first: identical insertion
+					// hunks can also describe two real, consecutive edits.
+					if file == c.previous && file.BeforePath == file.AfterPath && !file.Binary && !file.Link {
+						return nil
+					}
 					return errors.New("captured source does not match the composed chain")
 				}
 				next.current[position] = row.Text
@@ -141,6 +149,7 @@ func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, hidden, highligh
 		next.pathHighlighted = highlighted
 	}
 	next.afterPath = file.AfterPath
+	next.previous = file
 	*c = next
 	return nil
 }

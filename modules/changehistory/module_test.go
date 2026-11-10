@@ -17,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
 	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -155,6 +156,54 @@ func TestCanceledCaptureChainRetainsUnmatchedArtifactDiagnostic(t *testing.T) {
 	history := f.execute(t, "owner", "--history", ids[2])
 	if history.ExitCode != 0 || !strings.Contains(history.Stdout, "-B") {
 		t.Fatalf("unmatched deletion history unavailable: %+v", history)
+	}
+}
+
+func TestModuleRepeatedRevertCaptureComposesRetainedHandoff(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	path := filepath.Join(f.workspace, "source.go")
+	base := "package source\n\nimport (\n\t\"fmt\"\n\t\"example/feature\"\n\t\"strings\"\n)\n\nvar enabled = false\n"
+	edited := strings.ReplaceAll(base, "false", "true")
+	formatted := strings.ReplaceAll(edited, "\t\"example/feature\"\n\t\"strings\"\n", "\t\"strings\"\n\n\t\"example/feature\"\n")
+	var ids []string
+	for i, file := range []diffmodel.ReviewFile{
+		diffmodel.RenderReviewFile(path, path, base, edited),
+		diffmodel.RenderIncompleteReviewFile(path, path, "overlapping writer endpoint unavailable"),
+		diffmodel.RenderReviewFile(path, path, edited, formatted),
+		diffmodel.RenderReviewFile(path, path, formatted, edited),
+		diffmodel.RenderReviewFile(path, path, formatted, edited),
+	} {
+		call := fmt.Sprintf("handoff-%d", i)
+		id := f.reserve(t, "delegate", call)
+		f.publish(t, id, call, call, "delegate", []legacycall.ReviewFile{legacycall.ReviewFile(file)})
+		ids = append(ids, id)
+	}
+	// The real handoff excluded the incomplete writer, but selected both the
+	// explicit revert and a second window observing that same reversal.
+	selection := []string{ids[0], ids[2] + ".." + ids[4]}
+	net := f.execute(t, "owner", selection...)
+	if net.ExitCode != 0 || net.Stderr != "" || !strings.Contains(net.Stdout, "-var enabled = false\n+var enabled = true\n") || strings.Contains(net.Stdout, "+\t\"example/feature\"") {
+		t.Fatalf("retained handoff did not cancel duplicate reversal: %+v", net)
+	}
+	summary := f.execute(t, "owner", append([]string{"--summary"}, selection...)...)
+	if summary.ExitCode != 0 || summary.Stderr != "" || !strings.Contains(summary.Stdout, "M\t1\t1\tsource.go") {
+		t.Fatalf("summary disagrees with composed handoff: %+v", summary)
+	}
+	// Exact-operation history retains both observations, not a rewritten record.
+	details := f.execute(t, "owner", "--history", ids[3]+".."+ids[4])
+	if details.ExitCode != 0 || strings.Count(details.Stdout, "+\t\"example/feature\"\n") != 2 {
+		t.Fatalf("duplicate history was hidden: %+v", details)
+	}
+	for _, mode := range []string{"--summary", "--history"} {
+		missing := f.execute(t, "owner", mode, ids[1])
+		if !strings.Contains(missing.Stdout, "overlapping writer endpoint unavailable") {
+			t.Fatalf("incomplete evidence lost its reason: %+v", missing)
+		}
+	}
+	partial := f.execute(t, "owner", ids[0]+".."+ids[4])
+	if partial.ExitCode != 1 || !strings.Contains(partial.Stderr, "incomplete history") {
+		t.Fatalf("incomplete selection claimed complete coverage: %+v", partial)
 	}
 }
 

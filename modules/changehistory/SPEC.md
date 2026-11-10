@@ -126,6 +126,11 @@ Complete independent files from a partial-coverage capture still participate in
 their source chains; usable output accompanies the nonzero coverage diagnostic.
 Complete captured diffs remain composable regardless of command exit status,
 including older retained records. Normal views
+coalesce an exact repeated text update when it repeats the last accepted
+transition rather than matching the current source. This recovers duplicate
+observations without adding an unselected baseline; applicable repeated edits,
+different transitions and missing evidence retain their ordinary semantics.
+Exact-operation history still shows both captured observations. Normal views
 describe captured file differences, not command outcomes; execution and capture
 diagnostics are available in `--history` only.
 An overlapping named or checkpoint-backed writer can own multiple ordered intervals around another

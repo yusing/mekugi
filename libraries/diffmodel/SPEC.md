@@ -19,6 +19,11 @@ Grouping follows supplied capture order across moves, deletion and recreation,
 preserving the caller's evidence indexes. Row alignment advances the old and new
 sides independently and retains row kinds and geometry.
 Composition follows captured identities and order, retaining only known rows.
+An exact repeat of the preceding complete text update can describe the same
+observed transition twice. If its source no longer matches, composition keeps
+the already-witnessed endpoint instead of applying that transition again.
+Applicable repeated hunks remain separate edits; different or intervening
+captures do not qualify for this recovery.
 Hidden and highlighted regions follow source changes rather than painted lines.
 An inconsistent chain fails without publishing a partial replacement. Merge
 returns content, conflicts, satisfied hunks, and rejected hunks for its caller to

@@ -43,6 +43,11 @@ func TestFileNetCountsComposesVisibleHistory(t *testing.T) {
 			netCountsCapture(1, "/root", "a", "a", "old\n", "draft\n"),
 			netCountsCapture(2, "/root/worker", "a", "a", "draft\n", "old\n"),
 		}, diffmodel.Counts{}},
+		{"duplicate observed revert", []Chunk{
+			netCountsCapture(1, "/root", "a", "a", "old\n", "draft\n"),
+			netCountsCapture(2, "/root/worker", "a", "a", "draft\n", "old\n"),
+			netCountsCapture(3, "/root/worker", "a", "a", "draft\n", "old\n"),
+		}, diffmodel.Counts{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

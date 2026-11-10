@@ -131,6 +131,44 @@ func TestReviewCompositionValidationIsAtomic(t *testing.T) {
 	}
 }
 
+func TestReviewCompositionRepeatedCapturedTransition(t *testing.T) {
+	var c ReviewComposition
+	forward := composeCapture("original\n", "formatted\n")
+	revert := composeCapture("formatted\n", "original\n")
+	for _, file := range []ReviewFile{forward, revert, revert} {
+		if err := c.ApplyWithHighlight(file, false, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if files := c.FilesWithHighlights(); len(files) != 0 {
+		t.Fatalf("duplicate observation revived a reverted edit: %+v", files)
+	}
+	// An intervening accepted edit invalidates the duplicate, even if its
+	// captured endpoint happens to match an earlier transition.
+	if err := c.ApplyWithHighlight(composeCapture("original\n", "later\n"), false, false); err != nil {
+		t.Fatal(err)
+	}
+	before := c
+	if err := c.ApplyWithHighlight(revert, false, false); err == nil || !reflect.DeepEqual(before, c) {
+		t.Fatalf("stale transition accepted or changed the chain: %v", err)
+	}
+}
+
+func TestReviewCompositionRepeatedApplicableInsertion(t *testing.T) {
+	// Both identical hunks apply: each inserts another row before the retained
+	// anchor. Identical text alone cannot establish a redundant observation.
+	file := ReviewFile{BeforePath: "file.txt", AfterPath: "file.txt", Diff: "@@ -1 +1,2 @@\n+same\n same\n"}
+	var c ReviewComposition
+	for range 2 {
+		if err := c.ApplyWithHighlight(file, false, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := composedText(&c); strings.Count(got, "+same\n") != 2 {
+		t.Fatalf("applicable repeated insertion was discarded: %q", got)
+	}
+}
+
 func checkComposition(t *testing.T, c *ReviewComposition, base, current []string) {
 	t.Helper()
 	for position, line := range c.original {
