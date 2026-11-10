@@ -1,6 +1,8 @@
 package transcript_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +11,116 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
+
+func TestTranscriptReasoningSnapshotsAndReplacement(t *testing.T) {
+	for _, main := range []bool{true, false} {
+		t.Run(fmt.Sprint(main), func(t *testing.T) {
+			var state transcript.State
+			stores := transcriptScopes()
+			e := observation.TextEvent{At: time.Unix(100, 0), Kind: observation.ReasoningDelta, Item: observation.TextItem{Ref: observation.ItemRef{ThreadID: "thread", TurnID: "turn", ItemID: "reasoning"}, Type: "reasoning"}}
+			var snapshots []string
+			for range 1000 {
+				e.Delta = strings.Repeat("x", 32)
+				snapshots = append(snapshots, state.Observe(e, main, stores)[0].Text)
+			}
+			// A new start replaces the active body without reusing the buffer
+			// backing any of the already-published prefixes.
+			e.Kind, e.Item.Summary = observation.ItemStarted, []string{"Replacement"}
+			state.Observe(e, main, stores)
+			e.Kind = observation.ReasoningPart
+			state.Observe(e, main, stores)
+			e.Kind, e.Delta = observation.ReasoningDelta, " tail"
+			replaced := state.Observe(e, main, stores)[0].Text
+			if replaced != "Replacement\n\n tail" {
+				t.Fatalf("replacement or separator lost: %q", replaced)
+			}
+			e.Kind, e.Item.Summary = observation.ItemCompleted, []string{"Authoritative"}
+			if got := state.Observe(e, main, stores); len(got) != 1 || got[0].Text != "Authoritative" {
+				t.Fatalf("completion did not replace stream: %+v", got)
+			}
+			for i, snapshot := range snapshots {
+				if len(snapshot) != (i+1)*32 || strings.Trim(snapshot, "x") != "" {
+					t.Fatalf("published prefix %d mutated", i)
+				}
+			}
+			if replaced != "Replacement\n\n tail" {
+				t.Fatal("completion mutated a published replacement")
+			}
+		})
+	}
+}
+
+func TestTranscriptEmptyPartAndLateReasoningCompletion(t *testing.T) {
+	var state transcript.State
+	stores := transcriptScopes()
+	e := observation.TextEvent{At: time.Unix(100, 0), Kind: observation.ItemStarted, Item: observation.TextItem{Ref: observation.ItemRef{ThreadID: "thread", TurnID: "old", ItemID: "reasoning"}, Type: "reasoning"}}
+	state.Observe(e, false, stores)
+	e.Kind = observation.ReasoningPart
+	state.Observe(e, false, stores)
+	e.Kind, e.Delta = observation.ReasoningDelta, "Body"
+	if got := state.Observe(e, false, stores); len(got) != 1 || got[0].Text != "Body" {
+		t.Fatalf("empty part inserted a separator: %+v", got)
+	}
+	state.TurnCompleted("thread", "old", "completed", e.At, true, stores)
+	pending := state.ProviderStarted("thread", e.At, stores.Thread)
+	e.Kind, e.Item.Summary = observation.ItemCompleted, []string{"Late authoritative body"}
+	late := state.Observe(e, false, observation.TextScope{Thread: stores.Thread})
+	if len(late) != 1 || late[0].Text != "Late authoritative body" || late[0].Ref != e.Item.Ref || late[0].Replaces != "" {
+		t.Fatalf("late completion lost its isolated authoritative body: %+v", late)
+	}
+	e.Item.Summary = nil
+	if got := state.Observe(e, false, observation.TextScope{Thread: stores.Thread}); len(got) != 0 {
+		t.Fatalf("blank late completion became visible: %+v", got)
+	}
+	dropped := state.OtherItemStarted("thread", stores.Thread)
+	if len(pending) != 1 || len(dropped) != 1 || dropped[0].Ref.ItemID != pending[0].Ref.ItemID {
+		t.Fatalf("old completion consumed the newer placeholder: pending=%+v dropped=%+v", pending, dropped)
+	}
+}
+
+func TestTranscriptInterruptedReasoningSettlesNonemptyBody(t *testing.T) {
+	for _, body := range []string{"Visible", " \n\t"} {
+		var state transcript.State
+		stores := transcriptScopes()
+		e := observation.TextEvent{At: time.Unix(100, 0), Kind: observation.ReasoningDelta, Delta: body, Item: observation.TextItem{Ref: observation.ItemRef{ThreadID: "thread", TurnID: "turn", ItemID: "reasoning"}, Type: "reasoning"}}
+		state.Observe(e, true, stores)
+		ended := state.TurnCompleted("thread", "turn", "interrupted", e.At, true, stores)
+		phase := "item/completed"
+		if strings.TrimSpace(body) == "" {
+			phase = "discarded"
+		}
+		if len(ended) != 1 || ended[0].Phase != phase || ended[0].Text != body {
+			t.Fatalf("interrupted body %q: %+v", body, ended)
+		}
+		if got := state.Observe(e, true, stores); len(got) != 0 {
+			t.Fatalf("late delta reopened interrupted item: %+v", got)
+		}
+	}
+}
+
+func BenchmarkTranscriptReasoningGrowth(b *testing.B) {
+	for _, count := range []int{100, 1000, 4000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			delta := strings.Repeat("x", 32)
+			e := observation.TextEvent{At: time.Unix(100, 0), Kind: observation.ReasoningDelta, Delta: delta, Item: observation.TextItem{Ref: observation.ItemRef{ThreadID: "thread", TurnID: "turn", ItemID: "reasoning"}, Type: "reasoning"}}
+			b.ReportAllocs()
+			for b.Loop() {
+				var state transcript.State
+				stores := transcriptScopes()
+				first, last := "", ""
+				for i := range count {
+					last = state.Observe(e, false, stores)[0].Text
+					if i == 0 {
+						first = last
+					}
+				}
+				if len(last) != 32*count || first != delta {
+					b.Fatal("invalid accumulated body or immutable snapshot")
+				}
+			}
+		})
+	}
+}
 
 func TestTranscriptPublicSummaryLifecycle(t *testing.T) {
 	at := time.Unix(100, 0)

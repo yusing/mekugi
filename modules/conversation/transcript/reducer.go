@@ -23,7 +23,7 @@ type threadState struct {
 }
 
 type turnState struct {
-	reasoning map[string]string // Active bodies; completed items retain empty tombstones.
+	reasoning map[string]*strings.Builder // Active bodies; completed items retain nil tombstones.
 	thinking  map[string]time.Time
 	message   observation.TextUpdate
 	final     bool
@@ -40,7 +40,7 @@ type State struct {
 
 func (t *turnState) initReasoning() {
 	if t.reasoning == nil {
-		t.reasoning = make(map[string]string)
+		t.reasoning = make(map[string]*strings.Builder)
 		t.thinking = make(map[string]time.Time)
 	}
 }
@@ -96,12 +96,12 @@ func (s *State) TurnCompleted(thread, turn, status string, at time.Time, current
 	}
 	slices.Sort(keys)
 	for _, key := range keys {
-		text, phase := t.reasoning[key], "item/completed"
+		text, phase := t.reasoning[key].String(), "item/completed"
 		if strings.TrimSpace(text) == "" {
 			phase = "discarded"
 		}
 		updates = append(updates, observation.TextUpdate{Ref: observation.ItemRef{ThreadID: thread, TurnID: turn, ItemID: key}, Kind: "reasoning", Phase: phase, Text: text, Observed: at, Thought: at.Sub(t.thinking[key]), Live: true})
-		t.reasoning[key] = ""
+		t.reasoning[key] = nil
 		delete(t.thinking, key)
 		th.thinking--
 	}
@@ -123,8 +123,8 @@ func (t *turnState) reasoningPart(e observation.TextEvent) {
 			return
 		}
 	}
-	if text := t.reasoning[id]; text != "" {
-		t.reasoning[id] = text + "\n\n"
+	if text := t.reasoning[id]; text != nil && text.Len() != 0 {
+		text.WriteString("\n\n")
 	}
 }
 
@@ -136,8 +136,12 @@ func (t *turnState) reasoningDelta(e observation.TextEvent, thread *threadState)
 			return nil
 		}
 	}
-	t.reasoning[id] += e.Delta
-	u := observation.TextUpdate{Ref: e.Item.Ref, Kind: "reasoning", Phase: "summary", Text: t.reasoning[id], Observed: e.At, Live: true}
+	if t.reasoning[id] == nil {
+		t.reasoning[id] = new(strings.Builder)
+	}
+	text := t.reasoning[id]
+	text.WriteString(e.Delta)
+	u := observation.TextUpdate{Ref: e.Item.Ref, Kind: "reasoning", Phase: "summary", Text: text.String(), Observed: e.At, Live: true}
 	t.start(&u, e.At, thread)
 	return []observation.TextUpdate{u}
 }
@@ -199,22 +203,28 @@ func (t *turnState) item(e observation.TextEvent, main, completed bool, thread *
 				thread.thinking--
 				u.Thought = e.At.Sub(at)
 				if strings.TrimSpace(u.Text) == "" {
-					u.Text = t.reasoning[id]
+					u.Text = t.reasoning[id].String()
 				}
 			} else if strings.TrimSpace(u.Text) == "" {
-				t.reasoning[id] = ""
+				t.reasoning[id] = nil
 				return nil
 			}
 			if strings.TrimSpace(u.Text) == "" {
 				u.Phase = "discarded"
 			}
 		}
-		t.reasoning[id] = u.Text
+		if !completed {
+			// Replace starts rather than resetting a builder whose published strings
+			// may still be retained by consumers.
+			text := new(strings.Builder)
+			text.WriteString(u.Text)
+			t.reasoning[id] = text
+		}
 		if completed || strings.TrimSpace(u.Text) != "" || u.Replaces != "" {
 			updates = append(updates, u)
 		}
 		if completed {
-			t.reasoning[id] = ""
+			t.reasoning[id] = nil
 		}
 	case "agentMessage":
 		if !main && !completed {

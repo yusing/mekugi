@@ -36,8 +36,8 @@ func TestTranscriptCompletionReleasesReasoningBody(t *testing.T) {
 			if len(updates) != 1 || updates[0].Ref != ref || updates[0].Phase != "item/completed" || updates[0].Text != body || updates[0].Thought != 3*time.Second {
 				t.Fatalf("completion lost emitted body, identity or duration: %+v", updates)
 			}
-			if retained, exists := state.turn.Value(stores.Turn).reasoning[ref.ItemID]; !exists || retained != "" {
-				t.Fatalf("completed identity must retain only a tombstone: exists=%v retained bytes=%d", exists, len(retained))
+			if retained, exists := state.turn.Value(stores.Turn).reasoning[ref.ItemID]; !exists || retained != nil {
+				t.Fatalf("completed identity must retain only a tombstone: exists=%v retained=%v", exists, retained)
 			}
 			event.Kind = observation.ReasoningPart
 			state.Observe(event, false, stores)
@@ -45,8 +45,8 @@ func TestTranscriptCompletionReleasesReasoningBody(t *testing.T) {
 			if late := state.Observe(event, false, stores); len(late) != 0 {
 				t.Fatalf("late delta reopened completion: %+v", late)
 			}
-			if retained := state.turn.Value(stores.Turn).reasoning[ref.ItemID]; retained != "" || len(state.turn.Value(stores.Turn).thinking) != 0 {
-				t.Fatalf("late update revived state: retained bytes=%d active=%d", len(retained), len(state.turn.Value(stores.Turn).thinking))
+			if retained := state.turn.Value(stores.Turn).reasoning[ref.ItemID]; retained != nil || len(state.turn.Value(stores.Turn).thinking) != 0 {
+				t.Fatalf("late update revived state: retained=%v active=%d", retained, len(state.turn.Value(stores.Turn).thinking))
 			}
 			if updates[0].Text != body {
 				t.Fatal("retiring correlation invalidated the emitted body")
