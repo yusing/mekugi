@@ -321,6 +321,11 @@ func (a *requestAttempt) prepareWire() error {
 			}
 		}
 	}
+	projectedInput, err := codexresponses.ProjectStandaloneOutputs(a.request.Fields["input"])
+	if err != nil {
+		return fmt.Errorf("project standalone tool context: %w", err)
+	}
+	a.request.Fields["input"] = projectedInput
 	nativeBody, err := a.request.WireBody(a.request.Fields)
 	if err != nil {
 		return fmt.Errorf("encode native Responses request: %w", err)

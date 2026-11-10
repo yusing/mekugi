@@ -157,6 +157,13 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		http.Error(w, "invalid request", 500)
 		return
 	}
+	for _, item := range request.Input {
+		if codexresponses.StandaloneFunctionOutput(item) {
+			t.Error("provider received an uncorrelated native tool output")
+			http.Error(w, "function_call_output requires call_id", http.StatusBadRequest)
+			return
+		}
+	}
 	if request.Generate != nil && !*request.Generate {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"native-prewarm\",\"status\":\"in_progress\",\"output\":[]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"native-prewarm\",\"status\":\"completed\",\"output\":[]}}\n\n")
@@ -262,7 +269,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		for _, comment := range []string{
 			"// Task-name segment under this agent. Use lowercase ASCII letters, digits, underscores and hyphens; for example, trace_roster_metrics.",
 			"// Model override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.",
-			"// Required instruction files, skills, task files or mchanges IDs/ranges for fork_turns=none, acquired before first inference.",
+			"// Required instruction files, skills, task files or retained changes for fork_turns=none, acquired before first inference.",
 			"// Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline.",
 		} {
 			if !strings.Contains(catalog, comment) {
@@ -370,7 +377,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			fork = "" // Omission exercises the public default, full history.
 		}
 		if p.preload {
-			fork += `,preload:{sources:[{path:"preload.txt",ranges:[[2,2]]},{path:"missing.txt"},{path:"AGENTS.md"}]}`
+			fork += `,preload:{sources:["@preload.txt#L2","@missing.txt","@AGENTS.md"]}`
 		}
 		assignment := "CHILD_ATTRIBUTED_ASSIGNMENT"
 		if p.messageSources {

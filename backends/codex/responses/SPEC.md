@@ -60,6 +60,10 @@ Custom input is one wire parameter, restored exactly before execution. OpenAI-ho
 search is unavailable on these routes and the model is told so. Provider-returned
 model aliases remain unchanged for JSON and streaming clients; refusals remain
 ordinary refusal output. Native call identities survive persisted replay.
+Named native tool outputs without a call ID are context, not tool completions.
+After native evidence consumers finish, the shared request path projects them as
+assistant messages with namespace/name attribution and separate payload parts.
+Correlated outputs and retained native records keep their original shape.
 
 Endpoint adapters normalize their wire framing into one validated stream.
 Provider keepalives remain content-free progress through translation.

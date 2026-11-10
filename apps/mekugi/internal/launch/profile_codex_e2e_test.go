@@ -5,6 +5,7 @@ package launch
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -40,6 +41,11 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 			environment := routerFaultCodexEnvironment(t)
 			home := launchoptions.EnvironmentValue(environment, "CODEX_HOME")
 			workspace := t.TempDir()
+			if auth == "anonymous" {
+				if err := os.WriteFile(filepath.Join(workspace, "preload.txt"), []byte("HTTP_CHILD_PRELOAD_CONTENT"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			catalog, err := bundledModelCatalog(ctx, codex, workspace)
 			if err != nil {
 				t.Fatal(err)
@@ -122,6 +128,21 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 						profileFixtureReply(w, "prewarm", nil)
 						return
 					}
+					var native struct {
+						Input []map[string]jsontext.Value `json:"input"`
+					}
+					if err := json.Unmarshal(body, &native); err != nil {
+						t.Error(err)
+						http.Error(w, "invalid input", http.StatusBadRequest)
+						return
+					}
+					for _, item := range native.Input {
+						if codexresponses.StandaloneFunctionOutput(item) {
+							t.Error("HTTP/profile provider received a native output without call_id")
+							http.Error(w, "function_call_output requires call_id", http.StatusBadRequest)
+							return
+						}
+					}
 					if wire["model"] != "opencode-go:profile-literal" || wire["access_programs"] != nil {
 						t.Errorf("model/policy changed: %v", wire["model"])
 					}
@@ -153,12 +174,18 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 						switch step {
 						case 1:
 							program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:"Run one stock JavaScript shell tool, then finish",fork_turns:"none"}));`
+							if auth == "anonymous" {
+								program = strings.Replace(program, `fork_turns:"none"`, `fork_turns:"none",preload:{sources:["@preload.txt"]}`, 1)
+							}
 						case 2:
 							program = `text(await tools.mcp__threadcontrol__wait_agent({wait_mode:"all"}));`
 						default:
 							answer = "PROFILE_PARENT_COMPLETE"
 						}
 					} else if step == 1 {
+						if auth == "anonymous" && !bytes.Contains(body, []byte("HTTP_CHILD_PRELOAD_CONTENT")) {
+							t.Error("fresh HTTP child did not receive its preload before inference")
+						}
 						program = `text(await tools.exec_command({cmd:"printf PROFILE_TOOL_ONCE >> profile-effect.txt",shell:"/bin/bash",login:false}));`
 						if auth == "literal" {
 							program += `text(await tools.web__run({search_query:[{q:"profile fixture"}]}));`
@@ -369,6 +396,11 @@ func profileFixtureReply(w http.ResponseWriter, id string, item map[string]any) 
 	w.Header().Set("Content-Type", "text/event-stream")
 	for _, event := range events {
 		body, _ := json.Marshal(&event)
+		if event["type"] == "response.completed" {
+			// The terminal may encode the same source differently from item.done.
+			// The child's shell redirection exercises durable replay equivalence.
+			body = bytes.ReplaceAll(body, []byte(">"), []byte(`\u003e`))
+		}
 		fmt.Fprintf(w, "data: %s\n\n", body)
 	}
 }

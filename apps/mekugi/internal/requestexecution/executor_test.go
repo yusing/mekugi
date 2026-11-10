@@ -2,6 +2,8 @@ package requestexecution
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,7 +12,30 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
+
+func TestRequestWireProjectsStandaloneToolContextWithoutPreparer(t *testing.T) {
+	for _, model := range []string{"gpt-6-sol", "grok:grok-4.6", "opencode-go:test"} {
+		request, err := codexresponses.ParseRequest([]byte(`{"model":"` + model + `","input":[{"type":"function_call_output","namespace":"threadcontrol","name":"spawn_agent","output":"Assignment retained."}]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		original := bytes.Clone(request.OriginalField("input"))
+		attempt := newRequestAttempt(Executor{}, t.Context(), t.Context(), request, http.Header{}, "")
+		if err := attempt.prepareWire(); err != nil {
+			t.Fatal(err)
+		}
+		var sent struct {
+			Input []map[string]jsontext.Value `json:"input"`
+		}
+		if err := json.Unmarshal(attempt.forwardBody, &sent); err != nil || len(sent.Input) != 1 ||
+			responses.StringField(sent.Input[0], "role") != "assistant" || bytes.Contains(attempt.forwardBody, []byte(`"function_call_output"`)) ||
+			!bytes.Contains(attempt.forwardBody, []byte("Assignment retained.")) || !bytes.Equal(original, request.OriginalField("input")) {
+			t.Fatalf("wire context was not adapted while preserving native history: %s, %v", attempt.forwardBody, err)
+		}
+	}
+}
 
 func TestRequestAttemptFinishDoesNotDuplicateDeliveredTerminal(t *testing.T) {
 	output := new(bytes.Buffer)
