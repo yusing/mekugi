@@ -32,7 +32,7 @@ func (h *messageSourceHost) ReadMessageSources(ctx context.Context, member *cont
 		return "", errors.New("recipient denied source read")
 	}
 	snapshot, err := compact.ReadSources(ctx, selection, member.Settings.Workspace, os.Environ(), compact.ChangeReader{})
-	return snapshot.Text(), err
+	return snapshot.AttachmentText(), err
 }
 func (h *messageSourceHost) Peer(control.Identity, string) (control.Peer, error) {
 	if h.peer == nil {

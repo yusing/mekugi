@@ -78,7 +78,7 @@ func (r *Requests[T]) ReadMessageSources(ctx context.Context, member *control.Me
 		}
 		return compact.CapturedSource{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: code}, err
 	})
-	return snapshot.Text(), err
+	return snapshot.AttachmentText(), err
 }
 
 func (r *ClaudeRuntime) SetMessageSourceReader(read func(context.Context, string) (string, error)) {

@@ -348,3 +348,61 @@ func TestAcceptanceMalformedLegacySelectionRemainsLiteral(t *testing.T) {
 		t.Fatalf("malformed selection became a source: %s", result.Input)
 	}
 }
+
+func TestAcceptanceSuppliedMessageSources(t *testing.T) {
+	body := "short supplied bytes\r\n"
+	message := func(body string) string {
+		header, footer := "reader: exit_code=0\n", "\nreader diagnostic\n"
+		return "Keep these instructions.\n" + attachments.SourceRanges(header+body+footer, []attachments.SourceRange{{Start: len(header), End: len(header) + len(body)}})
+	}
+	for _, kind := range []string{"multi_agent.inter_agent_message", "multi_agent.inter_agent_completion_message"} {
+		t.Run(kind, func(t *testing.T) {
+			input := encode(t, []item{
+				{"type": "message", "role": "assistant", "id": "threadcontrol_" + strings.Repeat("a", 64), "phase": "commentary",
+					"content": []item{{"type": "output_text", "text": message(body)}},
+					"internal_chat_message_metadata_passthrough": item{"content_item_kinds": []string{kind}}},
+				{"role": "user", "content": []item{textPart("Side question\n" + attachments.SourceRanges(body, []attachments.SourceRange{{Start: 0, End: len(body)}}))}},
+				{"type": "function_call_output", "namespace": "threadcontrol", "name": "followup_task", "output": message(body)},
+				tool("compact-reload", "reader: exit_code=0\n"+body),
+			})
+			p := registeredProjection(t)
+			result := p.Prepare(input)(input)
+			got := decode(t, result.Input)
+			first := got[0]["content"].([]any)[0].(map[string]any)["text"].(string)
+			if first != message("O1:\n"+body) ||
+				got[2]["output"] != message("See O1\n") ||
+				got[3]["output"] != "reader: exit_code=0\nSee O1\n" {
+				t.Fatalf("attributed source did not share the request index: %+v", got)
+			}
+			if result.Receipt.OutputRepetitions != 3 || !result.Receipt.TokensMeasured {
+				t.Fatalf("source receipts missing: %+v", result.Receipt)
+			}
+			if !bytes.Equal(result.Input, p.Prepare(input)(input).Input) {
+				t.Fatal("request-local projection changed across retries")
+			}
+			fresh := encode(t, decode(t, input)[1:2])
+			if bytes.Contains(p.Prepare(fresh)(fresh).Input, []byte("See O")) {
+				t.Fatal("source reference escaped its visible request")
+			}
+		})
+	}
+}
+
+func TestAcceptanceSuppliedMessageExclusions(t *testing.T) {
+	text := attachments.SourceRanges("source bytes", []attachments.SourceRange{{Start: 0, End: len("source bytes")}})
+	for _, excluded := range []item{
+		{"role": "developer", "content": []item{textPart(text)}},
+		{"role": "assistant", "content": []item{{"type": "output_text", "text": text}}},
+		{"role": "user", "content": text},
+		{"role": "user", "content": []item{{"type": "input_image", "text": text}}},
+		{"role": "user", "content": []item{textPart(text)}, "internal_chat_message_metadata_passthrough": item{"content_item_kinds": []string{"developer.instructions"}}},
+		{"type": "function_call_output", "output": text},
+		tool("malformed", strings.Replace(text, `bytes="12"`, `bytes="13"`, 1)),
+	} {
+		p := registeredProjection(t)
+		input := encode(t, []item{excluded, excluded})
+		if result := p.Prepare(input)(input); !bytes.Equal(input, result.Input) || result.Receipt.OutputRepetitions != 0 {
+			t.Fatalf("excluded input changed: %s", result.Input)
+		}
+	}
+}

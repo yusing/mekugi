@@ -42,6 +42,14 @@ and patch observation, result confirmation, failure observation, and retention, 
 A unit is one host-produced text part of a `function_call_output` or
 `custom_tool_call_output`, or one submitted file, skill or selected-text frame body in a
 user message through a complete durable envelope in an `input_text` part.
+Successful Codex message-source acquisition also retains byte-delimited source
+bodies. Assignments, ordinary and cross-session messages, replies, follow-up
+continuations and independent side questions project these bodies through the
+same request-local source index. Attributed assistant messages require their
+native identity and content provenance; ordinary assistant prose is not eligible.
+Reader commands, exit statuses, diagnostics and the surrounding message remain
+verbatim. Legacy flattened message snapshots have no recoverable typed boundary
+and remain unchanged. Failed reads do not establish explicit sources.
 Complete attachment envelopes recovered in original tool output, including
 multi-handle `mread` results, use the same source matching. Selected-text
 recall outside envelopes uses ordinary tool-output matching. Selection XML
@@ -56,7 +64,8 @@ requests, base instructions, malformed envelopes, and media
 are excluded. String-content or non-`input_text` envelopes and bare frame text
 remain ordinary input. Native selected-skill XML retains its existing manager
 rewrite. Router-appended parts, including warnings and edit notices, remain intact. Outputs without a call ID and native
-live-session JSON envelopes are excluded.
+live-session JSON envelopes are excluded, except that named native thread-control
+follow-up results can supply typed source bodies without a call ID.
 
 ### Current matching design
 
@@ -171,8 +180,11 @@ in invocation, thread, or turn state.
 
 The required input-projection binding prepares against the original request and
 applies against the final model-input copy. Removing the composition entry removes
-both phases. Compaction, execution-free requests, and prewarm keep their existing
-application paths. Launch opt-out selects no duplicate-output projection.
+both phases. Execution-free turns, including independent side questions, use the
+same source projection and savings receipts without creating execution activity.
+Compaction and prewarm keep their existing application paths. Launch opt-out
+selects no duplicate-output projection. Claude's separate SDK input path is not
+projected.
 
 ## Records
 

@@ -6,6 +6,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
+	"encoding/hex"
 	jsonv1 "encoding/json"
 
 	json "encoding/json/v2"
@@ -88,6 +89,13 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 		}
 		return text
 	}
+	projectSources := func(text string) string {
+		projected := attachments.ProjectSources(text, func(body string) string {
+			return projectBody("", body, true)
+		})
+		savings.Add(text, projected)
+		return projected
+	}
 
 	for at, raw := range items {
 		var item map[string]jsonv1.RawMessage
@@ -100,8 +108,32 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 				Kinds []string `json:"content_item_kinds"`
 			}
 			_ = json.Unmarshal(item["internal_chat_message_metadata_passthrough"], &metadata)
-			if content, ok := projectDuplicateTextParts(item["content"], -1, true, metadata.Kinds, projectAttachment); ok {
+			project := func(text string) string {
+				if strings.HasPrefix(text, "<mekugi-file-attachments-") {
+					return projectAttachment(text)
+				}
+				return projectSources(text)
+			}
+			if content, ok := projectDuplicateTextParts(item["content"], -1, "user", metadata.Kinds, project); ok {
 				item["content"] = content
+				items[at] = responses.MustMarshalJSON(item)
+				changed = true
+			}
+			continue
+		}
+		if suppliedMessage(item) {
+			if content, ok := projectDuplicateTextParts(item["content"], -1, "assistant", nil, projectSources); ok {
+				item["content"] = content
+				items[at] = responses.MustMarshalJSON(item)
+				changed = true
+			}
+			continue
+		}
+		// Native follow-up continuations retain their attributed message in a
+		// named result without a tool call ID. Only typed bodies are eligible.
+		if id == "" && responses.StringField(item, "type") == "function_call_output" && responses.StringField(item, "namespace") == "threadcontrol" && responses.StringField(item, "name") == "followup_task" {
+			if output, ok := projectDuplicateTextParts(item["output"], 1, "", nil, projectSources); ok {
+				item["output"] = output
 				items[at] = responses.MustMarshalJSON(item)
 				changed = true
 			}
@@ -121,6 +153,9 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			if binding.NativeJSONSession(body) != 0 {
 				return text
 			}
+			if strings.Contains(body, "<mekugi-source-v") {
+				return header + projectSources(body)
+			}
 			// Retained file/skill envelopes and historical selection envelopes
 			// share submitted source identity with explicit subsequent reloads.
 			if strings.Contains(body, "<mekugi-file-attachments-") {
@@ -138,7 +173,7 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			savings.Add(text, projected)
 			return projected
 		}
-		if output, ok := projectDuplicateTextParts(item["output"], count, false, nil, projectText); ok {
+		if output, ok := projectDuplicateTextParts(item["output"], count, "", nil, projectText); ok {
 			item["output"] = output
 			items[at] = responses.MustMarshalJSON(item)
 			changed = true
@@ -152,6 +187,32 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 		summary.SavedTokens, summary.TokensMeasured = savings.Result()
 	}
 	return result
+}
+
+// Attributed message sources are not ordinary assistant prose. Keep the native
+// identity and part provenance checks ahead of provider-only identity removal.
+func suppliedMessage(item map[string]jsonv1.RawMessage) bool {
+	if responses.StringField(item, "type") != "message" || responses.StringField(item, "role") != "assistant" || responses.StringField(item, "phase") != "commentary" {
+		return false
+	}
+	id, ok := strings.CutPrefix(responses.StringField(item, "id"), "threadcontrol_")
+	if !ok || len(id) != 64 {
+		return false
+	}
+	if _, err := hex.DecodeString(id); err != nil {
+		return false
+	}
+	var metadata struct {
+		Kinds []string `json:"content_item_kinds"`
+	}
+	if json.Unmarshal(item["internal_chat_message_metadata_passthrough"], &metadata) != nil || len(metadata.Kinds) != 1 {
+		return false
+	}
+	var content []map[string]jsonv1.RawMessage
+	if json.Unmarshal(item["content"], &content) != nil || len(content) != 1 || responses.StringField(content[0], "type") != "output_text" {
+		return false
+	}
+	return metadata.Kinds[0] == "multi_agent.inter_agent_message" || metadata.Kinds[0] == "multi_agent.inter_agent_completion_message"
 }
 
 // Only contiguous chunks of the same complete submitted source form one body.
@@ -212,13 +273,13 @@ func duplicateAttachmentBody(text string) (header, body string, ok bool) {
 }
 
 // A negative count selects all user parts. Host counts exclude router appends.
-func projectDuplicateTextParts(raw jsonv1.RawMessage, count int, user bool, kinds []string, project func(string) string) (jsonv1.RawMessage, bool) {
+func projectDuplicateTextParts(raw jsonv1.RawMessage, count int, role string, kinds []string, project func(string) string) (jsonv1.RawMessage, bool) {
 	eligible := func(at int) bool {
-		return !user || at >= len(kinds) || kinds[at] == "" || strings.HasPrefix(kinds[at], "user.")
+		return role != "user" || at >= len(kinds) || kinds[at] == "" || strings.HasPrefix(kinds[at], "user.")
 	}
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
-		if user {
+		if role != "" {
 			// The wire owner expands only array input_text envelopes.
 			return raw, false
 		}
@@ -244,7 +305,11 @@ func projectDuplicateTextParts(raw jsonv1.RawMessage, count int, user bool, kind
 			continue
 		}
 		kind := responses.StringField(part, "type")
-		if kind != "input_text" || json.Unmarshal(part["text"], &text) != nil {
+		wanted := "input_text"
+		if role == "assistant" {
+			wanted = "output_text"
+		}
+		if kind != wanted || json.Unmarshal(part["text"], &text) != nil {
 			continue
 		}
 		if projected := project(text); projected != text {

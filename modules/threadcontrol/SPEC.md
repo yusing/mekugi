@@ -136,6 +136,9 @@ explicit `@path` references, including `@"paths with spaces"`. Backslash before
 the at sign (`\@path`) preserves a literal mention; email addresses remain literal.
 The original message and its attribution stay intact, with captured source bodies,
 reader exit statuses and diagnostics appended for the recipient.
+Codex snapshots retain explicit byte boundaries around successful source bodies
+for [request-local deduplication](../outputdeduplication/SPEC.md); the original
+message, submitted source bytes and failure evidence remain retained verbatim.
 
 Relative root paths use the recipient's current workspace, or the selected child
 cwd for a spawn. Nested paths resolve beside the containing file, using the same

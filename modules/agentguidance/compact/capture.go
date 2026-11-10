@@ -45,6 +45,26 @@ func (s Snapshot) Text() string {
 	return text.String()
 }
 
+// AttachmentText keeps source boundaries in native message snapshots. Failed
+// reads and diagnostics remain ordinary evidence, not deduplication sources.
+func (s Snapshot) AttachmentText() string {
+	var text strings.Builder
+	var bodies []attachments.SourceRange
+	for _, source := range s.Sources {
+		captured := source.Text()
+		if source.ExitCode == 0 && source.Stdout != "" {
+			start := text.Len() + len(captured) - len(source.Stdout)
+			if source.Stderr != "" {
+				start -= len(source.Stderr) + 1
+			}
+			bodies = append(bodies, attachments.SourceRange{Start: start, End: start + len(source.Stdout)})
+		}
+		text.WriteString(captured)
+		text.WriteByte('\n')
+	}
+	return attachments.SourceRanges(text.String(), bodies)
+}
+
 type CapturedSource struct {
 	Command  string
 	Stdout   string
