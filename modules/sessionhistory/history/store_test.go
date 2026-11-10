@@ -22,6 +22,61 @@ import (
 
 func managedRecord(name string) bool { return strings.HasSuffix(name, ".json") }
 
+func TestReadRecordRejectsConcurrentSymlinkReplacement(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "record")
+	target := filepath.Join(directory, "target")
+	candidate := filepath.Join(directory, "replacement")
+	if err := os.WriteFile(path, []byte("regular"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("symlink"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, candidate); err != nil {
+		t.Skipf("symlink fixture unavailable: %v", err)
+	}
+	stop, done := make(chan struct{}), make(chan error, 1)
+	go func() {
+		for {
+			for _, linked := range []bool{true, false} {
+				if err := os.Rename(candidate, path); err != nil {
+					done <- err
+					return
+				}
+				select {
+				case <-stop:
+					done <- nil
+					return
+				default:
+				}
+				var err error
+				if linked {
+					err = os.WriteFile(candidate, []byte("regular"), 0600)
+				} else {
+					err = os.Symlink(target, candidate)
+				}
+				if err != nil {
+					done <- err
+					return
+				}
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		close(stop)
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	})
+	for range 2000 {
+		data, err := history.ReadRecord(path)
+		if err == nil && string(data) != "regular" {
+			t.Fatalf("accepted unadmitted record: %q", data)
+		}
+	}
+}
+
 func TestStoreTransactionSharesDurableRevision(t *testing.T) {
 	directory := t.TempDir()
 	store := fixtureStore(directory, managedRecord)

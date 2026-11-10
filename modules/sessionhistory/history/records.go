@@ -44,7 +44,7 @@ func ReadRecord(name string) ([]byte, error) {
 	if !info.Mode().IsRegular() || info.Size() > MaxRecordBytes {
 		return nil, errors.New("invalid read recovery record file")
 	}
-	file, err := os.Open(name)
+	file, err := persistence.OpenRetained(name, MaxRecordBytes)
 	if err != nil {
 		return nil, err
 	}
