@@ -161,6 +161,7 @@ export type NativeStart = {
   "workspace": string;
   "routerArgs": Array<string>;
   "args": Array<string>;
+  "environment"?: Array<string>;
 };
 
 export type NativeMutation = {
