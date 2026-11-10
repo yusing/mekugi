@@ -2,6 +2,7 @@ package launch
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -27,6 +28,9 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			u.shell.Transcript.ChildReplySummary, u.shell.Agents.ChildReplySummary = true, true
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{
+				"id": "question", "type": "agentMessage", "phase": "final_answer", "delivery": "async", "text": "Which interruption steps?", "questions": []any{map[string]any{"title": "Which interruption steps?"}},
+			}})
 			send := func(id, body string) {
 				if strings.HasPrefix(kind, "native-") {
 					delivery := "MESSAGE"
@@ -65,7 +69,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 			for _, width := range []int{100, 32} {
 				feed := u.testActivity(u.shell.Transcript).RenderFeed(width, 80)
 				plain := ansi.Strip(strings.Join(feed.Lines, "\n"))
-				if strings.Contains(plain, "supporting explanation") || strings.Contains(plain, "+") || !strings.Contains(plain, "unverified.") || !strings.Contains(plain, "↩ Open reply") {
+				if strings.Contains(plain, "Which interruption steps?") || strings.Contains(plain, "supporting explanation") || strings.Contains(plain, "+") || !strings.Contains(plain, "unverified.") || !strings.Contains(plain, "↩ Open reply") {
 					t.Fatalf("summary card: %s", plain)
 				}
 				assertNativeUISnapshot(t, fmt.Sprintf("child-reply-summary-%s-%d", snapshotKind, width), feed.Lines)
@@ -120,6 +124,10 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 				t.Fatalf("reply details repeated summary or delimiters: %s", rendered)
 			}
 			assertNativeUISnapshot(t, "child-reply-summary-"+snapshotKind+"-dialog", strings.Split(screen.String(), "\n"))
+			terminalTest(u).outputKey("y")
+			if terminalTest(u).Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(childReplySummaryBody))+"\x07" {
+				t.Fatal("reply copy lost its original Summary or supporting details")
+			}
 			terminalTest(u).outputKey("\x1b")
 			if terminalTest(u).Dialog != nil {
 				t.Fatal("dialog did not dismiss")

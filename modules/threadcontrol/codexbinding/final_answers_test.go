@@ -27,6 +27,13 @@ func TestFinalDeliveryRetainsEveryCompletedAnswer(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		// Captured Codex async-question shape: phase alone cannot identify an
+		// authored answer. Keep it out before retaining or delivering completion.
+		observe("item/completed", `{"threadId":"child","turnId":"child-turn","item":{"type":"agentMessage","id":"question","text":"Which interruption steps?","phase":"final_answer","delivery":"async","questions":[{"title":"Which interruption steps?","options":null}]}}`)
+		synctest.Wait()
+		if member, _ := driver.control.Member("child"); member.LastAnswer != "" {
+			t.Fatal("async question became an authored answer")
+		}
 		for _, answer := range []struct{ id, phase, text string }{
 			{"full", "final_answer", full},
 			{"full", "final_answer", full}, // Duplicate observation, same native item.

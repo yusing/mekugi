@@ -92,6 +92,11 @@ func (d *Driver) Observe(method string, raw jsontext.Value) (<-chan error, error
 	if err != nil {
 		return nil, err
 	}
+	// Async question items carry final_answer too, but their text belongs to
+	// the shared question channel, not the delegate's authored completion.
+	if method == "item/completed" && value.Item.Type == "agentMessage" && value.Item.Delivery == "async" && len(value.Item.Questions) > 0 {
+		return nil, nil
+	}
 	if method == "item/completed" && !(value.Item.Type == "agentMessage" && value.Item.Phase != "commentary" || value.Item.Type == "userMessage" && value.Item.ClientID != "" || value.Item.Type == "contextCompaction") {
 		return nil, nil
 	}
