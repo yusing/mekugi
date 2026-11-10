@@ -124,7 +124,8 @@ func TestLongPieceMergeMatchesVerbatimMerge(t *testing.T) {
 		"multibyte":  strings.Repeat("世界🙂", longPieceBytes/10),
 	} {
 		codec := c
-		got, want := codec.mergeLongPiece(piece), codec.mergePairs(piece)
+		got := codec.mergeLongPieceWithWorkspace(piece, &mergeWorkspace{})
+		want := codec.mergePairsWithWorkspace(piece, &mergeWorkspace{})
 		if len(got) != len(want) {
 			t.Fatalf("%s: %d parts, want %d", name, len(got), len(want))
 		}

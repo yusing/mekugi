@@ -48,6 +48,7 @@ func (c *Codec) tokenize(input string, yield func(uint, string)) error {
 	if err != nil {
 		return fmt.Errorf("error matching: %v", err)
 	}
+	var workspace mergeWorkspace
 	for _, match := range matches {
 		piece := input[match[0]:match[1]]
 		if id, ok := c.vocabulary[piece]; ok {
@@ -55,9 +56,9 @@ func (c *Codec) tokenize(input string, yield func(uint, string)) error {
 		} else {
 			var parts []part
 			if len(piece) > longPieceBytes {
-				parts = c.mergeLongPiece(piece)
+				parts = c.mergeLongPieceWithWorkspace(piece, &workspace)
 			} else {
-				parts = c.mergePairs(piece)
+				parts = c.mergePairsWithWorkspace(piece, &workspace)
 			}
 
 			for i := range len(parts) - 1 {
@@ -73,10 +74,6 @@ func (c *Codec) tokenize(input string, yield func(uint, string)) error {
 type part struct {
 	offset int
 	rank   uint
-}
-
-func (c *Codec) mergePairs(piece string) []part {
-	return c.mergePairsWithWorkspace(piece, &mergeWorkspace{})
 }
 
 func (c *Codec) mergePairsWithWorkspace(piece string, workspace *mergeWorkspace) []part {
@@ -131,12 +128,12 @@ func (c *Codec) mergePairsWithWorkspace(piece string, workspace *mergeWorkspace)
 	return parts
 }
 
-// Pieces above this size use mergeLongPiece. The verbatim merge rescans every
+// Pieces above this size use the heap merge. The verbatim merge rescans every
 // remaining pair per merge, which is quadratic for long words or whitespace.
 const longPieceBytes = 4096
 
-// Row admission reuses these buffers across independent prefix counts. No
-// merge state survives a call, and the workspace is local to one SelectRows.
+// Buffers are reused across synchronous pieces or independent prefix counts.
+// No merge state survives a call; workspaces are local to tokenize or SelectRows.
 type mergeWorkspace struct {
 	next, previous []int
 	pending        []uint
@@ -144,13 +141,9 @@ type mergeWorkspace struct {
 	parts          []part
 }
 
-// mergeLongPiece selects the same lowest-rank pair as mergePairs, breaking
-// ties at the leftmost byte, using a heap and linked part offsets. This is
-// OpenAI tiktoken's _byte_pair_merge_large strategy.
-func (c *Codec) mergeLongPiece(piece string) []part {
-	return c.mergeLongPieceWithWorkspace(piece, &mergeWorkspace{})
-}
-
+// mergeLongPieceWithWorkspace selects the same lowest-rank pair as
+// mergePairsWithWorkspace, breaking ties at the leftmost byte, using a heap and
+// linked part offsets. This is OpenAI tiktoken's _byte_pair_merge_large strategy.
 func (c *Codec) mergeLongPieceWithWorkspace(piece string, workspace *mergeWorkspace) []part {
 	length := len(piece)
 	workspace.next = slices.Grow(workspace.next[:0], length)[:length]
