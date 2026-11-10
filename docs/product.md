@@ -75,19 +75,28 @@ and recoverable, and measures actual traffic without replaying effects.
 
 - **Context comes from current sources.** When context is rebuilt, after
   compaction or for a fresh delegate, the sources the work needs are read again.
-  Codex resets without a generated summary. Optional temporary JSON task state
-  supports focused recovery, never automatic whole-artifact reload; neither task
-  state nor generated digests stand in for source text.
+  Codex resets without a generated summary or earlier messages, including the
+  user's messages. For repeated resets, Codex guidance directs agents to maintain
+  one temporary task-state file and select it for reload, preserving user requests,
+  corrections and approvals verbatim separately from agent choices. The file
+  supports focused recovery; it and generated digests do not stand in for source text.
   Selected attachment, reload and preload text can name required files with
   explicit `@path` references, acquired through depth 3 including the selected
   root. Bare paths remain literal; acquisition failures stay visible.
 - **Reduce retained output by reference.** Incomplete retained reads have an exact
-  continuation, and repeated text is replaced only by a reference to text still
-  visible to the model. Output is not filtered by guessed relevance. Explicit
-  `mrun` windows instead discard output outside the requested head or tail.
+  continuation, and repeated output or supplied source bodies are replaced only
+  by a reference to text still visible to the model. Output is not filtered by
+  guessed relevance. Explicit `mrun` windows instead discard output outside the
+  requested head or tail.
   These projections change model input only; host results, retained evidence,
   and the UI keep the complete text. Instruction text is removed only where its
   author marked it or it duplicates or conflicts with supplied guidance.
+- **Capture context at handoff.** Explicit file references in assignments and
+  agent messages are read under the recipient's permissions and frozen at send
+  time. Failed reads remain visible; retries use the captured result instead of
+  silently substituting later file contents. For eligible Codex inputs, repeated
+  supplied source bodies can refer to earlier text in the same request. Claude
+  message-source deduplication and legacy unframed snapshots are not covered.
 - **Supply known facts before they are requested.** Codex agents receive
   workspace and Git state and measured context usage, and attached files and
   skills are labeled as reusable, so agents do not spend turns rediscovering them.
@@ -101,9 +110,12 @@ and recoverable, and measures actual traffic without replaying effects.
   and the correction itself stays reversible.
 - **Ride existing generations.** Compaction selections, child reply summaries,
   and similar structure are authored within a reply the model already makes, with
-  no separate summarization, selection, or repair request.
+  no separate summarization, selection, or repair request. Opt-in wait progress
+  is different: it requests nonterminal summaries from changed developers to
+  expose implementation direction before their final replies.
 - **Agents choose their checkpoints.** Agents compact at points they judge safe,
-  informed by measured usage. Codex native token-budget reset also handles full
+  informed by measured usage; the 90% notice directs them to compact now.
+  Codex native token-budget reset also handles full
   windows using host-owned thresholds. Claude retains its native compaction policy.
 - **Model-facing text stays minimal.** Guidance, tool descriptions, and results
   preserve meaning in the fewest tokens, without decoration.
@@ -123,6 +135,11 @@ and recoverable, and measures actual traffic without replaying effects.
   that preceded them, agent start rows carry their assignments, child replies
   keep supporting details behind their summary, historical compaction summaries
   stay readable, and incomplete edit captures keep their reasons.
+- **Expose direction before completion.** Optional wait progress gives a
+  coordinator a developer's account of changed behavior, rationale, uncertainty
+  and observed validation alongside exact captured changes. It is for catching
+  mistakes early, not a liveness poll or independent review. Only agents with new
+  captures are asked; a summary does not finish or restart their work.
 - **Label uncertainty.** Provisional previews, unknown counts, missing evidence,
   and lower bounds are marked as such rather than shown as confirmed results.
 - **Watching costs the model nothing.** Display-only activity, previews, and UI
@@ -153,11 +170,15 @@ An agent works through a long task while measured usage notices report how full
 its context is. At a safe checkpoint, or when the window fills, Codex resets its
 context without a summary-generation request. An agent can select files, skills
 and captured changes with its checkpoint, or recover needed facts through ordinary
-reads after reset. Optional temporary JSON task state is read selectively and kept
-focused on remaining work. Mekugi supplies selected sources before continuation;
-Agent checkpoints skip reset when estimated uncached next-input cost exceeds the
-latest observed input cost, preserving any wait. This estimate assumes unchanged
-source files; unavailable cost evidence permits reset with a notice. Failed
+reads after reset. For repeated resets, the agent keeps a focused temporary JSON
+task record and selects it for reload; source files remain separately selectable.
+Mekugi supplies selected sources before continuation. The latest compaction
+selection remains in effect for later manual or automatic resets until replaced,
+even if the checkpoint that registered it was skipped.
+At measured usage of 40% or below, agent checkpoints skip reset when estimated
+uncached next-input cost exceeds the latest observed input cost, preserving any wait.
+Above 40%, or without measured usage, the cost veto is bypassed. This estimate
+assumes unchanged source files; unavailable cost evidence permits reset with a notice. Failed
 preflight acquisition skips reset without retrying denied or canceled reads.
 Manual and context-full
 compaction are unaffected. Claude delegates retain their native compaction behavior.
@@ -171,6 +192,15 @@ with a concise summary and supporting details, and its edits carry
 captured-change IDs. The parent hands those exact ranges to reviewers or reloads
 them, instead of describing the change in prose. Delegates can coordinate
 their own children and message their parent while working.
+Assignments and messages can snapshot explicitly referenced files under the
+recipient's permissions. Parents wait for any or all current local descendants;
+registration snapshots unsettled work and unread outcomes, not named targets.
+An addressed message wakes either wait. Optional progress checks, at intervals
+of at least five minutes, ask changed agents for summaries from existing evidence
+and return one combined yield with captured-change selections. No new captures
+means no progress wake. The original work and its continuation handles remain
+intact; a further wait is needed after a yield. See the
+[wait contract](../modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery).
 
 ### Undo what the user rejects
 
@@ -223,12 +253,13 @@ Mekugi includes:
 
 - compaction that reloads selected sources, agent-chosen compaction checkpoints,
   measured context usage notices, and workspace facts in base instructions;
-- fresh delegates with preloaded sources, coordinated waits, and structured
-  child replies;
+- fresh delegates with preloaded sources, message source snapshots, coordinated
+  waits with optional progress summaries, and structured child replies;
 - bounded UTF-8 source reads, symbol lookup, structural inspection, bounded
   command output, and retained output continuation through authenticated
   executable frontends;
-- duplicate-output references in model input and explicit instruction omission;
+- duplicate-output and supplied-source references in model input and explicit
+  instruction omission;
 - observation of stock edits, change review, exact revert and reapply of
   captured edits, and provisional live previews;
 - server-owned threads with terminal and browser clients;
