@@ -257,6 +257,66 @@ func TestWaitAnyConsumesOnlyUnseenEvents(t *testing.T) {
 	}
 }
 
+func TestSequentialWaitsDoNotRepeatCompletedWork(t *testing.T) {
+	for _, mode := range []WaitMode{WaitAny, WaitAll} {
+		for _, immediate := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/immediate=%t", mode, immediate), func(t *testing.T) {
+				s, _ := fixture(t)
+				child(t, s, "root", "a", "/root/a", "at")
+				child(t, s, "root", "b", "/root/b", "bt")
+				caller, now := identity("root", "rt"), time.Now()
+				caller.Call, caller.Item = "exec-first", "exec-first-item"
+				if !immediate {
+					_, err := s.RegisterWait(t.Context(), caller, WaitAny, nil, nil, now)
+					must(t, err)
+					stop(t, s, caller)
+				}
+				must(t, s.AnswerCompleted(t.Context(), "a", "at", "answer", "Finished first assignment"))
+				must(t, s.HostCompleted(t.Context(), "a", "at", Completed, HostFailure{}))
+				deliver(t, s, "a")
+				var first *WaitResult
+				if immediate {
+					result, err := s.RegisterWait(t.Context(), caller, WaitAny, nil, nil, now)
+					must(t, err)
+					first = &result
+				} else {
+					var err error
+					first, err = claimWake(t, s, t.Context(), "root", now)
+					must(t, err)
+					must(t, s.EffectAcknowledged(t.Context(), "root", caller.Call, Receipt{Turn: "rt2"}))
+					caller.Turn = "rt2"
+				}
+				if first == nil || first.Event == nil || first.Event.Source != "a" || first.Event.Generation != 1 {
+					t.Fatalf("first completion: %+v", first)
+				}
+				must(t, s.InputConsumed(t.Context(), caller, []string{MessageItemID("a:1:at:final")}))
+				caller.Call, caller.Item = "exec-second", "exec-second-item"
+				second, err := s.RegisterWait(t.Context(), caller, mode, nil, nil, now)
+				must(t, err)
+				if second.State != "waiting" || second.Event != nil || !slices.Equal(second.Targets, []string{"/root/b"}) {
+					t.Fatalf("settled generation became an exec-prefixed stopped event: %+v", second)
+				}
+				stop(t, s, caller)
+				wake, err := claimWake(t, s, t.Context(), "root", now.Add(time.Hour))
+				must(t, err)
+				if wake != nil {
+					t.Fatalf("old completion woke an indefinite wait: %+v", wake)
+				}
+				must(t, s.HostCompleted(t.Context(), "b", "bt", Completed, HostFailure{}))
+				deliver(t, s, "b")
+				wake, err = claimWake(t, s, t.Context(), "root", now.Add(time.Hour))
+				must(t, err)
+				if wake == nil || wake.State != "completed" {
+					t.Fatalf("new completion failed to wake: %+v", wake)
+				}
+				if mode == WaitAny && (wake.Event == nil || wake.Event.Source != "b") || mode == WaitAll && (len(wake.Events) != 1 || wake.Events[0].Source != "b") {
+					t.Fatalf("new wait replayed first completion: %+v", wake)
+				}
+			})
+		}
+	}
+}
+
 func TestStoppedTargetAfterRestartKeepsResultConsumed(t *testing.T) {
 	s, session := fixture(t)
 	child(t, s, "root", "a", "/root/a", "at")
