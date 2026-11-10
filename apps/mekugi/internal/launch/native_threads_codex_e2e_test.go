@@ -46,6 +46,8 @@ type nativeThreadsProvider struct {
 	mu                                      sync.Mutex
 	childDirectory, parent, child, waitTurn string
 	fullHistory                             bool
+	frozenPrefix                            bool
+	initialFacts                            string
 	shellWait                               bool
 	compactWait                             bool
 	agentCompact                            bool
@@ -186,7 +188,16 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		return
 	}
 	if request.PreviousResponse == "" {
-		environmentFacts(t, body)
+		facts := environmentFacts(t, body)
+		if p.frozenPrefix {
+			p.mu.Lock()
+			if p.initialFacts == "" {
+				p.initialFacts = facts
+			} else if p.parent != "" && metadata.ThreadID != p.parent && p.calls[metadata.ThreadID] == 0 && p.initialFacts != facts {
+				t.Error("same-workspace child or grandchild changed the frozen initial context")
+			}
+			p.mu.Unlock()
+		}
 	}
 	if p.concurrentChildren {
 		p.serveConcurrentChildren(t, w, r, metadata.ThreadID, body)
@@ -378,6 +389,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		fork := `,fork_turns:"none"`
 		if p.fullHistory {
 			fork = "" // Omission exercises the public default, full history.
+		}
+		if p.frozenPrefix {
+			if err := os.WriteFile(filepath.Join(p.childDirectory, "changed-after-initial-context"), []byte("new state"), 0600); err != nil {
+				failure = err.Error()
+			}
 		}
 		if p.preload {
 			fork += `,preload:{sources:["@preload.txt#L2","@missing.txt","@AGENTS.md"]}`
@@ -867,7 +883,11 @@ func TestNativeThreadsRecoverableParentServerOwnedCodex(t *testing.T) {
 }
 
 func TestNativeThreadsFullHistoryServerOwnedCodex(t *testing.T) {
-	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{fullHistory: true})
+	for _, sameWorkspace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("same-workspace-%t", sameWorkspace), func(t *testing.T) {
+			testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{fullHistory: true, sameWorkspace: sameWorkspace})
+		})
+	}
 }
 
 func TestNativeThreadsShellWaitServerOwnedCodex(t *testing.T) {
@@ -931,6 +951,7 @@ func TestNativeThreadsAttachmentResetServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
+	sameWorkspace                                                                                                                                                     bool
 	deniedMessageSource                                                                                                                                               bool
 	messageSources                                                                                                                                                    bool
 	compactionRecords                                                                                                                                                 int
@@ -1030,7 +1051,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		workspace = gitTestWorkspace(t)
 	}
 	childDirectory := workspace
-	if fullHistory {
+	if fullHistory && !scenario.sameWorkspace {
 		repository := newGitFixture(t)
 		repository.run("commit", "--allow-empty", "-q", "-m", "base")
 		childDirectory = filepath.Join(t.TempDir(), "child-worktree")
@@ -1067,6 +1088,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	fixture.deniedMessageSource = scenario.deniedMessageSource
 	fixture.concurrentChildren = scenario.concurrentChildren
 	fixture.compactLatency = scenario.compactionRecords > 0
+	fixture.frozenPrefix = fullHistory && scenario.sameWorkspace
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
 	fixture.deduplication = scenario.deduplication
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1618,7 +1640,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			t.Fatalf("preload attachment presentation: attached=%t failed=%t groupedFailure=%t internal=%t operations=%v", attached, failed, groupedFailure, internal, operations)
 		}
 	}
-	if fullHistory {
+	if fullHistory && childDirectory != workspace {
 		if _, err := os.Stat(filepath.Join(workspace, "managed-child.txt")); !os.IsNotExist(err) {
 			t.Fatalf("child shell wrote in parent workspace: %v", err)
 		}

@@ -146,26 +146,21 @@ branches exist, the count of further unpushed commits are included. Hooks config
 status excludes file use the applicable Git configuration scopes; other facts remain
 configuration-isolated. Git account identity, email and remote URLs are excluded. Unavailable facts and truncation are explicit; acquisition neither
 fetches nor mutates a repository and optional failures do not block inference.
-The supplement is a developer input immediately before the first user message,
-after the static instruction prefix. Without a user message it follows the leading
-instructions and precedes conversation/tool history.
+The supplement is a developer input after the leading static instructions and
+before the first user or conversation item. It never splits tool/result history.
 Refresh removes inherited copies from base instructions and developer text before
 inserting the current snapshot once. Static contents, native conversation items
 and tool/result history boundaries remain intact; ordinary continuations reuse
 the confirmed provider prefix.
 
-Snapshots are acquired against the admitted execution workspace before generating inference.
-Fresh, resumed, cleared, compacted and authoritatively changed workspaces refresh lazily;
-ordinary requests reuse the current snapshot and prewarm never acquires one. Confirmed
-same-workspace Side and One-off forks inherit the source snapshot with its original observation
-time, then refresh independently. Confirmed same-workspace rewind also preserves the
-current immutable snapshot through its native runtime reload, without suppressing
-context/history reset identity. Rewind does not revive a snapshot invalidated by an
-earlier reset. A subsequent reset (including compaction before the next turn),
-resume or workspace change refreshes independently. Different-workspace children acquire their own snapshots,
-replacing inherited copies. Native cwd, execution shell,
-date/timezone and permission context remain intact. Claude retains its native environment
-supply without an additional snapshot.
+Acquisition is a stateless contribution to the
+[frozen initial input prefix](../../apps/mekugi/internal/requestexecution/SPEC.md#initial-input-prefix),
+against the admitted execution workspace before generating inference. That owner supplies
+context, fork and reset lifetime; the environment producer has no inheritance or refresh
+policy. Same-workspace inherited contributions retain their original observation time;
+fresh contexts and changed workspaces acquire new facts. Prewarm acquires nothing.
+Native cwd, execution shell, date/timezone, child role and permission context remain
+authoritative. Claude retains its native environment supply without an additional snapshot.
 
 Codex process construction establishes the invocation-local `MEKUGI_ENVIRONMENT_FACTS=1`
 capability only when this supplement owner is installed, discarding inherited values. Native

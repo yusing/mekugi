@@ -223,9 +223,9 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	lowValue := strings.Repeat("x", 192) + "\n"
 	input := append(duplicateTestInput("low value", "small", lowValue), duplicateTestInput("cat file", "a", body)...)
 	input = append(input, duplicateTestInput("cat file", "b", body)...)
+	proxy := newManagedMekugiProxy(t)
+	proxy.inputProjections = testInputProjections()
 	project := func(input []any) *codexresponses.Request {
-		proxy := newManagedMekugiProxy(t)
-		proxy.inputProjections = testInputProjections()
 		return duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	}
 	// The source must already have its anchor before the first repeat arrives.

@@ -257,7 +257,7 @@ Native `thread/revert` replaces history in the same thread; current settings,
 pending input, logical family membership and descendant runtimes stay in place.
 Codex internally reloads the caller's runtime, so caller-owned process handles
 must not be assumed to survive. Same-workspace rewind preserves the current
-immutable environment-instruction snapshot for provider prefix reuse, not the
+immutable initial instruction/context prefix for provider reuse, not the
 discarded conversation. Native identity and cache affinity stay unchanged; actual
 provider cache hits remain subject to availability. Context/history reset revisions
 still advance, and later resets or workspace changes refresh facts independently.

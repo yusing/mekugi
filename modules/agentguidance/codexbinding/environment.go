@@ -17,7 +17,14 @@ import (
 const environmentStart = "<mekugi_environment_facts>"
 const environmentEnd = "</mekugi_environment_facts>"
 
-func projectEnvironment(ctx context.Context, input binding.InstructionInput, admitted binding.EnvironmentContext, store *environment.Store) (binding.InstructionUpdate, error) {
+func environmentPrefix(ctx context.Context, workspace string) ([]jsonv1.RawMessage, error) {
+	facts := environment.Acquire(ctx, workspace)
+	body := html.EscapeString(facts.Text(workspace))
+	section := environmentStart + "\nCaptured at context start and refreshed after compaction or workspace change: use them rather than re-probing; re-check only facts later work may have changed.\n" + body + "\n" + environmentEnd
+	return []jsonv1.RawMessage{responses.MustMarshalJSON(map[string]string{"type": "message", "role": "developer", "content": section})}, nil
+}
+
+func stripEnvironment(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 	result := binding.InstructionUpdate{InstructionInput: input}
 	text, ok := responses.DecodeString(input.Instructions)
 	if !ok && len(input.Instructions) != 0 && !bytes.Equal(bytes.TrimSpace(input.Instructions), []byte("null")) {
@@ -30,6 +37,9 @@ func projectEnvironment(ctx context.Context, input binding.InstructionInput, adm
 	if updated != text {
 		result.Instructions = responses.MustMarshalJSON(updated)
 		result.InstructionsChanged = true
+	}
+	if !bytes.Contains(input.Input, []byte("mekugi_environment_facts")) {
+		return result, nil
 	}
 	rawInput := input.Input
 	if len(rawInput) == 0 {
@@ -48,7 +58,6 @@ func projectEnvironment(ctx context.Context, input binding.InstructionInput, adm
 		return result, errors.New("environment projection requires string or array input")
 	}
 	projected := make([]jsonv1.RawMessage, 0, len(items)+1)
-	boundary := -1
 	for _, raw := range items {
 		item, ok := responses.DecodeItem(raw)
 		if ok && (item.Type == "" || item.Type == "message") {
@@ -65,30 +74,9 @@ func projectEnvironment(ctx context.Context, input binding.InstructionInput, adm
 					raw = responses.MustMarshalJSON(item)
 				}
 			}
-			if item.Role == "user" && boundary < 0 {
-				boundary = len(projected)
-			}
 		}
 		projected = append(projected, raw)
 	}
-	if boundary < 0 {
-		boundary = len(projected)
-		for index, raw := range projected {
-			item, ok := responses.DecodeItem(raw)
-			if !ok || item.Type != "additional_tools" && item.Role != "developer" && item.Role != "system" {
-				boundary = index
-				break
-			}
-		}
-	}
-	facts := store.Snapshot(ctx, environment.Context{Session: admitted.Session, Thread: admitted.Thread, Workspace: admitted.Workspace, Revision: admitted.Revision}, admitted.PreviousRevision)
-	body := html.EscapeString(facts.Text(admitted.Workspace))
-	section := environmentStart + "\nCaptured at context start and refreshed after compaction or workspace change: use them rather than re-probing; re-check only facts later work may have changed.\n" + body + "\n" + environmentEnd
-	// Keep mutable facts after the static prefix, without changing native history
-	// or splitting any tool/result sequence. Inherited projections are replaced.
-	projected = append(projected, nil)
-	copy(projected[boundary+1:], projected[boundary:])
-	projected[boundary] = responses.MustMarshalJSON(map[string]string{"type": "message", "role": "developer", "content": section})
 	encoded := responses.MustMarshalJSON(projected)
 	if !bytes.Equal(encoded, input.Input) {
 		result.Input, result.InputChanged = encoded, true

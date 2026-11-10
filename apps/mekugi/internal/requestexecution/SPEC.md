@@ -41,6 +41,27 @@ reload readers nor publishes reviewer history. Missing, corrupt or unauthorized
 local references stop forwarding; provider-owned opaque compaction and other
 native review context remain unchanged.
 
+## Initial input prefix
+
+The initial instruction layer is frozen after request projections, before provider
+history reconciliation. It includes base instructions and leading instruction/tool
+catalog items before the first user or conversation item. Later feature contributions
+cannot rewrite that applicable prefix. Conversation and tool-result history remain
+normally projected and subject to exact provider-confirmation checks.
+
+Initial context contributions are acquired once against the admitted workspace.
+Prewarm neither acquires them nor freezes a generating context. Confirmed same-workspace
+full-history children, Side and One-off forks inherit immutable contributions, including
+across independent native runtimes; rewind preserves the applicable context without
+preserving discarded conversation. Fresh start, resume, clear, compaction and workspace
+changes acquire a new prefix. Native permission, role, instruction and model changes
+remain authoritative and establish a newly applicable instruction layer, without
+reacquiring unchanged context contributions. History-reset identity remains independent.
+
+Only the initial layer is retained, not another conversation transcript. Frozen values
+are context-lifetime data, not provider confirmation or execution authority. Successful
+provider terminals and exact reconciliation still determine continuation reuse.
+
 ## Replaceable integration design
 
 [Execution observation](../executionobservation/SPEC.md) supplies the prepared

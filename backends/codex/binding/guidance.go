@@ -20,14 +20,6 @@ type InstructionUpdate struct {
 	InputChanged        bool
 }
 
-// EnvironmentContext carries admitted runtime identity and its authoritative
-// refresh revision. It conveys facts acquisition scope, never authorization.
-type EnvironmentContext struct {
-	Session, Thread, Workspace string
-	Revision                   uint64
-	PreviousRevision           uint64 // Before observing this request's native context window.
-}
-
 // ContextUsage carries observed native context facts for an admitted request.
 type ContextUsage struct {
 	Session, Thread             string
@@ -47,18 +39,15 @@ type FrontendGuidance struct {
 // Guidance registers the distinct existing request phases. Callbacks are
 // invocation-immutable; the application owns request copies and catalog indexing.
 type Guidance struct {
-	ContextUsage           func(InstructionInput, ContextUsage) (InstructionUpdate, error)
-	Environment            func(context.Context, InstructionInput, EnvironmentContext) (InstructionUpdate, error)
-	ForkEnvironment        func(source string, admitted EnvironmentContext)
-	RewindEnvironment      func(admitted EnvironmentContext)
-	CancelEnvironmentReuse func(thread string)
-	Threads                func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
-	BeforePreparation      func(InstructionInput) (InstructionUpdate, error)
-	ForExecution           func(InstructionInput) (InstructionUpdate, error)
-	AfterAttachments       func(InstructionInput, bool) (InstructionUpdate, error)
-	Frontends              func([]command.Spec) (FrontendGuidance, error)
-	ToolDescription        func(description, guide string, remove bool) (string, error)
-	BaseInstructions       func(instructions json.RawMessage, workflow string, remove bool) (json.RawMessage, error)
+	ContextUsage      func(InstructionInput, ContextUsage) (InstructionUpdate, error)
+	InitialContext    func(context.Context, string) ([]json.RawMessage, error)
+	Threads           func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
+	BeforePreparation func(InstructionInput) (InstructionUpdate, error)
+	ForExecution      func(InstructionInput) (InstructionUpdate, error)
+	AfterAttachments  func(InstructionInput, bool) (InstructionUpdate, error)
+	Frontends         func([]command.Spec) (FrontendGuidance, error)
+	ToolDescription   func(description, guide string, remove bool) (string, error)
+	BaseInstructions  func(instructions json.RawMessage, workflow string, remove bool) (json.RawMessage, error)
 }
 
 func (r *Registry) Guidance(guidance Guidance) error {

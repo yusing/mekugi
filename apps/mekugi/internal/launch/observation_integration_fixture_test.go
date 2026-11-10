@@ -65,7 +65,7 @@ func (p *observationFixture) ForkCacheKey(thread string) string {
 }
 
 func (p *observationFixture) bindForkRequests(requests *sessioncontrol.Requests[appServerRequest]) {
-	requests.AdmitSideFork = p.preparer().AdmitSideFork
+	requests.AdmitSideFork = p.preparer().AdmitFork
 	server := sessionapi.NewLive()
 	server.BindRequests(requests)
 	p.forks.Store(server)

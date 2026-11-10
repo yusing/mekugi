@@ -19,6 +19,7 @@ import (
 func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) (requestexecution.Prepared, error) {
 	var t *mekugiResponseTransform
 	var err error
+	var prefix *codexresponses.InputPrefix
 	if input.ApprovalReview {
 		if err := p.restoreApprovalReviewContext(ctx, request, input); err != nil {
 			return nil, err
@@ -49,20 +50,16 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 		return nil, err
 	}
 	request.Fields["input"] = projected
-	if !input.Prewarm && !input.ApprovalReview && input.MetadataValid && input.Metadata.RequestKind == "turn" && p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.Environment != nil {
-		workspace := ""
+	if !input.Prewarm && !input.ApprovalReview && input.MetadataValid && input.Metadata.RequestKind == "turn" && input.Session != "" && input.Thread != "" && !input.Metadata.ActivityIdentityInvalid && (input.Metadata.ThreadID == "" || input.Metadata.ThreadID == input.Thread) {
+		workspace := p.observationDirectory(input.Metadata.Directories, input.Thread)
 		if t != nil {
 			workspace = t.directory
-		} else {
-			workspace = p.observationDirectory(input.Metadata.Directories, input.Thread)
 		}
-		admitted := binding.EnvironmentContext{Session: input.Session, Thread: input.Thread, Workspace: workspace}
-		if admitted.Session != "" && admitted.Thread != "" && !input.Metadata.ActivityIdentityInvalid && (input.Metadata.ThreadID == "" || input.Metadata.ThreadID == admitted.Thread) {
-			admitted.PreviousRevision = p.Control.ContextRevision(input.Thread)
-			p.Control.ObserveCompactionContext(input.Thread, input.Metadata.ContextWindowID)
-			admitted.Revision = p.Control.ContextRevision(input.Thread)
-			err := requestexecution.ProjectInstructions(request, func(text binding.InstructionInput) (binding.InstructionUpdate, error) {
-				return p.Registry.Guidance.Environment(ctx, text, admitted)
+		p.Control.ObserveCompactionContext(input.Thread, input.Metadata.ContextWindowID)
+		prefix = p.Control.InputPrefix(input.Session, input.Thread, workspace)
+		if p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.InitialContext != nil {
+			err := prefix.Contribute(request, func() ([]jsonv1.RawMessage, error) {
+				return p.Registry.Guidance.InitialContext(ctx, workspace)
 			})
 			if err != nil {
 				if t != nil {
@@ -108,6 +105,7 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 	if t == nil {
 		return nil, nil
 	}
+	t.inputPrefix = prefix
 	if err := t.checkCompactionCost(request); err != nil {
 		t.Close()
 		return nil, err
@@ -122,9 +120,9 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 	return t, nil
 }
 
-// AdmitSideFork receives only confirmed host identity and cwd, before a side
+// AdmitFork receives only confirmed host identity and cwd, before a child
 // turn starts. Review membership supplies workspace identity, not permissions.
-func (p *Preparer) AdmitSideFork(source, thread, workspace string) {
+func (p *Preparer) AdmitFork(source, thread, workspace string) {
 	if source == "" || thread == "" || source == thread || workspace == "" {
 		return
 	}
@@ -133,21 +131,11 @@ func (p *Preparer) AdmitSideFork(source, thread, workspace string) {
 		return
 	}
 	p.Review.IncludeThread(directory, thread, false)
-	if p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.ForkEnvironment != nil {
-		p.Registry.Guidance.ForkEnvironment(source, binding.EnvironmentContext{
-			Thread: thread, Workspace: directory, Revision: p.Control.ContextRevision(thread),
-		})
-	}
+	p.Control.ForkInputPrefix(source, thread, directory)
 }
 
-// AdmitRewind preserves facts only after the host confirms same-thread history
-// replacement. Fresh/resumed contexts and later workspace changes remain distinct.
-func (p *Preparer) AdmitRewind(thread, workspace string) {
-	if p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.RewindEnvironment != nil {
-		p.Registry.Guidance.RewindEnvironment(binding.EnvironmentContext{
-			Thread: thread, Workspace: workspace, Revision: p.Control.ContextRevision(thread),
-		})
-	}
+func (t *mekugiResponseTransform) FreezeInputPrefix(request *codexresponses.Request) error {
+	return t.inputPrefix.Freeze(request)
 }
 
 func (t *mekugiResponseTransform) Usage() *accounting.Observation { return t.usageTracker }

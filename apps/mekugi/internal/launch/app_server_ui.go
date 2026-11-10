@@ -110,7 +110,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	if session.preparer != nil {
 		session.Client.Requests.InputContext = session.controlObservations.ContextIdentity
 		session.Client.Requests.PrepareCompletion = session.preparer.PrepareCompletion
-		session.Client.Requests.AdmitSideFork = session.preparer.AdmitSideFork
+		session.Client.Requests.AdmitSideFork = session.preparer.AdmitFork
 	}
 	api.BindSideThreads(session.Client.Requests.HasSideThread)
 	session.Client.Requests.Coordination, session.Client.Requests.InterruptWait = threads.shared, threads.driver.Interrupt
@@ -1237,6 +1237,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			}
 			return openSession(attached, &session.Client, picker, clock, resumePicker, session.approvalMode)
 		case "thread/start", "thread/resume", "thread/fork", "thread/revert":
+			forkSource := session.Client.Thread
 			result, err := session.Client.Startup.Accept(&session.Client.Live, method, m.Result)
 			if err != nil {
 				if method == "thread/revert" {
@@ -1410,9 +1411,17 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				}
 			}
 			restoreContextUsage(attached.session.Agent("/root"), result.Thread)
-			session.controlObservations.RefreshContext(result.Thread.ID)
-			if method == "thread/revert" && session.preparer != nil {
-				session.preparer.AdmitRewind(result.Thread.ID, result.Thread.Cwd)
+			if method == "thread/revert" {
+				session.controlObservations.RewindContext(result.Thread.ID, result.Thread.Cwd)
+			} else {
+				session.controlObservations.RefreshContext(result.Thread.ID)
+				if prepared := session.Client.Startup.Prepared; method == "thread/fork" && prepared != nil && prepared.Import != "" && session.preparer != nil {
+					if result.Thread.Cwd == prepared.Settings.Workspace {
+						session.controlObservations.AdmitInputPrefix(result.Thread.ID, result.Thread.Cwd, prepared.InputPrefix)
+					}
+				} else if method == "thread/fork" && session.preparer != nil {
+					session.preparer.AdmitFork(forkSource, result.Thread.ID, result.Thread.Cwd)
+				}
 			}
 			restoreCompactionMetrics(&attached.session, result.Thread)
 			restoreUsage(session.usage, result.Thread)

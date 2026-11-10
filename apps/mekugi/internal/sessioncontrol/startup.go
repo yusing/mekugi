@@ -12,6 +12,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -37,6 +38,7 @@ type PreparedThread struct {
 	Parent, Import string
 	Settings       threadcontrol.Settings
 	Resume         *threadcontrol.ThreadInfo
+	InputPrefix    *codexresponses.InputPrefix
 }
 
 const ResumePicker = "--pick"

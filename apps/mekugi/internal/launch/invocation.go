@@ -304,6 +304,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if appUI {
 		threads.retained = retained
 		threads.recovery = recovered
+		threads.contexts = &control
 	}
 	if !options.DeduplicateOutput {
 		projections = nil
@@ -548,7 +549,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		cmd.Args = append(cmd.Args, "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true")
 	}
 	cmd.Dir = workspace
-	cmd.Env = append(slices.DeleteFunc(codexEnvironmentCapability(environment, guidance != nil && guidance.Environment != nil), func(entry string) bool {
+	cmd.Env = append(slices.DeleteFunc(codexEnvironmentCapability(environment, guidance != nil && guidance.InitialContext != nil), func(entry string) bool {
 		return strings.HasPrefix(entry, shellhook.Environment+"=")
 	}), "MEKUGI_BASE_URL="+baseURL)
 	if threads != nil && threads.sourceSocket != "" {

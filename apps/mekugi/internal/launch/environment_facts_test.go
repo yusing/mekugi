@@ -2,6 +2,7 @@ package launch
 
 import (
 	"bytes"
+	"context"
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -23,6 +24,119 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
+
+func TestFrozenInitialPrefixProviderLifecycle(t *testing.T) {
+	workspace := gitTestWorkspace(t)
+	newProxy := func() *observationFixture {
+		registry, err := buildToolRegistryForTest(t, t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		guidance := *registry.Guidance
+		registry.Guidance = &guidance
+		t.Cleanup(func() { _ = registry.Close() })
+		return newProxyWithSharedTestRegistry(t, registry)
+	}
+	proxy := newProxy()
+	acquisitions := 0
+	create := proxy.registry.Guidance.InitialContext
+	proxy.registry.Guidance.InitialContext = func(ctx context.Context, cwd string) ([]jsonv1.RawMessage, error) {
+		items, err := create(ctx, cwd)
+		acquisitions++
+		return append([]jsonv1.RawMessage{responses.MustMarshalJSON(map[string]string{"role": "developer", "content": "non-environment acquisition " + strconv.Itoa(acquisitions)})}, items...), err
+	}
+	// A later phase is deliberately stateful. The final owner, rather than an
+	// environment-only cache or this individual feature, enforces immutability.
+	version := "first feature version"
+	late := proxy.registry.Guidance.AfterAttachments
+	proxy.registry.Guidance.AfterAttachments = func(input binding.InstructionInput, skills bool) (binding.InstructionUpdate, error) {
+		update, err := late(input, skills)
+		if err != nil {
+			return update, err
+		}
+		var items []jsontext.Value
+		if err := json.Unmarshal(update.Input, &items); err != nil {
+			return update, err
+		}
+		update.Input = responses.MustMarshalJSON(append([]jsontext.Value{responses.MustMarshalJSON(map[string]string{"role": "developer", "content": version})}, items...))
+		update.InputChanged = true
+		return update, nil
+	}
+	forward := func(p *observationFixture, thread, window, authority, task string) []byte {
+		t.Helper()
+		headers := serverMetadataHeaders(t, "turn", map[string]jsonv1.RawMessage{workspace: nil})
+		headers.Set(codexresponses.ThreadIDHeader, thread)
+		metadata, _ := codexresponses.DecodeTurnMetadata(headers)
+		metadata.ContextWindowID = window
+		headers.Set(codexresponses.TurnMetadataHeader, string(responses.MustMarshalJSON(metadata)))
+		request := serverRequest(t, func(fields map[string]any) {
+			items := []any{map[string]string{"role": "developer", "content": authority}, testFlatCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"role": "user", "content": "first task"}}
+			if task != "first task" {
+				items = append(items, map[string]string{"role": "user", "content": task})
+			}
+			fields["input"] = items
+		})
+		provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed"}`)}}}
+		var output bytes.Buffer
+		if err := executeRequest(t.Context(), t.Context(), request, headers, t.Name(), provider, &output, nil, p); err != nil {
+			t.Fatal(err)
+		}
+		return provider.forwarded[0]
+	}
+	first := forward(proxy, "thread-1", "original", "parent permissions", "first task")
+	version = "later feature version"
+	next := forward(proxy, "thread-1", "original", "parent permissions", "new user input")
+	if acquisitions != 1 || !bytes.Contains(next, []byte("first feature version")) || bytes.Contains(next, []byte(version)) || !bytes.Contains(next, []byte("new user input")) {
+		t.Fatal("later feature rewrote the frozen initial prefix or new input was lost")
+	}
+	firstRequest, err := codexresponses.ParseRequest(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent []jsontext.Value
+	if err := json.Unmarshal(firstRequest.Fields["input"], &sent); err != nil {
+		t.Fatal(err)
+	}
+	nextRequest, err := codexresponses.ParseRequest(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exchange := confirmedHistoryExchange(t, sent, false)
+	nextRequest.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
+	if reason, err := exchange.Reconcile(&nextRequest, true); err != nil || reason != "matching_prefix" || nextRequest.CachedInput != len(sent) {
+		t.Fatalf("frozen provider prefix did not remain cache eligible: %s, %v", reason, err)
+	}
+	nextRequest.Fields["input"] = bytes.Replace(nextRequest.Fields["input"], []byte("first task"), []byte("changed history"), 1)
+	if reason, err := exchange.Reconcile(&nextRequest, true); err != nil || reason != "changed_prefix" || !nextRequest.RebaseInput {
+		t.Fatal("initial-prefix freezing weakened conversation-history confirmation")
+	}
+	// Independent child runtimes do not share Observations. Their admitted import
+	// carries a frozen prefix value, while the native child supplies its authority.
+	inherited := proxy.control.CaptureInputPrefix("thread-1", workspace)
+	proxy.control.RefreshContext("thread-1")
+	refreshed := forward(proxy, "thread-1", "refreshed", "parent permissions", "fresh task")
+	if acquisitions != 2 || !bytes.Contains(refreshed, []byte(version)) {
+		t.Fatal("fresh context did not acquire current contributions")
+	}
+	child := newProxy()
+	child.registry.Guidance.InitialContext = func(context.Context, string) ([]jsonv1.RawMessage, error) {
+		t.Fatal("same-workspace full-history child reacquired frozen contributions")
+		return nil, nil
+	}
+	child.control.AdmitInputPrefix("child", workspace, inherited)
+	childWire := forward(child, "child", "child-window", "child role and restricted permissions", "child assignment")
+	if environmentFacts(t, childWire) != environmentFacts(t, first) || !bytes.Contains(childWire, []byte("non-environment acquisition 1")) || !bytes.Contains(childWire, []byte("child role and restricted permissions")) || bytes.Contains(childWire, []byte("parent permissions")) {
+		t.Fatal("child lost immutable contributions or inherited parent authority")
+	}
+	if proxy.control.CaptureInputPrefix("thread-1", t.TempDir()) != nil {
+		t.Fatal("different workspace inherited the parent's context")
+	}
+	proxy.control.RewindContext("thread-1", workspace)
+	rewound := forward(proxy, "thread-1", "rewound-window", "parent permissions", "rewound task")
+	if acquisitions != 2 || environmentFacts(t, rewound) != environmentFacts(t, refreshed) {
+		t.Fatal("rewind changed the applicable initial context")
+	}
+}
 
 func environmentFacts(t *testing.T, raw []byte) string {
 	t.Helper()
@@ -296,7 +410,7 @@ func TestEnvironmentFactsSideForkProviderInput(t *testing.T) {
 	}
 	first := forward("thread-1")
 	writeTestFile(t, filepath.Join(workspace, "after-fork"), "new")
-	proxy.preparer().AdmitSideFork("thread-1", "side", workspace)
+	proxy.preparer().AdmitFork("thread-1", "side", workspace)
 	if forward("side") != first {
 		t.Fatal("confirmed same-workspace side fork lost its original snapshot")
 	}
@@ -513,8 +627,7 @@ func TestEnvironmentFactsRewindProviderInput(t *testing.T) {
 			first := forward("initial")
 			writeTestFile(t, filepath.Join(workspace, "after-rewind"), "new")
 			before := proxy.control.ContextRevision("thread-1")
-			proxy.control.RefreshContext("thread-1")
-			proxy.preparer().AdmitRewind("thread-1", workspace)
+			proxy.control.RewindContext("thread-1", workspace)
 			if compactBeforeTurn {
 				metadata, _ := codexresponses.DecodeTurnMetadata(serverCompactionMetadataHeaders(t))
 				metadata.ThreadID = "thread-1"

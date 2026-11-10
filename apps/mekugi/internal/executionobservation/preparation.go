@@ -98,6 +98,7 @@ type mekugiResponseTransform struct {
 	localWaitItem    string
 	compactReload    jsonv1.RawMessage
 	compactionCost   *compactionCost
+	inputPrefix      *codexresponses.InputPrefix
 	generation       sessioncontrol.Generation
 	generationOnly   bool
 	toolTrace        requestexecution.Trace
@@ -242,11 +243,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, err
 		}
 		if !prewarm {
-			// A reset attempt cancels pending snapshot inheritance/rebinding,
-			// without advancing other consumers' history-reset revision early.
-			if p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.CancelEnvironmentReuse != nil {
-				p.Registry.Guidance.CancelEnvironmentReuse(threadID)
-			}
+			p.Control.PreparingContextReset(threadID)
 			if err := p.consumeThreadInput(ctx, threadID, sessionID, request); err != nil {
 				return nil, err
 			}

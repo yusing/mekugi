@@ -145,3 +145,46 @@ func TestContextIdentityTracksHistoryReplacement(t *testing.T) {
 		t.Fatal("cold or missing owner reused a context")
 	}
 }
+
+func TestInputPrefixNativeContextBoundaries(t *testing.T) {
+	var observed Observations
+	observed.ObserveCompactionContext("main", "initial")
+	initial := observed.InputPrefix("session", "main", "/workspace")
+	observed.ForkInputPrefix("main", "child", "/workspace")
+	child := observed.InputPrefix("child-session", "child", "/workspace")
+	observed.ObserveCompactionContext("child", "child-window")
+	if observed.InputPrefix("child-session", "child", "/workspace") != child {
+		t.Fatal("first native child window discarded its admitted prefix")
+	}
+	observed.PreparingContextReset("child")
+	if observed.InputPrefix("child-session", "child", "/workspace") != child {
+		t.Fatal("unconfirmed reset discarded an already-bound prefix")
+	}
+	observed.ObserveCompactionContext("child", "reset-window")
+	if observed.InputPrefix("child-session", "child", "/workspace") == child || observed.InputPrefix("session", "main", "/workspace") != initial {
+		t.Fatal("child reset retained its prefix or affected Main")
+	}
+	before := observed.ContextIdentity("main")
+	observed.RewindContext("main", "/workspace")
+	observed.RewindContext("main", "/workspace")
+	observed.ObserveCompactionContext("main", "rewound")
+	if observed.InputPrefix("session", "main", "/workspace") != initial || before == observed.ContextIdentity("main") {
+		t.Fatal("rewind lost the prefix or suppressed history-reset identity")
+	}
+	observed.RewindContext("main", "/workspace")
+	observed.ObserveCompactionContext("main", "rewound")
+	observed.ObserveCompactionContext("main", "compacted")
+	beforeReset := observed.InputPrefix("session", "main", "/workspace")
+	if beforeReset == initial {
+		t.Fatal("unchanged rewind window suppressed the next genuine reset")
+	}
+	observed.RefreshContext("main")
+	observed.RewindContext("main", "/workspace")
+	observed.ObserveCompactionContext("main", "after-reset")
+	if observed.InputPrefix("session", "main", "/workspace") == beforeReset {
+		t.Fatal("rewind revived an invalidated prefix")
+	}
+	if observed.CaptureInputPrefix("unknown", "/workspace") != nil || observed.CaptureInputPrefix("main", "/other") != nil {
+		t.Fatal("unknown source or different workspace inherited context")
+	}
+}
