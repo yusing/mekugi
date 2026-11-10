@@ -35,6 +35,9 @@ func main() {
 }
 
 func run(args []string) error {
+	if len(args) > 0 && args[0] == "integrate" {
+		return integrate(args[1:])
+	}
 	if len(args) == 0 {
 		return errors.New("expected check, docs-check, index-write, index-check, run or test COMMAND [ARGS]; @workspace expands to member package patterns")
 	}

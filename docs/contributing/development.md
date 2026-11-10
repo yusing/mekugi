@@ -105,6 +105,51 @@ prints its diff. Review and update the affected baselines, then stage them with 
 source change. The existing Linux CI suite also checks all UI snapshots.
 The [release workflow](../../.github/workflows/release.yml) packages Linux/macOS; tags publish assets.
 
+## Integrate reviewed work
+
+Main can batch ready operations through the [workspace helper](../../apps/mekugi/cmd/workspace/integrate.go),
+without a receipt or acceptance-state store. Supply explicit commits in pick order
+and check argv after `--`; use the existing check selection appropriate to the batch:
+
+```sh
+make integrate INTEGRATE_ARGS='--commits "COMMIT1 COMMIT2" -- make test TEST_PACKAGES=./apps/mekugi/cmd/workspace'
+```
+
+Preparation does not infer acceptance or set statuses. It prints the resulting
+HEAD. After Main's QA, reuse already-completed related-batch checks by explicitly
+attesting their full HEAD and choosing the desired status:
+
+```sh
+make integrate INTEGRATE_ARGS='--checked-head FULL_HEAD --accept --items "MEKUGI-123 MEKUGI-124" --state "Pending QA"'
+make integrate INTEGRATE_ARGS='--checked-head FULL_HEAD --accept --items "MEKUGI-123 MEKUGI-124" --state Done --cleanup .worktrees/task-name'
+```
+
+`--accept` is Main's explicit authorization of the requested status/cleanup, not
+an inferred result of a passed command. Check argv can instead accompany these
+steps in one call when QA and authorization are already settled. Main owns the
+coverage claim: the helper neither selects tests nor verifies that a successful
+command ran adequate tests. Checks run in the actual integration worktree,
+including preserved unrelated dirty files. A checked-HEAD attestation is not an
+immutable-clean-tree certificate. Its full hash must match current HEAD and
+cannot accompany new picks. No fresh full suite is imposed for each item.
+
+A staged index is refused before mutation; unrelated unstaged/untracked files
+are not staged, stashed or discarded. Native cherry-pick refuses actual overlaps,
+retains configured signing and leaves failed/partial picks for inspection.
+Check or Plane failures stop the sequence before cleanup; all requested statuses
+must succeed first. Earlier successful writes are not rolled back. Inspect an
+uncertain Plane write before retrying.
+
+Repeat `--cleanup PATH` for explicitly authorized source worktrees beneath this
+checkout's `.worktrees`. Cleanup checks exact repository/worktree identity, source
+dirt (including ignored files), `git cherry` patch equivalence and unmatched
+merges, because `git cherry` omits merge-only changes. It removes only the checked
+worktree, then its branch. A cleanup failure retains whatever has not yet been
+removed; status writes remain, and a failed branch removal leaves the branch for
+recovery. Serialize integration and source edits; this is sequencing, not a
+transaction or concurrent-mutation guarantee. Commit gates, signing, pushes and
+additional browser/live-provider QA remain unchanged.
+
 ## Diagnostics
 
 `--debug` records future requests under `$XDG_STATE_HOME/mekugi/debug` (default

@@ -15,6 +15,7 @@ GO_BUILD_FLAGS ?= -trimpath
 .PHONY: build build-binaries claude-worker claude-worker-check webui webui-check webui-fmt generate check-generated workspace-check docs-check install uninstall mekugi-pprof preview-native-ui test test-saved-diff test-live-preview test-host lint test-ui-snapshots update-ui-snapshots
 
 WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace
+.PHONY: integrate
 BUILD_OUTPUT ?= bin
 BUILD_LDFLAGS ?= -s -w
 
@@ -46,6 +47,10 @@ workspace-check:
 
 docs-check:
 	$(WORKSPACE) docs-check
+
+# Main supplies checks and explicitly authorizes status/cleanup steps.
+integrate:
+	$(WORKSPACE) integrate $(INTEGRATE_ARGS)
 
 build: workspace-check
 	$(WORKSPACE) run $(GO_OUTPUT) build $(GO_BUILD_FLAGS) @workspace

@@ -130,5 +130,7 @@ for a comparison task.
 ## Workspace and generation
 
 `apps/mekugi/cmd/workspace` owns enumeration, import and documentation-navigation checks;
+its `integrate` command batches checked cherry-picks and explicit Main acceptance/cleanup
+through `make integrate`; see `docs/contributing/development.md#integrate-reviewed-work`.
 `go.work` owns membership, module-root descriptors own contributions, and `make check-generated`
 checks reference drift.
