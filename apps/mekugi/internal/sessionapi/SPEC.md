@@ -128,3 +128,9 @@ Connected panel viewers temporarily take over the terminal's Diff, Agents and
 live-preview surfaces. Viewer release or expiry restores those surfaces without
 changing saved preferences. These leases belong to the physical frontend, so
 other terminals and server-owned execution remain independent.
+
+The authenticated physical frontend also reports the pane's full identity,
+session title, loaded skills, pending-question count and measured scroll/unseen
+counts. Header updates are ordered within the active attachment and exposed only
+for the matching displayed thread. These renderer-local facts do not change the
+shared session publication or another terminal's state.

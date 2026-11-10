@@ -203,6 +203,79 @@ func TestNativeFrontendIsolationActivationAndLeases(t *testing.T) {
 	}
 }
 
+func TestNativeFrontendHeaderIsPhysicalOrderedAndDetached(t *testing.T) {
+	f := newFrontendFixture(t)
+	first, second := f.open(t, 101), f.open(t, 202)
+	header := sessionpresentation.FrontendHeader{
+		Displayed: sessionpresentation.Thread{ID: "thread", Caller: "/root"},
+		Name:      "Main", Title: "Keep the session information", Skills: []string{"commit", "plane"}, Above: 703,
+	}
+	if err := first.PublishHeader(t.Context(), 101, 1, 1, header); err != nil {
+		t.Fatal(err)
+	}
+	observed, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 101, Viewer: "header"})
+	if failure != nil || observed.Header == nil || !observed.Header.Equal(header) {
+		t.Fatalf("header publication: %+v %v", observed.Header, failure)
+	}
+	f.api.mu.Lock()
+	encoded := f.api.nativePanel
+	f.api.mu.Unlock()
+	header.Above = 700
+	if err := first.PublishHeader(t.Context(), 101, 1, 2, header); err != nil {
+		t.Fatal(err)
+	}
+	latest, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 101, Viewer: "header"})
+	if failure != nil || latest.Header == nil || !latest.Header.Equal(header) || observed.Cursor == latest.Cursor {
+		t.Fatalf("physical scroll did not change observation: %+v %v", latest.Header, failure)
+	}
+	f.api.mu.Lock()
+	reused := encoded == f.api.nativePanel
+	f.api.mu.Unlock()
+	if !reused {
+		t.Fatal("physical scroll recomposed the shared panel payload")
+	}
+	stale := header
+	stale.Title = "stale"
+	if err := first.PublishHeader(t.Context(), 101, 1, 1, stale); err != nil {
+		t.Fatal(err)
+	}
+	other, failure := f.call(t, "native/observe", NativeFrontendRequest{PID: 202, Viewer: "other"})
+	if failure != nil || other.Header != nil {
+		t.Fatal("physical header leaked to another terminal")
+	}
+	if err := second.PublishHeader(t.Context(), 101, 1, 3, stale); err == nil {
+		t.Fatal("another association replaced the header")
+	}
+	invalid := header
+	invalid.Above = -1
+	if err := first.PublishHeader(t.Context(), 101, 1, 3, invalid); err == nil {
+		t.Fatal("negative scroll admitted")
+	}
+	latest, failure = f.call(t, "native/observe", NativeFrontendRequest{PID: 101, Viewer: "header"})
+	if failure != nil || latest.Header == nil || !latest.Header.Equal(header) {
+		t.Fatal("stale or rejected publication changed the header")
+	}
+	if err := first.Activate(t.Context(), 101, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.PublishHeader(t.Context(), 101, 1, 99, stale); err != nil {
+		t.Fatal(err)
+	}
+	latest, failure = f.call(t, "native/observe", NativeFrontendRequest{PID: 101, Viewer: "header"})
+	if failure != nil || latest.Header != nil {
+		t.Fatal("new activation inherited the previous physical header")
+	}
+	wrong := header
+	wrong.Displayed.Caller = "/root/other"
+	if err := first.PublishHeader(t.Context(), 101, 2, 1, wrong); err != nil {
+		t.Fatal(err)
+	}
+	latest, failure = f.call(t, "native/observe", NativeFrontendRequest{PID: 101, Viewer: "header"})
+	if failure != nil || latest.Header != nil {
+		t.Fatal("header for different displayed content was exposed")
+	}
+}
+
 func TestNativeFrontendObserveDisplayChangeAndHandoff(t *testing.T) {
 	f := newFrontendFixture(t)
 	connection := f.open(t, 303)

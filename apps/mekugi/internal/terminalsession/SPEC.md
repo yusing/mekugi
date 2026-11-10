@@ -257,8 +257,10 @@ separate from painted readiness and offline prompt tests.
 
 Connected [native Herdr panels](../herdr/SPEC.md) temporarily replace the terminal's
 roster, saved Diff and live-preview surfaces. Their presentation lease leaves saved
-pane preferences intact and hides the bottom status bar, returning its row to Main;
-ordinary terminal geometry returns when the lease ends.
+pane preferences intact and hides the outer pane frame, its cell insets and the
+bottom status bar, returning that space to Main. The actual companion connection,
+not a terminal environment name, selects this presentation. Ordinary framed
+terminal geometry returns when the lease ends.
 
 Main starts at full width. Diff toggles the auxiliary column open and closed.
 The auxiliary view comes from composition. Without a contribution, its selector,

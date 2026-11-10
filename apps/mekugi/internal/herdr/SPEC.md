@@ -41,8 +41,13 @@ Viewer leases belong to the frontend, surviving active-thread changes without
 affecting other terminals. Ordered native presentation effects carry absolute
 expiry, so delayed delivery cannot restart a full lease or overwrite newer state.
 Any active viewer suppresses duplicate terminal Diff, Agents, live-preview and
-bottom navigation surfaces. Release or expiry restores ordinary geometry without persisting the
-override or changing pane preferences. Standalone presentation remains unchanged.
+bottom navigation surfaces, including the terminal frame and its padding. The
+native status mod retains the pane identity, session title, loaded-skill list,
+pending questions and physical terminal scroll/unseen counts through the same
+authenticated association. The full title is available on hover and the loaded
+skills through a native popup. Release or expiry restores ordinary geometry
+without persisting the override or changing pane preferences. Standalone
+presentation remains unchanged.
 
 A companion with the custom Files sidebar advertises file-opening capability on
 its viewer lease. Clicked local file links then select that sidebar instead of a

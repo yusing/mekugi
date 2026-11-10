@@ -53,6 +53,18 @@ func herdrFrame(t *testing.T) (sessionapi.NativeFrame, terminalsession.Views) {
 	return frame, u.terminalViews
 }
 
+func TestNativeHerdrUnchangedHeaderSkipsPublication(t *testing.T) {
+	header := sessionpresentation.FrontendHeader{Displayed: sessionpresentation.Thread{ID: "main"}, Name: "Main", Skills: []string{"commit", "plane"}, Above: 10000}
+	client := &nativeClient{connection: &sessionapi.NativeConnection{}, frontendActive: true, renderer: nativeClientRenderer{header: &header}}
+	runtime := nativeClientRuntime{active: client, headerSent: &header}
+	if allocations := testing.AllocsPerRun(10000, func() { runtime.publishHeader(client) }); allocations != 0 {
+		t.Fatalf("unchanged header allocated %g times per frame", allocations)
+	}
+	if runtime.headerPending || runtime.headerRevision != 0 {
+		t.Fatal("unchanged frames dispatched an auxiliary request")
+	}
+}
+
 func TestUISnapshotNativeHerdrLease(t *testing.T) {
 	frame, views := herdrFrame(t)
 	terminal, _ := views.NewAttachment(diffrender.DarkTheme)
@@ -93,7 +105,41 @@ func TestUISnapshotNativeHerdrLease(t *testing.T) {
 	}
 }
 
+func TestUISnapshotNativeHerdrCompanionSizes(t *testing.T) {
+	frame, views := herdrFrame(t)
+	for _, test := range []struct {
+		name          string
+		width, height int
+	}{{"narrow", 36, 24}, {"short", 80, 7}} {
+		t.Run(test.name, func(t *testing.T) {
+			terminal, _ := views.NewAttachment(diffrender.DarkTheme)
+			terminal.Width, terminal.Height = test.width, test.height
+			t.Cleanup(func() { _ = terminal.Diff.Close() })
+			renderer := nativeClientRenderer{terminal: terminal, views: views}
+			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
+			renderer.update(frame, conversation.DraftView{Draft: composer.Draft{Text: "Keep this draft."}}, conversation.PromptDraftView{}, now)
+			terminal.SetExternalPanes(true)
+			var out bytes.Buffer
+			painted, err := renderer.render(t.Context(), &out, now.Add(2*time.Second), "Mekugi fixture")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if terminal.Layout.Main != (terminalsession.Rect{W: test.width, H: test.height}) {
+				t.Fatalf("companion did not reclaim terminal area: %+v", terminal.Layout.Main)
+			}
+			screen := vt.NewEmulator(test.width, test.height)
+			defer screen.Close()
+			_, _ = screen.Write(out.Bytes())
+			if visible := screen.Render(); !strings.Contains(visible, "Keep this draft.") || !strings.Contains(visible, "Ready") || !strings.Contains(visible, "fixture") {
+				t.Fatalf("draft, status or caption lost: %s", visible)
+			}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/native-herdr-companion-"+test.name+".txt", append(painted.Rows, "plain after native companion"), test.width)
+		})
+	}
+}
+
 func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "ghostty")
 	dir, err := os.MkdirTemp("/tmp", "mh-")
 	if err != nil {
 		t.Fatal(err)
@@ -102,6 +148,13 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 	t.Setenv("HOME", dir)
 	t.Setenv("XDG_CACHE_HOME", dir)
 	base, views := herdrFrame(t)
+	base.View.Info.Title = "Review native app session metadata"
+	base.View.Info.Skills = activity.SkillSet{"commit", "plane"}
+	base.Main.Entries = nil
+	for seq := uint64(1); seq <= 740; seq++ {
+		base.Main.Entries = append(base.Main.Entries, activity.Entry{Facts: activity.Facts{Seq: seq, Agent: "Main", Kind: "text", Text: fmt.Sprintf("Retained transcript line %d.", seq)}, Revision: 1})
+	}
+	base.Main.LastSeq = 740
 	viewerRequests := make(chan struct{}, 64)
 	base.View.Info.Workspace = dir
 	base.Review.Workspace = dir
@@ -300,18 +353,34 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 	}
 	finishObserve := func(result <-chan observationResult, thread string) sessionapi.NativeObservation {
 		t.Helper()
-		select {
-		case observed := <-result:
-			if observed.code != 0 || !observed.value.Available || observed.value.Thread != thread {
-				t.Fatalf("automatic observer handoff: %+v", observed)
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		for {
+			select {
+			case observed := <-result:
+				if observed.code != 0 || !observed.value.Available {
+					t.Fatalf("automatic observer handoff: code=%d thread=%q activation=%d", observed.code, observed.value.Thread, observed.value.Activation)
+				}
+				if observed.value.Thread == thread {
+					return observed.value
+				}
+				// A painted-header update can precede the requested thread switch.
+				result = startObserve(observed.value)
+			case <-timer.C:
+				t.Fatal("observer did not follow completed native handoff")
 			}
-			return observed.value
-		case <-time.After(5 * time.Second):
-			t.Fatal("observer did not follow completed native handoff")
 		}
-		return sessionapi.NativeObservation{}
 	}
 	await(func(s string) bool { return strings.Contains(s, "2 Diff") && strings.Contains(s, "new live") })
+	assertCompanionFrame := func() {
+		t.Helper()
+		if top := strings.Split(screen.String(), "\n")[0]; strings.Contains(top, "┌") || strings.Contains(top, "1 Main") {
+			t.Fatalf("native companion did not reclaim top frame row: %q", top)
+		}
+	}
+	if !strings.Contains(strings.Split(screen.String(), "\n")[0], "1 Main") {
+		t.Fatal("standalone terminal lost its frame before companion observation")
+	}
 	if _, err = master.WriteString("parent draft"); err != nil {
 		t.Fatal(err)
 	}
@@ -323,6 +392,13 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 	await(func(s string) bool {
 		return !strings.Contains(s, "2 Diff") && !strings.Contains(s, "3 Agents") && !strings.Contains(s, "new live") && strings.Contains(s, "parent draft")
 	})
+	assertCompanionFrame()
+	if initial.Header == nil || initial.Header.Above == 0 {
+		initial = finishObserve(startObserve(initial), "main")
+	}
+	if initial.Header == nil || initial.Header.Name != "Main" || initial.Header.Title != base.View.Info.Title || strings.Join(initial.Header.Skills, ",") != "commit,plane" || initial.Header.Above <= 0 {
+		t.Fatalf("painted header facts did not reach companion: %+v", initial.Header)
+	}
 	file := filepath.Join(dir, "source with spaces.go")
 	initial, code = request(herdr.Request{Method: "native/observe", Instance: initial.Instance, Body: body(sessionapi.NativeFrontendRequest{Viewer: "pty", FileOpen: true})})
 	if code != 0 {
@@ -380,6 +456,9 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 	await(func(s string) bool {
 		return strings.Contains(s, "2 Diff") && strings.Contains(s, "3 Agents") && strings.Contains(s, "parent draft") && strings.Contains(s, "new live")
 	})
+	if !strings.Contains(strings.Split(screen.String(), "\n")[0], "1 Main") {
+		t.Fatal("companion release did not restore standalone framing")
+	}
 	if ready := os.Getenv("MEKUGI_TEST_HERDR_FIXTURE_READY"); ready != "" {
 		data, _ := json.Marshal(struct {
 			PID    int    `json:"pid"`

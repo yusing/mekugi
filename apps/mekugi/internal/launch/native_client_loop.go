@@ -429,6 +429,7 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 							c.links.request(c.ctx, painted.Source, painted.FileLinkDemands)
 							runtime.previews.request(runtime.ctx, source, painted.ImageDemands)
 							c.dirty = false
+							runtime.publishHeader(c)
 							receipt := sessionapi.NativeNoticeReceipt{Claim: c.renderer.frame.Notice, Attachment: painted.Notices.Attachment, Feedback: painted.Notices.Feedback, Composer: painted.Notices.Composer, Content: painted.Notices.Content}
 							c.stageReceipt(&receipt)
 						}

@@ -18,8 +18,10 @@ const nativeViewerLease = 45 * time.Second
 // NativeActivation is sent only after the client accepts the initial frame or
 // completes a handoff. Subscription admission and keyboard focus are not activation.
 type NativeActivation struct {
-	PID      int    `json:"pid"`
-	Sequence uint64 `json:"sequence"`
+	PID            int                                 `json:"pid"`
+	Sequence       uint64                              `json:"sequence"`
+	HeaderRevision uint64                              `json:"header_revision,omitzero"`
+	Header         *sessionpresentation.FrontendHeader `json:"header,omitempty"`
 }
 
 type NativeFrontendRequest struct {
@@ -38,22 +40,23 @@ type NativeFrontendRequest struct {
 }
 
 type NativeObservation struct {
-	DiffOpenSupported bool                        `json:"diff_open_supported,omitzero"`
-	DiffOpen          *NativeDiffOpen             `json:"diff_open,omitempty"`
-	FileOpenSupported bool                        `json:"file_open_supported,omitzero"`
-	FileOpen          *NativeFileOpen             `json:"file_open,omitempty"`
-	Activation        uint64                      `json:"activation,omitempty"`
-	Available         bool                        `json:"available"`
-	Instance          string                      `json:"instance,omitempty"`
-	Thread            string                      `json:"thread,omitempty"`
-	Startup           string                      `json:"startup,omitempty"`
-	Attachment        string                      `json:"attachment,omitempty"`
-	Version           sessionpresentation.Version `json:"version,omitzero"`
-	Displayed         sessionpresentation.Thread  `json:"displayed,omitzero"`
-	Caller            string                      `json:"caller,omitempty"`
-	Cursor            string                      `json:"cursor,omitempty"`
-	Publication       jsontext.Value              `json:"publication,omitempty"`
-	Live              *ContentReference           `json:"live,omitempty"`
+	Header            *sessionpresentation.FrontendHeader `json:"header,omitempty"`
+	DiffOpenSupported bool                                `json:"diff_open_supported,omitzero"`
+	DiffOpen          *NativeDiffOpen                     `json:"diff_open,omitempty"`
+	FileOpenSupported bool                                `json:"file_open_supported,omitzero"`
+	FileOpen          *NativeFileOpen                     `json:"file_open,omitempty"`
+	Activation        uint64                              `json:"activation,omitempty"`
+	Available         bool                                `json:"available"`
+	Instance          string                              `json:"instance,omitempty"`
+	Thread            string                              `json:"thread,omitempty"`
+	Startup           string                              `json:"startup,omitempty"`
+	Attachment        string                              `json:"attachment,omitempty"`
+	Version           sessionpresentation.Version         `json:"version,omitzero"`
+	Displayed         sessionpresentation.Thread          `json:"displayed,omitzero"`
+	Caller            string                              `json:"caller,omitempty"`
+	Cursor            string                              `json:"cursor,omitempty"`
+	Publication       jsontext.Value                      `json:"publication,omitempty"`
+	Live              *ContentReference                   `json:"live,omitempty"`
 }
 
 // The shared payload excludes physical frontend identities. Keep only its
@@ -87,17 +90,19 @@ func (s *Server) panelPublication(key nativePanelKey) (jsontext.Value, error) {
 // Fields through changed are guarded by Hub.mu, alongside physical connection
 // membership. Selected source has its own lock: indexing cannot block delivery.
 type nativeFrontend struct {
-	pid           int
-	instance      string
-	sequence      uint64
-	active        *rpcSubscription
-	changed       chan struct{}
-	viewers       map[string]nativeViewer
-	revision      uint64
-	diffOpenAfter uint64
-	fileOpenAfter uint64
-	selectedMu    sync.Mutex
-	selected      *selectedContent
+	header         *sessionpresentation.FrontendHeader
+	headerRevision uint64
+	pid            int
+	instance       string
+	sequence       uint64
+	active         *rpcSubscription
+	changed        chan struct{}
+	viewers        map[string]nativeViewer
+	revision       uint64
+	diffOpenAfter  uint64
+	fileOpenAfter  uint64
+	selectedMu     sync.Mutex
+	selected       *selectedContent
 }
 
 type nativeViewer struct {
@@ -113,6 +118,9 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 	}
 	if request.PID <= 0 || request.Sequence == 0 {
 		return nil, rpcFailure(400, "A process and activation sequence are required.")
+	}
+	if request.Header != nil && (request.HeaderRevision == 0 || request.Header.Above < 0 || request.Header.Below < 0 || request.Header.Unseen < 0) {
+		return nil, rpcFailure(400, "A header revision and nonnegative scroll counts are required.")
 	}
 	c.mu.Lock()
 	sub := c.subscriptions[params.Subscription]
@@ -145,7 +153,18 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 		h.mu.Unlock()
 		return nil, rpcFailure(409, "Native process changed.")
 	}
-	if request.Sequence <= f.sequence {
+	if request.Sequence < f.sequence {
+		h.mu.Unlock()
+		return nil, nil
+	}
+	if request.Sequence == f.sequence {
+		if f.active == sub && request.Header != nil && request.HeaderRevision > f.headerRevision {
+			f.header, f.headerRevision = request.Header, request.HeaderRevision
+			if f.changed != nil {
+				close(f.changed)
+			}
+			f.changed = make(chan struct{})
+		}
 		h.mu.Unlock()
 		return nil, nil
 	}
@@ -167,6 +186,7 @@ func (c *rpcConnection) activateFrontend(params RPCParams) (any, *RPCError) {
 		}
 	}
 	f.pid, f.sequence, f.active = request.PID, request.Sequence, sub
+	f.header, f.headerRevision = nil, 0
 	f.fileOpenAfter = fileOpenAfter
 	f.diffOpenAfter = diffOpenAfter
 	lease := f.lease(time.Now())
@@ -374,6 +394,7 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		h := c.endpoint.hub
 		h.mu.Lock()
 		sub, changed := c.frontend.active, c.frontend.changed
+		header, headerRevision := c.frontend.header, c.frontend.headerRevision
 		fileOpenAfter := c.frontend.fileOpenAfter
 		diffOpenAfter := c.frontend.diffOpenAfter
 		result := NativeObservation{Available: true, FileOpenSupported: true, DiffOpenSupported: true, Instance: c.frontend.instance, Activation: c.frontend.sequence}
@@ -386,6 +407,9 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		target, startup, nativeChanged := view.target, view.startup, view.changed
 		result.Thread, result.Startup, result.Attachment = target.thread, startup, sub.attachment
 		result.Version, result.Displayed, result.Caller = view.version, view.displayed, view.caller
+		if header != nil && header.Displayed == result.Displayed {
+			result.Header = header
+		}
 		if view.diffOpen != nil && view.diffOpen.ID > diffOpenAfter {
 			result.DiffOpen = new(*view.diffOpen)
 			result.DiffOpen.Source = ""
@@ -410,11 +434,12 @@ func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFront
 		identity, _ := json.Marshal(&struct {
 			Instance, Attachment, Source, Caller string
 			Activation                           uint64
+			HeaderRevision                       uint64
 			Displayed                            sessionpresentation.Thread
 			Revisions                            [4]uint64
 			DiffOpen                             *NativeDiffOpen
 			FileOpen                             *NativeFileOpen
-		}{result.Instance, result.Attachment, key.Attachment, result.Caller, result.Activation, result.Displayed, key.Revisions, result.DiffOpen, result.FileOpen}, encoding)
+		}{result.Instance, result.Attachment, key.Attachment, result.Caller, result.Activation, headerRevision, result.Displayed, key.Revisions, result.DiffOpen, result.FileOpen}, encoding)
 		result.Cursor = fmt.Sprintf("%x", sha256.Sum256(identity))
 		ready := server.published
 		if ready && (result.Cursor != request.After || ctx.Err() == context.DeadlineExceeded) {

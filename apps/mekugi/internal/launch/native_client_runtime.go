@@ -38,6 +38,9 @@ type nativeClientRuntime struct {
 	activationPending uint64
 	viewerRevision    uint64
 	viewerExpiry      time.Time
+	headerRevision    uint64
+	headerPending     bool
+	headerSent        *sessionpresentation.FrontendHeader
 	previews          imagePreviews
 	ctx               context.Context
 	active            *nativeClient
@@ -53,8 +56,9 @@ type nativeClientRuntime struct {
 }
 
 type nativeFrontendResult struct {
-	sequence uint64
-	err      error
+	sequence       uint64
+	headerRevision uint64
+	err            error
 }
 
 type nativeClientMessage struct {
@@ -153,6 +157,18 @@ func (r *nativeClientRuntime) deliver(message nativeClientMessage) error {
 	case message.restoration != nil:
 		c.restorationResult(*message.restoration)
 	case message.frontend != nil:
+		if message.frontend.headerRevision != 0 {
+			if message.frontend.sequence != r.activation || message.frontend.headerRevision != r.headerRevision {
+				return nil
+			}
+			r.headerPending = false
+			if message.frontend.err != nil {
+				r.active.feedback.Set("Native header publication failed: "+message.frontend.err.Error(), true, time.Now())
+				r.active.refresh(time.Now())
+			}
+			r.publishHeader(r.active)
+			return nil
+		}
 		if message.frontend.sequence == r.activationPending {
 			r.activationPending = 0
 		}
@@ -160,6 +176,7 @@ func (r *nativeClientRuntime) deliver(message nativeClientMessage) error {
 			c.feedback.Set("Native frontend association failed: "+message.frontend.err.Error(), true, time.Now())
 			c.refresh(time.Now())
 		}
+		r.publishHeader(r.active)
 	case message.err != nil:
 		err := message.err
 		if errors.Is(err, io.EOF) {
@@ -455,6 +472,7 @@ func (r *nativeClientRuntime) activateFrontend(c *nativeClient) {
 	r.activation++
 	sequence := r.activation
 	r.activationPending = sequence
+	r.headerSent, r.headerPending = nil, false
 	c.frontendActive = true
 	c.workers.Go(func() {
 		ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
@@ -462,6 +480,30 @@ func (r *nativeClientRuntime) activateFrontend(c *nativeClient) {
 		err := c.connection.Activate(ctx, os.Getpid(), sequence)
 		select {
 		case r.messages <- nativeClientMessage{owner: c, frontend: &nativeFrontendResult{sequence: sequence, err: err}}:
+		case <-c.ctx.Done():
+		}
+	})
+}
+
+// Header updates coalesce behind one request; ordinary frames with unchanged
+// labels/scroll state issue no RPC or shared-publication recomposition.
+func (r *nativeClientRuntime) publishHeader(c *nativeClient) {
+	if c == nil || c != r.active || c.connection == nil || !c.frontendActive || r.activationPending != 0 || r.headerPending || c.renderer.header == nil {
+		return
+	}
+	if c.renderer.header.Displayed.ID == "" || r.headerSent != nil && r.headerSent.Equal(*c.renderer.header) {
+		return
+	}
+	header := *c.renderer.header
+	r.headerSent, r.headerPending = &header, true
+	r.headerRevision++
+	sequence, revision := r.activation, r.headerRevision
+	c.workers.Go(func() {
+		ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+		defer cancel()
+		err := c.connection.PublishHeader(ctx, os.Getpid(), sequence, revision, header)
+		select {
+		case r.messages <- nativeClientMessage{owner: c, frontend: &nativeFrontendResult{sequence: sequence, headerRevision: revision, err: err}}:
 		case <-c.ctx.Done():
 		}
 	})

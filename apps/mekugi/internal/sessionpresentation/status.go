@@ -110,6 +110,25 @@ type Caption struct {
 	Items                        []presentation.Item
 }
 
+// FrontendHeader retains pane information when a native companion supplies the
+// chrome. Scroll counts describe one physical frontend, not shared history.
+type FrontendHeader struct {
+	Displayed Thread   `json:"displayed"`
+	Name      string   `json:"name"`
+	Detail    string   `json:"detail,omitzero"`
+	Title     string   `json:"title,omitzero"`
+	Skills    []string `json:"skills,omitzero"`
+	Questions int      `json:"questions,omitzero"`
+	Above     int      `json:"above,omitzero"`
+	Below     int      `json:"below,omitzero"`
+	Unseen    int      `json:"unseen,omitzero"`
+}
+
+func (h FrontendHeader) Equal(other FrontendHeader) bool {
+	return h.Displayed == other.Displayed && h.Name == other.Name && h.Detail == other.Detail &&
+		h.Title == other.Title && h.Questions == other.Questions && h.Above == other.Above && h.Below == other.Below && h.Unseen == other.Unseen && slices.Equal(h.Skills, other.Skills)
+}
+
 // Publish joins current owner facts with this attachment's retained progress.
 // The caption already names the displayed thread, including unknown settings.
 // Source: apps/mekugi/internal/router/app_server_ui.go:1550:1585 and

@@ -273,3 +273,9 @@ func (c *NativeConnection) Activate(ctx context.Context, pid int, sequence uint6
 	body, _ := json.Marshal(&NativeActivation{PID: pid, Sequence: sequence})
 	return c.scope.rpc.Call(ctx, "native/activate", RPCParams{Subscription: c.subscription.ID, Body: body}, nil)
 }
+
+// PublishHeader updates only this connection's completed physical association.
+func (c *NativeConnection) PublishHeader(ctx context.Context, pid int, sequence, revision uint64, header sessionpresentation.FrontendHeader) error {
+	body, _ := json.Marshal(&NativeActivation{PID: pid, Sequence: sequence, HeaderRevision: revision, Header: &header})
+	return c.scope.rpc.Call(ctx, "native/activate", RPCParams{Subscription: c.subscription.ID, Body: body}, nil)
+}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -25,6 +26,7 @@ type nativeClientRenderer struct {
 	attachment  uint64
 	noticeClaim string
 	noticeRows  map[uint64]bool
+	header      *sessionpresentation.FrontendHeader
 }
 
 func (c *nativeClientRenderer) update(frame sessionapi.NativeFrame, draft conversation.DraftView, prompt conversation.PromptDraftView, now time.Time) {
@@ -173,6 +175,8 @@ func (c *nativeClientRenderer) render(ctx context.Context, out io.Writer, now ti
 	if err := u.Frame.Write(out, frame, u.Width, u.Faint); err != nil {
 		return frame, err
 	}
+	header := in.Header()
+	c.header = &header
 	if c.noticeClaim != c.frame.Notice {
 		c.noticeClaim, c.noticeRows = c.frame.Notice, make(map[uint64]bool)
 	}

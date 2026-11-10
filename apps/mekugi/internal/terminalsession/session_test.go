@@ -153,3 +153,25 @@ func TestShellExternalPanesReclaimStatusRow(t *testing.T) {
 		}
 	}
 }
+
+func TestShellNativeCompanionReclaimsFrameInsets(t *testing.T) {
+	for _, size := range []struct{ width, height int }{{1, 1}, {20, 7}, {80, 8}, {120, 24}} {
+		s := Shell{RosterLabel: "Agents"}
+		standalone := s.Plan(size.width, size.height, 0)
+		s.SetExternalPanes(true)
+		plan := s.Plan(size.width, size.height, 0)
+		if plan.Framed {
+			t.Fatalf("%+v: native companion retained frame", size)
+		}
+		if plan.Left.W >= 4 && plan.Left.H > 0 && plan.Main != plan.Left {
+			t.Fatalf("%+v: retained frame inset: main=%+v outer=%+v", size, plan.Main, plan.Left)
+		}
+		if size.width == 1 && plan.Main != (Rect{}) {
+			t.Fatal("unpaintable main became a hit target")
+		}
+		s.SetExternalPanes(false)
+		if restored := s.Plan(size.width, size.height, 0); restored != standalone {
+			t.Fatalf("%+v: standalone frame geometry not restored", size)
+		}
+	}
+}

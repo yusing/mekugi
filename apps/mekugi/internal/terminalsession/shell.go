@@ -82,6 +82,12 @@ func (s *Shell) Plan(width, height, roster int) ShellPlan {
 		geometryHeight++
 	}
 	layout, left, right, framed, kept := panes.Geometry(width, geometryHeight, roster)
+	if s.ExternalPanes {
+		framed = false
+		if layout.Main.W > 0 {
+			layout.Main = left
+		}
+	}
 	return ShellPlan{layout, left, right, width, height, kept, framed}
 }
 

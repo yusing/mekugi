@@ -138,6 +138,12 @@ While the native panels are connected, Mekugi hides its duplicate terminal roste
 diff pane, live-edit dock and bottom navigation bar. Disconnecting the panels restores the terminal
 layout without changing saved pane preferences or stopping the session.
 
+The companion removes Mekugi's blue terminal frame and its padding, while its
+native status mod retains the pane identity, full session title, loaded skills,
+pending-question count and terminal scroll/new-line indicators. Hover the title
+for its full text; open the skills control for the full loaded-skill list.
+Standalone terminals retain their ordinary framing.
+
 Each execution machine needs matching Mekugi client, shared-server and helper
 builds, and the Herdr layout needs the matching native mods. After a protocol
 upgrade, restart the shared server and reopen its clients. Let active work finish

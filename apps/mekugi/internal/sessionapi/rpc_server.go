@@ -48,7 +48,7 @@ var rpcMethods = map[string]rpcMethod{
 	"view/attach":         {limit: 1024},
 	"view/intent":         {limit: InputBodyLimit},
 	"native/start":        {limit: inputLimit, native: true},
-	"native/activate":     {limit: 1024, native: true},
+	"native/activate":     {limit: 64 << 10, native: true},
 	"native/resolve":      {limit: 2048, native: true},
 	"native/observe":      {limit: 2048, native: true},
 	"native/release":      {limit: 2048, native: true},

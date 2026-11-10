@@ -6,6 +6,7 @@ export const subprotocol = "mekugi.control.v8" as const;
 export type RPCMethod = "initialize" | "native/activate" | "native/content" | "native/observe" | "native/release" | "native/resolve" | "native/select" | "native/start" | "publication/ack" | "request/cancel" | "session/answer" | "session/control" | "session/decide" | "session/end" | "session/input" | "session/interrupt" | "session/list" | "session/options" | "session/page" | "session/read" | "session/redraw" | "session/shell" | "session/start" | "session/subscribe" | "subscription/cancel" | "view/attach" | "view/intent";
 
 export type NativeObservation = {
+  "header"?: (FrontendHeader | null);
   "diff_open_supported"?: boolean;
   "diff_open"?: (NativeDiffOpen | null);
   "file_open_supported"?: boolean;
@@ -27,6 +28,8 @@ export type NativeObservation = {
 export type NativeActivation = {
   "pid": number;
   "sequence": number;
+  "header_revision"?: number;
+  "header"?: (FrontendHeader | null);
 };
 
 export type NativeFrontendRequest = {
@@ -211,6 +214,18 @@ export type message = {
   "roster"?: unknown;
   "review"?: unknown;
   "live"?: unknown;
+};
+
+export type FrontendHeader = {
+  "displayed": Thread;
+  "name": string;
+  "detail"?: string;
+  "title"?: string;
+  "skills"?: Array<string>;
+  "questions"?: number;
+  "above"?: number;
+  "below"?: number;
+  "unseen"?: number;
 };
 
 export type NativeDiffOpen = {
