@@ -2,10 +2,12 @@ package launch
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -71,5 +73,23 @@ func TestResponsesHandlerRejectsInvalidOrOversizedCodexHTTPBody(t *testing.T) {
 				t.Fatalf("status=%d forwards=%d, want %d and none; body=%q", recorder.Code, len(provider.forwarded), test.status, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestResponsesHandlerRejectsUnsupportedEncodingBeforeReading(t *testing.T) {
+	const size = 1 << 20
+	readable := bytes.NewReader(make([]byte, size))
+	for _, body := range []io.Reader{readable, iotest.ErrReader(errors.New("body must not be read"))} {
+		provider := &serverFakeProvider{}
+		request := httptest.NewRequest("POST", "/v1/responses", body)
+		request.Header.Set("Content-Encoding", " GZIP ")
+		recorder := httptest.NewRecorder()
+		testResponsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
+		if recorder.Code != http.StatusUnsupportedMediaType || len(provider.forwarded) != 0 {
+			t.Fatalf("status=%d forwards=%d, want 415 and none; body=%q", recorder.Code, len(provider.forwarded), recorder.Body.String())
+		}
+	}
+	if consumed := size - readable.Len(); consumed != 0 {
+		t.Fatalf("unsupported encoding consumed %d bytes before rejection", consumed)
 	}
 }
