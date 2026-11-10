@@ -46,6 +46,9 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if instructions != guide.Workflow || strings.Contains(instructions, "Pass `shell:") != (runtime.GOOS == "darwin") {
 			t.Fatal("base instructions lost workflow")
 		}
+		if strings.Count(instructions, "two independent wait timers") != 1 || strings.Contains(got, "two independent wait timers") {
+			t.Fatal("two-timer guidance must appear once in base instructions, not the stock tool description")
+		}
 		for _, removed := range []string{"Codex owns stock editing", "On macOS", "Give required skill and instruction reads their own exec_command"} {
 			if strings.Contains(instructions, removed) {
 				t.Fatalf("workflow retains removed guidance %q", removed)

@@ -44,7 +44,14 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 			t.Fatal("frontend projection lost recovery-handle distinction")
 		}
 	}
-	for _, instruction := range []string{"Print raw output once", "within the outer exec budget", "overflow can erase next_call handles"} {
+	for _, instruction := range []string{
+		"Print raw output once", "within the outer exec budget", "overflow can erase next_call handles",
+		"two independent wait timers", "an inner wait does not extend the cell timer",
+		`// @exec: {"yield_time_ms": 120000`,
+		`tools.write_stdin({session_id: SESSION_ID, chars: "", yield_time_ms: 120000`,
+		`functions.wait({cell_id: "RETURNED_CELL_ID", yield_time_ms: 120000`,
+		"not another native poll or a replay of the script",
+	} {
 		if !strings.Contains(saved.Workflow, instruction) || strings.Contains(saved.Shell, instruction) {
 			t.Fatalf("exec output guidance must be confined to Codex: %q", instruction)
 		}
