@@ -79,7 +79,7 @@ func TestModelRosterAndSummary(t *testing.T) {
 func TestModelSkillsAndAttachmentLifetime(t *testing.T) {
 	var first, second scope.Store
 	model := &Attached[modelSource, modelAgent](&first).Children
-	model.Append(modelSource{Seq: 1, Agent: "/root/a", Live: true}, []Value{{Kind: "op", Verb: "Attached skill", Label: "review"}})
+	model.Append(modelSource{Seq: 1, Agent: "/root/a", Live: true}, []Value{{Kind: "op", Verb: "Attached skill", AttachmentKind: "skill", Label: "review"}})
 	model.Trim(0)
 	if !slices.Equal(model.ActiveSkills()["/root/a"], SkillSet{"review"}) {
 		t.Fatal("feed retention discarded active context")

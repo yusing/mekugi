@@ -7,12 +7,12 @@ import (
 
 func TestAttachmentEventRetainsParameters(t *testing.T) {
 	values := []Value{
-		{Kind: "op", Verb: "Attached", Path: "a.go", AttachmentID: "first", Tail: []string{"original"}},
-		{Kind: "op", Verb: "Attached", Path: "a.go", AttachmentID: "second", Tail: []string{"new snapshot"}, Repeated: "same as O1"},
-		{Kind: "op", Verb: "Attach failed", Path: "missing", Label: "not found"},
-		{Kind: "op", Verb: "Attached skill", Label: "review", Tail: []string{"# Review"}},
-		{Kind: "op", Verb: "Attached changes", Label: "amber1..3"},
-		{Kind: "op", Verb: "Attached selection", Label: "Selected text", Tail: []string{"selected"}},
+		{Kind: "op", Verb: "Attached", AttachmentKind: "file", Path: "a.go", AttachmentID: "first", Tail: []string{"original"}},
+		{Kind: "op", Verb: "Attached", AttachmentKind: "file", Path: "a.go", AttachmentID: "second", Tail: []string{"new snapshot"}, Repeated: "same as O1"},
+		{Kind: "op", Verb: "Attach failed", AttachmentKind: "file", Path: "missing", Label: "not found"},
+		{Kind: "op", Verb: "Attached skill", AttachmentKind: "skill", Label: "review", Tail: []string{"# Review"}},
+		{Kind: "op", Verb: "Attached changes", AttachmentKind: "change", Label: "amber1..3"},
+		{Kind: "op", Verb: "Attached selection", AttachmentKind: "selection", Label: "Selected text", Tail: []string{"selected"}},
 	}
 	Identify(values, 12)
 	record := Record[Entry]{Source: Entry{Facts: Facts{Seq: 12, Kind: "attachments"}}, Values: values}

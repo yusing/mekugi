@@ -143,9 +143,9 @@ func TestRemoteFrameOmitsTerminalRendererState(t *testing.T) {
 		{Facts: activity.Facts{Seq: 6, Agent: "/oneoff", Text: "Question\nsecret"}, Values: []activity.Value{{Body: "secret", Questions: []activity.Question{{Text: "secret", Secret: true}}}}},
 		{Facts: activity.Facts{Seq: 7, Agent: "/oneoff", Kind: "tool"}, Values: []activity.Value{{Kind: "reads", Verb: "Read", Reads: []activityfeed.Read{{Path: "source.go"}}}}},
 		{Facts: activity.Facts{Seq: 8, Agent: "/oneoff", Kind: "attachments"}, Values: activity.AttachmentEvents([]activity.Value{
-			{Kind: "op", Verb: "Attached", Path: "attached.go", Tail: []string{"retained file content"}},
-			{Kind: "op", Verb: "Attached skill", Label: "review", Tail: []string{"retained skill content"}},
-			{Kind: "op", Verb: "Attach failed", Path: "missing.go", Label: "not found"},
+			{Kind: "op", Verb: "Attached", AttachmentKind: "file", Path: "attached.go", Tail: []string{"retained file content"}},
+			{Kind: "op", Verb: "Attached skill", AttachmentKind: "skill", Label: "review", Tail: []string{"retained skill content"}},
+			{Kind: "op", Verb: "Attach failed", AttachmentKind: "file", Path: "missing.go", Label: "not found"},
 		})},
 		{Facts: activity.Facts{Seq: 9, Agent: "/oneoff", Kind: "user", Text: "Side task"}},
 	}

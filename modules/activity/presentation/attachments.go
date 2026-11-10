@@ -19,21 +19,8 @@ func AttachmentEvents(values []Value) []Value {
 	group := Group(Value{Kind: "attachments", Verb: "Attach", Source: values[0].Source}, values)
 	counts := make(map[string]int)
 	for _, v := range values {
-		kind := v.AttachmentKind
-		if kind == "" {
-			switch v.Verb {
-			case "Attached skill":
-				kind = "skill"
-			case "Attached changes":
-				kind = "change"
-			case "Attached selection":
-				kind = "selection"
-			default:
-				kind = "file"
-			}
-		}
-		counts[kind]++
-		group.Failed = group.Failed || v.FailedOutcome() || v.Verb == "Attach failed"
+		counts[v.AttachmentKind]++
+		group.Failed = group.Failed || v.FailedOutcome()
 		group.Running = group.Running || v.Running
 	}
 	var labels []string

@@ -9,9 +9,9 @@ import (
 
 func TestAttachmentEventProjectionAndContent(t *testing.T) {
 	values := activity.AttachmentEvents([]activity.Value{
-		{Kind: "op", Verb: "Attached", Path: "source.go", Tail: []string{strings.Repeat("source", 200), "end"}},
-		{Kind: "op", Verb: "Attach failed", Path: "missing", Label: "not found"},
-		{Kind: "op", Verb: "Attached skill", Label: "review", Tail: []string{"# Review"}},
+		{Kind: "op", Verb: "Attached", AttachmentKind: "file", Path: "source.go", Tail: []string{strings.Repeat("source", 200), "end"}},
+		{Kind: "op", Verb: "Attach failed", AttachmentKind: "file", Path: "missing", Label: "not found"},
+		{Kind: "op", Verb: "Attached skill", AttachmentKind: "skill", Label: "review", Tail: []string{"# Review"}},
 	})
 	full := projectEntry(activity.Entry{Facts: activity.Facts{Seq: 1, Kind: "attachments"}, Values: values}, false, "/root", "/root")
 	if len(full.Values) != 1 || len(full.Values[0].Params) != 3 || full.Values[0].Params[1].Label != "not found" {
