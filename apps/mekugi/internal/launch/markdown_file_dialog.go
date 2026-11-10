@@ -33,6 +33,7 @@ import (
 // markdownFileTarget resolves local destinations lexically. Relative paths
 // require the selected workspace metadata.
 func markdownFileTarget(workspace, target string) (path string, ok bool) {
+	target = strings.TrimPrefix(target, "@")
 	path = target
 	if strings.HasPrefix(target, "file:") {
 		parsed, err := url.Parse(target)

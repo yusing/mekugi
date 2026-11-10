@@ -228,10 +228,12 @@ func (p *Painter) Inline(line string) string {
 }
 
 func (p *Painter) linkAllowed(target string) bool {
+	target = strings.TrimPrefix(target, "@")
 	return strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") || p.FileLink != nil && p.FileLink(target)
 }
 
 func (p *Painter) inlineLink(label, target string) string {
+	target = strings.TrimPrefix(target, "@")
 	if p.DeferFileLinks && !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
 		return "\x1b]8;;" + fileLinkCandidate + url.QueryEscape(target) + "\x1b\\" + label + "\x1b]8;;\x1b\\"
 	}
@@ -245,6 +247,7 @@ func (p *Painter) inlineLink(label, target string) string {
 // Recognize file-shaped operands without reading the filesystem during painting.
 // Canonical agent names are identifiers, not file links.
 func rawFilePath(path string) bool {
+	path = strings.TrimPrefix(path, "@")
 	if path == "" || strings.ContainsAny(path[:1], "#!@$?") || strings.ContainsAny(path, "\x00\r\n\x1b\"'(){}[]=*;") || strings.Contains(path, "://") {
 		return false
 	}

@@ -63,7 +63,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 	main.attached.cwd = workspace
 	settleTestPresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, main.settings, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
 	painter := activityui.Painter{FileLink: markdownFileLinks(main.attached.cwd)}
-	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27", "`" + path + ":26`"} {
+	for _, target := range []string{"src/source #1?%.go", "@src/source #1?%.go", path + ":26", "@" + path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", "@src/source #1?%.go:26-27", fileURL + ":26-27", "`" + path + ":26`", "`@" + path + ":26`"} {
 		t.Run(target, func(t *testing.T) {
 			row := painter.Inline("[source](<" + target + ">)")
 			if strings.HasPrefix(target, "`") {
@@ -104,6 +104,50 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 				t.Fatal("drag activated the file link")
 			}
 		})
+	}
+}
+
+func TestMarkdownPrefixedFileTargets(t *testing.T) {
+	for _, workspace := range []string{"/workspace", ""} {
+		for _, target := range []string{"sample.go", "./src/sample.go:2-3", "../sample.go:2", "/workspace/sample.go:2", "file:///workspace/a%20b.go:2-3", "file://remote/sample.go", "https://example.com", "javascript:alert", "#heading", "?query", "", "bad\x00.go", "bad\n.go"} {
+			t.Run(workspace+"/"+target, func(t *testing.T) {
+				path, ok := markdownFileTarget(workspace, target)
+				prefixed, admitted := markdownFileTarget(workspace, "@"+target)
+				if admitted != ok || ok && prefixed != path {
+					t.Fatalf("prefix changed resolution: (%q, %t) != (%q, %t)", prefixed, admitted, path, ok)
+				}
+			})
+		}
+	}
+}
+
+func TestMarkdownPrefixedRawFileClick(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "sample.go")
+	if err := os.WriteFile(path, []byte("package sample\n// selected line\n// last line\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"sample.go:2-3", "./sample.go:2-3", path + ":2-3"} {
+		for _, prefix := range []string{"", "@"} {
+			t.Run(prefix+target, func(t *testing.T) {
+				p := activityui.Painter{FileLink: markdownFileLinks(workspace), DeferFileLinks: true}
+				row := p.Inline(prefix + target)
+				row, _ = terminalui.ResolveFileLinks(row, map[string]bool{target: true}, p.Theme.Accent())
+				u := selectionTestUI(row)
+				u.main.attached.cwd = workspace
+				publishTestPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, u.main.settings, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side)
+				u.Frame.Source = selectionTestSource(u.main)
+				u.selectionMouse(0, 1, 0, false)
+				u.selectionMouse(0, 1, 0, true)
+				if !u.main.pendingFile {
+					t.Fatal("raw deferred link did not start file opening")
+				}
+				awaitMarkdownFile(t, u)
+				if u.Dialog.File.Path != "sample.go" || u.Dialog.File.First != 2 || u.Dialog.File.Last != 3 {
+					t.Fatalf("raw click lost the underlying file or location: %+v", u.Dialog.File)
+				}
+			})
+		}
 	}
 }
 
