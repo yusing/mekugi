@@ -327,11 +327,11 @@ func TestNativeClientResumeEditsKeepOriginalChooser(t *testing.T) {
 			c := nativeTestPromptClient(u)
 			c.event.Frame.View.Resume = &sessionpresentation.ResumeView{ID: 7}
 			c.refresh(time.Now())
-			for _, key := range []string{"n", "e", "\x7f"} {
+			for _, key := range []string{"n", "e", "\x7f", "\x1b[B"} {
 				c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: key})
 			}
 			c.drainInput()
-			if len(c.calls) != 1 || c.calls[0].operation.Resume.Query != "n" || len(c.input) != 2 {
+			if len(c.calls) != 1 || c.calls[0].operation.Resume.Query != "n" || len(c.input) != 3 {
 				t.Fatal("dependent resume edits did not wait for the first query publication")
 			}
 			c.calls = nil
@@ -343,6 +343,96 @@ func TestNativeClientResumeEditsKeepOriginalChooser(t *testing.T) {
 			c.drainInput()
 			if len(c.input) != 0 || len(c.calls) != 0 || c.editor("main").Text != "" {
 				t.Fatal("queued edits escaped their original resume chooser")
+			}
+		})
+	}
+}
+
+func TestNativeClientResumeNavigationWaitsForSearch(t *testing.T) {
+	for _, test := range []struct {
+		name, key string
+		selected  int
+	}{
+		{"down", "\x1b[B", 1}, {"ctrl-n", "\x0e", 1}, {"ss3-down", "\x1bOB", 1},
+		{"up", "\x1b[A", 0}, {"ctrl-p", "\x10", 0}, {"ss3-up", "\x1bOA", 0},
+		{"page-down", "\x1b[6~", 1}, {"page-up", "\x1b[5~", 0},
+		{"home", "\x1b[H", 0}, {"end", "\x1b[F", 1},
+		{"ss3-home", "\x1bOH", 0}, {"ss3-end", "\x1bOF", 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.startSession("main", "/workspace")
+			c := nativeTestPromptClient(u)
+			rows := []sessionpresentation.ResumeRow{{ID: "first", Title: "next first"}, {ID: "second", Title: "next second"}}
+			c.event.Frame.View.Resume = &sessionpresentation.ResumeView{ID: 7, Rows: rows}
+			c.refresh(time.Now())
+			for _, key := range []string{"n", test.key, "\r"} {
+				c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: key})
+			}
+			c.drainInput()
+			if len(c.calls) != 1 || c.calls[0].operation.Resume.Query != "n" || len(c.input) != 2 {
+				t.Fatal("navigation or selection overtook the pending search")
+			}
+			// Publish the delayed search result through the normal renderer update.
+			c.calls = nil
+			c.event.Frame.View.Resume = &sessionpresentation.ResumeView{ID: 7, Query: "n", Rows: rows}
+			c.refresh(time.Now())
+			c.drainInput()
+			if len(c.calls) != 1 || c.calls[0].operation.Resume.Kind != sessionpresentation.ResumeNoAction || len(c.input) != 1 {
+				t.Fatal("navigation did not precede Enter after search publication")
+			}
+			// The renderer's cursor-only action still receives a semantic reply.
+			c.calls = nil
+			c.drainInput()
+			if len(c.calls) != 1 || c.calls[0].operation.Resume.Kind != sessionpresentation.ResumeChoose || c.calls[0].operation.Resume.Thread != rows[test.selected].ID {
+				t.Fatalf("Enter did not choose filtered row %d: %#v", test.selected, c.calls)
+			}
+			if len(c.input) != 0 {
+				t.Fatal("navigation remained queued after search publication")
+			}
+			c.renderer.terminal.Width, c.renderer.terminal.Height = 80, 24
+			frame, err := c.renderer.render(t.Context(), io.Discard, time.Now(), mekugiVersion())
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected := ""
+			for _, row := range frame.Rows {
+				if strings.Contains(row, "› ") {
+					selected = row
+				}
+			}
+			if !strings.Contains(selected, rows[test.selected].Title) || !strings.Contains(strings.Join(frame.Rows, "\n"), "Search: n") {
+				t.Fatalf("rendered chooser did not show the selected filtered row: %q", frame.Rows)
+			}
+		})
+	}
+}
+
+func TestNativeClientResumeSearchKeepsIndependentInput(t *testing.T) {
+	for _, test := range []struct {
+		name, key string
+		resume    bool
+	}{
+		{"cancel", "\x03", true},
+		{"other-csi", "\x1b[C", true},
+		{"navigation-outside-chooser", "\x1b[B", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.startSession("main", "/workspace")
+			c := nativeTestPromptClient(u)
+			if test.resume {
+				c.event.Frame.View.Resume = &sessionpresentation.ResumeView{ID: 7}
+			}
+			c.refresh(time.Now())
+			c.calls = []*nativeClientCall{{operation: sessionapi.NativeOperation{Resume: &sessionpresentation.ResumeAction{Kind: sessionpresentation.ResumeSearch}}}}
+			c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: test.key})
+			c.drainInput()
+			if len(c.input) != 0 {
+				t.Fatal("independent input waited for search publication")
+			}
+			if test.name == "cancel" && (len(c.calls) != 2 || c.calls[1].operation.Resume.Kind != sessionpresentation.ResumeCancel) {
+				t.Fatal("Ctrl-C did not reach the chooser while search was pending")
 			}
 		})
 	}

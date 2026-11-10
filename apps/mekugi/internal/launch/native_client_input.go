@@ -96,8 +96,8 @@ func (c *nativeClient) withInput(thread, displayed sessionpresentation.Thread, t
 }
 
 // A menu/panel continuation or resume edit owns the key that opened it. Subsequent
-// input waits for that semantic result; terminal navigation and cancellation do
-// not acquire the editor and remain independent.
+// input waits for that semantic result; navigation outside the resume chooser
+// and cancellation do not acquire the editor and remain independent.
 func (c *nativeClient) drainInput() {
 	if c.event.Attachment == "" {
 		return
@@ -110,6 +110,13 @@ func (c *nativeClient) drainInput() {
 		queued := c.input[i]
 		event := queued.event
 		independent := event.Kind == terminalsession.ColorInput || event.Kind == terminalsession.FocusInput || event.Kind == terminalsession.MouseInput || event.Kind == terminalsession.KeyInput && (event.Text == "\x03" || event.Text == "\x02" || strings.HasPrefix(event.Text, "\x1b["))
+		if queued.resume != 0 && event.Kind == terminalsession.KeyInput {
+			switch event.Text {
+			case "\x1b[A", "\x1b[B", "\x1b[5~", "\x1b[6~", "\x1b[H", "\x1b[F":
+				// Chooser navigation needs the preceding query's published rows.
+				independent = false
+			}
+		}
 		if resume := c.event.Frame.View.Resume; !independent && queued.resume != 0 && (resume == nil || resume.ID != queued.resume) {
 			c.input = slices.Delete(c.input, i, i+1)
 			continue
