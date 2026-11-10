@@ -16,14 +16,17 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
+	"github.com/yusing/mekugi/contracts/observation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 // Unrelated publications must neither restart a bound image read nor hide
-// hydrated content while a newer revision loads. Resource responses are held
-// in front of the actual connector, so reads and browser cancellations are
-// counted where they reach the machine.
+// hydrated content while a newer revision loads. Oversized activity details
+// keep their body through refreshes of the same selection. Resource responses
+// are held in front of the actual connector, so reads and browser
+// cancellations are counted where they reach the machine.
 func TestWebUIBrowserContentReads(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_WEBUI_BROWSER") != "1" {
 		t.Skip("set MEKUGI_TEST_WEBUI_BROWSER=1 after make webui")
@@ -35,20 +38,64 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	page := httptest.NewServer(webui.Handler())
 	defer page.Close()
 	token := strings.Repeat("d", 64)
-	machine := newWebUIBrowserMachine(t, ctx, page.URL, "Content", token)
-	var imageReads, imageAborts, contentReads atomic.Int32
-	var holdImage, holdContent atomic.Bool
+	type detailTarget struct {
+		native     *sessionapi.Native
+		attachment string
+		version    sessionpresentation.Version
+		workspace  string
+	}
+	const detailSeq = 64
+	details := make(chan detailTarget, 1)
+	machine := newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Content", token, func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
+		if request.Operation.Details == nil || request.Operation.Details.Source != detailSeq {
+			return false
+		}
+		details <- detailTarget{native, request.Attachment, request.Version, request.Workspace}
+		request.Reply <- ""
+		return true
+	})
+	var imageReads, imageAborts, contentReads, detailReads atomic.Int32
+	var holdImage, holdContent, holdDetails, failDetails atomic.Bool
 	holdImage.Store(true)
 	release := make(chan struct{}, 4)
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && (r.URL.Path == "/api/resources/image" && holdImage.Load() || r.URL.Path == "/api/resources/content" && holdContent.Load()) {
+		var body []byte
+		if r.Method == http.MethodPost && r.URL.Path == "/api/resources/content" {
 			// The server notices a canceled browser read only after the
 			// request body is consumed.
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
+			var err error
+			if body, err = io.ReadAll(r.Body); err != nil {
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		if bytes.Contains(body, []byte(`"kind":"details"`)) {
+			detailReads.Add(1)
+			if holdDetails.Load() {
+				select {
+				case <-release:
+				case <-r.Context().Done():
+					return
+				case <-ctx.Done():
+					return
+				}
+			}
+			if failDetails.Load() {
+				// A machine refusal, answered as the connector would.
+				w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = io.WriteString(w, `{"code":-32000,"message":"Fixture details unavailable","data":{"status":503}}`)
+				return
+			}
+		} else if r.Method == http.MethodPost && (r.URL.Path == "/api/resources/image" && holdImage.Load() || r.URL.Path == "/api/resources/content" && holdContent.Load()) {
+			if body == nil {
+				var err error
+				if body, err = io.ReadAll(r.Body); err != nil {
+					return
+				}
+				r.Body = io.NopCloser(bytes.NewReader(body))
+			}
 			image := r.URL.Path == "/api/resources/image"
 			if image {
 				imageReads.Add(1)
@@ -138,6 +185,23 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	}
 
 	run("open", page.URL)
+	// Delay native publications independently of actual resource responses.
+	run("eval", `window.heldPublications = []; window.detailConflicts = 0;
+		const Original = WebSocket;
+		window.WebSocket = class extends Original {
+			addEventListener(kind, listener, ...options) {
+				if (kind !== 'message') return super.addEventListener(kind, listener, ...options);
+				return super.addEventListener(kind, event => {
+					if (window.holdPublications && JSON.parse(event.data).method === 'subscription/event') window.heldPublications.push(() => listener.call(this, event));
+					else listener.call(this, event);
+				}, ...options);
+			}
+		};
+		const originalFetch = window.fetch;
+		window.fetch = (...args) => originalFetch(...args).then(response => {
+			if (String(args[0]).endsWith('/api/resources/content') && response.status === 409) window.detailConflicts++;
+			return response;
+		});`)
 	run("find", "label", "Machine name", "fill", "Content")
 	run("find", "label", "Connector URL", "fill", remote.URL)
 	run("find", "label", "Access token", "fill", token)
@@ -205,4 +269,132 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	run("wait", "--fn", `document.body.innerText.includes('Loading content') && !document.body.innerText.includes('TAIL_THREE')`)
 	release <- struct{}{}
 	run("wait", "--fn", `document.body.innerText.includes('TAIL_FOUR') && !document.body.innerText.includes('Loading content')`)
+
+	// Oversized details keep their body and reading position while the same
+	// selection refreshes, and show a current failure beside that body.
+	holdContent.Store(false)
+	compaction := activitypresentation.ItemContent{Seq: detailSeq, Agent: "Main", Kind: "compaction", Text: "Detail fixture summary.", Details: &activitypresentation.ItemDetails{CompactionContext: &observation.Context{Known: true, Tokens: 1000, Window: 2000}, CompactionElapsed: time.Second, CompactionTimed: true}}
+	entries = append(entries, activitypresentation.Entry{Facts: compaction.Facts, Values: compaction.Values(), Revision: 1})
+	publish()
+	label := compaction.Values()[0].Label
+	run("wait", "--text", label)
+	run("find", "role", "button", "click", "--name", label, "--exact")
+	var target detailTarget
+	select {
+	case target = <-details:
+	case <-ctx.Done():
+		t.Fatal("the details request did not reach the runtime")
+	}
+	body := func(marker string) string {
+		var text strings.Builder
+		for line := range 120 {
+			fmt.Fprintf(&text, "%s line %03d.\n\n", marker, line)
+		}
+		return text.String()
+	}
+	main := sessionpresentation.Thread{ID: "same-thread", Caller: "/root"}
+	show := func(source sessionpresentation.Thread, selection, revision uint64, text string) {
+		t.Helper()
+		target.version.Revision++
+		frame := sessionapi.NativeFrame{View: sessionpresentation.View{Version: target.version, Main: main, Input: main, Displayed: main, Info: sessionpresentation.MainInfo{Workspace: target.workspace}}}
+		frame.Details = &sessionapi.NativeDetails{Source: source, View: sessionpresentation.DetailView{ID: sessionpresentation.DetailID{Attachment: target.version.Attachment, Selection: selection}, Revision: revision, Pages: []sessionpresentation.DetailItem{{ID: "detail", Kind: "compaction", Label: "Detail fixture", Body: text}}}}
+		if err := target.native.Publish(target.attachment, frame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const pane = `document.querySelector('[aria-labelledby="details-heading"] > .overflow-y-auto')`
+	panel := func(script string) string {
+		t.Helper()
+		return strings.TrimSpace(run("eval", fmt.Sprintf(`(() => { const pane = %s; return %s; })()`, pane, script)))
+	}
+	// The line at the top of the pane, which a refresh must keep in place.
+	const anchor = `[...pane.querySelectorAll('p')].find(p => p.getBoundingClientRect().bottom > pane.getBoundingClientRect().top + 1)?.textContent.match(/line (\d+)/)?.[1]`
+	reads := func(want int32) {
+		t.Helper()
+		await(fmt.Sprintf("detail read %d", want), func() bool { return detailReads.Load() == want })
+	}
+	holdDetails.Store(true)
+	show(main, 1, 1, body("FIRST"))
+	reads(1)
+	run("wait", "--text", "Loading complete details…")
+	release <- struct{}{}
+	run("wait", "--text", "FIRST line 119.")
+	panel(`(pane.scrollTop = pane.scrollHeight / 2, true)`)
+	run("wait", "300")
+	line, top := panel(anchor), panel(`pane.scrollTop`)
+	if line == "" || line == "undefined" || top == "0" {
+		t.Fatalf("details did not scroll: line %q, top %s", line, top)
+	}
+	show(main, 1, 2, body("SECOND"))
+	reads(2)
+	run("wait", "300")
+	if panel(`pane.innerText.includes('FIRST line 119.') && !pane.innerText.includes('Loading complete details')`) != "true" || panel(`pane.scrollTop`) != top || panel(anchor) != line {
+		t.Fatal("a same-selection refresh hid the loaded details or moved the reader")
+	}
+	screenshot("details-refresh-retains-body.png")
+	release <- struct{}{}
+	run("wait", "--text", "SECOND line 119.")
+	if panel(`pane.innerText.includes('FIRST line')`) != "false" || panel(anchor) != line {
+		t.Fatal("the replacement details lost the reading position")
+	}
+	// An unchanged republication keeps the current body without reading again.
+	show(main, 1, 2, body("SECOND"))
+	run("wait", "300")
+	if detailReads.Load() != 2 {
+		t.Fatalf("unchanged details republication read again: %d reads", detailReads.Load())
+	}
+	holdDetails.Store(false)
+	failDetails.Store(true)
+	show(main, 1, 3, body("THIRD"))
+	run("wait", "--text", "Fixture details unavailable")
+	if panel(`pane.innerText.includes('SECOND line 119.') && !pane.innerText.includes('THIRD line')`) != "true" {
+		t.Fatal("a refresh failure replaced the retained details")
+	}
+	screenshot("details-refresh-failure.png")
+	failDetails.Store(false)
+	run("find", "role", "button", "click", "--name", "Retry complete details", "--exact")
+	run("wait", "--text", "THIRD line 119.")
+	if panel(`pane.innerText.includes('Fixture details unavailable')`) != "false" {
+		t.Fatal("a successful retry kept its failure")
+	}
+	// A stale response can precede the publication that superseded it. It
+	// keeps the loaded body without failure chrome or a self-retry.
+	holdDetails.Store(true)
+	conflicts := run("eval", `window.detailConflicts`)
+	staleRead := detailReads.Load()
+	show(main, 1, 4, body("STALE"))
+	reads(staleRead + 1)
+	run("eval", `window.holdPublications = true`)
+	show(main, 1, 5, body("CURRENT"))
+	run("wait", "--fn", `window.heldPublications.length > 0`)
+	release <- struct{}{}
+	run("wait", "--fn", fmt.Sprintf(`window.detailConflicts > %s`, conflicts))
+	run("wait", "300")
+	if panel(`pane.innerText.includes('THIRD line 119.') && !pane.innerText.includes('Retry complete details') && !pane.innerText.includes('The detail selection changed')`) != "true" || detailReads.Load() != staleRead+1 {
+		t.Fatal("a superseded detail response showed a failure or retried before publication")
+	}
+	screenshot("details-conflict-waits.png")
+	run("eval", `window.holdPublications = false; window.heldPublications.splice(0).forEach(deliver => deliver())`)
+	reads(staleRead + 2)
+	release <- struct{}{}
+	run("wait", "--text", "CURRENT line 119.")
+	// Another source reusing the selection number is a different selection.
+	holdDetails.Store(true)
+	reused := detailReads.Load()
+	show(sessionpresentation.Thread{ID: "same-thread", Caller: "/root/worker"}, 1, 1, body("OTHER"))
+	reads(reused + 1)
+	run("wait", "--fn", fmt.Sprintf(`(() => { const pane = %s; return !pane.innerText.includes('CURRENT line') && pane.innerText.includes('Loading complete details'); })()`, pane))
+	release <- struct{}{}
+	run("wait", "--text", "OTHER line 119.")
+	show(sessionpresentation.Thread{ID: "same-thread", Caller: "/root/worker"}, 2, 1, body("FOURTH"))
+	reads(reused + 2)
+	run("wait", "--fn", fmt.Sprintf(`(() => { const pane = %s; return !pane.innerText.includes('OTHER line') && pane.innerText.includes('Loading complete details'); })()`, pane))
+	release <- struct{}{}
+	run("wait", "--text", "FOURTH line 119.")
+	// Inline details replace the hydrated body without a read.
+	show(sessionpresentation.Thread{ID: "same-thread", Caller: "/root/worker"}, 2, 2, "INLINE detail body.")
+	run("wait", "--text", "INLINE detail body.")
+	if panel(`pane.innerText.includes('FOURTH line') || pane.innerText.includes('Loading complete details')`) != "false" || detailReads.Load() != reused+2 {
+		t.Fatal("inline details did not replace the hydrated body")
+	}
 }

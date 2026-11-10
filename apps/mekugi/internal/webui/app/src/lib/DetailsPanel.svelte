@@ -8,7 +8,7 @@
   import Markdown from "./Markdown.svelte";
   import ReferenceSelection from "./ReferenceSelection.svelte";
   import { stream } from "./stream.svelte";
-  import { errorText } from "./transport";
+  import { errorText, TransportError } from "./transport";
   import { semantic } from "./semantic.svelte";
   import Button from "./ui/Button.svelte";
   import { codeBlock } from "./ui/styles";
@@ -19,28 +19,47 @@
     onclose,
     onreference,
   }: { details: NativeDetails; onclose: () => void; onreference: () => void } = $props();
-  let hydrated = $state.raw<NativeDetails>();
+  // The selection a hydrated body belongs to. A refresh of the same selection
+  // keeps its body readable until the current reference replaces it.
+  const selection = $derived(
+    [
+      details.source.ID,
+      details.source.Caller,
+      details.view.ID.Attachment,
+      details.view.ID.Selection,
+    ].join("\n"),
+  );
+  let hydrated = $state.raw<{ selection: string; attachment: string; details: NativeDetails }>();
   let failure = $state<string>();
   let retry = $state(0);
-  const display = $derived(hydrated ?? details);
+  const retained = $derived(
+    hydrated?.selection === selection && hydrated.attachment === details.content?.attachment
+      ? hydrated.details
+      : undefined,
+  );
+  const display = $derived(retained ?? details);
   const contentIdentity = $derived(JSON.stringify(details.content));
   $effect(() => {
     void contentIdentity;
     const reference = untrack(() => details.content);
+    const target = selection;
     void retry;
-    hydrated = undefined;
     failure = undefined;
-    if (!reference) return;
+    if (!reference) {
+      hydrated = undefined;
+      return;
+    }
     const request = new AbortController();
     void stream
       .readContent(reference, request.signal)
       .then((result) => {
         if (request.signal.aborted) return;
         if (!result.details) throw new Error("The complete details are unavailable.");
-        hydrated = result.details;
+        hydrated = { selection: target, attachment: reference.attachment, details: result.details };
       })
       .catch((error) => {
-        if (!request.signal.aborted) failure = errorText(error);
+        if (!request.signal.aborted && !(error instanceof TransportError && error.status === 409))
+          failure = errorText(error);
       });
     return () => request.abort();
   });
@@ -74,12 +93,11 @@
     <Button variant="quiet" icon="close" label="Close details" onclick={onclose} />
   </header>
   <div bind:this={content} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6">
-    {#if display.content}
-      {#if failure}<Alert>{failure}</Alert><Button variant="quiet" onclick={() => retry++}
-          >Retry complete details</Button
-        >
-      {:else}<p class="text-small text-muted">Loading complete details…</p>{/if}
-    {/if}
+    {#if details.content && failure}<Alert>{failure}</Alert><Button
+        variant="quiet"
+        onclick={() => retry++}>Retry complete details</Button
+      >
+    {:else if display.content}<p class="text-small text-muted">Loading complete details…</p>{/if}
     {#if display.file}<pre class={block}><Code
           code={display.file.Source}
           lang={pathLanguage(display.file.Path)}
