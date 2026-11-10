@@ -78,14 +78,10 @@ func (s *Service) Changes(thread string) (<-chan struct{}, error) {
 // ReceiveMessage retains foreign input at the recipient's existing effect owner.
 // Its local dispatch identity permits ordinary claims, reconciliation and consume.
 func (s *Service) ReceiveMessage(ctx context.Context, source Origin, target, call, message string) (result Effect, err error) {
-	return s.receiveMessage(ctx, source, target, call, message, "")
+	return s.ReceiveMessageWithSources(ctx, source, target, call, message, "")
 }
 
-func (s *Service) ReceiveMessageWithSources(ctx context.Context, source Origin, target, call, message, sources string) (Effect, error) {
-	return s.receiveMessage(ctx, source, target, call, message, sources)
-}
-
-func (s *Service) receiveMessage(ctx context.Context, source Origin, target, call, message, sources string) (result Effect, err error) {
+func (s *Service) ReceiveMessageWithSources(ctx context.Context, source Origin, target, call, message, sources string) (result Effect, err error) {
 	err = s.update(ctx, target, func(tree *Tree, member *Member) error {
 		if source.Session == tree.Root || source.Thread == "" || call == "" || !member.AudienceAdmitted {
 			return errors.New("foreign message requires authenticated source and recipient")

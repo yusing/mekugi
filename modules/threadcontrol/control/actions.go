@@ -38,11 +38,7 @@ func (s *Service) Target(caller Identity, target string) (*Member, error) {
 }
 
 func (s *Service) PrepareAction(ctx context.Context, caller Identity, target, kind, message string) (result Effect, err error) {
-	return s.prepareAction(ctx, caller, target, kind, message, "")
-}
-
-func (s *Service) PrepareActionWithSources(ctx context.Context, caller Identity, target, kind, message, sources string) (Effect, error) {
-	return s.prepareAction(ctx, caller, target, kind, message, sources)
+	return s.PrepareActionWithSources(ctx, caller, target, kind, message, "")
 }
 
 // ActionTarget checks the same admission as PrepareAction before asynchronous
@@ -93,7 +89,7 @@ func (tree *Tree) actionTarget(caller Identity, target, kind, message string) (*
 	return receiver, nil, nil
 }
 
-func (s *Service) prepareAction(ctx context.Context, caller Identity, target, kind, message, sources string) (result Effect, err error) {
+func (s *Service) PrepareActionWithSources(ctx context.Context, caller Identity, target, kind, message, sources string) (result Effect, err error) {
 	created := false // A repeated call reuses its action.
 	err = s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
 		receiver, old, err := tree.actionTarget(caller, target, kind, message)
