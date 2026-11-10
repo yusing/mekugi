@@ -115,6 +115,34 @@ func TestMakefileFocusedOwnerRecipes(t *testing.T) {
 	}
 }
 
+func TestMakefileTestFlagsArguments(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	if err := os.WriteFile(workspace, []byte("#!/bin/sh\n[ \"$1\" = check ] && exit 0\nprintf '<%s>\\n' \"$@\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ target, packages string }{
+		{"test", "./libraries/fixture"},
+		{"test-saved-diff", "./modules/changehistory/presentation ./modules/changehistory/terminalview ./libraries/diffrender"},
+		{"test-live-preview", "./modules/livepreview/..."},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			command := exec.Command("make", "--no-print-directory", tc.target, "RTK=", "WORKSPACE="+workspace,
+				"TEST_PACKAGES=./libraries/fixture", "TEST_SUPPORT_PACKAGES=", "TEST_RUN=^FocusedOwner$",
+				"TEST_FLAGS=-bench ^BenchmarkName$ -benchtime=1x -count=1 '-quoted value'")
+			command.Dir = "../../../.."
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("recipe: %v\n%s", err, output)
+			}
+			for _, want := range append(strings.Fields(tc.packages), "-run", "^FocusedOwner$", "-bench", "^BenchmarkName$", "-benchtime=1x", "-count=1", "-quoted value") {
+				if !bytes.Contains(output, []byte("<"+want+">\n")) {
+					t.Fatalf("recipe lost argument %q:\n%s", want, output)
+				}
+			}
+		})
+	}
+}
+
 func TestMakefileWorkspaceFixture(t *testing.T) {
 	if os.Getenv("MEKUGI_MAKEFILE_WORKSPACE_FIXTURE") != "1" {
 		return

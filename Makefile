@@ -114,7 +114,7 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
-	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(value TEST_FLAGS)
 
 # Focused semantic owners; TEST_RUN and TEST_FLAGS pass through to test.
 test-saved-diff:
