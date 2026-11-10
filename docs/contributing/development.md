@@ -82,13 +82,19 @@ git config --local core.hooksPath "$(git rev-parse --show-toplevel)/.githooks"
 When documentation changes are staged, the gate checks local link targets and Markdown
 heading anchors across the staged documentation. It excludes dependency, build and
 test-fixture directories. Run `make docs-check` for the same validation in the checkout.
-The gate also checks every UI snapshot against the staged source in a temporary checkout.
+The gate checks affected UI snapshots against the staged source in a temporary checkout.
+Go source changes select snapshot packages through transitive imports, including test and
+platform-tagged imports. Snapshot baseline changes select their owning package; shared
+renderer changes still check downstream rendering consumers. Other inputs, including build
+configuration and resources without known ownership, retain the full snapshot gate.
 It skips commits made while a rebase is in progress, including amended or reworded steps, so
 run `make docs-check` on the rebased tip when documentation changed, and
 `make test-ui-snapshots` when UI sources changed.
 The absolute hook path also applies the gate to this clone's other worktrees. To test changes
 to the hook in another worktree, use `git -c core.hooksPath="$PWD/.githooks" commit` there;
 this selects that worktree's hook without changing the clone's configuration.
+Older staged workspace runners ignore the shared hook's optional affected-path input
+and continue checking all snapshots.
 Unstaged fixes cannot hide stale staged fixtures. A mismatch blocks the commit and
 prints its diff. Review and update the affected baselines, then stage them with the
 source change. The existing Linux CI suite also checks all UI snapshots.

@@ -169,7 +169,19 @@ func expand(args []string, members []member) ([]string, error) {
 					return nil, err
 				}
 			}
-			result = append(result, snapshots...)
+			selected := snapshots
+			if changedFile := os.Getenv("MEKUGI_STAGED_SNAPSHOT_CHANGED_PATHS"); changedFile != "" {
+				changed, err := os.ReadFile(changedFile)
+				if err != nil {
+					return nil, err
+				}
+				selected, err = affectedSnapshotPackages(members, snapshots, changed)
+				if err != nil {
+					return nil, err
+				}
+				fmt.Fprintf(os.Stderr, "UI snapshot packages: %d of %d affected\n", len(selected), len(snapshots))
+			}
+			result = append(result, selected...)
 			continue
 		}
 		if arg != "@workspace" {

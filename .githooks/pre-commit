@@ -27,6 +27,7 @@ snapshot_tree=$(cd "$snapshot_tree" && pwd -P)
 trap 'rm -rf -- "$snapshot_tree"' 0
 trap 'exit 1' HUP INT TERM
 mkdir "$snapshot_tree/source" "$snapshot_tree/tmp"
+git diff --cached --name-only --no-renames -z > "$snapshot_tree/changed"
 git checkout-index --all --prefix="$snapshot_tree/source/"
 
 # Nested Git test fixtures must not inherit this commit's repository or index.
@@ -39,8 +40,11 @@ if [ "$docs_changed" -eq 1 ]; then
         exit 1
     fi
 fi
-printf 'Checking all UI snapshots in the staged tree...\n'
+printf 'Checking UI snapshots in the staged tree...\n'
+# Shared hooks also run against older worktrees. Old runners ignore the optional
+# input and keep checking all snapshots through the established argument.
 if ! env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS -u COLORFGBG TMPDIR="$snapshot_tree/tmp" \
+    MEKUGI_STAGED_SNAPSHOT_CHANGED_PATHS="$snapshot_tree/changed" \
     make test-ui-snapshots SNAPSHOT_PACKAGES=@snapshots SNAPSHOT='^TestUISnapshot'; then
     printf '%s\n' 'Commit blocked: fix the reported test failure; update snapshot baselines only for intended rendering changes.' >&2
     exit 1

@@ -9,6 +9,8 @@ import (
 )
 
 func TestSnapshotCommitHookChecksStagedTree(t *testing.T) {
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	workspace := gitTestWorkspace(t)
 	hooks, err := filepath.Abs("../../../../.githooks")
 	if err != nil {
@@ -16,10 +18,16 @@ func TestSnapshotCommitHookChecksStagedTree(t *testing.T) {
 	}
 	bin := t.TempDir()
 	makePath := filepath.Join(bin, "make")
+	// An older recipe/runner accepts @snapshots and ignores the optional input.
+	// Keep its argument contract while checking exact-index source and fixtures.
 	writeTestFile(t, makePath, `#!/bin/sh
 set -eu
 [ "$*" != docs-check ] || exit 0
-[ "$*" = 'test-ui-snapshots SNAPSHOT_PACKAGES=@snapshots SNAPSHOT=^TestUISnapshot' ]
+[ "$1" = test-ui-snapshots ]
+[ "$2" = 'SNAPSHOT_PACKAGES=@snapshots' ]
+[ "$3" = 'SNAPSHOT=^TestUISnapshot' ]
+[ "$MEKUGI_STAGED_SNAPSHOT_CHANGED_PATHS" = "$(dirname "$(pwd -P)")/changed" ]
+[ -s "$MEKUGI_STAGED_SNAPSHOT_CHANGED_PATHS" ]
 [ -z "${MEKUGI_UPDATE_UI_SNAPSHOTS-}" ]
 [ -z "${GIT_INDEX_FILE-}" ]
 [ "$TMPDIR" = "$(dirname "$(pwd -P)")/tmp" ]
@@ -32,8 +40,6 @@ cmp rendered.txt baseline.txt
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("MEKUGI_UPDATE_UI_SNAPSHOTS", "1")
 	t.Setenv("SNAPSHOT_HOOK_TREE", filepath.Join(bin, "tree"))
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	git := func(args ...string) ([]byte, error) {
 		t.Helper()
 		cmd := exec.CommandContext(t.Context(), "git", args...)
