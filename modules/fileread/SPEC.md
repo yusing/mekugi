@@ -64,8 +64,9 @@ present in the first logical row, remains source content.
 
 `mcat` output is contextual source, not a verified edit identity.
 
-Leading generated-file comment declarations produce a source-qualified stderr
-reminder, `Generated file: edit the source and regenerate.`, without changing
+Leading generated-file comment declarations produce one stderr reminder per batch,
+`Generated file: edit the source and regenerate.`, listing unique generated paths
+in first-seen order, without changing
 stdout or exit status. Detection runs even when the selection excludes the
 header. Current recognition covers `//`, `#`, `--`, `;`, `%`, `/* */`, `<!-- -->`
 and `(* *)` comments, with optional leading blanks, BOM and first-row shebang.

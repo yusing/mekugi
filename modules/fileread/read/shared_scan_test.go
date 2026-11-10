@@ -31,7 +31,7 @@ func TestSharedScanValidatesOnceAndKeepsSelectionsIndependent(t *testing.T) {
 			text += "\xff"
 		}
 		source := &countedSource{Reader: strings.NewReader(text)}
-		got, err := scanRows(t.Context(), source, selections, commandargs.ReaderOptions{Budget: 1000})
+		got, _, err := scanRows(t.Context(), source, selections, commandargs.ReaderOptions{Budget: 1000})
 		if err != nil || source.bytes != len(text) || len(got) != 3 {
 			t.Fatalf("shared scan: bytes=%d results=%d err=%v", source.bytes, len(got), err)
 		}

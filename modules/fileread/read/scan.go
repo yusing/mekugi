@@ -19,21 +19,24 @@ import (
 const retainedBytes = 16 << 20
 
 func scan(ctx context.Context, selection commandargs.ReadSelection, o commandargs.ReaderOptions) (command.Output, error) {
-	outputs, err := scanSelections(ctx, []commandargs.ReadSelection{selection}, o)
+	outputs, generated, err := scanSelections(ctx, []commandargs.ReadSelection{selection}, o)
 	if err != nil {
 		return command.Output{}, err
+	}
+	if generated {
+		outputs[0].Stderr += generatedAdvisory([]string{selection.Path})
 	}
 	return outputs[0], nil
 }
 
 // scanSelections acquires one source for selections with the exact same path.
-func scanSelections(ctx context.Context, selections []commandargs.ReadSelection, o commandargs.ReaderOptions) ([]command.Output, error) {
+func scanSelections(ctx context.Context, selections []commandargs.ReadSelection, o commandargs.ReaderOptions) ([]command.Output, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	path := selections[0].Path
-	fail := func(err error) ([]command.Output, error) {
-		return sourceFailures(selections, err), nil
+	fail := func(err error) ([]command.Output, bool, error) {
+		return sourceFailures(selections, err), false, nil
 	}
 	// Check before opening to avoid waiting on a FIFO. Recheck the opened handle.
 	info, err := os.Stat(path)
@@ -61,7 +64,7 @@ func scanSelections(ctx context.Context, selections []commandargs.ReadSelection,
 // Source: plugins/mcat.ts:166:310@[543de4f3] readLines
 // Scan and validate the entire source once, sharing each selected logical row
 // while keeping admission and recovery bounds independent for every selection.
-func scanRows(ctx context.Context, source io.Reader, selections []commandargs.ReadSelection, o commandargs.ReaderOptions) ([]command.Output, error) {
+func scanRows(ctx context.Context, source io.Reader, selections []commandargs.ReadSelection, o commandargs.ReaderOptions) ([]command.Output, bool, error) {
 	r := bufio.NewReaderSize(source, 32*1024)
 	states := make([]selectionScan, len(selections))
 	for i, selection := range selections {
@@ -108,7 +111,7 @@ func scanRows(ctx context.Context, source io.Reader, selections []commandargs.Re
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		ch, size, err := r.ReadRune()
 		if err == io.EOF {
@@ -116,12 +119,12 @@ func scanRows(ctx context.Context, source io.Reader, selections []commandargs.Re
 		}
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, ctx.Err()
+				return nil, false, ctx.Err()
 			}
-			return sourceFailures(selections, err), nil
+			return sourceFailures(selections, err), false, nil
 		}
 		if ch == utf8.RuneError && size == 1 {
-			return sourceFailures(selections, errors.New("not UTF-8")), nil
+			return sourceFailures(selections, errors.New("not UTF-8")), false, nil
 		}
 		if pendingCR {
 			pendingCR = false
@@ -154,9 +157,10 @@ func scanRows(ctx context.Context, source io.Reader, selections []commandargs.Re
 		finish()
 	}
 	outputs := make([]command.Output, len(states))
+	generated := false
 	for i := range states {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		state := &states[i]
 		selection := state.selection
@@ -166,14 +170,12 @@ func scanRows(ctx context.Context, source io.Reader, selections []commandargs.Re
 		}
 		output, err := state.output(o)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		outputs[i] = output
-		if header.found {
-			outputs[i].Stderr += "mcat: " + quoteBundlePath(selection.Path) + ": " + generatedReminder + "\n"
-		}
+		generated = header.found
 	}
-	return outputs, nil
+	return outputs, generated, nil
 }
 
 func sourceFailures(selections []commandargs.ReadSelection, err error) []command.Output {

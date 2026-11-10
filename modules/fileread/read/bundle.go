@@ -38,6 +38,7 @@ func executeBundle(
 	}
 	share := (budget - reserve) / len(specs)
 	executions := make([]command.Output, len(specs))
+	var generatedPaths []string
 	byPath := make(map[string][]int)
 	for i, spec := range specs {
 		byPath[spec.Path] = append(byPath[spec.Path], i)
@@ -51,9 +52,12 @@ func executeBundle(
 		for i, index := range indices {
 			selections[i] = specs[index]
 		}
-		outputs, err := scanSelections(ctx, selections, commandargs.ReaderOptions{Budget: share, Number: numbered})
+		outputs, generated, err := scanSelections(ctx, selections, commandargs.ReaderOptions{Budget: share, Number: numbered})
 		if err != nil {
 			return command.Output{}, err
+		}
+		if generated {
+			generatedPaths = append(generatedPaths, spec.Path)
 		}
 		for i, index := range indices {
 			executions[index] = outputs[i]
@@ -98,7 +102,6 @@ func executeBundle(
 	}
 	entries := make([]readBundleEntry, 0, len(specs))
 	var diagnostics strings.Builder
-	var advisories strings.Builder
 	incomplete := false
 	failureClass := ""
 	for i, spec := range specs {
@@ -121,13 +124,7 @@ func executeBundle(
 		}
 		// Keep source diagnostics visible with one path prefix; only omitted
 		// output needs a retained continuation.
-		for line := range strings.Lines(execution.Stderr) {
-			if line == "mcat: "+quoteBundlePath(spec.Path)+": "+generatedReminder+"\n" {
-				advisories.WriteString(line)
-			} else {
-				diagnostics.WriteString(prefixReadBundleDiagnostic(spec.Path, line))
-			}
-		}
+		diagnostics.WriteString(prefixReadBundleDiagnostic(spec.Path, execution.Stderr))
 		var remainder command.OmittedOutput
 		if execution.OmittedOutput != nil {
 			remainder = *execution.OmittedOutput
@@ -140,7 +137,7 @@ func executeBundle(
 				StderrKind: remainder.StderrKind, SourceRow: start + bundleRowCount(execution.Stdout)}},
 		})
 	}
-	plan := &bundleDelivery{entries: entries, budget: budget, advisories: advisories.String(), output: command.Output{Stderr: diagnostics.String(), FailureClass: failureClass}}
+	plan := &bundleDelivery{entries: entries, budget: budget, advisories: generatedAdvisory(generatedPaths), output: command.Output{Stderr: diagnostics.String(), FailureClass: failureClass}}
 	if incomplete {
 		plan.output.ExitCode = 1
 	}

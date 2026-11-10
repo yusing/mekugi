@@ -91,7 +91,7 @@ func TestGeneratedHeaderSelectionsAndBundle(t *testing.T) {
 		{path, "2:2", path, "3:3"},
 	} {
 		out := nativeExecute(t, "mcat", args...)
-		if !strings.Contains(out.Stderr, generatedReminder) || strings.Contains(out.Stdout, generatedReminder) {
+		if strings.Count(out.Stderr, generatedReminder) != 1 || strings.Count(out.Stderr, quoteBundlePath(path)) != 1 || strings.Contains(out.Stdout, generatedReminder) {
 			t.Fatalf("selection %q: %+v", args, out)
 		}
 		if args[1] == "2:2" && !strings.Contains(out.Stdout, "second\n") {
@@ -102,6 +102,23 @@ func TestGeneratedHeaderSelectionsAndBundle(t *testing.T) {
 	out := nativeExecute(t, "mcat", path, "2:3", ordinary)
 	if out.ExitCode != 0 || strings.Count(out.Stderr, generatedReminder) != 1 || !strings.Contains(out.Stderr, quoteBundlePath(path)) {
 		t.Fatalf("mixed bundle: %+v", out)
+	}
+}
+
+func TestGeneratedBundleAdvisoryListsUniquePathsInSourceOrder(t *testing.T) {
+	first := nativeFixture(t, "first", "// @generated\nfirst row\n")
+	second := nativeFixture(t, "second", "// @generated\nsecond row\n")
+	ordinary := nativeFixture(t, "ordinary", "ordinary row\n")
+	missing := filepath.Join(t.TempDir(), "missing")
+	out := nativeExecute(t, "mcat", second, "1:1", "2:2", ordinary, first, "2:2", second, "2:2", missing)
+	if out.ExitCode != 1 || strings.Count(out.Stderr, generatedReminder) != 1 || strings.Count(out.Stderr, quoteBundlePath(first)) != 1 || strings.Count(out.Stderr, quoteBundlePath(second)) != 1 {
+		t.Fatalf("generated bundle advisory: %+v", out)
+	}
+	if strings.Index(out.Stderr, quoteBundlePath(second)) > strings.Index(out.Stderr, quoteBundlePath(first)) || strings.Contains(out.Stderr, quoteBundlePath(ordinary)) || !strings.Contains(out.Stderr, "ENOENT") {
+		t.Fatalf("source order or diagnostics changed: %+v", out)
+	}
+	if strings.Count(out.Stdout, "second row\n") != 2 || strings.Count(out.Stdout, "first row\n") != 1 || !strings.Contains(out.Stdout, "ordinary row\n") {
+		t.Fatalf("selection bodies changed: %+v", out)
 	}
 }
 
