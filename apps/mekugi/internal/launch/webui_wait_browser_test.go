@@ -250,3 +250,62 @@ func TestWebUIBrowserWaitTargetDuringRepublication(t *testing.T) {
 		run("screenshot", filepath.Join(directory, "wait-target-republication.png"))
 	}
 }
+
+// Exercise the real observation decoder, not hand-authored progress values.
+func TestWebUIBrowserWaitAcknowledgements(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_WEBUI_BROWSER") != "1" {
+		t.Skip("set MEKUGI_TEST_WEBUI_BROWSER=1 after make webui")
+	}
+	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
+	browser := browserFixtureCommand(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	page := httptest.NewServer(webui.Handler())
+	defer page.Close()
+	machine := newWebUIBrowserMachine(t, ctx, page.URL, "Wait outcomes", strings.Repeat("e", 64))
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	for _, item := range waitAcknowledgementActivityItems() {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	}
+	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "Wait outcomes thread", Caller: "/root", Workspace: u.attached.cwd}, Input: &sessionapi.Input{}, Main: u.attached.source.Publication(u.attached.presentation, nil)}
+	if err := machine.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
+	identity, err := exec.CommandContext(ctx, browser, "session", "id", "--scope", "worktree", "--prefix", "webui-wait-ack").CombinedOutput()
+	if err != nil {
+		t.Fatalf("browser identity: %v %s", err, identity)
+	}
+	name := strings.TrimSpace(string(identity))
+	defer func() {
+		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		_ = exec.CommandContext(cleanup, browser, "--session", name, "close").Run()
+	}()
+	run := func(args ...string) string {
+		t.Helper()
+		out, err := exec.CommandContext(ctx, browser, append([]string{"--session", name}, args...)...).CombinedOutput()
+		if err != nil {
+			state, _ := exec.CommandContext(ctx, browser, "--session", name, "eval", `document.body.innerText`).CombinedOutput()
+			t.Fatalf("browser %s: %v %s\n%s", args[0], err, out, state)
+		}
+		return string(out)
+	}
+	run("open", page.URL)
+	run("set", "viewport", "1280", "900")
+	run("find", "label", "Machine name", "fill", "Wait outcomes")
+	run("find", "label", "Connector URL", "fill", machine.remote.URL)
+	run("find", "label", "Access token", "fill", strings.Repeat("e", 64))
+	run("find", "role", "button", "click", "--name", "Connect", "--exact")
+	run("wait", "--text", "Wait outcomes thread")
+	run("find", "text", "Wait outcomes thread", "click", "--exact")
+	for _, width := range []string{"1280", "390"} {
+		run("set", "viewport", width, "900")
+		for _, theme := range []string{"light", "dark"} {
+			run("set", "media", theme)
+			run("wait", "--fn", `(() => { const text = document.querySelector('[aria-label="Transcript"]').innerText.replace(/\s+/g,' '); return ['Waiting for all', 'Finished waiting for worker: completed', 'Finished waiting for worker · timeout', 'reviewer: interrupted', 'Wait failed: wait rejected', 'Wait · unconfirmed'].every(want => text.includes(want)) && text.split('unconfirmed').length === 2; })()`)
+			if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+				run("screenshot", filepath.Join(directory, fmt.Sprintf("wait-acknowledgements-%s-%s.png", theme, width)))
+			}
+		}
+	}
+}

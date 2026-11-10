@@ -332,6 +332,10 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 						entry.Seq = s.Activity().NextSequence()
 						entries = append(entries, entry)
 					}
+					if entry, ok := RetainedWaitEntry(p.ThreadID, agent, item.Tool, output, now); ok {
+						entry.Seq = s.Activity().NextSequence()
+						entries = append(entries, entry)
+					}
 				}
 			}
 		case "imageView", "imageGeneration":

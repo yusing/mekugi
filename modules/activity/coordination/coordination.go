@@ -79,7 +79,8 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
-		IsError bool `json:"isError"`
+		IsError           bool           `json:"isError"`
+		StructuredContent jsontext.Value `json:"structuredContent"`
 	}
 	envelopeOK := json.Unmarshal(item.Result, &envelope) == nil
 	if item.Status == "failed" || envelope.IsError || len(item.Error) > 0 && string(item.Error) != "null" {
@@ -109,9 +110,28 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		return c, true
 	}
 	c.State = "unconfirmed"
-	if !argumentsOK || !envelopeOK || len(envelope.Content) != 1 || envelope.Content[0].Type != "text" {
+	if !argumentsOK || !envelopeOK {
 		return c, true
 	}
+	// Successful waits deliberately return an empty content array while the
+	// logical subscription remains active. Missing/null content is not an ack.
+	if item.Tool == "wait_agent" && envelope.Content != nil && len(envelope.Content) == 0 && (len(envelope.StructuredContent) == 0 || string(envelope.StructuredContent) == "null") {
+		c.State, c.Confirmed = "waiting", true
+		return c, true
+	}
+	if len(envelope.Content) != 1 || envelope.Content[0].Type != "text" {
+		return c, true
+	}
+	return projectResult(c, item.Tool, args.BTW, []byte(envelope.Content[0].Text)), true
+}
+
+// ProjectWaitOutcome decodes a separately delivered, host-admitted wake output.
+// Callers retain responsibility for namespace and delivery provenance.
+func ProjectWaitOutcome(output []byte) Coordination {
+	return projectResult(Coordination{Action: "Wait", Kind: "progress", State: "unconfirmed"}, "wait_agent", false, output)
+}
+
+func projectResult(c Coordination, tool string, btw bool, output []byte) Coordination {
 	type outcome struct {
 		Kind   string `json:"kind"`
 		Task   string `json:"task"`
@@ -130,23 +150,23 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 		Event       *outcome          `json:"event"`
 		Events      []outcome         `json:"events"`
 	}
-	if json.Unmarshal([]byte(envelope.Content[0].Text), &result) != nil {
-		return c, true
+	if json.Unmarshal(output, &result) != nil {
+		return c
 	}
-	if item.Tool == "wait_agent" && result.State == "registered" {
+	if tool == "wait_agent" && result.State == "registered" {
 		result.State = "waiting"
 	}
 	// Older checkpoints used a scheduling acknowledgement for the same work.
-	if (item.Tool == "compact" || item.Tool == "wait_agent") && result.State == "scheduled" {
+	if (tool == "compact" || tool == "wait_agent") && result.State == "scheduled" {
 		result.State = "compacting"
 	}
 	c.State = cmp.Or(result.State, c.State)
 	c.ID = result.ID
-	switch item.Tool {
+	switch tool {
 	case "spawn_agent":
 		c.Confirmed = result.State == "confirmed" && result.Thread != "" && result.Task != ""
 	case "send_message":
-		if args.BTW {
+		if btw {
 			c.Confirmed = result.Thread != "" && result.Task != "" && result.Answer != nil
 			if c.Confirmed {
 				c.State, c.Answer = "answered", *result.Answer
@@ -176,7 +196,7 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	case "compact":
 		c.Confirmed = result.State == "compacting"
 	case "wait_agent":
-		c.Confirmed = slices.Contains([]string{"compacting", "waiting", "completed", "timeout", "canceled", "paused", "yielded"}, result.State)
+		c.Confirmed = slices.Contains([]string{"compacting", "waiting", "completed", "timeout", "canceled", "paused", "yielded", "failed"}, result.State)
 		if c.Confirmed && len(result.Targets) > 0 {
 			c.Targets = nil
 			for _, target := range result.Targets {
@@ -211,5 +231,5 @@ func ProjectCoordination(item observation.Item) (Coordination, bool) {
 	} else if c.State == "confirmed" {
 		c.State = "unconfirmed"
 	}
-	return c, true
+	return c
 }

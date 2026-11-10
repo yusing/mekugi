@@ -119,6 +119,10 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			if record.Metadata.ClientAuthored && p.CallID == nil && p.Namespace == "threadcontrol" {
 				var output string
 				if json.Unmarshal(p.Output, &output) == nil {
+					if entry, ok := sessionpresentation.RetainedWaitEntry(info.ID, agent, p.Name, output, record.Timestamp); ok {
+						event.entry = entry
+						r.events = append(r.events, event)
+					}
 					if entry, ok := sessionpresentation.RetainedCompactionEntry(info.ID, agent, p.Name, output, record.Timestamp); ok {
 						event.entry = entry
 						r.events = append(r.events, event)

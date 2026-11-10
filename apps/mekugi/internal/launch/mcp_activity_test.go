@@ -661,3 +661,164 @@ func TestThreadControlCatalogAndInspectLiveRestoredReplay(t *testing.T) {
 		}
 	}
 }
+
+// The empty registration and separately delivered wake are captured host shapes,
+// not the former synthetic single-text waiting acknowledgement.
+func TestThreadControlEmptyWaitLiveRestoredReplay(t *testing.T) {
+	for _, tt := range []struct{ name, result, want string }{
+		{"registered", `{"content":[]}`, "Waiting for all"},
+		{"completed", `{"content":[{"type":"text","text":"{\"state\":\"completed\",\"event\":{\"task\":\"/root/worker\",\"status\":\"completed\"}}"}]}`, "Finished waiting for worker: completed"},
+		{"timeout", `{"content":[{"type":"text","text":"{\"state\":\"timeout\",\"targets\":[\"/root/worker\"]}"}]}`, "Finished waiting for worker: timeout"},
+		{"interrupted", `{"content":[{"type":"text","text":"{\"state\":\"completed\",\"event\":{\"task\":\"/root/worker\",\"status\":\"interrupted\"}}"}]}`, "worker: interrupted"},
+		{"failed", `{"isError":true,"content":[{"type":"text","text":"wait rejected"}]}`, "Wait failed: wait rejected"},
+		{"unconfirmed", `{"content":[{"type":"text","text":"{}"}]}`, "Wait · unconfirmed"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			item := binding.ThreadItem{ID: "wait", Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed", Arguments: []byte(`{}`), Result: []byte(tt.result)}
+			check := func(painted string) {
+				t.Helper()
+				if !strings.Contains(painted, tt.want) || tt.name != "unconfirmed" && strings.Contains(painted, "unconfirmed") {
+					t.Fatalf("wait %s was not rendered honestly:\n%s", tt.name, painted)
+				}
+			}
+			for _, restored := range []bool{false, true} {
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				if restored {
+					u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
+				} else {
+					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+				}
+				check(ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(160).Lines, "\n")))
+			}
+			path := replayTestWrite(t, t.TempDir(), "wait.jsonl", replayTestMeta("main"), replayTestItem("main", "turn", replayTestEpoch, replayTestEpoch+1, map[string]any{
+				"type": "McpToolCall", "id": item.ID, "server": item.Server, "tool": item.Tool, "status": item.Status, "arguments": item.Arguments, "result": item.Result,
+			}))
+			source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+			t.Cleanup(p.close)
+			if err := p.advance(p.Until); err != nil {
+				t.Fatal(err)
+			}
+			check(replayPlaybackTestPaint(t, p, 160, 30))
+		})
+	}
+}
+
+func TestThreadControlRetainedWaitOutcome(t *testing.T) {
+	// Same separate-output shape as the reported session; ids are fixture-local.
+	for _, tt := range []struct{ name, fields, want string }{
+		{"completed", `"state":"completed","wait_mode":"any","event":{"task":"/root/worker","kind":"completed","status":"completed"},"targets":["/root/worker","/root/reader"]`, "Finished waiting for worker: completed"},
+		{"message", `"state":"completed","event":{"task":"/root/worker","kind":"message","status":"working"}`, "Finished waiting for worker: working: message received"},
+		{"timeout", `"state":"timeout","targets":["/root/worker"]`, "Finished waiting for worker: timeout"},
+		{"canceled", `"state":"canceled","targets":["/root/worker"]`, "Finished waiting for worker: canceled"},
+		{"paused", `"state":"paused","targets":["/root/worker"]`, "Finished waiting for worker: paused"},
+		{"yielded", `"state":"yielded","targets":["/root/worker"]`, "Finished waiting for worker: yielded"},
+		{"mixed", `"state":"completed","events":[{"task":"/root/worker","status":"failed"},{"task":"/root/reader","status":"interrupted"}]`, "Finished waiting for worker: failed, reader: interrupted"},
+		{"failed", `"state":"failed","targets":["/root/worker"]`, "Finished waiting for worker: failed"},
+		{"unknown", `"state":"unknown"`, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			output := `{"id":"main:wait",` + tt.fields + `}`
+			for _, provenance := range []string{"owned", "missing", "tool-call", "foreign"} {
+				payload := map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": "wait_agent", "output": output}
+				if provenance == "tool-call" {
+					payload["call_id"] = "ordinary"
+				}
+				if provenance == "foreign" {
+					payload["namespace"] = "other"
+				}
+				record := rolloutRecord(1, "response_item", payload)
+				record["metadata"] = map[string]any{"client_authored": provenance != "missing"}
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				root := binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd, Path: writeTestRollout(t, "main", record, record)}
+				if err := u.restoreContent(root); err != nil {
+					t.Fatal(err)
+				}
+				text := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(160).Lines, "\n"))
+				want := 0
+				if provenance == "owned" && tt.want != "" {
+					want = 1
+				}
+				if strings.Count(text, "Finished waiting") != want || want > 0 && !strings.Contains(text, tt.want) {
+					t.Fatalf("restored %s wake:\n%s", provenance, text)
+				}
+			}
+			path := replayTestWrite(t, t.TempDir(), "wake.jsonl", replayTestMeta("main"), replayTestItem("main", "continued", replayTestEpoch, replayTestEpoch+1, map[string]any{
+				"type": "FunctionCallOutput", "id": "outcome", "namespace": "threadcontrol", "name": "wait_agent", "output": output,
+			}))
+			source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+			t.Cleanup(p.close)
+			if err := p.advance(p.Until); err != nil {
+				t.Fatal(err)
+			}
+			if text := replayPlaybackTestPaint(t, p, 160, 30); tt.want != "" && !strings.Contains(text, tt.want) || tt.want == "" && strings.Contains(text, "Finished waiting") {
+				t.Fatalf("replay lost wake:\n%s", text)
+			}
+		})
+	}
+}
+
+func waitAcknowledgementActivityItems() []binding.ThreadItem {
+	var items []binding.ThreadItem
+	for i, result := range []string{
+		`{"content":[]}`,
+		`{"content":[{"type":"text","text":"{\"state\":\"completed\",\"event\":{\"task\":\"/root/worker\",\"kind\":\"completed\",\"status\":\"completed\"}}"}]}`,
+		`{"content":[{"type":"text","text":"{\"state\":\"timeout\",\"targets\":[\"/root/worker\"]}"}]}`,
+		`{"content":[{"type":"text","text":"{\"state\":\"completed\",\"event\":{\"task\":\"/root/reviewer\",\"status\":\"interrupted\"}}"}]}`,
+		`{"isError":true,"content":[{"type":"text","text":"wait rejected"}]}`,
+		`{"content":[{"type":"text","text":"{}"}]}`,
+	} {
+		item := binding.ThreadItem{ID: fmt.Sprint("wait-", i), Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed", Arguments: []byte(`{}`), Result: []byte(result)}
+		items = append(items, item)
+	}
+	return items
+}
+
+func TestUISnapshotWaitAcknowledgements(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
+	u.clock = func() time.Time { return now }
+	view := u.testActivity(u.shell.Transcript)
+	view.Clock, view.Painter.Theme, view.Conversation = u.clock, diffrender.DarkTheme, true
+	view.testAudience()
+	for _, item := range waitAcknowledgementActivityItems() {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	}
+	for _, width := range []int{38, 100} {
+		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/wait-acknowledgements-%d.txt", width), append(view.testRenderConversation(width).Lines, "plain after waits"), width)
+	}
+}
+
+func TestThreadControlWaitSelectionLabels(t *testing.T) {
+	// Every request selects all eligible targets. The acknowledgement can omit
+	// individual names, independently of the any/all wake condition.
+	for _, args := range []string{`{}`, `{"wait_mode":"any"}`, `{"wait_mode":"all"}`, `{"timeout_ms":1000}`} {
+		for _, named := range []bool{false, true} {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			item := binding.ThreadItem{ID: "wait", Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed", Arguments: []byte(args), Result: []byte(`{"content":[]}`)}
+			want := "Waiting for all"
+			if named {
+				item.Result = []byte(`{"content":[{"type":"text","text":"{\"state\":\"waiting\",\"targets\":[\"/root/worker\"]}"}]}`)
+				want = "Waiting for worker"
+			}
+			if strings.Contains(args, "timeout_ms") {
+				want += " (timeout 1s)"
+			}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			value := u.attached.source.Entries[0].Values[0]
+			if value.ProgressText() != want || named != (len(value.WaitTargets) == 1) {
+				t.Fatalf("args %s, named %v: %+v; want %q", args, named, value, want)
+			}
+			if named && value.WaitTargets[0].Name != "/root/worker" {
+				t.Fatalf("changed supplied target: %+v", value.WaitTargets)
+			}
+		}
+	}
+}

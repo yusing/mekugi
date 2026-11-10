@@ -80,25 +80,14 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 		case "Compact":
 			entry.Text = "Compaction requested"
 		case "Wait":
-			wait := &activitypresentation.Value{Kind: "progress", From: entry.Agent, Body: "Waiting for"}
-			if c.State != "waiting" && c.State != "compacting" {
-				wait.Body = "Finished waiting for"
-				wait.WaitReason = c.State
-			}
-			if c.State == "completed" && c.EventKind == "message" {
-				wait.WaitReason = "message received"
-			}
-			for _, target := range c.Targets {
-				if caller := s.KnownCaller(target.Name); caller != "" {
-					target.Name = caller
+			for i := range c.Targets {
+				if caller := s.KnownCaller(c.Targets[i].Name); caller != "" {
+					c.Targets[i].Name = caller
 				}
-				wait.WaitTargets = append(wait.WaitTargets, activitypresentation.WaitTarget{Name: target.Name, Status: target.Status})
 			}
-			if (c.State == "waiting" || c.State == "compacting") && c.TimeoutMS != nil {
-				wait.WaitTimeout = (time.Duration(*c.TimeoutMS) * time.Millisecond).String()
-			}
-			entry.Text = wait.ProgressText()
-			entry.Native.Wait = wait
+			wait := coordinationWait(c)
+			wait.From = entry.Agent
+			entry.Text, entry.Native.Wait = wait.ProgressText(), wait
 		case "Interrupt":
 			entry.Text = "Interrupt requested for " + target
 			entry.Native.InterruptTarget, entry.Native.InterruptID = target, c.ID
@@ -111,10 +100,51 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 			entry.Text, entry.Native.Wait = inspected.ProgressText(), inspected
 		}
 	}
-	if len(entry.Native.Wait.WaitTargets) == 0 {
+	if entry.Native.Wait.Body == "" {
 		entry.Native.Wait.Body = entry.Text
 	}
 	return entry
+}
+
+func coordinationWait(c coordination.Coordination) *activitypresentation.Value {
+	// Waits select all eligible targets; any/all controls the wake condition.
+	// Empty acknowledgements do not expose those targets' individual names.
+	wait := &activitypresentation.Value{Kind: "progress", Body: "Waiting for all"}
+	if len(c.Targets) > 0 {
+		wait.Body = "Waiting for"
+	}
+	if c.State != "waiting" && c.State != "compacting" {
+		wait.Body, wait.WaitReason = "Finished waiting for", c.State
+	}
+	if c.State == "completed" && c.EventKind == "message" {
+		wait.WaitReason = "message received"
+	}
+	for _, target := range c.Targets {
+		wait.WaitTargets = append(wait.WaitTargets, activitypresentation.WaitTarget{Name: target.Name, Status: target.Status})
+	}
+	if (c.State == "waiting" || c.State == "compacting") && c.TimeoutMS != nil {
+		wait.WaitTimeout = (time.Duration(*c.TimeoutMS) * time.Millisecond).String()
+	}
+	return wait
+}
+
+// RetainedWaitEntry projects an authenticated wake through the ordinary
+// coordination presentation, without restoring or executing the subscription.
+func RetainedWaitEntry(thread, agent, name, output string, at time.Time) (ActivityEntry, bool) {
+	if name != "wait_agent" {
+		return ActivityEntry{}, false
+	}
+	c := coordination.ProjectWaitOutcome([]byte(output))
+	if !c.Confirmed || c.ID == "" {
+		return ActivityEntry{}, false
+	}
+	entry := ActivityEntry{Agent: agent, Observed: at, Completed: at,
+		Native: &NativeItem{Thread: thread, Item: "threadcontrol:wait:" + strings.TrimPrefix(c.ID, thread+":"), Phase: "item/completed"}}
+	entry.Kind = "progress"
+	entry.Native.Wait = coordinationWait(c)
+	entry.Native.Wait.From = agent
+	entry.Text = entry.Native.Wait.ProgressText()
+	return entry, true
 }
 
 // CompactionOutcomeEntry reports the reset's outcome independently of a pending

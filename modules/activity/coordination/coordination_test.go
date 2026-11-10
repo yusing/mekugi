@@ -180,6 +180,56 @@ func TestProjectCoordinationWaitDispositions(t *testing.T) {
 	}
 }
 
+// Captured wait registrations finish their MCP call with {"content":[]}.
+func TestProjectCoordinationEmptyWaitAcknowledgement(t *testing.T) {
+	for _, tt := range []struct {
+		name, status, args, envelope, state string
+		confirmed                           bool
+	}{
+		{"default any", "completed", `{}`, `{"content":[]}`, "waiting", true},
+		{"explicit any", "completed", `{"wait_mode":"any"}`, `{"content":[]}`, "waiting", true},
+		{"explicit all", "completed", `{"wait_mode":"all"}`, `{"content":[]}`, "waiting", true},
+		{"pending", "inProgress", `{}`, `{"content":[]}`, "pending", false},
+		{"missing content", "completed", `{}`, `{}`, "unconfirmed", false},
+		{"null content", "completed", `{}`, `{"content":null}`, "unconfirmed", false},
+		{"unknown structured outcome", "completed", `{}`, `{"content":[],"structuredContent":{"state":"unknown"}}`, "unconfirmed", false},
+		{"bad args", "completed", `{broken`, `{"content":[]}`, "unconfirmed", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			item := coordinationItem("wait_agent", tt.args, `{}`)
+			item.Status, item.Result = tt.status, jsontext.Value(tt.envelope)
+			got, ok := ProjectCoordination(item)
+			if !ok || got.State != tt.state || got.Confirmed != tt.confirmed {
+				t.Fatalf("wait acknowledgement = %+v, %v", got, ok)
+			}
+			if tt.confirmed && len(got.Targets) != 0 {
+				t.Fatalf("empty acknowledgement fabricated targets: %+v", got.Targets)
+			}
+			item.Tool = "spawn_agent"
+			if got, _ := ProjectCoordination(item); got.Confirmed {
+				t.Fatalf("empty ack confirmed an unrelated operation: %+v", got)
+			}
+		})
+	}
+}
+
+func TestProjectWaitOutcomeMatchesToolResult(t *testing.T) {
+	for _, result := range []string{
+		`{"id":"wait","state":"completed","event":{"task":"/root/child","kind":"completed","status":"completed"}}`,
+		`{"id":"wait","state":"completed","event":{"task":"agent:main/child","kind":"message"}}`,
+		`{"id":"wait","state":"completed","events":[{"task":"/root/a","status":"failed"},{"task":"/root/b","status":"interrupted"}]}`,
+		`{"id":"wait","state":"timeout","targets":["/root/child"]}`,
+		`{"id":"wait","state":"canceled"}`, `{"id":"wait","state":"paused"}`, `{"id":"wait","state":"yielded"}`, `{"id":"wait","state":"failed"}`,
+		`{"id":"wait","state":"unknown"}`, `{broken`,
+	} {
+		got := ProjectWaitOutcome([]byte(result))
+		want, _ := ProjectCoordination(coordinationItem("wait_agent", `{}`, result))
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("retained outcome %+v differs from MCP %+v", got, want)
+		}
+	}
+}
+
 func TestProjectCoordinationLeavesOtherToolsGeneric(t *testing.T) {
 	for _, tt := range []struct{ itemType, server, tool string }{
 		{"mcpToolCall", "other", "spawn_agent"},
