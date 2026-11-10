@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -558,17 +559,55 @@ func TestMChangesNetGitRoundTrip(t *testing.T) {
 	}
 }
 
+func TestMChangesSharedOverlapLabels(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reverse=%t", reverse), func(t *testing.T) {
+			f := newMChangesSliceFixture(t, "shared-overlap")
+			first := f.reserve(t, f.thread, "first")
+			second := f.reserve(t, "sibling", "second")
+			publishFirst := func() { f.publish(t, first, "first", "shared-call:first", mekugiHistory{}) }
+			publishSecond := func() { f.publish(t, second, "second", "shared-call:second", mekugiHistory{}) }
+			if reverse {
+				publishSecond()
+				publishFirst()
+			} else {
+				publishFirst()
+				publishSecond()
+			}
+			selected := f.reserve(t, f.thread, "selected")
+			f.publish(t, selected, "selected", "selected-call", mekugiHistory{
+				ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Overlaps: []string{"shared-call", "single-call", "missing-call"}},
+			})
+			single := f.reserve(t, f.thread, "single")
+			f.publish(t, single, "single", "single-call:attempt", mekugiHistory{})
+			ids := []string{first, second}
+			slices.Sort(ids)
+			want := "observed alongside " + strings.Join(ids, ", ") + ", " + single + ", missing-call\n"
+			for range 30 {
+				out, diag, status := f.run(t, "mchanges "+selected+" --history")
+				if status != 0 || diag != "" || !strings.Contains(out, want) {
+					t.Fatalf("shared overlap read: %q %q %d; want %q", out, diag, status, want)
+				}
+			}
+		})
+	}
+}
+
 func TestMChangesFrozenOverlapLabelSurvivesUnselectedRetirement(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "frozen-overlap")
 	other := f.reserve(t, f.thread, "overlapping")
 	f.publish(t, other, "overlapping", "overlap-call:attempt", mekugiHistory{})
+	second := f.reserve(t, f.thread, "overlapping-second")
+	f.publish(t, second, "overlapping-second", "overlap-call:second", mekugiHistory{})
 	selected := f.reserve(t, f.thread, "selected")
 	f.publish(t, selected, "selected", "selected-call", mekugiHistory{
 		Script: "captured input\n", ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Overlaps: []string{"overlap-call"}},
 	})
 	text, diag, status := f.run(t, "mchanges "+selected+" --history --max-tokens 15500")
-	if status != 0 || diag != "" || !strings.Contains(text, "observed alongside "+other+"\n") {
+	ids := []string{other, second}
+	slices.Sort(ids)
+	if status != 0 || diag != "" || !strings.Contains(text, "observed alongside "+strings.Join(ids, ", ")+"\n") {
 		t.Fatalf("overlap read: %q %q %d", text, diag, status)
 	}
 	shown, diag, status := f.run(t, "mchanges "+selected+" --history --max-tokens 12")
@@ -579,6 +618,7 @@ func TestMChangesFrozenOverlapLabelSurvivesUnselectedRetirement(t *testing.T) {
 	reference := strings.TrimSpace(strings.TrimPrefix(diag, marker))
 	offset := len(shown)
 	f.retire(t, other)
+	f.retire(t, second)
 	resumed, err := openMekugiReplayStore(f.store.directory)
 	if err != nil {
 		t.Fatal(err)

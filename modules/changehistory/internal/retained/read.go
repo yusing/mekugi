@@ -465,12 +465,17 @@ targets:
 				for _, ref := range history.ExecOutcome.Overlaps {
 					label, frozen := options.overlapLabels[ref]
 					if !frozen {
-						label = ref
+						var matches []string
 						for otherID, other := range index.Changes {
 							if slices.ContainsFunc(other.Calls, func(call trackedCall) bool { return strings.HasPrefix(call.ID, ref+":") }) {
-								label = otherID
-								break
+								matches = append(matches, otherID)
 							}
+						}
+						if len(matches) == 0 {
+							label = ref
+						} else {
+							slices.Sort(matches)
+							label = strings.Join(matches, ", ")
 						}
 						if options.overlapLabels != nil {
 							options.overlapLabels[ref] = label
