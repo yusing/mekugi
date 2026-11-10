@@ -20,6 +20,16 @@ import (
 type approvalHookCheck struct {
 	hash                       string
 	pendingThread, readyThread string
+	pendingCanceled            bool
+}
+
+func (check *approvalHookCheck) cancel(thread string) {
+	if check.pendingThread == thread {
+		check.pendingCanceled = true
+	}
+	if check.readyThread == thread {
+		check.readyThread = ""
+	}
 }
 
 func (check *approvalHookCheck) check(control *sessioncontrol.Client[appServerRequest], attached *attachedPresentation) (bool, error) {
@@ -47,6 +57,11 @@ func (check *approvalHookCheck) checkThread(requests *sessioncontrol.Requests[ap
 func (session *nativeSession) guardHookResponse(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, parent context.Context, message appserver.Message) error {
 	thread := session.guardHookCheck.pendingThread
 	session.guardHookCheck.pendingThread = ""
+	canceled := session.guardHookCheck.pendingCanceled
+	session.guardHookCheck.pendingCanceled = false
+	if canceled {
+		return session.flushInput(attached, picker, clock, editor, parent)
+	}
 	side := session.Client.Requests.Side(thread)
 	if thread != session.Client.Thread && !session.Client.Requests.WorkSide(thread) {
 		return session.flushInput(attached, picker, clock, editor, parent)

@@ -86,6 +86,7 @@ func (session *nativeSession) applyComposerCommand(attached *attachedPresentatio
 			setNotice(&attached.feedback, presentationTime(clock), "Original work already ended.", false)
 			return false, nil
 		}
+		session.guardHookCheck.cancel(session.Client.Thread)
 		editQueued(attached, &session.Client, picker, &session.questions, &session.approvals, clock)
 	case sessionpresentation.SubmitComposer:
 		if session.Client.Replacement.Archiving() {
