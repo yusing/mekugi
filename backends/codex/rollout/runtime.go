@@ -56,7 +56,7 @@ func ReadAdmission(thread, path string) (Admission, error) {
 	defer f.Close()
 	// Canonical settings can precede a long turn. Unlike turn observations,
 	// they must not age out of the bounded observational tail.
-	for line, err := range reverseRecordPages(f, stat.Size()) {
+	for line, err := range reverseRecordPages(f, stat.Size(), 0, false) {
 		if err != nil {
 			return Admission{}, err
 		}
@@ -83,18 +83,28 @@ func ReadAdmission(thread, path string) (Admission, error) {
 // Read newest-first in pages, stopping as soon as the owned snapshot is found.
 // Memory follows one record, not the rollout size; a split record is assembled
 // once. An unfinished final record is not evidence, just as in reverseRecords.
-func reverseRecordPages(source io.ReaderAt, size int64) iter.Seq2[[]byte, error] {
+// A positive lower bound excludes its cut record. Observations allow partial
+// EOF after a concurrent truncation; exact-authority reads remain strict.
+func reverseRecordPages(source io.ReaderAt, size, lower int64, partialEOF bool) iter.Seq2[[]byte, error] {
 	return func(yield func([]byte, error) bool) {
 		page := make([]byte, 64<<10)
 		var fragments [][]byte
 		complete := false
-		for end := size; end > 0; {
-			start := max(int64(0), end-int64(len(page)))
+		for end := size; end > lower; {
+			start := max(lower, end-int64(len(page)))
 			data := page[:end-start]
-			if _, err := source.ReadAt(data, start); err != nil {
+			n, err := source.ReadAt(data, start)
+			if err != nil && (!partialEOF || err != io.EOF && err != io.ErrUnexpectedEOF) {
 				yield(nil, err)
 				return
 			}
+			if n < len(data) {
+				// Truncation leaves a gap before saved later-page fragments.
+				// The new EOF can also end in an unfinished record.
+				fragments = nil
+				complete = false
+			}
+			data = data[:n]
 			end = start
 			for len(data) > 0 {
 				before, part, found := bytes.CutLast(data, []byte{'\n'})
@@ -149,7 +159,7 @@ func ReadRuntime(thread, path, turn string) (Runtime, error) {
 		return Runtime{}, errors.New("invoking turn context is unavailable in the admitted rollout")
 	}
 	defer f.Close()
-	for line, err := range reverseRecordPages(f, stat.Size()) {
+	for line, err := range reverseRecordPages(f, stat.Size(), 0, false) {
 		if err != nil {
 			return Runtime{}, err
 		}

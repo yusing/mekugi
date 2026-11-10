@@ -25,17 +25,8 @@ func reverseRecords(threadID, path string) iter.Seq[[]byte] {
 		defer f.Close()
 		const tailLimit = 8 << 20
 		start := max(int64(0), stat.Size()-tailLimit)
-		data := make([]byte, stat.Size()-start)
-		n, err := io.ReadFull(io.NewSectionReader(f, start, int64(len(data))), data)
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-			return
-		}
-		data = data[:n]
-		if start > 0 {
-			_, data, _ = bytes.Cut(data, []byte{'\n'})
-		}
-		for line := range reverseLines(data) {
-			if !yield(line) {
+		for line, err := range reverseRecordPages(f, stat.Size(), start, true) {
+			if err != nil || !yield(line) {
 				return
 			}
 		}

@@ -69,7 +69,7 @@ func TestAdmissionRecordPages(t *testing.T) {
 				}
 				slices.Reverse(lines)
 				var got []string
-				for line, err := range reverseRecordPages(strings.NewReader(data), int64(len(data))) {
+				for line, err := range reverseRecordPages(strings.NewReader(data), int64(len(data)), 0, false) {
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -133,14 +133,119 @@ func (r *admissionReadCounter) ReadAt(p []byte, off int64) (int, error) {
 
 func TestAdmissionRecordReadCost(t *testing.T) {
 	data := strings.Repeat("old\n", 1<<20) + "latest\n"
-	reader := &admissionReadCounter{ReaderAt: strings.NewReader(data)}
-	for record, err := range reverseRecordPages(reader, int64(len(data))) {
-		if err != nil || string(record) != "latest" {
-			t.Fatalf("latest record: %q, %v", record, err)
+	for _, lower := range []int64{0, 1 << 20} {
+		reader := &admissionReadCounter{ReaderAt: strings.NewReader(data)}
+		for record, err := range reverseRecordPages(reader, int64(len(data)), lower, lower != 0) {
+			if err != nil || string(record) != "latest" {
+				t.Fatalf("latest record: %q, %v", record, err)
+			}
+			break
 		}
-		break
+		if reader.reads != 1 || reader.largest != 64<<10 {
+			t.Fatalf("latest record reread old history: %+v", reader)
+		}
 	}
-	if reader.reads != 1 || reader.largest != 64<<10 {
-		t.Fatalf("latest record reread old history: %+v", reader)
+}
+
+func TestRecordWindowBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name, data string
+		lower      int64
+		want       []string
+	}{
+		{"empty", "", 0, nil},
+		{"full", "old\nnew\n", 0, []string{"new", "old"}},
+		{"cut record", "old\nnew\n", 1, []string{"new"}},
+		{"cut at delimiter", "old\nnew\n", 3, []string{"new"}},
+		{"cut at record start", "old\nnew\n", 4, nil},
+		{"unfinished final", "old\nnew", 0, []string{"old"}},
+		{"all unfinished", "new", 0, nil},
+		{"leading empty", "\nnew\n", 0, []string{"new"}},
+		{"large cut record", strings.Repeat("x", 3*(64<<10)) + "\nnew\n", 1, []string{"new"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var got []string
+			for line, err := range reverseRecordPages(strings.NewReader(test.data), int64(len(test.data)), test.lower, true) {
+				if err != nil {
+					t.Fatal(err)
+				}
+				got = append(got, string(line))
+			}
+			if !slices.Equal(got, test.want) {
+				t.Fatalf("window records = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRecordPagesPartialEOFIsObservationalOnly(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		var got []string
+		var failure error
+		for line, err := range reverseRecordPages(strings.NewReader("old\nnew\n"), 13, 0, partial) {
+			if err != nil {
+				failure = err
+				break
+			}
+			got = append(got, string(line))
+		}
+		if partial {
+			if failure != nil || !slices.Equal(got, []string{"new", "old"}) {
+				t.Fatalf("partial observation = %q, %v", got, failure)
+			}
+		} else if failure != io.EOF || len(got) != 0 {
+			t.Fatalf("exact read accepted partial input: %q, %v", got, failure)
+		}
+	}
+}
+
+type truncatingRecordReader struct {
+	*os.File
+	cut   int64
+	reads int
+}
+
+func (r *truncatingRecordReader) ReadAt(p []byte, off int64) (int, error) {
+	r.reads++
+	if r.reads == 2 {
+		if err := r.Truncate(r.cut); err != nil {
+			return 0, err
+		}
+	}
+	return r.File.ReadAt(p, off)
+}
+
+func TestRecordPagesTruncationDiscardsNoncontiguousFragments(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		t.Run(fmt.Sprint(partial), func(t *testing.T) {
+			file, err := os.CreateTemp(t.TempDir(), "rollout-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			prefix := "header\n" + `{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":12`
+			tail := "34}}}}\n"
+			data := prefix + tail + strings.Repeat("x", (64<<10)-len(tail))
+			if _, err := file.WriteString(data); err != nil {
+				t.Fatal(err)
+			}
+			reader := &truncatingRecordReader{File: file, cut: int64(len(prefix) - 2)}
+			var got []string
+			var failure error
+			for line, err := range reverseRecordPages(reader, int64(len(data)), 0, partial) {
+				if err != nil {
+					failure = err
+					break
+				}
+				got = append(got, string(line))
+			}
+			if partial {
+				if failure != nil || !slices.Equal(got, []string{"header"}) {
+					t.Fatalf("truncated observation fabricated a record: %q, %v", got, failure)
+				}
+			} else if failure != io.EOF || len(got) != 0 {
+				t.Fatalf("exact read accepted truncation: %q, %v", got, failure)
+			}
+		})
 	}
 }
