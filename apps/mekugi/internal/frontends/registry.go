@@ -105,10 +105,7 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 		GuidanceSHA256:  hex.EncodeToString(guidanceHash[:]),
 		Tools:           names,
 	}
-	registryID, err := registryIdentity(manifest)
-	if err != nil {
-		return fail(err)
-	}
+	registryID := registryIdentity(manifest)
 	manifest.RegistryID = registryID
 	authenticatedDirectory := snapshotDirectory + "-" + registryID
 	if err := os.Rename(snapshotDirectory, authenticatedDirectory); err != nil {
@@ -140,21 +137,15 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	}, nil
 }
 
-func registryIdentity(manifest workerManifest) (string, error) {
+func registryIdentity(manifest workerManifest) string {
 	manifest.RegistryID = ""
-	encoded, err := jsonv1.Marshal(manifest)
-	if err != nil {
-		return "", fmt.Errorf("encode frontend catalog identity: %w", err)
-	}
+	encoded, _ := jsonv1.Marshal(manifest)
 	digest := sha256.Sum256(encoded)
-	return hex.EncodeToString(digest[:]), nil
+	return hex.EncodeToString(digest[:])
 }
 
 func writeToolWorkerManifest(directory string, manifest workerManifest) error {
-	encoded, err := jsonv1.Marshal(manifest)
-	if err != nil {
-		return fmt.Errorf("encode tool worker manifest: %w", err)
-	}
+	encoded, _ := jsonv1.Marshal(manifest)
 	path := filepath.Join(directory, manifestFilename)
 	if err := os.WriteFile(path, encoded, 0o600); err != nil {
 		return fmt.Errorf("write tool worker manifest: %w", err)

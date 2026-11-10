@@ -103,11 +103,7 @@ func (invocation *Invocation) Run(service *history.Service, recovered *recovery.
 	if manifest.RegistryID != expectedRegistryID {
 		return fail(errors.New("tool worker registry identity mismatch"))
 	}
-	identity, err := registryIdentity(manifest)
-	if err != nil {
-		return fail(err)
-	}
-	if identity != expectedRegistryID {
+	if registryIdentity(manifest) != expectedRegistryID {
 		return fail(errors.New("tool worker registry identity mismatch"))
 	}
 
