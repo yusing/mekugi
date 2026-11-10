@@ -24,7 +24,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	}
 	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
 	browser := browserFixtureCommand(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 180*time.Second)
 	defer cancel()
 	page := httptest.NewServer(webui.Handler())
 	defer page.Close()
@@ -85,7 +85,8 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	run("open", page.URL)
-	run("eval", `window.controlSockets = []; window.contentReads = 0; const Original = WebSocket; window.WebSocket = class extends Original { constructor(...args) { super(...args); window.controlSockets.push(this); } }; const originalFetch = window.fetch; window.fetch = (...args) => { if (String(args[0]).endsWith("/api/resources/content")) window.contentReads++; return originalFetch(...args); }`)
+	// Publications can be held in the page while requests still reach the server.
+	run("eval", `window.controlSockets = []; window.contentReads = 0; window.heldPublications = []; const Original = WebSocket; window.WebSocket = class extends Original { constructor(...args) { super(...args); window.controlSockets.push(this); } addEventListener(kind, listener, ...options) { if (kind !== 'message') return super.addEventListener(kind, listener, ...options); return super.addEventListener(kind, event => { if (window.holdPublications && JSON.parse(event.data).method === 'subscription/event') window.heldPublications.push(() => listener.call(this, event)); else listener.call(this, event); }, ...options); } }; const originalFetch = window.fetch; window.fetch = (...args) => { if (String(args[0]).endsWith("/api/resources/content")) window.contentReads++; return originalFetch(...args); }`)
 	run("find", "label", "Machine name", "fill", "History")
 	run("find", "label", "Connector URL", "fill", machine.remote.URL)
 	run("find", "label", "Access token", "fill", strings.Repeat("e", 64))
@@ -213,8 +214,141 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	if run("eval", `document.querySelectorAll('[aria-label="Transcript"] article').length === 601`) != "true" {
 		t.Fatal("earlier pages did not retain all available history")
 	}
+
+	// Page reads belong to the publication they read. Refused, failed and
+	// superseded pages leave a replacement untouched, and a publication
+	// resumes paging the reader still demands at the top. Removing a
+	// historical entry makes the server publish a new history revision.
+	retained := append([]activity.Entry(nil), frame.Main.Entries...)
+	rewrite := func() {
+		t.Helper()
+		retained = retained[1:]
+		frame.Main = &activity.Publication{Entries: retained}
+		if err := machine.publishFrame(frame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("eval", `window.pageSends = 0; window.pageMode = 'pass'; window.heldPages = []; window.pagedSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) {
+		const message = JSON.parse(text);
+		if (message.method !== 'session/page' || message.params?.body?.kind !== 'main') return window.pagedSend.call(this, text);
+		window.pageSends++;
+		const fail = () => this.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({jsonrpc: '2.0', id: message.id, error: {code: -32000, message: 'Fixture page failed', data: {status: 503}}})}));
+		if (window.pageMode === 'fail') setTimeout(fail);
+		else if (window.pageMode === 'hold') window.heldPages.push({forward: () => window.pagedSend.call(this, text), fail});
+		else return window.pagedSend.call(this, text);
+	}`)
+	const transcript = `document.querySelector('[aria-label="Transcript"] .overflow-y-auto')`
+	pageSends := func() int {
+		t.Helper()
+		var sends int
+		if _, err := fmt.Sscan(run("eval", `window.pageSends`), &sends); err != nil {
+			t.Fatal(err)
+		}
+		return sends
+	}
+	// The reader scrolls to the top until a server page is requested; rows
+	// already held locally are revealed first.
+	demand := func() int {
+		t.Helper()
+		before := pageSends()
+		if run("eval", `window.heldPages.length > 0`) == "true" {
+			return before
+		}
+		for range 20 {
+			run("eval", fmt.Sprintf(`(() => { const s = %s; window.historyRows = s.querySelectorAll('article').length; s.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); s.scrollTop = 0; })()`, transcript))
+			run("wait", "--fn", fmt.Sprintf(`window.pageSends > %d || document.querySelectorAll('[aria-label="Transcript"] article').length > window.historyRows`, before))
+			if sends := pageSends(); sends > before {
+				return sends
+			}
+		}
+		t.Fatal("scrolling to the top never requested an earlier page")
+		return 0
+	}
+	// Further scrolling at the top must not repeat a refused or failed request.
+	idle := func(sends int, why string) {
+		t.Helper()
+		for _, top := range []string{"40", "0", "20", "0"} {
+			run("eval", fmt.Sprintf(`(() => { const s = %s; s.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); s.scrollTop = %s; })()`, transcript, top))
+		}
+		run("wait", "300")
+		if got := pageSends(); got != sends {
+			t.Fatalf("%s: page requests %d, want %d", why, got, sends)
+		}
+	}
+	noFailure := func(why string) {
+		t.Helper()
+		if run("eval", `document.body.innerText.includes('Retry earlier entries') || document.body.innerText.includes('History changed')`) != "false" {
+			t.Fatal(why)
+		}
+	}
+	loaded := func(why string) {
+		t.Helper()
+		run("eval", fmt.Sprintf(`window.historyRows = %s.querySelectorAll('article').length`, transcript))
+		run("eval", `window.heldPages.splice(0).forEach(page => page.forward())`)
+		run("wait", "--fn", fmt.Sprintf(`%s.querySelectorAll('article').length > window.historyRows`, transcript))
+		noFailure(why)
+	}
+	// The rewrite replaces the fully loaded feed with its newest window.
+	run("eval", `window.pageMode = 'hold'`)
+	rewrite()
+	run("wait", "--fn", `!document.body.innerText.includes('Beginning of retained history')`)
+	// A publication arriving while a request is pending makes the server
+	// refuse it; the next request follows without another scroll.
+	sends := demand()
+	rewrite()
+	run("eval", `window.heldPages.splice(0).forEach(page => page.forward())`)
+	run("wait", "--fn", fmt.Sprintf(`window.pageSends === %d`, sends+1))
+	loaded("a superseded page conflict became a failure")
+	// A conflict before its publication arrives waits for that publication.
+	run("eval", `window.holdPublications = true`)
+	rewrite()
+	run("eval", `window.pageMode = 'pass'`)
+	run("wait", "--fn", `window.heldPublications.length > 0`)
+	sends = demand()
+	idle(sends, "scrolling repeated a refused page")
+	noFailure("a page conflict showed retry chrome")
+	if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+		run("screenshot", filepath.Join(directory, "history-conflict-waits.png"))
+	}
+	run("eval", fmt.Sprintf(`window.pageMode = 'hold'; window.historyRows = %s.querySelectorAll('article').length; window.holdPublications = false; window.heldPublications.splice(0).forEach(deliver => deliver())`, transcript))
+	run("wait", "--fn", fmt.Sprintf(`window.pageSends === %d`, sends+1))
+	loaded("publication did not resume refused paging")
+	// A failure on the current publication is retired by its replacement.
+	run("eval", `window.pageMode = 'fail'`)
+	sends = demand()
+	run("wait", "--text", "Fixture page failed")
+	idle(sends, "scrolling repeated a failed page")
+	run("eval", `window.pageMode = 'hold'`)
+	rewrite()
+	run("wait", "--fn", fmt.Sprintf(`window.pageSends === %d`, sends+1))
+	loaded("a replacement kept the obsolete failure")
+	// A failure of a superseded request never reaches the replacement.
+	sends = demand()
+	rewrite()
+	run("wait", "300")
+	run("eval", `window.heldPages.splice(0).forEach(page => page.fail())`)
+	run("wait", "--fn", fmt.Sprintf(`window.pageSends === %d`, sends+1))
+	loaded("a superseded failure reached the replacement")
+	// A current failure keeps loaded pages and the reading anchor through Retry.
+	run("eval", `window.pageMode = 'fail'`)
+	demand()
+	run("wait", "--text", "Fixture page failed")
+	if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+		run("screenshot", filepath.Join(directory, "history-current-failure.png"))
+	}
+	run("eval", fmt.Sprintf(`(() => { const s = %s; window.pageMode = 'pass'; window.historyRows = s.querySelectorAll('article').length; window.historyAnchor = s.querySelector('[data-entry]'); window.historyTop = window.historyAnchor.getBoundingClientRect().top; })()`, transcript))
+	run("find", "role", "button", "click", "--name", "Retry earlier entries", "--exact")
+	run("wait", "--fn", fmt.Sprintf(`%s.querySelectorAll('article').length > window.historyRows`, transcript))
+	if run("eval", `window.historyAnchor.isConnected && Math.abs(window.historyAnchor.getBoundingClientRect().top - window.historyTop) < 2 && !document.body.innerText.includes('Fixture page failed')`) != "true" {
+		t.Fatal("retrying a current page failure moved the anchor or kept its failure")
+	}
+	run("eval", `WebSocket.prototype.send = window.pagedSend`)
+	frame.Main = &activity.Publication{Entries: append(main.Entries, activity.Entry{Seq: 601, Agent: "Main", Kind: "text", Text: "Newest retained update", Revision: 1})}
+	if err := machine.publishFrame(frame); err != nil {
+		t.Fatal(err)
+	}
 	run("find", "role", "button", "click", "--name", "Latest", "--exact")
-	run("wait", "--fn", `document.querySelectorAll('[aria-label="Transcript"] article').length === 50`)
+	run("wait", "--fn", `(() => { const rows = document.querySelectorAll('[aria-label="Transcript"] article'); return rows.length <= 50 && rows[rows.length - 1]?.textContent.includes('Newest retained update'); })()`)
 	// An unrelated native frame must preserve an in-flight complete-detail read.
 	var attachment attachedView
 	select {

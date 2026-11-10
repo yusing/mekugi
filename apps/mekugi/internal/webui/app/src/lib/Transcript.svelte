@@ -118,9 +118,19 @@
   $effect(() => {
     if (following) oldest = rows[Math.max(0, rows.length - pageSize)]?.entry.seq;
   });
-  let paging = false;
+  let paging = $state(false);
   const canEarlier = $derived(first > 0 || (retained && !!stream.history(caller).earlier));
-  const pageError = $derived(retained && stream.historyErrors[caller ?? ""]);
+  const pageError = $derived(retained && stream.historyError(caller));
+  // The request a near-edge read failed to advance. Scrolling does not repeat
+  // it; a publication that changes the next request resumes the demand.
+  const nextPage = $derived.by(() => {
+    const cursor = retained ? stream.nextPage(caller) : undefined;
+    return (
+      cursor &&
+      [cursor.attachment, cursor.kind, cursor.revision, cursor.before, cursor.caller].join("\n")
+    );
+  });
+  let stalled = $state<string>();
   async function earlier() {
     if (!scroller || !column || paging || !canEarlier) return;
     paging = true;
@@ -129,9 +139,15 @@
     const anchor = column.querySelector<HTMLElement>("[data-entry]");
     const top = anchor?.getBoundingClientRect().top ?? 0;
     if (first === 0) {
-      await stream.earlier(caller, reads.signal);
+      const request = nextPage;
+      if (!(await stream.earlier(caller, reads.signal))) {
+        stalled = request;
+        paging = false;
+        return;
+      }
       await tick();
     }
+    stalled = undefined;
     oldest = rows[Math.max(0, first - pageSize)]?.entry.seq;
     await tick();
     if (anchor && scroller === container)
@@ -151,18 +167,26 @@
   function measure() {
     if (scroller) below = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight >= 80;
   }
+  // Preloading starts a viewport before the top of a scrollable feed.
+  const nearTop = () =>
+    !!scroller &&
+    scroller.scrollTop < scroller.scrollHeight - scroller.clientHeight &&
+    scroller.scrollTop <= scroller.clientHeight &&
+    canEarlier &&
+    !pageError;
   function onscroll() {
     measure();
     if (!scroller || !reading) return;
     following = !below;
-    if (
-      scroller.scrollTop < scroller.scrollHeight - scroller.clientHeight &&
-      scroller.scrollTop <= scroller.clientHeight &&
-      canEarlier &&
-      !pageError
-    )
-      void earlier();
+    if (nearTop() && (first > 0 || nextPage !== stalled)) void earlier();
   }
+  $effect(() => {
+    if (stalled === undefined || paging || nextPage === stalled) return;
+    untrack(() => {
+      stalled = undefined;
+      if (nearTop()) void earlier();
+    });
+  });
   const read = () => (reading = true);
   const scrollKeys = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
   function onkeydown(event: KeyboardEvent) {

@@ -36,6 +36,11 @@ export interface Gone {
   status: number;
   text: string;
 }
+interface PageFailure {
+  attachment: string;
+  revision: number;
+  text: string;
+}
 const empty: Feed = { order: [], entries: {} };
 
 export class Stream {
@@ -48,7 +53,7 @@ export class Stream {
   agents = $state.raw<Feed>(empty);
   histories = $state.raw<Record<string, Feed>>({});
   historyLoading = $state.raw<Record<string, boolean>>({});
-  historyErrors = $state.raw<Record<string, string | undefined>>({});
+  #historyErrors = $state.raw<Record<string, PageFailure | undefined>>({});
   roster = $state.raw<Roster>({ total: 0, agents: [] });
   rosterLoading = $state(false);
   rosterRetry = $state.raw<{ kind: "agent"; agent: Agent } | { kind: "page"; caller?: string }>();
@@ -113,7 +118,7 @@ export class Stream {
     this.main = this.agents = empty;
     this.histories = {};
     this.contentIdentities = {};
-    this.historyErrors = {};
+    this.#historyErrors = {};
     this.roster = preserveRoster
       ? {
           ...this.roster,
@@ -265,7 +270,8 @@ export class Stream {
       this.agents = merge(this.agents, message.agents);
       const histories: Record<string, Feed> = {};
       for (const [caller, feed] of Object.entries(this.histories)) {
-        if (feed.revision !== this.agents.revision) continue;
+        if (feed.attachment !== this.agents.attachment || feed.revision !== this.agents.revision)
+          continue;
         const added = (message.agents.entries ?? []).filter((entry) => entry.agent === caller);
         const order = ordered(
           { ...feed.entries, ...Object.fromEntries(added.map((entry) => [entry.seq, entry])) },
@@ -305,17 +311,40 @@ export class Stream {
     return caller ? (this.histories[caller] ?? this.agents) : this.main;
   }
 
-  async prepareHistory(caller: string, signal?: AbortSignal): Promise<void> {
-    const pending = this.#historyRequests.get(caller);
-    if (this.histories[caller] || (pending && !pending.aborted)) return;
-    const cursor = this.agents.earlier;
-    if (cursor) await this.#page({ ...cursor, caller, before: undefined }, caller, true, signal);
+  // The next page request for a feed. A caller's first filtered page starts
+  // from the newest entry of the aggregate publication; its later pages
+  // continue the caller's own retained feed.
+  nextPage(caller?: string): PageCursor | undefined {
+    const cursor = this.history(caller).earlier;
+    if (!cursor) return undefined;
+    return caller && !this.histories[caller]
+      ? { ...cursor, caller, before: undefined }
+      : { ...cursor, caller };
   }
 
-  async earlier(caller?: string, signal?: AbortSignal): Promise<void> {
+  // A failure is shown only while its feed still publishes the failed
+  // reference; a replacement publication retires it.
+  historyError(caller?: string): string | undefined {
+    const failure = this.#historyErrors[caller ?? ""];
+    const feed = this.history(caller);
+    return failure && failure.attachment === feed.attachment && failure.revision === feed.revision
+      ? failure.text
+      : undefined;
+  }
+
+  async prepareHistory(caller: string, signal?: AbortSignal): Promise<boolean> {
+    const pending = this.#historyRequests.get(caller);
+    if (this.histories[caller] || (pending && !pending.aborted)) return false;
+    const cursor = this.nextPage(caller);
+    return !!cursor && this.#page(cursor, caller, true, signal);
+  }
+
+  // Resolves whether a page joined the feed. Superseded and refused reads
+  // leave it unchanged and record no failure.
+  async earlier(caller?: string, signal?: AbortSignal): Promise<boolean> {
     if (caller && !this.histories[caller]) return this.prepareHistory(caller, signal);
-    const cursor = this.history(caller).earlier;
-    if (cursor) await this.#page({ ...cursor, caller }, caller, false, signal);
+    const cursor = this.nextPage(caller);
+    return !!cursor && this.#page(cursor, caller, false, signal);
   }
 
   async #page(
@@ -323,29 +352,31 @@ export class Stream {
     caller?: string,
     initial = false,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const key = caller ?? "";
     const pending = this.#historyRequests.get(key);
-    if ((pending && !pending.aborted) || !this.#machine || !this.#id) return;
+    if ((pending && !pending.aborted) || !this.#machine || !this.#id) return false;
     const session = this.#requests.signal;
     const lifetime = AbortSignal.any([session, ...(signal ? [signal] : [])]);
     this.#historyRequests.set(key, lifetime);
     this.historyLoading = { ...this.historyLoading, [key]: true };
-    this.historyErrors = { ...this.historyErrors, [key]: undefined };
+    this.#historyErrors = { ...this.#historyErrors, [key]: undefined };
     let result: PageResult | undefined;
     try {
       result = await this.page(cursor, lifetime);
-      const current = caller ? this.agents : this.main;
+      // Later filtered pages belong to the caller's retained feed; its first
+      // page belongs to the aggregate publication.
+      const feed = this.history(caller);
       if (
         lifetime.aborted ||
-        cursor.attachment !== current.attachment ||
-        cursor.revision !== current.revision
+        cursor.attachment !== feed.attachment ||
+        cursor.revision !== feed.revision
       )
-        return;
+        return false;
       const entries = result.entries as Entry[];
       if (initial) {
         const last = entries.at(-1)?.position ?? -1;
-        for (const value of Object.values(current.entries)) {
+        for (const value of Object.values(feed.entries)) {
           if (value.agent !== caller) continue;
           const index = entries.findIndex((entry) => entry.seq === value.seq);
           if (index < 0 && (value.position ?? -1) > last) entries.push(value);
@@ -376,9 +407,25 @@ export class Stream {
       if (caller) this.histories = { ...this.histories, [caller]: next };
       else this.main = next;
       this.#pruneIdentities();
+      return true;
     } catch (error) {
-      if (!lifetime.aborted)
-        this.historyErrors = { ...this.historyErrors, [key]: errorText(error) };
+      const feed = this.history(caller);
+      // A conflict means a newer publication supplies the next cursor.
+      if (
+        !lifetime.aborted &&
+        cursor.attachment === feed.attachment &&
+        cursor.revision === feed.revision &&
+        !(error instanceof TransportError && error.status === 409)
+      )
+        this.#historyErrors = {
+          ...this.#historyErrors,
+          [key]: {
+            attachment: cursor.attachment,
+            revision: cursor.revision,
+            text: errorText(error),
+          },
+        };
+      return false;
     } finally {
       result?.acknowledge?.();
       if (this.#historyRequests.get(key) === lifetime) {

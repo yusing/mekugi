@@ -2063,6 +2063,7 @@ test("preset recall fills the composer once without submitting", async () => {
 });
 
 const historyRow = (seq, position) => ({ seq, position, revision: 1, text: `entry ${seq}` });
+const failure = (status) => new TransportError(`Page failed ${status}`, "refused", status);
 
 test("pages preserve loaded history and acknowledge stale attachment replies after discard", async () => {
   const source = new Stream();
@@ -2178,6 +2179,164 @@ test("pages preserve loaded history and acknowledge stale attachment replies aft
   });
   await stale;
   assert.equal(acknowledgements, 2);
+  source.close();
+});
+
+test("history page outcomes belong to the publication they read", async () => {
+  const source = new Stream();
+  let publish;
+  const reads = [];
+  source.connect("thread", {
+    subscribe(_method, _params, event) {
+      publish = event;
+      return () => {};
+    },
+    request(method, params) {
+      assert.equal(method, "session/page");
+      const reply = Promise.withResolvers();
+      reads.push({ cursor: params.body, ...reply });
+      return reply.promise;
+    },
+  });
+  const feed = (attachment, revision, before = 2) => ({
+    attachment,
+    revision,
+    order: [before],
+    entries: [historyRow(before, 1)],
+    earlier: { attachment, kind: "main", revision, before },
+  });
+  const snapshot = (main, agents) =>
+    publish({ kind: "snapshot", data: { session: { thread: "thread" }, main, agents } });
+  snapshot(feed("A", 1));
+
+  // A replacement arriving before the failure leaves no error on its feed.
+  let page = source.earlier();
+  await tick();
+  snapshot(feed("B", 1));
+  reads[0].reject(failure(503));
+  assert.equal(await page, false);
+  assert.equal(source.historyError(), undefined);
+  // A current failure is visible until a replacement retires it.
+  page = source.earlier();
+  await tick();
+  assert.equal(reads[1].cursor.attachment, "B");
+  reads[1].reject(failure(503));
+  assert.equal(await page, false);
+  assert.equal(source.historyError(), "Page failed 503");
+  snapshot(feed("C", 1));
+  assert.equal(source.historyError(), undefined, "a replacement retires the old failure");
+  // A conflict waits for the next publication without retry chrome.
+  const refused = source.nextPage();
+  page = source.earlier();
+  await tick();
+  reads[2].reject(failure(409));
+  assert.equal(await page, false);
+  assert.equal(source.historyError(), undefined);
+  assert.deepEqual(
+    source.nextPage(),
+    refused,
+    "the refused request stays current until publication",
+  );
+  snapshot(feed("C", 2));
+  assert.notDeepEqual(source.nextPage(), refused, "publication supplies the next request");
+  // A stale success leaves the replacement feed untouched.
+  page = source.earlier();
+  await tick();
+  snapshot(feed("D", 1, 7));
+  reads[3].resolve({ entries: [historyRow(1, 0)], earlier: null });
+  assert.equal(await page, false);
+  assert.deepEqual(source.main.order, [7]);
+  // A genuine current failure keeps loaded pages and succeeds on retry.
+  page = source.earlier();
+  await tick();
+  reads[4].resolve({ entries: [historyRow(6, 0)], earlier: { ...source.main.earlier, before: 6 } });
+  assert.equal(await page, true);
+  page = source.earlier();
+  await tick();
+  reads[5].reject(failure(503));
+  assert.equal(await page, false);
+  assert.equal(source.historyError(), "Page failed 503");
+  assert.deepEqual(source.main.order, [6, 7]);
+  page = source.earlier();
+  await tick();
+  assert.equal(reads[6].cursor.before, 6);
+  reads[6].resolve({ entries: [historyRow(5, -1)], earlier: null });
+  assert.equal(await page, true);
+  assert.equal(source.historyError(), undefined);
+  assert.deepEqual(source.main.order, [5, 6, 7]);
+  source.close();
+});
+
+test("filtered history pages follow the caller's retained feed", async () => {
+  const source = new Stream();
+  const caller = "/root/worker";
+  let publish;
+  const reads = [];
+  source.connect("thread", {
+    subscribe(_method, _params, event) {
+      publish = event;
+      return () => {};
+    },
+    request(_method, params) {
+      const reply = Promise.withResolvers();
+      reads.push({ cursor: params.body, ...reply });
+      return reply.promise;
+    },
+  });
+  const agents = (attachment, revision, before = 9) => ({
+    attachment,
+    revision,
+    order: [before],
+    entries: [{ ...historyRow(before, 9), agent: "/root/other" }],
+    earlier: { attachment, kind: "agents", revision, before },
+  });
+  const snapshot = (value) =>
+    publish({ kind: "snapshot", data: { session: { thread: "thread" }, agents: value } });
+  snapshot(agents("A", 1));
+  const initial = { attachment: "A", kind: "agents", revision: 1, before: undefined, caller };
+  assert.deepEqual(
+    source.nextPage(caller),
+    initial,
+    "the first filtered page starts at the newest entry",
+  );
+  let page = source.prepareHistory(caller);
+  await tick();
+  assert.deepEqual(reads[0].cursor, initial);
+  reads[0].resolve({
+    entries: [{ ...historyRow(4, 4), agent: caller }],
+    earlier: { attachment: "A", kind: "agents", revision: 1, before: 4, caller },
+  });
+  assert.equal(await page, true);
+  // An aggregate patch with a new boundary keeps the caller's own cursor.
+  publish({
+    kind: "patch",
+    data: {
+      agents: {
+        attachment: "A",
+        revision: 1,
+        earlier: { ...initial, caller: undefined, before: 8 },
+      },
+    },
+  });
+  assert.equal(source.nextPage(caller).before, 4);
+  page = source.earlier(caller);
+  await tick();
+  assert.deepEqual(reads[1].cursor, {
+    attachment: "A",
+    kind: "agents",
+    revision: 1,
+    before: 4,
+    caller,
+  });
+  reads[1].reject(new TransportError("Filtered page failed", "refused", 503));
+  assert.equal(await page, false);
+  assert.equal(source.historyError(caller), "Filtered page failed");
+  assert.equal(source.historyError(), undefined, "failures stay with their feed");
+  // A replacement attachment with the same revision retires the caller's feed.
+  publish({ kind: "patch", data: { agents: agents("B", 1) } });
+  assert.equal(source.histories[caller], undefined);
+  assert.equal(source.historyError(caller), undefined);
+  assert.deepEqual(source.nextPage(caller), { ...initial, attachment: "B" });
   source.close();
 });
 
