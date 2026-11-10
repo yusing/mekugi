@@ -429,8 +429,21 @@ func (c *ReviewComposition) FilesWithHighlights() []ReviewHighlightedFile {
 			a, b = append(a, left), append(b, right)
 		}
 		oldEnd, newEnd = oldStart+len(a), newStart+len(b)
+		// Keep the witnessed context anchored outside the changed region.
+		// Re-diffing it together with a repetitive insertion can match that
+		// context inside the insertion and publish a false EOF/BOF hunk.
+		oldPrefix, newPrefix := region.beforeStart-oldStart, region.afterStart-newStart
+		group := []difflib.OpCode{{Tag: 'e', I2: oldPrefix, J2: newPrefix}}
+		for _, op := range difflib.NewMatcher(region.before, region.after).GetOpCodes() {
+			op.I1, op.I2 = op.I1+oldPrefix, op.I2+oldPrefix
+			op.J1, op.J2 = op.J1+newPrefix, op.J2+newPrefix
+			group = append(group, op)
+		}
+		group = append(group, difflib.OpCode{Tag: 'e',
+			I1: oldPrefix + len(region.before), I2: len(a),
+			J1: newPrefix + len(region.after), J2: len(b)})
 		files = append(files, ReviewHighlightedFile{
-			ReviewFile:  renderReviewFile(ReviewFile{BeforePath: c.beforePath, AfterPath: c.afterPath}, a, b, oldStart, newStart),
+			ReviewFile:  renderReviewGroups(ReviewFile{BeforePath: c.beforePath, AfterPath: c.afterPath}, a, b, oldStart, newStart, [][]difflib.OpCode{group}),
 			Highlighted: region.highlighted,
 		})
 	}

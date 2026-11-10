@@ -481,6 +481,14 @@ func TestMChangesNetGitRoundTrip(t *testing.T) {
 	t.Parallel()
 	initial := strings.Repeat("original row\r\n", 149)
 	appended := initial + strings.Repeat("appended row\r\n", 11) + "last row"
+	body := "\tfor _, tc := range tests {\n\t\tt.Run(tc.name, func(t *testing.T) {\n\t\t\tt.Log(tc.name)\n\t\t})\n\t}\n}\n\n"
+	before := "package example\n\nfunc TestBefore(t *testing.T) {\n" + body
+	tail := "func TestAfter(t *testing.T) {\n\tt.Log(\"after\")\n}\n"
+	var additions strings.Builder
+	for i := range 50 {
+		fmt.Fprintf(&additions, "func TestInserted%d(t *testing.T) {\n%s", i, body)
+	}
+	inserted := additions.String()
 	for _, test := range []struct {
 		name               string
 		before, mid, after string
@@ -490,6 +498,10 @@ func TestMChangesNetGitRoundTrip(t *testing.T) {
 		{"creation-prepend", "", initial, "first row\r\n" + initial, true, false},
 		{"deletion", appended, initial, "", false, true},
 		{"modification", initial, "first row\r\n" + initial, "first row\r\n" + appended, false, false},
+		{"middle-insertion", before + tail, before + tail, before + inserted + tail, false, false},
+		{"middle-deletion", before + inserted + tail, before + inserted + tail, before + tail, false, false},
+		{"eof-insertion", before, before, before + inserted, false, false},
+		{"eof-deletion", before + inserted, before + inserted, before, false, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := newMChangesSliceFixture(t, "net-git-"+test.name)
@@ -514,7 +526,7 @@ func TestMChangesNetGitRoundTrip(t *testing.T) {
 			f.publish(t, last, "last", "last-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{
 				diffmodel.RenderReviewFile(path, afterPath, test.mid, test.after),
 			}})
-			patch, stderr, status := f.run(t, "mchanges "+first+".."+last+" --max-tokens 15500")
+			patch, stderr, status := f.run(t, "mchanges "+first+".."+last)
 			if status != 0 || stderr != "" {
 				t.Fatalf("net read: %q, %q, %d", patch, stderr, status)
 			}
@@ -530,7 +542,8 @@ func TestMChangesNetGitRoundTrip(t *testing.T) {
 				}
 				return string(out)
 			}
-			git(patch, "apply", "--cached", "--unidiff-zero", "--whitespace=nowarn", "-p0")
+			git(patch, "apply", "--check", "--cached", "-p0")
+			git(patch, "apply", "--cached", "-p0")
 			if test.remove {
 				if out := git("", "ls-files"); out != "" {
 					t.Fatalf("deleted file remains in index: %q", out)
