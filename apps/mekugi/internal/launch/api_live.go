@@ -3,6 +3,7 @@ package launch
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -208,8 +209,9 @@ type commandFeed struct {
 }
 
 type commandContent struct {
-	revision uint64
-	content  *activitypresentation.ItemContent
+	revision    uint64
+	content     *activitypresentation.ItemContent
+	publication *activitypresentation.Publication
 }
 
 func (c *commandFeed) publication(source *sessionpresentation.ActivitySource, base *activitypresentation.Publication) *activitypresentation.Publication {
@@ -231,10 +233,14 @@ func (c *commandFeed) publication(source *sessionpresentation.ActivitySource, ba
 		}
 		cached, ok := c.content[entry.Seq]
 		if !ok || cached.revision != entry.Revision {
-			cached = commandContent{entry.Revision, new(sessionpresentation.ActivityContent(source.Entries[i].Source))}
-			c.content[entry.Seq] = cached
+			cached = commandContent{revision: entry.Revision, content: new(sessionpresentation.ActivityContent(source.Entries[i].Source))}
 		}
+		cached.publication = base
+		c.content[entry.Seq] = cached
 		c.view.Entries[i].Command = cached.content
 	}
+	// Only current rows needing enrichment own cached commands. Sequence ranges
+	// cannot establish membership: trimming preserves pending entries and holes.
+	maps.DeleteFunc(c.content, func(_ uint64, cached commandContent) bool { return cached.publication != base })
 	return c.view
 }

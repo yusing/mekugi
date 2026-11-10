@@ -42,6 +42,8 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "image", Type: "imageView", Path: imagePath}})
+	command := "python3 -c " + quoteShellWord(`print("first")`) + "; false"
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(command), Status: "failed", ExitCode: new(1), AggregatedOutput: new("first\n")}})
 	file := diffmodel.RenderReviewFile("/project/source.go", "/project/source.go", "old\n", "new\n")
 	saved := (changepresentation.Publication{}).With(changepresentation.GroupCaptures([]changepresentation.Chunk{{Key: "change1", Workspace: workspace, Review: file, Change: "change1", Caller: "/root", Source: "apply_patch"}}))
 	u.reviewSource.PublishReview(u.attached.session.Scope(), &changepresentation.Snapshot{Publication: saved}, workspace, "complete", "")
@@ -83,6 +85,12 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 				Seq    uint64   `json:"seq"`
 				Agent  string   `json:"agent"`
 				Images []string `json:"images"`
+				Values []struct {
+					Code      string `json:"code"`
+					Label     string `json:"label"`
+					BatchExit bool   `json:"batchExit"`
+					ExitCode  int    `json:"exitCode"`
+				} `json:"values"`
 			} `json:"entries"`
 		} `json:"main"`
 	}
@@ -92,6 +100,16 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 	savedFile := readAPIReviewFile(t, endpoint, rpc, state.Review.Page)
 	if event.Kind != "snapshot" || len(savedFile.Chunks) != 1 || savedFile.Chunks[0].Review.Diff != file.Diff || len(state.Live) != 1 || state.Live[0].ID != "edit" || state.Live[0].Files[0].Diff != file.Diff {
 		t.Fatalf("missing review or preview: %s", event.Data)
+	}
+	commandShown, resultShown := false, false
+	for _, entry := range state.Main.Entries {
+		for _, value := range entry.Values {
+			commandShown = commandShown || value.Code == `print("first")`
+			resultShown = resultShown || value.BatchExit && value.Code == "" && value.Label == "" && value.ExitCode == 1
+		}
+	}
+	if !commandShown || !resultShown {
+		t.Fatalf("compound command lost its steps or combined result: %s", event.Data)
 	}
 	for _, entry := range state.Main.Entries {
 		if len(entry.Images) == 1 {
@@ -104,6 +122,83 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 		}
 	}
 	t.Fatalf("missing viewed-image binding: %s", event.Data)
+}
+
+func TestAPICommandFeedRetainsOnlyCurrentCommands(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	script := "python3 -c " + quoteShellWord(`print("first")`) + "; false"
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "seed", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script), Status: "failed", ExitCode: new(1), AggregatedOutput: new("first\n")}})
+	source := u.attached.source
+	seed := source.Entries[0].Source
+	feed := commandFeed{}
+	publish := func() *activity.Publication {
+		return feed.publication(source, source.Publication(u.attached.presentation, nil))
+	}
+	first := publish()
+	command := first.Entries[0].Command
+	if command == nil || len(feed.content) != 1 {
+		t.Fatal("compound command was not enriched")
+	}
+	if publish() != first {
+		t.Fatal("unchanged publication was copied")
+	}
+	// A pending command survives trimming, even with newer sequence holes.
+	source.Model.Mutate(0, func(record *sessionpresentation.ActivityRecord) {
+		native := *record.Source.Native
+		native.Running = true
+		record.Source.Native = &native
+	})
+	pending := publish().Entries[0].Command
+	for i := range activity.FeedLimit {
+		entry := seed
+		entry.Seq += uint64(i + 1)
+		entry.CallID = fmt.Sprintf("command-%d", entry.Seq)
+		native := *seed.Native
+		native.Item = entry.CallID
+		native.Invocation = nil
+		native.Exit = new(1)
+		native.Duration = time.Second
+		native.CommandEnded = time.Now()
+		entry.Native = &native
+		source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
+	}
+	current := publish()
+	if len(current.Entries) != activity.FeedLimit || len(feed.content) != len(current.Entries) || current.Entries[0].Command != pending {
+		t.Fatalf("eviction lost a pending command or retained obsolete commands: feed=%d cache=%d", len(current.Entries), len(feed.content))
+	}
+	removed := current.Entries[1].Seq
+	unchanged := current.Entries[2].Command
+	source.Model.Remove(1, 2)
+	withHole := publish()
+	if _, exists := feed.content[removed]; exists || len(feed.content) != len(withHole.Entries) || withHole.Entries[1].Command != unchanged {
+		t.Fatal("hole removal retained a command or replaced unchanged content")
+	}
+	// Membership also ends when a row no longer needs command enrichment.
+	source.Model.Mutate(0, func(record *sessionpresentation.ActivityRecord) {
+		record.Values = []activity.Value{{Kind: "op", Code: "printf first; false"}}
+	})
+	withoutBatch := publish()
+	if _, exists := feed.content[seed.Seq]; exists || withoutBatch.Entries[0].Command != nil {
+		t.Fatal("ineligible row retained command content")
+	}
+	if withoutBatch.Entries[1].Command != unchanged {
+		t.Fatal("unrelated row update replaced unchanged command content")
+	}
+	source.Model.Mutate(1, func(record *sessionpresentation.ActivityRecord) {
+		native := *record.Source.Native
+		native.Command = "printf updated; false"
+		record.Source.Native = &native
+	})
+	updated := publish()
+	if got := updated.Entries[1].Command; got == unchanged || got == nil || got.Details == nil || got.Details.CommandText != "printf updated; false" {
+		t.Fatalf("revised command was not refreshed: %+v", got)
+	}
+	if publish() != updated {
+		t.Fatal("unchanged revised publication was copied")
+	}
+	if first.Entries[0].Command != command {
+		t.Fatal("previous publication was mutated")
+	}
 }
 
 func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
