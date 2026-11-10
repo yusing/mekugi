@@ -166,6 +166,9 @@ func ParseMouse(s string) (Mouse, bool) {
 	if len(s) < 4 || !strings.HasPrefix(s, "\x1b[<") {
 		return Mouse{}, false
 	}
+	if end := s[len(s)-1]; end != 'M' && end != 'm' {
+		return Mouse{}, false
+	}
 	fields := strings.Split(s[3:len(s)-1], ";")
 	if len(fields) != 3 {
 		return Mouse{}, false

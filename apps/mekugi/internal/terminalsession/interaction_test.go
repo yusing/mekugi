@@ -208,3 +208,25 @@ func TestOuterEscapeDisplayedSide(t *testing.T) {
 		})
 	}
 }
+
+func TestMalformedMouseCannotChangePane(t *testing.T) {
+	for _, final := range []byte{'M', 'm', 'X', 'H'} {
+		t.Run(string(final), func(t *testing.T) {
+			var state Interaction
+			shell := &Shell{RosterLabel: "Agents"}
+			shell.Tabs[3] = Rect{X: 0, Y: 0, W: 10, H: 1}
+			in := FrameInput{Shell: shell, Now: time.Unix(1, 0)}
+			for _, b := range append([]byte("\x1b[<0;1;1"), final) {
+				for range in.Dispatch(&state, state.Decoder.Feed(b, in.Now)) {
+				}
+			}
+			wantFocus := 0
+			if final == 'M' {
+				wantFocus = 3
+			}
+			if shell.Focus != wantFocus {
+				t.Fatalf("final %q changed pane focus to %d, want %d", final, shell.Focus, wantFocus)
+			}
+		})
+	}
+}
