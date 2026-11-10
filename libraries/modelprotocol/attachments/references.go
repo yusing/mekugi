@@ -12,7 +12,8 @@ const MaxDepth = 3
 
 // References recognizes @path tokens in selected text, including JSON string
 // values and quoted prose. Email addresses and embedded identifier suffixes
-// remain literal. Quoting after @ permits spaces in a path.
+// remain literal, as do bare @ and diff markers beginning with @@. Quoting
+// after @ permits spaces or a leading @ in a path.
 func References(text string) iter.Seq[string] {
 	return func(yield func(string) bool) {
 		for i := 0; i < len(text); i++ {
@@ -26,7 +27,7 @@ func References(text string) iter.Seq[string] {
 				}
 			}
 			start := i + 1
-			if start == len(text) {
+			if start == len(text) || text[start] == '@' {
 				continue
 			}
 			end := start

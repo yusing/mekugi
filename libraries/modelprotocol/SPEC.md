@@ -42,6 +42,9 @@ Consumers share frame recognition and guidance spelling. The codec performs no
 filesystem reads, composer actions, or model-input projection policy.
 Shared nested-reference recognition identifies bounded-depth `@path` selections
 in attachment text; each acquiring owner retains read authority and budgets.
+Bare `@` and unquoted `@@`-prefixed diff markers remain literal. Quoted paths
+and explicit relative paths can still select filenames beginning with `@`;
+recognized paths retain ordinary read errors rather than being silently skipped.
 
 ## Ownership and acceptance
 

@@ -61,3 +61,29 @@ func TestNativeAttachmentRejectsInvalidSourceSpans(t *testing.T) {
 		t.Fatalf("invalid client span reached snapshot slicing: %+v, %v", prepared, err)
 	}
 }
+
+func TestNativeAttachmentLiteralMarkersAndExplicitBinding(t *testing.T) {
+	workspace := t.TempDir()
+	const text = "@ @@ @@@\n@@ -1,2 +3,4 @@"
+	if err := os.WriteFile(filepath.Join(workspace, "@"), []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, bound := range []bool{false, true} {
+		draft := composer.Draft{Text: text}
+		if bound {
+			draft.Files = []composer.Token{{Start: 2, End: 4, Path: "@"}}
+		}
+		prepared, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{NativeDraft: &draft})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer prepared.Cleanup()
+		got := prepared.Draft
+		if got.Text != text || got.AttachmentNotice != "" || len(got.Attachments) != len(draft.Files) {
+			t.Fatalf("bound=%v: markers changed input: %+v", bound, got)
+		}
+		if bound && !strings.Contains(got.Attachments[0], "@@ -1,2 +3,4 @@") {
+			t.Fatal("explicitly selected @ file was not attached")
+		}
+	}
+}

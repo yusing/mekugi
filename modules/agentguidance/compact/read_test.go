@@ -287,6 +287,27 @@ func TestReloadNestedSelectedText(t *testing.T) {
 	}
 }
 
+func TestReloadLiteralReferenceMarkers(t *testing.T) {
+	testMcat(t)
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"root":        "@ @@ @@@\n@@ -1,2 +3,4 @@\n@\"with spaces\" @'@'",
+		"with spaces": "quoted path contents", "@": "explicit at-sign path",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := ReadSources(t.Context(), `{"sources":[{"path":"root"}]}`, dir, os.Environ(), ChangeReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := snapshot.Sources[0].Text()
+	if snapshot.Sources[0].ExitCode != 0 || !strings.Contains(body, "quoted path contents") || strings.Count(body, "explicit at-sign path") != 1 {
+		t.Fatal(body)
+	}
+}
+
 func TestReloadSkillReferences(t *testing.T) {
 	testMcat(t)
 	dir := t.TempDir()

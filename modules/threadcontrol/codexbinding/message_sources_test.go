@@ -71,7 +71,7 @@ func TestAgentMessageSourceDeliveryAndRetry(t *testing.T) {
 	for _, operation := range []string{"send_message", "followup_task", "btw"} {
 		t.Run(operation, func(t *testing.T) {
 			driver, host, session, caller, workspace := sourceFixture(t)
-			const message = `Read @source.txt @source.txt @"with spaces.txt" @missing.txt \@literal user@example.com @AGENTS.md`
+			const message = `Read @source.txt @source.txt @"with spaces.txt" @missing.txt \@literal user@example.com @AGENTS.md; markers @ @@ @@@`
 			var questions []string
 			host.ask = func(_ context.Context, member *control.Member, text string) (string, error) {
 				if member.Thread != "child" {
@@ -115,6 +115,9 @@ func TestAgentMessageSourceDeliveryAndRetry(t *testing.T) {
 			if strings.Count(got, "FROZEN_CHILD_BYTES") != 1 {
 				t.Fatal("duplicate reference acquired twice", got)
 			}
+			if strings.Count(got, "exit_code=1") != 1 {
+				t.Fatal("literal markers produced extra failed reads", got)
+			}
 			if err := os.WriteFile(filepath.Join(workspace, "source.txt"), []byte("LATER_EDIT"), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -147,7 +150,7 @@ func TestAgentMessageSourceDeliveryAndRetry(t *testing.T) {
 
 func TestAgentMessageSourcesLiteralAndDenied(t *testing.T) {
 	driver, host, _, caller, _ := sourceFixture(t)
-	const literal = `Mention \@literal and user@example.com, not a read`
+	const literal = "Mention \\@literal and user@example.com, not a read: @ @@ @@@\n@@ -1,2 +3,4 @@"
 	raw, _ := json.Marshal(map[string]string{"target": "child", "message": literal})
 	before := len(host.inputs)
 	if _, err := driver.controlAction(t.Context(), caller, raw, "send_message"); err != nil {
