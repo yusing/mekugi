@@ -82,7 +82,7 @@ func TestNativeProviderPinnedHTTPHeadersQueriesAndModels(t *testing.T) {
 	defer upstream.Close()
 	p := nativeTestClient(upstream.URL+"/prefix%2Ftenant/v1?base=a%2Bb", upstream.Client())
 	headers := http.Header{"Authorization": {"Bearer fixture"}, "X-Provider-Header": {"literal"}, "X-Mekugi-Local": {"private"}, "Connection": {"X-Hop"}, "X-Hop": {"remove"}, "Proxy-Authorization": {"remove"}, "Content-Encoding": {"gzip"}}
-	ctx := withProviderQuery(t.Context(), "native=x%252Fy")
+	ctx := WithProviderQuery(t.Context(), "native=x%252Fy")
 	response, err := p.ForwardExecution(ctx, ctx, []byte(body), headers, "")
 	if err != nil {
 		t.Fatal(err)

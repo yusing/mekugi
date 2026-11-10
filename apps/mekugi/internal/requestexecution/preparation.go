@@ -38,5 +38,5 @@ type Prepared interface {
 // Naming is the request-facing part of the invocation's naming coordinator.
 type Naming interface {
 	ObserveInput(string, []byte)
-	Completed(string, http.Header)
+	Completed(context.Context, string, http.Header)
 }

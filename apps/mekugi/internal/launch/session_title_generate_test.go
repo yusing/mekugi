@@ -74,7 +74,7 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 			headers.Set(codexresponses.ThreadIDHeader, "main")
 			g.ObserveInput("main", responses.MustMarshalJSON("First request"))
 			g.ObserveInput("main", responses.MustMarshalJSON("Later request"))
-			g.Completed("main", headers)
+			g.Completed(t.Context(), "main", headers)
 			update := awaitSessionTitle(t, g)
 			if update.name != "Improve session naming" || update.thread != "main" {
 				t.Fatalf("update = %+v", update)
@@ -95,7 +95,7 @@ func TestSessionTitleGenerationEligibility(t *testing.T) {
 		g.register(binding.ThreadInfo{ID: "fork", Name: "Inherited title"})
 		for _, thread := range []string{"saved", "resumed", "fork", "child", "side"} {
 			g.ObserveInput(thread, responses.MustMarshalJSON("Question"))
-			g.Completed(thread, sessionTitleAuthHeaders())
+			g.Completed(t.Context(), thread, sessionTitleAuthHeaders())
 		}
 		synctest.Wait()
 		g.register(binding.ThreadInfo{ID: "fresh"})
@@ -104,12 +104,12 @@ func TestSessionTitleGenerationEligibility(t *testing.T) {
 			t.Fatal("generation preceded successful upstream completion")
 		}
 		g.ObserveInput("fresh", responses.MustMarshalJSON("Question"))
-		g.Completed("fresh", sessionTitleAuthHeaders())
+		g.Completed(t.Context(), "fresh", sessionTitleAuthHeaders())
 		awaitSessionTitle(t, g)
 		g.register(binding.ThreadInfo{ID: "fresh"})
 		for range 3 {
 			g.ObserveInput("fresh", responses.MustMarshalJSON("Follow-up"))
-			g.Completed("fresh", sessionTitleAuthHeaders())
+			g.Completed(t.Context(), "fresh", sessionTitleAuthHeaders())
 		}
 		synctest.Wait()
 		if calls.Load() != 1 {
@@ -144,7 +144,7 @@ func TestSessionTitleGenerationFailures(t *testing.T) {
 		}))
 		g.register(binding.ThreadInfo{ID: "main"})
 		g.ObserveInput("main", responses.MustMarshalJSON("Question"))
-		g.Completed("main", sessionTitleAuthHeaders())
+		g.Completed(t.Context(), "main", sessionTitleAuthHeaders())
 		<-started
 		cancel()
 		synctest.Wait()
@@ -272,6 +272,88 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	}
 }
 
+func TestSessionTitleNativeProviderHTTPConsumer(t *testing.T) {
+	for _, bearer := range []bool{false, true} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("bearer=%v/stream=%v", bearer, stream), func(t *testing.T) {
+				var namingCalls atomic.Int32
+				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					body, _ := io.ReadAll(r.Body)
+					request, err := codexresponses.ParseRequest(body)
+					if err != nil {
+						t.Error(err)
+						w.WriteHeader(400)
+						return
+					}
+					wantAuth := ""
+					if bearer {
+						wantAuth = "Bearer custom-token"
+					}
+					if r.URL.Path != "/tenant/responses" || r.URL.RawQuery != "base=a%2Bb&native=x%252Fy" || r.Header.Get("Authorization") != wantAuth || r.Header.Get(openai.AccountIDHeader) != "" || r.Header.Get("X-Provider") != "configured" || r.Header.Get("X-Api-Key") != "configured-key" {
+						t.Error("selected provider endpoint, authentication or configured headers changed")
+					}
+					w.Header().Set("Content-Type", "application/json")
+					if request.Model() != sessionTitleModel {
+						io.WriteString(w, `{"id":"primary","status":"completed","output":[]}`)
+						return
+					}
+					namingCalls.Add(1)
+					for _, name := range []string{codexresponses.ThreadIDHeader, codexresponses.TurnMetadataHeader, codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.SessionIDHeader, codexresponses.RoutingSessionHeader, "x-codex-turn-state", "X-Mekugi-Private", "X-Unrelated-Credential"} {
+						if r.Header.Get(name) != "" {
+							t.Errorf("auxiliary request leaked %s", name)
+						}
+					}
+					if request.ReasoningEffort() != "medium" || binding.SubmittedUserText(request.Fields["input"], true) != "Name this custom session" {
+						t.Error("naming policy/input changed")
+					}
+					response := strings.TrimSuffix(generatedTitleResponse, "}") + `,"usage":{"input_tokens":100,"input_tokens_details":{"cached_tokens":0},"output_tokens":20,"output_tokens_details":{"reasoning_tokens":0}}}`
+					if stream {
+						w.Header().Set("Content-Type", "text/event-stream")
+						response = "data: {\"type\":\"response.completed\",\"response\":" + response + "}\n\n"
+					}
+					io.WriteString(w, response)
+				}))
+				defer upstream.Close()
+				route, err := profileRoute([]string{"-c", `model_provider="custom"`, "-c", fmt.Sprintf(`model_providers.custom={base_url=%q,http_headers={"X-Provider"="configured","Authorization"="ignored","thread-id"="ignored","session-id"="ignored"},env_http_headers={"X-Api-Key"="PROVIDER_KEY"}}`, upstream.URL+"/tenant?base=a%2Bb")}, &launchoptions.Profile{Name: "custom"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				provider := newTestProviderClient("http://openai-must-not-be-used.invalid", upstream.Client())
+				route.HTTPClient, provider.Native = upstream.Client(), route
+				g := newTestSessionNaming(t.Context(), provider)
+				g.usage = newTestUsage(t)
+				g.register(binding.ThreadInfo{ID: "main"})
+				handler := inferencegateway.ResponsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, (requestexecution.Executor{Provider: provider, Naming: g}).ExecuteHTTP)
+				request := modelTestRequest(t, "gpt-6-sol")
+				request.Fields["input"] = mustTestJSON(t, "Name this custom session")
+				req := httptest.NewRequest("POST", "/v1/responses?native=x%252Fy", strings.NewReader(string(mustTestJSON(t, request.Fields))))
+				req.Header = serverMetadataHeaders(t, "turn", nil)
+				req.Header.Set(codexresponses.ThreadIDHeader, "main")
+				if bearer {
+					req.Header.Set("Authorization", "Bearer custom-token")
+				}
+				req.Header.Set("X-Provider", "configured")
+				req.Header.Set("X-Api-Key", "configured-key")
+				for _, name := range []string{codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.SessionIDHeader, codexresponses.RoutingSessionHeader, "x-codex-turn-state", "X-Mekugi-Private", "X-Unrelated-Credential"} {
+					req.Header.Set(name, "private")
+				}
+				output := httptest.NewRecorder()
+				handler(output, req)
+				if output.Code != 200 {
+					t.Fatalf("primary response: %d %s", output.Code, output.Body)
+				}
+				if update := awaitSessionTitle(t, g); update.name != "Improve session naming" || update.thread != "main" || namingCalls.Load() != 1 {
+					t.Fatalf("title update: %+v calls=%d", update, namingCalls.Load())
+				}
+				report, ok := g.usage.Snapshot("main")
+				if !ok || report.InputTokens != 100 || report.OutputTokens != 20 || report.MissingUsage != 0 || report.Roundtrips != 1 || report.Cost.Known || report.Cost.Total() != 0 {
+					t.Fatalf("custom naming must retain usage without OpenAI prices: %+v", report)
+				}
+			})
+		}
+	}
+}
+
 func TestSessionTitlePromptKeepsRequestLocal(t *testing.T) {
 	request := modelTestRequest(t, "gpt-6-sol")
 	request.Fields["input"] = mustTestJSON(t, []any{
@@ -310,7 +392,7 @@ func TestSessionTitleUsageAccounting(t *testing.T) {
 				if report.MissingUsage != 1 {
 					t.Fatal("transport failure incorrectly claimed complete usage")
 				}
-			} else if report.InputTokens != 100 || report.OutputTokens != 20 || report.MissingUsage != 0 {
+			} else if report.InputTokens != 100 || report.OutputTokens != 20 || report.MissingUsage != 0 || !report.Cost.Known || report.Cost.Total() <= 0 {
 				t.Fatalf("title usage = %+v", report)
 			}
 		})
@@ -344,9 +426,9 @@ func TestSessionTitleSkipsWithoutCodexAccess(t *testing.T) {
 				g.usage = newTestUsage(t)
 				g.register(binding.ThreadInfo{ID: "main"})
 				g.ObserveInput("main", responses.MustMarshalJSON("First request"))
-				g.Completed("main", tc.headers)
+				g.Completed(t.Context(), "main", tc.headers)
 				g.ObserveInput("main", responses.MustMarshalJSON("Later request"))
-				g.Completed("main", sessionTitleAuthHeaders())
+				g.Completed(t.Context(), "main", sessionTitleAuthHeaders())
 				synctest.Wait()
 				if calls.Load() != 0 || len(g.updates) != 0 {
 					t.Fatal("skipped naming called a provider or emitted a title update")
@@ -393,10 +475,10 @@ func TestSessionTitleUnavailableLunaSkipsSilently(t *testing.T) {
 				}))
 				g.register(binding.ThreadInfo{ID: "main"})
 				g.ObserveInput("main", responses.MustMarshalJSON("Question"))
-				g.Completed("main", sessionTitleAuthHeaders())
+				g.Completed(t.Context(), "main", sessionTitleAuthHeaders())
 				synctest.Wait()
 				g.ObserveInput("main", responses.MustMarshalJSON("Follow-up"))
-				g.Completed("main", sessionTitleAuthHeaders())
+				g.Completed(t.Context(), "main", sessionTitleAuthHeaders())
 				synctest.Wait()
 				if calls.Load() != 1 || len(g.updates) != 0 {
 					t.Fatal("unavailable Luna emitted an update, retried, or fell back")
@@ -454,7 +536,7 @@ func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 	u.titleGenerator = g
 	g.register(binding.ThreadInfo{ID: "main"})
 	g.ObserveInput("main", responses.MustMarshalJSON("First request"))
-	g.Completed("main", sessionTitleAuthHeaders())
+	g.Completed(t.Context(), "main", sessionTitleAuthHeaders())
 	select {
 	case <-started:
 	case <-time.After(5 * time.Second):

@@ -30,7 +30,7 @@ func ResponsesHandler(lifecycle context.Context, responseStartTimeout time.Durat
 			http.Error(trackedWriter, err.Error(), http.StatusBadRequest)
 			return
 		}
-		startCtx, executionCtx, cancelRequest := RequestContexts(withProviderQuery(request.Context(), request.URL.RawQuery), lifecycle, responseStartTimeout)
+		startCtx, executionCtx, cancelRequest := RequestContexts(WithProviderQuery(request.Context(), request.URL.RawQuery), lifecycle, responseStartTimeout)
 		defer cancelRequest()
 		if err := execute(startCtx, executionCtx, parsedRequest, request.Header, trackedWriter); err != nil {
 			writeRequestError(trackedWriter, err)

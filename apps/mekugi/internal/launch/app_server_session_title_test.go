@@ -128,7 +128,7 @@ func TestAppServerSessionTitleSkippedNamingPreservesHostMetadata(t *testing.T) {
 	setNotice(&u.attached.feedback, presentationTime(u.clock), "Existing host notice", false)
 	u.dirty = false
 	u.titleGenerator.ObserveInput("main", responses.MustMarshalJSON("First user message"))
-	u.titleGenerator.Completed("main", nil)
+	u.titleGenerator.Completed(t.Context(), "main", nil)
 	select {
 	case update := <-u.titleUpdates:
 		t.Fatalf("unavailable naming emitted update: %+v", update)

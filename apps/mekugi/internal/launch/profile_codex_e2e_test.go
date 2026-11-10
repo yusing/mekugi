@@ -128,6 +128,13 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 						profileFixtureReply(w, "prewarm", nil)
 						return
 					}
+					if wire["model"] == sessionTitleModel {
+						if requestHeaders.Get(codexresponses.TurnMetadataHeader) != "" || requestHeaders.Get(codexresponses.ThreadIDHeader) != "" || requestHeaders.Get("x-codex-turn-state") != "" {
+							t.Error("profile naming leaked execution identity")
+						}
+						profileFixtureReply(w, "title", map[string]any{"type": "message", "role": "assistant", "status": "completed", "content": []any{map[string]string{"type": "output_text", "text": "Profile fixture task"}}})
+						return
+					}
 					var native struct {
 						Input []map[string]jsontext.Value `json:"input"`
 					}

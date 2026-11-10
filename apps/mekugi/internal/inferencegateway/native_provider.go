@@ -11,6 +11,7 @@ import (
 	"github.com/coder/websocket"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/httptransport"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 // NativeProvider pins a host-selected Responses provider. Authentication and
@@ -21,12 +22,57 @@ type NativeProvider struct {
 	WebSockets              bool
 	ConnectTimeout          time.Duration
 	StreamIdleTimeout       time.Duration
+	HeaderNames             []string
 }
 
 type queryContextKey struct{}
 
-func withProviderQuery(ctx context.Context, query string) context.Context {
+// WithProviderQuery carries the host's exact query without re-encoding it.
+func WithProviderQuery(ctx context.Context, query string) context.Context {
 	return context.WithValue(ctx, queryContextKey{}, query)
+}
+
+func ProviderQuery(ctx context.Context) string {
+	query, _ := ctx.Value(queryContextKey{}).(string)
+	return query
+}
+
+// AuxiliaryHeaders captures only the selected provider's authentication and
+// configured headers, never the triggering exchange's execution identity.
+func AuxiliaryHeaders(provider Forwarder, headers http.Header) (http.Header, error) {
+	if selected, ok := provider.(interface {
+		AuxiliaryHeaders(http.Header) (http.Header, error)
+	}); ok {
+		return selected.AuxiliaryHeaders(headers)
+	}
+	return openAIAuxiliaryHeaders(headers)
+}
+
+func (c *Client) AuxiliaryHeaders(headers http.Header) (http.Header, error) {
+	if c.Native == nil {
+		return openAIAuxiliaryHeaders(headers)
+	}
+	allowed := NativeHeaders(headers)
+	out := make(http.Header)
+	for _, name := range append([]string{"Authorization", openai.AccountIDHeader}, c.Native.HeaderNames...) {
+		out[http.CanonicalHeaderKey(name)] = append([]string(nil), allowed.Values(name)...)
+	}
+	identity := make(http.Header)
+	codexresponses.ForwardHeaders(identity, headers)
+	for name := range identity {
+		out.Del(name)
+	}
+	out.Del(codexresponses.SessionIDHeader)
+	out.Del(codexresponses.RoutingSessionHeader)
+	return out, nil
+}
+
+func openAIAuxiliaryHeaders(headers http.Header) (http.Header, error) {
+	authorization, account, err := openai.Credentials(headers)
+	if err != nil {
+		return nil, err
+	}
+	return http.Header{"Authorization": {authorization}, openai.AccountIDHeader: {account}}, nil
 }
 
 func (p *NativeProvider) endpoint(path, query string) (string, error) {

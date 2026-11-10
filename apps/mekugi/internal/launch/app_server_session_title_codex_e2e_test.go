@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
@@ -37,14 +40,20 @@ import (
 // The installed host owns name persistence; both model requests terminate at
 // a local fixture. A fresh host resume proves the title is not only UI memory.
 func TestAppServerSessionTitleNativeCodexE2E(t *testing.T) {
-	testAppServerSessionTitleNativeCodexE2E(t, false)
+	testAppServerSessionTitleNativeCodexE2E(t, false, "")
 }
 
 func TestAppServerSessionTitleManualNativeCodexE2E(t *testing.T) {
-	testAppServerSessionTitleNativeCodexE2E(t, true)
+	testAppServerSessionTitleNativeCodexE2E(t, true, "")
 }
 
-func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
+func TestAppServerSessionTitleCustomProfileNativeCodexE2E(t *testing.T) {
+	for _, auth := range []string{"anonymous", "bearer"} {
+		t.Run(auth, func(t *testing.T) { testAppServerSessionTitleNativeCodexE2E(t, false, auth) })
+	}
+}
+
+func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool, customAuth string) {
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +70,15 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	release := func() { releaseOnce.Do(func() { close(releaseNaming) }) }
 	var primaryCalls, namingCalls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if customAuth != "" {
+			wantAuth := ""
+			if customAuth == "bearer" {
+				wantAuth = "Bearer fixture-profile-token"
+			}
+			if r.URL.Path != "/tenant/v1/responses" || r.URL.RawQuery != "version=a%2Bb" || r.Header.Get("Authorization") != wantAuth || r.Header.Get(openai.AccountIDHeader) != "" || r.Header.Get("X-Provider") != "native" {
+				t.Error("custom profile endpoint/query/header/authentication changed")
+			}
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Error(err)
@@ -74,6 +92,11 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 			return
 		}
 		if request.Model() == sessionTitleModel {
+			for _, name := range []string{codexresponses.ThreadIDHeader, codexresponses.TurnMetadataHeader, codexresponses.SessionIDHeader, "x-codex-turn-state"} {
+				if r.Header.Get(name) != "" {
+					t.Errorf("naming leaked execution identity: %s", name)
+				}
+			}
 			if manual {
 				namingCalls.Add(1)
 				t.Error("manual rename made an automatic naming request")
@@ -109,13 +132,39 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	// Unblock a gated upstream before httptest.Server.Close on any failure.
 	defer release()
 	provider := newTestProviderClient(upstream.URL, upstream.Client())
+	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
+	var profileArgs []string
+	if customAuth != "" {
+		home := launchoptions.EnvironmentValue(environment, "CODEX_HOME")
+		auth := ""
+		if customAuth == "bearer" {
+			auth = "env_key=\"PROFILE_TITLE_TOKEN\"\n"
+			environment = append(environment, "PROFILE_TITLE_TOKEN=fixture-profile-token")
+		}
+		profile := "model=\"gpt-6-astra\"\nmodel_provider=\"custom\"\n[model_providers.custom]\nname=\"Title fixture\"\nbase_url=" + strconv.Quote(upstream.URL+"/tenant/v1") + "\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\nquery_params={version=\"a%2Bb\"}\nhttp_headers={\"X-Provider\"=\"native\"}\n" + auth
+		if err := os.WriteFile(filepath.Join(home, "work.config.toml"), []byte(profile), 0600); err != nil {
+			t.Fatal(err)
+		}
+		imported, args, err := launchoptions.ImportProfile([]string{"-pwork"}, environment)
+		if err != nil {
+			t.Fatal(err)
+		}
+		profileArgs = args
+		route, err := profileRoute(args, imported)
+		if err != nil {
+			t.Fatal(err)
+		}
+		route.HTTPClient, provider.Native = upstream.Client(), route
+	}
 	generator := newTestSessionNaming(ctx, provider)
 	handler := inferencegateway.ResponsesHandler(ctx, time.Minute, (requestexecution.Executor{Provider: provider, Naming: generator}).ExecuteHTTP)
 	threads := make(chan string, 8)
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Fixture authentication is added only at the local router boundary.
-		r.Header.Set("Authorization", "Bearer fixture-token")
-		r.Header.Set(openai.AccountIDHeader, "fixture-account")
+		if customAuth == "" {
+			r.Header.Set("Authorization", "Bearer fixture-token")
+			r.Header.Set(openai.AccountIDHeader, "fixture-account")
+		}
 		select {
 		case threads <- r.Header.Get(codexresponses.ThreadIDHeader):
 		default:
@@ -123,9 +172,13 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 		handler.ServeHTTP(w, r)
 	}))
 	defer router.Close()
-	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	command := func(runCtx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(runCtx, codex, "app-server", "-c", `model_providers.titlefixture={name="preview",base_url=`+strconv.Quote(router.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false,supports_websockets=false}`, "-c", `model_provider="titlefixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		if customAuth != "" {
+			args := append([]string{"app-server"}, profileArgs...)
+			args = append(args, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+			cmd = exec.CommandContext(runCtx, codex, codexArgs(router.URL+"/v1", args, false, false, provider.Native)...)
+		}
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}

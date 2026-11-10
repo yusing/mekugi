@@ -34,7 +34,7 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 	lifecycle, cancel := context.WithCancel(lifecycle)
 	endpoint := &WebSocketEndpoint{cancel: cancel}
 	endpoint.handler = func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithCancel(withProviderQuery(r.Context(), r.URL.RawQuery))
+		ctx, cancel := context.WithCancel(WithProviderQuery(r.Context(), r.URL.RawQuery))
 		defer cancel()
 		stop := context.AfterFunc(lifecycle, cancel)
 		defer stop()

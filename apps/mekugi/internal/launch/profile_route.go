@@ -67,8 +67,19 @@ func profileRoute(args []string, profile *launchoptions.Profile) (*inferencegate
 			return nil, errors.New("invalid provider model_catalog_url")
 		}
 	}
-	return &inferencegateway.NativeProvider{ID: id, BaseURL: base, CatalogURL: catalog, WebSockets: websockets,
+	return &inferencegateway.NativeProvider{ID: id, BaseURL: base, CatalogURL: catalog, WebSockets: websockets, HeaderNames: profileHeaderNames(definition),
 		ConnectTimeout: profileMilliseconds(definition["websocket_connect_timeout_ms"]), StreamIdleTimeout: profileMilliseconds(definition["stream_idle_timeout_ms"])}, nil
+}
+
+func profileHeaderNames(definition map[string]any) []string {
+	var names []string
+	for _, field := range []string{"http_headers", "env_http_headers"} {
+		configured, _ := definition[field].(map[string]any)
+		for name := range configured {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 func profileMilliseconds(value any) time.Duration {
@@ -223,6 +234,7 @@ func resolveProfileRoute(ctx context.Context, executable string, args, environme
 		}
 		definition[key] = value
 	}
+	route.HeaderNames = profileHeaderNames(definition)
 	providers, _ := launchoptions.ConfigOverrides(args)["model_providers"].(map[string]any)
 	if providers == nil {
 		providers = make(map[string]any)

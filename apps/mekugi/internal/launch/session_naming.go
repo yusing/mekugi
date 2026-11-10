@@ -73,7 +73,7 @@ func (g *sessionNaming) ObserveInput(thread string, input []byte) {
 	}
 }
 
-func (g *sessionNaming) Completed(thread string, headers http.Header) {
+func (g *sessionNaming) Completed(ctx context.Context, thread string, headers http.Header) {
 	entry := g.scope(thread)
 	if entry == nil {
 		return
@@ -84,7 +84,7 @@ func (g *sessionNaming) Completed(thread string, headers http.Header) {
 	}
 	// Admission precedes availability: absent credentials cannot enable a retry
 	// on a later exchange. Capture this exchange's auth and originating thread.
-	complete := requestexecution.NamingCompletion(g.provider, g.usage, thread, headers)
+	complete := requestexecution.NamingCompletion(ctx, g.provider, g.usage, thread, headers)
 	if complete == nil {
 		return
 	}

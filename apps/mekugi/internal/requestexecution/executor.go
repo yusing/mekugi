@@ -584,7 +584,7 @@ func (a *requestAttempt) observeTitleSuccess() {
 	if !a.approvalReview && a.finishUsage && a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
 		a.response.StatusCode >= 200 && a.response.StatusCode < 300 &&
 		a.finalization.upstreamTerminalState == responses.TerminalCompleted {
-		a.executor.Naming.Completed(a.threadID, a.headers)
+		a.executor.Naming.Completed(a.startCtx, a.threadID, a.headers)
 	}
 }
 

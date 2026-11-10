@@ -18,22 +18,20 @@ import (
 	"github.com/yusing/mekugi/contracts/inference"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/providers/openai"
 )
 
 // NamingCompletion captures only authentication for one auxiliary title operation.
-func NamingCompletion(provider inferencegateway.Forwarder, totals *accounting.Service, thread string, headers http.Header) inference.Complete {
+func NamingCompletion(source context.Context, provider inferencegateway.Forwarder, totals *accounting.Service, thread string, headers http.Header) inference.Complete {
 	if provider == nil {
 		return nil
 	}
-	authorization, accountID, err := openai.Credentials(headers)
+	auxHeaders, err := inferencegateway.AuxiliaryHeaders(provider, headers)
 	if err != nil {
 		return nil
 	}
-	auxHeaders := http.Header{}
-	auxHeaders.Set("Authorization", authorization)
-	auxHeaders.Set(openai.AccountIDHeader, accountID)
+	query := inferencegateway.ProviderQuery(source)
 	return func(ctx context.Context, request inference.Request) (string, error) {
+		ctx = inferencegateway.WithProviderQuery(ctx, query)
 		body, err := json.Marshal(map[string]any{
 			"model": request.Model, "reasoning": map[string]string{"effort": request.Effort},
 			"stream": true, "store": false, "tool_choice": "auto", "parallel_tool_calls": false, "include": []string{},
@@ -49,6 +47,9 @@ func NamingCompletion(provider inferencegateway.Forwarder, totals *accounting.Se
 		if totals != nil && !rejected && (response == nil || response.StatusCode >= 200 && response.StatusCode < 300) {
 			usage = totals.Observation(thread, thread, request.Model, "")
 			usage.Reasoning = request.Effort
+			if response != nil && response.UnknownPrice {
+				usage.Price = func(string, inference.Usage) accounting.Cost { return accounting.Cost{} }
+			}
 			defer usage.Finish()
 		}
 		if err != nil {
