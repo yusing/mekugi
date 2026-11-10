@@ -34,8 +34,8 @@ func ReadHostRecord(directory, workspace, callID string, commentary bool) (HostR
 		return result, false, err
 	}
 	if header.Version != 3 {
-		record, found, err := legacycall.Read(directory, workspace, callID, commentary, MaxRecordBytes)
-		return HostRecord{Record: record}, found, err
+		record, err := legacycall.Decode(directory, workspace, callID, commentary, data, MaxRecordBytes)
+		return HostRecord{Record: record}, err == nil, err
 	}
 	if err := json.Unmarshal(data, &result, jsonv1.DefaultOptionsV1(), json.RejectUnknownMembers(true)); err != nil {
 		return result, false, err

@@ -9,12 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"slices"
 
 	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 // Source: internal/router/mekugi_store.go:123:201@[ff834f05] record identity and read
@@ -36,29 +33,11 @@ func ValidName(name string, commentary bool) bool {
 	return recordkind.HashedName(prefix, ".json")(name)
 }
 
-func Read(directory, workspace, callID string, commentary bool, limit int) (Record, bool, error) {
-	name := filepath.Join(directory, Name(workspace, callID, commentary))
-	info, err := os.Lstat(name)
-	if errors.Is(err, os.ErrNotExist) {
-		return Record{}, false, nil
-	}
-	if err != nil {
-		return Record{}, false, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > int64(limit) {
-		return Record{}, false, errors.New("invalid replay record file")
-	}
-	f, err := persistence.OpenRetained(name, limit)
-	if err != nil {
-		return Record{}, false, err
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
-	if err != nil {
-		return Record{}, false, err
-	}
+// Decode validates acquired historical bytes and restores their snapshots.
+// The caller owns admission of the record file; snapshot admission stays here.
+func Decode(directory, workspace, callID string, commentary bool, data []byte, limit int) (Record, error) {
 	if len(data) > limit {
-		return Record{}, false, errors.New("replay record exceeds size limit")
+		return Record{}, errors.New("replay record exceeds size limit")
 	}
 	var r Record
 	// Retired tool-success and journal metadata is accepted only at the wire
@@ -85,23 +64,23 @@ func Read(directory, workspace, callID string, commentary bool, limit int) (Reco
 	wire.History.History = &r.History
 	dec := jsontext.NewDecoder(bytes.NewReader(data))
 	if err := json.UnmarshalDecode(dec, &wire, jsonv1.DefaultOptionsV1(), json.RejectUnknownMembers(true)); err != nil {
-		return r, false, fmt.Errorf("decode replay record: %w", err)
+		return r, fmt.Errorf("decode replay record: %w", err)
 	}
 	if wire.History.ExecObservation != nil {
 		r.History.ExecObservation = &wire.History.ExecObservation.Observation
 	}
 	if err := json.UnmarshalDecode(dec, new(any), jsonv1.DefaultOptionsV1()); !errors.Is(err, io.EOF) {
-		return r, false, errors.New("trailing replay record data")
+		return r, errors.New("trailing replay record data")
 	}
 	if (r.Version != 1 && r.Version != 2) || r.Workspace != workspace || r.CallID != callID || r.Commentary != commentary {
-		return r, false, errors.New("replay record identity/version mismatch")
+		return r, errors.New("replay record identity/version mismatch")
 	}
 	if err := restoreSnapshots(directory, &r, limit); err != nil {
-		return r, false, err
+		return r, err
 	}
 	// Consumers and immutable comparisons use the expanded version-1 facts.
 	r.Version, r.Snapshots = 1, nil
-	return r, true, nil
+	return r, nil
 }
 
 // UnmarshalJSONFrom accepts the retired acquisition identity in both inline

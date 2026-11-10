@@ -40,19 +40,11 @@ const historicalWire = `{
 	}
 }`
 
-func writeRecord(t *testing.T, directory, wire string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(directory, legacycall.Name(workspace, callID, false)), []byte(wire), 0600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestReadHistoricalV1Semantics(t *testing.T) {
+func TestDecodeHistoricalV1Semantics(t *testing.T) {
 	directory := t.TempDir()
-	writeRecord(t, directory, historicalWire)
-	r, found, err := legacycall.Read(directory, workspace, callID, false, readLimit)
-	if err != nil || !found {
-		t.Fatalf("read historical record: found %v, error %v", found, err)
+	r, err := legacycall.Decode(directory, workspace, callID, false, []byte(historicalWire), readLimit)
+	if err != nil {
+		t.Fatalf("decode historical record: %v", err)
 	}
 	h := r.History
 	if r.Version != 1 || r.Snapshots != nil || h.ToolName != "exec" || h.Report != "keep merged history" {
@@ -75,7 +67,7 @@ func TestReadHistoricalV1Semantics(t *testing.T) {
 	}
 }
 
-func TestReadRejectsInvalidMixedRecord(t *testing.T) {
+func TestDecodeRejectsInvalidMixedRecord(t *testing.T) {
 	for _, tc := range []struct{ name, old, replacement string }{
 		{"unknown-observation", `"Sweep":true`, `"Sweep":true,"Future":null`},
 		{"unknown-unrelated-file", `"Path":"a"`, `"Path":"a","Future":true`},
@@ -98,15 +90,15 @@ func TestReadRejectsInvalidMixedRecord(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			directory := t.TempDir()
-			writeRecord(t, directory, strings.Replace(historicalWire, tc.old, tc.replacement, 1))
-			if _, found, err := legacycall.Read(directory, workspace, callID, false, readLimit); err == nil || found {
-				t.Fatalf("accepted invalid mixed record: found %v, error %v", found, err)
+			wire := strings.Replace(historicalWire, tc.old, tc.replacement, 1)
+			if _, err := legacycall.Decode(directory, workspace, callID, false, []byte(wire), readLimit); err == nil {
+				t.Fatal("accepted invalid mixed record")
 			}
 		})
 	}
 }
 
-func TestReadMixedV2RequiresSnapshotDespiteValidSegments(t *testing.T) {
+func TestDecodeMixedV2RequiresSnapshotDespiteValidSegments(t *testing.T) {
 	// This record is independently spelled, with a real content-addressed gzip
 	// dependency. Valid command evidence cannot excuse missing filesystem facts.
 	manifest := []byte(`{"Exec":[{"Path":"a","Content":"retained baseline"}]}`)
@@ -122,7 +114,6 @@ func TestReadMixedV2RequiresSnapshotDespiteValidSegments(t *testing.T) {
 	for _, state := range []string{"missing", "corrupt", "valid"} {
 		t.Run(state, func(t *testing.T) {
 			directory := t.TempDir()
-			writeRecord(t, directory, wire)
 			if state != "missing" {
 				var compressed bytes.Buffer
 				z := gzip.NewWriter(&compressed)
@@ -141,15 +132,15 @@ func TestReadMixedV2RequiresSnapshotDespiteValidSegments(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			r, found, err := legacycall.Read(directory, workspace, callID, false, readLimit)
+			r, err := legacycall.Decode(directory, workspace, callID, false, []byte(wire), readLimit)
 			if state != "valid" {
-				if err == nil || found {
-					t.Fatalf("segments masked %s snapshot: found %v, error %v", state, found, err)
+				if err == nil {
+					t.Fatalf("segments masked %s snapshot", state)
 				}
 				return
 			}
-			if err != nil || !found {
-				t.Fatalf("read valid mixed snapshot: found %v, error %v", found, err)
+			if err != nil {
+				t.Fatalf("decode valid mixed snapshot: %v", err)
 			}
 			if r.Version != 1 || r.Snapshots != nil || r.History.ExecObservation == nil || !reflect.DeepEqual(r.History.ExecObservation.Files, []legacycall.File{{Path: "a", Content: "retained baseline"}}) {
 				t.Fatalf("snapshot not expanded into normalized record: %#v", r)
@@ -161,11 +152,11 @@ func TestReadMixedV2RequiresSnapshotDespiteValidSegments(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, found, err := legacycall.Read(directory, workspace, callID, false, len(expanded)); err != nil || !found {
-				t.Fatalf("exact expanded limit rejected: found=%t, %v", found, err)
+			if _, err := legacycall.Decode(directory, workspace, callID, false, []byte(wire), len(expanded)); err != nil {
+				t.Fatalf("exact expanded limit rejected: %v", err)
 			}
-			if _, found, err := legacycall.Read(directory, workspace, callID, false, len(expanded)-1); err == nil || found {
-				t.Fatalf("oversized expanded record accepted: found=%t, %v", found, err)
+			if _, err := legacycall.Decode(directory, workspace, callID, false, []byte(wire), len(expanded)-1); err == nil {
+				t.Fatal("oversized expanded record accepted")
 			}
 			data, exists, err := legacycall.SnapshotData(directory, name, readLimit)
 			if err != nil || !exists || !bytes.Equal(data, manifest) {
@@ -175,7 +166,7 @@ func TestReadMixedV2RequiresSnapshotDespiteValidSegments(t *testing.T) {
 	}
 }
 
-func TestReadRetiredCreatedPathInReviewSnapshot(t *testing.T) {
+func TestDecodeRetiredCreatedPathInReviewSnapshot(t *testing.T) {
 	directory := t.TempDir()
 	manifest := []byte(`{"Review":[{"AfterPath":"a","CreatedPath":"/unavailable/old/a","Diff":"saved diff"}]}`)
 	name := legacycall.SnapshotName(manifest)
@@ -190,10 +181,10 @@ func TestReadRetiredCreatedPathInReviewSnapshot(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, name), compressed.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeRecord(t, directory, fmt.Sprintf(`{"Version":2,"Workspace":%q,"CallID":%q,"History":{},"Snapshots":{"ReviewFiles":%q}}`, workspace, callID, name))
-	r, found, err := legacycall.Read(directory, workspace, callID, false, readLimit)
-	if err != nil || !found {
-		t.Fatalf("read historical review snapshot: found %v, error %v", found, err)
+	wire := fmt.Sprintf(`{"Version":2,"Workspace":%q,"CallID":%q,"History":{},"Snapshots":{"ReviewFiles":%q}}`, workspace, callID, name)
+	r, err := legacycall.Decode(directory, workspace, callID, false, []byte(wire), readLimit)
+	if err != nil {
+		t.Fatalf("decode historical review snapshot: %v", err)
 	}
 	if !reflect.DeepEqual(r.History.ReviewFiles, []legacycall.ReviewFile{{AfterPath: "a", Diff: "saved diff"}}) {
 		t.Fatalf("retired acquisition metadata changed review: %#v", r.History.ReviewFiles)
