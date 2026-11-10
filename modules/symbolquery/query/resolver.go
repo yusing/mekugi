@@ -476,7 +476,7 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 					flags.Stdout, flags.Stderr = output, output
 					err := flags.Run()
 					retireResolver(flags, processScope)
-					inferGoTags = err == nil && output.Len() <= retainedBytes && !strings.Contains(output.String(), "-tags")
+					inferGoTags = err == nil && output.Len() <= retainedBytes && canInferGoTags(output.String())
 					checkedGoFlags = true
 				}
 				if err := deadline.Err(); err != nil {
@@ -529,4 +529,33 @@ func missingGoBuildTag(source string) string {
 		}
 	}
 	return ""
+}
+
+// canInferGoTags follows cmd/internal/quoted.Split token boundaries: only
+// leading quotes group a field, and quoted contents are not unescaped.
+func canInferGoTags(flags string) bool {
+	for {
+		flags = strings.TrimLeft(flags, " \t\r\n")
+		if flags == "" {
+			return true
+		}
+		var field string
+		if flags[0] == '\'' || flags[0] == '"' {
+			end := strings.IndexByte(flags[1:], flags[0])
+			if end < 0 {
+				return false
+			}
+			field, flags = flags[1:end+1], flags[end+2:]
+		} else {
+			end := strings.IndexAny(flags, " \t\r\n")
+			if end < 0 {
+				end = len(flags)
+			}
+			field, flags = flags[:end], flags[end:]
+		}
+		name, _, _ := strings.Cut(field, "=")
+		if name == "-tags" || name == "--tags" {
+			return false
+		}
+	}
 }

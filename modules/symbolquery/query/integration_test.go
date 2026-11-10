@@ -203,6 +203,14 @@ func TestNativeSymbolRealGoplsTaggedTest(t *testing.T) {
 			}
 		})
 	}
+	t.Run("linker-operand", func(t *testing.T) {
+		t.Setenv("GOFLAGS", "-ldflags=-X=example.com/tagged.version=-tags")
+		out := executeQuery(t, "--workspace", root, "def", "tagged_test.go", "5", "selected")
+		want := fmt.Sprintf("%q:4-4\nfunc selected() {}\n", filepath.Join(root, "tagged_test.go"))
+		if out.ExitCode != 0 || out.Stderr != "" || out.Stdout != want {
+			t.Fatalf("linker operand blocked tagged definition: %+v", out)
+		}
+	})
 	for _, persisted := range []bool{false, true} {
 		t.Run(fmt.Sprintf("explicit-tags/persisted=%t", persisted), func(t *testing.T) {
 			if persisted {
@@ -300,4 +308,17 @@ func nativeRealGoplsReferenceRows(t *testing.T, output string) map[string]int {
 		}
 	}
 	return rows
+}
+
+func TestCanInferGoTags(t *testing.T) {
+	for _, flags := range []string{"", "-ldflags=-X=example.com/tagged.version=-tags", "'-ldflags=-X=example.com/tagged.version=-tags'", "-tagsuffix=x"} {
+		if !canInferGoTags(flags) {
+			t.Errorf("unrelated flags blocked inference: %q", flags)
+		}
+	}
+	for _, flags := range []string{"-tags", "--tags", "-tags=e2e", "--tags=e2e", "'-tags=e2e'", "\"--tags=e2e\"", "-mod=readonly\t-tags=e2e", "'unterminated"} {
+		if canInferGoTags(flags) {
+			t.Errorf("explicit or malformed flags allowed inference: %q", flags)
+		}
+	}
 }
