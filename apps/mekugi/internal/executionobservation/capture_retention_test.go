@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -136,6 +137,10 @@ func TestLargeNamedCaptureRetainsEveryFileAcrossRestart(t *testing.T) {
 }
 
 func TestPatchPythonFormatterCompositionSurvivesPublicationContention(t *testing.T) {
+	synctest.Test(t, testPatchPythonFormatterDelayedCompletion)
+}
+
+func testPatchPythonFormatterDelayedCompletion(t *testing.T) {
 	f := newMChangesSliceFixture(t, "mixed-contended-edits")
 	p := testProxyWithStore(f.store)
 	selected := f.store.scoped(f.ctx).changeScope()
@@ -191,6 +196,9 @@ func TestPatchPythonFormatterCompositionSurvivesPublicationContention(t *testing
 			writeTestFile(t, paths[index], contents(index, value))
 			values[index] = value
 		}
+		// A completed host edit can be observed long after the independent
+		// acquisition deadline. Its retained before-state must not expire.
+		time.Sleep(time.Hour)
 		if err := p.finalizeNativePatches(f.ctx, f.workspace, f.thread, call, original, binding.ExecutionResult{Terminal: true, Succeeded: true}); err != nil {
 			t.Fatal(err)
 		}
@@ -218,6 +226,7 @@ func TestPatchPythonFormatterCompositionSurvivesPublicationContention(t *testing
 	if output, err := host.CombinedOutput(); err != nil {
 		t.Fatalf("Python/formatter host: %s, %v", output, err)
 	}
+	time.Sleep(time.Hour)
 	if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges, p.Windows, p.Audience, p.Notice, f.ctx, f.workspace, []execCompletion{{callID: "format", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
 		t.Fatal(err)
 	}
