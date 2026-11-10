@@ -23,13 +23,8 @@ type Store struct {
 	service   *Service
 	mu        sync.Mutex
 	revision  string
-	files     *storageFiles
+	files     map[string]int64
 	catalog   *retainedCatalog
-}
-
-// An explicitly requested inventory is cached only for its publication view.
-type storageFiles struct {
-	sizes map[string]int64
 }
 
 // Directory is the selected retained path shared by this publication handle.
@@ -191,7 +186,7 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	var files *storageFiles
+	var files map[string]int64
 	if revision == s.revision {
 		files = s.files
 	}
@@ -207,7 +202,7 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 	}
 	if files != nil {
 		if managed || CatalogName(name) {
-			files.sizes[name] = int64(len(data))
+			files[name] = int64(len(data))
 		}
 		s.files = files
 	}
@@ -231,13 +226,13 @@ func (tx *Transaction) FileSizes() (map[string]int64, error) {
 		return nil, err
 	}
 	if s.files != nil && s.revision == revision {
-		return s.files.sizes, nil
+		return s.files, nil
 	}
 	entries, err := os.ReadDir(s.directory)
 	if err != nil {
 		return nil, err
 	}
-	files := &storageFiles{sizes: make(map[string]int64)}
+	files := make(map[string]int64)
 	for _, entry := range entries {
 		_, managed, err := s.service.Kind(entry.Name())
 		if err != nil {
@@ -253,8 +248,8 @@ func (tx *Transaction) FileSizes() (map[string]int64, error) {
 		if !info.Mode().IsRegular() {
 			return nil, errors.New("session storage contains a non-regular managed record; cleanup refused")
 		}
-		files.sizes[entry.Name()] = info.Size()
+		files[entry.Name()] = info.Size()
 	}
 	s.revision, s.files = revision, files
-	return files.sizes, nil
+	return files, nil
 }

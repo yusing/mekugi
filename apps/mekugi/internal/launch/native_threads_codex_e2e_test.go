@@ -1371,7 +1371,6 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		stop := compactionPeer()
 		defer stop()
 		measureCompactionDelivery(t, connection, fixture)
-		reportCompactionRollout(t, configRoot)
 		t.Logf("local native account-policy requests: %d", policyRequests.Load())
 		return
 	}

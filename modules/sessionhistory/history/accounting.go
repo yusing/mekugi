@@ -70,11 +70,12 @@ func (tx *Transaction) accountingView(rebuild bool) (*storageAccounting, error) 
 	}
 	// Migration, changed record owners, or incomplete publication is the only
 	// reason admission reconstructs totals. Normal peer writes maintain them.
-	if _, err := tx.FileSizes(); err != nil {
+	files, err := tx.FileSizes()
+	if err != nil {
 		return nil, err
 	}
 	accounting = storageAccounting{Version: 1, Revision: revision, Kinds: kinds, Bytes: make(map[string]int64)}
-	for name, size := range s.files.sizes {
+	for name, size := range files {
 		kind, _, err := s.service.Kind(name)
 		if err != nil {
 			return nil, err
@@ -102,17 +103,10 @@ func (tx *Transaction) commitAccounting() error {
 }
 
 func (s *Store) accountingUsage(accounting *storageAccounting, kind recordkind.Spec) storageUsage {
-	u := storageUsage{kind: kind, own: accounting.Bytes[kind.ID], total: accounting.Bytes[""]}
-	if kind.ID == "" {
-		u.own = 0
-	}
+	u := storageUsage{kind: kind}
+	u.add(recordkind.Spec{}, accounting.Bytes[""])
 	for _, registered := range s.service.kinds {
-		if !registered.SeparateBudget {
-			u.total += accounting.Bytes[registered.ID]
-		}
-	}
-	if kind.SeparateBudget {
-		u.total = u.own
+		u.add(registered, accounting.Bytes[registered.ID])
 	}
 	return u
 }

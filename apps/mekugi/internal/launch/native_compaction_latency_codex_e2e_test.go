@@ -3,9 +3,7 @@
 package launch
 
 import (
-	"bytes"
 	"context"
-	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -142,40 +140,5 @@ func measureCompactionDelivery(t *testing.T, connection *sessionapi.NativeConnec
 			t.Fatal(err)
 		}
 		t.Logf("rendered result: %s", path)
-	}
-}
-
-func reportCompactionRollout(t *testing.T, directory string) {
-	t.Helper()
-	err := filepath.WalkDir(filepath.Join(directory, "sessions"), func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".jsonl") {
-			return err
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		for line := range bytes.SplitSeq(data, []byte("\n")) {
-			var row struct {
-				Timestamp string `json:"timestamp"`
-				Type      string `json:"type"`
-				Payload   struct {
-					Type string `json:"type"`
-				} `json:"payload"`
-			}
-			if len(line) == 0 {
-				continue
-			}
-			if err := json.Unmarshal(line, &row); err != nil {
-				return err
-			}
-			if row.Type == "compacted" || row.Payload.Type == "task_started" || row.Payload.Type == "task_complete" || row.Payload.Type == "custom_tool_call" || row.Payload.Type == "custom_tool_call_output" {
-				t.Log(row.Timestamp, row.Type, row.Payload.Type)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
