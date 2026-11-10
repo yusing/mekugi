@@ -74,6 +74,9 @@ func (d *Driver) mcp() binding.MCPServer {
 			}
 			caller := control.Identity{Thread: metadata.Thread, Session: metadata.Session, Turn: metadata.Turn, Call: metadata.Call, Item: metadata.Item}
 			value, err := d.invoke(ctx, metadata, caller, entry.Name, jsontext.Value(request.Params.Arguments))
+			if len(value) == 0 {
+				return &mcp.CallToolResult{Content: []mcp.Content{}}, nil, err
+			}
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(value)}}}, nil, err
 		})
 	}
@@ -121,6 +124,11 @@ func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, calle
 	}
 	if err != nil {
 		return nil, err
+	}
+	if wait, ok := result.(control.WaitResult); name == "wait_agent" && ok && !wait.Settled() {
+		// Registration lives in control, not in the acknowledgement payload.
+		// The authenticated enclosing execution still has to finish to stop.
+		return nil, nil
 	}
 	value, err := json.Marshal(result)
 	if err == nil {
@@ -197,13 +205,8 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 	} else {
 		result, err = d.control.RegisterWait(ctx, caller, args.Mode, args.Timeout, args.Yield, time.Now())
 	}
-	if err == nil {
-		if result.State == "waiting" {
-			result.Instructions = "Let this enclosing execution finish now. Mekugi ends the host turn and delivers the outcome as a later wait_agent output. New input supersedes this wait."
-		}
-		if result.Settled() {
-			d.waitMetrics(ctx, caller.Thread, &result)
-		}
+	if err == nil && result.Settled() {
+		d.waitMetrics(ctx, caller.Thread, &result)
 	}
 	return result, err
 }

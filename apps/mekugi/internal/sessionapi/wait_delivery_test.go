@@ -120,12 +120,13 @@ func TestUISnapshotWaitProgressOnlyAwaitedAgent(t *testing.T) {
 					caller.Call += "-wait"
 					output, err := driver.Call(t.Context(), caller, "wait_agent", []byte(fmt.Sprintf(`{"wait_mode":%q,"yield_time_ms":300000}`, mode)))
 					check(err)
-					var result threadcontrol.WaitResult
-					check(json.Unmarshal(output, &result))
-					if !slices.Equal(result.Targets, []string{"agent:main/worker"}) || result.State != "waiting" || len(service.Descendants("root")) != 6 {
-						t.Fatalf("actual tool result selected history or removed it: %s", output)
+					result := service.WaitPublication("root")
+					if len(output) != 0 || !slices.Equal(result.Targets, []string{"/root/worker"}) || result.State != "waiting" || len(service.Descendants("root")) != 6 {
+						t.Fatalf("wait selected history or emitted an acknowledgement: %+v, %s", result, output)
 					}
-					render(string(output))
+					publication, err := json.Marshal(result)
+					check(err)
+					render(string(publication))
 					check(service.Execution(t.Context(), "root", caller.Turn, caller.Item, "", true))
 					stop, err := service.ClaimLocalStop(t.Context(), "root", caller.Turn, caller.Item)
 					check(err)

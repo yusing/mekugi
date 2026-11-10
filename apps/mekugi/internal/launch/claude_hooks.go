@@ -100,7 +100,11 @@ func (b *claudeBridge) request(ctx context.Context, method string, raw jsontext.
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(value)}}})
+		content := []map[string]string{}
+		if len(value) != 0 {
+			content = append(content, map[string]string{"type": "text", "text": string(value)})
+		}
+		return json.Marshal(map[string]any{"content": content})
 	case "permission":
 		var request struct {
 			Name      string         `json:"name"`

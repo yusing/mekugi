@@ -198,24 +198,23 @@ type CompactionResult struct {
 }
 
 type WaitResult struct {
-	Progress     *WaitProgress             `json:"progress,omitempty"`
-	Instructions string                    `json:"instructions,omitempty"`
-	Compaction   *CompactionResult         `json:"compaction,omitempty"`
-	Metrics      map[string]SessionMetrics `json:"metrics,omitempty"`
-	ID           string                    `json:"-"`
-	Turn         string                    `json:"-"`
-	Stop         string                    `json:"-"`
-	Standalone   bool                      `json:"-"`
-	UsageLimit   bool                      `json:"-"`
-	Capacity     bool                      `json:"-"`
-	Timed        bool                      `json:"-"`
-	Deadline     *time.Time                `json:"-"`
-	State        string                    `json:"state"`
-	Mode         WaitMode                  `json:"wait_mode,omitempty"`
-	Events       []Event                   `json:"events,omitempty"`
-	Event        *Event                    `json:"event,omitempty"`
-	Targets      []string                  `json:"targets,omitempty"`
-	EffectiveMS  *int64                    `json:"effective_ms,omitempty"`
+	Progress    *WaitProgress             `json:"progress,omitempty"`
+	Compaction  *CompactionResult         `json:"compaction,omitempty"`
+	Metrics     map[string]SessionMetrics `json:"metrics,omitempty"`
+	ID          string                    `json:"-"`
+	Turn        string                    `json:"-"`
+	Stop        string                    `json:"-"`
+	Standalone  bool                      `json:"-"`
+	UsageLimit  bool                      `json:"-"`
+	Capacity    bool                      `json:"-"`
+	Timed       bool                      `json:"-"`
+	Deadline    *time.Time                `json:"-"`
+	State       string                    `json:"state"`
+	Mode        WaitMode                  `json:"wait_mode,omitempty"`
+	Events      []Event                   `json:"events,omitempty"`
+	Event       *Event                    `json:"event,omitempty"`
+	Targets     []string                  `json:"targets,omitempty"`
+	EffectiveMS *int64                    `json:"effective_ms,omitempty"`
 }
 
 // WaitProgress contains bounded observations, never an assignment outcome.

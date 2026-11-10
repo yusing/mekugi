@@ -115,7 +115,7 @@ native request metadata remains unchanged on the provider wire.
   omitted mode means `"any"`; omitted compaction means false.
 
 Follow-up acknowledgements include the target's current context and compaction
-metrics. Wait acknowledgements (`waiting` or `compacting`) omit metrics. Immediate
+metrics. Pending wait acknowledgements carry no content. Immediate
 outcomes and delivered post-wait outputs, including timeout, addressed-message and
 progress wakes, include fresh metrics for each selected descendant, keyed by visible
 agent name. Compaction waits sample metrics after the checkpoint settles, when the
@@ -439,8 +439,9 @@ confirmed delivery advances the cursor in that recipient context; uncertain deli
 reconciliation reuse the same retained output. Reset, rewind and resumed contexts do not inherit
 consumption of earlier progress.
 
-The retained wait acknowledges `{state:"waiting"}` with delivery instructions at
-the MCP boundary. Agents let that enclosing execution finish; the host turn ends
+The retained wait acknowledges with empty content at the MCP boundary; registration
+and presentation retain the wait state independently. Agents let that enclosing
+execution finish; the host turn ends
 and the outcome arrives as a later `wait_agent` output. Completion waits omit the
 timeout; explicit timeouts serve actual deadlines. Only
 successful completion of that enclosing stock execution admits

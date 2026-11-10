@@ -41,8 +41,8 @@ func TestClaudeCompoundCompactionKeepsWaitBehindNativeSettlement(t *testing.T) {
 				request, _ := json.Marshal(map[string]any{"name": "wait_agent", "toolUseID": "wait", "arguments": args})
 				result, err := b.request(ctx, "tool", request)
 				check(err)
-				if !strings.Contains(string(result), "compacting") {
-					t.Fatalf("checkpoint was not admitted: %s", result)
+				if string(result) != `{"content":[]}` || b.execution.shared.WaitPublication("child").State != "compacting" {
+					t.Fatalf("checkpoint was not retained with an empty acknowledgement: %s", result)
 				}
 				f.hook(t, "PostToolUse", "mcp__threadcontrol__wait_agent", "wait", args, result)
 				var tool struct {

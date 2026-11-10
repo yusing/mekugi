@@ -175,6 +175,12 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 			arguments = map[string]any{"path_prefix": "agent:main"}
 		}
 		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Meta: meta, Arguments: arguments})
+		if tool == "wait_agent" {
+			if err != nil || result.IsError || len(result.Content) != 0 || result.StructuredContent != nil {
+				t.Fatalf("waiting acknowledgement is not empty: %+v, %v", result, err)
+			}
+			continue
+		}
 		if err != nil || result.IsError || len(result.Content) != 1 {
 			t.Fatalf("%s: result=%+v err=%v", tool, result, err)
 		}
@@ -295,12 +301,42 @@ func TestWaitAgentKeepsWaitIdentityInternal(t *testing.T) {
 	if fields["id"] != nil || fields["all"] != nil || string(fields["state"]) != `"waiting"` || string(fields["targets"]) != `["/root/child"]` {
 		t.Fatalf("wait result: %s", payload)
 	}
-	if !strings.Contains(string(fields["instructions"]), "later wait_agent output") {
-		t.Fatalf("wait acknowledgement omitted delivery instructions: %s", payload)
+	if fields["instructions"] != nil {
+		t.Fatalf("wait acknowledgement retained delivery instructions: %s", payload)
 	}
 	member, _ := driver.control.Member(caller.Thread)
 	if member.Wait == nil || member.Wait.ID != caller.Call || member.Wait.State != "registered" || member.Wait.Mode != control.WaitAll {
 		t.Fatal("lost internal wait correlation or mode")
+	}
+}
+
+func TestWaitAgentImmediateOutcomesKeepContent(t *testing.T) {
+	for _, state := range []string{"timeout", "completed"} {
+		t.Run(state, func(t *testing.T) {
+			driver, _, _, caller := reconciliationFixture(t)
+			caller.Call = "wait"
+			args := []byte(`{"timeout_ms":0}`)
+			if state == "completed" {
+				if err := driver.control.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
+					t.Fatal(err)
+				}
+				if err := driver.DispatchPending(t.Context(), "child"); err != nil {
+					t.Fatal(err)
+				}
+				args = []byte(`{}`)
+			}
+			output, err := driver.Call(t.Context(), caller, "wait_agent", args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var result control.WaitResult
+			if err := json.Unmarshal(output, &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.State != state || result.Metrics == nil || state == "completed" && (result.Event == nil || result.Event.Source != "child") {
+				t.Fatalf("immediate outcome lost content: %s", output)
+			}
+		})
 	}
 }
 

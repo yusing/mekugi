@@ -181,14 +181,12 @@ func TestWaitMetricsSampleDeliveredOutcomes(t *testing.T) {
 			runtime := &inspectionRuntime{}
 			driver.host = &progressNative{Native: instructionNative{Native: host, owner: runtime}, chunks: 1}
 			caller.Call = "wait"
-			result, err := driver.waitAgent(t.Context(), caller, []byte(test.args))
+			result, err := driver.Call(t.Context(), caller, "wait_agent", []byte(test.args))
 			if err != nil {
 				t.Fatal(err)
 			}
-			ack := result.(control.WaitResult)
-			wire, err := json.Marshal(ack)
-			if err != nil || ack.Metrics != nil || bytes.Contains(wire, []byte(`"metrics"`)) || runtime.thread != "" {
-				t.Fatalf("acknowledgement sampled metrics: %s err=%v inspected=%q", wire, err, runtime.thread)
+			if len(result) != 0 || driver.control.WaitPublication(caller.Thread).Metrics != nil || runtime.thread != "" {
+				t.Fatalf("pending wait emitted content or sampled metrics: %s inspected=%q", result, runtime.thread)
 			}
 			if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
 				t.Fatal(err)
