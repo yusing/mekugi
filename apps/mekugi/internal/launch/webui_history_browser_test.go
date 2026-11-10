@@ -55,7 +55,9 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 		agents.Entries = append(agents.Entries, activity.Entry{Seq: uint64(i + 1), Agent: fmt.Sprintf("/root/worker%d", i%4), Kind: "text", Text: text, Revision: 1})
 	}
 	for i := range 120 {
-		agents.Roster = append(agents.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: fmt.Sprintf("/root/worker%d", i), Responding: i < 2, Final: i >= 2}}})
+		// Publications carry the status their producer observes from these facts.
+		facts := activity.AgentFacts{Name: fmt.Sprintf("/root/worker%d", i), Responding: i < 2, Final: i >= 2}
+		agents.Roster = append(agents.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: facts, Status: facts.ObservedStatus("")}})
 	}
 	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Title: "History thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: main, Agents: agents}
 	start := time.Now()
@@ -195,7 +197,7 @@ func TestWebUIBrowserRetainedHistory(t *testing.T) {
 	if run("eval", `document.activeElement === window.historyFocus && Math.abs(window.historyAnchor.getBoundingClientRect().top - window.historyTop) < 2`) != "true" {
 		t.Fatal("catch-up interrupted the reading anchor or focus")
 	}
-	for range 15 {
+	for range len(main.Entries) {
 		if run("eval", `document.querySelector('[aria-label="Transcript"]').textContent.includes('History entry 000')`) == "true" {
 			break
 		}
