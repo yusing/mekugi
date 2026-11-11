@@ -142,10 +142,15 @@ uncertain Plane write before retrying.
 
 Repeat `--cleanup PATH` for explicitly authorized source worktrees beneath this
 checkout's `.worktrees`. Cleanup checks exact repository/worktree identity, source
-dirt (including ignored files), `git cherry` patch equivalence and unmatched
-merges, because `git cherry` omits merge-only changes. It removes only the checked
-worktree, then its branch. A cleanup failure retains whatever has not yet been
-removed; status writes remain, and a failed branch removal leaves the branch for
+dirt, `git cherry` patch equivalence and unmatched merges, because `git cherry`
+omits merge-only changes. Ignored files also block cleanup, except the fixed
+generated destinations: `apps/mekugi/internal/webui/app/node_modules/`,
+`apps/mekugi/internal/webui/dist/app/`, `backends/claude/node_modules/` and
+`backends/claude/dist/worker.mjs`. These dependencies and bundles are discarded
+with the worktree; neighboring ignored source/configuration and other output
+paths remain protected. It removes only the checked worktree, then its branch.
+A cleanup failure retains whatever has not yet been removed; status writes
+remain, and a failed branch removal leaves the branch for
 recovery. Serialize integration and source edits; this is sequencing, not a
 transaction or concurrent-mutation guarantee. Commit gates, signing, pushes and
 additional browser/live-provider QA remain unchanged.

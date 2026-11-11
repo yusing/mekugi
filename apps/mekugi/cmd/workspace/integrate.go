@@ -128,8 +128,24 @@ func cleanupIntegration(root, path, checked string) error {
 	if err != nil {
 		return err
 	}
+	retained := fmt.Errorf("source %s has dirty/ignored files or unintegrated patches/merges; retained", source)
+	status, err := integrationGit(source, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored=matching")
+	if err != nil {
+		return err
+	}
+	for entry := range strings.SplitSeq(status, "\x00") {
+		// Only ignored output at the fixed Makefile/package build destinations is
+		// disposable. Tracked changes and neighboring ignored source stay protected.
+		switch entry {
+		case "", "!! apps/mekugi/internal/webui/app/node_modules/", "!! apps/mekugi/internal/webui/dist/app/",
+			"!! backends/claude/node_modules/", "!! backends/claude/dist/worker.mjs":
+			continue
+		default:
+			return retained
+		}
+	}
 	// git cherry omits merges, including merge-only conflict resolutions.
-	for _, arguments := range [][]string{{"status", "--porcelain", "--untracked-files=all", "--ignored=matching"}, {"cherry", checked, "HEAD"}, {"rev-list", "--merges", checked + "..HEAD"}} {
+	for _, arguments := range [][]string{{"cherry", checked, "HEAD"}, {"rev-list", "--merges", checked + "..HEAD"}} {
 		output, err := integrationGit(source, arguments...)
 		if err != nil {
 			return err
@@ -138,7 +154,7 @@ func cleanupIntegration(root, path, checked string) error {
 			continue
 		}
 		if output != "" {
-			return fmt.Errorf("source %s has dirty/ignored files or unintegrated patches/merges; retained", source)
+			return retained
 		}
 	}
 	if err := integrationCommand(root, "git", "worktree", "remove", "--", source); err != nil {

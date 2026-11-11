@@ -13,6 +13,14 @@ type integrationFixture struct{ root, source, commit, events string }
 
 func newIntegrationFixture(t *testing.T) integrationFixture {
 	t.Helper()
+	ignoreFiles := make(map[string]string)
+	for _, path := range []string{".gitignore", "backends/claude/.gitignore"} {
+		data, err := os.ReadFile(filepath.Join("../../../..", path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ignoreFiles[path] = string(data)
+	}
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
 		if strings.HasPrefix(name, "GIT_") {
@@ -40,6 +48,9 @@ func newIntegrationFixture(t *testing.T) integrationFixture {
 	f.git(t, "init", "-b", "main")
 	f.git(t, "config", "commit.gpgsign", "false")
 	writeWorkspaceSource(t, ".git/info/exclude", ".worktrees/\nprivate\n")
+	for path, content := range ignoreFiles {
+		writeWorkspaceSource(t, path, content)
+	}
 	for _, path := range []string{"tracked", "go.work.sum", "docs/design.md"} {
 		writeWorkspaceSource(t, path, "base\n")
 	}
@@ -77,6 +88,15 @@ func (f integrationFixture) git(t *testing.T, args ...string) string {
 
 func TestIntegrationDirtyRootChecksAndStatusChoices(t *testing.T) {
 	f := newIntegrationFixture(t)
+	// Use the same ignored destinations as make webui and make claude-worker.
+	for _, path := range []string{
+		"apps/mekugi/internal/webui/app/node_modules/.bun-install",
+		"apps/mekugi/internal/webui/dist/app/assets/app.js",
+		"backends/claude/node_modules/.bun-install",
+		"backends/claude/dist/worker.mjs",
+	} {
+		writeWorkspaceSource(t, filepath.Join(f.source, path), "generated\n")
+	}
 	for _, path := range []string{"go.work.sum", "docs/design.md", "untracked"} {
 		writeWorkspaceSource(t, path, "unrelated work\n")
 	}
@@ -120,10 +140,47 @@ func TestIntegrationDirtyRootChecksAndStatusChoices(t *testing.T) {
 	}
 }
 
+func TestIntegrationProtectsGeneratedOutputNeighbors(t *testing.T) {
+	for _, path := range []string{
+		"apps/mekugi/internal/webui/app/.env.local",
+		"apps/mekugi/internal/webui/dist/.env",
+		"apps/mekugi/internal/webui/dist/app-local/.env",
+		"backends/claude/.env",
+		"backends/claude/dist/worker.mjs.local",
+		"other/node_modules/source.js",
+		"bin/mekugi",
+		"apps/mekugi/internal/webui/app/.env.\nconfiguration",
+	} {
+		t.Run(path, func(t *testing.T) {
+			f := newIntegrationFixture(t)
+			writeWorkspaceSource(t, filepath.Join(f.source, "apps/mekugi/internal/webui/dist/app/assets/app.js"), "generated\n")
+			writeWorkspaceSource(t, filepath.Join(f.source, path), "keep\n")
+			if err := integrate([]string{"--commits", f.commit, "--accept", "--cleanup", f.source, "--", "check"}); err == nil {
+				t.Fatal("cleanup discarded protected source beside generated output")
+			}
+			for _, retained := range []string{path, "apps/mekugi/internal/webui/dist/app/assets/app.js"} {
+				want := "keep\n"
+				if retained != path {
+					want = "generated\n"
+				}
+				data, err := os.ReadFile(filepath.Join(f.source, retained))
+				if err != nil || string(data) != want {
+					t.Fatalf("discarded %s after refusal: %v", retained, err)
+				}
+			}
+			if f.git(t, "branch", "--list", "task/reviewed") == "" {
+				t.Fatal("source branch removed after refusal")
+			}
+		})
+	}
+}
+
 func TestIntegrationRefusalsAndFailurePropagation(t *testing.T) {
-	for _, scenario := range []string{"staged", "tracked overlap", "committed conflict", "untracked overlap", "signing", "failed check", "missing command", "missing check", "missing acceptance", "stale check", "partial status", "dirty source", "ignored source", "unintegrated", "merge-only", "wrong target", "source subdirectory", "foreign source", "locked source"} {
+	for _, scenario := range []string{"staged", "tracked overlap", "committed conflict", "untracked overlap", "signing", "failed check", "missing command", "missing check", "missing acceptance", "stale check", "partial status", "dirty source", "ignored source", "tracked generated source", "ignored output parent", "unintegrated", "merge-only", "wrong target", "source subdirectory", "foreign source", "locked source"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newIntegrationFixture(t)
+			generated := "apps/mekugi/internal/webui/dist/app/assets/app.js"
+			writeWorkspaceSource(t, filepath.Join(f.source, generated), "generated\n")
 			args := []string{"--commits", f.commit, "--accept", "--items", "MEKUGI-1 MEKUGI-2", "--state", "Done", "--cleanup", f.source, "--", "check"}
 			switch scenario {
 			case "staged":
@@ -161,6 +218,14 @@ func TestIntegrationRefusalsAndFailurePropagation(t *testing.T) {
 					path = "private"
 				}
 				writeWorkspaceSource(t, filepath.Join(f.source, path), "keep\n")
+			case "tracked generated source":
+				f.git(t, "-C", f.source, "add", "-f", generated)
+				f.git(t, "-C", f.source, "commit", "-m", "tracked output")
+				args[1] += " " + f.git(t, "-C", f.source, "rev-parse", "HEAD")
+				writeWorkspaceSource(t, filepath.Join(f.source, generated), "keep\n")
+			case "ignored output parent":
+				writeWorkspaceSource(t, ".git/info/exclude", ".worktrees/\napps/mekugi/internal/webui/dist/\n")
+				writeWorkspaceSource(t, filepath.Join(f.source, "apps/mekugi/internal/webui/dist/source.txt"), "keep\n")
 			case "unintegrated":
 				writeWorkspaceSource(t, filepath.Join(f.source, "extra"), "keep\n")
 				f.git(t, "-C", f.source, "add", "extra")
@@ -200,6 +265,9 @@ func TestIntegrationRefusalsAndFailurePropagation(t *testing.T) {
 			if _, err := os.Stat(f.source); err != nil {
 				t.Fatalf("source removed after failure: %v", err)
 			}
+			if _, err := os.Stat(filepath.Join(f.source, generated)); err != nil {
+				t.Fatalf("generated output removed before cleanup guards passed: %v", err)
+			}
 			if scenario == "staged" && f.git(t, "diff", "--cached") != staged {
 				t.Fatal("pre-existing index changed")
 			}
@@ -230,6 +298,8 @@ func TestIntegrationMakeRecipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := newIntegrationFixture(t)
+	writeWorkspaceSource(t, filepath.Join(f.source, "apps/mekugi/internal/webui/app/node_modules/.bun-install"), "generated\n")
+	writeWorkspaceSource(t, filepath.Join(f.source, "apps/mekugi/internal/webui/dist/app/assets/app.js"), "generated\n")
 	writeWorkspaceSource(t, "Makefile", string(makefile))
 	wrapper := filepath.Join(t.TempDir(), "workspace")
 	writeWorkspaceSource(t, wrapper, "#!/bin/sh\nexec '"+strings.ReplaceAll(executable, "'", "'\\''")+"' -test.run=^TestMakefileWorkspaceFixture$ -- \"$@\"\n")
@@ -237,7 +307,7 @@ func TestIntegrationMakeRecipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("MEKUGI_MAKEFILE_WORKSPACE_FIXTURE", "1")
-	command := exec.Command("make", "--no-print-directory", "integrate", "WORKSPACE="+wrapper, "INTEGRATE_ARGS=--commits "+f.commit+" -- check focused")
+	command := exec.Command("make", "--no-print-directory", "integrate", "WORKSPACE="+wrapper, "INTEGRATE_ARGS=--commits "+f.commit+" --accept --cleanup '"+f.source+"' -- check focused")
 	data, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("make integrate: %v\n%s", err, data)
@@ -247,5 +317,11 @@ func TestIntegrationMakeRecipe(t *testing.T) {
 	}
 	if data, err := os.ReadFile(f.events); err != nil || string(data) != "check focused\n" {
 		t.Fatalf("make did not route supplied check: %s, %v", data, err)
+	}
+	if _, err := os.Stat(f.source); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("make integrate retained generated worktree: %v", err)
+	}
+	if f.git(t, "branch", "--list", "task/reviewed") != "" {
+		t.Fatal("make integrate retained source branch")
 	}
 }
