@@ -190,7 +190,11 @@ func nativeContent(input control.NativeInput) (item NativeMessage, name, output 
 
 func (r *Requests[T]) Input(ctx context.Context, input control.NativeInput) (string, error) {
 	if input.Kind == "COMPACT" {
-		_, err := r.call(ctx, input.Thread, "thread/compact/start", map[string]any{"threadId": input.Thread}, &input)
+		params := map[string]any{"threadId": input.Thread}
+		if input.Message != "" {
+			params["reload"] = jsontext.Value(input.Message)
+		}
+		_, err := r.call(ctx, input.Thread, "thread/compact/start", params, &input)
 		return "", err
 	}
 	if input.Kind == "HUMAN_INPUT" {

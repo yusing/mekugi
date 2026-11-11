@@ -25,8 +25,6 @@ const (
 	FeatureAssignmentSources
 	FeatureMessageSources
 	FeatureSelfCompactionCompleted
-	FeatureCompactionCostSkip
-	FeatureCompactionPreflightSkip
 	FeatureSelfCompactionFailure
 )
 
@@ -46,14 +44,13 @@ type FeatureUse struct {
 	SideQuestions      uint64
 	// btw calls rejected before dispatch, and dispatched ones whose answer
 	// failed or whose target generation changed.
-	SideQuestionRejections, SideQuestionFailures  uint64
-	Waits                                         uint64 // Newly registered wait_agent waits.
-	AllWaits                                      uint64
-	ProgressWaits, ProgressYields                 uint64
-	AssignmentSources, MessageSources             uint64 // Accepted source-bearing sends, including read diagnostics.
-	SelfCompactionsCompleted                      uint64
-	CompactionCostSkips, CompactionPreflightSkips uint64
-	SelfCompactionFailures                        uint64
+	SideQuestionRejections, SideQuestionFailures uint64
+	Waits                                        uint64 // Newly registered wait_agent waits.
+	AllWaits                                     uint64
+	ProgressWaits, ProgressYields                uint64
+	AssignmentSources, MessageSources            uint64 // Accepted source-bearing sends, including read diagnostics.
+	SelfCompactionsCompleted                     uint64
+	SelfCompactionFailures                       uint64
 }
 
 func (u *FeatureUse) counter(feature Feature) *uint64 {
@@ -96,10 +93,6 @@ func (u *FeatureUse) counter(feature Feature) *uint64 {
 		return &u.MessageSources
 	case FeatureSelfCompactionCompleted:
 		return &u.SelfCompactionsCompleted
-	case FeatureCompactionCostSkip:
-		return &u.CompactionCostSkips
-	case FeatureCompactionPreflightSkip:
-		return &u.CompactionPreflightSkips
 	case FeatureSelfCompactionFailure:
 		return &u.SelfCompactionFailures
 	}

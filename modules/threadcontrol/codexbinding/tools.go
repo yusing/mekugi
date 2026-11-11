@@ -18,16 +18,16 @@ import (
 // ToolCatalog is shared by admitted backend transports. Calling conventions
 // and authenticated caller identity remain with each transport.
 func ToolCatalog(claudeCaller bool) []*mcp.Tool {
-	compactSchema := `{"type":"object","properties":{},"additionalProperties":false}`
 	waitReload := ""
+	resetTool := "new_context"
 	if !claudeCaller {
-		reload := `"reload":{"description":"Select needed source references; omit when none are needed.","allOf":[` + compact.SelectionSchema + `]}`
-		compactSchema = `{"type":"object","properties":{` + reload + `},"additionalProperties":false}`
+		reload := `"reload":{"description":"Replace the retained source selection; omit to reuse it, or use sources:[] to clear it.","allOf":[` + compact.SelectionSchema + `]}`
 		waitReload = "," + reload
 	}
 	modelGuidance := "For a Claude delegate, use list_models and pass a returned claude:MODEL unchanged."
 	modelList := "List Claude's native advertised model IDs for spawn_agent without submitting model input. Account access is validated during execution. Use a returned claude: ID unchanged as spawn_agent.model with fork_turns=none."
 	if claudeCaller {
+		resetTool = "compact"
 		modelGuidance = "Use list_models for Codex choices. An explicit claude:MODEL keeps Claude even when the role pins a Codex model."
 		modelList = "List the selected Codex catalog's model IDs for spawn_agent without submitting model input. Use a returned ID unchanged as spawn_agent.model with fork_turns=none."
 	}
@@ -45,8 +45,7 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 		{"list_models", modelList, `{"type":"object","properties":{},"additionalProperties":false}`},
 		{"list_agents", "List admitted agents and retained operations in the selected session.", `{"type":"object","properties":{"session_id":{"type":"string","description":"Exact ID of an active Mekugi session or thread. Omit for this session's admitted tree."},"path_prefix":{"type":"string","description":"Logical agent-name prefix, such as agent:main/worker. Omit to list the whole admitted tree."}},"additionalProperties":false}`},
 		{"inspect", "Inspect an admitted agent: applied model, reasoning effort, service tier, context usage/window and completed compactions. Includes idle or completed agents; uses retained observations without starting work; unavailable observations are null.", `{"type":"object","properties":{"target":{"type":"string","description":"Agent identifier: agent:main, a returned logical name, unambiguous relative task name, or thread ID. For another active Mekugi session, use an exact session/thread ID."}},"required":["target"],"additionalProperties":false}`},
-		{"compact", "Compact at a safe checkpoint when discarding obsolete context materially reduces what the remaining work must carry, or when the 90% context-usage notice requires it. A small completed step, preload or waiting transition alone is not a reason to compact. Automatically continue unfinished work. Batch checkpoint preparation, including task-state JSON writes, and compact in one enclosing execution, with compact last; then let that execution finish. Context-usage reminders below 90% are not compaction triggers.", compactSchema},
-		{"wait_agent", "Wait for an agent outcome or addressed message. Selects local descendants with unsettled work or unread outcomes once. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. New input supersedes the wait.", `{"type":"object","properties":{"wait_mode":{"type":"string","enum":["any","all"],"description":"Omit or use any to return on the first descendant completion or failure. Use all to wait until every descendant settles. Addressed messages wake either mode."},"compact":{"type":"boolean","description":"Set true only when the compact tool's checkpoint criteria apply, not merely because you are waiting. Compacts before delivering this wait's outcome, including an already-ready outcome. The timeout starts at wait registration. Compaction failure or cost rejection is included in the eventual wait result; pending waits remain waiting."}` + waitReload + `,"yield_time_ms":{"type":"integer","minimum":300000,"description":"Opt in to catch mistaken intermediate changes, not liveness. Minimum 300000 ms (5 minutes); omit to disable. The interval starts changed-agent summary collection after current tool calls; delivery waits for all replies. Yields include developer summaries and exact mchanges selections. Call again to continue waiting."},"timeout_ms":{"type":"integer","description":"Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline. Omission waits indefinitely. Explicit values below the host minimum are clamped; values above its maximum are rejected."}},"additionalProperties":false}`},
+		{"wait_agent", "Wait for an agent outcome or addressed message. Selects local descendants with unsettled work or unread outcomes once. Call alone and let the enclosing tool execution finish. A waiting acknowledgement ends the host turn; the outcome arrives as a later wait_agent output. New input supersedes the wait.", `{"type":"object","properties":{"wait_mode":{"type":"string","enum":["any","all"],"description":"Omit or use any to return on the first descendant completion or failure. Use all to wait until every descendant settles. Addressed messages wake either mode."},"compact":{"type":"boolean","description":"Apply the checkpoint criteria from ` + resetTool + `. Compacts before delivering this wait's outcome, including an already-ready outcome. The timeout starts at wait registration. Compaction failure is included in the eventual wait result; pending waits remain waiting."}` + waitReload + `,"yield_time_ms":{"type":"integer","minimum":300000,"description":"Opt in to catch mistaken intermediate changes, not liveness. Minimum 300000 ms (5 minutes); omit to disable. The interval starts changed-agent summary collection after current tool calls; delivery waits for all replies. Yields include developer summaries and exact mchanges selections. Call again to continue waiting."},"timeout_ms":{"type":"integer","description":"Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline. Omission waits indefinitely. Explicit values below the host minimum are clamped; values above its maximum are rejected."}},"additionalProperties":false}`},
 		{"send_message", "Queue attributed input without starting idle work. Set btw=true to ask an independent side question and return its answer.", `{"type":"object","properties":{"target":{"type":"string","description":"Recipient's logical name, unambiguous relative task name, or thread ID. For another active Mekugi session, use its exact session/thread ID."},"message":{"type":"string","description":"Nonempty attributed message or independent side question. File source references snapshot under recipient cwd/permissions."},"btw":{"type":"boolean","description":"Ask an independent answer-only question from the running or waiting target's existing context. It cannot use tools or investigate, and is not delivered to or steering the working agent. Defaults to false."}},"required":["target","message"],"additionalProperties":false}`},
 		{"followup_task", "Start or steer a non-root agent. Reuse returned context/window and compaction metrics; inspect missing/stale facts only. Only the target can compact with needed reload sources. For fresh context, use spawn_agent with fork_turns=none.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."},"message":{"type":"string","description":"Nonempty follow-up assignment. Starts idle work, steers a running turn, or supersedes a pending wait. File source references snapshot under recipient cwd/permissions."}},"required":["target","message"],"additionalProperties":false}`},
 		{"interrupt_agent", "Interrupt a non-root agent, retaining it for later work.", `{"type":"object","properties":{"target":{"type":"string","description":"Non-root agent's returned logical name, unambiguous relative task name, or thread ID."}},"required":["target"],"additionalProperties":false}`},
@@ -54,6 +53,9 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 	result := make([]*mcp.Tool, 0, len(entries))
 	for _, entry := range entries {
 		result = append(result, &mcp.Tool{Name: entry.name, Description: entry.description, InputSchema: jsontext.Value(entry.schema)})
+	}
+	if claudeCaller {
+		result = append(result, &mcp.Tool{Name: "compact", Description: "Compact at a safe checkpoint when discarding obsolete context materially reduces what the remaining work must carry, or when the 90% context-usage notice requires it. A small completed step, preload or waiting transition alone is not a reason to compact. Automatically continue unfinished work. Batch checkpoint preparation, including task-state JSON writes, and compact in one enclosing execution, with compact last; then let that execution finish. Context-usage reminders below 90% are not compaction triggers.", InputSchema: jsontext.Value(`{"type":"object","properties":{},"additionalProperties":false}`)})
 	}
 	return result
 }
@@ -107,13 +109,12 @@ func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, calle
 	case "inspect":
 		result, err = d.inspectAgent(ctx, caller, raw)
 	case "compact":
-		var args struct {
-			Reload jsontext.Value `json:"reload"`
+		if !strings.HasPrefix(metadata.Model, "claude:") {
+			return nil, errors.New("use native new_context for Codex context reset")
 		}
+		var args struct{}
 		if err = json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err == nil {
-			if err = resetSelection(args.Reload, strings.HasPrefix(metadata.Model, "claude:")); err == nil {
-				result, err = d.control.RegisterCompaction(ctx, caller, "", nil, nil, time.Now(), true, string(args.Reload))
-			}
+			result, err = d.control.RegisterCompaction(ctx, caller, "", nil, nil, time.Now(), true, "")
 		}
 	case "wait_agent":
 		result, err = d.waitAgent(ctx, caller, raw)

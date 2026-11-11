@@ -172,15 +172,11 @@ and captured changes with its checkpoint, or recover needed facts through ordina
 reads after reset. For repeated resets, the agent keeps a focused temporary JSON
 task record and selects it for reload; source files remain separately selectable.
 Mekugi supplies selected sources before continuation. The latest compaction
-selection remains in effect for later manual or automatic resets until replaced,
-even if the checkpoint that registered it was skipped.
-At measured usage of 40% or below, agent checkpoints skip reset when estimated
-uncached next-input cost exceeds the latest observed input cost, preserving any wait.
-Above 40%, or without measured usage, the cost veto is bypassed. This estimate
-assumes unchanged source files; unavailable cost evidence permits reset with a notice. Failed
-preflight acquisition skips reset without retrying denied or canceled reads.
-Manual and context-full
-compaction are unaffected. Claude delegates retain their native compaction behavior.
+selection remains in effect for later manual or automatic resets until replaced
+or explicitly cleared. Native `functions.new_context` owns standalone checkpoints;
+compact-and-wait uses the same reset lifecycle. Requested resets have no
+cost-estimate veto or duplicate source preflight. Claude delegates retain their
+native compaction behavior.
 
 ### Delegate with prepared context
 

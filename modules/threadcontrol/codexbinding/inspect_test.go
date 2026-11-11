@@ -174,7 +174,6 @@ func TestWaitMetricsSampleDeliveredOutcomes(t *testing.T) {
 		{"unavailable", `{}`, "completed", ""},
 		{"compact success", `{"compact":true,"timeout_ms":1000}`, "timeout", "completed"},
 		{"compact failure", `{"compact":true,"timeout_ms":1000}`, "timeout", "failed"},
-		{"compact skipped", `{"compact":true,"timeout_ms":1000}`, "timeout", "skipped"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			driver, host, _, caller := reconciliationFixture(t)
@@ -191,18 +190,13 @@ func TestWaitMetricsSampleDeliveredOutcomes(t *testing.T) {
 			if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
 				t.Fatal(err)
 			}
-			if test.compact == "skipped" {
-				if err := driver.control.RejectCompaction(t.Context(), caller.Thread, caller.Turn, caller.Item, "cost estimate", true); err != nil {
-					t.Fatal(err)
-				}
-			}
 			if stop, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil || stop == nil {
 				t.Fatalf("local stop: %v %v", stop, err)
 			}
 			if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}); err != nil {
 				t.Fatal(err)
 			}
-			if test.compact != "" && test.compact != "skipped" {
+			if test.compact != "" {
 				compact, err := driver.control.ClaimEffect(t.Context(), caller.Thread, caller.Call+":compact")
 				if err != nil || compact == nil {
 					t.Fatalf("compact effect: %v %v", compact, err)

@@ -41,11 +41,10 @@ deferral setting takes precedence when enabled. User-configured MCP servers reta
 their exposure settings. Coordination calls the Mekugi server's typed native-thread
 API for creation, attributed input, interruption and retained-outcome confirmation.
 Session Control translates those semantic operations into backend requests. Its operations replace native collaboration; no native alias or
-fallback remains callable. Only Thread Control records supply coordination history. The Codex
-binding supplies the final invocation and thread-admission policy:
-`features.multi_agent_v2.enabled=true` and
-`features.multi_agent_v2.disable_native_tools=true`. Root, child and mode hints
-remain enabled. Leaked original catalogs reject before provider forwarding.
+fallback remains callable. Only Thread Control records supply coordination history.
+The native runtime owns the fixed multi-agent policy: V2 coordination semantics
+and root, child and mode hints remain enabled while native collaboration tools
+are unavailable. Go launch and provider input do not reapply that policy.
 Admission validates actual host identities, settings and acknowledgements.
 Missing required host semantics fail explicitly without enabling native spawning.
 
@@ -100,16 +99,10 @@ native request metadata remains unchanged on the provider wire.
   usage/window, and completed compactions. Unavailable observations are `null`,
   distinct from a measured zero. Inspection uses live session facts or retained
   observations without starting work or restoring an inactive runtime.
-- `compact` requests an authenticated self-directed context checkpoint and then
-  continues unfinished work once. Codex accepts optional `reload:{"sources":[...]}`
-  using [selected-source recovery](../agentguidance/SPEC.md#compaction-context).
-  Claude retains native compaction without this argument. Context-usage reminders appear starting at 50%;
-  agents choose safe checkpoints where discarding obsolete context materially
-  reduces what remaining work must carry. Small steps, preloads and waiting
-  transitions alone do not call for compaction. Notices below 90% are not compaction
-  triggers; the 90% notice instructs the agent to compact now.
-  Batch checkpoint preparation, including task-state JSON writes, and `compact`
-  in one enclosing execution, with `compact` last; then let that execution finish.
+- `compact` is Claude-only and requests its native context checkpoint before
+  continuing unfinished work. Codex uses native `new_context` with optional
+  [selected-source recovery](../agentguidance/SPEC.md#compaction-context).
+  Each backend's reset tool owns its checkpoint guidance.
 - `wait_agent` accepts `wait_mode?: "any" | "all"`,
   `timeout_ms?: integer`, `yield_time_ms?: integer`, and `compact?: boolean`. Codex also accepts `reload`
   when `compact:true`; invalid selections reject before wait registration.
@@ -504,23 +497,12 @@ releases only the original wait: an eligible outcome is delivered once, otherwis
 the caller stays waiting without inference. Wait deadlines run from registration
 and may expire during compaction.
 
-At measured context usage of 40% or below, Codex self-checkpoints preflight sources
-through the admitted stock reader and
-compare locally estimated uncached reset input cost with the latest observed input
-cost, using its model, service tier and pinned provider pricing. Source contents
-are assumed unchanged across reset. Unavailable cost evidence permits reset with a notice;
-cost rejection skips only reset and preserves the original wait and deadline.
-Above 40%, or when context usage/window is unavailable, checkpoints bypass cost
-preflight and its veto. The boundary uses the caller's observed context and window,
-not provider input counts or the reset estimate.
-Attempted preflight without a usable capture also skips reset, preserving the wait
-without automatically retrying denied or canceled acquisition.
-Rejection records a `skipped` compaction outcome and immediately displays its reason,
-including that context was not reset and selected sources were not attached.
-Preflight reads supply only the estimate, never attachment presentation or model
-reload context. The rejection reaches the model in the eventual wait output, not an immediate
-inference. Manual, automatic and Claude compaction are unchanged. Future hook and
-outcome text is unmeasured.
+Codex reset requests have no cost-estimate veto or preflight acquisition. Native
+`functions.new_context` owns standalone reset; `wait_agent(compact:true)` routes
+its reload selection through the same native reset lifecycle before releasing the
+original wait. Source acquisition and retained selection belong to the
+[native reset contract](../agentguidance/SPEC.md#compaction-context), not provider
+input interception. Claude retains its backend compaction behavior.
 
 Compound native compaction failure preserves the wait and events, surfaces an immediate
 notice, and includes the failed compaction outcome in eventual delivery. Failure
@@ -681,11 +663,12 @@ The service counts model-facing uses per thread for the
 Totals and their subsets:
 
 - **Compactions:** completed live native context resets, whoever initiated them;
-  newly registered `compact` or `wait_agent` compactions; those registrations with
+  accepted native `new_context` or `wait_agent` reset requests, and Claude `compact`;
+  those requests with
   nonempty acquired-source selections. Self-initiated requests count at registration,
   so requests whose reset fails can exceed the completed total. Self-request outcomes
-  separately count completed resets, cost-vetoed skips, unusable-preflight skips and
-  confirmed reset failures. Uncertain resets acquire an outcome only after confirmation;
+  separately count completed resets and confirmed reset failures.
+  Uncertain resets acquire an outcome only after confirmation;
   duplicate acknowledgements count once. Empty and host-loaded
   instruction-only selections count no preload.
 - **Spawns:** admitted children; those with nonempty preload sources; spawn calls

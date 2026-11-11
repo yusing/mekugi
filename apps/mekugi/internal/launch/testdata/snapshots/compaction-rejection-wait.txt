@@ -1,8 +1,0 @@
-"\x1b[2m↔ Waiting for \x1b[38;5;37mworker\x1b[m                                                                                "
-"                                                                                                    "
-"\x1b[2m↔ Waiting for \x1b[38;5;37mworker\x1b[m                                                                                "
-"                                                                                                    "
-"\x1b[2m• Compaction skipped: Estimated uncached next input $0.219230 exceeds last observed input $0.186530,\x1b[m"
-"\x1b[2mincluding its cache discount (21923 reset tokens; assumes no cache hits after reset and unchanged\x1b[m   "
-"\x1b[2mreload sources). Context was not reset; reload sources were not attached.\x1b[m                           "
-"plain after rejection                                                                               "

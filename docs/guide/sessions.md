@@ -39,24 +39,15 @@ confirmation is created.
 
 Manual `/compact`, context-full compaction and agent checkpoints reset Codex
 context without generating a handover summary. Agents may select files, line ranges,
-skills and captured-change IDs with a checkpoint, or recover needed facts through
-ordinary reads after reset. Temporary task-state JSON is optional and read selectively,
-never automatically loaded in full. Claude delegates retain native compaction.
+skills and captured-change IDs through native `functions.new_context`, or recover
+needed facts through ordinary reads after reset. `wait_agent(compact:true)` resets
+before delivering the wait's outcome. Requested resets are not vetoed by a cost estimate.
+Claude delegates retain native compaction.
 
-At measured context usage of 40% or below, agent checkpoints estimate the next
-uncached input cost and skip reset when it
-would exceed the latest observed input cost, including that request's cache discount.
-This compares one next input, not the cost of all remaining work. Selected sources
-are not preflighted for cost above 40% or when context usage is unavailable; those
-checkpoints bypass the cost veto. Otherwise, selected sources
-may be read for this check, but are not attached unless reset succeeds.
-The estimate assumes no cache hits after reset and unchanged source files;
-unavailable cost evidence permits reset with a notice. A preflight that produces no
-usable capture skips reset rather than retrying denied or canceled acquisition.
-The transcript immediately shows **Compaction skipped** with the reason and states
-that context was not reset and reload sources were not attached. A skipped reset
-preserves the wait and its deadline; the eventual model-facing outcome includes the
-same reason. Manual `/compact` and context-full compaction bypass this cost check.
+The latest reload selection also applies to later manual and automatic resets.
+Omitting `reload` keeps it; `reload:{sources:[]}` clears it. Temporary task-state
+JSON is optional and read only when selected, with selected ranges and nested
+references determining what is acquired.
 
 Selected reload and fresh-delegate preload text can include `@path` references to
 required files, including inside JSON state. Bare paths do not trigger reads. The
@@ -65,10 +56,11 @@ resolve beside native source files, or from the workspace for managed skills.
 Skills can select a reference such as `name/references/guide.md` instead of the
 whole skill. Captured diffs and unselected lines do not expand references.
 
-Before the next model request, Mekugi acquires selected sources with the thread's
+Before the next model request, native reset acquires selected sources with the thread's
 permissions. Failed reads stay visible without blocking the others. Codex supplies
 `AGENTS.md`, so it is excluded from reload. Captured reloads survive resume and fork
-without rereading. Earlier saved sessions retain their compaction summaries, available
+without rereading merely because the thread resumes; the next reset reads current
+sources. Earlier saved sessions retain their compaction summaries, available
 from **Context compacted** in the transcript. Captured changes and output remain
 readable while their [storage](#replay-storage) is retained. See the
 [compaction contract](../../modules/agentguidance/SPEC.md#compaction-context), including

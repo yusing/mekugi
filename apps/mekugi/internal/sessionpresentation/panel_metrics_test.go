@@ -55,7 +55,7 @@ func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 	if *got != want {
 		t.Fatalf("worker features = %+v", *got)
 	}
-	newFeatures := []control.Feature{control.FeatureWaitProgress, control.FeatureProgressYield, control.FeatureAssignmentSources, control.FeatureMessageSources, control.FeatureSelfCompactionCompleted, control.FeatureCompactionCostSkip, control.FeatureCompactionPreflightSkip, control.FeatureSelfCompactionFailure}
+	newFeatures := []control.Feature{control.FeatureWaitProgress, control.FeatureProgressYield, control.FeatureAssignmentSources, control.FeatureMessageSources, control.FeatureSelfCompactionCompleted, control.FeatureSelfCompactionFailure}
 	service.ObserveFeature("root", newFeatures...)
 	for range 2 {
 		service.ObserveFeature("nested", newFeatures...)
@@ -79,7 +79,7 @@ func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 	for key, want := range map[[2]string]string{
 		{"Compaction", ""}: "Self/Descendants", {"Spawns", "Total"}: "1/1", {"Spawns", "With preload"}: "1/0",
 		{"Waits", "Progress enabled"}: "1/2", {"Waits", "Progress delivered"}: "1/2",
-		{"Compaction", "Self completed"}: "1/2", {"Compaction", "Cost skipped"}: "1/2", {"Compaction", "Preflight skipped"}: "1/2", {"Compaction", "Self failed"}: "1/2",
+		{"Compaction", "Self completed"}: "1/2", {"Compaction", "Self failed"}: "1/2",
 		{"Source-bearing sends", "Total"}: "2/4", {"Source-bearing sends", "Assignments"}: "1/2", {"Source-bearing sends", "Messages"}: "1/2",
 		{"Waits", "All mode"}: "0/1", {"Delegate finals", "With edit ranges"}: "0/1", {"Output deduplication", "Saved tokens (est.)"}: "0/60",
 	} {

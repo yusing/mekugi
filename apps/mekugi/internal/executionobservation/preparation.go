@@ -40,27 +40,26 @@ const applyPatchToolName = "apply_patch"
 
 // Config supplies borrowed invocation owners. Startup owns their lifetimes.
 type Config struct {
-	ContextAttachments    func(context.Context, string, string) (composer.AttachmentSnapshot, error)
-	CompactionAttachments func(context.Context, string) ([]composer.ContextAttachment, error)
-	Inspect               func(context.Context, string) (threadcontrol.SessionDetails, error)
-	ThreadControl         *threadbinding.Driver
-	Registry              *frontends.Registry
-	InputProjections      []binding.InputProjection
-	Usage                 *accounting.Service
-	Review                *sessionreview.Review
-	Audience              *sessioncontrol.Audience
-	Windows               *Windows
-	NativeTrace           *nativetrace.Reader
-	Control               *sessioncontrol.Observations
-	PreviewTiming         previewbinding.Timing
-	Calls                 *history.CallCache
-	Retained              changes.Scope
-	Changes               changes.Service
-	Checkpoints           *changecapture.Workspaces
-	Recovery              *recovery.Service
-	PublishChanges        func([]changes.Update)
-	Notice                func(string, string, string, string)
-	Event                 func(string, string, string, string)
+	ContextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
+	Inspect            func(context.Context, string) (threadcontrol.SessionDetails, error)
+	ThreadControl      *threadbinding.Driver
+	Registry           *frontends.Registry
+	InputProjections   []binding.InputProjection
+	Usage              *accounting.Service
+	Review             *sessionreview.Review
+	Audience           *sessioncontrol.Audience
+	Windows            *Windows
+	NativeTrace        *nativetrace.Reader
+	Control            *sessioncontrol.Observations
+	PreviewTiming      previewbinding.Timing
+	Calls              *history.CallCache
+	Retained           changes.Scope
+	Changes            changes.Service
+	Checkpoints        *changecapture.Workspaces
+	Recovery           *recovery.Service
+	PublishChanges     func([]changes.Update)
+	Notice             func(string, string, string, string)
+	Event              func(string, string, string, string)
 }
 
 // New binds request preparation to the composed owners without acquiring resources.
@@ -95,7 +94,6 @@ type mekugiResponseTransform struct {
 	owners           *Preparer
 	localWaitItem    string
 	compactReload    jsonv1.RawMessage
-	compactionCost   *compactionCost
 	inputPrefix      *codexresponses.InputPrefix
 	generation       sessioncontrol.Generation
 	generationOnly   bool
@@ -369,7 +367,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		}
 	}
 	var localWaitItem string
-	var cost *compactionCost
 	if p.ThreadControl != nil {
 		selected := observationScope(ctx, p.Retained)
 		session := history.Session{Store: selected.Store, Thread: selected.Thread, Namespace: selected.Namespace, Limits: selected.Limits, Writes: selected.Writes, Context: ctx}
@@ -389,24 +386,10 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			retained.Finish(false)
 			return nil, err
 		}
-		cost = p.prepareCompactionCost(ctx, request, threadID, metadata)
-		waitReads := reloadCalls
-		if cost != nil {
-			waitReads = maps.Clone(reloadCalls)
-			if waitReads == nil {
-				waitReads = make(map[string]bool)
-			}
-			for id := range cost.calls {
-				waitReads[id] = true
-			}
-		}
-		localWaitItem, err = p.observeThreadWait(ctx, threadID, metadata.TurnID, codeModeToolName, request, visible, waitReads)
+		localWaitItem, err = p.observeThreadWait(ctx, threadID, metadata.TurnID, codeModeToolName, request, visible, reloadCalls)
 		if err != nil {
 			retained.Finish(false)
 			return nil, err
-		}
-		if cost == nil && localWaitItem != "" {
-			cost = p.prepareCompactionCost(ctx, request, threadID, metadata)
 		}
 	}
 	activityThreadID := p.admitActivityThread(threadID, metadata)
@@ -417,7 +400,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	transform := &mekugiResponseTransform{
 		localWaitItem:    localWaitItem,
 		compactReload:    reload,
-		compactionCost:   cost,
 		owners:           p,
 		ctx:              ctx,
 		sessionID:        sessionID,

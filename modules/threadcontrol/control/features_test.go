@@ -83,7 +83,7 @@ func TestCompactionFeatureCounts(t *testing.T) {
 }
 
 func TestSelfCompactionOutcomeFeatures(t *testing.T) {
-	for _, outcome := range []string{"completed", "reconciled", "failed", "cost", "preflight"} {
+	for _, outcome := range []string{"completed", "reconciled", "failed"} {
 		t.Run(outcome, func(t *testing.T) {
 			s, _ := fixture(t)
 			id := identity("root", "rt")
@@ -91,39 +91,27 @@ func TestSelfCompactionOutcomeFeatures(t *testing.T) {
 			must(t, err)
 			must(t, s.Execution(t.Context(), id.Thread, id.Turn, id.Item, "", true))
 			want := FeatureUse{SelfCompactions: 1}
-			if outcome == "cost" || outcome == "preflight" {
-				must(t, s.RejectCompaction(t.Context(), id.Thread, "stale", id.Item, "skip", outcome == "cost"))
-				for range 2 {
-					must(t, s.RejectCompaction(t.Context(), id.Thread, id.Turn, id.Item, "skip", outcome == "cost"))
-				}
-				if outcome == "cost" {
-					want.CompactionCostSkips = 1
-				} else {
-					want.CompactionPreflightSkips = 1
-				}
+			_, err = s.ClaimLocalStop(t.Context(), id.Thread, id.Turn, id.Item)
+			must(t, err)
+			must(t, s.HostCompleted(t.Context(), id.Thread, id.Turn, Completed, HostFailure{}))
+			effect, err := s.ClaimEffect(t.Context(), id.Thread, id.Call+":compact")
+			must(t, err)
+			receipt := Receipt{}
+			if outcome == "failed" {
+				receipt.Error = "reset failed"
+				want.SelfCompactionFailures = 1
 			} else {
-				_, err = s.ClaimLocalStop(t.Context(), id.Thread, id.Turn, id.Item)
-				must(t, err)
-				must(t, s.HostCompleted(t.Context(), id.Thread, id.Turn, Completed, HostFailure{}))
-				effect, err := s.ClaimEffect(t.Context(), id.Thread, id.Call+":compact")
-				must(t, err)
-				receipt := Receipt{}
-				if outcome == "failed" {
-					receipt.Error = "reset failed"
-					want.SelfCompactionFailures = 1
-				} else {
-					want.SelfCompactionsCompleted = 1
-					if outcome == "reconciled" {
-						must(t, s.EffectAcknowledged(t.Context(), id.Thread, effect.ID, Receipt{Uncertain: true, Error: "lost acknowledgement"}))
-						if use, _, _ := s.FeatureUse(id.Thread); use.SelfCompactionFailures != 0 || use.SelfCompactionsCompleted != 0 {
-							t.Fatal("uncertain reset settled", use)
-						}
-						receipt.Reconciled = true
+				want.SelfCompactionsCompleted = 1
+				if outcome == "reconciled" {
+					must(t, s.EffectAcknowledged(t.Context(), id.Thread, effect.ID, Receipt{Uncertain: true, Error: "lost acknowledgement"}))
+					if use, _, _ := s.FeatureUse(id.Thread); use.SelfCompactionFailures != 0 || use.SelfCompactionsCompleted != 0 {
+						t.Fatal("uncertain reset settled", use)
 					}
+					receipt.Reconciled = true
 				}
-				for range 2 {
-					must(t, s.EffectAcknowledged(t.Context(), id.Thread, effect.ID, receipt))
-				}
+			}
+			for range 2 {
+				must(t, s.EffectAcknowledged(t.Context(), id.Thread, effect.ID, receipt))
 			}
 			if use, _, _ := s.FeatureUse(id.Thread); use != want {
 				t.Fatalf("use=%+v want=%+v", use, want)

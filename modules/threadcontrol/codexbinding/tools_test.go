@@ -24,6 +24,9 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 	} {
 		for _, tool := range ToolCatalog(tc.claude) {
 			if tool.Name == "compact" {
+				if !tc.claude {
+					t.Fatal("Codex exposes a duplicate reset tool")
+				}
 				for _, want := range []string{"Batch checkpoint preparation, including task-state JSON writes, and compact in one enclosing execution, with compact last", "then let that execution finish", "safe checkpoint", "below 90% are not compaction triggers"} {
 					if !strings.Contains(tool.Description, want) {
 						t.Errorf("caller claude=%t: compact omits %q: %s", tc.claude, want, tool.Description)
@@ -139,7 +142,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	expected := []string{"compact", "followup_task", "inspect", "interrupt_agent", "list_agents", "list_models", "send_message", "spawn_agent", "wait_agent"}
+	expected := []string{"followup_task", "inspect", "interrupt_agent", "list_agents", "list_models", "send_message", "spawn_agent", "wait_agent"}
 	if !slices.Equal(names, expected) {
 		t.Fatalf("catalog=%v", names)
 	}
@@ -149,7 +152,6 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"path":"file","ranges":[[1]]}]}}`},
 		{"list_agents", `{"unknown":true}`},
 		{"list_models", `{"backend":"codex"}`},
-		{"compact", `{"target":"other"}`},
 		{"wait_agent", `{"compact":"yes"}`},
 		{"inspect", `{}`},
 		{"inspect", `{"target":"/root","unknown":true}`},
@@ -404,12 +406,12 @@ func TestWaitAgentWaitsAfterImmediateTimeout(t *testing.T) {
 
 func TestResetReloadAdmission(t *testing.T) {
 	for _, test := range []struct{ tool, args string }{
-		{"compact", `{"reload":{"sources":[{"path":"task.json","ranges":[[2,4]]}]}}`},
-		{"compact", `{"reload":{"sources":[{"skill":"native","path":"/native/SKILL.md"}]}}`},
-		{"compact", `{"reload":{"sources":[{"changes":["amber1"]}]}}`},
+		{"wait_agent", `{"compact":true,"reload":{"sources":[{"path":"task.json","ranges":[[2,4]]}]}}`},
+		{"wait_agent", `{"compact":true,"reload":{"sources":[{"skill":"native","path":"/native/SKILL.md"}]}}`},
+		{"wait_agent", `{"compact":true,"reload":{"sources":[{"changes":["amber1"]}]}}`},
 		{"wait_agent", `{"compact":true,"reload":{"sources":[{"path":"task.json"}]}}`},
-		{"compact", `{"reload":{"sources":[{"path":"task.json","ranges":[[2]]}]}}`},
-		{"compact", `{"reload":{"sources":[{"unknown":"task.json"}]}}`},
+		{"wait_agent", `{"compact":true,"reload":{"sources":[{"path":"task.json","ranges":[[2]]}]}}`},
+		{"wait_agent", `{"compact":true,"reload":{"sources":[{"unknown":"task.json"}]}}`},
 		{"wait_agent", `{"reload":{"sources":[]}}`},
 		{"wait_agent", `{"compact":true,"reload":null}`},
 	} {
@@ -422,7 +424,7 @@ func TestResetReloadAdmission(t *testing.T) {
 			if member.Wait != nil {
 				t.Fatal("rejection changed wait")
 			}
-			if _, err := driver.Call(t.Context(), caller, "compact", []byte(`{"reload":{"sources":["@task.json#L2-L4"]}}`)); err != nil {
+			if _, err := driver.Call(t.Context(), caller, "wait_agent", []byte(`{"compact":true,"reload":{"sources":["@task.json#L2-L4"]}}`)); err != nil {
 				t.Fatal(err)
 			}
 		})

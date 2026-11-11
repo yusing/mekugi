@@ -37,7 +37,6 @@ type Service struct {
 }
 
 type threadUsageTotal struct {
-	input        *inputSample // Latest live request, never cumulative or restored pricing.
 	roundOutput  RoundOutput
 	cost         Cost
 	counts       inference.Usage
@@ -134,12 +133,6 @@ func (u *Service) addRound(o *Observation, serviceTier string, counts inference.
 		}
 	}
 	u.updateLocked(thread, delta)
-	if round.StartedUnixNano >= u.threads[thread].roundOutput.StartedUnixNano {
-		u.threads[thread].input = nil
-		if !conflicted && !counts.Incomplete && !counts.Inconsistent && counts.InputTokens > 0 {
-			u.threads[thread].input = &inputSample{model, serviceTier, counts, price}
-		}
-	}
 }
 
 func usageTotalReport(total *threadUsageTotal) (Report, bool) {

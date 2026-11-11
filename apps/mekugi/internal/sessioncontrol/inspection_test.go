@@ -98,36 +98,3 @@ func TestAttachmentContextReadsHistoryOncePerWindow(t *testing.T) {
 		}
 	})
 }
-
-func TestCurrentAttachmentsReadsUncachedPrefix(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		transport := &requestTransport{id: "7"}
-		requests := NewRequests[struct{}](transport)
-		for range 2 {
-			done := make(chan []composer.ContextAttachment, 1)
-			go func() {
-				values, err := requests.CurrentAttachments(t.Context(), "root")
-				if err != nil {
-					t.Error(err)
-				}
-				done <- values
-			}()
-			(<-requests.Inspections()).Complete("root", control.SessionDetails{})
-			call := <-requests.Calls()
-			if call.method != "thread/read" {
-				t.Fatal(call.method)
-			}
-			requests.Dispatch(call)
-			response := jsontext.Value(`{"thread":{"id":"root","turns":[{"items":[{"id":"reset","type":"contextCompaction","status":"completed"},{"id":"later","type":"userMessage","content":[{"type":"image","url":"https://example.test/later.png"}]}]}]}}`)
-			if !requests.CompleteCall(appserver.Message{ID: jsontext.Value(`7`), Result: response}) {
-				t.Fatal("reply not consumed")
-			}
-			if values := <-done; len(values) != 1 || len(values[0].Images) != 1 {
-				t.Fatalf("post-boundary attachment missing: %+v", values)
-			}
-		}
-		if len(transport.sends) != 2 {
-			t.Fatalf("current prefix was cached: %d", len(transport.sends))
-		}
-	})
-}

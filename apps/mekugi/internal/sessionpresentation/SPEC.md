@@ -489,8 +489,8 @@ Features compares model-facing feature use by the thread displayed when the pane
 opened (Self) with the sum over all of its admitted descendants, including completed
 agents (Descendants). Its intro names Self and counts those agents. Each family is a
 comparison table whose first row is its total, followed by subsets and failed
-attempts: compactions (self-initiated, with preload, self-request completion, cost and
-unusable-preflight skips, reset failures), spawns (with preload, rejected
+attempts: compactions (self-initiated, with preload, self-request completion,
+reset failures), spawns (with preload, rejected
 preload), completed delegate final answers (with edit ranges), `send_message` sends
 (with `btw`, rejected and failed `btw`), `wait_agent` registrations (all mode,
 progress enabled, progress delivered), source-bearing sends (assignments and messages, including

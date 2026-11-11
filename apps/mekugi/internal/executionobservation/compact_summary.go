@@ -355,10 +355,7 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 	// Completed preload history can outlive its logical tree in an ordinary
 	// fork. An authorized snapshot plus the exact assignment-derived reader
 	// identity permits projection, never scheduling new acquisition.
-	_, references, err := preloadSelections(items)
-	if err != nil {
-		return nil, err
-	}
+	_, references := preloadSelections(items)
 	assignments := make(map[string]string)
 	for id := range references {
 		if strings.HasPrefix(id, "threadcontrol_") {

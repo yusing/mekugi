@@ -106,10 +106,6 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 		return nil, nil
 	}
 	t.inputPrefix = prefix
-	if err := t.checkCompactionCost(request); err != nil {
-		t.Close()
-		return nil, err
-	}
 	if input.MetadataValid && !t.generationOnly {
 		observeReview(p.Review, t.directory, t.threadID, input.Metadata)
 		if !input.Automatic {

@@ -56,8 +56,8 @@ recall outside envelopes uses ordinary tool-output matching. Selection XML
 boundaries and diff fences remain intact when bodies are deduplicated.
 A string output is one part. Execution and attachment headers remain
 verbatim. Durable attachment envelopes use their submitted bodies; files and skills
-are never reopened to infer equality. Compaction reader results participate as
-native tool output before the application adds reload-context framing, so later
+are never reopened to infer equality. Native reset results retain typed source
+bodies in replacement history, so later
 ordinary reads can reference the supplied source text. Frame byte ranges describe the original
 snapshot, while reference rows address the earlier visible body. Ordinary user
 requests, base instructions, malformed envelopes, and media
@@ -65,7 +65,7 @@ are excluded. String-content or non-`input_text` envelopes and bare frame text
 remain ordinary input. Native selected-skill XML retains its existing manager
 rewrite. Router-appended parts, including warnings and edit notices, remain intact. Outputs without a call ID and native
 live-session JSON envelopes are excluded, except that named native thread-control
-follow-up results can supply typed source bodies without a call ID.
+follow-up and context-reload results can supply typed source bodies without a call ID.
 
 ### Current matching design
 

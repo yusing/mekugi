@@ -30,7 +30,6 @@ type inspectionResult struct {
 // ordinary thread restoration. It neither opens source files nor runs skills.
 type AttachmentReader interface {
 	ContextAttachments(context.Context, string, string) (composer.AttachmentSnapshot, error)
-	CurrentAttachments(context.Context, string) ([]composer.ContextAttachment, error)
 }
 
 func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
@@ -46,18 +45,6 @@ func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window str
 	query = &Inspection{thread: thread, window: window, loaded: true, attachments: conversationbinding.CompactedAttachments(turns), result: make(chan inspectionResult, 1)}
 	result = r.inspect(ctx, query)
 	return result.attachments, result.err
-}
-
-// CurrentAttachments never changes the active window's frozen recall cache.
-func (r *Requests[T]) CurrentAttachments(ctx context.Context, thread string) ([]composer.ContextAttachment, error) {
-	if _, err := r.Inspect(ctx, thread); err != nil {
-		return nil, err
-	}
-	turns, err := r.attachmentHistory(ctx, thread)
-	if err != nil {
-		return nil, err
-	}
-	return conversationbinding.CurrentAttachments(turns), nil
 }
 
 func (r *Requests[T]) attachmentHistory(ctx context.Context, thread string) ([]binding.HistoryTurn, error) {

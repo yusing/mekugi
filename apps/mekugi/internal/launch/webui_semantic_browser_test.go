@@ -598,7 +598,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		run("wait", "--text", "of 3")
 		viewport("1280", "720")
 		button("Features")
-		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 8 10') && rows.includes('Self completed 2 4') && rows.includes('Cost skipped 3 1') && rows.includes('Preflight skipped 1 2') && rows.includes('Self failed 1 2') && rows.includes('Progress enabled 4 3') && rows.includes('Progress delivered 2 1') && rows.includes('Assignments 3 2') && rows.includes('Messages 3 1') && rows.includes('With edit ranges 0 5') && rows.includes('Saved tokens (est.) 1234 -20'); })()`)
+		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 8 10') && rows.includes('Self completed 2 4') && rows.includes('Self failed 1 2') && rows.includes('Progress enabled 4 3') && rows.includes('Progress delivered 2 1') && rows.includes('Assignments 3 2') && rows.includes('Messages 3 1') && rows.includes('With edit ranges 0 5') && rows.includes('Saved tokens (est.) 1234 -20'); })()`)
 		capture("session-features")
 		// The additional rows remain readable and reachable beneath pinned navigation.
 		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"phone", "390", "844"}} {

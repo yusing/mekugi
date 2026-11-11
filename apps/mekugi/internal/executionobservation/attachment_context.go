@@ -133,10 +133,7 @@ func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexr
 	}
 	// A caller-selected whole skill already uses the shared current-source reader.
 	// Keep its result and failure instead of scheduling an identical second read.
-	selections, _, err := preloadSelections(items)
-	if err != nil {
-		return attachmentPreparation{}, err
-	}
+	selections, _ := preloadSelections(items)
 	selected := make(map[string]bool)
 	for _, source := range historical {
 		if len(source.Ranges) == 0 && source.Changes == nil {

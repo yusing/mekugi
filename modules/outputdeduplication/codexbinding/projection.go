@@ -129,9 +129,11 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			}
 			continue
 		}
-		// Native follow-up continuations retain their attributed message in a
-		// named result without a tool call ID. Only typed bodies are eligible.
-		if id == "" && responses.StringField(item, "type") == "function_call_output" && responses.StringField(item, "namespace") == "threadcontrol" && responses.StringField(item, "name") == "followup_task" {
+		// Native follow-ups and reset acquisition retain named results without a
+		// tool call ID. Only their typed source bodies are eligible.
+		namespace, name := responses.StringField(item, "namespace"), responses.StringField(item, "name")
+		sourceResult := namespace == "threadcontrol" && name == "followup_task" || namespace == "context" && name == "reload"
+		if id == "" && responses.StringField(item, "type") == "function_call_output" && sourceResult {
 			if output, ok := projectDuplicateTextParts(item["output"], 1, "", nil, projectSources); ok {
 				item["output"] = output
 				items[at] = responses.MustMarshalJSON(item)

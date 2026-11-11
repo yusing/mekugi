@@ -37,10 +37,7 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		return nil, nil, nil, err
 	}
-	selected, assignments, err := preloadSelections(items)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	selected, assignments := preloadSelections(items)
 	selections = append(selections, selected...)
 	var pending jsontext.Value
 	var supplements []activity.Supplement
@@ -76,19 +73,11 @@ func (p *Preparer) preparePreloadInput(request *codexresponses.Request, session,
 
 // Message identities recognize inherited completed readers independently of
 // acquisition authority. New reads require an admitted selection or a retained
-// checkpoint/completion selection, together with its visible initiating item.
-func preloadSelections(items []map[string]jsontext.Value) ([]control.ContextPreload, map[string]bool, error) {
+// completion selection, together with its visible initiating item.
+func preloadSelections(items []map[string]jsontext.Value) ([]control.ContextPreload, map[string]bool) {
 	var selections []control.ContextPreload
 	assignments := make(map[string]bool)
 	for _, item := range items {
-		reset, err := resetPreload(item)
-		if err != nil {
-			return nil, nil, err
-		}
-		if reset.Item != "" {
-			selections = append(selections, reset)
-			assignments[reset.Item] = true
-		}
 		if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "assistant" {
 			assignments[responses.StringField(item, "id")] = true
 			// Retained final envelopes use the same message-bound reload as
@@ -104,28 +93,5 @@ func preloadSelections(items []map[string]jsontext.Value) ([]control.ContextPrel
 			}
 		}
 	}
-	return selections, assignments, nil
-}
-
-// Native checkpoint continuations retain the initiating selection separately
-// from conversation text. Reading it never creates another model request.
-func resetPreload(item map[string]jsontext.Value) (control.ContextPreload, error) {
-	if responses.StringField(item, "type") != "function_call_output" || responses.StringField(item, "namespace") != "threadcontrol" || responses.StringField(item, "call_id") != "" {
-		return control.ContextPreload{}, nil
-	}
-	name := responses.StringField(item, "name")
-	if name != "compact" && name != "wait_agent" {
-		return control.ContextPreload{}, nil
-	}
-	var result struct {
-		ID         string                    `json:"id"`
-		Compaction *control.CompactionResult `json:"compaction"`
-	}
-	if err := json.Unmarshal([]byte(responses.StringField(item, "output")), &result); err != nil {
-		return control.ContextPreload{}, err
-	}
-	if result.ID == "" || result.Compaction == nil || result.Compaction.State != "completed" || result.Compaction.Reload == "" {
-		return control.ContextPreload{}, nil
-	}
-	return control.ContextPreload{Item: control.MessageItemID(result.ID), Selection: result.Compaction.Reload}, nil
+	return selections, assignments
 }

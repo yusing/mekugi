@@ -195,17 +195,19 @@ owns the fixed token-budget policy in native feature/configuration resolution: h
 is disabled, guidance and fallback prompts are absent, and remaining-token reminders are
 neutral. Model activation and model switches do not replace that policy. Native context assembly makes no automatic `notes.thread_hint` request; caller-configured
 MCP tools and hooks remain unchanged. It
-excludes client tool outputs from cross-reset retention. Self-directed checkpoints
-use Thread Control rather than the native direct-reset tool. Claude compaction is
-unchanged.
+excludes client tool outputs from cross-reset retention. Codex self-directed checkpoints
+use native `functions.new_context`; Thread Control offers no second Codex reset tool.
+Claude compaction is unchanged.
 
-An agent can select optional reload sources in `compact` or `wait_agent` with
-`compact:true`, using a structured JSON selection in the initiating call. The
-selection stays with the checkpoint. Self-checkpoints may read it before reset
-for cost admission; accepted resets acquire it after reset before provider inference.
-There is no separate selection request or
-response-schema change. Attached skills refresh from current sources after a boundary;
-other context without a selection is recovered through ordinary model-directed reads.
+An agent can select optional reload sources in native `new_context` or `wait_agent`
+with `compact:true`, using `reload:{sources:[...]}`. A supplied selection replaces the
+thread's retained selection, omission reuses it, and `sources:[]` clears it. Structural
+selection errors reject without replacing prior state; individual source errors remain
+visible alongside successfully read sources. The native rollout and compaction checkpoint
+retain the selection through resume, fork and rollback at their corresponding boundaries.
+Explicit, manual and automatic resets use the same acquisition lifecycle and await it
+before post-reset inference. Requested resets have no cost-estimate veto or duplicate
+preflight read. Other context is recovered through ordinary model-directed reads.
 Missing recovery state requires no bootstrap or completion gate.
 
 An optional temporary JSON artifact can hold reusable task state. It is a source
@@ -232,10 +234,11 @@ thread's or selected child's workspace, permissions and approvals. Codex supplie
 explicit selections and previously captured results. Select needed implementations,
 callers, tests, fixtures and guidance for the next unfinished operation.
 
-File selections use `mcat` with its normal range, output and recovery bounds. An
-incomplete file read reports its failure and, when available, an `mread` continuation;
-its omitted rows are not included in the preload. Skill and change selections retain
-their own readers.
+Native reset reads selected files through the receiving runtime's filesystem;
+skill names resolve through its native catalog. Shared preload/message file
+selections use `mcat` with its normal range, output and recovery bounds. An
+incomplete read reports its failure and any available continuation; omitted rows
+are not acquired context. Captured-change selections use their admitted reader.
 
 Successfully selected file and skill text also resolves nested references using
 the same grammar, including JSON string values.
@@ -246,20 +249,22 @@ Host-owned `AGENTS.md` stays excluded at every depth. Nested results remain insi
 the root's retained result with command identities and failure status, using the
 same permissions, approvals, byte budget and immutable reload/preload snapshot.
 
-Independent readers run concurrently as stock tools. A denied or failed source does
-not prevent the others from completing. Prewarm and execution-free requests never
-start reads. The authenticated reload frontend captures selected bodies through
-retained output delivery; stock output windows carry only the reference. Provider
-input expands it into a result per source and omits synthetic acquisition
-calls and selection metadata. One introduction identifies the bodies as reusable
-read context. Acquisition may yield internally; inference waits for terminal
-acquisition and never receives accumulated partial results. Publication failures
-remain explicit. Source rows participate in ordinary output deduplication.
+Source acquisition uses the receiving native permissions. A denied or failed
+source does not prevent the others from completing. Native reset retains completed
+source bodies and diagnostics as tool data in replacement history, without a Go
+reload command, synthetic provider calls or provider-side expansion. Shared delegate preload,
+message and completion acquisition keep retained snapshot delivery and its provider
+projection. One introduction identifies the bodies as reusable read context.
+Inference waits for terminal acquisition and never receives accumulated partial
+results. Publication failures remain explicit. Source rows participate in ordinary
+output deduplication.
 
-Native history retains the complete calls and results. Completed reads survive
-resume and fork without reacquisition; a branch created before acquisition reads
-when it continues. Cancellation and approvals remain Codex-owned. No reader is
-silently replayed. Historical Mekugi summary records remain readable for saved
+Completed reads survive resume and fork without reacquisition; the next actual
+reset reads the then-current selected sources. Acquisition precedes replacement
+publication: a fork before publication inherits the intact prior context and
+retained selection, not a half-acquired replacement. Cancellation and approvals
+remain Codex-owned. No interrupted reader is silently replayed.
+Historical Mekugi summary records remain readable for saved
 sessions and summary dialogs, with their original authorization and source results;
 new resets do not create them. Missing, corrupt or unauthorized historical references
 fail before provider access.
