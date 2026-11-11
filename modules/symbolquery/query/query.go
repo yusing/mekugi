@@ -378,13 +378,13 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 	sharedFiles := map[string][]*symbolReference{}
 	var sharedOrder []string
 	for queryIndex, q := range queries {
-		if q.err != nil {
-			fail(q, q.err)
-			continue
-		}
 		result.Stderr += q.stderr
 		if result.Stderr != "" && !strings.HasSuffix(result.Stderr, "\n") {
 			result.Stderr += "\n"
+		}
+		if q.err != nil {
+			fail(q, q.err)
+			continue
 		}
 		seen := map[string]bool{}
 		references := map[string][]*symbolReference{}

@@ -422,10 +422,14 @@ func TestNativeSymbolMixedInvalidTuplesAndProtocolErrors(t *testing.T) {
 	if out.ExitCode != 1 || out.Stdout != want || !strings.Contains(out.Stderr, "line 99 is past EOF") || !strings.Contains(out.Stderr, "missing.ts") {
 		t.Fatalf("mixed valid/invalid tuples: %+v", out)
 	}
-	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {ErrorMethod: "textDocument/definition", References: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20)}}})
+	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {ErrorMethod: "textDocument/definition", Diagnostic: "resolver diagnostic\n", References: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20)}}})
 	out = executeQuery(t, "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick")
-	if out.ExitCode != 1 || out.Stdout != "\"sample.ts\":\n1 "+source || !strings.Contains(out.Stderr, "fixture query rejected") {
+	if out.ExitCode != 1 || out.Stdout != "\"sample.ts\":\n1 "+source || !strings.Contains(out.Stderr, "fixture query rejected") || strings.Count(out.Stderr, "resolver diagnostic") != 1 {
 		t.Fatalf("protocol failure suppressed later tuple: %+v", out)
+	}
+	out = executeQuery(t, "def", "sample.ts", "1", "Pick", "def", "sample.ts", "1", "Pick")
+	if out.ExitCode != 1 || out.Stdout != "" || strings.Count(out.Stderr, "fixture query rejected") != 2 || strings.Count(out.Stderr, "resolver diagnostic") != 1 {
+		t.Fatalf("all-failed queries lost diagnostics: %+v", out)
 	}
 }
 
