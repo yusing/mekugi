@@ -18,6 +18,10 @@ WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace
 .PHONY: integrate
 BUILD_OUTPUT ?= bin
 BUILD_LDFLAGS ?= -s -w
+NATIVE_PROFILE ?= release
+NATIVE_OUTPUT ?= bin/native
+NATIVE_ARCHIVE ?= bin/mekugi-native.tar.gz
+.PHONY: build-native test-native package-native
 
 TEST_PACKAGES ?= @workspace
 TEST_SUPPORT_PACKAGES := ./testsupport/uisnapshot/...
@@ -58,6 +62,15 @@ build: workspace-check
 build-binaries: webui claude-worker
 	$(MAKE) --no-print-directory build
 	$(GO_OUTPUT) build $(GO_BUILD_FLAGS) -ldflags='$(BUILD_LDFLAGS)' -o '$(BUILD_OUTPUT)/' ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
+
+build-native:
+	python3 runtime/build.py build --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)'
+
+test-native:
+	python3 runtime/build.py test --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)'
+
+package-native:
+	python3 runtime/build.py package --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' --archive '$(NATIVE_ARCHIVE)'
 
 # Browser assets embedded by `mekugi web`. Go tests and plain Go builds work
 # without Bun or Node.js; an unbundled UI host reports how to build its assets.

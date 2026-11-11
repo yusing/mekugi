@@ -6,6 +6,10 @@ repository-relative; braces group alternatives. Application owners below are und
 
 ## Application
 
+Native foundation: `runtime/codex/codex-rs/app-server` owns the renamed
+`mekugi-app-server`; `runtime/build.py` builds, tests and packages it. Usage:
+`docs/contributing/development.md#native-app-server`.
+
 | Owner | Entry points and responsibility |
 | --- | --- |
 | Composition | `composition/modules.go`: selected descriptors/bindings; `contracts`: shared interfaces; `testsupport/moduletest`: composed harness |

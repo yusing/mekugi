@@ -105,6 +105,40 @@ prints its diff. Review and update the affected baselines, then stage them with 
 source change. The existing Linux CI suite also checks all UI snapshots.
 The [release workflow](../../.github/workflows/release.yml) packages Linux/macOS; tags publish assets.
 
+## Native app-server
+
+The [managed fork](../../runtime/codex) builds its existing app-server entry point as
+`mekugi-app-server`. Initialize and build it without installing anything:
+
+```sh
+git submodule update --init runtime/codex
+make build-native
+make test-native
+make package-native
+```
+
+Building needs Python 3.11+, Rustup, a C/C++ toolchain and, on Linux,
+`pkg-config`, `libcap-dev` and `libssl-dev`. Rustup selects the fork's pinned
+toolchain; the build uses its pinned V8 downloader. First builds need network
+access. `NATIVE_PROFILE=dev-small` selects the smaller development profile;
+`CARGO_BUILD_JOBS=2` limits compile concurrency.
+
+Executables go to `bin/native`; the archive goes to `bin/mekugi-native.tar.gz`.
+Override these with `NATIVE_OUTPUT` and `NATIVE_ARCHIVE`. Keep the server beside
+`codex-code-mode-host` and Linux `bwrap`. The archive also includes protocol
+schemas, licenses and the source revision. Shells and `rg` remain host tools.
+Release CI packages native Linux amd64/arm64 and macOS arm64 builds.
+
+Run `bin/native/mekugi-app-server` for stdio JSON-RPC, or pass
+`--listen unix:///absolute/path/server.sock` for a Unix-socket attachment.
+The fork's existing configuration and transport options remain available through
+`--help`. The Go clients have not moved to this foundation yet.
+
+`make test-native` runs the existing standalone CLI, command execution, connection,
+code-mode-host and strict-configuration tests using local fixtures, not live
+providers. When advancing the fork pin, review upstream/security changes, rerun
+these checks and compare protocol changes with client consumers before packaging.
+
 ## Integrate reviewed work
 
 Main can batch ready operations through the [workspace helper](../../apps/mekugi/cmd/workspace/integrate.go),

@@ -12,6 +12,9 @@ Load only the procedure matching the operation; routine focused checks need only
 
 ## Runner
 
+`make test-native` checks the fork's app-server separately from the Go suite.
+Build/package usage: `docs/contributing/development.md#native-app-server`.
+
 Use `make test`; the root has no Go module. `TEST_PACKAGES` defaults to `@workspace` (all `go.work`
 members); `TEST_RUN` and `TEST_FLAGS` pass through to `go test`. With RTK, successful packages are
 summarized; set `RTK=` for native output.

@@ -34,6 +34,8 @@ jobs:
       BUILD_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -77,6 +79,19 @@ jobs:
       - name: Test welcome and linked version
         run: |
           MEKUGI_TEST_BUILD_VERSION="$BUILD_TAG" make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^(TestMekugi(BuildVersion|LinkedBuildVersion)|TestNativeWelcome|TestUISnapshotNativeWelcome)' TEST_FLAGS="-ldflags='-X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG'"
+      - name: Install native Linux build dependency
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends pkg-config libcap-dev libssl-dev
+      - name: Test and package native runtime
+        env:
+          CARGO_BUILD_JOBS: '2'
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          make test-native
+          make package-native NATIVE_ARCHIVE="$RUNNER_TEMP/artifacts/mekugi-native_${PLATFORM}.tar.gz"
+          bin/native/mekugi-app-server --help
       - name: Build and package
         env:
           PLATFORM: ${{ matrix.platform }}
