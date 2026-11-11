@@ -23,7 +23,6 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
-	"github.com/yusing/mekugi/providers/opencode"
 )
 
 // The preparer selects an admitted lifecycle result; the executor, coordination
@@ -53,7 +52,7 @@ func (*lifecyclePreparation) Close()                                {}
 
 func TestLifecycleCaptureProviderDecision(t *testing.T) {
 	for _, transport := range []string{"http", "websocket"} {
-		for _, kind := range []string{"local_wait", "context_reload", "provider", "usage_limit", "usage_limit_paused", "capacity", "overloaded", "capacity_stream", "third_party", "third_party_stream"} {
+		for _, kind := range []string{"local_wait", "context_reload", "provider", "usage_limit", "usage_limit_paused", "capacity", "overloaded", "capacity_stream", "custom_provider", "custom_provider_stream"} {
 			t.Run(transport+"/"+kind, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()
@@ -71,8 +70,8 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				timingOwner, timingStore := retainTestTimings(t, recorder)
 				preparation := new(lifecyclePreparation)
 				thread, session, turn := "root", "root-session", "root-turn"
-				thirdParty := strings.HasPrefix(kind, "third_party")
-				capacity := strings.HasPrefix(kind, "capacity") || kind == "overloaded" || thirdParty
+				customProvider := strings.HasPrefix(kind, "custom_provider")
+				capacity := strings.HasPrefix(kind, "capacity") || kind == "overloaded" || customProvider
 				limited := strings.HasPrefix(kind, "usage_limit") || capacity
 				executor := Executor{Observations: preparation, Issues: testCriticalErrors()}
 				if kind == "local_wait" || limited || kind == "provider" {
@@ -156,10 +155,10 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 						return
 					}
 					providerCalls <- struct{}{}
-					if thirdParty {
+					if customProvider {
 						w.Header().Set("Retry-After", "60")
 					}
-					if limited && kind != "capacity_stream" && kind != "third_party_stream" {
+					if limited && kind != "capacity_stream" && kind != "custom_provider_stream" {
 						w.Header().Set("Content-Type", "application/json")
 						status := http.StatusTooManyRequests
 						if capacity {
@@ -177,11 +176,8 @@ func TestLifecycleCaptureProviderDecision(t *testing.T) {
 				client.Transport = recorder.Transport(client.Transport)
 				gateway := inferencegateway.NewClient(provider.URL, client, ProviderDiagnostics())
 				model := "gpt-test"
-				if thirdParty {
-					service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "fixture"}}).Services()[0]
-					service.Endpoint = provider.URL + "/chat/completions"
-					gateway.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {OpenCode: &service, HTTPClient: client, Diagnostics: ProviderDiagnostics()}}
-					model = service.Prefix + ":glm-5.3-flash"
+				if customProvider {
+					gateway.Native = &inferencegateway.NativeProvider{ID: "fixture", BaseURL: provider.URL, HTTPClient: client}
 				}
 				executor.Provider = gateway
 				headers := http.Header{}

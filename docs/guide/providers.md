@@ -1,26 +1,22 @@
 # Providers and delegates
 
-Use third-party models and Claude delegates alongside Codex.
+Use native OpenAI models with `mekugi codex`, or configure a custom Responses
+provider through a [profile import](configuration.md#codex-profile-imports).
+Claude delegates retain their separate execution backend and authentication.
 
-## Grok models
+## Custom Responses providers
 
-Use `grok login --oauth` or `XAI_API_KEY` (takes precedence); Codex credentials stay separate.
-The default follows `[models].default` in `~/.grok/config.toml`, then the latest standard model (currently `grok-4.7`);
-`-m`/`-c model=...` overrides it. Standalone IDs need `grok:`; `mekugi grok` uses plain IDs.
-Subagents inherit full history by default; `fork_turns="none"` starts fresh. Build Fast needs OAuth;
-encrypted OpenAI history cannot switch to Grok. See [Grok requirements](../../providers/grok/SPEC.md).
+Run `mekugi -p NAME` with the provider definition and model in
+`NAME.config.toml` under the admitted Codex home. Supply the endpoint's client
+credential through its configured environment variable or native authentication
+command. Model identities and available capabilities come from that provider;
+Mekugi does not maintain a replacement multi-provider catalog or pricing table.
+Unknown prices remain unknown.
 
-## OpenCode Go and Zen
-
-```sh
-OPENCODE_GO_API_KEY='your-key' mekugi -m opencode-go:glm-5.3
-OPENCODE_ZEN_API_KEY='your-key' mekugi -m opencode-zen:kimi-k3
-```
-
-Keys can also live in [settings](configuration.md#mekugi-settings). `OPENCODE_API_KEY` overrides file
-keys; per-service variables override it, and an empty value disables that service.
-Models/prices refresh hourly; the picker updates next launch. See
-[OpenCode](../../providers/opencode/SPEC.md).
+A configured Responses endpoint is not a promise of support for every model,
+reasoning format, image or auxiliary tool. Unsupported operations retain the
+provider's error. CLIProxyAPI integration and release-specific validation are
+not yet provided by this migration.
 
 ## Claude delegates
 

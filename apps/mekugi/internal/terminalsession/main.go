@@ -182,10 +182,6 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	m.BTW.Rect = Rect{0, len(frame), width, len(btwRows)}
 	frame = append(frame, btwRows...)
 	frame = append(frame, make([]string, gap)...)
-	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
-	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
-	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
-	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
 	if !readOnly && (in.Question || presentation.Approvals.Open) {
 		border = painter.Theme.Accent()

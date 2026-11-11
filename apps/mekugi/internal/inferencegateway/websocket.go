@@ -47,7 +47,7 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 				s.upstream.CloseNow()
 			}
 		}()
-		if (provider.Native != nil && provider.Native.WebSockets) || (provider.Native == nil && provider.Grok == nil && len(provider.OpenCode) == 0) {
+		if provider.Native == nil || provider.Native.WebSockets {
 			key := codexresponses.RoutingSessionID(r.Header, codexresponses.Request{})
 			if endpoint.ForkCacheKey != nil {
 				if inherited := endpoint.ForkCacheKey(codexresponses.ThreadID(r.Header)); inherited != "" {
@@ -444,9 +444,9 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 	if err != nil {
 		return nil, err
 	}
-	if string(fields["generate"]) == "false" && (!s.provider.NativeContinuations(responseevents.StringField(fields, "model")) || s.upstreamRejection != nil) {
-		// Chat Completions has no non-generating transport warmup. Preserve Codex's
-		// prewarm/history handshake without running and discarding inference.
+	if string(fields["generate"]) == "false" && (!s.provider.NativeContinuations() || s.upstreamRejection != nil) {
+		// HTTP-only providers have no non-generating socket warmup. Preserve
+		// the host handshake without running and discarding inference.
 		response := map[string]any{"id": "resp_mekugi_warm_" + rand.Text(), "status": "completed", "output": []any{}}
 		payload := responseevents.MustMarshalJSON(map[string]any{"type": responseevents.Completed, "response": response})
 		return &Response{Response: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
@@ -457,7 +457,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 		s.upstreamRejection = nil
 		return &Response{Response: response, Transport: "websocket", UnknownPrice: s.provider.Native != nil}, nil
 	}
-	if !s.provider.NativeContinuations(responseevents.StringField(fields, "model")) {
+	if !s.provider.NativeContinuations() {
 		return s.provider.ForwardExecution(startCtx, responseCtx, native, headers, cacheKey)
 	}
 	payload, handshake, err := s.provider.webSocketRequest(native, headers, cacheKey)

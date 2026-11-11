@@ -35,9 +35,6 @@ var codexAuxiliaryPaths = []string{
 }
 
 func RegisterCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context, responseStartTimeout time.Duration, provider *Client) {
-	if provider.ThirdPartyOnly {
-		return
-	}
 	for _, path := range codexAuxiliaryPaths {
 		mux.HandleFunc("POST /v1/"+path, func(writer http.ResponseWriter, request *http.Request) {
 			endpoint := "/" + path

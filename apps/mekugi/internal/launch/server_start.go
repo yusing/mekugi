@@ -15,8 +15,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
-	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
-	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -29,7 +27,6 @@ type serverLauncher struct {
 	hub          *sessionapi.Hub
 	sourceSocket string
 	mu           sync.Mutex
-	selected     *modelcatalog.Selection
 	catalog      *sessionapi.StartOptions
 }
 
@@ -52,31 +49,20 @@ func (l *serverLauncher) models(ctx context.Context) (sessionapi.StartOptions, e
 	if l.catalog != nil {
 		return *l.catalog, nil
 	}
-	if l.selected == nil {
-		settings, err := launchoptions.LoadSettings(true)
-		if err != nil {
-			return sessionapi.StartOptions{}, err
-		}
-		auth, providers, err := launchProviders(ctx, launchoptions.Config{ThirdParty: true}, settings.Providers)
-		if err != nil {
-			return sessionapi.StartOptions{}, err
-		}
-		l.selected = &modelcatalog.Selection{GrokEnabled: auth != nil, OpenCode: providers}
-	}
-	options := defaultStartOptions(*l.selected)
+	options := defaultStartOptions()
 	executable, err := exec.LookPath("codex")
 	var body []byte
 	if err == nil {
 		body, err = bundledModelCatalog(ctx, executable, "")
 	}
 	if err == nil {
-		options, err = startModelOptions(body, *l.selected)
+		options, err = startModelOptions(body)
 	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return options, ctx.Err()
 		}
-		options = defaultStartOptions(*l.selected)
+		options = defaultStartOptions()
 		options.Note = "The full model catalog is unavailable; provider defaults are still available."
 		return options, nil
 	}
@@ -84,22 +70,12 @@ func (l *serverLauncher) models(ctx context.Context) (sessionapi.StartOptions, e
 	return options, nil
 }
 
-func defaultStartOptions(selection modelcatalog.Selection) sessionapi.StartOptions {
-	options := sessionapi.StartOptions{DefaultModel: "codex", Models: []sessionapi.ModelGroup{{Label: "Codex", Models: []sessionapi.Model{{ID: "codex", Label: "Default"}}}}}
-	if selection.GrokEnabled || selection.OpenCode.Enabled() {
-		options.DefaultModel = "mekugi"
-		if selection.GrokEnabled {
-			options.Models = append(options.Models, sessionapi.ModelGroup{Label: "Grok", Models: []sessionapi.Model{{ID: "mekugi", Label: "Mekugi default"}}})
-		}
-		for _, service := range selection.OpenCode.Services() {
-			options.Models = append(options.Models, sessionapi.ModelGroup{Label: service.Label, Models: []sessionapi.Model{{ID: "mekugi", Label: "Mekugi default"}}})
-		}
-	}
-	return options
+func defaultStartOptions() sessionapi.StartOptions {
+	return sessionapi.StartOptions{DefaultModel: "codex", Models: []sessionapi.ModelGroup{{Label: "Codex", Models: []sessionapi.Model{{ID: "codex", Label: "Default"}}}}}
 }
 
-func startModelOptions(body []byte, selection modelcatalog.Selection) (sessionapi.StartOptions, error) {
-	options := defaultStartOptions(selection)
+func startModelOptions(body []byte) (sessionapi.StartOptions, error) {
+	options := defaultStartOptions()
 	type catalogModel struct {
 		Slug       string `json:"slug"`
 		Label      string `json:"display_name"`
@@ -124,21 +100,6 @@ func startModelOptions(body []byte, selection modelcatalog.Selection) (sessionap
 				continue
 			}
 			group := 0
-			if namespace == "mekugi" {
-				label := ""
-				switch {
-				case strings.HasPrefix(entry.Slug, "grok:"):
-					label = "Grok"
-				case strings.HasPrefix(entry.Slug, "opencode-go:"):
-					label = "OpenCode Go"
-				case strings.HasPrefix(entry.Slug, "opencode-zen:"):
-					label = "OpenCode Zen"
-				}
-				group = slices.IndexFunc(options.Models, func(g sessionapi.ModelGroup) bool { return g.Label == label })
-				if group < 0 {
-					continue
-				}
-			}
 			model := sessionapi.Model{ID: namespace + "/" + entry.Slug, Label: entry.Label, DefaultEffort: entry.Default}
 			if model.Label == "" {
 				model.Label = entry.Slug
@@ -152,15 +113,6 @@ func startModelOptions(body []byte, selection modelcatalog.Selection) (sessionap
 	}
 	if err := read(body, "codex"); err != nil {
 		return options, err
-	}
-	if selection.GrokEnabled || selection.OpenCode.Enabled() {
-		thirdParty, err := modelcatalog.Build(body, selection)
-		if err != nil {
-			return options, err
-		}
-		if err := read(thirdParty, "mekugi"); err != nil {
-			return options, err
-		}
 	}
 	return options, nil
 }
@@ -192,7 +144,7 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	var routerArgs []string
 	namespace, model, _ := strings.Cut(start.Model, "/")
 	if namespace != "codex" {
-		routerArgs = []string{"third-party"}
+		return fmt.Errorf("unsupported model namespace %q", namespace)
 	}
 	var args []string
 	if model != "" {

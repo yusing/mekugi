@@ -10,8 +10,7 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
-// ThinkingTailRows is how much reasoning stays visible while it
-// streams, following grok-build's truncated thinking blocks.
+// ThinkingTailRows is how much reasoning stays visible while it streams.
 const ThinkingTailRows = 3
 
 // CompactReasoning joins consecutive reasoning without changing the

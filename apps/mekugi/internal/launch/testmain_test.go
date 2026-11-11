@@ -82,16 +82,6 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "isolate AX test instrumentation:", err)
 		os.Exit(1)
 	}
-	for _, name := range []string{
-		"OPENCODE_API_KEY",
-		"OPENCODE_GO_API_KEY",
-		"OPENCODE_ZEN_API_KEY",
-	} {
-		if err := os.Setenv(name, ""); err != nil {
-			fmt.Fprintf(os.Stderr, "isolate test environment variable %s: %v\n", name, err)
-			os.Exit(1)
-		}
-	}
 	code := m.Run()
 	if stateDirectory != "" {
 		err = os.RemoveAll(stateDirectory)
@@ -125,9 +115,8 @@ func TestLauncherFixturesWithSymlinkTempDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TMPDIR", alias)
-	// The debug fixture uses TestMain's state; the Codex fixture replaces it
-	// with t.TempDir. Both must work beneath an OS temporary-directory alias.
-	command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^(TestWrapCodexSkipsThirdPartyCatalog|TestUISnapshotDebugHandoffAfterCodexExit)$", "-test.count=1")
+	// The debug fixture uses TestMain's state beneath a temporary-directory alias.
+	command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^(TestUISnapshotDebugHandoffAfterCodexExit)$", "-test.count=1")
 	command.Env = append(os.Environ(), "MEKUGI_LAUNCHER_TEST_STATE_ISOLATED=")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("launch fixtures under symlink TMPDIR: %v\n%s", err, output)

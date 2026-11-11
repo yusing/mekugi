@@ -4,7 +4,6 @@ package launch
 
 import (
 	"context"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 

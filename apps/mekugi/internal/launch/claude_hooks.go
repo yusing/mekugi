@@ -241,7 +241,7 @@ func (b *claudeBridge) complete(hook claudeHook) (string, error) {
 		return "", nil
 	}
 	var output struct {
-		Background  string `json:"backgroundTaskId"`
+		Background string `json:"backgroundTaskId"`
 		// Monitor acknowledges its background task under this name.
 		Task        string `json:"taskId"`
 		Interrupted bool   `json:"interrupted"`

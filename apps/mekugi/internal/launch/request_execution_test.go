@@ -26,7 +26,7 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 		{"main", "high", "low", "high", "high"},
 		{"side", "high", "low", "high", "high"},
 		{"btw", "high", "low", "high", "low"},
-		{"third-party-btw", "high", "low", "high", "low"},
+		{"custom-http-btw", "high", "low", "high", "low"},
 		{"compaction", "xhigh", "low", "high", "low"},
 		{"btw", "none", "low", "high", "none"},
 		{"compaction", "minimal", "low", "high", "minimal"},
@@ -37,15 +37,15 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 		for _, updates := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/%s/%s/%s/updates=%t", tc.kind, tc.effort, tc.choices, tc.fallback, updates), func(t *testing.T) {
 				model := "test-model"
-				if tc.kind == "third-party-btw" {
-					model = "grok-4.7"
+				if tc.kind == "custom-http-btw" {
+					model = "custom-test"
 				}
 				driver := new(threadbinding.Driver)
 				driver.CaptureCatalog(mustTestJSON(t, map[string]any{"models": []any{map[string]any{"slug": model, "supports_reasoning_effort_updates": updates, "default_reasoning_level": tc.fallback, "supported_reasoning_levels": []any{map[string]any{"effort": tc.choices}}}}}))
 				proxy := newManagedMekugiProxy(t)
 				requests := sessioncontrol.NewRequests[appServerRequest](nil)
 				proxy.bindForkRequests(requests)
-				if tc.kind == "btw" || tc.kind == "third-party-btw" {
+				if tc.kind == "btw" || tc.kind == "custom-http-btw" {
 					requests.TrackSide("auxiliary", &sessioncontrol.Side{Thread: "auxiliary", SideAnswer: new(conversationmodel.SideAnswer), LowReasoning: true})
 				} else if tc.kind == "side" {
 					requests.TrackSide("auxiliary", &sessioncontrol.Side{Thread: "auxiliary", SideAnswer: new(conversationmodel.SideAnswer)})
@@ -59,6 +59,9 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 				headers.Set(codexresponses.ThreadIDHeader, "auxiliary")
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 				executor := requestexecution.Executor{Provider: provider, SideThreads: proxy, ReasoningChoices: driver.ReasoningChoices, Output: io.Discard}
+				if tc.kind == "custom-http-btw" {
+					executor.Provider = httpOnlyTestProvider{provider}
+				}
 				if err := executor.Execute(t.Context(), t.Context(), request, headers, "auxiliary"); err != nil {
 					t.Fatal(err)
 				}
@@ -67,7 +70,7 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 					t.Fatal(err)
 				}
 				effort := forwarded.ReasoningEffort()
-				if updates && tc.kind != "third-party-btw" {
+				if updates && tc.kind != "custom-http-btw" {
 					if effort != tc.effort {
 						t.Fatalf("request baseline changed: %s", forwarded.Fields["reasoning"])
 					}
@@ -187,3 +190,9 @@ func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
 		}
 	}
 }
+
+// Route capabilities, not model-name prefixes, select full-history requests.
+type httpOnlyTestProvider struct{ *serverFakeProvider }
+
+func (httpOnlyTestProvider) NativeContinuations() bool { return false }
+func (httpOnlyTestProvider) ApplyOpenAIPolicy() bool   { return false }

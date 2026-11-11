@@ -406,7 +406,7 @@ func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
 	}
 }
 
-// As in grok-build, a provider request that streams untitled reasoning shows
+// A provider request that streams untitled reasoning shows
 // its thinking block from the request start, before the first delta. The
 // first reasoning item takes the block over and times from that start; other
 // output first, or the turn's end, removes the empty block.

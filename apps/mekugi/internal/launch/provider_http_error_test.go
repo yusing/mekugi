@@ -7,7 +7,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/providers/opencode"
 
 	json "encoding/json/v2"
 	"errors"
@@ -17,8 +16,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"testing/iotest"
-	"testing/synctest"
 	"time"
 
 	"github.com/coder/websocket"
@@ -37,7 +34,7 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 		{"controls", `{"error":{"message":"before\u001bafter\u202eend"}}`, "before\x1bafter\u202eend"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := inferencegateway.NewProviderHTTPError("OpenCode Go", 403, []byte(test.body))
+			err := inferencegateway.NewProviderHTTPError("Custom provider", 403, []byte(test.body))
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("missing detail: %v", err)
 			}
@@ -54,31 +51,28 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 			}
 		})
 	}
-	err := inferencegateway.NewProviderHTTPError("Grok", 500, []byte(strings.Repeat("界", 3000)))
+	err := inferencegateway.NewProviderHTTPError("Custom provider", 500, []byte(strings.Repeat("界", 3000)))
 	if !strings.HasSuffix(err.Error(), strings.Repeat("界", 3000)) {
 		t.Fatalf("provider detail was truncated: %d", len([]rune(err.Error())))
 	}
 }
 
-func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
+func TestCustomProviderHTTPErrorDelivery(t *testing.T) {
 	for _, status := range []int{400, 401, 403, 429, 500} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
-			service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "provider-secret"}}).Services()[0]
+
 			calls := 0
-			provider := newTestProviderClient("http://unused.invalid", nil)
-			provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: requestexecution.ProviderDiagnostics(),
-				OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
-					calls++
-					return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
-						`{"error":{"type":"provider_failure","message":"Useful provider detail provider-secret"}}`))}, nil
-				})},
-			}}
+			provider := customTestProvider(&http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
+					`{"error":{"type":"provider_failure","message":"Useful provider detail provider-secret"}}`))}, nil
+			})})
 			issues := testCriticalErrors()
-			body := openCodeTestRequest(t, service, false)
+			body := responses.MustMarshalJSON(serverRequest(t, nil).Fields)
 			req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-			req.Header = grokTestHeaders()
+			req.Header = codexAuthHeaders()
 			recorder := httptest.NewRecorder()
 			testResponsesHandler(ctx, time.Second, provider, issues, nil)(recorder, req)
 			if recorder.Code != status || recorder.Header().Get("Content-Type") != "application/json" ||
@@ -89,7 +83,7 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			defer endpoint.Close()
 			server := httptest.NewServer(endpoint)
 			defer server.Close()
-			conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: grokTestHeaders()})
+			conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: codexAuthHeaders()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -116,29 +110,10 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 	}
 }
 
-type providerErrorBody struct {
-	io.Reader
-	closed bool
-}
-
-func (b *providerErrorBody) Close() error { b.closed = true; return nil }
-
-func TestOpenCodeHTTPErrorBodyLimit(t *testing.T) {
-	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
-	body := &providerErrorBody{Reader: strings.NewReader(strings.Repeat("x", (8<<10)+100))}
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
-	})}}
-	_, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
-	if !body.closed || err == nil || !strings.Contains(err.Error(), "8 KiB limit") {
-		t.Fatalf("unbounded or unclosed error body: %v, closed %v", err, body.closed)
-	}
-}
-
 func TestProviderHTTPErrorNoticesStayDistinct(t *testing.T) {
 	issues := testCriticalErrors()
 	for _, detail := range []string{"first failure", "second failure", "first failure"} {
-		err := inferencegateway.NewProviderHTTPError("OpenCode Go", 403, []byte(detail))
+		err := inferencegateway.NewProviderHTTPError("Custom provider", 403, []byte(detail))
 		issues.Report(requestexecution.Failure{Session: "same", UpstreamStatus: 403,
 			Phase: "forward"},
 			requestexecution.ForwardError(err))
@@ -148,55 +123,4 @@ func TestProviderHTTPErrorNoticesStayDistinct(t *testing.T) {
 		!strings.Contains(notices[0], "2 times") || !strings.Contains(notices[1], "second failure") {
 		t.Fatalf("distinct errors hidden: %v", notices)
 	}
-}
-
-func TestOpenCodeHTTPErrorReadFailure(t *testing.T) {
-	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
-	body := &providerErrorBody{Reader: iotest.ErrReader(errors.New("private transport detail"))}
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
-	})}}
-	_, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
-	if !body.closed || err == nil || !strings.Contains(err.Error(), "could not be read") || !strings.Contains(err.Error(), "private transport detail") {
-		t.Fatalf("read failure hidden: %v", err)
-	}
-}
-
-func TestOpenCodeHTTPErrorStalledBody(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
-		reader, writer := io.Pipe()
-		defer writer.Close()
-		client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: reader}, nil
-		})}}
-		start := time.Now()
-		_, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
-		if err == nil || !strings.Contains(err.Error(), "could not be read") || time.Since(start) != 5*time.Second {
-			t.Fatalf("error read not bounded: %v, elapsed %s", err, time.Since(start))
-		}
-	})
-}
-
-func TestOpenCodeHTTPErrorReadCancellation(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
-		reader, writer := io.Pipe()
-		defer writer.Close()
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-		client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
-			context.AfterFunc(request.Context(), func() { _ = writer.CloseWithError(request.Context().Err()) })
-			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: reader}, nil
-		})}}
-		go func() {
-			time.Sleep(time.Second)
-			cancel()
-		}()
-		start := time.Now()
-		_, err := client.ForwardExecution(ctx, t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
-		if !errors.Is(err, context.Canceled) || time.Since(start) != time.Second {
-			t.Fatalf("cancellation lost: %v, elapsed %s", err, time.Since(start))
-		}
-	})
 }

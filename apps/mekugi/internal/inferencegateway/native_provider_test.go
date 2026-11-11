@@ -60,7 +60,7 @@ func (f nativeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func TestNativeProviderPinnedHTTPHeadersQueriesAndModels(t *testing.T) {
 	var calls atomic.Int32
-	const body = `{"model":"opencode-go:literal","input":[],"stream":false,"reasoning":{"effort":"ultra"}}`
+	const body = `{"input":[],"stream":false,"reasoning":{"effort":"ultra"}}`
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		if r.URL.EscapedPath() != "/prefix%2Ftenant/v1/responses" || r.URL.RawQuery != "base=a%2Bb&native=x%252Fy" {
@@ -88,10 +88,10 @@ func TestNativeProviderPinnedHTTPHeadersQueriesAndModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	if !response.UnknownPrice || response.Price != nil || response.Header.Get("X-Provider-Response") != "preserved" || response.Header.Get("X-Provider-Hop") != "" || response.Provider != "fixture" || calls.Load() != 1 {
+	if !response.UnknownPrice || response.Header.Get("X-Provider-Response") != "preserved" || response.Header.Get("X-Provider-Hop") != "" || response.Provider != "fixture" || calls.Load() != 1 {
 		t.Fatalf("native exchange facts: %+v calls=%d", response, calls.Load())
 	}
-	if p.ApplyOpenAIPolicy("gpt-6-sol") || p.NativeContinuations("gpt-6-sol") {
+	if p.ApplyOpenAIPolicy() || p.NativeContinuations() {
 		t.Fatal("HTTP native route acquired built-in policy or socket ancestry")
 	}
 }
@@ -110,7 +110,7 @@ func TestNativeProviderErrorsRedirectsCancellation(t *testing.T) {
 			}))
 			defer upstream.Close()
 			p := nativeTestClient(upstream.URL, upstream.Client())
-			_, err := p.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"grok:literal"}`), http.Header{"Authorization": {"Bearer fixture"}}, "")
+			_, err := p.ForwardExecution(t.Context(), t.Context(), []byte(`{}`), http.Header{"Authorization": {"Bearer fixture"}}, "")
 			rejection, ok := errors.AsType[*ProviderHTTPError](err)
 			if !ok || rejection.Status != status || !strings.Contains(err.Error(), "fixture returned HTTP") || !strings.Contains(err.Error(), "exact upstream error") || reached.Load() != 0 {
 				t.Fatalf("failure status/identity/redirect: %v reached=%d", err, reached.Load())
@@ -247,7 +247,7 @@ func TestNativeProviderWebSocketHandshakeNoOpenAIAccount(t *testing.T) {
 	if response.Header.Get("X-Reasoning-Included") != "true" || upgrades.Load() != 1 || messages.Load() != 0 {
 		t.Fatalf("handshake generated inference or lost signal: %d %d", upgrades.Load(), messages.Load())
 	}
-	if !p.NativeContinuations("opencode-go:literal") {
+	if !p.NativeContinuations() {
 		t.Fatal("native socket lost ancestry")
 	}
 }
@@ -255,7 +255,7 @@ func TestNativeProviderWebSocketHandshakeNoOpenAIAccount(t *testing.T) {
 func TestNativeProviderWebSocketRequestKeepsCustomHeaders(t *testing.T) {
 	p := nativeTestClient("http://unused.invalid", http.DefaultClient)
 	p.Native.WebSockets = true
-	payload, headers, err := p.webSocketRequest([]byte(`{"model":"grok:literal","input":[],"stream":true}`), http.Header{"X-Provider": {"fixture"}}, "")
+	payload, headers, err := p.webSocketRequest([]byte(`{"input":[],"stream":true}`), http.Header{"X-Provider": {"fixture"}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestNativeProviderWebSocketRequestKeepsCustomHeaders(t *testing.T) {
 	if err := json.Unmarshal(payload, &fields); err != nil {
 		t.Fatal(err)
 	}
-	if fields["model"] != "grok:literal" || fields["type"] != "response.create" || headers.Get("X-Provider") != "fixture" {
+	if fields["type"] != "response.create" || headers.Get("X-Provider") != "fixture" {
 		t.Fatalf("native socket projection: %s", payload)
 	}
 }

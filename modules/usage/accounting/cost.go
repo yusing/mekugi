@@ -1,7 +1,6 @@
 package accounting
 
 import (
-	"math"
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/inference"
@@ -38,31 +37,25 @@ type tokenPrice struct {
 }
 
 // Source: session-usage/scripts/session_usage.py:625:655 select_tier and cost_for_request.
-// OpenAI rates mirror FALLBACK_USD_PER_MILLION in the same script. Grok rates
-// follow the xAI model pricing pages (2026-09-23), including Build Fast tiers.
+// OpenAI rates mirror FALLBACK_USD_PER_MILLION in the same script.
 // These are reference list API prices in USD per million tokens, not subscription
-// charges or live billing quotes. OpenCode rates are refreshed separately from
-// its online catalog; these OpenAI/xAI fallback rates are not used for OpenCode.
+// charges or live billing quotes. Other providers need explicitly supplied rates.
 // GPT-6.1 Sol source (2026-09-30): https://developers.openai.com/api/docs/pricing
 // GPT-6.1 Terra source (2026-10-27): https://developers.openai.com/api/docs/models/gpt-6.1-terra
 var tokenReferencePrices = map[string]tokenPrice{
-	"gpt-6-astra":         {10, 1, 50, 20, 2, 75},
-	"gpt-6-astra-pro":     {10, 1, 50, 20, 2, 75},
-	"gpt-6.1-sol":         {2, 0.1, 10, 4, 0.2, 15},
-	"gpt-6.1-terra":       {1, 0.05, 5, 2, 0.1, 7.5},
-	"gpt-6-sol":           {2, 0.2, 10, 4, 0.4, 15},
-	"gpt-6-luna":          {0.1, 0.01, 0.5, 0.2, 0.02, 0.75},
-	"gpt-5.5":             {5, 0.5, 30, 10, 1, 45},
-	"gpt-5.6-sol":         {4, 0.4, 20, 8, 0.8, 30},
-	"gpt-5.6-terra":       {2, 0.2, 12, 4, 0.4, 18},
-	"gpt-5.6-luna":        {0.2, 0.02, 1.2, 0.4, 0.04, 1.8},
-	"gpt-5.4":             {2.5, 0.25, 15, 5, 0.5, 22.5},
-	"gpt-5.4-mini":        {0.75, 0.075, 4.5, 0, 0, 0},
-	"gpt-5.4-nano":        {0.2, 0.02, 1.25, 0, 0, 0},
-	"grok-4.6":            {2, 0.5, 6, 4, 1, 12},
-	"grok-4.5":            {2, 0.3, 6, 4, 0.6, 12},
-	"grok-4.7":            {2, 0.5, 6, 4, 1, 12},
-	"grok-4.7-build-fast": {4, 1, 12, 6, 1.5, 18},
+	"gpt-6-astra":     {10, 1, 50, 20, 2, 75},
+	"gpt-6-astra-pro": {10, 1, 50, 20, 2, 75},
+	"gpt-6.1-sol":     {2, 0.1, 10, 4, 0.2, 15},
+	"gpt-6.1-terra":   {1, 0.05, 5, 2, 0.1, 7.5},
+	"gpt-6-sol":       {2, 0.2, 10, 4, 0.4, 15},
+	"gpt-6-luna":      {0.1, 0.01, 0.5, 0.2, 0.02, 0.75},
+	"gpt-5.5":         {5, 0.5, 30, 10, 1, 45},
+	"gpt-5.6-sol":     {4, 0.4, 20, 8, 0.8, 30},
+	"gpt-5.6-terra":   {2, 0.2, 12, 4, 0.4, 18},
+	"gpt-5.6-luna":    {0.2, 0.02, 1.2, 0.4, 0.04, 1.8},
+	"gpt-5.4":         {2.5, 0.25, 15, 5, 0.5, 22.5},
+	"gpt-5.4-mini":    {0.75, 0.075, 4.5, 0, 0, 0},
+	"gpt-5.4-nano":    {0.2, 0.02, 1.25, 0, 0, 0},
 }
 
 // Fast and priority are aliases. These are model-specific rates, not a blanket
@@ -85,21 +78,14 @@ var tokenFastReferencePrices = map[string]tokenPrice{
 func tokenCostModel(model string) string {
 	model = strings.ToLower(strings.TrimSpace(model))
 	model = strings.TrimPrefix(model, "openai/")
-	return strings.TrimPrefix(model, "grok:")
+	return model
 }
 
-func tokenLongContextApplies(model string, price tokenPrice, input uint64) bool {
+func tokenLongContextApplies(price tokenPrice, input uint64) bool {
 	if price.longInput == 0 {
 		return false
 	}
-	after := uint64(272_000)
-	if strings.HasPrefix(model, "grok-4.") {
-		after = 199_999
-		if model == "grok-4.7-build-fast" {
-			after = 200_000
-		}
-	}
-	return input > after
+	return input > 272_000
 }
 
 func validCostCounts(counts inference.Usage) bool {
@@ -117,7 +103,7 @@ func estimateReferenceCost(model, serviceTier string, counts inference.Usage) Co
 	case "", "default":
 	case "priority", "fast":
 		price, ok = tokenFastReferencePrices[model]
-		if tokenLongContextApplies(model, standard, counts.InputTokens) && price.longInput == 0 {
+		if tokenLongContextApplies(standard, counts.InputTokens) && price.longInput == 0 {
 			return Cost{}
 		}
 	default:
@@ -127,7 +113,7 @@ func estimateReferenceCost(model, serviceTier string, counts inference.Usage) Co
 		return Cost{}
 	}
 	// Select the tier per response, never from cumulative thread input.
-	if tokenLongContextApplies(model, price, counts.InputTokens) {
+	if tokenLongContextApplies(price, counts.InputTokens) {
 		price.input, price.cachedInput, price.output = price.longInput, price.longCachedInput, price.longOutput
 	}
 	var cacheWritePremium float64
@@ -154,37 +140,4 @@ func (cost *Cost) add(next Cost) {
 	cost.Output += next.Output
 	cost.Reported += next.Reported
 	cost.Known = cost.Known && next.Known
-}
-
-// Rates are selected, immutable USD-per-million-token prices. Nil means unknown.
-type Rates struct{ Input, Output, CacheRead, CacheWrite *float64 }
-
-func EstimateRates(price Rates, tier string, counts inference.Usage) Cost {
-	if (tier != "" && tier != "default") || !validCostCounts(counts) {
-		return Cost{}
-	}
-	valid := func(value *float64) bool {
-		return value != nil && *value >= 0 && !math.IsNaN(*value) && !math.IsInf(*value, 0)
-	}
-	if !valid(price.Input) || !valid(price.Output) {
-		return Cost{}
-	}
-	result := Cost{
-		UncachedInput: float64(counts.UncachedInputTokens-counts.CacheWriteTokens) * *price.Input / 1e6,
-		Output:        float64(counts.OutputTokens) * *price.Output / 1e6,
-		Known:         true,
-	}
-	if cached := counts.InputTokens - counts.UncachedInputTokens; cached != 0 {
-		if !valid(price.CacheRead) {
-			return Cost{}
-		}
-		result.CachedInput = float64(cached) * *price.CacheRead / 1e6
-	}
-	if counts.CacheWriteTokens != 0 {
-		if !valid(price.CacheWrite) {
-			return Cost{}
-		}
-		result.UncachedInput += float64(counts.CacheWriteTokens) * *price.CacheWrite / 1e6
-	}
-	return result
 }

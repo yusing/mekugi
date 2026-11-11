@@ -37,8 +37,7 @@ Bundles contain private content and are not sanitized. Error strings may include
 request bodies or credentials. The adapter supplies final local projection and
 the prepared outgoing provider subset separately; a prepared request does not
 claim successful provider acceptance. Cached-prefix counts mean actual reuse;
-automatic successors have no prepared wire request, and Grok observations precede
-Chat Completions conversion. Ordinary messages and tool-call bodies are not
+automatic successors have no prepared wire request. Ordinary messages and tool-call bodies are not
 separate instruction-dump fields. Repeated content may use file-local references;
 `mekugi.instructions.v2` references resolve within the same file, including
 content shared across projected and wire fields. Older

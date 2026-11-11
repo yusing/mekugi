@@ -7,7 +7,6 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"io"
 	"io/fs"
 	"net/http"
@@ -21,6 +20,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 

@@ -15,6 +15,7 @@ import (
 )
 
 func TestSessionUIReplayCLI(t *testing.T) {
+
 	dir := t.TempDir()
 	t.Setenv("CODEX_HOME", dir)
 	sessions := filepath.Join(dir, "sessions", "2023", "11", "14")

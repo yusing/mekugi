@@ -488,37 +488,6 @@ func TestSessionTitleUnavailableLunaSkipsSilently(t *testing.T) {
 	}
 }
 
-func TestSessionTitleThirdPartyRequestWithoutCodexAuth(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		var namingCalls atomic.Int32
-		g := newTestSessionNaming(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
-			namingCalls.Add(1)
-			return serverHTTPResponse(generatedTitleResponse), nil
-		}))
-		g.register(binding.ThreadInfo{ID: "main"})
-		request := modelTestRequest(t, "opencode-go:test")
-		headers := serverMetadataHeaders(t, "turn", nil)
-		headers.Set(codexresponses.ThreadIDHeader, "main")
-		headers.Set("Authorization", "Bearer third-party-fixture")
-		const primary = `{"id":"primary","status":"completed","output":[]}`
-		var output strings.Builder
-		executor := requestexecution.Executor{Naming: g, Output: &output, Provider: serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
-			forwarded, err := codexresponses.ParseRequest(body)
-			if err != nil || forwarded.Model() != "opencode-go:test" {
-				t.Error("primary session model was changed")
-			}
-			return serverHTTPResponse(primary), nil
-		})}
-		if err := executor.Execute(t.Context(), t.Context(), request, headers, "main"); err != nil {
-			t.Fatal(err)
-		}
-		synctest.Wait()
-		if output.String() != primary || namingCalls.Load() != 0 || len(g.updates) != 0 {
-			t.Fatal("skipped naming affected the successful third-party request")
-		}
-	})
-}
-
 func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	ctx, cancel := context.WithCancel(t.Context())

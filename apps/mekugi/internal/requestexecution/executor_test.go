@@ -16,7 +16,7 @@ import (
 )
 
 func TestRequestWireProjectsStandaloneToolContextWithoutPreparer(t *testing.T) {
-	for _, model := range []string{"gpt-6-sol", "grok:grok-4.6", "opencode-go:test"} {
+	for _, model := range []string{"gpt-6-sol"} {
 		request, err := codexresponses.ParseRequest([]byte(`{"model":"` + model + `","input":[{"type":"function_call_output","namespace":"threadcontrol","name":"spawn_agent","output":"Assignment retained."}]}`))
 		if err != nil {
 			t.Fatal(err)

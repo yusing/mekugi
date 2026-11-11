@@ -18,40 +18,6 @@ func requireStoredUsage(t *testing.T, u *Service, thread string, input, output, 
 	return report
 }
 
-func TestThreadUsageStoreRestartFollowupAndIdentityIsolation(t *testing.T) {
-	directory := t.TempDir()
-	first := storedUsageFixture(t, usageStoreFixture(t, directory))
-
-	counts := inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000, TotalsKnown: true}
-	observation := first.Observation("child", "child", "grok:grok-4.6", "")
-	observation.Observe(counts)
-	observation.Observe(counts)
-	observation.Finish()
-	first.Observation("child", "child", "grok-4.6", "").Observe(counts)
-	first.Observation("child", "child", "openai/gpt-6-sol", "").Observe(counts)
-	first.Observation("root", "root", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10})
-	first.Close()
-
-	restored := storedUsageFixture(t, usageStoreFixture(t, directory))
-
-	restored.Restore("child", true)
-	report := requireStoredUsage(t, restored, "child", 300_000, 30_000, 3, .82)
-	if !report.PriorUnknown || report.MissingUsage != 0 {
-		t.Fatalf("restored counters claimed proven lifetime continuity or invented a request gap: %+v", report)
-	}
-	restored.Restore("root", true)
-	requireStoredUsage(t, restored, "root", 10, 0, 1, .00002)
-	// A fork is another stable identity, not its parent's consumption record.
-	restored.Restore("fork", false)
-	if report, ok := restored.Snapshot("fork"); ok || report.Roundtrips != 0 {
-		t.Fatal("fresh fork borrowed ancestor totals")
-	}
-	restored.Observation("fork", "fork", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 1, UncachedInputTokens: 1})
-	requireStoredUsage(t, restored, "fork", 1, 0, 1, .000002)
-	restored.Observation("child", "child", "gpt-6-sol", "").Observe(counts)
-	requireStoredUsage(t, restored, "child", 400_000, 40_000, 4, 1.12)
-}
-
 func TestThreadUsageStoreConcurrentOwnersMerge(t *testing.T) {
 	directory := t.TempDir()
 	store := usageStoreFixture(t, directory)

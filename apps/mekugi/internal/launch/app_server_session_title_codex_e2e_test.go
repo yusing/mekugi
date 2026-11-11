@@ -177,7 +177,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool, customAu
 		if customAuth != "" {
 			args := append([]string{"app-server"}, profileArgs...)
 			args = append(args, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
-			cmd = exec.CommandContext(runCtx, codex, codexArgs(router.URL+"/v1", args, false, false, provider.Native)...)
+			cmd = exec.CommandContext(runCtx, codex, codexArgs(router.URL+"/v1", args, false, provider.Native)...)
 		}
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd

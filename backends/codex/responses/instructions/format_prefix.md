@@ -1,1 +1,0 @@
-The input string must obey this tool format:

@@ -10,7 +10,7 @@ repository-relative; braces group alternatives. Application owners below are und
 | --- | --- |
 | Composition | `composition/modules.go`: selected descriptors/bindings; `contracts`: shared interfaces; `testsupport/moduletest`: composed harness |
 | Launch | `launch/{dispatch,wrap,invocation}.go`: process lifecycle and host effects; `{native_session,app_server_ui}.go`: invocation state and serialized session loop; `{native_process,native_process_supervisor}.go`: detached-server startup and diagnostics lifetime; executable: `apps/mekugi/cmd/mekugi` |
-| Options/catalog | `launch/options`, `launch/modelcatalog`, `launch/catalog.go`: launch/resume configuration, selected provider metadata and bundled discovery; profile import: `launch/SPEC.md#codex-profile-overrides`, routing: `docs/contracts/provider-routing.md#profile-defined-responses-routing` |
+| Options/catalog | `launch/options`, `launch/catalog.go`: launch/resume configuration and bundled discovery; profile import: `launch/SPEC.md#codex-profile-overrides`, routing: `docs/contracts/provider-routing.md#profile-defined-responses-routing` |
 | Frontends | `frontends/{registry,worker,session,recovery}.go`: authenticated catalog/PATH, dispatch, executable pinning, worker leases and retained delivery |
 | Headless | `headless`: automation adapter and JSONL host evidence; Launch admits it through the shared server-owned runtime and task-owned family lifetime |
 | Inference gateway | `inferencegateway`: Responses admission, provider selection, socket lifetime, catalog/auxiliary endpoints; `models.go`: authenticated catalog forwarding and Codex execution-mode projection; `service_tier.go`: applied tier shared by requests/display |
@@ -64,7 +64,7 @@ repository-relative; braces group alternatives. Application owners below are und
 | Composer recall | `backends/codex/messagehistory`: shared Codex input-history format, locking and retention; Launch `app_server_persistent_history.go`: asynchronous reads/writes; Conversation composer: recall and restored-entry reconciliation |
 | Responses | `backends/codex/responses`: envelopes/catalogs, byte-preserving projection, streams/lifecycle and Codex framing; `compact_plaintext.go`: native reload-reader program; `{session,session_provider}.go`: connection ancestry/steering/prefix confirmation; `libraries/modelprotocol`: wire facts/exact JSON |
 | Shell hooks | `backends/codex/shellhook`: registration/protocol; `backends/codex/shellapproval`: shared approval wire/resource names; Launch installs composed resources |
-| Providers | `providers/openai`: credentials/model exchange/HTTP/WebSockets; `providers/grok`: authentication/OAuth retry; `providers/opencode`: configuration/catalog/pinned prices/endpoints/affinity |
+| Providers | `providers/openai`: native credentials/model exchange/HTTP/WebSockets; Inference Gateway `native_provider.go`: pinned custom Responses connection; `reasoning.go`: retired model/envelope rejection |
 | Transports | `libraries/httptransport`: defaults, response admission, idle-read lifetime and body replay; `libraries/mcptransport`: invocation-local endpoints/stdio bridge for composed coordination contributions, started by Launch |
 
 ## Integration seams

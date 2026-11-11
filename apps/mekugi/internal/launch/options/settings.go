@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yusing/mekugi/providers/opencode"
-
 	"github.com/BurntSushi/toml"
 )
 
@@ -16,7 +14,6 @@ import (
 // Settings contains validated invocation-local configuration.
 type Settings struct {
 	Features     Features          `toml:"features"`
-	Providers    opencode.Config   `toml:"providers"`
 	ServiceTiers map[string]string `toml:"service_tiers"`
 }
 
@@ -47,18 +44,13 @@ func (c Config) ResolveFeatures(features Features) Config {
 	return c
 }
 
-// LoadSettings reads Mekugi configuration and optionally applies provider credentials.
-func LoadSettings(withProviders bool) (Settings, error) {
+// LoadSettings reads Mekugi configuration without loading provider credentials.
+func LoadSettings() (Settings, error) {
 	var config Settings
 	directory, err := os.UserConfigDir()
 	if err != nil {
-		// Without a configuration directory there can be no file to load.
-		// Preserve environment-only setup and the existing startup diagnostics.
-		if !withProviders {
-			return config, nil
-		}
-		config.Providers, err = opencode.Environment(opencode.Config{})
-		return config, err
+
+		return config, nil
 	}
 	body, err := os.ReadFile(filepath.Join(directory, "mekugi", "config.toml"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -86,10 +78,5 @@ func LoadSettings(withProviders bool) (Settings, error) {
 			return Settings{}, errors.New("invalid service tier in Mekugi config.toml")
 		}
 	}
-	if !withProviders {
-		config.Providers = opencode.Config{}
-		return config, nil
-	}
-	config.Providers, err = opencode.Environment(config.Providers)
-	return config, err
+	return config, nil
 }

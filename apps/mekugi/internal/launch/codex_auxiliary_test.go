@@ -141,19 +141,17 @@ func TestCodexAuxiliaryPreservesEncodedStream(t *testing.T) {
 
 func TestCodexAuxiliaryRejectsUnsupportedRequests(t *testing.T) {
 	for _, test := range []struct {
-		name, method, path        string
-		authenticated, thirdParty bool
-		status                    int
+		name, method, path string
+		authenticated      bool
+		status             int
 	}{
-		{"unauthenticated", "POST", "/v1/alpha/search", false, false, http.StatusBadRequest},
-		{"third party", "POST", "/v1/alpha/search", true, true, http.StatusNotFound},
-		{"unknown endpoint", "POST", "/v1/alpha/unknown", true, false, http.StatusNotFound},
-		{"wrong method", "GET", "/v1/alpha/search", true, false, http.StatusMethodNotAllowed},
+		{"unauthenticated", "POST", "/v1/alpha/search", false, http.StatusBadRequest},
+		{"unknown endpoint", "POST", "/v1/alpha/unknown", true, http.StatusNotFound},
+		{"wrong method", "GET", "/v1/alpha/search", true, http.StatusMethodNotAllowed},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			calls := 0
 			provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse("{}"), nil })})
-			provider.ThirdPartyOnly = test.thirdParty
 			mux := http.NewServeMux()
 			inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
 			request := httptest.NewRequest(test.method, test.path, bytes.NewBufferString("{}"))

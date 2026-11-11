@@ -2,8 +2,9 @@ package launch
 
 import (
 	json "encoding/json/v2"
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestWebSocketRequestPreservesRichBodyMetadata(t *testing.T) {

@@ -6,9 +6,6 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/charmbracelet/x/vt"
-	"github.com/creack/pty"
-	"github.com/yusing/mekugi/apps/mekugi/internal/herdr"
 	"io"
 	"net/http"
 	"os"
@@ -16,6 +13,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/vt"
+	"github.com/creack/pty"
+	"github.com/yusing/mekugi/apps/mekugi/internal/herdr"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"

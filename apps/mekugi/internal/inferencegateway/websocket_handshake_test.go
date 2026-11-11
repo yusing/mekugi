@@ -62,7 +62,7 @@ func TestWebSocketReasoningHeader(t *testing.T) {
 	}
 }
 
-func TestWebSocketMixedProviderHandshakeStaysLazy(t *testing.T) {
+func TestWebSocketHTTPProviderHandshakeStaysLazy(t *testing.T) {
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -70,7 +70,7 @@ func TestWebSocketMixedProviderHandshakeStaysLazy(t *testing.T) {
 	}))
 	defer provider.Close()
 	client := NewClient(provider.URL, provider.Client(), codexresponses.Diagnostics{})
-	client.Grok = &ThirdPartyClient{}
+	client.Native = &NativeProvider{ID: "fixture", BaseURL: provider.URL, HTTPClient: provider.Client()}
 	endpoint := NewWebSocketEndpoint(t.Context(), time.Second, client, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
@@ -81,7 +81,7 @@ func TestWebSocketMixedProviderHandshakeStaysLazy(t *testing.T) {
 	}
 	defer conn.CloseNow()
 	if calls.Load() != 0 || len(response.Header.Values("X-Reasoning-Included")) != 0 {
-		t.Fatal("mixed-provider handshake acquired OpenAI state")
+		t.Fatal("HTTP-only provider handshake acquired OpenAI state")
 	}
 }
 

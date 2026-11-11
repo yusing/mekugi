@@ -93,7 +93,7 @@ Invocation overrides leave Codex configuration unchanged.
   closes. [Control them from another machine](docs/guide/remote.md), including
   phones, through an authenticated connector.
 - **Session continuity.** [Resume, fork, or rewind](docs/guide/sessions.md) conversations.
-- **Providers and delegates.** Use [Grok, OpenCode Go and Zen](docs/guide/providers.md),
+- **Providers and delegates.** Use [custom Responses providers](docs/guide/providers.md),
   and [Claude delegates](docs/guide/providers.md#claude-delegates) through the same
   coordination tools.
 - **Composer.** Attach files and skills, ask side questions, run one-off tasks,
@@ -154,17 +154,17 @@ worker executable, so start a new session to pick up an update.
 ## Quick start
 
 ```sh
-mekugi codex                    # Codex models, using `codex login`
-mekugi grok -m grok-4.7         # Grok credentials
-mekugi -m opencode-go:glm-5.3   # OpenCode credentials
+mekugi codex                   # Native OpenAI, using `codex login`
+mekugi -p work                 # A configured custom Responses profile
 ```
 
-Mekugi flags go **before** `codex`, `grok`, or Codex arguments. The launch starts
+Mekugi flags go **before** `codex` or Codex arguments. Bare `mekugi` requires a
+[custom provider profile](docs/guide/configuration.md#codex-profile-imports). The launch starts
 a local server when needed and attaches the terminal UI. Closing the UI leaves
 the thread running; exit prints resume and replay commands. Codex's approval and
 sandbox policy applies; the remote-write guard needs unsandboxed execution.
-Mekugi needs Codex's JavaScript `exec`; custom inference endpoints and `--oss`
-are unsupported. See [launch details](docs/guide/launch.md).
+Mekugi needs Codex's JavaScript `exec`; custom inference endpoints use profile
+imports, and `--oss` remains unsupported. See [launch details](docs/guide/launch.md).
 
 | To | Do |
 | --- | --- |
@@ -182,7 +182,7 @@ are unsupported. See [launch details](docs/guide/launch.md).
 - [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file` and `mchanges`.
 - [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards and secure GPG passphrase entry.
 - [Server, connector and browser](docs/guide/remote.md): remote control, browser UI and Docker deployment.
-- [Providers and delegates](docs/guide/providers.md): Grok, OpenCode and Claude delegates.
+- [Providers and delegates](docs/guide/providers.md): custom Responses, retired-provider migration and Claude delegates.
 - [Launch and automation](docs/guide/launch.md): launch commands, execution policy and headless runs.
 - [Configuration and metrics](docs/guide/configuration.md): settings file, options, metrics and troubleshooting.
 

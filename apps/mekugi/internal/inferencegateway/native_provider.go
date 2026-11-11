@@ -231,36 +231,36 @@ func (c *Client) webSocketRequest(body []byte, headers http.Header, cacheKey str
 	return payload, handshake, err
 }
 
-func (c *Client) NativeContinuations(model string) bool {
+func (c *Client) NativeContinuations() bool {
 	if c.Native != nil {
 		return c.Native.WebSockets
 	}
-	return !IsThirdPartyModel(model)
+	return true
 }
 
-func (c *Client) ApplyOpenAIPolicy(model string) bool {
-	return c.Native == nil && !IsThirdPartyModel(model)
+func (c *Client) ApplyOpenAIPolicy() bool {
+	return c.Native == nil
 }
 
-func (e *Exchange) NativeContinuations(model string) bool {
-	return e.session.provider.NativeContinuations(model)
+func (e *Exchange) NativeContinuations() bool {
+	return e.session.provider.NativeContinuations()
 }
-func (e *Exchange) ApplyOpenAIPolicy(model string) bool {
-	return e.session.provider.ApplyOpenAIPolicy(model)
+func (e *Exchange) ApplyOpenAIPolicy() bool {
+	return e.session.provider.ApplyOpenAIPolicy()
 }
 
 // NativeContinuations and ApplyOpenAIPolicy are independent: a custom native
 // Responses connection has ancestry without acquiring ChatGPT-only policy.
-func NativeContinuations(provider Forwarder, model string) bool {
-	if selected, ok := provider.(interface{ NativeContinuations(string) bool }); ok {
-		return selected.NativeContinuations(model)
+func NativeContinuations(provider Forwarder) bool {
+	if selected, ok := provider.(interface{ NativeContinuations() bool }); ok {
+		return selected.NativeContinuations()
 	}
-	return !IsThirdPartyModel(model)
+	return true
 }
 
-func ApplyOpenAIPolicy(provider Forwarder, model string) bool {
-	if selected, ok := provider.(interface{ ApplyOpenAIPolicy(string) bool }); ok {
-		return selected.ApplyOpenAIPolicy(model)
+func ApplyOpenAIPolicy(provider Forwarder) bool {
+	if selected, ok := provider.(interface{ ApplyOpenAIPolicy() bool }); ok {
+		return selected.ApplyOpenAIPolicy()
 	}
-	return !IsThirdPartyModel(model)
+	return true
 }

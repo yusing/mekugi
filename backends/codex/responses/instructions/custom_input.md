@@ -1,1 +1,0 @@
-The exact tool program or input, without JSON encoding or Markdown fences.

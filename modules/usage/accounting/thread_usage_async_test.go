@@ -134,7 +134,7 @@ func TestThreadUsageAsyncConcurrentOwnersPreservePricedDeltas(t *testing.T) {
 		workers.Go(func() {
 			model, tier := "gpt-6-sol", "priority"
 			if index == 1 {
-				model, tier = "grok:grok-4.6", ""
+				model, tier = "gpt-6.1-sol", ""
 			}
 			for range 20 {
 				observation := owner.Observation("shared", "shared", model, tier)
@@ -151,7 +151,7 @@ func TestThreadUsageAsyncConcurrentOwnersPreservePricedDeltas(t *testing.T) {
 	for index, owner := range owners {
 		cost := 12.0
 		if index == 1 {
-			cost = 5.2
+			cost = 6
 		}
 		report := requireStoredUsage(t, owner, "shared", 2_000_000, 200_000, 21, cost)
 		if report.MissingUsage != 1 {
@@ -167,8 +167,8 @@ func TestThreadUsageAsyncConcurrentOwnersPreservePricedDeltas(t *testing.T) {
 	}
 	restarted := storedUsageFixture(t, usageStoreFixture(t, directory))
 
-	report := requireStoredUsage(t, restarted, "shared", 4_000_000, 400_000, 42, 17.2)
-	if report.MissingUsage != 2 || !strings.Contains(report.Model, "gpt-6-sol high [fast]") || !strings.Contains(report.Model, "grok:grok-4.6 high") {
+	report := requireStoredUsage(t, restarted, "shared", 4_000_000, 400_000, 42, 18)
+	if report.MissingUsage != 2 || !strings.Contains(report.Model, "gpt-6-sol high [fast]") || !strings.Contains(report.Model, "gpt-6.1-sol high") {
 		t.Fatalf("coalescing lost response-specific labels or usage gaps: %+v", report)
 	}
 }

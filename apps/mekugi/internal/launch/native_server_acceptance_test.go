@@ -25,9 +25,6 @@ func TestNativeServerAcceptance(t *testing.T) {
 	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR", "TMPDIR"} {
 		t.Setenv(key, t.TempDir())
 	}
-	for _, key := range []string{"XAI_API_KEY", "OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY"} {
-		t.Setenv(key, "")
-	}
 	writeFeatureConfig(t, "shell_guard = false")
 	t.Setenv("TERM", "xterm-256color")
 	t.Setenv("COLORFGBG", "15;0")

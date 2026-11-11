@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
 	"github.com/coder/websocket"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"

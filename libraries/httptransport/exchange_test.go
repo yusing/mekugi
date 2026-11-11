@@ -84,7 +84,7 @@ func TestExchangeRejectionRemainsStartupCancelable(t *testing.T) {
 }
 
 func TestExchangeSendErrorPreservesIdentityAndCancelsRequest(t *testing.T) {
-	want := &httptransport.SendError{Err: errors.New("send failed")}
+	want := errors.New("send failed")
 	var request context.Context
 	response, err := httptransport.Exchange(t.Context(), t.Context(), time.Minute, func(ctx context.Context) (*http.Response, error) {
 		request = ctx

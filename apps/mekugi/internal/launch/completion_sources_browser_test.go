@@ -1,13 +1,14 @@
 package launch
 
 import (
-	activity "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func testCompletionSourcesBrowser(t *testing.T, publish func(*activity.Publication), run func(...string) string) {

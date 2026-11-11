@@ -58,7 +58,12 @@ func TestCompareInputCostPinsRatesAndRequestOrdering(t *testing.T) {
 			if counts.InputTokens > 1000 {
 				rate = 4
 			}
-			return EstimateRates(Rates{Input: &rate, Output: new(1.0), CacheRead: new(.5)}, tier, counts)
+			return Cost{
+				UncachedInput: float64(counts.UncachedInputTokens) * rate / 1e6,
+				CachedInput:   float64(counts.InputTokens-counts.UncachedInputTokens) * .5 / 1e6,
+				Output:        float64(counts.OutputTokens) / 1e6,
+				Known:         true,
+			}
 		}
 		o.Observe(inference.Usage{InputTokens: input, UncachedInputTokens: input / 2})
 	}

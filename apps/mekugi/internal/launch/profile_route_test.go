@@ -17,8 +17,7 @@ import (
 
 func TestProfileRouteRetainsProviderAndNativeAuth(t *testing.T) {
 	home := t.TempDir()
-	body := `model="opencode-go:literal"
-model_provider="corp.gateway"
+	body := `model_provider="corp.gateway"
 model_context_window=123456
 model_auto_compact_token_limit=120000
 model_reasoning_effort="high"
@@ -38,7 +37,7 @@ capabilities={remote_compaction="v2",cyber_access_programs=false}
 	if err := os.WriteFile(filepath.Join(home, "work.config.toml"), []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
-	profile, args, err := launchoptions.ImportProfile([]string{"-pwork", "exec", "-m", "grok:literal", "--", "prompt"}, []string{"CODEX_HOME=" + home})
+	profile, args, err := launchoptions.ImportProfile([]string{"-pwork", "exec", "--", "prompt"}, []string{"CODEX_HOME=" + home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,11 +49,11 @@ capabilities={remote_compaction="v2",cyber_access_programs=false}
 		t.Fatalf("wrong native route: %+v", route)
 	}
 	before := launchoptions.ConfigOverrides(args)
-	projected := codexArgs("http://127.0.0.1:1234/v1", args, false, false, route)
+	projected := codexArgs("http://127.0.0.1:1234/v1", args, false, route)
 	after := launchoptions.ConfigOverrides(projected)
 	providers := before["model_providers"].(map[string]any)
 	providers[route.ID].(map[string]any)["base_url"] = "http://127.0.0.1:1234/v1"
-	if !reflect.DeepEqual(providers, after["model_providers"]) || after["model_provider"] != route.ID || after["model"] != "grok:literal" {
+	if !reflect.DeepEqual(providers, after["model_providers"]) || after["model_provider"] != route.ID {
 		t.Fatalf("provider definition/auth/model changed: %#v", after)
 	}
 	if _, exists := after["openai_base_url"]; exists {
@@ -63,7 +62,7 @@ capabilities={remote_compaction="v2",cyber_access_programs=false}
 	if !strings.HasSuffix(strings.Join(projected, "\n"), "--\nprompt") {
 		t.Fatal("prompt/delimiter changed")
 	}
-	continuation := appServerResumeArgv("mekugi", nil, []string{"-p", "work", "-m", "grok:literal", "resume", "saved"})
+	continuation := appServerResumeArgv("mekugi", nil, []string{"-p", "work", "resume", "saved"})
 	if strings.Contains(strings.Join(continuation, " "), "127.0.0.1") || !strings.Contains(strings.Join(continuation, " "), "-p work") || strings.Contains(strings.Join(continuation, " "), "saved") {
 		t.Fatalf("continuation: %q", continuation)
 	}

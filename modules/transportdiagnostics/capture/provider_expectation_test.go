@@ -39,8 +39,8 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 		recorder.recordExchange(state, "codex", 0, time.Now(), body, observedTerminal, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
 	}
 
-	noGenerate := []byte(`{"model":"grok","generate":false,"input":[]}`)
-	ordinaryBody := []byte(`{"model":"grok","input":[]}`)
+	noGenerate := []byte(`{"generate":false,"input":[]}`)
+	ordinaryBody := []byte(`{"input":[]}`)
 	recordClient(noGenerate, false, false)
 	recordClient(ordinaryBody, false, false)
 	recordClient(noGenerate, true, false)

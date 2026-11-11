@@ -6,13 +6,11 @@ Start interactive sessions, choose their execution policy, and run headless auto
 
 | Launch | Models | Authentication |
 | --- | --- | --- |
-| `mekugi` | Third-party `grok:...` and `opencode*:` IDs | [Grok](providers.md#grok-models) or [OpenCode](providers.md#opencode-go-and-zen) credentials |
-| `mekugi grok` | Plain Grok IDs, such as `grok-4.7` | Grok credentials |
-| `mekugi codex` | Codex models only | `codex login` with ChatGPT authentication |
+| `mekugi -p NAME` | Models from the selected Responses provider | [Profile-defined credentials](configuration.md#codex-profile-imports) |
+| `mekugi codex` | Native OpenAI models | `codex login` with ChatGPT authentication |
 
-Without a selected provider profile, standalone requires third-party credentials. Its default follows Grok's model selection
-when authenticated, otherwise the first available OpenCode Go model, then Zen. Mekugi
-flags go **before** `codex`, `grok`, or standalone Codex arguments.
+Bare `mekugi` requires an explicitly configured custom Responses provider profile.
+Mekugi flags go **before** `codex` or the remaining Codex arguments.
 
 Codex's approval/sandbox policy applies. The UI's [remote-write guard](approvals.md#approvals) needs
 unsandboxed execution: configure `sandbox_mode="danger-full-access"`, or use `--yolo` to
@@ -21,9 +19,8 @@ remote-write/sudo guarding and GPG passphrase entry while retaining Codex policy
 
 ```sh
 mekugi codex
-mekugi grok -m grok-4.7
-mekugi -m opencode-go:glm-5.3
-mekugi exec "Explain this repository"
+mekugi -p work
+mekugi codex exec "Explain this repository"
 ```
 
 Interactive launches start the local server when absent and attach the [UI](terminal-ui.md).
@@ -38,7 +35,7 @@ See [launch limits](../../apps/mekugi/internal/launch/SPEC.md) and
 ## Headless execution
 
 ```sh
-mekugi headless --yolo < prompt.txt
+mekugi codex headless --yolo < prompt.txt
 ```
 
 Headless requires `--yolo` and one nonempty stdin prompt up to 16 MiB; model/`-c`

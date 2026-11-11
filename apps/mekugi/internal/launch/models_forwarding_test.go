@@ -14,7 +14,7 @@ import (
 func TestModelsHandlerValidatesAndProjectsEachCatalog(t *testing.T) {
 	const catalog = `{"models":[{"slug":"gpt-6-astra","tool_mode":"code_mode","future":42}],"extra":true}`
 	calls := 0
-	provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+	client := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		calls++
 		if calls == 1 {
 			return serverHTTPResponse(`{"models":[null]}`), nil
@@ -22,12 +22,13 @@ func TestModelsHandlerValidatesAndProjectsEachCatalog(t *testing.T) {
 		response := serverHTTPResponse(catalog)
 		response.Header.Set("ETag", "account-version")
 		return response, nil
-	})})
+	})}
+	provider := newTestProviderClient(testProviderBaseURL, client)
 	handler := inferencegateway.ModelsHandler(provider, nil, nil)
 	for request := range 3 {
 		if request == 2 {
-			// Third-party routing preserves native catalog projection.
-			provider.Grok = &inferencegateway.ThirdPartyClient{}
+			// Custom catalogs preserve the same native execution projection.
+			provider.Native = &inferencegateway.NativeProvider{ID: "custom", CatalogURL: "http://custom.invalid/models", HTTPClient: client}
 		}
 		recorder := httptest.NewRecorder()
 		handler(recorder, catalogRequest())

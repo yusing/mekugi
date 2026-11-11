@@ -58,47 +58,6 @@ func TestProjectStandaloneOutputs(t *testing.T) {
 	}
 }
 
-func TestStandaloneContextReachesTranslatedEndpoints(t *testing.T) {
-	input, err := ProjectStandaloneOutputs([]byte(`[{"type":"function_call_output","name":"spawn_agent","namespace":"threadcontrol","output":[{"type":"input_text","text":"Assignment retained."}]}]`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, format := range []string{"chat", "responses", "anthropic"} {
-		tr, err := testTranslateFormat(responses.MustMarshalJSON(map[string]any{
-			"model": "opencode-go:test", "input": jsontext.Value(input),
-		}), format)
-		if err != nil {
-			t.Fatalf("%s standalone context: %v", format, err)
-		}
-		wire := responses.MustMarshalJSON(tr.body)
-		for _, text := range []string{"Assignment retained.", "threadcontrol.spawn_agent", "assistant"} {
-			if !bytes.Contains(wire, []byte(text)) {
-				t.Fatalf("%s dropped standalone context %q: %s", format, text, wire)
-			}
-		}
-	}
-	image, err := ProjectStandaloneOutputs([]byte(`[{"type":"function_call_output","name":"context","output":[{"type":"input_image","image_url":"data:image/png;base64,AA=="}]}]`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, format := range []string{"chat", "responses", "anthropic"} {
-		tr, err := testTranslateFormat(responses.MustMarshalJSON(map[string]any{
-			"model": "opencode-go:test", "input": jsontext.Value(image),
-		}), format)
-		if format == "anthropic" {
-			// Messages cannot represent images as assistant context. Retain its
-			// explicit rejection rather than dropping media or claiming a user sent it.
-			if err == nil {
-				t.Fatal("Messages accepted unsupported assistant image context")
-			}
-			continue
-		}
-		if err != nil || !bytes.Contains(responses.MustMarshalJSON(tr.body), []byte("AA==")) {
-			t.Fatalf("%s lost standalone image context: %v", format, err)
-		}
-	}
-}
-
 func TestStandaloneOutputContentAndUnrelatedHistory(t *testing.T) {
 	for _, raw := range []string{
 		`[{"type":"function_call_output","call_id":"c","name":"spawn_agent","output":"real result"}]`,

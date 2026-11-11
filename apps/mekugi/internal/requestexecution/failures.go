@@ -174,7 +174,7 @@ func (c *Failures) record(f *requestFinalization, err error) {
 		case f.failurePhase == requestFailureModels:
 			message = "Mekugi could not refresh the model catalog. Existing model turns may still work."
 		case f.upstreamStatusCode == 401 || f.upstreamStatusCode == 403:
-			category, message = "authentication", "Mekugi upstream authentication was rejected. Check your Codex or Grok credentials before retrying."
+			category, message = "authentication", "Mekugi upstream authentication was rejected. Check the selected provider credentials before retrying."
 		case f.upstreamStatusCode == 429:
 			category, message = "rate_limit", "The upstream service rate-limited this turn. Wait before retrying."
 		case errors.Is(err, context.DeadlineExceeded), errors.Is(err, httptransport.ErrStreamIdleTimeout):

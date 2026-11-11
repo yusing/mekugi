@@ -55,7 +55,6 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 				t.Fatal(err)
 			}
 			model := parsed["models"].([]any)[0].(map[string]any)
-			model["slug"] = "opencode-go:profile-literal"
 			model["tool_mode"] = "code_mode"
 			model["multi_agent_reasoning_effort"] = "high"
 			parsed["models"] = []any{model}
@@ -150,7 +149,7 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 							return
 						}
 					}
-					if wire["model"] != "opencode-go:profile-literal" || wire["access_programs"] != nil {
+					if wire["access_programs"] != nil {
 						t.Errorf("model/policy changed: %v", wire["model"])
 					}
 					mu.Lock()
@@ -280,7 +279,7 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 					}
 				}
 			}
-			profile := fmt.Sprintf("model=\"opencode-go:profile-literal\"\nmodel_provider=\"custom\"\nmodel_reasoning_effort=\"high\"\nmodel_context_window=250000\nmodel_auto_compact_token_limit=240000\nmodel_catalog_json=%q\n[model_providers.custom]\nname=\"Native fixture\"\nbase_url=%q\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\nquery_params={version=\"a%%2Bb\"}\nhttp_headers={\"X-Provider\"=\"native\"}\n%s", catalogPath, upstream.URL+"/tenant/v1", authConfig)
+			profile := fmt.Sprintf("model_provider=\"custom\"\nmodel_reasoning_effort=\"high\"\nmodel_context_window=250000\nmodel_auto_compact_token_limit=240000\nmodel_catalog_json=%q\n[model_providers.custom]\nname=\"Native fixture\"\nbase_url=%q\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\nquery_params={version=\"a%%2Bb\"}\nhttp_headers={\"X-Provider\"=\"native\"}\n%s", catalogPath, upstream.URL+"/tenant/v1", authConfig)
 			if auth == "literal" {
 				// Codex also enables search by provider identity, without the
 				// supports_standalone_web_search flag. The gateway must not veto it.

@@ -18,20 +18,18 @@ const DefaultRequestTimeout = 10 * time.Minute
 // Config is a parsed invocation configuration. It contains values only;
 // execution derives effective output paths without modifying the selected options.
 type Config struct {
-	Timeout              time.Duration
-	StreamIdleTimeout    time.Duration
-	ANSIFaint            string
-	ShellGuard           bool
-	DeduplicateOutput    bool
-	ChildReplySummary    bool
-	GrokAuthFile         string
-	CaptureOutput        string
-	Debug                bool
-	Grok                 bool
-	ThirdParty           bool
-	Profile              *Profile
-	TimeoutSet           bool
-	StreamIdleTimeoutSet bool
+	Timeout               time.Duration
+	StreamIdleTimeout     time.Duration
+	ANSIFaint             string
+	ShellGuard            bool
+	DeduplicateOutput     bool
+	ChildReplySummary     bool
+	CaptureOutput         string
+	Debug                 bool
+	RequireCustomProvider bool
+	Profile               *Profile
+	TimeoutSet            bool
+	StreamIdleTimeoutSet  bool
 
 	shellGuardSet        bool
 	deduplicateOutputSet bool
@@ -62,14 +60,11 @@ func Parse(args []string) (Config, error) {
 			config.debugSet = true
 		}
 	})
-	config.Grok = flags.NArg() == 1 && flags.Arg(0) == "grok"
-	config.ThirdParty = flags.NArg() == 1 && flags.Arg(0) == "third-party"
+	config.RequireCustomProvider = flags.NArg() == 1 && flags.Arg(0) == "custom-provider"
 
 	switch {
-	case flags.NArg() != 0 && !config.Grok && !config.ThirdParty:
+	case flags.NArg() != 0 && !config.RequireCustomProvider:
 		return Config{}, errors.New("positional arguments are not supported")
-	case !config.Grok && !config.ThirdParty && config.GrokAuthFile != "":
-		return Config{}, errors.New("--grok-auth-file requires standalone mekugi or mekugi grok")
 	case config.Timeout <= 0:
 		return Config{}, errors.New("--timeout must be positive")
 	case config.StreamIdleTimeout <= 0:
@@ -84,7 +79,6 @@ func newFlags(stderr io.Writer, config *Config) *flag.FlagSet {
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mekugi [flags] [Codex arguments...]")
 		fmt.Fprintln(stderr, "       mekugi [flags] codex [Codex arguments...]")
-		fmt.Fprintln(stderr, "       mekugi [flags] grok [Codex arguments...]")
 		fmt.Fprintln(stderr, "       mekugi [flags] codex headless --yolo [-m MODEL] [-c KEY=VALUE] < prompt.txt")
 		fmt.Fprintln(stderr, "       mekugi server [--socket PATH]")
 		fmt.Fprintln(stderr, "       mekugi connector [--listen ADDRESS] [--socket PATH] [--token-file PATH] [--origin URL]")
@@ -100,7 +94,6 @@ func newFlags(stderr io.Writer, config *Config) *flag.FlagSet {
 	flags.DurationVar(&config.StreamIdleTimeout, "stream-idle-timeout", 4*time.Minute, "maximum upstream inactivity between WebSocket messages or HTTP response bytes")
 	flags.BoolVar(&config.ShellGuard, "shell-guard", true, "guard UI remote writes/sudo commands and securely answer GPG passphrases; independent of Codex approval policy")
 	flags.BoolVar(&config.DeduplicateOutput, "deduplicate-output", true, "deduplicate output and attachments in model input")
-	flags.StringVar(&config.GrokAuthFile, "grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)")
 	flags.StringVar(&config.CaptureOutput, "capture-output", "", "optional sanitized capture JSONL path")
 	flags.BoolVar(&config.ChildReplySummary, "child-reply-summary", true, "show child-authored summaries in Main with full replies in the dialog")
 	flags.BoolVar(&config.Debug, "debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print session diagnosis command on exit")
@@ -124,7 +117,7 @@ func SplitCommand(args []string) (routerArgs, command []string, err error) {
 		name, _, inline := strings.Cut(name, "=")
 		item := flags.Lookup(name)
 		if item == nil {
-			if name == "grok" || name == "h" || name == "help" {
+			if name == "h" || name == "help" {
 				return nil, nil, flags.Parse(args)
 			}
 			break // Codex options belong to standalone mode.

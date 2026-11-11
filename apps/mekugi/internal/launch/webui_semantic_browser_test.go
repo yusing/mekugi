@@ -63,9 +63,6 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR"} {
 		t.Setenv(key, t.TempDir())
 	}
-	for _, key := range []string{"XAI_API_KEY", "OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY"} {
-		t.Setenv(key, "")
-	}
 	writeFeatureConfig(t, "shell_guard = false")
 	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
 	directory, err := os.MkdirTemp("", "mekugi-webui-semantic-")

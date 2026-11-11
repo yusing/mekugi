@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
@@ -175,7 +174,7 @@ func (c *Client[T]) ObservePrediction(m appserver.Message, response Request[T]) 
 		}
 		switch response.Method {
 		case "thread/resume":
-			if p.Closed || result.Thread.ID != p.SourceThread || result.ModelProvider != "openai" || result.CollaborationMode.Mode == "plan" || inferencegateway.IsThirdPartyModel(result.Model) || slices.Contains(p.UnsupportedModels, result.Model) {
+			if p.Closed || result.Thread.ID != p.SourceThread || result.ModelProvider != "openai" || result.CollaborationMode.Mode == "plan" || slices.Contains(p.UnsupportedModels, result.Model) {
 				return true, r.ClosePrediction(p)
 			}
 			if turns := result.Thread.Turns; len(turns) == 0 || turns[len(turns)-1].ID != p.SourceTurn || turns[len(turns)-1].Status != "completed" {

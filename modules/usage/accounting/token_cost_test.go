@@ -15,15 +15,9 @@ func TestTokenCostDisjointCategories(t *testing.T) {
 			t.Fatalf("%s: %+v", model, cost)
 		}
 	}
-	for _, model := range []string{"", "unknown", "grok:unknown", "other/gpt-6-astra", "gpt-6-astra-unknown", "x-ai/grok-4.6"} {
+	for _, model := range []string{"", "unknown", "other/gpt-6-astra", "gpt-6-astra-unknown"} {
 		if estimateReferenceCost(model, "", counts).Known {
 			t.Fatalf("invented price for %q", model)
-		}
-	}
-	for _, model := range []string{"grok:grok-4.6", "grok-4.6", "GROK:GROK-4.6"} {
-		cost := estimateReferenceCost(model, "", counts)
-		if !cost.Known || cost.UncachedInput != 0.08 || cost.CachedInput != 0.03 || cost.Output != 0.18 {
-			t.Fatalf("%s: %+v", model, cost)
 		}
 	}
 	for model, want := range map[string]float64{"gpt-6-sol": 0.392, "gpt-6.1-sol": 0.386, "openai/gpt-6.1-sol": 0.386, "gpt-6-luna": 0.0196} {
@@ -62,34 +56,6 @@ func TestTokenCostContextTierBoundary(t *testing.T) {
 		if !cost.Known || math.Abs(cost.UncachedInput-tc.wantInput) > 1e-10 ||
 			math.Abs(cost.CachedInput-tc.wantCached) > 1e-10 || math.Abs(cost.Output-tc.wantOutput) > 1e-10 {
 			t.Fatalf("%s input=%d: %+v", tc.model, tc.input, cost)
-		}
-	}
-}
-
-func TestTokenCostGrokContextTierAndUnsupportedCombinations(t *testing.T) {
-	for _, tc := range []struct {
-		model, tier                       string
-		input                             uint64
-		writes                            uint64
-		wantInput, wantCached, wantOutput float64
-		known                             bool
-	}{
-		{"grok:grok-4.6", "", 199_999, 0, 0.2, 0.0499995, 0.06, true},
-		{"grok:grok-4.5", "", 199_999, 0, 0.2, 0.0299997, 0.06, true},
-		{"grok:grok-4.7", "", 199_999, 0, 0.2, 0.0499995, 0.06, true},
-		{"grok:grok-4.7-build-fast", "", 199_999, 0, 0.4, 0.099999, 0.12, true},
-		{"grok:grok-4.7-build-fast", "", 200_000, 0, 0.4, 0.1, 0.12, true},
-		{"grok:grok-4.7-build-fast", "", 200_001, 0, 0.6, 0.1500015, 0.18, true},
-		{"grok-4.6", "default", 200_000, 0, 0.4, 0.1, 0.12, true},
-		{"grok:grok-4.6", "", 200_001, 0, 0.4, 0.100001, 0.12, true},
-		{"grok:grok-4.6", "fast", 100_000, 0, 0, 0, 0, false},
-		{"grok:grok-4.6", "priority", 200_000, 0, 0, 0, 0, false},
-		{"grok:grok-4.6", "", 100_000, 1, 0, 0, 0, false},
-	} {
-		counts := inference.Usage{InputTokens: tc.input, UncachedInputTokens: 100_000, CacheWriteTokens: tc.writes, OutputTokens: 10_000, ReasoningTokens: 5_000}
-		got := estimateReferenceCost(tc.model, tc.tier, counts)
-		if got.Known != tc.known || math.Abs(got.UncachedInput-tc.wantInput) > 1e-10 || math.Abs(got.CachedInput-tc.wantCached) > 1e-10 || math.Abs(got.Output-tc.wantOutput) > 1e-10 {
-			t.Fatalf("%s/%s/%d: %+v", tc.model, tc.tier, tc.input, got)
 		}
 	}
 }

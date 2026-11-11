@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -102,13 +101,11 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if !options.ShellGuard {
 		guards = nil
 	}
-	grokEnabled, standalone := options.Grok, options.ThirdParty
 	if api == nil {
 		if _, err := terminalui.SupportsFaint(ctx, options.ANSIFaint); err != nil {
 			return 1, err
 		}
 	}
-	openCode := config.Providers
 	var readLogPath string
 	for _, entry := range environment {
 		if value, ok := strings.CutPrefix(entry, evidence.AXReadOutputEnvironment+"="); ok {
@@ -197,7 +194,6 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		openaiHTTP.Transport = capture.Transport(openaiHTTP.Transport)
 	}
 	provider := inferencegateway.NewClient(openai.BaseURL, openaiHTTP, requestexecution.ProviderDiagnostics())
-	provider.ThirdPartyOnly = grokEnabled || standalone
 	provider.OpenAI.StreamIdleTimeout = options.StreamIdleTimeout
 	// Source: apps/mekugi/internal/launch/invocation.go:188:203@[14a6d1f3] provider selection
 	route, err := profileRoute(args, options.Profile)
@@ -226,38 +222,8 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		if !options.TimeoutSet {
 			options.Timeout = max(options.Timeout, route.ConnectTimeout)
 		}
-		// No built-in credentials, online catalog, prices or defaults participate.
-		openCode = launchoptions.Settings{}.Providers
-		provider.ThirdPartyOnly = false
-	}
-	providerOptions := options
-	if route != nil {
-		providerOptions.Grok, providerOptions.ThirdParty = false, false
-	}
-	auth, selectedOpenCode, err := launchProviders(ctx, providerOptions, openCode)
-	if err != nil {
-		return 1, err
-	}
-	openCode = selectedOpenCode
-	if auth != nil {
-		client := httptransport.Client(nil)
-		if capture != nil {
-			client.Transport = capture.Transport(client.Transport)
-		}
-		provider.Grok = &inferencegateway.ThirdPartyClient{HTTPClient: client, Auth: auth, Unprefixed: grokEnabled, StreamIdleTimeout: options.StreamIdleTimeout, Diagnostics: provider.Diagnostics}
-	}
-	if standalone && provider.Grok == nil && !openCode.Enabled() {
-		return 1, errors.New("no authenticated third-party providers; run grok login --oauth or set XAI_API_KEY, OPENCODE_GO_API_KEY, or OPENCODE_ZEN_API_KEY")
 	}
 	serviceTiers := inferencegateway.NewTiers(config.ServiceTiers)
-	provider.OpenCode = make(map[string]*inferencegateway.ThirdPartyClient)
-	for _, service := range openCode.Services() {
-		client := httptransport.Client(nil)
-		if capture != nil {
-			client.Transport = capture.Transport(client.Transport)
-		}
-		provider.OpenCode[service.Prefix] = &inferencegateway.ThirdPartyClient{HTTPClient: client, OpenCode: &service, StreamIdleTimeout: options.StreamIdleTimeout, Diagnostics: provider.Diagnostics}
-	}
 	var frontendDirectory string
 	titleCtx, cancelTitles := context.WithCancel(ctx)
 	defer cancelTitles()
@@ -490,35 +456,6 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		cancel()
 		return 1, err
 	}
-	if provider.ThirdPartyOnly {
-		selectedModels := modelcatalog.Selection{GrokEnabled: provider.Grok != nil, GrokUnprefixed: grokEnabled, OpenCode: openCode}
-		catalogDirectory, catalogPath, err := prepareProviderCatalog(ctx, executable, args, selectedModels)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		defer func() {
-			if err := os.RemoveAll(catalogDirectory); err != nil {
-				runErr = errors.Join(runErr, err)
-				code = 1
-			}
-		}()
-		index := slices.Index(args, "--")
-		if index < 0 {
-			index = len(args)
-		}
-		args = slices.Insert(slices.Clone(args), index, "-c", fmt.Sprintf("model_catalog_json=%q", catalogPath))
-		args, err = thirdPartyDefaultArgs(args, selectedModels)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		if appUI {
-			catalog, err := os.ReadFile(catalogPath)
-			if err != nil {
-				return stopFailedStartup(err)
-			}
-			threads.driver.CaptureCatalog(catalog)
-		}
-	}
 
 	if options.Profile != nil {
 		var directory string
@@ -533,7 +470,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			threads.setup.args = slices.Clone(args)
 		}
 	}
-	projectedArgs := codexArgs(baseURL, args, skillsManagerAvailable, !provider.ThirdPartyOnly, route)
+	projectedArgs := codexArgs(baseURL, args, skillsManagerAvailable, route)
 	cmd := exec.CommandContext(ctx, executable, projectedArgs...)
 	if appUI {
 		self, err := os.Executable()

@@ -22,9 +22,7 @@ reads `MEKUGI_E2E_MODEL`, which the Makefile sets; raw `go test` runs must set i
 | Guards | Fake VCS executables: native hook dispatch, approvals, denial and helper-failure blocking; unrelated MCP disconnect and hook helper removal/failure after admission leave effect markers absent; excludes hook-shell launch/timeout fail-closed behavior |
 | Segment reports | Installed execution and measured reports under read-only/workspace-write sandboxes |
 | Router fault | Translation failure after response creation: one upstream request, one terminal failure and durable reference lookup; pre-stream 503 remains retryable |
-| Third-party authentication | Empty isolated Codex credentials, bundled catalog and real Grok adapter with local HTTP/WebSocket mocks; plain/namespaced IDs, one inference and credential separation |
 | Profile routing | `TestProfileLaunchInstalledCodex`: actual profile import, native anonymous/env/literal/managed/command/refresh auth, inherited provider headers/capabilities, static/remote/unknown-model catalogs, HTTP and WebSockets, stock JavaScript child execution/captures and fresh profile resume; synthetic local providers only |
-| Third-party resume | UI and real Grok adapter: saved model restoration after fresh launch/switching, explicit overrides, inferred models and thread identity in both namespaces |
 
 Run affected host checks without changing host policy:
 

@@ -4,16 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -44,40 +39,6 @@ func TestProviderErrorEventIsFailedNotMissingTerminal(t *testing.T) {
 			if len(notices) != 1 || !strings.Contains(notices[0], "private provider message") ||
 				strings.Contains(notices[0], "without a completed") {
 				t.Fatalf("wrong failure notice: %v", notices)
-			}
-		})
-	}
-}
-
-func TestGrokEncryptedHistoryCompatibility(t *testing.T) {
-	for _, input := range []string{
-		`[{"type":"reasoning","encrypted_content":"private"}]`,
-		`[{"type":"message","role":"user","content":[{"type":"encrypted_content","encrypted_content":"private"}]}]`,
-	} {
-		t.Run(input, func(t *testing.T) {
-			body := []byte(`{"model":"grok:grok-4.6","input":` + input + `}`)
-			// No auth or HTTP client: rejection must happen before either is used.
-			client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics()}
-			_, err := client.ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
-			err = fmt.Errorf("execute request: %w", requestexecution.ForwardError(err))
-			compatibility, ok := errors.AsType[*inferencegateway.CompatibilityError](err)
-			if !ok || compatibility.Code != "grok_encrypted_history" {
-				t.Fatalf("wrong classification: %v", err)
-			}
-			issues := testCriticalErrors()
-			finalization := issues.Report(requestexecution.Failure{Session: "grok-session", Phase: "forward"}, err)
-			if finalization.Code != "grok_encrypted_history" ||
-				strings.Contains(strings.Join(issues.Notices.Pending(), ""), "transport") ||
-				!strings.Contains(strings.Join(issues.Notices.Pending(), ""), "fresh") {
-				t.Fatalf("wrong diagnostic: %+v, %v", finalization, issues.Notices.Pending())
-			}
-
-			provider := &serverFakeProvider{results: []serverForwardResult{{err: err}}}
-			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-			testResponsesHandler(t.Context(), time.Second, provider, nil, nil)(recorder, request)
-			if recorder.Code != http.StatusBadRequest {
-				t.Fatalf("compatibility rejection is retryable: %d %s", recorder.Code, recorder.Body.String())
 			}
 		})
 	}
@@ -163,28 +124,5 @@ func TestResponsesWebSocketProviderErrorRecovery(t *testing.T) {
 		if strings.Contains(notice, "invalid") || strings.Contains(notice, "without a completed") {
 			t.Fatalf("misclassified provider error: %s", notice)
 		}
-	}
-}
-
-func TestResponsesWebSocketGrokEncryptedHistoryStatus(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	provider := newTestProviderClient("http://unused.invalid", nil)
-	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics()}
-	endpoint := testWebSocketEndpoint(ctx, time.Second, provider, nil, nil)
-	defer endpoint.Close()
-	server := httptest.NewServer(endpoint)
-	defer server.Close()
-	conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: grokTestHeaders()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.CloseNow()
-	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": grokModel,
-		"input": []any{map[string]string{"type": "reasoning", "encrypted_content": "private"}}})
-	event := socketRead(t, ctx, conn)
-	if responses.StringField(event, "type") != "error" || string(event["status"]) != "400" ||
-		!strings.Contains(string(event["error"]), "grok_encrypted_history") {
-		t.Fatalf("incorrect compatibility error: %s", responses.MustMarshalJSON(event))
 	}
 }

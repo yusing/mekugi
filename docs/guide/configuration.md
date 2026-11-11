@@ -17,10 +17,6 @@ debug = false
 
 [service_tiers]
 "gpt-6-astra" = "fast"
-[providers.opencode_go]
-api_key = "your-go-key"
-[providers.opencode_zen]
-api_key = "your-zen-key"
 ```
 
 Feature keys set defaults for the matching hyphenated CLI flags in every launch,
@@ -91,8 +87,8 @@ are protected from ineffective lower-layer writes.
 
 A selected custom provider keeps its original provider/model identity and native
 Responses HTTP/SSE or configured WebSocket transport. Supply its provider ID and
-base URL in the import or explicit overrides. It supersedes automatic standalone
-Grok/OpenCode selection; an explicit contradictory provider selector fails. Other
+base URL in the import or explicit overrides. Bare `mekugi` requires this explicit
+selection; `mekugi codex` retains native OpenAI when no profile selects another route. Other
 provider fields retain normal host merging. Codex owns environment, literal,
 command-backed and requested managed-login authentication, caching and refresh.
 Unknown model IDs need no built-in discovery or OpenAI login. Custom-route prices
@@ -124,7 +120,6 @@ See the
 | `--shell-guard` | `true` | Guard UI remote writes and sudo commands; securely answer GPG passphrase requests, even with `--yolo` |
 | `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
 | `--child-reply-summary` | `true` | Show child-authored summaries in Main, with the original behind Open reply |
-| `--grok-auth-file` | `~/.grok/auth.json` | OAuth store |
 | `--timeout` | `10m` | Wait for response start |
 | `--stream-idle-timeout` | `4m` | Limit provider-message or HTTP-byte gaps |
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |

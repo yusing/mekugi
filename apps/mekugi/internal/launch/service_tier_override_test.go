@@ -34,16 +34,13 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	if actual, _ := os.UserConfigDir(); actual != directory {
 		t.Skip("platform does not use XDG_CONFIG_HOME")
 	}
-	t.Setenv("OPENCODE_API_KEY", "")
-	t.Setenv("OPENCODE_GO_API_KEY", "")
-	t.Setenv("OPENCODE_ZEN_API_KEY", "")
 	if err := os.Mkdir(filepath.Join(directory, "mekugi"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(directory, "mekugi", "config.toml"), []byte("[service_tiers]\n\"gpt-6.1-sol\" = \"fast\"\n\"gpt-6-astra\" = \"flex\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	config, err := launchoptions.LoadSettings(false)
+	config, err := launchoptions.LoadSettings()
 	if err != nil {
 		t.Fatal(err)
 	}

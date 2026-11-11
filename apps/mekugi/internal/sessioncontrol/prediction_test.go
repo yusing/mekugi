@@ -51,7 +51,7 @@ func TestPredictionHostCapabilityAndEligibility(t *testing.T) {
 			t.Fatalf("capability %q", version)
 		}
 	}
-	for _, gate := range []string{"provider", "third-party-model", "unsupported-model", "plan", "source-turn"} {
+	for _, gate := range []string{"provider", "unsupported-model", "plan", "source-turn"} {
 		t.Run(gate, func(t *testing.T) {
 			transport := &requestTransport{id: "request"}
 			requests := NewRequests[struct{}](transport)
@@ -61,8 +61,6 @@ func TestPredictionHostCapabilityAndEligibility(t *testing.T) {
 			switch gate {
 			case "provider":
 				result["modelProvider"] = "other"
-			case "third-party-model":
-				result["model"] = "grok:grok-4"
 			case "unsupported-model":
 				result["model"] = "blocked"
 			case "plan":

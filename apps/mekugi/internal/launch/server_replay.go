@@ -74,7 +74,7 @@ func (p *serverReplay) control(intent sessionapi.Intent, elapsed time.Duration) 
 }
 
 func runServerReplay(ctx context.Context, request sessionapi.ReplayStart, api *sessionapi.Server) (err error) {
-	settings, err := launchoptions.LoadSettings(false)
+	settings, err := launchoptions.LoadSettings()
 	if err != nil {
 		return err
 	}

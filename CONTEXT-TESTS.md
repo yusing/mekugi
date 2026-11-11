@@ -56,7 +56,7 @@ Feature contracts in `docs/index.md` own acceptance details.
 | Requests/providers | `inferencegateway`, `requestexecution`, affected `providers`, `libraries/{httptransport,modelprotocol}`, `backends/codex/responses`; Launch HTTP/WebSocket, models/catalog, auxiliary endpoints, credentials, prices, errors, prewarm, continuation/steering, cancellation, service tier and accounting. Cover request/history/tool/guidance projection, thread coordination, failed terminals and transport capture |
 | Tools/guidance | Affected reader/command/output/guidance modules, `libraries/{commandargs,outputbudget,sourceanalysis}`, `frontends`; Launch authenticated dispatch, worker arguments, recovery/storage/fork, Activity interpretation and AX consumers. Instruction projection also uses `composition` and prepared requests; see focused commands below |
 | Diagnostics/accounting/replay | Affected `modules/{usage,transportdiagnostics,agentmetrics,diagnostics,sessioninspection,sessionreplay}`, `contracts/{inference,inspection}`, `backends/codex/rollout`, `inspectioncli`; Launch token/cost/throughput, naming, debug/failure/retention, corpus, logical-session and replay consumers, including optional contributors/transports |
-| Launch/headless/naming | Changed `launch/options`, `launch/modelcatalog`, `headless` or `modules/sessionnaming`; Launch dispatch/build, reused configuration, resume models, picker/startup, headless delivery/control/shutdown and title/name-save consumers |
+| Launch/headless/naming | Changed `launch/options`, `launch/catalog.go`, `headless` or `modules/sessionnaming`; Launch dispatch/build, reused configuration, resume models, picker/startup, headless delivery/control/shutdown and title/name-save consumers |
 | Session API | `sessionapi`, `sessionpresentation` and `modules/activity/presentation`; cover detached projection, prompt redaction, request admission, stream recovery, socket peer checks and hosted-resource cleanup. Runtime consumers require their own integration checks |
 
 After API changes, compile affected tagged fixtures with the compile-only command in the matching
@@ -89,8 +89,7 @@ documentation changes.
 Run `make lint` (needs `golangci-lint` and `deadcode`) before committing Go changes: CI runs it
 after the offline suite, so a failing test hides its findings.
 
-`make generate` also refreshes the network-sourced OpenCode catalog snapshots; run it only for a
-catalog refresh. For workspace references or the Session API schema, run
+For workspace references or the Session API schema without unrelated generators, run
 `go run ./apps/mekugi/cmd/workspace index-write` or `go run ./apps/mekugi/cmd/sessionapi-schema`.
 
 ## Boundary acceptance

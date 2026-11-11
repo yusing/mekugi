@@ -41,7 +41,7 @@ func runNativeClient(ctx context.Context, socket string, routerArgs, args []stri
 	if err != nil {
 		return err
 	}
-	settings, err := launchoptions.LoadSettings(options.ThirdParty)
+	settings, err := launchoptions.LoadSettings()
 	if err != nil {
 		return err
 	}

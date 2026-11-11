@@ -30,14 +30,6 @@ func CopyResponse(writer io.Writer, response *http.Response, streamResponse bool
 	if streamResponse && hooks != nil {
 		recordStreamCopyStop(hooks.StreamDiagnostics, err)
 	}
-	// The response bridge emits a failed terminal before closing its local pipe.
-	// SSE copying stops at that terminal, so retrieve its producer error without
-	// draining a provider stream or waiting after a downstream write failure.
-	if err == nil && terminalState == responseevents.TerminalFailed {
-		if body, ok := response.Body.(interface{ TerminalError() error }); ok {
-			err = body.TerminalError()
-		}
-	}
 	if err != nil {
 		return terminalState, fmt.Errorf("copy upstream response: %w", err)
 	}

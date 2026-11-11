@@ -2,136 +2,38 @@
 
 ## Required provider behavior
 
-OpenCode Go and Zen are supported provider routes, with every Go model in scope.
-Credentials come from environment or configuration. Upstream models, API behavior
-and prices remain authoritative independently of a Mekugi release. Provider
-integration preserves native execution and batching under the selected backend.
+Native OpenAI access and explicitly configured custom Responses providers preserve
+Codex execution, tools, permissions, batching, continuation and per-thread usage.
+Provider access does not create an agent runtime or own a second transcript.
+Claude delegates retain their separate SDK execution and authentication boundary.
 
-## Replaceable routing and adaptation design
+The application inference gateway pins the selected route and owns its HTTP and
+WebSocket lifetime. Request preparation, execution admission, retained evidence,
+accounting and notices remain shared consumers. Native Codex owns credential
+acquisition and retries. Native OpenAI must not depend on a proxy service.
 
-Catalog projection, route pinning, translation, reasoning envelopes, refresh and
-accounting mechanisms below are the current integration design. They can change
-without narrowing required provider coverage or making release-time metadata the
-authority. The [provider specification](../../providers/opencode/SPEC.md) owns
-catalog behavior and present limits.
+## Shared service tiers and failures
 
-## Authority and ownership
+Confirmed service-tier choices are scoped by native thread and exact requested
+model, ahead of configured defaults and request values. Model identities do not
+change; `fast` is forwarded and displayed as `priority`. Custom routes do not
+acquire OpenAI-only policy or built-in price estimates. Missing usage remains
+missing and unavailable prices remain unknown.
 
-Third-party models serve Main and independent child runtimes without requiring
-child-only headers. Thread Control owns logical coordination; Codex owns native
-thread execution, tools, permissions, sandboxing, interruption and continuation. The application inference gateway selects and pins provider
-policy, binds HTTP and dedicated WebSocket exchanges, and owns downstream socket lifetime. Provider
-implementations own credentials, metadata and upstream transport. The
-[Codex adapter](../../backends/codex/responses/SPEC.md) owns wire translation and
-stream normalization. No provider adapter creates an agent runtime, decrypts
-foreign history or substitutes its own transcript or registry.
-
-[Launch](../../apps/mekugi/internal/launch/SPEC.md#model-catalog) owns private
-catalog assembly, preparation and invocation model namespaces. Routing consumes
-provider metadata independently of that startup projection. Disabled or wrong-mode
-routes fail locally before inference. Enabling a third-party route does not change ordinary OpenAI request
-projection. OpenAI-only WebSocket connections establish the provider handshake
-before accepting the host connection, preserving the provider's
-`x-reasoning-included` signal, including its absence. Recognized usage-limit or
-overload/capacity upgrade rejections enter ordinary request delivery for the
-[executor's logical waiting](../../apps/mekugi/internal/requestexecution/SPEC.md).
-Other failed upgrades retain the provider's HTTP status and bounded error body. Setup obeys cancellation and the
-configured response-start timeout and generates no inference.
-
-Mixed-provider connections retain deferred provider selection and cannot relay
-provider handshake-only signals through their already-accepted host socket.
-They never connect to OpenAI merely to serve a third-party request. HTTP responses
-preserve provider headers. Third-party continuation sends complete history over HTTP; WebSocket
-prewarm does not generate inference, and disconnect cancels provider work.
-
-## Selected adaptation policy
-
-The gateway resolves provider capabilities before calling the backend codec.
-Request preparation, execution admission, retained evidence, accounting and notices
-remain application consumers. The shared application
-[request executor](../../apps/mekugi/internal/requestexecution/SPEC.md) runs both
-HTTP and socket attempts; transport does not acquire a second execution or
-observation authority.
-
-The gateway owns invocation-local service-tier selection. Confirmed choices are
-scoped by host thread and the exact requested model, ahead of configured model
-defaults and the request's tier. Requested model identities remain unchanged;
-`fast` is forwarded and displayed as `priority`. Request preparation, Main and
-child captions use this same policy without rewriting confirmed host settings.
-
-### Grok
-
-Grok uses Chat Completions. Non-null `max_output_tokens` rejects locally: Chat completion limits exclude
-reasoning and cannot enforce a Responses total-output budget. Grok completion and
-reasoning counts combine into Responses output tokens, with reasoning retained as
-a breakdown rather than charged twice. Transport metrics describe the actual Chat exchange.
-
-Plaintext reasoning streams as Responses summaries but is not replayed to Grok.
-Encrypted reasoning/messages, opaque file IDs and provider-only history reject
-before inference. Fresh-context spawning avoids foreign encrypted history.
-
-### OpenCode
-
-[Launch](../../apps/mekugi/internal/launch/SPEC.md#model-catalog) owns the
-Codex catalog projection. Explicit supported reasoning efforts pass as Chat
-`reasoning_effort`, Responses `reasoning.effort` or Messages
-`output_config.effort`; structured output can coexist with effort. An absent or
-unsupported inherited value leaves provider defaults alone. `none` is forwarded
-only when advertised; toggle-only or token-budget-only controls are not efforts.
-
-Chat reasoning summaries are replayed on the corresponding assistant message,
-including tool-free and resumed turns. Messages thinking/signature/redacted blocks
-and Responses reasoning items use versioned, service/model-bound opaque envelopes
-that survive JSON persistence. They restore only on that route; foreign encrypted history fails locally.
-Visible Chat, Messages and Responses reasoning streams as received, including
-completed-item text when no deltas exist. The backend's item lifecycle preserves
-its order relative to the answer. Messages/Responses visible summaries belong to
-the same opaque item; closing without a replay envelope retains no summary-only
-reasoning, which those formats cannot restore.
-
-OpenCode completion counts already include reasoning; Responses output retains
-that total and exposes reasoning only as a breakdown. Missing usage remains
-missing. Messages input includes uncached input plus cache reads/writes, and its
-output includes thinking. Messages requires a generation ceiling, defaulting to
-32,768 tokens; an explicit total-output budget maps to `max_tokens`. Responses
-preserves the requested total budget; Chat rejects incompatible total budgets.
-
-Transport capture keeps opaque reasoning separate from user-visible text. Each
-exchange retains its selected [price metadata](../../providers/opencode/SPEC.md#reference-prices)
-through accounting, even if the catalog refreshes during the request.
-
-## Isolation and failure
-
-Provider credentials, refresh, clients and redirects remain isolated from OpenAI.
-Codex credentials and internal account/thread headers are excluded unless a provider
-contract defines a sanitized replacement. Third-party credentials never reach
-OpenAI. Incoming requests retain the ordinary Codex authentication boundary.
-
-Recognized usage-limit and overload/capacity rejections use the executor's cancellable
-logical wait instead of terminal errors. Other rejected inference preserves the actual provider HTTP status and error details in
-HTTP/WebSocket errors, terminal failures and notices. Reads are bounded to 8 KiB
-and five seconds; unreadable or oversized bodies say so. JSON failures retain
-available name, type or code alongside the buffered payload; other failures retain
-available text. Caller-facing errors and private failure records do not redact or
-further truncate those details. Sanitized metrics and capture keep classification
-only, never credentials, prompts or provider error text. Explicit Chat, Messages
-and Responses stream errors follow this policy even for non-stream clients.
-
-Unsupported or foreign encrypted history is a local compatibility error with
-HTTP/WebSocket status 400, not a retryable transport failure, and directs the caller to fresh context. Native call
-identities and argument bytes survive translation and replay. Complete arguments
-are validated before executable calls are exposed; malformed terminals, unfinished
-calls and truncated streams cannot become successful results. Cancellation and
-inactivity limits propagate upstream. Diagnostic identity comes from the selected
-provider, not another provider's error rewritten afterward.
+HTTP and stream failures retain their actual provider status and available
+error details, without credentials or provider-error text in sanitized metrics.
+Cancellation propagates upstream. Unsupported histories are local compatibility
+errors, not a retryable transport failure. Proxy-wide statistics do not replace
+per-thread accounting. A compatible endpoint alone does not establish every
+model or auxiliary capability.
 
 ## Profile-defined Responses routing
 
 This route serves the
 [profile import](../../apps/mekugi/internal/launch/SPEC.md#codex-profile-overrides).
 The required behavior is the selected profile's actual provider/model/endpoint/auth
-settings, not built-in OpenCode substitution. The gateway mechanism below is the
-chosen implementation; existing no-profile routes retain their current contracts.
+settings, not model-prefix substitution. The gateway mechanism below is the
+chosen implementation; no-profile `mekugi codex` retains native OpenAI.
 
 ### Selection and interception
 
@@ -144,8 +46,8 @@ route information fails instead of being inferred from a provider name. Other
 fields retain ordinary host merging. Explicit CLI selection wins the profile.
 
 Pin this route ahead of model-prefix classification, including model IDs that
-look like built-in route names. Skip built-in Grok/OpenCode credential discovery,
-catalog generation, model defaults, effort filtering and price lookup. Keep the
+look like retired route names. Do not discover retired credentials, catalogs or
+model defaults, and do not apply built-in effort filtering or price lookup. Keep the
 upstream model ID unchanged and prices unknown when no authoritative price exists.
 Do not inject OpenAI-only access-program settings into a custom route.
 
@@ -160,7 +62,7 @@ loaded or added. The admitted caller environment belongs to the Launch contract.
 
 Support the host's Responses wire protocol, preserving HTTP/SSE and configured
 WebSocket support, query parameters, provider headers and capabilities. Do not
-translate through OpenCode's Chat/Messages/reasoning codecs. Forward only to the
+translate through Chat/Messages/reasoning codecs. Forward only to the
 pinned endpoint, preserving base-path prefixes and encoded query values once;
 strip hop-by-hop/local control headers and do not follow credential-bearing
 redirects to another destination. Requests cannot choose a replacement upstream.
@@ -172,7 +74,7 @@ Codex owns retries; no additional gateway retries. Explicit provider connect/idl
 timeouts govern the corresponding upstream operation rather than being truncated
 by a shorter gateway default. Explicit Mekugi operation timeouts remain outer bounds.
 Provider failures retain actual status and identity under existing bounded error
-handling, without being relabeled as built-in OpenCode or OpenAI failures.
+handling, without being relabeled as native OpenAI failures.
 
 Base-URL substitution and body projection are incompatible with origin/body-bound
 signing and origin-bound gateway OAuth. Reject these combinations, including AWS
@@ -183,7 +85,7 @@ policy that prohibits endpoint substitution also fails closed.
 ### Catalogs and auxiliary operations
 
 Keep native unknown-model behavior; an arbitrary configured model does not require
-built-in OpenCode discovery or OpenAI login. Preserve explicitly supplied static
+built-in discovery or OpenAI login. Preserve explicitly supplied static
 or custom-provider remote catalog metadata, apart from required
 `tool_mode=code_mode_only` projection. Derived static catalogs use existing private
 catalog lifetime/cleanup and never modify the source. A custom remote catalog gets
@@ -213,12 +115,3 @@ rejection. Installed Codex must execute a stock JavaScript tool once through the
 custom route with normal captures and child completion. Verify fresh resume and
 family inheritance as specified by Launch. No live-provider validation is implied
 by deterministic fixtures or source review.
-
-## Acceptance
-
-Consuming application tests cover route admission, catalog/authentication isolation,
-plaintext call restoration, exact arguments, provider errors and cancellation.
-Backend cases cover framing and executable-call integrity. Installed-host checks
-separately establish that Codex executes a translated call once and consumes its
-result through child completion, messaging and follow-up. Offline checks alone do
-not establish that host boundary.

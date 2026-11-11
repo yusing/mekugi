@@ -20,7 +20,8 @@ The application accepts Codex Responses WebSockets at `GET /v1/responses` and
 HTTP streaming SSE or terminal JSON at `POST /v1/responses`. Invocation-local
 launch settings retain stock WebSocket and prewarm support. Codex chooses HTTP
 fallback and owns native steering, interruption, tools and continuations.
-Models discovery, Grok and OpenCode retain HTTP provider transports.
+Model discovery uses HTTP. Custom Responses providers use their configured HTTP
+or WebSocket transport without dedicated provider translation.
 
 The [backend adapter](../../backends/codex/responses/SPEC.md) owns envelopes,
 native identities, connection-local history and response framing. The
@@ -43,7 +44,8 @@ without becoming inference failures or queuing a terminal notice.
 OpenAI standalone search, native image generation/editing and history-note
 operations use authenticated forwarding without projection or automatic retry.
 Their request bodies, response status, forwarded headers, output, streaming and
-encoding are preserved. Third-party-only launches disable these endpoints.
+encoding are preserved. Custom routes forward eligible auxiliary requests only
+to their selected endpoint, retaining unsupported-operation errors without fallback.
 The local base URL does not establish Codex backend-route eligibility;
 backend-specific workspace routing and experimental context activation remain
 unavailable until they can preserve session interception.
@@ -78,7 +80,8 @@ HTTP 400 errors, not retryable upstream 502 errors.
 
 ChatGPT requests select `access_programs.cyber="standard"` for prewarming and
 continuations over either transport, overriding client Daybreak selection while
-preserving the model and other access programs. Grok and OpenCode are unchanged.
+preserving the model and other access programs. Custom providers receive no
+ChatGPT-only policy.
 This body selection cannot prevent an upstream eligibility-service failure
 during WebSocket upgrade before the body is sent.
 
@@ -86,7 +89,7 @@ Projection never changes original tool arguments, host history or retained
 evidence. [Output deduplication](../../modules/outputdeduplication/SPEC.md) runs
 last on model input. Growing original input preserves earlier projected items;
 changed options, instructions or tool catalogs can require the backend to rebase
-an explicit continuation. HTTP, Grok and OpenCode send full history rather than
+an explicit continuation. HTTP-only custom routes send full history rather than
 using a dedicated connection's confirmed prefix. Reconciliation diagnostics
 measure serialized input and reuse, not provider cache hits or billed tokens.
 Debug logs emit `provider_history_reconciliation` with a fixed reason, reused-item

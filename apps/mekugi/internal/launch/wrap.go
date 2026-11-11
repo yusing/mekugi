@@ -37,13 +37,10 @@ import (
 )
 
 func runWrap(routerArgs, args []string) int {
-	if len(args) > 0 && args[0] == "grok" {
-		routerArgs = append(slices.Clone(routerArgs), "grok")
-		args = args[1:]
-	} else if len(args) > 0 && args[0] == "codex" {
+	if len(args) > 0 && args[0] == "codex" {
 		args = args[1:]
 	} else {
-		routerArgs = append(slices.Clone(routerArgs), "third-party")
+		routerArgs = append(slices.Clone(routerArgs), "custom-provider")
 	}
 	native := interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	if native {
@@ -132,21 +129,24 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 			if err := validateProfileIntegration(args); err != nil {
 				return 2, err
 			}
-			selected, _ := launchoptions.ConfigOverrides(args)["model_provider"].(string)
-			if selected != "" {
-				if options.Grok {
-					return 2, errors.New("explicit grok selection conflicts with the profile provider")
-				}
-				options.ThirdParty = false
-			}
+
 		}
-		settings, err = launchoptions.LoadSettings(options.ThirdParty)
+		settings, err = launchoptions.LoadSettings()
 		if err != nil {
 			return 1, err
 		}
 	}
 	if err := validateCodexArgs(args, options.Profile != nil); err != nil {
 		return 2, err
+	}
+	if options.RequireCustomProvider && sessionInvocation(args) {
+		route, err := profileRoute(args, options.Profile)
+		if err != nil {
+			return 2, err
+		}
+		if route == nil {
+			return 2, errors.New("mekugi requires a custom Responses provider profile: configure NAME.config.toml and run mekugi -p NAME; use mekugi codex for native OpenAI")
+		}
 	}
 	options = options.ResolveFeatures(settings.Features)
 	var resumeThread string
@@ -472,7 +472,7 @@ func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, inte
 	})
 }
 
-func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth bool, route *inferencegateway.NativeProvider) []string {
+func codexArgs(baseURL string, args []string, skillsManagerAvailable bool, route *inferencegateway.NativeProvider) []string {
 	args = slices.Clone(args)
 	// Codex applies feature toggles after -c overrides. Normalize conflicting
 	// toggles too, without interpreting prompt operands after --.
@@ -532,11 +532,9 @@ func codexArgs(baseURL string, args []string, skillsManagerAvailable, openAIAuth
 			overrides = append(overrides, "-c", "model_providers="+value)
 		}
 		overrides = append(overrides, "-c", fmt.Sprintf("model_provider=%q", route.ID))
-	} else if openAIAuth {
+	} else {
 		// Keep stock capabilities and runtime-only internal metadata.
 		overrides = append(overrides, "-c", `model_provider="openai"`, "-c", fmt.Sprintf(`openai_base_url=%q`, baseURL))
-	} else {
-		overrides = append(overrides, "-c", `model_provider="mekugi_wrap"`, "-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=false,supports_websockets=false,capabilities={remote_compaction="v2"}}`, baseURL))
 	}
 	// Native hooks inherit the app-server environment independently. Tool shells
 	// and standalone Codex launched from them receive no inherited capability.

@@ -8,14 +8,6 @@ import (
 	"time"
 )
 
-// Source: internal/router/grok_client.go:88:163@8cd86549 final response admission.
-
-// SendError distinguishes inference transport failures from credential failures.
-type SendError struct{ Err error }
-
-func (e *SendError) Error() string { return e.Err.Error() }
-func (e *SendError) Unwrap() error { return e.Err }
-
 // Rejection retains a final non-2xx response for the caller's error policy.
 type Rejection struct {
 	Status int

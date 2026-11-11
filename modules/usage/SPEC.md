@@ -55,13 +55,11 @@ pending publication; cancellation of a waiting caller MUST NOT discard observati
 ### Reference pricing
 
 Cost estimates use reference API prices, not subscription rates or billing quotes.
-OpenAI and Grok use built-in rates; OpenCode uses its request-pinned
-[catalog price snapshot](../../providers/opencode/SPEC.md), with offline bootstrap
-rates when no usable cache exists. Accounting performs no pricing fetch. Each response is priced
-using its effective provider-request model, service tier, and input size before
-accumulation, so model switches and long-context rates do not reprice earlier responses.
+Native OpenAI uses built-in reference rates. Custom-provider prices are currently
+unavailable. Accounting performs no pricing fetch. Stored totals retain their original price and provider
+attribution, so removing a reference table does not reprice historical usage.
+Each response uses its effective model, tier and input size before accumulation.
 OpenAI long-context rates begin above 272,000 input tokens, not at that exact count.
-Grok 4.6 long-context rates begin at 200,000 input tokens.
 The terminal provider `service_tier` takes precedence over the request, including a downgrade
 from `priority` or `fast` to `default`. These two Fast aliases share model-specific reference
 rates; a blanket multiplier MUST NOT be applied to every model. When the response omits the tier,
@@ -71,11 +69,8 @@ unsupported model/tier/context combinations have unavailable cost, not guessed s
 Rates follow the [official pricing tables](https://developers.openai.com/api/docs/pricing),
 [model pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra),
 [GPT-6.1 Sol pricing notes](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
-[GPT-6.1 Terra pricing notes](https://developers.openai.com/api/docs/models/gpt-6.1-terra), and the
-[xAI model prices](https://docs.x.ai/developers/pricing); prefixed and unprefixed Grok IDs
-share each model's table. Grok Build Fast uses its own published rates. Grok has no
-service-tier Fast or priority reference rates, and unpublished
-cache-write rates remain unavailable rather than inferred. Reference estimates
+[GPT-6.1 Terra pricing notes](https://developers.openai.com/api/docs/models/gpt-6.1-terra).
+Unpublished cache-write rates remain unavailable rather than inferred. Reference estimates
 are not proof of the billed processing mode when the provider omits it.
 
 GPT-6.1 Sol and Terra have standard and Fast reference estimates, including long-context and

@@ -53,7 +53,7 @@ func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
 	for _, prefix := range [][]string{nil, {"exec"}, {"app-server"}, {"resume"}} {
 		input := append(slices.Clone(prefix), "--disable", "code_mode", "--disable=code_mode_only", "--disable", "token_budget", "--disable", "unrelated", "--", "--disable=code_mode")
 		original := slices.Clone(input)
-		got := codexArgs("http://localhost/v1", input, false, true, nil)
+		got := codexArgs("http://localhost/v1", input, false, nil)
 		want := append(slices.Clone(prefix), "--enable", "code_mode", "--enable=code_mode_only", "--enable", "token_budget", "--disable", "unrelated")
 		if !slices.Equal(got[:len(want)], want) || !slices.Equal(got[len(got)-2:], []string{"--", "--disable=code_mode"}) || !slices.Equal(input, original) {
 			t.Fatalf("execution overrides changed unrelated flags, prompt or caller input: %q", got)
@@ -62,9 +62,9 @@ func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
 }
 
 func TestCodexArgsPreservesArguments(t *testing.T) {
-	for _, openAIAuth := range []bool{true, false} {
+	{
 		forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, openAIAuth, nil)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, nil)
 		index := slices.Index(forwarded, "--")
 		delimiter := slices.Index(args, "--")
 		if delimiter < index || (delimiter-index)%2 != 0 || !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[delimiter:], forwarded[index:]) {
@@ -127,18 +127,14 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		if config.Features.Sleep == nil || *config.Features.Sleep {
 			t.Fatalf("sleep tool not disabled: %q", args)
 		}
-		if openAIAuth {
+		{
 			if config.ModelProvider != "openai" || config.OpenAIBaseURL != "http://127.0.0.1:12345/v1" || len(config.Providers) != 0 {
 				t.Fatalf("built-in provider changed: %+v", config)
 			}
-		} else {
-			provider := config.Providers[config.ModelProvider]
-			if config.ModelProvider != "mekugi_wrap" || len(config.Providers) != 1 || config.OpenAIBaseURL != "" || provider.Name != "mekugi" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || provider.Auth || provider.WebSockets {
-				t.Fatalf("third-party provider changed: %+v", config)
-			}
+
 		}
 		withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
-		if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, openAIAuth, nil); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
+		if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, nil); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
 			t.Fatalf("ordinary -c or prompt moved: %q", got)
 		}
 	}
@@ -289,7 +285,7 @@ func TestCodexArgsEnforcesCollaborationModeInstructions(t *testing.T) {
 		{"-c", "include_collaboration_mode_instructions=true", "exec", "--config=include_collaboration_mode_instructions=true", "prompt"},
 		{"resume", "session", "-cinclude_collaboration_mode_instructions=true", "--", "prompt"},
 	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, nil)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, nil)
 		end := slices.Index(args, "--")
 		if end < 0 {
 			end = len(args)
@@ -306,7 +302,7 @@ func TestCodexArgsEnforcesSkillInstructionsWhenSkillsManagerAvailable(t *testing
 		{"exec", "--config=skills.include_instructions=true", "prompt"},
 		{"resume", "session", "-cskills.include_instructions=true", "--", "prompt"},
 	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, nil)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, nil)
 		end := slices.Index(args, "--")
 		if end < 0 {
 			end = len(args)
@@ -319,7 +315,7 @@ func TestCodexArgsEnforcesSkillInstructionsWhenSkillsManagerAvailable(t *testing
 
 func TestCodexArgsPreservesSkillInstructionsWithoutSkillsManager(t *testing.T) {
 	forwarded := []string{"exec", "--config=skills.include_instructions=true", "prompt"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, true, nil)
+	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, nil)
 	if !slices.Equal(args[:len(forwarded)], forwarded) || slices.Contains(args[len(forwarded):], "skills.include_instructions=false") {
 		t.Fatalf("skill instructions changed without skills-mgr: %q", args)
 	}
@@ -331,52 +327,12 @@ func TestWrappedCodexProcess(t *testing.T) {
 		return
 	}
 	if slices.Contains(os.Args, "debug") && slices.Contains(os.Args, "models") {
-		if os.Getenv("MEKUGI_TEST_CATALOG_DELAY") == "1" {
-			if err := os.WriteFile(os.Getenv("MEKUGI_TEST_ADDRESS")+".preparing", nil, 0o600); err != nil {
-				os.Exit(99)
-			}
-			fmt.Fprintln(os.Stderr, "private bootstrap diagnostic")
-			time.Sleep(time.Minute)
-		}
 		fmt.Fprintln(os.Stdout, testNativeModelCatalog)
 		os.Exit(0)
 	}
 	if os.Getenv("MEKUGI_ENVIRONMENT_FACTS") != "1" || !slices.Contains(os.Args, `shell_environment_policy.set.MEKUGI_ENVIRONMENT_FACTS=""`) {
 		fmt.Fprintln(os.Stderr, "invocation environment facts capability was not established and isolated")
 		os.Exit(89)
-	}
-	if os.Getenv("MEKUGI_TEST_PINNED_CATALOG") == "1" {
-		var catalogPath string
-		for _, arg := range os.Args {
-			if after, ok := strings.CutPrefix(arg, "model_catalog_json="); ok {
-				catalogPath, _ = strconv.Unquote(after)
-			}
-		}
-		body, err := os.ReadFile(catalogPath)
-		if err != nil || !bytes.Contains(body, []byte("grok-4.6")) || !bytes.Contains(body, []byte("freeform")) {
-			os.Exit(98)
-		}
-		if err := os.WriteFile(os.Getenv("MEKUGI_TEST_ADDRESS")+".catalog", []byte(catalogPath), 0o600); err != nil {
-			os.Exit(99)
-		}
-		if os.Getenv("MEKUGI_TEST_LAUNCH_MODE") == "standalone" {
-			var settings struct {
-				Model     string
-				Providers map[string]struct {
-					Auth bool `toml:"requires_openai_auth"`
-				} `toml:"model_providers"`
-			}
-			for i := 0; i+1 < len(os.Args); i++ {
-				if os.Args[i] == "-c" {
-					_, _ = toml.Decode(os.Args[i+1], &settings)
-					i++
-				}
-			}
-			provider, ok := settings.Providers["mekugi_wrap"]
-			if !ok || provider.Auth || settings.Model != "grok:grok-4.7" || !bytes.Contains(body, []byte("grok:grok-4.6")) || bytes.Contains(body, []byte("gpt-")) {
-				os.Exit(98)
-			}
-		}
 	}
 	interrupts := make(chan os.Signal, 1)
 	if os.Getenv("MEKUGI_TEST_EXIT") == "interrupt" {
@@ -431,41 +387,8 @@ func TestWrappedRouterProcess(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_ROUTER") != "1" {
 		return
 	}
-	os.Args = []string{os.Args[0], "grok"}
-	if os.Getenv("MEKUGI_TEST_LAUNCH_MODE") == "standalone" {
-		os.Args = []string{os.Args[0], "exec", "--yolo", "hello"}
-	}
+	os.Args = []string{os.Args[0], "codex"}
 	os.Exit(Run())
-}
-
-func TestStandaloneRunWithoutCodexLogin(t *testing.T) {
-	directory := t.TempDir()
-	for _, key := range []string{"HOME", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "MEKUGI_RUNTIME_DIR"} {
-		t.Setenv(key, t.TempDir())
-	}
-	for _, key := range []string{"OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY"} {
-		t.Setenv(key, "")
-	}
-	t.Setenv("XAI_API_KEY", "test")
-	t.Setenv("MEKUGI_ENVIRONMENT_FACTS", "stale-inherited")
-	t.Setenv("MEKUGI_TEST_ROUTER", "1")
-	t.Setenv("MEKUGI_TEST_CODEX", "1")
-	t.Setenv("MEKUGI_TEST_EXIT", "0")
-	t.Setenv("MEKUGI_TEST_LAUNCH_MODE", "standalone")
-	t.Setenv("MEKUGI_TEST_PINNED_CATALOG", "1")
-	t.Setenv("MEKUGI_TEST_ADDRESS", filepath.Join(directory, "address"))
-	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	stub := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestWrappedCodexProcess$ -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWrappedRouterProcess$")
-	output, err := command.CombinedOutput()
-	if err != nil || !bytes.Contains(output, []byte("codex stdout")) {
-		t.Fatalf("standalone launch failed: %v\n%s", err, output)
-	}
 }
 
 func TestWrapTerminalInterruptAndTermination(t *testing.T) {
@@ -555,17 +478,15 @@ func TestWrapCodexLifecycle(t *testing.T) {
 	tests := []struct {
 		name, exit string
 		code       int
-		grok       bool
 	}{
-		{"success", "0", 0, false}, {"failure", "23", 23, false}, {"signal", "signal", 143, false}, {"termination", "wait", 143, false},
-		{"grok_success", "0", 0, true}, {"grok_failure", "23", 23, true}, {"grok_signal", "signal", 143, true}, {"grok_termination", "wait", 143, true},
+		{"success", "0", 0}, {"failure", "23", 23}, {"signal", "signal", 143}, {"termination", "wait", 143},
 	}
 	if selected := os.Getenv("MEKUGI_TEST_WRAP_LIFECYCLE"); selected != "" {
 		index, err := strconv.Atoi(selected)
 		if err != nil || index < 0 || index >= len(tests) {
 			t.Fatalf("invalid lifecycle selection %q", selected)
 		}
-		testWrapCodexLifecycle(t, tests[index].exit, tests[index].code, tests[index].grok)
+		testWrapCodexLifecycle(t, tests[index].exit, tests[index].code)
 		return
 	}
 	for index, test := range tests {
@@ -580,7 +501,7 @@ func TestWrapCodexLifecycle(t *testing.T) {
 	}
 }
 
-func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int, grok bool) {
+func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int) {
 	t.Helper()
 	directory := t.TempDir()
 	t.Setenv("TMPDIR", t.TempDir())
@@ -619,22 +540,9 @@ func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int, grok bool) 
 	deadline := time.AfterFunc(20*time.Second, cancel)
 	defer deadline.Stop()
 	var routerArgs []string
-	if grok {
-		routerArgs = []string{"grok"}
-		t.Setenv("MEKUGI_TEST_PINNED_CATALOG", "1")
-	}
 	code, err := wrapCodex(ctx, routerArgs, []string{"exec", "prompt with spaces"})
 	if err != nil || code != wantCode {
 		t.Fatalf("wrap = %d, %v; want %d", code, err, wantCode)
-	}
-	if grok {
-		path, err := os.ReadFile(addressFile + ".catalog")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := os.Stat(filepath.Dir(string(path))); !os.IsNotExist(err) {
-			t.Fatalf("private catalog survived child exit: %v", err)
-		}
 	}
 	address, err := os.ReadFile(addressFile)
 	if err != nil {
@@ -683,12 +591,9 @@ func TestValidateCodexArgs(t *testing.T) {
 	}
 }
 
-func TestRunWrapRejectsUnauthenticatedStandalone(t *testing.T) {
+func TestRunWrapRequiresCustomProvider(t *testing.T) {
 	for _, key := range []string{"HOME", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME"} {
 		t.Setenv(key, t.TempDir())
-	}
-	for _, key := range []string{"XAI_API_KEY", "OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY"} {
-		t.Setenv(key, "")
 	}
 	directory := t.TempDir()
 	marker := filepath.Join(directory, "launched")
@@ -697,7 +602,7 @@ func TestRunWrapRejectsUnauthenticatedStandalone(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{nil, {"exec", "--yolo", "hello"}} {
-		if code := runWrap(nil, args); code != 1 {
+		if code := runWrap(nil, args); code != 2 {
 			t.Errorf("unauthenticated runWrap(%q) = %d", args, code)
 		}
 	}
@@ -777,74 +682,6 @@ func TestWrapDebugPassesAXLogToCodex(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(string(path)), "ax.json")); err != nil {
 		t.Fatalf("automatic report missing: %v", err)
-	}
-}
-
-func TestWrapStartupInterrupt(t *testing.T) {
-	directory := t.TempDir()
-	temporary := t.TempDir()
-	runtimeDirectory := t.TempDir()
-	addressFile := filepath.Join(directory, "address")
-	t.Setenv("TMPDIR", temporary)
-	t.Setenv("XAI_API_KEY", "test")
-	t.Setenv("CODEX_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
-	t.Setenv("MEKUGI_TEST_ROUTER", "1")
-	t.Setenv("MEKUGI_TEST_CODEX", "1")
-	t.Setenv("MEKUGI_TEST_CATALOG_DELAY", "1")
-	t.Setenv("MEKUGI_TEST_ADDRESS", addressFile)
-	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	stub := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestWrappedCodexProcess$ -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWrappedRouterProcess$")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-	var stdout, logs bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &logs
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	for {
-		if _, err := os.Stat(addressFile + ".preparing"); err == nil {
-			break
-		}
-		select {
-		case err := <-done:
-			t.Fatalf("wrapper exited before preparation: %v", err)
-		case <-ctx.Done():
-			t.Fatal("startup timed out")
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-	// Signal only the wrapper: the bootstrap subprocess must be canceled by its owner.
-	if err := cmd.Process.Signal(os.Interrupt); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err == nil || ctx.Err() != nil {
-		t.Fatalf("startup interrupt did not stop promptly: %v, %v", err, ctx.Err())
-	}
-	if stdout.Len() != 0 ||
-		!strings.Contains(logs.String(), "context canceled") ||
-		strings.Contains(logs.String(), "private bootstrap diagnostic") ||
-		strings.Contains(logs.String(), "configuration") ||
-		strings.Contains(logs.String(), "mekugi dashboard:") {
-		t.Fatalf("unexpected startup output: stdout=%q stderr=%q", stdout.String(), logs.String())
-	}
-	if _, err := os.Stat(addressFile); !os.IsNotExist(err) {
-		t.Fatalf("interactive Codex launched after cancellation: %v", err)
-	}
-	for _, path := range []string{temporary, runtimeDirectory} {
-		if entries, err := os.ReadDir(path); err != nil || len(entries) != 0 {
-			t.Fatalf("startup cancellation leaked resources: %v, %v", entries, err)
-		}
 	}
 }
 

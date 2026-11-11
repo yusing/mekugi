@@ -65,28 +65,18 @@ or saved session settings. Fresh launch/resume loads the current file; explicit
 CLI overrides remain in the continuation command. New Mekugi boolean flags extend
 the same options-owned feature resolution path, without a feature service.
 
-- `mekugi [flags] codex [arguments...]` uses Codex authentication and models.
-  Third-party credentials do not add models or trigger catalog preparation.
-- `mekugi [flags] [arguments...]` uses authenticated Grok and configured OpenCode
-  Go/Zen routes through stock Codex, without Codex login, retaining their `grok:`
-  and `opencode*:` model namespaces. Startup requires at
-  least one usable credential source. Explicit model selection wins, followed by
-  the configured Grok default, Go, then Zen. Key validity is established by the
-  provider response; Grok OAuth validation belongs to its provider.
-- `mekugi grok` selects Grok alone with unprefixed model names.
+- `mekugi [flags] codex [arguments...]` uses native OpenAI authentication and
+  models unless an explicit profile selects another Responses provider.
+- `mekugi [flags] -p NAME [arguments...]` uses the selected custom Responses
+  provider. Bare `mekugi` without this selection fails with setup guidance,
+  rather than silently selecting OpenAI.
 
-Mekugi flags precede `codex`. Without a selected profile, provider-selection
-arguments are rejected;
-invocation-local overrides select the application endpoint and preserve Codex's
-built-in OpenAI provider capabilities, including native tools, reasoning updates
-and internal request metadata. Stock WebSockets and prewarming remain available;
-Codex owns retries and HTTP fallback. Third-party launches disable OpenAI
-requests and use provider-owned credentials. Configuration files remain untouched.
-
-Noninteractive `exec resume` and `exec fork` receive the same automatic startup
-default as new launches. Stock exec's provider override skips saved-model merging;
-an explicit invocation model still wins. Interactive saved-model restoration
-retains its separate session contract.
+Mekugi flags precede `codex` or other Codex arguments. Without a selected profile,
+provider-selection overrides are rejected. Invocation-local overrides select
+Mekugi's inference endpoint while retaining native OpenAI capabilities, including
+tools, reasoning updates and internal request metadata. Codex owns retries,
+WebSocket prewarming and HTTP fallback. Configuration files remain untouched.
+Custom profiles retain the separate precedence and continuity contract below.
 
 Interactive terminals use a renderer attached to the local server. The client
 starts that server when absent through one startup lock and readiness check;
@@ -161,9 +151,9 @@ headless's explicit `--yolo` requirement.
 
 Apply the same profile import to native and redirected session launches,
 headless, and wrapped exec/new/resume/fork. Non-session commands retain existing
-host dispatch. A profile-selected custom provider supersedes automatic standalone
-provider selection; contradictory explicit provider selectors fail. A profile
-without provider selection retains the invocation's existing route.
+host dispatch. A profile-selected custom provider supplies the required bare-launch route. A
+profile without provider selection retains native OpenAI only for an explicit
+`mekugi codex` invocation.
 
 Read the profile once for a new invocation. Native admission carries the client's
 effective Codex home and environment over the existing peer-admitted control
@@ -221,24 +211,16 @@ alone do not establish that host boundary.
 
 ## Model catalog
 
-Launch assembles a private third-party catalog from selected provider metadata
-and `codex debug models --bundled`, without authenticated OpenAI discovery.
-The catalog contains only enabled Grok/OpenCode models in the selected invocation
-namespace. Rebuilding removes stale entries and disabled providers. Entries combine
-provider model IDs and supported capabilities with native v2 instruction/executor
-metadata, preserving unknown catalog fields. Missing native v2 support
-fails startup. OpenAI-only transport, search, service tiers and upgrade schedules
-are excluded from third-party entries.
+Native OpenAI model discovery remains with Codex. The shared start picker may
+read its bounded bundled catalog for offline choices; it contains no retired
+provider groups or aliases. An old saved picker namespace rejects rather than
+selecting another provider. Static and remote custom catalogs preserve their
+metadata while enforcing the supported JavaScript execution interface.
 
-The private `model_catalog_json` path is pinned in the final invocation layer,
-independent of user catalogs and other processes' shared caches. No-profile
-`exec --ignore-user-config` retains host-owned selection semantics. Invalid
-catalogs, command failure or private-file failure prevent the main host launch.
-Preparation is bounded to one minute and 8 MiB; its directory is private (0700)
-and file mode is 0600, with both removed on exit or launch failure. User
-configuration and shared caches remain untouched by catalog preparation. Codex
-retains its catalog command behavior. Generated catalogs use `code_mode_only`;
-OpenAI discovery follows the [catalog transport contract](../../../../docs/contracts/responses-transport.md#catalog-and-auxiliary-exchanges).
+Profile imports use a private execution-mode projection for a supplied static
+catalog without modifying its source. Bundled metadata reads are bounded to one
+minute and 8 MiB; failures do not expose bootstrap diagnostics or authentication.
+There is no provider-owned online catalog refresh or price snapshot in Launch.
 
 ## Host integration
 
@@ -372,7 +354,7 @@ commands retain Codex's own exit output.
 ## Acceptance
 
 Catalog assembly tests cover native v2 selection, unknown metadata, idempotent
-rebuilding, provider exclusion and invocation namespaces. Actual subprocess and
+projection, retired-provider rejection and invocation model identities. Actual subprocess and
 PTY fixtures cover authentication, catalog selection, argument preservation,
 private frontend dispatch, independent invocations,
 startup cancellation and terminal handoff, signals, host failure and exit codes,

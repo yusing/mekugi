@@ -1,8 +1,0 @@
-  Choose model
-› grok-4.7             Current                                                  
-  grok-4.6
-  grok-4.5
-  grok-4.7-build-fast
-
-
-  ↑/↓ navigate · enter apply · esc cancel

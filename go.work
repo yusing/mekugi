@@ -45,9 +45,7 @@ use (
 	./modules/threadcontrol
 	./modules/transportdiagnostics
 	./modules/usage
-	./providers/grok
 	./providers/openai
-	./providers/opencode
 	./testsupport/moduletest
 	./testsupport/uisnapshot
 )

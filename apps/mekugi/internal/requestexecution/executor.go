@@ -284,7 +284,7 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	if !a.approvalReview && a.metadataValid && !a.metadata.ActivityIdentityInvalid &&
 		(a.metadata.RequestKind == responses.Turn || a.prewarm) && (a.metadata.ThreadID == "" || a.metadata.ThreadID == a.threadID) &&
-		inferencegateway.NativeContinuations(a.executor.Provider, a.request.Model()) && a.executor.SideThreads != nil {
+		inferencegateway.NativeContinuations(a.executor.Provider) && a.executor.SideThreads != nil {
 		if key := a.executor.SideThreads.ForkCacheKey(a.threadID); key != "" {
 			// An omitted native body key stays omitted. Provider affinity is
 			// independent of the session identity already used for preparation.
@@ -296,7 +296,7 @@ func (a *requestAttempt) prepareWire() error {
 			a.executor.SideThreads.ObserveCacheKey(a.threadID, a.cacheKey)
 		}
 	}
-	if inferencegateway.ApplyOpenAIPolicy(a.executor.Provider, a.request.Model()) {
+	if inferencegateway.ApplyOpenAIPolicy(a.executor.Provider) {
 		programs, err := standardCyberAccess(a.request.Fields["access_programs"])
 		if err != nil {
 			return err
@@ -306,7 +306,7 @@ func (a *requestAttempt) prepareWire() error {
 	compaction := !a.approvalReview && a.metadataValid && a.metadata.RequestKind == responses.Compaction
 	if !a.approvalReview && a.executor.ReasoningChoices != nil && (compaction || a.executor.SideThreads != nil && a.executor.SideThreads.IsBTWThread(a.threadID)) {
 		fallback, choices, updates := a.executor.ReasoningChoices(a.request.Model())
-		if err := a.request.UseLowReasoning(fallback, choices, updates && inferencegateway.NativeContinuations(a.executor.Provider, a.request.Model())); err != nil {
+		if err := a.request.UseLowReasoning(fallback, choices, updates && inferencegateway.NativeContinuations(a.executor.Provider)); err != nil {
 			return err
 		}
 	}
@@ -348,7 +348,7 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	if exchange := a.executor.Exchange; exchange != nil {
 		started := time.Now()
-		reason, err := exchange.State.Reconcile(&a.request, inferencegateway.NativeContinuations(a.executor.Provider, a.request.Model()))
+		reason, err := exchange.State.Reconcile(&a.request, inferencegateway.NativeContinuations(a.executor.Provider))
 		if err != nil {
 			return inferencegateway.ProtocolError(err)
 		}
@@ -366,7 +366,7 @@ func (a *requestAttempt) prepareWire() error {
 func (a *requestAttempt) forward() error {
 	projectedBody := a.forwardBody
 	var err error
-	a.forwardBody, err = a.request.IncrementalBody(a.forwardBody, inferencegateway.NativeContinuations(a.executor.Provider, a.request.Model()))
+	a.forwardBody, err = a.request.IncrementalBody(a.forwardBody, inferencegateway.NativeContinuations(a.executor.Provider))
 	if err != nil {
 		return err
 	}
@@ -425,8 +425,6 @@ func (a *requestAttempt) forward() error {
 	if a.usageTracker != nil {
 		if a.response.UnknownPrice {
 			a.usageTracker.Price = func(string, inference.Usage) accounting.Cost { return accounting.Cost{} }
-		} else {
-			a.usageTracker.Price = PinnedOpenCodePrice(a.response.Price)
 		}
 	}
 	a.hooks.Transport = a.response.Transport
@@ -549,10 +547,7 @@ func (a *requestAttempt) deliver() error {
 			a.responseTransform,
 			a.hooks,
 		)
-		_, providerRejected := errors.AsType[*codexresponses.ProviderError](err)
-		// The bridge retains its rejection error after emitting a failed terminal.
-		// A committed provider wait replaces that rejection, not delivery failures.
-		if err != nil && !(a.usageLimited && providerRejected) {
+		if err != nil {
 			a.finalization.classifyCopyError(err)
 			return fmt.Errorf("execute request: %w", err)
 		}

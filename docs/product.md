@@ -264,7 +264,7 @@ Mekugi includes:
 - server-owned threads with terminal and browser clients;
 - durable replay, session inspection, retained host facts, diagnostics, and
   provider-authoritative usage reporting;
-- authenticated third-party model routing; and
+- native OpenAI and explicitly configured custom Responses provider routing; and
 - content-safe captured metrics for evaluating real traffic.
 
 Installation and a quick start belong in the [README](../README.md);

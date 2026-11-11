@@ -8,13 +8,10 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
-	"github.com/yusing/mekugi/providers/grok"
-	"github.com/yusing/mekugi/providers/opencode"
 )
 
 func TestRequestCyberAccessOptOut(t *testing.T) {
-	for _, model := range []string{"gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "grok:grok-4.6", "opencode-go:test"} {
+	for _, model := range []string{"gpt-6-sol", "gpt-6-astra", "gpt-6-luna"} {
 		for _, raw := range []string{"", "null", `{}`, `{"cyber":"daybreak_blue"}`, `{"cyber":"daybreak_red","other":{"id":9007199254740993}}`, `{"cyber":"standard"}`} {
 			t.Run(model+"/"+raw, func(t *testing.T) {
 				request := modelTestRequest(t, model)
@@ -33,12 +30,6 @@ func TestRequestCyberAccessOptOut(t *testing.T) {
 				if !bytes.Equal(sent["input"], input) || string(sent["model"]) != `"`+model+`"` {
 					t.Fatal("opt-out changed input or model")
 				}
-				if grok.IsModel(model) || opencode.IsModel(model) {
-					if string(sent["access_programs"]) != raw {
-						t.Fatalf("third-party programs changed: %s", sent["access_programs"])
-					}
-					return
-				}
 				var programs map[string]jsontext.Value
 				if err := json.Unmarshal(sent["access_programs"], &programs); err != nil {
 					t.Fatal(err)
@@ -55,7 +46,7 @@ func TestRequestCyberAccessOptOut(t *testing.T) {
 }
 
 func TestNativeProviderDoesNotInjectOpenAIPolicy(t *testing.T) {
-	for _, model := range []string{"gpt-6-sol", "grok:unknown", "opencode-go:unknown"} {
+	for _, model := range []string{"gpt-6-sol"} {
 		for _, sockets := range []bool{false, true} {
 			provider := inferencegateway.NewClient("http://unused.invalid", nil, ProviderDiagnostics())
 			provider.Native = &inferencegateway.NativeProvider{ID: "custom", WebSockets: sockets}
@@ -71,7 +62,7 @@ func TestNativeProviderDoesNotInjectOpenAIPolicy(t *testing.T) {
 			if len(sent["access_programs"]) != 0 || string(sent["model"]) != `"`+model+`"` {
 				t.Fatalf("native policy/model changed: %s", attempt.forwardBody)
 			}
-			if inferencegateway.NativeContinuations(provider, model) != sockets {
+			if inferencegateway.NativeContinuations(provider) != sockets {
 				t.Fatal("native ancestry followed model prefix")
 			}
 		}

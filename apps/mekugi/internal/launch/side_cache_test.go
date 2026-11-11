@@ -128,7 +128,7 @@ func assertSideCachePrefix(t *testing.T, mainBody, sideBody []byte) {
 }
 
 func TestSideCacheWebSocketPrewarmAndTurn(t *testing.T) {
-	for _, mode := range []string{"openai-only", "mixed-provider"} {
+	for _, mode := range []string{"openai-only", "custom-provider"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
@@ -165,8 +165,8 @@ func TestSideCacheWebSocketPrewarmAndTurn(t *testing.T) {
 			}))
 			defer provider.Close()
 			client := newTestProviderClient(provider.URL, provider.Client())
-			if mode == "mixed-provider" {
-				client.Grok = &inferencegateway.ThirdPartyClient{}
+			if mode == "custom-provider" {
+				client.Native = &inferencegateway.NativeProvider{ID: "custom", BaseURL: provider.URL, HTTPClient: provider.Client(), WebSockets: true}
 			}
 			endpoint := testWebSocketEndpoint(ctx, time.Second, client, nil, proxy)
 			defer endpoint.Close()

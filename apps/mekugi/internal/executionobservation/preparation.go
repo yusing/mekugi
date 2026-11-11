@@ -34,8 +34,6 @@ import (
 	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
-	"github.com/yusing/mekugi/providers/grok"
-	"github.com/yusing/mekugi/providers/opencode"
 )
 
 const applyPatchToolName = "apply_patch"
@@ -420,8 +418,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	activityThreadID := p.admitActivityThread(threadID, metadata)
 	if activityThreadID != "" {
 		p.Audience.Collect(preloadActivity...)
-		model := request.Model()
-		p.Audience.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
+		p.Audience.BeginResponse(activityThreadID, false, time.Now())
 	}
 	transform := &mekugiResponseTransform{
 		localWaitItem:    localWaitItem,

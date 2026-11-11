@@ -8,83 +8,12 @@ import (
 	"testing"
 )
 
-func TestOpenCodeConfig(t *testing.T) {
-	directory := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", directory)
-	// os.UserConfigDir ignores XDG_CONFIG_HOME on some platforms.
-	actual, err := os.UserConfigDir()
-	if err != nil || actual != directory {
-		t.Skip("platform does not use XDG_CONFIG_HOME")
-	}
-	t.Setenv("OPENCODE_API_KEY", "")
-	if err := os.Unsetenv("OPENCODE_API_KEY"); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("OPENCODE_GO_API_KEY", "")
-	t.Setenv("OPENCODE_ZEN_API_KEY", "")
-	config, err := LoadSettings(true)
-	if err != nil || config.Providers.Enabled() {
-		t.Fatalf("missing config: %v", err)
-	}
-	if err := os.Mkdir(filepath.Join(directory, "mekugi"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(directory, "mekugi", "config.toml")
-	if err := os.WriteFile(path, []byte("[providers.opencode_go]\napi_key = 'config-go'\n[providers.opencode_zen]\napi_key = 'config-zen'\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// An explicitly empty environment key disables a configured provider.
-	config, err = LoadSettings(true)
-	if err != nil || config.Providers.Enabled() {
-		t.Fatalf("empty override: %v", err)
-	}
-	if err := os.Unsetenv("OPENCODE_GO_API_KEY"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Unsetenv("OPENCODE_ZEN_API_KEY"); err != nil {
-		t.Fatal(err)
-	}
-	config, err = LoadSettings(true)
-	if err != nil || config.Providers.Go.APIKey != "config-go" || config.Providers.Zen.APIKey != "config-zen" {
-		t.Fatalf("config not loaded: %v", err)
-	}
-	t.Setenv("OPENCODE_GO_API_KEY", " env-go ")
-	config, err = LoadSettings(true)
-	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "config-zen" {
-		t.Fatalf("provider isolation/precedence: %v", err)
-	}
-	t.Setenv("OPENCODE_API_KEY", "shared")
-	config, err = LoadSettings(true)
-	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "shared" {
-		t.Fatalf("shared key precedence: %v", err)
-	}
-	t.Setenv("OPENCODE_ZEN_API_KEY", "")
-	config, err = LoadSettings(true)
-	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "" {
-		t.Fatalf("service-specific disable after shared key: %v", err)
-	}
-	for _, body := range []string{
-		"[providers.opencode_go]\napi_key = 'private-secret",
-		"[providers.opencode_go]\napi_keey = 'private-secret'\n",
-	} {
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := LoadSettings(true); err == nil || strings.Contains(err.Error(), "private-secret") {
-			t.Fatalf("unsanitized config error: %v", err)
-		}
-	}
-}
-
 func TestServiceTierConfig(t *testing.T) {
 	directory := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", directory)
 	if actual, _ := os.UserConfigDir(); actual != directory {
 		t.Skip("platform does not use XDG_CONFIG_HOME")
 	}
-	t.Setenv("OPENCODE_API_KEY", "")
-	t.Setenv("OPENCODE_GO_API_KEY", "")
-	t.Setenv("OPENCODE_ZEN_API_KEY", "")
 	if err := os.Mkdir(filepath.Join(directory, "mekugi"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +26,7 @@ func TestServiceTierConfig(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(directory, "mekugi", "config.toml"), []byte(body), 0600); err != nil {
 				t.Fatal(err)
 			}
-			config, err := LoadSettings(false)
+			config, err := LoadSettings()
 			if tc.want == "" {
 				if err == nil {
 					t.Fatal("invalid tier accepted")
@@ -117,9 +46,6 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 	if actual, _ := os.UserConfigDir(); actual != directory {
 		t.Skip("platform does not use XDG_CONFIG_HOME")
 	}
-	t.Setenv("OPENCODE_API_KEY", "provider-secret")
-	t.Setenv("OPENCODE_GO_API_KEY", "provider-secret")
-	t.Setenv("OPENCODE_ZEN_API_KEY", "")
 	if err := os.Mkdir(filepath.Join(directory, "mekugi"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -167,13 +93,10 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 						t.Fatal(err)
 					}
 					original := parsed
-					for _, providers := range []bool{false, true} {
-						settings, err := LoadSettings(providers)
+					{
+						settings, err := LoadSettings()
 						if err != nil {
 							t.Fatal(err)
-						}
-						if settings.Providers.Enabled() != providers {
-							t.Fatal("provider selection changed")
 						}
 						resolved := parsed.ResolveFeatures(settings.Features)
 						if feature.value(resolved) != want || parsed != original {
@@ -204,8 +127,8 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
-		for _, providers := range []bool{false, true} {
-			if _, err := LoadSettings(providers); err == nil || strings.Contains(err.Error(), "private") {
+		{
+			if _, err := LoadSettings(); err == nil || strings.Contains(err.Error(), "private") {
 				t.Fatalf("invalid feature diagnostic: %v", err)
 			}
 		}
@@ -213,7 +136,7 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[features]\nshell_guard = false\ndeduplicate_output = true\ndebug = true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := LoadSettings(false)
+	settings, err := LoadSettings()
 	if err != nil {
 		t.Fatal(err)
 	}

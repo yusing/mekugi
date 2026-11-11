@@ -7,7 +7,7 @@ import (
 
 func TestResponsesWebSocketQueuesCreateWithoutProviderSocket(t *testing.T) {
 	s := &responsesWebSocket{ctx: t.Context()}
-	create := []byte(`{"type":"response.create","model":"grok-4","input":"next"}`)
+	create := []byte(`{"type":"response.create","input":"next"}`)
 	if err := s.control(create); err != nil {
 		t.Fatal(err)
 	}

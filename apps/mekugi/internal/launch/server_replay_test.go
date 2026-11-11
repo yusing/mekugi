@@ -20,11 +20,20 @@ import (
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 )
 
-func TestServerReplayOwnedRuntime(t *testing.T) {
+func TestServerReplayOwnedRuntime(t *testing.T) { testServerReplayOwnedRuntime(t, false) }
+
+func TestServerReplayRetiredProviderSettings(t *testing.T) { testServerReplayOwnedRuntime(t, true) }
+
+func testServerReplayOwnedRuntime(t *testing.T, retired bool) {
+	t.Helper()
 	directory, state := t.TempDir(), t.TempDir()
 	t.Setenv("CODEX_HOME", directory)
 	t.Setenv("XDG_STATE_HOME", state)
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if retired {
+
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	}
 	t.Setenv("PATH", t.TempDir()) // Playback must never need a host or provider executable.
 	sessions := filepath.Join(directory, "sessions")
 	if err := os.Mkdir(sessions, 0700); err != nil {
@@ -64,24 +73,26 @@ func TestServerReplayOwnedRuntime(t *testing.T) {
 		}
 	}
 	create()
-	native, err := sessionapi.OpenRPC(ctx, host.Client(), host.URL+sessionapi.NativeRPCPath, "")
-	if err != nil {
-		t.Fatal(err)
+	if !retired {
+		native, err := sessionapi.OpenRPC(ctx, host.Client(), host.URL+sessionapi.NativeRPCPath, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		nativeBody, err := json.Marshal(sessionapi.NativeStart{Workspace: t.TempDir(), Args: []string{"resume", "main"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		startup, err := native.Subscribe(ctx, "native/start", sessionapi.RPCParams{Body: nativeBody})
+		if err != nil {
+			t.Fatal(err)
+		}
+		exit, err := startup.Next(ctx)
+		var outcome sessionapi.NativeExit
+		if err != nil || exit.Kind != "exit" || json.Unmarshal(exit.Data, &outcome) != nil || !strings.Contains(outcome.Message, "already running") {
+			t.Fatalf("native replay collision reached host startup: %+v, %+v, %v", exit, outcome, err)
+		}
+		native.Close()
 	}
-	nativeBody, err := json.Marshal(sessionapi.NativeStart{Workspace: t.TempDir(), Args: []string{"resume", "main"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	startup, err := native.Subscribe(ctx, "native/start", sessionapi.RPCParams{Body: nativeBody})
-	if err != nil {
-		t.Fatal(err)
-	}
-	exit, err := startup.Next(ctx)
-	var outcome sessionapi.NativeExit
-	if err != nil || exit.Kind != "exit" || json.Unmarshal(exit.Data, &outcome) != nil || !strings.Contains(outcome.Message, "already running") {
-		t.Fatalf("native replay collision reached host startup: %+v, %+v, %v", exit, outcome, err)
-	}
-	native.Close()
 	events := serverRPCSubscribe(t, rpc, "main")
 	serverCLIEvent(t, events, "snapshot", `"workspace":"/workspace/replay"`)
 	serverRPCCall(t, rpc, "session/control", "main", map[string]any{"action": "seek", "position": 100000})

@@ -18,7 +18,6 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/providers/opencode"
 )
 
 // Cover streamed and non-streamed provider failures through request delivery.
@@ -96,26 +95,22 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 	}
 }
 
-func TestAdaptedProviderErrorDelivery(t *testing.T) {
-	for _, format := range []string{"chat", "responses", "anthropic"} {
+func TestCustomProviderErrorDelivery(t *testing.T) {
+	for _, format := range []string{"responses"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(format+map[bool]string{false: "/json", true: "/stream"}[stream], func(t *testing.T) {
-				service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "provider-secret"}}).Services()[0]
-				service.Catalog = openCodeTestService(t, map[string]opencode.Metadata{"test": {Format: format}}).Catalog
+
 				payload := `{"type":"error","error":{"type":"invalid_request_error","message":"actual rejection provider-secret caller-secret"}}`
 				if format == "responses" {
 					payload = `{"type":"response.failed","response":{"status":"failed","error":{"code":"invalid_request_error","message":"actual rejection provider-secret caller-secret"}}}`
 				}
-				provider := newTestProviderClient("http://unused.invalid", nil)
-				provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: requestexecution.ProviderDiagnostics(),
-					OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
-						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}},
-							Body: io.NopCloser(strings.NewReader("data: " + payload + "\n\n"))}, nil
-					})},
-				}}
-				body, _ := json.Marshal(map[string]any{"model": "opencode-go:test", "input": []any{}, "stream": stream})
+				provider := customTestProvider(&http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}},
+						Body: io.NopCloser(strings.NewReader("data: " + payload + "\n\n"))}, nil
+				})})
+				body, _ := json.Marshal(map[string]any{"model": "custom-test", "input": []any{}, "stream": stream})
 				req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-				req.Header = grokTestHeaders()
+				req.Header = codexAuthHeaders()
 				req.Header.Set("Authorization", "Bearer caller-secret")
 				issues := testCriticalErrors()
 				recorder := httptest.NewRecorder()

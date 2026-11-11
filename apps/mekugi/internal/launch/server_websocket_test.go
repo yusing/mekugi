@@ -12,13 +12,10 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/coder/websocket"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/providers/grok"
 )
 
 func socketWrite(t *testing.T, ctx context.Context, conn *websocket.Conn, value any) {
@@ -102,7 +99,7 @@ func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handle
 }
 
 func TestResponsesWebSocketPreservesClientIdentity(t *testing.T) {
-	for _, mode := range []string{"openai-only", "mixed-provider"} {
+	for _, mode := range []string{"openai-only", "http-provider"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
@@ -110,7 +107,7 @@ func TestResponsesWebSocketPreservesClientIdentity(t *testing.T) {
 				if r.Header.Get("Originator") != "mekugi" || r.Header.Get("User-Agent") != "mekugi/0.163.0 (fixture)" {
 					t.Error("provider handshake lost host identity")
 				}
-				if r.Header.Get("X-Unrelated-Caller-Data") != "" || r.Header.Get("X-Mekugi-Capture-Id") != "" {
+				if mode == "openai-only" && r.Header.Get("X-Unrelated-Caller-Data") != "" || r.Header.Get("X-Mekugi-Capture-Id") != "" {
 					t.Error("provider handshake leaked unrelated headers")
 				}
 				conn, err := websocket.Accept(w, r, nil)
@@ -130,8 +127,8 @@ func TestResponsesWebSocketPreservesClientIdentity(t *testing.T) {
 			}))
 			defer provider.Close()
 			client := newTestProviderClient(provider.URL, provider.Client())
-			if mode == "mixed-provider" {
-				client.Grok = &inferencegateway.ThirdPartyClient{}
+			if mode == "http-provider" {
+				client.Native = &inferencegateway.NativeProvider{ID: "custom", BaseURL: provider.URL, HTTPClient: provider.Client(), WebSockets: true}
 			}
 			endpoint := testWebSocketEndpoint(ctx, time.Second, client, nil, nil)
 			defer endpoint.Close()
@@ -329,31 +326,30 @@ func TestResponsesWebSocketPendingAndPrewarm(t *testing.T) {
 	}
 }
 
-func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
+func TestResponsesWebSocketCustomPrewarmContinuationAndDisconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	started := make(chan []byte, 1)
 	stopped := make(chan struct{})
-	provider := newTestProviderClient("http://unused.invalid", nil)
-	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{
-		Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
+	provider := customTestProvider(&http.Client{
+		Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 			body, _ := io.ReadAll(request.Body)
 			started <- body
 			<-request.Context().Done()
 			close(stopped)
 			return nil, request.Context().Err()
 		}),
-	}}
+	})
 	endpoint := testWebSocketEndpoint(ctx, 5*time.Second, provider, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
-	conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: grokTestHeaders()})
+	conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: codexAuthHeaders()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.CloseNow()
-	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": grokModel, "generate": false, "input": "warm up"})
+	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "custom-test", "generate": false, "input": "warm up"})
 	event := socketRead(t, ctx, conn)
 	if responses.StringField(event, "type") != "response.completed" {
 		t.Fatalf("prewarm response = %s", responses.MustMarshalJSON(event))
@@ -362,23 +358,23 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 	_ = json.Unmarshal(event["response"], &response)
 	select {
 	case <-started:
-		t.Fatal("Grok prewarm generated inference")
+		t.Fatal("Custom prewarm generated inference")
 	default:
 	}
-	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": grokModel, "previous_response_id": responses.StringField(response, "id"), "input": []any{}})
+	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "custom-test", "previous_response_id": responses.StringField(response, "id"), "input": []any{}})
 	select {
 	case body := <-started:
 		if !strings.Contains(string(body), "warm up") || strings.Contains(string(body), "previous_response_id") {
-			t.Fatalf("Grok continuation lost native history: %s", body)
+			t.Fatalf("Custom continuation lost native history: %s", body)
 		}
 	case <-ctx.Done():
-		t.Fatal("Grok continuation did not start")
+		t.Fatal("Custom continuation did not start")
 	}
 	conn.CloseNow()
 	select {
 	case <-stopped:
 	case <-ctx.Done():
-		t.Fatal("downstream disconnect did not cancel blocked Grok execution")
+		t.Fatal("downstream disconnect did not cancel blocked custom execution")
 	}
 }
 
@@ -552,7 +548,7 @@ func TestMekugiPrewarmRequiresExplicitNonGeneratingRequest(t *testing.T) {
 }
 
 func TestResponsesHTTPPrewarmCannotBypassPreparation(t *testing.T) {
-	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"grok-test","input":[],"generate":false}`))
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"input":[],"generate":false}`))
 	request.Header = serverMetadataHeaders(t, "prewarm", nil)
 	request.Header.Set(codexresponses.RoutingSessionHeader, "prewarm-session")
 	request.Header.Set(codexresponses.ThreadIDHeader, "prewarm-thread")

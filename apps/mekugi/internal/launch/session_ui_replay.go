@@ -384,7 +384,7 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionprese
 	if !*headless && (!term.IsTerminal(int(stdin.Fd())) || !term.IsTerminal(int(stdout.Fd()))) {
 		return fail(errors.New("interactive playback requires a terminal; use --headless for profiling"))
 	}
-	settings, err := launchoptions.LoadSettings(false)
+	settings, err := launchoptions.LoadSettings()
 	if err != nil {
 		return fail(err)
 	}

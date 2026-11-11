@@ -478,7 +478,7 @@ func TestEnvironmentFactsMalformedProviderInput(t *testing.T) {
 
 func TestEnvironmentCapabilityShellOverride(t *testing.T) {
 	forwarded := []string{"exec", "-c", `shell_environment_policy.set.UNRELATED="kept"`, "-c", `shell_environment_policy.set.MEKUGI_ENVIRONMENT_FACTS="1"`, "--", "prompt"}
-	args := codexArgs("http://localhost/v1", forwarded, false, true, nil)
+	args := codexArgs("http://localhost/v1", forwarded, false, nil)
 	end := slices.Index(args, "--")
 	original := slices.Index(forwarded, "--")
 	if !slices.Equal(args[:original], forwarded[:original]) || !slices.Equal(args[end:], forwarded[original:]) {

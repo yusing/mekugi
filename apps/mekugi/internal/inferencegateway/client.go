@@ -5,16 +5,12 @@ package inferencegateway
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
-	"github.com/yusing/mekugi/providers/grok"
-	"github.com/yusing/mekugi/providers/opencode"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
@@ -23,12 +19,9 @@ import (
 const maxUpstreamErrorDetailBytes = 8 << 10
 
 type Client struct {
-	OpenAI         *openai.Client
-	ThirdPartyOnly bool
-	OpenCode       map[string]*ThirdPartyClient
-	Grok           *ThirdPartyClient
-	Diagnostics    codexresponses.Diagnostics
-	Native         *NativeProvider
+	OpenAI      *openai.Client
+	Diagnostics codexresponses.Diagnostics
+	Native      *NativeProvider
 }
 
 func NewClient(baseURL string, supplied *http.Client, diagnostics codexresponses.Diagnostics) *Client {
@@ -71,33 +64,6 @@ func (c *Client) ForwardExecution(startCtx, responseCtx context.Context, body []
 		}
 		return response, err
 	}
-	var model struct {
-		Model string `json:"model"`
-	}
-	if err := json.Unmarshal(body, &model); err != nil {
-		return nil, errors.New("invalid provider request")
-	}
-	if opencode.IsModel(model.Model) {
-		prefix, _, _ := strings.Cut(model.Model, ":")
-		client := c.OpenCode[prefix]
-		if client == nil {
-			return nil, IncompatibleRequest("opencode_not_configured", "OpenCode models require standalone mekugi with the provider's API key in the environment or Mekugi config.toml")
-		}
-		return client.ForwardExecution(startCtx, responseCtx, body, headers)
-	}
-	if grok.IsModel(model.Model) {
-		if c.Grok == nil {
-			return nil, IncompatibleRequest("grok_not_enabled", "Grok models require authenticated standalone mekugi or mekugi grok")
-		}
-		if c.Grok.Unprefixed != strings.HasPrefix(model.Model, "grok-") {
-			return nil, IncompatibleRequest("grok_model_namespace", "Use plain Grok model IDs in mekugi grok, and grok: model IDs in standalone mekugi")
-		}
-		return c.Grok.ForwardExecution(startCtx, responseCtx, body, headers)
-	}
-	if c.ThirdPartyOnly {
-		return nil, IncompatibleRequest("third_party_model_required", "This launch supports only its authenticated third-party models; use mekugi codex for OpenAI models")
-	}
-
 	authorization, account, err := openai.Credentials(headers)
 	if err != nil {
 		return nil, err
@@ -126,11 +92,7 @@ type Forwarder interface {
 // Response carries exchange facts separately from its consumable body.
 type Response struct {
 	*http.Response
-	Price        *opencode.Price
 	Transport    string
 	UnknownPrice bool
 	Provider     string
 }
-
-// IsThirdPartyModel selects full-history routing, including Chat, Messages and Responses.
-func IsThirdPartyModel(model string) bool { return grok.IsModel(model) || opencode.IsModel(model) }

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/modules/commandsegments/transport"

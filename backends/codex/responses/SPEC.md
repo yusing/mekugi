@@ -2,18 +2,12 @@
 
 ## Purpose and scope
 
-Own Codex Responses request adaptation and
-response framing. Endpoint translation supports Chat Completions, Messages and
-Responses. The caller selects eligible turns and supplies resolved provider policy,
-diagnostics. Provider authentication, model selection, HTTP
-transport and native tool execution remain with their existing owners.
-
-The [provider-routing contract](../../../docs/contracts/provider-routing.md)
-defines selected translation policy and history preservation.
-
-Translation is a means of making selected provider models usable through stock Codex
-execution. Endpoint adaptation, wire aliases, framing and connection-local caching
-below are replaceable design, not independent product requirements.
+Own native Codex Responses envelopes, context projection, response delivery and
+connection-local history. Provider authentication, model selection, transport and
+native tool execution remain with their existing owners. The
+[provider-routing contract](../../../docs/contracts/provider-routing.md) owns
+route admission and credential isolation. Dedicated Chat Completions/Messages
+translation, wire aliases and provider-specific reasoning adapters are removed.
 
 ## Request envelopes and catalogs
 
@@ -42,54 +36,16 @@ with the consuming workflow.
 
 ## Request and stream behavior
 
-Translation validates explicit history and tool identities before inference.
-Only supported representations are translated; opaque foreign history and
-unsupported content fail with the caller's compatibility diagnostic. Stable wire
-aliases preserve native names, namespaces, custom input, tool choice, and replay.
-Native `wait` uses a wire alias rather than bare `wait`; its advertised
-`yield_time_ms` and `max_tokens` are integers. These schema corrections leave
-submitted argument bytes unchanged. Multipart text retains separate source parts,
-and empty text arrays retain empty-string content. Custom tool grammars remain
-explicit input instructions, validated by their existing owners. Third-party
-`exec` guidance identifies JavaScript input and the requirement to print nested
-results with `text(...)`; Codex models need neither note.
+Native call identities, namespaces, argument bytes and result attribution remain
+unchanged. Named native tool outputs without a call ID are context, not tool
+completions. After original-evidence consumers finish, the shared request path
+projects them as assistant messages with namespace/name attribution and separate
+payload parts. Correlated outputs and retained native records keep their shape.
 
-Translated endpoints preserve supported text/images, plaintext agent messages,
-parallel custom/function calls and results, structured output, effort and usage.
-Custom input is one wire parameter, restored exactly before execution. OpenAI-hosted
-search is unavailable on these routes and the model is told so. Provider-returned
-model aliases remain unchanged for JSON and streaming clients; refusals remain
-ordinary refusal output. Native call identities survive persisted replay.
-Named native tool outputs without a call ID are context, not tool completions.
-After native evidence consumers finish, the shared request path projects them as
-assistant messages with namespace/name attribution and separate payload parts.
-Correlated outputs and retained native records keep their original shape.
-
-Endpoint adapters normalize their wire framing into one validated stream.
-Provider keepalives remain content-free progress through translation.
-Complete arguments for every parallel call are validated before any executable
-item is released. The first terminal choice seals content and calls; missing,
-conflicting, or malformed terminals cannot become successful execution results.
-Responses item identities and ordering stay stable through added, argument/input
-completion, and item completion events. Function argument completion carries the
-restored function name. Usage-only trailers and the final stream marker remain
-valid after the first terminal choice.
-
-Visible reasoning and answer text follow Codex's active-item lifecycle. Reasoning
-that begins before an answer completes before that answer item opens; reasoning
-received after text starts completes after the message instead of interleaving
-items. Reasoning replay, effort, output-budget compatibility, and usage interpretation follow the
-resolved provider policy. Provider error details stay in caller-facing failures;
-sanitized diagnostic classification remains separate. A consumer write failure
-prevents a second terminal write. Stream failure and optional upstream closure
-preserve the original error for request accounting.
-
-The response bridge exposes either the successful terminal JSON object or the
-Responses SSE stream. Closing a streaming bridge cancels the request before
-closing its source and joins the producer. A failed terminal retains the original
-producer error separately, so a consumer can finish terminal delivery without
-draining upstream or losing cancellation/timeout accounting. Non-stream producer
-failure returns an error instead of a successful response.
+Provider Responses events pass through the shared delivery and observation path;
+there is no provider-specific stream translator. Original provider failure causes
+and cancellation remain observable. Compatibility admission rejects known retired
+opaque envelopes before inference; ordinary text is not interpreted as a route.
 
 ## OpenAI request shaping
 
@@ -179,17 +135,13 @@ provider tiers remain unknown. Accounting and reference pricing belong to the
 
 ## Ownership and acceptance
 
-Each translated request owns its immutable tool mapping and stream state. The
-adapter creates no process, credential store, transcript, or agent registry.
+The adapter creates no process, credential store, transcript or agent registry.
 Shared wire facts and exact JSON encoding belong to
-[modelprotocol](../../../libraries/modelprotocol/SPEC.md).
-The [provider-routing contract](../../../docs/contracts/provider-routing.md) owns
-selected effort, reasoning, output-budget and usage policies. Credentials,
-metadata and upstream exchange remain with [Grok](../../../providers/grok/SPEC.md)
-and [OpenCode](../../../providers/opencode/SPEC.md).
+[modelprotocol](../../../libraries/modelprotocol/SPEC.md). Native OpenAI transport
+belongs to its [provider](../../../providers/openai/SPEC.md); custom Responses
+transport belongs to the application's pinned provider connection.
 
-Package tests cover tool identity, custom input, wait
-aliases, fragmented and parallel calls, terminal integrity, reasoning replay,
-endpoint settings and caller diagnostics. Router acceptance covers selected policy,
-actual transport, provider errors, cancellation and capture. Installed-Codex checks establish the
-host consumption boundary separately from offline encoding tests.
+Package tests cover retained request/history projection, tool identity, delivery,
+usage decoding and native connection confirmation. Application checks cover
+actual transport, provider errors, cancellation and capture. Installed-Codex
+checks establish the host consumption boundary separately from offline encoding.
