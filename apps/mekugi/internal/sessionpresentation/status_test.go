@@ -97,6 +97,11 @@ func TestNonTerminalSurfaceScopeLifetime(t *testing.T) {
 
 func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	c := newStatusConsumer()
+	panel := c.model().OpenPanel("")
+	panel.MetricViews = []string{"Summary", "Features"}
+	panel.Fields = []sessionpresentation.StatusField{
+		{Group: "Comparison", Label: "Tokens", Values: []string{"10", "20"}},
+	}
 	call := &prompt.Call{ID: "call", Thread: "main", Questions: []prompt.Question{{
 		ID: "question", Choices: []prompt.Option{{Label: "choice"}}, Answer: []string{"answer"}, Outcome: "answered",
 	}}}
@@ -114,6 +119,8 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 		t.Fatal("publication was not retained or unchanged publication advanced its version")
 	}
 	v.Caption.Items[0].Text = "changed"
+	v.Panel.MetricViews[0] = "changed"
+	v.Panel.Fields[0].Values[0] = "changed"
 	v.Questions.Call.Questions[0].Choices[0].Label = "changed"
 	v.Questions.Call.Questions[0].Answer[0] = "changed"
 	v.Approvals.Approval.Details[0] = "changed"
@@ -126,6 +133,8 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	c.conversation.BTW.Answer[0].Text = "changed by owner"
 	c.conversation.BTW.History[0].Answer[0].Text = "changed by owner"
 	c.conversation.Side.Answer[0].Text = "changed by owner"
+	panel.MetricViews[1] = "changed by owner"
+	panel.Fields[0].Values[1] = "changed by owner"
 	caption.Items[0].Text = "changed"
 	c.model().Status.Set("new state", false)
 	c.now = c.now.Add(time.Hour)

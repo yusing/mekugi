@@ -214,8 +214,10 @@ func cloneView(v View) View {
 	}
 	if v.Panel != nil {
 		panel := *v.Panel
+		panel.MetricViews = slices.Clone(panel.MetricViews)
 		panel.Fields = slices.Clone(panel.Fields)
 		for i := range panel.Fields {
+			panel.Fields[i].Values = slices.Clone(panel.Fields[i].Values)
 			if value := panel.Fields[i].Remaining; value != nil {
 				panel.Fields[i].Remaining = new(*value)
 			}
