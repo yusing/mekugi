@@ -46,6 +46,7 @@ type nativeThreadsProvider struct {
 	spawnSettings                           *spawnSettingsFixture
 	mu                                      sync.Mutex
 	childDirectory, parent, child, waitTurn string
+	compactTurn                             string
 	fullHistory                             bool
 	frozenPrefix                            bool
 	initialFacts                            string
@@ -334,10 +335,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	switch {
 	case p.compactLatency && parent && step == 1:
 		p.compactIssued = time.Now()
+		p.compactTurn = metadata.TurnID
 		program = `text(await tools.mcp__threadcontrol__compact({}));`
 	case p.compactLatency && parent && step == 2:
 		p.compactContinued = time.Now()
-		if !strings.Contains(string(body), `"name":"compact"`) || !strings.Contains(string(body), "completed") {
+		if metadata.TurnID == p.compactTurn || request.PreviousResponse != "" || !completedStandaloneCompaction(request.Input) {
 			failure = "standalone compaction did not deliver its retained continuation"
 		}
 		answer = "MANAGED_PARENT_RESUMED"
@@ -662,6 +664,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		answer = "MANAGED_CHILD_FINAL"
 		if p.agentCompact {
 			answer = ""
+			p.compactTurn = metadata.TurnID
 			program = `text(await tools.mcp__threadcontrol__compact({}));`
 		}
 		if p.attachChanges {
@@ -671,8 +674,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			answer += "\n" + compact.CompactMetadataStart + "{\"sources\":[{\"changes\":[" + strconv.Quote(changeID) + "]}]}" + compact.CompactMetadataEnd
 		}
 	case !parent && step == 3 && p.agentCompact:
-		if !strings.Contains(string(body), `"name":"compact"`) || !strings.Contains(string(body), "completed") {
+		if metadata.TurnID == p.compactTurn || request.PreviousResponse != "" || !completedStandaloneCompaction(request.Input) {
 			failure = "child compaction lost standalone continuation"
+		}
+		if strings.Contains(string(body), "CHILD_ATTRIBUTED_ASSIGNMENT") || strings.Contains(string(body), "managed-child-write") {
+			failure = "child compaction retained pre-reset task or tool history"
 		}
 		answer = "MANAGED_CHILD_FINAL"
 	case !parent && step == 3:
@@ -897,6 +903,35 @@ func TestNativeThreadsFullHistoryServerOwnedCodex(t *testing.T) {
 
 func TestNativeThreadsShellWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{shellWait: true})
+}
+
+// Standalone outputs have no correlated call_id after reset. The provider receives
+// an assistant context message, while native history retains the tool identity.
+func completedStandaloneCompaction(input []map[string]jsontext.Value) bool {
+	completed := 0
+	for _, item := range input {
+		if string(item["type"]) != `"message"` || string(item["role"]) != `"assistant"` {
+			continue
+		}
+		var content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(item["content"], &content) != nil || len(content) != 2 || content[0].Text != "Tool context: threadcontrol.compact" {
+			continue
+		}
+		var result struct {
+			State      string `json:"state"`
+			Compaction struct {
+				State string `json:"state"`
+			} `json:"compaction"`
+		}
+		if content[0].Type != "output_text" || content[1].Type != "output_text" || json.Unmarshal([]byte(content[1].Text), &result) != nil || result.State != "completed" || result.Compaction.State != "completed" {
+			return false
+		}
+		completed++
+	}
+	return completed == 1
 }
 
 func TestNativeThreadsAgentCompactWaitServerOwnedCodex(t *testing.T) {
