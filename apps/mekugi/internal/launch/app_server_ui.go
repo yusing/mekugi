@@ -662,6 +662,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 			}()
 		}
 		defer session.Client.Requests.Close()
+		defer session.managedSkills.Wait()
 		defer native.close()
 		defer func() { _ = predictions.clear(&session.Client, session.attached.conversation) }()
 		session.review.Loader = sessionreview.NewLoader(session.ctx, session.review.Projection)
@@ -670,6 +671,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 			session.retainedSession.Close()
 		}()
 		defer session.picker.cancelScan()
+		defer session.picker.cancelManagedSkills()
 		defer func() { session.commits.Close() }()
 		if session.audience != nil {
 			defer session.audience.Detach()
@@ -898,6 +900,9 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 						return intentErr
 					}
 				case <-tick.C:
+					if session.picker.pollManagedSkills(&session.attached, session.clock) {
+						session.picker.refreshPicker(&session.attached, session.clock, session.Client.Requests, session.Editor, session.ctx, session.skillEnvironment)
+					}
 					if err := flushCompletions(); err != nil {
 						return err
 					}
@@ -1283,6 +1288,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 					paneError(attached.source, session.panes.savePrepared(time.Now(), true))
 				}
 				picker.cancelScan()
+				picker.cancelManagedSkills()
 				roster := attached.session.Roster()
 				retired := make([]string, 0, len(roster))
 				for _, agent := range roster {

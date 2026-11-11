@@ -190,7 +190,7 @@ func TestNativeCompletionContinuesNewestTargetWithoutEditorCache(t *testing.T) {
 	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, editor, context.Background(), nil)
 	editor.Replace(composer.Draft{Text: "@second"})
 	u.picker.refreshPicker(&u.attached, u.clock, u.Requests, editor, context.Background(), nil)
-	u.picker.pickerMessage(&u.attached, u.clock, u.Requests, new(composer.Editor), context.Background(), nil, "fuzzyFileSearch", appserver.Message{Result: jsontext.Value(`{"files":[]}`)})
+	u.picker.pickerMessage(&u.attached, u.clock, u.Requests, new(composer.Editor), context.Background(), nil, &u.managedSkills, "fuzzyFileSearch", appserver.Message{Result: jsontext.Value(`{"files":[]}`)})
 	requests := pickerRequests(t, wire)
 	if len(requests) != 2 || requests[1].Params.Query != "second" {
 		t.Fatalf("latest target lost: %+v", requests)

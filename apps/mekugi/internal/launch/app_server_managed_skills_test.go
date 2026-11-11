@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -40,6 +41,10 @@ func testManagedSkills(t *testing.T, u *appServerUI, script string) {
 	}
 	u.ctx, u.attached.cwd = t.Context(), workspace
 	u.skillEnvironment = []string{"PATH=" + bin}
+	t.Cleanup(func() {
+		u.picker.cancelManagedSkills()
+		u.managedSkills.Wait()
+	})
 }
 func replyManagedCatalog(t *testing.T, u *appServerUI, w *appServerTestInput, native string) {
 	t.Helper()
@@ -48,6 +53,21 @@ func replyManagedCatalog(t *testing.T, u *appServerUI, w *appServerTestInput, na
 		t.Fatalf("missing catalog request: %+v", requests)
 	}
 	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":`+strconv.Quote(u.attached.cwd)+`,"skills":`+native+`}]}`)
+	awaitManagedCatalog(t, u)
+}
+
+func awaitManagedCatalog(t *testing.T, u *appServerUI) {
+	t.Helper()
+	if load := u.picker.skillsLoad; load != nil {
+		select {
+		case <-load.done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("managed catalog did not complete")
+		}
+		u.picker.pollManagedSkills(&u.attached, u.clock)
+	}
+	// Drive the normal post-acquisition binding and pending-input consumers.
+	appServerTestMessage(t, u, `{"method":"fixture/tick"}`)
 }
 func TestManagedSkillAttachmentContentsAndIdentity(t *testing.T) {
 	u, w := newAppServerTestUI()
@@ -127,6 +147,7 @@ func TestManagedSkillSourceFailuresRemainIndependent(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
 	requests := pickerRequests(t, w)
 	appServerTestMessage(t, u, `{"id":`+strconv.Itoa(requests[0].ID)+`,"error":{"code":-1,"message":"native catalog unavailable"}}`)
+	awaitManagedCatalog(t, u)
 	if len(u.attached.conversation.Submitted[u.Submission().ID].Attachments) != 1 || !u.attached.feedback.Alert || !strings.Contains(u.attached.feedback.Text, "native catalog unavailable") {
 		t.Fatalf("native failure discarded managed source: %+v %q", u.attached.conversation.Submitted[u.Submission().ID], u.attached.feedback.Text)
 	}
@@ -134,6 +155,21 @@ func TestManagedSkillSourceFailuresRemainIndependent(t *testing.T) {
 	cancel()
 	if _, err := readManagedSkills(ctx, u.attached.cwd, u.skillEnvironment); err == nil {
 		t.Fatal("canceled catalog ran")
+	}
+}
+
+func TestManagedSkillFailureKeepsNativeCatalog(t *testing.T) {
+	u, w := newAppServerTestUI()
+	testManagedSkills(t, u, "exit 1\n")
+	appServerTestKeys(t, u, "$rev")
+	replyManagedCatalog(t, u, w, `[{"name":"review","path":"/native/SKILL.md","enabled":true}]`)
+	if !u.picker.SkillsLoaded || len(u.picker.Choices) != 1 || u.picker.Choices[0].Path != "/native/SKILL.md" || !strings.Contains(u.attached.feedback.Text, "skills-mgr:") {
+		t.Fatalf("native source lost on supplement failure: %+v, %s", u.picker.Choices, u.attached.feedback.Text)
+	}
+	appServerTestKeys(t, u, "iew")
+	appServerTestMessage(t, u, `{"method":"fixture/tick"}`)
+	if len(pickerRequests(t, w)) != 1 || u.picker.skillsLoad != nil {
+		t.Fatal("failed supplement restarted without a catalog change")
 	}
 }
 

@@ -177,7 +177,7 @@ func (p *composerPicker) waitForSkillBindings(attached *attachedPresentation, cl
 	}
 	for _, part := range parts {
 		if query := p.skillBindingQuery(part, true); query != "" {
-			if p.Pending == nil && filepath.IsAbs(attached.cwd) {
+			if p.Pending == nil && p.skillsLoad == nil && filepath.IsAbs(attached.cwd) {
 				p.requestPicker(attached, clock, requests, completion.Target{Kind: '$', Query: query}, attached.cwd)
 			}
 			return p.SkillsProblem == "" || p.SkillsCwd != attached.cwd

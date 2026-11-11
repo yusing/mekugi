@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
@@ -62,6 +63,7 @@ type nativeSession struct {
 	statusConfig          appServerStatusConfig
 	picker                composerPicker
 	skillEnvironment      []string
+	managedSkills         sync.WaitGroup
 	commits               *activitypresentation.CommitReader
 	commandSegmentWrites  chan commandSegmentWrite
 	commandSegmentPending int

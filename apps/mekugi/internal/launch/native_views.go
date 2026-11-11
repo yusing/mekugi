@@ -118,6 +118,7 @@ func (n *nativeViews) dispose(id string) {
 		view.stop()
 		view.files.closeOutput()
 		view.picker.cancelScan()
+		view.picker.cancelManagedSkills()
 		view.picker.cancelPermissionSelection()
 		view.notices.finish(terminalsession.NoticeReceipt{})
 		view.scope.Retire()
@@ -348,6 +349,9 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		}
 		n.reconcileEffects(v)
 		v.picker.pollPresets()
+		if v.picker.pollManagedSkills(&v.attached, func() time.Time { return now }) {
+			v.picker.acquireTarget(&v.attached, func() time.Time { return now }, n.requests, v.ctx, v.picker.Target, !v.picker.Open)
+		}
 
 		for scanning := true; scanning; {
 			select {
@@ -433,6 +437,7 @@ func (n *nativeViews) replacePresentation(v *nativeSessionView, execution *attac
 	n.requests.Retire(viewRequestScope(v.attached.view))
 	v.files.closeOutput()
 	v.picker.cancelScan()
+	v.picker.cancelManagedSkills()
 	v.picker.cancelPermissionSelection()
 	if v.picker.sideTask != nil {
 		v.effects.restore([]conversation.Input{{Delivery: v.picker.sideTaskDelivery}}, sessionapi.NativeEffect{Thread: v.thread, Restore: v.picker.sideTask})

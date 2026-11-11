@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -31,13 +32,15 @@ import (
 // remain Codex-owned, through app-server rather than a second filesystem index.
 
 type composerPicker struct {
-	presets        *presets.Flow
-	presetCatalog  *presets.Flow
-	presetThread   string
-	presetCwd      string
-	presetAllowed  bool
-	view           string
-	skillsRevision uint64
+	presets               *presets.Flow
+	presetCatalog         *presets.Flow
+	presetThread          string
+	presetCwd             string
+	presetAllowed         bool
+	view                  string
+	skillsRevision        uint64
+	skillsPendingRevision uint64
+	skillsLoad            *managedSkillLoad
 	*completion.State
 	*sessionpresentation.MenuState
 	scanResults                     chan pickerScanResult
@@ -60,6 +63,7 @@ type composerPicker struct {
 // invalidateSkills is shared by the local attachment and native views after the
 // host reports a catalog change. The next acquisition still uses the same owner.
 func (p *composerPicker) invalidateSkills() {
+	p.cancelManagedSkills()
 	p.toggleOwnsManager = false
 	p.SkillsLoaded = false
 	p.SkillsProblem = ""
@@ -75,6 +79,7 @@ func (p *composerPicker) completionTarget(draft composer.Draft, shellMode bool) 
 }
 
 func (p *composerPicker) refreshPicker(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string) {
+	p.pollManagedSkills(attached, clock)
 	if p.presets != nil {
 		p.pollPresets()
 		return
@@ -138,6 +143,9 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, clock fun
 
 // acquireTarget continues the existing acquisition without retaining a client draft.
 func (p *composerPicker) acquireTarget(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], parent context.Context, target completion.Target, bindingOnly bool) {
+	if load := p.skillsLoad; load != nil && (load.cwd != attached.cwd || load.state != p.State || p.Kind == "manage") {
+		p.cancelManagedSkills()
+	}
 	wasOpen := p.Open
 	if !p.Activate(target, bindingOnly) {
 		p.cancelScan()
@@ -183,7 +191,7 @@ func (p *composerPicker) acquireTarget(attached *attachedPresentation, clock fun
 		p.searchExcludedFiles(parent, target, cwd)
 		return
 	}
-	if p.Pending != nil {
+	if p.Pending != nil || target.Kind == '$' && p.skillsLoad != nil {
 		return
 	}
 	p.requestPicker(attached, clock, requests, target, cwd)
@@ -196,6 +204,7 @@ func (p *composerPicker) requestPicker(attached *attachedPresentation, clock fun
 		method, params = "skills/list", map[string]any{"cwds": []string{cwd}, "forceReload": true}
 	}
 	p.Pending, p.PendingCwd = new(target), cwd
+	p.skillsPendingRevision = p.skillsRevision
 	if _, err := requests.Send(method, params, viewRequestScope(p.view), appServerRequest{view: p.view}); err != nil {
 		p.Pending, p.Loading = nil, false
 		p.Resolved, p.ResolvedCwd = target, cwd
@@ -207,7 +216,7 @@ func (p *composerPicker) requestPicker(attached *attachedPresentation, clock fun
 	}
 }
 
-func (p *composerPicker) pickerMessage(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string, method string, m appserver.Message) bool {
+func (p *composerPicker) pickerMessage(attached *attachedPresentation, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string, workers *sync.WaitGroup, method string, m appserver.Message) bool {
 	if method == "skills/config/write" {
 		p.skillToggleResponse(attached, clock, m)
 		return true
@@ -220,6 +229,16 @@ func (p *composerPicker) pickerMessage(attached *attachedPresentation, clock fun
 	}
 	target, cwd := *p.Pending, p.PendingCwd
 	p.Pending = nil
+	defer func() {
+		if attached.view == "" {
+			p.refreshPicker(attached, clock, requests, editor, parent, environment)
+		} else {
+			p.acquireTarget(attached, clock, requests, parent, p.Target, !p.Open)
+		}
+	}()
+	if method == "skills/list" && p.skillsPendingRevision != p.skillsRevision {
+		return true
+	}
 	var choices []completion.Choice
 	var err error
 	problem := ""
@@ -281,48 +300,12 @@ func (p *composerPicker) pickerMessage(attached *attachedPresentation, clock fun
 	if method == "skills/list" {
 		available := m.Error == nil && err == nil
 		if environment != nil && p.Kind != "manage" && cwd == attached.cwd {
-			requestContext := parent
-			if requestContext == nil {
-				requestContext = context.Background()
-			}
-			ctx, cancel := context.WithTimeout(requestContext, 15*time.Second)
-			managed, loadErr := readManagedSkills(ctx, cwd, environment)
-			cancel()
-			if loadErr == nil {
-				names := make(map[string]bool)
-				for _, choice := range managed {
-					names[choice.Name] = true
-				}
-				choices = slices.DeleteFunc(choices, func(choice completion.Choice) bool { return names[choice.Name] })
-				choices = append(choices, managed...)
-				available = true
-			} else {
-				if problem != "" {
-					problem += "; "
-				}
-				problem += "skills-mgr: " + loadErr.Error()
-			}
+			p.loadManagedSkills(parent, workers, environment, target, cwd, choices, available, problem)
+			return true
 		}
-		p.toggleOwnsManager = false
-		p.Catalog(choices, cwd, available, problem)
-		p.skillsRevision++
-		if p.Kind == "manage" && p.Initial == nil {
-			p.RememberSkills()
-		}
-		if problem != "" && cwd == attached.cwd {
-			label := "Skill catalog incomplete: "
-			if !available {
-				label = "Skill attachment unavailable: "
-			}
-			setNotice(&attached.feedback, presentationTime(clock), label+problem+". Unavailable references remain text.", true)
-		}
+		p.finishSkillCatalog(attached, clock, choices, cwd, available, problem)
 	}
 	p.Resolve(target, cwd, attached.cwd, choices, problem)
-	if attached.view == "" {
-		p.refreshPicker(attached, clock, requests, editor, parent, environment)
-	} else {
-		p.acquireTarget(attached, clock, requests, parent, p.Target, !p.Open)
-	}
 	return true
 }
 

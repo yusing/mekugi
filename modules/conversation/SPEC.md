@@ -173,7 +173,10 @@ remain literal. A pending catalog lookup delays submission; failure reports
 unavailable references without suppressing available skills from another source.
 
 When available, `skills-mgr list --codex` runs in that workspace with the wrapped
-environment. Managed names take precedence over same-named Codex entries.
+environment, without blocking native control or host-event dispatch. Query edits
+share the pending acquisition; only its current workspace and catalog may adopt
+the result. Replacement cancels old work, which the runtime joins on shutdown.
+Managed names take precedence over same-named Codex entries.
 Submission or queueing resolves them with `skills-mgr get --codex NAME`, including
 explicitly invoked skills omitted from the managed model catalog. Native entries
 retain their exact metadata source path through editing and history. Managed

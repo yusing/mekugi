@@ -38,7 +38,7 @@ func (session *nativeSession) dispatchViewResponse(attached *attachedPresentatio
 	if handled, err := statusMessage(session.Client.Requests, (*panel), method, m, response.Owner.status); handled {
 		return true, err
 	}
-	if picker.pickerMessage(attached, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment, method, m) {
+	if picker.pickerMessage(attached, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment, &session.managedSkills, method, m) {
 		return true, nil
 	}
 
