@@ -29,7 +29,6 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/mcptransport"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestCompactReloadNativeCodex(t *testing.T) {
@@ -136,10 +135,9 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 	hash := fmt.Sprintf("sha256:%x", sha256.Sum256(encoded))
 	hookArgs := []string{"-c", "features.hooks=true", "-c", `hooks.SessionStart=[{matcher="^compact$",hooks=[` + hookHandler + `]}]`, "-c", `hooks.state={"/<session-flags>/config.toml:session_start:0:0"={trusted_hash=` + strconv.Quote(hash) + `,enabled=true}}`}
 	newClient := func() *appserver.Client {
-		cmd := exec.CommandContext(ctx, "mekugi-app-server", nativeAppServerArgs(codexArgs(server.URL+"/v1", []string{"-c", notesConfig, "--enable=retain_client_tool_outputs", "-c", "features.retain_client_tool_outputs=true", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true", "-c", "model_auto_compact_token_limit=100000"}, nil))...)
+		cmd := exec.CommandContext(ctx, "mekugi-app-server", nativeAppServerArgs(codexArgs(server.URL+"/v1", []string{"-c", notesConfig, "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true", "-c", "model_auto_compact_token_limit=100000"}, nil))...)
 		cmd.Env, cmd.Dir = environment, workspace
 		cmd.Args = append(cmd.Args, hookArgs...)
-		cmd.Args = append(cmd.Args, "-c", `mcp_servers.notes.disabled_tools=["thread_hint"]`)
 		client, err := appserver.Start(cmd)
 		if err != nil {
 			t.Fatal(err)
@@ -240,6 +238,9 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 	if !bytes.Contains(initial, []byte("ORIGINAL_TASK_SENTINEL")) {
 		t.Fatal("fixture lost initial task")
 	}
+	if !bytes.Contains(initial, []byte(`"name":"new_context"`)) {
+		t.Fatal("native direct reset tool missing")
+	}
 	if automatic {
 		if !bytes.Contains(afterTool, []byte("COMPACT_SESSION_START_MARKER")) {
 			t.Fatal("automatic reset lost SessionStart hook context before first continuation")
@@ -249,7 +250,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 		}
 	} else {
 		before := provider.count.Load()
-		runTurn("thread/compact/start", map[string]any{"threadId": thread})
+		runTurn("thread/compact/start", map[string]any{"threadId": thread, "reload": map[string]any{"sources": []string{"@selected.json#L1-L1", "@missing.json#L1-L1"}}})
 		if provider.count.Load() != before {
 			t.Fatal("manual reset called the provider")
 		}
@@ -260,13 +261,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 	if resetContext >= 50000 || resetTotal < 50000 {
 		t.Fatalf("reset context=%d cumulative=%d", resetContext, resetTotal)
 	}
-	continuation := map[string]any{"threadId": thread, "input": appserver.Input("Continue normally.")}
-	if !automatic {
-		wake := control.NativeInput{ID: "fixture:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: "completed", Reload: `{"sources":["@selected.json#L1-L1","@missing.json#L1-L1"]}`}}}
-		continuation["input"] = []any{}
-		continuation["toolOutput"] = map[string]any{"namespace": "threadcontrol", "name": "compact", "output": wake.RetainedWaitOutput(), "retain": true}
-	}
-	runTurn("turn/start", continuation)
+	runTurn("turn/start", map[string]any{"threadId": thread, "input": appserver.Input("Continue normally.")})
 	reloaded := request()
 	if !automatic && !bytes.Contains(reloaded, []byte("COMPACT_SESSION_START_MARKER")) {
 		t.Fatal("SessionStart compact hook context missing from first continuation")
@@ -278,8 +273,8 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 		t.Fatalf("selected native reload missing: %.2000s", reloaded)
 	}
 	for _, body := range [][]byte{initial, afterTool, reloaded} {
-		if bytes.Contains(body, []byte(`"name":"new_context"`)) || bytes.Contains(body, []byte("CONTEXT CHECKPOINT COMPACTION")) || bytes.Contains(body, []byte("AUTOMATIC_UNSELECTED_NOTES_SENTINEL")) {
-			t.Fatal("direct reset tool or summary prompt exposed")
+		if bytes.Contains(body, []byte("CONTEXT CHECKPOINT COMPACTION")) || bytes.Contains(body, []byte("AUTOMATIC_UNSELECTED_NOTES_SENTINEL")) {
+			t.Fatal("summary prompt or unselected notes exposed")
 		}
 	}
 	var oldFields, newFields map[string]jsontext.Value
@@ -312,9 +307,13 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 		t.Fatal("cold resume lost selected reload")
 	}
 	runTurn("thread/compact/start", map[string]any{"threadId": thread})
-	runTurn("turn/start", map[string]any{"threadId": thread, "input": appserver.Input("Continue without a reload.")})
-	if fresh := request(); bytes.Contains(fresh, []byte("SELECTED_CURRENT_FIELD")) || bytes.Contains(fresh, []byte("CHANGED_AFTER_CAPTURE")) {
-		t.Fatal("later reset reused an obsolete reload")
+	runTurn("turn/start", map[string]any{"threadId": thread, "input": appserver.Input("Continue after the later reset.")})
+	fresh := request()
+	if bytes.Contains(fresh, []byte("SELECTED_CURRENT_FIELD")) {
+		t.Fatal("later reset reused obsolete source bytes")
+	}
+	if bytes.Contains(fresh, []byte("CHANGED_AFTER_CAPTURE")) == automatic {
+		t.Fatal("later reset did not preserve the native reload selection")
 	}
 	if hintCalls.Load() != 0 {
 		t.Fatalf("automatic notes calls=%d", hintCalls.Load())

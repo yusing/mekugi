@@ -4,7 +4,6 @@ import (
 	jsonv1 "encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -30,20 +29,6 @@ type executionOwner struct {
 func PrepareStockExecution(fields map[string]jsonv1.RawMessage, catalog *codexresponses.ToolCatalog, frontendGuidance FrontendGuidance, guidance *Guidance) (string, error) {
 	if catalog.Top.Present && catalog.Top.Err != nil {
 		return "", fmt.Errorf("decode responses tools: %w", catalog.Top.Err)
-	}
-	// Checkpoints use Thread Control so selected reloads and waits share one
-	// lifecycle. Native automatic reset remains enabled.
-	if omitDirectReset(catalog.Top) {
-		if err := catalog.EncodeTop(fields); err != nil {
-			return "", err
-		}
-	}
-	for _, group := range catalog.Additional {
-		if omitDirectReset(group.Tools) {
-			if err := catalog.EncodeAdditional(fields, group, group.Tools); err != nil {
-				return "", err
-			}
-		}
 	}
 	var result *executionOwner
 	var claim func(*codexresponses.AdditionalTools, *codexresponses.ToolSection, int) error
@@ -154,22 +139,6 @@ func PrepareStockExecution(fields map[string]jsonv1.RawMessage, catalog *codexre
 		return "", nil
 	}
 	return result.name, nil
-}
-
-func omitDirectReset(section *codexresponses.ToolSection) bool {
-	if section == nil || section.Err != nil {
-		return false
-	}
-	before := len(section.Tools)
-	changed := false
-	section.Tools = slices.DeleteFunc(section.Tools, func(tool *codexresponses.Tool) bool {
-		if tool != nil && tool.Type() == "namespace" && tool.Name() == "functions" && omitDirectReset(tool.Nested) {
-			tool.SetRawField("tools", responses.MustMarshalJSON(tool.Nested.Tools))
-			changed = true
-		}
-		return tool != nil && tool.Type() == "function" && tool.Name() == "new_context"
-	})
-	return changed || len(section.Tools) != before
 }
 
 func codeModeOwnsStockExecution(description string) bool {

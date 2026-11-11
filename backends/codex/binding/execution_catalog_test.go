@@ -146,10 +146,14 @@ func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
 	}
 }
 
-func TestPrepareStockExecutionOmitsDirectReset(t *testing.T) {
+func TestPrepareStockExecutionPreservesDirectReset(t *testing.T) {
 	for _, additional := range []bool{false, true} {
 		for _, namespace := range []bool{false, true} {
-			definitions := []any{map[string]any{"type": "function", "name": "new_context"}, map[string]any{"type": "function", "name": "get_context_remaining"}}
+			definitions := []any{
+				map[string]any{"type": "custom", "name": "exec", "description": testCodeModeDescription},
+				map[string]any{"type": "function", "name": "new_context", "description": "Reset with selected sources", "parameters": map[string]any{"type": "object", "properties": map[string]any{"reload": map[string]any{"type": "object"}}}},
+				map[string]any{"type": "function", "name": "get_context_remaining"},
+			}
 			if namespace {
 				definitions = []any{map[string]any{"type": "namespace", "name": "functions", "tools": definitions}}
 			}
@@ -157,12 +161,12 @@ func TestPrepareStockExecutionOmitsDirectReset(t *testing.T) {
 			if additional {
 				fields = map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{map[string]any{"type": "additional_tools", "role": "developer", "tools": definitions}})}
 			}
-			if _, err := PrepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), FrontendGuidance{}, nil); err != nil {
-				t.Fatal(err)
+			before := responses.MustMarshalJSON(fields)
+			if owner, err := PrepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), FrontendGuidance{}, nil); err != nil || owner != "exec" {
+				t.Fatalf("additional=%v namespace=%v: execution=%q error=%v", additional, namespace, owner, err)
 			}
-			wire := string(responses.MustMarshalJSON(fields))
-			if strings.Contains(wire, "new_context") || !strings.Contains(wire, "get_context_remaining") {
-				t.Fatal(wire)
+			if after := responses.MustMarshalJSON(fields); !responses.SameJSONValue(before, after) {
+				t.Fatalf("additional=%v namespace=%v: native catalog changed: before=%s after=%s", additional, namespace, before, after)
 			}
 		}
 	}

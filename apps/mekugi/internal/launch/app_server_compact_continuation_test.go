@@ -443,9 +443,13 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u.shell.Transcript.Clock = u.clock
 	u.settings.Model, u.settings.Effort = "snapshot-model", "high"
 	r := queueBusyCompact(t, u, w)
+	// The outer launch loop applies correlated native reset receipts before UI events.
+	u.Compaction.ObserveReset(sessioncontrol.ContextReset{RequestID: r.Params.ContextResetRequestID, Generation: 1, Status: "accepted"})
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestTurn(t, u, "compact-turn")
+	u.Compaction.ObserveReset(sessioncontrol.ContextReset{Turn: "compact-turn", Generation: 1, ResetID: "reset", Status: "started"})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "compact-turn", "item": binding.ThreadItem{ID: "compaction", Type: "contextCompaction"}})
+	u.Compaction.ObserveReset(sessioncontrol.ContextReset{Turn: "compact-turn", Generation: 1, ResetID: "reset", Status: "completed"})
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerOneRequest(t, w, "turn/start", "")
 	for i := range u.attached.source.Entries {
