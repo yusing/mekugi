@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -59,19 +58,6 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, err := bundledModelCatalog(ctx, codex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var catalog struct {
-		Models []map[string]jsontext.Value `json:"models"`
-	}
-	if err := json.Unmarshal(body, &catalog); err != nil {
-		t.Fatal(err)
-	}
-	for _, model := range catalog.Models {
-		model["tool_mode"] = jsontext.Value(`"code_mode"`)
-	}
-	body, err = json.Marshal(&catalog)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +163,6 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	args := codexArgs(router.URL+"/v1", []string{
 		"-c", `model="gpt-6-astra"`, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`,
 		"-c", "features.plugins=false",
-		"-c", "features.code_mode_host=true",
 		"-c", `web_search="live"`,
 		"-c", "chatgpt_base_url=" + strconv.Quote(router.URL),
 		"-c", "model_reasoning_effort=" + strconv.Quote("low"),

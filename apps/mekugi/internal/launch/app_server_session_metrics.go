@@ -1,7 +1,10 @@
 package launch
 
 import (
+	"errors"
 	"time"
+
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -20,14 +23,18 @@ type sessionMetricsPanel struct {
 	thread       string
 	coordination *control.Service
 	deduplicate  bool
+	driver       *threadbinding.Driver
+	pending      <-chan control.FeatureSnapshot
+	features     control.FeatureSnapshot
 }
 
 func (session *nativeSession) showSessionMetrics(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) {
 	(*panel) = newStatusReport(attached.presentation, session.replayDebugDirectory)
 	(*panel).Workspace = attached.cwd
-	(*panel).metrics = &sessionMetricsPanel{thread: attached.presentation.DisplayedThread(), deduplicate: session.deduplicateOutput}
+	(*panel).metrics = &sessionMetricsPanel{thread: attached.presentation.DisplayedThread(), deduplicate: session.deduplicateOutput, features: control.FeatureSnapshot{Err: errors.New("native feature measurement is pending")}}
 	if session.preparer != nil && session.preparer.ThreadControl != nil {
 		(*panel).metrics.coordination = session.preparer.ThreadControl.Coordination()
+		(*panel).metrics.driver = session.preparer.ThreadControl
 	}
 	(*panel).Metrics = new(transportcapture.MetricsSnapshot)
 	session.deleteDraftRange(attached, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
@@ -38,15 +45,29 @@ func refreshSessionMetrics(p *appServerStatusReport, capture *transportcapture.R
 		return false
 	}
 	m := p.metrics
-	if !force && at.Sub(m.refreshed) < time.Second {
+	received := false
+	if m.pending != nil {
+		select {
+		case m.features = <-m.pending:
+			m.pending, received = nil, true
+		default:
+		}
+	}
+	refresh := force || at.Sub(m.refreshed) >= time.Second
+	if !refresh && !received {
 		return false
 	}
-	m.refreshed = at
-	if capture != nil {
-		*p.Metrics = capture.Snapshot()
+	if refresh {
+		m.refreshed = at
+		if capture != nil {
+			*p.Metrics = capture.Snapshot()
+		}
+		if m.pending == nil && m.driver != nil {
+			m.pending = m.driver.FeatureUse(m.thread)
+		}
 	}
 	if m.coordination != nil {
-		p.Features = sessionpresentation.NewFeatureMetrics(m.thread, m.coordination, p.Metrics, m.deduplicate)
+		p.Features = sessionpresentation.NewFeatureMetrics(m.thread, m.coordination, p.Metrics, m.deduplicate, m.features)
 	}
 	// Features carries the joined totals; panel clones and publications skip the per-thread map.
 	p.Metrics.OutputDeduplicationThreads = nil

@@ -1,204 +1,178 @@
 package control
 
-import "github.com/yusing/mekugi/modules/agentguidance/compact"
+import (
+	"context"
+	"errors"
 
-// Feature names one accepted model-facing feature use or one counted attempt.
-type Feature uint8
-
-const (
-	FeatureCompaction Feature = iota
-	FeatureSelfCompaction
-	FeatureCompactionPreload
-	FeatureSpawn
-	FeatureSpawnPreload
-	FeaturePreloadRejection
-	FeatureFinal
-	FeatureCompletionChanges
-	FeatureMessage
-	FeatureSideQuestion
-	FeatureSideQuestionRejection
-	FeatureSideQuestionFailure
-	FeatureWait
-	FeatureWaitAll
-	FeatureWaitProgress
-	FeatureProgressYield
-	FeatureAssignmentSources
-	FeatureMessageSources
-	FeatureSelfCompactionCompleted
-	FeatureSelfCompactionFailure
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 )
 
-// FeatureUse counts uses in this launch. Totals precede the subsets they
-// contain. Counts are invocation-local: checkpoints, resume and fork do not
-// restore them.
-type FeatureUse struct {
-	Compactions        uint64 // Completed native context resets, whoever initiated them.
-	SelfCompactions    uint64
-	CompactionPreloads uint64
-	Spawns             uint64 // Confirmed child admissions.
-	SpawnPreloads      uint64
-	PreloadRejections  uint64 // Spawn calls whose preload selection was rejected.
-	Finals             uint64 // Confirmed completed final answers.
-	CompletionChanges  uint64
-	Messages           uint64 // Dispatched send_message calls, including btw.
-	SideQuestions      uint64
-	// btw calls rejected before dispatch, and dispatched ones whose answer
-	// failed or whose target generation changed.
-	SideQuestionRejections, SideQuestionFailures uint64
-	Waits                                        uint64 // Newly registered wait_agent waits.
-	AllWaits                                     uint64
-	ProgressWaits, ProgressYields                uint64
-	AssignmentSources, MessageSources            uint64 // Accepted source-bearing sends, including read diagnostics.
-	SelfCompactionsCompleted                     uint64
-	SelfCompactionFailures                       uint64
+// FeatureEvent names a committed domain fact, not a tool success or a counter delta.
+// The native app-server owns reduction and once-per-fact receipts.
+type FeatureKind string
+
+const (
+	FeatureResetCompleted       FeatureKind = "resetCompleted"
+	FeatureSelfResetRequested   FeatureKind = "selfResetRequested"
+	FeatureSelfResetCompleted   FeatureKind = "selfResetCompleted"
+	FeatureSelfResetFailed      FeatureKind = "selfResetFailed"
+	FeatureChildAdmitted        FeatureKind = "childAdmitted"
+	FeaturePreloadRejected      FeatureKind = "preloadRejected"
+	FeatureFinalDelivered       FeatureKind = "finalDelivered"
+	FeatureMessageAccepted      FeatureKind = "messageAccepted"
+	FeatureSideQuestionRejected FeatureKind = "sideQuestionRejected"
+	FeatureSideQuestionFailed   FeatureKind = "sideQuestionFailed"
+	FeatureWaitRegistered       FeatureKind = "waitRegistered"
+	FeatureProgressDelivered    FeatureKind = "progressDelivered"
+	FeatureAssignmentDelivered  FeatureKind = "assignmentDelivered"
+)
+
+type FeatureEvent struct {
+	Kind     FeatureKind `json:"type"`
+	Preload  bool        `json:"preload,omitzero"`
+	Sources  bool        `json:"sources,omitzero"`
+	Changes  bool        `json:"changes,omitzero"`
+	BTW      bool        `json:"btw,omitzero"`
+	All      bool        `json:"all,omitzero"`
+	Progress bool        `json:"progress,omitzero"`
 }
 
-func (u *FeatureUse) counter(feature Feature) *uint64 {
-	switch feature {
-	case FeatureCompaction:
-		return &u.Compactions
-	case FeatureSelfCompaction:
-		return &u.SelfCompactions
-	case FeatureCompactionPreload:
-		return &u.CompactionPreloads
-	case FeatureSpawn:
-		return &u.Spawns
-	case FeatureSpawnPreload:
-		return &u.SpawnPreloads
-	case FeaturePreloadRejection:
-		return &u.PreloadRejections
-	case FeatureFinal:
-		return &u.Finals
-	case FeatureCompletionChanges:
-		return &u.CompletionChanges
-	case FeatureMessage:
-		return &u.Messages
-	case FeatureSideQuestion:
-		return &u.SideQuestions
-	case FeatureSideQuestionRejection:
-		return &u.SideQuestionRejections
-	case FeatureSideQuestionFailure:
-		return &u.SideQuestionFailures
-	case FeatureWait:
-		return &u.Waits
-	case FeatureWaitAll:
-		return &u.AllWaits
-	case FeatureWaitProgress:
-		return &u.ProgressWaits
-	case FeatureProgressYield:
-		return &u.ProgressYields
-	case FeatureAssignmentSources:
-		return &u.AssignmentSources
-	case FeatureMessageSources:
-		return &u.MessageSources
-	case FeatureSelfCompactionCompleted:
-		return &u.SelfCompactionsCompleted
-	case FeatureSelfCompactionFailure:
-		return &u.SelfCompactionFailures
-	}
-	panic("unknown feature")
+type FeatureFact struct {
+	Thread    string       `json:"threadId"`
+	Operation string       `json:"operation"`
+	Event     FeatureEvent `json:"event"`
+}
+
+// FeatureSource is the root launch's native measurement owner. Record failures
+// make subsequent reads unavailable; they never roll back accepted domain work.
+type FeatureSource interface {
+	RecordFeature(context.Context, FeatureFact)
+	InvalidateFeatureUse(error)
+	ReadFeatureUse(context.Context, []string) (map[string]FeatureUse, error)
+}
+
+// FeatureUse is a detached native snapshot. It is never checkpointed or incremented in Go.
+type FeatureUse struct {
+	Compactions              uint64 `json:"compactions"`
+	SelfCompactions          uint64 `json:"selfCompactions"`
+	CompactionPreloads       uint64 `json:"compactionPreloads"`
+	Spawns                   uint64 `json:"spawns"`
+	SpawnPreloads            uint64 `json:"spawnPreloads"`
+	PreloadRejections        uint64 `json:"preloadRejections"`
+	Finals                   uint64 `json:"finals"`
+	CompletionChanges        uint64 `json:"completionChanges"`
+	Messages                 uint64 `json:"messages"`
+	SideQuestions            uint64 `json:"sideQuestions"`
+	SideQuestionRejections   uint64 `json:"sideQuestionRejections"`
+	SideQuestionFailures     uint64 `json:"sideQuestionFailures"`
+	Waits                    uint64 `json:"waits"`
+	AllWaits                 uint64 `json:"allWaits"`
+	ProgressWaits            uint64 `json:"progressWaits"`
+	ProgressYields           uint64 `json:"progressYields"`
+	AssignmentSources        uint64 `json:"assignmentSources"`
+	MessageSources           uint64 `json:"messageSources"`
+	SelfCompactionsCompleted uint64 `json:"selfCompactionsCompleted"`
+	SelfCompactionFailures   uint64 `json:"selfCompactionFailures"`
 }
 
 func (u *FeatureUse) add(other FeatureUse) {
-	for feature := FeatureCompaction; feature <= FeatureSelfCompactionFailure; feature++ {
-		*u.counter(feature) += *other.counter(feature)
+	u.Compactions += other.Compactions
+	u.SelfCompactions += other.SelfCompactions
+	u.CompactionPreloads += other.CompactionPreloads
+	u.Spawns += other.Spawns
+	u.SpawnPreloads += other.SpawnPreloads
+	u.PreloadRejections += other.PreloadRejections
+	u.Finals += other.Finals
+	u.CompletionChanges += other.CompletionChanges
+	u.Messages += other.Messages
+	u.SideQuestions += other.SideQuestions
+	u.SideQuestionRejections += other.SideQuestionRejections
+	u.SideQuestionFailures += other.SideQuestionFailures
+	u.Waits += other.Waits
+	u.AllWaits += other.AllWaits
+	u.ProgressWaits += other.ProgressWaits
+	u.ProgressYields += other.ProgressYields
+	u.AssignmentSources += other.AssignmentSources
+	u.MessageSources += other.MessageSources
+	u.SelfCompactionsCompleted += other.SelfCompactionsCompleted
+	u.SelfCompactionFailures += other.SelfCompactionFailures
+}
+
+// FeatureSnapshot joins a native measurement with the admitted descendant set.
+// Err means neither column is a complete measurement, not that it measured zero.
+type FeatureSnapshot struct {
+	Self, Descendants FeatureUse
+	Threads           []string
+	Err               error
+}
+
+// BindFeatureUse borrows one source for the tree. A fresh root invocation replaces
+// only this reference; native counters do not survive that invocation.
+func (s *Service) BindFeatureUse(thread string, source FeatureSource) {
+	if owner, err := s.owner(thread); err == nil {
+		owner.featureSource.Store(&source)
 	}
 }
 
-// ObserveFeature records a use for the thread that used it. The caller owns
-// once-only registration or confirmation.
-func (s *Service) ObserveFeature(thread string, features ...Feature) {
-	if thread == "" {
-		return
-	}
-	s.featureMu.Lock()
-	defer s.featureMu.Unlock()
-	use := s.features[thread]
-	for _, feature := range features {
-		*use.counter(feature)++
-	}
-	s.features[thread] = use
-}
-
-// ObserveMessageFeatures attributes accepted foreign sends and independent btw
-// outcomes to their sender. Unlike local effects, retries cross owner boundaries,
-// so these launch-local receipts deduplicate each operation's counted facts.
-func (s *Service) ObserveMessageFeatures(thread, call string, features ...Feature) {
-	if thread == "" || call == "" {
-		return
-	}
-	s.featureMu.Lock()
-	defer s.featureMu.Unlock()
-	if s.messageFeatures == nil {
-		s.messageFeatures = make(map[[2]string]uint64)
-	}
-	key := [2]string{thread, call}
-	seen, use := s.messageFeatures[key], s.features[thread]
-	for _, feature := range features {
-		bit := uint64(1) << feature
-		if seen&bit == 0 {
-			*use.counter(feature)++
-			seen |= bit
+func (s *Service) RecordFeature(ctx context.Context, thread, operation string, event FeatureEvent) {
+	if owner, err := s.owner(thread); err == nil {
+		if source := owner.featureSource.Load(); source != nil && *source != nil {
+			(*source).RecordFeature(ctx, FeatureFact{Thread: thread, Operation: operation, Event: event})
 		}
 	}
-	s.messageFeatures[key], s.features[thread] = seen, use
 }
 
-// ObserveCompaction counts a live native boundary once. Restored history is not
-// current-launch feature use.
-func (s *Service) ObserveCompaction(thread, item string) {
-	if thread == "" || item == "" {
-		return
+func (s *Service) FeatureUse(ctx context.Context, thread string) FeatureSnapshot {
+	var source FeatureSource
+	if owner, err := s.owner(thread); err == nil {
+		if bound := owner.featureSource.Load(); bound != nil {
+			source = *bound
+		}
 	}
-	s.featureMu.Lock()
-	defer s.featureMu.Unlock()
-	if s.compactions == nil {
-		s.compactions = make(map[[2]string]bool)
-	}
-	key := [2]string{thread, item}
-	if s.compactions[key] {
-		return
-	}
-	s.compactions[key] = true
-	use := s.features[thread]
-	use.Compactions++
-	s.features[thread] = use
+	return s.ReadFeatureUse(ctx, thread, source)
 }
 
-// FeatureUse returns the thread's own counts and the sum over its admitted
-// descendants, including settled ones, with the descendant thread identities.
-func (s *Service) FeatureUse(thread string) (self, descendants FeatureUse, threads []string) {
+// ReadFeatureUse also permits a native displayed thread before logical work has
+// admitted its tree. Reading never starts or resumes a runtime.
+func (s *Service) ReadFeatureUse(ctx context.Context, thread string, source FeatureSource) (result FeatureSnapshot) {
 	for _, member := range s.Descendants(thread) {
-		threads = append(threads, member.Thread)
+		result.Threads = append(result.Threads, member.Thread)
 	}
-	s.featureMu.Lock()
-	defer s.featureMu.Unlock()
-	for _, id := range threads {
-		descendants.add(s.features[id])
+	if source == nil {
+		result.Err = errors.New("native feature measurement is unavailable")
+		return
 	}
-	return s.features[thread], descendants, threads
+	ids := append([]string{thread}, result.Threads...)
+	values, err := source.ReadFeatureUse(ctx, ids)
+	result.Err = err
+	if err != nil {
+		return
+	}
+	for _, id := range ids {
+		if _, ok := values[id]; !ok {
+			result.Err = errors.New("native feature measurement is incomplete")
+			return
+		}
+	}
+	result.Self = values[thread]
+	for _, id := range result.Threads {
+		result.Descendants.add(values[id])
+	}
+	return
 }
 
-// confirmedFeatures classifies a confirmed effect step. Immediate and
-// reconciled acknowledgements both confirm once, so each use counts once.
-func confirmedFeatures(step string, effect Effect) (features []Feature) {
-	if effect.Sources != "" && (step == "admit" || step == "followup") {
-		features = append(features, FeatureAssignmentSources)
-	}
+func confirmedFeature(step string, effect Effect) *FeatureEvent {
 	switch {
 	case step == "compact":
-		return []Feature{FeatureSelfCompactionCompleted}
+		return &FeatureEvent{Kind: FeatureSelfResetCompleted}
 	case step == "admit":
-		if sources, _ := compact.ReloadSources(effect.Child.Preload.Selection); len(sources) > 0 {
-			return append(features, FeatureSpawn, FeatureSpawnPreload)
-		}
-		return append(features, FeatureSpawn)
+		sources, _ := compact.ReloadSources(effect.Child.Preload.Selection)
+		return &FeatureEvent{Kind: FeatureChildAdmitted, Preload: len(sources) > 0, Sources: effect.Sources != ""}
+	case step == "followup" && effect.Sources != "":
+		return &FeatureEvent{Kind: FeatureAssignmentDelivered, Sources: true}
 	case step == "final" && effect.Outcome == Completed:
 		selection := CompletionSelection(effect.Message)
-		if selection != "" && compact.CompletionSources(selection) == nil {
-			return []Feature{FeatureFinal, FeatureCompletionChanges}
-		}
-		return []Feature{FeatureFinal}
+		return &FeatureEvent{Kind: FeatureFinalDelivered, Changes: selection != "" && compact.CompletionSources(selection) == nil}
 	}
-	return features
+	return nil
 }

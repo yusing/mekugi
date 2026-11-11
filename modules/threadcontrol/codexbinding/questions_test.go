@@ -65,7 +65,7 @@ func TestSideQuestionKeepsLogicalStateAndOrdinaryDelivery(t *testing.T) {
 			if !reflect.DeepEqual(before, after) || inputs != len(host.inputs) || confirmations != len(host.confirmed) || resumes != host.resumes || calls != 1 {
 				t.Fatal("side question changed logical work or ordinary host delivery")
 			}
-			if self, _, _ := driver.control.FeatureUse(caller.Thread); self.Messages != 1 || self.SideQuestions != 1 || self.SideQuestionRejections+self.SideQuestionFailures != 0 {
+			if self, _, _ := featureUse(t, driver.control, caller.Thread); self.Messages != 1 || self.SideQuestions != 1 || self.SideQuestionRejections+self.SideQuestionFailures != 0 {
 				t.Fatalf("accepted side question counted %+v", self)
 			}
 		})
@@ -87,7 +87,7 @@ func TestSideQuestionKeepsLogicalStateAndOrdinaryDelivery(t *testing.T) {
 		if _, err := driver.Call(t.Context(), caller, "send_message", jsontext.Value(`{"target":"child","message":"message"`+option+`}`)); err != nil {
 			t.Fatal(err)
 		}
-		if self, _, _ := driver.control.FeatureUse(caller.Thread); self.Messages != 1 || self.SideQuestions+self.SideQuestionRejections+self.SideQuestionFailures != 0 {
+		if self, _, _ := featureUse(t, driver.control, caller.Thread); self.Messages != 1 || self.SideQuestions+self.SideQuestionRejections+self.SideQuestionFailures != 0 {
 			t.Fatalf("ordinary message counted %+v; a repeated call must reuse its send", self)
 		}
 	}
@@ -125,7 +125,7 @@ func TestSideQuestionFailuresNeverFallBackToInput(t *testing.T) {
 	if calls != 1 || len(host.inputs) != before || host.resumes != resumes {
 		t.Fatal("question failure changed target input or resumed the target")
 	}
-	if self, _, _ := driver.control.FeatureUse(caller.Thread); self.SideQuestions != 1 || self.Messages != 1 || self.SideQuestionFailures != 1 || self.SideQuestionRejections != 1 {
+	if self, _, _ := featureUse(t, driver.control, caller.Thread); self.SideQuestions != 1 || self.Messages != 1 || self.SideQuestionFailures != 1 || self.SideQuestionRejections != 1 {
 		t.Fatalf("btw counts must separate the dispatched failure from the rejected runtime call, excluding the foreign caller: %+v", self)
 	}
 	// A new question cannot return an answer under a newer logical work generation.
@@ -142,7 +142,7 @@ func TestSideQuestionFailuresNeverFallBackToInput(t *testing.T) {
 	if _, err := driver.Call(t.Context(), caller, "send_message", args); err == nil {
 		t.Fatal("changed target generation accepted stale answer")
 	}
-	if self, _, _ := driver.control.FeatureUse(caller.Thread); self.SideQuestions != 2 || self.SideQuestionFailures != 2 {
+	if self, _, _ := featureUse(t, driver.control, caller.Thread); self.SideQuestions != 2 || self.SideQuestionFailures != 2 {
 		t.Fatalf("discarded answer lost its accepted btw call or failure: %+v", self)
 	}
 }

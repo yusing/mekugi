@@ -59,6 +59,9 @@ func (r *Requests[T]) ArchiveSides(ctx context.Context, messages <-chan appserve
 			if !ok {
 				return errors.New("host disconnected before side history was archived")
 			}
+			if (message.Method == "featureUse/observed" || message.Method == "featureUse/unavailable") && r.Features != nil {
+				r.Features.InvalidateFeatureUse(errors.New("native feature fact was not delivered during side cleanup"))
+			}
 			var response Request[T]
 			if message.Method == "" {
 				response, _ = r.Take(string(message.ID))

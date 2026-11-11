@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"context"
 	"encoding/base64"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -348,16 +349,27 @@ func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
 	if thread == "" {
 		t.Fatal("fixture has no displayed thread")
 	}
-	coordination := driver.Coordination()
-	coordination.ObserveFeature(thread, control.FeatureWaitAll)
-	coordination.ObserveFeature("other-thread", control.FeatureWaitAll)
+	driver.BindFeatures(featureCountsFixture{thread: {AllWaits: 1}, "other-thread": {AllWaits: 99}})
+	if err := driver.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer driver.Stop(t.Context())
 	appServerTestKeys(t, u, "/session\r")
 	p := u.statusPanel
+	receive := func() {
+		result := <-p.metrics.pending
+		response := make(chan control.FeatureSnapshot, 1)
+		response <- result
+		p.metrics.pending = response
+		refreshSessionMetrics(p, u.sessionCapture, p.metrics.refreshed, false)
+	}
+	receive()
 	if p.Features == nil || p.Features.Self.AllWaits != 1 {
 		t.Fatalf("opened features = %+v", p.Features)
 	}
-	coordination.ObserveFeature(thread, control.FeatureWaitAll)
+	driver.BindFeatures(featureCountsFixture{thread: {AllWaits: 2}, "other-thread": {AllWaits: 99}})
 	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelRefresh})
+	receive()
 	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: 3})
 	if p.MetricTab != 3 {
 		t.Fatal("Features view was rejected")
@@ -380,4 +392,16 @@ func featureMetricsFixture() *sessionpresentation.FeatureMetrics {
 		Self:        sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 3, SelfCompactions: 8, SelfCompactionsCompleted: 2, SelfCompactionFailures: 1, AssignmentSources: 3, MessageSources: 3, ProgressWaits: 4, ProgressYields: 2, Spawns: 4, SpawnPreloads: 3, PreloadRejections: 1, Messages: 6, SideQuestions: 1, SideQuestionRejections: 1, Waits: 5, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}},
 		Descendants: sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 7, SelfCompactions: 10, SelfCompactionsCompleted: 4, SelfCompactionFailures: 2, AssignmentSources: 2, MessageSources: 1, ProgressWaits: 3, ProgressYields: 1, CompactionPreloads: 2, Spawns: 1, Finals: 8, CompletionChanges: 5, Messages: 2, SideQuestions: 2, SideQuestionFailures: 1, Waits: 3}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 2, Occurrences: 4, SavedTokens: -20, Unmeasured: 1}},
 	}
+}
+
+type featureCountsFixture map[string]control.FeatureUse
+
+func (f featureCountsFixture) RecordFeature(context.Context, control.FeatureFact) {}
+func (f featureCountsFixture) InvalidateFeatureUse(error)                         {}
+func (f featureCountsFixture) ReadFeatureUse(_ context.Context, threads []string) (map[string]control.FeatureUse, error) {
+	values := make(map[string]control.FeatureUse, len(threads))
+	for _, thread := range threads {
+		values[thread] = f[thread]
+	}
+	return values, nil
 }

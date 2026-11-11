@@ -102,6 +102,11 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	} else {
 		session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
 	}
+	if threads.features == nil {
+		threads.features = sessioncontrol.NewNativeFeatureUse(session.Client.Requests)
+	}
+	threads.driver.BindFeatures(threads.features)
+	session.Client.Requests.Features = threads.features
 	api.BindRequests(session.Client.Requests)
 	api.BindCoordination(threads.shared, threads.driver.DeliverMessages)
 	if session.preparer != nil {
@@ -673,6 +678,14 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	delegateApprovals := sessioncontrol.NewDelegateApprovals(session.ctx)
 	threads.approvals = delegateApprovals
 	return func() (runErr error) {
+		defer func() {
+			// A failed native stream can lose facts before the lifecycle worker
+			// receives them. Keep the root's retained counts, but do not report
+			// the family's partial measurement as complete after a child exits.
+			if runErr != nil {
+				threads.features.InvalidateFeatureUse(runErr)
+			}
+		}()
 		if threads.headless != nil {
 			defer func() {
 				if runErr != nil && !errors.Is(runErr, context.Canceled) {
@@ -814,6 +827,9 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 					}
 					session.Client.Dispatch(call)
 				case inspection := <-session.Client.Requests.Inspections():
+					if session.Client.Requests.DispatchMeasurement(inspection) {
+						continue
+					}
 					target := inspection.Target()
 					switch {
 					case inspection.ContextWindow() != "" && (target == session.Client.Thread || session.Client.Requests.HasSideThread(target)):

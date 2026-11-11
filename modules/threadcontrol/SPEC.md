@@ -683,14 +683,18 @@ owned runtimes before draining client connections.
 
 ## Feature use
 
-The service counts model-facing uses per thread for the
+Native Codex owns per-thread model-facing use counts for the
 [session Features view](../../apps/mekugi/internal/sessionpresentation/SPEC.md#session-metrics).
+Thread Control supplies accepted coordination facts and aggregates native snapshots
+over its admitted family; it does not maintain a second counter implementation.
 Totals and their subsets:
 
 - **Compactions:** completed live native context resets, whoever initiated them;
   accepted native `new_context` or `wait_agent` reset requests, and Claude `compact`;
-  those requests with
-  nonempty acquired-source selections. Self-initiated requests count at registration,
+  those requests with nonempty effective reload selections. A native `new_context`
+  request uses its effective retained selection at acceptance, including an inherited
+  selection. Automatic or manual reload alone adds no self-request or preload use.
+  Self-initiated requests count at registration,
   so requests whose reset fails can exceed the completed total. Self-request outcomes
   separately count completed resets and confirmed reset failures.
   Uncertain resets acquire an outcome only after confirmation;
@@ -699,7 +703,8 @@ Totals and their subsets:
 - **Spawns:** admitted children; those with nonempty preload sources; spawn calls
   whose preload selection is rejected.
 - **Delegate finals:** completed final answers; those selecting captured changes.
-- **Messages:** dispatched `send_message` calls; those with `btw:true`; `btw` calls an
+- **Messages:** accepted ordinary `send_message` registrations and dispatched
+  `btw:true` calls; the `btw` subset; `btw` calls an
   authenticated caller makes that are rejected before dispatch; dispatched `btw` calls
   whose answer fails or whose target generation changes.
 - **Waits:** newly registered `wait_agent` waits; those with `wait_mode:"all"`;
@@ -719,8 +724,18 @@ or action count once, and empty selections count no preload. Ordinary foreign se
 count on accepted recipient registration, even if delivery later needs reconciliation;
 foreign and local btw dispatches count before awaiting their answers. Both use the
 sender's counts, never the recipient's, and repeated operations count once per fact.
-Each use counts for the thread that made it; a descendant sum covers admitted descendants, including settled
-ones. Counts are invocation-local and never checkpointed, resumed or inherited by forks.
+Each use counts for the thread that made it; a descendant sum covers admitted descendants,
+including settled ones. Counts cover the current root launch, including native and Claude
+descendants, and survive child runtime replacement and UI reconnect within that launch.
+A fresh root launch starts empty: checkpoints, resume and fork do not restore historical
+counts. A newly confirmed retained operation can count in the current launch without
+backfilling its old request. Distinct rejected preload validation attempts still count
+separately, even when they use the same call identity.
+
+The native projection is independent of optional analytics and telemetry export. Reads
+create no turn or inference and do not start an idle runtime. Missing or incomplete
+measurement is unavailable, not measured zero. Metric transport failure does not retry
+or roll back the accepted coordination operation.
 
 ## Acceptance
 

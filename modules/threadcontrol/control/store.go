@@ -22,26 +22,23 @@ import (
 // Service borrows the selected history owner. Its indices contain admitted trees,
 // not host processes, request correlation, or another retention store.
 type Service struct {
-	mu              sync.RWMutex
-	trees           map[string]*treeOwner
-	featureMu       sync.Mutex
-	features        map[string]FeatureUse
-	compactions     map[[2]string]bool
-	messageFeatures map[[2]string]uint64
+	mu    sync.RWMutex
+	trees map[string]*treeOwner
 }
 
 type treeOwner struct {
-	session      history.Session
-	mutation     sync.Mutex
-	state        atomic.Pointer[Tree]
-	changed      chan struct{}
-	messageReads sync.Map
+	session       history.Session
+	mutation      sync.Mutex
+	state         atomic.Pointer[Tree]
+	changed       chan struct{}
+	messageReads  sync.Map
+	featureSource atomic.Pointer[FeatureSource]
 }
 
 const checkpointVersion = 4
 
 func New() *Service {
-	return &Service{trees: make(map[string]*treeOwner), features: make(map[string]FeatureUse)}
+	return &Service{trees: make(map[string]*treeOwner)}
 }
 
 // AdmitNamespace publishes authorized shared history before a new child can

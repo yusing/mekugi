@@ -62,7 +62,7 @@ func TestFinalDeliveryRetainsEveryCompletedAnswer(t *testing.T) {
 		if len(host.inputs) != 1 || host.inputs[0].Kind != "FINAL_ANSWER" || host.inputs[0].Message != want || host.inputs[0].Run {
 			t.Fatalf("final handoff changed or repeated: inputs=%d want_bytes=%d", len(host.inputs), len(want))
 		}
-		if self, _, _ := driver.control.FeatureUse("child"); self.CompletionChanges != 0 {
+		if self, _, _ := featureUse(t, driver.control, "child"); self.CompletionChanges != 0 {
 			t.Fatal("an answer without an edit range counted as one")
 		}
 	})
@@ -99,7 +99,7 @@ func TestFinalDeliveryCountsSuppliedEditRanges(t *testing.T) {
 				if len(host.inputs) != 1 || host.inputs[0].Kind != "FINAL_ANSWER" {
 					t.Fatalf("final delivery = %+v", host.inputs)
 				}
-				if self, _, _ := driver.control.FeatureUse("child"); self.CompletionChanges != tc.want || self.Finals != 1 {
+				if self, _, _ := featureUse(t, driver.control, "child"); self.CompletionChanges != tc.want || self.Finals != 1 {
 					t.Fatalf("edit ranges counted %d of %d finals, want %d of 1", self.CompletionChanges, self.Finals, tc.want)
 				}
 			})
@@ -120,7 +120,7 @@ func TestReconciledFinalDeliveryCountsEditRange(t *testing.T) {
 	if err := driver.DispatchPending(t.Context(), "child"); err == nil {
 		t.Fatal("delivery with lost acknowledgement succeeded")
 	}
-	if self, _, _ := driver.control.FeatureUse("child"); self.CompletionChanges != 0 || self.Finals != 0 {
+	if self, _, _ := featureUse(t, driver.control, "child"); self.CompletionChanges != 0 || self.Finals != 0 {
 		t.Fatalf("unconfirmed delivery counted %+v", self)
 	}
 	host.finalFailure = nil
@@ -132,7 +132,7 @@ func TestReconciledFinalDeliveryCountsEditRange(t *testing.T) {
 	if len(host.confirmed) != 1 || host.confirmed[0].Kind != "FINAL_ANSWER" {
 		t.Fatalf("confirmations = %+v", host.confirmed)
 	}
-	if self, _, _ := driver.control.FeatureUse("child"); self.CompletionChanges != 1 || self.Finals != 1 {
+	if self, _, _ := featureUse(t, driver.control, "child"); self.CompletionChanges != 1 || self.Finals != 1 {
 		t.Fatalf("reconciled delivery counted %+v, want one final with edit ranges", self)
 	}
 }

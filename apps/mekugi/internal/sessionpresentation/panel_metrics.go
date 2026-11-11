@@ -29,15 +29,22 @@ type FeatureMetrics struct {
 	Agents int
 	// DeduplicationOff distinguishes a disabled feature from zero receipts.
 	DeduplicationOff bool
+	Unavailable      bool
 }
 
-// NewFeatureMetrics joins coordination-owned counts with capture-owned
-// deduplication receipts for the same threads. A nil owner contributes nothing.
-func NewFeatureMetrics(thread string, coordination *control.Service, snapshot *transportcapture.MetricsSnapshot, deduplicate bool) *FeatureMetrics {
-	metrics := FeatureMetrics{DeduplicationOff: !deduplicate}
-	var descendants []string
+// NewFeatureMetrics joins native counts with capture-owned deduplication receipts
+// over the same admitted threads. Failed native reads are not measured zeros.
+func NewFeatureMetrics(thread string, coordination *control.Service, snapshot *transportcapture.MetricsSnapshot, deduplicate bool, use control.FeatureSnapshot) *FeatureMetrics {
+	metrics := FeatureMetrics{DeduplicationOff: !deduplicate, Unavailable: use.Err != nil}
+	metrics.Self.FeatureUse, metrics.Descendants.FeatureUse = use.Self, use.Descendants
+	descendants := use.Threads
 	if coordination != nil {
-		metrics.Self.FeatureUse, metrics.Descendants.FeatureUse, descendants = coordination.FeatureUse(thread)
+		if use.Err != nil {
+			descendants = nil
+			for _, member := range coordination.Descendants(thread) {
+				descendants = append(descendants, member.Thread)
+			}
+		}
 		if member, ok := coordination.Member(thread); ok {
 			metrics.Thread = pathdisplay.AgentDisplayName(member.Task)
 			if member.Parent == "" {
@@ -69,7 +76,11 @@ func featureFields(f *FeatureMetrics, captured bool) (fields []StatusField) {
 	table := func(group string, rows ...row) {
 		fields = append(fields, StatusField{Group: group, Heading: true, Values: []string{"Self", "Descendants"}})
 		for _, r := range rows {
-			fields = append(fields, StatusField{Group: group, Label: r.label, Values: []string{fmt.Sprint(r.self), fmt.Sprint(r.descendants)}})
+			values := []string{fmt.Sprint(r.self), fmt.Sprint(r.descendants)}
+			if f.Unavailable && group != "Output deduplication" {
+				values = []string{"unavailable", "unavailable"}
+			}
+			fields = append(fields, StatusField{Group: group, Label: r.label, Values: values})
 		}
 	}
 	self, desc := f.Self, f.Descendants

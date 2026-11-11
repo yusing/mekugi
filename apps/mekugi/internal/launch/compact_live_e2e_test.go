@@ -5,6 +5,8 @@ package launch
 import (
 	"bytes"
 	"context"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +19,10 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/providers/openai"
 )
 
@@ -114,6 +119,179 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 	}
 	terminal.stopCanceled()
 	t.Log("actual /compact: native reset followed by ordinary selected reads reached live continuation")
+}
+
+// This uses the production server, native runtime and Features consumer. Unlike
+// scripted provider fixtures, every inference and tool choice comes from Luna.
+func TestNativeMigrationLiveOpenAI(t *testing.T) {
+	model := strings.TrimSpace(os.Getenv("MEKUGI_E2E_MODEL"))
+	if model == "" {
+		t.Fatal("MEKUGI_E2E_MODEL must be set")
+	}
+	configRoot := os.Getenv("CODEX_HOME")
+	if configRoot == "" {
+		user, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		configRoot = filepath.Join(user, ".codex")
+	}
+	auth, err := os.ReadFile(filepath.Join(configRoot, "auth.json"))
+	if err != nil {
+		t.Fatal("live Codex authentication required")
+	}
+	for _, entry := range builtInOpenAICodexEnvironment(t) {
+		key, value, _ := strings.Cut(entry, "=")
+		switch key {
+		case "HOME", "CODEX_HOME", "XDG_CONFIG_HOME", "PATH":
+			t.Setenv(key, value)
+		}
+	}
+	for _, key := range []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "CODEX_API_KEY", "CHATGPT_API_KEY"} {
+		t.Setenv(key, "")
+	}
+	stateDirectory := t.TempDir()
+	if export := os.Getenv("MEKUGI_TEST_LIFECYCLE_EXPORT"); export != "" {
+		stateDirectory = filepath.Join(export, t.Name())
+		if err := os.MkdirAll(stateDirectory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("XDG_STATE_HOME", stateDirectory)
+	t.Setenv(routerTestWorkerEnvironment, "1")
+	if err := os.WriteFile(filepath.Join(os.Getenv("CODEX_HOME"), "auth.json"), auth, 0600); err != nil {
+		t.Fatal(err)
+	}
+	workspace := gitTestWorkspace(t)
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	guide := filepath.Join(workspace, "guide.txt")
+	write(guide, "The reset has completed. Do not reset again or use tools. Reply with DIRECT_RELOAD_OK_7391 and the token in the reloaded reload-check skill.\n")
+	write(filepath.Join(workspace, ".agents", "skills", "reload-check", "SKILL.md"), "---\nname: reload-check\ndescription: native reset verification\n---\nThe skill token is NATIVE_SKILL_8264.\n")
+	ctx, cancel := context.WithTimeout(t.Context(), 4*time.Minute)
+	socketDirectory := t.TempDir()
+	if err := os.Chmod(socketDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	socket := filepath.Join(socketDirectory, "s")
+	var diagnostics bytes.Buffer
+	joined := make(chan int, 1)
+	go func() { joined <- RunServer(ctx, []string{"--socket", socket}, &diagnostics) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case code := <-joined:
+			if code != 0 || t.Failed() {
+				t.Logf("isolated server exit=%d\n%s", code, &diagnostics)
+			}
+		case <-time.After(15 * time.Second):
+			t.Error("isolated server did not join its native runtimes")
+		}
+	})
+	serverCLIAwait(t, func() bool { _, err := os.Stat(socket); return err == nil })
+	transport := sessionapi.ControlTransport(socket)
+	defer transport.CloseIdleConnections()
+	connection, err := sessionapi.StartNative(ctx, &http.Client{Transport: transport}, "http://mekugi", sessionapi.NativeStart{
+		Workspace: workspace, RouterArgs: []string{"--shell-guard=false", "--debug"},
+		Args: []string{"--yolo", "-m", model, "-c", "features.plugins=false", "-c", `model_reasoning_effort="low"`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	var event sessionapi.NativeEvent
+	await := func(label string, ready func() bool) {
+		t.Helper()
+		for !ready() {
+			event, err = connection.Next()
+			if err != nil {
+				t.Fatalf("%s: %v; status=%+v", label, err, event.Frame.View.Status)
+			}
+			if state := event.Frame.View.Status.State; state.FailureKnown {
+				t.Fatalf("%s: native turn failed: %s", label, state.Failure)
+			}
+		}
+	}
+	contains := func(text string) bool {
+		body, err := json.Marshal(&event.Frame, jsonv1.FormatDurationAsNano(true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return bytes.Contains(body, []byte(text))
+	}
+	completed := func() bool { return event.Frame.View.Status.State.Text == "Completed" && !event.Frame.Facts.Busy }
+	resets := func() int {
+		count := 0
+		if event.Frame.Main != nil {
+			for _, entry := range event.Frame.Main.Entries {
+				if entry.Kind == "compaction" {
+					count++
+				}
+			}
+		}
+		return count
+	}
+	send := func(operation sessionapi.NativeOperation) {
+		t.Helper()
+		if _, err := connection.Send(ctx, event.Target(), operation); err != nil {
+			t.Fatal(err)
+		}
+	}
+	submit := func(prompt string) {
+		t.Helper()
+		send(sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
+			Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: event.Frame.View.Main.ID, Operation: sessionpresentation.SubmitComposer},
+			Draft:  composer.Draft{Text: prompt},
+		}})
+	}
+	metrics := func() *sessionpresentation.FeatureMetrics {
+		t.Helper()
+		send(sessionapi.NativeOperation{Command: new("/session")})
+		await("native FeatureUse snapshot", func() bool {
+			p := event.Frame.View.Panel
+			return p != nil && p.Features != nil && !p.Features.Unavailable
+		})
+		result := *event.Frame.View.Panel.Features
+		send(sessionapi.NativeOperation{Panel: &sessionpresentation.PanelAction{Version: event.Frame.View.Version, Panel: event.Frame.View.Panel.ID, Kind: sessionpresentation.PanelClose}})
+		await("closed metrics panel", func() bool { return event.Frame.View.Panel == nil })
+		return &result
+	}
+	await("native readiness", func() bool { return event.Frame.View.Main.ID != "" })
+	submit(`This is an explicitly requested native reset verification. First use functions.exec and tools.exec_command to run printf NATIVE_JS_OK. Then call the native functions.new_context tool with two reload.sources formed by concatenating "@" + "guide.txt" and "$" + "reload-check". Do not read either source beforehand. After reset follow the reloaded instructions. Do not use threadcontrol.compact.`)
+	await("direct reset and native file/skill reload", func() bool {
+		return completed() && contains("DIRECT_RELOAD_OK_7391") && contains("NATIVE_SKILL_8264")
+	})
+	first := metrics()
+	if first.Self.Compactions != 1 || first.Self.SelfCompactions != 1 || first.Self.CompactionPreloads != 1 || first.Self.SelfCompactionsCompleted != 1 || first.Self.SelfCompactionFailures != 0 {
+		t.Fatalf("direct reset native counts: %+v", first.Self.FeatureUse)
+	}
+	t.Logf("Luna direct reset, native file+skill reload and Features query: %+v", first.Self.FeatureUse)
+	write(guide, "This is fresh guidance after the later terminal reset. Do not use tools or reset again. Reply with RETAINED_SELECTION_OK_9517 and the token in reload-check.\n")
+	before := resets()
+	send(sessionapi.NativeOperation{Command: new("/compact")})
+	await("terminal reset", func() bool { return resets() > before && !event.Frame.Facts.Busy })
+	submit("Continue from the freshly reloaded guidance without reading files or using tools.")
+	await("retained source selection", func() bool { return completed() && contains("RETAINED_SELECTION_OK_9517") })
+	second := metrics()
+	if second.Self.Compactions != 2 || second.Self.SelfCompactions != 1 || second.Self.CompactionPreloads != 1 {
+		t.Fatalf("manual reset changed self-reset attribution: %+v", second.Self.FeatureUse)
+	}
+	t.Log("Luna later terminal reset reacquired retained sources without restoring old conversation")
+	write(guide, "These instructions apply only after the requested compound reset completes. Before that reset, follow the user task to spawn the delegate and register its compound wait. After the reset, consume the pending delegate outcome; do not spawn again or reset again. When the delegate finishes, reply COMPOUND_LIVE_OK_6238.\n")
+	submit(`The prior no-tools guidance is complete and superseded by this explicit new task. Do not read guide.txt before the compound reset; its instructions apply only after that reset. First use functions.exec to spawn one fresh-context delegate named worker, model ` + model + `, reasoning_effort low, preload.sources containing "@" + "guide.txt", message "This assignment supersedes the preloaded root instructions. Run sleep 3 with exec_command, then reply CHILD_LIVE_DONE. Do not spawn or reset.". Then call threadcontrol.wait_agent with compact:true and reload.sources containing "@" + "guide.txt" alone in its own functions.exec cell and finish that cell. After the compound reset follow the reloaded guidance.`)
+	await("compound reset and child completion", func() bool { return completed() && contains("COMPOUND_LIVE_OK_6238") })
+	last := metrics()
+	if last.Agents != 1 || last.Self.Spawns != 1 || last.Self.SpawnPreloads != 1 || last.Self.Waits == 0 || last.Self.Compactions != 3 || last.Self.SelfCompactions != 2 || last.Self.SelfCompactionsCompleted != 2 || last.Descendants.Finals != 1 {
+		t.Fatalf("compound/native family counts: self=%+v descendants=%+v agents=%d", last.Self.FeatureUse, last.Descendants.FeatureUse, last.Agents)
+	}
+	t.Logf("Luna compound reset and native family aggregation: self=%+v descendants=%+v", last.Self.FeatureUse, last.Descendants.FeatureUse)
 }
 
 type liveCompactProvider struct {

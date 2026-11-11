@@ -127,7 +127,7 @@ func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 						t.Fatalf("unchanged interval woke inference: inputs=%+v member=%+v", host.inputs, member)
 					}
 				}
-				if use, _, _ := driver.control.FeatureUse(caller.Thread); use.ProgressWaits != 2 || use.ProgressYields != 1 {
+				if use, _, _ := featureUse(t, driver.control, caller.Thread); use.ProgressWaits != 2 || use.ProgressYields != 1 {
 					t.Fatal("unchanged interval counted as delivered progress", use)
 				}
 				// A later interval under the same capture ID must remain eligible.
@@ -151,7 +151,7 @@ func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 			}
 			caller.Turn = host.nextTurn
 		}
-		if use, _, _ := driver.control.FeatureUse(caller.Thread); use.ProgressWaits != 3 || use.ProgressYields != 3 {
+		if use, _, _ := featureUse(t, driver.control, caller.Thread); use.ProgressWaits != 3 || use.ProgressYields != 3 {
 			t.Fatal("confirmed progress counts", use)
 		}
 		if source.reads != 6 || source.requests != 3 {
@@ -192,7 +192,7 @@ func TestWaitYieldUnavailableProgressStaysPending(t *testing.T) {
 	if err := driver.Wake(t.Context(), caller.Thread, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.ProgressWaits != 1 || use.ProgressYields != 0 {
+	if use, _, _ := featureUse(t, driver.control, caller.Thread); use.ProgressWaits != 1 || use.ProgressYields != 0 {
 		t.Fatal("unavailable progress counted", use)
 	}
 	if len(host.inputs) != 0 || driver.control.WaitPublication(caller.Thread).State != "waiting" {
@@ -227,7 +227,7 @@ func TestWaitYieldPrefersCompletionAfterPendingInjection(t *testing.T) {
 			if len(host.inputs) != 2 || host.inputs[0].Kind != "FINAL_ANSWER" || host.inputs[1].Wake == nil || host.inputs[1].Wake.State != "completed" {
 				t.Fatalf("completion lost precedence: %+v", host.inputs)
 			}
-			if use, _, _ := driver.control.FeatureUse(caller.Thread); use.ProgressYields != 0 {
+			if use, _, _ := featureUse(t, driver.control, caller.Thread); use.ProgressYields != 0 {
 				t.Fatal("completion counted as progress", use)
 			}
 			wake := host.inputs[1].Wake

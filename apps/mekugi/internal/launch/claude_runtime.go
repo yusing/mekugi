@@ -85,7 +85,7 @@ func (e *threadExecution) resumeClaude(ctx context.Context, member *control.Memb
 }
 
 func (e *threadExecution) startClaude(ctx context.Context, parent, resume string, settings control.Settings, info control.ThreadInfo, fork *claudeFork) (control.Receipt, error) {
-	child := &threadExecution{hub: e.hub, shared: e.shared, workers: e.workers, sourceSocket: e.sourceSocket, setup: e.setup, driver: e.driver, approvals: e.approvals, retained: e.retained, recovery: e.recovery, windows: e.windows.ForRuntime(), deduplication: e.deduplication}
+	child := &threadExecution{hub: e.hub, shared: e.shared, features: e.features, workers: e.workers, sourceSocket: e.sourceSocket, setup: e.setup, driver: e.driver, approvals: e.approvals, retained: e.retained, recovery: e.recovery, windows: e.windows.ForRuntime(), deduplication: e.deduplication}
 	id, err := e.hub.StartPrepared(ctx, parent, resume, settings.Workspace, func(runtime context.Context, api *sessionapi.Server) error {
 		return child.runClaude(runtime, api, parent, resume != "", settings, info, fork)
 	})
@@ -266,6 +266,7 @@ func (e *threadExecution) runClaude(ctx context.Context, api *sessionapi.Server,
 	for _, member := range family {
 		audience.Observe(member.Thread, member.Parent, member.Task, member.Parent != "")
 	}
+	e.driver.BindFeatures(e.features)
 	if err := e.driver.Connect(e, audience); err != nil {
 		return err
 	}

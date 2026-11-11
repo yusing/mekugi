@@ -48,6 +48,7 @@ type Request[T any] struct {
 // owner serializes issuance and response delivery; it does not execute host work.
 type Requests[T any] struct {
 	Coordination             *control.Service
+	Features                 control.FeatureSource
 	InterruptWait            func(thread, wait string)
 	InheritedEffort          func(model, effort string) (string, error)
 	CaptureConfiguredCatalog func([]byte)

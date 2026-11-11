@@ -21,7 +21,6 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
-	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func logicalWaitUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {

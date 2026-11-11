@@ -12,6 +12,7 @@ import (
 )
 
 type Inspection struct {
+	measurement *HostCall
 	thread      string
 	result      chan inspectionResult
 	window      string
@@ -76,6 +77,16 @@ func (request *Inspection) Target() string { return request.thread }
 
 // Inspections remains readable while a user shell blocks mutating host calls.
 func (r *Requests[T]) Inspections() <-chan *Inspection { return r.inspections }
+
+// DispatchMeasurement keeps observational RPCs on the existing ledger while
+// mutating session requests remain gated by approvals or auxiliary execution.
+func (r *Requests[T]) DispatchMeasurement(request *Inspection) bool {
+	if request.measurement == nil {
+		return false
+	}
+	r.Dispatch(request.measurement)
+	return true
+}
 
 // Inspect borrows current facts on the runtime's serialized event loop.
 func (r *Requests[T]) Inspect(ctx context.Context, thread string) (control.SessionDetails, error) {

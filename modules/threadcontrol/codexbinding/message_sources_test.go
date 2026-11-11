@@ -126,7 +126,7 @@ func TestAgentMessageSourceDeliveryAndRetry(t *testing.T) {
 			if _, err := driver.controlAction(t.Context(), caller, raw, name); err != nil {
 				t.Fatal(err)
 			}
-			use, _, _ := driver.control.FeatureUse(caller.Thread)
+			use, _, _ := featureUse(t, driver.control, caller.Thread)
 			if operation == "followup_task" {
 				if use.AssignmentSources != 1 || use.MessageSources != 0 {
 					t.Fatalf("follow-up source counts: %+v", use)
@@ -169,7 +169,7 @@ func TestAgentMessageSourcesLiteralAndDenied(t *testing.T) {
 	if _, err := driver.controlAction(t.Context(), caller, raw, "send_message"); err != nil {
 		t.Fatal(err)
 	}
-	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.MessageSources != 0 {
+	if use, _, _ := featureUse(t, driver.control, caller.Thread); use.MessageSources != 0 {
 		t.Fatal("literal counted as sources", use)
 	}
 	if host.reads != 0 || host.inputs[before].Message != literal {
@@ -181,7 +181,7 @@ func TestAgentMessageSourcesLiteralAndDenied(t *testing.T) {
 	if _, err := driver.controlAction(t.Context(), caller, raw, "send_message"); err != nil {
 		t.Fatal(err)
 	}
-	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.Messages != 2 || use.MessageSources != 1 {
+	if use, _, _ := featureUse(t, driver.control, caller.Thread); use.Messages != 2 || use.MessageSources != 1 {
 		t.Fatal("accepted diagnostic attachment lost its count", use)
 	}
 	got := host.inputs[len(host.inputs)-1].Message
@@ -193,7 +193,7 @@ func TestAgentMessageSourcesLiteralAndDenied(t *testing.T) {
 func TestRejectedMessageActionDoesNotAcquireSources(t *testing.T) {
 	driver, host, _, caller, _ := sourceFixture(t)
 	_, err := driver.controlAction(t.Context(), caller, []byte(`{"target":"agent:main","message":"Read @source.txt"}`), "followup_task")
-	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.AssignmentSources != 0 {
+	if use, _, _ := featureUse(t, driver.control, caller.Thread); use.AssignmentSources != 0 {
 		t.Fatal("rejected follow-up counted sources", use)
 	}
 	if err == nil || host.reads != 0 {
@@ -213,7 +213,7 @@ func TestSpawnMessageSourcesAndReconciliation(t *testing.T) {
 	if host.reads != 1 || !strings.Contains(host.inputs[before].Message, "FROZEN_CHILD_BYTES") || host.inputs[before+1].Message != "" || !host.inputs[before+1].Run {
 		t.Fatalf("spawn did not capture exactly once before first inference: %+v", host.inputs[before:])
 	}
-	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.AssignmentSources != 1 || use.SpawnPreloads != 0 {
+	if use, _, _ := featureUse(t, driver.control, caller.Thread); use.AssignmentSources != 1 || use.SpawnPreloads != 0 {
 		t.Fatal("assignment sources mixed with preload", use)
 	}
 	caller.Call = "uncertain-references"
@@ -229,7 +229,7 @@ func TestSpawnMessageSourcesAndReconciliation(t *testing.T) {
 	if _, err := driver.controlAction(t.Context(), caller, raw, "send_message"); err != nil {
 		t.Fatal(err)
 	}
-	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.MessageSources != 1 || use.Messages != 1 {
+	if use, _, _ := featureUse(t, driver.control, caller.Thread); use.MessageSources != 1 || use.Messages != 1 {
 		t.Fatal("reconciled message counted twice", use)
 	}
 	if host.reads != 2 || len(host.confirmed) == 0 || !strings.Contains(host.confirmed[len(host.confirmed)-1].Message, "FROZEN_CHILD_BYTES") {
@@ -282,6 +282,7 @@ func TestPeerMessageSourcesUseRecipientAndFreeze(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			bindFeatureRecorder(service, "remote", remote)
 			receiver := &messageSourceHost{reconciliationHost: &reconciliationHost{}}
 			if err := remote.Connect(receiver, receiver); err != nil {
 				t.Fatal(err)
@@ -330,10 +331,10 @@ func TestPeerMessageSourcesUseRecipientAndFreeze(t *testing.T) {
 			if _, err := driver.controlAction(t.Context(), caller, raw, "send_message"); err != nil {
 				t.Fatal(err)
 			}
-			if use, _, _ := driver.control.FeatureUse(caller.Thread); use.Messages != 1 || use.MessageSources != 1 || (use.SideQuestions == 1) != btw {
+			if use, _, _ := featureUse(t, driver.control, caller.Thread); use.Messages != 1 || use.MessageSources != 1 || (use.SideQuestions == 1) != btw {
 				t.Fatal("peer sender counts after retry", use)
 			}
-			if use, _, _ := service.FeatureUse("remote"); use.Messages != 0 || use.MessageSources != 0 || use.SideQuestions != 0 {
+			if use, _, _ := featureUse(t, service, "remote"); use.Messages != 0 || use.MessageSources != 0 || use.SideQuestions != 0 {
 				t.Fatal("peer send attributed to receiver", use)
 			}
 			if receiver.reads != 1 || btw && questions[1] != got || !btw && len(receiver.inputs) != 1 {
@@ -353,7 +354,7 @@ func TestPeerMessageSourcesUseRecipientAndFreeze(t *testing.T) {
 				if _, err := driver.controlAction(t.Context(), caller, raw, "send_message"); err == nil {
 					t.Fatal("failed foreign retry succeeded")
 				}
-				use, _, _ := driver.control.FeatureUse(caller.Thread)
+				use, _, _ := featureUse(t, driver.control, caller.Thread)
 				if use.Messages != 2 || use.SideQuestions != 2 || use.SideQuestionFailures != 1 || use.SideQuestionRejections != 0 {
 					t.Fatal("foreign dispatched failure classified as rejection or duplicated", use)
 				}
@@ -377,7 +378,7 @@ func TestPeerMessageSourcesUseRecipientAndFreeze(t *testing.T) {
 				if _, err := driver.controlAction(t.Context(), foreign, raw, "send_message"); err == nil {
 					t.Fatal("foreign caller accepted")
 				}
-				if use, _, _ := driver.control.FeatureUse(caller.Thread); use.Messages != 3 || use.SideQuestions != 3 || use.SideQuestionFailures != 2 || use.SideQuestionRejections != 1 {
+				if use, _, _ := featureUse(t, driver.control, caller.Thread); use.Messages != 3 || use.SideQuestions != 3 || use.SideQuestionFailures != 2 || use.SideQuestionRejections != 1 {
 					t.Fatal("foreign answer/rejection counts", use)
 				}
 			} else {
@@ -390,11 +391,11 @@ func TestPeerMessageSourcesUseRecipientAndFreeze(t *testing.T) {
 				if len(receiver.confirmed) != 1 || len(receiver.inputs) != 2 {
 					t.Fatal("foreign message replayed instead of reconciling")
 				}
-				if use, _, _ := driver.control.FeatureUse(caller.Thread); use.Messages != 2 || use.MessageSources != 2 {
+				if use, _, _ := featureUse(t, driver.control, caller.Thread); use.Messages != 2 || use.MessageSources != 2 {
 					t.Fatal("foreign reconciliation duplicated counts", use)
 				}
 			}
-			if use, _, _ := service.FeatureUse("remote"); use.Messages != 0 || use.MessageSources != 0 || use.SideQuestionFailures != 0 {
+			if use, _, _ := featureUse(t, service, "remote"); use.Messages != 0 || use.MessageSources != 0 || use.SideQuestionFailures != 0 {
 				t.Fatal("foreign outcomes counted for receiver", use)
 			}
 		})
@@ -408,7 +409,7 @@ func TestFollowupSourceFeaturesAfterReconciliation(t *testing.T) {
 	if _, err := driver.controlAction(t.Context(), caller, raw, "followup_task"); err == nil {
 		t.Fatal("uncertain follow-up succeeded")
 	}
-	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.AssignmentSources != 0 {
+	if use, _, _ := featureUse(t, driver.control, caller.Thread); use.AssignmentSources != 0 {
 		t.Fatal("unconfirmed follow-up counted", use)
 	}
 	host.failure = nil
@@ -417,7 +418,7 @@ func TestFollowupSourceFeaturesAfterReconciliation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.AssignmentSources != 1 || use.MessageSources != 0 || host.reads != 1 {
+	if use, _, _ := featureUse(t, driver.control, caller.Thread); use.AssignmentSources != 1 || use.MessageSources != 0 || host.reads != 1 {
 		t.Fatal("reconciled source assignment count", use)
 	}
 }

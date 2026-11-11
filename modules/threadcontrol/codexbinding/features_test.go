@@ -53,6 +53,7 @@ func TestSpawnCountsAcceptedNonemptyPreloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindFeatureRecorder(service, "root", driver)
 	host := &reconciliationHost{}
 	native := uniqueChildren{instructionNative: instructionNative{Native: host, owner: instructionRuntime{info: control.ThreadInfo{Thread: "root", Session: "session", Path: path}}}, created: new(0)}
 	if err := driver.Connect(native, host); err != nil {
@@ -81,7 +82,7 @@ func TestSpawnCountsAcceptedNonemptyPreloads(t *testing.T) {
 			if _, err := driver.Call(t.Context(), caller, "spawn_agent", args); err == nil {
 				t.Fatal("spawn with lost acknowledgement succeeded")
 			}
-			if self, _, _ := service.FeatureUse("root"); self.SpawnPreloads != 0 {
+			if self, _, _ := featureUse(t, service, "root"); self.SpawnPreloads != 0 {
 				t.Fatalf("unconfirmed spawn counted %d preloads", self.SpawnPreloads)
 			}
 			host.failure = nil
@@ -89,7 +90,7 @@ func TestSpawnCountsAcceptedNonemptyPreloads(t *testing.T) {
 		if _, err := driver.Call(t.Context(), caller, "spawn_agent", args); err != nil {
 			t.Fatalf("%s: %v", tc.call, err)
 		}
-		if self, _, _ := service.FeatureUse("root"); self.SpawnPreloads != tc.want {
+		if self, _, _ := featureUse(t, service, "root"); self.SpawnPreloads != tc.want {
 			t.Fatalf("%s: spawn preloads = %d, want %d", tc.call, self.SpawnPreloads, tc.want)
 		}
 	}
@@ -100,7 +101,7 @@ func TestSpawnCountsAcceptedNonemptyPreloads(t *testing.T) {
 			t.Fatalf("spawn accepted invalid preload %s", options)
 		}
 	}
-	if self, _, _ := service.FeatureUse("root"); self.Spawns != 3 || self.AssignmentSources != 3 || self.PreloadRejections != 2 {
+	if self, _, _ := featureUse(t, service, "root"); self.Spawns != 3 || self.AssignmentSources != 3 || self.PreloadRejections != 2 {
 		t.Fatalf("spawns = %d, preload rejections = %d, want 3 and 2", self.Spawns, self.PreloadRejections)
 	}
 }

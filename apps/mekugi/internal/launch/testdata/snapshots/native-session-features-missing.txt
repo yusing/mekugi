@@ -2,6 +2,7 @@
 
 
 
+
   ╭ Session · Features ─────────────────────────────────────────── Esc close ╮
   │                                                                          │
   │  Features  ────────────────────────────────────────────────────────────  │
@@ -14,8 +15,6 @@
   │  Self-initiated           8           10                                 │
   │  With preload             0            2                                 │
   │  Self completed           2            4                                 │
-  │  Cost skipped             3            1                                 │
-  │  Preflight skipped        1            2                                 │
   │  Self failed              1            2                                 │
   │                                                                          │
   │  Spawns                Self  Descendants                                 │
@@ -48,6 +47,7 @@
   │  Unavailable for this frontend.                                          │
   │                                                                          │
   ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ───────────────────────────╯
+
 
 
 

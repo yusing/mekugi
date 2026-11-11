@@ -136,10 +136,7 @@ func (s *Service) PrepareActionWithSources(ctx context.Context, caller Identity,
 		return nil
 	})
 	if err == nil && created && kind == "message" {
-		s.ObserveFeature(caller.Thread, FeatureMessage)
-		if sources != "" {
-			s.ObserveFeature(caller.Thread, FeatureMessageSources)
-		}
+		s.RecordFeature(ctx, caller.Thread, caller.Call, FeatureEvent{Kind: FeatureMessageAccepted, Sources: sources != ""})
 	}
 	return
 }
@@ -290,7 +287,7 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 }
 
 func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, receipt Receipt) error {
-	var features []Feature
+	var feature *FeatureEvent
 	err := s.update(ctx, caller, func(tree *Tree, _ *Member) error {
 		effect := tree.Effect(caller, id)
 		if effect == nil {
@@ -311,7 +308,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 		effect.Error = receipt.Error
 		if receipt.Uncertain || receipt.Error != "" {
 			if step == "compact" && !receipt.Uncertain {
-				features = []Feature{FeatureSelfCompactionFailure}
+				feature = &FeatureEvent{Kind: FeatureSelfResetFailed}
 			}
 			effect.State = "failed"
 			if receipt.Uncertain {
@@ -344,7 +341,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			return nil
 		}
 		effect.State = "confirmed"
-		features = confirmedFeatures(step, *effect)
+		feature = confirmedFeature(step, *effect)
 		switch step {
 		case "compact":
 			effect.State = "completed"
@@ -371,7 +368,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			if effect.Kind == "wake" {
 				effect.State = "completed"
 				if member.Wait.Yielded {
-					features = append(features, FeatureProgressYield)
+					feature = &FeatureEvent{Kind: FeatureProgressDelivered}
 					if member.YieldContext != member.Wait.YieldContext {
 						member.YieldSeen = nil
 					}
@@ -408,8 +405,8 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 		}
 		return nil
 	})
-	if err == nil {
-		s.ObserveFeature(caller, features...)
+	if err == nil && feature != nil {
+		s.RecordFeature(ctx, caller, id, *feature)
 	}
 	return err
 }

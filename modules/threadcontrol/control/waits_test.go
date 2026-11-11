@@ -96,6 +96,7 @@ func fixture(t *testing.T) (*Service, history.Session) {
 	service := New()
 	root := Member{Thread: "root", Session: "root-session", Task: "/root", Generation: 1, Status: Working, AudienceAdmitted: true, Settings: Settings{Workspace: t.TempDir(), RuntimeRoots: []string{"/admitted"}}, Limits: Limits{MinWaitMS: 5, MaxWaitMS: 100}}
 	must(t, service.AdmitRoot(t.Context(), session, &root))
+	service.BindFeatureUse("root", newFeatureRecorder())
 	hostStarted(t, service, "root", "rt")
 	return service, session
 }

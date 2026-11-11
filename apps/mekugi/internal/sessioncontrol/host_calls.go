@@ -57,12 +57,18 @@ func (r *Requests[T]) callPrepared(ctx context.Context, scope, method string, pa
 		}
 		return nil, &binding.DispatchError{Outcome: outcome, Method: method, Cause: cause}
 	}
+	calls := r.calls
+	var inspections chan *Inspection
+	if method == "featureUse/record" || method == "featureUse/read" {
+		calls, inspections = nil, r.inspections
+	}
 	select {
 	case <-ctx.Done():
 		return canceled(ctx.Err())
 	case <-r.closed:
 		return canceled(errors.New("host request owner closed"))
-	case r.calls <- call:
+	case calls <- call:
+	case inspections <- &Inspection{measurement: call}:
 	}
 	select {
 	case result := <-call.result:

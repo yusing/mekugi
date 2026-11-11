@@ -15,6 +15,7 @@ import (
 
 type Driver struct {
 	control      *control.Service
+	features     control.FeatureSource
 	mu           sync.RWMutex
 	host         control.Native
 	audience     ChildAudience

@@ -124,6 +124,7 @@ func (d *Driver) AdmitRequest(ctx context.Context, session history.Session, iden
 		return errors.New("thread request has no admitted session identity")
 	}
 	if err := d.control.RequestStarted(ctx, identity, root); !errors.Is(err, control.ErrNotAdmitted) {
+		d.bindFeatureUse(identity.Thread)
 		return err
 	}
 	if !root {
@@ -149,6 +150,7 @@ func (d *Driver) AdmitRequest(ctx context.Context, session history.Session, iden
 	if err := d.control.AdmitRoot(ctx, session, &member); err != nil {
 		return err
 	}
+	d.bindFeatureUse(identity.Thread)
 	return d.control.RequestStarted(ctx, identity, true)
 }
 

@@ -1,6 +1,7 @@
 package sessionpresentation
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -40,13 +41,19 @@ func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 	spawn("root", "root-turn", "worker", "worker")
 	spawn("worker", "worker-turn", "nested", "nested")
 	check(service.HostCompleted(t.Context(), "nested", "nested-turn", control.Completed, control.HostFailure{}))
-	for thread, feature := range map[string]control.Feature{"root": control.FeatureSpawnPreload, "worker": control.FeatureWaitAll, "nested": control.FeatureCompletionChanges, "unrelated": control.FeatureSideQuestion} {
-		service.ObserveFeature(thread, feature)
+	counts := featureCountsFixture{
+		"root":      {Spawns: 1, SpawnPreloads: 1},
+		"worker":    {Spawns: 1, AllWaits: 1},
+		"nested":    {CompletionChanges: 1},
+		"unrelated": {SideQuestions: 1},
+	}
+	read := func(thread string) control.FeatureSnapshot {
+		return service.ReadFeatureUse(t.Context(), thread, counts)
 	}
 	snapshot := &transportcapture.MetricsSnapshot{Schema: "mekugi.capture.metrics.v7", OutputDeduplicationThreads: map[string]transportcapture.OutputDeduplicationMetrics{
 		"root": {Projections: 1, Occurrences: 1}, "worker": {Projections: 1, Occurrences: 2, SavedTokens: 20}, "nested": {Projections: 1, Occurrences: 4, SavedTokens: 40}, "unrelated": {Projections: 1, Occurrences: 8},
 	}}
-	got := NewFeatureMetrics("worker", service, snapshot, true)
+	got := NewFeatureMetrics("worker", service, snapshot, true, read("worker"))
 	want := FeatureMetrics{
 		Self:        FeatureCounts{FeatureUse: control.FeatureUse{Spawns: 1, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 1, Occurrences: 2, SavedTokens: 20}},
 		Descendants: FeatureCounts{FeatureUse: control.FeatureUse{CompletionChanges: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 1, Occurrences: 4, SavedTokens: 40}},
@@ -55,12 +62,9 @@ func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 	if *got != want {
 		t.Fatalf("worker features = %+v", *got)
 	}
-	newFeatures := []control.Feature{control.FeatureWaitProgress, control.FeatureProgressYield, control.FeatureAssignmentSources, control.FeatureMessageSources, control.FeatureSelfCompactionCompleted, control.FeatureSelfCompactionFailure}
-	service.ObserveFeature("root", newFeatures...)
-	for range 2 {
-		service.ObserveFeature("nested", newFeatures...)
-	}
-	root := NewFeatureMetrics("root", service, snapshot, true)
+	counts["root"] = control.FeatureUse{Spawns: 1, SpawnPreloads: 1, ProgressWaits: 1, ProgressYields: 1, AssignmentSources: 1, MessageSources: 1, SelfCompactionsCompleted: 1, SelfCompactionFailures: 1}
+	counts["nested"] = control.FeatureUse{CompletionChanges: 1, ProgressWaits: 2, ProgressYields: 2, AssignmentSources: 2, MessageSources: 2, SelfCompactionsCompleted: 2, SelfCompactionFailures: 2}
+	root := NewFeatureMetrics("root", service, snapshot, true, read("root"))
 	if root.Thread != "Main" || root.Agents != 2 || root.Self.SpawnPreloads != 1 || root.Descendants.AllWaits != 1 || root.Descendants.CompletionChanges != 1 || root.Descendants.OutputDeduplication.Occurrences != 6 || root.Descendants.SideQuestions != 0 {
 		t.Fatalf("root features = %+v", *root)
 	}
@@ -91,8 +95,21 @@ func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 		t.Fatalf("features note = %q", values[[2]string{"Features", ""}])
 	}
 	// A disabled feature reads off, never as zero receipts.
-	off := cells(NewFeatureMetrics("root", service, snapshot, false))
+	off := cells(NewFeatureMetrics("root", service, snapshot, false, read("root")))
 	if _, counted := off[[2]string{"Output deduplication", "Occurrences"}]; counted || off[[2]string{"Output deduplication", ""}] != "Off for this launch." {
 		t.Fatalf("disabled deduplication = %v", off)
 	}
+}
+
+// Snapshot fixture, not a second feature counter producer.
+type featureCountsFixture map[string]control.FeatureUse
+
+func (f featureCountsFixture) RecordFeature(context.Context, control.FeatureFact) {}
+func (f featureCountsFixture) InvalidateFeatureUse(error)                         {}
+func (f featureCountsFixture) ReadFeatureUse(_ context.Context, threads []string) (map[string]control.FeatureUse, error) {
+	values := make(map[string]control.FeatureUse, len(threads))
+	for _, thread := range threads {
+		values[thread] = f[thread]
+	}
+	return values, nil
 }

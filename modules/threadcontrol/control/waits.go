@@ -265,19 +265,11 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, mode WaitMo
 		// Repeated calls from the same enclosing execution reuse the wait.
 		if err == nil && registered {
 			if compact {
-				s.ObserveFeature(caller.Thread, FeatureSelfCompaction)
-				if sources, _ := compactreload.ReloadSources(reload); len(sources) > 0 {
-					s.ObserveFeature(caller.Thread, FeatureCompactionPreload)
-				}
+				sources, _ := compactreload.ReloadSources(reload)
+				s.RecordFeature(ctx, caller.Thread, caller.Call, FeatureEvent{Kind: FeatureSelfResetRequested, Preload: len(sources) > 0})
 			}
 			if !standalone {
-				s.ObserveFeature(caller.Thread, FeatureWait)
-			}
-			if !standalone && mode == WaitAll {
-				s.ObserveFeature(caller.Thread, FeatureWaitAll)
-			}
-			if !standalone && yield != nil {
-				s.ObserveFeature(caller.Thread, FeatureWaitProgress)
+				s.RecordFeature(ctx, caller.Thread, caller.Call, FeatureEvent{Kind: FeatureWaitRegistered, All: mode == WaitAll, Progress: yield != nil})
 			}
 		}
 	}()

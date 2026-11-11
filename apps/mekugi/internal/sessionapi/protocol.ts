@@ -1458,6 +1458,7 @@ export type FeatureMetrics = {
   "Thread": string;
   "Agents": number;
   "DeduplicationOff": boolean;
+  "Unavailable": boolean;
 };
 
 export type Facts = {
@@ -1954,28 +1955,26 @@ export type payloadMetrics = {
 };
 
 export type FeatureUse = {
-  "Compactions": number;
-  "SelfCompactions": number;
-  "CompactionPreloads": number;
-  "Spawns": number;
-  "SpawnPreloads": number;
-  "PreloadRejections": number;
-  "Finals": number;
-  "CompletionChanges": number;
-  "Messages": number;
-  "SideQuestions": number;
-  "SideQuestionRejections": number;
-  "SideQuestionFailures": number;
-  "Waits": number;
-  "AllWaits": number;
-  "ProgressWaits": number;
-  "ProgressYields": number;
-  "AssignmentSources": number;
-  "MessageSources": number;
-  "SelfCompactionsCompleted": number;
-  "CompactionCostSkips": number;
-  "CompactionPreflightSkips": number;
-  "SelfCompactionFailures": number;
+  "compactions": number;
+  "selfCompactions": number;
+  "compactionPreloads": number;
+  "spawns": number;
+  "spawnPreloads": number;
+  "preloadRejections": number;
+  "finals": number;
+  "completionChanges": number;
+  "messages": number;
+  "sideQuestions": number;
+  "sideQuestionRejections": number;
+  "sideQuestionFailures": number;
+  "waits": number;
+  "allWaits": number;
+  "progressWaits": number;
+  "progressYields": number;
+  "assignmentSources": number;
+  "messageSources": number;
+  "selfCompactionsCompleted": number;
+  "selfCompactionFailures": number;
 };
 
 export type Read = {

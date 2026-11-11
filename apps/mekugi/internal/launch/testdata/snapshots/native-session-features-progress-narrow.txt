@@ -1,9 +1,5 @@
 ╭ Session · Features ─────────────╮
 │                                 │
-│  btw failed                     │
-│     0            1              │
-│                                 │
-│  Waits                          │
 │  Self  Descendants              │
 │  Registered                     │
 │     5            3              │
@@ -36,5 +32,9 @@
 │  including repeated history.    │
 │  Saved tokens are a net local   │
 │  estimate after reference       │
+│  overhead, negative when        │
+│  references cost more than the  │
+│  output they replace, and not   │
+│  provider billing savings.      │
 │                                 │
 ╰─ ←→ views  ↑↓ scroll  Esc ──────╯

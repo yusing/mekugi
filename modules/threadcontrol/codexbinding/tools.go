@@ -237,11 +237,11 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 			switch {
 			case err == nil:
 			case dispatched: // The answer failed or its target generation changed.
-				d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureSideQuestionFailure)
+				d.control.RecordFeature(ctx, caller.Thread, caller.Call, control.FeatureEvent{Kind: control.FeatureSideQuestionFailed})
 			default:
 				// Unauthenticated callers are not attributed to the thread they name.
 				if _, callerErr := d.control.Caller(caller); callerErr == nil {
-					d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureSideQuestionRejection)
+					d.control.RecordFeature(ctx, caller.Thread, caller.Call, control.FeatureEvent{Kind: control.FeatureSideQuestionRejected})
 				}
 			}
 		}()
@@ -291,10 +291,7 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 				return nil, err
 			}
 		}
-		d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureMessage, control.FeatureSideQuestion)
-		if sources != "" {
-			d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureMessageSources)
-		}
+		d.control.RecordFeature(ctx, caller.Thread, caller.Call, control.FeatureEvent{Kind: control.FeatureMessageAccepted, BTW: true, Sources: sources != ""})
 		dispatched = true
 		answer, err := owner.SideQuestion(ctx, target, message)
 		if err != nil {

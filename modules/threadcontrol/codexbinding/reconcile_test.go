@@ -424,6 +424,7 @@ func reconciliationFixture(t *testing.T) (*Driver, *reconciliationHost, history.
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindFeatureRecorder(service, "root", driver)
 	host := &reconciliationHost{}
 	if err := driver.Connect(host, host); err != nil {
 		t.Fatal(err)
@@ -974,17 +975,16 @@ func TestNativeResetFeatureObservation(t *testing.T) {
 		}
 		defer driver.Stop(t.Context())
 		for _, raw := range []string{
-			`{"threadId":"root","item":{"type":"contextCompaction","id":"failed","status":"failed"}}`,
-			`{"threadId":"foreign","item":{"type":"contextCompaction","id":"reset"}}`,
-			`{"threadId":"root","item":{"type":"contextCompaction","id":"reset","status":"completed"}}`,
-			`{"threadId":"root","item":{"type":"contextCompaction","id":"reset","status":"completed"}}`,
+			`{"threadId":"foreign","operation":"reset","event":{"type":"resetCompleted"}}`,
+			`{"threadId":"root","operation":"reset","event":{"type":"resetCompleted"}}`,
+			`{"threadId":"root","operation":"reset","event":{"type":"resetCompleted"}}`,
 		} {
-			if _, err := driver.Observe("item/completed", []byte(raw)); err != nil {
+			if _, err := driver.Observe("featureUse/observed", []byte(raw)); err != nil {
 				t.Fatal(err)
 			}
 		}
 		synctest.Wait()
-		if use, _, _ := driver.control.FeatureUse(caller.Thread); use.Compactions != 1 {
+		if use, _, _ := featureUse(t, driver.control, caller.Thread); use.Compactions != 1 {
 			t.Fatal(use)
 		}
 	})

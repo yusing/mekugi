@@ -108,6 +108,29 @@ Both paths allow three seconds to drain before forced termination. The caller
 joins this bounded shutdown and receives shutdown and process errors. A process and live RPC handle
 are never restored from retained evidence.
 
+## Feature-use reporting
+
+The root launch's native runtime owns per-thread feature-use counters independently
+of optional analytics and telemetry export. Native lifecycle owners supply reset and
+tool facts; the host supplies typed facts at accepted coordination boundaries. Those
+facts retain the actor's identity, including Claude descendants, rather than using a
+message recipient's identity or native collaboration ancestry.
+
+Native `featureUse/observed` notifications carry semantic facts; the host sends
+them and accepted coordination facts to the root's `featureUse/record` endpoint.
+`featureUse/read` exposes the current launch's snapshots without starting turns,
+inference or idle runtimes. Child runtime replacement and UI reconnect do not restart
+the root launch's counts. A new root launch does not restore them from history.
+Mekugi aggregates admitted-family membership and presents availability; it does not
+increment a parallel set of counters. The [FeatureUse contract](../../modules/threadcontrol/SPEC.md#feature-use)
+owns counting boundaries and retained outcomes. General usage, transport and output
+deduplication measurements remain separate owners.
+
+Native removal joins its existing event-producer drain before teardown. If draining
+cannot be guaranteed, `featureUse/unavailable` reports the gap before removal completes.
+Lost fact delivery or an abnormal native stream makes feature-use measurement
+unavailable for the rest of that launch, rather than presenting incomplete counts.
+
 ## Transcript observations
 
 The observation binding projects message and public-summary lifecycle facts into

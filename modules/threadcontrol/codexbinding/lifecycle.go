@@ -29,6 +29,8 @@ type hostObservation struct {
 	compound             *control.CompoundSettlement
 	compoundReply        func(control.CompoundDisposition, error)
 	compoundReset        *control.CompoundReset
+	feature              *control.FeatureFact
+	features             chan control.FeatureSnapshot
 }
 
 // CompactionFailure is auxiliary: preserve logical work while displaying the failure.
@@ -62,7 +64,17 @@ func (d *Driver) Stop(ctx context.Context) error {
 	}
 	d.cancel()
 	thread := d.thread
+	pending := d.pending
+	d.pending = nil
 	d.mu.Unlock()
+	for _, event := range pending {
+		if source := d.featureSource(); event.feature != nil && source != nil {
+			source.InvalidateFeatureUse(context.Canceled)
+		}
+		if event.features != nil {
+			event.features <- control.FeatureSnapshot{Err: context.Canceled}
+		}
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -100,6 +112,31 @@ func (d *Driver) NativeCompoundReplyFailed(input control.CompoundSettlement, fai
 // Observe returns a completion receipt only for admitted terminal observations.
 // The host event loop can defer terminal presentation without waiting for I/O.
 func (d *Driver) Observe(method string, raw jsontext.Value) (<-chan error, error) {
+	if method == "featureUse/unavailable" {
+		var notice struct {
+			Thread  string `json:"threadId"`
+			Message string `json:"message"`
+		}
+		err := json.Unmarshal(raw, &notice, json.RejectUnknownMembers(true))
+		if err == nil {
+			err = errors.New(notice.Message)
+		}
+		if source := d.featureSource(); source != nil {
+			source.InvalidateFeatureUse(err)
+		}
+		return nil, nil
+	}
+	if method == "featureUse/observed" {
+		var fact control.FeatureFact
+		if err := json.Unmarshal(raw, &fact, json.RejectUnknownMembers(true)); err != nil {
+			if source := d.featureSource(); source != nil {
+				source.InvalidateFeatureUse(err)
+			}
+			return nil, nil
+		}
+		d.enqueue(hostObservation{thread: fact.Thread, method: method, feature: &fact})
+		return nil, nil
+	}
 	if method == "thread/compoundWait/reset" {
 		var receipt control.CompoundReset
 		if err := json.Unmarshal(raw, &receipt, json.RejectUnknownMembers(true)); err != nil {
@@ -120,7 +157,7 @@ func (d *Driver) Observe(method string, raw jsontext.Value) (<-chan error, error
 	if method == "item/completed" && value.Item.Type == "agentMessage" && value.Item.Delivery == "async" && len(value.Item.Questions) > 0 {
 		return nil, nil
 	}
-	if method == "item/completed" && !(value.Item.Type == "agentMessage" && value.Item.Phase != "commentary" || value.Item.Type == "userMessage" && value.Item.ClientID != "" || value.Item.Type == "contextCompaction") {
+	if method == "item/completed" && !(value.Item.Type == "agentMessage" && value.Item.Phase != "commentary" || value.Item.Type == "userMessage" && value.Item.ClientID != "") {
 		return nil, nil
 	}
 	if _, ok := d.control.Member(value.ThreadID); !ok {
@@ -169,6 +206,12 @@ func (d *Driver) enqueue(event hostObservation) {
 	if d.lifecycle == nil || d.lifecycle.Err() != nil {
 		d.mu.Unlock()
 		err := errors.New("thread lifecycle is unavailable")
+		if source := d.featureSource(); event.feature != nil && source != nil {
+			source.InvalidateFeatureUse(err)
+		}
+		if event.features != nil {
+			event.features <- control.FeatureSnapshot{Err: err}
+		}
 		if event.compoundReply != nil {
 			event.compoundReply(control.CompoundDisposition{Ticket: event.compound.Ticket}, err)
 		}
@@ -215,11 +258,25 @@ func (d *Driver) reduceHost() {
 		d.pending = d.pending[1:]
 		d.mu.Unlock()
 		if d.lifecycle.Err() != nil {
+			if source := d.featureSource(); event.feature != nil && source != nil {
+				source.InvalidateFeatureUse(context.Canceled)
+			}
+			if event.features != nil {
+				event.features <- control.FeatureSnapshot{Err: d.lifecycle.Err()}
+			}
 			return
 		}
 		thread, p := event.thread, event.value
 		var err error
 		switch event.method {
+		case "featureUse/read":
+			event.features <- d.control.ReadFeatureUse(d.lifecycle, thread, d.featureSource())
+			continue
+		case "featureUse/observed":
+			if source := d.featureSource(); source != nil {
+				source.RecordFeature(d.lifecycle, *event.feature)
+			}
+			continue
 		case "thread/compoundWait/settle":
 			var response control.CompoundDisposition
 			response, err = d.control.SettleCompound(d.lifecycle, *event.compound)
@@ -233,6 +290,9 @@ func (d *Driver) reduceHost() {
 			err = d.control.CheckpointWait(d.lifecycle, thread, p.TurnID)
 		case "thread/restore":
 			err = d.control.Restore(d.lifecycle, event.session)
+			if err == nil {
+				d.bindFeatureUse(thread)
+			}
 			if err == nil {
 				for _, child := range d.control.Descendants(thread) {
 					if !d.control.ObserveAudience(child.Thread, d.audience.ObserveAdmitted) {
@@ -266,10 +326,6 @@ func (d *Driver) reduceHost() {
 			}
 		case "item/completed":
 			switch p.Item.Type {
-			case "contextCompaction":
-				if p.Item.Status == "" || p.Item.Status == "completed" {
-					d.control.ObserveCompaction(thread, p.Item.ID)
-				}
 			case "userMessage":
 				err = d.control.HumanInputCommitted(d.lifecycle, thread, p.TurnID, p.Item.ClientID)
 			default:

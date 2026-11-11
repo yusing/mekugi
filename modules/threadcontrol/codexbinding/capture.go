@@ -2,6 +2,7 @@ package codexbinding
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -90,7 +91,7 @@ func (d *Driver) PrepareSpawn(ctx context.Context, caller binding.MCPIdentity, o
 	d.mu.RUnlock()
 	prepared, err := prepareChild(settings, member.Limits, options, models, config.Layers, [3]*string{config.Config.Agents.Model, config.Config.Agents.Effort, config.Config.Features.MultiAgent.ChildInstructions}, nativeModels)
 	if errors.Is(err, errContextPreload) {
-		d.control.ObserveFeature(caller.Thread, control.FeaturePreloadRejection)
+		d.control.RecordFeature(ctx, caller.Thread, rand.Text(), control.FeatureEvent{Kind: control.FeaturePreloadRejected})
 	}
 	if err != nil {
 		return prepared, err

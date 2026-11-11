@@ -39,7 +39,7 @@ func TestWaitYieldUsesRetainedWake(t *testing.T) {
 			progress := WaitProgress{Agents: []AgentProgress{{Task: "/root/child", Changes: "mchanges amber1 --summary"}}}
 			must(t, s.RetainWaitProgress(t.Context(), "root", caller.Call, "context", progress, map[string]int{"capture": 2}))
 			must(t, s.EffectAcknowledged(t.Context(), "root", caller.Call, Receipt{Uncertain: true, Error: "lost acknowledgement"}))
-			if use, _, _ := s.FeatureUse("root"); use.ProgressWaits != 1 || use.ProgressYields != 0 {
+			if use, _, _ := featureUse(t, s, "root"); use.ProgressWaits != 1 || use.ProgressYields != 0 {
 				t.Fatal("uncertain yield counted", use)
 			}
 			if len(s.YieldCursor("root", "context")) != 0 {
@@ -48,13 +48,14 @@ func TestWaitYieldUsesRetainedWake(t *testing.T) {
 			root, _ := s.Member("root")
 			restored := New()
 			must(t, restored.AdmitRoot(t.Context(), session, root))
+			restored.BindFeatureUse("root", newFeatureRecorder())
 			retained, _ := restored.Member("root")
 			if retained.Wait.Progress == nil || retained.Wait.Progress.Agents[0].Changes != progress.Agents[0].Changes || len(restored.Due("root", now.Add(time.Hour))) != 0 {
 				t.Fatal("restore lost frozen yield or rearmed it")
 			}
 			must(t, restored.EffectAcknowledged(t.Context(), "root", caller.Call, Receipt{Reconciled: true, Turn: "next"}))
 			must(t, restored.EffectAcknowledged(t.Context(), "root", caller.Call, Receipt{Reconciled: true, Turn: "next"}))
-			if use, _, _ := restored.FeatureUse("root"); use.ProgressWaits != 0 || use.ProgressYields != 1 {
+			if use, _, _ := featureUse(t, restored, "root"); use.ProgressWaits != 0 || use.ProgressYields != 1 {
 				t.Fatal("restored counts or duplicate confirmation", use)
 			}
 			if restored.YieldCursor("root", "context")["capture"] != 2 || restored.WaitPublication("root").State != "yielded" {

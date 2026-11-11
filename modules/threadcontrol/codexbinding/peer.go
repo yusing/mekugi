@@ -75,10 +75,7 @@ func (d *Driver) messagePeer(ctx context.Context, caller control.Identity, targe
 				return nil, err
 			}
 		}
-		d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureMessage, control.FeatureSideQuestion)
-		if sources != "" {
-			d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureMessageSources)
-		}
+		d.control.RecordFeature(ctx, caller.Thread, caller.Call, control.FeatureEvent{Kind: control.FeatureMessageAccepted, BTW: true, Sources: sources != ""})
 		*dispatched = true
 		answer, err := peer.Runtime.SideQuestion(ctx, member, peer.Source.Sender()+"\n"+message)
 		if err != nil {
@@ -107,10 +104,7 @@ func (d *Driver) messagePeer(ctx context.Context, caller control.Identity, targe
 	if err != nil {
 		return nil, err
 	}
-	d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureMessage)
-	if sources != "" {
-		d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureMessageSources)
-	}
+	d.control.RecordFeature(ctx, caller.Thread, caller.Call, control.FeatureEvent{Kind: control.FeatureMessageAccepted, Sources: sources != ""})
 	if err := peer.Deliver(ctx, target); err != nil {
 		return nil, err
 	}
