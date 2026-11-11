@@ -404,11 +404,8 @@ func (b *claudeBridge) completionContext(ctx context.Context, input control.Nati
 	fail := func(message string) (sessioncontrol.PreparedInputContext, error) {
 		return sessioncontrol.PreparedInputContext{Text: "Completion changes unavailable: " + message}, nil
 	}
-	_, selection, found := compact.SplitCompactReload(input.Message)
-	if !found {
-		if compact.ReloadText(input.Message) != input.Message {
-			return fail("incomplete reload metadata")
-		}
+	selection := control.CompletionSelection(input.Message)
+	if selection == "" {
 		return sessioncontrol.PreparedInputContext{}, nil
 	}
 	if err := compact.CompletionSources(selection); err != nil {

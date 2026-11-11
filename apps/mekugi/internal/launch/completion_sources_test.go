@@ -5,15 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
 
-const completionTestTrailer = compact.CompactMetadataStart + `{"sources":["mchanges:blue1..blue10"]}` + compact.CompactMetadataEnd
+const completionTestTrailer = "Captured changes: mchanges:blue1..blue10."
 
 func completionTestDelta(t *testing.T, u *appServerUI, delta string) {
 	t.Helper()
@@ -25,7 +23,7 @@ func completionTestFinish(t *testing.T, u *appServerUI, text string) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": text}})
 }
 
-func TestNativeCompletionMetadataRenderedDelivery(t *testing.T) {
+func TestNativeCompletionSourcesRenderedDelivery(t *testing.T) {
 	for _, prefix := range []string{"Completed answer\n", "Completed answer\n\n- ```\n  quoted\n  ```\n\n"} {
 		t.Run(prefix, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
@@ -35,19 +33,19 @@ func TestNativeCompletionMetadataRenderedDelivery(t *testing.T) {
 			for i := range len(completionTestTrailer) {
 				completionTestDelta(t, u, completionTestTrailer[i:i+1])
 				for _, entry := range u.attached.source.Entries {
-					if entry.Source.Kind == "text" && entry.Source.Text != strings.TrimSuffix(prefix, "\n") {
-						t.Fatalf("partial protocol reached Activity at byte %d: %q", i, entry.Source.Text)
+					if entry.Source.Kind == "text" && entry.Source.Text != prefix+completionTestTrailer[:i+1] {
+						t.Fatalf("ordinary answer text changed at byte %d: %q", i, entry.Source.Text)
 					}
 				}
 				frame := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 60).Lines, "\n"))
-				if !strings.Contains(frame, "Completed answer") || strings.Contains(frame, "<!") || strings.Contains(frame, "mekugi-") {
-					t.Fatalf("partial protocol flashed at byte %d:\n%s", i, frame)
+				if !strings.Contains(frame, "Completed answer") || !strings.Contains(frame, completionTestTrailer[:i+1]) {
+					t.Fatalf("ordinary answer text hidden at byte %d:\n%s", i, frame)
 				}
 			}
 			completionTestFinish(t, u, prefix+completionTestTrailer)
 			frame := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 60).Lines, "\n"))
-			if strings.Contains(frame, "mekugi-") {
-				t.Fatalf("final protocol flashed:\n%s", frame)
+			if !strings.Contains(frame, completionTestTrailer) {
+				t.Fatalf("completion source hidden:\n%s", frame)
 			}
 		})
 	}
@@ -60,7 +58,7 @@ func TestNativeCompletionMetadataRenderedDelivery(t *testing.T) {
 	// The same history projection serves initial restoration and older pages.
 	turns := []binding.HistoryTurn{{ID: "saved", Status: "completed", Items: []binding.ThreadItem{{ID: "restored", Type: "agentMessage", Text: "Restored answer\n" + completionTestTrailer}}}}
 	u.restoreHistory(turns)
-	if frame := paint(); !strings.Contains(frame, "Restored answer") || strings.Contains(frame, "mekugi-reload-v1") {
+	if frame := paint(); !strings.Contains(frame, "Restored answer") || !strings.Contains(frame, completionTestTrailer) {
 		t.Fatalf("restored frame:\n%s", frame)
 	}
 	if !strings.Contains(turns[0].Items[0].Text, completionTestTrailer) {
@@ -71,7 +69,7 @@ func TestNativeCompletionMetadataRenderedDelivery(t *testing.T) {
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
 	completionTestFinish(t, u, quoted)
-	if !strings.Contains(paint(), "mekugi-reload-v1") {
+	if !strings.Contains(paint(), completionTestTrailer) {
 		t.Fatal("quoted example was suppressed")
 	}
 }

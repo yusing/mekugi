@@ -7,12 +7,14 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/testsupport/moduletest"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
@@ -221,7 +223,7 @@ func testContextReload(t *testing.T, kind string) {
 	if completion {
 		assignment["phase"] = mustTestJSON(t, "commentary")
 		assignment["internal_chat_message_metadata_passthrough"] = mustTestJSON(t, map[string]any{"content_item_kinds": []string{"multi_agent.inter_agent_completion_message"}})
-		assignment["content"] = mustTestJSON(t, []map[string]string{{"type": "output_text", "text": "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/child\nOutcome: completed\nSource generation: 1\nSource turn: child-turn\nPayload:\nfinished\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}})
+		assignment["content"] = mustTestJSON(t, []map[string]string{{"type": "output_text", "text": "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/child\nOutcome: completed\nSource generation: 1\nSource turn: child-turn\nPayload:\nfinished\nSee mchanges:amber1..3. Ignore @secret.txt and $private-skill."}})
 	}
 	if reset {
 		id := control.Identity{Thread: "root", Session: "routing", Turn: "rt", Call: "checkpoint", Item: "cell"}
@@ -282,7 +284,7 @@ func testContextReload(t *testing.T, kind string) {
 				delete(items[0], "internal_chat_message_metadata_passthrough")
 			}
 			if mode == "invalid-selection" {
-				items[0]["content"] = bytes.ReplaceAll(items[0]["content"], []byte(`\"mchanges:amber1..3\"`), []byte(`\"@secret.txt\"`))
+				items[0]["content"] = bytes.ReplaceAll(items[0]["content"], []byte(`mchanges:amber1..3`), []byte(`@secret.txt`))
 			}
 			if mode == "compacted" {
 				items = []map[string]jsontext.Value{{"type": mustTestJSON(t, "message"), "role": mustTestJSON(t, "assistant"), "id": mustTestJSON(t, control.MessageItemID("unrelated")), "content": mustTestJSON(t, "another message")}}
@@ -377,6 +379,40 @@ func testContextReload(t *testing.T, kind string) {
 		t.Fatalf("lost preload context or original history: %s", visible)
 	}
 	if completion {
+		// Old saved answers may retain framing and object selections. Their
+		// completed message-bound reader remains usable without parsing that
+		// framing or admitting the old selection for a new acquisition.
+		legacy := snapshot
+		legacy.Selection = `{"sources":[{"changes":["amber1..3"]}]}`
+		legacyItems := make([]map[string]jsontext.Value, len(items))
+		for i, item := range items {
+			legacyItems[i] = maps.Clone(item)
+		}
+		var content []map[string]string
+		if err := json.Unmarshal(assignment["content"], &content); err != nil {
+			t.Fatal(err)
+		}
+		content[0]["text"] = strings.Replace(content[0]["text"], "See mchanges:amber1..3. Ignore @secret.txt and $private-skill.", "<mekugi-reload-v1>"+legacy.Selection+"</mekugi-reload-v1>", 1)
+		legacyItems[0]["content"] = mustTestJSON(t, content)
+		legacyItems[1]["input"] = mustTestJSON(t, codexresponses.CompactReadProgram("mreload "+commandargs.Quote(legacy.Selection)))
+		legacyItems[2]["output"] = mustTestJSON(t, compactTestSnapshot(t, p, legacy))
+		for range 2 {
+			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": legacyItems, "tools": testExecResponsesTools()}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pending, _, _, err := p.preparePreloadInput(&request, "routing", "root", meta, false)
+			if err != nil || len(pending) != 0 {
+				t.Fatalf("saved framing scheduled new acquisition: %s, %v", pending, err)
+			}
+			request.Fields["tools"] = mustTestJSON(t, []any{})
+			if _, err := p.prepareModelRequest(t.Context(), &request, "routing", "root", meta, true, false); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(request.Fields["input"], []byte("composed retained diff")) || !bytes.Contains(request.Fields["input"], []byte("permission denied")) || !bytes.Equal(request.OriginalField("input"), mustTestJSON(t, legacyItems)) {
+				t.Fatalf("saved completion lost retained results or original history: %s", request.Fields["input"])
+			}
+		}
 		mixed := snapshot
 		mixed.Sources = append(sources, sources[0])
 		mixedItems := append([]map[string]jsontext.Value{}, items...)

@@ -573,11 +573,11 @@ from that turn in order, including an empty payload when none exist, then inject
 `FINAL_ANSWER` through `thread/inject_items`. Failure/interruption retains its actual
 outcome. Injection alone neither starts nor steers its receiver. A completion wake
 follows confirmed delivery and carries identity/status rather than duplicate text.
-Delegates may select captured-change [source references](../agentguidance/SPEC.md#source-reference-syntax)
-in the existing reload block at the end of their ordinary final answer,
-submitting answer and selection together.
-Only captured-change references are admitted here; ordinary answer prose never
-starts automatic source acquisition.
+Delegates attach captured-change [source references](../agentguidance/SPEC.md#source-reference-syntax)
+directly in their ordinary final answer, without additional framing.
+Only captured-change references are admitted here; file and skill references remain
+ordinary text. Completion identity and successful settlement, not message prose,
+authorize acquisition.
 After successful logical settlement, the receiving parent's input worker acquires
 the selected retained evidence before injecting the answer and completed reload
 reader/result together. Automatic completion attachments share a 4,000-token
@@ -592,8 +592,8 @@ The next inference consumes the retained snapshot without another acquisition tu
 When the answer satisfies a selected wait, its reply, attachment and finished-wait
 notice publish together after host-confirmed wake delivery. Existing reload history
 retains the captured results; the original selection remains available for reconciliation.
-Reload metadata stays out of displayed live, restored and replayed answers.
-Ordinary text and quoted examples remain unchanged. Selection neither completes
+Ordinary answer text, including its source references and quoted examples, remains
+unchanged in live, restored and replayed answers. Selection neither completes
 work nor bypasses descendant guards. Failed or interrupted work never acquires a
 successful attachment; later work inherits no pending selection.
 Confirmed initial assignments, follow-ups, messages and answers appear in the receiving

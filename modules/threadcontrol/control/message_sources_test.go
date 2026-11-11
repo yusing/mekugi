@@ -12,6 +12,21 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
+func TestCompletionSelectionUsesSharedReferences(t *testing.T) {
+	for _, tc := range []struct{ message, selection string }{
+		{"Finished. Captures: mchanges:amber1..3,birch2. Again `mchanges:amber1..3,birch2`.", `{"sources":["mchanges:amber1..3,birch2"]}`},
+		{"See @source.go, $skill and mchanges:amber1, then mchanges:birch2..4!", `{"sources":["mchanges:amber1","mchanges:birch2..4"]}`},
+		{"Malformed mchanges:amber1.. retains a diagnostic.", `{"sources":["mchanges:amber1.."]}`},
+		{`{"sources":["mchanges:amber1"]}`, `{"sources":["mchanges:amber1"]}`},
+		{`Escaped \mchanges:amber1; @source.go and $skill are not completion sources.`, ""},
+		{`{"sources":[{"changes":["amber1"]}]}`, ""},
+	} {
+		if got := CompletionSelection(tc.message); got != tc.selection {
+			t.Errorf("selection from %q = %s, want %s", tc.message, got, tc.selection)
+		}
+	}
+}
+
 func TestMessageSnapshotConcurrentAcquisitionAndRestore(t *testing.T) {
 	s, session := fixture(t)
 	caller := identity("root", "rt")

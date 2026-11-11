@@ -8,7 +8,6 @@ import (
 	"testing/synctest"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
@@ -74,9 +73,10 @@ func TestFinalDeliveryCountsSuppliedEditRanges(t *testing.T) {
 		name, selection string
 		want            uint64
 	}{
-		{"changes", `{"sources":["mchanges:blue1..blue3"]}`, 1},
-		{"empty", `{"sources":[]}`, 0},
-		{"file", `{"sources":["@main.go"]}`, 0},
+		{"changes", "Reviewed mchanges:blue1..blue3.", 1},
+		{"empty", "No source attachment.", 0},
+		{"file", "See @main.go and $skill.", 0},
+		{"invalid", "mchanges:blue1..", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -86,7 +86,7 @@ func TestFinalDeliveryCountsSuppliedEditRanges(t *testing.T) {
 				}
 				defer driver.Stop(t.Context())
 				host.inputs = nil
-				text := "Done.\n" + compact.CompactMetadataStart + tc.selection + compact.CompactMetadataEnd
+				text := "Done.\n" + tc.selection
 				for _, event := range []struct{ method, raw string }{
 					{"item/completed", fmt.Sprintf(`{"threadId":"child","turnId":"child-turn","item":{"type":"agentMessage","id":"final","text":%q,"phase":"final_answer"}}`, text)},
 					{"turn/completed", `{"threadId":"child","turn":{"id":"child-turn","status":"completed"}}`},
@@ -109,7 +109,7 @@ func TestFinalDeliveryCountsSuppliedEditRanges(t *testing.T) {
 
 func TestReconciledFinalDeliveryCountsEditRange(t *testing.T) {
 	driver, host, _, _ := reconciliationFixture(t)
-	text := "Done.\n" + compact.CompactMetadataStart + `{"sources":["mchanges:blue1..blue3"]}` + compact.CompactMetadataEnd
+	text := "Done.\nmchanges:blue1..blue3"
 	if err := driver.control.AnswerCompleted(t.Context(), "child", "child-turn", "answer", text); err != nil {
 		t.Fatal(err)
 	}

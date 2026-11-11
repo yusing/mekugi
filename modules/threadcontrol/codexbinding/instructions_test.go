@@ -289,8 +289,11 @@ func TestInstructionsUseCurrentModelAndPreserveCustomHints(t *testing.T) {
 				if strings.Contains(projection, "Ask the user directly for clarification with functions.request_user_input_async.") != tc.child {
 					t.Fatalf("direct user clarification guidance must be child-only: %s", projection)
 				}
-				if strings.Contains(projection, CompletionChangesGuidance) != tc.child {
+				if strings.Contains(projection, "To attach retained changes to your parent, include their mchanges source reference in your ordinary final answer.") != tc.child {
 					t.Fatal("completion selection guidance did not follow child admission")
+				}
+				if strings.Contains(projection, "mekugi-reload-v1") {
+					t.Fatal("completion guidance still requires framing")
 				}
 				for _, catalogGuidance := range []string{
 					"preload", "timeout_ms", "later wait_agent output", "Override model or reasoning effort",

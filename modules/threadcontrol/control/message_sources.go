@@ -10,8 +10,29 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+// CompletionSelection discovers only captured-change references. The caller
+// supplies completion authority; ordinary message text never grants it.
+func CompletionSelection(message string) string {
+	var sources []string
+	seen := make(map[string]bool)
+	for ref := range attachments.References(message) {
+		if strings.HasPrefix(ref, "mchanges:") && !seen[ref] {
+			sources = append(sources, ref)
+			seen[ref] = true
+		}
+	}
+	if len(sources) == 0 {
+		return ""
+	}
+	data, _ := json.Marshal(struct {
+		Sources []string `json:"sources"`
+	}{sources})
+	return string(data)
+}
 
 type messageSnapshot struct {
 	Session, Thread, Turn, Call, Route, Original, Captured string

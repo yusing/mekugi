@@ -127,7 +127,7 @@ func TestCompletionInjectionOmitsYieldedCaptures(t *testing.T) {
 				f.publish(t, id, "edit", "late-call", mekugiHistory{Caller: "/root/worker", ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("late.txt", "late.txt", "before\n", "new-content\n")}})
 			}
 			selection := string(mustTestJSON(t, map[string]any{"sources": []string{"mchanges:" + strings.Join(ids, ",")}}))
-			input := control.NativeInput{Thread: f.thread, ID: "final", Kind: "FINAL_ANSWER", Outcome: control.Completed, Sender: "/root/worker", Recipient: "/root", Message: "Finished.\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}
+			input := control.NativeInput{Thread: f.thread, ID: "final", Kind: "FINAL_ANSWER", Outcome: control.Completed, Sender: "/root/worker", Recipient: "/root", Message: "Finished. Review mchanges:" + strings.Join(ids, ",") + "."}
 			wire := new(completionTransport)
 			requests := sessioncontrol.NewRequests[struct{}](wire)
 			requests.PrepareCompletion = p.PrepareCompletion
@@ -224,13 +224,24 @@ func TestCompletionInjectionCarriesPreparedEvidenceWithoutAnotherRead(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	selection := string(mustTestJSON(t, map[string]any{"sources": []string{"mchanges:" + id}}))
-	input := control.NativeInput{Thread: f.thread, ID: "final", Kind: "FINAL_ANSWER", Outcome: control.Completed, SourceGeneration: 1, ParentTurn: "child-turn", Sender: "/root/worker", Recipient: "/root", Message: "Finished.\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd}
+	input := control.NativeInput{Thread: f.thread, ID: "final", Kind: "FINAL_ANSWER", Outcome: control.Completed, SourceGeneration: 1, ParentTurn: "child-turn", Sender: "/root/worker", Recipient: "/root", Message: "Finished. Review mchanges:" + id + ". See @private.txt and $private-skill."}
 	oldSelection := string(mustTestJSON(t, map[string]any{"sources": []compact.SourceIdentity{{Changes: []string{id}}}}))
 	oldInput := input
-	oldInput.Message = strings.Replace(input.Message, selection, oldSelection, 1)
+	oldInput.Message = "Finished.\n" + oldSelection
 	if prepared, err := p.PrepareCompletion(t.Context(), oldInput); err != nil || len(prepared.Items) != 0 || reader.reads.Load() != 0 {
 		t.Fatalf("new object completion triggered acquisition: %+v %v", prepared, err)
+	}
+	for _, message := range []string{"No changes.", "See @private.txt and $private-skill."} {
+		unselected := input
+		unselected.Message = message
+		if prepared, err := p.PrepareCompletion(t.Context(), unselected); err != nil || len(prepared.Items) != 0 || reader.reads.Load() != 0 {
+			t.Fatalf("ordinary text triggered completion acquisition: %+v %v", prepared, err)
+		}
+	}
+	malformed := input
+	malformed.Message = "Finished. Captures: mchanges:amber1.."
+	if prepared, err := p.PrepareCompletion(t.Context(), malformed); err != nil || len(prepared.Items) != 2 || !strings.Contains(string(prepared.Items[1]), "CONTENT NOT ATTACHED") || reader.reads.Load() != 0 {
+		t.Fatalf("malformed reference lost its acquisition diagnostic: %+v %v", prepared, err)
 	}
 	wire := new(completionTransport)
 	requests := sessioncontrol.NewRequests[struct{}](wire)
@@ -269,7 +280,7 @@ func TestCompletionInjectionCarriesPreparedEvidenceWithoutAnotherRead(t *testing
 		if _, err := p.prepareModelRequest(t.Context(), &request, "runtime", f.thread, meta, true, false); err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Contains(request.Fields["input"], []byte("+after")) || bytes.Contains(request.Fields["input"], []byte(compact.SnapshotPrefix)) {
+		if !bytes.Contains(request.Fields["input"], []byte("+after")) || !bytes.Contains(request.Fields["input"], []byte("mchanges:"+id+".")) || bytes.Contains(request.Fields["input"], []byte(compact.SnapshotPrefix)) {
 			t.Fatalf("receiver lost prepared evidence: %s", request.Fields["input"])
 		}
 	}

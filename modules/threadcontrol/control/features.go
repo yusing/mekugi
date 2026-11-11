@@ -201,8 +201,8 @@ func confirmedFeatures(step string, effect Effect) (features []Feature) {
 		}
 		return append(features, FeatureSpawn)
 	case step == "final" && effect.Outcome == Completed:
-		_, selection, found := compact.SplitCompactReload(effect.Message)
-		if sources, _ := compact.Sources(selection); found && len(sources) > 0 && compact.CompletionSources(selection) == nil {
+		selection := CompletionSelection(effect.Message)
+		if selection != "" && compact.CompletionSources(selection) == nil {
 			return []Feature{FeatureFinal, FeatureCompletionChanges}
 		}
 		return []Feature{FeatureFinal}

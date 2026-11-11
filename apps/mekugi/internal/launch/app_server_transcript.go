@@ -32,7 +32,7 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 func historicalTranscript(items []binding.ThreadItem, thread, turn string, main, promote bool, at time.Time) map[string]observation.TextUpdate {
 	events := make([]observation.TextEvent, len(items))
 	for i, item := range items {
-		events[i] = sessionpresentation.ProjectCompletionText(observation.TextEvent{At: at, Kind: observation.ItemCompleted, Item: transcriptItem(item, thread, turn, item.ID)})
+		events[i] = observation.TextEvent{At: at, Kind: observation.ItemCompleted, Item: transcriptItem(item, thread, turn, item.ID)}
 	}
 	return transcript.History(events, main, promote)
 }

@@ -7,10 +7,7 @@ import (
 	json "encoding/json/v2"
 	"strings"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 )
 
 // ProjectLocalIdentities keeps retained message and wake-dispatch identities out
@@ -78,19 +75,6 @@ func ProjectLocalIdentities(input []byte) ([]byte, error) {
 			if json.Unmarshal(item["content"], &content) == nil {
 				for _, part := range content {
 					if text := responses.StringField(part, "text"); text != "" {
-						if strings.HasPrefix(text, "Message Type: FINAL_ANSWER\n") {
-							body, selection, found := compact.SplitCompactReload(text)
-							if found {
-								text = body
-								if err := compact.CompletionSources(selection); err != nil {
-									if compact.StoredCompletionSources(selection) != nil || !completedReload(items, "threadcontrol_"+id) {
-										text += "\nCompletion changes unavailable: " + err.Error()
-									}
-								}
-							} else if body = compact.ReloadText(text); body != text {
-								text = body + "\nCompletion changes unavailable: incomplete reload metadata"
-							}
-						}
 						part["text"] = responses.MustMarshalJSON(visibleMessageNames(text))
 					}
 				}
@@ -104,23 +88,4 @@ func ProjectLocalIdentities(input []byte) ([]byte, error) {
 		input = responses.MustMarshalJSON(items)
 	}
 	return input, nil
-}
-
-// Only an already completed, message-bound reader can admit the old object
-// codec during history projection. Old-looking new answers never trigger reads.
-func completedReload(items []jsontext.Value, message string) bool {
-	prefix := compact.ReaderPrefix(message)
-	for _, raw := range items {
-		if !bytes.Contains(raw, []byte(prefix)) {
-			continue
-		}
-		var item map[string]jsontext.Value
-		if json.Unmarshal(raw, &item) != nil || !strings.HasSuffix(responses.StringField(item, "type"), "_output") || !strings.HasPrefix(responses.StringField(item, "call_id"), prefix) {
-			continue
-		}
-		if binding.DecodeExecutionResult("exec", item["output"]).ResumeHandle == "" {
-			return true
-		}
-	}
-	return false
 }

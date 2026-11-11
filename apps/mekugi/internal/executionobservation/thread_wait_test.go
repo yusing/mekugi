@@ -7,7 +7,6 @@ import (
 	"time"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -252,7 +251,7 @@ func TestCompactionExecutionCompletionEvidenceAdmission(t *testing.T) {
 				if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), standalone, ""); err != nil {
 					t.Fatal(err)
 				}
-				input := control.NativeInput{ID: "child-result", Thread: caller.Thread, Kind: "FINAL_ANSWER", Outcome: control.Completed, Message: "ready\n" + compact.CompactMetadataStart + `{"sources":["mchanges:amber3"]}` + compact.CompactMetadataEnd}
+				input := control.NativeInput{ID: "child-result", Thread: caller.Thread, Kind: "FINAL_ANSWER", Outcome: control.Completed, Message: "ready\nmchanges:amber3"}
 				prepared, err := p.PrepareCompletion(t.Context(), input)
 				if err != nil || len(prepared.Items) != 2 {
 					t.Fatalf("completion setup: %+v, %v", prepared, err)

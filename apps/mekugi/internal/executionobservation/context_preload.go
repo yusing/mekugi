@@ -94,12 +94,11 @@ func preloadSelections(items []map[string]jsontext.Value) ([]control.ContextPrel
 			// Retained final envelopes use the same message-bound reload as
 			// assignments, including when followed by a wait_agent wake.
 			var envelope sessioncontrol.NativeMessage
-			if !bytes.Contains(item["content"], []byte(strings.Trim(compact.CompactMetadataStart, "<>"))) || json.Unmarshal(responses.MustMarshalJSON(item), &envelope) != nil {
+			if !strings.HasPrefix(responses.StringField(item, "id"), "threadcontrol_") || json.Unmarshal(responses.MustMarshalJSON(item), &envelope) != nil {
 				continue
 			}
 			if delivery, ok := envelope.Delivery(); ok && delivery.Kind == "FINAL_ANSWER" && delivery.Outcome == control.Completed {
-				_, selection, found := compact.SplitCompactReload(delivery.Message)
-				if found && compact.CompletionSources(selection) == nil {
+				if selection := control.CompletionSelection(delivery.Message); selection != "" {
 					selections = append(selections, control.ContextPreload{Item: envelope.ID, Selection: selection})
 				}
 			}

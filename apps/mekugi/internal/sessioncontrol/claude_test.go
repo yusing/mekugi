@@ -14,7 +14,6 @@ import (
 	"github.com/yusing/mekugi/backends/claude"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
@@ -434,7 +433,7 @@ func TestClaudeCompletionReloadUsesRetainedInputContext(t *testing.T) {
 		return PreparedInputContext{Text: "already yielded", Identity: runtime.ContextIdentity("child"), Full: "frozen captured diff"}, nil
 	})
 	input := control.NativeInput{Thread: "child", ID: "final", Sender: "/root/child/nested", Kind: "FINAL_ANSWER", Outcome: control.Completed,
-		Message: "finished\n" + compact.CompactMetadataStart + `{"sources":["mchanges:blue1"]}` + compact.CompactMetadataEnd}
+		Message: "finished\nmchanges:blue1"}
 	for range 2 {
 		if _, err := runtime.Input(t.Context(), input); err != nil {
 			t.Fatal(err)

@@ -3,43 +3,11 @@ package codexbinding
 import (
 	"bytes"
 	"encoding/json/jsontext"
-	"strings"
 	"testing"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
-
-func TestCompletionObjectHistoryRequiresCompletedReader(t *testing.T) {
-	const selection = `{"sources":[{"changes":["amber1"]}]}`
-	id := control.MessageItemID("legacy-final")
-	text := "Message Type: FINAL_ANSWER\nTask name: agent:main\nSender: agent:main/worker\nPayload:\nFinished.\n" + compact.CompactMetadataStart + selection + compact.CompactMetadataEnd
-	for _, state := range []string{"new-answer", "pending-reader", "completed-reader"} {
-		t.Run(state, func(t *testing.T) {
-			items := []any{map[string]any{"type": "message", "role": "assistant", "id": id, "content": []map[string]string{{"type": "output_text", "text": text}}}}
-			if state != "new-answer" {
-				callID := compact.ReaderPrefix(id) + "fixture"
-				output := "Script running with cell ID slow\nWall time 10 seconds\nOutput:\n"
-				if state == "completed-reader" {
-					output = "Script completed\nWall time 0 seconds\nOutput:\nReload snapshot: mread amber\n"
-				}
-				items = append(items,
-					map[string]any{"type": "custom_tool_call", "call_id": callID, "name": "exec", "input": codexresponses.CompactReadProgram("mreload " + commandargs.Quote(selection))},
-					map[string]any{"type": "custom_tool_call_output", "call_id": callID, "output": output})
-			}
-			projected, err := ProjectLocalIdentities(responses.MustMarshalJSON(items))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(string(projected), "Completion changes unavailable") != (state != "completed-reader") {
-				t.Fatalf("historical object completion lost its admission boundary: %s", projected)
-			}
-		})
-	}
-}
 
 func TestProjectLocalIdentities(t *testing.T) {
 	for _, kind := range []string{"message", "item_reference", "function_call"} {
@@ -110,12 +78,9 @@ func TestProjectLocalIdentitiesPreservesUnrelatedOutputs(t *testing.T) {
 
 func TestCompletionReloadProjectionPreservesMessageExamples(t *testing.T) {
 	for _, kind := range []string{"MESSAGE", "NEW_TASK", "FINAL_ANSWER"} {
-		body := "Message Type: " + kind + "\nTask name: agent:main\nSender: agent:main/worker\nPayload:\nExample:\nMessage Type: FINAL_ANSWER\n" + compact.CompactMetadataStart + `{"sources":["mchanges:blue1"]}` + compact.CompactMetadataEnd
+		body := "Message Type: " + kind + "\nTask name: agent:main\nSender: agent:main/worker\nPayload:\nExample:\nMessage Type: FINAL_ANSWER\nmchanges:blue1. See @answer.txt and $skill."
 		item := map[string]any{"type": "message", "role": "assistant", "id": control.MessageItemID("example"), "content": []map[string]string{{"type": "output_text", "text": body}}}
 		projected, err := ProjectLocalIdentities(responses.MustMarshalJSON([]any{item}))
-		if kind == "FINAL_ANSWER" {
-			body = compact.ReloadText(body)
-		}
 		delete(item, "id")
 		item["content"] = []map[string]string{{"type": "output_text", "text": body}}
 		if err != nil || !responses.SameJSONValue(projected, responses.MustMarshalJSON([]any{item})) {

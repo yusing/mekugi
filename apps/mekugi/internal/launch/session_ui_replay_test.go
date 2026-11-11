@@ -153,21 +153,21 @@ func TestSessionUIReplayPlaybackShowsOnlyArrivedContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	partial := ansi.Strip(replayPlaybackTestPaint(t, p, 120, 28))
-	if strings.Contains(partial, "mekugi-") || !strings.Contains(partial, "Repaint diagnosis") || strings.Contains(partial, "Repaint diagnosis complete.") {
+	if !strings.Contains(partial, completionTestTrailer[:16]) || !strings.Contains(partial, "Repaint diagnosis") || strings.Contains(partial, "Repaint diagnosis complete.") {
 		t.Fatalf("streaming frame does not reflect arrived message prefix:\n%s", partial)
 	}
 	if err := p.advance(12 * time.Second); err != nil {
 		t.Fatal(err)
 	}
 	final := ansi.Strip(replayPlaybackTestPaint(t, p, 120, 28))
-	if strings.Contains(final, "mekugi-") || !strings.Contains(final, "Repaint diagnosis complete.") || len(p.ui.session.Commands()) != 0 {
+	if !strings.Contains(final, completionTestTrailer) || !strings.Contains(final, "Repaint diagnosis complete.") || len(p.ui.session.Commands()) != 0 {
 		t.Fatalf("completed frame/state did not settle:\n%s", final)
 	}
 	if err := p.advance(8 * time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(replayPlaybackTestPaint(t, p, 120, 28), "mekugi-") {
-		t.Fatal("backward replay exposed reload metadata")
+	if frame := replayPlaybackTestPaint(t, p, 120, 28); !strings.Contains(frame, completionTestTrailer[:16]) || strings.Contains(frame, completionTestTrailer) {
+		t.Fatal("backward replay lost the arrived source text or exposed its future suffix")
 	}
 }
 

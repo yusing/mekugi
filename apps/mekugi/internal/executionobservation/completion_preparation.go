@@ -25,8 +25,8 @@ func (p *Preparer) PrepareCompletion(ctx context.Context, input control.NativeIn
 	if input.Kind != "FINAL_ANSWER" || input.Outcome != control.Completed {
 		return prepared, nil
 	}
-	_, selection, found := compact.SplitCompactReload(input.Message)
-	if !found || compact.CompletionSources(selection) != nil {
+	selection := control.CompletionSelection(input.Message)
+	if selection == "" {
 		return prepared, nil
 	}
 	reader, _, err := compactReaderCall(compact.Record{Reference: control.MessageItemID(input.ID), Selection: selection}, nil, input.Thread)

@@ -15,7 +15,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"io"
 	"net"
@@ -491,7 +490,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if p.attachChanges {
 			expectedUsers++ // The shared reload consumer introduces captured context.
 		}
-		if p.attachChanges && (strings.Contains(string(body), compact.CompactMetadataStart) || strings.Contains(string(body), "mcp__threadcontrol__attach_changes") || !strings.Contains(string(body), "Reloaded context (tool output)") || !strings.Contains(string(body), "+managed-child-write") || !strings.Contains(string(body), "managed-child.txt")) {
+		if p.attachChanges && (strings.Contains(string(body), "mcp__threadcontrol__attach_changes") || !strings.Contains(string(body), "Reloaded context (tool output)") || !strings.Contains(string(body), "+managed-child-write") || !strings.Contains(string(body), "managed-child.txt")) {
 			failure = "parent completion omitted the delegate's explicitly selected retained diff"
 		}
 		if p.shellWait {
@@ -671,7 +670,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			if changeID == "" {
 				failure = "child capture omitted an explicit selectable ID"
 			}
-			answer += "\n" + compact.CompactMetadataStart + "{\"sources\":[{\"changes\":[" + strconv.Quote(changeID) + "]}]}" + compact.CompactMetadataEnd
+			answer += " Captured changes: mchanges:" + changeID + "."
 		}
 	case !parent && step == 3 && p.agentCompact:
 		if metadata.TurnID == p.compactTurn || request.PreviousResponse != "" || !completedStandaloneCompaction(request.Input) {

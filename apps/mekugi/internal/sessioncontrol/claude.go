@@ -8,7 +8,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"maps"
 	"os"
 	"path/filepath"
@@ -506,9 +505,6 @@ func claudeInputText(input control.NativeInput) (string, error) {
 		return "/compact", nil
 	}
 	projected := input
-	if input.Kind == "FINAL_ANSWER" {
-		projected.Message = compact.ReloadText(input.Message)
-	}
 	projected.Sender, projected.Recipient = control.AgentName(input.Sender), control.AgentName(input.Recipient)
 	if input.Kind == "COMPLETION_GUARD" {
 		const prefix, suffix = "Active descendants: ", ". Call wait_agent before completing."

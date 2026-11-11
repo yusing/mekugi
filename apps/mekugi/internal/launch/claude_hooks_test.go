@@ -22,7 +22,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/claude"
 	"github.com/yusing/mekugi/libraries/legacycall"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -348,9 +347,7 @@ func TestClaudeCompletionContextOmitsYieldedEvidenceAtReceiver(t *testing.T) {
 				compactContext()
 			}
 			b.runtime.SetInputContext(b.completionContext)
-			selection, err := json.Marshal(map[string]any{"sources": []string{"mchanges:" + id}})
-			check(err)
-			_, err = b.runtime.Input(ctx, control.NativeInput{Thread: "child", ID: "completion", Kind: "FINAL_ANSWER", Outcome: control.Completed, Sender: "/root/child/nested", Message: "Done\n" + compact.CompactMetadataStart + string(selection) + compact.CompactMetadataEnd})
+			_, err = b.runtime.Input(ctx, control.NativeInput{Thread: "child", ID: "completion", Kind: "FINAL_ANSWER", Outcome: control.Completed, Sender: "/root/child/nested", Message: "Done\nmchanges:" + id})
 			check(err)
 			if reset == "before wake" {
 				compactContext()

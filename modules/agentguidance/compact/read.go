@@ -165,20 +165,6 @@ func CompletionSources(selection string) error {
 	if err != nil {
 		return err
 	}
-	return completionSources(sources)
-}
-
-// StoredCompletionSources recognizes admitted completion history without
-// reopening the historical object selection dialect to new model answers.
-func StoredCompletionSources(selection string) error {
-	sources, err := StoredSources(selection)
-	if err != nil {
-		return err
-	}
-	return completionSources(sources)
-}
-
-func completionSources(sources []SourceIdentity) error {
 	for _, source := range sources {
 		if len(source.Changes) == 0 || source.Path != "" || source.Skill != "" || len(source.Ranges) != 0 {
 			return errors.New("completion reload requires explicit captured-change IDs/ranges")

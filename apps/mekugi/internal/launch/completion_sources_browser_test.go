@@ -3,34 +3,41 @@ package launch
 import (
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
-func testCompletionMetadataBrowser(t *testing.T, publish func(*activity.Publication), run func(...string) string) {
+func testCompletionSourcesBrowser(t *testing.T, publish func(*activity.Publication), run func(...string) string) {
 	t.Helper()
+	capture := func(name string) {
+		if directory := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); directory != "" {
+			run("screenshot", filepath.Join(directory, "completion-sources-"+name+".png"))
+		}
+	}
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	publication := func() *activity.Publication { return u.attached.source.Publication(u.attached.presentation, nil) }
 	const prefix = "Completed answer\n"
 	completionTestDelta(t, u, prefix)
 	publish(publication())
 	run("wait", "--text", "Completed answer")
-	run("eval", `window.protocolFlashed = false; window.protocolObserver = new MutationObserver(() => { const text = document.querySelector('[aria-label="Transcript"]')?.textContent ?? ''; if (text.includes('mekugi-') || text.includes('<!--')) window.protocolFlashed = true; }); window.protocolObserver.observe(document.body, {childList:true, subtree:true, characterData:true});`)
-	// Publish every marker prefix. The shared Activity text must be clean even
-	// when Markdown would otherwise make the completed HTML comment invisible.
+	// Every arriving reference prefix remains ordinary displayed answer text.
 	for i := range len(completionTestTrailer) {
 		completionTestDelta(t, u, completionTestTrailer[i:i+1])
 		current := publication()
 		for _, entry := range current.Entries {
-			if entry.Text != strings.TrimSuffix(prefix, "\n") {
-				t.Fatalf("partial protocol reached browser publication: %q", entry.Text)
+			if entry.Text != prefix+completionTestTrailer[:i+1] {
+				t.Fatalf("ordinary source text changed in browser publication: %q", entry.Text)
 			}
 		}
 		publish(current)
 	}
 	completionTestFinish(t, u, prefix+completionTestTrailer)
 	publish(publication())
+	run("wait", "--text", completionTestTrailer)
+	capture("live")
 	// Actual parent delivery has a separate reply projection and disclosure.
 	publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: "final", Sender: "/root/worker", Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: control.Completed,
 		Message: "## Summary\nDelivered parent answer.\n\n## Details\nRetained details.\n" + completionTestTrailer}, time.Now())
@@ -38,20 +45,24 @@ func testCompletionMetadataBrowser(t *testing.T, publish func(*activity.Publicat
 	run("wait", "--text", "Delivered parent answer.")
 	run("eval", `document.querySelectorAll('[aria-label="Transcript"] details').forEach(e => e.open = true)`)
 	run("wait", "--text", "Retained details.")
-	if strings.Contains(publication().Entries[len(publication().Entries)-1].Text, "mekugi-reload") || run("eval", `!window.protocolFlashed && !document.querySelector('[aria-label="Transcript"]').textContent.includes('"changes"')`) != "true" {
-		t.Fatal("delivered completion exposed metadata in its reply")
+	if !strings.Contains(publication().Entries[len(publication().Entries)-1].Text, completionTestTrailer) {
+		t.Fatal("delivered completion hid its ordinary source reference")
 	}
+	run("wait", "--text", completionTestTrailer)
+	capture("delivered")
 	// Restore enough native history to exercise the browser's retained pages.
 	u = newAppServerSessionTestUI(t, t.TempDir())
 	u.restoreHistory(completionTestHistory(65))
 	publish(publication())
 	run("wait", "--text", "Restored answer 064")
-	run("eval", `const s = document.querySelector('[aria-label="Transcript"] .overflow-y-auto'); s.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); s.scrollTop = 0;`)
-	run("wait", "--text", "Restored answer 000")
-	if run("eval", `!window.protocolFlashed && !document.querySelector('[aria-label="Transcript"]').textContent.includes('mekugi-reload-v1')`) != "true" {
-		t.Fatal("completion framing flashed in live or restored browser history")
-	}
-	// Replay uses the same detached publication, including backward seek.
+	// Visible references consume the ordinary page byte budget. Keep reading
+	// upward until the oldest restored answer arrives, across as many bounded
+	// pages as the consumer needs rather than assuming one earlier-page read.
+	run("wait", "--fn", `(() => { const transcript = document.querySelector('[aria-label="Transcript"]'); if (transcript.textContent.includes('Restored answer 000')) return true; const s = transcript.querySelector('.overflow-y-auto'); s.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); s.scrollTop = 0; s.dispatchEvent(new Event('scroll')); return false; })()`)
+	run("wait", "--text", completionTestTrailer)
+	capture("restored")
+	// Replay text uses the same detached publication, including backward seek.
+	// This harness publishes Main feeds, not browser replay navigation frames.
 	p := completionTestReplay(t)
 	for _, at := range []time.Duration{8 * time.Second, 10 * time.Second, 8 * time.Second} {
 		if err := p.seek(at); err != nil {
@@ -59,13 +70,15 @@ func testCompletionMetadataBrowser(t *testing.T, publish func(*activity.Publicat
 		}
 		publish(p.ui.source.Publication(p.ui.presentation, nil))
 		run("wait", "--text", "Repaint diagnosis")
-		if run("eval", `!window.protocolFlashed && !document.querySelector('[aria-label="Transcript"]').textContent.includes('mekugi-')`) != "true" {
-			t.Fatal("replay framing reached rendered browser transcript")
+		if at == 10*time.Second {
+			run("wait", "--text", completionTestTrailer)
+			capture("replay")
+		} else {
+			run("wait", "--text", completionTestTrailer[:16])
 		}
 	}
-	run("eval", `window.protocolObserver.disconnect()`)
 	u = newAppServerSessionTestUI(t, t.TempDir())
 	completionTestFinish(t, u, "Quoted example: `"+completionTestTrailer+"`")
 	publish(publication())
-	run("wait", "--fn", `document.querySelector('[aria-label="Transcript"]').textContent.includes('mekugi-reload-v1')`)
+	run("wait", "--text", completionTestTrailer)
 }

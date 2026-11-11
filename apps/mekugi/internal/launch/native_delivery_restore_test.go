@@ -25,12 +25,12 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 		var records []map[string]any
 		bodies := []string{"## Summary\nMESSAGE result.\n\n## Details\nPayload:\nMessage evidence.\n", "## Summary\nFINAL_ANSWER result.\n\n## Details\nPayload:\nFinal evidence.\n", "Earlier progress must not replay.\n", "## Summary\nFollow-up result.\n\n## Details\nFollow-up evidence.\n"}
 		for i, kind := range []string{"MESSAGE", "FINAL_ANSWER", "FINAL_ANSWER", "FINAL_ANSWER"} {
+			if kind == "FINAL_ANSWER" {
+				bodies[i] += completionTestTrailer
+			}
 			input := control.NativeInput{Thread: "main", ID: fmt.Sprint(i), Sender: "/root/worker", Recipient: "/root", Kind: kind, Message: bodies[i], SourceGeneration: uint64(i + 1), ParentTurn: fmt.Sprint("turn-", i)}
 			if i == 2 {
 				input.ID, input.Outcome = "interrupted", control.Interrupted
-			}
-			if kind == "FINAL_ANSWER" {
-				input.Message += completionTestTrailer
 			}
 			wire.Reset()
 			result := make(chan error, 1)
