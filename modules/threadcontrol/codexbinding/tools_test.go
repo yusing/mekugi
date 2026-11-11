@@ -23,6 +23,19 @@ func TestToolCatalogCallerDescriptions(t *testing.T) {
 		{true, "Use list_models for Codex choices", "List the selected Codex catalog's model IDs"},
 	} {
 		for _, tool := range ToolCatalog(tc.claude) {
+			if tool.Name == "compact" {
+				for _, want := range []string{"Batch checkpoint preparation, including task-state JSON writes, and compact in one enclosing execution, with compact last", "then let that execution finish", "safe checkpoint", "below 90% are not compaction triggers"} {
+					if !strings.Contains(tool.Description, want) {
+						t.Errorf("caller claude=%t: compact omits %q: %s", tc.claude, want, tool.Description)
+					}
+				}
+				if strings.Contains(tool.Description, "Call alone") {
+					t.Errorf("caller claude=%t: compact still requires a separate call", tc.claude)
+				}
+			}
+			if tool.Name == "wait_agent" && !strings.Contains(tool.Description, "Call alone and let the enclosing tool execution finish") {
+				t.Errorf("caller claude=%t: wait lost its separate lifecycle: %s", tc.claude, tool.Description)
+			}
 			raw, err := json.Marshal(tool.InputSchema)
 			if err != nil {
 				t.Fatal(err)
