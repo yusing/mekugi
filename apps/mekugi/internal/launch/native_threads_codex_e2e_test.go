@@ -43,6 +43,7 @@ import (
 )
 
 type nativeThreadsProvider struct {
+	spawnSettings                           *spawnSettingsFixture
 	mu                                      sync.Mutex
 	childDirectory, parent, child, waitTurn string
 	fullHistory                             bool
@@ -201,6 +202,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 	if p.concurrentChildren {
 		p.serveConcurrentChildren(t, w, r, metadata.ThreadID, body)
+		return
+	}
+	if p.spawnSettings != nil {
+		p.spawnSettings.serve(t, w, r, metadata, body)
 		return
 	}
 	if p.temporaryUsage {
@@ -951,6 +956,7 @@ func TestNativeThreadsAttachmentResetServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
+	spawnSettings                                                                                                                                                     string
 	sameWorkspace                                                                                                                                                     bool
 	deniedMessageSource                                                                                                                                               bool
 	messageSources                                                                                                                                                    bool
@@ -1025,6 +1031,9 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		// Deliberately differs from max: child configuration must use the raw
 		// catalog's ordinary equivalent, not merely normalize provider requests.
 		model["multi_agent_reasoning_effort"] = "low"
+		if scenario.spawnSettings == "default-effort" {
+			model["default_reasoning_level"] = "high"
+		}
 		model["supports_search_tool"] = true
 		fields := model
 		for _, key := range []string{"model_messages", "multi_agent", "role"} {
@@ -1091,6 +1100,9 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	fixture.frozenPrefix = fullHistory && scenario.sameWorkspace
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
 	fixture.deduplication = scenario.deduplication
+	if scenario.spawnSettings != "" {
+		fixture.spawnSettings = &spawnSettingsFixture{change: scenario.spawnSettings, ready: make(chan struct{}), release: make(chan struct{})}
+	}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/models"):
@@ -1298,9 +1310,13 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if scenario.deniedMessageSource {
 		permissionArgs = []string{"-c", `default_permissions="message-sources"`, "-c", `approval_policy="never"`, "-c", fmt.Sprintf(`permissions.message-sources.filesystem={":root"="read",%q="write",%q="deny"}`, os.TempDir(), filepath.Join(childDirectory, "private-source.txt"))}
 	}
+	args := append(permissionArgs, "-m", "gpt-6-sol", "-c", "features.plugins=false")
+	if scenario.spawnSettings != "default-effort" {
+		args = append(args, "-c", `model_reasoning_effort="ultra"`)
+	}
 	connection, err := sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{
 		Workspace: workspace, RouterArgs: []string{"--shell-guard=false"},
-		Args: append(permissionArgs, "-m", "gpt-6-sol", "-c", "features.plugins=false", "-c", `model_reasoning_effort="ultra"`),
+		Args: args,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1398,6 +1414,10 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}})
 	if err != nil {
 		t.Fatal("root input:", err)
+	}
+	if fixture.spawnSettings != nil {
+		fixture.spawnSettings.verify(t, ctx, connection, event)
+		return
 	}
 	if scenario.compactionRecords > 0 {
 		stop := compactionPeer()

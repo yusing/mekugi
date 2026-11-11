@@ -248,6 +248,15 @@ capture owner, including observed partial effects from failed or interrupted too
 The Codex binding captures configuration provenance plus actual invoking
 thread/turn settings, permissions, runtime roots, model/provider, effort/summary,
 tier, base/developer instructions and cwd. `config/read` alone is not live state.
+Host inference model and effective effort are bound to each execution item's
+thread/session/turn identity before delivery. Child preparation compares MCP
+metadata with that immutable snapshot, not the initial turn's stale model/effort.
+Live changes therefore apply without context reset, while yielded cells retain
+their originating settings. Model-default effort is captured even when the
+configured turn effort is unset. Conflicting or missing invocation identity
+rejects before child creation; retained permissions and configuration provenance
+remain authoritative. Invocation snapshots retire when their thread advances
+to a new executing turn.
 Configured subagent model and effort defaults apply to fresh and full-history
 children before role overrides. Without those defaults, children inherit the
 invoking turn's model and effort, except inherited ultra becomes the selected model's

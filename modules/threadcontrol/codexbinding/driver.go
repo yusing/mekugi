@@ -24,6 +24,7 @@ type Driver struct {
 	lifecycle    context.Context
 	cancel       context.CancelFunc
 	thread       string
+	invocations  map[string]invokingTurn
 	pending      []hostObservation
 	wake         chan struct{}
 	failures     map[string]error

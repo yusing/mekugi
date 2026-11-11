@@ -13,6 +13,8 @@ import (
 // Source: apps/mekugi/internal/router/metadata.go:21:118@b9679c93.
 // Host metadata retains its permissive v1 object-decoding contract.
 type TurnMetadata struct {
+	Model                   string                       `json:"model"`
+	Effort                  string                       `json:"reasoning_effort"`
 	ActivityIdentityInvalid bool                         `json:"-"`
 	ContextWindowID         string                       `json:"context_window_id"`
 	WindowNumber            uint64                       `json:"window_number"`

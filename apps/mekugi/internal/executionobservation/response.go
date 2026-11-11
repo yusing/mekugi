@@ -12,6 +12,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -356,6 +357,14 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 			t.local[callID] = retained
 			item.SetInput(retained.CarrierPayload)
 			return retained.CarrierPayload != originalInput, nil
+		}
+		if t.owners.ThreadControl != nil {
+			// Capture native inference metadata, not the provider-facing model or
+			// reasoning fields, which may represent an older configuration prefix.
+			caller := control.Identity{Thread: t.shellThreadID, Session: t.sessionID, Turn: t.shellTurnID, Item: item.ID}
+			if err := t.owners.ThreadControl.CaptureInvocation(caller, t.invokingModel, t.invokingEffort); err != nil {
+				return false, err
+			}
 		}
 		patches := nativePatchesInCall(name, originalInput, t.directory, captureSource(observationScope(t.ctx, t.owners.Retained)))
 		t.primePreviewSources(item.ID, patches)

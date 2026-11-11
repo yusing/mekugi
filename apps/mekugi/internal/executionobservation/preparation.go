@@ -108,6 +108,8 @@ type mekugiResponseTransform struct {
 	execGroup        string
 	shellThreadID    string // Runtime identity remains available when activity attribution is invalid.
 	model            string
+	invokingModel    string
+	invokingEffort   string
 	visible          map[string]mekugiHistory
 	historySessionID string
 	retainedRequest  *history.CallRequest
@@ -431,6 +433,8 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		shellTurnID:      metadata.TurnID,
 		shellThreadID:    threadID,
 		model:            strings.TrimSpace(request.Model() + " " + request.ReasoningEffort()),
+		invokingModel:    metadata.Model,
+		invokingEffort:   metadata.Effort,
 		historySessionID: historySessionID,
 		visible:          visible,
 		retainedRequest:  retained,
