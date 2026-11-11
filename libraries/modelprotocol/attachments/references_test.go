@@ -1,10 +1,75 @@
 package attachments
 
 import (
+	json "encoding/json/v2"
 	"reflect"
 	"slices"
 	"testing"
 )
+
+func TestReferenceProsePunctuation(t *testing.T) {
+	for _, ref := range []string{
+		"@file.md", "@file.md#L2-L4,L8-L10", `@"with spaces"#L2-L4,L8-L10`,
+		"$guide", "$guide/references/file.md", "$guide/references/file.md#L2-L4,L8-L10",
+		"mchanges:blue1,blue3..blue7,birch2..5",
+	} {
+		for _, punctuation := range []string{".", ",", ":", "!", "?", "?!", ";", ").", "]!"} {
+			text := "日本語: " + ref + punctuation + " Next."
+			tokens := slices.Collect(ReferenceTokens(text))
+			if len(tokens) != 1 || tokens[0].Text != ref || text[tokens[0].Start:tokens[0].End] != ref {
+				t.Fatalf("scan %q: %+v", text, tokens)
+			}
+			if _, err := ParseReference(tokens[0].Text); err != nil {
+				t.Fatalf("parse %q: %v", tokens[0].Text, err)
+			}
+		}
+	}
+	for _, ref := range []string{`@"file.md."`, "@'file?!'", `@"with spaces."#L2-L4`} {
+		if got := slices.Collect(References("Read " + ref + ".")); !slices.Equal(got, []string{ref}) {
+			t.Fatalf("quoted reference %q: %q", ref, got)
+		}
+	}
+	for _, ref := range []string{"@missing#L1-L2junk", "mchanges:blue1.."} {
+		got := slices.Collect(References("Read " + ref + "!"))
+		if !slices.Equal(got, []string{ref}) {
+			t.Fatalf("malformed reference %q: %q", ref, got)
+		}
+		if _, err := ParseReference(got[0]); err == nil {
+			t.Fatalf("malformed reference became valid: %q", got[0])
+		}
+	}
+}
+
+func TestReferenceExactSelectionsAndCanonicalPaths(t *testing.T) {
+	for _, suffix := range []string{".", ",", ":", "!", "?", ".?!"} {
+		want := Reference{Path: "file" + suffix}
+		ref := "@" + want.Path
+		got, err := ParseReference(ref)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("explicit selection %q: %+v %v", ref, got, err)
+		}
+		canonical := got.String()
+		for _, text := range []string{canonical, "Read " + canonical + "."} {
+			tokens := slices.Collect(References(text))
+			if !slices.Equal(tokens, []string{canonical}) {
+				t.Fatalf("canonical scan %q: %q", text, tokens)
+			}
+			parsed, err := ParseReference(tokens[0])
+			if err != nil || !reflect.DeepEqual(parsed, want) {
+				t.Fatalf("canonical parse %q: %+v %v", tokens[0], parsed, err)
+			}
+		}
+	}
+	for _, ref := range []string{"@file.", "@file#L2-L4", `@"with spaces."#L2-L4`, "$guide/reference.md.", "mchanges:blue1..3", "mchanges:blue1."} {
+		encoded, err := json.Marshal(map[string][]string{"sources": {ref}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := slices.Collect(References(string(encoded))); !slices.Equal(got, []string{ref}) {
+			t.Fatalf("exact JSON reference %q: %q", encoded, got)
+		}
+	}
+}
 
 func TestReferences(t *testing.T) {
 	text := "@plain\n{\"sources\":[\"@sub/file.go\",\"@日本語\"]} (`@quoted`) @\"with spaces\" @'single space' user@example.com prefix@literal @"

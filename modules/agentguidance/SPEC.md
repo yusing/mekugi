@@ -278,6 +278,11 @@ uses standard Unicode escapes and can be copied unchanged.
 
 Line ranges are inclusive and may also follow skill references. Quote paths
 containing spaces after the marker, for example `\@"path with spaces"#L2-L4`.
+In prose, terminal periods, commas, colons, exclamation marks and question marks
+are punctuation, not part of bare references or line-range suffixes. Quote a file
+path to retain its punctuation, for example `\@"file.md."`. Interior punctuation
+is unchanged. Two dots in captured changes remain a range operator, including
+an incomplete range that must report a failure.
 Captured changes mix individual IDs and inclusive ranges, separated by commas
 without spaces. A range may abbreviate a same-chain endpoint (`birch2..5`).
 Keep IDs/ranges in one reference to request one composed diff; separate references
@@ -286,7 +291,9 @@ request separate results.
 Preload/reload retain the JSON envelope `{"sources":[REFERENCE,...]}` with string
 entries only, for example `{"sources":["\u0040file#L2-L4","\u0024skill-name","\u006dchanges:blue1,blue3..7,birch2"]}`.
 There are no source-object alternatives. Bare paths, email addresses and escaped
-markers remain literal. Shared model guidance supplies this syntax once; tool
+markers remain literal. Explicit selections and references in JSON string values
+are exact, including terminal punctuation; prose punctuation rules do not rewrite
+them. Shared model guidance supplies this syntax once; tool
 descriptions keep only operation-specific acquisition and delivery rules.
 
 ## Lifecycle, Codex connection, records, and failure

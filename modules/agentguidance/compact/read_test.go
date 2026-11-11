@@ -287,6 +287,40 @@ func TestReloadNestedSelectedText(t *testing.T) {
 	}
 }
 
+func TestReloadPunctuatedReferences(t *testing.T) {
+	testMcat(t)
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"root.": `Read @child#L2-L2. @"with spaces."#L2-L2! {"next":"@exact."} @missing? \@literal`,
+		"child": "UNSELECTED\nRANGED_CHILD\nUNSELECTED\n", "with spaces.": "UNSELECTED\nRANGED_QUOTED\n",
+		"exact.": "EXACT_JSON", "exact": "WRONG_JSON_PATH", "root": "WRONG_SELECTION_PATH", "literal": "WRONG_LITERAL",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Explicit selections are exact even without quoting the punctuation-ending path.
+	const selection = `{"sources":["@root."]}`
+	snapshot, err := ReadSources(t.Context(), selection, dir, os.Environ(), ChangeReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := snapshot.Sources[0].Text()
+	for _, required := range []string{"RANGED_CHILD", "RANGED_QUOTED", "EXACT_JSON", "missing", "exit_code=1"} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("nested acquisition missing %q: %s", required, body)
+		}
+	}
+	for _, excluded := range []string{"UNSELECTED", "WRONG_JSON_PATH", "WRONG_SELECTION_PATH", "WRONG_LITERAL"} {
+		if strings.Contains(body, excluded) {
+			t.Fatalf("wrong source acquired: %s", body)
+		}
+	}
+	if snapshot.Selection != selection || len(snapshot.Sources) != 1 || snapshot.Sources[0].ExitCode == 0 || strings.Count(snapshot.Sources[0].Stdout, "exit_code=1") != 1 {
+		t.Fatalf("selection identity or failed-read evidence changed: %+v", snapshot)
+	}
+}
+
 func TestReloadDocumentationExamplesRemainLiteral(t *testing.T) {
 	testMcat(t)
 	path, err := filepath.Abs("../SPEC.md")

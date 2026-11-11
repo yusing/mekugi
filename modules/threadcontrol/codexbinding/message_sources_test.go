@@ -56,8 +56,10 @@ func sourceFixture(t *testing.T) (*Driver, *messageSourceHost, history.Session, 
 	child, _ := driver.control.Member("child")
 	workspace := child.Settings.Workspace
 	for name, body := range map[string]string{
-		"source.txt": "FROZEN_CHILD_BYTES @nested.txt", "nested.txt": "NESTED_CHILD_BYTES",
+		"source.txt": "FROZEN_CHILD_BYTES @nested.txt.", "nested.txt": "NESTED_CHILD_BYTES",
 		"with spaces.txt": "QUOTED_PATH_BYTES", "literal": "MUST_NOT_ATTACH", "AGENTS.md": "HOST_ONLY_BYTES",
+		"698-root-cause-correction.md": "CORRECTION_BYTES", "698-root-cause-correction.md.": "WRONG_PUNCTUATED_PATH",
+		"punctuation.txt.": "EXACT_QUOTED_BYTES", "json.txt.": "EXACT_JSON_BYTES",
 	} {
 		if err := os.WriteFile(filepath.Join(workspace, name), []byte(body), 0600); err != nil {
 			t.Fatal(err)
@@ -71,7 +73,7 @@ func TestAgentMessageSourceDeliveryAndRetry(t *testing.T) {
 	for _, operation := range []string{"send_message", "followup_task", "btw"} {
 		t.Run(operation, func(t *testing.T) {
 			driver, host, session, caller, workspace := sourceFixture(t)
-			const message = `Read @source.txt @source.txt @"with spaces.txt" @missing.txt \@literal user@example.com @AGENTS.md; markers @ @@ @@@`
+			const message = `Full correction owner: @698-root-cause-correction.md. Your diagnostic-only option is superseded. Read @source.txt! @source.txt @"with spaces.txt", @"punctuation.txt.". {"sources":["@json.txt."]} @missing.txt? \@literal user@example.com @AGENTS.md; markers @ @@ @@@`
 			var questions []string
 			host.ask = func(_ context.Context, member *control.Member, text string) (string, error) {
 				if member.Thread != "child" {
@@ -102,12 +104,12 @@ func TestAgentMessageSourceDeliveryAndRetry(t *testing.T) {
 					t.Fatal("ordinary message started work")
 				}
 			}
-			for _, required := range []string{message, "FROZEN_CHILD_BYTES", "NESTED_CHILD_BYTES", "QUOTED_PATH_BYTES", "missing.txt", "exit_code=1"} {
+			for _, required := range []string{message, "CORRECTION_BYTES", "FROZEN_CHILD_BYTES", "NESTED_CHILD_BYTES", "QUOTED_PATH_BYTES", "EXACT_QUOTED_BYTES", "EXACT_JSON_BYTES", "missing.txt", "exit_code=1"} {
 				if !strings.Contains(got, required) {
 					t.Fatalf("delivery missing %q: %s", required, got)
 				}
 			}
-			for _, excluded := range []string{"MUST_NOT_ATTACH", "HOST_ONLY_BYTES"} {
+			for _, excluded := range []string{"MUST_NOT_ATTACH", "HOST_ONLY_BYTES", "WRONG_PUNCTUATED_PATH"} {
 				if strings.Contains(got, excluded) {
 					t.Fatal("literal/host-only path acquired", got)
 				}

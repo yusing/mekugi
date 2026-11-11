@@ -154,7 +154,7 @@ func (r Reference) String() string {
 	text := "$" + r.Skill
 	if r.Skill == "" {
 		path := r.Path
-		if strings.ContainsAny(path, " \t\"'`()[]{}<>,;") || strings.HasPrefix(path, "@") || strings.Contains(path, "#L") {
+		if strings.ContainsAny(path, " \t\"'`()[]{}<>,;") || strings.TrimRight(path, ".,:!?") != path || strings.HasPrefix(path, "@") || strings.Contains(path, "#L") {
 			if !strings.ContainsRune(path, '\'') {
 				path = "'" + path + "'"
 			} else {
@@ -203,9 +203,9 @@ func References(text string) iter.Seq[string] {
 	}
 }
 
-// ReferenceTokens recognizes the same language in prose and JSON values.
+// ReferenceTokens recognizes references in prose and exact JSON string values.
 // Escaped markers, email addresses, identifier suffixes and diff markers stay
-// literal. Quoting after @ permits spaces or a leading @ in a path.
+// literal. Prose excludes terminal .,:!?; quote after @ to retain path punctuation.
 func ReferenceTokens(text string) iter.Seq[ReferenceToken] {
 	return func(yield func(ReferenceToken) bool) {
 		for i := 0; i < len(text); i++ {
@@ -213,6 +213,7 @@ func ReferenceTokens(text string) iter.Seq[ReferenceToken] {
 			if marker != '@' && marker != '$' && !strings.HasPrefix(text[i:], "mchanges:") {
 				continue
 			}
+			exactJSON := false
 			if i > 0 {
 				previous, _ := utf8.DecodeLastRuneInString(text[:i])
 				if !unicode.IsSpace(previous) && !strings.ContainsRune("\"'`([{:", previous) {
@@ -222,6 +223,7 @@ func ReferenceTokens(text string) iter.Seq[ReferenceToken] {
 				// its escaped quotes. Decode before interpreting the reference.
 				if text[i-1] == '"' {
 					if decoded, size, err := quotedPath(text[i-1:]); err == nil {
+						exactJSON = true
 						if _, err := ParseReference(decoded); err == nil {
 							end := i + size - 2
 							if !yield(ReferenceToken{decoded, i, end}) {
@@ -262,6 +264,13 @@ func ReferenceTokens(text string) iter.Seq[ReferenceToken] {
 				end += size
 			}
 			i = end - 1
+			for !exactJSON && end > start+1 && strings.ContainsRune(".,:!?", rune(text[end-1])) {
+				// Two dots belong to a change range, even when incomplete.
+				if marker == 'm' && (text[end-1] == '.' && text[end-2] == '.' || end == start+len("mchanges:")) {
+					break
+				}
+				end--
+			}
 			if end > start+1 && !yield(ReferenceToken{text[start:end], start, end}) {
 				return
 			}
