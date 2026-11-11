@@ -287,11 +287,11 @@ func TestCompletionInjectionCarriesPreparedEvidenceWithoutAnotherRead(t *testing
 	if reader.reads.Load() != 1 {
 		t.Fatalf("completion acquired evidence %d times", reader.reads.Load())
 	}
-	caller := control.Identity{Thread: f.thread, Session: "runtime", Turn: "parent-turn", Call: "checkpoint", Item: "checkpoint-exec"}
+	caller := control.Identity{Thread: f.thread, Session: "runtime", Turn: "parent-turn", Call: "checkpoint", Item: "checkpoint-exec", Cell: "cell", Window: "window"}
 	if err := service.RequestStarted(t.Context(), caller, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), true, ""); err != nil {
+	if _, err := service.RegisterCompaction(t.Context(), caller, "", nil, nil, time.Now(), false, ""); err != nil {
 		t.Fatal(err)
 	}
 	items := []any{map[string]any{"type": "custom_tool_call", "call_id": caller.Call, "id": caller.Item, "name": "exec"},
@@ -304,8 +304,8 @@ func TestCompletionInjectionCarriesPreparedEvidenceWithoutAnotherRead(t *testing
 	if err != nil || !calls[responses.StringField(sent.Items[1], "call_id")] {
 		t.Fatalf("completion evidence was not admitted: %v, %v", calls, err)
 	}
-	if item, err := p.observeThreadWait(t.Context(), f.thread, caller.Turn, "exec", &request, nil, calls); err != nil || item != caller.Item {
-		t.Fatalf("completion attachment superseded checkpoint: item=%q, %v", item, err)
+	if item, err := p.observeThreadWait(t.Context(), f.thread, caller.Turn, "exec", &request, nil); err != nil || item != "" {
+		t.Fatalf("provider completion settled native checkpoint: item=%q, %v", item, err)
 	}
 	failed, err := new(Preparer).PrepareCompletion(t.Context(), input)
 	if err != nil || len(failed.Items) != 2 || !strings.Contains(string(failed.Items[1]), "CONTENT NOT ATTACHED") {

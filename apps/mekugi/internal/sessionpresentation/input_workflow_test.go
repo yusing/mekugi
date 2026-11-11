@@ -69,10 +69,10 @@ func TestCompactionSelectionUsesIntentInsteadOfMessageText(t *testing.T) {
 		conversation := &conversationmodel.Session{Unsent: []conversationmodel.Input{input}}
 		next := m.NextInput(&control, conversation, nil, "")
 		if command {
-			if !next.Interrupt || len(next.Batch.Parts) != 0 {
-				t.Fatal("semantic compaction did not preserve its interruption gate")
+			if len(next.Batch.Parts) != 1 || next.Batch.Parts[0].Compact == nil {
+				t.Fatal("semantic compaction was not submitted to native admission")
 			}
-		} else if next.Interrupt || !next.Steer || len(next.Batch.Parts) != 1 || next.Batch.Parts[0].Text != "/compact" {
+		} else if !next.Steer || len(next.Batch.Parts) != 1 || next.Batch.Parts[0].Text != "/compact" {
 			t.Fatal("literal message was interpreted as a compaction command")
 		}
 	}
@@ -99,7 +99,7 @@ func TestInputWorkflowWithoutRenderer(t *testing.T) {
 	dispatch := func(id string) string {
 		t.Helper()
 		next := m.NextInput(&control, c, nil, "")
-		if len(next.Batch.Parts) == 0 || next.Interrupt {
+		if len(next.Batch.Parts) == 0 {
 			t.Fatal("eligible input was not selected")
 		}
 		submission := conversationmodel.Submission{Draft: conversationmodel.Join(next.Batch.Parts...).Draft, Parts: next.Batch.Parts}

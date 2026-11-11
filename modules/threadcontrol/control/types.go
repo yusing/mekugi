@@ -22,7 +22,7 @@ const (
 )
 
 // Identity is supplied by the authenticated Codex binding, never tool arguments.
-type Identity struct{ Thread, Session, Turn, Call, Item string }
+type Identity struct{ Thread, Session, Turn, Call, Item, Window, Cell string }
 
 // Participant is detached roster identity, without instructions or dispatch state.
 type Participant struct {
@@ -95,6 +95,7 @@ type Wait struct {
 	Effect
 	Metrics                  map[string]SessionMetrics
 	Item, Stop, ResumeHandle string
+	NativeCell, Window       string `json:",omitzero"`
 	Targets                  []string
 	Mode                     WaitMode
 	Terminals                []Event
@@ -199,23 +200,24 @@ type CompactionResult struct {
 }
 
 type WaitResult struct {
-	Progress    *WaitProgress             `json:"progress,omitempty"`
-	Compaction  *CompactionResult         `json:"compaction,omitempty"`
-	Metrics     map[string]SessionMetrics `json:"metrics,omitempty"`
-	ID          string                    `json:"-"`
-	Turn        string                    `json:"-"`
-	Stop        string                    `json:"-"`
-	Standalone  bool                      `json:"-"`
-	UsageLimit  bool                      `json:"-"`
-	Capacity    bool                      `json:"-"`
-	Timed       bool                      `json:"-"`
-	Deadline    *time.Time                `json:"-"`
-	State       string                    `json:"state"`
-	Mode        WaitMode                  `json:"wait_mode,omitempty"`
-	Events      []Event                   `json:"events,omitempty"`
-	Event       *Event                    `json:"event,omitempty"`
-	Targets     []string                  `json:"targets,omitempty"`
-	EffectiveMS *int64                    `json:"effective_ms,omitempty"`
+	Progress     *WaitProgress             `json:"progress,omitempty"`
+	Compaction   *CompactionResult         `json:"compaction,omitempty"`
+	Metrics      map[string]SessionMetrics `json:"metrics,omitempty"`
+	ID           string                    `json:"-"`
+	NativeTicket *CompoundTicket           `json:"-"`
+	Turn         string                    `json:"-"`
+	Stop         string                    `json:"-"`
+	Standalone   bool                      `json:"-"`
+	UsageLimit   bool                      `json:"-"`
+	Capacity     bool                      `json:"-"`
+	Timed        bool                      `json:"-"`
+	Deadline     *time.Time                `json:"-"`
+	State        string                    `json:"state"`
+	Mode         WaitMode                  `json:"wait_mode,omitempty"`
+	Events       []Event                   `json:"events,omitempty"`
+	Event        *Event                    `json:"event,omitempty"`
+	Targets      []string                  `json:"targets,omitempty"`
+	EffectiveMS  *int64                    `json:"effective_ms,omitempty"`
 }
 
 // WaitProgress contains bounded observations, never an assignment outcome.

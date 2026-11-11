@@ -137,7 +137,7 @@ of the same thread.
 Waiting-input restoration captures Main's turn or pending start, restores only
 locally waiting input to its originating editors, and leaves transmitted steers alone.
 Pending compaction acknowledgement and continuation remain cancellable after the
-compaction turn completes.
+native reset settles; cancellation does not change its settled outcome.
 An attached client keeps its source interaction alive while admitted input or editor
 consequences are outstanding, even after navigating to another session. Independent
 observation, attachment preparation and receipt work cannot block cancellation or
@@ -432,8 +432,8 @@ Server-coordinated logical waits update the caller's roster through
 and keep Main busy and interruptible after the
 host turn stops. The composer shows waiting, elapsed work continues across the
 continuation, and the local stop emits no task-completion notice. Manual compaction
-preserves the logical wait, returning the composer to waiting after its auxiliary
-turn without marking the roster done. Cold restoration
+preserves the logical wait, returning the composer to waiting after its native
+reset and any auxiliary turn settle without marking the roster done. Cold restoration
 shows paused work without restarting its clock or subscription.
 
 Router errors remain composer feedback, not transcript or provider-response edits.

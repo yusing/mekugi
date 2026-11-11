@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -41,7 +40,7 @@ func (p *Preparer) consumeThreadInput(ctx context.Context, thread, session strin
 // observeThreadWait runs after the normal authenticated request/history join.
 // It admits only a current host result for the wait's exact enclosing exec
 // item, never a nested MCP success or a caller-authored output lookalike.
-func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName string, request *codexresponses.Request, visible map[string]mekugiHistory, reloadCalls map[string]bool) (string, error) {
+func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName string, request *codexresponses.Request, visible map[string]mekugiHistory) (string, error) {
 	if p.ThreadControl == nil {
 		return "", nil
 	}
@@ -49,7 +48,7 @@ func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName
 	if err != nil || wait == nil {
 		return "", err
 	}
-	if wait.State != "registered" {
+	if wait.State != "registered" || wait.NativeCell != "" {
 		return "", nil
 	}
 	var items []map[string]jsontext.Value
@@ -112,19 +111,6 @@ func (p *Preparer) observeThreadWait(ctx context.Context, thread, turn, execName
 		for _, later := range items[index+1:] {
 			kind := responses.StringField(later, "type")
 			if !strings.HasSuffix(kind, "_output") {
-				if wait.Compaction != nil {
-					if (kind == "custom_tool_call" || kind == "function_call") && reloadCalls[responses.StringField(later, "call_id")] {
-						// Completed evidence shares its attributed arrival's barrier.
-						continue
-					}
-					var message sessioncontrol.NativeMessage
-					if json.Unmarshal(responses.MustMarshalJSON(later), &message) == nil {
-						if input, ok := message.Delivery(); ok && (input.Kind == "MESSAGE" || input.Kind == "FINAL_ANSWER") {
-							// Attributed arrivals remain behind the checkpoint barrier.
-							continue
-						}
-					}
-				}
 				// Input injected after the enclosing result needs inference. Retire
 				// this subscription, including a stop already claimed for it.
 				return "", p.ThreadControl.Coordination().Execution(ctx, thread, turn, wait.Item, "", false)

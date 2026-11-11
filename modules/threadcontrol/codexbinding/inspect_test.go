@@ -180,6 +180,9 @@ func TestWaitMetricsSampleDeliveredOutcomes(t *testing.T) {
 			runtime := &inspectionRuntime{}
 			driver.host = &progressNative{Native: instructionNative{Native: host, owner: runtime}, chunks: 1}
 			caller.Call = "wait"
+			if test.compact != "" {
+				caller.Cell, caller.Window = "cell", "window"
+			}
 			result, err := driver.Call(t.Context(), caller, "wait_agent", []byte(test.args))
 			if err != nil {
 				t.Fatal(err)
@@ -187,28 +190,34 @@ func TestWaitMetricsSampleDeliveredOutcomes(t *testing.T) {
 			if len(result) != 0 || driver.control.WaitPublication(caller.Thread).Metrics != nil || runtime.thread != "" {
 				t.Fatalf("pending wait emitted content or sampled metrics: %s inspected=%q", result, runtime.thread)
 			}
-			if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
-				t.Fatal(err)
-			}
-			if stop, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil || stop == nil {
-				t.Fatalf("local stop: %v %v", stop, err)
+			var ticket control.CompoundTicket
+			if test.compact != "" {
+				member, _ := driver.control.Member(caller.Thread)
+				ticket = control.CompoundTicket{WaitID: member.Wait.ID, Generation: member.Wait.Generation}
+				result, err := driver.control.SettleCompound(t.Context(), control.CompoundSettlement{Thread: caller.Thread, Turn: caller.Turn, Item: caller.Item, Window: caller.Window, Cell: caller.Cell, Ticket: ticket, Result: "succeeded"})
+				if err != nil || result.Action != "commit" {
+					t.Fatalf("native stop: %+v, %v", result, err)
+				}
+			} else {
+				if err := driver.control.Execution(t.Context(), caller.Thread, caller.Turn, caller.Item, "", true); err != nil {
+					t.Fatal(err)
+				}
+				if stop, err := driver.control.ClaimLocalStop(t.Context(), caller.Thread, caller.Turn, caller.Item); err != nil || stop == nil {
+					t.Fatalf("local stop: %v %v", stop, err)
+				}
 			}
 			if err := driver.control.HostCompleted(t.Context(), caller.Thread, caller.Turn, control.Completed, control.HostFailure{}); err != nil {
 				t.Fatal(err)
 			}
 			if test.compact != "" {
-				compact, err := driver.control.ClaimEffect(t.Context(), caller.Thread, caller.Call+":compact")
-				if err != nil || compact == nil {
-					t.Fatalf("compact effect: %v %v", compact, err)
-				}
 				if err := driver.Wake(t.Context(), caller.Thread, time.Now().Add(time.Hour)); err != nil || runtime.thread != "" {
 					t.Fatalf("wake crossed compact barrier: %v inspected=%q", err, runtime.thread)
 				}
-				receipt := control.Receipt{}
+				receipt := control.CompoundReset{Thread: caller.Thread, Turn: caller.Turn, Item: caller.Item, Window: caller.Window, Cell: caller.Cell, Ticket: ticket, Reset: test.compact}
 				if test.compact == "failed" {
-					receipt.Error = "reset failed"
+					receipt.Diagnostic = "reset failed"
 				}
-				if err := driver.control.EffectAcknowledged(t.Context(), caller.Thread, compact.ID, receipt); err != nil {
+				if err := driver.control.CompoundResetCompleted(t.Context(), receipt); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -455,45 +455,6 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	assertNativeUISnapshot(t, "native-compact-queued-continuation", rows)
 }
 
-func TestAppServerCompactSteerWaitsForInterruptAndCompletion(t *testing.T) {
-	for _, beforeAck := range []bool{false, true} {
-		for _, status := range []string{"interrupted", "completed"} {
-			t.Run(fmt.Sprintf("%s/completionBeforeAck=%v", status, beforeAck), func(t *testing.T) {
-				u, w := newAppServerTestUI()
-				appServerTestTurn(t, u, "work")
-				appServerTestKeys(t, u, "/compact\r")
-				interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-				ack := fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID)
-				appServerTestKeys(t, u, "follow-up\rnext turn\t")
-				if beforeAck {
-					appServerTestTurnEnd(t, u, "work", status)
-				} else {
-					appServerTestMessage(t, u, ack)
-				}
-				if w.Len() != 0 {
-					t.Fatal("compaction overtook interruption acknowledgement or turn completion")
-				}
-				appServerTestTurnEnd(t, u, "unrelated", "completed")
-				if beforeAck {
-					appServerTestMessage(t, u, ack)
-				} else {
-					appServerTestTurnEnd(t, u, "work", status)
-				}
-				compact := appServerOneRequest(t, w, "thread/compact/start", "")
-				appServerTestMessage(t, u, ack)
-				appServerTestTurnEnd(t, u, "work", status)
-				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, compact.ID))
-				appServerTestTurn(t, u, "compact")
-				appServerTestTurnEnd(t, u, "compact", "completed")
-				appServerOneRequest(t, w, "turn/start", "follow-up")
-				if u.Text != "" || len(u.attached.conversation.Queued) != 1 || u.attached.conversation.Queued[0].Text != "next turn" {
-					t.Fatalf("waiting input lost or restored: draft=%q queued=%+v", u.Text, u.attached.conversation.Queued)
-				}
-			})
-		}
-	}
-}
-
 func TestAppServerCompactSteerRestoresHostOwnedSteer(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "work")
@@ -536,106 +497,13 @@ func TestAppServerCompactSteerWaitsForStartingTurn(t *testing.T) {
 	}
 }
 
-func TestAppServerCompactSteerInterruptRejected(t *testing.T) {
-	for _, completed := range []bool{false, true} {
-		t.Run(fmt.Sprint("completed=", completed), func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			appServerTestTurn(t, u, "work")
-			appServerTestKeys(t, u, "/compact\rwaiting\r")
-			interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-			if completed {
-				appServerTestTurnEnd(t, u, "work", "completed")
-			}
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, interrupt.ID))
-			if w.Len() != 0 || u.Text != "/compact\nwaiting" || u.Compaction.Pending() || u.Compaction.PreservesWaitingInput() {
-				t.Fatalf("rejected interruption compacted or lost input: wire=%q draft=%q", w.String(), u.Text)
-			}
-			appServerTestTurnEnd(t, u, "work", "completed")
-			if w.Len() != 0 {
-				t.Fatal("rejected command later ran")
-			}
-		})
-	}
-}
-
-func TestAppServerCompactSteerCancelDuringInterrupt(t *testing.T) {
-	for _, beforeAck := range []bool{false, true} {
-		t.Run(fmt.Sprint("completionBeforeAck=", beforeAck), func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			appServerTestTurn(t, u, "work")
-			appServerTestKeys(t, u, "/compact\rwaiting\r")
-			nativeTestCancel(t, u)
-			interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-			if u.Text != "/compact\nwaiting" {
-				t.Fatalf("cancel did not restore input: %q", u.Text)
-			}
-			ack := fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID)
-			if beforeAck {
-				appServerTestTurnEnd(t, u, "work", "interrupted")
-				appServerTestMessage(t, u, ack)
-			} else {
-				appServerTestMessage(t, u, ack)
-				appServerTestTurnEnd(t, u, "work", "interrupted")
-			}
-			if w.Len() != 0 || u.Compaction.Pending() || u.Compaction.ContinuationPending() || u.Compaction.PreservesWaitingInput() {
-				t.Fatalf("cancelled compaction dispatched: %s", w.String())
-			}
-		})
-	}
-}
-
-func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
-	u, w := newAppServerTestUI()
-	setTestAppServerIntegration(u, &observationFixture{})
-	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.shell.Transcript.Clock = u.clock
-	u.settings.Model, u.settings.Effort = "snapshot-model", "high"
-	appServerTestTurn(t, u, "work")
-	appServerTestKeys(t, u, "/compact\r")
-	appServerOneRequest(t, w, "turn/interrupt", "")
-	rows, _ := u.testMainFrame(80, 16, 0)
-	assertNativeUISnapshot(t, "native-compact-steer-interrupt", rows)
-	nativeTestCancel(t, u)
-	rows, _ = u.testMainFrame(80, 16, 0)
-	assertNativeUISnapshot(t, "native-compact-steer-cancel", rows)
-}
-
-func TestAppServerCompactSteerInterruptsWaitingQuestion(t *testing.T) {
+func TestAppServerCompactSteerReachesNativeAdmissionDuringQuestion(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "turn")
 	questionTestSync(t, u, "question", false)
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
 	appServerTestKeys(t, u, "/compact\r")
-	requests := appServerTurnRequests(t, w)
-	found := false
-	for _, request := range requests {
-		if request.Method == "turn/interrupt" {
-			found = true
-		}
-		if request.Method == "thread/compact/start" {
-			t.Fatal("compaction overtook interruption")
-		}
-	}
-	if !found {
-		t.Fatalf("question blocked explicit compaction: %+v", requests)
-	}
-}
-
-func TestAppServerCompactSteerEditCancelsIntent(t *testing.T) {
-	u, w := newAppServerTestUI()
-	appServerTestTurn(t, u, "work")
-	appServerTestKeys(t, u, "/compact\r")
-	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-	appServerTestKeys(t, u, "\x1b[1;3A")
-	appServerTestTurnEnd(t, u, "work", "interrupted")
-	if !u.Compaction.Pending() || u.Compaction.PreservesWaitingInput() {
-		t.Fatal("editing cleared acknowledgement gate or retained compact intent")
-	}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
-	if w.Len() != 0 || u.Text != "/compact" || u.Compaction.Pending() {
-		t.Fatalf("edited command dispatched or lost: wire=%q draft=%q", w.String(), u.Text)
-	}
+	appServerOneRequest(t, w, "thread/compact/start", "")
 }
 
 func TestNativeCancelDraftUndoLockAndIdleQuit(t *testing.T) {

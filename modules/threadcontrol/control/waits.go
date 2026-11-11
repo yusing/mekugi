@@ -92,6 +92,9 @@ func (tree *Tree) waitResult(wait *Wait) *WaitResult {
 		result.Mode = ""
 	}
 	if compact := wait.Compaction; compact != nil {
+		if wait.NativeCell != "" {
+			result.NativeTicket = &CompoundTicket{WaitID: wait.ID, Generation: wait.Generation}
+		}
 		result.Compaction = &CompactionResult{State: compact.State, Error: compact.Error, Reload: compact.Message}
 		if compact.State == "registered" {
 			result.State = "compacting"
@@ -307,6 +310,7 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, mode WaitMo
 		}
 		if compact {
 			wait.Compaction = &Effect{ID: caller.Call + ":compact", Caller: caller.Thread, Target: caller.Thread, CallerTurn: caller.Turn, Generation: member.Generation, Kind: "compact", State: "registered", Message: reload}
+			wait.NativeCell, wait.Window = caller.Cell, caller.Window
 		}
 		if timeout != nil {
 			if *timeout > member.Limits.MaxWaitMS {
@@ -338,6 +342,9 @@ func (s *Service) Execution(ctx context.Context, thread, turn, item, handle stri
 		return errors.New("wait requires a host execution-cell handle")
 	}
 	return s.update(ctx, thread, func(tree *Tree, member *Member) error {
+		if member.Wait != nil && member.Wait.NativeCell != "" {
+			return unchanged // Native compounds settle from typed cell evidence only.
+		}
 		_, err := tree.transitionHost(member, hostEvent{kind: hostEventExecution, turn: turn, item: item, handle: handle, succeeded: succeeded})
 		return err
 	})
@@ -345,6 +352,9 @@ func (s *Service) Execution(ctx context.Context, thread, turn, item, handle stri
 
 func (s *Service) ClaimLocalStop(ctx context.Context, thread, turn, item string) (result *LocalStop, err error) {
 	err = s.update(ctx, thread, func(tree *Tree, member *Member) error {
+		if member.Wait != nil && member.Wait.NativeCell != "" {
+			return unchanged
+		}
 		var transition error
 		result, transition = tree.transitionHost(member, hostEvent{kind: hostEventLocalStop, turn: turn, item: item})
 		return transition

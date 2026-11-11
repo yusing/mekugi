@@ -30,6 +30,11 @@ func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live,
 			return nil, nil
 		}
 		if p.ThreadID == live.Thread && live.AuxiliaryTurn(p.Turn.ID) {
+			if message.Method == "turn/completed" && live.Compaction.Starting() {
+				// Native manual admission replaced the old model turn before the
+				// new auxiliary compact turn started.
+				return driver.Observe(message.Method, message.Params)
+			}
 			return nil, nil
 		}
 	}

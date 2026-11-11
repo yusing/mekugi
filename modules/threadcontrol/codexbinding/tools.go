@@ -62,7 +62,7 @@ func ToolCatalog(claudeCaller bool) []*mcp.Tool {
 
 // mcp constructs the sole collaboration catalog through stock execution.
 func (d *Driver) mcp() binding.MCPServer {
-	server := binding.MCPServer{Name: "threadcontrol", Server: mcp.NewServer(&mcp.Implementation{Name: "threadcontrol", Version: "1"}, nil)}
+	server := binding.MCPServer{Name: "threadcontrol", CompoundWaitTool: "wait_agent", Server: mcp.NewServer(&mcp.Implementation{Name: "threadcontrol", Version: "1"}, nil)}
 	for _, entry := range ToolCatalog(false) {
 		server.Tools = append(server.Tools, entry.Name)
 		mcp.AddTool(server.Server, entry, func(ctx context.Context, request *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
@@ -74,12 +74,17 @@ func (d *Driver) mcp() binding.MCPServer {
 			if err != nil {
 				return nil, nil, err
 			}
-			caller := control.Identity{Thread: metadata.Thread, Session: metadata.Session, Turn: metadata.Turn, Call: metadata.Call, Item: metadata.Item}
-			value, err := d.invoke(ctx, metadata, caller, entry.Name, jsontext.Value(request.Params.Arguments))
-			if len(value) == 0 {
-				return &mcp.CallToolResult{Content: []mcp.Content{}}, nil, err
+			caller := control.Identity{Thread: metadata.Thread, Session: metadata.Session, Turn: metadata.Turn, Call: metadata.Call, Item: metadata.Item, Window: metadata.Window, Cell: metadata.Cell}
+			value, ticket, err := d.invoke(ctx, metadata, caller, entry.Name, jsontext.Value(request.Params.Arguments))
+			result := &mcp.CallToolResult{Content: []mcp.Content{}}
+			if ticket != nil {
+				result.SetMeta(map[string]any{"mekugiCompoundWait": ticket})
 			}
-			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(value)}}}, nil, err
+			if len(value) == 0 {
+				return result, nil, err
+			}
+			result.Content = []mcp.Content{&mcp.TextContent{Text: string(value)}}
+			return result, nil, err
 		})
 	}
 	return server
@@ -93,10 +98,11 @@ func (d *Driver) Call(ctx context.Context, caller control.Identity, name string,
 		return nil, err
 	}
 	metadata := binding.MCPIdentity{Thread: caller.Thread, Session: caller.Session, Turn: caller.Turn, Call: caller.Call, Item: caller.Item, Model: member.Settings.Model}
-	return d.invoke(ctx, metadata, caller, name, raw)
+	value, _, err := d.invoke(ctx, metadata, caller, name, raw)
+	return value, err
 }
 
-func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, caller control.Identity, name string, raw jsontext.Value) (jsontext.Value, error) {
+func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, caller control.Identity, name string, raw jsontext.Value) (jsontext.Value, *control.CompoundTicket, error) {
 	var result any
 	var err error
 	switch name {
@@ -110,7 +116,7 @@ func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, calle
 		result, err = d.inspectAgent(ctx, caller, raw)
 	case "compact":
 		if !strings.HasPrefix(metadata.Model, "claude:") {
-			return nil, errors.New("use native new_context for Codex context reset")
+			return nil, nil, errors.New("use native new_context for Codex context reset")
 		}
 		var args struct{}
 		if err = json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err == nil {
@@ -121,21 +127,21 @@ func (d *Driver) invoke(ctx context.Context, metadata binding.MCPIdentity, calle
 	case "send_message", "followup_task", "interrupt_agent":
 		result, err = d.controlAction(ctx, caller, raw, name)
 	default:
-		return nil, errors.New("unknown coordination tool")
+		return nil, nil, errors.New("unknown coordination tool")
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if wait, ok := result.(control.WaitResult); name == "wait_agent" && ok && !wait.Settled() {
 		// Registration lives in control, not in the acknowledgement payload.
 		// The authenticated enclosing execution still has to finish to stop.
-		return nil, nil
+		return nil, wait.NativeTicket, nil
 	}
 	value, err := json.Marshal(result)
 	if err == nil {
 		value, err = visibleResultNames(value)
 	}
-	return value, err
+	return value, nil, err
 }
 
 func (d *Driver) spawnAgent(ctx context.Context, metadata binding.MCPIdentity, caller control.Identity, raw jsontext.Value) (any, error) {
@@ -202,6 +208,9 @@ func (d *Driver) waitAgent(ctx context.Context, caller control.Identity, raw jso
 	}
 	var result control.WaitResult
 	if args.Compact {
+		if !strings.HasPrefix(member.Settings.Model, "claude:") && (caller.Cell == "" || caller.Window == "") {
+			return nil, errors.New("compound wait requires native cell and window identity")
+		}
 		result, err = d.control.RegisterCompaction(ctx, caller, args.Mode, args.Timeout, args.Yield, time.Now(), false, string(args.Reload))
 	} else {
 		result, err = d.control.RegisterWait(ctx, caller, args.Mode, args.Timeout, args.Yield, time.Now())

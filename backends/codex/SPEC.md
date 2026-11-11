@@ -93,6 +93,14 @@ line. Native clients retain the latest delivered diagnostics for exit reporting;
 this is not a durable crash log. RPC replies preserve the
 original server request ID; acknowledgement does not establish operation completion.
 
+Compound waits use the existing connection for an awaited
+`thread/compoundWait/settle` server request and a correlated terminal
+`thread/compoundWait/reset` notification. The native execution cell supplies exact
+evidence; Thread Control serializes logical stop admission and returns its
+disposition. Neither notification observation nor provider-input parsing may
+substitute for that reply. Reset completion and host-turn settlement remain
+separate prerequisites under the [wait contract](../../modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery).
+
 Explicit close releases a reader waiting on a paused consumer. Normal shutdown
 closes input. Cancellation instead signals Codex once to interrupt its active
 execution, allowing the host's process-group cleanup before transport closure.

@@ -18,6 +18,10 @@ func (d *Driver) Reconcile(ctx context.Context, thread string) error {
 	var failures []error
 	for _, input := range actions {
 		action := input.Effect
+		if member, ok := d.control.Member(thread); ok && action.Kind == "compact" && member.Wait != nil && member.Wait.NativeCell != "" {
+			failures = append(failures, fmt.Errorf("native compound reset %s awaits its correlated native outcome", action.ID))
+			continue
+		}
 		kind := action.Kind
 		if kind == "create" {
 			kind = action.Phase

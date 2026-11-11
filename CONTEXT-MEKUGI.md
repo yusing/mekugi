@@ -12,6 +12,11 @@ Native foundation: `runtime/codex/codex-rs/app-server` owns the renamed
 Native summary-free reset/reload belongs to `runtime/codex/codex-rs/core/src/{compact_token_budget,session}`;
 the native rollout/checkpoint retains source selection. `modules/agentguidance/compact/capture.go`
 supplies shared preload/message snapshots, not native reset acquisition.
+Compound wait execution/reset admission belongs to native `core/src/tools/code_mode/compound.rs`;
+`modules/threadcontrol/control/native_compound.go` joins its exact evidence to the logical wait.
+App-server settlement requests and reset receipts cross Session Control's existing connection.
+Native `core/src/state/manual_reset.rs` owns live manual requests and targeted cancellation;
+Session Control `compaction.go` consumes correlated reset receipts, not item-progress guesses.
 Native fixed features/configuration and the JavaScript-only tool mode belong to
 `runtime/codex/codex-rs/{features,core}`. Launch `wrap.go` admits native sessions;
 `app_server.go` maps caller arguments; `profile_route.go` resolves the

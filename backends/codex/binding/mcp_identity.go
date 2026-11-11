@@ -15,6 +15,7 @@ type MCPIdentity struct {
 	Call    string
 	Item    string
 	Window  string
+	Cell    string
 	Version string
 	Model   string
 	Effort  string
@@ -30,6 +31,7 @@ func DecodeMCPIdentity(raw jsontext.Value) (MCPIdentity, error) {
 		Session string `json:"sessionId"`
 		Item    string `json:"itemId"`
 		Window  string `json:"windowId"`
+		Cell    string `json:"cellId"`
 		Turn    struct {
 			Thread  string `json:"thread_id"`
 			Session string `json:"session_id"`
@@ -49,6 +51,6 @@ func DecodeMCPIdentity(raw jsontext.Value) (MCPIdentity, error) {
 		return MCPIdentity{}, errors.New("conflicting host MCP identity")
 	}
 	return MCPIdentity{Thread: meta.Thread, Session: meta.Session, Turn: meta.Turn.Turn,
-		Call: meta.Call, Item: meta.Item, Window: meta.Window, Version: meta.Turn.Version,
+		Call: meta.Call, Item: meta.Item, Window: meta.Window, Cell: meta.Cell, Version: meta.Turn.Version,
 		Model: meta.Turn.Model, Effort: meta.Turn.Effort}, nil
 }

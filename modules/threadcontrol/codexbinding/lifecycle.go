@@ -3,6 +3,7 @@ package codexbinding
 import (
 	"context"
 	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -25,6 +26,9 @@ type hostObservation struct {
 	status               control.Status
 	failure              control.HostFailure
 	err                  error
+	compound             *control.CompoundSettlement
+	compoundReply        func(control.CompoundDisposition, error)
+	compoundReset        *control.CompoundReset
 }
 
 // CompactionFailure is auxiliary: preserve logical work while displaying the failure.
@@ -82,9 +86,28 @@ func (d *Driver) Failures() []error {
 	return result
 }
 
+func (d *Driver) SettleCompound(input control.CompoundSettlement, reply func(control.CompoundDisposition, error)) {
+	d.enqueue(hostObservation{thread: input.Thread, method: "thread/compoundWait/settle", compound: &input, compoundReply: reply})
+}
+
+func (d *Driver) NativeCompoundReplyFailed(input control.CompoundSettlement, failure error) {
+	d.enqueue(hostObservation{thread: input.Thread, method: "thread/compoundWait/reset", compoundReset: &control.CompoundReset{
+		Thread: input.Thread, Turn: input.Turn, Item: input.Item, Window: input.Window, Cell: input.Cell,
+		Ticket: input.Ticket, Reset: "uncertain", Diagnostic: failure.Error(),
+	}})
+}
+
 // Observe returns a completion receipt only for admitted terminal observations.
 // The host event loop can defer terminal presentation without waiting for I/O.
 func (d *Driver) Observe(method string, raw jsontext.Value) (<-chan error, error) {
+	if method == "thread/compoundWait/reset" {
+		var receipt control.CompoundReset
+		if err := json.Unmarshal(raw, &receipt, json.RejectUnknownMembers(true)); err != nil {
+			return nil, err
+		}
+		d.enqueue(hostObservation{thread: receipt.Thread, method: method, compoundReset: &receipt})
+		return nil, nil
+	}
 	if method != "turn/started" && method != "turn/completed" && method != "item/completed" {
 		return nil, nil
 	}
@@ -143,9 +166,12 @@ func (d *Driver) HumanInputAcknowledged(thread, id, turn string, err error) {
 
 func (d *Driver) enqueue(event hostObservation) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	if d.lifecycle == nil || d.lifecycle.Err() != nil {
+		d.mu.Unlock()
 		err := errors.New("thread lifecycle is unavailable")
+		if event.compoundReply != nil {
+			event.compoundReply(control.CompoundDisposition{Ticket: event.compound.Ticket}, err)
+		}
 		if event.restored != nil {
 			event.restored <- err
 		}
@@ -159,6 +185,7 @@ func (d *Driver) enqueue(event hostObservation) {
 		return
 	}
 	if event.method == "" && slices.ContainsFunc(d.pending, func(old hostObservation) bool { return old.thread == event.thread && old.method == "" }) {
+		d.mu.Unlock()
 		return
 	}
 	d.pending = append(d.pending, event)
@@ -166,6 +193,7 @@ func (d *Driver) enqueue(event hostObservation) {
 	case d.wake <- struct{}{}:
 	default:
 	}
+	d.mu.Unlock()
 }
 
 // Each native runtime has one observation worker; the host event loop never waits
@@ -192,6 +220,15 @@ func (d *Driver) reduceHost() {
 		thread, p := event.thread, event.value
 		var err error
 		switch event.method {
+		case "thread/compoundWait/settle":
+			var response control.CompoundDisposition
+			response, err = d.control.SettleCompound(d.lifecycle, *event.compound)
+			event.compoundReply(response, err)
+		case "thread/compoundWait/reset":
+			err = d.control.CompoundResetCompleted(d.lifecycle, *event.compoundReset)
+			if event.compoundReset.Diagnostic != "" {
+				event.err = errors.New(event.compoundReset.Diagnostic)
+			}
 		case "compaction/stopped":
 			err = d.control.CheckpointWait(d.lifecycle, thread, p.TurnID)
 		case "thread/restore":
@@ -254,7 +291,7 @@ func (d *Driver) reduceHost() {
 			event.reduced <- err
 			close(event.reduced)
 		}
-		if err == nil && (event.method == "turn/completed" || event.method == "runtime/completed" || event.method == "compaction/stopped" || event.method == "compaction/settled" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
+		if err == nil && (event.method == "thread/compoundWait/reset" || event.method == "turn/completed" || event.method == "runtime/completed" || event.method == "compaction/stopped" || event.method == "compaction/settled" || event.method == "human/interrupt" || event.method == "human/input" || event.method == "") {
 			err = d.DispatchPending(d.lifecycle, thread)
 			err = errors.Join(err, d.Wake(d.lifecycle, thread, time.Now()))
 			for member, ok := d.control.Member(thread); ok && member.Parent != ""; member, ok = d.control.Member(member.Parent) {

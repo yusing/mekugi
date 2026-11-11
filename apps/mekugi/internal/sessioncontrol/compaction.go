@@ -1,10 +1,6 @@
 package sessioncontrol
 
-import (
-	"errors"
-
-	"github.com/yusing/mekugi/backends/codex/binding"
-)
+import "crypto/rand"
 
 // CompactIntent travels with the composer's queued command, not its text or
 // attachments. Continuation is requested only when Main was busy at admission.
@@ -17,13 +13,12 @@ type compactPhase uint8
 
 const (
 	compactIdle compactPhase = iota
-	compactInterrupting
 	compactStarting
 	compactRunning
 	compactCompleted
 )
 
-// Compaction owns the manual workflow, including the prerequisite interrupt.
+// Compaction owns the manual workflow, and its native lifecycle receipts.
 // Acknowledgements and matching turn completion are independent gates. Its zero
 // value is idle; replacing the session discards this live state, never replays it.
 // Source: apps/mekugi/internal/router/app_server_lifecycle.go:134:186@b4e9e2fb
@@ -35,17 +30,12 @@ type Compaction struct {
 	continueTask bool
 	cancelled    bool
 	success      bool
-	call         *HostCall
-}
-
-// InterruptBefore admits one prerequisite interrupt while retaining the queued
-// command. Tab waits for natural completion instead.
-func (c *Compaction) InterruptBefore(intent CompactIntent, turn string) bool {
-	if intent.WaitForIdle || turn == "" || c.Pending() {
-		return false
-	}
-	*c = Compaction{phase: compactInterrupting, turn: turn, ackPending: true}
-	return true
+	inline       bool
+	requestID    string
+	generation   uint64
+	resetID      string
+	resetDone    bool
+	hostDone     bool
 }
 
 func (c *Compaction) Begin(intent CompactIntent) {
@@ -58,8 +48,83 @@ func (c *Compaction) Started(turn string) {
 	}
 }
 
+// NativeRequestID binds lifecycle receipts to this manual request, not a turn
+// that may already contain an older automatic or compound reset.
+func (c *Compaction) NativeRequestID() string {
+	if c.requestID == "" {
+		c.requestID = rand.Text()
+	}
+	return c.requestID
+}
+
+type ContextReset struct {
+	Thread     string `json:"threadId"`
+	Turn       string `json:"turnId"`
+	RequestID  string `json:"requestId,omitempty"`
+	Generation uint64 `json:"generation"`
+	ResetID    string `json:"resetId,omitempty"`
+	Status     string `json:"status"`
+	Inline     bool   `json:"inline"`
+	Diagnostic string `json:"diagnostic,omitempty"`
+}
+
+func (c *Compaction) ObserveReset(event ContextReset) {
+	if !c.Active() || c.requestID == "" || event.Generation == 0 {
+		return
+	}
+	if event.Status == "accepted" {
+		if event.RequestID == c.requestID && c.generation == 0 {
+			c.generation = event.Generation
+		}
+		return
+	}
+	if c.generation == 0 || event.Generation < c.generation {
+		return
+	}
+	if event.Status == "canceled" && event.ResetID == "" && c.resetID == "" {
+		c.phase, c.turn, c.continueTask = compactCompleted, "", false
+		return
+	}
+	terminal := event.Status == "completed" || event.Status == "failed" || event.Status == "canceled"
+	if c.resetID == "" && event.ResetID != "" && event.Turn != "" && (event.Status == "started" || terminal) {
+		// A native terminal disposition remains authoritative if abort prevented
+		// delivery of its started progress event.
+		c.phase, c.turn, c.resetID, c.inline = compactRunning, event.Turn, event.ResetID, event.Inline
+	}
+	if event.Status == "started" {
+		return
+	}
+	if c.resetID == "" || event.ResetID != c.resetID || event.Turn != c.turn || c.resetDone ||
+		!terminal {
+		return
+	}
+	c.resetDone, c.success = true, event.Status == "completed"
+	if c.inline || !c.success {
+		c.continueTask = false
+	}
+	if c.inline || c.hostDone {
+		c.phase, c.turn = compactCompleted, ""
+	}
+}
+
 func (c *Compaction) Completed(turn string, success bool) {
 	if c.turn != turn || turn == "" {
+		return
+	}
+	if c.requestID != "" && c.phase == compactRunning {
+		c.hostDone = true
+		if !success {
+			// Forced host cancellation is itself terminal evidence, including
+			// a reset future aborted before it could publish its own receipt.
+			c.continueTask = false
+			if !c.resetDone {
+				c.resetDone, c.success = true, false
+			}
+		}
+		if !c.resetDone {
+			return
+		}
+		c.phase, c.turn = compactCompleted, ""
 		return
 	}
 	c.turn = ""
@@ -69,33 +134,13 @@ func (c *Compaction) Completed(turn string, success bool) {
 			c.continueTask = false
 		}
 	}
-	c.settle()
 }
 
 func (c *Compaction) Acknowledge(failed bool) {
 	c.ackPending = false
 	if failed {
-		if c.call != nil {
-			c.call.result <- hostCallResult{err: &binding.DispatchError{Outcome: binding.HostRejected, Method: "thread/compact/start", Cause: errors.New("native compaction request failed")}}
-		}
 		*c = Compaction{}
 	}
-	c.settle()
-}
-
-func (c *Compaction) settle() {
-	if c.phase != compactCompleted || c.ackPending {
-		return
-	}
-	if c.call == nil {
-		return
-	}
-	result := hostCallResult{}
-	if !c.success || c.cancelled {
-		result.err = &binding.DispatchError{Outcome: binding.HostRejected, Method: "thread/compact/start", Cause: errors.New("native compaction failed or was interrupted")}
-	}
-	c.call.result <- result
-	c.call = nil
 }
 
 func (c *Compaction) Starting() bool { return c.phase == compactStarting }
@@ -105,27 +150,22 @@ func (c *Compaction) Active() bool {
 
 // OwnsTurn also recognizes the first start notification before Started runs.
 func (c *Compaction) OwnsTurn(turn string) bool {
-	return turn != "" && (c.Starting() || c.phase == compactRunning && c.turn == turn)
+	return turn != "" && !c.inline && (c.Starting() || c.phase == compactRunning && c.turn == turn)
 }
 
 func (c *Compaction) Pending() bool { return c.ackPending || c.Active() || c.turn != "" }
 func (c *Compaction) AcknowledgementPending() bool {
-	return c.phase != compactInterrupting && c.ackPending
-}
-func (c *Compaction) PreservesWaitingInput() bool {
-	return c.phase == compactInterrupting && !c.cancelled
+	return c.ackPending
 }
 func (c *Compaction) ContinuationPending() bool { return c.continueTask }
 
-// CancelQueued restores local intent without interrupting Main. An already
-// issued prerequisite interrupt still needs its acknowledgement and completion.
-func (c *Compaction) CancelQueued(hasQueued bool) (cancelled, interruptionIssued bool) {
+// CancelQueued restores local intent without interrupting Main.
+func (c *Compaction) CancelQueued(hasQueued bool) bool {
 	if !hasQueued || c.Active() || c.AcknowledgementPending() {
-		return false, false
+		return false
 	}
-	interruptionIssued = c.PreservesWaitingInput()
 	c.cancelled, c.continueTask = true, false
-	return true, interruptionIssued
+	return true
 }
 
 // Cancel admits cancellation of the compact operation, including completion
@@ -136,15 +176,6 @@ func (c *Compaction) Cancel() bool {
 	}
 	c.cancelled, c.continueTask = true, false
 	return true
-}
-
-// InterruptTarget becomes available after a cancelled start receives its host
-// turn identity. Completion clears it so cancellation cannot hit a later turn.
-func (c *Compaction) InterruptTarget() string {
-	if c.cancelled && c.phase == compactRunning {
-		return c.turn
-	}
-	return ""
 }
 
 // Continue consumes eligibility once. Waiting user input takes precedence over

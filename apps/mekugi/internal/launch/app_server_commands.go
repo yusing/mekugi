@@ -129,17 +129,12 @@ func sessionBusy(control *sessioncontrol.Live, conversation *conversationmodel.S
 func cancelQueuedCompact(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) bool {
 	isCompact := func(d conversationmodel.Input) bool { return d.Compact != nil }
 	hasQueued := slices.ContainsFunc(attached.conversation.Unsent, isCompact) || slices.ContainsFunc(attached.conversation.Queued, isCompact)
-	cancelled, interruptionIssued := control.Compaction.CancelQueued(hasQueued)
-	if !cancelled {
+	if !control.Compaction.CancelQueued(hasQueued) {
 		return false
 	}
 	restoreDrafts(attached, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
 	attached.conversation.Unsent, attached.conversation.Queued = nil, nil
-	if interruptionIssued {
-		setNotice(&attached.feedback, presentationTime(clock), "Compaction cancelled · input restored · interruption already requested", false)
-	} else {
-		setNotice(&attached.feedback, presentationTime(clock), "Queued compaction cancelled · input restored · Main continues", false)
-	}
+	setNotice(&attached.feedback, presentationTime(clock), "Queued compaction cancelled · input restored · Main continues", false)
 	return true
 }
 

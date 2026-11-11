@@ -15,8 +15,6 @@ func pendingInput(control *sessioncontrol.Live, conversation *conversationmodel.
 	}
 	reason := conversationmodel.Waiting
 	switch {
-	case control.Compaction.PreservesWaitingInput():
-		reason = conversationmodel.CompactAfterInterrupt
 	case control.Shell.Standalone():
 		reason = conversationmodel.ShellRunning
 	case control.SendSteersAfterInterrupt || control.SteerInterruptAckPending:

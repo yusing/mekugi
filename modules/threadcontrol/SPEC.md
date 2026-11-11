@@ -125,6 +125,7 @@ not compact the target. Metrics inform the decision; no universal token cutoff o
 automatic compaction is imposed.
 
 Host MCP thread/session/turn/call/item metadata binds each call to admitted ownership.
+Codex compound waits also retain the native execution cell and context-window identity.
 Task labels and tool arguments confer no authority. Members communicate with
 admitted peers/ancestors and control non-root targets in their tree. Human/session
 control retains root authority. Foreign, retired or conflicting callers reject.
@@ -481,21 +482,21 @@ a persisted local-stop disposition. A failed enclosing execution retires its
 wait so a later execution can retry. Yielded, incomplete or unrelated calls
 cannot arm it. Explicit steering after a successful enclosing result retires its
 subscription and any local stop so ordinary inference can process that input.
-Request Execution then supplies an empty completed continuation
-locally, without provider inference or usage. New input or admitted wake invalidates
-a stale stop. Stop disposition and terminal reduction serialize per work generation.
+For ordinary Codex waits, Request Execution then supplies an empty completed
+continuation locally, without provider inference or usage. Compound Codex waits
+instead settle at the native execution boundary described below. New input or
+admitted wake invalidates a stale stop. Stop disposition and terminal reduction
+serialize per work generation.
 
 A local host-turn completion checkpoints logical waiting, not task completion:
 no final answer, completion event/notice, idle transition or released reservation.
-Agent-requested compaction registers its intent and optional wait atomically,
-including when an outcome is already ready. Its `compacting` acknowledgement requires
-the same authenticated successful enclosing execution and settled host turn as a
-local wait. Failed execution retires the checkpoint without claiming events; yielded
-execution remains pending. Results and addressed messages stay retained behind the
-compaction dispatch barrier. Standalone success continues once. Compound success
-releases only the original wait: an eligible outcome is delivered once, otherwise
-the caller stays waiting without inference. Wait deadlines run from registration
-and may expire during compaction.
+Compact-and-wait registers its checkpoint and wait atomically, including when an
+outcome is already ready. Failed enclosing execution retires the checkpoint without
+claiming events; yielded execution remains pending. Results and addressed messages
+stay retained behind the compaction barrier. Compound success releases only the
+original wait: an eligible outcome is delivered once, otherwise the caller stays
+waiting without inference. Wait deadlines run from registration and may expire
+during compaction.
 
 Codex reset requests have no cost-estimate veto or preflight acquisition. Native
 `functions.new_context` owns standalone reset; `wait_agent(compact:true)` routes
@@ -503,6 +504,27 @@ its reload selection through the same native reset lifecycle before releasing th
 original wait. Source acquisition and retained selection belong to the
 [native reset contract](../agentguidance/SPEC.md#compaction-context), not provider
 input interception. Claude retains its backend compaction behavior.
+
+For Codex compound waits, private metadata on the authenticated MCP response binds
+the retained wait to its actual native execution cell. Native protects that cell
+from reset before dispatching registration; rejection releases the provisional
+guard, while an unresolved or yielded cell keeps it. Native execution and later
+wait results supply typed terminal evidence, not formatted output or a later
+provider request. Native awaits Thread Control's disposition of the exact ticket
+and execution identity before committing the reset. Only current, successful
+execution can claim the stop. Superseded, failed or unclaimed execution leaves the
+latest reload selection unchanged.
+
+The accepted stop commits its reload update to native retained selection and runs
+the shared reset lifecycle once. Omitted selection reuses the latest value; an
+explicit empty selection clears it. A subsequently failed reset does not roll the
+accepted selection back. A concurrently due automatic or deferred manual reset is
+satisfied by the same operation. Native publishes a correlated terminal reset
+outcome and ends the host turn as a logical checkpoint without further inference.
+Wake delivery requires both that outcome and actual host settlement, in either
+arrival order. The compound checkpoint is native-owned and never dispatched again
+through Go's compaction request path. Ordinary waits and Claude settlement retain
+their existing paths.
 
 Compound native compaction failure preserves the wait and events, surfaces an immediate
 notice, and includes the failed compaction outcome in eventual delivery. Failure
@@ -514,6 +536,9 @@ delegates.
 Manual compaction preserves the pending wait and logical work. Its auxiliary
 host turn neither completes the task nor starts a competing continuation; addressed
 messages and wakes queue until compaction settles.
+While a Codex compound cell is unresolved, manual and automatic reset defer before
+interrupting or replacing its context. Successful compound settlement coalesces
+the deferred reset; failed execution preserves an independent manual request.
 Selected logical child completion/failure/interruption or an addressed message may
 wake. Child questions, approvals and their human replies do not. Nested coordinators
 obey the same state machine. Events retain arrival order and are claimed once.

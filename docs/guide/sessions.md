@@ -44,6 +44,11 @@ needed facts through ordinary reads after reset. `wait_agent(compact:true)` rese
 before delivering the wait's outcome. Requested resets are not vetoed by a cost estimate.
 Claude delegates retain native compaction.
 
+Compact-and-wait first lets its enclosing execution finish. While that execution
+is running or yielded, manual and automatic resets wait rather than interrupt it.
+The outcome is delivered only after reset and host execution settle; reset failure
+keeps the wait and reports the failure with its eventual outcome.
+
 The latest reload selection also applies to later manual and automatic resets.
 Omitting `reload` keeps it; `reload:{sources:[]}` clears it. Temporary task-state
 JSON is optional and read only when selected, with selected ranges and nested

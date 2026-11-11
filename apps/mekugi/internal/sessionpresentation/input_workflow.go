@@ -8,11 +8,11 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-// InputSelection is a prepared batch or a prerequisite host interruption.
+// InputSelection is a prepared input batch or continuation.
 type InputSelection struct {
-	Batch            conversationmodel.InputBatch
-	Steer, Interrupt bool
-	Continue         bool
+	Batch    conversationmodel.InputBatch
+	Steer    bool
+	Continue bool
 }
 
 // NextInput runs after application restoration and guard admission. Acquisition
@@ -38,7 +38,11 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 			}
 		}
 		if conversation.Unsent[0].Compact != nil {
-			next.Interrupt = control.Compaction.InterruptBefore(sessioncontrol.CompactIntent(*conversation.Unsent[0].Compact), control.Turn)
+			// Native reset admission must run before any destructive interrupt:
+			// a nested compound registration may still be in flight.
+			if !conversation.Unsent[0].Compact.WaitForIdle {
+				next.Batch = conversation.TakeBatch(true)
+			}
 			return next
 		}
 		if observations.AwaitingMessage(workspace, control.Thread, conversation.Unsent[0].MessageBoundary) {
@@ -115,16 +119,12 @@ func (m *Model) ApplyInputResult(control *sessioncontrol.Live, conversation *con
 		if result.Submission.Turn == "" {
 			effects.Withdrawn = result.Submission.ID
 			effects.InterruptedStart = result.Submission.Interrupted
-			if !result.KeepWaiting {
-				parts = slices.Concat(parts, conversation.TakeWaiting())
-			}
+			parts = slices.Concat(parts, conversation.TakeWaiting())
 		}
 		effects.Restored = conversation.RestoreInput(parts...)
 	case sessioncontrol.InputSettled:
 		parts := conversation.Parts(result.Steers.IDs)
 		switch result.Steers.Action {
-		case sessioncontrol.SteersRestore:
-			effects.Restored = conversation.RestoreInput(parts...)
 		case sessioncontrol.SteersRequeue:
 			conversation.Unsent = slices.Concat(parts, conversation.Unsent)
 		case sessioncontrol.SteersRestoreAll:

@@ -38,8 +38,12 @@ func openInvocationMCP(ctx context.Context, contributions []binding.MCPServer, e
 		// server only. Host execution/approval policy is unchanged.
 		// Declare invocation-owned tools eagerly inside the stock exec catalog.
 		// Handlers own effect admission; the host must not serialize independent calls.
-		overrides = append(overrides, "-c", fmt.Sprintf("mcp_servers.%s={command=%s,args=[\"mcp-bridge\",%s],enabled=true,required=true,supports_parallel_tool_calls=true,enabled_tools=[%s],disabled_tools=[],omit_tools_from=[\"deferred\"],default_tools_approval_mode=\"approve\"}",
-			contribution.Name, strconv.Quote(executable), strconv.Quote(socket), strings.Join(names, ",")))
+		compound := ""
+		if contribution.CompoundWaitTool != "" {
+			compound = fmt.Sprintf(",tools={%s={compound_wait=true}}", strconv.Quote(contribution.CompoundWaitTool))
+		}
+		overrides = append(overrides, "-c", fmt.Sprintf("mcp_servers.%s={command=%s,args=[\"mcp-bridge\",%s],enabled=true,required=true,supports_parallel_tool_calls=true,enabled_tools=[%s],disabled_tools=[],omit_tools_from=[\"deferred\"],default_tools_approval_mode=\"approve\"%s}",
+			contribution.Name, strconv.Quote(executable), strconv.Quote(socket), strings.Join(names, ","), compound))
 	}
 	return overrides, close, nil
 }

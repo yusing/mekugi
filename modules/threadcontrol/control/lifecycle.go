@@ -374,6 +374,9 @@ func (tree *Tree) transitionHost(member *Member, event hostEvent) (*LocalStop, e
 				if compact := member.Wait.Compaction; compact != nil && compact.State == "registered" {
 					compact.State = "pending"
 				}
+				if member.Wait.Compaction != nil && member.Wait.Compaction.State == "uncertain" {
+					member.Status = Uncertain
+				}
 			}
 			if member.RecoveryWait != nil && member.RecoveryWait.State == "registered" {
 				member.Status = Waiting

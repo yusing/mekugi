@@ -11,9 +11,10 @@ import (
 
 // MCPServer borrows a feature-owned SDK server and its invocation tool names.
 type MCPServer struct {
-	Name   string
-	Server *mcp.Server
-	Tools  []string
+	Name             string
+	Server           *mcp.Server
+	Tools            []string
+	CompoundWaitTool string
 }
 
 func (r *Registry) MCP(server MCPServer) error {

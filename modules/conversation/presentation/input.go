@@ -174,7 +174,6 @@ type WaitingReason uint8
 const (
 	Waiting WaitingReason = iota
 	Steering
-	CompactAfterInterrupt
 	ShellRunning
 	SendingAfterInterrupt
 	RestoringAfterInterrupt

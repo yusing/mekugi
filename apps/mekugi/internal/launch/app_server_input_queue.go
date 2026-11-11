@@ -86,9 +86,6 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, picker 
 		}
 	}
 	next := attached.presentation.NextInput(&session.Client.Live, attached.conversation, session.controlObservations, attached.cwd)
-	if next.Interrupt {
-		return applyInterruption(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, session.Client.Interrupt())
-	}
 	if len(next.Batch.Parts) == 0 && !next.Continue {
 		return nil
 	}
@@ -137,7 +134,7 @@ func sendConversationInput(attached *attachedPresentation, control *sessioncontr
 		intent.Continue = intent.Continue && control.LocalStop == ""
 		control.Compaction.Begin(intent)
 		attached.presentation.Status.SetText("Compacting context" + "…")
-		return control.Request("thread/compact/start", map[string]any{"threadId": control.Thread})
+		return control.Request("thread/compact/start", map[string]any{"threadId": control.Thread, "contextResetRequestId": control.Compaction.NativeRequestID()})
 	}
 	for i := range parts {
 		picker.bindSkills(attached.cwd, &parts[i], true)

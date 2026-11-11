@@ -51,6 +51,9 @@ func (session *nativeSession) interruptSession(attached *attachedPresentation, p
 func applyInterruption(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessioncontrol.Interrupt) error {
 	attached.threadInput.reset()
 	applyInputRestoration(attached, questions, approvals, picker, control.Turn, clock, attached.presentation.RestoreInterruptedInput(attached.conversation, intent))
+	if intent.ResetRequest != "" {
+		return control.Request("thread/compact/cancel", map[string]any{"threadId": control.Thread, "contextResetRequestId": intent.ResetRequest})
+	}
 	if intent.Stop != "" && attached.interruptWait != nil {
 		attached.interruptWait(control.Thread, intent.Wait)
 		attached.presentation.Status.SetText("Interrupting…")

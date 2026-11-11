@@ -25,7 +25,6 @@ type SteerAction uint8
 
 const (
 	SteersNone SteerAction = iota
-	SteersRestore
 	SteersRestoreAll
 	SteersRequeue
 	SteersUnconfirmed
@@ -37,13 +36,11 @@ type SteerResult struct {
 }
 
 // InputResult names synchronous composer effects without retaining payloads or
-// callbacks. KeepWaiting applies only to a withdrawn start during compaction's
-// prerequisite interruption; its queued command must survive that withdrawal.
+// callbacks.
 type InputResult struct {
-	Submission  Submission
-	Action      InputAction
-	KeepWaiting bool
-	Steers      SteerResult
+	Submission Submission
+	Action     InputAction
+	Steers     SteerResult
 }
 
 func (h *Live) Submission() Submission { return h.submission }
@@ -66,8 +63,7 @@ func (h *Live) withdraw(s Submission, action InputAction) InputResult {
 		h.AwaitingTurn, h.pendingStart = false, ""
 		h.Interruption.BeforeStart = false
 	}
-	return InputResult{Submission: s, Action: action,
-		KeepWaiting: s.Interrupted && h.Compaction.PreservesWaitingInput()}
+	return InputResult{Submission: s, Action: action}
 }
 
 // SubmissionFailed handles transport rejection, before host acknowledgement.
@@ -154,8 +150,6 @@ func (h *Live) settleSteers(interrupted, waitingSteer bool) SteerResult {
 	sendNow := interrupted && h.SendSteersAfterInterrupt
 	h.SendSteersAfterInterrupt = false
 	switch {
-	case interrupted && h.Compaction.PreservesWaitingInput():
-		r.Action = SteersRestore
 	case sendNow && (len(r.IDs) > 0 || waitingSteer):
 		r.Action = SteersRequeue
 	case interrupted:

@@ -198,7 +198,8 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 			}
 		}
 	}
-	if member != nil && member.Wait.CompactionPending() && effect.Kind != "compact" && effect.Kind != "interrupt" {
+	if member != nil && member.Wait.CompactionPending() && effect.Kind != "compact" && effect.Kind != "interrupt" &&
+		!((effect.Kind == "human" || effect.Kind == "followup") && member.HostRunning && member.Wait.NativeCell != "") {
 		return nil, unchanged
 	}
 	blocked := unchanged
@@ -227,6 +228,9 @@ func (tree *Tree) claimEffect(caller, id string) (*Effect, error) {
 	}
 	switch effectStep(*effect) {
 	case "compact":
+		if member.Wait != nil && member.Wait.NativeCell != "" {
+			return nil, unchanged // The native cell owns reset acceptance and settlement.
+		}
 		if member.HostRunning || member.Wait == nil || member.Wait.State != "registered" || member.Wait.Stop != "committed" || member.Generation != effect.Generation {
 			return nil, unchanged
 		}

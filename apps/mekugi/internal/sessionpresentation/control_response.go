@@ -47,12 +47,6 @@ func (m *Model) AcknowledgeInterrupt(control *sessioncontrol.Live, conversation 
 		return effects
 	}
 	switch method {
-	case "compact/interrupt":
-		effects.Notice = "Could not interrupt for compaction: " + failure
-		m.Status.SetText("Ready")
-		if control.Turn != "" {
-			m.Status.SetText("Working")
-		}
 	case "steer/interrupt":
 		effects.Notice = "Could not interrupt to send steer: " + failure
 	default:

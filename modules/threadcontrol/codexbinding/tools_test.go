@@ -417,6 +417,7 @@ func TestResetReloadAdmission(t *testing.T) {
 	} {
 		t.Run(test.tool+test.args, func(t *testing.T) {
 			driver, _, _, caller := reconciliationFixture(t)
+			caller.Cell, caller.Window = "cell", "window"
 			if _, err := driver.Call(t.Context(), caller, test.tool, []byte(test.args)); err == nil {
 				t.Fatal("invalid reload admitted")
 			}

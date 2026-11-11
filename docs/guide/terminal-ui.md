@@ -81,9 +81,10 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   `/permissions PROFILE --approval-policy=on-request --reviewer=user`.
   Changes apply from the next turn, after Codex confirms them. Queued input waits
   while choosing; Esc cancels. Running commands and existing approvals are unchanged.
-- `/compact` compacts context: Enter interrupts then compacts, Tab queues. `/clear` starts
+- `/compact` resets context: Enter requests it now, Tab queues until idle. Native
+  admission may defer reset while a compact-and-wait execution is unresolved. `/clear` starts
   fresh while idle, preserving sessions/files. See [compaction](sessions.md#compaction-and-recovery).
-  `/btw` and `/compact` requests use low reasoning when the model advertises it,
+  `/btw` requests use low reasoning when the model advertises it,
   preserving already-lower efforts and conversation settings.
 - `/lock` prevents Esc/Ctrl-C interruption and Ctrl-C exit; `/unlock` restores them.
   The lock survives resume; explicit commands and steering still work.

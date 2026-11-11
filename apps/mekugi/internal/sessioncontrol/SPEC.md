@@ -147,34 +147,36 @@ selected service tier. No second input-request map or transport retry is created
 
 ### Compaction
 
-Session control owns native compaction dispatch and correlated settlement.
-Agent checkpoints enter only after their requesting execution and host turn have
-successfully stopped. Codex uses the existing compact request ledger and requires
-both acknowledgement and matching successful compact-turn completion. The compact
-turn remains auxiliary; Thread Control owns continuation and wait delivery.
+Session control dispatches manual compaction and consumes native request/reset
+receipts. Native owns reset admission, source acquisition and terminal disposition.
+The [compound-wait boundary](../../../../modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery)
+uses native execution settlement, not a later Go compaction dispatch; Thread Control
+retains logical continuation and wait delivery.
 
-Session control owns manual compaction's prerequisite interruption, cancellation
-and continuation; displayed progress does not determine its outcome.
-`/compact` with Enter interrupts busy Main before compaction; Tab waits for it.
-Both prerequisite-interrupt acknowledgement and interrupted-turn completion precede
-compaction. Both compact acknowledgement and successful compact-turn completion
-precede continuation. The command separates text batches and never becomes model
-input. An intent admitted while busy continues with waiting input, otherwise one
-native empty-input turn. Continuation adds no user message; idle compaction stays idle.
-Compaction during a logical wait preserves that wait rather than starting an empty
-continuation. User input and attributed agent deliveries queue until both compaction
-acknowledgement and its host turn settle.
+`/compact` with Enter requests reset while Main is busy; Tab waits for idle. Native
+admits the reset before interrupting ordinary work and defers it while a compound
+execution is unresolved. A reset covers only requests captured at its start; later
+requests remain pending. Request/reset identity, not a turn or progress item alone,
+correlates completion. Terminal disposition includes preparation, acquisition and
+post-hooks.
+
+The command separates text batches and never becomes model input. A replacement
+compact turn remains auxiliary. Its acknowledgement, successful reset disposition
+and actual host settlement precede any Go-initiated continuation. An intent admitted
+while busy continues with waiting input, otherwise one native empty-input turn;
+idle compaction stays idle. An inline reset leaves continuation with native, adding
+no empty-input turn. Compaction during a logical wait preserves that wait rather
+than starting a competing continuation. Attributed deliveries retain their ordinary
+wait and reset barriers.
 
 With an empty draft, Ctrl-C restores queued compaction and waiting input without
-interrupting Main. Cancelling a prerequisite interrupt cannot undo its issued
-request or discard its acknowledgement/completion gates, but prevents compaction.
-Cancellation immediately removes continuation eligibility, including races with
-success. Starting/running cancellation restores waiting input and never targets a
-later Main turn. A cancelled start targets only its eventual compact turn, and
-completion removes that target. Rejected interruption restores the command and
-waiting input for retry. Confirmed replacement discards compaction state; switching or
-replay cannot revive it. Codex owns compaction/execution; progress and errors remain
-visible.
+interrupting Main. Cancellation removes continuation eligibility immediately and
+retires the pending manual request through its owner, including when no replacement
+turn has started. It must not cancel an independently required compound reset,
+change an already-settled reset outcome or target later Main work. Starting/running
+cancellation restores waiting input; settlement removes the request's cancellation
+target. Confirmed replacement discards compaction state; switching or replay cannot
+revive it. Displayed progress does not determine completion, and errors remain visible.
 
 ### Native processes
 

@@ -3,7 +3,6 @@ package sessioncontrol
 import (
 	"context"
 	json "encoding/json/v2"
-	"errors"
 	"os/exec"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -43,19 +42,8 @@ func (u *Client[T]) Dispatch(call *HostCall) {
 		call.result <- hostCallResult{err: &binding.DispatchError{Outcome: binding.NotDispatched, Method: call.method, Cause: context.Canceled}}
 		return
 	}
-	if call.method == "thread/compact/start" {
-		if call.scope != u.Thread || u.Turn != "" || u.Compaction.Pending() {
-			call.phase.Store(callCanceled)
-			call.result <- hostCallResult{err: &binding.DispatchError{Outcome: binding.NotDispatched, Method: call.method, Cause: errors.New("compaction requires settled host work")}}
-			return
-		}
-	}
 	if !u.Requests.Dispatch(call) {
 		return
-	}
-	if call.method == "thread/compact/start" {
-		u.Compaction.Begin(CompactIntent{})
-		u.Compaction.call = call
 	}
 	if call.method == "turn/start" && call.scope == u.Thread {
 		u.AwaitingTurn = true
@@ -64,11 +52,6 @@ func (u *Client[T]) Dispatch(call *HostCall) {
 
 func (u *Client[T]) CompleteCall(message appserver.Message) bool {
 	request, _ := u.Requests.Lookup(string(message.ID))
-	if request.call != nil && request.Method == "thread/compact/start" && message.Method == "" {
-		u.Requests.Take(string(message.ID))
-		u.CompactResponse(message.Error != nil)
-		return true
-	}
 	if !u.Requests.CompleteCall(message) {
 		return false
 	}

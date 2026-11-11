@@ -15,7 +15,6 @@ func TestControlResponseRestorationWithoutRenderer(t *testing.T) {
 		method, turn, draft, status string
 	}{
 		{"thread/compact/start", "", "/compact\nwaiting\nqueued", "Ready"},
-		{"compact/interrupt", "active", "waiting\nqueued", "Working"},
 		{"steer/interrupt", "", "waiting\nqueued", "Interrupting…"},
 		{"steer/interrupt", "active", "", "Interrupting…"},
 		{"turn/interrupt", "active", "", "turn/interrupt: rejected"},

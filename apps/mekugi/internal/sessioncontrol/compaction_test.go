@@ -2,62 +2,27 @@ package sessioncontrol
 
 import "testing"
 
-func TestCompactionPrerequisiteNeedsBothObservations(t *testing.T) {
-	for _, acknowledgementFirst := range []bool{false, true} {
-		var operation Compaction
-		intent := CompactIntent{Continue: true}
-		if operation.InterruptBefore(CompactIntent{WaitForIdle: true}, "main-turn") {
-			t.Fatal("queued compaction interrupted Main")
+func TestCompactionCancellationOwnsOnlyItsRequest(t *testing.T) {
+	for _, started := range []bool{false, true} {
+		live := Live{Thread: "main", Turn: "original"}
+		live.Compaction.Begin(CompactIntent{Continue: true})
+		id := live.Compaction.NativeRequestID()
+		if started {
+			live.Started("compact-turn")
 		}
-		if !operation.InterruptBefore(intent, "main-turn") || !operation.Pending() {
-			t.Fatal("explicit compaction did not retain its prerequisite")
+		intent := live.Interrupt()
+		if intent.ResetRequest != id || intent.Turn != "" || !intent.RestoreWaiting {
+			t.Fatalf("manual cancellation interrupted unrelated host work: %+v", intent)
 		}
-		operation.Completed("unrelated-turn", true)
-		if acknowledgementFirst {
-			operation.Acknowledge(false)
-		} else {
-			operation.Completed("main-turn", false)
+		if again := live.Interrupt(); again.ResetRequest != "" || again.Turn != "" {
+			t.Fatalf("duplicate cancellation: %+v", again)
 		}
-		if !operation.Pending() || !operation.PreservesWaitingInput() {
-			t.Fatal("one observation discharged both prerequisite gates")
+		live.Compaction.ObserveReset(ContextReset{RequestID: id, Generation: 1, Status: "accepted"})
+		live.Compaction.ObserveReset(ContextReset{RequestID: id, Generation: 1, Status: "canceled"})
+		live.Compaction.Acknowledge(false)
+		if live.Compaction.Pending() || live.Compaction.Continue(false) {
+			t.Fatal("canceled request retained reset or continuation")
 		}
-		if acknowledgementFirst {
-			operation.Completed("main-turn", false)
-		} else {
-			operation.Acknowledge(false)
-		}
-		if operation.Pending() || !operation.PreservesWaitingInput() {
-			t.Fatal("settled prerequisite blocked compaction or lost waiting input")
-		}
-		operation.Begin(intent)
-		operation.Started("compact-turn")
-		operation.Completed("main-turn", true)
-		operation.Acknowledge(false)
-		if !operation.Pending() || operation.Continue(false) {
-			t.Fatal("old prerequisite completion finished compaction")
-		}
-		operation.Completed("compact-turn", true)
-		if operation.Pending() || !operation.Continue(false) || operation.Continue(false) {
-			t.Fatal("successful compaction did not continue exactly once")
-		}
-	}
-}
-
-func TestCompactionCancellationOwnsOnlyItsTurn(t *testing.T) {
-	var operation Compaction
-	operation.Begin(CompactIntent{Continue: true})
-	if !operation.Cancel() || operation.InterruptTarget() != "" {
-		t.Fatal("cancelled start invented a host turn identity")
-	}
-	operation.Started("compact-turn")
-	if operation.InterruptTarget() != "compact-turn" {
-		t.Fatal("cancelled start lost its eventual interrupt target")
-	}
-	operation.Completed("compact-turn", true)
-	operation.Started("later-turn")
-	operation.Acknowledge(false)
-	if operation.InterruptTarget() != "" || operation.Pending() || operation.Continue(false) {
-		t.Fatal("completed cancellation affected a later turn or revived continuation")
 	}
 }
 

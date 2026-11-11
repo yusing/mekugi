@@ -183,6 +183,30 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		return flushCompletions()
 	}
 	dispatchHost = func(m appserver.Message, observe bool) error {
+		if m.Method == "thread/contextReset" {
+			var receipt sessioncontrol.ContextReset
+			if err := json.Unmarshal(m.Params, &receipt, json.RejectUnknownMembers(true)); err != nil {
+				return err
+			}
+			if receipt.Thread == session.Client.Thread {
+				session.Client.Compaction.ObserveReset(receipt)
+			}
+		}
+		if m.Method == "thread/compoundWait/settle" {
+			var input threadcontrol.CompoundSettlement
+			if err := json.Unmarshal(m.Params, &input, json.RejectUnknownMembers(true)); err != nil {
+				return session.Client.Requests.Respond(m.ID, threadcontrol.CompoundDisposition{Action: "uncertain", Ticket: input.Ticket, Diagnostic: err.Error()})
+			}
+			threads.driver.SettleCompound(input, func(result threadcontrol.CompoundDisposition, err error) {
+				if err != nil {
+					result.Action, result.Diagnostic = "uncertain", err.Error()
+				}
+				if err := session.Client.Requests.Respond(m.ID, result); err != nil {
+					threads.driver.NativeCompoundReplyFailed(input, err)
+				}
+			})
+			return nil
+		}
 		response, correlated := session.Client.Requests.Lookup(string(m.ID))
 		if session.Client.CompleteCall(m) {
 			if m.Error == nil {
@@ -1172,7 +1196,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			}
 			return nil
 		}
-		if method == "thread/compact/start" || method == "compact/interrupt" || method == "steer/interrupt" || method == "turn/interrupt" {
+		if method == "thread/compact/start" || method == "steer/interrupt" || method == "turn/interrupt" {
 			failure := ""
 			if m.Error != nil {
 				failure = m.Error.Message
@@ -1581,7 +1605,7 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 				attached.presentation.Status.Started = presentationTime(clock)
 			}
 			attached.presentation.Status.Set("Working", false)
-			if session.Client.Interruption.BeforeStart || session.Client.Compaction.InterruptTarget() != "" {
+			if session.Client.Interruption.BeforeStart {
 				return applyInterruption(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, session.Client.Interrupt())
 			}
 		}

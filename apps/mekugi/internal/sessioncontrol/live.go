@@ -41,10 +41,9 @@ func (h *Live) AuxiliaryTurn(turn string) bool {
 	return h.Shell.OwnsTurn(turn) || h.Compaction.OwnsTurn(turn) || h.CompactionStopsWait(turn)
 }
 
-// CompactionStopsWait distinguishes the prerequisite host interruption from
-// human cancellation of the already committed logical wait.
+// CompactionStopsWait identifies native replacement of the old host turn.
 func (h *Live) CompactionStopsWait(turn string) bool {
-	return turn != "" && h.LocalStop == turn && h.Compaction.phase == compactInterrupting && h.Compaction.turn == turn
+	return turn != "" && h.LocalStop == turn && h.Compaction.Starting()
 }
 
 func (h *Live) Started(turn string) {
@@ -119,6 +118,7 @@ func (o *Interruption) Finish() { *o = Interruption{} }
 // An empty Turn issues no host request. Pending retains deferred cancellation.
 type Interrupt struct {
 	Turn, Label             string
+	ResetRequest            string
 	Wait, Stop              string
 	RestoreWaiting, Pending bool
 }
@@ -136,16 +136,15 @@ func (h *Live) PrepareEscape(hasUnsentSteer bool) bool {
 
 func (h *Live) Interrupt() Interrupt {
 	r := Interrupt{Turn: h.Turn, Wait: h.Waiting, Stop: h.LocalStop}
+	alreadyCancelled := h.Compaction.cancelled
 	if h.Compaction.Cancel() {
-		if h.Compaction.call == nil {
-			r.Wait, r.Stop = "", ""
-		}
+		r.Wait, r.Stop = "", ""
 		r.RestoreWaiting = true
-		r.Turn = h.Compaction.InterruptTarget()
-		if r.Turn == "" {
-			r.Pending = h.Compaction.Starting()
-			return r
+		r.Turn = ""
+		if !alreadyCancelled {
+			r.ResetRequest = h.Compaction.requestID
 		}
+		return r
 	}
 	if r.Turn == "" {
 		if h.Starting() || h.InputPending() {
@@ -161,10 +160,7 @@ func (h *Live) Interrupt() Interrupt {
 	}
 	h.Interruption.Target = r.Turn
 	r.Label = "turn/interrupt"
-	if h.Compaction.PreservesWaitingInput() {
-		r.Wait, r.Stop = "", ""
-		r.Label = "compact/interrupt"
-	} else if h.SendSteersAfterInterrupt {
+	if h.SendSteersAfterInterrupt {
 		h.SteerInterruptAckPending = true
 		r.Label = "steer/interrupt"
 	}
@@ -173,20 +169,15 @@ func (h *Live) Interrupt() Interrupt {
 
 // InterruptResponse returns whether waiting composer input must be restored.
 func (h *Live) InterruptResponse(label string, failed bool) bool {
-	switch label {
-	case "compact/interrupt":
-		h.Compaction.Acknowledge(failed)
-	case "steer/interrupt":
+	if label == "steer/interrupt" {
 		h.SteerInterruptAckPending = false
 	}
 	if !failed {
 		return false
 	}
 	h.Interruption.Finish()
-	if label != "compact/interrupt" {
-		h.SendSteersAfterInterrupt = false
-	}
-	return label == "compact/interrupt" || label == "steer/interrupt" && h.Turn == ""
+	h.SendSteersAfterInterrupt = false
+	return label == "steer/interrupt" && h.Turn == ""
 }
 
 type shellPhase uint8
