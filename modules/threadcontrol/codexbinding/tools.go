@@ -227,11 +227,11 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 			switch {
 			case err == nil:
 			case dispatched: // The answer failed or its target generation changed.
-				d.control.ObserveFeature(caller.Thread, control.FeatureSideQuestionFailure)
+				d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureSideQuestionFailure)
 			default:
 				// Unauthenticated callers are not attributed to the thread they name.
 				if _, callerErr := d.control.Caller(caller); callerErr == nil {
-					d.control.ObserveFeature(caller.Thread, control.FeatureSideQuestionRejection)
+					d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureSideQuestionRejection)
 				}
 			}
 		}()
@@ -262,7 +262,7 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 	target, err := d.control.Target(caller, args.Target)
 	if err != nil {
 		if kind == "message" {
-			return d.messagePeer(ctx, caller, args.Target, message, args.BTW != nil && *args.BTW)
+			return d.messagePeer(ctx, caller, args.Target, message, args.BTW != nil && *args.BTW, &dispatched)
 		}
 		return nil, err
 	}
@@ -281,7 +281,10 @@ func (d *Driver) controlAction(ctx context.Context, caller control.Identity, raw
 				return nil, err
 			}
 		}
-		d.control.ObserveFeature(caller.Thread, control.FeatureMessage, control.FeatureSideQuestion)
+		d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureMessage, control.FeatureSideQuestion)
+		if sources != "" {
+			d.control.ObserveMessageFeatures(caller.Thread, caller.Call, control.FeatureMessageSources)
+		}
 		dispatched = true
 		answer, err := owner.SideQuestion(ctx, target, message)
 		if err != nil {

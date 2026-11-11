@@ -273,6 +273,9 @@ func (s *Service) registerWait(ctx context.Context, caller Identity, mode WaitMo
 			if !standalone && mode == WaitAll {
 				s.ObserveFeature(caller.Thread, FeatureWaitAll)
 			}
+			if !standalone && yield != nil {
+				s.ObserveFeature(caller.Thread, FeatureWaitProgress)
+			}
 		}
 	}()
 	err = s.update(ctx, caller.Thread, func(tree *Tree, member *Member) error {
@@ -351,15 +354,26 @@ func (s *Service) ClaimLocalStop(ctx context.Context, thread, turn, item string)
 
 // RejectCompaction settles only the unstarted reset. The checkpoint still owns
 // its local stop and wait; its eventual output carries the rejection.
-func (s *Service) RejectCompaction(ctx context.Context, thread, turn, item, reason string) error {
-	return s.update(ctx, thread, func(_ *Tree, member *Member) error {
+// cost distinguishes a price veto from unusable preflight evidence.
+func (s *Service) RejectCompaction(ctx context.Context, thread, turn, item, reason string, cost bool) error {
+	skipped := false
+	err := s.update(ctx, thread, func(_ *Tree, member *Member) error {
 		wait := member.Wait
 		if wait == nil || wait.State != "registered" || wait.Turn != turn || wait.Item != item || wait.Generation != member.Generation || wait.Compaction == nil || wait.Compaction.State != "registered" || wait.Stop != "eligible" {
 			return unchanged
 		}
 		wait.Compaction.State, wait.Compaction.Error = "skipped", reason
+		skipped = true
 		return nil
 	})
+	if err == nil && skipped {
+		feature := FeatureCompactionPreflightSkip
+		if cost {
+			feature = FeatureCompactionCostSkip
+		}
+		s.ObserveFeature(thread, feature)
+	}
+	return err
 }
 
 func (s *Service) PrepareWake(ctx context.Context, thread string, now time.Time) (result *Effect, err error) {

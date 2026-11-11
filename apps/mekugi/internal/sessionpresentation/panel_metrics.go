@@ -73,11 +73,12 @@ func featureFields(f *FeatureMetrics, captured bool) (fields []StatusField) {
 		}
 	}
 	self, desc := f.Self, f.Descendants
-	table("Compaction", row{"Total", self.Compactions, desc.Compactions}, row{"Self-initiated", self.SelfCompactions, desc.SelfCompactions}, row{"With preload", self.CompactionPreloads, desc.CompactionPreloads})
+	table("Compaction", row{"Total", self.Compactions, desc.Compactions}, row{"Self-initiated", self.SelfCompactions, desc.SelfCompactions}, row{"With preload", self.CompactionPreloads, desc.CompactionPreloads}, row{"Self completed", self.SelfCompactionsCompleted, desc.SelfCompactionsCompleted}, row{"Cost skipped", self.CompactionCostSkips, desc.CompactionCostSkips}, row{"Preflight skipped", self.CompactionPreflightSkips, desc.CompactionPreflightSkips}, row{"Self failed", self.SelfCompactionFailures, desc.SelfCompactionFailures})
 	table("Spawns", row{"Total", self.Spawns, desc.Spawns}, row{"With preload", self.SpawnPreloads, desc.SpawnPreloads}, row{"Preload rejected", self.PreloadRejections, desc.PreloadRejections})
 	table("Delegate finals", row{"Completed", self.Finals, desc.Finals}, row{"With edit ranges", self.CompletionChanges, desc.CompletionChanges})
 	table("Messages", row{"Sent", self.Messages, desc.Messages}, row{"With btw", self.SideQuestions, desc.SideQuestions}, row{"btw rejected", self.SideQuestionRejections, desc.SideQuestionRejections}, row{"btw failed", self.SideQuestionFailures, desc.SideQuestionFailures})
-	table("Waits", row{"Registered", self.Waits, desc.Waits}, row{"All mode", self.AllWaits, desc.AllWaits})
+	table("Waits", row{"Registered", self.Waits, desc.Waits}, row{"All mode", self.AllWaits, desc.AllWaits}, row{"Progress enabled", self.ProgressWaits, desc.ProgressWaits}, row{"Progress delivered", self.ProgressYields, desc.ProgressYields})
+	table("Source-bearing sends", row{"Total", self.AssignmentSources + self.MessageSources, desc.AssignmentSources + desc.MessageSources}, row{"Assignments", self.AssignmentSources, desc.AssignmentSources}, row{"Messages", self.MessageSources, desc.MessageSources})
 	switch {
 	case f.DeduplicationOff:
 		fields = append(fields, StatusField{Group: "Output deduplication", Value: "Off for this launch."})

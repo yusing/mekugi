@@ -22,11 +22,12 @@ import (
 // Service borrows the selected history owner. Its indices contain admitted trees,
 // not host processes, request correlation, or another retention store.
 type Service struct {
-	mu          sync.RWMutex
-	trees       map[string]*treeOwner
-	featureMu   sync.Mutex
-	features    map[string]FeatureUse
-	compactions map[[2]string]bool
+	mu              sync.RWMutex
+	trees           map[string]*treeOwner
+	featureMu       sync.Mutex
+	features        map[string]FeatureUse
+	compactions     map[[2]string]bool
+	messageFeatures map[[2]string]uint64
 }
 
 type treeOwner struct {

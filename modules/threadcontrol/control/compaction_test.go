@@ -82,12 +82,12 @@ func TestRejectedCompactionRetainsWaitDeadline(t *testing.T) {
 			_, err := s.RegisterCompaction(t.Context(), id, mode, new(int64(10)), nil, now, false, "")
 			must(t, err)
 			must(t, s.Execution(t.Context(), id.Thread, id.Turn, id.Item, "", true))
-			must(t, s.RejectCompaction(t.Context(), id.Thread, "stale", id.Item, "wrong"))
+			must(t, s.RejectCompaction(t.Context(), id.Thread, "stale", id.Item, "wrong", true))
 			member, _ := s.Member(id.Thread)
 			if member.Wait.Compaction.State != "registered" {
 				t.Fatal("stale estimate changed checkpoint")
 			}
-			must(t, s.RejectCompaction(t.Context(), id.Thread, id.Turn, id.Item, "cost estimate"))
+			must(t, s.RejectCompaction(t.Context(), id.Thread, id.Turn, id.Item, "cost estimate", true))
 			_, err = s.ClaimLocalStop(t.Context(), id.Thread, id.Turn, id.Item)
 			must(t, err)
 			must(t, s.HostCompleted(t.Context(), id.Thread, id.Turn, Completed, HostFailure{}))

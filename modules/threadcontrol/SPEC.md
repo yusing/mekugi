@@ -681,7 +681,10 @@ Totals and their subsets:
 - **Compactions:** completed live native context resets, whoever initiated them;
   newly registered `compact` or `wait_agent` compactions; those registrations with
   nonempty acquired-source selections. Self-initiated requests count at registration,
-  so requests whose reset fails can exceed the completed total. Empty and host-loaded
+  so requests whose reset fails can exceed the completed total. Self-request outcomes
+  separately count completed resets, cost-vetoed skips, unusable-preflight skips and
+  confirmed reset failures. Uncertain resets acquire an outcome only after confirmation;
+  duplicate acknowledgements count once. Empty and host-loaded
   instruction-only selections count no preload.
 - **Spawns:** admitted children; those with nonempty preload sources; spawn calls
   whose preload selection is rejected.
@@ -689,12 +692,24 @@ Totals and their subsets:
 - **Messages:** dispatched `send_message` calls; those with `btw:true`; `btw` calls an
   authenticated caller makes that are rejected before dispatch; dispatched `btw` calls
   whose answer fails or whose target generation changes.
-- **Waits:** newly registered `wait_agent` waits; those with `wait_mode:"all"`.
+- **Waits:** newly registered `wait_agent` waits; those with `wait_mode:"all"`;
+  those with progress enabled; progress checkpoints actually delivered through a
+  confirmed wake. Interval probes, unchanged captures, abandoned collections,
+  failed or uncertain wakes and ordinary completion/message wakes count no progress delivery.
+- **Source-bearing sends:** accepted source-bearing spawn/follow-up assignments and
+  `send_message` sends, including `btw`. These count sends with frozen file-source
+  selections, not files or successful reads: retained failed-read diagnostics still
+  count, while rejected acquisition/publication and literal-only messages do not.
+  Explicit preloads remain separate. Assignments count on confirmed admission or
+  follow-up delivery; messages count at accepted send registration or btw dispatch.
 
 Spawns and final answers count when their effect is confirmed, immediately or by
 reconciliation, so each counts once. Repeated calls that reuse a registration, spawn
-or action count once, and empty selections count no preload. Each use counts for the
-thread that made it; a descendant sum covers admitted descendants, including settled
+or action count once, and empty selections count no preload. Ordinary foreign sends
+count on accepted recipient registration, even if delivery later needs reconciliation;
+foreign and local btw dispatches count before awaiting their answers. Both use the
+sender's counts, never the recipient's, and repeated operations count once per fact.
+Each use counts for the thread that made it; a descendant sum covers admitted descendants, including settled
 ones. Counts are invocation-local and never checkpointed, resumed or inherited by forks.
 
 ## Acceptance

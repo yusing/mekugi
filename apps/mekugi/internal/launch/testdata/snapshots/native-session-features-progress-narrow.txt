@@ -1,0 +1,40 @@
+╭ Session · Features ─────────────╮
+│                                 │
+│  btw failed                     │
+│     0            1              │
+│                                 │
+│  Waits                          │
+│  Self  Descendants              │
+│  Registered                     │
+│     5            3              │
+│  All mode                       │
+│     1            0              │
+│  Progress enabled               │
+│     4            3              │
+│  Progress delivered             │
+│     2            1              │
+│                                 │
+│  Source-bearing sends           │
+│  Self  Descendants              │
+│  Total                          │
+│     6            3              │
+│  Assignments                    │
+│     3            2              │
+│  Messages                       │
+│     3            1              │
+│                                 │
+│  Output deduplication           │
+│  Self  Descendants              │
+│  Occurrences                    │
+│    12            4              │
+│  Saved tokens (est.)            │
+│  1234          -20              │
+│  Unmeasured                     │
+│     0            1              │
+│  Occurrences count receipts     │
+│  per request projection,        │
+│  including repeated history.    │
+│  Saved tokens are a net local   │
+│  estimate after reference       │
+│                                 │
+╰─ ←→ views  ↑↓ scroll  Esc ──────╯

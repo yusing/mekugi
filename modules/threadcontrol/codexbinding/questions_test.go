@@ -128,7 +128,8 @@ func TestSideQuestionFailuresNeverFallBackToInput(t *testing.T) {
 	if self, _, _ := driver.control.FeatureUse(caller.Thread); self.SideQuestions != 1 || self.Messages != 1 || self.SideQuestionFailures != 1 || self.SideQuestionRejections != 1 {
 		t.Fatalf("btw counts must separate the dispatched failure from the rejected runtime call, excluding the foreign caller: %+v", self)
 	}
-	// A question cannot return an answer under a newer logical work generation.
+	// A new question cannot return an answer under a newer logical work generation.
+	caller.Call = "new-question"
 	host.ask = func(ctx context.Context, target *control.Member, _ string) (string, error) {
 		if err := driver.control.HostCompleted(ctx, target.Thread, "child-turn", control.Completed, control.HostFailure{}); err != nil {
 			t.Fatal(err)

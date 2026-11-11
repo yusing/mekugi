@@ -784,7 +784,7 @@ func TestUISnapshotCompactionRejection(t *testing.T) {
 			}})
 			check(s.Execution(ctx, caller.Thread, caller.Turn, caller.Item, "", true))
 			const reason = "Estimated uncached next input $0.219230 exceeds last observed input $0.186530, including its cache discount (21923 reset tokens; assumes no cache hits after reset and unchanged reload sources). Context was not reset; reload sources were not attached."
-			check(s.RejectCompaction(ctx, caller.Thread, caller.Turn, caller.Item, reason))
+			check(s.RejectCompaction(ctx, caller.Thread, caller.Turn, caller.Item, reason, true))
 			// The rejection is visible before host settlement or a compound wake.
 			syncLogicalWork(&u.attached, &u.Live, threads, *at)
 			count := len(u.attached.source.Entries)
@@ -833,7 +833,7 @@ func TestCompactionOutcomeSurvivesWaitCancellation(t *testing.T) {
 				check(err)
 				check(s.Execution(ctx, id.Thread, id.Turn, id.Item, "", true))
 				if outcome == "skipped" {
-					check(s.RejectCompaction(ctx, id.Thread, id.Turn, id.Item, "cost veto"))
+					check(s.RejectCompaction(ctx, id.Thread, id.Turn, id.Item, "cost veto", true))
 				}
 				_, err = s.ClaimLocalStop(ctx, id.Thread, id.Turn, id.Item)
 				check(err)

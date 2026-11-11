@@ -189,6 +189,10 @@ func TestSelfCompactionCostAdmission(t *testing.T) {
 				return
 			}
 			readFailed := strings.HasPrefix(mode, "denied") || mode == "canceled"
+			use, _, _ := service.FeatureUse(caller.Thread)
+			if use.CompactionCostSkips+use.CompactionPreflightSkips != 1 || (use.CompactionPreflightSkips == 1) != readFailed || use.SelfCompactionFailures != 0 {
+				t.Fatalf("preflight outcome mislabeled: %+v", use)
+			}
 			if readFailed && !strings.Contains(member.Wait.Compaction.Error, "not repeated") {
 				t.Fatal("preflight failure not reported")
 			}

@@ -152,7 +152,7 @@ func (t *mekugiResponseTransform) checkCompactionCost(request *codexresponses.Re
 	}
 	if !check.known {
 		if len(check.calls) > 0 {
-			return t.owners.ThreadControl.Coordination().RejectCompaction(t.ctx, t.shellThreadID, t.shellTurnID, t.localWaitItem, "Preflight did not produce usable evidence; failed or canceled reads were not repeated. Context was not reset; reload sources were not attached.")
+			return t.owners.ThreadControl.Coordination().RejectCompaction(t.ctx, t.shellThreadID, t.shellTurnID, t.localWaitItem, "Preflight did not produce usable evidence; failed or canceled reads were not repeated. Context was not reset; reload sources were not attached.", false)
 		}
 		reason := check.unknown
 		if reason == "" {
@@ -175,5 +175,5 @@ func (t *mekugiResponseTransform) checkCompactionCost(request *codexresponses.Re
 		return nil
 	}
 	reason := fmt.Sprintf("Estimated uncached next input $%.6f exceeds last observed input $%.6f, including its cache discount (%d reset tokens; assumes no cache hits after reset and unchanged reload sources). Context was not reset; reload sources were not attached.", cold.Total(), current.Total(), tokens)
-	return t.owners.ThreadControl.Coordination().RejectCompaction(t.ctx, t.shellThreadID, t.shellTurnID, t.localWaitItem, reason)
+	return t.owners.ThreadControl.Coordination().RejectCompaction(t.ctx, t.shellThreadID, t.shellTurnID, t.localWaitItem, reason, true)
 }

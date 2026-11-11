@@ -74,7 +74,7 @@ func TestSpawnCountsAcceptedNonemptyPreloads(t *testing.T) {
 	} {
 		caller := admitted
 		caller.Call = tc.call
-		args := jsontext.Value(fmt.Sprintf(`{"task_name":%q,"message":"assignment","fork_turns":"none"%s}`, tc.call, tc.preload))
+		args := jsontext.Value(fmt.Sprintf(`{"task_name":%q,"message":"assignment @source.txt","fork_turns":"none"%s}`, tc.call, tc.preload))
 		if *native.created == 0 {
 			// A lost assignment acknowledgement is reconciled by the repeated call.
 			host.failure = &binding.DispatchError{Outcome: binding.Uncertain, Cause: errors.New("lost assignment acknowledgement")}
@@ -100,7 +100,7 @@ func TestSpawnCountsAcceptedNonemptyPreloads(t *testing.T) {
 			t.Fatalf("spawn accepted invalid preload %s", options)
 		}
 	}
-	if self, _, _ := service.FeatureUse("root"); self.Spawns != 3 || self.PreloadRejections != 2 {
+	if self, _, _ := service.FeatureUse("root"); self.Spawns != 3 || self.AssignmentSources != 3 || self.PreloadRejections != 2 {
 		t.Fatalf("spawns = %d, preload rejections = %d, want 3 and 2", self.Spawns, self.PreloadRejections)
 	}
 }

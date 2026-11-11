@@ -192,7 +192,7 @@ func TestWaitMetricsSampleDeliveredOutcomes(t *testing.T) {
 				t.Fatal(err)
 			}
 			if test.compact == "skipped" {
-				if err := driver.control.RejectCompaction(t.Context(), caller.Thread, caller.Turn, caller.Item, "cost estimate"); err != nil {
+				if err := driver.control.RejectCompaction(t.Context(), caller.Thread, caller.Turn, caller.Item, "cost estimate", true); err != nil {
 					t.Fatal(err)
 				}
 			}

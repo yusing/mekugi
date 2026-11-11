@@ -1,5 +1,7 @@
 
 
+
+
   ╭ Session · Features ─────────────────────────────────────────── Esc close ╮
   │                                                                          │
   │  Features  ────────────────────────────────────────────────────────────  │
@@ -7,34 +9,46 @@
   │  completed ones. Counts cover this launch and are not restored on        │
   │  resume.                                                                 │
   │                                                                          │
-  │  Compaction        Self  Descendants                                     │
-  │  Total                3            7                                     │
-  │  Self-initiated       2            4                                     │
-  │  With preload         0            2                                     │
+  │  Compaction            Self  Descendants                                 │
+  │  Total                    3            7                                 │
+  │  Self-initiated           8           10                                 │
+  │  With preload             0            2                                 │
+  │  Self completed           2            4                                 │
+  │  Cost skipped             3            1                                 │
+  │  Preflight skipped        1            2                                 │
+  │  Self failed              1            2                                 │
   │                                                                          │
-  │  Spawns            Self  Descendants                                     │
-  │  Total                4            1                                     │
-  │  With preload         3            0                                     │
-  │  Preload rejected     1            0                                     │
+  │  Spawns                Self  Descendants                                 │
+  │  Total                    4            1                                 │
+  │  With preload             3            0                                 │
+  │  Preload rejected         1            0                                 │
   │                                                                          │
-  │  Delegate finals   Self  Descendants                                     │
-  │  Completed            0            8                                     │
-  │  With edit ranges     0            5                                     │
+  │  Delegate finals       Self  Descendants                                 │
+  │  Completed                0            8                                 │
+  │  With edit ranges         0            5                                 │
   │                                                                          │
-  │  Messages          Self  Descendants                                     │
-  │  Sent                 6            2                                     │
-  │  With btw             1            2                                     │
-  │  btw rejected         1            0                                     │
-  │  btw failed           0            1                                     │
+  │  Messages              Self  Descendants                                 │
+  │  Sent                     6            2                                 │
+  │  With btw                 1            2                                 │
+  │  btw rejected             1            0                                 │
+  │  btw failed               0            1                                 │
   │                                                                          │
-  │  Waits             Self  Descendants                                     │
-  │  Registered           5            3                                     │
-  │  All mode             1            0                                     │
+  │  Waits                 Self  Descendants                                 │
+  │  Registered               5            3                                 │
+  │  All mode                 1            0                                 │
+  │  Progress enabled         4            3                                 │
+  │  Progress delivered       2            1                                 │
+  │                                                                          │
+  │  Source-bearing sends  Self  Descendants                                 │
+  │  Total                    6            3                                 │
+  │  Assignments              3            2                                 │
+  │  Messages                 3            1                                 │
   │                                                                          │
   │  Output deduplication  ────────────────────────────────────────────────  │
   │  Unavailable for this frontend.                                          │
   │                                                                          │
   ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ───────────────────────────╯
+
 
 
 

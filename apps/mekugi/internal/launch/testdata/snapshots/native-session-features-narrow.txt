@@ -12,9 +12,17 @@
 │  Total                          │
 │     3            7              │
 │  Self-initiated                 │
-│     2            4              │
+│     8           10              │
 │  With preload                   │
 │     0            2              │
+│  Self completed                 │
+│     2            4              │
+│  Cost skipped                   │
+│     3            1              │
+│  Preflight skipped              │
+│     1            2              │
+│  Self failed                    │
+│     1            2              │
 │                                 │
 │  Spawns                         │
 │  Self  Descendants              │
@@ -38,13 +46,5 @@
 │     6            2              │
 │  With btw                       │
 │     1            2              │
-│  btw rejected                   │
-│     1            0              │
-│  btw failed                     │
-│     0            1              │
-│                                 │
-│  Waits                          │
-│  Self  Descendants              │
-│  Registered                     │
 │                                 │
 ╰─ ←→ views  ↑↓ scroll  Esc ──────╯

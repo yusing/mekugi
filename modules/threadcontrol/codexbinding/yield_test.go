@@ -127,6 +127,9 @@ func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 						t.Fatalf("unchanged interval woke inference: inputs=%+v member=%+v", host.inputs, member)
 					}
 				}
+				if use, _, _ := driver.control.FeatureUse(caller.Thread); use.ProgressWaits != 2 || use.ProgressYields != 1 {
+					t.Fatal("unchanged interval counted as delivered progress", use)
+				}
 				// A later interval under the same capture ID must remain eligible.
 				source.chunks++
 			}
@@ -147,6 +150,9 @@ func TestWaitYieldDispatchesThroughExistingTick(t *testing.T) {
 				t.Fatal("delivery did not retain cursor")
 			}
 			caller.Turn = host.nextTurn
+		}
+		if use, _, _ := driver.control.FeatureUse(caller.Thread); use.ProgressWaits != 3 || use.ProgressYields != 3 {
+			t.Fatal("confirmed progress counts", use)
 		}
 		if source.reads != 6 || source.requests != 3 {
 			t.Fatalf("unexpected progress polling: %d", source.reads)
@@ -186,6 +192,9 @@ func TestWaitYieldUnavailableProgressStaysPending(t *testing.T) {
 	if err := driver.Wake(t.Context(), caller.Thread, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	if use, _, _ := driver.control.FeatureUse(caller.Thread); use.ProgressWaits != 1 || use.ProgressYields != 0 {
+		t.Fatal("unavailable progress counted", use)
+	}
 	if len(host.inputs) != 0 || driver.control.WaitPublication(caller.Thread).State != "waiting" {
 		t.Fatalf("unavailable captures woke native inference: %+v", host.inputs)
 	}
@@ -217,6 +226,9 @@ func TestWaitYieldPrefersCompletionAfterPendingInjection(t *testing.T) {
 			check(driver.Wake(t.Context(), caller.Thread, now))
 			if len(host.inputs) != 2 || host.inputs[0].Kind != "FINAL_ANSWER" || host.inputs[1].Wake == nil || host.inputs[1].Wake.State != "completed" {
 				t.Fatalf("completion lost precedence: %+v", host.inputs)
+			}
+			if use, _, _ := driver.control.FeatureUse(caller.Thread); use.ProgressYields != 0 {
+				t.Fatal("completion counted as progress", use)
 			}
 			wake := host.inputs[1].Wake
 			if wake.Progress != nil || mode == control.WaitAny && wake.Event == nil || mode == control.WaitAll && len(wake.Events) != 1 {

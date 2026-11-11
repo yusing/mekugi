@@ -601,8 +601,24 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		run("wait", "--text", "of 3")
 		viewport("1280", "720")
 		button("Features")
-		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 2 4') && rows.includes('With edit ranges 0 5') && rows.includes('Saved tokens (est.) 1234 -20'); })()`)
+		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 8 10') && rows.includes('Self completed 2 4') && rows.includes('Cost skipped 3 1') && rows.includes('Preflight skipped 1 2') && rows.includes('Self failed 1 2') && rows.includes('Progress enabled 4 3') && rows.includes('Progress delivered 2 1') && rows.includes('Assignments 3 2') && rows.includes('Messages 3 1') && rows.includes('With edit ranges 0 5') && rows.includes('Saved tokens (est.) 1234 -20'); })()`)
 		capture("session-features")
+		// The additional rows remain readable and reachable beneath pinned navigation.
+		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"phone", "390", "844"}} {
+			viewport(size.width, size.height)
+			for _, theme := range []string{"dark", "light"} {
+				run("set", "media", theme)
+				if strings.TrimSpace(run("eval", pinned+"(true)")) != "true" {
+					t.Fatal("Features navigation lost at bottom", size.name, theme)
+				}
+				if strings.TrimSpace(run("eval", `(() => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); return d.scrollWidth <= d.clientWidth && [...d.querySelectorAll('td,th')].every(cell => { const r = cell.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }); })()`)) != "true" {
+					t.Fatal("Features cells overflow", size.name, theme)
+				}
+				if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+					run("screenshot", filepath.Join(artifacts, "session-features-scrolled-"+size.name+"-"+theme+".png"))
+				}
+			}
+		}
 		if strings.Contains(run("eval", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').textContent`), "[ older") {
 			t.Fatal("browser metrics advertise terminal shortcuts")
 		}

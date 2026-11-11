@@ -137,6 +137,9 @@ func (s *Service) PrepareActionWithSources(ctx context.Context, caller Identity,
 	})
 	if err == nil && created && kind == "message" {
 		s.ObserveFeature(caller.Thread, FeatureMessage)
+		if sources != "" {
+			s.ObserveFeature(caller.Thread, FeatureMessageSources)
+		}
 	}
 	return
 }
@@ -303,6 +306,9 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 		}
 		effect.Error = receipt.Error
 		if receipt.Uncertain || receipt.Error != "" {
+			if step == "compact" && !receipt.Uncertain {
+				features = []Feature{FeatureSelfCompactionFailure}
+			}
 			effect.State = "failed"
 			if receipt.Uncertain {
 				effect.State = "uncertain"
@@ -361,6 +367,7 @@ func (s *Service) EffectAcknowledged(ctx context.Context, caller, id string, rec
 			if effect.Kind == "wake" {
 				effect.State = "completed"
 				if member.Wait.Yielded {
+					features = append(features, FeatureProgressYield)
 					if member.YieldContext != member.Wait.YieldContext {
 						member.YieldSeen = nil
 					}

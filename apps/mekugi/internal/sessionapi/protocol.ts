@@ -1968,6 +1968,14 @@ export type FeatureUse = {
   "SideQuestionFailures": number;
   "Waits": number;
   "AllWaits": number;
+  "ProgressWaits": number;
+  "ProgressYields": number;
+  "AssignmentSources": number;
+  "MessageSources": number;
+  "SelfCompactionsCompleted": number;
+  "CompactionCostSkips": number;
+  "CompactionPreflightSkips": number;
+  "SelfCompactionFailures": number;
 };
 
 export type Read = {

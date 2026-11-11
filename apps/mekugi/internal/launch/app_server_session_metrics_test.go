@@ -245,9 +245,10 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		debug                   string
 	}{
 		{name: "overview", width: 90, height: 65},
-		{name: "features", tab: 3, width: 90, height: 42},
+		{name: "features", tab: 3, width: 90, height: 56},
 		{name: "features-narrow", tab: 3, width: 35, height: 50},
-		{name: "features-missing", tab: 3, width: 80, height: 40, missing: true},
+		{name: "features-progress-narrow", tab: 3, width: 35, height: 40, top: 48},
+		{name: "features-missing", tab: 3, width: 80, height: 54, missing: true},
 		{name: "features-unavailable", tab: 3, width: 80, height: 14},
 		{name: "storage", width: 90, height: 24},
 		{name: "storage-narrow", width: 35, height: 18},
@@ -376,7 +377,7 @@ func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
 func featureMetricsFixture() *sessionpresentation.FeatureMetrics {
 	return &sessionpresentation.FeatureMetrics{
 		Thread: "Main", Agents: 3,
-		Self:        sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 3, SelfCompactions: 2, Spawns: 4, SpawnPreloads: 3, PreloadRejections: 1, Messages: 6, SideQuestions: 1, SideQuestionRejections: 1, Waits: 5, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}},
-		Descendants: sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 7, SelfCompactions: 4, CompactionPreloads: 2, Spawns: 1, Finals: 8, CompletionChanges: 5, Messages: 2, SideQuestions: 2, SideQuestionFailures: 1, Waits: 3}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 2, Occurrences: 4, SavedTokens: -20, Unmeasured: 1}},
+		Self:        sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 3, SelfCompactions: 8, SelfCompactionsCompleted: 2, CompactionCostSkips: 3, CompactionPreflightSkips: 1, SelfCompactionFailures: 1, AssignmentSources: 3, MessageSources: 3, ProgressWaits: 4, ProgressYields: 2, Spawns: 4, SpawnPreloads: 3, PreloadRejections: 1, Messages: 6, SideQuestions: 1, SideQuestionRejections: 1, Waits: 5, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}},
+		Descendants: sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 7, SelfCompactions: 10, SelfCompactionsCompleted: 4, CompactionCostSkips: 1, CompactionPreflightSkips: 2, SelfCompactionFailures: 2, AssignmentSources: 2, MessageSources: 1, ProgressWaits: 3, ProgressYields: 1, CompactionPreloads: 2, Spawns: 1, Finals: 8, CompletionChanges: 5, Messages: 2, SideQuestions: 2, SideQuestionFailures: 1, Waits: 3}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 2, Occurrences: 4, SavedTokens: -20, Unmeasured: 1}},
 	}
 }
