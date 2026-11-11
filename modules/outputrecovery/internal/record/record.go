@@ -50,8 +50,8 @@ func Validate(record Record) error {
 }
 
 func validate(record Record, validateJSON bool) error {
-	if size := len(record.Stdout) + len(record.Stderr); size > MaxOutputBytes {
-		return &history.CapacityError{Resource: "saved read output", Required: int64(size), Limit: MaxOutputBytes, Action: "Narrow the command output or split the operation before retrying."}
+	if err := ValidateOutputSize(int64(len(record.Stdout)) + int64(len(record.Stderr))); err != nil {
+		return err
 	}
 	if record.Version != 1 || !ValidID(record.ID) ||
 		record.ExitCode < 0 || record.ExitCode > 255 ||
@@ -87,6 +87,14 @@ func validate(record Record, validateJSON bool) error {
 				return errors.New("structured read output must be a JSON array")
 			}
 		}
+	}
+	return nil
+}
+
+// ValidateOutputSize checks normalized omitted bytes, excluding delivered text.
+func ValidateOutputSize(size int64) error {
+	if size > MaxOutputBytes {
+		return &history.CapacityError{Resource: "saved read output", Required: size, Limit: MaxOutputBytes, Action: "Narrow the command output or split the operation before retrying."}
 	}
 	return nil
 }

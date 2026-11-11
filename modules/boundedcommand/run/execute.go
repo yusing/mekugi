@@ -28,7 +28,6 @@ type mrunCapture struct {
 	rowStart     int
 	rowBytes     int
 	pendingBytes *mrunCapture
-	pending      strings.Builder
 	buffer       []byte
 	start        int
 	size         int
@@ -67,24 +66,7 @@ func (capture *mrunCapture) Write(value []byte) (int, error) {
 	return length, nil
 }
 
-// Line selection retains complete LF-delimited lines, including an unterminated
-// final line. With a token ceiling, only the admissible bytes of each line are retained.
-func (capture *mrunCapture) appendLine(line string) {
-	if len(capture.buffer) > utf8.UTFMax {
-		capture.appendBoundedLine(line)
-		return
-	}
-	if len(capture.rows) < capture.maxLines {
-		capture.rows = append(capture.rows, line)
-		return
-	}
-	capture.omitted = true
-	if capture.tail {
-		capture.rows[capture.rowStart] = line
-		capture.rowStart = (capture.rowStart + 1) % capture.maxLines
-	}
-}
-
+// Combined selection retains only the admissible bytes of each row.
 func (capture *mrunCapture) appendBoundedLine(line string) {
 	limit := len(capture.buffer)
 	if !capture.tail {
@@ -121,10 +103,6 @@ func (capture *mrunCapture) appendBoundedLine(line string) {
 }
 
 func (capture *mrunCapture) writeLinePart(value []byte) {
-	if len(capture.buffer) <= utf8.UTFMax {
-		capture.pending.Write(value)
-		return
-	}
 	if capture.pendingBytes == nil {
 		// Reuse the line capture's otherwise idle byte buffer. Scan all
 		// input for newlines even after this candidate window is full.
@@ -134,12 +112,7 @@ func (capture *mrunCapture) writeLinePart(value []byte) {
 }
 
 func (capture *mrunCapture) finishLine() {
-	if capture.pendingBytes == nil {
-		capture.appendLine(capture.pending.String())
-		capture.pending.Reset()
-		return
-	}
-	capture.appendLine(capture.pendingBytes.text())
+	capture.appendBoundedLine(capture.pendingBytes.text())
 	capture.omitted = capture.omitted || capture.pendingBytes.omitted
 	*capture.pendingBytes = mrunCapture{buffer: capture.buffer, tail: capture.tail}
 }
@@ -148,7 +121,7 @@ func (capture *mrunCapture) writeLines(value []byte) (int, error) {
 	length := len(value)
 	for len(value) > 0 {
 		if !capture.tail && (len(capture.rows) == capture.maxLines ||
-			len(capture.buffer) > utf8.UTFMax && capture.rowBytes == len(capture.buffer)) {
+			capture.rowBytes == len(capture.buffer)) {
 			capture.omitted = true
 			break
 		}
@@ -166,18 +139,14 @@ func (capture *mrunCapture) writeLines(value []byte) (int, error) {
 
 func (capture *mrunCapture) text() string {
 	if capture.maxLines > 0 {
-		if capture.pending.Len() > 0 || (capture.pendingBytes != nil && capture.pendingBytes.size > 0) {
+		if capture.pendingBytes != nil && capture.pendingBytes.size > 0 {
 			capture.finishLine()
 		}
-		if len(capture.buffer) > utf8.UTFMax {
-			window := mrunCapture{buffer: capture.buffer, tail: capture.tail, omitted: capture.omitted}
-			for _, row := range capture.rows[capture.rowStart:] {
-				window.size += copy(window.buffer[window.size:], row)
-			}
-			return window.text()
+		window := mrunCapture{buffer: capture.buffer, tail: capture.tail, omitted: capture.omitted}
+		for _, row := range capture.rows[capture.rowStart:] {
+			window.size += copy(window.buffer[window.size:], row)
 		}
-		value := strings.Join(capture.rows[capture.rowStart:], "") + strings.Join(capture.rows[:capture.rowStart], "")
-		return strings.ToValidUTF8(value, "\uFFFD")
+		return window.text()
 	}
 
 	end := min(capture.start+capture.size, len(capture.buffer))
@@ -215,33 +184,27 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 	if err != nil {
 		return command.Output{Stderr: fmt.Sprintf("mrun: %v\n", err), ExitCode: 2}, nil
 	}
-	// Source: plugins/tokens.ts MAX_POSSIBLE_GPT5_TOKEN_BYTES.
-	// No GPT-5 token spans more than 128 bytes. Keep a small UTF-8 boundary
-	// reserve, separately for each stream, before exact final token selection.
-	byteLimit := options.Tokens*128 + utf8.UTFMax
-	stdout := mrunCapture{buffer: make([]byte, byteLimit), tail: options.Tail, maxLines: options.Lines}
-	stderr := mrunCapture{buffer: make([]byte, byteLimit), tail: options.Tail, maxLines: options.Lines}
 	path, err := exec.LookPath(argv[0])
 	if err != nil {
 		return command.Output{Stderr: fmt.Sprintln(err), ExitCode: 127}, nil
 	}
 	child := exec.CommandContext(ctx, path, argv[1:]...)
 	child.Args = argv
-	child.Stdin, child.Stdout, child.Stderr = stdin, &stdout, &stderr
+	child.Stdin = stdin
 	child.WaitDelay = mrunProcessWaitDelay
-	runErr := child.Run()
-	if ctx.Err() != nil {
-		return command.Output{}, ctx.Err()
+	if options.Tokens == 0 {
+		return executeMRunRows(ctx, child, options.Lines, options.Tail)
 	}
-	exitCode := 0
-	if runErr != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
-			exitCode = mrunProcessExitCode(exitErr)
-		} else if _, ok := errors.AsType[*exec.Error](runErr); ok {
-			return command.Output{Stderr: fmt.Sprintln(runErr), ExitCode: 127}, nil
-		} else {
-			return command.Output{}, runErr
-		}
+	// Source: plugins/tokens.ts MAX_POSSIBLE_GPT5_TOKEN_BYTES.
+	// No GPT-5 token spans more than 128 bytes. Keep a small UTF-8 boundary
+	// reserve, separately for each stream, before exact final token selection.
+	byteLimit := options.Tokens*128 + utf8.UTFMax
+	stdout := mrunCapture{buffer: make([]byte, byteLimit), tail: options.Tail, maxLines: options.Lines}
+	stderr := mrunCapture{buffer: make([]byte, byteLimit), tail: options.Tail, maxLines: options.Lines}
+	child.Stdout, child.Stderr = &stdout, &stderr
+	execution, err := runMRunChild(ctx, child)
+	if err != nil || execution.Stderr != "" {
+		return execution, err
 	}
 
 	// Preserve both streams when they compete for the shared budget. Generated
@@ -272,17 +235,10 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 		}
 		notice = fmt.Sprintf("mrun: output incomplete: %s reached\n", limit)
 	}
-	execution := command.Output{Stdout: selectedOut, Stderr: selectedErr, ExitCode: exitCode}
-	appendNotice := func() {
-		if notice != "" {
-			if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
-				execution.Stderr += "\n"
-			}
-			execution.Stderr += notice
-		}
-	}
+	execution.Stdout, execution.Stderr = selectedOut, selectedErr
+
 	if len(selectedOut)+len(selectedErr) <= mrunDeliveryTokens && (selectedOut == "" || len(selectedErr) <= mrunDeliveryTokens/2) {
-		appendNotice()
+		appendMRunNotice(&execution, notice)
 		return execution, nil
 	}
 	formatted, err := outputbudget.Select(ctx, mrunDeliveryTokens, "rows", selectedOut, selectedErr)
@@ -305,7 +261,7 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 			execution.Stderr += "\n"
 		}
 	}
-	appendNotice()
+	appendMRunNotice(&execution, notice)
 	return execution, nil
 }
 
@@ -328,4 +284,33 @@ func mrunRetainedKind(text string) string {
 		}
 	}
 	return "rows"
+}
+
+func appendMRunNotice(execution *command.Output, notice string) {
+	if notice == "" {
+		return
+	}
+	if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
+		execution.Stderr += "\n"
+	}
+	execution.Stderr += notice
+}
+
+func runMRunChild(ctx context.Context, child *exec.Cmd) (command.Output, error) {
+	runErr := child.Run()
+	if ctx.Err() != nil {
+		return command.Output{}, ctx.Err()
+	}
+	exitCode := 0
+	if runErr != nil {
+		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
+			exitCode = mrunProcessExitCode(exitErr)
+		} else if _, ok := errors.AsType[*exec.Error](runErr); ok {
+			return command.Output{Stderr: fmt.Sprintln(runErr), ExitCode: 127}, nil
+		} else {
+			return command.Output{}, runErr
+		}
+	}
+
+	return command.Output{ExitCode: exitCode}, nil
 }

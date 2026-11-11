@@ -119,7 +119,8 @@ func TestRegisteredCommandRetainsOnlySelectedDeliveryOverflow(t *testing.T) {
 }
 
 func TestRegisteredCommandCancelsRunningChild(t *testing.T) {
-	t.Parallel()
+	spools := t.TempDir()
+	t.Setenv("TMPDIR", spools)
 	contribution := registeredCommand(t)
 	ready := filepath.Join(t.TempDir(), "ready")
 	stdin, writer, err := os.Pipe()
@@ -162,6 +163,10 @@ func TestRegisteredCommandCancelsRunningChild(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("running child did not stop after cancellation")
+	}
+	entries, err := os.ReadDir(spools)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("canceled command leaked captures: %v %v", entries, err)
 	}
 }
 

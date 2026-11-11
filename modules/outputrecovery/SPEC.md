@@ -70,6 +70,8 @@ The authenticated executor persists records through the managed replay-store
 locking and atomic write/rename path before exposing references. There are no
 standalone output dumps. Omitted data is bounded to 16 MiB, encoded records to
 the replay record limit, and all read records to a separate 256 MiB quota.
+Commands may preflight the authoritative normalized omitted-text capacity without
+attaching storage; publication still checks content, encoded size and quota.
 Storage failures are explicit. Cleanup follows the session-retention policy in
 [session history](../../modules/sessionhistory/SPEC.md) and does not reclaim active dependencies.
 

@@ -15,6 +15,16 @@ func retainExecutionOutput(ctx context.Context, service *recovery.Service, selec
 	if execution.OmittedOutput == nil && execution.Delivery == nil {
 		return execution, nil
 	}
+	// A capacity-rejected capture has no payload or reference to publish. Its
+	// pure failure must not depend on store attachment or reserve a dummy handle.
+	if plan := execution.Delivery; plan != nil && plan.ReferenceCount() == 0 {
+		execution.Delivery = nil
+		_, err := plan.Prepare(nil)
+		if err == nil {
+			err = errors.New("zero-reference delivery plan must report a failure")
+		}
+		return execution, err
+	}
 	store, err := service.Attach(selected, recovery.DefaultLimits(), nil)
 	if err != nil {
 		return execution, err

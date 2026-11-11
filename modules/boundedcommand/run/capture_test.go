@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/outputbudget"
 )
 
 func TestMRunCombinedCaptureMatchesBoundedRows(t *testing.T) {
@@ -102,8 +103,12 @@ func TestMRunCapture(t *testing.T) {
 func TestMRunLineCapture(t *testing.T) {
 	t.Parallel()
 	for _, tail := range []bool{false, true} {
-		for _, source := range []string{"", "a", "a\n", "a\nb", "a\nb\n", "a\nb\nc", "\n\n\n", "α\r\nβ\nγ"} {
-			capture := mrunCapture{maxLines: 2, tail: tail}
+		for _, source := range []string{"", "a", "a\n", "a\nb", "a\nb\n", "a\nb\nc", "\n\n\n", "α\r\nβ\nγ", "a\xff\xfe\n\x80\x80b\n\xff", "first\n" + strings.Repeat("x", 70000) + "\nlast", "first\n" + strings.Repeat("x", 70000) + "\nlast\n"} {
+			capture, err := newMRunRowCapture(2, tail)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { capture.close() })
 			// Byte-at-a-time writes exercise split UTF-8 and newline boundaries.
 			for index := range len(source) {
 				if _, err := capture.Write([]byte(source[index : index+1])); err != nil {
@@ -122,9 +127,17 @@ func TestMRunLineCapture(t *testing.T) {
 					lines = lines[:2]
 				}
 			}
-			want := strings.Join(lines, "")
-			if got := capture.text(); got != want || capture.omitted != omitted {
-				t.Fatalf("tail=%t source=%q: got %q omitted=%t; want %q omitted=%t", tail, source, got, capture.omitted, want, omitted)
+			want := strings.ToValidUTF8(strings.Join(lines, ""), "\uFFFD")
+			selected, err := capture.selectRows(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := selected.omitted(t.Context(), 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != want || capture.omitted != omitted {
+				t.Fatalf("tail=%t source bytes=%d: got %d bytes omitted=%t; want %d bytes omitted=%t", tail, len(source), len(got), capture.omitted, len(want), omitted)
 			}
 		}
 	}
@@ -137,7 +150,7 @@ func TestMRunCombinedCaptureBoundsPendingLine(t *testing.T) {
 		chunk := []byte(strings.Repeat("a", 4096))
 		for range 1000 {
 			capture.Write(chunk)
-			if capture.pending.Len() != 0 || capture.pendingBytes == nil ||
+			if capture.pendingBytes == nil ||
 				capture.pendingBytes.size > len(capture.buffer) {
 				t.Fatal("combined mode retained an unbounded pending line")
 			}
@@ -152,6 +165,47 @@ func TestMRunCombinedCaptureBoundsPendingLine(t *testing.T) {
 		}
 		if !tail && strings.Trim(got, "a") != "" {
 			t.Fatalf("head lost initial bytes: %q", got)
+		}
+	}
+}
+
+func TestMRunRowFinalizationMatchesWholeSelection(t *testing.T) {
+	for _, tail := range []bool{false, true} {
+		for _, source := range []string{
+			strings.Repeat("row\r\n", 20000), strings.Repeat("x", 100000),
+			strings.Repeat("界", 30000) + "\nlast", "first\n" + strings.Repeat("x", 100000) + "\n",
+			strings.Repeat("a", 32771) + "\xff\xff\xfe界\xc0\x80\nlast",
+			strings.Repeat("x", mrunDeliveryTokens*4) + "\nlast\n",
+		} {
+			out, err := newMRunRowCapture(1000000, tail)
+			if err != nil {
+				t.Fatal(err)
+			}
+			errCapture, err := newMRunRowCapture(1000000, tail)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { out.close(); errCapture.close() })
+			for offset := 0; offset < len(source); offset += 137 {
+				chunk := []byte(source[offset:min(offset+137, len(source))])
+				out.Write(chunk)
+				errCapture.Write(chunk)
+			}
+			got, err := finalizeMRunRows(t.Context(), out, errCapture, 23)
+			if err != nil {
+				t.Fatal(err)
+			}
+			normalized := strings.ToValidUTF8(source, "\uFFFD")
+			want, err := outputbudget.Select(t.Context(), mrunDeliveryTokens, "rows", normalized, normalized)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Stdout != want.Stdout || got.Stderr != want.Stderr || got.ExitCode != 23 || got.Delivery != nil {
+				t.Fatalf("tail=%t: delivery differs, stdout=%d/%d stderr=%d/%d", tail, len(got.Stdout), len(want.Stdout), len(got.Stderr), len(want.Stderr))
+			}
+			if got.OmittedOutput == nil || got.Stdout+got.OmittedOutput.Stdout != normalized || got.Stderr+got.OmittedOutput.Stderr != normalized {
+				t.Fatal("selected streams did not reconstruct normalized bytes")
+			}
 		}
 	}
 }

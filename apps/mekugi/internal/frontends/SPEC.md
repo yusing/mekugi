@@ -111,7 +111,9 @@ Commands run and format output in the host-started worker. They return omitted
 payloads or a pure delivery plan over already captured output or a frozen
 retained-evidence selection. For coordinated results, the host reserves reference
 identities before command-owned final framing and admission. Plans receive
-identities, never a store or execution callback.
+identities, never a store or execution callback. A pure zero-reference failure plan
+is prepared before storage attachment or reference reservation and preserves the
+original admitted output under the same recovery-failure policy.
 
 Worker recovery uses the public attachment, namespace, lease, and catalog APIs of
 [session history](../../../../modules/sessionhistory/SPEC.md). That module owns

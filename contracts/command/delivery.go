@@ -2,6 +2,8 @@ package command
 
 // PendingDelivery finalizes captured output with actual reserved reference
 // identities. Preparation performs no I/O and does not mutate the plan.
+// A zero-reference plan reports a preflight failure from Prepare(nil); the host
+// preserves the original output without attaching storage or reserving handles.
 type PendingDelivery interface {
 	ReferenceCount() int
 	Prepare(references []string) (PreparedDelivery, error)

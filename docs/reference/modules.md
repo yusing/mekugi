@@ -44,7 +44,7 @@ Measure reader invocations, observed edits and recorded host completion
 Bound one foreground command's output
 
 - Composition: selected; lifetime: `host-operation`.
-- Requires: none.
+- Requires: `outputrecovery`.
 - Contributes: `commands`, `guidance`.
 - Commands: `mrun`.
 - Codex connections: `executable-frontend`.

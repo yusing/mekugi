@@ -47,6 +47,11 @@ Each host command owns its capture until completion or cancellation. The module
 has no invocation-wide state. Cancellation stops the child and bounds drainage of
 inherited output pipes. Codex retains process-group and yielded-session authority.
 
+Row-only selection uses private temporary files and bounded capture heap through delivery
+finalization. Head capture retains only selected rows on disk; tail capture uses
+temporary disk proportional to all emitted output. Every return attempts closure
+and removal. No delivery plan or recovery consumer owns a capture file.
+
 ## Codex connection
 
 One required executable frontend, `mrun`, registered through `codexbinding`.
@@ -62,7 +67,14 @@ limit notices are excluded from those omissions.
 
 Invalid frontend arguments fail before command execution. Process and formatting
 failures remain errors; cancellation does not fabricate completion. Recovery
-publication failures are reported by the frontend host before delivery.
+publication failures are reported by the frontend host before delivery. The existing
+[recovery limits](../outputrecovery/SPEC.md#managed-read-continuation) apply to normalized
+omitted text after the admitted page, not all selected bytes. Capacity failure
+preserves that page without silently lowering the requested row count or exposing
+an unusable handle; the frontend preserves nonzero child status and changes success
+to failure. Capture or finalization failure never labels an unverified partial
+selection as complete. Cleanup failure is reported separately and does not invalidate
+already finalized output or otherwise successful recovery.
 
 ## Acceptance
 
