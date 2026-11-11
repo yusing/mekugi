@@ -54,7 +54,7 @@ deployed TLS require separate checks.
 The build, test, lint, generation, and snapshot recipes enumerate the explicit
 `go.work` members. The repository root has no Go module; use these recipes or
 explicit member package paths for root-level Go commands. `make build-binaries`
-writes both executables to `bin/` without installing them. Run member tests from
+writes the Go executables and native runtime to `bin/` without installing them. Run member tests from
 that member with the workspace enabled. Local modules are released together and
 resolved by `go.work`, not unpublished version requirements or local replacements.
 See [workspace ownership](../contracts/composition.md).
@@ -123,16 +123,23 @@ toolchain; the build uses its pinned V8 downloader. First builds need network
 access. `NATIVE_PROFILE=dev-small` selects the smaller development profile;
 `CARGO_BUILD_JOBS=2` limits compile concurrency.
 
-Executables go to `bin/native`; the archive goes to `bin/mekugi-native.tar.gz`.
+These native-only recipes put executables in `bin/native` and the archive in
+`bin/mekugi-native.tar.gz`. `make build-binaries` places the complete client and
+runtime together in `bin/`; `make install` installs both in the Go binary directory.
 Override these with `NATIVE_OUTPUT` and `NATIVE_ARCHIVE`. Keep the server beside
 `codex-code-mode-host` and Linux `bwrap`. The archive also includes protocol
-schemas, licenses and the source revision. Shells and `rg` remain host tools.
+schemas, the bundled model catalog, licenses and the source revision. Shells and
+`rg` remain host tools.
 Release CI packages native Linux amd64/arm64 and macOS arm64 builds.
 
 Run `bin/native/mekugi-app-server` for stdio JSON-RPC, or pass
 `--listen unix:///absolute/path/server.sock` for a Unix-socket attachment.
 The fork's existing configuration and transport options remain available through
-`--help`. The Go clients have not moved to this foundation yet.
+`--help`. Terminal, browser and headless sessions use this executable, including
+their Codex children, Side and One-off turns. Launch resolves it from the caller's
+`PATH`, then beside the Mekugi executable. There is no stock-runtime fallback for
+these sessions. Explicit stock CLI passthrough, including `exec` and `review`,
+still uses `codex`; `headless` uses the native runtime.
 
 `make test-native` runs the existing standalone CLI, command execution, connection,
 code-mode-host and strict-configuration tests using local fixtures, not live

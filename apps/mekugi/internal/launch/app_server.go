@@ -42,7 +42,7 @@ func appServerArgs(args []string) ([]string, string, bool, error) {
 	if err != nil {
 		return nil, "", false, err
 	}
-	out := []string{"app-server"}
+	var out []string
 	yolo := false
 	resume := ""
 	resumeCommand := false
@@ -65,9 +65,8 @@ func appServerArgs(args []string) ([]string, string, bool, error) {
 				return nil, "", false, fmt.Errorf("%s requires a feature", arg)
 			}
 			i++
-			// Keep host validation and toggle precedence, rather than translating
-			// these into config overrides. Codex owns instant-interrupt execution.
-			// Source: codex-rs/cli/src/main.rs:933:978@68e1a421 FeatureToggles
+			// Retain toggles until the final native command is assembled so they
+			// keep precedence over all configuration overrides.
 			out = append(out, arg, args[i])
 		case "-c", "--config", "-m", "--model":
 			if i+1 == len(args) {
@@ -106,4 +105,35 @@ func appServerArgs(args []string) ([]string, string, bool, error) {
 		return out, resume, false, nil
 	}
 	return append(out, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`), resume, true, nil
+}
+
+// The standalone server accepts configuration overrides, not the Codex CLI's
+// feature switches. Preserve the CLI's ordering: config, enables, then disables.
+// Source: runtime/codex/codex-rs/cli/src/main.rs:989:1001@[dfb8ee6272] FeatureToggles
+func nativeAppServerArgs(args []string) []string {
+	out := make([]string, 0, len(args))
+	var enable, disable []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-c" || arg == "--config" {
+			out = append(out, arg, args[i+1])
+			i++
+			continue
+		}
+		flag, feature, inline := strings.Cut(arg, "=")
+		if flag != "--enable" && flag != "--disable" {
+			out = append(out, arg)
+			continue
+		}
+		if !inline {
+			i++
+			feature = args[i]
+		}
+		if flag == "--enable" {
+			enable = append(enable, "-c", "features."+feature+"=true")
+		} else {
+			disable = append(disable, "-c", "features."+feature+"=false")
+		}
+	}
+	return append(append(out, enable...), disable...)
 }

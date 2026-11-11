@@ -65,6 +65,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     for _, binary in binaries:
         shutil.copy2(target_dir / profile_dir / binary, output / binary)
+    shutil.copy2(RUST / "models-manager/models.json", output / "mekugi-models.json")
     if args.action == "test":
         env.pop("BASH_ENV", None)
         env.pop("MEKUGI_EXEC_TRACK", None)
@@ -87,6 +88,7 @@ def main():
     with tarfile.open(archive, "w:gz") as bundle:
         for _, binary in binaries:
             bundle.add(output / binary, arcname=binary)
+        bundle.add(output / "mekugi-models.json", arcname="mekugi-models.json")
         for name in ("LICENSE", "NOTICE"):
             bundle.add(CODEX / name, arcname=name)
         if spec.is_linux:

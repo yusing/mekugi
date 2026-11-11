@@ -176,10 +176,10 @@ type profileConfiguration struct {
 // Resolve inherited provider fields through Codex before constructing transport
 // owners. Only provider identity and the inference endpoint must be explicit;
 // catalog, authentication, capabilities and timeouts retain normal host merging.
-func resolveProfileRoute(ctx context.Context, executable string, args, environment []string, workspace string, route *inferencegateway.NativeProvider) ([]string, error) {
+func resolveProfileRoute(ctx context.Context, executable string, args, environment []string, workspace string, route *inferencegateway.NativeProvider, standalone bool) ([]string, error) {
 	command := exec.CommandContext(ctx, executable, args...)
 	command.Env, command.Dir = environment, workspace
-	configuration, err := profileConfigurationProbe(ctx, command)
+	configuration, err := profileConfigurationProbe(ctx, command, standalone)
 	if err != nil {
 		return nil, err
 	}
@@ -272,8 +272,8 @@ func verifyProfileRoute(configuration []byte, route *inferencegateway.NativeProv
 
 // Wrapped exec uses the same non-generating configuration probe as native
 // startup, with only its shared configuration flags rather than exec operands.
-func profileConfigurationProbe(ctx context.Context, command *exec.Cmd) ([]byte, error) {
-	args := []string{"app-server"}
+func profileConfigurationProbe(ctx context.Context, command *exec.Cmd, standalone bool) ([]byte, error) {
+	var args []string
 	for i := 1; i < len(command.Args) && command.Args[i] != "--"; i++ {
 		if value, ok := codexArgumentValue(command.Args, &i, "-c", "--config"); ok {
 			args = append(args, "-c", value)
@@ -284,9 +284,16 @@ func profileConfigurationProbe(ctx context.Context, command *exec.Cmd) ([]byte, 
 				args = append(args, command.Args[i], command.Args[i+1])
 				i++
 			}
+		} else if flag, _, ok := strings.Cut(command.Args[i], "="); ok && (flag == "--enable" || flag == "--disable") {
+			args = append(args, command.Args[i])
 		} else if launchoptions.CodexOptionOperand(command.Args[i]) {
 			i++
 		}
+	}
+	if standalone {
+		args = nativeAppServerArgs(args)
+	} else {
+		args = append([]string{"app-server"}, args...)
 	}
 	probe := exec.CommandContext(ctx, command.Path, args...)
 	probe.Env, probe.Dir = command.Env, command.Dir
@@ -357,12 +364,18 @@ func invocationEnvironment(ctx context.Context) []string {
 	return os.Environ()
 }
 
-func invocationExecutable(environment []string, workspace string) (string, error) {
-	for _, directory := range filepath.SplitList(launchoptions.EnvironmentValue(environment, "PATH")) {
+func invocationExecutable(name string, environment []string, workspace string) (string, error) {
+	directories := filepath.SplitList(launchoptions.EnvironmentValue(environment, "PATH"))
+	if name == "mekugi-app-server" {
+		if executable, err := os.Executable(); err == nil {
+			directories = append(directories, filepath.Dir(executable))
+		}
+	}
+	for _, directory := range directories {
 		if !filepath.IsAbs(directory) {
 			directory = filepath.Join(workspace, directory)
 		}
-		path, err := filepath.Abs(filepath.Join(directory, "codex"))
+		path, err := filepath.Abs(filepath.Join(directory, name))
 		if err != nil {
 			continue
 		}

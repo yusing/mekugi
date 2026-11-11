@@ -16,7 +16,7 @@ import (
 )
 
 func TestConfiguredCatalogNativeCodex(t *testing.T) {
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestConfiguredCatalogNativeCodex(t *testing.T) {
 	}
 	userPath := filepath.Join(codexHome, "user.json")
 	selectedPath := filepath.Join(workspace, "selected catalog.json")
-	bundled, err := bundledModelCatalog(t.Context(), codex, workspace)
+	bundled, err := bundledModelCatalog(t.Context(), codex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestConfiguredCatalogNativeCodex(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte("model_catalog_json = "+strconv.Quote(userPath)+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.CommandContext(t.Context(), codex, "app-server", "-c", "model_catalog_json="+strconv.Quote(selectedPath), "-c", "features.plugins=false")
+	cmd := exec.CommandContext(t.Context(), codex, "-c", "model_catalog_json="+strconv.Quote(selectedPath), "-c", "features.plugins=false")
 	cmd.Env, cmd.Dir = env, workspace
 	client, err := appserver.Start(cmd)
 	if err != nil {

@@ -1,6 +1,7 @@
 package launch
 
 import (
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"slices"
 	"strings"
 	"testing"
@@ -37,7 +38,7 @@ func TestAppServerResumeArgv(t *testing.T) {
 func TestAppServerArgs(t *testing.T) {
 	for _, yolo := range []string{"--yolo", "--dangerously-bypass-approvals-and-sandbox"} {
 		got, _, bypass, err := appServerArgs([]string{yolo, "-c", "features.test=true", "--config=foo=42", "--model", "model-name"})
-		want := []string{"app-server", "-c", "features.test=true", "-c", "foo=42", "-c", `model="model-name"`, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`}
+		want := []string{"-c", "features.test=true", "-c", "foo=42", "-c", `model="model-name"`, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`}
 		if err != nil || !bypass || !slices.Equal(got, want) {
 			t.Fatalf("appServerArgs(%s) = %q, %v, %v; want %q", yolo, got, bypass, err, want)
 		}
@@ -51,9 +52,9 @@ func TestAppServerArgsApprovalMode(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{nil, []string{"app-server"}},
-		{[]string{"-c", `approval_policy="never"`}, []string{"app-server", "-c", `approval_policy="never"`}},
-		{[]string{"-m", "gpt-6-sol"}, []string{"app-server", "-c", `model="gpt-6-sol"`}},
+		{nil, []string{}},
+		{[]string{"-c", `approval_policy="never"`}, []string{"-c", `approval_policy="never"`}},
+		{[]string{"-m", "gpt-6-sol"}, []string{"-c", `model="gpt-6-sol"`}},
 	} {
 		got, thread, bypass, err := appServerArgs(tc.args)
 		if err != nil || bypass || thread != "" || !slices.Equal(got, tc.want) {
@@ -81,7 +82,7 @@ func TestAppServerInstantInterruptOptIn(t *testing.T) {
 			if slices.Equal(options, []string{"--config=features.instant_interrupt=false"}) {
 				wantOptions = []string{"-c", "features.instant_interrupt=false"}
 			}
-			want := append([]string{"app-server"}, wantOptions...)
+			want := slices.Clone(wantOptions)
 			want = append(want, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`)
 			if err != nil || !slices.Equal(got, want) {
 				t.Fatalf("appServerArgs(%q) = %q, %v; want %q", input, got, err, want)
@@ -129,7 +130,7 @@ func TestAppServerArgsRejectsUnmappedAuthorization(t *testing.T) {
 func TestAppServerResumeArgs(t *testing.T) {
 	for _, args := range [][]string{{"--yolo", "resume", "thread-id"}, {"resume", "thread-id", "--yolo", "-m", "gpt-6-sol"}} {
 		got, thread, _, err := appServerArgs(args)
-		if err != nil || thread != "thread-id" || got[0] != "app-server" || slices.Contains(got, "resume") || slices.Contains(got, thread) {
+		if err != nil || thread != "thread-id" || slices.Contains(got, "app-server") || slices.Contains(got, "resume") || slices.Contains(got, thread) {
 			t.Fatalf("resume launch: %q %q %v", got, thread, err)
 		}
 	}
@@ -143,7 +144,7 @@ func TestAppServerResumeArgs(t *testing.T) {
 func TestAppServerResumeLastArgs(t *testing.T) {
 	for _, args := range [][]string{{"--yolo", "resume", "--last"}, {"resume", "--last", "--yolo", "-m", "gpt-6-sol"}, {"resume", "--yolo", "--last"}} {
 		got, thread, _, err := appServerArgs(args)
-		if err != nil || thread != "--last" || got[0] != "app-server" || slices.Contains(got, "resume") || slices.Contains(got, "--last") {
+		if err != nil || thread != "--last" || slices.Contains(got, "app-server") || slices.Contains(got, "resume") || slices.Contains(got, "--last") {
 			t.Fatalf("resume last launch: %q %q %v", got, thread, err)
 		}
 	}
@@ -152,7 +153,7 @@ func TestAppServerResumeLastArgs(t *testing.T) {
 func TestAppServerResumePickerArgs(t *testing.T) {
 	for _, args := range [][]string{{"--yolo", "resume"}, {"resume", "--yolo", "-m", "gpt-6-sol"}} {
 		got, thread, _, err := appServerArgs(args)
-		if err != nil || thread != "--pick" || got[0] != "app-server" || slices.Contains(got, "resume") {
+		if err != nil || thread != "--pick" || slices.Contains(got, "app-server") || slices.Contains(got, "resume") {
 			t.Fatalf("resume picker launch: %q %q %v", got, thread, err)
 		}
 	}
@@ -160,5 +161,21 @@ func TestAppServerResumePickerArgs(t *testing.T) {
 		if _, _, bypass, err := appServerArgs(args); err != nil || bypass {
 			t.Fatalf("approval-mode resume %q: %v, %v", args, bypass, err)
 		}
+	}
+}
+
+func TestNativeAppServerFeatureArgs(t *testing.T) {
+	args, _, _, err := appServerArgs([]string{"--enable=instant_interrupt", "-c", "features.instant_interrupt=false", "--disable", "instant_interrupt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := nativeAppServerArgs(codexArgs("http://localhost/v1", args, false, nil))
+	if slices.Contains(got, "app-server") || slices.Contains(got, "--enable") || slices.Contains(got, "--disable") {
+		t.Fatalf("CLI-only arguments reached standalone server: %q", got)
+	}
+	values := launchoptions.ConfigOverrides(got)
+	features := values["features"].(map[string]any)
+	if features["instant_interrupt"] != false || features["code_mode"] != true || features["sleep_tool"] != false {
+		t.Fatalf("effective feature settings: %#v", features)
 	}
 }

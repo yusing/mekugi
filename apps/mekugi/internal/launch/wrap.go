@@ -171,13 +171,17 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	if appUI && threads.setup != nil {
 		executable, args, approvals = threads.setup.executable, slices.Clone(threads.setup.args), threads.setup.approvals
 	} else {
-		if options.Profile != nil {
-			executable, err = invocationExecutable(environment, workspace)
+		name := "codex"
+		if appUI {
+			name = "mekugi-app-server"
+		}
+		if appUI || options.Profile != nil {
+			executable, err = invocationExecutable(name, environment, workspace)
 		} else {
-			executable, err = exec.LookPath("codex")
+			executable, err = exec.LookPath(name)
 		}
 		if err != nil {
-			return 1, fmt.Errorf("locate codex: %w", err)
+			return 1, fmt.Errorf("locate %s: %w", name, err)
 		}
 	}
 	ctx, cancel := context.WithCancel(ctx)

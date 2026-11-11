@@ -16,8 +16,11 @@
 
 `mekugi` dispatches authenticated frontend calls and offline inspection before
 starting a live invocation. Live launch validates options, composes services,
-binds a private IPv4 loopback endpoint on an OS-assigned port, and starts Codex
-from PATH only after initialization succeeds. `mekugi server` owns long-lived
+binds a private IPv4 loopback endpoint on an OS-assigned port, and starts the managed
+`mekugi-app-server` only after initialization succeeds. Native sessions resolve the
+runtime from the caller's PATH, then beside the Mekugi executable, without falling
+back to stock Codex. Children retain their parent's executable and configuration.
+`mekugi server` owns long-lived
 interactive invocations behind a private, peer-admitted Unix WebSocket.
 Client disconnection leaves execution running; explicit end or server shutdown
 closes the owned runtime. The existing Session Control ledger remains the sole
@@ -80,8 +83,10 @@ Custom profiles retain the separate precedence and continuity contract below.
 
 Interactive terminals use a renderer attached to the local server. The client
 starts that server when absent through one startup lock and readiness check;
-closing the client leaves the server and admitted work running. Redirected and noninteractive
-commands retain stock cwd, arguments, environment and streams, augmented with the
+closing the client leaves the server and admitted work running. Explicit `headless`
+uses that same native execution path. Redirected ordinary launches and stock CLI
+passthrough commands, including `exec`/`e` and `review`, still invoke `codex` and
+retain stock cwd, arguments, environment and streams, augmented with the
 private frontend PATH and invocation-owned integration settings. Native arguments
 are explicitly mapped; unsupported options fail rather than acquiring a different
 meaning. `--yolo` disables host approval and sandbox prompts only when supplied.
@@ -211,15 +216,16 @@ alone do not establish that host boundary.
 
 ## Model catalog
 
-Native OpenAI model discovery remains with Codex. The shared start picker may
-read its bounded bundled catalog for offline choices; it contains no retired
+Native OpenAI model discovery remains with the runtime. The shared start picker
+reads `mekugi-models.json` shipped beside the native executable for offline choices;
+it contains no retired
 provider groups or aliases. An old saved picker namespace rejects rather than
 selecting another provider. Static and remote custom catalogs preserve their
 metadata while enforcing the supported JavaScript execution interface.
 
 Profile imports use a private execution-mode projection for a supplied static
-catalog without modifying its source. Bundled metadata reads are bounded to one
-minute and 8 MiB; failures do not expose bootstrap diagnostics or authentication.
+catalog without modifying its source. Bundled metadata reads are bounded to 8 MiB
+and start no subprocess or authentication flow.
 There is no provider-owned online catalog refresh or price snapshot in Launch.
 
 ## Host integration

@@ -76,7 +76,8 @@ interaction. Module guard denials remain separate shell-command failures.
 
 ## Process transport and lifetime
 
-The app-server client launches the supplied command and owns its stdio connection
+The app-server client launches the managed `mekugi-app-server` command supplied by
+Launch and owns its stdio connection
 and child-process cleanup. RPC frames are newline-delimited. A complete final
 JSON frame without a newline is accepted; malformed or truncated JSON fails the
 transport. Frames can contain a full resumed history and have no fixed byte-size

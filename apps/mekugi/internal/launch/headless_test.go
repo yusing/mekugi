@@ -217,7 +217,7 @@ func installHeadlessFixture(t *testing.T) (string, string) {
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	script := "#!/bin/sh\nexec '" + strings.ReplaceAll(os.Args[0], "'", "'\\''") + "' -test.run=^TestAutoWrapProcess$ -- codex \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "codex"), []byte(script), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "mekugi-app-server"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
 	return dir, workspace

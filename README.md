@@ -109,7 +109,9 @@ better results on every task. For controlled comparisons, use
 
 Requirements:
 
-- **Codex CLI** on the execution machine.
+- The **managed native runtime**, included with Mekugi releases and source installs.
+  **Codex CLI** remains necessary for `codex login` and explicit stock CLI passthrough
+  commands such as `exec` and `review`.
 - Built-in helpers need neither Node.js nor Bun; semantic lookup uses the language
   servers listed in [agent tools](docs/guide/agent-tools.md#wrapped-session-helpers).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
@@ -125,7 +127,8 @@ Requirements:
 | macOS Apple Silicon | `mekugi_darwin_arm64.tar.gz` | macOS 15 |
 
 The [installer](install.sh) selects your platform, verifies the release checksum,
-and installs `mekugi` and `mekugi-exec` into `~/.local/bin`, replacing existing copies:
+and installs `mekugi`, `mekugi-exec`, the native server, its execution helpers and
+model catalog into `~/.local/bin`, replacing existing copies:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yusing/mekugi/main/install.sh | sh
@@ -138,17 +141,20 @@ Linux; use a source build for other environments.
 
 ### Build from source
 
-Source installs require **Go 1.27+**, CGO enabled, a C toolchain, **Make**,
-**Bun 1.4.4+**, and **Node.js 24.21+** for browser assets:
+Source installs require **Go 1.27+**, CGO enabled, a C/C++ toolchain, **Make**,
+**Bun 1.4.4+**, **Node.js 24.21+** for browser assets, **Python 3.11+** and
+**Rustup**. See [native build dependencies](docs/contributing/development.md#native-app-server)
+for Linux libraries and the pinned Rust toolchain.
 
 ```sh
 git clone https://github.com/yusing/mekugi.git
 cd mekugi
+git submodule update --init runtime/codex
 make install
 ```
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`.
-`make uninstall` removes only the two binaries. Running sessions keep their
+`make uninstall` removes the executables and bundled model catalog. Running sessions keep their
 worker executable, so start a new session to pick up an update.
 
 ## Quick start

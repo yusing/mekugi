@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -50,10 +49,10 @@ func (l *serverLauncher) models(ctx context.Context) (sessionapi.StartOptions, e
 		return *l.catalog, nil
 	}
 	options := defaultStartOptions()
-	executable, err := exec.LookPath("codex")
+	executable, err := invocationExecutable("mekugi-app-server", os.Environ(), "")
 	var body []byte
 	if err == nil {
-		body, err = bundledModelCatalog(ctx, executable, "")
+		body, err = bundledModelCatalog(ctx, executable)
 	}
 	if err == nil {
 		options, err = startModelOptions(body)

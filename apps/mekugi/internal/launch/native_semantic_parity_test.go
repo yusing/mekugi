@@ -171,7 +171,7 @@ func TestNativeBTWControlSocket(t *testing.T) {
 			t.Setenv("MEKUGI_TEST_NATIVE_PARITY_LOG", logPath)
 			bin := t.TempDir()
 			script := "#!/bin/sh\nif [ \"$1\" = debug ]; then exit 1; fi\nMEKUGI_TEST_NATIVE_PARITY_HOST=1; export MEKUGI_TEST_NATIVE_PARITY_HOST\nexec " + commandargs.Quote(os.Args[0]) + " -test.run=^TestNativeBTWControlSocket$ -- \"$@\"\n"
-			if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0700); err != nil {
+			if err := os.WriteFile(filepath.Join(bin, "mekugi-app-server"), []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
 			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))

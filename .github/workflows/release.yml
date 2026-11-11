@@ -102,7 +102,13 @@ jobs:
           make build-binaries BUILD_OUTPUT="$package_dir" BUILD_LDFLAGS="-s -w -X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG"
           "$package_dir/mekugi" --help
           cp LICENSE "$package_dir/"
-          tar -czf "$RUNNER_TEMP/artifacts/mekugi_${PLATFORM}.tar.gz" -C "$package_dir" mekugi mekugi-exec LICENSE
+          cp runtime/codex/NOTICE "$package_dir/NOTICE"
+          mkdir -p "$package_dir/licenses"
+          cp runtime/codex/LICENSE "$package_dir/licenses/codex.txt"
+          if [ "$RUNNER_OS" = Linux ]; then
+            cp runtime/codex/codex-rs/vendor/bubblewrap/COPYING "$package_dir/licenses/bubblewrap.txt"
+          fi
+          tar -czf "$RUNNER_TEMP/artifacts/mekugi_${PLATFORM}.tar.gz" -C "$package_dir" .
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mekugi_${{ matrix.platform }}

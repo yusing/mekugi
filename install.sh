@@ -34,8 +34,12 @@ case "$mekugi_platform" in
   *) sha256sum -c checksum ;;
 esac
 
-tar -xzf "$mekugi_archive" mekugi mekugi-exec
+tar -xzf "$mekugi_archive"
 mkdir -p "$mekugi_install_dir"
-install -m 755 mekugi mekugi-exec "$mekugi_install_dir/"
-printf 'Installed mekugi and mekugi-exec in %s\n' "$mekugi_install_dir"
+install -m 755 mekugi mekugi-exec mekugi-app-server codex-code-mode-host "$mekugi_install_dir/"
+case "$mekugi_platform" in
+  linux_*) install -m 755 bwrap "$mekugi_install_dir/" ;;
+esac
+install -m 644 mekugi-models.json "$mekugi_install_dir/mekugi-models.json"
+printf 'Installed Mekugi and its native runtime in %s\n' "$mekugi_install_dir"
 printf 'Add that directory to PATH if needed\n'

@@ -30,7 +30,7 @@ import (
 )
 
 func TestProfileLaunchInstalledCodex(t *testing.T) {
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			catalog, err := bundledModelCatalog(ctx, codex, workspace)
+			catalog, err := bundledModelCatalog(ctx, codex)
 			if err != nil {
 				t.Fatal(err)
 			}

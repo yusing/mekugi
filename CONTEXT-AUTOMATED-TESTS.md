@@ -4,6 +4,11 @@ Fixtures need the `codex_e2e` tag and the installed Codex. They use deterministi
 fake credentials and isolated home/configuration, never live models or personal shell startup
 files, so they do not establish live-model behavior.
 
+The migrated profile-launch and configured-catalog fixtures use
+`mekugi-app-server` and its sibling `mekugi-models.json`. Build them with
+`make build-native` and put `bin/native` on PATH. Remaining stock CLI fixtures
+still require `codex`.
+
 `make test-host` runs the focused set: authenticated frontends, PTY yield/continuation, durable
 nested edits and sandbox reports. Missing Codex or tests fail; a skip (sandbox reporting is
 Linux-only) is missing coverage.

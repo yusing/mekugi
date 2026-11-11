@@ -21,6 +21,8 @@ BUILD_LDFLAGS ?= -s -w
 NATIVE_PROFILE ?= release
 NATIVE_OUTPUT ?= bin/native
 NATIVE_ARCHIVE ?= bin/mekugi-native.tar.gz
+NATIVE_BINARIES = mekugi-app-server codex-code-mode-host $(if $(filter Linux,$(shell uname -s)),bwrap)
+GO_INSTALL_DIR = $(or $(shell $(GO) env GOBIN),$(firstword $(subst :, ,$(shell $(GO) env GOPATH)))/bin)
 .PHONY: build-native test-native package-native
 
 TEST_PACKAGES ?= @workspace
@@ -40,11 +42,14 @@ HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= @snapshots
 
-install: workspace-check webui claude-worker
+install: workspace-check webui claude-worker build-native
 	$(GO) install $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
+	install -m 755 $(foreach file,$(NATIVE_BINARIES),'$(NATIVE_OUTPUT)/$(file)') '$(GO_INSTALL_DIR)/'
+	install -m 644 '$(NATIVE_OUTPUT)/mekugi-models.json' '$(GO_INSTALL_DIR)/mekugi-models.json'
 
 uninstall:
 	$(GO) clean -i ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
+	rm -f $(foreach file,$(NATIVE_BINARIES) mekugi-models.json,'$(GO_INSTALL_DIR)/$(file)')
 
 workspace-check:
 	$(WORKSPACE) check
@@ -62,6 +67,7 @@ build: workspace-check
 build-binaries: webui claude-worker
 	$(MAKE) --no-print-directory build
 	$(GO_OUTPUT) build $(GO_BUILD_FLAGS) -ldflags='$(BUILD_LDFLAGS)' -o '$(BUILD_OUTPUT)/' ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
+	$(MAKE) --no-print-directory build-native NATIVE_OUTPUT='$(BUILD_OUTPUT)'
 
 build-native:
 	python3 runtime/build.py build --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)'

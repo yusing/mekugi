@@ -9,6 +9,8 @@ repository-relative; braces group alternatives. Application owners below are und
 Native foundation: `runtime/codex/codex-rs/app-server` owns the renamed
 `mekugi-app-server`; `runtime/build.py` builds, tests and packages it. Usage:
 `docs/contributing/development.md#native-app-server`.
+Launch `app_server.go` maps native arguments; `profile_route.go` resolves the
+invocation executable; `catalog.go` reads its bundled model metadata.
 
 | Owner | Entry points and responsibility |
 | --- | --- |

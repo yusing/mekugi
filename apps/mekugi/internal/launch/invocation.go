@@ -202,7 +202,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	provider.Native = route
 	if route != nil {
-		args, err = resolveProfileRoute(ctx, executable, args, environment, workspace, route)
+		args, err = resolveProfileRoute(ctx, executable, args, environment, workspace, route, appUI)
 		if err != nil {
 			return 2, err
 		}
@@ -471,6 +471,9 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 	}
 	projectedArgs := codexArgs(baseURL, args, skillsManagerAvailable, route)
+	if appUI {
+		projectedArgs = nativeAppServerArgs(projectedArgs)
+	}
 	cmd := exec.CommandContext(ctx, executable, projectedArgs...)
 	if appUI {
 		self, err := os.Executable()
@@ -543,7 +546,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 			cmd.Args = append(cmd.Args, "-c", resetOverride)
 		}
 	} else if route != nil {
-		configuration, err := profileConfigurationProbe(ctx, cmd)
+		configuration, err := profileConfigurationProbe(ctx, cmd, false)
 		if err != nil {
 			return stopFailedStartup(err)
 		}

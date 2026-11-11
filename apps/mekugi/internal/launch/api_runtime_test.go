@@ -422,7 +422,7 @@ func installAPIRuntimeHost(t *testing.T) string {
 	}
 	workspace, executableDirectory := t.TempDir(), t.TempDir()
 	script := "#!/bin/sh\nMEKUGI_TEST_SERVER_RUNTIME_HOST=1; export MEKUGI_TEST_SERVER_RUNTIME_HOST\nexec " + commandargs.Quote(os.Args[0]) + " -test.run=^TestServerSessionNoTerminal$ -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(executableDirectory, "codex"), []byte(script), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(executableDirectory, "mekugi-app-server"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", executableDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))

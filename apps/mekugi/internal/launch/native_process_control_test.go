@@ -28,7 +28,7 @@ func TestNativeProcessControlPublication(t *testing.T) {
 	workspace := installAPIRuntimeHost(t)
 	bin := t.TempDir()
 	script := "#!/bin/sh\nif [ \"$1\" = debug ]; then exit 1; fi\nMEKUGI_TEST_PROCESS_HOST=1; export MEKUGI_TEST_PROCESS_HOST\nexec " + commandargs.Quote(os.Args[0]) + " -test.run=^TestNativeProcessControlPublication$ -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "mekugi-app-server"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
