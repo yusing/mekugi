@@ -85,9 +85,9 @@ Interactive terminals use a renderer attached to the local server. The client
 starts that server when absent through one startup lock and readiness check;
 closing the client leaves the server and admitted work running. Explicit `headless`
 uses that same native execution path. Redirected ordinary launches and stock CLI
-passthrough commands, including `exec`/`e` and `review`, still invoke `codex` and
-retain stock cwd, arguments, environment and streams, augmented with the
-private frontend PATH and invocation-owned integration settings. Native arguments
+subcommands are unsupported; no launch falls back to stock `codex`. Noninteractive
+execution uses `mekugi codex headless --yolo` with a new thread and a stdin prompt.
+Codex administrative commands run directly outside Mekugi. Native arguments
 are explicitly mapped; unsupported options fail rather than acquiring a different
 meaning. `--yolo` disables host approval and sandbox prompts only when supplied.
 Resume retains the selected host thread and is unavailable to headless runs.
@@ -147,14 +147,13 @@ layering: relative paths use the invocation workspace, and imported settings do
 not establish a profile-specific configuration writer. No configuration files,
 Codex home or credentials are replaced or rewritten.
 
-Existing mandatory execution integration remains in force. If explicit settings
-conflict with those constraints, reject with the conflicting key instead of
-silently changing the requested behavior. Preserve ordinary approval policy and
-headless's explicit `--yolo` requirement.
+Fixed execution capabilities belong to the native runtime, not profile settings
+or Go launch overrides. Ordinary approval policy and headless's explicit `--yolo`
+requirement remain caller-controlled.
 
 ### Admission and lifetime
 
-Apply the same profile import to native and redirected session launches,
+Apply the same profile import to interactive and headless session launches,
 headless, and wrapped exec/new/resume/fork. Non-session commands retain existing
 host dispatch. A profile-selected custom provider supplies the required bare-launch route. A
 profile without provider selection retains native OpenAI only for an explicit
@@ -223,26 +222,26 @@ provider groups or aliases. An old saved picker namespace rejects rather than
 selecting another provider. Static and remote custom catalogs preserve their
 metadata while enforcing the supported JavaScript execution interface.
 
-Profile imports use a private execution-mode projection for a supplied static
-catalog without modifying its source. Bundled metadata reads are bounded to 8 MiB
+Profile imports pass supplied static catalogs to the native runtime without
+rewriting them or creating derived copies. Bundled metadata reads are bounded to 8 MiB
 and start no subprocess or authentication flow.
 There is no provider-owned online catalog refresh or price snapshot in Launch.
 
 ## Host integration
 
-Mekugi launches require the stock JavaScript `exec` interface. Final invocation
-overrides enable `features.code_mode` and `features.code_mode_only`, including
-normalizing conflicting caller feature toggles without changing prompt operands
-after `--`. Unsupported execution catalogs fail before inference under the
+Mekugi launches require the stock JavaScript `exec` interface. The native runtime
+owns this tool mode independently of caller feature toggles and model metadata.
+It also enables live model switching and reasoning-effort updates at its feature
+owner. Unsupported
+execution catalogs fail before inference under the
 [backend authority contract](../../../../backends/codex/SPEC.md#execution-authority).
-OpenAI discovery also sets model metadata to `code_mode_only`, since metadata
-overrides those feature flags. Account discovery and refresh remain available;
+The gateway forwards model catalog bytes without rewriting tool mode. The native
+runtime owns catalog validation and tool selection. Account discovery and refresh remain available;
 Mekugi does not pin a bundled OpenAI catalog or edit the shared host cache.
-Explicit caller-supplied static catalogs retain host selection semantics and
-must expose the supported interface. Profile imports derive private execution-mode
-projections while preserving the source catalog.
+Explicit caller-supplied static catalogs retain native selection semantics;
+their tool-mode metadata does not change the required execution interface.
 
-Final invocation overrides disable `features.sleep_tool`, including caller feature
+The native runtime disables `features.sleep_tool`, including caller feature
 toggles. Thread-control waits and independent clock/timer behavior remain available.
 
 Wrapped launches enable Codex's native rollout trace in a private, session-scoped
@@ -260,8 +259,8 @@ and `--ultra` become invocation-local reasoning-effort overrides. They also work
 after `headless`; option operands, non-session subcommands and content after `--`
 remain literal. The selected model determines supported efforts.
 
-Final invocation overrides disable Codex goals and collaboration-mode instruction
-injection. The authenticated frontend catalog supplies its own guidance when
+The native runtime disables Codex goals and collaboration-mode instruction injection.
+The authenticated frontend catalog supplies its own guidance when
 available. The [shell guard](../../../../modules/remotewriteapproval/SPEC.md)
 installs only composed VCS/sudo registrations; conflicting hooks are warned about
 and replaced for this invocation. Optional command tracking preserves caller hooks
@@ -354,16 +353,16 @@ Established sessions also offer `replay-session --session THREAD_ID`, with the
 original executable and actual `--debug-dir` when debugging. No established thread
 means no continuation/replay hint; successful archival instead prints
 `Session archived: THREAD_ID`. Unexpected app-server exit preserves its diagnostic
-and child status rather than looking like a clean quit. Redirected/noninteractive
-commands retain Codex's own exit output.
+and child status rather than looking like a clean quit. Headless execution uses
+its own completion and failure output contract.
 
 ## Acceptance
 
-Catalog assembly tests cover native v2 selection, unknown metadata, idempotent
-projection, retired-provider rejection and invocation model identities. Actual subprocess and
+Catalog assembly tests cover native v2 selection, unknown metadata, byte-preserving
+forwarding, retired-provider rejection and invocation model identities. Actual subprocess and
 PTY fixtures cover authentication, catalog selection, argument preservation,
 private frontend dispatch, independent invocations,
 startup cancellation and terminal handoff, signals, host failure and exit codes,
-cleanup, native versus redirected launch, headless rejection, and debug handoff.
+cleanup, redirected-launch rejection, headless admission, and debug handoff.
 The executable entrypoint calls this same dispatcher; snapshot fixtures belong to
 this owner and are checked without changing their rendered output.

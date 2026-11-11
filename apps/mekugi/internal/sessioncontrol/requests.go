@@ -8,7 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
@@ -48,7 +47,6 @@ type Request[T any] struct {
 // Requests is the sole request ledger for one application client. Its event-loop
 // owner serializes issuance and response delivery; it does not execute host work.
 type Requests[T any] struct {
-	ThreadPolicy             *binding.ThreadAdmissionPolicy
 	Coordination             *control.Service
 	InterruptWait            func(thread, wait string)
 	InheritedEffort          func(model, effort string) (string, error)
@@ -91,13 +89,6 @@ func (r *Requests[T]) Initialize(owner T) (string, error) {
 }
 
 func (r *Requests[T]) Send(method string, params any, scope string, owner T) (string, error) {
-	if r.ThreadPolicy != nil && (method == "thread/start" || method == "thread/resume" || method == "thread/fork") {
-		value, err := r.ThreadPolicy.Apply(params)
-		if err != nil {
-			return "", err
-		}
-		params = value
-	}
 	id, err := r.transport.Send(method, params, true)
 	if err == nil {
 		r.pending[id] = Request[T]{Method: method, Scope: scope, Owner: owner}

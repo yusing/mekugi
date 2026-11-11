@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -30,7 +31,7 @@ import (
 // overrides as production, then executes stock shell and web-search tools through
 // Mekugi's normal request admission without a profile. No external provider is contacted.
 func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,9 +58,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configRoot, "auth.json"), auth, 0600); err != nil {
 		t.Fatal(err)
 	}
-	bundled := exec.CommandContext(ctx, codex, "debug", "models", "--bundled")
-	bundled.Env = environment
-	body, err := bundled.Output()
+	body, err := bundledModelCatalog(ctx, codex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,12 +109,29 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	client := newTestProviderClient(upstream.URL, upstream.Client())
 	// Seed the shared host cache with the unsupported account metadata from a
 	// previous invocation. The new invocation's URL must prevent its reuse.
-	seed := exec.CommandContext(ctx, codex, "-c", "openai_base_url="+strconv.Quote(upstream.URL), "debug", "models")
+	seed := exec.CommandContext(ctx, codex, "-c", "openai_base_url="+strconv.Quote(upstream.URL))
 	seed.Env = environment
-	seeded, err := seed.Output()
-	if err != nil || !bytes.Contains(seeded, []byte(`"tool_mode":"code_mode"`)) {
-		t.Fatalf("seed unsupported account catalog: %v", err)
+	seedClient, err := appserver.Start(seed)
+	if err != nil {
+		t.Fatal(err)
 	}
+	seedID, err := seedClient.Initialize()
+	if err != nil {
+		seedClient.Close()
+		t.Fatal(err)
+	}
+	awaitHistoryRPC(t, seedClient, seedID)
+	if _, err := seedClient.Send("initialized", map[string]any{}, false); err != nil {
+		seedClient.Close()
+		t.Fatal(err)
+	}
+	seedID, err = seedClient.Send("model/list", map[string]any{"includeHidden": true}, true)
+	if err != nil {
+		seedClient.Close()
+		t.Fatal(err)
+	}
+	awaitHistoryRPC(t, seedClient, seedID)
+	seedClient.Close()
 	models := inferencegateway.ModelsHandler(client, nil, nil)
 	workspace := t.TempDir()
 	proxy := newManagedMekugiProxy(t)
@@ -159,26 +175,26 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	}))
 	defer router.Close()
 	args := codexArgs(router.URL+"/v1", []string{
-		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
-		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "-C", workspace,
+		"-c", `model="gpt-6-astra"`, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`,
 		"-c", "features.plugins=false",
 		"-c", "features.code_mode_host=true",
 		"-c", `web_search="live"`,
 		"-c", "chatgpt_base_url=" + strconv.Quote(router.URL),
 		"-c", "model_reasoning_effort=" + strconv.Quote("low"),
-		"Run the execution interface fixture.",
-	}, false, nil)
-	cmd := exec.CommandContext(ctx, codex, args...)
-	cmd.Env, cmd.Dir = environment, filepath.Dir(workspace)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("native catalog fixture: %v\nstdout: %s\nstderr: %s", err, &stdout, &stderr)
-	}
+	}, nil)
+	terminal := startAppResumeTerminalWithIntegration(t, func(runCtx context.Context) *exec.Cmd {
+		cmd := exec.CommandContext(runCtx, codex, nativeAppServerArgs(args)...)
+		cmd.Env, cmd.Dir = environment, workspace
+		return cmd
+	}, "", testAppServerIntegration(proxy))
+	terminal.await("Ready")
+	terminal.send("Run the execution interface fixture.\r")
+	terminal.await("catalog host accepted")
+	terminal.await("completed")
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
 	if discoveries.Load() < 2 || searches.Load() != 1 || !fixture.resultSeen || fixture.turns != 2 {
-		t.Fatalf("catalog/host execution: discoveries=%d searches=%d result=%t turns=%d\nstdout: %s\nstderr: %s",
-			discoveries.Load(), searches.Load(), fixture.resultSeen, fixture.turns, &stdout, &stderr)
+		t.Fatalf("catalog/host execution: discoveries=%d searches=%d result=%t turns=%d",
+			discoveries.Load(), searches.Load(), fixture.resultSeen, fixture.turns)
 	}
 }

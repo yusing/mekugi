@@ -27,7 +27,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/mcptransport"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -137,18 +136,10 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 	hash := fmt.Sprintf("sha256:%x", sha256.Sum256(encoded))
 	hookArgs := []string{"-c", "features.hooks=true", "-c", `hooks.SessionStart=[{matcher="^compact$",hooks=[` + hookHandler + `]}]`, "-c", `hooks.state={"/<session-flags>/config.toml:session_start:0:0"={trusted_hash=` + strconv.Quote(hash) + `,enabled=true}}`}
 	newClient := func() *appserver.Client {
-		cmd := exec.CommandContext(ctx, "codex", codexArgs(server.URL+"/v1", []string{"app-server", "-c", notesConfig, "--enable=retain_client_tool_outputs", "-c", "features.retain_client_tool_outputs=true", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true", "-c", "model_auto_compact_token_limit=100000"}, false, nil)...)
+		cmd := exec.CommandContext(ctx, "mekugi-app-server", nativeAppServerArgs(codexArgs(server.URL+"/v1", []string{"-c", notesConfig, "--enable=retain_client_tool_outputs", "-c", "features.retain_client_tool_outputs=true", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true", "-c", "model_auto_compact_token_limit=100000"}, nil))...)
 		cmd.Env, cmd.Dir = environment, workspace
 		cmd.Args = append(cmd.Args, hookArgs...)
-		_, _, config, err := shellhook.Discover(ctx, cmd, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		override, err := binding.ContextResetConfig(config)
-		if err != nil || override == "" {
-			t.Fatalf("notes override=%q, %v", override, err)
-		}
-		cmd.Args = append(cmd.Args, "-c", override)
+		cmd.Args = append(cmd.Args, "-c", `mcp_servers.notes.disabled_tools=["thread_hint"]`)
 		client, err := appserver.Start(cmd)
 		if err != nil {
 			t.Fatal(err)

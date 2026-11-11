@@ -1,7 +1,6 @@
 package launch
 
 import (
-	json "encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +10,7 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
-func TestModelsHandlerValidatesAndProjectsEachCatalog(t *testing.T) {
+func TestModelsHandlerPreservesEachCatalog(t *testing.T) {
 	const catalog = `{"models":[{"slug":"gpt-6-astra","tool_mode":"code_mode","future":42}],"extra":true}`
 	calls := 0
 	client := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
@@ -27,32 +26,20 @@ func TestModelsHandlerValidatesAndProjectsEachCatalog(t *testing.T) {
 	handler := inferencegateway.ModelsHandler(provider, nil, nil)
 	for request := range 3 {
 		if request == 2 {
-			// Custom catalogs preserve the same native execution projection.
+			// Native configuration owns tool mode for custom catalogs too.
 			provider.Native = &inferencegateway.NativeProvider{ID: "custom", CatalogURL: "http://custom.invalid/models", HTTPClient: client}
 		}
 		recorder := httptest.NewRecorder()
 		handler(recorder, catalogRequest())
 		if request == 0 {
-			if recorder.Code != http.StatusBadGateway {
-				t.Fatalf("malformed catalog returned %d", recorder.Code)
+			if recorder.Code != http.StatusOK || recorder.Body.String() != `{"models":[null]}` {
+				t.Fatalf("catalog changed before native validation: %d %s", recorder.Code, recorder.Body)
 			}
 			continue
 		}
-		var got struct {
-			Models []struct {
-				Slug   string `json:"slug"`
-				Mode   string `json:"tool_mode"`
-				Future int    `json:"future"`
-			} `json:"models"`
-			Extra bool `json:"extra"`
-		}
-		if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
-			t.Fatal(err)
-		}
-		if recorder.Code != http.StatusOK || len(got.Models) != 1 || got.Models[0].Slug != "gpt-6-astra" ||
-			got.Models[0].Mode != "code_mode_only" || got.Models[0].Future != 42 || !got.Extra ||
+		if recorder.Code != http.StatusOK || recorder.Body.String() != catalog ||
 			recorder.Header().Get("ETag") != "account-version" || calls != request+1 {
-			t.Fatalf("projected catalog = %d %s; calls=%d", recorder.Code, recorder.Body, calls)
+			t.Fatalf("forwarded catalog = %d %s; calls=%d", recorder.Code, recorder.Body, calls)
 		}
 	}
 }

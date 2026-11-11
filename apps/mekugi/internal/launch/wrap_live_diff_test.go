@@ -8,9 +8,6 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -29,22 +26,6 @@ func TestAutoWrapProcess(t *testing.T) {
 		return
 	}
 	if os.Args[3] == "router" {
-		if os.Getenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE") == "1" {
-			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				fmt.Fprint(w, `{"error":{"message":"provider detail \u001b]52;c;Y2xpcA==\u0007\u001b]0;title\u0007\u001b[2J\u001b[31m測試\u001b[0m\nretry later"}}`)
-			}))
-			defer provider.Close()
-			transport := http.DefaultTransport.(*http.Transport).Clone()
-			transport.Proxy = nil
-			// Keep the real provider decoder but route every TLS dial to this
-			// plaintext fixture. No production endpoint or credential is used.
-			transport.DialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return new(net.Dialer).DialContext(ctx, "tcp", provider.Listener.Addr().String())
-			}
-			http.DefaultTransport = transport
-		}
 		var args []string
 		if os.Getenv("MEKUGI_AUTO_WRAP_TERMINAL") == "1" {
 			args = []string{"--yolo"}
@@ -99,15 +80,10 @@ func TestAutoWrapProcess(t *testing.T) {
 		}
 		os.Exit(code)
 	}
-	if len(os.Args) > 4 && os.Args[4] == "app-server" {
+	if len(os.Args) > 3 && os.Args[3] == "codex" {
 		scenario := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS_SCENARIO")
-		headlessHost := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1" && strings.Contains(strings.Join(os.Args, "\n"), "features.token_budget.enabled=true")
-		if headlessHost {
-			if scenario == "startup" {
-				fmt.Fprintln(os.Stderr, "fixture: invalid model configuration")
-				os.Exit(2)
-			}
-		}
+		headlessHost := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1"
+		runtimeStarted := make(chan struct{})
 		guard := os.Getenv("MEKUGI_VCS_GUARD_HOOK")
 		preflight := os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "default" && guard == ""
 		if expected := os.Getenv("MEKUGI_AUTO_WRAP_GUARD"); expected != "" && !preflight {
@@ -137,7 +113,15 @@ func TestAutoWrapProcess(t *testing.T) {
 		if headlessHost {
 			interrupt := make(chan os.Signal, 1)
 			signal.Notify(interrupt, os.Interrupt)
-			go func() { <-interrupt; _ = os.WriteFile(markerPath+".joined", []byte("joined"), 0600); os.Exit(0) }()
+			go func() {
+				<-interrupt
+				select {
+				case <-runtimeStarted:
+					_ = os.WriteFile(markerPath+".joined", []byte("joined"), 0600)
+				default:
+				}
+				os.Exit(0)
+			}()
 		}
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
@@ -189,6 +173,11 @@ func TestAutoWrapProcess(t *testing.T) {
 			case "model/list":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"data":[]}}`+"\n", request.ID)
 			case "environment/info":
+				close(runtimeStarted)
+				if headlessHost && scenario == "startup" {
+					fmt.Fprintln(os.Stderr, "fixture: invalid model configuration")
+					os.Exit(2)
+				}
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"shell":{"name":"bash","path":"/bin/bash"}}}`+"\n", request.ID)
 			case "thread/start":
 				if trust := os.Getenv("MEKUGI_AUTO_WRAP_TRUST"); trust != "" && request.Params.Config["bypass_hook_trust"] != (trust == "true") {
@@ -239,44 +228,17 @@ func TestAutoWrapProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 		if headlessHost {
-			if err := os.WriteFile(markerPath+".joined", []byte("joined"), 0600); err != nil {
-				t.Fatal(err)
+			select {
+			case <-runtimeStarted:
+				if err := os.WriteFile(markerPath+".joined", []byte("joined"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			default:
 			}
 		}
 		os.Exit(0) // Keep the test runner's PASS line out of the RPC stream.
 	}
-	workspace := os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE")
-	body := `{"model":"gpt-test","input":[{"role":"user","content":"test"}],"tools":[{"type":"custom","name":"exec","description":"Run JavaScript with tools.exec_command and tools.apply_patch"}],"tool_choice":"auto"}`
-	request, err := http.NewRequest("POST", os.Getenv("MEKUGI_BASE_URL")+"/responses", strings.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	metadata, _ := json.Marshal(map[string]any{"request_kind": "turn", "workspaces": map[string]any{workspace: nil}})
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("x-codex-turn-metadata", string(metadata))
-	request.Header.Set("thread-id", "auto-wrap")
-	request.Header.Set("session-id", "auto-wrap")
-	expected := "Authorization"
-	if os.Getenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE") == "1" {
-		request.Header.Set("Authorization", "Bearer fixture")
-		request.Header.Set("ChatGPT-Account-ID", "fixture")
-		expected = "provider detail"
-	}
-	client := &http.Client{Timeout: 10 * time.Second}
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, _ := io.ReadAll(response.Body)
-	response.Body.Close()
-	// Forwarding fails either at local authentication or at the local provider
-	// fixture. Both paths leave an undelivered notice for launcher recovery.
-	if !bytes.Contains(data, []byte(expected)) {
-		t.Fatalf("request did not reach forwarding: %s", data)
-	}
-	// Keep the fake child alive long enough for the integrated terminal's first
-	// frame to be rendered before the wrapper joins its lifetime.
-	time.Sleep(300 * time.Millisecond)
+
 }
 
 func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
@@ -330,10 +292,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			rpcMarker := filepath.Join(dir, "app-server-rpc")
 			t.Setenv("MEKUGI_AUTO_WRAP_PROCESS", "1")
 			t.Setenv("MEKUGI_AUTO_WRAP_HOOK_CHOICE", test.hookChoice)
-			t.Setenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE", "0")
-			if !test.terminal {
-				t.Setenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE", "1")
-			}
 			t.Setenv("MEKUGI_AUTO_WRAP_TERMINAL", "0")
 			t.Setenv("MEKUGI_AUTO_WRAP_FAILURE", "0")
 			if test.failure {
@@ -364,8 +322,8 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			// invokes the pane manager.
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			for name, script := range map[string]string{
-				"codex": "#!/bin/sh\nexec '" + strings.ReplaceAll(os.Args[0], "'", "'\\''") + "' -test.run=^TestAutoWrapProcess$ -- codex \"$@\"\n",
-				"herdr": "#!/bin/sh\nprintf 'invoked\\n' > \"$MEKUGI_TEST_HERDR_MARKER\"\nexit 97\n",
+				"mekugi-app-server": "#!/bin/sh\nexec '" + strings.ReplaceAll(os.Args[0], "'", "'\\''") + "' -test.run=^TestAutoWrapProcess$ -- codex \"$@\"\n",
+				"herdr":             "#!/bin/sh\nprintf 'invoked\\n' > \"$MEKUGI_TEST_HERDR_MARKER\"\nexit 97\n",
 			} {
 				if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0700); err != nil {
 					t.Fatal(err)
@@ -419,6 +377,10 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			if test.failure {
 				if err == nil || cmd.ProcessState.ExitCode() != 23 || !bytes.Contains(output, []byte("app-server disconnected; active work may be incomplete")) {
 					t.Fatalf("unexpected app-server exit lost its status or diagnostic: %v\n%s", err, output)
+				}
+			} else if !test.terminal {
+				if err == nil || cmd.ProcessState.ExitCode() != 2 || !bytes.Contains(output, []byte("interactive sessions require terminal stdin and stdout")) {
+					t.Fatalf("redirected ordinary invocation was not rejected: %v\n%s", err, output)
 				}
 			} else if err != nil {
 				if test.hookChoice != "" {
@@ -475,9 +437,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			if !test.terminal {
 				if bytes.ContainsAny(output, "\x1b\x07") {
 					t.Fatalf("launcher emitted provider terminal controls: %q", output)
-				}
-				if !bytes.Contains(output, []byte("provider detail 測試\nretry later")) {
-					t.Fatalf("launcher lost readable provider details: %q", output)
 				}
 			}
 		})

@@ -6,12 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"syscall"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -25,7 +23,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/textsanitize"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -84,7 +81,10 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 		return 0, nil
 	}
-	return runOwnedInvocation(ctx, routerArgs, args, nil, "", nil)
+	if !interactiveCodexArgs(args) {
+		return 2, errors.New("raw Codex subcommands are unsupported; run administrative commands directly with codex, or use mekugi codex headless --yolo for automation")
+	}
+	return 2, errors.New("interactive sessions require terminal stdin and stdout; use mekugi codex headless --yolo for automation")
 }
 
 // runServerSession borrows an explicitly supplied API while owning execution until
@@ -103,8 +103,10 @@ func runServerSession(ctx context.Context, routerArgs, args []string, api *sessi
 }
 
 func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
-	appUI := api != nil
-	if appUI && (threads == nil || threads.shared == nil || threads.start != nil && threads.setup == nil) {
+	if api == nil {
+		return 1, errors.New("server session requires a control API")
+	}
+	if threads == nil || threads.shared == nil || threads.start != nil && threads.setup == nil {
 		return 1, errors.New("server session requires thread execution, shared coordination and child preparation")
 	}
 	suppliedArgs := slices.Clone(args)
@@ -115,21 +117,13 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	}
 	var settings launchoptions.Settings
 	environment := invocationEnvironment(ctx)
-	if appUI && threads.setup != nil {
+	if threads.setup != nil {
 		options, settings = threads.setup.options, threads.setup.settings
 		environment = slices.Clone(threads.setup.environment)
 	} else {
-		if sessionInvocation(args) {
-			options.Profile, args, err = launchoptions.ImportProfile(args, environment)
-			if err != nil {
-				return 2, err
-			}
-		}
-		if options.Profile != nil {
-			if err := validateProfileIntegration(args); err != nil {
-				return 2, err
-			}
-
+		options.Profile, args, err = launchoptions.ImportProfile(args, environment)
+		if err != nil {
+			return 2, err
 		}
 		settings, err = launchoptions.LoadSettings()
 		if err != nil {
@@ -139,7 +133,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	if err := validateCodexArgs(args, options.Profile != nil); err != nil {
 		return 2, err
 	}
-	if options.RequireCustomProvider && sessionInvocation(args) {
+	if options.RequireCustomProvider {
 		route, err := profileRoute(args, options.Profile)
 		if err != nil {
 			return 2, err
@@ -152,7 +146,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	var resumeThread string
 	var resumeArgv []string
 	approvals := false
-	if appUI && threads.start == nil {
+	if threads.start == nil {
 		var err error
 		var yolo bool
 		args, resumeThread, yolo, err = appServerArgs(args)
@@ -168,65 +162,36 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		}
 	}
 	var executable string
-	if appUI && threads.setup != nil {
+	if threads.setup != nil {
 		executable, args, approvals = threads.setup.executable, slices.Clone(threads.setup.args), threads.setup.approvals
 	} else {
-		name := "codex"
-		if appUI {
-			name = "mekugi-app-server"
-		}
-		if appUI || options.Profile != nil {
-			executable, err = invocationExecutable(name, environment, workspace)
-		} else {
-			executable, err = exec.LookPath(name)
-		}
+		executable, err = invocationExecutable("mekugi-app-server", environment, workspace)
 		if err != nil {
-			return 1, fmt.Errorf("locate %s: %w", name, err)
+			return 1, fmt.Errorf("locate mekugi-app-server: %w", err)
 		}
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	// Before handoff Ctrl-C cancels startup. Once started, Codex receives the
-	// foreground group's interrupt itself; never forward it or stop its services.
-	interrupts := make(chan os.Signal, 1)
-	stopStartupInterrupts := func() {}
-	if api == nil {
-		signal.Notify(interrupts, os.Interrupt)
-		defer signal.Stop(interrupts)
-		stopStartupInterrupts = watchStartupInterrupts(ctx, cancel, interrupts)
-		defer stopStartupInterrupts()
-	}
-	stdin, stdout := os.Stdin, os.Stdout
-	if appUI && threads.start != nil {
+	if threads.start != nil {
 		options, environment, err = threads.setup.childOutputs()
 		if err != nil {
 			return 1, err
 		}
 	}
-	if api != nil {
-		environment = serverEnvironment(environment)
-	}
+	environment = serverEnvironment(environment)
 	captureDirectory, err := history.ReplayDirectory()
 	if err != nil {
 		return 1, fmt.Errorf("initialize replay storage: %w", err)
 	}
-	var shared *threadcontrol.Service
-	if appUI {
-		shared = threads.shared
-		if options.Profile != nil {
-			api.BindProfileIdentity(sessionapi.ProfileIdentity{Name: options.Profile.Name, Home: options.Profile.Home})
-		}
-		if threads.setup == nil {
-			threads.setup = &threadSetup{options: options, settings: settings, executable: executable, args: slices.Clone(args), environment: slices.Clone(environment), approvals: approvals}
-		}
+	if options.Profile != nil {
+		api.BindProfileIdentity(sessionapi.ProfileIdentity{Name: options.Profile.Name, Home: options.Profile.Home})
 	}
-	frontends, err := composition.Frontends(ctx, appUI, options.ChildReplySummary, captureDirectory, shared, sessionapi.ReadNativeSkillCatalog)
+	if threads.setup == nil {
+		threads.setup = &threadSetup{options: options, settings: settings, executable: executable, args: slices.Clone(args), environment: slices.Clone(environment), approvals: approvals}
+	}
+	frontends, err := composition.Frontends(ctx, true, options.ChildReplySummary, captureDirectory, threads.shared, sessionapi.ReadNativeSkillCatalog)
 	if err != nil {
 		return 1, err
 	}
-	if appUI {
-		threads.driver, threads.tools = frontends.Threads, frontends.MCP
-	}
+	threads.driver, threads.tools = frontends.Threads, frontends.MCP
 	issues := requestexecution.NewFailures(frontends.Notifications)
 	defer func() {
 		for _, message := range issues.Notices.Pending() {
@@ -251,7 +216,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		directory := filepath.Dir(debugPaths[0])
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
-	return runInvocation(frontends.Terminal, frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, environment, stdin, stdout, os.Stderr, resumeThread, resumeArgv, approvals, stopStartupInterrupts, interrupts, func(paths []string) { debugPaths = paths }, api, workspace, threads)
+	return runInvocation(frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, environment, os.Stderr, resumeThread, resumeArgv, approvals, func(paths []string) { debugPaths = paths }, api, workspace, threads)
 }
 
 // Reasoning shortcuts are session-local Codex config overrides. Preserve option
@@ -456,62 +421,14 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		"BASH_ENV="+path, userBashEnvEnvironment+"="+previous), nil
 }
 
-// Joining the startup receiver before launch ensures an interrupt it has already
-// consumed cannot be mistaken for an active-child interrupt during handoff.
-func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, interrupts <-chan os.Signal) func() {
-	done := make(chan struct{})
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		select {
-		case <-ctx.Done():
-		case <-done:
-		case <-interrupts:
-			cancel()
-		}
-	}()
-	return sync.OnceFunc(func() {
-		close(done)
-		<-stopped
-	})
-}
-
-func codexArgs(baseURL string, args []string, skillsManagerAvailable bool, route *inferencegateway.NativeProvider) []string {
+func codexArgs(baseURL string, args []string, route *inferencegateway.NativeProvider) []string {
 	args = slices.Clone(args)
-	// Codex applies feature toggles after -c overrides. Normalize conflicting
-	// toggles too, without interpreting prompt operands after --.
-	for i := 0; i < len(args) && args[i] != "--"; i++ {
-		switch args[i] {
-		case "--disable":
-			if i+1 < len(args) && (args[i+1] == "code_mode" || args[i+1] == "code_mode_only" || args[i+1] == "token_budget") {
-				args[i] = "--enable"
-			}
-		case "--disable=code_mode", "--disable=code_mode_only", "--disable=token_budget":
-			args[i] = strings.Replace(args[i], "--disable=", "--enable=", 1)
-		}
-	}
-
-	// Keep overrides in the final command's config layer: Codex subcommands
-	// can replace pre-subcommand -c settings with their own. Never cross --.
+	// Apply invocation-local endpoints after caller config without crossing --.
 	index := slices.Index(args, "--")
 	if index < 0 {
 		index = len(args)
 	}
-	args = slices.Insert(args, index, "-c", "features.code_mode=true", "-c", "features.code_mode_only=true")
-	index += 4
-	overrides := []string{
-		"-c", "features.token_budget.enabled=true",
-		"-c", "features.token_budget.use_history_notes_extension=false",
-		"--disable", "retain_client_tool_outputs",
-		"-c", "features.retain_client_tool_outputs=false",
-		"-c", `features.token_budget.guidance_message=""`,
-		"-c", `features.token_budget.auto_compact_fallback_prompt=""`,
-		"-c", `features.token_budget.reminder_message_template="Context remaining: {n_remaining} tokens."`,
-		"--disable", "goals",
-		"-c", "features.goals=false",
-		"--disable", "sleep_tool",
-		"-c", "features.sleep_tool=false",
-	}
+	var overrides []string
 	if route != nil {
 		providers, _ := launchoptions.ConfigOverrides(args)["model_providers"].(map[string]any)
 		if providers == nil {
@@ -539,13 +456,6 @@ func codexArgs(baseURL string, args []string, skillsManagerAvailable bool, route
 	} else {
 		// Keep stock capabilities and runtime-only internal metadata.
 		overrides = append(overrides, "-c", `model_provider="openai"`, "-c", fmt.Sprintf(`openai_base_url=%q`, baseURL))
-	}
-	// Native hooks inherit the app-server environment independently. Tool shells
-	// and standalone Codex launched from them receive no inherited capability.
-	overrides = append(overrides, "-c", `shell_environment_policy.set.MEKUGI_ENVIRONMENT_FACTS=""`)
-	overrides = append(overrides, "-c", `include_collaboration_mode_instructions=false`)
-	if skillsManagerAvailable {
-		overrides = append(overrides, "-c", "skills.include_instructions=false")
 	}
 	return slices.Insert(args, index, overrides...)
 }
@@ -584,7 +494,7 @@ func validateCodexArgs(args []string, profile bool) error {
 	return nil
 }
 
-// Noninteractive Codex subcommands retain their ordinary terminal output too.
+// Only session arguments may enter the native interactive client.
 func interactiveCodexArgs(args []string) bool {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]

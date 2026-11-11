@@ -38,14 +38,15 @@ native runtimes through the Mekugi server. Its compatibility adapter captures
 actual invoking settings and complete permission policy, resolves bounded roles,
 and prepares inherited history. The backend supplies host identity and retained
 facts, while each runtime’s Session Control owns its sole request ledger.
-Native collaboration registration is disabled without disabling role/mode
-instructions. Coordination history belongs to Thread Control.
+Native V2 collaboration tools and collaboration-mode prose are disabled at their
+runtime owners. Thread Control retains authenticated role projection and
+coordination history; this does not remove historical V1 native collaboration.
 
 The application admits the JavaScript execution interface before inference;
 catalogs exposing top-level `apply_patch` or `exec_command` instead are unsupported.
-The binding sets model-catalog `tool_mode` to `code_mode_only` for Mekugi-owned
-discovery and generated catalogs, preserving other model metadata. Model metadata
-takes precedence over Codex feature flags, so both boundaries enforce the interface.
+The managed runtime owns the fixed JavaScript-only mode directly, independently
+of model-catalog tool-mode metadata. The gateway forwards catalog bytes unchanged;
+static catalogs are passed to the native runtime without private rewritten copies.
 The binding discovers the stock execution owner across native tool catalogs and
 refreshes only its composed guidance. Unsupported interfaces remain distinct from
 malformed catalogs; the application supplies their compatibility diagnostic.

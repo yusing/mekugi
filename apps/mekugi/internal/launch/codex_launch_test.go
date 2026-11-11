@@ -3,11 +3,12 @@ package launch
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 )
 
-func TestWrapProfileImportWithoutProviderRetainsCodexRoute(t *testing.T) {
+func TestNativeProfileImportWithoutProviderRetainsCodexRoute(t *testing.T) {
 	for _, key := range []string{"HOME", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "MEKUGI_RUNTIME_DIR"} {
 		t.Setenv(key, t.TempDir())
 	}
@@ -16,24 +17,18 @@ func TestWrapProfileImportWithoutProviderRetainsCodexRoute(t *testing.T) {
 	if err := os.WriteFile(profile, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
-	directory := t.TempDir()
-	record := filepath.Join(directory, "args")
-	t.Setenv("MEKUGI_TEST_CODEX_ARGS", record)
-	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$MEKUGI_TEST_CODEX_ARGS\"\n"), 0700); err != nil {
-		t.Fatal(err)
+	imported, args, err := launchoptions.ImportProfile([]string{"-pwork", "-m", "explicit-literal"}, os.Environ())
+	if err != nil || imported == nil {
+		t.Fatalf("profile import: %v", err)
 	}
-	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	code, err := wrapCodex(t.Context(), nil, []string{"-pwork", "exec", "-m", "explicit-literal", "--", "--profile=literal prompt"})
-	if code != 0 || err != nil {
-		t.Fatalf("wrapped profile: %d %v", code, err)
-	}
-	args, err := os.ReadFile(record)
+	args, _, _, err = appServerArgs(args)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire := string(args)
-	if strings.Contains(wire, "-pwork") || !strings.Contains(wire, "model_context_window=123456") || !strings.Contains(wire, `model_provider="openai"`) || !strings.HasSuffix(wire, "--\n--profile=literal prompt\n") {
-		t.Fatalf("wrapped import changed route or operands: %s", wire)
+	args = codexArgs("http://127.0.0.1:1234/v1", args, nil)
+	values := launchoptions.ConfigOverrides(args)
+	if values["model"] != "explicit-literal" || values["model_context_window"] != int64(123456) || values["model_auto_compact_token_limit"] != int64(120000) || values["model_provider"] != "openai" {
+		t.Fatalf("native profile import changed route or options: %#v", values)
 	}
 	if after, _ := os.ReadFile(profile); string(after) != body {
 		t.Fatal("wrapped launch modified source profile")

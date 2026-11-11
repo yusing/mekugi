@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
@@ -112,7 +114,7 @@ func TestFeatureConfigFailsBeforeOwnersAndHost(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", state)
 	t.Setenv("PATH", "")
 	writeFeatureConfig(t, "debug = 'credential-secret'")
-	code, err := wrapCodex(t.Context(), nil, nil)
+	code, err := runServerSession(t.Context(), nil, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
 	if code != 1 || err == nil || err.Error() != "invalid Mekugi config.toml" {
 		t.Fatalf("startup error = %d, %v", code, err)
 	}

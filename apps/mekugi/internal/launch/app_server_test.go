@@ -1,10 +1,11 @@
 package launch
 
 import (
-	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"slices"
 	"strings"
 	"testing"
+
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 )
 
 func TestAppServerResumeArgv(t *testing.T) {
@@ -89,7 +90,7 @@ func TestAppServerInstantInterruptOptIn(t *testing.T) {
 			}
 			// The final wrapper must neither override the opt-in nor enable it
 			// by default, including resumed launches.
-			wrapped := codexArgs("http://127.0.0.1:12345/v1", got, false, nil)
+			wrapped := codexArgs("http://127.0.0.1:12345/v1", got, nil)
 			if !slices.Equal(wrapped[:len(want)], want) {
 				t.Fatalf("wrapper changed host options: %q", wrapped)
 			}
@@ -169,13 +170,13 @@ func TestNativeAppServerFeatureArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := nativeAppServerArgs(codexArgs("http://localhost/v1", args, false, nil))
+	got := nativeAppServerArgs(codexArgs("http://localhost/v1", args, nil))
 	if slices.Contains(got, "app-server") || slices.Contains(got, "--enable") || slices.Contains(got, "--disable") {
 		t.Fatalf("CLI-only arguments reached standalone server: %q", got)
 	}
 	values := launchoptions.ConfigOverrides(got)
 	features := values["features"].(map[string]any)
-	if features["instant_interrupt"] != false || features["code_mode"] != true || features["sleep_tool"] != false {
+	if features["instant_interrupt"] != false || len(features) != 1 {
 		t.Fatalf("effective feature settings: %#v", features)
 	}
 }

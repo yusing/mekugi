@@ -476,18 +476,15 @@ func TestEnvironmentFactsMalformedProviderInput(t *testing.T) {
 	}
 }
 
-func TestEnvironmentCapabilityShellOverride(t *testing.T) {
+func TestEnvironmentCapabilityPreservesCallerShellPolicy(t *testing.T) {
 	forwarded := []string{"exec", "-c", `shell_environment_policy.set.UNRELATED="kept"`, "-c", `shell_environment_policy.set.MEKUGI_ENVIRONMENT_FACTS="1"`, "--", "prompt"}
-	args := codexArgs("http://localhost/v1", forwarded, false, nil)
+	args := codexArgs("http://localhost/v1", forwarded, nil)
 	end := slices.Index(args, "--")
 	original := slices.Index(forwarded, "--")
 	if !slices.Equal(args[:original], forwarded[:original]) || !slices.Equal(args[end:], forwarded[original:]) {
 		t.Fatal("caller shell policy or prompt changed")
 	}
-	overrides := args[original:end]
-	if !slices.Contains(overrides, `shell_environment_policy.set.MEKUGI_ENVIRONMENT_FACTS=""`) {
-		t.Fatal("tool capability was not cleared after caller overrides")
-	}
+
 }
 
 func TestEnvironmentCapabilityPerInvocation(t *testing.T) {

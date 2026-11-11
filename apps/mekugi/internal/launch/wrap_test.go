@@ -1,22 +1,18 @@
 package launch
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
@@ -28,8 +24,6 @@ import (
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
-	"github.com/BurntSushi/toml"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
@@ -47,95 +41,27 @@ func TestServerInvocationRequiresExecutionOwners(t *testing.T) {
 	}
 }
 
-func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
-	// Codex folds feature toggles after -c overrides, with disables last.
-	// Source: codex-rs/cli/src/main.rs FeatureToggles::to_overrides.
-	for _, prefix := range [][]string{nil, {"exec"}, {"app-server"}, {"resume"}} {
-		input := append(slices.Clone(prefix), "--disable", "code_mode", "--disable=code_mode_only", "--disable", "token_budget", "--disable", "unrelated", "--", "--disable=code_mode")
-		original := slices.Clone(input)
-		got := codexArgs("http://localhost/v1", input, false, nil)
-		want := append(slices.Clone(prefix), "--enable", "code_mode", "--enable=code_mode_only", "--enable", "token_budget", "--disable", "unrelated")
-		if !slices.Equal(got[:len(want)], want) || !slices.Equal(got[len(got)-2:], []string{"--", "--disable=code_mode"}) || !slices.Equal(input, original) {
-			t.Fatalf("execution overrides changed unrelated flags, prompt or caller input: %q", got)
-		}
-	}
-}
-
 func TestCodexArgsPreservesArguments(t *testing.T) {
-	{
-		forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, nil)
+	for _, forwarded := range [][]string{
+		{"-c", `model="example"`, "--", "a prompt with spaces"},
+		{"-c", `model="example"`},
+	} {
+		original := slices.Clone(forwarded)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, nil)
 		index := slices.Index(forwarded, "--")
+		if index < 0 {
+			index = len(forwarded)
+		}
 		delimiter := slices.Index(args, "--")
-		if delimiter < index || (delimiter-index)%2 != 0 || !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[delimiter:], forwarded[index:]) {
-			t.Fatalf("forwarded arguments changed: %q", args)
+		if delimiter < 0 {
+			delimiter = len(args)
 		}
-		var config struct {
-			Features struct {
-				Goals    *bool `toml:"goals"`
-				Sleep    *bool `toml:"sleep_tool"`
-				Exec     *bool `toml:"code_mode"`
-				ExecOnly *bool `toml:"code_mode_only"`
-			} `toml:"features"`
-			IncludeCollaborationModeInstructions *bool `toml:"include_collaboration_mode_instructions"`
-			Skills                               struct {
-				IncludeInstructions *bool `toml:"include_instructions"`
-			} `toml:"skills"`
-			ModelProvider string `toml:"model_provider"`
-			OpenAIBaseURL string `toml:"openai_base_url"`
-			Providers     map[string]struct {
-				Name       string `toml:"name"`
-				BaseURL    string `toml:"base_url"`
-				WireAPI    string `toml:"wire_api"`
-				WebSockets bool   `toml:"supports_websockets"`
-				Auth       bool   `toml:"requires_openai_auth"`
-			} `toml:"model_providers"`
+		if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[delimiter:], forwarded[index:]) || !slices.Equal(forwarded, original) {
+			t.Fatalf("caller arguments changed: %q", args)
 		}
-		var settings []string
-		disabled := map[string]bool{}
-		for i := index; i < delimiter; i += 2 {
-			if args[i] == "--disable" {
-				if args[i+1] != "goals" && args[i+1] != "sleep_tool" && args[i+1] != "retain_client_tool_outputs" {
-					t.Fatalf("unexpected disabled feature: %q", args)
-				}
-				disabled[args[i+1]] = true
-				continue
-			}
-			if args[i] != "-c" {
-				t.Fatalf("not a config override: %q", args)
-			}
-			settings = append(settings, args[i+1])
-		}
-		if !disabled["goals"] || !disabled["sleep_tool"] || !disabled["retain_client_tool_outputs"] {
-			t.Fatalf("host feature toggles not disabled: %q", args)
-		}
-		if _, err := toml.Decode(strings.Join(settings, "\n"), &config); err != nil {
-			t.Fatal(err)
-		}
-		if config.IncludeCollaborationModeInstructions == nil || *config.IncludeCollaborationModeInstructions {
-			t.Fatalf("collaboration mode instructions not disabled: %q", args)
-		}
-		if config.Skills.IncludeInstructions == nil || *config.Skills.IncludeInstructions {
-			t.Fatalf("skill instructions not disabled: %q", args)
-		}
-		if config.Features.Exec == nil || !*config.Features.Exec || config.Features.ExecOnly == nil || !*config.Features.ExecOnly {
-			t.Fatalf("exec interface not forced: %q", args)
-		}
-		if config.Features.Goals == nil || *config.Features.Goals {
-			t.Fatalf("goals not disabled: %q", args)
-		}
-		if config.Features.Sleep == nil || *config.Features.Sleep {
-			t.Fatalf("sleep tool not disabled: %q", args)
-		}
-		{
-			if config.ModelProvider != "openai" || config.OpenAIBaseURL != "http://127.0.0.1:12345/v1" || len(config.Providers) != 0 {
-				t.Fatalf("built-in provider changed: %+v", config)
-			}
-
-		}
-		withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
-		if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, nil); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
-			t.Fatalf("ordinary -c or prompt moved: %q", got)
+		values := launchoptions.ConfigOverrides(args)
+		if values["model_provider"] != "openai" || values["openai_base_url"] != "http://127.0.0.1:12345/v1" || values["model"] != "example" {
+			t.Fatalf("provider endpoint or model changed: %#v", values)
 		}
 	}
 }
@@ -279,291 +205,10 @@ func TestFrontendScriptSudo(t *testing.T) {
 	}
 }
 
-func TestCodexArgsEnforcesCollaborationModeInstructions(t *testing.T) {
-	for _, forwarded := range [][]string{
-		{"-c", "include_collaboration_mode_instructions=true"},
-		{"-c", "include_collaboration_mode_instructions=true", "exec", "--config=include_collaboration_mode_instructions=true", "prompt"},
-		{"resume", "session", "-cinclude_collaboration_mode_instructions=true", "--", "prompt"},
-	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, nil)
-		end := slices.Index(args, "--")
-		if end < 0 {
-			end = len(args)
-		}
-		if !slices.Equal(args[end-4:end], []string{"-c", "include_collaboration_mode_instructions=false", "-c", "skills.include_instructions=false"}) {
-			t.Fatalf("enforced overrides are not last before delimiter: %q", args)
-		}
-	}
-}
-
-func TestCodexArgsEnforcesSkillInstructionsWhenSkillsManagerAvailable(t *testing.T) {
-	for _, forwarded := range [][]string{
-		{"-c", "skills.include_instructions=true"},
-		{"exec", "--config=skills.include_instructions=true", "prompt"},
-		{"resume", "session", "-cskills.include_instructions=true", "--", "prompt"},
-	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, nil)
-		end := slices.Index(args, "--")
-		if end < 0 {
-			end = len(args)
-		}
-		if !slices.Equal(args[end-2:end], []string{"-c", "skills.include_instructions=false"}) {
-			t.Fatalf("enforced skill override is not last before delimiter: %q", args)
-		}
-	}
-}
-
-func TestCodexArgsPreservesSkillInstructionsWithoutSkillsManager(t *testing.T) {
-	forwarded := []string{"exec", "--config=skills.include_instructions=true", "prompt"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, nil)
-	if !slices.Equal(args[:len(forwarded)], forwarded) || slices.Contains(args[len(forwarded):], "skills.include_instructions=false") {
-		t.Fatalf("skill instructions changed without skills-mgr: %q", args)
-	}
-}
-
-// A fake Codex process checks the real listener before exiting, without provider traffic.
-func TestWrappedCodexProcess(t *testing.T) {
-	if os.Getenv("MEKUGI_TEST_CODEX") != "1" {
-		return
-	}
-	if slices.Contains(os.Args, "debug") && slices.Contains(os.Args, "models") {
-		fmt.Fprintln(os.Stdout, testNativeModelCatalog)
-		os.Exit(0)
-	}
-	if os.Getenv("MEKUGI_ENVIRONMENT_FACTS") != "1" || !slices.Contains(os.Args, `shell_environment_policy.set.MEKUGI_ENVIRONMENT_FACTS=""`) {
-		fmt.Fprintln(os.Stderr, "invocation environment facts capability was not established and isolated")
-		os.Exit(89)
-	}
-	interrupts := make(chan os.Signal, 1)
-	if os.Getenv("MEKUGI_TEST_EXIT") == "interrupt" {
-		signal.Notify(interrupts, os.Interrupt)
-	}
-	baseURL := os.Getenv("MEKUGI_BASE_URL")
-	client := &http.Client{Timeout: 5 * time.Second}
-	response, err := client.Get(strings.TrimSuffix(baseURL, "/v1") + "/api/metrics")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(90)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		os.Exit(91)
-	}
-	// Missing required tools fails locally, producing request diagnostics without upstream traffic.
-	response, err = client.Post(baseURL+"/responses", "application/json", strings.NewReader(`{"model":"test","input":"hello"}`))
-	if err != nil {
-		os.Exit(96)
-	}
-	response.Body.Close()
-	if response.StatusCode < 400 {
-		os.Exit(97)
-	}
-	fmt.Fprintln(os.Stdout, "codex stdout")
-	fmt.Fprintln(os.Stderr, "codex stderr")
-	if err := os.WriteFile(os.Getenv("MEKUGI_TEST_ADDRESS"), []byte(baseURL), 0o600); err != nil {
-		os.Exit(92)
-	}
-	switch os.Getenv("MEKUGI_TEST_EXIT") {
-	case "interrupt":
-		<-interrupts
-		if err := os.WriteFile(os.Getenv("MEKUGI_TEST_ADDRESS")+".interrupt", nil, 0o600); err != nil {
-			os.Exit(94)
-		}
-		time.Sleep(time.Minute)
-		os.Exit(95)
-	case "signal":
-		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
-		select {}
-	case "wait":
-		time.Sleep(time.Minute)
-		os.Exit(93)
-	default:
-		code, _ := strconv.Atoi(os.Getenv("MEKUGI_TEST_EXIT"))
-		os.Exit(code)
-	}
-}
-
-func TestWrappedRouterProcess(t *testing.T) {
-	if os.Getenv("MEKUGI_TEST_ROUTER") != "1" {
-		return
-	}
-	os.Args = []string{os.Args[0], "codex"}
-	os.Exit(Run())
-}
-
-func TestWrapTerminalInterruptAndTermination(t *testing.T) {
-	directory := t.TempDir()
-	logDirectory := t.TempDir()
-	t.Setenv("TMPDIR", logDirectory)
-	runtimeDirectory := t.TempDir()
-	addressFile := filepath.Join(directory, "address")
-	t.Setenv("XAI_API_KEY", "test")
-	t.Setenv("CODEX_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
-	t.Setenv("MEKUGI_TEST_ROUTER", "1")
-	t.Setenv("MEKUGI_TEST_CODEX", "1")
-	t.Setenv("MEKUGI_TEST_EXIT", "interrupt")
-	t.Setenv("MEKUGI_TEST_ADDRESS", addressFile)
-	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	stub := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestWrappedCodexProcess$ -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWrappedRouterProcess$")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-	var stdout, logs bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &logs
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	waitFile := func(path string) []byte {
-		t.Helper()
-		for {
-			if data, err := os.ReadFile(path); err == nil {
-				return data
-			}
-			select {
-			case err := <-done:
-				t.Fatalf("wrapper exited early: %v", err)
-			case <-ctx.Done():
-				t.Fatal("wrapper timed out")
-			case <-time.After(10 * time.Millisecond):
-			}
-		}
-	}
-	baseURL := string(waitFile(addressFile))
-	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGINT); err != nil {
-		t.Fatal(err)
-	}
-	waitFile(addressFile + ".interrupt")
-	client := &http.Client{Timeout: 5 * time.Second}
-	response, err := client.Get(strings.TrimSuffix(baseURL, "/v1") + "/api/metrics")
-	if err != nil {
-		t.Fatalf("router stopped on terminal interrupt: %v", err)
-	}
-	response.Body.Close()
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err == nil || cmd.ProcessState.ExitCode() != 143 {
-		t.Fatalf("termination = %v, %v", cmd.ProcessState, err)
-	}
-	if strings.Contains(logs.String(), "level=") || strings.Contains(logs.String(), "router log:") {
-		t.Fatal("operational logs reached Codex")
-	}
-	if stdout.String() != "codex stdout\n" || !strings.Contains(logs.String(), "codex stderr\n") {
-		t.Fatal("Codex output was not inherited")
-	}
-	if strings.Contains(logs.String(), "mekugi dashboard:") {
-		t.Fatalf("superseded dashboard announcement: %q", logs.String())
-	}
-	if entries, err := os.ReadDir(logDirectory); err != nil || len(entries) != 0 {
-		t.Fatalf("unexpected log files: %v %v", entries, err)
-	}
-
-	entries, err := os.ReadDir(runtimeDirectory)
-	if err != nil || len(entries) != 0 {
-		t.Errorf("runtime resources survived: %v, %v", entries, err)
-	}
-}
-
-func TestWrapCodexLifecycle(t *testing.T) {
-	tests := []struct {
-		name, exit string
-		code       int
-	}{
-		{"success", "0", 0}, {"failure", "23", 23}, {"signal", "signal", 143}, {"termination", "wait", 143},
-	}
-	if selected := os.Getenv("MEKUGI_TEST_WRAP_LIFECYCLE"); selected != "" {
-		index, err := strconv.Atoi(selected)
-		if err != nil || index < 0 || index >= len(tests) {
-			t.Fatalf("invalid lifecycle selection %q", selected)
-		}
-		testWrapCodexLifecycle(t, tests[index].exit, tests[index].code)
-		return
-	}
-	for index, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestWrapCodexLifecycle$")
-			command.Env = append(os.Environ(), "MEKUGI_TEST_WRAP_LIFECYCLE="+strconv.Itoa(index))
-			if output, err := command.CombinedOutput(); err != nil {
-				t.Fatalf("isolated lifecycle: %v\n%s", err, output)
-			}
-		})
-	}
-}
-
-func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int) {
-	t.Helper()
-	directory := t.TempDir()
-	t.Setenv("TMPDIR", t.TempDir())
-	runtimeDirectory := t.TempDir()
-	addressFile := filepath.Join(directory, "address")
-	t.Setenv("XAI_API_KEY", "test")
-	t.Setenv("CODEX_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
-	t.Setenv("MEKUGI_TEST_CODEX", "1")
-	t.Setenv("MEKUGI_TEST_EXIT", exit)
-	t.Setenv("MEKUGI_TEST_ADDRESS", addressFile)
-	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	stub := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestWrappedCodexProcess$ -- \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	if exit == "wait" {
-		go func() {
-			for {
-				if _, err := os.Stat(addressFile); err == nil {
-					cancel()
-					return
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(10 * time.Millisecond):
-				}
-			}
-		}()
-	}
-	deadline := time.AfterFunc(20*time.Second, cancel)
-	defer deadline.Stop()
-	var routerArgs []string
-	code, err := wrapCodex(ctx, routerArgs, []string{"exec", "prompt with spaces"})
-	if err != nil || code != wantCode {
-		t.Fatalf("wrap = %d, %v; want %d", code, err, wantCode)
-	}
-	address, err := os.ReadFile(addressFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	host := strings.TrimSuffix(strings.TrimPrefix(string(address), "http://"), "/v1")
-	conn, err := net.DialTimeout("tcp", host, time.Second)
-	if err == nil {
-		conn.Close()
-		t.Error("listener survived Codex exit")
-	}
-	entries, err := os.ReadDir(runtimeDirectory)
-	if err != nil || len(entries) != 0 {
-		t.Errorf("runtime resources survived: %v, %v", entries, err)
-	}
-}
-
 func TestWrapCodexMissingExecutable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	code, err := wrapCodex(t.Context(), nil, nil)
-	if code != 1 || err == nil || !strings.Contains(err.Error(), "locate codex") {
+	code, err := runServerSession(t.Context(), nil, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
+	if code != 1 || err == nil || !strings.Contains(err.Error(), "locate mekugi-app-server") {
 		t.Fatalf("wrap = %d, %v", code, err)
 	}
 }
@@ -591,23 +236,31 @@ func TestValidateCodexArgs(t *testing.T) {
 	}
 }
 
-func TestRunWrapRequiresCustomProvider(t *testing.T) {
+func TestWrapRejectsRawAndRedirectedInvocations(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	for _, args := range [][]string{
+		nil, {"--yolo"}, {"resume", "saved"},
+		{"exec", "prompt"}, {"e", "prompt"}, {"review"},
+		{"login"}, {"logout"}, {"mcp", "list"}, {"mcp-server"},
+		{"app-server"}, {"app"}, {"completion"}, {"sandbox"},
+		{"debug", "models"}, {"apply"}, {"a"}, {"cloud"}, {"features"}, {"help"},
+		{"-pwork", "login"}, {"--model", "login", "exec", "prompt"},
+	} {
+		code, err := wrapCodex(t.Context(), nil, args)
+		if code != 2 || err == nil || !strings.Contains(err.Error(), "headless --yolo") || strings.Contains(err.Error(), "locate") {
+			t.Errorf("unsupported invocation %q = %d, %v", args, code, err)
+		}
+	}
+}
+
+func TestRunServerRequiresCustomProvider(t *testing.T) {
 	for _, key := range []string{"HOME", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME"} {
 		t.Setenv(key, t.TempDir())
 	}
-	directory := t.TempDir()
-	marker := filepath.Join(directory, "launched")
-	t.Setenv("PATH", directory)
-	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte("#!/bin/sh\nprintf launched > "+strconv.Quote(marker)+"\nexit 99\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	for _, args := range [][]string{nil, {"exec", "--yolo", "hello"}} {
-		if code := runWrap(nil, args); code != 2 {
-			t.Errorf("unauthenticated runWrap(%q) = %d", args, code)
-		}
-	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatalf("unauthenticated standalone launched Codex: %v", err)
+	t.Setenv("PATH", t.TempDir())
+	code, err := runServerSession(t.Context(), []string{"custom-provider"}, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
+	if code != 2 || err == nil || !strings.Contains(err.Error(), "requires a custom Responses provider profile") {
+		t.Fatalf("standalone without provider = %d, %v", code, err)
 	}
 }
 
@@ -636,12 +289,12 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 				}
 				t.Setenv("XDG_STATE_HOME", statePath)
 			}
-			if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
+			if err := os.WriteFile(filepath.Join(directory, "mekugi-app-server"), []byte(stub), 0o700); err != nil {
 				t.Fatal(err)
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
-			code, err := wrapCodex(ctx, nil, nil)
+			code, err := runServerSession(ctx, []string{"--shell-guard=false"}, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
 			if code != 1 || err == nil {
 				t.Fatalf("wrap = %d, %v", code, err)
 			}
@@ -656,59 +309,6 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 				t.Errorf("runtime resources survived: %v, %v", entries, err)
 			}
 		})
-	}
-}
-
-func TestWrapDebugPassesAXLogToCodex(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	directory, debugDirectory := t.TempDir(), t.TempDir()
-	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("TMPDIR", debugDirectory)
-	t.Setenv("MEKUGI_AX_OUTPUT", "")
-	marker := filepath.Join(directory, "ax-path")
-	stub := "#!/bin/sh\n" +
-		"test -n \"$MEKUGI_AX_OUTPUT\" && test -f \"$MEKUGI_AX_OUTPUT\" || exit 93\n" +
-		"printf '%s' \"$MEKUGI_AX_OUTPUT\" > " + strconv.Quote(marker) + "\n"
-	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0700); err != nil {
-		t.Fatal(err)
-	}
-	code, err := wrapCodex(t.Context(), []string{"--debug"}, nil)
-	if err != nil || code != 0 {
-		t.Fatalf("debug wrap = %d, %v", code, err)
-	}
-	path, err := os.ReadFile(marker)
-	if err != nil || !filepath.IsAbs(string(path)) {
-		t.Fatalf("AX log was not inherited: %q, %v", path, err)
-	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(string(path)), "ax.json")); err != nil {
-		t.Fatalf("automatic report missing: %v", err)
-	}
-}
-
-func TestStartupInterruptHandoffJoinsConsumedSignal(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	interrupts := make(chan os.Signal)
-	stop := watchStartupInterrupts(ctx, cancel, interrupts)
-	// The rendezvous proves the startup receiver consumed this signal, but does
-	// not assume it has run cancel yet. Handoff must join that pending work.
-	interrupts <- os.Interrupt
-	stop()
-	if ctx.Err() != context.Canceled {
-		t.Fatal("handoff lost a consumed startup interrupt")
-	}
-	stop()
-}
-
-func TestStartupInterruptHandoffLeavesChildSignalAlone(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	interrupts := make(chan os.Signal, 1)
-	stop := watchStartupInterrupts(ctx, cancel, interrupts)
-	stop()
-	interrupts <- os.Interrupt
-	if ctx.Err() != nil {
-		t.Fatal("startup receiver canceled after handoff")
 	}
 }
 

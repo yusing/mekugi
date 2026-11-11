@@ -9,7 +9,9 @@ repository-relative; braces group alternatives. Application owners below are und
 Native foundation: `runtime/codex/codex-rs/app-server` owns the renamed
 `mekugi-app-server`; `runtime/build.py` builds, tests and packages it. Usage:
 `docs/contributing/development.md#native-app-server`.
-Launch `app_server.go` maps native arguments; `profile_route.go` resolves the
+Native fixed features/configuration and the JavaScript-only tool mode belong to
+`runtime/codex/codex-rs/{features,core}`. Launch `wrap.go` admits native sessions;
+`app_server.go` maps caller arguments; `profile_route.go` resolves the
 invocation executable; `catalog.go` reads its bundled model metadata.
 
 | Owner | Entry points and responsibility |
@@ -19,7 +21,7 @@ invocation executable; `catalog.go` reads its bundled model metadata.
 | Options/catalog | `launch/options`, `launch/catalog.go`: launch/resume configuration and bundled discovery; profile import: `launch/SPEC.md#codex-profile-overrides`, routing: `docs/contracts/provider-routing.md#profile-defined-responses-routing` |
 | Frontends | `frontends/{registry,worker,session,recovery}.go`: authenticated catalog/PATH, dispatch, executable pinning, worker leases and retained delivery |
 | Headless | `headless`: automation adapter and JSONL host evidence; Launch admits it through the shared server-owned runtime and task-owned family lifetime |
-| Inference gateway | `inferencegateway`: Responses admission, provider selection, socket lifetime, catalog/auxiliary endpoints; `models.go`: authenticated catalog forwarding and Codex execution-mode projection; `service_tier.go`: applied tier shared by requests/display |
+| Inference gateway | `inferencegateway`: Responses admission, provider selection, socket lifetime, catalog/auxiliary endpoints; `models.go`: authenticated byte-preserving catalog forwarding; `service_tier.go`: applied tier shared by requests/display |
 | Request execution | `requestexecution`: shared HTTP/WebSocket attempt, preparation, final initial-prefix freezing, delivery, cancellation and failure; `{request_guidance,response_delivery,stream_diagnostics,naming_inference}.go`: integration seams; `instruction_retention.go`: per-thread model-visible instruction capture |
 | Execution observation | `executionobservation`: stock-tool and synchronous native-boundary observations, capture windows, completion and publication; `{exec_observation,exec_changes,exec_report_observation,exec_intervals,shell_observation,native_apply_patch,native_boundary,final_answer_stream}.go`: focused seams; `capture_evidence.go`: feature-owned capture publication/read adapter; `completion_{capture,preparation}.go`: bounded retained evidence acquired before final-answer injection |
 | Session control | `sessioncontrol/client.go`: sole host connection/request ledger; `{input_prefix,observations}.go`: admitted initial-prefix lifetime; `presets.go`: native configuration-backed preset reads/writes; `inspection.go`: serialized live-session inspection; package owns submission, interruption, compaction, settings, startup/resume, prompts, approvals, side threads and authenticated audience |

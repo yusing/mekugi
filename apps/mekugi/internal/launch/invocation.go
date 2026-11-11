@@ -46,7 +46,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
@@ -74,7 +73,6 @@ import (
 
 	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
 
-	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	changehistory "github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
@@ -86,8 +84,10 @@ const (
 
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func runInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stdin, stdout *os.File, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, stopStartupInterrupts func(), interrupts <-chan os.Signal, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
-	appUI := api != nil
+func runInvocation(views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
+	if api == nil || threads == nil || threads.shared == nil || threads.driver == nil {
+		return 1, errors.New("native invocation requires control API and thread execution owners")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer func() {
@@ -100,11 +100,6 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	if !options.ShellGuard {
 		guards = nil
-	}
-	if api == nil {
-		if _, err := terminalui.SupportsFaint(ctx, options.ANSIFaint); err != nil {
-			return 1, err
-		}
 	}
 	var readLogPath string
 	for _, entry := range environment {
@@ -163,12 +158,10 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	var capture *transportcapture.Recorder
 	if diagnostics != nil {
 		captureConfig := transportcapture.Config{Output: capturePath, Mode: "mekugi", Writes: writes}
-		if threads != nil {
-			if threads.deduplication == nil {
-				threads.deduplication = new(transportcapture.OutputDeduplicationTotals)
-			}
-			captureConfig.Deduplication = threads.deduplication
+		if threads.deduplication == nil {
+			threads.deduplication = new(transportcapture.OutputDeduplicationTotals)
 		}
+		captureConfig.Deduplication = threads.deduplication
 		capture, err = diagnostics.Open(captureConfig)
 		if err != nil {
 			return 1, fmt.Errorf("initialize capture: %w", err)
@@ -202,13 +195,11 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	provider.Native = route
 	if route != nil {
-		args, err = resolveProfileRoute(ctx, executable, args, environment, workspace, route, appUI)
+		args, err = resolveProfileRoute(ctx, executable, args, environment, workspace, route)
 		if err != nil {
 			return 2, err
 		}
-		if appUI {
-			threads.driver.UseNativeModels()
-		}
+		threads.driver.UseNativeModels()
 		client := profileHTTPClient(route)
 		if capture != nil {
 			client.Transport = capture.Transport(client.Transport)
@@ -239,11 +230,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if debug != nil {
 		axReadOutput = debug.ReadLogPath()
 	}
-	var workers *frontends.WorkerImage
-	if appUI {
-		workers = threads.workers
-	}
-	registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: workers})
+	registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: threads.workers})
 	if err != nil {
 		return 1, fmt.Errorf("initialize tool registry: %w", err)
 	}
@@ -267,23 +254,19 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	capture.RetainTimings(retained.Store, retained.Limits, func(thread string, err error) {
 		issues.AddThreadNotice("", thread, "request_timing_storage", "Request timing could not be retained: "+err.Error())
 	})
-	if appUI {
-		threads.retained = retained
-		threads.recovery = recovered
-		threads.contexts = &control
-	}
+	threads.retained = retained
+	threads.recovery = recovered
+	threads.contexts = &control
 	if !options.DeduplicateOutput {
 		projections = nil
 	}
 	calls = service.Calls()
 	audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
 	windows = &executionobservation.Windows{}
-	if appUI {
-		if threads.windows == nil {
-			threads.windows = windows
-		}
-		windows = threads.windows
+	if threads.windows == nil {
+		threads.windows = windows
 	}
+	windows = threads.windows
 	if titleGenerator != nil {
 		titleGenerator.usage = usage
 	}
@@ -302,37 +285,35 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	var inspect func(context.Context, string) (threadcontrol.SessionDetails, error)
 	var contextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
 	var compactionAttachments func(context.Context, string) ([]composer.ContextAttachment, error)
-	if appUI {
-		compactionAttachments = func(ctx context.Context, thread string) ([]composer.ContextAttachment, error) {
-			runtime, err := threads.Runtime(thread)
-			if err != nil {
-				return nil, err
-			}
-			reader, ok := runtime.(sessioncontrol.AttachmentReader)
-			if !ok {
-				return nil, errors.New("runtime attachment history is unavailable")
-			}
-			return reader.CurrentAttachments(ctx, thread)
+	compactionAttachments = func(ctx context.Context, thread string) ([]composer.ContextAttachment, error) {
+		runtime, err := threads.Runtime(thread)
+		if err != nil {
+			return nil, err
 		}
-		contextAttachments = func(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
-			runtime, err := threads.Runtime(thread)
-			if err != nil {
-				return composer.AttachmentSnapshot{}, err
-			}
-			reader, ok := runtime.(sessioncontrol.AttachmentReader)
-			if !ok {
-				return composer.AttachmentSnapshot{}, errors.New("runtime attachment history is unavailable")
-			}
-			return reader.ContextAttachments(ctx, thread, window)
+		reader, ok := runtime.(sessioncontrol.AttachmentReader)
+		if !ok {
+			return nil, errors.New("runtime attachment history is unavailable")
 		}
-		driver = threads.driver
-		inspect = func(ctx context.Context, thread string) (threadcontrol.SessionDetails, error) {
-			runtime, err := threads.Runtime(thread)
-			if err != nil {
-				return threadcontrol.SessionDetails{}, err
-			}
-			return runtime.Inspect(ctx, thread)
+		return reader.CurrentAttachments(ctx, thread)
+	}
+	contextAttachments = func(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
+		runtime, err := threads.Runtime(thread)
+		if err != nil {
+			return composer.AttachmentSnapshot{}, err
 		}
+		reader, ok := runtime.(sessioncontrol.AttachmentReader)
+		if !ok {
+			return composer.AttachmentSnapshot{}, errors.New("runtime attachment history is unavailable")
+		}
+		return reader.ContextAttachments(ctx, thread, window)
+	}
+	driver = threads.driver
+	inspect = func(ctx context.Context, thread string) (threadcontrol.SessionDetails, error) {
+		runtime, err := threads.Runtime(thread)
+		if err != nil {
+			return threadcontrol.SessionDetails{}, err
+		}
+		return runtime.Inspect(ctx, thread)
 	}
 	mekugiCalls = executionobservation.New(executionobservation.Config{Inspect: inspect, ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, Event: issues.AddThreadEvent, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 	mekugiCalls.ContextAttachments = contextAttachments
@@ -359,7 +340,7 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		audience.Close()
 	}()
 
-	skillsManagerAvailable := skillsManagerInPath(frontendDirectory)
+	skillsManagerAvailable := skillsManagerInPath(environment, workspace, frontendDirectory)
 
 	listener, err := net.Listen("tcp", defaultListenAddress)
 	if err != nil {
@@ -382,30 +363,16 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		<-retentionDone
 	}()
 
-	// Hosted sessions borrow their server's process-wide profiling lifetime.
-	if api == nil {
-		stopProfiling, err := startProfiling(ctx, os.Stderr)
-		if err != nil {
-			return 1, err
-		}
-		defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
-	}
 	mux := http.NewServeMux()
 	if capture != nil {
 		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	}
-	var observeCatalog func([]byte)
-	if appUI {
-		observeCatalog = threads.driver.CaptureCatalog
-	}
-	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog, observeCatalog))
+	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog, threads.driver.CaptureCatalog))
 	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
 	executor := requestexecution.Executor{Provider: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
-	if appUI {
-		executor.ThreadControl = threads.shared
-		executor.ReasoningChoices = threads.driver.ReasoningChoices
-	}
+	executor.ThreadControl = threads.shared
+	executor.ReasoningChoices = threads.driver.ReasoningChoices
 	executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
 	executor.SkillsManager, executor.SideThreads, executor.Usage = skillsManagerAvailable, api, usage
 	if diagnosis != nil {
@@ -457,42 +424,22 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		return 1, err
 	}
 
-	if options.Profile != nil {
-		var directory string
-		args, directory, err = prepareProfileCatalog(args, workspace)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		if directory != "" {
-			defer func() { runErr = errors.Join(runErr, os.RemoveAll(directory)) }()
-		}
-		if appUI && threads.start == nil {
-			threads.setup.args = slices.Clone(args)
-		}
+	cmd := exec.CommandContext(ctx, executable, nativeAppServerArgs(codexArgs(baseURL, args, route))...)
+	self, err := os.Executable()
+	if err != nil {
+		return stopFailedStartup(err)
 	}
-	projectedArgs := codexArgs(baseURL, args, skillsManagerAvailable, route)
-	if appUI {
-		projectedArgs = nativeAppServerArgs(projectedArgs)
+	overrides, closeMCP, err := openInvocationMCP(ctx, threads.tools, self)
+	defer func() { runErr = errors.Join(runErr, closeMCP()) }()
+	if err != nil {
+		return stopFailedStartup(err)
 	}
-	cmd := exec.CommandContext(ctx, executable, projectedArgs...)
-	if appUI {
-		self, err := os.Executable()
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		overrides, closeMCP, err := openInvocationMCP(ctx, threads.tools, self)
-		defer func() { runErr = errors.Join(runErr, closeMCP()) }()
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		cmd.Args = append(cmd.Args, overrides...)
-		cmd.Args = append(cmd.Args, "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=true")
-	}
+	cmd.Args = append(cmd.Args, overrides...)
 	cmd.Dir = workspace
 	cmd.Env = append(slices.DeleteFunc(codexEnvironmentCapability(environment, guidance != nil && guidance.InitialContext != nil), func(entry string) bool {
 		return strings.HasPrefix(entry, shellhook.Environment+"=")
 	}), "MEKUGI_BASE_URL="+baseURL)
-	if threads != nil && threads.sourceSocket != "" {
+	if threads.sourceSocket != "" {
 		cmd.Env = append(cmd.Env, sessionapi.NativeSkillsSocketEnvironment+"="+threads.sourceSocket)
 	}
 	if nativeTrace != nil {
@@ -501,14 +448,11 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	if debug != nil {
 		cmd.Env = append(cmd.Env, evidence.AXReadOutputEnvironment+"="+debug.ReadLogPath())
 	}
-	if !appUI || threads.headless != nil {
+	if threads.headless != nil {
 		guards = nil
 	}
 	guard := len(guards) != 0
-	helper := ""
-	if appUI {
-		helper = execTrackHelper()
-	}
+	helper := execTrackHelper()
 	var reportEndpoints segmenttransport.Endpoints
 	if segments.Live != nil {
 		reportEndpoints = segments.Live.Endpoints()
@@ -523,37 +467,21 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 	var prior shellhook.Invocation
 	var disabled []string
-	if appUI {
-		// Only app-server invocations can answer configuration discovery RPCs.
-		var configuration jsontext.Value
-		prior, disabled, configuration, err = shellhook.Discover(ctx, cmd, guard)
-		if err != nil {
-			if options.Profile != nil {
-				return stopFailedStartup(errors.New("cannot resolve profile host configuration"))
-			}
-			return stopFailedStartup(err)
+	// Only app-server invocations can answer configuration discovery RPCs.
+	var configuration jsontext.Value
+	prior, disabled, configuration, err = shellhook.Discover(ctx, cmd, guard)
+	if err != nil {
+		if options.Profile != nil {
+			return stopFailedStartup(errors.New("cannot resolve profile host configuration"))
 		}
-		if route != nil {
-			if err := verifyProfileRoute(configuration, route, baseURL); err != nil {
-				return stopFailedStartup(err)
-			}
-		}
-		resetOverride, err := binding.ContextResetConfig(configuration)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
-		if resetOverride != "" {
-			cmd.Args = append(cmd.Args, "-c", resetOverride)
-		}
-	} else if route != nil {
-		configuration, err := profileConfigurationProbe(ctx, cmd, false)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
+		return stopFailedStartup(err)
+	}
+	if route != nil {
 		if err := verifyProfileRoute(configuration, route, baseURL); err != nil {
 			return stopFailedStartup(err)
 		}
 	}
+
 	if helper != "" {
 		guardDirectory := ""
 		for _, registration := range guards {
@@ -593,34 +521,23 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 		}
 	}
 
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 5 * time.Second
-	stopStartupInterrupts()
-	select {
-	case <-interrupts:
-		cancel()
-	default:
-	}
 	var waitCodex func() error
 	err = ctx.Err()
 	if err == nil {
-		if appUI {
-			guardServer, reportObserver, err = openShellObservation(ctx, frontendDirectory, guards, segments, issues)
-			if err != nil {
-				return stopFailedStartup(err)
-			}
-			windows.Reports = reportObserver
-
-			debugDirectory := ""
-			if debug != nil {
-				debugDirectory = filepath.Dir(debug.Paths()[0])
-			}
-			waitCodex, err = (&nativeSession{preparer: mekugiCalls, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, profile: options.Profile, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals, deduplicateOutput: options.DeduplicateOutput}).start(prefs, cmd, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
-		} else {
-			err = cmd.Start()
-			waitCodex = cmd.Wait
+		guardServer, reportObserver, err = openShellObservation(ctx, frontendDirectory, guards, segments, issues)
+		if err != nil {
+			return stopFailedStartup(err)
 		}
+		windows.Reports = reportObserver
+
+		debugDirectory := ""
+		if debug != nil {
+			debugDirectory = filepath.Dir(debug.Paths()[0])
+		}
+		waitCodex, err = (&nativeSession{preparer: mekugiCalls, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, profile: options.Profile, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals, deduplicateOutput: options.DeduplicateOutput}).start(prefs, cmd, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
+
 	}
 	if err != nil {
 		return stopFailedStartup(fmt.Errorf("launch codex: %w", err))
@@ -644,12 +561,10 @@ func runInvocation(terminalViews terminalsession.Views, views *sessionpresentati
 	}
 
 	if exitErr, ok := errors.AsType[*exec.ExitError](codexErr); ok {
-		if appUI {
-			// UI failures carry context (for example a lost app-server)
-			// around the process status. Do not discard that diagnostic merely
-			// because we can preserve the child's exit code.
-			routerErr = errors.Join(codexErr, routerErr)
-		}
+		// UI failures carry context (for example a lost app-server)
+		// around the process status. Do not discard that diagnostic merely
+		// because we can preserve the child's exit code.
+		routerErr = errors.Join(codexErr, routerErr)
 		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
 			return 128 + int(status.Signal()), routerErr
 		}

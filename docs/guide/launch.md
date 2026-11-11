@@ -20,13 +20,12 @@ remote-write/sudo guarding and GPG passphrase entry while retaining Codex policy
 ```sh
 mekugi codex
 mekugi -p work
-mekugi codex exec "Explain this repository"
 ```
 
 Interactive launches start the local server when absent and attach the [UI](terminal-ui.md).
 Closing the UI leaves its thread running; exit prints resume/replay commands.
-Ctrl-C cancels the startup wait. Noninteractive commands retain Codex's
-arguments/output/exit status.
+Ctrl-C cancels the startup wait. Use explicit headless execution below for automation;
+redirected ordinary launches and stock CLI subcommands are not supported through Mekugi.
 Mekugi needs JavaScript `exec`. Custom Responses endpoints require a [profile import](configuration.md#codex-profile-imports).
 `--oss` remains unsupported.
 See [launch limits](../../apps/mekugi/internal/launch/SPEC.md) and
@@ -43,4 +42,4 @@ options are accepted, resume/positional prompts are not. It supports the same
 Thread Control and child preloads as the interactive client, and exits after Main's
 logical work and required descendants complete. Questions/approvals fail; Ctrl-C stops the family. Stdout
 JSONL contains private host messages and a completion event;
-diagnostics go to stderr. Run/shutdown failure exits nonzero. `codex exec` is unchanged.
+diagnostics go to stderr. Run/shutdown failure exits nonzero.

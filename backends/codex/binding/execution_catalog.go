@@ -2,7 +2,6 @@ package binding
 
 import (
 	jsonv1 "encoding/json"
-	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -176,29 +175,4 @@ func omitDirectReset(section *codexresponses.ToolSection) bool {
 func codeModeOwnsStockExecution(description string) bool {
 	return strings.Contains(description, "tools.exec_command") || strings.Contains(description, "tools.apply_patch") ||
 		codexresponses.CodeModeDeclaresExecutionTool(description, "apply_patch") || codexresponses.CodeModeDeclaresExecutionTool(description, "exec_command")
-}
-
-// ContextResetConfig blocks the host's automatic notes hint while preserving
-// explicitly selected notes tools and every existing tool restriction.
-func ContextResetConfig(raw []byte) (string, error) {
-	if len(raw) == 0 {
-		return "", nil
-	}
-	var config struct {
-		MCPServers map[string]struct {
-			DisabledTools []string `json:"disabled_tools"`
-		} `json:"mcp_servers"`
-	}
-	if err := json.Unmarshal(raw, &config); err != nil {
-		return "", err
-	}
-	notes, exists := config.MCPServers["notes"]
-	if !exists || slices.Contains(notes.DisabledTools, "thread_hint") {
-		return "", nil
-	}
-	tools, err := json.Marshal(append(notes.DisabledTools, "thread_hint"))
-	if err != nil {
-		return "", err
-	}
-	return "mcp_servers.notes.disabled_tools=" + string(tools), nil
 }

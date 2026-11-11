@@ -138,8 +138,9 @@ The fork's existing configuration and transport options remain available through
 `--help`. Terminal, browser and headless sessions use this executable, including
 their Codex children, Side and One-off turns. Launch resolves it from the caller's
 `PATH`, then beside the Mekugi executable. There is no stock-runtime fallback for
-these sessions. Explicit stock CLI passthrough, including `exec` and `review`,
-still uses `codex`; `headless` uses the native runtime.
+these sessions. Mekugi does not wrap stock CLI commands such as `exec` or `review`.
+Use `mekugi codex headless --yolo` with a stdin prompt for noninteractive execution;
+run Codex administrative commands directly.
 
 `make test-native` runs the existing standalone CLI, command execution, connection,
 code-mode-host and strict-configuration tests using local fixtures, not live

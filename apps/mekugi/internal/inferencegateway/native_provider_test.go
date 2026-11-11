@@ -190,8 +190,8 @@ func TestNativeProviderRemoteCatalogAndAuxiliaryAdmission(t *testing.T) {
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, r)
 		if method == http.MethodGet {
-			if w.Code != 200 || !strings.Contains(w.Body.String(), `"tool_mode":"code_mode_only"`) || !strings.Contains(w.Body.String(), `"future":42`) || w.Header().Get("ETag") != "original" {
-				t.Fatalf("catalog projection: %d %s", w.Code, w.Body)
+			if w.Code != 200 || !strings.Contains(w.Body.String(), `"tool_mode":"code_mode"`) || !strings.Contains(w.Body.String(), `"future":42`) || w.Header().Get("ETag") != "original" {
+				t.Fatalf("catalog forwarding: %d %s", w.Code, w.Body)
 			}
 		} else if strings.Contains(path, "images") {
 			if w.Code != 201 || w.Body.String() != "encoded auxiliary" || w.Header().Get("X-Custom-Reply") != "preserved" {

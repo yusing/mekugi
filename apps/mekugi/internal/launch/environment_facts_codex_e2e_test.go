@@ -108,19 +108,23 @@ func TestEnvironmentFactsNativeCodex(t *testing.T) {
 	}
 	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
-	args := append([]string{"-c", "features.plugins=false", "--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never"}, hookArgs...)
-	args = append(args, "exec", "--skip-git-repo-check", "--json", "--color", "never", "-C", workspace, "Environment acceptance fixture")
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, codex, codexArgs(server.URL+"/v1", args, false, nil)...)
-	command.Dir, command.Env = workspace, codexEnvironmentCapability(os.Environ(), true)
-	output, err := command.CombinedOutput()
+	executable, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
-		t.Fatalf("native environment fixture: %v\n%s", err, output)
+		t.Fatal(err)
 	}
+	args := append([]string{"-c", "features.plugins=false", "-c", `model="gpt-6-astra"`, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`}, hookArgs...)
+	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
+		command := exec.CommandContext(ctx, executable, nativeAppServerArgs(codexArgs(server.URL+"/v1", args, nil))...)
+		command.Dir, command.Env = workspace, codexEnvironmentCapability(os.Environ(), true)
+		return command
+	}, "", testAppServerIntegration(proxy))
+	terminal.await("Ready")
+	terminal.send("Environment acceptance fixture\r")
+	terminal.await("environment accepted")
+	terminal.await("completed")
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
-	if !provider.resultSeen || nestedCalls.Load() != 1 || !bytes.Contains(output, []byte("environment accepted")) {
-		t.Fatalf("native environment acceptance result=%t nested_calls=%d\n%s", provider.resultSeen, nestedCalls.Load(), output)
+	if !provider.resultSeen || nestedCalls.Load() != 1 {
+		t.Fatalf("native environment acceptance result=%t nested_calls=%d", provider.resultSeen, nestedCalls.Load())
 	}
 }

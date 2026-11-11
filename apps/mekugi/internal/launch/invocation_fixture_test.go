@@ -6,16 +6,18 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/libraries/commandargs"
+	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
+	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
@@ -50,42 +52,55 @@ import (
 // invocationFixture is the fixture child's observed invocation, published after launch.
 type invocationFixture struct {
 	BaseURL, AXReadOutput, FrontendDirectory string
-	SkillsManagerAvailable                   bool
-	Args                                     []string
-	Catalog                                  []byte
 }
 
 func runInvocationFixtureChild() {
-	if slices.Contains(os.Args, "--bundled") {
-		fmt.Fprintln(os.Stdout, testNativeModelCatalog)
-		os.Exit(0)
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
-	session := invocationFixture{BaseURL: os.Getenv("MEKUGI_BASE_URL"), AXReadOutput: os.Getenv(evidence.AXReadOutputEnvironment), Args: os.Args[1:]}
+	go func() { <-ctx.Done(); _ = os.Stdin.Close() }()
+	session := invocationFixture{BaseURL: os.Getenv("MEKUGI_BASE_URL"), AXReadOutput: os.Getenv(evidence.AXReadOutputEnvironment)}
 	if startup := os.Getenv("BASH_ENV"); filepath.Base(startup) == "frontend-bash-env" {
 		session.FrontendDirectory = filepath.Join(filepath.Dir(startup), "bin")
 	}
-	for _, arg := range session.Args {
-		if arg == "skills.include_instructions=false" {
-			session.SkillsManagerAvailable = true
+	decoder, encoder := jsontext.NewDecoder(os.Stdin), jsontext.NewEncoder(os.Stdout)
+	for {
+		var request struct {
+			ID     jsontext.Value `json:"id"`
+			Method string         `json:"method"`
 		}
-		if raw, ok := strings.CutPrefix(arg, "model_catalog_json="); ok {
-			path, err := strconv.Unquote(raw)
-			if err != nil {
-				os.Exit(91)
+		if err := json.UnmarshalDecode(decoder, &request); err != nil {
+			os.Exit(0)
+		}
+		if len(request.ID) == 0 {
+			continue
+		}
+		result := map[string]any{}
+		switch request.Method {
+		case "config/read":
+			result["layers"] = []any{}
+		case "thread/start":
+			workspace, _ := os.Getwd()
+			result["thread"] = map[string]any{"id": "fixture-main", "cwd": workspace}
+		case "environment/info":
+			if status := os.Getenv("MEKUGI_INVOCATION_FIXTURE_EXIT"); status != "" {
+				fmt.Fprintln(os.Stderr, "codex-finished")
+				code, _ := strconv.Atoi(status)
+				os.Exit(code)
 			}
-			session.Catalog, err = os.ReadFile(path)
+			connection, err := net.Dial("unix", os.Getenv("MEKUGI_INVOCATION_FIXTURE_OBSERVATION"))
 			if err != nil {
 				os.Exit(92)
 			}
+			err = json.MarshalWrite(connection, &session)
+			connection.Close()
+			if err != nil {
+				os.Exit(93)
+			}
+		}
+		if err := json.MarshalEncode(encoder, map[string]any{"id": request.ID, "result": result}); err != nil {
+			os.Exit(94)
 		}
 	}
-	if err := json.MarshalEncode(jsontext.NewEncoder(os.Stdout), &session); err != nil {
-		os.Exit(93)
-	}
-	<-ctx.Done()
-	os.Exit(0)
 }
 
 func runFixtureInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, issues *requestexecution.Failures, ready func(invocationFixture), artifacts func([]string)) error {
@@ -99,35 +114,47 @@ func runFixtureInvocation(terminalViews terminalsession.Views, views *sessionpre
 		return err
 	}
 	defer os.RemoveAll(directory)
-	executable := filepath.Join(directory, "codex")
+	executable := filepath.Join(directory, "mekugi-app-server")
 	script := "#!/bin/sh\nMEKUGI_INVOCATION_FIXTURE=1; export MEKUGI_INVOCATION_FIXTURE\nexec " + commandargs.Quote(os.Args[0]) + " \"$@\"\n"
 	if err := os.WriteFile(executable, []byte(script), 0700); err != nil {
 		return err
 	}
-	reader, writer, err := os.Pipe()
+	observationPath := filepath.Join(directory, "ready")
+	listener, err := net.Listen("unix", observationPath)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
-	input, err := os.Open(os.DevNull)
-	if err != nil {
-		writer.Close()
-		return err
-	}
-	defer input.Close()
+	defer listener.Close()
 	observed := make(chan error, 1)
 	go func() {
-		var session invocationFixture
-		err := json.UnmarshalDecode(jsontext.NewDecoder(reader), &session)
-		if err == nil && ready != nil {
-			ready(session)
+		connection, err := listener.Accept()
+		if err == nil {
+			defer connection.Close()
+			var session invocationFixture
+			err = json.UnmarshalRead(connection, &session)
+			if err == nil && ready != nil {
+				ready(session)
+			}
 		}
 		observed <- err
 	}()
-	code, runErr := runInvocation(terminalViews, views, conversation, live, activity, service, prefs, recovered, segments, changes, usage, agentMetrics, diagnostics, diagnosis, ctx, commands, projections, guidance, naming, observations, guards, options, settings, issues, executable, []string{"exec"}, os.Environ(), input, writer, io.Discard, "", nil, false, func() {}, nil, artifacts, nil, "", nil)
-	writer.Close()
+	shared := threadcontrol.New()
+	driver, err := threadbinding.NewDriver(shared)
+	if err != nil {
+		listener.Close()
+		return err
+	}
+	if err := driver.Start(ctx); err != nil {
+		listener.Close()
+		return err
+	}
+	defer driver.Stop(context.WithoutCancel(ctx))
+	workspace := directory
+	threads := &threadExecution{shared: shared, driver: driver}
+	code, runErr := runInvocation(views, conversation, live, activity, service, prefs, recovered, segments, changes, usage, agentMetrics, diagnostics, diagnosis, ctx, commands, projections, guidance, naming, observations, nil, options, settings, issues, executable, nil, append(os.Environ(), "MEKUGI_INVOCATION_FIXTURE_OBSERVATION="+observationPath), io.Discard, "", nil, false, artifacts, sessionapi.NewLive(), workspace, threads)
+	listener.Close()
 	observeErr := <-observed
-	if observeErr != nil && !errors.Is(observeErr, io.EOF) {
+	if observeErr != nil && !errors.Is(observeErr, net.ErrClosed) {
 		runErr = errors.Join(runErr, observeErr)
 	}
 	if ctx.Err() != nil && onlyInvocationCancellation(runErr, ctx.Err()) {

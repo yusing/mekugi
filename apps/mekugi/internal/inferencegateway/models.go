@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
-	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 // MaxCatalogBytes bounds one complete catalog response.
@@ -66,17 +64,6 @@ func ModelsHandler(provider *Client, report func(*http.Request, CatalogFailure),
 		}
 		if observe != nil && response.StatusCode == http.StatusOK {
 			observe(body)
-		}
-		if response.StatusCode == http.StatusOK {
-			body, err = binding.CodeModeOnlyModelCatalog(body)
-			if err == nil && len(body) > MaxCatalogBytes {
-				err = errors.New("projected model catalog exceeds the router buffer budget")
-			}
-			if err != nil {
-				failure = CatalogFailure{Err: err, Code: "models_execution_interface", Summary: "the upstream model catalog could not be prepared for JavaScript execution"}
-				http.Error(writer, failure.Summary, http.StatusBadGateway)
-				return
-			}
 		}
 		for _, name := range []string{"Content-Type", "Cache-Control", "ETag"} {
 			for _, value := range response.Header.Values(name) {

@@ -58,9 +58,6 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 			return nil, fmt.Errorf("resolve resume workspace: %w", err)
 		}
 	}
-	// Live settings and trusted reasoning configuration_update items are Codex
-	// opt-ins. Enable them only for this native app-server invocation.
-	cmd.Args = append(cmd.Args, "-c", "features.step_model_switching=true", "-c", "features.reasoning_effort_override=true")
 	var err error
 	session.Client, err = sessioncontrol.Start[appServerRequest](cmd, func(message appserver.Message) {
 		if message.Method != "item/started" {
@@ -117,8 +114,6 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	session.Client.Requests.InheritedEffort = threads.driver.InheritedEffort
 	session.Client.Requests.CaptureConfiguredCatalog = threads.driver.CaptureConfiguredCatalog
 	api.BindChildAttachment(threads.AttachChild)
-	policy := binding.ThreadAdmissionPolicy{}
-	session.Client.Requests.ThreadPolicy = &policy
 	session.Client.Startup.Prepared = threads.start
 	if err := threads.driver.Connect(threads, session.audience); err != nil {
 		c.Close()

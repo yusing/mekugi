@@ -167,18 +167,3 @@ func TestPrepareStockExecutionOmitsDirectReset(t *testing.T) {
 		}
 	}
 }
-
-func TestContextResetConfigPreservesCallerTools(t *testing.T) {
-	for _, test := range []struct{ config, override string }{
-		{`{}`, ""},
-		{`{"mcp_servers":{"other":{"disabled_tools":["thread_hint"]}}}`, ""},
-		{`{"mcp_servers":{"notes":{"disabled_tools":["thread_hint","blocked"]}}}`, ""},
-		{`{"mcp_servers":{"notes":{}}}`, `mcp_servers.notes.disabled_tools=["thread_hint"]`},
-		{`{"mcp_servers":{"notes":{"disabled_tools":["blocked"]}}}`, `mcp_servers.notes.disabled_tools=["blocked","thread_hint"]`},
-	} {
-		got, err := ContextResetConfig([]byte(test.config))
-		if err != nil || got != test.override {
-			t.Fatalf("%s: %q, %v", test.config, got, err)
-		}
-	}
-}

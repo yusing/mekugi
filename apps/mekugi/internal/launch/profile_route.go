@@ -6,7 +6,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -19,9 +18,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
-	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 // profileRoute selects only imported/explicit routes, never guessed provider
@@ -106,45 +103,6 @@ func appendInvocationOverrides(args []string, overrides ...string) []string {
 	return slices.Insert(slices.Clone(args), index, overrides...)
 }
 
-// prepareProfileCatalog derives a private execution catalog without modifying
-// the caller's source or substituting bundled models for unknown model IDs.
-func prepareProfileCatalog(args []string, workspace string) ([]string, string, error) {
-	values := launchoptions.ConfigOverrides(args)
-	path, _ := values["model_catalog_json"].(string)
-	if path == "" {
-		return args, "", nil
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(workspace, path)
-	}
-	file, err := sourceparse.Open(path)
-	if err != nil {
-		return nil, "", errors.New("cannot read profile model_catalog_json")
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, "", errors.New("profile model_catalog_json must be a regular file")
-	}
-	body, err := io.ReadAll(io.LimitReader(file, inferencegateway.MaxCatalogBytes+1))
-	if err != nil || len(body) > inferencegateway.MaxCatalogBytes {
-		return nil, "", errors.New("profile model catalog is unreadable or exceeds 8 MiB")
-	}
-	body, err = binding.CodeModeOnlyModelCatalog(body)
-	if err != nil {
-		return nil, "", errors.New("profile model catalog cannot expose stock JavaScript execution")
-	}
-	directory, err := os.MkdirTemp("", "mekugi-models-")
-	if err != nil {
-		return nil, "", err
-	}
-	derived := filepath.Join(directory, "models.json")
-	if err := os.WriteFile(derived, body, 0600); err != nil {
-		return nil, "", errors.Join(err, os.RemoveAll(directory))
-	}
-	return appendInvocationOverrides(args, "-c", fmt.Sprintf("model_catalog_json=%q", derived)), directory, nil
-}
-
 func profileHTTPClient(route *inferencegateway.NativeProvider) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	// Explicit host setup timeouts must not be cut short by the ordinary
@@ -176,12 +134,13 @@ type profileConfiguration struct {
 // Resolve inherited provider fields through Codex before constructing transport
 // owners. Only provider identity and the inference endpoint must be explicit;
 // catalog, authentication, capabilities and timeouts retain normal host merging.
-func resolveProfileRoute(ctx context.Context, executable string, args, environment []string, workspace string, route *inferencegateway.NativeProvider, standalone bool) ([]string, error) {
-	command := exec.CommandContext(ctx, executable, args...)
+func resolveProfileRoute(ctx context.Context, executable string, args, environment []string, workspace string, route *inferencegateway.NativeProvider) ([]string, error) {
+	command := exec.CommandContext(ctx, executable, nativeAppServerArgs(args)...)
 	command.Env, command.Dir = environment, workspace
-	configuration, err := profileConfigurationProbe(ctx, command, standalone)
+	_, _, configuration, err := shellhook.Discover(ctx, command, false)
 	if err != nil {
-		return nil, err
+		// Host diagnostics can contain expanded profile values.
+		return nil, errors.New("cannot resolve profile host configuration")
 	}
 	var config profileConfiguration
 	if err := json.Unmarshal(configuration, &config); err != nil {
@@ -270,89 +229,6 @@ func verifyProfileRoute(configuration []byte, route *inferencegateway.NativeProv
 	return nil
 }
 
-// Wrapped exec uses the same non-generating configuration probe as native
-// startup, with only its shared configuration flags rather than exec operands.
-func profileConfigurationProbe(ctx context.Context, command *exec.Cmd, standalone bool) ([]byte, error) {
-	var args []string
-	for i := 1; i < len(command.Args) && command.Args[i] != "--"; i++ {
-		if value, ok := codexArgumentValue(command.Args, &i, "-c", "--config"); ok {
-			args = append(args, "-c", value)
-		} else if value, ok := codexArgumentValue(command.Args, &i, "-m", "--model"); ok {
-			args = append(args, "-c", fmt.Sprintf("model=%q", value))
-		} else if command.Args[i] == "--enable" || command.Args[i] == "--disable" {
-			if i+1 < len(command.Args) {
-				args = append(args, command.Args[i], command.Args[i+1])
-				i++
-			}
-		} else if flag, _, ok := strings.Cut(command.Args[i], "="); ok && (flag == "--enable" || flag == "--disable") {
-			args = append(args, command.Args[i])
-		} else if launchoptions.CodexOptionOperand(command.Args[i]) {
-			i++
-		}
-	}
-	if standalone {
-		args = nativeAppServerArgs(args)
-	} else {
-		args = append([]string{"app-server"}, args...)
-	}
-	probe := exec.CommandContext(ctx, command.Path, args...)
-	probe.Env, probe.Dir = command.Env, command.Dir
-	_, _, configuration, err := shellhook.Discover(ctx, probe, false)
-	if err != nil {
-		// Host diagnostics can contain expanded profile values.
-		return nil, errors.New("cannot resolve profile host configuration")
-	}
-	return configuration, nil
-}
-
-func validateProfileIntegration(args []string) error {
-	values := launchoptions.ConfigOverrides(args)
-	features, _ := values["features"].(map[string]any)
-	for key, expected := range map[string]bool{"code_mode": true, "code_mode_only": true, "sleep_tool": false, "goals": false, "retain_client_tool_outputs": false} {
-		if value, exists := features[key]; exists && value != expected {
-			return fmt.Errorf("profile setting features.%s conflicts with mandatory execution integration", key)
-		}
-	}
-	for feature, required := range map[string]map[string]any{
-		"token_budget":   {"enabled": true, "use_history_notes_extension": false, "guidance_message": "", "auto_compact_fallback_prompt": "", "reminder_message_template": "Context remaining: {n_remaining} tokens."},
-		"multi_agent_v2": {"enabled": true, "disable_native_tools": true},
-	} {
-		if value, exists := features[feature]; exists {
-			if enabled, ok := value.(bool); ok {
-				if !enabled {
-					return fmt.Errorf("profile setting features.%s conflicts with mandatory execution integration", feature)
-				}
-				continue
-			}
-			fields, _ := value.(map[string]any)
-			for key, expected := range required {
-				if value, exists := fields[key]; exists && value != expected {
-					return fmt.Errorf("profile setting features.%s.%s conflicts with mandatory execution integration", feature, key)
-				}
-			}
-		}
-	}
-	if value, exists := values["include_collaboration_mode_instructions"]; exists && value != false {
-		return errors.New("profile setting include_collaboration_mode_instructions conflicts with mandatory execution integration")
-	}
-	for i := 0; i < len(args) && args[i] != "--"; i++ {
-		arg := args[i]
-		if arg == "--enable" || arg == "--disable" || strings.HasPrefix(arg, "--enable=") || strings.HasPrefix(arg, "--disable=") {
-			flag, feature, inline := strings.Cut(arg, "=")
-			if !inline && i+1 < len(args) {
-				i++
-				feature = args[i]
-			}
-			if ((feature == "code_mode" || feature == "code_mode_only" || feature == "token_budget") && flag == "--disable") || ((feature == "goals" || feature == "sleep_tool" || feature == "retain_client_tool_outputs") && flag == "--enable") {
-				return fmt.Errorf("profile feature %s conflicts with mandatory execution integration", feature)
-			}
-		} else if launchoptions.CodexOptionOperand(arg) {
-			i++
-		}
-	}
-	return nil
-}
-
 // Context's private environment is admitted over the native control channel;
 // children borrow threadSetup instead. Never mutate the daemon environment.
 type invocationEnvironmentKey struct{}
@@ -401,23 +277,6 @@ func headlessCommand(args []string) ([]string, bool) {
 		}
 	}
 	return nil, false
-}
-
-func sessionInvocation(args []string) bool {
-	if interactiveCodexArgs(args) {
-		return true
-	}
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--" {
-			return true
-		}
-		if args[i] == "-p" || args[i] == "--profile" || launchoptions.CodexOptionOperand(args[i]) {
-			i++
-		} else if !strings.HasPrefix(args[i], "-") {
-			return args[i] == "exec" || args[i] == "e" || args[i] == "review" || args[i] == "headless"
-		}
-	}
-	return true
 }
 
 func profileResumeConfig(args, resumeArgv []string, profile *launchoptions.Profile) map[string]any {

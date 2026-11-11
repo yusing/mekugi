@@ -12,7 +12,9 @@ import (
 
 	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -27,7 +29,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 		overrides  bool
 		relative   bool
 	}{
-		{name: "success", exit: "0"},
+		{name: "disconnect", exit: "0"},
 		{name: "failure", exit: "23"},
 		{name: "overrides", exit: "0", overrides: true},
 		{name: "relative-overrides", exit: "0", overrides: true, relative: true},
@@ -41,7 +43,9 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 			t.Setenv("TMPDIR", directory)
 			t.Setenv("MEKUGI_AX_OUTPUT", "")
 			t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-			if err := os.WriteFile(filepath.Join(directory, "codex"), []byte("#!/bin/sh\necho codex-finished >&2\nexit "+test.exit+"\n"), 0o700); err != nil {
+			t.Setenv("MEKUGI_INVOCATION_FIXTURE_EXIT", test.exit)
+			script := "#!/bin/sh\nMEKUGI_INVOCATION_FIXTURE=1; export MEKUGI_INVOCATION_FIXTURE\nexec " + commandargs.Quote(os.Args[0]) + " \"$@\"\n"
+			if err := os.WriteFile(filepath.Join(directory, "mekugi-app-server"), []byte(script), 0o700); err != nil {
 				t.Fatal(err)
 			}
 			output, err := os.CreateTemp(directory, "stderr-")
@@ -52,7 +56,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 			old := os.Stderr
 			os.Stderr = output
 			defer func() { os.Stderr = old }()
-			args := []string{"--debug"}
+			args := []string{"--debug", "--shell-guard=false"}
 			if test.overrides {
 				capture, reads := filepath.Join(directory, "capture.jsonl"), filepath.Join(directory, "reads.jsonl")
 				if test.relative {
@@ -62,17 +66,17 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 				args = append(args, "--capture-output", capture)
 				t.Setenv("MEKUGI_AX_OUTPUT", reads)
 			}
-			code, err := wrapCodex(t.Context(), args, nil)
-			if err != nil || (test.exit == "0" && code != 0) || (test.exit == "23" && code != 23) {
+			code, err := runServerSession(t.Context(), args, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
+			if err == nil || (test.exit == "0" && code != 1) || (test.exit == "23" && code != 23) {
 				t.Fatalf("wrap exit: %d, %v", code, err)
 			}
 			data, err := os.ReadFile(output.Name())
 			if err != nil {
 				t.Fatal(err)
 			}
-			before, after, ok := strings.Cut(string(data), "codex-finished\n")
-			if !ok || strings.Contains(before, "To diagnose this session") || strings.Count(after, "To diagnose this session") != 1 {
-				t.Fatalf("debug paths did not print only after child exit: %q", data)
+			after := string(data)
+			if strings.Contains(after, "codex-finished") || strings.Count(after, "To diagnose this session") != 1 {
+				t.Fatalf("native host diagnostics leaked or post-exit handoff was missing: %q", data)
 			}
 			lines := strings.Split(strings.TrimSpace(after), "\n")
 			if len(lines) != 2 {

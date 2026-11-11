@@ -1,18 +1,16 @@
 package launch
 
 import (
-	"errors"
-	"os/exec"
-	"path/filepath"
+	"os"
+
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 )
 
-func skillsManagerInPath(extraDirectory string) bool {
-	if path, err := exec.LookPath("skills-mgr"); err == nil || path != "" && errors.Is(err, exec.ErrDot) {
-		return true
+func skillsManagerInPath(environment []string, workspace, extraDirectory string) bool {
+	path := launchoptions.EnvironmentValue(withoutInheritedFrontend(environment), "PATH")
+	if extraDirectory != "" {
+		path = extraDirectory + string(os.PathListSeparator) + path
 	}
-	if extraDirectory == "" {
-		return false
-	}
-	_, err := exec.LookPath(filepath.Join(extraDirectory, "skills-mgr"))
+	_, err := invocationExecutable("skills-mgr", []string{"PATH=" + path}, workspace)
 	return err == nil
 }

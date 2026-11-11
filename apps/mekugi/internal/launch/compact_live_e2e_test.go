@@ -93,8 +93,8 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 	}
 	environment = append(environment, routerTestWorkerEnvironment+"=1")
 	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
-		args := codexArgs(server.URL+"/v1", []string{"app-server", "-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "model_reasoning_effort=\"low\""}, false, nil)
-		cmd := exec.CommandContext(ctx, "codex", args...)
+		args := nativeAppServerArgs(codexArgs(server.URL+"/v1", []string{"-c", fmt.Sprintf("model=%q", model), "-c", "features.plugins=false", "-c", "model_reasoning_effort=\"low\""}, nil))
+		cmd := exec.CommandContext(ctx, "mekugi-app-server", args...)
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "", testAppServerIntegration(proxy))

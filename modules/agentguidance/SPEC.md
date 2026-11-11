@@ -37,16 +37,16 @@ Native templates omit forced commentary cadence, mandatory skill announcements a
 that compaction supplies a summary. Wait guidance uses completion notifications or interruptible
 waits. These policies are source text, not request-time phrase substitutions.
 
-Inherited base instructions on resume and full-history forks retain their original text.
-Stock CLI passthrough also retains stock prose. Neither is silently rewritten to match the
-new native templates. Native context assembly does not advertise uninstalled plugins.
+Inherited base instructions on resume and full-history forks retain their original text;
+they are not silently rewritten to match the native templates. Native context assembly
+does not advertise uninstalled plugins.
 When a user explicitly requests a missing plugin, the existing discovery tool lists eligible
 candidates before installation is requested. Endpoint candidates retain their original ID
 validation, metadata hydration and install-source attribution. Historical advertisement
 markers remain recognized as context, not user authorization. Caller-authored plugin policy
 is preserved without request-time matching.
-Planning guidance and the stock plan tool remain host-owned. Invocation-local Codex flags
-omit collaboration-mode instructions.
+Planning guidance and the stock plan tool remain host-owned. Native configuration omits
+collaboration-mode instructions.
 
 Each executable helper owns its capability description and command-keyed workflow
 guidance. Descriptions contain capabilities, syntax, options and output semantics;
@@ -113,13 +113,14 @@ parts remain intact. Each text part is processed independently, including fenced
 multiple complete blocks are supported. Unmatched markers and bytes outside complete blocks are
 preserved. Filtering also applies to prewarm and execution-free requests.
 
-When `skills-mgr` is executable in the wrapped Codex PATH, the wrapper enforces the
-invocation-local Codex setting `skills.include_instructions=false`, so the stock skill catalog is not
-duplicated alongside the skills-mgr catalog. The router replaces explicitly selected Codex skill
+When `skills-mgr` is executable in the native process PATH, native configuration omits
+the stock skill catalog so managed catalog guidance is not duplicated. Without it,
+native skill-catalog configuration applies, enabled by default. Native skill loading and
+explicit selection remain available. When `skills-mgr` is executable, the router replaces explicitly selected Codex skill
 instructions with the compact identity `<skill name="…"/>` before provider forwarding. This
 idempotent projection applies to ordinary, prewarm, execution-free, and replayed selected-skill
 messages without modifying Codex configuration files. When `skills-mgr` is unavailable,
-both stock catalog instructions and selected-skill messages remain unchanged.
+selected-skill messages remain unchanged.
 
 Native-composer file and skill frames identify their supplied content as reusable
 read context, so agents need only read sources for edits or missing/newer content.
@@ -169,7 +170,7 @@ authoritative. Claude retains its native environment supply without an additiona
 
 Codex process construction establishes the invocation-local `MEKUGI_ENVIRONMENT_FACTS=1`
 capability only when this supplement owner is installed, discarding inherited values. Native
-hooks observe the app-server environment; tool-shell configuration clears this capability
+hooks observe the app-server environment; native tool-process construction removes this capability
 after caller overrides without changing unrelated shell policy. Each Mekugi child establishes
 its own capability. Standalone Codex launched from a tool shell keeps its original hook context.
 The capability conveys information, never execution authorization.
@@ -190,8 +191,10 @@ Claude uses post-tool-batch context. Prewarm, approval, compaction, already-star
 Codex uses its native token-budget reset for manual and automatic compaction.
 Reset makes no summary-generation request and does not inject a compaction prompt,
 handover, notes, or recovery artifact. Native thresholds remain host-owned. Mekugi
-leaves the history/notes extension disabled, disables automatic `notes.thread_hint`
-on configured notes servers while preserving other tools and restrictions, and
+owns the fixed token-budget policy in native feature/configuration resolution: history/notes
+is disabled, guidance and fallback prompts are absent, and remaining-token reminders are
+neutral. Model activation and model switches do not replace that policy. Native context assembly makes no automatic `notes.thread_hint` request; caller-configured
+MCP tools and hooks remain unchanged. It
 excludes client tool outputs from cross-reset retention. Self-directed checkpoints
 use Thread Control rather than the native direct-reset tool. Claude compaction is
 unchanged.
@@ -332,9 +335,9 @@ command execution remains available. Provider compatibility prose belongs to its
    descriptions exactly once and excludes absent command supplements. Changed valid
    descriptions render directly; the snapshot and projected bytes match.
 5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.
-6. With `skills-mgr` in PATH, Codex launches disable stock skill-catalog instructions
-   after caller overrides and selected skill wrappers reach the provider as `<skill name="…"/>`.
-   Without `skills-mgr`, neither projection occurs.
+6. With `skills-mgr` in PATH, the native runtime omits stock skill-catalog instructions
+   and selected skill wrappers reach the provider as `<skill name="…"/>`. Without it,
+   native catalog configuration and selected-skill content remain available.
 7. Codex manual and automatic resets make no summary inference. Optional selected
    sources reach the first continuation without unrelated artifact contents or
    selection metadata; tool schemas and cache identity remain stable. Completed

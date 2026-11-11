@@ -54,7 +54,7 @@ func TestAppServerSessionTitleCustomProfileNativeCodexE2E(t *testing.T) {
 }
 
 func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool, customAuth string) {
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,11 +173,11 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool, customAu
 	}))
 	defer router.Close()
 	command := func(runCtx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(runCtx, codex, "app-server", "-c", `model_providers.titlefixture={name="preview",base_url=`+strconv.Quote(router.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false,supports_websockets=false}`, "-c", `model_provider="titlefixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(runCtx, codex, "-c", `model_providers.titlefixture={name="preview",base_url=`+strconv.Quote(router.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false,supports_websockets=false}`, "-c", `model_provider="titlefixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
 		if customAuth != "" {
-			args := append([]string{"app-server"}, profileArgs...)
-			args = append(args, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
-			cmd = exec.CommandContext(runCtx, codex, codexArgs(router.URL+"/v1", args, false, provider.Native)...)
+			args := append([]string{}, profileArgs...)
+			args = append(args, "-c", "features.plugins=false")
+			cmd = exec.CommandContext(runCtx, codex, nativeAppServerArgs(codexArgs(router.URL+"/v1", args, provider.Native))...)
 		}
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd

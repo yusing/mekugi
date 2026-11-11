@@ -86,9 +86,9 @@ policy that prohibits endpoint substitution also fails closed.
 
 Keep native unknown-model behavior; an arbitrary configured model does not require
 built-in discovery or OpenAI login. Preserve explicitly supplied static
-or custom-provider remote catalog metadata, apart from required
-`tool_mode=code_mode_only` projection. Derived static catalogs use existing private
-catalog lifetime/cleanup and never modify the source. A custom remote catalog gets
+or custom-provider remote catalog metadata without rewriting tool mode or creating
+derived static catalogs. The native runtime owns validation and the required
+JavaScript-only execution mode. A custom remote catalog gets
 an invocation-local endpoint pinned to its original catalog URL and auth semantics.
 
 Built-in OpenAI validates remote catalog URLs against allowed HTTPS ChatGPT hosts,
@@ -109,7 +109,7 @@ the stock JavaScript execution interface.
 Use synthetic definitions and fake credentials through actual launch consumers.
 Cover unmodified model IDs, endpoint path/query/header fidelity, absence of
 built-in discovery, command/env/anonymous auth, timeout/failure/refresh behavior,
-HTTP/WebSocket prewarm and continuation, cancellation, catalog projection,
+HTTP/WebSocket prewarm and continuation, cancellation, unchanged catalog forwarding,
 auxiliary capability decisions, credential isolation and incompatible-route
 rejection. Installed Codex must execute a stock JavaScript tool once through the
 custom route with normal captures and child completion. Verify fresh resume and

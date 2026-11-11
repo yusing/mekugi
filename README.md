@@ -110,8 +110,7 @@ better results on every task. For controlled comparisons, use
 Requirements:
 
 - The **managed native runtime**, included with Mekugi releases and source installs.
-  **Codex CLI** remains necessary for `codex login` and explicit stock CLI passthrough
-  commands such as `exec` and `review`.
+  Use **Codex CLI** directly for `codex login`; Mekugi does not wrap stock CLI commands.
 - Built-in helpers need neither Node.js nor Bun; semantic lookup uses the language
   servers listed in [agent tools](docs/guide/agent-tools.md#wrapped-session-helpers).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.

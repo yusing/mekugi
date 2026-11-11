@@ -93,8 +93,8 @@ func TestModelsHandlerHTTPRefreshesSameIdentity(t *testing.T) {
 		if err := json.Unmarshal(writer.Body.Bytes(), &catalog); err != nil {
 			t.Fatal(err)
 		}
-		if writer.Code != http.StatusOK || len(catalog.Models) != 1 || catalog.Models[0].Slug != fmt.Sprintf("model-%d", attempt) || catalog.Models[0].Mode != "code_mode_only" || catalog.Models[0].Future != 42 || !catalog.Extra {
-			t.Fatalf("catalog projection: status=%d body=%s", writer.Code, strings.TrimSpace(writer.Body.String()))
+		if writer.Code != http.StatusOK || len(catalog.Models) != 1 || catalog.Models[0].Slug != fmt.Sprintf("model-%d", attempt) || catalog.Models[0].Mode != "code_mode" || catalog.Models[0].Future != 42 || !catalog.Extra {
+			t.Fatalf("catalog forwarding: status=%d body=%s", writer.Code, strings.TrimSpace(writer.Body.String()))
 		}
 	}
 }
