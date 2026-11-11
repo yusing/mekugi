@@ -18,10 +18,7 @@ var Codex = Bindings{
 			InitialContext:    environmentPrefix,
 			Threads:           projectThreadInstructions,
 			BeforePreparation: beforePreparation,
-			ForExecution: func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
-				return forExecution(input, service.Conflicts)
-			},
-			AfterAttachments: afterAttachments,
+			AfterAttachments:  afterAttachments,
 			Frontends: func(commands []command.Spec) (binding.FrontendGuidance, error) {
 				return frontendGuide(commands, service.Sections, service.ChildReplySummary)
 			},

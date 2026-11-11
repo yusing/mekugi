@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func recordedInstructionCleanup(t *testing.T) (string, string) {
+func nativeInstructionFixture(t *testing.T) (string, string) {
 	t.Helper()
 	read := func(name string) string {
 		t.Helper()
@@ -18,6 +18,6 @@ func recordedInstructionCleanup(t *testing.T) (string, string) {
 		}
 		return string(text)
 	}
-	// The removed plugin advertisement leaves its trailing line separator.
-	return read("stock"), read("projected") + "\n"
+	// Keep the excerpt boundary separate from its policy text.
+	return read("native"), read("projected") + "\n"
 }

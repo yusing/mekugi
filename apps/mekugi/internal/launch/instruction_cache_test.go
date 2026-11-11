@@ -22,10 +22,10 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	proxy := newManagedMekugiProxy(t)
-	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
-	stock, _ := recordedInstructionCleanup(t)
-	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock}}
-	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
+	const nativeWaitGuidance = "- Use completion notifications or interruptible waits; do not shorten waits solely to record progress."
+	stock, _ := nativeInstructionFixture(t)
+	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + nativeWaitGuidance + "\n" + stock}}
+	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + nativeWaitGuidance + "\n" + stock + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
 	ids := []string{"warm", "turn", "next", "astra", "astra-next"}
 	headers := codexAuthHeaders()
 	headers.Set(codexresponses.RoutingSessionHeader, "instruction-cache-session")
@@ -46,8 +46,8 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte(conflictingProgress)) || bytes.Contains(request["input"], []byte("recommended_plugins")) {
-				t.Error("provider received omitted or conflicting instructions")
+			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte("recommended_plugins")) {
+				t.Error("provider received omitted instructions or plugin advertisements")
 			}
 			if id != "warm" {
 				if responses.StringField(request, "instructions") != warmedInstructions {

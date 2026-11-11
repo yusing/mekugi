@@ -321,12 +321,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, projectReload()
 		}
 	}
-	if p.Registry.Guidance != nil {
-		if err := requestexecution.ProjectInstructions(request, p.Registry.Guidance.ForExecution); err != nil {
-			return nil, err
-		}
-	}
-
 	tools := codexresponses.DecodeToolCatalog(request.Fields)
 	directory := p.observationDirectory(metadata.Directories, threadID)
 	responseContract := codexresponses.CaptureResponseContract(request.Fields)

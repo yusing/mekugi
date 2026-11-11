@@ -52,29 +52,19 @@ func TestModuleGuidanceWithoutContributions(t *testing.T) {
 	if err != nil || guide != (binding.FrontendGuidance{}) {
 		t.Fatalf("empty catalog = %q, %v", guide, err)
 	}
-	const conflict = "- You share updates in the `commentary` channel."
+	const nativePolicy = "- Use completion notifications or interruptible waits; do not shorten waits solely to record progress."
 	input := binding.InstructionInput{
-		Instructions: encoded(t, "Keep authority.\n<!-- mekugi:omit -->private<!-- /mekugi:omit -->\n"+conflict+"\nKeep delegation."),
+		Instructions: encoded(t, "Keep authority.\n<!-- mekugi:omit -->private<!-- /mekugi:omit -->\n"+nativePolicy+"\nKeep delegation."),
 		Input:        jsonv1.RawMessage(`[{"role":"user","content":"Keep user text."}]`),
 	}
 	early, err := g.BeforePreparation(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := decodedText(t, early.Instructions); got != "Keep authority.\n\n"+conflict+"\nKeep delegation." || !early.InstructionsChanged || early.InputChanged || !bytes.Equal(early.Input, input.Input) {
+	if got := decodedText(t, early.Instructions); got != "Keep authority.\n\n"+nativePolicy+"\nKeep delegation." || !early.InstructionsChanged || early.InputChanged || !bytes.Equal(early.Input, input.Input) {
 		t.Fatalf("early projection = %+v", early)
 	}
-	execution, err := g.ForExecution(early.InstructionInput)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := decodedText(t, execution.Instructions); got != "Keep authority.\n\n\nKeep delegation." || !execution.InstructionsChanged || execution.InputChanged || !bytes.Equal(execution.Input, input.Input) {
-		t.Fatalf("execution projection = %+v", execution)
-	}
-	again, err := g.ForExecution(execution.InstructionInput)
-	if err != nil || again.InstructionsChanged || again.InputChanged || !bytes.Equal(again.Instructions, execution.Instructions) {
-		t.Fatalf("repeated projection = %+v, %v", again, err)
-	}
+
 }
 
 func TestModuleGuidanceSelectedCatalog(t *testing.T) {

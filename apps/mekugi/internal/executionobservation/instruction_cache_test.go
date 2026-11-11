@@ -17,13 +17,13 @@ import (
 )
 
 func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
-	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
-	stock, projected := recordedInstructionCleanup(t)
+	const nativeWaitGuidance = "- Use completion notifications or interruptible waits; do not shorten waits solely to record progress."
+	stock, projected := nativeInstructionFixture(t)
 	for _, topLevel := range []bool{false, true} {
 		t.Run(map[bool]string{false: "additional tools", true: "top-level tools"}[topLevel], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			leading := []any{
-				map[string]any{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd},
+				map[string]any{"type": "message", "role": "developer", "content": "Follow the task.\n" + nativeWaitGuidance + "\n" + stock + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd},
 				map[string]any{"type": "message", "role": "user", "content": "<environment_context>cwd</environment_context>"},
 			}
 			tools := []any{map[string]any{"type": "function", "name": "lookup", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}}
@@ -93,7 +93,7 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 			for _, raw := range warmInput {
 				var item map[string]json.RawMessage
 				_ = json.Unmarshal(raw, &item)
-				if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "developer" && responses.StringField(item, "content") != "Follow the task.\n\n"+projected+"\n"+instructionOmitStart+"omitted-rtk-policy"+instructionOmitEnd {
+				if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "developer" && responses.StringField(item, "content") != "Follow the task.\n"+nativeWaitGuidance+"\n"+projected+"\n"+instructionOmitStart+"omitted-rtk-policy"+instructionOmitEnd {
 					t.Fatal("effective developer cleanup differs from recorded projection")
 				}
 			}
@@ -105,7 +105,7 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 				t.Error("prepared frontend guidance exposes an undocumented compatibility option")
 			}
 			// The comparison is meaningful only if the prewarm was projected.
-			if bytes.Contains(warm.Fields["input"], []byte(conflictingProgress)) || !bytes.Contains(append(slices.Clone(warm.Fields["tools"]), warm.Fields["input"]...), []byte(frontendGuidanceStart)) {
+			if !bytes.Contains(warm.Fields["input"], []byte(nativeWaitGuidance)) || !bytes.Contains(append(slices.Clone(warm.Fields["tools"]), warm.Fields["input"]...), []byte(frontendGuidanceStart)) {
 				t.Fatalf("prewarm skipped Mekugi projection: %s", responses.MustMarshalJSON(warm.Fields))
 			}
 		})
@@ -114,7 +114,7 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 
 func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
-	stock, _ := recordedInstructionCleanup(t)
+	stock, _ := nativeInstructionFixture(t)
 	request, err := codexresponses.ParseRequest(responses.MustMarshalJSON(map[string]any{"model": "gpt-test", "generate": false, "instructions": stock, "tools": []any{map[string]string{"type": "web_search"}}, "input": []any{}}))
 	if err != nil {
 		t.Fatal(err)

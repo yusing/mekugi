@@ -43,7 +43,6 @@ type Guidance struct {
 	InitialContext    func(context.Context, string) ([]json.RawMessage, error)
 	Threads           func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
 	BeforePreparation func(InstructionInput) (InstructionUpdate, error)
-	ForExecution      func(InstructionInput) (InstructionUpdate, error)
 	AfterAttachments  func(InstructionInput, bool) (InstructionUpdate, error)
 	Frontends         func([]command.Spec) (FrontendGuidance, error)
 	ToolDescription   func(description, guide string, remove bool) (string, error)
@@ -51,7 +50,7 @@ type Guidance struct {
 }
 
 func (r *Registry) Guidance(guidance Guidance) error {
-	if guidance.BeforePreparation == nil || guidance.ForExecution == nil || guidance.AfterAttachments == nil || guidance.Frontends == nil || guidance.ToolDescription == nil || guidance.BaseInstructions == nil {
+	if guidance.BeforePreparation == nil || guidance.AfterAttachments == nil || guidance.Frontends == nil || guidance.ToolDescription == nil || guidance.BaseInstructions == nil {
 		return errors.New("guidance requires all request phases and frontend operations")
 	}
 	if r.guidance != nil {

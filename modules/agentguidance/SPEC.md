@@ -11,13 +11,12 @@ exact notice thresholds/reset rules below are current design.
 
 ## Purpose and scope
 
-Assemble contributed frontend guidance and project explicit omissions, pinned stock
-conflicts, and selected-skill identities without changing caller authority.
+Assemble contributed frontend guidance and project explicit omissions and selected-skill identities without changing caller authority.
 
 ## Behavior
 
 Mekugi preserves the caller's base `instructions` value and every system or developer message,
-except for complete explicit omission blocks, pinned inherited stock-prompt conflicts, and the
+except for complete explicit omission blocks and the
 marked Mekugi workflow section appended to base instructions. Its owned environment
 supplement is projected separately after static instructions as described below.
 Independent-thread role projection additionally consumes Thread Control's admitted
@@ -29,19 +28,25 @@ It does not detect stock prompt shapes, replace editing sections, select model-s
 inspect `model_instructions_file`, or create or modify caller instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
 
-Exact inherited stock progress and summary-based compaction conflicts are deleted or rewritten
-in top-level instructions and developer text parts. The pinned wait conflict is also rewritten.
-Pinned stock paragraphs lose
-their commentary directives while retaining permission and task-steering policy. Complete stock
-uninstalled-plugin advertisements are removed. Inherited delegation and custom plugin policy
-remain intact. Unrelated policy,
-system messages, user content, non-text parts, and fenced examples remain unchanged. Rewriting is
-idempotent and model-independent. Execution-free and compaction requests retain native
-guidance except for admitted thread role/identity projection into the visible agent namespace.
-The pinned short-wait fragment yields to completion notifications or interruptible waits.
-Stock line and paragraph matches preserve caller-added qualifications. Planning
-guidance and the stock plan tool remain host-owned. Invocation-local Codex flags omit
-collaboration-mode instructions.
+Default model instructions belong to the native runtime's bundled model catalog.
+The default catalog uses its complete model-message set even when cached or remote discovery
+supplies capability metadata. Existing model matching selects the bundled template; unknown models
+use the native generic prompt. Explicit provider/static catalogs and explicit base instructions,
+including empty instructions, remain authoritative. Personality configuration still applies.
+Native templates omit forced commentary cadence, mandatory skill announcements and assumptions
+that compaction supplies a summary. Wait guidance uses completion notifications or interruptible
+waits. These policies are source text, not request-time phrase substitutions.
+
+Inherited base instructions on resume and full-history forks retain their original text.
+Stock CLI passthrough also retains stock prose. Neither is silently rewritten to match the
+new native templates. Native context assembly does not advertise uninstalled plugins.
+When a user explicitly requests a missing plugin, the existing discovery tool lists eligible
+candidates before installation is requested. Endpoint candidates retain their original ID
+validation, metadata hydration and install-source attribution. Historical advertisement
+markers remain recognized as context, not user authorization. Caller-authored plugin policy
+is preserved without request-time matching.
+Planning guidance and the stock plan tool remain host-owned. Invocation-local Codex flags
+omit collaboration-mode instructions.
 
 Each executable helper owns its capability description and command-keyed workflow
 guidance. Descriptions contain capabilities, syntax, options and output semantics;
@@ -101,7 +106,7 @@ resumed requests, preserving caller text outside the owned workflow section.
 
 Before provider forwarding, the router strips blocks enclosed by the exact HTML comments
 `<!-- mekugi:omit -->` and `<!-- /mekugi:omit -->`, including both comments. This is an explicit
-caller-authored filtering contract, distinct from pinned conflict rewriting. It applies to top-level instructions,
+caller-authored filtering contract. It applies to top-level instructions,
 system and developer message text, and the `<INSTRUCTIONS>` body of Codex user-role instruction
 context, including AGENTS.md. Ordinary user messages, assistant history, tool results, and non-text
 parts remain intact. Each text part is processed independently, including fenced text; nested and
@@ -301,11 +306,9 @@ descriptions keep only operation-specific acquisition and delivery rules.
 The module has no background resources. Historical summaries retain their contributed
 record kind in the shared retained-session store; captured sources use output
 recovery records. Its binding
-registers early omission filtering, execution-only conflict projection, late
-selected-skill projection, frontend assembly, and marked-description and base-workflow replacement.
+registers early omission filtering, late selected-skill projection, frontend assembly, and marked-description and base-workflow replacement.
 Omissions run before preparation, including compaction and execution-free requests.
-Execution conflicts retain their existing preparation position; unsupported prewarm
-handshakes bypass them. Attachment matching precedes selected-skill compaction.
+Attachment matching precedes selected-skill compaction.
 Projection errors stop forwarding. With zero guidance contributions, the module
 still handles its instruction policies and descriptions of selected commands.
 Removing the module removes its reload helper, projections and assembly; other
@@ -314,8 +317,7 @@ command execution remains available. Provider compatibility prose belongs to its
 ## Acceptance
 
 1. Stock, custom, missing, null, top-level, and developer-carried base instructions are forwarded
-   unchanged except for complete explicit omission blocks, exact inherited conflict fragments,
-   and the marked base-workflow section.
+   unchanged except for complete explicit omission blocks and the marked base-workflow section.
    Fenced examples and non-instruction content are not rewritten.
 2. When `exec` exposes command execution, its authoritative description receives one
    registry-derived capability section, while base instructions receive the workflow section.
