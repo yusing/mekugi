@@ -203,6 +203,102 @@ func TestNativeFrontendIsolationActivationAndLeases(t *testing.T) {
 	}
 }
 
+func TestNativeHeaderReadDoesNotOwnTerminalPresentation(t *testing.T) {
+	f := newFrontendFixture(t)
+	first := f.open(t, 101)
+	second := f.open(t, 202)
+	initial, failure := f.call(t, "native/header", NativeFrontendRequest{PID: 101})
+	if failure != nil || !initial.Available || initial.Header != nil {
+		t.Fatalf("initial header: %+v %v", initial, failure)
+	}
+	header := sessionpresentation.FrontendHeader{Displayed: initial.Displayed, Name: "Main", Title: "Header only", Skills: []string{"commit"}, Above: 1363}
+	changed := make(chan NativeObservation, 1)
+	go func() {
+		value, err := f.call(t, "native/header", NativeFrontendRequest{PID: 101, After: initial.Cursor})
+		if err != nil {
+			t.Errorf("header long poll: %v", err)
+		}
+		changed <- value
+	}()
+	if err := first.PublishHeader(t.Context(), 101, 1, 1, header); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case current := <-changed:
+		if current.Header == nil || !current.Header.Equal(header) || current.Cursor == initial.Cursor || len(current.Publication) != 0 || current.Live != nil {
+			t.Fatalf("header update: %+v", current)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("header publication did not wake read")
+	}
+	other, failure := f.call(t, "native/header", NativeFrontendRequest{PID: 202})
+	if failure != nil || other.Header != nil {
+		t.Fatal("header leaked to another terminal")
+	}
+	f.hub.mu.Lock()
+	var owner *rpcConnection
+	for connection := range f.hub.connections {
+		if connection.frontend.pid == 101 {
+			owner = connection
+		}
+		if len(connection.frontend.viewers) != 0 || connection.frontend.revision != 0 || connection.frontend.selected != nil {
+			t.Error("header read changed panel ownership")
+		}
+	}
+	f.hub.mu.Unlock()
+	if owner == nil {
+		t.Fatal("missing physical frontend")
+	}
+	current, failure := f.call(t, "native/header", NativeFrontendRequest{PID: 101})
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	expired, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	value, failure := owner.observeHeader(expired, NativeFrontendRequest{PID: 101, After: current.Cursor})
+	if failure != nil || value.(NativeObservation).Cursor != current.Cursor {
+		t.Fatal("unchanged timeout did not retain header")
+	}
+	header.Title, header.Skills = "", nil
+	header.Above, header.Below, header.Unseen = 0, 12, 3
+	if err := first.PublishHeader(t.Context(), 101, 1, 2, header); err != nil {
+		t.Fatal(err)
+	}
+	current, failure = f.call(t, "native/header", NativeFrontendRequest{PID: 101})
+	if failure != nil || current.Header == nil || !current.Header.Equal(header) {
+		t.Fatal("empty title/skills or physical scroll did not replace old values")
+	}
+	if err := first.Activate(t.Context(), 101, 2); err != nil {
+		t.Fatal(err)
+	}
+	current, failure = f.call(t, "native/header", NativeFrontendRequest{PID: 101})
+	if failure != nil || current.Header != nil {
+		t.Fatal("activation retained the previous header")
+	}
+	header.Displayed.Caller = "/wrong"
+	if err := first.PublishHeader(t.Context(), 101, 2, 1, header); err != nil {
+		t.Fatal(err)
+	}
+	current, failure = f.call(t, "native/header", NativeFrontendRequest{PID: 101})
+	if failure != nil || current.Header != nil {
+		t.Fatal("mismatched displayed identity exposed a header")
+	}
+	f.api.mu.Lock()
+	composed := f.api.nativePanel != nil
+	f.api.mu.Unlock()
+	if composed || len(f.requests) != 0 {
+		t.Fatal("header reads composed panel data or sent presentation effects")
+	}
+	first.Close()
+	current, failure = f.call(t, "native/header", NativeFrontendRequest{PID: 101})
+	if failure != nil || current.Available {
+		t.Fatal("closed frontend remained available")
+	}
+	if err := second.Activate(t.Context(), 101, 2); err == nil {
+		t.Fatal("an established frontend changed its PID")
+	}
+}
+
 func TestNativeFrontendHeaderIsPhysicalOrderedAndDetached(t *testing.T) {
 	f := newFrontendFixture(t)
 	first, second := f.open(t, 101), f.open(t, 202)

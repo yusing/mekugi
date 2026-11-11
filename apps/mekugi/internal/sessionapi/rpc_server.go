@@ -51,6 +51,7 @@ var rpcMethods = map[string]rpcMethod{
 	"native/start":        {limit: inputLimit, native: true},
 	"native/activate":     {limit: 64 << 10, native: true},
 	"native/resolve":      {limit: 2048, native: true},
+	"native/header":       {limit: 2048, native: true},
 	"native/observe":      {limit: 2048, native: true},
 	"native/release":      {limit: 2048, native: true},
 	"native/select":       {limit: 2048, native: true},

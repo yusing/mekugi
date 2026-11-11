@@ -243,7 +243,7 @@ func (c *rpcConnection) frontendIntent(ctx context.Context, sub *rpcSubscription
 }
 
 func (c *rpcConnection) frontendRequest(ctx context.Context, method string, params RPCParams) (any, *RPCError) {
-	if method == "native/observe" {
+	if method == "native/observe" || method == "native/header" {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 18*time.Second)
 		defer cancel()
@@ -269,7 +269,7 @@ func (c *rpcConnection) frontendRequest(ctx context.Context, method string, para
 		return NativeObservation{Available: false}, nil
 	}
 	f := &owner.frontend
-	if request.Instance != f.instance && !(method == "native/observe" && request.Instance == "" && request.After == "") {
+	if request.Instance != f.instance && !(request.Instance == "" && (method == "native/header" || method == "native/observe" && request.After == "")) {
 		h.mu.Unlock()
 		return nil, rpcFailure(409, "Native frontend changed; reopen observation.")
 	}
@@ -281,6 +281,10 @@ func (c *rpcConnection) frontendRequest(ctx context.Context, method string, para
 	if sub == nil || sub.ctx.Err() != nil {
 		h.mu.Unlock()
 		return NativeObservation{Available: false}, nil
+	}
+	if method == "native/header" {
+		h.mu.Unlock()
+		return owner.observeHeader(ctx, request)
 	}
 	if method == "native/observe" || method == "native/release" {
 		if request.Viewer == "" || len(request.Viewer) > 256 {
@@ -387,6 +391,48 @@ func (c *rpcConnection) frontendRequest(ctx context.Context, method string, para
 		return selected.server.selectedContent(*request.Content, *request.Offset, &f.selected)
 	}
 	return nil, rpcFailure(400, "Unknown native frontend request.")
+}
+
+// observeHeader borrows physical presentation facts without acquiring a viewer,
+// composing panel data, or changing terminal presentation and click handling.
+func (c *rpcConnection) observeHeader(ctx context.Context, request NativeFrontendRequest) (any, *RPCError) {
+	for {
+		h := c.endpoint.hub
+		h.mu.Lock()
+		sub, changed := c.frontend.active, c.frontend.changed
+		header, revision := c.frontend.header, c.frontend.headerRevision
+		result := NativeObservation{Available: true, Instance: c.frontend.instance, Activation: c.frontend.sequence}
+		associated := c.frontend.pid == request.PID
+		h.mu.Unlock()
+		if !associated || c.ctx.Err() != nil || sub == nil || sub.ctx.Err() != nil {
+			return NativeObservation{Available: false}, nil
+		}
+		sub.owner.mu.Lock()
+		view := sub.view
+		result.Thread, result.Startup, result.Attachment = view.target.thread, view.startup, sub.attachment
+		result.Displayed, result.Caller = view.displayed, view.caller
+		nativeChanged := view.changed
+		sub.owner.mu.Unlock()
+		if header != nil && header.Displayed == result.Displayed {
+			result.Header = header
+		}
+		identity, _ := json.Marshal([]any{result.Instance, result.Activation, revision, result.Attachment, result.Displayed})
+		result.Cursor = fmt.Sprintf("%x", sha256.Sum256(identity))
+		if result.Cursor != request.After || ctx.Err() == context.DeadlineExceeded {
+			return result, nil
+		}
+		select {
+		case <-c.ctx.Done():
+			return NativeObservation{Available: false}, nil
+		case <-sub.ctx.Done():
+		case <-changed:
+		case <-nativeChanged:
+		case <-ctx.Done():
+			if ctx.Err() != context.DeadlineExceeded {
+				return nil, rpcFailure(503, "Native header observation canceled.")
+			}
+		}
+	}
 }
 
 func (c *rpcConnection) observeFrontend(ctx context.Context, request NativeFrontendRequest) (any, *RPCError) {

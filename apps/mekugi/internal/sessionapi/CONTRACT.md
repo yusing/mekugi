@@ -69,6 +69,7 @@ acknowledgements cannot reactivate a retired subscription.
 | `view/intent` | Existing semantic mutation body, retaining attachment and version |
 | `native/start` | Native invocation body plus its initial subscription; native endpoint only |
 | `native/activate` | Associate the physical frontend with its accepted native subscription |
+| `native/header` | Observe only that physical frontend's header, without a viewer lease |
 | `native/observe` | Observe that frontend's shared panel data and renew a viewer lease |
 | `native/resolve` | Resolve the frontend's current runtime for shared page reads |
 | `native/select` | Select an agent on the originating physical frontend |
@@ -378,11 +379,20 @@ known rejection restores that source rather than deleting text from a newer edit
 
 ### Native companion panels
 
-The `native/activate`, `native/observe`, `native/resolve`, `native/select`,
+The `native/activate`, `native/header`, `native/observe`, `native/resolve`, `native/select`,
 `native/release` and `native/content` methods are native-endpoint-only.
 Activation names a subscription on the physical frontend's connection and supplies
 `{pid, sequence}` after an accepted initial frame or completed handoff. Increasing
 sequences keep a late activation from replacing a newer active attachment.
+
+Header-only companions use `native/header` with `pid` and an optional `after`
+cursor. An optional `instance` rejects a replaced frontend; omitting it discovers
+the current association, including after PID reuse. The response includes the
+physical identities, opaque `cursor` and current `header`, or `{available:false}`
+when that frontend is unavailable. Header absence clears previously shown facts.
+An unchanged read waits at most 18 seconds and returns the current header and cursor.
+This read neither acquires nor renews a viewer lease, creates panel publications,
+selects content, nor changes terminal panels, navigation, or file/Edit clicks.
 
 Panel requests supply `pid` and the observed connection `instance`. Initial
 observation may omit `instance`; absence returns `{available:false}`. Observation

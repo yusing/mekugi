@@ -1,4 +1,4 @@
-// Package herdr adapts one bounded native panel request to the Session API.
+// Package herdr adapts one bounded native companion request to the Session API.
 package herdr
 
 import (
@@ -45,7 +45,7 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		return 2
 	}
 	switch request.Method {
-	case "native/observe", "native/select", "native/release", "session/page", "content":
+	case "native/header", "native/observe", "native/select", "native/release", "session/page", "content":
 	default:
 		fmt.Fprintln(stderr, "mekugi herdr: unsupported request method")
 		return 2

@@ -6,6 +6,12 @@ Native Herdr surfaces share Mekugi captured review and agent navigation for the
 current active Herdr space, including a space on another machine. Standalone
 terminal presentation remains available.
 
+A header-only companion can display the physical terminal's session title,
+loaded skills, questions and scroll position without replacing terminal UI.
+It uses `native/header`, a bounded read-only observation of the existing header
+publication. It owns no viewer lease, roster/review subscription or click routing;
+the terminal's panes, navigation and file/Edit dialogs remain unchanged.
+
 ## Current design
 
 The adapter uses the existing same-user Session API server connection, shared

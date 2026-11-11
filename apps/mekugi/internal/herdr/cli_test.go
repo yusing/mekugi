@@ -25,6 +25,7 @@ func TestRunMissingClientAndRequestBounds(t *testing.T) {
 		return Run(t.Context(), []string{"--pid", fmt.Sprint(os.Getpid()), "--request", request}, &out, &diagnostic)
 	}
 	for _, request := range []string{
+		`{"method":"native/header","body":{}}`,
 		`{"method":"native/observe","body":{"viewer":"panel"}}`,
 		`{"method":"session/page","body":{"kind":"roster","revision":1}}`,
 	} {
