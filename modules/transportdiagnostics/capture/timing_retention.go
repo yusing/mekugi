@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	maxTimingRequests    = 64
-	maxTimingRecordBytes = 512 << 10
-	maxPendingTimings    = 128
+	maxTimingRequests     = 64
+	maxTimingRecordBytes  = 512 << 10
+	maxPendingTimings     = 128
+	timingShutdownTimeout = 5 * time.Second
 )
 
 // TimingRecord uses the existing shared budget and session ownership/expiry.
@@ -42,6 +43,7 @@ type timingRetention struct {
 	closed  bool
 	pending chan pendingTiming
 	done    chan struct{}
+	cancel  context.CancelFunc
 }
 
 type pendingTiming struct {
@@ -54,8 +56,9 @@ type pendingTiming struct {
 func (r *Recorder) RetainTimings(store *history.Store, limits history.Limits, notice func(string, error)) {
 	if r != nil && store != nil {
 		r.timings.close()
-		r.timings = &timingRetention{store: store, limits: limits, notice: notice, pending: make(chan pendingTiming, maxPendingTimings), done: make(chan struct{})}
-		go r.timings.run(r)
+		ctx, cancel := context.WithCancel(context.Background())
+		r.timings = &timingRetention{store: store, limits: limits, notice: notice, pending: make(chan pendingTiming, maxPendingTimings), done: make(chan struct{}), cancel: cancel}
+		go r.timings.run(ctx, r)
 	}
 }
 
@@ -67,15 +70,19 @@ func (retention *timingRetention) close() {
 	if !retention.closed {
 		retention.closed = true
 		close(retention.pending)
+		// Bound draining at recorder teardown, not during ordinary contention.
+		timer := time.AfterFunc(timingShutdownTimeout, retention.cancel)
+		defer timer.Stop()
 	}
 	retention.mu.Unlock()
 	<-retention.done
 }
 
-func (retention *timingRetention) run(r *Recorder) {
+func (retention *timingRetention) run(ctx context.Context, r *Recorder) {
 	defer close(retention.done)
+	defer retention.cancel()
 	for pending := range retention.pending {
-		if err := retention.publish(r, pending); err != nil && retention.notice != nil {
+		if err := retention.publish(ctx, r, pending); err != nil && retention.notice != nil {
 			retention.notice(pending.thread, err)
 		}
 	}
@@ -147,11 +154,9 @@ func (r *Recorder) retainTiming(state *requestState, at time.Time) {
 	}
 }
 
-func (retention *timingRetention) publish(r *Recorder, pending pendingTiming) error {
-	// Diagnostic publication must not wait indefinitely behind correctness state.
-	// Cancellation of inference does not discard already observed timing facts.
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+func (retention *timingRetention) publish(ctx context.Context, r *Recorder, pending pendingTiming) error {
+	// Only this bounded background worker waits behind correctness state.
+	// Inference cancellation does not discard already observed timing facts.
 	return retention.store.Transaction(ctx, r.writes, func(tx *history.Transaction) error {
 		window, _, err := readTimingWindow(retention.store, pending.thread)
 		if err != nil {

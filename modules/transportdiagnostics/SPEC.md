@@ -216,9 +216,12 @@ credentials or raw errors. Forks and unrelated threads do not inherit timings.
 One recorder-owned worker publishes completed observations from a 128-entry
 queue, off the delivery path. Each publication reads and replaces one bounded
 thread window through the existing retention transaction; it does not enumerate
-the retained corpus. Lock acquisition has a 100 ms deadline. Queue pressure or
-publication failure emits an auxiliary notice without retrying inference or
-changing delivery. Close drains the queue. Inspection reports a recent observed
+the retained corpus. Ordinary lock contention waits in that worker without
+discarding observations or emitting failure notices. Queue pressure or publication
+failure emits an auxiliary notice without retrying inference or changing delivery.
+Close allows five seconds to drain, then cancels and joins the worker, reporting
+unretained observations through the same notice. Inference cancellation does not
+cancel publication. Inspection reports a recent observed
 window, never complete lifetime coverage: crashes and failed publications can
 leave gaps. Absent historical, expired or unselected evidence is unavailable.
 Unreadable or invalid timing records instead produce a distinct `error` timing

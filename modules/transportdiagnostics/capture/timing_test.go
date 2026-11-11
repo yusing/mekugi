@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/contracts/recordkind"
@@ -294,4 +295,142 @@ func TestTimingPrewarmDoesNotCreateRetainedHistory(t *testing.T) {
 	if _, found, err := readTimingWindow(store, "prewarm"); err != nil || found {
 		t.Fatalf("prewarm retained history: %v %v", found, err)
 	}
+}
+
+// Hold the same publication lock used by other owners and processes. Register
+// its release after recorder cleanup so even failed assertions cannot strand it.
+func holdTimingStoreLock(t *testing.T, store *history.Store) func() {
+	t.Helper()
+	locked, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- store.Transaction(t.Context(), nil, func(*history.Transaction) error {
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	select {
+	case <-locked:
+	case err := <-done:
+		t.Fatalf("acquire publication lock: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("acquiring publication lock stalled")
+	}
+	var once sync.Once
+	unlock := func() {
+		once.Do(func() {
+			close(release)
+			if err := <-done; err != nil {
+				t.Errorf("release publication lock: %v", err)
+			}
+		})
+	}
+	t.Cleanup(unlock)
+	return unlock
+}
+
+func TestTimingPublicationRetainsRequestsAfterStoreContention(t *testing.T) {
+	_, store := timingStore(t)
+	r, err := new(Service).Open(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	var notices atomic.Int64
+	r.RetainTimings(store, history.Limits{}, func(_ string, _ error) { notices.Add(1) })
+	unlock := holdTimingStoreLock(t, store)
+	for _, thread := range []string{"main", "completed-child"} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"test"}`))
+		request.Header.Set("thread-id", thread)
+		ctx, cancel := context.WithCancel(request.Context())
+		response := httptest.NewRecorder()
+		delivered := make(chan struct{})
+		go func() {
+			r.Handler(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				ObserveForwardStart(request.Context())
+				_, _ = w.Write([]byte("delivered"))
+				outcome := "completed"
+				if thread == "completed-child" {
+					cancel()
+					<-request.Context().Done()
+					outcome = "canceled_after_response"
+				}
+				ObserveRequestOutcome(request.Context(), outcome)
+			})).ServeHTTP(response, request.WithContext(ctx))
+			close(delivered)
+		}()
+		select {
+		case <-delivered:
+		case <-time.After(5 * time.Second):
+			t.Fatal("request delivery waited for publication lock")
+		}
+		cancel()
+		if response.Code != http.StatusOK || response.Body.String() != "delivered" {
+			t.Fatalf("timing changed delivery: %d %q", response.Code, response.Body.String())
+		}
+	}
+	// Real shared-store contention exceeds the old 100 ms publication deadline.
+	// The completed child has no remaining request lifetime to keep its writer alive.
+	time.Sleep(250 * time.Millisecond)
+	unlock()
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if notices.Load() != 0 {
+		t.Fatalf("ordinary contention emitted %d failure notices", notices.Load())
+	}
+	for _, thread := range []string{"main", "completed-child"} {
+		data, err := new(Service).InspectTiming(t.Context(), store, thread)
+		var report struct {
+			State string `json:"state"`
+			timingWindow
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(data, &report); err != nil {
+			t.Fatal(err)
+		}
+		outcome := "completed"
+		if thread == "completed-child" {
+			outcome = "canceled_after_response"
+		}
+		if report.State != "observed_window" || report.Thread != thread || len(report.Requests) != 1 || report.Requests[0].Outcome != outcome || report.Requests[0].Completed == nil {
+			t.Fatalf("retained %s request: %s", thread, data)
+		}
+	}
+}
+
+func TestTimingPublicationShutdownCancelsAndJoinsBlockedWorker(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		_, store := timingStore(t)
+		r, err := new(Service).Open(Config{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = r.Close() })
+		var notices atomic.Int64
+		r.RetainTimings(store, history.Limits{}, func(thread string, err error) {
+			if thread != "completed-child" || !errors.Is(err, context.Canceled) {
+				t.Errorf("unretained timing notice: thread=%q error=%v", thread, err)
+			}
+			notices.Add(1)
+		})
+		unlock := holdTimingStoreLock(t, store)
+		for range 2 {
+			r.retainTiming(r.beginRequest(http.Header{"Thread-Id": {"completed-child"}}), time.Now())
+		}
+		started := time.Now()
+		if err := r.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(started); elapsed != timingShutdownTimeout || notices.Load() != 2 {
+			t.Fatalf("shutdown drain: elapsed=%s notices=%d", elapsed, notices.Load())
+		}
+		// Close joined the worker: releasing the lock cannot publish abandoned work.
+		unlock()
+		if _, found, err := readTimingWindow(store, "completed-child"); err != nil || found {
+			t.Fatalf("publication survived recorder teardown: found=%v error=%v", found, err)
+		}
+	})
 }
