@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/activity/presentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"io"
 	"net"
@@ -32,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -687,7 +689,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if p.messageSources && (!strings.Contains(string(body), "CHANGED_CHILD_MESSAGE_SOURCE") || !strings.Contains(string(body), "NESTED_MESSAGE_SOURCE")) {
 			failure = "cold follow-up did not preserve the old capture and acquire the new source snapshot"
 		}
-		answer = "MANAGED_CHILD_RECOVERED"
+		answer = "## Summary\nMANAGED_CHILD_RECOVERED.\n\n## Details\nBoth actual compaction and a new host turn recover."
 	default:
 		failure = fmt.Sprintf("unexpected inference: parent=%v step=%d", parent, step)
 	}
@@ -1893,6 +1895,54 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		}
 		if strings.Contains(string(body), "MANAGED_PARENT_RECOVERED") {
 			break
+		}
+	}
+	var received []presentation.Entry
+	for _, entry := range event.Frame.Main.Entries {
+		if strings.Contains(entry.Text, "MANAGED_CHILD_RECOVERED") {
+			if entry.Agent != "/root/worker" || entry.Kind != "final" || !entry.Delivered {
+				t.Fatalf("follow-up received answer lost its author: %+v", entry.Facts)
+			}
+			received = append(received, entry)
+		}
+	}
+	if len(received) != 1 {
+		t.Fatalf("follow-up delivered %d answers, want one", len(received))
+	}
+	selected, err := connection.Attach(ctx, child)
+	if err != nil {
+		t.Fatal("follow-up child selection:", err)
+	}
+	defer selected.Close()
+	childAnswer, err := selected.Next()
+	if err != nil {
+		t.Fatal("follow-up child publication:", err)
+	}
+	var own []presentation.Entry
+	for _, entry := range childAnswer.Frame.Main.Entries {
+		if strings.Contains(entry.Text, "MANAGED_CHILD_RECOVERED") {
+			if entry.Agent != "Main" || entry.Kind != "text" || entry.Delivered {
+				t.Fatalf("follow-up own answer became received traffic: %+v", entry.Facts)
+			}
+			own = append(own, entry)
+		}
+	}
+	if len(own) != 1 || childAnswer.Frame.View.Info.Caller != "/root/worker" {
+		t.Fatalf("follow-up own answer identity: count=%d caller=%q", len(own), childAnswer.Frame.View.Info.Caller)
+	}
+	for _, check := range []struct {
+		entries         []presentation.Entry
+		caller, heading string
+	}{
+		{received, event.Frame.View.Info.Caller, "worker → main finished"},
+		{own, childAnswer.Frame.View.Info.Caller, "worker"},
+	} {
+		view := activityui.NewView()
+		view.Conversation = true
+		view.Update(&presentation.Publication{Entries: check.entries}, activityui.Display{MainCaller: check.caller})
+		rows := view.RenderFeed(100, 100).Lines
+		if len(rows) == 0 || !strings.Contains(ansi.Strip(rows[0]), check.heading) {
+			t.Fatalf("follow-up rendered heading: %q, want %q", rows, check.heading)
 		}
 	}
 	fixture.mu.Lock()

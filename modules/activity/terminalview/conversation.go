@@ -559,7 +559,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 		}
 	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "text" || v.ChildrenOnly && entry.Kind == "final"):
 		out.add(0, mainHeading(p, entry, width))
-		gutter := mainGutter(p)
+		gutter := mainGutter(p, entry.Agent)
 		if entry.Question != 0 && v.mainReplyQuotes(first, entry.Question) {
 			for _, question := range v.entries[:first] {
 				if question.Seq == entry.Question {
@@ -591,15 +591,13 @@ func conversationHeading(glyph, name, detail string, entry activitypresentation.
 // mainHeading and mainGutter mark Main's own replies the way agent traffic
 // is marked, so every transcript item starts with who spoke and when.
 func mainHeading(p *Painter, entry activitypresentation.Entry, width int) string {
-	name := "\x1b[1m" + p.Theme.Accent() + "main" + terminalui.Reset
-	if entry.Agent != "Main" {
-		name = p.Agent(entry.Agent)
-	}
-	return conversationHeading(p.Theme.Accent()+"●"+terminalui.Reset, name, "", entry, width)
+	agent, _ := (activitypresentation.Value{From: entry.Agent}).Endpoints(p.MainCaller)
+	return conversationHeading(Gutter(agent, p.Theme)+"●"+terminalui.Reset, p.Agent(agent), "", entry, width)
 }
 
-func mainGutter(p *Painter) string {
-	return p.Theme.Accent() + "┃" + terminalui.Reset + " "
+func mainGutter(p *Painter, agent string) string {
+	agent, _ = (activitypresentation.Value{From: agent}).Endpoints(p.MainCaller)
+	return Gutter(agent, p.Theme) + "┃" + terminalui.Reset + " "
 }
 
 func (v *View) userItemContinued(out *conversationLines, entry activitypresentation.Entry, width int, continued bool) {
