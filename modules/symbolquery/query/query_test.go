@@ -33,13 +33,15 @@ type symbolResolverFixture struct {
 	MutatePath    string
 	MutatedSource string
 	ErrorMethod   string
+	Diagnostic    string
 }
 type symbolProtocolEvent struct {
-	Event   string   `json:"event"`
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
-	CWD     string   `json:"cwd"`
-	Message struct {
+	ParamsPresent bool     `json:"paramsPresent"`
+	Event         string   `json:"event"`
+	Command       string   `json:"command"`
+	Args          []string `json:"args"`
+	CWD           string   `json:"cwd"`
+	Message       struct {
 		ID     jsontext.Value `json:"id"`
 		Method string         `json:"method"`
 		Params struct {
@@ -159,10 +161,16 @@ func TestNativeSymbolResolverProcess(t *testing.T) {
 		if json.Unmarshal(body, &event.Message) != nil {
 			os.Exit(2)
 		}
+		var fields map[string]jsontext.Value
+		if json.Unmarshal(body, &fields) != nil {
+			os.Exit(2)
+		}
+		_, event.ParamsPresent = fields["params"]
 		event.Event, event.Command = "message", command
 		appendLog(&event)
 		method := event.Message.Method
 		if method == "exit" {
+			fmt.Fprint(os.Stderr, fixture.Diagnostic)
 			os.Exit(0)
 		}
 		if method == fixture.MutateMethod {
@@ -347,6 +355,39 @@ func TestNativeSymbolOneLSPPerLanguageAndTupleOrder(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestNativeSymbolTypeScriptShutdownParameters(t *testing.T) {
+	source := "export function Pick() {}\nPick();\n"
+	path := writeSymbolSource(t, "sample.ts", source)
+	log := installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {References: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20), nativeSymbolFixtureLocation(path, 1, 0, 4)}}})
+	out := executeQuery(t, "refs", "sample.ts", "1", "Pick")
+	if out.ExitCode != 0 || out.Stdout != "\"sample.ts\":\n1 export function Pick() {}\n2 Pick();\n" || out.Stderr != "" {
+		t.Fatalf("references: %+v", out)
+	}
+	seen := map[string]bool{}
+	for _, event := range readSymbolLog(t, log) {
+		switch event.Message.Method {
+		case "shutdown", "exit":
+			if event.ParamsPresent {
+				t.Fatalf("%s contains params", event.Message.Method)
+			}
+			seen[event.Message.Method] = true
+		case "textDocument/references":
+			if !event.ParamsPresent {
+				t.Fatal("references omitted params")
+			}
+		}
+	}
+	if !seen["shutdown"] || !seen["exit"] {
+		t.Fatalf("missing teardown: %v", seen)
+	}
+	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {Diagnostic: "resolver diagnostic\n", References: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20)}}})
+	out = executeQuery(t, "refs", "sample.ts", "1", "Pick")
+	if out.ExitCode != 0 || !strings.Contains(out.Stderr, "resolver diagnostic") {
+		t.Fatalf("resolver diagnostic suppressed: %+v", out)
+	}
+
 }
 
 func TestNativeSymbolUTF16AndUnrelatedSyntaxError(t *testing.T) {

@@ -158,7 +158,11 @@ func (l *lspClient) write(v any) error {
 	return e
 }
 func (l *lspClient) notify(method string, params any) error {
-	return l.write(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
+	message := map[string]any{"jsonrpc": "2.0", "method": method}
+	if params != nil {
+		message["params"] = params
+	}
+	return l.write(message)
 }
 func (l *lspClient) request(ctx context.Context, method string, params any) (jsontext.Value, error) {
 	if err := ctx.Err(); err != nil {
@@ -175,7 +179,11 @@ func (l *lspClient) request(ctx context.Context, method string, params any) (jso
 	}
 	l.nextID++
 	id := l.nextID
-	if e := l.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); e != nil {
+	message := map[string]any{"jsonrpc": "2.0", "id": id, "method": method}
+	if params != nil {
+		message["params"] = params
+	}
+	if e := l.write(message); e != nil {
 		return nil, e
 	}
 	for {
