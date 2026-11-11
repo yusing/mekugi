@@ -386,6 +386,8 @@ func execHGScope(input execProviderInput) execProviderResult {
 		return execProviderResult{open: true, reason: "Mercurial --all has no read-only worktree scope query"}
 	}
 	var paths []string
+	walker := execPathWalker{remaining: ListingLimit, deadline: input.deadline}
+	reason := "Mercurial backup locations are configurable; no read-only worktree query"
 	for _, arg := range input.args[1:] {
 		if strings.HasPrefix(arg, "-") {
 			continue
@@ -393,7 +395,13 @@ func execHGScope(input execProviderInput) execProviderResult {
 		path := sourceparse.Path(input.cwd, arg)
 		matches := []string{path}
 		if strings.ContainsAny(path, "*?[") {
-			matches, _ = filepath.Glob(path)
+			var err error
+			matches, err = walker.glob(path)
+			if errors.Is(err, errExecWalkIncomplete) {
+				reason = "Mercurial scope exceeds its enumeration budget"
+			} else if err != nil {
+				reason = "invalid Mercurial glob pattern"
+			}
 		}
 		for _, path := range matches {
 			paths = append(paths, path)
@@ -402,7 +410,7 @@ func execHGScope(input execProviderInput) execProviderResult {
 			}
 		}
 	}
-	return execProviderResult{scope: []Entry{execProviderFiles(paths, true)}, open: true, reason: "Mercurial backup locations are configurable; no read-only worktree query"}
+	return execProviderResult{scope: []Entry{execProviderFiles(paths, true)}, open: true, reason: reason}
 }
 
 func execJJScope(input execProviderInput) execProviderResult {

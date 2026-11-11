@@ -1,6 +1,7 @@
 package execscope
 
 import (
+	"errors"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -1771,36 +1772,41 @@ func (w *execShellWalker) sed(args []*syntax.Word) {
 // addBackups records in-place backup names. A suffix with * replaces the
 // original file operand, as in GNU sed and perl.
 func (w *execShellWalker) addBackups(operands []Operand, suffix string) {
+	if w.deadline.IsZero() {
+		w.deadline = time.Now().Add(Budget)
+	}
+	walker := execPathWalker{remaining: ListingLimit, deadline: w.deadline}
 	backups := make([]Operand, 0, len(operands))
 	for _, operand := range operands {
+		matches := []string{operand.Path}
 		if operand.Glob {
-			matches, err := filepath.Glob(operand.Path)
-			if err != nil {
+			var err error
+			matches, err = walker.glob(operand.Path)
+			if errors.Is(err, errExecWalkIncomplete) {
+				w.opaque("backup scope exceeds its enumeration budget")
+			} else if err != nil {
 				w.opaque("invalid backup glob pattern")
-				continue
 			}
-			for _, path := range matches {
-				w.addBackups([]Operand{{Path: path, AbsoluteInput: operand.AbsoluteInput}}, suffix)
-			}
-			continue
 		}
-		name := operand.Path + suffix
-		if strings.Contains(suffix, "*") {
-			spelling := operand.Path
-			if !operand.AbsoluteInput {
-				var err error
-				spelling, err = filepath.Rel(w.cwd, operand.Path)
-				if err != nil {
-					w.opaque("backup in an unknown directory")
-					return
+		for _, path := range matches {
+			name := path + suffix
+			if strings.Contains(suffix, "*") {
+				spelling := path
+				if !operand.AbsoluteInput {
+					var err error
+					spelling, err = filepath.Rel(w.cwd, path)
+					if err != nil {
+						w.opaque("backup in an unknown directory")
+						return
+					}
+				}
+				name = strings.ReplaceAll(suffix, "*", spelling)
+				if !filepath.IsAbs(name) {
+					name = filepath.Join(w.cwd, name)
 				}
 			}
-			name = strings.ReplaceAll(suffix, "*", spelling)
-			if !filepath.IsAbs(name) {
-				name = filepath.Join(w.cwd, name)
-			}
+			backups = append(backups, Operand{Path: filepath.Clean(name)})
 		}
-		backups = append(backups, Operand{Path: filepath.Clean(name)})
 	}
 	w.plan.add(Entry{Kind: File, Operands: backups})
 }

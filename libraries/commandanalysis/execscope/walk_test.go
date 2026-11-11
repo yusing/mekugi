@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -94,5 +95,74 @@ func TestBoundedGlobMatchesCompleteEnumeration(t *testing.T) {
 	}
 	if _, err := w.glob(filepath.Join(root, "a", "*")); !errors.Is(err, errExecWalkIncomplete) {
 		t.Fatalf("second operand escaped budget: %v", err)
+	}
+}
+
+func TestAuxiliaryGlobsPreserveOperandsAndBackups(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"a/x.txt", "a/z.txt", "b/y.txt"} {
+		writeTestFile(t, filepath.Join(root, name), "before\n")
+	}
+	if err := os.Symlink(filepath.Join(root, "a"), filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		command string
+		class   Class
+		want    []string
+	}{
+		{"hg revert 'link/*.txt' 'b/*.txt'", Scoped, []string{"link/x.txt", "link/x.txt.orig", "link/z.txt", "link/z.txt.orig", "b/y.txt", "b/y.txt.orig"}},
+		{"hg revert -C 'link/*.txt'", Scoped, []string{"link/x.txt", "link/z.txt"}},
+		{"hg revert --no-backup 'link/*.txt'", Scoped, []string{"link/x.txt", "link/z.txt"}},
+		{"sed -i.bak 's/before/after/' link/*.txt b/*.txt", Declared, []string{"link/x.txt.bak", "link/z.txt.bak", "b/y.txt.bak"}},
+		{"perl -pi.bak -e 's/before/after/' link/*.txt b/*.txt", Declared, []string{"link/x.txt.bak", "link/z.txt.bak", "b/y.txt.bak"}},
+		{"sed -i'backup/*' 's/before/after/' link/*.txt", Declared, []string{"backup/link/x.txt", "backup/link/z.txt"}},
+		{"sed -i'backup/*' 's/before/after/' " + root + "/link/*.txt", Declared, []string{"backup" + root + "/link/x.txt", "backup" + root + "/link/z.txt"}},
+		{"sed -i.bak 's/before/after/' missing/*.txt", Declared, nil},
+	} {
+		t.Run(test.command, func(t *testing.T) {
+			plan := Classify(Input{Command: test.command, Directory: root, Shell: "bash"})
+			var got []string
+			for _, entry := range plan.Scope {
+				for _, operand := range entry.Operands {
+					if !operand.Glob {
+						got = append(got, strings.TrimPrefix(operand.Path, root+"/"))
+					}
+				}
+			}
+			if plan.Class != test.class || !slices.Equal(got, test.want) {
+				t.Fatalf("class=%s paths=%q reason=%q; want %s %q", plan.Class, got, plan.Reason, test.class, test.want)
+			}
+		})
+	}
+}
+
+func TestAuxiliaryGlobsShareOperandBudget(t *testing.T) {
+	root := t.TempDir()
+	// Each operand fits separately, but their union exceeds one allowance.
+	for _, directory := range []string{"a", "b"} {
+		for i := range ListingLimit/2 + 1 {
+			writeTestFile(t, filepath.Join(root, directory, fmt.Sprintf("%04d.txt", i)), "")
+		}
+	}
+	for _, command := range []string{
+		"hg revert 'a/*.txt' 'b/*.txt'",
+		"sed -i.bak 's/a/b/' a/*.txt b/*.txt",
+		"perl -pi.bak -e 's/a/b/' a/*.txt b/*.txt",
+	} {
+		t.Run(command, func(t *testing.T) {
+			plan := Classify(Input{Command: command, Directory: root, Shell: "bash", Deadline: time.Now().Add(time.Minute)})
+			var acquired int
+			for _, entry := range plan.Scope {
+				for _, operand := range entry.Operands {
+					if strings.HasSuffix(operand.Path, ".orig") || strings.HasSuffix(operand.Path, ".bak") {
+						acquired++
+					}
+				}
+			}
+			if plan.Class < Scoped || !strings.Contains(plan.Reason, "enumeration budget") || acquired != ListingLimit {
+				t.Fatalf("class=%s acquired=%d reason=%q", plan.Class, acquired, plan.Reason)
+			}
+		})
 	}
 }
