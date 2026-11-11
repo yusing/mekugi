@@ -1,0 +1,3 @@
+[submodule "runtime/codex"]
+	path = runtime/codex
+	url = git@github.com:yusing/codex.git
