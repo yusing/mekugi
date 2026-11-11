@@ -264,24 +264,27 @@ startup, even though native reset does not use it.
 
 Preload, reload, attachments and selected nested text share one reference language.
 Each consumer retains its supported source kinds and acquisition policy.
+Examples below escape markers so selecting this document does not acquire its
+placeholders. Omit the leading backslash in actual references; the JSON example
+uses standard Unicode escapes and can be copied unchanged.
 
 | Source | Reference |
 | --- | --- |
-| File | `@path/to/file` |
-| Selected file lines | `@path/to/file#L2-L4,L8-L10` |
-| Skill | `$skill-name` |
-| Skill reference | `$skill-name/references/file.md` |
-| Composed captured changes | `mchanges:blue1,blue3..blue7,blue10,birch2..5` |
+| File | `\@path/to/file` |
+| Selected file lines | `\@path/to/file#L2-L4,L8-L10` |
+| Skill | `\$skill-name` |
+| Skill reference | `\$skill-name/references/file.md` |
+| Composed captured changes | `\mchanges:blue1,blue3..blue7,blue10,birch2..5` |
 
 Line ranges are inclusive and may also follow skill references. Quote paths
-containing spaces after the marker, for example `@"path with spaces"#L2-L4`.
+containing spaces after the marker, for example `\@"path with spaces"#L2-L4`.
 Captured changes mix individual IDs and inclusive ranges, separated by commas
 without spaces. A range may abbreviate a same-chain endpoint (`birch2..5`).
 Keep IDs/ranges in one reference to request one composed diff; separate references
 request separate results.
 
 Preload/reload retain the JSON envelope `{"sources":[REFERENCE,...]}` with string
-entries only, for example `{"sources":["@file#L2-L4","$skill-name","mchanges:blue1,blue3..7,birch2"]}`.
+entries only, for example `{"sources":["\u0040file#L2-L4","\u0024skill-name","\u006dchanges:blue1,blue3..7,birch2"]}`.
 There are no source-object alternatives. Bare paths, email addresses and escaped
 markers remain literal. Shared model guidance supplies this syntax once; tool
 descriptions keep only operation-specific acquisition and delivery rules.

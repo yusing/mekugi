@@ -287,6 +287,52 @@ func TestReloadNestedSelectedText(t *testing.T) {
 	}
 }
 
+func TestReloadDocumentationExamplesRemainLiteral(t *testing.T) {
+	testMcat(t)
+	path, err := filepath.Abs("../SPEC.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	examples := 0
+	for example := range strings.SplitSeq(string(body), "`") {
+		if !strings.HasPrefix(example, `{"sources":["`) {
+			continue
+		}
+		examples++
+		sources, err := Sources(example)
+		if err != nil || len(sources) != 3 {
+			t.Fatalf("copyable selection example is not admitted: %+v, %v", sources, err)
+		}
+		if sources[0].Path != "file" || len(sources[0].Ranges) != 1 || sources[0].Ranges[0] != [2]int{2, 4} ||
+			sources[1].Skill != "skill-name" || strings.Join(sources[2].Changes, ",") != "blue1,blue3..7,birch2" {
+			t.Fatalf("example escapes changed the selected sources: %+v", sources)
+		}
+	}
+	if examples != 1 {
+		t.Fatalf("expected one copyable selection example, found %d", examples)
+	}
+	selection := Selection([]SourceIdentity{{Path: path}})
+	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{selection}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := output.Delivery.Prepare([]string{"test1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot Snapshot
+	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Sources) != 1 || snapshot.Sources[0].ExitCode != 0 || snapshot.Sources[0].Stderr != "" || snapshot.Sources[0].Stdout != string(body) {
+		t.Fatalf("documentation acquired illustrative references: %+v", snapshot.Sources)
+	}
+}
+
 func TestReloadLiteralReferenceMarkers(t *testing.T) {
 	testMcat(t)
 	dir := t.TempDir()
