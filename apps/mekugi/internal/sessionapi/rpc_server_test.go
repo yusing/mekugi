@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -211,6 +212,76 @@ func TestRPCServerAggregatePreparationBudget(t *testing.T) {
 	if reply := controlRead(t, conn); reply.Error != nil {
 		t.Fatalf("unrelated operation blocked: %+v", reply)
 	}
+}
+
+func TestOrdinaryControlDeliveryDeadline(t *testing.T) {
+	for _, dispatched := range []bool{false, true} {
+		t.Run(strconv.FormatBool(dispatched), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				s := NewLive()
+				started := time.Now()
+				result := make(chan *RPCError, 1)
+				go func() {
+					_, failure := s.deliver(t.Context(), Intent{Action: Stop})
+					result <- failure
+				}()
+				synctest.Wait()
+				outcome := "not_admitted"
+				if dispatched {
+					time.Sleep(answerWithin * 3 / 4)
+					intent := <-s.Intents()
+					defer func() { intent.Reply <- "" }()
+					outcome = "unknown"
+				}
+				failure := <-result
+				if failure == nil || failure.Data.Status != 503 || failure.Data.Outcome != outcome {
+					t.Fatalf("deadline outcome: %+v", failure)
+				}
+				if elapsed := time.Since(started); elapsed != answerWithin {
+					t.Fatalf("dispatch and acknowledgement did not share one deadline: %s", elapsed)
+				}
+			})
+		})
+	}
+}
+
+func TestRPCServerAcknowledgementTimeoutReleasesRequestCapacity(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := NewLive()
+		hub := NewHub(t.Context(), nil)
+		registerTestSession(hub, "thread", s, Summary{Thread: "thread", Workspace: "/workspace"})
+		conn := pipeControl(t, hub)
+		controlInitialize(t, conn)
+		intents := make([]Intent, 0, requestLimit)
+		for i := range requestLimit {
+			controlWrite(t, conn, `{"jsonrpc":"2.0","id":"pending-`+strconv.Itoa(i)+`","method":"session/interrupt","params":{"thread":"thread"}}`)
+			intents = append(intents, <-s.Intents())
+		}
+		controlWrite(t, conn, `{"jsonrpc":"2.0","id":"overflow","method":"session/list","params":{}}`)
+		if reply := controlRead(t, conn); string(reply.ID) != `"overflow"` || reply.Error == nil || reply.Error.Data.Outcome != "not_admitted" {
+			t.Fatalf("request limit did not refuse before admission: %+v", reply)
+		}
+		time.Sleep(answerWithin)
+		for range requestLimit {
+			if reply := controlRead(t, conn); reply.Error == nil || reply.Error.Data.Status != 503 || reply.Error.Data.Outcome != "unknown" {
+				t.Fatalf("lost acknowledgement became a retryable refusal: %+v", reply)
+			}
+		}
+		for _, intent := range intents {
+			intent.Reply <- "" // A late owner reply cannot block or revive the expired request.
+		}
+		for i := range requestLimit {
+			controlWrite(t, conn, `{"jsonrpc":"2.0","id":"next-`+strconv.Itoa(i)+`","method":"session/interrupt","params":{"thread":"thread"}}`)
+			<-s.Intents()
+		}
+		// All slots were reusable. Cancel this second batch without another timeout.
+		for i := range requestLimit {
+			controlWrite(t, conn, `{"jsonrpc":"2.0","id":"cancel-`+strconv.Itoa(i)+`","method":"request/cancel","params":{"body":{"id":"next-`+strconv.Itoa(i)+`"}}}`)
+		}
+		for range 2 * requestLimit {
+			controlRead(t, conn)
+		}
+	})
 }
 
 func TestRPCServerPerMethodBodyLimit(t *testing.T) {

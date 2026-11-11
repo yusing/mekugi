@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -110,6 +111,49 @@ func TestAttachmentCanceledAfterDeliveryCannotTransfer(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("canceled acquired image not cleaned", err)
+	}
+}
+
+func TestAttachmentAcknowledgementTimeoutPreservesAdmissionOwnership(t *testing.T) {
+	for _, admitted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "request owned", true: "queue owned"}[admitted], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "acquired")
+				if err := os.WriteFile(path, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				prepared := NewPreparedInput(composer.Draft{Text: "snapshot"}, []string{path})
+				s := NewPreparedLive(func(context.Context, string, InputRequest) (*PreparedInput, error) { return prepared, nil })
+				result := make(chan *RPCError, 1)
+				go func() {
+					_, failure := s.request(t.Context(), requestTarget{}, "session/input", []byte(`{"text":"input","attachments":[{"source":"path","path":"image"}]}`), make(chan struct{}, preparationLimit))
+					result <- failure
+				}()
+				intent := <-s.Intents()
+				owned := make(map[string]bool)
+				if admitted && !prepared.Admit(intent.Context, owned) {
+					t.Fatal("owner could not admit prepared input")
+				}
+				if failure := <-result; failure == nil || failure.Data.Outcome != "unknown" {
+					t.Fatalf("expired acknowledgement outcome: %+v", failure)
+				}
+				intent.Reply <- ""
+				if intent.Context.Err() != nil {
+					t.Fatal("test did not distinguish acknowledgement expiry from caller cancellation")
+				}
+				if prepared.Admit(intent.Context, make(map[string]bool)) {
+					t.Fatal("late completion transferred a retired capability")
+				}
+				_, err := os.Stat(path)
+				if admitted {
+					if err != nil || !owned[path] || !prepared.Admitted() {
+						t.Fatal("acknowledgement timeout removed queue-owned input", err)
+					}
+				} else if !errors.Is(err, os.ErrNotExist) || prepared.Admitted() {
+					t.Fatal("expired request retained unadmitted acquired input", err)
+				}
+			})
+		})
 	}
 }
 

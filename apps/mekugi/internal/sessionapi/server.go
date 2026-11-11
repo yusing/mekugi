@@ -793,6 +793,8 @@ func (s *Server) deliver(ctx context.Context, intent Intent) (any, *RPCError) {
 			}{intent.Prepared.Draft.AttachmentNotice}, nil
 		}
 		return nil, nil
+	case <-timer.C:
+		return nil, rpcUnknown("Admission outcome unknown; do not automatically retry.")
 	case <-ctx.Done():
 		return nil, rpcUnknown("Admission outcome unknown; do not automatically retry.")
 	}
