@@ -9,9 +9,18 @@ registerHooks({
     );
   },
 });
-const { Connector, endpointURL, errorText, parseSelection, selectionHash, unknownOutcome } =
-  await import("./transport.ts");
-const { protocolVersion, subprotocol } = await import("../../../../sessionapi/protocol.ts");
+const {
+  Connector,
+  endpointURL,
+  errorText,
+  isSuperseded,
+  readFailure,
+  parseSelection,
+  selectionHash,
+  unknownOutcome,
+} = await import("./transport.ts");
+const { protocolVersion, subprotocol, readSuperseded } =
+  await import("../../../../sessionapi/protocol.ts");
 
 const originalWebSocket = globalThis.WebSocket;
 let sockets;
@@ -775,5 +784,42 @@ test("HTTP resource failures retain authentication and semantic status", async (
     kind: "refused",
     status: 409,
     message: "Entry changed",
+  });
+});
+
+const assertSuperseded = (error) => {
+  assert.equal(isSuperseded(error), true);
+  assert.deepEqual(readFailure(error), { kind: "superseded" });
+  return true;
+};
+
+test("only owner-confirmed read replacement is superseded on both transports", async (t) => {
+  const connector = connect("https://example.test", "token");
+  const failure = {
+    code: readSuperseded,
+    message: "Source changed",
+    data: { status: 409, outcome: "not_admitted" },
+  };
+  t.mock.method(globalThis, "fetch", async () => Response.json(failure, { status: 409 }));
+  await assert.rejects(connector.resource("content", {}), assertSuperseded);
+  handler = (socket, message) => {
+    if (!initialize(socket, message))
+      socket.receive({ jsonrpc: "2.0", id: message.id, error: failure });
+  };
+  await assert.rejects(connector.request("session/page", {}), assertSuperseded);
+  t.mock.method(globalThis, "fetch", async () => new Response("incompatible", { status: 409 }));
+  await assert.rejects(connector.resource("content", {}), (error) => {
+    assert.equal(error.kind, "incompatible");
+    assert.equal(isSuperseded(error), false);
+    assert.equal(readFailure(error).kind, "failed");
+    return true;
+  });
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ ...failure, code: -32000 }, { status: 409 }),
+  );
+  await assert.rejects(connector.resource("content", {}), (error) => {
+    assert.equal(error.kind, "refused");
+    assert.deepEqual(readFailure(error), { kind: "failed", text: "Source changed" });
+    return true;
   });
 });

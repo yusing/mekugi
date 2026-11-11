@@ -129,8 +129,11 @@ func linePage(source string, offset uint64) (Lines, error) {
 // Live metadata uses the shared Preview shape and source revision. Selected
 // source reads retain every file; the selector needs only its first file path.
 func livePage(source []preview.Preview, attachment string, revision uint64, cursor PageCursor) (any, *RPCError) {
-	if cursor.Attachment != attachment || cursor.Revision != revision || cursor.Before > uint64(len(source)) {
-		return nil, rpcFailure(409, "Live previews changed; reopen current metadata.")
+	if cursor.Attachment != attachment || cursor.Revision != revision {
+		return nil, rpcSuperseded("Live previews changed; reopen current metadata.")
+	}
+	if cursor.Before > uint64(len(source)) {
+		return nil, rpcFailure(409, "The live preview boundary is unavailable.")
 	}
 	page := PageResult{Live: []preview.Preview{}}
 	used := 0

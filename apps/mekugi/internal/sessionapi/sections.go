@@ -163,7 +163,7 @@ func (s *Server) sectionContent(ref ContentReference) (any, *RPCError) {
 	s.mu.Lock()
 	if ref.Attachment != s.readAttachment || ref.Revision != s.contentVersions[ref.Kind] {
 		s.mu.Unlock()
-		return nil, rpcFailure(409, "The referenced section changed.")
+		return nil, rpcSuperseded("The referenced section changed.")
 	}
 	result := ContentResult{}
 	var data jsontext.Value

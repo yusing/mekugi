@@ -104,7 +104,7 @@ func TestRosterAndAuxiliaryContentRemainReadable(t *testing.T) {
 	if err := s.Publish(frame); err != nil {
 		t.Fatal(err)
 	}
-	if _, failure := s.page(testJSON(t, initial.Roster.Next)); failure == nil || failure.Data.Status != 409 {
+	if _, failure := s.page(testJSON(t, initial.Roster.Next)); failure == nil || failure.Data.Status != 409 || failure.Code != RPCReadSuperseded {
 		t.Fatal("changed roster kept stale pages readable")
 	}
 	frame.Session.Title = "small"
@@ -112,7 +112,7 @@ func TestRosterAndAuxiliaryContentRemainReadable(t *testing.T) {
 	if err := s.Publish(frame); err != nil {
 		t.Fatal(err)
 	}
-	if _, failure := s.content(testJSON(t, initial.Deferred.Session)); failure == nil || failure.Data.Status != 409 {
+	if _, failure := s.content(testJSON(t, initial.Deferred.Session)); failure == nil || failure.Data.Status != 409 || failure.Code != RPCReadSuperseded {
 		t.Fatal("stale section remained readable")
 	}
 	snapshot, err = s.snapshot()
@@ -192,14 +192,14 @@ func TestRetainedFeedPagesAndContent(t *testing.T) {
 	if err := s.Publish(frame); err != nil {
 		t.Fatal(err)
 	}
-	if _, failure := s.page(testJSON(t, initial.Main.Earlier)); failure == nil || failure.Data.Status != 409 {
+	if _, failure := s.page(testJSON(t, initial.Main.Earlier)); failure == nil || failure.Data.Status != 409 || failure.Code != RPCReadSuperseded {
 		t.Fatal("historical mutation did not invalidate cursor")
 	}
 	frame.Attachment++
 	if err := s.Publish(frame); err != nil {
 		t.Fatal(err)
 	}
-	if _, failure := s.content(testJSON(t, latest.Content)); failure == nil || failure.Data.Status != 409 {
+	if _, failure := s.content(testJSON(t, latest.Content)); failure == nil || failure.Data.Status != 409 || failure.Code != RPCReadSuperseded {
 		t.Fatal("replaced attachment served stale content")
 	}
 }

@@ -9,7 +9,7 @@
   import { stream } from "./stream.svelte";
   import Alert from "./ui/Alert.svelte";
   import Button from "./ui/Button.svelte";
-  import { errorText } from "./transport";
+  import { readFailure, type ReadFailure } from "./transport";
   import Picker, { type Choice } from "./ui/Picker.svelte";
   import { caret, emptyBox, skeleton } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
@@ -26,10 +26,11 @@
     Record<string, { reference: ReviewedFile["content"]; file: ReviewedFile }>
   >({});
   let pending = $state.raw<Record<string, boolean>>({});
-  let failures = $state.raw<Record<string, string>>({});
+  let failures = $state.raw<Record<string, ReadFailure | undefined>>({});
   let next = $state.raw<PageCursor | null>();
   let pageLoading = $state(false);
-  let pageError = $state<string>();
+  let pageFailure = $state<ReadFailure>();
+  const pageError = $derived(pageFailure?.kind === "failed" ? pageFailure.text : undefined);
   let request = new AbortController();
   let container = $state<HTMLElement>();
   let refreshing = $state(false);
@@ -58,7 +59,7 @@
     pending = {};
     failures = {};
     pageLoading = false;
-    pageError = undefined;
+    pageFailure = undefined;
     next = page ? { ...page, caller: selected } : undefined;
     refreshing = false;
     if (page) untrack(() => void refreshPages());
@@ -114,7 +115,7 @@
     // A revision refreshes only the window already acquired by this reader.
     const wanted = windowRows;
     refreshing = true;
-    pageError = undefined;
+    pageFailure = undefined;
     let cursor: PageCursor | null | undefined = { ...page, caller };
     const updated: ReviewedFile[] = [];
     // Keep the acquired window visible until its replacement is ready.
@@ -144,7 +145,7 @@
       restoreAnchor(anchor);
       windowRows = metadata.length;
     } catch (error) {
-      if (!signal.aborted) pageError = errorText(error);
+      if (!signal.aborted) pageFailure = readFailure(error);
     }
     if (signal.aborted) return;
     refreshing = false;
@@ -155,7 +156,7 @@
       signal = demand ? AbortSignal.any([session, demand]) : session;
     if (!cursor || pageLoading) return;
     pageLoading = true;
-    pageError = undefined;
+    pageFailure = undefined;
     let result: PageResult | undefined;
     try {
       result = await stream.page(cursor, signal);
@@ -164,7 +165,7 @@
       windowRows = Math.max(windowRows, metadata.length);
       next = result.next;
     } catch (error) {
-      if (!signal.aborted) pageError = errorText(error);
+      if (!signal.aborted) pageFailure = readFailure(error);
     } finally {
       result?.acknowledge?.();
       if (!session.aborted) pageLoading = false;
@@ -174,7 +175,7 @@
     if (!file.content || pending[file.key]) return;
     const signal = request.signal;
     pending = { ...pending, [file.key]: true };
-    failures = { ...failures, [file.key]: "" };
+    failures = { ...failures, [file.key]: undefined };
     toggled[file.key] = true;
     try {
       const result = await stream.readContent(file.content, signal);
@@ -188,7 +189,7 @@
       await tick();
       if (!signal.aborted) restoreAnchor(anchor);
     } catch (error) {
-      if (!signal.aborted) failures = { ...failures, [file.key]: errorText(error) };
+      if (!signal.aborted) failures = { ...failures, [file.key]: readFailure(error) };
     } finally {
       if (!signal.aborted) pending = { ...pending, [file.key]: false };
     }
@@ -335,6 +336,7 @@
       <ul class="mt-1.5">
         {#each files as file (file.key)}
           {@const isOpen = open(file)}
+          {@const failure = failures[file.key]}
           {@const fileCallers = own(callers(file), sharedCallers)}
           {@const fileSources = own(sources(file), sharedSources)}
           <li class="py-1" data-file={file.key}>
@@ -364,7 +366,7 @@
               </summary>
               {#if isOpen}
                 <div class="pb-2" aria-busy={!!pending[file.key]}>
-                  {#if failures[file.key]}<Alert>{failures[file.key]}</Alert><Button
+                  {#if failure?.kind === "failed"}<Alert>{failure.text}</Alert><Button
                       variant="quiet"
                       onclick={() => loadFile(file)}>Retry file</Button
                     >
@@ -391,7 +393,7 @@
       >{/if}
     {#if next}<AutoPage
         cursor={JSON.stringify(next)}
-        ready={!refreshing && !pageLoading && !pageError}
+        ready={!refreshing && !pageLoading && !pageFailure}
         onpage={loadPage}
       />{/if}
   </section>

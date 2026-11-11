@@ -66,7 +66,7 @@ func TestRemoteDetailContentRetainsPublicSelection(t *testing.T) {
 		if err := native.Publish(request.Attachment, frame); err != nil {
 			t.Fatal(err)
 		}
-		if _, failure := native.readDetails(*ref); failure == nil || failure.Data.Status != 409 {
+		if _, failure := native.readDetails(*ref); failure == nil || failure.Data.Status != 409 || failure.Code != RPCReadSuperseded {
 			t.Fatal("stale details remained readable")
 		}
 		subscription.close()

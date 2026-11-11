@@ -410,7 +410,9 @@ test("roster revisions retain visible members and recover superseded page reads"
   snapshot([rosterAgent("main")], rosterCursor(2));
   const pending = source.moreRoster();
   snapshot([{ ...rosterAgent("main"), turns: 3 }], rosterCursor(3));
-  reject(new TransportError("The roster changed; read its current publication.", "refused", 409));
+  reject(
+    new TransportError("The roster changed; read its current publication.", "superseded", 409),
+  );
   await pending;
   assert.deepEqual(
     source.roster.agents.map((row) => row.name),
@@ -419,7 +421,11 @@ test("roster revisions retain visible members and recover superseded page reads"
   assert.equal(source.roster.agents[0].turns, 3);
   assert.equal(source.rosterError, undefined);
   source.page = async () => {
-    throw new TransportError("The roster changed; read its current publication.", "refused", 409);
+    throw new TransportError(
+      "The roster changed; read its current publication.",
+      "superseded",
+      409,
+    );
   };
   await source.moreRoster();
   assert.equal(
@@ -471,7 +477,7 @@ test("targeted roster reads recover a revision arriving while their caller is in
     source.roster = { agents: [], next: rosterCursor(2) };
     await source.moreRoster(caller);
     assert.equal(reads.length, 1, "one request per caller remains in flight");
-    if (refused) reads[0].reject(new TransportError("Superseded roster", "refused", 409));
+    if (refused) reads[0].reject(new TransportError("Superseded roster", "superseded", 409));
     else reads[0].resolve({ roster: { agents: [rosterAgent(caller)] } });
     await tick();
     assert.equal(reads.length, 2, "the superseded request retries the current cursor");
@@ -552,7 +558,14 @@ test("same-thread recovery releases aborted reads without clearing replacement g
 });
 
 test("deferred live reads recover from supersession and retain current failures", async () => {
-  for (const replacement of ["conflict", "revision", "attachment", "none"]) {
+  for (const replacement of [
+    "superseded",
+    "revision",
+    "attachment",
+    "none",
+    "invalid",
+    "incompatible",
+  ]) {
     const source = new Stream();
     let publish;
     const requests = [];
@@ -575,19 +588,31 @@ test("deferred live reads recover from supersession and retain current failures"
     const next = {
       ...ref,
       attachment: replacement === "attachment" ? "B" : "A",
-      revision: replacement === "revision" || replacement === "conflict" ? 2 : 1,
+      revision: replacement === "revision" || replacement === "superseded" ? 2 : 1,
     };
     if (replacement === "revision" || replacement === "attachment")
       publish({ kind: "patch", data: { deferred: { live: next } } });
     requests[0].reject(
-      new TransportError("Read failed", "refused", replacement === "conflict" ? 409 : 503),
+      new TransportError(
+        "Read failed",
+        replacement === "superseded"
+          ? "superseded"
+          : replacement === "incompatible"
+            ? "incompatible"
+            : "refused",
+        ["superseded", "invalid", "incompatible"].includes(replacement) ? 409 : 503,
+      ),
     );
     await read;
     assert.equal(source.sectionLoading.live, false);
-    assert.equal(source.sectionErrors.live, replacement === "none" ? "Read failed" : "");
+    assert.equal(
+      source.sectionErrors.live,
+      ["none", "invalid", "incompatible"].includes(replacement) ? "Read failed" : "",
+    );
     assert.deepEqual(source.live, []);
     assert.equal(requests.length, 1, "conflicts wait for publication rather than spin");
-    if (replacement === "conflict") publish({ kind: "patch", data: { deferred: { live: next } } });
+    if (replacement === "superseded")
+      publish({ kind: "patch", data: { deferred: { live: next } } });
     const retry = source.loadSection("live");
     assert.deepEqual(requests[1].reference, next);
     requests[1].resolve({ live: [{ id: "edit", input: "latest source" }] });
@@ -2229,7 +2254,7 @@ test("history page outcomes belong to the publication they read", async () => {
   const refused = source.nextPage();
   page = source.earlier();
   await tick();
-  reads[2].reject(failure(409));
+  reads[2].reject(new TransportError("Source replaced", "superseded", 409));
   assert.equal(await page, false);
   assert.equal(source.historyError(), undefined);
   assert.deepEqual(
@@ -2351,11 +2376,11 @@ test("roster retries retain the failed page or agent operation", async () => {
   let pages = 0,
     agents = 0;
   source.page = async () => {
-    if (++pages === 1) throw new Error("page unavailable");
+    if (++pages === 1) throw new TransportError("page unavailable", "refused", 409);
     return { roster: { agents: [agent], next: null } };
   };
   source.readContent = async () => {
-    if (++agents === 1) throw new Error("agent unavailable");
+    if (++agents === 1) throw new TransportError("agent unavailable", "refused", 409);
     return { agent: { name: agent.name } };
   };
   const retry = () =>
@@ -2426,4 +2451,36 @@ test("prompt cards derive from actionable semantic inventory and retain child at
   assert.equal(semantic.frame.questions.length, 3, "reconciliation retains sent calls");
   owner.views[0].state("lost", { status: 503, message: "Unavailable" });
   assert.equal(semantic.prompts.questions.length, 0);
+});
+
+test("current history conflicts and incompatible protocols remain actionable", async () => {
+  for (const kind of ["refused", "incompatible"]) {
+    const source = new Stream();
+    let publish;
+    source.connect("thread", {
+      subscribe(_method, _params, event) {
+        publish = event;
+        return () => {};
+      },
+    });
+    publish({
+      kind: "snapshot",
+      data: {
+        session: { thread: "thread" },
+        main: {
+          attachment: "A",
+          revision: 1,
+          order: [2],
+          entries: [historyRow(2, 1)],
+          earlier: { attachment: "A", kind: "main", revision: 1, before: 2 },
+        },
+      },
+    });
+    source.page = async () => {
+      throw new TransportError("Current conflict", kind, 409);
+    };
+    assert.equal(await source.earlier(), false);
+    assert.equal(source.historyError(), "Current conflict");
+    source.close();
+  }
 });

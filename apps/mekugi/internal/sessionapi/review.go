@@ -75,8 +75,14 @@ func reviewIdentity(key string) string {
 }
 
 func reviewPage(view *changes.ReviewView, attachment string, cursor PageCursor) (any, *RPCError) {
-	if view == nil || attachment != cursor.Attachment || view.Revision != cursor.Revision || cursor.Before > uint64(len(view.Files)) {
-		return nil, rpcFailure(409, "Saved review changed; reopen its current metadata.")
+	if view == nil {
+		return nil, rpcFailure(404, "Saved review is unavailable.")
+	}
+	if attachment != cursor.Attachment || view.Revision != cursor.Revision {
+		return nil, rpcSuperseded("Saved review changed; reopen its current metadata.")
+	}
+	if cursor.Before > uint64(len(view.Files)) {
+		return nil, rpcFailure(409, "The saved review boundary is unavailable.")
 	}
 	page := PageResult{Files: []reviewFile{}}
 	used := 0
@@ -112,8 +118,11 @@ func reviewPage(view *changes.ReviewView, attachment string, cursor PageCursor) 
 }
 
 func reviewContent(view *changes.ReviewView, attachment string, ref ContentReference) (any, *RPCError) {
-	if view == nil || attachment != ref.Attachment || view.Revision != ref.Revision {
-		return nil, rpcFailure(409, "Saved review changed; reopen its current file.")
+	if view == nil {
+		return nil, rpcFailure(404, "Saved review is unavailable.")
+	}
+	if attachment != ref.Attachment || view.Revision != ref.Revision {
+		return nil, rpcSuperseded("Saved review changed; reopen its current file.")
 	}
 	for _, file := range view.Files {
 		if reviewIdentity(file.Key()) != ref.Key {

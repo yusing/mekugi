@@ -64,6 +64,10 @@ func rpcFailure(status int, message string) *RPCError {
 	return &RPCError{Code: -32000, Message: message, Data: &RPCErrorData{Status: status, Outcome: "not_admitted"}}
 }
 
+func rpcSuperseded(message string) *RPCError {
+	return &RPCError{Code: RPCReadSuperseded, Message: message, Data: &RPCErrorData{Status: 409, Outcome: "not_admitted"}}
+}
+
 func rpcUnknown(message string) *RPCError {
 	return &RPCError{Code: -32000, Message: message, Data: &RPCErrorData{Status: 503, Outcome: "unknown"}}
 }

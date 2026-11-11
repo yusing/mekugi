@@ -1,6 +1,6 @@
 import { roleColor } from "./agents";
 import type { Machine } from "./hub.svelte";
-import { errorText, TransportError, type Connection, type RPCMethod } from "./transport";
+import { errorText, isSuperseded, type Connection, type RPCMethod } from "./transport";
 import type {
   Action,
   Agent,
@@ -410,12 +410,12 @@ export class Stream {
       return true;
     } catch (error) {
       const feed = this.history(caller);
-      // A conflict means a newer publication supplies the next cursor.
+      // Only owner-confirmed supersession waits for the next publication.
       if (
         !lifetime.aborted &&
         cursor.attachment === feed.attachment &&
         cursor.revision === feed.revision &&
-        !(error instanceof TransportError && error.status === 409)
+        !isSuperseded(error)
       )
         this.#historyErrors = {
           ...this.#historyErrors,
@@ -511,7 +511,7 @@ export class Stream {
       if (
         !lifetime.aborted &&
         this.roster.next?.revision === cursor.revision &&
-        !(error instanceof TransportError && error.status === 409)
+        !isSuperseded(error)
       ) {
         this.rosterRetry = { kind: "page", caller };
         this.rosterError = errorText(error);
@@ -558,7 +558,7 @@ export class Stream {
       if (
         !lifetime.aborted &&
         this.agent(agent.name)?.content === reference &&
-        !(error instanceof TransportError && error.status === 409)
+        !isSuperseded(error)
       ) {
         this.rosterRetry = { kind: "agent", agent };
         this.rosterError = errorText(error);
@@ -635,7 +635,7 @@ export class Stream {
         !lifetime.aborted &&
         current?.attachment === ref.attachment &&
         current.revision === ref.revision &&
-        !(error instanceof TransportError && error.status === 409)
+        !isSuperseded(error)
       )
         this.sectionErrors = { ...this.sectionErrors, [kind]: errorText(error) };
     } finally {

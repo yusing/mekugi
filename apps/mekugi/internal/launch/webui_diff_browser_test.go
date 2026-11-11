@@ -28,7 +28,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	}
 	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
 	browser := browserFixtureCommand(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 180*time.Second)
 	defer cancel()
 	page := httptest.NewServer(webui.Handler())
 	defer page.Close()
@@ -71,8 +71,9 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		out, err := exec.CommandContext(ctx, browser, append([]string{"--session", name}, args...)...).CombinedOutput()
 		if err != nil {
 			snapshot, _ := exec.CommandContext(ctx, browser, "--session", name, "snapshot", "-i").CombinedOutput()
-			details, _ := exec.CommandContext(ctx, browser, "--session", name, "eval", `document.querySelector('[aria-labelledby="saved-heading"]')?.innerHTML.slice(0, 4000)`).CombinedOutput()
-			t.Fatalf("browser %s: %v: %s\n%s\n%s", args[0], err, out, snapshot, details)
+			details, _ := exec.CommandContext(ctx, browser, "--session", name, "eval", `({text:document.querySelector('[aria-labelledby="saved-heading"]')?.innerText.slice(0,1000), reads:window.resourceReads})`).CombinedOutput()
+			pageErrors, _ := exec.CommandContext(ctx, browser, "--session", name, "network", "requests", "--filter", "resources").CombinedOutput()
+			t.Fatalf("browser %s: %v: %s\n%s\n%s\n%s", args[0], err, out, snapshot, details, pageErrors)
 		}
 		return string(out)
 	}
@@ -134,7 +135,15 @@ func TestWebUIBrowserDiffs(t *testing.T) {
               const heading = cards[i].querySelector('h3') ?? cards[i].firstElementChild;
               const top = heading.getBoundingClientRect().top;
               if (heading.tagName === 'H3' && (heading.title !== heading.textContent.trim() || heading.getBoundingClientRect().height > parseFloat(getComputedStyle(heading).lineHeight) + 1)) throw Error('Long file header lost its full path or code space');
-              if (heading.tagName === 'H3' && heading.title.includes('very-long-component-name-') && heading.lastElementChild.scrollWidth > heading.lastElementChild.clientWidth + 1) throw Error('Directory displaced the distinguishing filename');
+              if (heading.tagName === 'H3' && heading.title.includes('very-long-component-name-')) {
+                // Path intentionally overflows its unified source. Measure the
+                // distinguishing filename, not that source's scroll width.
+                const path = heading.lastElementChild;
+                const text = path.querySelector('bdi').firstChild;
+                const suffix = document.createRange(); suffix.setStart(text, text.textContent.lastIndexOf('/') + 1); suffix.setEnd(text, text.length);
+                const shown = path.getBoundingClientRect(), filename = suffix.getBoundingClientRect();
+                if (filename.left < shown.left - 1 || filename.right > shown.right + 1) throw Error('Directory displaced the distinguishing filename');
+              }
               for (const code of cards[i].querySelectorAll('.overflow-y-auto')) {
                 const line = code.querySelector('span.whitespace-pre-wrap');
                 if (code.clientHeight < parseFloat(getComputedStyle(line).lineHeight)) throw Error('Code cannot display a complete line: ' + JSON.stringify({height:code.clientHeight,line:getComputedStyle(line).lineHeight,heading:heading.getBoundingClientRect().height,whiteSpace:getComputedStyle(heading).whiteSpace,card:boxes[i].height}));
@@ -162,12 +171,27 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		}
 	}
 	run("open", page.URL)
-	run("eval", `window.heldLivePublications = []; window.controlSockets = []; window.reviewSnapshots = 0; const Original = window.WebSocket; window.WebSocket = class extends Original {
+	run("eval", fmt.Sprintf("window.readSuperseded = %d; ", sessionapi.RPCReadSuperseded)+`window.resourceReads = [];
+    const observedFetch = window.fetch;
+    window.fetch = (...args) => observedFetch(...args).then(async response => {
+      if (String(args[0]).endsWith('/api/resources/content')) {
+        let value; try { value = await response.clone().json(); } catch { value = {}; }
+        window.resourceReads.push({status:response.status, kind:JSON.parse(args[1].body).body.kind, revision:JSON.parse(args[1].body).body.revision, keys:Object.keys(value), message:value.message});
+        window.resourceReads = window.resourceReads.slice(-12);
+      }
+      return response;
+    }).catch(error => { window.resourceReads.push({error:String(error),stack:error.stack}); window.resourceReads = window.resourceReads.slice(-12); throw error; });
+    window.heldReviewPublications = []; window.stalePages = 0; window.staleFiles = 0; window.heldLivePublications = []; window.controlSockets = []; window.reviewSnapshots = 0; const Original = window.WebSocket; window.WebSocket = class extends Original {
     constructor(...args) { super(...args); window.controlSockets.push(this); }
     addEventListener(kind, listener, ...options) {
       if (kind !== 'message') return super.addEventListener(kind, listener, ...options);
       return super.addEventListener(kind, event => {
         const message = JSON.parse(event.data);
+        if (message.error?.code === window.readSuperseded) window.stalePages++;
+        if (message.method === 'subscription/event' && message.params.data.review) {
+          if (window.holdReviewPublications) { window.heldReviewPublications.push(() => { window.republishReview = () => listener.call(this,event); listener.call(this,event); }); return; }
+          window.republishReview = () => listener.call(this,event);
+        }
         if (message.method === 'subscription/event' && message.params.kind === 'snapshot' && message.params.data.review) window.reviewSnapshots++;
         if (window.holdLivePublications && message.method === 'subscription/event' && message.params.data.deferred?.live) {
           window.heldLivePublications.push(() => listener.call(this, event)); return;
@@ -187,7 +211,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	run("wait", "--fn", `(() => { const s = document.querySelector('[aria-labelledby="saved-heading"]'); const cells = [...s.querySelectorAll('span.whitespace-pre')]; const plain = cells.find(e => e.textContent === '<script>literal & text</script>'); const added = cells.find(e => e.textContent === 'const new_name = 2;'); return plain && !plain.querySelector('[style], .diff-word, script') && added && [...added.querySelectorAll('.diff-word')].map(e => e.textContent).join('') === 'new_name2' && s.querySelector('details').querySelectorAll('.border-dashed').length === 2 && !s.textContent.includes('@@') && [...s.querySelectorAll('.tabular-nums')].some(e => e.textContent === '15'); })()`)
 	capture("saved-diff")
 	// Delay each review refresh so the displayed window must survive in flight.
-	run("eval", `window.savedFile = document.querySelector('[data-file]'); window.savedDiff = window.savedFile.querySelector('.diff-word'); window.reviewFlashed = false; window.reviewObserver = new MutationObserver(() => { if (document.querySelector('[aria-label="Loading saved changes"]')) window.reviewFlashed = true; }); window.reviewObserver.observe(document.body, {childList:true, subtree:true}); window.pageReads = []; window.fileReads = []; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { if (JSON.parse(text).method === 'session/page') { window.pageReads.push(() => window.originalSend.call(this, text)); return; } return window.originalSend.call(this, text); }; window.originalFetch = window.fetch; window.fetch = (...args) => String(args[0]).endsWith('/api/resources/content') ? new Promise((resolve, reject) => window.fileReads.push(Object.assign(() => window.originalFetch(...args).then(resolve, reject), {signal: args[1].signal}))) : window.originalFetch(...args)`)
+	run("eval", `window.savedFile = document.querySelector('[data-file]'); window.savedDiff = window.savedFile.querySelector('.diff-word'); window.reviewFlashed = false; window.reviewObserver = new MutationObserver(() => { if (document.querySelector('[aria-label="Loading saved changes"]')) window.reviewFlashed = true; }); window.reviewObserver.observe(document.body, {childList:true, subtree:true}); window.pageReads = []; window.fileReads = []; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { if (JSON.parse(text).method === 'session/page') { window.pageReads.push(() => window.originalSend.call(this, text)); return; } return window.originalSend.call(this, text); }; window.originalFetch = window.fetch; window.fetch = (...args) => String(args[0]).endsWith('/api/resources/content') ? new Promise((resolve, reject) => window.fileReads.push(Object.assign(() => (window.failFile ? Promise.resolve(Response.json({code:-32000,message:'Fixture composed file unavailable',data:{status:409}}, {status:409})) : window.originalFetch(...args)).then(response => { if (response.status === 409) window.staleFiles++; return response; }).then(resolve, reject), {signal: args[1].signal}))) : window.originalFetch(...args)`)
 	for i := range 3 {
 		if i > 0 {
 			run("eval", `document.querySelector('#panel-content > div').scrollTop = 500`)
@@ -236,6 +260,52 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		}
 		run("eval", `window.savedDiff = window.savedFile.querySelector('.diff-word'); if (document.querySelector('[aria-labelledby="saved-heading"]').textContent.includes('notes.unknown')) throw Error('Refreshed review retained a removed file')`)
 	}
+	// Stale metadata can finish before the publication carrying its replacement.
+	view.Revision++
+	frame.Session.Title = "Stale review metadata"
+	publish()
+	run("wait", "--fn", `window.pageReads.length === 1`)
+	run("eval", `window.holdReviewPublications = true; window.beforeStalePages = window.stalePages; window.savedFile.querySelector('summary').focus({preventScroll:true}); window.reviewScroll = document.querySelector('#panel-content > div').scrollTop`)
+	view.Revision++
+	frame.Session.Title = "Current review metadata"
+	publish()
+	run("wait", "--fn", `window.heldReviewPublications.length > 0`)
+	run("eval", `window.pageReads.shift()()`)
+	run("wait", "--fn", `window.stalePages > window.beforeStalePages`)
+	run("eval", `window.republishReview()`)
+	run("wait", "300")
+	run("eval", `if (window.pageReads.length || window.fileReads.length || !window.savedDiff.isConnected || document.querySelector('[aria-labelledby="saved-heading"] [role="alert"]') || Math.abs(document.querySelector('#panel-content > div').scrollTop - window.reviewScroll) > 1 || document.activeElement !== window.savedFile.querySelector('summary')) throw Error('Superseded metadata retried, showed failure or lost its anchor')`)
+	run("eval", `window.holdReviewPublications = false; window.heldReviewPublications.splice(0).forEach(deliver => deliver())`)
+	run("wait", "--fn", `window.pageReads.length === 1`)
+	run("eval", `window.pageReads.shift()()`)
+	run("wait", "--fn", `window.fileReads.length === 1`)
+	// The same ordering also applies independently to the composed-file read.
+	run("eval", `window.holdReviewPublications = true; window.beforeStaleFiles = window.staleFiles`)
+	view.Revision++
+	view.Publication = view.Publication.With(changes.GroupCaptures([]changes.Chunk{
+		{Key: "code", CaptureOrder: 1, Caller: "/root", Source: "apply_patch", Review: diffmodel.RenderReviewFile(path, path, "const previous = 1;\n", "// after superseded file\n"+strings.Repeat("const updated = 2;\n", 200))},
+	}))
+	frame.Session.Title = "Current composed file"
+	publish()
+	run("wait", "--fn", `window.heldReviewPublications.length > 0`)
+	run("eval", `window.fileReads.shift()()`)
+	run("wait", "--fn", `window.staleFiles > window.beforeStaleFiles`)
+	run("eval", `window.republishReview()`)
+	run("wait", "300")
+	run("eval", `if (window.fileReads.length || window.pageReads.length || !window.savedDiff.isConnected || document.querySelector('[aria-labelledby="saved-heading"] [role="alert"]')) throw Error('Superseded composed file retried or showed failure: '+JSON.stringify({fileReads:window.fileReads.length,pageReads:window.pageReads.length,connected:window.savedDiff.isConnected}))`)
+	run("eval", `window.holdReviewPublications = false; window.heldReviewPublications.splice(0).forEach(deliver => deliver())`)
+	run("wait", "--fn", `window.pageReads.length === 1`)
+	run("eval", `window.pageReads.shift()()`)
+	run("wait", "--fn", `window.fileReads.length === 1`)
+	// An ordinary 409 is still a current actionable file failure.
+	run("eval", `window.failFile = true; window.fileReads.shift()()`)
+	run("wait", "--text", "Fixture composed file unavailable")
+	run("eval", `if (!window.savedDiff.isConnected) throw Error('Current failure hid retained composed file'); window.failFile = false`)
+	button("Retry file")
+	run("wait", "--fn", `window.fileReads.length === 1`)
+	run("eval", `window.fileReads.shift()()`)
+	run("wait", "--text", "// after superseded file")
+	run("eval", `window.savedDiff = window.savedFile.querySelector('.diff-word')`)
 	run("eval", `window.savedFile.querySelector('summary').click()`)
 	view.Revision++
 	view.Publication = view.Publication.With(changes.GroupCaptures([]changes.Chunk{
@@ -370,10 +440,29 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 	frame.Live = nil
 	publish()
 	run("wait", "--fn", `document.querySelector('button[aria-label="Changes"]')?.textContent.includes('24000')`)
+	run("eval", `window.pageReads = []; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { const message = JSON.parse(text); if (message.method === 'session/page' && message.params.body.kind === 'review' && message.params.body.before) { window.pageReads.push(() => window.originalSend.call(this,text)); return; } return window.originalSend.call(this,text); }`)
 	t.Log("large review first paint:", run("eval", `new Promise(resolve => { const start = performance.now(); document.querySelector('button[aria-label="Changes"]').click(); requestAnimationFrame(() => requestAnimationFrame(() => resolve({ms: performance.now() - start, rows: document.querySelectorAll('[aria-labelledby="saved-heading"] span.whitespace-pre').length, files: document.querySelectorAll('[aria-labelledby="saved-heading"] details').length}))); })`))
 	if strings.TrimSpace(run("eval", `document.querySelectorAll('[aria-labelledby="saved-heading"] span.whitespace-pre').length <= 300`)) != "true" {
 		t.Fatal("opening a large saved review rendered more than the initial line budget")
 	}
+	run("eval", `window.initialFiles = document.querySelectorAll('[aria-labelledby="saved-heading"] details').length; document.querySelector('#panel-content > div').scrollTop = 1e9`)
+	run("wait", "--fn", `window.pageReads.length === 1`)
+	run("eval", `window.holdReviewPublications = true; window.beforeStalePages = window.stalePages`)
+	view.Revision++
+	frame.Session.Title = "Superseded pagination"
+	publish()
+	run("wait", "--fn", `window.heldReviewPublications.length > 0`)
+	run("eval", `window.pageReads.shift()()`)
+	run("wait", "--fn", `window.stalePages > window.beforeStalePages`)
+	run("eval", `window.republishReview(); document.querySelector('#panel-content > div').scrollTop = 0`)
+	run("wait", "200")
+	run("eval", `document.querySelector('#panel-content > div').scrollTop = 1e9`)
+	run("wait", "200")
+	run("eval", `if (window.pageReads.length || document.querySelector('[aria-labelledby="saved-heading"] [role="alert"]') || document.querySelectorAll('[aria-labelledby="saved-heading"] details').length !== window.initialFiles) throw Error('Superseded pagination retried, showed an error or cleared the window')`)
+	run("eval", `window.holdReviewPublications = false; window.heldReviewPublications.splice(0).forEach(deliver => deliver())`)
+	run("wait", "--fn", `window.pageReads.length === 1`)
+	run("eval", `WebSocket.prototype.send = window.originalSend; window.pageReads.splice(0).forEach(send => send())`)
+	run("wait", "--fn", `document.querySelectorAll('[aria-labelledby="saved-heading"] details').length > window.initialFiles`)
 	for range 10 {
 		if strings.TrimSpace(run("eval", `document.querySelectorAll('[aria-labelledby="saved-heading"] details').length === 200`)) == "true" {
 			break
@@ -395,7 +484,7 @@ func TestWebUIBrowserDiffs(t *testing.T) {
 		t.Fatal("review refresh lost its later-page reading anchor or focus")
 	}
 	// A metadata failure must not hydrate newly opened files from old references.
-	run("eval", `window.failedContentReads = []; window.failReviewPage = true; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { const message = JSON.parse(text); if (message.method === 'session/page' && window.failReviewPage) { window.failReview = () => this.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({jsonrpc:'2.0',id:message.id,error:{code:-32000,message:'Fixture review refresh failed'}})})); return; } return window.originalSend.call(this,text); }; window.originalFetch = window.fetch; window.fetch = (...args) => String(args[0]).endsWith('/api/resources/content') ? new Promise((resolve, reject) => window.failedContentReads.push({reference:JSON.parse(args[1].body).body,send:() => window.originalFetch(...args).then(resolve, reject)})) : window.originalFetch(...args)`)
+	run("eval", `window.failedContentReads = []; window.failReviewPage = true; window.originalSend = WebSocket.prototype.send; WebSocket.prototype.send = function(text) { const message = JSON.parse(text); if (message.method === 'session/page' && window.failReviewPage) { window.failReview = () => this.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({jsonrpc:'2.0',id:message.id,error:{code:-32000,message:'Fixture review refresh failed',data:{status:409}}})})); return; } return window.originalSend.call(this,text); }; window.originalFetch = window.fetch; window.fetch = (...args) => String(args[0]).endsWith('/api/resources/content') ? new Promise((resolve, reject) => window.failedContentReads.push({reference:JSON.parse(args[1].body).body,send:() => window.originalFetch(...args).then(resolve, reject)})) : window.originalFetch(...args)`)
 	view.Revision++
 	frame.Session.Title = "Review retry fixture"
 	publish()

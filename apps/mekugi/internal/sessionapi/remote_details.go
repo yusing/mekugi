@@ -51,9 +51,13 @@ func (v *nativeView) deferDetails(id string, frame *NativeFrame) error {
 func (n *Native) readDetails(ref ContentReference) (any, *RPCError) {
 	n.mu.Lock()
 	v := n.views[ref.Attachment]
-	if v == nil || v.ctx.Err() != nil || v.authority != remoteHumanView || v.target.thread != ref.Thread || v.detailsRevision != ref.Revision || len(v.details) == 0 {
+	if v == nil || v.ctx.Err() != nil || v.authority != remoteHumanView || v.target.thread != ref.Thread || len(v.details) == 0 {
 		n.mu.Unlock()
 		return nil, rpcFailure(409, "The detail selection changed or its view closed.")
+	}
+	if v.detailsRevision != ref.Revision {
+		n.mu.Unlock()
+		return nil, rpcSuperseded("The detail selection changed; read its current reference.")
 	}
 	data := v.details
 	n.mu.Unlock()

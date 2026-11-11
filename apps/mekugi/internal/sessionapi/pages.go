@@ -284,8 +284,11 @@ func (s *Server) page(body jsontext.Value) (any, *RPCError) {
 	}
 	defer s.mu.Unlock()
 	f := s.readFeed(cursor.Kind)
-	if f == nil || cursor.Attachment != s.readAttachment || cursor.Revision != f.history {
-		return nil, rpcFailure(409, "History changed; read its latest publication before paging.")
+	if f == nil {
+		return nil, rpcFailure(400, "Unknown history kind.")
+	}
+	if cursor.Attachment != s.readAttachment || cursor.Revision != f.history {
+		return nil, rpcSuperseded("History changed; read its latest publication before paging.")
 	}
 	if _, ok := f.entries[cursor.Before]; cursor.Before != 0 && !ok {
 		return nil, rpcFailure(409, "The history boundary is no longer available.")
@@ -319,9 +322,13 @@ func (s *Server) content(body jsontext.Value) (any, *RPCError) {
 	s.mu.Lock()
 	if ref.Kind == "roster" {
 		value := s.rosterValue
-		if value == nil || ref.Attachment != s.readAttachment || ref.Revision != s.rosterRevision || ref.Seq == 0 || ref.Seq > uint64(len(value.Agents)) {
+		if ref.Attachment != s.readAttachment || ref.Revision != s.rosterRevision {
 			s.mu.Unlock()
-			return nil, rpcFailure(409, "The roster changed; read its current publication.")
+			return nil, rpcSuperseded("The roster changed; read its current publication.")
+		}
+		if value == nil || ref.Seq == 0 || ref.Seq > uint64(len(value.Agents)) {
+			s.mu.Unlock()
+			return nil, rpcFailure(404, "The referenced agent is unavailable.")
 		}
 		full := value.Agents[ref.Seq-1]
 		s.mu.Unlock()
@@ -333,14 +340,22 @@ func (s *Server) content(body jsontext.Value) (any, *RPCError) {
 		return reviewContent(view, attachment, ref)
 	}
 	f := s.readFeed(ref.Kind)
-	if f == nil || ref.Attachment != s.readAttachment {
+	if f == nil {
 		s.mu.Unlock()
-		return nil, rpcFailure(409, "The content attachment changed.")
+		return nil, rpcFailure(400, "Unknown content kind.")
+	}
+	if ref.Attachment != s.readAttachment {
+		s.mu.Unlock()
+		return nil, rpcSuperseded("The content attachment changed.")
 	}
 	stored, ok := f.entries[ref.Seq]
-	if !ok || stored.revision != ref.Revision {
+	if !ok {
 		s.mu.Unlock()
-		return nil, rpcFailure(409, "The referenced entry changed.")
+		return nil, rpcFailure(404, "The referenced entry is unavailable.")
+	}
+	if stored.revision != ref.Revision {
+		s.mu.Unlock()
+		return nil, rpcSuperseded("The referenced entry changed.")
 	}
 	s.mu.Unlock()
 	var full entry
@@ -351,8 +366,11 @@ func (s *Server) content(body jsontext.Value) (any, *RPCError) {
 }
 
 func rosterPage(value *roster, attachment string, revision uint64, cursor PageCursor) (PageResult, *RPCError) {
-	if value == nil || cursor.Attachment != attachment || cursor.Revision != revision || cursor.Before > uint64(len(value.Agents)) {
-		return PageResult{}, rpcFailure(409, "The roster changed; read its current publication.")
+	if cursor.Attachment != attachment || cursor.Revision != revision {
+		return PageResult{}, rpcSuperseded("The roster changed; read its current publication.")
+	}
+	if value == nil || cursor.Before > uint64(len(value.Agents)) {
+		return PageResult{}, rpcFailure(409, "The roster boundary is unavailable.")
 	}
 	page := roster{Agents: []agent{}, Added: value.Added, Removed: value.Removed, Total: len(value.Agents)}
 	used := 0

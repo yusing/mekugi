@@ -500,6 +500,12 @@ session leaves, and stopping the server closes every stream.
 
 Page cursors bind attachment, feed or metadata category, revision, caller filter
 and boundary. Stale cursors fail rather than mixing attachments or compositions.
+Read-source attachment or revision replacement uses JSON-RPC code `-32002`
+(`RPCReadSuperseded`) with status 409. The browser waits for a changed reference
+without retrying the rejected identity or showing failure chrome. Unknown kinds,
+missing entries/files, invalid boundaries in the current revision and unavailable
+views remain ordinary failures. A status 409 alone does not mean supersession;
+protocol incompatibility and mutation conflicts retain their separate semantics.
 Saved-review file metadata loads when Changes opens and includes the composed
 file's short status (`M`, `D`, `R`, `RM`, `A`, `UU`, or `?` for incomplete evidence)
 when captured regions are present. Full file content is read by

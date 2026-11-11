@@ -1,4 +1,4 @@
-import { protocolVersion, subprotocol } from "../../../../sessionapi/protocol";
+import { protocolVersion, subprotocol, readSuperseded } from "../../../../sessionapi/protocol";
 import type {
   RPCClosed,
   RPCError,
@@ -23,7 +23,14 @@ export type SubscriptionMethod = "session/subscribe" | "view/attach";
 type StateListener = (state: Connection, error?: TransportError) => void;
 
 export class TransportError extends Error {
-  readonly kind: "network" | "unknown" | "required" | "incompatible" | "refused" | "canceled";
+  readonly kind:
+    | "network"
+    | "unknown"
+    | "required"
+    | "incompatible"
+    | "refused"
+    | "canceled"
+    | "superseded";
   readonly status?: number;
   constructor(message: string, kind: TransportError["kind"], status?: number) {
     super(message);
@@ -68,6 +75,17 @@ export function endpointURL(endpoint: string): string {
   return url.href.replace(/\/+$/, "");
 }
 
+export function isSuperseded(error: unknown): boolean {
+  return error instanceof TransportError && error.kind === "superseded";
+}
+
+// Both terminal read outcomes stop automatic acquisition of that identity.
+// Only a current failure offers Retry; supersession waits for publication.
+export type ReadFailure = { kind: "superseded" } | { kind: "failed"; text: string };
+export function readFailure(error: unknown): ReadFailure {
+  return isSuperseded(error) ? { kind: "superseded" } : { kind: "failed", text: errorText(error) };
+}
+
 function remoteError(error: RPCError, initialize = false): TransportError {
   const status = error.data?.status;
   if (status === 401)
@@ -80,6 +98,8 @@ function remoteError(error: RPCError, initialize = false): TransportError {
     );
   if (error.data?.outcome === "unknown")
     return new TransportError(`${error.message} ${unknownOutcome}`, "unknown", status);
+  if (status === 409 && error.code === readSuperseded)
+    return new TransportError(error.message, "superseded", status);
   return new TransportError(error.message, "refused", status);
 }
 

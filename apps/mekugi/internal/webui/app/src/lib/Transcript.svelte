@@ -9,7 +9,7 @@
   import { stream } from "./stream.svelte";
   import Button from "./ui/Button.svelte";
   import Alert from "./ui/Alert.svelte";
-  import { errorText } from "./transport";
+  import { readFailure, type ReadFailure } from "./transport";
   import Icon from "./ui/Icon.svelte";
   import { emptyBox, revealed, rowAction } from "./ui/styles";
 
@@ -232,7 +232,7 @@
 
   let complete = $state.raw<Record<number, { reference: Entry["content"]; entry: Entry }>>({});
   let contentErrors = $state.raw<
-    Record<number, { reference: Entry["content"]; text: string } | undefined>
+    Record<number, { reference: Entry["content"]; outcome: ReadFailure } | undefined>
   >({});
   let loading = $state.raw<Record<number, boolean>>({});
   const pending = new Map<
@@ -348,7 +348,7 @@
       )
         contentErrors = {
           ...contentErrors,
-          [entry.seq]: { reference: entry.content, text: errorText(error) },
+          [entry.seq]: { reference: entry.content, outcome: readFailure(error) },
         };
       throw error;
     } finally {
@@ -411,14 +411,15 @@
             : undefined}
         />
         {#each row.thoughts ?? [row.entry] as member (member.seq)}
+          {@const failure = contentErrors[member.seq]}
           {#if !row.thoughts && loading[member.seq] && resolved(member) === member}<p
               class="ml-19 text-small text-muted"
               role="status"
             >
               Loading content…
             </p>{/if}
-          {#if contentErrors[member.seq]?.reference?.attachment === member.content?.attachment && contentErrors[member.seq]?.reference?.revision === member.content?.revision && contentErrors[member.seq]}<Alert
-              >{contentErrors[member.seq]!.text}<Button
+          {#if failure?.reference?.attachment === member.content?.attachment && failure?.reference?.revision === member.content?.revision && failure?.outcome.kind === "failed"}<Alert
+              >{failure.outcome.text}<Button
                 variant="quiet"
                 onclick={() => void load(member).catch(() => {})}>Retry</Button
               ></Alert

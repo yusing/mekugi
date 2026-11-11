@@ -33,7 +33,7 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	}
 	t.Setenv("AGENT_BROWSER_ENGINE", "chrome")
 	browser := browserFixtureCommand(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
 	page := httptest.NewServer(webui.Handler())
 	defer page.Close()
@@ -55,7 +55,7 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 		return true
 	})
 	var imageReads, imageAborts, contentReads, detailReads atomic.Int32
-	var holdImage, holdContent, holdDetails, failDetails atomic.Bool
+	var holdImage, holdContent, holdDetails, failDetails, failContent atomic.Bool
 	holdImage.Store(true)
 	release := make(chan struct{}, 4)
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +113,13 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 				return
 			}
 		}
+		if r.Method == http.MethodPost && r.URL.Path == "/api/resources/content" && !bytes.Contains(body, []byte(`"kind":"details"`)) && failContent.Load() {
+			w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"code":-32000,"message":"Fixture transcript unavailable","data":{"status":503}}`)
+			return
+		}
 		machine.bridge.Load().ServeHTTP(w, r)
 	}))
 	defer func() {
@@ -165,8 +172,12 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	}
 	await := func(what string, done func() bool) {
 		t.Helper()
+		deadline := time.NewTimer(15 * time.Second)
+		defer deadline.Stop()
 		for !done() {
 			select {
+			case <-deadline.C:
+				t.Fatalf("waiting for %s: reads=%d detail reads=%d; browser=%s; errors=%s", what, contentReads.Load(), detailReads.Load(), run("eval", `({text:document.querySelector('[data-entry="63"]')?.innerText.slice(-500), reads:window.resourceReads})`), run("errors"))
 			case <-ctx.Done():
 				t.Fatalf("waiting for %s: %v", what, ctx.Err())
 			case <-time.After(10 * time.Millisecond):
@@ -178,6 +189,7 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	settled := func(text string, reads, aborts int32) {
 		t.Helper()
 		run("wait", "--text", text)
+		await("expected image acquisition and cancellation", func() bool { return imageReads.Load() == reads && imageAborts.Load() == aborts })
 		run("wait", "300")
 		if got, canceled := imageReads.Load(), imageAborts.Load(); got != reads || canceled != aborts {
 			t.Fatalf("after %q image reads/aborts = %d/%d, want %d/%d", text, got, canceled, reads, aborts)
@@ -186,14 +198,28 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 
 	run("open", page.URL)
 	// Delay native publications independently of actual resource responses.
-	run("eval", `window.heldPublications = []; window.detailConflicts = 0;
+	run("eval", `window.resourceReads = [];
+    const observedFetch = window.fetch;
+    window.fetch = (...args) => observedFetch(...args).then(async response => {
+      if (String(args[0]).endsWith('/api/resources/content')) {
+        let value; try { value = await response.clone().json(); } catch { value = {}; }
+        window.resourceReads.push({status:response.status, kind:JSON.parse(args[1].body).body.kind, revision:JSON.parse(args[1].body).body.revision, keys:Object.keys(value), message:value.message});
+        window.resourceReads = window.resourceReads.slice(-12);
+      }
+      return response;
+    }).catch(error => { window.resourceReads.push({error:String(error),stack:error.stack}); window.resourceReads = window.resourceReads.slice(-12); throw error; });
+    window.heldPublications = []; window.detailConflicts = 0;
 		const Original = WebSocket;
 		window.WebSocket = class extends Original {
 			addEventListener(kind, listener, ...options) {
 				if (kind !== 'message') return super.addEventListener(kind, listener, ...options);
 				return super.addEventListener(kind, event => {
 					if (window.holdPublications && JSON.parse(event.data).method === 'subscription/event') window.heldPublications.push(() => listener.call(this, event));
-					else listener.call(this, event);
+					else {
+						const message = JSON.parse(event.data);
+						if (message.method === 'subscription/event' && message.params.data.main?.entries?.some(entry => entry.seq === 63)) window.republishMain = () => listener.call(this, event);
+						listener.call(this, event);
+					}
 				}, ...options);
 			}
 		};
@@ -269,6 +295,44 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	run("wait", "--fn", `document.body.innerText.includes('Loading content') && !document.body.innerText.includes('TAIL_THREE')`)
 	release <- struct{}{}
 	run("wait", "--fn", `document.body.innerText.includes('TAIL_FOUR') && !document.body.innerText.includes('Loading content')`)
+
+	// Return a superseded transcript read before its replacing publication.
+	// Replaying the same source must not turn the silent terminal outcome into
+	// another automatic request, even though the retained complete text is old.
+	set(63, entries[62].Text+" STALE_TRANSCRIPT")
+	publish()
+	await("stale transcript request", func() bool { return contentReads.Load() == 5 })
+	run("eval", `window.holdPublications = true; window.transcriptConflicts = window.detailConflicts; window.transcriptTop = document.querySelector('[data-entry="63"]').getBoundingClientRect().top`)
+	set(63, entries[62].Text+" CURRENT_TRANSCRIPT")
+	publish()
+	run("wait", "--fn", `window.heldPublications.length > 0`)
+	release <- struct{}{}
+	run("wait", "--fn", `window.detailConflicts > window.transcriptConflicts`)
+	run("eval", `window.republishMain()`)
+	run("wait", "300")
+	if contentReads.Load() != 5 || run("eval", `(() => { const row = document.querySelector('[data-entry="63"]'); return row.innerText.includes('TAIL_FOUR') && !row.querySelector('[role="alert"]') && !row.innerText.includes('Loading content') && Math.abs(row.getBoundingClientRect().top - window.transcriptTop) < 2; })()`) != "true\n" {
+		t.Fatal("superseded transcript showed an error, retried its identity or moved retained content")
+	}
+	screenshot("transcript-conflict-retains-content.png")
+	run("eval", `window.holdPublications = false; window.heldPublications.splice(0).forEach(deliver => deliver())`)
+	await("current transcript request", func() bool { return contentReads.Load() == 6 })
+	release <- struct{}{}
+	run("wait", "--text", "CURRENT_TRANSCRIPT")
+	// Genuine current failures remain actionable beside the retained text.
+	failContent.Store(true)
+	set(63, entries[62].Text+" RETRIED_TRANSCRIPT")
+	publish()
+	await("failed current transcript request", func() bool { return contentReads.Load() == 7 })
+	release <- struct{}{}
+	run("wait", "--text", "Fixture transcript unavailable")
+	if run("eval", `document.querySelector('[data-entry="63"]').innerText.includes('CURRENT_TRANSCRIPT')`) != "true\n" {
+		t.Fatal("current failure hid retained transcript")
+	}
+	failContent.Store(false)
+	run("find", "role", "button", "click", "--name", "Retry", "--exact")
+	await("transcript retry", func() bool { return contentReads.Load() == 8 })
+	release <- struct{}{}
+	run("wait", "--text", "RETRIED_TRANSCRIPT")
 
 	// Oversized details keep their body and reading position while the same
 	// selection refreshes, and show a current failure beside that body.

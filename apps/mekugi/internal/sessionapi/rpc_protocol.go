@@ -20,6 +20,8 @@ const (
 	// RPCPublicationLimit bounds one server-to-client message, including its
 	// envelope. Relays must admit it so a large publication reaches its client.
 	RPCPublicationLimit = 64 << 20
+	// RPCReadSuperseded identifies a replaced read source, not a generic conflict.
+	RPCReadSuperseded = -32002
 )
 
 type RPCMessage struct {

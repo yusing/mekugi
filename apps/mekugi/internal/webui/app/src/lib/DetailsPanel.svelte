@@ -8,7 +8,7 @@
   import Markdown from "./Markdown.svelte";
   import ReferenceSelection from "./ReferenceSelection.svelte";
   import { stream } from "./stream.svelte";
-  import { errorText, TransportError } from "./transport";
+  import { errorText, isSuperseded } from "./transport";
   import { semantic } from "./semantic.svelte";
   import Button from "./ui/Button.svelte";
   import { codeBlock } from "./ui/styles";
@@ -58,8 +58,7 @@
         hydrated = { selection: target, attachment: reference.attachment, details: result.details };
       })
       .catch((error) => {
-        if (!request.signal.aborted && !(error instanceof TransportError && error.status === 409))
-          failure = errorText(error);
+        if (!request.signal.aborted && !isSuperseded(error)) failure = errorText(error);
       });
     return () => request.abort();
   });
