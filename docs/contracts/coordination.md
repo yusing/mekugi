@@ -267,8 +267,9 @@ historical delivery identity while undispatched addressed input follows the sele
 
 The native app-server owns one launch-local per-actor counter and deduplication owner independently of loaded Codex sessions. Native semantic facts feed
 it directly, without per-use host notifications or reflected record requests.
-Mekugi aggregates snapshots over admitted membership and presents availability;
-it maintains no parallel counter implementation.
+Mekugi retrieves snapshots for Features display and explicit refresh, aggregates
+them over admitted membership and presents availability; it maintains no parallel
+counter implementation.
 
 - Compactions count completed resets and separately self-requested resets, effective
   nonempty reload selections, self-request completion and confirmed failure. Manual/

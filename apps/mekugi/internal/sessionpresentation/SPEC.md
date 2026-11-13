@@ -506,7 +506,9 @@ replacements, but are not restored on a new launch. Missing or incomplete native
 measurement is unavailable rather than zero; it does not hide separately available
 output-deduplication measurements.
 
-Snapshots refresh once per second only while open, or immediately with `r`.
+Transport snapshots refresh once per second only while open, or immediately with `r`.
+Native feature counters are read once when Features is selected and again with `r`
+while selected. Other pages and periodic refreshes do not read feature counters.
 `[`/`]` selects retained exchanges; newest follows, older selection stays fixed
 until reclaimed. Scope is the invocation across all threads, never historical
 launch metrics reconstructed by resume/replay. Unavailable capture and empty history

@@ -40,7 +40,7 @@ func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 	}
 	cells := func(features *FeatureMetrics) map[[2]string]string {
 		values := make(map[[2]string]string)
-		for _, field := range MetricFields(&PanelView{Metrics: snapshot, Features: features}, metricFeatures, 0) {
+		for _, field := range MetricFields(&PanelView{Metrics: snapshot, Features: features}, MetricFeatures, 0) {
 			if len(field.Values) > 0 {
 				values[[2]string{field.Group, field.Label}] = strings.Join(field.Values, "/")
 			} else {

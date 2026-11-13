@@ -8,7 +8,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-// NativeFeatureUse borrows the root connection for launch snapshots,
+// NativeFeatureUse borrows the root connection for on-demand launch snapshots,
 // including retired descendants. Counts and receipts stay native.
 type NativeFeatureUse struct {
 	requests featureUseRequests

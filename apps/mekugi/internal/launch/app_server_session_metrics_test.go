@@ -346,8 +346,34 @@ func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
 	thread := u.attached.presentation.DisplayedThread()
 	appServerTestKeys(t, u, "/session\r")
 	p := u.statusPanel
+	noRead := func() {
+		t.Helper()
+		if p.metrics.pending != nil {
+			t.Fatal("feature snapshot started without display demand")
+		}
+		select {
+		case <-u.Requests.Inspections():
+			t.Fatal("unexpected feature snapshot request")
+		default:
+		}
+	}
+	selectTab := func(tab int) {
+		t.Helper()
+		applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: tab})
+	}
+	noRead()
+	refreshSessionMetrics(p, u.sessionCapture, p.metrics.refreshed.Add(2*time.Second), false)
+	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelRefresh})
+	noRead()
+	selectTab(sessionpresentation.MetricFeatures)
 	receive := func(count uint64) {
-		u.Requests.DispatchMeasurement(<-u.Requests.Inspections())
+		t.Helper()
+		select {
+		case inspection := <-u.Requests.Inspections():
+			u.Requests.DispatchMeasurement(inspection)
+		case <-time.After(3 * time.Second):
+			t.Fatalf("feature snapshot %d was not requested: tab=%d pending=%v", count, p.MetricTab, p.metrics.pending != nil)
+		}
 		wire := u.Host.Input.(*appServerTestInput)
 		var sent struct {
 			ID     jsontext.Value `json:"id"`
@@ -375,18 +401,27 @@ func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
 		refreshSessionMetrics(p, u.sessionCapture, p.metrics.refreshed, false)
 	}
 	receive(1)
+	noRead()
 	if p.Features == nil || p.Features.Self.AllWaits != 1 {
 		t.Fatalf("opened features = %+v", p.Features)
 	}
+	refreshSessionMetrics(p, u.sessionCapture, p.metrics.refreshed.Add(2*time.Second), false)
+	noRead()
 	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelRefresh})
 	receive(2)
-	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: 3})
-	if p.MetricTab != 3 {
+	selectTab(0)
+	refreshSessionMetrics(p, u.sessionCapture, p.metrics.refreshed.Add(2*time.Second), false)
+	noRead()
+	// Terminal navigation consumes the same admitted action as the browser.
+	u.statusPanelKey("\x1b[Z")
+	receive(3)
+	noRead()
+	if p.MetricTab != sessionpresentation.MetricFeatures {
 		t.Fatal("Features view was rejected")
 	}
 	for _, field := range p.Fields {
 		if field.Group == "Waits" && field.Label == "All mode" {
-			if len(field.Values) != 2 || field.Values[0] != "2" {
+			if len(field.Values) != 2 || field.Values[0] != "3" {
 				t.Fatalf("refreshed self count = %v", field.Values)
 			}
 			return

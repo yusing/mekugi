@@ -13,7 +13,8 @@ import (
 // MetricViews names the /session views in tab order.
 var MetricViews = []string{"Overview", "Transport", "Exchanges", "Features"}
 
-const metricFeatures = 3
+// MetricFeatures identifies the page whose native counters are read on demand.
+const MetricFeatures = 3
 
 // FeatureCounts are model-facing feature uses and counted attempts in this launch.
 type FeatureCounts struct {
@@ -119,7 +120,7 @@ func MetricFields(body *PanelView, tab, exchange int) (fields []StatusField) {
 		}
 	}
 	s := *body.Metrics
-	if tab == metricFeatures {
+	if tab == MetricFeatures {
 		fields = featureFields(body.Features, s.Schema != "")
 		return
 	}

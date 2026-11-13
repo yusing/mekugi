@@ -59,7 +59,7 @@ func refreshSessionMetrics(p *appServerStatusReport, capture *transportcapture.R
 		if capture != nil {
 			*p.Metrics = capture.Snapshot()
 		}
-		if m.pending == nil && m.connection != nil {
+		if force && p.MetricTab == sessionpresentation.MetricFeatures && m.pending == nil && m.connection != nil {
 			c := m.connection
 			var descendants []string
 			if self := c.agent(m.thread); self != nil {

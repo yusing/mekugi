@@ -69,6 +69,7 @@ func (p *StatusPanel) Key(key string) (action sessionpresentation.PanelAction, c
 		if switched {
 			p.Top = 0
 			p.renderMetrics()
+			action.Kind, action.Tab, action.Exchange = sessionpresentation.PanelMetrics, p.Tab, p.Sequence
 			return action, true
 		}
 	}

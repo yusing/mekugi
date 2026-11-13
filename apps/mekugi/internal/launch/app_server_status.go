@@ -296,8 +296,12 @@ func applyPanelAction(attached *attachedPresentation, clock func() time.Time, pa
 		if len(exchanges) > 0 && action.Exchange == exchanges[len(exchanges)-1].Sequence {
 			action.Exchange = 0
 		}
+		previous := (*panel).MetricTab
 		(*panel).MetricTab, (*panel).MetricExchange = action.Tab, action.Exchange
 		(*panel).RenderMetrics()
+		if previous != action.Tab {
+			refreshSessionMetrics((*panel), capture, presentationTime(clock), true)
+		}
 	case sessionpresentation.PanelRefresh:
 		refreshSessionMetrics((*panel), capture, presentationTime(clock), true)
 	}
