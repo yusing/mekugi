@@ -1066,9 +1066,6 @@ export type InterruptTarget = {
   "Thread": string;
   "Turn": string;
   "Start": string;
-  "Wait": string;
-  "Stop": string;
-  "Work": string;
 };
 
 export type NativeQuestionAnswer = {
