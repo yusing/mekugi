@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, test and package the pinned local native runtime without installing it."""
+"""Check, build, test and package the pinned native runtime without installing it."""
 
 import argparse
 import io
@@ -22,11 +22,17 @@ def run(args, env):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("build", "test", "package"))
-    parser.add_argument("--profile", default="release")
+    parser.add_argument("action", choices=("check", "build", "test", "package"))
+    parser.add_argument("--profile", help="default: dev-small for check/test, release for build/package")
     parser.add_argument("--output", type=Path, default=ROOT / "bin/native")
     parser.add_argument("--archive", type=Path, default=ROOT / "bin/mekugi-native.tar.gz")
-    args = parser.parse_args()
+    argv = sys.argv[1:]
+    separator = argv.index("--") if "--" in argv else len(argv)
+    cargo_args = argv[separator + 1:]
+    args = parser.parse_args(argv[:separator])
+    if cargo_args and args.action not in {"check", "test"}:
+        parser.error("Cargo selectors after -- are supported only by check and test")
+    profile = args.profile or ("dev-small" if args.action in {"check", "test"} else "release")
     if not (RUST / "Cargo.lock").is_file():
         parser.error("initialize the pinned submodule: git submodule update --init runtime/codex")
 
@@ -52,7 +58,20 @@ def main():
     # may have been compiled into the server.
     env.setdefault("CARGO_PROFILE_RELEASE_STRIP", "symbols")
     env.update(resolve_codex_v8_cargo_env(spec, cache_root=target_dir / "v8-artifacts"))
-    cargo = ["cargo", "build", "--locked", "--profile", args.profile]
+    if args.action in {"check", "test"}:
+        env.pop("BASH_ENV", None)
+        env.pop("MEKUGI_EXEC_TRACK", None)
+        # Match the fork's test runner: large async test futures need this stack.
+        env.setdefault("RUST_MIN_STACK", "8388608")
+    if args.action == "check":
+        run(["cargo", "check", "--locked", "--profile", profile,
+             *(cargo_args or ["-p", "codex-app-server", "--tests"])], env)
+        return
+    if args.action == "test" and cargo_args:
+        # Focused library checks do not need the app-server or packaged helpers.
+        run(["cargo", "test", "--locked", "--profile", profile, *cargo_args], env)
+        return
+    cargo = ["cargo", "build", "--locked", "--profile", profile]
     binaries = [("codex-app-server", "mekugi-app-server"), ("codex-code-mode-host", "codex-code-mode-host")]
     if spec.is_linux:
         binaries.append(("codex-bwrap", "bwrap"))
@@ -60,18 +79,16 @@ def main():
         cargo.extend(["-p", package, "--bin", binary])
     run(cargo, env)
 
-    profile_dir = "debug" if args.profile == "dev" else args.profile
+    profile_dir = "debug" if profile == "dev" else profile
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     for _, binary in binaries:
         shutil.copy2(target_dir / profile_dir / binary, output / binary)
     shutil.copy2(RUST / "models-manager/models.json", output / "mekugi-models.json")
     if args.action == "test":
-        env.pop("BASH_ENV", None)
-        env.pop("MEKUGI_EXEC_TRACK", None)
-        run(["cargo", "test", "--locked", "--profile", args.profile,
+        run(["cargo", "test", "--locked", "--profile", profile,
              "-p", "codex-app-server", "--bin", "mekugi-app-server"], env)
-        run(["cargo", "test", "--locked", "--profile", args.profile,
+        run(["cargo", "test", "--locked", "--profile", profile,
              "-p", "codex-app-server", "--test", "all", "--",
              "suite::v2::command_exec", "suite::v2::connection_handling",
              "suite::v2::code_mode_host", "suite::strict_config"], env)

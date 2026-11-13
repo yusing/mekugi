@@ -105,6 +105,7 @@ The [managed fork](../../runtime/codex) builds its existing app-server entry poi
 ```sh
 git submodule update --init runtime/codex
 make build-native
+make check-native
 make test-native
 make package-native
 ```
@@ -112,11 +113,28 @@ make package-native
 Building needs Python 3.11+, Rustup, a C/C++ toolchain and, on Linux,
 `pkg-config`, `libcap-dev` and `libssl-dev`. Rustup selects the fork's pinned
 toolchain; the build uses its pinned V8 downloader. First builds need network
-access. `NATIVE_PROFILE=dev-small` selects the smaller development profile;
-`CARGO_BUILD_JOBS=2` limits compile concurrency.
+access. Checks and tests default to `dev-small`; builds and packages default to
+`release`. `NATIVE_PROFILE` overrides either default. Release CI explicitly tests
+the release profile. `CARGO_BUILD_JOBS=2` limits compile concurrency.
 
-These native-only recipes put executables in `bin/native` and the archive in
-`bin/mekugi-native.tar.gz`. `make build-binaries` places the complete client and
+For an affected crate, forward Cargo selectors through `NATIVE_ARGS`:
+
+```sh
+make check-native NATIVE_ARGS='-p codex-core --tests'
+make test-native NATIVE_ARGS='-p codex-core --lib -- capture_delivery'
+```
+
+Use `check-native` to catch compilation errors without generating or linking the
+application and test binaries.
+Focused tests skip unrelated runtime binaries and packaging. A test-name filter
+limits execution, not compilation of the selected test binary. Keep the same
+profile and target directory across runs; Cargo retains separate check and test
+artifacts.
+Both commands use the pinned V8 environment; tests inherit the fork's 8 MiB test
+stack default. No cache cleanup is needed between runs.
+
+Builds and the default native regression suite put executables in `bin/native`;
+packaging puts the archive in `bin/mekugi-native.tar.gz`. `make build-binaries` places the complete client and
 runtime together in `bin/`; `make install` installs both in the Go binary directory.
 Override these with `NATIVE_OUTPUT` and `NATIVE_ARCHIVE`. Keep the server beside
 `codex-code-mode-host` and Linux `bwrap`. The archive also includes protocol

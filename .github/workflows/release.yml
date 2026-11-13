@@ -86,7 +86,7 @@ jobs:
           CARGO_BUILD_JOBS: '2'
           PLATFORM: ${{ matrix.platform }}
         run: |
-          make test-native
+          make test-native NATIVE_PROFILE=release
           make package-native NATIVE_ARCHIVE="$RUNNER_TEMP/artifacts/mekugi-native_${PLATFORM}.tar.gz"
           bin/native/mekugi-app-server --help
       - name: Build and package

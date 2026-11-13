@@ -18,12 +18,14 @@ WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace
 .PHONY: integrate
 BUILD_OUTPUT ?= bin
 BUILD_LDFLAGS ?= -s -w
-NATIVE_PROFILE ?= release
+# Empty lets the native runner choose dev-small for tests, release for packaging.
+NATIVE_PROFILE ?=
+NATIVE_ARGS ?=
 NATIVE_OUTPUT ?= bin/native
 NATIVE_ARCHIVE ?= bin/mekugi-native.tar.gz
 NATIVE_BINARIES = mekugi-app-server codex-code-mode-host $(if $(filter Linux,$(shell uname -s)),bwrap)
 GO_INSTALL_DIR = $(or $(shell $(GO) env GOBIN),$(firstword $(subst :, ,$(shell $(GO) env GOPATH)))/bin)
-.PHONY: build-native test-native package-native
+.PHONY: check-native build-native test-native package-native
 
 TEST_PACKAGES ?= @workspace
 TEST_SUPPORT_PACKAGES := ./testsupport/uisnapshot/...
@@ -72,8 +74,11 @@ build-binaries: webui
 build-native:
 	python3 runtime/build.py build --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)'
 
+check-native:
+	python3 runtime/build.py check --profile '$(NATIVE_PROFILE)' -- $(NATIVE_ARGS)
+
 test-native:
-	python3 runtime/build.py test --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)'
+	python3 runtime/build.py test --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' -- $(NATIVE_ARGS)
 
 package-native:
 	python3 runtime/build.py package --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' --archive '$(NATIVE_ARCHIVE)'
