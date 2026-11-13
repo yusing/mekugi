@@ -13,5 +13,5 @@ func (e *threadExecution) Inspect(ctx context.Context, thread string) (observati
 	if e.native == nil {
 		return observation.SessionDetails{}, errors.New("native observation connection is unavailable")
 	}
-	return e.native.root.Client.Requests.ObserveAgent(ctx, thread)
+	return e.native.root.Client.Requests.ReadThreadDetails(ctx, thread)
 }

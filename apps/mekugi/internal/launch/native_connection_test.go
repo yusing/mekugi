@@ -2,93 +2,25 @@ package launch
 
 import (
 	"encoding/json/jsontext"
-	json "encoding/json/v2"
 	"strconv"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-func TestNativeCheckpointTaggedVariantsKeepLogicalWorkUnsettled(t *testing.T) {
-	for _, checkpoint := range []string{
-		`{"kind":"completion_pending","delivery_id":"final-delivery"}`,
-	} {
-		t.Run(checkpoint, func(t *testing.T) {
-			u, wire := newAppServerTestUI()
-			u.Client.Turn = "native-turn"
-			u.attached.session.Lifecycle("main").Final = true
-			params := []byte(`{"threadId":"main","turnId":"native-turn","workId":"logical-work","checkpoint":` + checkpoint + `,"targets":["child"]}`)
-			handled, err := u.observeNativeCheckpoint(appserver.Message{Method: "turn/checkpointed", Params: params})
-			if !handled || err != nil {
-				t.Fatal(handled, err)
-			}
-			if u.Client.Turn != "" || u.Client.NativeWork != "logical-work" || !u.Client.Busy(false) || u.attached.session.Lifecycle("main").Final || wire.Len() != 0 {
-				t.Fatal("checkpoint completed work, invented a host turn or dispatched continuation")
-			}
-			var value appserver.TurnCheckpoint
-			if err := json.Unmarshal([]byte(checkpoint), &value); err != nil {
-				t.Fatal(err)
-			}
-			if u.Client.Waiting != "" || u.nativeCheckpoint.Checkpoint.DeliveryID != value.DeliveryID {
-				t.Fatal("tagged checkpoint attribution was lost")
-			}
-		})
-	}
-}
-
 func TestNativeFamilyProjectionSurvivesRootReplacement(t *testing.T) {
-	old := &nativeFamily{tree: appserver.AgentTreeObservation{RootThreadID: "old", Agents: []appserver.AgentObservation{{ThreadID: "old", RootThreadID: "old"}, {ThreadID: "child", RootThreadID: "old", ParentThreadID: new("old")}}}}
-	current := &nativeFamily{tree: appserver.AgentTreeObservation{RootThreadID: "new", Agents: []appserver.AgentObservation{{ThreadID: "new", RootThreadID: "new"}}}}
+	old := &nativeFamily{threads: []binding.ThreadInfo{{ID: "old"}, {ID: "child", ParentThreadID: "old"}}}
+	current := &nativeFamily{threads: []binding.ThreadInfo{{ID: "new"}}}
 	c := &nativeConnection{families: map[string]*nativeFamily{"old": old, "new": current}}
 	if root, _ := c.family("child"); root != "old" {
 		t.Fatalf("root replacement reassigned child to %q", root)
 	}
 	if root, _ := c.family("new"); root != "new" {
 		t.Fatalf("replacement acquired old family: %q", root)
-	}
-}
-
-func TestNativeCompletedWorkSettlesCheckpointThroughTreeNotification(t *testing.T) {
-	u, threads := nativeCompletionCheckpoint(t)
-	c := threads.native
-	if u.Client.Turn != "" || !sessionpresentation.MainInterruptible(&u.Client.Live, u.attached.conversation) {
-		t.Fatal("completion checkpoint retained a host turn or lost work interruption")
-	}
-	// Late publication invalidates the native tree, without another actor turn
-	// or a synthetic turn/completed notification.
-	tree := c.families["main"].tree
-	tree.ObservationRevision++
-	tree.Agents = append([]appserver.AgentObservation(nil), tree.Agents...)
-	for i := range tree.Agents {
-		previous := tree.Agents[i].Work
-		tree.Agents[i].Work = &appserver.AgentWorkObservation{WorkID: previous.WorkID, Revision: previous.Revision + 1, Disposition: "completed", TerminalDeliveryID: new("final-delivery")}
-	}
-	params, err := json.Marshal(appserver.AgentTreeChanged{RootThreadID: "main", ObservationRevision: tree.ObservationRevision})
-	trafficCheck(t, err)
-	trafficCheck(t, c.message(appserver.Message{Method: "agent/treeChanged", Params: params}))
-	wire := u.Host.Input.(*appServerTestInput)
-	request := appServerOneRequest(t, wire, "agent/observeTree", "")
-	if !u.Busy(false) || u.attached.session.Lifecycle("main").Final {
-		t.Fatal("invalidation alone settled native work")
-	}
-	result, err := json.Marshal(struct {
-		Tree appserver.AgentTreeObservation `json:"tree"`
-	}{tree})
-	trafficCheck(t, err)
-	id, err := json.Marshal(request.ID)
-	trafficCheck(t, err)
-	trafficCheck(t, c.message(appserver.Message{ID: id, Result: result}))
-	u.testMainFrame(80, 8, 0)
-	if u.Client.Turn != "" || u.Client.NativeWork != "" || u.Busy(false) || !u.attached.session.Lifecycle("main").Final || !u.attached.presentation.View().Status.Session.CompletionKnown {
-		t.Fatal("late native completion left the originating view active")
-	}
-	if sessionpresentation.MainInterruptible(&u.Client.Live, u.attached.conversation) {
-		t.Fatal("completed checkpoint remained interruptible")
-	}
-	if c.agent("main").Work.Disposition != "completed" || wire.Len() != 0 {
-		t.Fatal("headless completion fact was lost or publication started inference")
 	}
 }
 
@@ -109,7 +41,7 @@ func TestNativeConnectionDemultiplexesOneLedgerAndThreadEvents(t *testing.T) {
 	root := &nativeSession{Client: sessioncontrol.Client[appServerRequest]{Live: sessioncontrol.Live{Thread: "root"}, Requests: sessioncontrol.NewRequests[appServerRequest](wire)}}
 	first := &nativeSession{Client: root.Client.ForThread("first")}
 	second := &nativeSession{Client: root.Client.ForThread("second")}
-	c := &nativeConnection{root: root, families: map[string]*nativeFamily{"root": {observed: true, tree: appserver.AgentTreeObservation{RootThreadID: "root"}}}, byThread: make(map[string]*nativeEndpoint), buffered: make(map[string][]appserver.Message), seenRequests: make(map[string]string)}
+	c := &nativeConnection{root: root, families: map[string]*nativeFamily{"root": {observed: true, threads: nil}}, byThread: make(map[string]*nativeEndpoint), buffered: make(map[string][]appserver.Message), seenRequests: make(map[string]string)}
 	if _, err := root.Client.Requests.Initialize(appServerRequest{}); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +86,7 @@ func TestNativeConnectionDemultiplexesOneLedgerAndThreadEvents(t *testing.T) {
 	if err := c.message(appserver.Message{Method: "item/started", Params: []byte(`{"threadId":"unknown-child"}`)}); err != nil {
 		t.Fatal(err)
 	}
-	if len(seen["root"]) != 2 || wire.methods[len(wire.methods)-1] != "agent/observeTree" || len(c.buffered["unknown-child"]) != 1 {
+	if len(seen["root"]) != 2 || wire.methods[len(wire.methods)-1] != "thread/subtree/list" || len(c.buffered["unknown-child"]) != 1 {
 		t.Fatal("unknown child became root activity instead of passive discovery")
 	}
 }
@@ -173,7 +105,7 @@ func TestNativeConnectionRejectsEndWithoutNativeJoin(t *testing.T) {
 
 func TestNativeChildEventsWaitForHydratedIdentity(t *testing.T) {
 	root := &nativeSession{Client: sessioncontrol.Client[appServerRequest]{Live: sessioncontrol.Live{Thread: "root"}}}
-	child := &nativeSession{nativeAgent: &appserver.AgentObservation{ThreadID: "child"}}
+	child := &nativeSession{nativeAgent: &binding.ThreadInfo{ID: "child"}}
 	endpoint := &nativeEndpoint{session: child}
 	c := &nativeConnection{root: root, byThread: map[string]*nativeEndpoint{"child": endpoint}, buffered: make(map[string][]appserver.Message)}
 	message := appserver.Message{ID: []byte(`"prompt"`), Method: "item/tool/requestUserInput", Params: []byte(`{"threadId":"child"}`)}
@@ -182,5 +114,23 @@ func TestNativeChildEventsWaitForHydratedIdentity(t *testing.T) {
 	}
 	if c.bufferedCount != 1 || len(c.buffered["child"]) != 1 || len(c.seenRequests) != 0 {
 		t.Fatal("unhydrated child consumed or acknowledged its prompt")
+	}
+}
+
+func TestNativeSideLifecycleInvalidatesItsOwnFamily(t *testing.T) {
+	wire := new(nativeRoutingTransport)
+	root := &nativeSession{Client: sessioncontrol.Client[appServerRequest]{Live: sessioncontrol.Live{Thread: "root"}, Requests: sessioncontrol.NewRequests[appServerRequest](wire)}}
+	root.Client.Requests.TrackSide("side", &sessioncontrol.Side{Thread: "side", SideAnswer: &conversationmodel.SideAnswer{OneOff: true}})
+	root.dispatch = func(appserver.Message) error { return nil }
+	c := &nativeConnection{root: root, boundRoot: "root", families: map[string]*nativeFamily{
+		"root": {observed: true, threads: nil},
+		"side": {observed: true, threads: nil},
+	}, byThread: make(map[string]*nativeEndpoint)}
+	c.add(&nativeEndpoint{session: root, before: func() error { return nil }, after: func() error { return nil }})
+	if err := c.message(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"side","turn":{"id":"side-turn","status":"completed"}}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if !c.families["side"].pending || c.families["root"].pending || c.families["root"].dirty || len(wire.methods) != 1 || wire.methods[0] != "thread/subtree/list" {
+		t.Fatalf("side lifecycle invalidated another native root: %#v, %#v", c.families, wire.methods)
 	}
 }

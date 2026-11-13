@@ -50,19 +50,19 @@ func TestNativeForeignRoutesEveryOperationThroughBorrowedNativeOwner(t *testing.
 			hub, source, destination, request := nativeForeignPair(t)
 			request.Operation.Type = operation
 			text := "original @recipient-source.txt"
-			want := appserver.AgentForeignResponse{Type: "inspected", Agent: &appserver.AgentObservation{ThreadID: foreignTargetActor}}
+			want := appserver.AgentForeignResponse{Type: "inspect", Thread: []byte(`{"id":"` + foreignTargetActor + `"}`)}
 			switch operation {
 			case "message":
 				request.Operation.Message = &text
-				want = appserver.AgentForeignResponse{Type: "messageAccepted", TargetThreadID: foreignTargetActor, DeliveryID: "55555555-5555-4555-8555-555555555555"}
+				want = appserver.AgentForeignResponse{Type: "message", TargetThreadID: foreignTargetActor, DeliveryID: "55555555-5555-4555-8555-555555555555"}
 			case "sideQuestion":
 				request.Operation.Question = &text
 				answer := "independent native answer"
-				want = appserver.AgentForeignResponse{Type: "sideQuestionAnswered", TargetThreadID: foreignTargetActor, Answer: &answer}
+				want = appserver.AgentForeignResponse{Type: "sideQuestion", TargetThreadID: foreignTargetActor, Answer: &answer}
 			case "list":
 				prefix := "worker"
 				request.Operation.PathPrefix = &prefix
-				want = appserver.AgentForeignResponse{Type: "listed", Tree: &appserver.AgentTreeObservation{RootThreadID: foreignTargetRoot, Agents: []appserver.AgentObservation{{ThreadID: foreignTargetActor}}}}
+				want = appserver.AgentForeignResponse{Type: "list", Threads: []byte(`[{"id":"` + foreignTargetActor + `"}]`)}
 			}
 			calls := 0
 			destination.BindNativeForeign(func(_ context.Context, got appserver.AgentForeignRequest) (appserver.AgentForeignResponse, error) {

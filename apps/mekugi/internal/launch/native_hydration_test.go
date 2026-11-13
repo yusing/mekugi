@@ -2,9 +2,10 @@ package launch
 
 import (
 	"context"
-	json "encoding/json/v2"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -24,7 +25,7 @@ func TestNativeHydrationBlockedStorageLeavesSiblingDispatchAvailable(t *testing.
 	defer cancel()
 	u.ctx, u.history, u.retained.Store = ctx, service, store
 	u.Client.Thread, u.Client.Startup.Thread = "", "child"
-	u.nativeAgent = &appserver.AgentObservation{ThreadID: "child", ParentThreadID: new("root")}
+	u.nativeAgent = &binding.ThreadInfo{ID: "child", ParentThreadID: "root"}
 	u.hydrationResults = make(chan *nativeHydration)
 	c := &nativeConnection{root: &nativeSession{}, byThread: make(map[string]*nativeEndpoint)}
 	u.connection = c
@@ -99,30 +100,6 @@ func TestNativeHydrationOverflowDisclosesAndPreservesSiblingPrefix(t *testing.T)
 	}
 }
 
-func TestNativeLogicalInterruptDoesNotClaimTerminalOutcome(t *testing.T) {
-	u, wire := newAppServerTestUI()
-	u.Client.NativeRoot = "root"
-	u.Client.NativeWork = "work"
-	u.Client.Waiting = "wait"
-	intent := u.Client.Interrupt()
-	if err := applyInterruption(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, intent); err != nil {
-		t.Fatal(err)
-	}
-	var request struct {
-		Method string `json:"method"`
-		Params struct {
-			Root   string `json:"rootThreadId"`
-			Thread string `json:"threadId"`
-		} `json:"params"`
-	}
-	if err := json.Unmarshal(wire.Bytes(), &request); err != nil {
-		t.Fatal(err)
-	}
-	if request.Method != "agent/interrupt" || request.Params.Root != "root" || request.Params.Thread != "main" || u.Client.NativeWork != "work" || u.Client.Waiting != "wait" {
-		t.Fatal("logical interruption lost identity or fabricated terminal state")
-	}
-}
-
 func TestNativeHydrationTransfersReadySnapshotOnlyOnEventLoop(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -134,7 +111,7 @@ func TestNativeHydrationTransfersReadySnapshotOnlyOnEventLoop(t *testing.T) {
 	u.ctx, u.retained.Store = ctx, store
 	u.retained.Limits = history.Limits{Total: history.DefaultStorageBytes}
 	u.Client.Thread, u.Client.Startup.Thread = "", "child"
-	u.nativeAgent = &appserver.AgentObservation{ThreadID: "child", ParentThreadID: new("root")}
+	u.nativeAgent = &binding.ThreadInfo{ID: "child", ParentThreadID: "root"}
 	u.hydrationResults = make(chan *nativeHydration)
 	u.connection = &nativeConnection{}
 	t.Cleanup(func() { cancel(); u.connection.workers.Wait() })

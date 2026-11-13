@@ -234,18 +234,12 @@ func TestNativePausedWaitOutcomeLiveAndRestored(t *testing.T) {
 	for _, mode := range []string{"any", "all"} {
 		t.Run(mode, func(t *testing.T) {
 			u, threads, _ := nativeWaitUI(t, nil)
-			root := threads.native.agent("main")
-			root.Wait.Mode = mode
-			threads.native.agent("child").Work.Disposition = "paused"
 			nativeTreeFixture(t, threads)
 			target := appserver.CoordinationTarget{ThreadID: "child", TaskName: "/root/worker", WorkID: "child-work"}
 			facts := appserver.CoordinationProjection{Wait: &appserver.CoordinationWaitSettlement{WaitID: "paused-wait", CallerThreadID: "main", CallerWorkID: "main-work", Origin: appserver.CoordinationWaitOrigin{Kind: "cell", TurnID: "first", ItemID: "exec"}, Mode: mode, Selected: []appserver.CoordinationTarget{target}, Result: appserver.CoordinationWaitResult{Kind: "released", Wake: "events"}, Outcomes: []appserver.CoordinationWaitOutcome{{Target: target, Disposition: "paused"}}}}
 			appServerTestNotify(t, u, "agent/coordination", appserver.AgentCoordination{ThreadID: "main", TurnID: "first", Projection: facts})
 			// A later running observation must not rewrite the prior claimed outcome.
-			root = threads.native.agent("main")
-			root.Wait = nil
-			root.Work.Disposition = "running"
-			threads.native.agent("child").Work.Disposition = "running"
+			threads.native.agent("child").AgentStatus = []byte(`"running"`)
 			nativeTreeFixture(t, threads)
 			record := map[string]any{"timestamp": time.Now().Format(time.RFC3339Nano), "type": "event_msg", "payload": map[string]any{"type": "agent_coordination", "threadId": "main", "turnId": "first", "projection": facts}}
 			restored := newAppServerSessionTestUI(t, u.attached.cwd)

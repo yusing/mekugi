@@ -77,19 +77,76 @@ type WebSearchAction struct {
 
 // Source: apps/mekugi/internal/router/app_server_events.go:91:104@[eaad597b] appServerThreadInfo.
 type ThreadInfo struct {
-	HistoryMode    string        `json:"historyMode"`
-	SessionID      string        `json:"sessionId"`
-	ThreadSource   string        `json:"threadSource"`
-	Name           string        `json:"name"`
-	ID             string        `json:"id"`
-	ParentThreadID string        `json:"parentThreadId"`
-	AgentNickname  string        `json:"agentNickname"`
-	AgentRole      string        `json:"agentRole"`
-	Cwd            string        `json:"cwd"`
-	Path           string        `json:"path"`
-	CreatedAt      int64         `json:"createdAt"`
-	UpdatedAt      int64         `json:"updatedAt"`
-	Turns          []HistoryTurn `json:"turns"`
+	Model                *string        `json:"model"`
+	ReasoningEffort      *string        `json:"reasoningEffort"`
+	ServiceTier          *string        `json:"serviceTier"`
+	ContextTokens        *uint64        `json:"contextTokens"`
+	ContextWindow        *uint64        `json:"contextWindow"`
+	CompletedCompactions *uint64        `json:"completedCompactions"`
+	AgentStatus          jsontext.Value `json:"agentStatus"`
+	CanAcceptDirectInput *bool          `json:"canAcceptDirectInput"`
+	Source               jsontext.Value `json:"source"`
+	HistoryMode          string         `json:"historyMode"`
+	SessionID            string         `json:"sessionId"`
+	ThreadSource         string         `json:"threadSource"`
+	Name                 string         `json:"name"`
+	ID                   string         `json:"id"`
+	ParentThreadID       string         `json:"parentThreadId"`
+	AgentNickname        string         `json:"agentNickname"`
+	AgentRole            string         `json:"agentRole"`
+	Cwd                  string         `json:"cwd"`
+	Path                 string         `json:"path"`
+	CreatedAt            int64          `json:"createdAt"`
+	UpdatedAt            int64          `json:"updatedAt"`
+	Turns                []HistoryTurn  `json:"turns"`
+}
+
+// AgentState decodes the stock native AgentStatus union without retaining its payload.
+func (t ThreadInfo) AgentState() string {
+	var state string
+	if t.AgentStatus.Kind() == '"' {
+		_ = json.Unmarshal(t.AgentStatus, &state)
+	} else if t.AgentStatus.Kind() == '{' {
+		var variants map[string]jsontext.Value
+		if json.Unmarshal(t.AgentStatus, &variants) == nil && len(variants) == 1 {
+			for name := range variants {
+				state = name
+			}
+		}
+	}
+	return state
+}
+
+func (t ThreadInfo) IsLoaded() bool {
+	switch t.AgentState() {
+	case "", "shutdown", "not_found":
+		return false
+	default:
+		return true
+	}
+}
+
+func (t ThreadInfo) Details() observation.SessionDetails {
+	return observation.SessionDetails{Model: t.Model, ReasoningEffort: t.ReasoningEffort, ServiceTier: t.ServiceTier,
+		SessionMetrics: observation.SessionMetrics{ContextTokens: t.ContextTokens, ContextWindow: t.ContextWindow, Compactions: t.CompletedCompactions}}
+}
+
+// AgentPath reads native spawn metadata rather than a presentation alias.
+func (t ThreadInfo) AgentPath() string {
+	if t.ParentThreadID == "" {
+		return "/root"
+	}
+	var source struct {
+		SubAgent struct {
+			Spawn struct {
+				Path string `json:"agent_path"`
+			} `json:"thread_spawn"`
+		} `json:"subAgent"`
+	}
+	if json.Unmarshal(t.Source, &source) != nil {
+		return ""
+	}
+	return source.SubAgent.Spawn.Path
 }
 
 // Source: apps/mekugi/internal/router/app_server_resume.go:203:213@[eaad597b] appServerHistoryTurn.

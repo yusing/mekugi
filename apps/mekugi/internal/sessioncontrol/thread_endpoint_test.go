@@ -52,31 +52,9 @@ func TestThreadEndpointsShareLedgerNotControlOrRetirement(t *testing.T) {
 	}
 }
 
-func TestNativeAgentMetricsPreserveUnavailableAndNativeCompactionScalar(t *testing.T) {
-	unknown := NativeAgentDetails(appserver.AgentObservation{})
-	if unknown.Model != nil || unknown.ContextTokens != nil || unknown.ContextWindow != nil || unknown.Compactions != nil {
-		t.Fatalf("fabricated passive facts: %+v", unknown)
-	}
-	actual := NativeAgentDetails(appserver.AgentObservation{Model: new("child-model"), Metrics: appserver.AgentMetrics{ContextTokens: new(int64(0)), ContextWindow: new(int64(200000)), CompletedCompactions: new(uint64(17))}})
-	if actual.ContextTokens == nil || *actual.ContextTokens != 0 || actual.Compactions == nil || *actual.Compactions != 17 || *actual.Model != "child-model" {
-		t.Fatalf("lost native facts: %+v", actual)
-	}
-}
-
-func TestNativeWaitingDoesNotNeedFabricatedTurnForQueueAdmission(t *testing.T) {
-	live := Live{Thread: "child", Waiting: "native-wait"}
-	if !live.Busy(false) || !live.PlanInput(QueueNextTurn, false).Queued || live.PlanInput(SendInput, false).Queued {
-		t.Fatal("native wait lost queue versus human-enter distinction")
-	}
-	target := live.InterruptTarget()
-	if target.Turn != "" || target.Stop != "" || target.Wait != "native-wait" {
-		t.Fatalf("invented native host turn: %+v", target)
-	}
-}
-
 func TestProvisionalNativeAgentAdmitsNoDirectWork(t *testing.T) {
 	live := Live{Thread: "child", NativeInputPending: true}
-	if live.AcceptsInput() || live.AcceptsShell() || live.AcceptsSettings() || live.NativeWork != "" {
+	if live.AcceptsInput() || live.AcceptsShell() || live.AcceptsSettings() {
 		t.Fatal("provisional identity acquired direct work")
 	}
 	live.NativeInputPending = false

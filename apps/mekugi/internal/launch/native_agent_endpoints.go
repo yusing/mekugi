@@ -6,15 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
-	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-	activity "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 func nativeValue[T any](value *T) (result T) {
@@ -24,24 +20,15 @@ func nativeValue[T any](value *T) (result T) {
 	return result
 }
 
-func nativeWorkStatus(agent *appserver.AgentObservation) sessionpresentation.WorkStatus {
-	if agent.Work == nil {
-		return ""
-	}
-	switch agent.Work.Disposition {
-	case "pending_start":
+func nativeWorkStatus(agent *binding.ThreadInfo) sessionpresentation.WorkStatus {
+	switch agent.AgentState() {
+	case "pending_init":
 		return sessionpresentation.Pending
 	case "running":
 		return sessionpresentation.WorkRunning
-	case "waiting":
-		return sessionpresentation.Waiting
-	case "paused":
-		return sessionpresentation.Paused
-	case "uncertain":
-		return sessionpresentation.Uncertain
 	case "completed":
 		return sessionpresentation.Completed
-	case "failed":
+	case "errored":
 		return sessionpresentation.Failed
 	case "interrupted":
 		return sessionpresentation.Interrupted
@@ -59,75 +46,59 @@ func (c *nativeConnection) treeResponse(root string, message appserver.Message) 
 		setNotice(&c.root.attached.feedback, presentationTime(c.root.clock), "Native agents unavailable: "+message.Error.Message, true)
 		// Retry on the next native invalidation or explicit attachment, not on
 		// every paint of the same failed observation.
-		family.wanted = family.tree.ObservationRevision
+		family.dirty = false
 		return nil
 	}
 	var response struct {
-		Tree appserver.AgentTreeObservation `json:"tree"`
+		Data []binding.ThreadInfo `json:"data"`
 	}
 	if err := json.Unmarshal(message.Result, &response); err != nil {
 		setNotice(&c.root.attached.feedback, presentationTime(c.root.clock), "Native agent observation could not be decoded.", true)
-		family.wanted, family.dirty = family.tree.ObservationRevision, false
+		family.dirty = false
 		return nil
 	}
-	if response.Tree.RootThreadID != root {
-		return nil
-	}
-	identities := make(map[string]bool, len(response.Tree.Agents))
-	for _, agent := range response.Tree.Agents {
-		if agent.ThreadID == "" || agent.RootThreadID != root || identities[agent.ThreadID] {
+	identities := make(map[string]bool, len(response.Data))
+	for _, agent := range response.Data {
+		if agent.ID == "" || identities[agent.ID] {
 			setNotice(&c.root.attached.feedback, presentationTime(c.root.clock), "Native agent observation returned inconsistent identity.", true)
-			family.wanted, family.dirty = family.tree.ObservationRevision, false
+			family.dirty = false
 			return nil
 		}
-		identities[agent.ThreadID] = true
+		identities[agent.ID] = true
 	}
 	if !identities[root] {
 		return nil
 	}
-	family.tree = response.Tree
-	// Side and One-off roots share this connection but never join the source's
-	// family. Project their own native work, including turnless interruption.
-	for _, endpoint := range c.endpoints {
-		for _, side := range endpoint.session.Client.Requests.OwnedSides() {
-			if side.Thread != root || side.Closed {
-				continue
-			}
-			for _, agent := range family.tree.Agents {
-				if agent.ThreadID == side.Thread {
-					side.ObserveNativeWork(agent)
-				}
-			}
-		}
-	}
+	family.threads = response.Data
+	family.response = string(message.ID)
 	for _, endpoint := range slices.Clone(c.endpoints) {
-		if endpoint.session != c.root && endpoint.session.nativeAgent.RootThreadID == root && !identities[endpoint.session.nativeAgent.ThreadID] {
+		if endpoint.session != c.root && endpoint.session.Client.NativeRoot == root && !identities[endpoint.session.nativeAgent.ID] {
 			c.retire(endpoint, errors.New("native child admission is no longer present"))
 		}
 	}
 	// Publish canonical identity before any endpoint can consume shared
 	// provider supplements. This is routing metadata, not logical admission.
 	if audience := c.root.audience; audience != nil {
-		for _, agent := range family.tree.Agents {
-			if agent.Path != nil {
-				audience.ObserveAdmitted(agent.ThreadID, nativeValue(agent.ParentThreadID), *agent.Path, agent.ParentThreadID != nil)
+		for _, agent := range family.threads {
+			if agent.AgentPath() != "" {
+				audience.ObserveAdmitted(agent.ID, agent.ParentThreadID, agent.AgentPath(), agent.ParentThreadID != "")
 			}
 		}
 	}
-	family.members = make([]sessionpresentation.Participant, 0, len(family.tree.Agents))
-	for i := range family.tree.Agents {
-		agent := &family.tree.Agents[i]
-		family.members = append(family.members, sessionpresentation.Participant{Thread: agent.ThreadID, Parent: nativeValue(agent.ParentThreadID), Task: nativeValue(agent.Path), Role: nativeValue(agent.Role), Status: nativeWorkStatus(agent), NonAttachable: agent.Attachable == nil || !*agent.Attachable})
-		if endpoint := c.byThread[agent.ThreadID]; endpoint != nil {
+	family.members = make([]sessionpresentation.Participant, 0, len(family.threads))
+	for i := range family.threads {
+		agent := &family.threads[i]
+		family.members = append(family.members, sessionpresentation.Participant{Thread: agent.ID, Parent: agent.ParentThreadID, Task: agent.AgentPath(), Role: agent.AgentRole, Status: nativeWorkStatus(agent)})
+		if endpoint := c.byThread[agent.ID]; endpoint != nil {
 			endpoint.session.nativeAgent = agent
 			c.projectAgent(endpoint.session)
 			continue
 		}
 		// Retained and external members remain passive until explicitly selected.
-		if c.suppressed[agent.ThreadID] || !agent.Loaded || agent.ParentThreadID == nil || !nativeValue(agent.Attachable) || nativeValue(agent.Status) == "shutdown" {
+		if c.suppressed[agent.ID] || !agent.IsLoaded() || agent.ParentThreadID == "" {
 			continue
 		}
-		if _, err := c.attachEndpoint(family.tree.RootThreadID, agent.ThreadID, false); err != nil {
+		if _, err := c.attachEndpoint(root, agent.ID, false); err != nil {
 			setNotice(&c.root.attached.feedback, presentationTime(c.root.clock), "Agent view unavailable: "+err.Error(), true)
 		}
 	}
@@ -137,7 +108,7 @@ func (c *nativeConnection) treeResponse(root string, message appserver.Message) 
 			return err
 		}
 	}
-	return c.observeRoot(root, family.wanted)
+	return c.observeRoot(root)
 }
 
 func (c *nativeConnection) projectAgent(session *nativeSession) {
@@ -154,162 +125,52 @@ func (c *nativeConnection) projectAgent(session *nativeSession) {
 		return
 	}
 	session.nativeAgent = agent
-	session.Client.NativeRoot = agent.RootThreadID
+	root, _ := c.family(thread)
+	session.Client.NativeRoot = root
 	session.Client.NativeInputPending = agent.CanAcceptDirectInput != nil && !*agent.CanAcceptDirectInput
-	family := c.families[agent.RootThreadID]
+	family := c.families[root]
 	attached.threadInput.admitted = true
-	attached.threadInput.caller, attached.threadInput.role = nativeValue(agent.Path), nativeValue(agent.Role)
-	if attached.threadInput.caller == "" && agent.ParentThreadID != nil {
+	attached.threadInput.caller, attached.threadInput.role = agent.AgentPath(), agent.AgentRole
+	if attached.threadInput.caller == "" && agent.ParentThreadID != "" {
 		attached.threadInput.caller = sessionpresentation.Placeholder(thread)
 	}
-	attached.role = nativeValue(agent.Role)
-	metrics := sessioncontrol.NativeAgentDetails(*agent).SessionMetrics
+	attached.role = agent.AgentRole
+	oldCaller := attached.session.KnownCaller(thread)
+	attached.session.RegisterThread(observation.Thread{ID: thread, Path: attached.threadInput.caller, Nickname: agent.AgentNickname, Role: agent.AgentRole})
+	if caller := attached.session.KnownCaller(thread); oldCaller != "" && oldCaller != caller {
+		attached.presentation.RenameCaller(oldCaller, caller)
+		attached.source.RenameCaller(oldCaller, caller)
+		attached.childSource.RenameCaller(oldCaller, caller)
+	}
+	metrics := agent.Details().SessionMetrics
 	attached.session.ObserveNativeMetrics(thread, metrics)
-	// Root-local presentation aliases stay internal; the API supplies the
-	// canonical native caller on every frame and family roster.
-	if local := attached.session.Agent("/root"); local != nil {
-		local.Role = nativeValue(agent.Role)
+	if local := attached.session.Activity().Agent(thread); local != nil {
+		local.Role = agent.AgentRole
 		local.ContextKnown = metrics.ContextTokens != nil
 		local.ContextTokens, local.ContextWindow = nativeValue(metrics.ContextTokens), nativeValue(metrics.ContextWindow)
 	}
-	status := nativeWorkStatus(agent)
-	if checkpoint := session.nativeCheckpoint; checkpoint != nil && (agent.Work == nil || agent.Work.WorkID != checkpoint.WorkID) {
-		// A prior generation's passive snapshot cannot settle a newer native
-		// checkpoint while its forced observation is in flight.
+	// Retained members still appear from passive native facts.
+	if session.nativeRosterRoot == root && session.nativeRosterResponse == family.response {
 		return
 	}
-	previousWork := session.Client.NativeWork
-	session.Client.NativeWork = ""
-	if status == sessionpresentation.WorkRunning || status == sessionpresentation.Pending || status == sessionpresentation.Waiting || status == sessionpresentation.Paused && agent.Wait != nil {
-		session.Client.NativeWork = agent.Work.WorkID
-	}
-	lifecycle := attached.session.Lifecycle(thread)
-	wasPaused := lifecycle.Paused
-	lifecycle.Paused = status == sessionpresentation.Paused || status == sessionpresentation.Uncertain
-	if lifecycle.Paused {
-		attached.presentation.Status.Set("Paused", false)
-		lifecycle.ObserveActive(false, presentationTime(session.clock))
-	}
-	lifecycle.SetWaiting(status == sessionpresentation.Waiting, presentationTime(session.clock))
-	if status == sessionpresentation.Waiting {
-		lifecycle.Responding = false
-	}
-	if status == sessionpresentation.Completed {
-		lifecycle.Final = true
-		lifecycle.Responding = false
-	}
-	if status == sessionpresentation.Failed || status == sessionpresentation.Interrupted {
-		lifecycle.Final = false
-		lifecycle.Responding = false
-	}
-	if status == sessionpresentation.WorkRunning || status == sessionpresentation.Pending {
-		if wasPaused {
-			attached.presentation.Status.Set("Working", false)
-		}
-		lifecycle.Final = false
-		lifecycle.ObserveActive(true, presentationTime(session.clock))
-	}
-	if previousWork != "" && session.Client.NativeWork == "" && session.Client.Turn == "" && (status == sessionpresentation.Completed || status == sessionpresentation.Failed || status == sessionpresentation.Interrupted) {
-		lifecycle.TurnCompleted(status == sessionpresentation.Completed, presentationTime(session.clock))
-		attached.presentation.Status.Complete(string(status), nil, presentationTime(session.clock))
-	}
-	session.Client.Waiting, session.Client.WaitLabel = "", ""
-	lifecycle.WaitingFor = ""
-	if agent.Wait == nil || status != sessionpresentation.Waiting && status != sessionpresentation.Paused {
-		lifecycle.Wait = nil
-	}
-	if agent.Wait != nil && (status == sessionpresentation.Waiting || status == sessionpresentation.Paused) {
-		session.Client.Waiting = agent.Wait.WaitID
-		value := &activity.Value{Kind: "progress", Body: "Waiting for", Live: status == sessionpresentation.Waiting}
-		var names []string
-		for _, target := range agent.Wait.Selected {
-			name := target.ThreadID
-			if member := c.agent(target.ThreadID); member != nil && member.Path != nil {
-				name = *member.Path
-			}
-			names = append(names, pathdisplay.AgentDisplayName(name))
-			value.WaitTargets = append(value.WaitTargets, activity.WaitTarget{Name: name})
-		}
-		lifecycle.WaitingFor = strings.Join(names, ", ")
-		if status == sessionpresentation.Paused && agent.Wait.Reason == nil {
-			session.Client.WaitLabel = "Paused"
-		} else {
-			session.Client.WaitLabel = sessioncontrol.NativeWaitLabel(*agent.Wait)
-		}
-		if agent.Wait.Reason != nil && (*agent.Wait.Reason == "providerCapacity" || *agent.Wait.Reason == "providerUsageLimit") {
-			value.Body, value.WaitTargets = session.Client.WaitLabel, nil
-			lifecycle.WaitingFor = ""
-		} else if status == sessionpresentation.Paused {
-			value.Body, value.WaitTargets = "Paused", nil
-			lifecycle.WaitingFor = ""
-		} else if agent.Wait.TimeoutMS != nil {
-			value.WaitTimeout = (time.Duration(*agent.Wait.TimeoutMS) * time.Millisecond).String()
-		}
-		if lifecycle.Wait == nil || lifecycle.Wait.Body != value.Body || lifecycle.Wait.Live != value.Live || lifecycle.Wait.WaitTimeout != value.WaitTimeout || !slices.Equal(lifecycle.Wait.WaitTargets, value.WaitTargets) {
-			lifecycle.Wait = value
-		}
-	}
-	// Cold and nonattachable members still appear from passive native facts.
-	if session.nativeRosterRoot == family.tree.RootThreadID && session.nativeRosterRevision == family.tree.ObservationRevision {
-		return
-	}
-	session.nativeRosterRoot, session.nativeRosterRevision = family.tree.RootThreadID, family.tree.ObservationRevision
-	for i := range family.tree.Agents {
-		member := &family.tree.Agents[i]
-		if member.ThreadID == thread {
+	session.nativeRosterRoot, session.nativeRosterResponse = root, family.response
+	for i := range family.threads {
+		member := &family.threads[i]
+		if member.ID == thread {
 			continue
 		}
-		attached.session.RegisterThread(observation.Thread{ID: member.ThreadID, Path: nativeValue(member.Path), Nickname: nativeValue(member.Nickname), Role: nativeValue(member.Role), NonAttachable: !nativeValue(member.Attachable)})
-		if row := attached.session.Agent(attached.session.KnownCaller(member.ThreadID)); row != nil {
-			row.ParentThread = nativeValue(member.ParentThreadID)
+		attached.session.RegisterThread(observation.Thread{ID: member.ID, Path: member.AgentPath(), Nickname: member.AgentNickname, Role: member.AgentRole})
+		if row := attached.session.Agent(attached.session.KnownCaller(member.ID)); row != nil {
+			row.ParentThread = member.ParentThreadID
 			row.Settings.Model, row.Settings.Effort, row.Settings.Tier = nativeValue(member.Model), nativeValue(member.ReasoningEffort), nativeValue(member.ServiceTier)
 			row.Settings.TierKnown = member.ServiceTier != nil
-			details := sessioncontrol.NativeAgentDetails(*member)
-			attached.session.ObserveNativeMetrics(member.ThreadID, details.SessionMetrics)
+			details := member.Details()
+			attached.session.ObserveNativeMetrics(member.ID, details.SessionMetrics)
 			row.ContextKnown = details.ContextTokens != nil
 			row.ContextTokens, row.ContextWindow = nativeValue(details.ContextTokens), nativeValue(details.ContextWindow)
 		}
 	}
 	attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
-}
-
-func (session *nativeSession) observeNativeCheckpoint(message appserver.Message) (bool, error) {
-	if message.Method != "turn/checkpointed" {
-		return false, nil
-	}
-	var receipt appserver.TurnCheckpointed
-	if err := json.Unmarshal(message.Params, &receipt); err != nil {
-		return true, err
-	}
-	if receipt.ThreadID != session.Client.Thread {
-		return false, nil
-	}
-	if receipt.WorkID == "" || receipt.TurnID == "" || receipt.Checkpoint.Kind != "completion_pending" {
-		return true, errors.New("native checkpoint omitted its work, turn or disposition")
-	}
-	if receipt.Checkpoint.DeliveryID == "" {
-		return true, errors.New("native checkpoint omitted its retained identity")
-	}
-	if session.Client.Turn != "" && session.Client.Turn != receipt.TurnID {
-		return true, nil
-	}
-	session.nativeCheckpoint = &receipt
-	session.Client.Turn, session.Client.AwaitingTurn = "", false
-	session.Client.NativeWork = receipt.WorkID
-	session.Client.Waiting, session.Client.WaitLabel = "", ""
-	lifecycle := session.attached.session.Lifecycle(receipt.ThreadID)
-	lifecycle.Final = false
-	lifecycle.SetWaiting(false, presentationTime(session.clock))
-	session.attached.presentation.Status.SetText("Working")
-	if session.connection != nil {
-		root := session.connection.root.Client.Thread
-		if session.nativeAgent != nil {
-			root = session.nativeAgent.RootThreadID
-		}
-		session.connection.invalidateTree(root)
-		return true, session.connection.observeRoot(root, 0)
-	}
-	return true, nil
 }
 
 func (c *nativeConnection) attachChild(ctx context.Context, parent, thread string) error {
@@ -336,36 +197,34 @@ func (c *nativeConnection) attachEndpoint(parent, thread string, explicit bool) 
 		delete(c.suppressed, thread)
 	}
 	agent := c.agent(thread)
+	root, _ := c.family(thread)
 	if agent != nil && parent == "" {
-		parent = agent.RootThreadID
+		parent = root
 	}
-	if agent == nil || agent.ParentThreadID == nil || thread == agent.RootThreadID {
+	if agent == nil || agent.ParentThreadID == "" || thread == root {
 		return nil, errors.New("thread is not an admitted native descendant")
 	}
-	ancestor := nativeValue(agent.ParentThreadID)
+	ancestor := agent.ParentThreadID
 	for ancestor != parent && ancestor != "" {
 		member := c.agent(ancestor)
 		if member == nil {
 			break
 		}
-		ancestor = nativeValue(member.ParentThreadID)
+		ancestor = member.ParentThreadID
 	}
 	if ancestor != parent {
 		return nil, errors.New("attachment owner is not a native ancestor")
 	}
-	if !nativeValue(agent.Attachable) {
-		return nil, errors.New("the selected native agent is not attachable")
-	}
 	if endpoint := c.byThread[thread]; endpoint != nil {
 		return endpoint, nil
 	}
-	if !explicit && !agent.Loaded {
+	if !explicit && !agent.IsLoaded() {
 		return nil, errors.New("cold attachment requires explicit selection")
 	}
-	if agent.Cwd == nil || *agent.Cwd == "" {
+	if agent.Cwd == "" {
 		return nil, errors.New("native child workspace is unavailable")
 	}
-	api, err := c.threads.hub.AdoptThread(c.api, thread, *agent.ParentThreadID, *agent.Cwd, func(ctx context.Context) error { return c.endChild(ctx, thread) })
+	api, err := c.threads.hub.AdoptThread(c.api, thread, agent.ParentThreadID, agent.Cwd, func(ctx context.Context) error { return c.endChild(ctx, thread) })
 	if err != nil {
 		return nil, err
 	}
@@ -378,14 +237,15 @@ func (c *nativeConnection) attachEndpoint(parent, thread string, explicit bool) 
 		sessionCapture: r.sessionCapture, replayDebugDirectory: r.replayDebugDirectory, observations: r.observations, approvalMode: r.approvalMode,
 		deduplicateOutput: r.deduplicateOutput, backendVersion: r.backendVersion}
 	session.Client = r.Client.ForThread(thread)
+	session.Client.NativeRoot = root
 	session.Client.Thread = "" // Native identity is known; the presentation is not hydrated yet.
 	session.Client.Startup.Thread = thread
-	endpoint, err := session.prepareEndpoint(c.prefs, c.environment, *agent.Cwd, nil, c.guards, c.skillsManager, nil, api, c.childSummary, c.threads, "")
+	endpoint, err := session.prepareEndpoint(c.prefs, c.environment, agent.Cwd, nil, c.guards, c.skillsManager, nil, api, c.childSummary, c.threads, "")
 	if err != nil {
 		c.threads.hub.RetireThread(api, thread, err)
 		return nil, err
 	}
-	session.attached.role = nativeValue(agent.Role)
+	session.attached.role = agent.AgentRole
 	session.attached.nativeIdentity = true
 	c.add(endpoint)
 	session.audience.AttachEndpoint(thread)
@@ -470,7 +330,7 @@ func (c *nativeConnection) endEndpoint(request *nativeEndRequest) {
 		request.reply <- errors.New("native end is already pending")
 		return
 	}
-	_, err := c.root.Client.Requests.Send("agent/end", map[string]any{"rootThreadId": endpoint.session.nativeAgent.RootThreadID, "threadId": request.thread}, "native/end", appServerRequest{nativeEnd: request})
+	_, err := c.root.Client.Requests.Send("agent/end", map[string]any{"rootThreadId": endpoint.session.Client.NativeRoot, "threadId": request.thread}, "native/end", appServerRequest{nativeEnd: request})
 	if err != nil {
 		request.reply <- err
 		return
@@ -504,7 +364,7 @@ func (c *nativeConnection) ended(request *nativeEndRequest, message appserver.Me
 }
 
 func (c *nativeConnection) retire(endpoint *nativeEndpoint, outcome error) {
-	thread := endpoint.session.nativeAgent.ThreadID
+	thread := endpoint.session.nativeAgent.ID
 	endpoint.session.audience.DetachEndpoint(thread)
 	if c.suppressed == nil {
 		c.suppressed = make(map[string]bool)

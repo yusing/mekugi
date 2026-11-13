@@ -125,7 +125,7 @@ func TestAppServerLifecycleReplacementRetiresOperations(t *testing.T) {
 func TestNativeShellModelTurnRetainsOnlyTransportGate(t *testing.T) {
 	for _, ackFirst := range []bool{false, true} {
 		t.Run(fmt.Sprint(ackFirst), func(t *testing.T) {
-			h := Live{Thread: "main", NativeWork: "work", Waiting: "wait"}
+			h := Live{Thread: "main"}
 			h.Shell.Begin("")
 			h.Started("combined")
 			if ackFirst {

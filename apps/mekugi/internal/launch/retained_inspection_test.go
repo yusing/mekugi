@@ -14,8 +14,8 @@ func TestThreadInspectionWithoutRuntime(t *testing.T) {
 		name, reply, want string
 		rejected          bool
 	}{
-		{name: "retained", reply: `{"agent":{"threadId":"retained","rootThreadId":"main","loaded":false,"model":"retained","reasoningEffort":"high","serviceTier":"priority","metrics":{"contextTokens":123,"contextWindow":1000,"completedCompactions":1}}}`, want: `{"model":"retained","reasoning_effort":"high","service_tier":"priority","context_tokens":123,"context_window":1000,"compactions":1}`},
-		{name: "unavailable", reply: `{"agent":{"threadId":"retained","rootThreadId":"main","loaded":false,"metrics":{}}}`, want: `{"model":null,"reasoning_effort":null,"service_tier":null,"context_tokens":null,"context_window":null,"compactions":null}`},
+		{name: "retained", reply: `{"thread":{"id":"retained","model":"retained","reasoningEffort":"high","serviceTier":"priority","contextTokens":123,"contextWindow":1000,"completedCompactions":1}}`, want: `{"model":"retained","reasoning_effort":"high","service_tier":"priority","context_tokens":123,"context_window":1000,"compactions":1}`},
+		{name: "unavailable", reply: `{"thread":{"id":"unavailable"}}`, want: `{"model":null,"reasoning_effort":null,"service_tier":null,"context_tokens":null,"context_window":null,"compactions":null}`},
 		{name: "foreign", rejected: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -24,14 +24,14 @@ func TestThreadInspectionWithoutRuntime(t *testing.T) {
 			var err error
 			go func() {
 				defer close(done)
-				details, failure := u.Requests.ObserveAgent(t.Context(), tc.name)
+				details, failure := u.Requests.ReadThreadDetails(t.Context(), tc.name)
 				err = failure
 				if err == nil {
 					got, err = json.Marshal(&details)
 				}
 			}()
 			u.Requests.DispatchMeasurement(<-u.Requests.Inspections())
-			request := appServerOneRequest(t, u.Host.Input.(*appServerTestInput), "agent/observe", "")
+			request := appServerOneRequest(t, u.Host.Input.(*appServerTestInput), "thread/inspect", "")
 			response := appserver.Message{ID: []byte(fmt.Sprint(request.ID)), Result: []byte(tc.reply)}
 			if tc.rejected {
 				response.Error = &appserver.Error{Message: "not admitted"}

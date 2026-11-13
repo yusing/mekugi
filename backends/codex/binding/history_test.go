@@ -10,6 +10,7 @@ import (
 func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 	raw := []byte(`{"thread":{
 		"name":"Saved session","id":"child","parentThreadId":"parent",
+ "model":"child-model","reasoningEffort":"high","serviceTier":"priority","contextTokens":0,"contextWindow":200000,"completedCompactions":17,"agentStatus":{"completed":null},
 		"agentNickname":"Reader","agentRole":"worker","cwd":"/workspace","path":"/rollouts/child.jsonl",
 		"source":{"subAgent":{"parentThreadId":"parent","depth":2}},
 		"createdAt":1700000001,"updatedAt":1700000009,"historyMode":"full",
@@ -34,6 +35,8 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 	change := FileChange{Path: "old", Diff: "@@ -1 +1 @@\n-old\n+new\n"}
 	change.Kind.Type, change.Kind.MovePath, change.Kind.MovePath2 = "update", "snake", "camel"
 	want := ThreadInfo{
+		Model: new("child-model"), ReasoningEffort: new("high"), ServiceTier: new("priority"), ContextTokens: new(uint64(0)), ContextWindow: new(uint64(200000)), CompletedCompactions: new(uint64(17)), AgentStatus: []byte(`{"completed":null}`),
+		Source:      []byte(`{"subAgent":{"parentThreadId":"parent","depth":2}}`),
 		HistoryMode: "full",
 		Name:        "Saved session", ID: "child", ParentThreadID: "parent", AgentNickname: "Reader", AgentRole: "worker",
 		Cwd: "/workspace", Path: "/rollouts/child.jsonl",
@@ -62,6 +65,14 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 	got, err := DecodeHistoryThread(raw, "child")
 	if err != nil {
 		t.Fatal(err)
+	}
+	details := got.Details()
+	if got.AgentState() != "completed" || details.ContextTokens == nil || *details.ContextTokens != 0 || details.Compactions == nil || *details.Compactions != 17 {
+		t.Fatalf("native detail facts lost: %+v", details)
+	}
+	unknown, err := DecodeHistoryThread([]byte(`{"thread":{"id":"unknown"}}`), "unknown")
+	if err != nil || unknown.Details().ContextTokens != nil || unknown.Details().Compactions != nil || unknown.AgentState() != "" {
+		t.Fatalf("unavailable facts invented: %+v %v", unknown, err)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("history fields changed:\ngot: %#v\nwant: %#v", got, want)

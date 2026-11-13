@@ -21,7 +21,6 @@ type CaptureCoverage struct {
 
 type ProgressActor struct {
 	ThreadID string `json:"threadId"`
-	WorkID   string `json:"workId"`
 	TaskName string `json:"taskName"`
 }
 
@@ -45,17 +44,15 @@ type PreparedProgressAgent struct {
 
 type ProgressFreezeRequest struct {
 	RootThreadID       string          `json:"rootThreadId"`
+	OperationID        string          `json:"operationId"`
 	CallerThreadID     string          `json:"callerThreadId"`
-	CallerWorkID       string          `json:"callerWorkId"`
-	WaitID             string          `json:"waitId"`
-	BatchID            string          `json:"batchId"`
 	RecipientContextID string          `json:"recipientContextId"`
 	Selected           []ProgressActor `json:"selected"`
 	Seen               []CaptureCursor `json:"seen"`
 }
 
 type ProgressFreezeResponse struct {
-	SnapshotRef         string               `json:"snapshotRef"`
+	SelectionRef        string               `json:"selectionRef"`
 	PublicationRevision uint64               `json:"publicationRevision"`
 	Agents              []FrozenAgentCapture `json:"agents"`
 	Coverage            CaptureCoverage      `json:"coverage"`
@@ -63,18 +60,17 @@ type ProgressFreezeResponse struct {
 
 type ProgressOutputRequest struct {
 	RootThreadID       string                  `json:"rootThreadId"`
+	OperationID        string                  `json:"operationId"`
 	CallerThreadID     string                  `json:"callerThreadId"`
-	CallerWorkID       string                  `json:"callerWorkId"`
-	WaitID             string                  `json:"waitId"`
-	BatchID            string                  `json:"batchId"`
 	RecipientContextID string                  `json:"recipientContextId"`
-	SnapshotRef        string                  `json:"snapshotRef"`
+	SelectionRef       string                  `json:"selectionRef"`
 	Agents             []PreparedProgressAgent `json:"agents"`
 	Coverage           CaptureCoverage         `json:"coverage"`
 }
 
 type ProgressOutputResponse struct {
-	Text               string            `json:"text"`
-	RecoveryRef        *string           `json:"recoveryRef"`
+	Text        string  `json:"text"`
+	RecoveryRef *string `json:"recoveryRef"`
+	// Candidates only. Native delivery, not output preparation, accepts a receipt.
 	DeliveredIntervals []CaptureInterval `json:"deliveredIntervals"`
 }

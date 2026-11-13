@@ -25,8 +25,8 @@ func nativeProgressTestPreparer(t *testing.T) (*Preparer, appserver.ProgressFree
 			t.Fatal(err)
 		}
 	}
-	return p, appserver.ProgressFreezeRequest{RootThreadID: "root", CallerThreadID: "root", CallerWorkID: "root-work", WaitID: "wait", BatchID: "batch", RecipientContextID: "context",
-		Selected: []appserver.ProgressActor{{ThreadID: "worker", WorkID: "child-work", TaskName: "/root/worker"}, {ThreadID: "quiet", WorkID: "quiet-work", TaskName: "/root/quiet"}}}
+	return p, appserver.ProgressFreezeRequest{RootThreadID: "root", CallerThreadID: "root", OperationID: "request", RecipientContextID: "context",
+		Selected: []appserver.ProgressActor{{ThreadID: "worker", TaskName: "/root/worker"}, {ThreadID: "quiet", TaskName: "/root/quiet"}}}
 }
 
 func TestNativeProgressFreezesExactIntervalsBeforeSummaries(t *testing.T) {
@@ -43,7 +43,7 @@ func TestNativeProgressFreezesExactIntervalsBeforeSummaries(t *testing.T) {
 		return view
 	}
 	frozen, err := p.FreezeNativeProgress(t.Context(), input)
-	if err != nil || frozen.SnapshotRef == "" || frozen.PublicationRevision != 7 || len(frozen.Agents) != 1 || len(frozen.Agents[0].Intervals) != 1 || borrows != 1 {
+	if err != nil || frozen.SelectionRef == "" || frozen.PublicationRevision != 7 || len(frozen.Agents) != 1 || len(frozen.Agents[0].Intervals) != 1 || borrows != 1 {
 		t.Fatalf("freeze=%+v err=%v borrows=%d", frozen, err, borrows)
 	}
 	interval := frozen.Agents[0].Intervals[0]
@@ -61,8 +61,8 @@ func TestNativeProgressFreezesExactIntervalsBeforeSummaries(t *testing.T) {
 	if err != nil || len(next.Agents) != 1 || len(next.Agents[0].Intervals) != 2 || next.Agents[0].Intervals[0].RecordOrder != 1 || next.Agents[0].Intervals[1].FirstChunk != 2 || next.Agents[0].Intervals[1].LastChunk != 2 {
 		t.Fatalf("late/extended intervals lost: %+v err=%v", next, err)
 	}
-	output := appserver.ProgressOutputRequest{RootThreadID: "root", CallerThreadID: "root", CallerWorkID: input.CallerWorkID, WaitID: input.WaitID, BatchID: input.BatchID,
-		RecipientContextID: input.RecipientContextID, SnapshotRef: frozen.SnapshotRef, Coverage: frozen.Coverage,
+	output := appserver.ProgressOutputRequest{RootThreadID: "root", CallerThreadID: "root", OperationID: input.OperationID,
+		RecipientContextID: input.RecipientContextID, SelectionRef: frozen.SelectionRef, Coverage: frozen.Coverage,
 		Agents: []appserver.PreparedProgressAgent{{Actor: frozen.Agents[0].Actor, Intervals: frozen.Agents[0].Intervals, Summary: appserver.SummaryResult{Status: "available", Text: "Changed scratch capture; validation has not run."}}}}
 	prepared, err := p.PrepareNativeProgressOutput(t.Context(), output)
 	if err != nil || prepared.RecoveryRef != nil || len(prepared.DeliveredIntervals) != 1 || !sameCaptureInterval(prepared.DeliveredIntervals[0], interval) || strings.Contains(prepared.Text, "amber1") || borrows != 2 {
@@ -73,6 +73,11 @@ func TestNativeProgressFreezesExactIntervalsBeforeSummaries(t *testing.T) {
 		t.Fatal("later intervals were accepted into an earlier frozen batch")
 	}
 	output.Agents[0].Intervals = frozen.Agents[0].Intervals
+	output.OperationID = "another-request"
+	if _, err := p.PrepareNativeProgressOutput(t.Context(), output); err == nil {
+		t.Fatal("another request reused the frozen selection")
+	}
+	output.OperationID = input.OperationID
 	output.RecipientContextID = "replacement"
 	if _, err := p.PrepareNativeProgressOutput(t.Context(), output); err == nil {
 		t.Fatal("old progress batch projected into a replacement context")
@@ -80,7 +85,7 @@ func TestNativeProgressFreezesExactIntervalsBeforeSummaries(t *testing.T) {
 	input.Seen = append(input.Seen[:0], appserver.CaptureCursor{Key: next.Agents[0].Intervals[0].Key, ThroughChunk: 1}, appserver.CaptureCursor{Key: interval.Key, ThroughChunk: 2})
 	p.Retained.Writes = new(persistence.Counter)
 	unchanged, err := p.FreezeNativeProgress(t.Context(), input)
-	if err != nil || len(unchanged.Agents) != 0 || unchanged.SnapshotRef != "" || p.Retained.Writes.Snapshot().Bytes != 0 {
+	if err != nil || len(unchanged.Agents) != 0 || unchanged.SelectionRef != "" || p.Retained.Writes.Snapshot().Bytes != 0 {
 		t.Fatalf("unchanged interval created summary work: %+v err=%v", unchanged, err)
 	}
 }
@@ -97,8 +102,8 @@ func TestNativeProgressBoundingRetainsExactOutputWithoutAcknowledgingRecovery(t 
 		t.Fatalf("freeze=%+v err=%v", frozen, err)
 	}
 	summary := strings.Repeat("已改動 captures; validation not run. ", 600)
-	request := appserver.ProgressOutputRequest{RootThreadID: input.RootThreadID, CallerThreadID: input.CallerThreadID, CallerWorkID: input.CallerWorkID, WaitID: input.WaitID,
-		BatchID: input.BatchID, RecipientContextID: input.RecipientContextID, SnapshotRef: frozen.SnapshotRef, Coverage: frozen.Coverage,
+	request := appserver.ProgressOutputRequest{RootThreadID: input.RootThreadID, CallerThreadID: input.CallerThreadID, OperationID: input.OperationID,
+		RecipientContextID: input.RecipientContextID, SelectionRef: frozen.SelectionRef, Coverage: frozen.Coverage,
 		Agents: []appserver.PreparedProgressAgent{{Actor: frozen.Agents[0].Actor, Intervals: frozen.Agents[0].Intervals, Summary: appserver.SummaryResult{Status: "available", Text: summary}}}}
 	bounded, err := p.PrepareNativeProgressOutput(t.Context(), request)
 	if err != nil || bounded.RecoveryRef == nil || len(bounded.Text) > nativeProgressBytes || len(bounded.DeliveredIntervals) != 0 {
@@ -144,13 +149,45 @@ func TestNativeProgressDiagnosticOnlyRetainsExplicitCoverage(t *testing.T) {
 		return &presentation.ReviewView{Coverage: "partial", Failure: "Capture hydration is incomplete"}
 	}
 	frozen, err := p.FreezeNativeProgress(t.Context(), input)
-	if err != nil || frozen.SnapshotRef == "" || len(frozen.Agents) != 0 || frozen.Coverage.Status != "partial" {
+	if err != nil || frozen.SelectionRef == "" || len(frozen.Agents) != 0 || frozen.Coverage.Status != "partial" {
 		t.Fatalf("coverage failure became unchanged progress: %+v err=%v", frozen, err)
 	}
-	request := appserver.ProgressOutputRequest{RootThreadID: input.RootThreadID, CallerThreadID: input.CallerThreadID, CallerWorkID: input.CallerWorkID,
-		WaitID: input.WaitID, BatchID: input.BatchID, RecipientContextID: input.RecipientContextID, SnapshotRef: frozen.SnapshotRef, Coverage: frozen.Coverage}
+	request := appserver.ProgressOutputRequest{RootThreadID: input.RootThreadID, CallerThreadID: input.CallerThreadID, OperationID: input.OperationID,
+		RecipientContextID: input.RecipientContextID, SelectionRef: frozen.SelectionRef, Coverage: frozen.Coverage}
 	output, err := p.PrepareNativeProgressOutput(t.Context(), request)
 	if err != nil || len(output.DeliveredIntervals) != 0 || !strings.Contains(output.Text, "Capture hydration is incomplete") {
 		t.Fatalf("diagnostic output lost coverage or acknowledged nonexistent captures: %+v err=%v", output, err)
+	}
+}
+
+func TestNativeProgressRetainedVersionOneUsesOnlySelectionAndRecipientContext(t *testing.T) {
+	p, input := nativeProgressTestPreparer(t)
+	_, retained, err := p.nativeCaptureScope(input.RootThreadID, input.CallerThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interval := appserver.CaptureInterval{Key: "capture-key", ChangeID: "amber1", RecordOrder: 7, FirstChunk: 1, LastChunk: 2}
+	legacy := map[string]any{
+		"Version": 1, "Root": input.RootThreadID, "Caller": input.CallerThreadID,
+		"Work": "retired-work", "Wait": "retired-wait", "Batch": "retired-batch", "Context": input.RecipientContextID,
+		"Frozen": map[string]any{"snapshotRef": "", "publicationRevision": 9, "coverage": appserver.CaptureCoverage{Status: "complete"},
+			"agents": []map[string]any{{"actor": map[string]any{"threadId": "worker", "taskName": "/root/worker", "workId": "retired-worker-work"},
+				"intervals": []appserver.CaptureInterval{interval}}}},
+	}
+	ref, err := publishNativeResource(t.Context(), retained, &legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := appserver.ProgressOutputRequest{RootThreadID: input.RootThreadID, CallerThreadID: input.CallerThreadID,
+		OperationID: "current-call", RecipientContextID: input.RecipientContextID, SelectionRef: ref, Coverage: appserver.CaptureCoverage{Status: "complete"},
+		Agents: []appserver.PreparedProgressAgent{{Actor: appserver.ProgressActor{ThreadID: "worker", TaskName: "/root/worker"},
+			Intervals: []appserver.CaptureInterval{interval}, Summary: appserver.SummaryResult{Status: "available", Text: "Retained capture selection."}}}}
+	result, err := p.PrepareNativeProgressOutput(t.Context(), request)
+	if err != nil || len(result.DeliveredIntervals) != 1 || !sameCaptureInterval(result.DeliveredIntervals[0], interval) {
+		t.Fatalf("historical selection required a coordinator: %+v, %v", result, err)
+	}
+	request.RecipientContextID = "replacement"
+	if _, err := p.PrepareNativeProgressOutput(t.Context(), request); err == nil {
+		t.Fatal("historical selection bypassed recipient context binding")
 	}
 }

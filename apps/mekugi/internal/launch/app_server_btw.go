@@ -89,7 +89,7 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 		setNotice(&attached.feedback, presentationTime(clock), "Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
-	if (*owner) != nil && ((*owner).Starting || attached.sideInputs[*owner] || (*owner).Busy && (*owner).Waiting == "" && (command || (*owner).Turn == "")) {
+	if (*owner) != nil && ((*owner).Starting || attached.sideInputs[*owner] || (*owner).Busy && (command || (*owner).Turn == "")) {
 		setNotice(&attached.feedback, presentationTime(clock), "Side answer still running · wait for it or Esc to close", false)
 		return nil
 	}
@@ -128,13 +128,7 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 	pending.Origin = attached.view
 	pending.Delivery = attached.effects.input()
 	pending.MessageBoundary = messageBoundary
-	if b.Waiting != "" {
-		if attached.sideInputs == nil {
-			attached.sideInputs = make(map[*sessioncontrol.Side]bool)
-		}
-		attached.sideInputs[b] = true
-		b.Begin(question, pending)
-	} else if b.Busy || len(b.Drafts.Unsent) > 0 {
+	if b.Busy || len(b.Drafts.Unsent) > 0 {
 		b.Drafts.Unsent = append(b.Drafts.Unsent, pending)
 	} else {
 		b.Begin(question, pending)
@@ -161,16 +155,8 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 	}
 	admission := attached.sideInputs[b]
 	if b != nil && !b.LowReasoning && !b.Closed && !b.Unloaded() && !b.Starting {
-		for len(b.Drafts.Unsent) > 0 && (b.Waiting != "" || b.Turn != "" || b.Pending.Text == "") {
+		for len(b.Drafts.Unsent) > 0 && (b.Turn != "" || b.Pending.Text == "") {
 			next := 0
-			if b.Waiting != "" {
-				next = slices.IndexFunc(b.Drafts.Unsent, func(input conversationmodel.Input) bool {
-					return input.Question != nil && input.Question.Thread != b.Thread
-				})
-				if next < 0 {
-					break
-				}
-			}
 			input := b.Drafts.Unsent[next]
 			thread, turn := b.Thread, b.Turn
 			if input.Question != nil && input.Question.Thread != b.Thread {
@@ -188,7 +174,7 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 				break
 			}
 			if observations.AwaitingMessage(attached.cwd, thread, input.MessageBoundary) {
-				if input.Question != nil && input.Question.Thread != b.Thread && b.Waiting == "" && b.Drafts.AdvancePrompt() {
+				if input.Question != nil && input.Question.Thread != b.Thread && b.Drafts.AdvancePrompt() {
 					continue
 				}
 				return nil
@@ -197,7 +183,7 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 				return nil
 			}
 			if input.Question != nil && observations != nil && observations.EmittingToolInput(attached.cwd, thread) {
-				if b.Waiting == "" && b.Drafts.AdvancePrompt() {
+				if b.Drafts.AdvancePrompt() {
 					continue
 				}
 				return nil

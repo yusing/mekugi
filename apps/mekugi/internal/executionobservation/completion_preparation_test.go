@@ -33,7 +33,7 @@ func TestNativeFinalCaptureUsesRecipientStorageWithoutGoCoordination(t *testing.
 	p := testProxyWithStore(f.store)
 	reader := &completionReads{Service: p.Changes}
 	p.Changes = reader
-	input := appserver.FinalCaptureRequest{RootThreadID: f.thread, ThreadID: "child", WorkID: "work", RecipientThreadID: f.thread, RecipientCwd: &f.workspace, Sources: []string{"mchanges:" + id}}
+	input := appserver.FinalCaptureRequest{RootThreadID: f.thread, ThreadID: "child", OperationID: "work", RecipientThreadID: f.thread, RecipientCwd: &f.workspace, Sources: []string{"mchanges:" + id}}
 	body, err := p.PrepareNativeFinalCapture(t.Context(), input)
 	if err != nil || body == nil || body.ResourceRef == "" || !strings.Contains(body.FullText, "+after") || strings.Contains(body.FullText, "private.txt") || reader.reads.Load() != 1 {
 		t.Fatalf("native capture = %v, %v, reads %d", body, err, reader.reads.Load())

@@ -56,9 +56,8 @@ func publishPresentation(attached *attachedPresentation, control *sessioncontrol
 // touching renderer geometry or acknowledging terminal delivery.
 func publishSessionView(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, draft string, settings preferences.Applied, tiers *inferencegateway.Tiers, title, backend string, restoring bool, side *sessioncontrol.Side, clientEditors bool) sessionpresentation.View {
 	m := attached.presentation
-	// Provisional children are observational. A pending wake of admitted work
-	// closes host submission, not the user's local draft.
-	m.RestrictChildInput(control.NativeInputPending && control.NativeWork == "")
+	// Native capability controls child input independently of displayed activity.
+	m.RestrictChildInput(control.NativeInputPending)
 	if side != nil {
 		m.SetSide(sessionpresentation.Thread{ID: cmp.Or(side.Thread, "side:"+side.Key), Caller: sessionpresentation.SideCaller})
 	} else {

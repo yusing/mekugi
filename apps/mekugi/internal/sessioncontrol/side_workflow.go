@@ -230,21 +230,6 @@ func (r *Requests[T]) InterruptSide(s *Side) (SideUpdate, error) {
 		s.Status = "Interrupting…"
 		return update, nil
 	}
-	if s.NativeWork != "" {
-		if s.Interruption.Target == s.NativeWork {
-			return update, nil
-		}
-		var owner T
-		id, err := r.Send("agent/interrupt", map[string]any{"rootThreadId": s.Thread, "threadId": s.Thread}, "", owner)
-		if err == nil {
-			s.Interruption.BeforeStart, s.Interruption.Target = false, s.NativeWork
-			s.Status = "Interrupting…"
-			request := r.pending[id]
-			request.Side, request.SideInterrupt = s, s.NativeWork
-			r.pending[id] = request
-		}
-		return update, err
-	}
 	if s.Turn == "" {
 		s.Interruption.Finish()
 		s.Busy, s.ForkPending, s.Status = false, false, "interrupted"
@@ -525,20 +510,6 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 	}
 	switch m.Method {
-	case "turn/checkpointed":
-		var receipt appserver.TurnCheckpointed
-		if err := json.Unmarshal(m.Params, &receipt); err != nil {
-			return update, err
-		}
-		if receipt.WorkID == "" || receipt.TurnID == "" || receipt.Checkpoint.Kind != "completion_pending" {
-			return update, errors.New("side checkpoint omitted its native work disposition")
-		}
-		if s.Turn != "" && s.Turn != receipt.TurnID {
-			return update, nil
-		}
-		s.NativeWork, s.Turn = receipt.WorkID, ""
-		s.Busy, s.Starting, s.Alert = true, false, false
-		s.Status = "Working"
 	case "thread/settings/updated":
 		if s.Closed {
 			return update, nil
@@ -562,13 +533,6 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			update.Notice, update.Flush = "Settings saved for next turn", true
 		}
 	case "turn/started":
-		s.NativeWork = ""
-		if s.Waiting != "" && !s.Closed {
-			s.Waiting, s.Busy, s.Alert, s.Status = "", true, false, "Answering"
-			if s.OneOff {
-				s.Status = "Working"
-			}
-		}
 		s.Turn = p.Turn.ID
 	case "turn/completed":
 		if !s.Complete(p.Turn.ID) {
@@ -613,47 +577,6 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		}
 	}
 	return update, nil
-}
-
-// ObserveNativeWork paints the side root's passive generation. A detached wait
-// stays busy until native reports terminal work, never merely an interrupt ack.
-func (s *Side) ObserveNativeWork(agent appserver.AgentObservation) {
-	if s.Closed || s.Unloaded() || agent.ThreadID != s.Thread || agent.Work == nil {
-		return
-	}
-	work := agent.Work
-	if s.NativeWork != "" && s.NativeWork != work.WorkID {
-		return
-	}
-	wasActive := s.Busy || s.NativeWork != ""
-	s.NativeWork = work.WorkID
-	switch work.Disposition {
-	case "waiting", "paused":
-		s.Busy, s.Waiting = work.Disposition == "waiting", ""
-		if !s.Busy {
-			s.Status, s.Alert = "Paused", false
-		}
-		if agent.Wait != nil {
-			s.Waiting = agent.Wait.WaitID
-			if s.Busy || agent.Wait.Reason != nil {
-				s.Status, s.Alert = NativeWaitLabel(*agent.Wait), false
-			}
-		}
-	case "running", "pending_start":
-		s.Busy, s.Waiting = true, ""
-		s.Status = "Answering"
-		if s.OneOff {
-			s.Status = "Working"
-		}
-	case "completed", "interrupted", "failed":
-		s.Complete(s.Turn)
-		s.Waiting, s.NativeWork = "", ""
-		if wasActive {
-			s.SideAnswer.Complete(work.Disposition, "")
-		}
-	case "uncertain":
-		s.Busy, s.Waiting, s.Status = false, "", "Paused"
-	}
 }
 
 // ReplySide delivers side input through the same input request ledger.

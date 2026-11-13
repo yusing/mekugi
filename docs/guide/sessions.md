@@ -40,13 +40,10 @@ confirmation is created.
 Manual `/compact`, context-full compaction and agent checkpoints reset Codex
 context without generating a handover summary. Agents may select files, line ranges,
 skills and captured-change IDs through native `functions.new_context`, or recover
-needed facts through ordinary reads after reset. `wait_agent(compact:true)` resets
-before delivering the wait's outcome. Requested resets are not vetoed by a cost estimate.
-
-Compact-and-wait first lets its enclosing execution finish. While that execution
-is running or yielded, manual and automatic resets wait rather than interrupt it.
-The outcome is delivered only after reset and host execution settle; reset failure
-keeps the wait and reports the failure with its eventual outcome.
+needed facts through ordinary reads after reset. Requested resets are not vetoed
+by a cost estimate. `wait_agent` has no reset or reload fields. Use standalone
+`functions.new_context` for checkpoints; same-cell reset-and-wait ordering is not
+established, so a reset acknowledgement is not proof that reset has finished.
 
 The latest reload selection also applies to later manual and automatic resets.
 Omitting `reload` keeps it; `reload:{sources:[]}` clears it. Temporary task-state

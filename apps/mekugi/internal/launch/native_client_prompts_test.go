@@ -565,11 +565,11 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				u, threads, _ := nativeWaitUI(t, nil)
 				if idle {
-					threads.native.agent("child").Work.Disposition = "completed"
+					threads.native.agent("child").AgentStatus = []byte(`{"completed":null}`)
 					nativeTreeFixture(t, threads)
 				}
 				u.notifications = new(nativeNotifications)
-				u.Thread, u.Turn, u.LocalStop, u.Waiting = "child", "", "", ""
+				u.Thread, u.Turn = "child", ""
 				u.startSession("child", u.attached.cwd)
 				if !idle {
 					u.Turn = "child-turn"
@@ -607,7 +607,7 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 					t.Fatalf("child answer payload = %+v", replies)
 				}
 				after := *threads.native.agent("main")
-				if !reflect.DeepEqual(before.Work, after.Work) || !reflect.DeepEqual(before.Wait, after.Wait) {
+				if !reflect.DeepEqual(before, after) {
 					t.Fatalf("child answer changed parent wait: before=%+v after=%+v", before, after)
 				}
 			})

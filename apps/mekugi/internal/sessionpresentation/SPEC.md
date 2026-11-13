@@ -407,7 +407,7 @@ Live tool-input generation replaces generic Working with Activity's identified
 call in the session status and editable composer, including admitted children,
 One-off. Labels refine as arguments arrive and disappear when generation
 ends; they are not restored from history. Retry, compaction, shell, polling,
-logical waits and prompt/read-only overrides retain their status precedence.
+native waits and prompt/read-only overrides retain their status precedence.
 
 Compaction replaces Working with `Compacting context`, then emits
 `Context reset at <tokens> tokens (<percent>%) • <elapsed>` for a summary-free
@@ -427,14 +427,12 @@ Public reasoning stays in Activity rather than replacing composer status. Live
 progress animates; restored/completed progress does not restart. Completion freezes
 elapsed time, using Activity's shared compact duration grammar.
 
-Server-coordinated logical waits update the caller's roster through
-[Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection)
-and keep Main busy and interruptible after the
-host turn stops. The composer shows waiting, elapsed work continues across the
-continuation, and the local stop emits no task-completion notice. Manual compaction
-preserves the logical wait, returning the composer to waiting after its native
-reset and any auxiliary turn settle without marking the roster done. Cold restoration
-shows paused work without restarting its clock or subscription.
+Native wait items identify their selected agents in
+[Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection).
+The pending call keeps its actual host turn busy and interruptible. Native
+turn/status observations drive the composer and roster; presentation does not
+retain a second work/wait lifecycle after turn completion. Historical wait items
+remain readable without restarting subscriptions or execution.
 
 Router errors remain composer feedback, not transcript or provider-response edits.
 Settings progress and successful updates remain ordinary feedback, including when

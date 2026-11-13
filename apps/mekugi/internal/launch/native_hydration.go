@@ -89,7 +89,7 @@ func (r *retainedActivity) readCompaction(retained history.Session, thread, item
 }
 
 func (session *nativeSession) beginNativeHydration(message appserver.Message) (bool, error) {
-	if session.connection == nil || session.nativeAgent == nil || session.nativeAgent.ParentThreadID == nil || message.Method != "" || message.Error != nil {
+	if session.connection == nil || session.nativeAgent == nil || session.nativeAgent.ParentThreadID == "" || message.Method != "" || message.Error != nil {
 		return false, nil
 	}
 	request, ok := session.Client.Requests.Lookup(string(message.ID))

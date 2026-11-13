@@ -63,14 +63,15 @@ func refreshSessionMetrics(p *appServerStatusReport, capture *transportcapture.R
 			c := m.connection
 			var descendants []string
 			if self := c.agent(m.thread); self != nil {
-				m.name = pathdisplay.AgentDisplayName(nativeValue(self.Path))
-				if self.ParentThreadID == nil {
+				m.name = pathdisplay.AgentDisplayName(self.AgentPath())
+				if self.ParentThreadID == "" {
 					m.name = "Main"
 				}
-				if self.Path != nil {
-					for _, agent := range c.families[self.RootThreadID].tree.Agents {
-						if agent.Path != nil && strings.HasPrefix(*agent.Path, *self.Path+"/") {
-							descendants = append(descendants, agent.ThreadID)
+				if self.AgentPath() != "" {
+					root, _ := c.family(m.thread)
+					for _, agent := range c.families[root].threads {
+						if agent.AgentPath() != "" && strings.HasPrefix(agent.AgentPath(), self.AgentPath()+"/") {
+							descendants = append(descendants, agent.ID)
 						}
 					}
 				}

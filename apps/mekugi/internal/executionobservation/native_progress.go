@@ -2,6 +2,7 @@ package executionobservation
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,9 +15,9 @@ import (
 const nativeProgressBytes = 12 << 10
 
 type nativeProgressResource struct {
-	Version                                  int
-	Root, Caller, Work, Wait, Batch, Context string
-	Frozen                                   appserver.ProgressFreezeResponse
+	Version                          int
+	Root, Caller, Operation, Context string
+	Frozen                           appserver.ProgressFreezeResponse
 }
 
 // FreezeNativeProgress borrows one immutable, unfiltered publication for the
@@ -27,8 +28,8 @@ func (p *Preparer) FreezeNativeProgress(ctx context.Context, input appserver.Pro
 	if err != nil {
 		return result, err
 	}
-	if input.CallerWorkID == "" || input.WaitID == "" || input.BatchID == "" || input.RecipientContextID == "" {
-		return result, errors.New("native progress has incomplete batch identity")
+	if input.OperationID == "" || input.RecipientContextID == "" {
+		return result, errors.New("native progress has incomplete request identity")
 	}
 	seen, err := nativeCaptureCursors(input.Seen)
 	if err != nil {
@@ -38,7 +39,7 @@ func (p *Preparer) FreezeNativeProgress(ctx context.Context, input appserver.Pro
 	actors := make(map[string]appserver.ProgressActor, len(input.Selected))
 	threads := make(map[string]bool, len(input.Selected))
 	for _, actor := range input.Selected {
-		if actor.WorkID == "" || (actor.TaskName != "/root" && !strings.HasPrefix(actor.TaskName, "/root/")) || callers[actor.TaskName] || threads[actor.ThreadID] {
+		if (actor.TaskName != "/root" && !strings.HasPrefix(actor.TaskName, "/root/")) || callers[actor.TaskName] || threads[actor.ThreadID] {
 			return result, errors.New("native progress requires unique admitted actors and canonical capture caller names")
 		}
 		scope, err := reader.Scope.Store.ReadAdmittedScope(actor.ThreadID)
@@ -88,9 +89,9 @@ func (p *Preparer) FreezeNativeProgress(ctx context.Context, input appserver.Pro
 	if len(result.Agents) == 0 && result.Coverage.Status == "complete" && len(result.Coverage.Diagnostics) == 0 {
 		return result, nil
 	}
-	resource := nativeProgressResource{Version: 1, Root: input.RootThreadID, Caller: input.CallerThreadID, Work: input.CallerWorkID,
-		Wait: input.WaitID, Batch: input.BatchID, Context: input.RecipientContextID, Frozen: result}
-	result.SnapshotRef, err = publishNativeResource(ctx, retained, &resource)
+	resource := nativeProgressResource{Version: 2, Root: input.RootThreadID, Caller: input.CallerThreadID, Operation: input.OperationID,
+		Context: input.RecipientContextID, Frozen: result}
+	result.SelectionRef, err = publishNativeResource(ctx, retained, &resource)
 	return result, err
 }
 
@@ -107,12 +108,47 @@ func (p *Preparer) PrepareNativeProgressOutput(ctx context.Context, input appser
 	if err != nil {
 		return result, err
 	}
-	var resource nativeProgressResource
-	if err := readNativeResource(retained, input.SnapshotRef, &resource); err != nil {
+	data, version, err := readNativeResource(retained, input.SelectionRef)
+	if err != nil {
 		return result, err
 	}
-	if resource.Version != 1 || resource.Root != input.RootThreadID || resource.Caller != input.CallerThreadID || resource.Work != input.CallerWorkID ||
-		resource.Wait != input.WaitID || resource.Batch != input.BatchID || resource.Context != input.RecipientContextID {
+	var resource nativeProgressResource
+	switch version {
+	case 1:
+		var legacy struct {
+			Version                                  int
+			Root, Caller, Work, Wait, Batch, Context string
+			Frozen                                   struct {
+				SnapshotRef         string                    `json:"snapshotRef"`
+				PublicationRevision uint64                    `json:"publicationRevision"`
+				Coverage            appserver.CaptureCoverage `json:"coverage"`
+				Agents              []struct {
+					Actor struct {
+						ThreadID string `json:"threadId"`
+						WorkID   string `json:"workId"`
+						TaskName string `json:"taskName"`
+					} `json:"actor"`
+					Intervals []appserver.CaptureInterval `json:"intervals"`
+				} `json:"agents"`
+			}
+		}
+		if err := json.Unmarshal(data, &legacy, json.RejectUnknownMembers(true)); err != nil {
+			return result, err
+		}
+		resource = nativeProgressResource{Version: 2, Root: legacy.Root, Caller: legacy.Caller, Operation: input.OperationID, Context: legacy.Context,
+			Frozen: appserver.ProgressFreezeResponse{PublicationRevision: legacy.Frozen.PublicationRevision, Coverage: legacy.Frozen.Coverage}}
+		for _, agent := range legacy.Frozen.Agents {
+			resource.Frozen.Agents = append(resource.Frozen.Agents, appserver.FrozenAgentCapture{
+				Actor: appserver.ProgressActor{ThreadID: agent.Actor.ThreadID, TaskName: agent.Actor.TaskName}, Intervals: agent.Intervals})
+		}
+	case 2:
+		if err := json.Unmarshal(data, &resource, json.RejectUnknownMembers(true)); err != nil {
+			return result, err
+		}
+	default:
+		return result, errors.New("unsupported progress capture resource version")
+	}
+	if resource.Version != 2 || resource.Root != input.RootThreadID || resource.Caller != input.CallerThreadID || resource.Operation != input.OperationID || resource.Context != input.RecipientContextID {
 		return result, errors.New("progress capture resource identity mismatch")
 	}
 	if input.Coverage.Status != resource.Frozen.Coverage.Status || !slices.Equal(input.Coverage.Diagnostics, resource.Frozen.Coverage.Diagnostics) || len(input.Agents) != len(resource.Frozen.Agents) {

@@ -11,11 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -41,7 +44,7 @@ type changeCapture struct {
 // Non-nil paths keep only review files connected to them through moves; other
 // diffs are dropped while reading, so only what is kept is held and bounded.
 // It runs under store.lock and never reads the workspace.
-func (s *store) loadChangeCaptures(ctx context.Context, workspace string, index changeIndex, ids, paths []string, unavailable changeReadFailures, yielded map[string]int) ([]changeCapture, error) {
+func (s *store) loadChangeCaptures(ctx context.Context, workspace string, index changeIndex, ids, paths []string, unavailable changeReadFailures, yielded map[string]int, ranges map[string]changes.FrozenCapture) ([]changeCapture, error) {
 	if ids == nil {
 		ids = slices.Sorted(func(yield func(string) bool) {
 			for id := range index.Changes {
@@ -85,15 +88,37 @@ func (s *store) loadChangeCaptures(ctx context.Context, workspace string, index 
 		if err != nil {
 			return capturedRecord{}, err
 		}
-		if len(yielded) != 0 && record.CaptureOrder != 0 {
-			skip := yielded[changes.CaptureKey(index.workspaceFor(id), record.History.Caller, id, record.CaptureOrder)]
-			reviews := record.History.ReviewFiles
-			for len(reviews) > 0 && skip > 0 {
-				file := reviews[0].ReviewFile
-				if changes.AuthoredReview(file) || changes.GitDiagnosticReview(file) {
-					skip--
+		var selected changes.FrozenCapture
+		var bounded bool
+		if ranges != nil {
+			selected, bounded = ranges[legacycall.Name(index.workspaceFor(id), call, false)]
+		}
+		if bounded && (record.CaptureOrder != selected.Order || record.History.Caller != selected.Caller) {
+			return capturedRecord{}, fmt.Errorf("change %s has an inconsistent frozen record", id)
+		}
+		if bounded || len(yielded) != 0 {
+			key := changes.CaptureKey(index.workspaceFor(id), record.History.Caller, id, record.CaptureOrder)
+			var reviews []evidence.Review
+			var chunk uint64
+			for position, review := range record.History.ReviewFiles {
+				if !changes.AuthoredReview(review.ReviewFile) && !changes.GitDiagnosticReview(review.ReviewFile) {
+					continue
 				}
-				reviews = reviews[1:]
+				chunk++
+				if bounded && (chunk < selected.FirstChunk || chunk > selected.LastChunk) {
+					continue
+				}
+				captureKey, captureChunk := key, chunk
+				if record.CaptureOrder == 0 {
+					legacy := index.workspaceFor(id) + "\x00" + call + "/" + strconv.Itoa(position)
+					captureKey, captureChunk = index.workspaceFor(id)+"\x00"+record.History.Caller+"\x00"+id+"\x00"+legacy, 1
+				}
+				if uint64(max(yielded[captureKey], 0)) < captureChunk {
+					reviews = append(reviews, review)
+				}
+			}
+			if bounded && chunk < selected.LastChunk {
+				return capturedRecord{}, fmt.Errorf("change %s has missing frozen chunks", id)
 			}
 			record.History.ReviewFiles = reviews
 		}
@@ -272,7 +297,7 @@ func (s *store) selectedChangeCaptures(ctx context.Context, options changeReadOp
 			return nil, fmt.Errorf("change %s is pending (no completed result)", id)
 		}
 	}
-	return s.loadChangeCaptures(ctx, options.workspace, index, options.ids, nil, nil, nil)
+	return s.loadChangeCaptures(ctx, options.workspace, index, options.ids, nil, nil, nil, nil)
 }
 
 // changeMutationPaths names every path mchanges revert or apply may write, so
@@ -661,7 +686,7 @@ func (s *store) mutateChanges(ctx context.Context, options changeReadOptions) (s
 		}
 		// History only explains the report; an unreadable record degrades the
 		// stat rather than blocking the requested mutation.
-		history, historyErr = s.loadChangeCaptures(ctx, options.workspace, index, nil, slices.DeleteFunc(paths, func(path string) bool { return path == "" }), nil, nil)
+		history, historyErr = s.loadChangeCaptures(ctx, options.workspace, index, nil, slices.DeleteFunc(paths, func(path string) bool { return path == "" }), nil, nil, nil)
 		return ctx.Err()
 	})
 	if err != nil {

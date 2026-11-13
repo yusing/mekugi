@@ -1,8 +1,0 @@
-↔ Waiting for worker (timeout 1s)
-
-
-
-
-╭─ ◐ Waiting for agents 10s ───────────────────────────────────────────────────╮
-│ ❯                                                                            │
-╰──────────────────────────────────────── /workspace • test-model (high) • 0% ─╯

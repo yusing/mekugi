@@ -17,24 +17,3 @@ func publishNativeCoordination(attached *attachedPresentation, thread, turn stri
 	}
 	sessionpresentation.ApplyActivity(attached.source, attached.childSource, entries, nil)
 }
-
-// Native resumes model work inside the shell turn after durable shell output or
-// a claimed wait delivery. This only updates the existing physical-turn gate.
-func (session *nativeSession) observeNativeShellContinuation(turn string, facts *appserver.CoordinationProjection) {
-	if facts == nil || facts.Wait == nil {
-		return
-	}
-	wait := facts.Wait
-	if wait.CallerThreadID != session.Client.Thread || wait.CallerWorkID == "" || wait.CallerWorkID != session.Client.NativeWork {
-		return
-	}
-	if wait.Result.Kind == "cancelled" {
-		if wait.Result.Cause == nil || wait.Result.Cause.Kind != "shellOutput" {
-			return
-		}
-		turn = wait.Result.Cause.TurnID
-	} else if wait.Result.Kind != "released" {
-		return
-	}
-	session.Client.Shell.ModelTurn(turn)
-}

@@ -157,7 +157,7 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 		}
 		paths = append(paths, filepath.Clean(path))
 	}
-	captures, err := s.loadChangeCaptures(ctx, options.workspace, index, options.ids, paths, options.unavailable, options.yielded)
+	captures, err := s.loadChangeCaptures(ctx, options.workspace, index, options.ids, paths, options.unavailable, options.yielded, nil)
 	if err != nil {
 		return "", err
 	}

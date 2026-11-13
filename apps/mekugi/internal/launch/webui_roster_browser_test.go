@@ -290,7 +290,8 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 	if err := m.Display(sessionpresentation.DisplayIntent{Version: m.View().Version, Thread: m.View().Main}); err != nil {
 		t.Fatal(err)
 	}
-	u.Turn, u.Waiting, u.WaitLabel = "paused-turn", "paused-wait", "Usage limit · paused"
+	u.Turn = "paused-turn"
+	m.Status.Set("Usage limit · paused", false)
 	view := m.Publish(sessionpresentation.MainInputs{Control: &u.Live, Conversation: u.attached.conversation,
 		Info: sessionpresentation.MainInfo{Workspace: machine.workdir}, Feedback: &u.attached.feedback, Paused: true}, sessionpresentation.Caption{})
 	if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Status: view.Status.Session, Input: &sessionapi.Input{Stoppable: view.InterruptAvailable}}); err != nil {

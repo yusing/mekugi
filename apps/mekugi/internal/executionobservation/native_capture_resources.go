@@ -2,6 +2,7 @@ package executionobservation
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -17,13 +18,14 @@ import (
 type nativeFrozenSource struct {
 	Command string
 	Capture *changes.FrozenRead
+	Legacy  *changes.LegacyFrozenRead `json:"-"`
 	Error   string
 }
 
 type nativeFinalResource struct {
-	Version                                            int
-	Root, Thread, Work, Recipient, Workspace, FullText string
-	Sources                                            []nativeFrozenSource
+	Version                                       int
+	Root, Thread, Operation, Recipient, Workspace string
+	Sources                                       []nativeFrozenSource
 }
 
 // nativeCaptureScope borrows existing resource owners, never a logical tree.
@@ -53,15 +55,34 @@ func publishNativeResource(ctx context.Context, retained *recovery.Session, reso
 	return retained.Publish(ctx, command.OmittedOutput{Stdout: string(data)}, 0)
 }
 
-func readNativeResource(retained *recovery.Session, ref string, resource any) error {
+// readNativeResource borrows retained bytes once. Version-specific readers keep
+// historical formats separate from the metadata-only writer.
+func readNativeResource(retained *recovery.Session, ref string) (jsontext.Value, int, error) {
 	output, err := retained.Snapshot(ref)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	if output.ExitCode != 0 || output.Stderr != "" {
-		return errors.New("invalid native capture resource")
+		return nil, 0, errors.New("invalid native capture resource")
 	}
-	return json.Unmarshal([]byte(output.Stdout), resource, json.RejectUnknownMembers(true))
+	data := jsontext.Value(output.Stdout)
+	var header struct{ Version int }
+	if err := json.Unmarshal(data, &header); err != nil {
+		return nil, 0, err
+	}
+	return data, header.Version, nil
+}
+
+// Only historical readers use Work/FullText and copied captures. Their former
+// coordinator identity grants no authority; the retained recipient binding does.
+type legacyNativeFinalResource struct {
+	Version                                            int
+	Root, Thread, Work, Recipient, Workspace, FullText string
+	Sources                                            []struct {
+		Command string
+		Capture *changes.LegacyFrozenRead
+		Error   string
+	}
 }
 
 func nativeCaptureCursors(cursors []appserver.CaptureCursor) (map[string]uint64, error) {
@@ -75,8 +96,8 @@ func nativeCaptureCursors(cursors []appserver.CaptureCursor) (map[string]uint64,
 	return seen, nil
 }
 
-// PrepareNativeFinalCapture freezes full capture bytes once. Later projections
-// read only this retained resource, including after a recipient context reset.
+// PrepareNativeFinalCapture freezes exact retained ranges. The resource contains
+// selection metadata only; capture storage retains the evidence dependencies.
 func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserver.FinalCaptureRequest) (*appserver.FrozenFinalCapture, error) {
 	if len(input.Sources) == 0 {
 		return nil, nil
@@ -114,7 +135,7 @@ func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserve
 	if err != nil {
 		return fail(err)
 	}
-	resource := nativeFinalResource{Version: 1, Root: input.RootThreadID, Thread: input.ThreadID, Work: input.WorkID, Recipient: input.RecipientThreadID, Workspace: *input.RecipientCwd}
+	resource := nativeFinalResource{Version: 2, Root: input.RootThreadID, Thread: input.ThreadID, Operation: input.OperationID, Recipient: input.RecipientThreadID, Workspace: *input.RecipientCwd}
 	for i, source := range sources {
 		frozen := nativeFrozenSource{Command: commands[i]}
 		query, err := reader.Service.Parse(source.Changes, resource.Workspace)
@@ -133,7 +154,7 @@ func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserve
 		}
 		resource.Sources = append(resource.Sources, frozen)
 	}
-	resource.FullText, err = p.renderNativeFinal(ctx, resource, nil, retained)
+	fullText, err := p.renderNativeFinal(ctx, reader.Scope, resource, nil, retained)
 	if err != nil {
 		return fail(err)
 	}
@@ -141,39 +162,62 @@ func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserve
 	if err != nil {
 		return fail(err)
 	}
-	return &appserver.FrozenFinalCapture{ResourceRef: ref, FullText: resource.FullText}, nil
+	return &appserver.FrozenFinalCapture{ResourceRef: ref, FullText: fullText}, nil
 }
 
 func (p *Preparer) ProjectNativeFinalCapture(ctx context.Context, input appserver.FinalCaptureProjectRequest) (appserver.FinalCaptureProjectResponse, error) {
 	var result appserver.FinalCaptureProjectResponse
-	_, retained, err := p.nativeCaptureScope(input.RootThreadID, input.RecipientThreadID)
+	reader, retained, err := p.nativeCaptureScope(input.RootThreadID, input.RecipientThreadID)
+	if err != nil {
+		return result, err
+	}
+	data, version, err := readNativeResource(retained, input.ResourceRef)
 	if err != nil {
 		return result, err
 	}
 	var resource nativeFinalResource
-	if err := readNativeResource(retained, input.ResourceRef, &resource); err != nil {
-		return result, err
+	legacyText := ""
+	switch version {
+	case 1:
+		var legacy legacyNativeFinalResource
+		if err := json.Unmarshal(data, &legacy, json.RejectUnknownMembers(true)); err != nil {
+			return result, err
+		}
+		resource = nativeFinalResource{Version: 2, Root: legacy.Root, Thread: legacy.Thread, Operation: input.OperationID, Recipient: legacy.Recipient, Workspace: legacy.Workspace}
+		legacyText = legacy.FullText
+		for _, source := range legacy.Sources {
+			resource.Sources = append(resource.Sources, nativeFrozenSource{Command: source.Command, Legacy: source.Capture, Error: source.Error})
+		}
+	case 2:
+		if err := json.Unmarshal(data, &resource, json.RejectUnknownMembers(true)); err != nil {
+			return result, err
+		}
+	default:
+		return result, errors.New("unsupported final capture resource version")
 	}
-	if resource.Version != 1 || resource.Root != input.RootThreadID || resource.Thread != input.ThreadID || resource.Work != input.WorkID || resource.Recipient != input.RecipientThreadID ||
+	if resource.Version != 2 || resource.Root != input.RootThreadID || resource.Thread != input.ThreadID || resource.Operation != input.OperationID || resource.Recipient != input.RecipientThreadID ||
 		input.RecipientCwd == nil || resource.Workspace != *input.RecipientCwd {
 		return result, errors.New("final capture resource identity mismatch")
 	}
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	if input.RecipientContextID == "" || len(input.Seen) == 0 {
-		result.Text = resource.FullText
-		return result, nil
-	}
 	seen, err := nativeCaptureCursors(input.Seen)
 	if err != nil {
 		return result, err
 	}
-	result.Text, err = p.renderNativeFinal(ctx, resource, seen, retained)
+	if input.RecipientContextID == "" {
+		seen = nil
+	}
+	if len(seen) == 0 && legacyText != "" {
+		result.Text = legacyText
+		return result, nil
+	}
+	result.Text, err = p.renderNativeFinal(ctx, reader.Scope, resource, seen, retained)
 	return result, err
 }
 
-func (p *Preparer) renderNativeFinal(ctx context.Context, resource nativeFinalResource, seen map[string]uint64, retained *recovery.Session) (string, error) {
+func (p *Preparer) renderNativeFinal(ctx context.Context, selected changes.Scope, resource nativeFinalResource, seen map[string]uint64, retained *recovery.Session) (string, error) {
 	var body strings.Builder
 	if len(seen) != 0 {
 		body.WriteString("Captures already reported by yield summaries omitted; explicit mchanges reads retain full diffs.\n")
@@ -182,11 +226,15 @@ func (p *Preparer) renderNativeFinal(ctx context.Context, resource nativeFinalRe
 	for _, source := range resource.Sources {
 		output := compact.CapturedSource{Command: source.Command}
 		var err error
-		if source.Capture != nil {
+		if source.Capture != nil || source.Legacy != nil {
 			if p.Changes == nil {
 				return "", errors.New("completion capture projector is unavailable")
 			}
-			output.Stdout, err = p.Changes.ProjectFrozen(*source.Capture, seen)
+			if source.Legacy != nil {
+				output.Stdout, err = p.Changes.ProjectLegacyFrozen(ctx, *source.Legacy, seen)
+			} else {
+				output.Stdout, err = p.Changes.ProjectFrozen(ctx, selected, *source.Capture, seen)
+			}
 		} else {
 			err = errors.New(source.Error)
 		}

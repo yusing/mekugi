@@ -1,300 +1,289 @@
 # Native agent coordination
 
+## Status
+
+This contract governs the native correction. Runtime validation and release status
+are separate from its requirements. Wait-specific reset composition remains deferred.
+
 ## Required outcomes
 
-Codex owns root and descendant execution and coordination, with one admitted
-tree, work, messages, waits and delivery owner. Mekugi retains one interactive UI and
-the stock JavaScript execution interface for Codex.
+Stock Codex V2 owns execution, membership, scheduling, messages, interruption,
+completion, restoration and delivery. Extend those owners, not the former Go
+coordinator's lifecycles. Do not add another assignment ledger, wait state machine
+or conversation store.
 
-Parents can wait for any or all current descendants. Addressed messages wake either
-mode; queued composer input does not cancel a wait. Compact-and-wait releases an
-outcome only after reset settles. Independent side questions neither replace an
-assignment nor become ordinary input. Active Mekugi sessions can exchange attributed
-messages and side questions and inspect each other's trees without sharing control
-authority. Resume remains product-local.
+Retain one interactive UI and the stock JavaScript execution interface. Stock
+non-wait schemas and names are accepted. Address agents by canonical task path or exact
+thread ID; relative task-name addressing is unsupported. The wait interface changes
+explicitly; parity with the former Go schema is not a goal. Resume is product-local.
+Parents can wait for any or all selected descendant outcomes. Addressed messages
+retain native wake behavior. Progress is opt-in and change-driven; one combined
+yield follows all requested summaries. Side questions leave primary work unchanged.
 
 ## Ownership
 
-The native agent registry owns membership and canonical task paths. Native
-`StateRuntime` transactions retain accepted work, selected waits, deliveries and
-execution receipts. The native scheduler, execution-cell broker and task finalizer
-own execution capacity, pending calls and completion ordering. Conversation reset, fork and rewind
-do not clone live subscriptions or erase logical identity.
+Reuse the native registry, scheduler, delivery, history, auxiliary executor and reset
+owner. Native configuration/admission limits remain authoritative. Renderers,
+connectors and resource callbacks do not mirror those owners.
 
-Mekugi owns capture/output resources, presentation, human controls and authenticated
-active-session routing. Codex children share their invocation's native process and
-connection, with thread-scoped endpoints and one request ledger. Host resource callbacks remain bound to the original connection, cancellable
-and non-replayed. Native requests must make progress while those
-callbacks are outstanding. Subscribing to an agent does not acquire callback ownership.
-Human controls retain the ordinary attached-client policy and validate native tree
-membership.
+Capture storage already owns retained changes. Coordination selects exact ranges,
+not another snapshot, copied diff or journal. Reuse native request identities,
+cancellation and existing recipient-context capture tracking. Local aggregation
+inside a pending operation does not justify a durable coordination lifecycle.
+
+Native observations feed terminal, browser, headless and replay consumers. Resource
+acquisition remains cancellable and independent of a departing renderer.
 
 ## Operations and admission
 
-- `spawn_agent` creates a fresh or full-history child with an assignment,
-  role, optional cwd and selected startup sources. It returns confirmed native
-  identity and task path. Each task segment is nonempty lowercase ASCII letters,
-  digits, underscores or hyphens and is unique under its parent.
-- `followup_task` starts idle work, steers the actual running turn or supersedes an
-  undispatched wait on an admitted non-root target. Its acknowledgement belongs to
-  that operation, not later queued input, and includes current context metrics.
-- `send_message` retains attributed input without starting idle work. An addressed
-  message can satisfy a pending wait. `btw:true` instead requests an independent
-  side answer without primary delivery.
-- `interrupt_agent` interrupts non-root work. Waiting work without a running turn
-  cancels its wait and settles interrupted. A request acknowledgement is not an
-  observed interruption. Human control can also interrupt a root.
-- `list_agents` returns admitted tree, work and delivery state, including retained,
-  paused and uncertain members. `path_prefix` filters canonical paths; `session_id`
-  selects another active session by exact session/thread ID.
-- `inspect_agent` reports applied model, effort, tier, context usage/window and
-  completed compactions for a live or retained target without starting or restoring
-  it. Unavailable observations are null, not inferred defaults or measured zeros.
-- Native `new_context` resets context without a summary and reloads selected sources
-  before continuing unfinished work.
-- `wait_agent` accepts any/all mode, optional timeout and progress interval, and
-  optional compact/reload. Registration snapshots unsettled descendant work and
-  unread outcomes once. A pending acknowledgement carries no content.
+- Keep stock spawn, ordinary message, follow-up and interruption semantics and
+  schemas except for the required additive capabilities below.
+- Use native child preparation and history forking, including effective settings,
+  role precedence, cwd, permissions and provider authority.
+- Extend passive native inspection with supported settings, context/window and
+  completed-compaction observations. Use stock loaded/stored thread lookup and spawn-subtree
+  discovery, not collaboration-registry membership. Fresh and resumed roots are inspectable
+  before any agent operation; inspection leaves stock startup and registration unchanged.
+  Return native thread records, not a separate agent-observation payload. Persist successful
+  compaction counts at completion so observing the count needs no rollout scan.
+  Metadata-only thread reads and roster reads do not load retained history. Explicit inspection
+  may read history for settings and context; requesting turns retains its separate history cost.
+  Do not start or restore work merely to inspect; unavailable measurements remain unavailable.
+- `new_context` owns summary-free reset and source reload.
+- `wait_agent` owns waiting, optional yielding and any/all outcome aggregation.
+  Its target parameters are optional `wait_mode` and `yield_time_ms`. Remove
+  `timeout_ms`, `compact` and `reload` rather than retaining aliases.
 
-Arguments and task labels never grant authority. Native invocations supply it. Same-tree canonical paths,
-unambiguous relative names and exact IDs resolve locally. Only exact active foreign
-IDs are eligible for forwarding; a local operation failure never becomes foreign
-fallback. Invalid identity, settings or permissions reject before admitting work.
-Native admission and provider limits remain authoritative, without a second Go cap.
+Arguments and labels never grant authority. Reuse native identity resolution and
+reject unauthorized operations before their effects.
 
 ### Active-session coordination
 
-Foreign operations are message, side question, list and inspect only. The source
-owner supplies its immutable root/actor/path/turn/call attribution; the destination
-owner authenticates the route and retains delivery before acknowledging it.
-Retries reuse the original identity and payload. Aliases, spawn, follow-up,
-interruption, reset and cold restoration do not cross this boundary. A foreign
-sender or recipient is never enrolled into the local tree.
+Stock Codex already supports cross-session communication through shared local
+message boards and remote HTTP boards. Hosts attach independent runtimes with
+explicit access. Posts, replies, reads and subscriptions do not merge agent trees.
+Local notifications reach connected runtimes through their owning thread manager;
+shared SQLite alone does not route live notifications across processes. Remote
+boards provide their own notification transport.
+
+Reuse those facilities before adding a transport. Board discussion threads are not
+agent-tree inspection, and board messaging is not independent BTW inference. Direct
+foreign message/BTW/list/inspect routing also exists in the current host/native
+integration. Where a supported direct operation still needs that route, adapt it to
+existing destination operations instead of adding another registry, delivery ledger
+or foreign actor tree.
+
+Keep exact foreign identity and authenticated attribution. Foreign access grants
+no spawn, follow-up, interruption, reset or cold-restore authority. A local failure
+does not become a foreign fallback.
+
+Direct send and inspection accept an exact foreign thread ID. The existing
+`list_agents.path_prefix` field also accepts that ID to list its active tree;
+foreign list results use exact IDs, not ambiguous tree-local paths. The original
+source host authenticates the sender, and only the destination's original resource
+connection can deliver the operation. Native destination acquisition freezes message
+sources under recipient authority. Foreign operations never restore an unloaded target.
 
 ### File references in assignments and messages
 
-Spawn assignments, follow-ups, messages and side questions acquire explicit
-[source references](../../modules/agentguidance/SPEC.md#source-reference-syntax)
-under the recipient's workspace and authority before acceptance. Original text and
-attribution remain intact. Successful bodies, reader status and individual failure
-diagnostics freeze with the operation; confirmation, restored delivery and retries
-do not reread paths. Publication failure rejects the operation.
+Retain explicit [source references](../../modules/agentguidance/SPEC.md#source-reference-syntax)
+in assignments, follow-ups, messages and BTW questions. Reuse bounded native
+acquisition under recipient cwd and authority before acceptance. Freeze acquired
+file/skill content with original text and attribution so later edits cannot change
+an assignment. Preserve individual failures and literal escaping; retries do not reread.
 
-Relative roots use the recipient's cwd; nested references resolve beside their
-containing file through depth three. Duplicate roots acquire once. Existing reader
-and total acquisition bounds apply, and host-loaded `AGENTS.md` is excluded.
-Missing or denied sources remain explicit, not empty successful attachments.
-Large bodies use retained resources rather than copies of an entire logical tree.
-Explicit preload and composer attachments keep their separate meanings.
+Share parsing/acquisition with preload/reload. Composer attachments and preload keep
+their separate meanings. Freezing source content is distinct from selecting already
+retained change ranges for progress or final replies; those need no second copy.
 
 ## Prepared children and guidance
 
-Preparation captures the actual invoking native settings, provider, model, effort,
-tier, instructions, cwd, environments, permissions and role restrictions. Config
-files alone are not live authority. Role files and resolved values freeze before
-dispatch; resume does not silently acquire changed role files. Roles can reduce
-capabilities, not replace provider credentials or widen permissions.
+Use the invoking native step's actual settings, environments, cwd, provider,
+permissions and role restrictions. Fix demonstrated inheritance gaps at native
+preparation, not in parallel prepared-agent records or Go-built transcript imports.
 
-Fresh children apply the selected/default role. Full-history children inherit their
-native model and reject explicit model/effort overrides; an explicitly selected role can
-still supply its allowed instructions. Native configured defaults and role precedence
-remain at the native preparation owner. Inherited ultra uses the selected native
-model's ordinary equivalent unless an explicit/default/role effort selects otherwise.
-An applied parent tier takes precedence; native normalization and final-model support
-filtering decide the effective tier.
+Fresh children may acquire `preload:{sources:[...]}` before first inference through
+the shared reload reader. Apply child authority and preserve partial failures and
+native history retention. Full-history children use native inheritance; do not
+replace stock parameter forms merely to match the old Go implementation.
 
-Fresh children accept `preload:{sources:[...]}` only with `fork_turns:"none"`.
-Empty selections are valid. Before first inference, sources are acquired under the
-child's workspace, permissions and approvals. Partial read failures preserve the
-other sources. Acquired context survives resume and inherited history without
-another read, until normal context replacement retires it. Subsequent reload uses
-the thread's retained reset selection.
-
-Native model/role/mode owners assemble effective guidance; Go does not rewrite a
-stock collaboration prompt into a replacement tool interface. Custom role text and
-effective mode guidance retain their authority. Fresh assignments preload complete
-relevant startup guidance and evidence, not policy summaries. The native tool catalog supplies operation descriptions to roots and
-delegates without a discovery inference.
+Keep native model/role/mode guidance assembly. JavaScript exposure must not erase
+role guidance or require a replacement collaboration skill. Remove obsolete Go
+catalog/prompt rewriting when its consumers use the native interface.
 
 ## Full-history children and workspace
 
-A full-history fork preserves the complete authorized calling prefix, including
-active compaction replacements, attributed messages, commentary, reasoning and tool
-items through the invoking execution. Native Codex history/fork facilities produce
-it directly, without a Go-built legacy import or transcript replay. Execution,
-approval and process handles are not inherited.
+Use native forking for the complete authorized calling prefix, including context
+replacements and attributed conversation/tool items. Do not reconstruct a transcript
+or inherit execution, approval or process handles.
 
-Omitted cwd inherits the caller's admitted cwd. Relative cwd resolves there, never
-at the process directory. An existing authorized directory applies to instructions,
-commands, capture, follow-ups and resume without changing the parent workspace or
-granting permissions. Admission establishes shared retained-resource access before
-the child can publish execution evidence.
+Omitted cwd inherits the admitted caller cwd; relative cwd resolves there. A child
+workspace does not change its parent's workspace or expand permissions. Reuse native
+environment preparation for fresh and retained recipients.
 
 ## Logical waits and ordered delivery
 
-Work identity is independent of host turns. Starting new idle work admits a new
-identity; steering, logical checkpoints, auxiliary reset and wake continuation retain
-it. Accepted intent precedes dispatch and exact confirmation follows it. Uncertain
-dispatch is retained for reconciliation, never blindly retried.
+Keep stock V2's pending call, event subscription, timing and interruption handling.
+Replace the finite-return `timeout_ms` control with optional `yield_time_ms`.
+Omission disables timed yields and waits for an ordinary outcome, message or
+interruption. No second deadline, polling scheduler or persisted wait-phase protocol.
 
-A pending wait keeps its original task, turn and tool future. Codex parks the
-JavaScript cell at its native pending frontier. It neither yields to the model, ends a host turn or starts
-inference while waiting. Quiescent execution can release native capacity without
-releasing task ownership. An event resumes the original call with its result, not
-a synthetic provider response or replacement turn.
-
-Registration freezes the selection, not delivery. Failure retires that execution's
-registration without consuming unread events. A result discarded or transformed
-by JavaScript is not delivery; exact inclusion in a confirmed provider attempt
-establishes consumption. Duplicate evidence cannot consume events twice.
-
-One pending wait belongs to each caller. Repeated calls in its exact enclosing
-execution reuse it; a different execution cannot replace it. Descendants admitted
-later do not join its frozen selection. In any mode, one eligible outcome wakes
-the caller. In all mode, every selected work item must settle, including failure
-and interruption, and pending result delivery must finish. An addressed message
-wakes either mode without consuming queued completion events. Already-read history
-does not become awaited work. No selected work or pending message means rejection.
-
-Omitted timeout waits indefinitely. Explicit timeout uses native configured minimum
-and maximum, retains requested/effective duration and starts at registration. An
-elapsed deadline still waits for reset barriers. Explicit human
-input, steering or interruption supersedes undispatched waits. Queued composer input,
-approval questions and their replies do not. A dispatched or uncertain continuation
-retains its reconciliation identity. Confirmed consumption, not injection acknowledgement,
-consumes the exact delivered events.
+Any mode continues on the first eligible selected outcome. All mode accumulates
+selected outcomes before continuing; failure and interruption settle their slots.
+Messages retain wake authority in either mode. Use native identities/consumption
+rules so already-read completions are not selected again. Aggregation adds no
+assignment or delivery states.
 
 ### Reset barriers
 
-Compact-and-wait retains outcomes behind one native reset lifecycle, including when
-an outcome is already ready. Codex resets inline while retaining the original call.
+This correction completes without wait-specific `compact` or `reload` fields.
+Standalone `functions.new_context` and reload remain supported. Special reset/wait
+composition and its ready/pending ordering proof are deferred, not completion gates
+for this correction. The following composition direction applies when that work resumes.
 
-Requested resets have no cost veto or preflight acquisition. Accepted reload selection
-is retained: omission reuses it, explicit empty clears it, and reset failure does not
-roll it back. Sources are acquired after the actual reset, before continuation. Failure preserves wait/events, surfaces a diagnostic and accompanies eventual delivery;
-failure alone starts no inference. Auxiliary manual compaction services a pending
-native call or provider wait without replacing its task, waiting for a child wake,
-finishing work or creating a competing continuation. See
-[context recovery](../../modules/agentguidance/SPEC.md#compaction-context).
+Compose `functions.new_context` and ordinary `wait_agent`, rather than adding
+`compact` or `reload` to wait. Reload belongs to the reset operation. For a
+reset-before-wait checkpoint, settle reset before starting the ordinary wait.
+Resetting an already pending call uses native reset/execution ownership and preserves
+its result for observation in the resulting context.
+
+Ordering remains an implementation acceptance gate. Current `new_context`
+acknowledges a request before reset settles; arbitrary same-cell sequencing is not
+established as equivalent. Do not deliver a result and then silently discard it in
+reset, or treat acknowledgement as completion. Any necessary ordering fix belongs
+to the native reset/execution boundary, not compound-wait machinery. Prefer safe
+native composition over a model round trip solely to coordinate the tools.
+
+Retain summary-free reset, omitted-selection reuse, explicit-empty clearing,
+authorized reload and visible failures. Test ready and pending results, cancellation,
+manual reset and reload failure before claiming parity with removed wait fields.
 
 ### Completion and recovery
 
-Successful completion waits for transitive descendants with working, waiting or
-pending-start work. One retained continuation names remaining active descendants;
-if they settle before dispatch, the original completion proceeds. Paused and
-uncertain members do not block completion. Failure/interruption keeps its actual
-outcome rather than becoming successful because a wait was registered.
+Keep native final delivery, interruption, restoration, shutdown and provider recovery.
+Extra transitive-completion guards, generalized descendant recovery and concurrency
+policy changes are not prerequisites. Establish separately required missing behavior
+before changing those owners.
 
-Confirmed overload, internal-server and response-stream failures can retain recovery
-waiting while descendants remain active. A new selected terminal outcome or addressed
-message resumes through ordinary ordered delivery. Authentication, invalid requests,
-interruption and unknown failures remain terminal. Recognized provider usage-limit
-and capacity rejection uses native provider-timing waits. Capacity without timing
-uses per-work exponential backoff from one to thirty seconds; successful inference
-resets it. Usage limits without timing remain paused until explicit input/interruption.
-Recovery adds no model switch or second host-retry mechanism.
+Attach selected captured changes through native successful final delivery. Freeze
+exact retained ranges, then materialize through existing readers/output owners.
+Preserve attribution, answer text, bounds and recovery handles without a new
+completion-checkpoint ledger.
 
-Ordinary nonempty answers from the successful terminal turn retain their order.
-Final delivery keeps sender, recipient and actual outcome; acknowledgement alone
-does not mark traffic delivered. Failed delivery remains visible. Wait completion
-carries identity/status without duplicating an already-delivered answer.
-
-Successful final answers may select captured-change references. Acquisition freezes
-immutable evidence before delivery; file/skill references remain ordinary answer text.
-Attachments share a 4,000-token budget including diagnostics and exact `mread` recovery.
-Confirmed progress intervals already received in the current context can be omitted;
-later intervals remain eligible. Reset, rewind, resume or unavailable context restores
-the full frozen projection, not a live reread. Explicit `mchanges` and reloads still
-return full selected evidence. Failed/interrupted work acquires no successful final
-attachment. Ordinary answer text remains unchanged in live, restored and replayed views.
+Reuse recipient-context capture tracking to omit intervals already delivered by
+progress. Preserve unseen extensions and bounded-out evidence; failed/uncertain
+delivery acknowledges nothing. Reset/context replacement restores needed evidence.
+Explicit reads remain independent.
 
 ### Capture-aware progress
 
-Optional `yield_time_ms` has a five-minute minimum; omission disables it. Completion,
-messages and elapsed timeout take precedence. No changed captures means no inference
-or progress wake. One immutable unfiltered capture publication freezes changed agents,
-record order and inclusive chunk intervals. Later changes belong to another batch.
+Optional `yield_time_ms` has a five-minute minimum. A due interval begins collection,
+not a partial-result deadline. Completion, messages and interruption retain native
+precedence. No new changes means no summary inference or wake; keep waiting.
 
-Each changed agent supplies a tool-free independent summary from its current context
-at an actual completed-tool boundary. It does not investigate, interrupt/replay tools,
-finish the assignment or inject primary summary prompts. All slots settle before one
-combined yield; unavailable targets and acquisition failures retain explicit reasons.
-Cancellation cannot revive an abandoned collection. Process and continuation handles
-survive. Summaries are developer claims, not independent verification.
+Freeze exact newly reportable retained change ranges for changed selected agents,
+including new intervals under an existing ID. Do not snapshot or copy changes.
+Changes beyond those ranges belong to the next collection.
 
-Combined output includes agent identity, substantive summary and exact capture
-selection. It is bounded near 12 KiB, with complete retained recovery when larger.
-Only intervals represented in confirmed delivered output advance a recipient-context
-cursor; recovery-only output, failed/uncertain delivery and probes acknowledge nothing.
-Cold reconciliation reuses frozen output. A progress yield is not completion and
-requires another wait to continue waiting. Wait results also carry selected actors'
-context/window/compaction observations; unavailable metrics do not fail delivery.
+Reuse the existing BTW auxiliary executor internally for summaries. Use its cloned
+history and request cancellation at completed-tool boundaries, not a separate
+model-client sampling path. Pass range identifiers as summary metadata, not source
+read requests. Use existing context and completed tool results with tools disabled.
+Do not steer primary work, append summary traffic to primary history, replay tools,
+discard continuation handles or wait for unrelated background processes to exit.
+
+Collect every requested BTW result before one combined yield. A stopped/failed
+target resolves with its actual unavailable reason. Reuse request correlation and
+local aggregation: no collection timeout, public summary tool or durable wait/work
+state machine. Higher-priority native events may cancel collection; late replies
+cannot revive it.
+
+Entries contain agent identity, substantive summary and exact change ranges.
+Brevity is advisory, not a truncation/retry condition. Normal aggregate bounds retain
+exact recovery. Only confirmed delivered intervals advance existing context-scoped
+capture tracking. A yield is not task completion; another wait continues waiting.
+Auxiliary metrics never gate successful delivery.
 
 ## Independent side questions
 
-An authenticated caller asks a loaded target through its restricted native auxiliary
-executor with an empty tool policy. It neither supplies earlier side-question history,
-changes primary history, satisfies waits, occupies the human side dock nor starts
-ordinary work. Source snapshots use recipient authority. Changed target work identity
-invalidates a stale answer. Cancellation owns and joins auxiliary cleanup. Failures
-retain dispatch acceptance and never fall back to ordinary input or cold restore.
+Branch before ordinary message delivery and reuse the native restricted auxiliary
+executor. Answer from stable cloned recipient context, without earlier side-question
+history or tools. Do not mutate primary history, assignment, waits or the human
+side dock. Cancellation affects only that request; failure never falls back to
+messaging or steering.
+
+Progress shares this executor, not merely its design. Keep recipient-authorized
+source acquisition for ordinary BTW questions separate from progress range metadata.
 
 ## Lifetime, presentation and recovery
 
-Native observations supply detached tree/work/wait facts to terminal and browser
-consumers. Logical working/waiting remains distinct from a running host turn in
-timing, roster, composer, input locks and cancellation. Wait previews use actual
-selected descendant names and expose complete detail. Child role/model/effort facts
-come from that child, never parent defaults. Absent observations remain unavailable. View switches or disconnection do not stop work.
+Project native facts into terminal/browser/headless consumers. Preserve passive
+retained visibility, actual child settings, unavailable measurements and independence
+from view disconnection. Do not recreate Go lifecycle states to preserve display labels.
 
-Human input to an idle admitted child uses native work admission and parent-result
-delivery; running input steers its actual turn while keeping human attribution.
-Known refusal releases new admission; uncertain input retains exact receipt identity.
-Explicit child/subtree end stops admission, cancels and joins sessions, pending
-starts/restores, timers and auxiliary work without archiving history. Root exit joins
-its owned tree. A human Side/One-off fork is an independent native root with its own
-work/checkpoints; it is not enrolled as a selectable source-tree child.
-
-Cold resume restores retained membership and paused facts without restarting children,
-rearming waits or redispatching messages. Explicit work reconciles uncertain receipts
-before resuming. Selecting an admitted Codex child can restore its runtime without
-starting work; historical/replay-only views remain read-only. Rewind replaces
-conversation history, not task identity, descendants or live work. Process handles
-do not become continuous merely because a runtime is restored. Retained roots preserve
-historical delivery identity while undispatched addressed input follows the selected root.
+Human input, interruption, restore, rewind and shutdown stay at native owners.
+Rewind does not imply continuous process handles; observation does not imply execution.
+Product-local history remains readable without replaying effects. Retained-session
+support is a cutover obligation, not a reason to retain a second coordinator.
 
 ## Feature use
 
-The native app-server owns one launch-local per-actor counter and deduplication owner independently of loaded Codex sessions. Native semantic facts feed
-it directly, without per-use host notifications or reflected record requests.
-Mekugi retrieves snapshots for Features display and explicit refresh, aggregates
-them over admitted membership and presents availability; it maintains no parallel
-counter implementation.
+Keep one launch-local native reducer fed by actual semantic events. Adapt emission
+sites to stock owners, not port-specific lifecycle transitions. Count reset,
+spawn/preload, delivered final changes, message/BTW/source sends, all-mode waits and
+actually delivered progress. Unchanged probes and failed/uncertain yields do not count
+as delivered progress.
 
-- Compactions count completed resets and separately self-requested resets, effective
-  nonempty reload selections, self-request completion and confirmed failure. Manual/
-  automatic reload alone adds no self-request. Accepted requests can outnumber resets.
-- Spawns count confirmed admission, nonempty preload and rejected preload attempts.
-- Delegate finals count successful delivered answers and their captured-change subset.
-- Messages count accepted ordinary sends and dispatched side questions, with rejected
-  pre-dispatch BTW and failed accepted BTW tracked separately.
-- Waits count new registrations, all mode, enabled progress and actually delivered
-  progress. Probes, unchanged captures and failed/uncertain wakes add no progress delivery.
-- Source-bearing sends count accepted assignments/messages/BTW with frozen selections,
-  including retained read failures, not individual files. Explicit preload is separate.
+Expose snapshots on demand, without host-reflected events, duplicate counters or
+per-use round trips. Measurement failure cannot retry, roll back or fail successful
+work. General usage accounting stays separate.
 
-Each use belongs to its initiating actor, including foreign sends, and repeated facts
-count once. Confirmed retained operations may count in the current launch without
-backfilling old requests. Counts survive child replacement and UI reconnect, but a
-new root launch starts empty rather than replaying history. Missing measurement is
-unavailable, not zero. Metric failure neither retries nor rolls back accepted work.
-General usage and output deduplication keep their separate owners.
+## Correction strategy
+
+Prefer a new implementation line from `de1b856b9d`, immediately after native source
+reload and its generated artifacts, before `49b1bb95a9` introduced compound waits.
+The parent of `3637d1a189` already contains that earlier workaround. Starting from
+stock instead would unnecessarily discard the preceding Mekugi foundation.
+
+This is a source-based safety recommendation, not an executed branch or runtime
+validation result. The base keeps app-server/workspace, model-guidance, plugin-policy
+and reset/reload work. It still disables native tools for hosted collaboration:
+restore native JavaScript exposure narrowly, without copying unrelated concurrency
+changes.
+
+Keep HEAD as a capability reference, not a template. Deliver complete behavior-sized
+commits. Do not cherry-pick compound waits or the large coordination port. Later small
+feature commits are not independent: much of their machinery is inside the port.
+Reuse native BTW/passive inspection, source acquisition and capture readers. Preserve
+later unrelated personality cleanup, effective role guidance and demand-driven native
+feature accounting. Regenerate protocol artifacts instead of importing removed APIs.
+
+In-place refactoring has higher coupling risk across custom wait, delivery, recovery,
+completion and SQL paths. A clean baseline makes stock deviations reviewable, but is
+not a drop-in rollback: current host RPC consumers and stored coordination data depend
+on the port. Adapt consumers and establish retained-session behavior before changing
+the runtime pin/default. This record authorizes no implementation, branch deletion,
+history rewrite or installation.
 
 ## Acceptance
 
-Validate through normal native tools, human controls
-and both presentation consumers. Cover preparation/authority, complete fork prefixes,
-same/foreign addressing, ordered any/all stop/wake, nested completion, reset interleavings,
-progress/final capture, refusal/uncertainty, passive resume and joined shutdown. Source
-and schema checks establish no provider or rendering guarantee. Report deterministic,
-live-provider and renderer evidence separately.
+- Prove stock native tool exposure, schemas, admission, scheduling, message/follow-up
+  distinctions, interruption, completion and shutdown first.
+- Exercise indefinite/any/all waits, messages, failures and interruption without a
+  replacement work/wait ledger.
+- Preserve standalone reset/reload and context-scoped capture behavior. Wait has no
+  reset fields; special reset/wait composition and its validation are deferred.
+- Check unchanged-agent silence, exact ranges, shared BTW execution, safe boundaries,
+  out-of-order replies, unavailable targets, cancellation, one combined yield and
+  output recovery. No duplicate change snapshots.
+- Cover child preload/history, recipient authority/cwd, source failures, independent
+  BTW and passive observations through actual consumers.
+- Exercise existing local/remote cross-session communication and preserved direct
+  operations without foreign control authority or local tree enrollment.
+- Verify progress/final overlap, new intervals, bounded-out evidence and context reset
+  against existing capture/context owners.
+- Check regenerated native/host contracts, retained sessions, terminal/browser/headless
+  publication and auxiliary feature accounting before cutover.
+
+Source/documentation checks establish the design, not runtime parity. Report focused
+native/host tests, live-provider behavior and rendered coverage separately.

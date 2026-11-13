@@ -29,7 +29,7 @@ func (m *Model) ResolveSideInterrupt(intent InterruptIntent, side *sessioncontro
 	current := side.InterruptTarget()
 	if intent.Target.Start == "" || intent.Target.Start != current.Start ||
 		intent.Target.Thread != current.Thread && intent.Target.Thread != "side:"+side.Key ||
-		intent.Target.Turn != "" && intent.Target.Turn != current.Turn || intent.Target.Wait != current.Wait {
+		intent.Target.Turn != "" && intent.Target.Turn != current.Turn {
 		return ErrInterruptUnavailable
 	}
 	return nil
@@ -45,18 +45,6 @@ func (m *Model) ResolveInterrupt(intent InterruptIntent, control *sessioncontrol
 		return false, errors.New("The original session is unavailable.")
 	}
 	target := intent.Target
-	if target.Work != "" && target.Work != control.NativeWork {
-		return false, ErrInterruptUnavailable
-	}
-	if target.Wait != "" || target.Stop != "" {
-		current := control.InterruptTarget()
-		if (target.Stop != "" || target.Wait != "") && target.Stop == current.Stop && target.Wait == current.Wait &&
-			(current.Turn == "" || current.Turn == target.Turn) &&
-			(current.Start == "" || current.Start == target.Start) {
-			return true, nil
-		}
-		return false, ErrInterruptUnavailable
-	}
 	if target.Turn != "" {
 		if record, known := attachment.turns[[2]string{target.Thread, target.Turn}]; known && record.store == nil &&
 			(target.Start == "" || target.Start == record.start) {
@@ -92,7 +80,7 @@ func (m *Model) admitInterruptOwner(intent InterruptIntent, control *sessioncont
 }
 
 func sameInterruptWork(target, current sessioncontrol.InterruptTarget) bool {
-	if target.Work != current.Work || target.Wait != current.Wait || target.Stop != current.Stop || target.Thread != current.Thread || target.Start != "" && target.Start != current.Start {
+	if target.Thread != current.Thread || target.Start != "" && target.Start != current.Start {
 		return false
 	}
 	if target.Turn != "" {

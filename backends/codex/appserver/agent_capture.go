@@ -4,7 +4,7 @@ package appserver
 type FinalCaptureRequest struct {
 	RootThreadID      string   `json:"rootThreadId"`
 	ThreadID          string   `json:"threadId"`
-	WorkID            string   `json:"workId"`
+	OperationID       string   `json:"operationId"`
 	RecipientThreadID string   `json:"recipientThreadId"`
 	RecipientCwd      *string  `json:"recipientCwd"`
 	Sources           []string `json:"sources"`
@@ -22,7 +22,7 @@ type FrozenFinalCapture struct {
 type FinalCaptureProjectRequest struct {
 	RootThreadID       string          `json:"rootThreadId"`
 	ThreadID           string          `json:"threadId"`
-	WorkID             string          `json:"workId"`
+	OperationID        string          `json:"operationId"`
 	RecipientThreadID  string          `json:"recipientThreadId"`
 	RecipientCwd       *string         `json:"recipientCwd"`
 	RecipientContextID string          `json:"recipientContextId"`

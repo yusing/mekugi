@@ -1,5 +1,7 @@
 package appserver
 
+import "encoding/json/jsontext"
+
 // AgentForeignOrigin is established by the source native owner. Transport request
 // IDs provide correlation only; this tuple identifies the original operation.
 type AgentForeignOrigin struct {
@@ -28,12 +30,12 @@ type AgentForeignRequest struct {
 // AgentForeignResponse borrows the native observation contract. The Hub forwards
 // it unchanged and never supplies acceptance, settings or work state itself.
 type AgentForeignResponse struct {
-	Type           string                `json:"type"`
-	TargetThreadID string                `json:"targetThreadId,omitzero"`
-	DeliveryID     string                `json:"deliveryId,omitzero"`
-	Answer         *string               `json:"answer,omitzero"`
-	Accepted       *bool                 `json:"accepted,omitzero"`
-	Error          *string               `json:"error,omitzero"`
-	Tree           *AgentTreeObservation `json:"tree,omitzero"`
-	Agent          *AgentObservation     `json:"agent,omitzero"`
+	Type           string         `json:"type"`
+	TargetThreadID string         `json:"targetThreadId,omitzero"`
+	DeliveryID     string         `json:"deliveryId,omitzero"`
+	Answer         *string        `json:"answer,omitzero"`
+	Accepted       *bool          `json:"accepted,omitzero"`
+	Error          *string        `json:"error,omitzero"`
+	Threads        jsontext.Value `json:"threads,omitzero"`
+	Thread         jsontext.Value `json:"thread,omitzero"`
 }

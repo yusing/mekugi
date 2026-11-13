@@ -49,7 +49,7 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 			return next
 		}
 	}
-	next.Batch = conversation.TakeBatch(next.Steer || control.LocalStop != "" || control.Waiting != "" || control.NativeWork != "")
+	next.Batch = conversation.TakeBatch(next.Steer)
 	return next
 }
 

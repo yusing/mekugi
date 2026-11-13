@@ -6,11 +6,8 @@ package sessioncontrol
 type Live struct {
 	RolloutPath              string // Host-selected source, replaced with the admitted thread.
 	Thread, Turn             string
-	Waiting, LocalStop       string // Detached logical wait and stopped host-turn identities.
-	NativeWork               string // Unsettled native work identity, independent of host turns.
 	NativeRoot               string // Native-confirmed family authority for trusted controls.
 	NativeInputPending       bool   // Provisional native admission permits prompts, not direct work.
-	WaitLabel                string
 	HasUserTurn              bool
 	HookReview               bool // Startup trust must settle before any execution.
 	Rewind                   *RewindOperation
@@ -41,12 +38,7 @@ func (h *Live) SideForkBlocked() bool {
 
 // AuxiliaryTurn identifies host work that does not start or finish an assignment.
 func (h *Live) AuxiliaryTurn(turn string) bool {
-	return h.Shell.OwnsTurn(turn) || h.Compaction.OwnsTurn(turn) || h.CompactionStopsWait(turn)
-}
-
-// CompactionStopsWait identifies native replacement of the old host turn.
-func (h *Live) CompactionStopsWait(turn string) bool {
-	return turn != "" && h.LocalStop == turn && h.Compaction.Starting()
+	return h.Shell.OwnsTurn(turn) || h.Compaction.OwnsTurn(turn)
 }
 
 func (h *Live) Started(turn string) {
@@ -94,7 +86,7 @@ func (h *Live) AcceptsSettings() bool {
 }
 
 func (h *Live) Busy(waitingInput bool) bool {
-	return h.HookReview || h.Turn != "" || h.LocalStop != "" || h.Waiting != "" || h.NativeWork != "" || h.Starting() || h.Compaction.Pending() ||
+	return h.HookReview || h.Turn != "" || h.Starting() || h.Compaction.Pending() ||
 		h.InputPending() || h.Settings.Pending() || h.Shell.Pending || waitingInput
 }
 
@@ -120,10 +112,8 @@ func (o *Interruption) Finish() { *o = Interruption{} }
 // Interrupt names one request and the immediate composer consequence, if any.
 // An empty Turn issues no host request. Pending retains deferred cancellation.
 type Interrupt struct {
-	Work                    string
 	Turn, Label             string
 	ResetRequest            string
-	Wait, Stop              string
 	RestoreWaiting, Pending bool
 }
 
@@ -139,10 +129,9 @@ func (h *Live) PrepareEscape(hasUnsentSteer bool) bool {
 }
 
 func (h *Live) Interrupt() Interrupt {
-	r := Interrupt{Turn: h.Turn, Wait: h.Waiting, Stop: h.LocalStop, Work: h.NativeWork}
+	r := Interrupt{Turn: h.Turn}
 	alreadyCancelled := h.Compaction.cancelled
 	if h.Compaction.Cancel() {
-		r.Wait, r.Stop = "", ""
 		r.RestoreWaiting = true
 		r.Turn = ""
 		if !alreadyCancelled {

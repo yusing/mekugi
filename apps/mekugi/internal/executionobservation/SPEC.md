@@ -26,11 +26,10 @@ The preparer borrows invocation owners. Each prepared response retains its own
 scope and dependencies through delivery and cleanup, independently of the
 preparer. Frontends supply preview timing; this workflow has no renderer.
 
-Independent-thread requests bind their authenticated host identity to Thread
-Control before inference. Only the confirmed successful result of a registered
-wait's enclosing execution can admit a local stop; nested MCP success alone cannot.
-Prepared child preload selections bind to retained assignment identities; Codex
-reset selections bind to confirmed checkpoint continuations. The shared native reader completes acquisition before provider inference and
+Independent-thread requests retain authenticated native identity. Native V2 owns
+waiting and completion; host observation adds no local stop or continuation.
+Prepared child preload selections bind to native prepared input; Codex reset
+selections use the native reset owner. The shared native reader completes acquisition before provider inference and
 projects complete retained bodies and failed reads without exposing orchestration
 calls. Prewarm and execution-free requests never start acquisition; completed
 results remain reusable across continuation and resume.

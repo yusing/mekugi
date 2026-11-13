@@ -250,7 +250,7 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 	}
 	live := &apiLive{server: api, native: session.connection, started: time.Now()}
 	if session.nativeAgent != nil {
-		live.nativeThread = session.nativeAgent.ThreadID
+		live.nativeThread = session.nativeAgent.ID
 	}
 	session.notifications.relay = func(event, message string) { native.notify(session.attached.executionPresentation, event, message) }
 	nativeRequests, nativeClosed := api.Native().Requests(), native.closed
@@ -934,20 +934,6 @@ type appServerRequest struct {
 }
 
 func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, m appserver.Message) (err error) {
-	if m.Method == "turn/started" && session.nativeCheckpoint != nil {
-		var started struct {
-			ThreadID string `json:"threadId"`
-			Turn     struct {
-				ID string `json:"id"`
-			} `json:"turn"`
-		}
-		if json.Unmarshal(m.Params, &started) == nil && started.ThreadID == session.Client.Thread && started.Turn.ID != session.nativeCheckpoint.TurnID {
-			session.nativeCheckpoint = nil
-		}
-	}
-	if handled, err := session.observeNativeCheckpoint(m); handled {
-		return err
-	}
 	if m.Method == "thread/contextReset" {
 		var receipt sessioncontrol.ContextReset
 		if err := json.Unmarshal(m.Params, &receipt, json.RejectUnknownMembers(true)); err != nil {
@@ -973,7 +959,6 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			return err
 		}
 		if event.Thread == session.Client.Thread {
-			session.observeNativeShellContinuation(event.Turn, event.Coordination)
 			publishNativeCoordination(attached, event.Thread, event.Turn, event.Item, event.Coordination, presentationTime(clock))
 			if entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(attached.cwd, event.Thread, event.Turn, event.SourceAcquisition, presentationTime(clock)); ok {
 				entry.Seq = attached.session.Activity().NextSequence()
@@ -987,7 +972,6 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			return err
 		}
 		if event.ThreadID == session.Client.Thread {
-			session.observeNativeShellContinuation(event.TurnID, &event.Projection)
 			publishNativeCoordination(attached, event.ThreadID, event.TurnID, sessioncontrol.NativeMessage{}, &event.Projection, presentationTime(clock))
 		}
 	}
@@ -1048,9 +1032,9 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			return err
 		}
 		if session.connection != nil && update.Side != nil && update.Side.Thread != "" && !update.Side.Unloaded() {
-			if m.Method == "turn/checkpointed" || m.Method == "" && response.Method == "thread/fork" {
+			if m.Method == "" && response.Method == "thread/fork" {
 				session.connection.invalidateTree(update.Side.Thread)
-				if err := session.connection.observeRoot(update.Side.Thread, 0); err != nil {
+				if err := session.connection.observeRoot(update.Side.Thread); err != nil {
 					return err
 				}
 			}
@@ -1140,14 +1124,6 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 		}
 		if method == "turn/start" || method == "turn/steer" {
 			submissionResponse(attached, &session.Client, picker, &session.questions, &session.approvals, clock, method, m.Error)
-			return nil
-		}
-		if method == "agent/interrupt" {
-			if m.Error != nil {
-				setNotice(&attached.feedback, presentationTime(clock), "Native interruption rejected: "+m.Error.Message, true)
-			}
-			// Acceptance is not a terminal work receipt. Passive native facts
-			// retain the captured Work/Wait until native settles them.
 			return nil
 		}
 		if method == "thread/shellCommand" {
@@ -1351,6 +1327,17 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 					entry.Restored = false
 				}
 			}
+			nativeThread := result.Thread
+			identity := observation.Thread{ID: session.Client.Thread, Path: nativeThread.AgentPath(), Role: nativeThread.AgentRole}
+			if agent := session.nativeAgent; agent != nil && agent.ID == nativeThread.ID {
+				identity.Path, identity.Role, identity.Nickname = agent.AgentPath(), agent.AgentRole, agent.AgentNickname
+			}
+			if identity.Path == "" {
+				identity.Path = sessionpresentation.Placeholder(identity.ID)
+			}
+			attached.nativeIdentity, attached.role = nativeThread.ParentThreadID != "" || session.nativeAgent != nil, identity.Role
+			attached.session.RegisterThread(identity)
+			startAttachedSession(attached, session.observations, session.Client.Thread, result.Thread.Cwd)
 			attachPresentation(attached, picker, editor, &session.questions, &session.approvals, session.Client.Thread, &session.review, &session.commits, parent, session.retained, session.changeSource, session.activity != nil)
 			attached.presentation.Status.SetText("Ready")
 			session.title = result.Thread.Name
@@ -1373,9 +1360,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			if err := session.Client.Request("model/list", map[string]any{"includeHidden": true}); err != nil {
 				return err
 			}
-			startAttachedSession(attached, session.observations, session.Client.Thread, result.Thread.Cwd)
 			session.nativeRosterRoot = ""
-			session.nativeCheckpoint = nil
 			if session.shouldReviewHooks() {
 				if err := session.beginHookTrust(); err != nil {
 					return err
@@ -1399,7 +1384,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				err := openRetainedSession(parent, session.history, &session.retainedSession, session.Client.Thread, session.retained.Store, session.retained.Writes, session.retained.Limits)
 				// Native host admission already initialized child retained scope.
 				// Only an ordinary root can enroll itself before its first turn.
-				if err == nil && (session.nativeAgent == nil || session.nativeAgent.ParentThreadID == nil) {
+				if err == nil && (session.nativeAgent == nil || session.nativeAgent.ParentThreadID == "") {
 					err = session.retainedSession.Store.Transaction(parent, session.retainedSession.Writes, func(tx *history.Transaction) error {
 						return tx.InitializeScope(history.Scope{Thread: session.Client.Thread, Namespace: session.retainedSession.Namespace}, nil)
 					})
@@ -1411,7 +1396,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 					setNotice(&attached.feedback, presentationTime(clock), "Session history could not be opened: "+err.Error(), true)
 				}
 			}
-			restoreContextUsage(attached.session.Agent("/root"), result.Thread)
+			restoreContextUsage(attached.session.Activity().Agent(session.Client.Thread), result.Thread)
 			if method == "thread/revert" {
 				session.controlObservations.RewindContext(result.Thread.ID, result.Thread.Cwd)
 			} else {
@@ -1427,12 +1412,12 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				session.connection.projectAgent(session)
 			}
 			restoreUsage(session.usage, result.Thread)
-			observeCost(session.usage, session.Client.Thread, attached.session.Agent("/root"))
+			observeCost(session.usage, session.Client.Thread, attached.session.Activity().Agent(session.Client.Thread))
 			if attached.childSource != nil {
 				attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
 			}
 			if session.audience != nil {
-				if session.nativeAgent != nil && session.nativeAgent.ParentThreadID != nil {
+				if session.nativeAgent != nil && session.nativeAgent.ParentThreadID != "" {
 					// The invocation already owns the shared audience. Hydrating a
 					// child view cannot replace it or enroll model execution.
 				} else {
@@ -1537,9 +1522,8 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 // observedEvent retains application lifecycle and control handling for decoded
 // host facts. Offline transcript observations bypass it through their reducer.
 func (session *nativeSession) observedEvent(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, method string, p binding.Notification) error {
-	if method == "turn/completed" && p.ThreadID == session.Client.Thread && p.Turn.Status != "completed" && !session.Client.Compaction.OwnsTurn(p.Turn.ID) && !session.Client.CompactionStopsWait(p.Turn.ID) {
-		session.Client.Waiting, session.Client.LocalStop = "", ""
-		attached.session.Lifecycle(p.ThreadID).SetWaiting(false, presentationTime(clock))
+	if p.ThreadID == session.Client.Thread && (method == "item/agentMessage/delta" || p.Item.Type == "agentMessage" || p.Item.Type == "reasoning") {
+		session.Client.Shell.ModelTurn(p.TurnID)
 	}
 	if r := session.Client.Rewind; r != nil && r.Sent && p.ThreadID == r.Thread && p.TurnID == r.Turn && p.Item.Type == "commandExecution" && p.Item.Source == "userShell" {
 		if method == "item/started" && r.Item == "" {
@@ -1603,7 +1587,6 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 		if p.ThreadID == session.Client.Thread && p.Turn.ID == session.Client.Turn {
 			shellTurn := session.Client.Shell.OwnsTurn(p.Turn.ID)
 			compactTurn := session.Client.Compaction.OwnsTurn(p.Turn.ID)
-			compactWait := session.Client.CompactionStopsWait(p.Turn.ID)
 			if r := session.Client.Rewind; r != nil && r.Turn == p.Turn.ID && p.Turn.Status != "completed" {
 				r.Completed, r.Failed = true, true
 			}
@@ -1613,17 +1596,14 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 			if p.Turn.Error != nil {
 				failure = &p.Turn.Error.Message
 			}
-			localStop := session.Client.LocalStop != "" && (compactTurn || compactWait || p.Turn.Status == "completed" && (session.Client.LocalStop == p.Turn.ID || shellTurn))
 			continuing := compactTurn && session.Client.Compaction.ContinuationPending()
-			if localStop {
-				attached.presentation.Status.Set("Waiting for agents", false)
-			} else if continuing {
+			if continuing {
 				attached.presentation.Status.Set("Working", false)
 			} else {
 				attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock))
 			}
 			settleInput(attached, &session.Client, picker, &session.questions, &session.approvals, clock, p.Turn.ID, p.Turn.Status == "interrupted")
-			if !localStop && !continuing && !shellTurn && !compactTurn && p.Turn.Status == "completed" && session.questions.Count(session.Client.Thread) == 0 {
+			if !continuing && !shellTurn && !compactTurn && p.Turn.Status == "completed" && session.questions.Count(session.Client.Thread) == 0 {
 				session.notifications.notify(&attached.feedback, clock, "agent-turn-complete", "Agent turn complete")
 			}
 			for _, c := range session.questions.calls() {
@@ -1685,7 +1665,7 @@ func applyObservedActivity(attached *attachedPresentation, control *sessioncontr
 	// notification. Refresh from the owner so a prior round's TPS is not stale.
 	usageChanged := false
 	for _, observed := range attached.session.Roster() {
-		if agent := attached.session.Agent(observed.Name); agent != nil {
+		if agent := attached.session.Activity().Agent(observed.Thread); agent != nil {
 			before := *agent
 			agent.Generating = observed.Generating
 			observeCost(usage, observed.Thread, agent)

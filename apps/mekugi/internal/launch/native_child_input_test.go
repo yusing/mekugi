@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
@@ -19,7 +20,7 @@ func TestPreparedChildStartupPreservesObservationAudience(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.audience = sessioncontrol.NewAudience(nil)
 	u.Startup.Thread = "child"
-	u.nativeAgent = &appserver.AgentObservation{ThreadID: "child", RootThreadID: "main", ParentThreadID: new("main"), Path: new("/root/worker")}
+	u.nativeAgent = &binding.ThreadInfo{ID: "child", ParentThreadID: "main", Source: []byte(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker"}}}`)}
 	u.audience.ObserveAdmitted("child", "main", "/root/worker", true)
 	u.audience.AttachEndpoint("child")
 	appServerTestRequest(t, u, "1", "thread/resume")
@@ -83,22 +84,11 @@ func TestChildFamilyRosterPreservesEditCounts(t *testing.T) {
 
 func TestPreparedChildStartsWithItsOwnReviewWorkspace(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.nativeAgent = &appserver.AgentObservation{ThreadID: "child", RootThreadID: "main", ParentThreadID: new("main"), Path: new("/root/worker")}
+	u.nativeAgent = &binding.ThreadInfo{ID: "child", ParentThreadID: "main", Source: []byte(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker"}}}`)}
 	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"child","cwd":"/var/tmp/child-worktree","turns":[]}}}`)
 	view := u.reviewSource.ReviewView(u.attached.session.Scope())
 	if view.Workspace != "/var/tmp/child-worktree" || !u.review.Scope().Workspaces[view.Workspace]["child"] {
 		t.Fatalf("fresh child borrowed another review workspace: %+v", view)
 	}
-}
-
-// Publish the same ordinary source consumed by Hub.Family, independently of any
-// native attachment or selected renderer.
-func publishNativeFamilySource(api *sessionapi.Server, frame sessionapi.NativeFrame, workspace, root, caller, role string, members []sessionpresentation.Participant) error {
-	return api.Publish(sessionapi.Frame{
-		Session:    sessionapi.Session{Thread: frame.View.Main.ID, Workspace: workspace, Caller: caller, Role: role},
-		FamilyRoot: root,
-		Status:     frame.View.Status.State, Members: members,
-		Main: frame.Main, Agents: frame.Agents, Review: frame.Review,
-	})
 }

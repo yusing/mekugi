@@ -21,8 +21,6 @@ type ForkClassifier interface {
 type Side struct {
 	*conversationmodel.SideAnswer
 	Thread, Turn                string
-	Waiting                     string // Detached logical-stop identity; the feature owns its lifetime.
-	NativeWork                  string // Observed native generation, not a Go work reservation.
 	Source, Model, Effort, Tier string
 	ForkPending                 bool
 	Busy, Starting, Closed      bool
@@ -49,19 +47,19 @@ func (s *Side) PrepareSettings(change map[string]any) SettingsPlan {
 }
 
 func (s *Side) Ready(replacing bool) bool {
-	return s != nil && !s.Closed && !s.Unloaded() && s.Waiting == "" && !s.Interruption.BeforeStart && s.Interruption.Target == "" && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
+	return s != nil && !s.Closed && !s.Unloaded() && !s.Interruption.BeforeStart && s.Interruption.Target == "" && (s.Pending.Text != "" || s.ForkPending) && !s.Starting && s.Turn == "" && !s.Settings.Pending() && !replacing
 }
 
 // InterruptTarget keeps a pending fork/start identifiable after host admission.
 func (s *Side) InterruptTarget() InterruptTarget {
-	if s == nil || s.Closed || s.Unloaded() || !s.Busy && !s.Starting && s.NativeWork == "" {
+	if s == nil || s.Closed || s.Unloaded() || !s.Busy && !s.Starting {
 		return InterruptTarget{}
 	}
 	thread := s.Thread
 	if thread == "" {
 		thread = "side:" + s.Key
 	}
-	return InterruptTarget{Thread: thread, Turn: s.Turn, Start: fmt.Sprintf("%s:%d", s.Key, s.ID), Wait: s.Waiting}
+	return InterruptTarget{Thread: thread, Turn: s.Turn, Start: fmt.Sprintf("%s:%d", s.Key, s.ID)}
 }
 
 func (s *Side) Close() {

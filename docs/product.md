@@ -172,8 +172,8 @@ reads after reset. For repeated resets, the agent keeps a focused temporary JSON
 task record and selects it for reload; source files remain separately selectable.
 Mekugi supplies selected sources before continuation. The latest compaction
 selection remains in effect for later manual or automatic resets until replaced
-or explicitly cleared. Native `functions.new_context` owns standalone checkpoints;
-compact-and-wait uses the same reset lifecycle. Requested resets have no
+or explicitly cleared. Native `functions.new_context` owns checkpoints separately
+from agent waiting. Requested resets have no
 cost-estimate veto or duplicate source preflight.
 
 ### Delegate with prepared context

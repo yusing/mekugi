@@ -35,7 +35,7 @@ presentation and replay never execute a call again, serialize independent
 [Native coordination](../../docs/contracts/coordination.md) owns admitted trees,
 preparation, history forks, work, waits and delivery. Codex children share the
 invocation process and request ledger through thread-scoped endpoints. The native
-registry and StateRuntime retain identity and accepted operation facts; Go supplies
+registry, scheduler, message delivery and history retain native identity and facts; Go supplies
 actual host resources, external execution and presentation, not another coordinator.
 Native V2 tools and role/mode owners supply the effective coordination interface.
 
@@ -90,14 +90,12 @@ line. Native clients retain the latest delivered diagnostics for exit reporting;
 this is not a durable crash log. RPC replies preserve the
 original server request ID; acknowledgement does not establish operation completion.
 
-Native waits retain their original task, turn, JavaScript cell and nested tool
-future without yielding or inference. The native pending frontier releases
-quiescent execution capacity; the event result resumes that same call. Auxiliary
-reset preserves this ownership. `turn/checkpointed` remains a completion-pending
-fact, not a waiting-tool stop. The
+Native waits retain their original pending tool call and subscriptions. An ordinary
+outcome, addressed message or interruption settles the call; optional changed-agent
+progress can return a combined yield. The
 [wait contract](../../docs/contracts/coordination.md#logical-waits-and-ordered-delivery)
-owns delivery and reset barriers; Go neither schedules wait resumption nor
-synthesizes a provider response.
+owns delivery. Standalone reset remains separate; special reset/wait composition
+is deferred. Go neither schedules wait resumption nor synthesizes a provider response.
 
 Explicit close releases a reader waiting on a paused consumer. Normal shutdown
 closes input. Cancellation instead signals Codex once to interrupt its active
@@ -303,10 +301,10 @@ thread. Only a regular file whose initial session metadata names that thread is
 evidence. Named pipes are rejected without waiting for a writer. Metadata reads
 are bounded to 64 KiB. Invalid, missing, or mismatched evidence remains unavailable.
 
-Inactive-agent inspection reads admitted retained observations without starting
-execution. Applied settings and context usage remain unknown when absent. A
-complete history supplies the distinct completed-compaction count; incomplete or
-unavailable history leaves that count unknown.
+Inactive-agent inspection reads native thread facts without starting execution.
+Applied settings and context usage remain unknown when absent. Completed-compaction
+counts come from native retained metadata, not rollout scans; older threads without
+that metadata retain an unknown count.
 
 Context-usage and resume-settings readers examine complete records in the last
 8 MiB, ignoring a cut boundary fragment and an unfinished final record. Context
@@ -314,12 +312,11 @@ usage distinguishes absent evidence from a known zero. Resume settings select
 the newest value for each supported field, preserve explicit nullable defaults,
 and may exclude records at or before an application-supplied timestamp.
 
-Resume settings and inactive-agent inspection accept the host's
+Rollout readers accept the host's
 Zstandard-compressed rollout, either selected directly or retained beside a
 missing plain rollout. An existing plain file takes precedence. Compressed reads
 validate the decompressed identity without materializing or changing host files.
-Resume settings select complete records from the decompressed tail; inspection
-counts compactions only from complete bounded histories. Unavailable or corrupt
+Resume settings select complete records from the decompressed tail. Unavailable or corrupt
 compressed evidence supplies no observations.
 
 The application chooses whether restored facts may replace live state, applies

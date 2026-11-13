@@ -291,25 +291,6 @@ func TestAppServerQueuedShellRetractionAndRejection(t *testing.T) {
 	}
 }
 
-func TestAppServerQueuedShellWaitsForLogicalWork(t *testing.T) {
-	u, wire := newAppServerTestUI()
-	u.LocalStop = "logical-wait"
-	appServerTestKeys(t, u, "!pwd\t")
-	if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-		t.Fatal(err)
-	}
-	if wire.Len() != 0 || len(u.attached.conversation.Queued) != 1 {
-		t.Fatal("queued shell superseded logical wait")
-	}
-	u.LocalStop = ""
-	appServerTestTurn(t, u, "resumed")
-	if wire.Len() != 0 {
-		t.Fatal("queued shell steered resumed work")
-	}
-	appServerTestTurnEnd(t, u, "resumed", "completed")
-	appServerOneRequest(t, wire, "thread/shellCommand", "")
-}
-
 func TestAppServerQueuedShellFollowsQueuedMessage(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	appServerTestTurn(t, u, "model")

@@ -38,10 +38,9 @@ type nativeSession struct {
 	hydrating            bool
 	hydration            *nativeHydration
 	hydrationResults     chan *nativeHydration
-	nativeCheckpoint     *appserver.TurnCheckpointed
 	connection           *nativeConnection
-	nativeAgent          *appserver.AgentObservation
-	nativeRosterRevision uint64
+	nativeAgent          *binding.ThreadInfo
+	nativeRosterResponse string
 	nativeRosterRoot     string
 	preparer             *executionobservation.Preparer
 	finalCaptures        *nativeFinalCaptures

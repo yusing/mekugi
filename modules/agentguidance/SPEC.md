@@ -195,8 +195,8 @@ MCP tools and hooks remain unchanged. It
 excludes client tool outputs from cross-reset retention. Codex self-directed checkpoints
 use native `functions.new_context`; there is no second Codex reset tool.
 
-An agent can select optional reload sources in native `new_context` or `wait_agent`
-with `compact:true`, using `reload:{sources:[...]}`. A supplied selection replaces the
+An agent can select optional reload sources in native `new_context`, using
+`reload:{sources:[...]}`. `wait_agent` has no reset or reload fields. A supplied selection replaces the
 thread's retained selection, omission reuses it, and `sources:[]` clears it. Structural
 selection errors reject without replacing prior state; individual source errors remain
 visible alongside successfully read sources. The native rollout and compaction checkpoint

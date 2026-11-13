@@ -11,7 +11,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -20,7 +19,7 @@ func TestNativeChildContextUsesSharedRuntimeWithoutView(t *testing.T) {
 	execution.hub = sessionapi.NewHub(t.Context(), nil)
 	t.Cleanup(execution.hub.Close)
 	child := execution.native.agent("child")
-	child.Loaded, child.Metrics = true, appserver.AgentMetrics{ContextTokens: new(int64(123))}
+	child.ContextTokens = new(uint64(123))
 	if execution.native.byThread["child"] != nil {
 		t.Fatal("fixture unexpectedly owns a child view")
 	}
@@ -29,7 +28,10 @@ func TestNativeChildContextUsesSharedRuntimeWithoutView(t *testing.T) {
 		loaded       bool
 	}{{"admitted", "child", true}, {"unloaded", "child", false}, {"foreign", "foreign", true}} {
 		t.Run(test.name, func(t *testing.T) {
-			child.Loaded = test.loaded
+			child.AgentStatus = nil
+			if test.loaded {
+				child.AgentStatus = []byte(`"running"`)
+			}
 			done := make(chan error, 1)
 			go func() {
 				owner, err := execution.Runtime(test.target)

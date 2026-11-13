@@ -85,7 +85,7 @@ func (c *nativeConnection) add(endpoint *nativeEndpoint) {
 	c.endpoints = append(c.endpoints, endpoint)
 	thread := endpoint.session.Client.Thread
 	if endpoint.session.nativeAgent != nil {
-		thread = endpoint.session.nativeAgent.ThreadID
+		thread = endpoint.session.nativeAgent.ID
 	}
 	c.byThread[thread] = endpoint
 	c.changed = true
@@ -223,12 +223,12 @@ func (c *nativeConnection) run() (runErr error) {
 					return errors.New("headless cannot answer pending questions or approvals; continue interactively")
 				}
 			}
-			if agent := c.agent(c.root.Client.Thread); agent != nil && agent.Work != nil {
-				switch agent.Work.Disposition {
+			if agent := c.agent(c.root.Client.Thread); agent != nil {
+				switch agent.AgentState() {
 				case "completed":
 					return nil
-				case "failed", "interrupted", "paused", "uncertain":
-					return fmt.Errorf("headless native work: %s", agent.Work.Disposition)
+				case "errored", "interrupted", "shutdown":
+					return fmt.Errorf("headless native work: %s", agent.AgentState())
 				}
 			}
 		}
@@ -289,16 +289,6 @@ func (c *nativeConnection) message(message appserver.Message) error {
 			if err := c.handle(endpoint, func() error { return endpoint.session.dispatch(message) }); err != nil {
 				return err
 			}
-		}
-		return nil
-	}
-	if message.Method == "agent/treeChanged" {
-		var changed appserver.AgentTreeChanged
-		if err := json.Unmarshal(message.Params, &changed); err != nil {
-			return err
-		}
-		if changed.RootThreadID == c.root.Client.Thread || c.families[changed.RootThreadID] != nil {
-			return c.observeRoot(changed.RootThreadID, changed.ObservationRevision)
 		}
 		return nil
 	}
@@ -378,6 +368,19 @@ func (c *nativeConnection) message(message appserver.Message) error {
 	if err := c.handle(endpoint, func() error { return endpoint.session.dispatch(message) }); err != nil {
 		return err
 	}
+	switch message.Method {
+	case "thread/started", "thread/status/changed", "turn/started", "turn/completed", "thread/settings/updated", "thread/tokenUsage/updated":
+		root := c.root.Client.Thread
+		if side := endpoint.session.Client.Requests.Side(nativeMessageThread(message)); side != nil {
+			root = side.Thread
+		} else if endpoint.session.nativeAgent != nil {
+			root = endpoint.session.Client.NativeRoot
+		}
+		c.invalidateTree(root)
+		if err := c.observeRoot(root); err != nil {
+			return err
+		}
+	}
 	// Root startup confirms the only process owner's actual identity.
 	if c.root.Client.Thread != "" && c.boundRoot != c.root.Client.Thread {
 		c.root.audience.DetachEndpoint(c.boundRoot)
@@ -413,9 +416,9 @@ func (c *nativeConnection) bufferHydration(thread string, message appserver.Mess
 // nativeFamily caches one authoritative observation for projection. It owns no
 // membership transitions, work admission or execution lifecycle.
 type nativeFamily struct {
-	tree                     appserver.AgentTreeObservation
+	threads                  []binding.ThreadInfo
 	members                  []sessionpresentation.Participant
-	wanted                   uint64
+	response                 string
 	pending, dirty, observed bool
 }
 
@@ -432,9 +435,9 @@ func (c *nativeConnection) invalidateTree(root string) {
 	c.families[root].dirty = true
 }
 
-func (c *nativeConnection) observeTree() error { return c.observeRoot(c.root.Client.Thread, 0) }
+func (c *nativeConnection) observeTree() error { return c.observeRoot(c.root.Client.Thread) }
 
-func (c *nativeConnection) observeRoot(root string, revision uint64) error {
+func (c *nativeConnection) observeRoot(root string) error {
 	if root == "" {
 		return nil
 	}
@@ -446,22 +449,21 @@ func (c *nativeConnection) observeRoot(root string, revision uint64) error {
 		family = new(nativeFamily)
 		c.families[root] = family
 	}
-	family.wanted = max(family.wanted, revision)
-	if family.pending || family.observed && !family.dirty && family.wanted <= family.tree.ObservationRevision {
+	if family.pending || family.observed && !family.dirty {
 		return nil
 	}
-	_, err := c.root.Client.Requests.Send("agent/observeTree", map[string]any{"rootThreadId": root}, "native/tree", appServerRequest{nativeTree: root})
+	_, err := c.root.Client.Requests.Send("thread/subtree/list", map[string]any{"threadId": root}, "native/tree", appServerRequest{nativeTree: root})
 	if err == nil {
 		family.pending, family.dirty, family.observed = true, false, true
 	}
 	return err
 }
 
-func (c *nativeConnection) agent(thread string) *appserver.AgentObservation {
+func (c *nativeConnection) agent(thread string) *binding.ThreadInfo {
 	for _, family := range c.families {
-		for i := range family.tree.Agents {
-			if family.tree.Agents[i].ThreadID == thread {
-				return &family.tree.Agents[i]
+		for i := range family.threads {
+			if family.threads[i].ID == thread {
+				return &family.threads[i]
 			}
 		}
 	}
@@ -469,9 +471,12 @@ func (c *nativeConnection) agent(thread string) *appserver.AgentObservation {
 }
 
 func (c *nativeConnection) family(thread string) (string, []sessionpresentation.Participant) {
-	agent := c.agent(thread)
-	if agent == nil {
-		return thread, nil
+	for root, family := range c.families {
+		for _, member := range family.threads {
+			if member.ID == thread {
+				return root, family.members
+			}
+		}
 	}
-	return agent.RootThreadID, c.families[agent.RootThreadID].members
+	return thread, nil
 }

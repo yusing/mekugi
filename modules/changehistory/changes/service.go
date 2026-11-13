@@ -92,7 +92,7 @@ type ForkPlan interface {
 // Service owns retained change meaning. Publish and PrepareFork borrow the
 // caller's transaction. Reserve, Repair, Read, Freeze, and MutationPaths acquire
 // their own transaction; callers must not nest them inside another publication.
-// ProjectFrozen reads only its supplied immutable bytes.
+// ProjectFrozen materializes only the selected retained record/chunk ranges.
 type Service interface {
 	Reserve(context.Context, Scope, string, string, string) (string, error)
 	Publish(*history.Transaction, Scope, string, map[string]Publication) ([]Update, error)
@@ -106,7 +106,8 @@ type Service interface {
 	Parse([]string, string) (Query, error)
 	Read(context.Context, Scope, Query) (string, error)
 	Freeze(context.Context, Scope, Query) (FrozenRead, error)
-	ProjectFrozen(FrozenRead, map[string]uint64) (string, error)
+	ProjectFrozen(context.Context, Scope, FrozenRead, map[string]uint64) (string, error)
+	ProjectLegacyFrozen(context.Context, LegacyFrozenRead, map[string]uint64) (string, error)
 	MutationPaths(context.Context, Scope, Query) ([]string, error)
 	Execute(context.Context, command.Request) (command.Output, error)
 }

@@ -16,10 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 func TestAutoWrapProcess(t *testing.T) {
@@ -121,7 +122,6 @@ func TestAutoWrapProcess(t *testing.T) {
 			}()
 		}
 		workStatus := ""
-		revision := uint64(1)
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			var request struct {
@@ -171,12 +171,12 @@ func TestAutoWrapProcess(t *testing.T) {
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{}}`+"\n", request.ID)
 			case "model/list":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"data":[]}}`+"\n", request.ID)
-			case "agent/observeTree":
-				agent := appserver.AgentObservation{ThreadID: "auto-wrap", RootThreadID: "auto-wrap", Path: new("/root"), Loaded: true, Attachable: new(true), CanAcceptDirectInput: new(true)}
+			case "thread/subtree/list":
+				agent := binding.ThreadInfo{ID: "auto-wrap", Source: []byte(`{"subAgent":{"thread_spawn":{"agent_path":"/root"}}}`), CanAcceptDirectInput: new(true)}
 				if workStatus != "" {
-					agent.Work = &appserver.AgentWorkObservation{WorkID: "fixture-work", Disposition: workStatus}
+					agent.AgentStatus, _ = json.Marshal(workStatus)
 				}
-				response, err := json.Marshal(map[string]any{"id": request.ID, "result": map[string]any{"tree": appserver.AgentTreeObservation{RootThreadID: "auto-wrap", ObservationRevision: revision, Agents: []appserver.AgentObservation{agent}}}})
+				response, err := json.Marshal(map[string]any{"id": request.ID, "result": map[string]any{"data": []binding.ThreadInfo{agent}}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -232,8 +232,9 @@ func TestAutoWrapProcess(t *testing.T) {
 				}
 				fmt.Fprintf(os.Stdout, `{"method":"turn/completed","params":{"threadId":"auto-wrap","turn":{"id":"test-turn","status":%q}}}`+"\n", status)
 				workStatus = status
-				revision++
-				fmt.Fprintf(os.Stdout, `{"method":"agent/treeChanged","params":{"rootThreadId":"auto-wrap","observationRevision":%d}}`+"\n", revision)
+				if status == "failed" {
+					workStatus = "errored"
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {

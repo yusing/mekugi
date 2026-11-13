@@ -52,7 +52,7 @@ func (r *Requests[T]) call(ctx context.Context, scope, method string, params any
 	}
 	calls := r.calls
 	var inspections chan *Inspection
-	if method == "featureUse/read" || method == "agent/observe" || method == "agent/observeTree" || method == "agent/foreign/receive" {
+	if method == "featureUse/read" || method == "thread/inspect" || method == "thread/subtree/list" || method == "agent/foreign/receive" {
 		calls, inspections = nil, r.inspections
 	}
 	select {

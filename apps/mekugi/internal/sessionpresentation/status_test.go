@@ -382,13 +382,7 @@ func TestComposerToolGenerationCleanupAndSide(t *testing.T) {
 	labels["main"] = ""
 	check("Working")
 	labels["main"] = "stale"
-	c.control.Waiting, c.control.WaitLabel = "wait", "Waiting for provider capacity"
-	check("Waiting for provider capacity")
-	c.control.Waiting, c.control.WaitLabel = "", ""
 	c.control.Turn = ""
-	c.control.LocalStop, c.control.Waiting = "stop", "wait"
-	check("Waiting for agents")
-	c.control.LocalStop, c.control.Waiting = "", ""
 	m.Status.Set("Completed", false)
 	check("Completed")
 	child := sessionpresentation.Thread{ID: "child", Caller: "/root/child"}

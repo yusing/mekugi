@@ -38,26 +38,26 @@ Server-owned thread coordination submits asynchronous host calls to that same
 event loop and ledger. Cancellation before dispatch prevents execution; after
 dispatch it releases observation with an uncertain outcome. Shutdown releases
 waiting callers without replaying their operations.
-Developer progress checkpoints use Codex's retained assistant-item injection, never
-human input or start-or-steer. Active turns consume the attributed item at their
-existing input boundary; idle turns retain it without starting work. Late replies
-remain subject to the checkpoint's exact turn and generation. Native execution
-retains its tool results and continuation handles.
-Codex coordination inspection uses passive native observation through that ledger,
+Native progress is a result of the existing pending wait call. Go does not inject
+progress checkpoints or schedule continuation turns. Native execution retains its
+tool results and continuation handles.
+Codex coordination inspection uses native thread reads through that ledger,
 including for unloaded retained children. It neither restores execution nor copies
 a UI frame. Native completed-compaction scalars cover retained history forms that
-cannot be recovered by counting visible transcript items; missing metrics remain
+cannot be recovered by counting visible transcript items. Counts are retained by
+the native completion owner without reading rollout history; missing metrics remain
 unavailable.
+Explicit inspection uses `thread/inspect`; ordinary metadata-only `thread/read` and
+`thread/subtree/list` requests do not load history for those measurements.
 Native coordination owns independent agent side questions and their cleanup;
 They do not enter human side docks, primary submission, drafts or wait delivery.
 Native recipient-authorized source acquisition owns message snapshots without
 model inference; native accepted delivery retains the frozen result.
 Prepared-child resume preserves retained host identity and checks canonical
 authority before execution. History confirmation can read the retained source
-without a live host connection. Ordinary child input waits for logical admission
-and uses the same prepared-authority checks as agent assignments. Human starts
-use native work admission; human steers name the actual
-running child turn. The existing request ledger reports acceptance, rejection or
+without a live host connection. Native observation reports whether a child accepts
+direct input. V2 children use native agent assignments rather than human starts or
+steers; allowed direct input names the actual running turn. The existing request ledger reports acceptance, rejection or
 uncertainty without changing the human input's role. Prompt answers, approval
 decisions and cancellation keep their existing authority.
 
@@ -81,11 +81,9 @@ keyboard locks and contextual dismissal stay with the renderer.
 The admitted start keeps its identity when the host assigns a turn and commits
 input. A delayed cancellation of conclusively completed original work settles
 without interrupting, restoring input from, or canceling compaction for a successor.
-Logical waits retain their own observed identity after the host turn ends. They
-remain busy for replacement/exit admission and cancellable through native agent control;
-no host turn identity is fabricated for cancellation. Human input reconciles and
-supersedes unsent logical continuations before dispatch. Host-turn completion does
-not settle logical work; cancellation retains its captured wait and stop identity.
+A pending native wait belongs to its active turn. Interruption targets that turn,
+and acknowledgement alone does not settle it. Actual native turn completion releases
+queued input; there is no separate Go wait or work identity.
 
 Terminal keys and contextual dismissal belong to
 [terminal session](../terminalsession/SPEC.md#composer-controls).
@@ -94,8 +92,9 @@ Terminal keys and contextual dismissal belong to
 
 For conversation input, Enter accepts a steer for an active turn; delivery waits
 until the assistant message active at submission finishes, then uses that active turn
-without waiting for turn completion. Tab queues for the next turn and submits while idle. Logical waiting remains busy for Tab: queued composer input
-waits for the resumed work to finish, while Enter can supersede the wait.
+without waiting for turn completion. Tab queues for the next turn and submits while
+idle. A pending native wait keeps its turn busy; native input delivery determines
+when an addressed message or steer is consumed.
 Shell commands follow the native-shell behavior below.
 Alt-Up/Shift-Left restores only locally waiting input into the requesting editor,
 including input queued in another attached view; transmitted steers remain
@@ -127,11 +126,11 @@ Session control dispatches manual compaction and consumes native request/reset
 receipts. Native owns reset admission, source acquisition and terminal disposition.
 The [wait boundary](../../../../docs/contracts/coordination.md#logical-waits-and-ordered-delivery)
 retains the original pending native call, not a later Go compaction dispatch or
-replacement wait turn. Native coordination retains logical work and delivery.
+replacement wait turn. Native owns delivery. Special reset/wait composition is
+deferred and is not an additional Go control mode.
 
 `/compact` with Enter requests reset while Main is busy; Tab waits for idle. Native
-admits the reset before interrupting ordinary work. A pending native wait services
-reset inline without replacing its task or waiting for a child wake. A reset covers
+admits the reset before interrupting ordinary work. A reset covers
 only requests captured at its start; later
 requests remain pending. Request/reset identity, not a turn or progress item alone,
 correlates completion. Terminal disposition includes preparation, acquisition and
@@ -142,14 +141,13 @@ compact turn remains auxiliary. Its acknowledgement, successful reset dispositio
 and actual host settlement precede any Go-initiated continuation. An intent admitted
 while busy continues with waiting input, otherwise one native empty-input turn;
 idle compaction stays idle. An inline reset leaves continuation with native, adding
-no empty-input turn. Compaction during a logical wait preserves that wait rather
-than starting a competing continuation. Attributed deliveries retain their ordinary
-wait and reset barriers.
+no empty-input turn. Acknowledging reset does not establish arbitrary same-cell
+reset-and-wait ordering.
 
 With an empty draft, Ctrl-C restores queued compaction and waiting input without
 interrupting Main. Cancellation removes continuation eligibility immediately and
 retires the pending manual request through its owner, including when no replacement
-turn has started. It must not cancel an independently required compound reset,
+turn has started. It must not cancel an independently required reset,
 change an already-settled reset outcome or target later Main work. Starting/running
 cancellation restores waiting input; settlement removes the request's cancellation
 target. Confirmed replacement discards compaction state; switching or replay cannot
@@ -184,13 +182,9 @@ immediate shell submission for retry; queued commands wait. Rejected commands re
 to an empty composer or, when newer prose exists, local history instead. Observed
 edits use the ordinary recorder.
 
-A shell submitted during a logical wait runs before Main resumes. After shell
-acknowledgement and successful host-turn settlement, Main continues once with
-empty input and Codex's retained command/output, including nonzero command exits.
-This supersedes the logical wait through ordinary input admission. A selected wake
-that already owns continuation instead resumes Main after the shell settles.
-Standalone shell turns do not complete logical model work or announce Main done;
-addressed messages and child wakes wait for actual shell settlement.
+A shell submitted during an active native wait follows the same busy-turn shell
+path as other model work. Standalone shell turns do not announce a model reply as
+complete or create a separate logical continuation.
 
 The native client borrows observation, accounting, review and capture owners
 independently of provider request preparation. Shell observations share the ordinary

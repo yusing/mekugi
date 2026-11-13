@@ -15,15 +15,16 @@ and offline comparisons. [Launch](../launch/SPEC.md) owns argument and authoriza
 admission, invocation-local routing, and diagnostics on stderr. This adapter uses
 the same server-owned runtime and native coordination as the interactive client, with
 a task-owned session family and no renderer. It owns the JSONL session stream and
-exits after Main's logical work completes. Codex retains execution, compaction,
+exits after Main completes through its native runtime. Codex retains execution, compaction,
 continuation, permissions, and process authority.
 
 The prompt must contain non-whitespace text and fit within 16 MiB. Its original
 text is submitted once through the ordinary session input interface. Host messages
 from the family are emitted as JSONL objects before their interpretation,
 preserving their identities and payloads. A final `mekugi/headless/completed`
-event identifies Main only after its logical work and required descendants settle.
-Host turns that yield for coordination or compaction do not complete the command.
+event identifies Main after native completion and joined family shutdown. Main
+uses native waits for required descendant outcomes; pending waits do not finish
+its turn. Compaction remains an auxiliary operation.
 Unknown or duplicate responses cannot issue another operation or settle a pending
 request.
 

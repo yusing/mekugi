@@ -51,7 +51,11 @@ func TestHeadlessWrapRedirectedEntryPoint(t *testing.T) {
 		t.Fatalf("missing terminal event: %s", output)
 	}
 	methods, err := os.ReadFile(filepath.Join(dir, "rpc"))
-	if err != nil || string(methods) != "initialize\ninitialized\nconfig/read\ninitialize\ninitialized\nenvironment/info\nthread/start\nmodel/list\nconfig/read\nagent/observeTree\nturn/start\nagent/observeTree\n" {
+	const startup = "initialize\ninitialized\nconfig/read\ninitialize\ninitialized\nenvironment/info\nthread/start\nmodel/list\nconfig/read\nthread/subtree/list\nturn/start\n"
+	tail, ok := strings.CutPrefix(string(methods), startup)
+	// Started/completed native facts invalidate the same coalesced observation.
+	// A response between them can require a second read, never a new model turn.
+	if err != nil || !ok || tail != "thread/subtree/list\n" && tail != "thread/subtree/list\nthread/subtree/list\n" {
 		t.Fatalf("RPC sequence: %s (%v)", methods, err)
 	}
 }
@@ -143,6 +147,8 @@ func TestHeadlessAdmittedFailures(t *testing.T) {
 			}
 			want := scenario
 			switch scenario {
+			case "failed":
+				want = "errored"
 			case "startup":
 				want = "fixture: invalid model configuration"
 			case "disconnect":

@@ -57,6 +57,16 @@ func (r *Requests[T]) attachmentHistory(ctx context.Context, thread string) ([]b
 	return info.Turns, err
 }
 
+// ReadThreadDetails observes native facts without restoring or starting the thread.
+func (r *Requests[T]) ReadThreadDetails(ctx context.Context, thread string) (observation.SessionDetails, error) {
+	raw, err := r.call(ctx, thread, "thread/inspect", map[string]any{"threadId": thread})
+	if err != nil {
+		return observation.SessionDetails{}, err
+	}
+	info, err := binding.DecodeHistoryThread(raw, thread)
+	return info.Details(), err
+}
+
 func (request *Inspection) ContextWindow() string { return request.window }
 
 func (request *Inspection) CompleteAttachments(thread string, cache *composer.AttachmentContext) {
