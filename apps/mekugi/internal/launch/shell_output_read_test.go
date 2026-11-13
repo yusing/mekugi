@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/contracts/command"
 )
@@ -270,5 +272,97 @@ func TestMReadKeepsValidTargetsAroundMissingHandle(t *testing.T) {
 	result := executeRecovery(t.Context(), replayDirectory, []string{first, "amber999999", last})
 	if result.ExitCode != 1 || !strings.Contains(result.Stdout, "first-success") || !strings.Contains(result.Stdout, "last-success") || !strings.Contains(result.Stderr, "amber999999") {
 		t.Fatalf("mixed read: %+v", result)
+	}
+}
+
+func TestMSymbolRustFrontend(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_REAL_RUST_ANALYZER") != "1" {
+		t.Skip("set MEKUGI_TEST_REAL_RUST_ANALYZER=1 for authenticated Rust frontend acceptance")
+	}
+	registry := sharedProxyTestRegistry(t)
+	root := t.TempDir()
+	var uses strings.Builder
+	uses.WriteString("use symbol_core::{r#type, Thing, Value};\n")
+	for i := range 80 {
+		fmt.Fprintf(&uses, "pub fn use%d() -> i32 { let _ = \"😀\"; r#type() + Thing.value() }\n", i)
+	}
+	for name, source := range map[string]string{
+		"Cargo.toml":        "[workspace]\nmembers=[\"core\",\"caller\"]\nexclude=[\"dep\"]\nresolver=\"2\"\n",
+		"core/Cargo.toml":   "[package]\nname=\"symbol_core\"\nversion=\"0.1.0\"\nedition=\"2021\"\n[dependencies]\nsymbol_dep={path=\"../dep\"}\n",
+		"caller/Cargo.toml": "[package]\nname=\"symbol_caller\"\nversion=\"0.1.0\"\nedition=\"2021\"\n[dependencies]\nsymbol_core={path=\"../core\"}\n",
+		"dep/Cargo.toml":    "[package]\nname=\"symbol_dep\"\nversion=\"0.1.0\"\nedition=\"2021\"\n",
+		"dep/src/lib.rs":    "pub fn number() -> i32 { 1 }\n",
+		"core/src/lib.rs":   "pub fn r#type() -> i32 { symbol_dep::number() }\npub struct Thing;\npub trait Value { fn value(&self) -> i32; }\nimpl Value for Thing { fn value(&self) -> i32 { r#type() } }\n",
+		"caller/src/lib.rs": uses.String(),
+	} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Only fixture setup generates a lockfile; authenticated queries are read-only.
+	lock := exec.Command("cargo", "generate-lockfile", "--offline")
+	lock.Dir = root
+	if output, err := lock.CombinedOutput(); err != nil {
+		t.Fatalf("fixture lock: %v %s", err, output)
+	}
+	invocation := newShellWorkerTestInvocation(root, "PATH="+os.Getenv("PATH"))
+	query := "def caller/src/lib.rs 2 'r#type' def core/src/lib.rs Thing def core/src/lib.rs 1 number refs core/src/lib.rs 3 value refs core/src/lib.rs 'r#type'"
+	full, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil, "msymbol --max-tokens 15500 "+query, nil, invocation)
+	if status != 0 || !strings.Contains(full, "pub fn r#type()") || !strings.Contains(full, "pub struct Thing;") || !strings.Contains(full, "pub fn number()") || !strings.Contains(full, "use79") {
+		t.Fatalf("Rust frontend: %d %q %q", status, full, diagnostic)
+	}
+	first, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil, "msymbol --max-tokens 16 "+query, nil, invocation)
+	if status == 0 {
+		t.Fatalf("Rust output was not bounded: %q", first)
+	}
+	_, reference, ok := strings.Cut(diagnostic, "read: incomplete; next_call: mread ")
+	if !ok {
+		t.Fatalf("no retained Rust output: %q", diagnostic)
+	}
+	reference = strings.Fields(reference)[0]
+	recovered := first
+	for range 100 {
+		page, next, pageStatus := runShellWorkerTest(t, registry, "sh", nil, "mread "+reference+" --max-tokens 512", nil, invocation)
+		recovered += page
+		if pageStatus == 0 {
+			if recovered != full {
+				t.Fatal("Rust retained output differs from full output")
+			}
+			return
+		}
+		_, reference, ok = strings.Cut(next, "read: incomplete; next_call: mread ")
+		if !ok {
+			t.Fatal(next)
+		}
+		reference = strings.Fields(reference)[0]
+	}
+	t.Fatal("Rust output recovery did not complete")
+}
+
+func TestMSymbolRustRuntimeCheckout(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_RUST_RUNTIME") != "1" {
+		t.Skip("set MEKUGI_TEST_RUST_RUNTIME=1 for current native Cargo checkout acceptance")
+	}
+	root, err := filepath.Abs("../../../../runtime/codex/codex-rs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := sharedProxyTestRegistry(t)
+	invocation := newShellWorkerTestInvocation(root, "PATH="+os.Getenv("PATH"))
+	started := time.Now()
+	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil,
+		"msymbol --max-tokens 4000 def utils/path-uri/src/native_path_bytes.rs join_native_bytes refs utils/path-uri/src/native_path_bytes.rs join_native_bytes", nil, invocation)
+	t.Logf("current native Cargo checkout query: %s", time.Since(started))
+	if status != 1 || !strings.Contains(stderr, "disabled build scripts or procedural macros") || strings.Contains(stderr, "30 s limit") {
+		t.Fatalf("runtime coverage: %d %q %q", status, stdout, stderr)
+	}
+	for _, want := range []string{"pub fn join_native_bytes", `"utils/path-uri/src/tests.rs":`, `"git-utils/src/trust.rs":`} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("runtime query lacks %q: %d %q %q", want, status, stdout, stderr)
+		}
 	}
 }

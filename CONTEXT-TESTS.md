@@ -73,6 +73,25 @@ references and source freshness:
 env MEKUGI_TEST_REAL_GOPLS=1 make test TEST_PACKAGES=./modules/symbolquery/query TEST_RUN='^TestNativeSymbolRealGoplsReferences$'
 ```
 
+Rust semantic acceptance uses installed `rust-analyzer`, Cargo/Rust and `rust-src`;
+these tests install nothing. Opt in to real analysis and authenticated frontend/recovery checks:
+
+```sh
+env MEKUGI_TEST_REAL_RUST_ANALYZER=1 make test TEST_PACKAGES='./modules/symbolquery/query ./apps/mekugi/internal/launch' TEST_RUN='Rust'
+```
+
+The initialized native checkout additionally needs its pinned toolchain and cached project
+and standard-library dependencies. Run its authenticated cross-crate query separately:
+
+```sh
+env MEKUGI_TEST_RUST_RUNTIME=1 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestMSymbolRustRuntimeCheckout$' TEST_FLAGS=-v
+```
+
+This expects useful definition/reference rows with nonzero incomplete coverage because the
+native workspace contains disabled scripts and procedural macros. It does not establish
+that every cold native query fits the shared 30-second deadline. Dependency preparation:
+[Rust semantic queries](docs/guide/agent-tools.md#rust-semantic-queries).
+
 Frontend descriptions and supplementary `guidance.md` belong to command modules;
 `modules/agentguidance` renders the selected catalog and its Codex binding owns layout/projection.
 After changing frontend guidance, check authenticated snapshots and prepared requests:

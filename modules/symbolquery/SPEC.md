@@ -35,7 +35,7 @@ may be relative or absolute, but its canonical target must remain within that
 workspace and be a regular UTF-8 supported source file. Supported sources are Go
 `.go`; Python `.py` and `.pyi`; JSON `.json`; and the stable TypeScript 7 formats
 `.ts`, `.tsx`, `.d.ts`, `.mts`, `.d.mts`, `.cts`, `.d.cts`, `.js`, `.jsx`, `.mjs`,
-and `.cjs`.
+and `.cjs`; Rust `.rs` in Cargo projects.
 
 `LINE` is a positive current logical line. It needs no additional source token. Msymbol selects an exact language token on that line, rejects
 missing or ambiguous occurrences before resolver startup, and rejects an input
@@ -50,7 +50,7 @@ errors list the declaration lines; zero-match errors list up to five matching to
 `SYMBOL` selects an exact language token on the selected line. Go accepts
 non-keyword identifiers; JavaScript and TypeScript accept their identifier,
 property, private-name, type-name, and JSX-name tokens; Python accepts identifier
-and property tokens; JSON accepts a decoded property-name or string token.
+and property tokens; Rust accepts identifiers (including raw identifiers), type and field names; JSON accepts a decoded property-name or string token.
 Comments, larger identifiers, and unrelated literal text do not count. `N`, when
 present, is a positive base-ten occurrence without leading zeroes. When `N` is
 absent, exactly one matching token must exist.
@@ -85,6 +85,54 @@ those bounds remains valid, and forced cleanup does not change completed stdout 
 exit status. Reference queries include declarations. Missing dependencies, invalid
 input, changed source, malformed protocol results, timeouts, and failed queries
 return target-qualified stderr and nonzero status. Only affected tuples fail; successful tuples retain stdout in request order, including successes before and after a failed query. Resolver startup failures affect only that language; per-request errors do not abort its other queries.
+
+#### Rust Cargo analysis
+
+Rust uses an installed, working `rust-analyzer` and the selected project's installed
+Cargo/Rust toolchain, including `rust-src`. Preflight checks these prerequisites;
+the command never installs components, toolchains or dependencies. Standalone
+Rust files and non-Cargo projects are unsupported. Cargo workspace roots must lie
+inside the canonical selected workspace. Member crates and in-root path dependencies
+share the existing command-owned language-server session. Registry, standard-library
+and out-of-root results remain skipped, not editable workspace results.
+
+Analysis uses the selected Cargo target/configuration and default features, not
+every conditional-compilation combination. There is no feature/target-switching
+interface. Metadata runs offline and locked, so missing cached dependencies or a
+missing/outdated `Cargo.lock` fail explicitly without changing source files.
+Cargo's effective build target filters dependency coverage; target-inactive
+packages in metadata are not by themselves evidence of disabled expansion.
+
+Invocation-local initialization and configuration replies disable build scripts,
+procedural macros and checks (`cargo.buildScripts.enable=false`,
+`procMacro.enable=false`, `checkOnSave=false`). Cargo stays offline and rustup
+automatic installation is disabled during preflight and server execution. A
+command-private `RUSTUP` executable override also blocks the server's explicit
+standard-library component installer. Each linked Cargo project uses its own
+installed toolchain and configuration.
+Higher-precedence project rust-analyzer configuration may retain harmless editor
+preferences, but conflicting execution, admission or coverage settings fail before
+server launch. The command sends no file-watch changes or configuration reloads.
+User configuration and source files are not modified.
+
+Initialization and empty replies do not establish completeness. The resolver must
+publish healthy, quiescent server status and support native pull diagnostics.
+Loading uses the existing shared 30-second deadline; warning/error health, absent
+readiness, unavailable diagnostics, unlinked/inactive selections, source changes
+and analysis changes during a query produce affected-query failures. Native
+semantic hover also checks selection eligibility, including suppressed inactive
+code diagnostics. Other languages' successful tuples remain available.
+
+An active Cargo graph containing disabled build scripts or procedural macros
+cannot establish complete generated reference coverage, including reverse
+workspace dependents. Available semantic rows remain visible with an explicit
+nonzero coverage diagnostic. Reference queries acquire native diagnostics across the selected local source
+graph when complete coverage remains possible, including sibling modules and workspace dependents;
+reports are reused within the batch. Once coverage is known incomplete, redundant diagnostic and
+hover checks are skipped without clearing the failure or weakening readiness checks.
+Invocation settings disable unrelated workspace cache priming. Native errors and missing generated imports prevent a
+completeness claim. Declarative macro results use normal location
+admission; unsupported/generated locations retain explicit skip diagnostics.
 
 #### Result contract
 
@@ -215,3 +263,11 @@ cleanup never fabricate a completed semantic reply or rerun a query.
    and reference queries are accepted. Ambiguous and missing-token errors are actionable without
    starting the resolver. A batch starts one server per language, shares its budget,
    preserves tuple-label order and per-query coverage, and rejects changed inputs without suppressing unchanged inputs.
+
+9. Rust definition/reference queries span Cargo member crates and in-root path
+   dependencies through the authenticated frontend, including raw identifiers,
+   UTF-16 positions, types, trait methods, imports and retained output recovery.
+   Deterministic protocol checks cover readiness, degraded status, configuration
+   safety and cancellation separately from opt-in installed-resolver acceptance.
+   Build-script/procedural-macro sentinels and offline dependency failures must
+   preserve the no-execution/no-installation boundary. Rust outlines remain structural.

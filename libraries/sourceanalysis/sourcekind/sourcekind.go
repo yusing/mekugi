@@ -30,7 +30,7 @@ var formats = []suffixFormat{
 	{suffix: ".pyi", format: code("python", false, "python", false)},
 	{suffix: ".py", format: code("python", false, "python", true)},
 	{suffix: ".go", format: code("go", false, "gopls", false)},
-	{suffix: ".rs", format: code("rust", false, "", false)},
+	{suffix: ".rs", format: code("rust", false, "rust", false)},
 	{suffix: ".md", format: Format{Kind: "markdown", Outline: true}},
 	{suffix: ".json", format: Format{Kind: "json", Outline: true, SemanticResolver: "typescript"}},
 }

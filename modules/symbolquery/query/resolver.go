@@ -92,6 +92,9 @@ type lspClient struct {
 	nextID        int
 	folders       []map[string]string
 	configuration map[string]any
+	rustStatus    *rustServerStatus
+	rustRevision  uint64
+	rustReports   map[string]rustDiagnosticReport
 }
 
 func readRPC(reader io.Reader, events chan<- rpcEvent, stop <-chan struct{}) {
@@ -164,6 +167,63 @@ func (l *lspClient) notify(method string, params any) error {
 	}
 	return l.write(message)
 }
+func (l *lspClient) handleServerMessage(m rpcMessage) error {
+	if m.Method == "experimental/serverStatus" {
+		var status rustServerStatus
+		if err := json.Unmarshal(m.Params, &status); err != nil {
+			return err
+		}
+		l.rustStatus = &status
+		if !status.Quiescent || status.Health != "ok" {
+			l.rustRevision++
+			l.rustReports = nil
+		}
+	}
+	if len(m.ID) > 0 {
+		var result any
+		switch m.Method {
+		case "workspace/configuration":
+			var p struct {
+				Items []struct {
+					Section string `json:"section"`
+				} `json:"items"`
+			}
+			_ = json.Unmarshal(m.Params, &p)
+			settings := make([]any, len(p.Items))
+			for i := range settings {
+				settings[i] = l.configuration
+				if _, rust := l.configuration["cargo"]; rust {
+					section := p.Items[i].Section
+					if section != "" && section != "rust-analyzer" {
+						value := any(l.configuration)
+						if rest, ok := strings.CutPrefix(section, "rust-analyzer."); ok {
+							for _, part := range strings.Split(rest, ".") {
+								object, _ := value.(map[string]any)
+								value = object[part]
+							}
+						} else {
+							value = nil
+						}
+						settings[i] = value
+					}
+				}
+			}
+			result = settings
+		case "workspace/workspaceFolders":
+			result = l.folders
+		case "client/registerCapability", "window/workDoneProgress/create":
+		default:
+			if e := l.write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "error": map[string]any{"code": -32601, "message": "method not supported"}}); e != nil {
+				return e
+			}
+			return nil
+		}
+		if e := l.write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result}); e != nil {
+			return e
+		}
+	}
+	return nil
+}
 func (l *lspClient) request(ctx context.Context, method string, params any) (jsontext.Value, error) {
 	if err := ctx.Err(); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -202,31 +262,8 @@ func (l *lspClient) request(ctx context.Context, method string, params any) (jso
 			}
 			m := event.message
 			if m.Method != "" {
-				if len(m.ID) > 0 {
-					var result any
-					switch m.Method {
-					case "workspace/configuration":
-						var p struct {
-							Items []any `json:"items"`
-						}
-						_ = json.Unmarshal(m.Params, &p)
-						settings := make([]any, len(p.Items))
-						for i := range settings {
-							settings[i] = l.configuration
-						}
-						result = settings
-					case "workspace/workspaceFolders":
-						result = l.folders
-					case "client/registerCapability", "window/workDoneProgress/create":
-					default:
-						if e := l.write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "error": map[string]any{"code": -32601, "message": "method not supported"}}); e != nil {
-							return nil, e
-						}
-						continue
-					}
-					if e := l.write(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result}); e != nil {
-						return nil, e
-					}
+				if e := l.handleServerMessage(m); e != nil {
+					return nil, e
 				}
 				continue
 			}
@@ -309,6 +346,9 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 	deadline, cancel := context.WithTimeout(ctx, resolverTimeout)
 	defer cancel()
 	name, args := "tsc", []string{"--lsp", "--stdio"}
+	if resolver == "rust" {
+		name, args = "rust-analyzer", nil
+	}
 	if resolver == "python" {
 		name, args = "pyright-langserver", []string{"--stdio"}
 	}
@@ -320,8 +360,21 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 			q.err = err
 		}
 	}
+	var rustConfig *rustAnalysis
+	if resolver == "rust" {
+		var err error
+		rustConfig, err = prepareRust(deadline, processScope, root, scratch, queries)
+		if err != nil {
+			failAll(err)
+			return
+		}
+	}
 	cmd := resolverCommand(deadline, processScope, root, name, args...)
 	cmd.Env = append(cmd.Environ(), "TMPDIR="+scratch, "TMP="+scratch, "TEMP="+scratch)
+	if resolver == "rust" {
+		cmd.Env = append(cmd.Env, rustEnvironment...)
+		cmd.Env = append(cmd.Env, "RUSTUP="+rustConfig.rustup)
+	}
 	inputR, inputW, err := os.Pipe()
 	if err != nil {
 		failAll(err)
@@ -413,6 +466,12 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 		lsp.configuration = map[string]any{"staticcheck": false}
 		params["initializationOptions"] = lsp.configuration
 	}
+	if resolver == "rust" {
+		lsp.configuration = rustConfig.config
+		params["initializationOptions"] = rustConfig.config
+		params["capabilities"].(map[string]any)["experimental"] = map[string]bool{"serverStatusNotification": true}
+		params["capabilities"].(map[string]any)["textDocument"] = map[string]any{"diagnostic": map[string]bool{"dynamicRegistration": false}}
+	}
 	initialized, err := lsp.request(deadline, "initialize", params)
 	if err != nil {
 		failAll(err)
@@ -420,7 +479,8 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 	}
 	var initializedData struct {
 		Capabilities struct {
-			PositionEncoding string `json:"positionEncoding"`
+			PositionEncoding   string         `json:"positionEncoding"`
+			DiagnosticProvider jsontext.Value `json:"diagnosticProvider"`
 		} `json:"capabilities"`
 	}
 	if err = json.Unmarshal(initialized, &initializedData); err != nil {
@@ -435,10 +495,17 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 		failAll(err)
 		return
 	}
+	if resolver == "rust" && (len(initializedData.Capabilities.DiagnosticProvider) == 0 || string(initializedData.Capabilities.DiagnosticProvider) == "null" || string(initializedData.Capabilities.DiagnosticProvider) == "false") {
+		failAll(rustCoverage("installed rust-analyzer lacks native pull diagnostics"))
+		return
+	}
 	opened := map[string]bool{}
 	customBuild := false
 	checkedGoFlags, inferGoTags := false, false
 	for _, q := range queries {
+		if q.err != nil {
+			continue
+		}
 		if customBuild {
 			// A previous tuple's inferred tag must not change this tuple's
 			// default build, including mutually exclusive test variants.
@@ -472,7 +539,57 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 			method = "textDocument/references"
 			params["context"] = map[string]bool{"includeDeclaration": true}
 		}
+		if resolver == "rust" {
+			if err := lsp.rustReady(deadline); err != nil {
+				q.err = err
+				continue
+			}
+			coverageRevision := lsp.rustRevision
+			if q.mode == "refs" && q.coverage == nil {
+				for _, path := range rustConfig.sources[q] {
+					if err := lsp.rustDiagnostics(deadline, symbolFileURI(path), nil); err != nil {
+						q.coverage = fmt.Errorf("%s: %w", path, err)
+						break
+					}
+				}
+			}
+			selection := q.file.parsed.Lines.Position(q.offset)
+			if q.coverage == nil {
+				if err := lsp.rustDiagnostics(deadline, uri, &selection); err != nil {
+					q.coverage = err
+				}
+			}
+			if err := lsp.rustReady(deadline); err != nil {
+				q.err = err
+				continue
+			}
+			if lsp.rustRevision != coverageRevision {
+				lsp.rustReports = nil
+				q.err = rustCoverage("analysis changed during coverage acquisition; retry after loading settles")
+				continue
+			}
+		}
+		revision := lsp.rustRevision
 		raw, e := lsp.request(deadline, method, params)
+		if resolver == "rust" && e == nil {
+			if err := lsp.rustReady(deadline); err != nil {
+				e = err
+			}
+			// A successful empty reply for an unlinked/inactive token is not coverage.
+			if q.coverage == nil {
+				hover, err := lsp.request(deadline, "textDocument/hover", params)
+				if err != nil || string(hover) == "null" || len(hover) == 0 {
+					q.coverage = rustCoverage("selected token has no active semantic information")
+				}
+			}
+			if err := lsp.rustReady(deadline); err != nil {
+				e = err
+			}
+			if lsp.rustRevision != revision {
+				e = rustCoverage("analysis changed during semantic query; retry after loading settles")
+			}
+
+		}
 		if resolver == "gopls" && e != nil && strings.Contains(e.Error(), "no package metadata for file") {
 			if tag := missingGoBuildTag(q.file.parsed.Source); tag != "" {
 				if !checkedGoFlags {

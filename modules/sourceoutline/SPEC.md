@@ -51,7 +51,7 @@ type paths and reference/pointer/array/tuple structure remain visible without va
 Use declarations and extern crates project imported binding names, aliases, or `*` for wildcards.
 Attached outer attributes belong to the following declaration's span. Inline module contents,
 associated constants/types, enum variants, macro bodies/invocations, and function-local items
-are not expanded. Rust inspection is structural only and adds no semantic resolver.
+are not expanded. Rust inspection remains structural; [symbol query](../symbolquery/SPEC.md#rust-cargo-analysis) owns Cargo semantic lookup.
 JavaScript and TypeScript side-effect imports use their decoded module string as the name,
 including single- and double-quoted literals and ECMAScript escapes and line continuations.
 Recovered invalid module strings MUST NOT contribute fabricated names.

@@ -27,13 +27,15 @@ type symbolFixtureLocation struct {
 	} `json:"range"`
 }
 type symbolResolverFixture struct {
-	Definitions   []symbolFixtureLocation
-	References    []symbolFixtureLocation
-	MutateMethod  string
-	MutatePath    string
-	MutatedSource string
-	ErrorMethod   string
-	Diagnostic    string
+	Definitions       []symbolFixtureLocation
+	References        []symbolFixtureLocation
+	MutateMethod      string
+	MutatePath        string
+	MutatedSource     string
+	ErrorMethod       string
+	RustHealth        string
+	RustDegradeMethod string
+	Diagnostic        string
 }
 type symbolProtocolEvent struct {
 	ParamsPresent bool     `json:"paramsPresent"`
@@ -46,7 +48,7 @@ type symbolProtocolEvent struct {
 		Method string         `json:"method"`
 		Params struct {
 			Position              symbolFixturePosition `json:"position"`
-			InitializationOptions map[string]bool       `json:"initializationOptions"`
+			InitializationOptions map[string]any        `json:"initializationOptions"`
 			Context               struct {
 				IncludeDeclaration bool `json:"includeDeclaration"`
 			} `json:"context"`
@@ -112,6 +114,10 @@ func TestNativeSymbolResolverProcess(t *testing.T) {
 		os.Exit(2)
 	}
 	command := args[0]
+	if command == "rust-analyzer" && len(args) > 1 && args[1] == "--version" {
+		fmt.Println("rust-analyzer fixture")
+		os.Exit(0)
+	}
 	data, err := os.ReadFile(filepath.Join(directory, command+".json"))
 	if err != nil {
 		os.Exit(2)
@@ -178,13 +184,25 @@ func TestNativeSymbolResolverProcess(t *testing.T) {
 				os.Exit(2)
 			}
 		}
+		if command == "rust-analyzer" && ((method == "textDocument/didOpen" && fixture.RustHealth != "loading") || method == fixture.RustDegradeMethod) {
+			health := fixture.RustHealth
+			if method == fixture.RustDegradeMethod {
+				health = "warning"
+			}
+			status, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "experimental/serverStatus", "params": map[string]any{"health": health, "quiescent": true}})
+			fmt.Printf("Content-Length: %d\r\n\r\n%s", len(status), status)
+		}
 		if len(event.Message.ID) == 0 {
 			continue
 		}
 		var result any
 		switch method {
 		case "initialize":
-			result = map[string]any{"capabilities": map[string]any{"positionEncoding": "utf-16"}}
+			result = map[string]any{"capabilities": map[string]any{"positionEncoding": "utf-16", "diagnosticProvider": true}}
+		case "textDocument/diagnostic":
+			result = map[string]any{"kind": "full", "items": []any{}}
+		case "textDocument/hover":
+			result = map[string]any{"contents": "fixture"}
 		case "textDocument/definition":
 			result = fixture.Definitions
 		case "textDocument/references":
@@ -255,7 +273,7 @@ func TestNativeSymbolGoLSPExactExpansion(t *testing.T) {
 		t.Fatalf("single-query LSP invocation: %+v", events)
 	}
 	for _, event := range events {
-		if event.Message.Method == "initialize" && !reflect.DeepEqual(event.Message.Params.InitializationOptions, map[string]bool{"staticcheck": false}) {
+		if event.Message.Method == "initialize" && !reflect.DeepEqual(event.Message.Params.InitializationOptions, map[string]any{"staticcheck": false}) {
 			t.Fatalf("one-shot diagnostics configuration: %+v", event)
 		}
 		if event.Message.Method == "textDocument/definition" && event.Message.Params.Position != (symbolFixturePosition{2, 5}) {

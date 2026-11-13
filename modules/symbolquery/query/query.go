@@ -38,6 +38,7 @@ type symbolQuery struct {
 	line, occurrence, offset int
 	file                     *symbolSource
 	err                      error
+	coverage                 error
 	locations                []symbolLocation
 	stderr                   string
 }
@@ -86,6 +87,9 @@ func loadSymbolSource(ctx context.Context, root, path, resolver string, cache ma
 		}
 		if resolver == "python" {
 			reason = "not Python"
+		}
+		if resolver == "rust" {
+			reason = "not Rust"
 		}
 		return nil, &symbolSourceFailure{reason, "path has an unsupported msymbol source format"}
 	}
@@ -535,6 +539,9 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 			fail(q, queryErr)
 		} else if q.mode == "def" && !emitted {
 			fail(q, &symbolFailure{"no_editable_location", "definition has no editable workspace location"})
+		}
+		if q.coverage != nil {
+			fail(q, q.coverage)
 		}
 	}
 	sharedBytes = 0

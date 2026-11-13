@@ -12,7 +12,7 @@ func TestClassify(t *testing.T) {
 		ok         bool
 	}{
 		{path: "a.go", language: "go", resolver: "gopls", ok: true},
-		{path: "a.rs", language: "rust", ok: true},
+		{path: "a.rs", language: "rust", resolver: "rust", ok: true},
 		{path: "a.d.ts", language: "typescript", resolver: "typescript", validation: true, ok: true},
 		{path: "a.d.mts", language: "typescript", resolver: "typescript", ok: true},
 		{path: "a.tsx", language: "typescript", resolver: "typescript", jsx: true, ok: true},

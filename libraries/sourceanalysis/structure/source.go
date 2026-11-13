@@ -252,7 +252,7 @@ func parse(ctx context.Context, source string, format sourcekind.Format, collect
 				s.parseError(int(n.StartByte()))
 			}
 			kind := n.Kind()
-			if collectTokens && (kind == "identifier" || kind == "property_identifier" || kind == "private_property_identifier" || kind == "type_identifier" || kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern") {
+			if collectTokens && (kind == "identifier" || kind == "property_identifier" || kind == "private_property_identifier" || kind == "type_identifier" || kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern" || s.Format.Language == "rust" && kind == "field_identifier") {
 				s.Tokens = append(s.Tokens, Token{int(n.StartByte()), n.Utf8Text(data)})
 			}
 			for i := uint(0); i < n.ChildCount(); i++ {
