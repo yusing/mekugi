@@ -35,7 +35,6 @@ type threadExecution struct {
 	shared        *control.Service
 	features      *sessioncontrol.NativeFeatureUse
 	driver        *threadbinding.Driver
-	approvals     *sessioncontrol.DelegateApprovals
 	retained      changes.Scope
 	recovery      *recovery.Service
 	windows       *executionobservation.Windows
@@ -104,9 +103,6 @@ func (e *threadExecution) Confirm(ctx context.Context, input control.NativeInput
 	if !ok {
 		return control.ErrNotAdmitted
 	}
-	if strings.HasPrefix(member.Settings.Model, "claude:") {
-		return sessioncontrol.ConfirmClaudeInput(ctx, member.Path, input)
-	}
 	return sessioncontrol.ConfirmNativeInput(ctx, member.Path, input)
 }
 
@@ -119,9 +115,6 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 	member, ok := e.shared.Member(thread)
 	if !ok || member.Parent == "" {
 		return nil, errors.New("retained child execution is unavailable")
-	}
-	if strings.HasPrefix(member.Settings.Model, "claude:") {
-		return e.resumeClaude(ctx, member)
 	}
 	canonical, err := binding.ReadAdmissionSettings(thread, member.Path)
 	if err != nil && member.AudienceAdmitted {
@@ -164,9 +157,6 @@ func (e *threadExecution) Resume(ctx context.Context, thread string) (control.Ru
 }
 
 func (e *threadExecution) Create(ctx context.Context, parent, importPath string, settings control.Settings) (control.Receipt, error) {
-	if strings.HasPrefix(settings.Model, "claude:") {
-		return e.createClaude(ctx, parent, importPath, settings)
-	}
 	child := &threadExecution{hub: e.hub, shared: e.shared, features: e.features, workers: e.workers, sourceSocket: e.sourceSocket, headless: e.headless, setup: e.setup, windows: e.windows.ForRuntime(), deduplication: e.deduplication, start: &sessioncontrol.PreparedThread{Parent: parent, Import: importPath, Settings: settings}}
 	if importPath != "" {
 		child.start.InputPrefix = e.contexts.CaptureInputPrefix(parent, settings.Workspace)

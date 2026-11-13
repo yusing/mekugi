@@ -6,9 +6,8 @@ Own invocation-private executable exposure and authenticated worker dispatch for
 `mcat`, `inspect_file`, `msymbol`, `mread`, `mrun`, `mchanges`, and the compaction
 acquisition helper `mreload`. Command modules
 own reader parsing, output budgeting, resolver orchestration, and command semantics.
-Codex owns stock execution and its process lifecycle. Admitted Claude delegates
-receive the same authenticated catalog through their native shell environment,
-with a distinct retained child scope.
+Codex owns stock execution and its process lifecycle. Each admitted native thread
+uses the authenticated catalog with its retained thread scope.
 
 ## Required capabilities
 

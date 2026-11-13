@@ -8,13 +8,6 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
 
-// Named captures explicit native-tool targets without manufacturing command
-// source. Paths must already be resolved against the native working directory;
-// workspace retains the selected capture identity.
-func Named(paths []string, workspace string, source *evidence.Source) *Observation {
-	return NamedUntil(paths, workspace, time.Now().Add(execCaptureHold), source)
-}
-
 // NamedUntil shares the enclosing native-boundary deadline across every path.
 func NamedUntil(paths []string, workspace string, deadline time.Time, sources ...*evidence.Source) *Observation {
 	base := Observation{Class: execscope.Declared.String(), Roots: AddRoot(nil, workspace)}

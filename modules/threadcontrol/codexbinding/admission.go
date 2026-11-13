@@ -6,7 +6,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"slices"
-	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -60,24 +59,22 @@ func (d *Driver) capture(ctx context.Context, id control.Identity) (settings con
 	if admitted {
 		settings = member.Settings
 	}
-	if !admitted || !strings.HasPrefix(settings.Model, "claude:") {
-		admission, readErr := binding.ReadAdmissionSettings(id.Thread, path)
-		if readErr != nil {
-			err = readErr
-			return
-		}
-		runtime, readErr := binding.ReadRuntimeContext(id.Thread, path, id.Turn)
-		if readErr != nil {
-			err = readErr
-			return
-		}
-		settings.Workspace, settings.Model, settings.Provider = runtime.Workspace, runtime.Model, admission.Provider
-		settings.RuntimeRoots, settings.Effort, settings.Summary, settings.Tier = admission.RuntimeRoots, runtime.Effort, admission.Summary, admission.Tier
-		settings.PermissionProfile, settings.ApprovalPolicy, settings.ApprovalsReviewer = runtime.PermissionProfile, runtime.ApprovalPolicy, runtime.ApprovalsReviewer
-		settings.PermissionID = ""
-		if runtime.ActivePermissionProfile != nil {
-			settings.PermissionID = runtime.ActivePermissionProfile.ID
-		}
+	admission, readErr := binding.ReadAdmissionSettings(id.Thread, path)
+	if readErr != nil {
+		err = readErr
+		return
+	}
+	runtime, readErr := binding.ReadRuntimeContext(id.Thread, path, id.Turn)
+	if readErr != nil {
+		err = readErr
+		return
+	}
+	settings.Workspace, settings.Model, settings.Provider = runtime.Workspace, runtime.Model, admission.Provider
+	settings.RuntimeRoots, settings.Effort, settings.Summary, settings.Tier = admission.RuntimeRoots, runtime.Effort, admission.Summary, admission.Tier
+	settings.PermissionProfile, settings.ApprovalPolicy, settings.ApprovalsReviewer = runtime.PermissionProfile, runtime.ApprovalPolicy, runtime.ApprovalsReviewer
+	settings.PermissionID = ""
+	if runtime.ActivePermissionProfile != nil {
+		settings.PermissionID = runtime.ActivePermissionProfile.ID
 	}
 	raw, err := owner.Configuration(ctx, id.Thread, settings.Workspace)
 	if err != nil {

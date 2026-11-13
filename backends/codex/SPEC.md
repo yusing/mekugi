@@ -23,9 +23,7 @@ or the explicit product scope. Update affected contracts and consumers together.
 
 ## Execution authority
 
-This boundary governs Codex runtimes. Independently admitted Claude delegates use
-the [Claude backend](../claude/SPEC.md) while retaining Thread Control's logical
-coordination and the parent's captured authority. The root execution interface stays unchanged.
+This boundary governs Codex runtimes.
 
 Codex owns stock `apply_patch`, `exec_command`, JavaScript `exec`, permissions,
 sandboxing, processes, yielded sessions and `write_stdin` continuation. Mekugi
@@ -113,7 +111,7 @@ are never restored from retained evidence.
 The root launch's native runtime owns per-thread feature-use counters independently
 of optional analytics and telemetry export. Native lifecycle owners supply reset and
 tool facts; the host supplies typed facts at accepted coordination boundaries. Those
-facts retain the actor's identity, including Claude descendants, rather than using a
+facts retain the actor's identity rather than using a
 message recipient's identity or native collaboration ancestry.
 
 Native `featureUse/observed` notifications carry semantic facts; the host sends

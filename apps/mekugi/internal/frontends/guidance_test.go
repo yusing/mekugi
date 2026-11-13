@@ -31,18 +31,8 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(registry.SnapshotDir, "frontend_guidance.json")); !os.IsNotExist(err) {
 		t.Fatalf("unused guidance snapshot exists: %v", err)
 	}
-	for _, codeOnly := range []string{"tools.exec_command", "Pass `shell:", "exec output", "write_stdin"} {
-		if strings.Contains(saved.Shell, codeOnly) {
-			t.Fatalf("native shell guidance contains Codex execution instruction %q", codeOnly)
-		}
-	}
-	if !strings.Contains(saved.Workflow, "The user can see exec output") || !strings.Contains(saved.Shell, "follow its next_call") || !strings.Contains(saved.Shell, "Reuse completed edit-receipt IDs") {
-		t.Fatal("frontend projections lost execution or shared helper workflow")
-	}
-	for _, projection := range []string{saved.Workflow, saved.Shell} {
-		if !strings.Contains(projection, "Display labels are not recovery handles") {
-			t.Fatal("frontend projection lost recovery-handle distinction")
-		}
+	if !strings.Contains(saved.Workflow, "The user can see exec output") {
+		t.Fatal("frontend projection lost execution workflow")
 	}
 	for _, instruction := range []string{
 		"Print raw output once", "within the outer exec budget", "overflow can erase next_call handles",
@@ -52,7 +42,7 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 		`functions.wait({cell_id: "RETURNED_CELL_ID", yield_time_ms: 120000`,
 		"not another native poll or a replay of the script",
 	} {
-		if !strings.Contains(saved.Workflow, instruction) || strings.Contains(saved.Shell, instruction) {
+		if !strings.Contains(saved.Workflow, instruction) {
 			t.Fatalf("exec output guidance must be confined to Codex: %q", instruction)
 		}
 	}
@@ -65,7 +55,7 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 		t.Fatal("snapshot sections are not authenticated")
 	}
 	for _, contribution := range testCommands() {
-		if !slices.Contains(manifest.Tools, contribution.Name) || strings.Count(guide, contribution.Description) != 1 || strings.Count(saved.Shell, contribution.Description) != 1 {
+		if !slices.Contains(manifest.Tools, contribution.Name) || strings.Count(guide, contribution.Description) != 1 {
 			t.Fatalf("%s description is not projected exactly once", contribution.Name)
 		}
 	}

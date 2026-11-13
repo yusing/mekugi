@@ -292,10 +292,10 @@ observation-ordered roster in the application's attached session store, with
 agent lifecycle state in its thread stores. Caller labels can change while
 thread identity and roster order remain stable. Adapters publish detached
 roster values; those values do not own lifecycle transitions.
-Responses and authenticated primary native Claude SDK streams supply transient
+Responses streams supply transient
 tool identities and partial input through the request-scoped observation owner.
 These replace stale roster summaries only while work is running; completed-item
-delivery or native content-block completion retires them, as do request termination
+delivery retires them, as do request termination
 and transport loss. Internal native subagents do not overwrite their parent's label.
 Restoration does not revive generated-input labels.
 The optional composed service supplies output retention and asynchronous

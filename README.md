@@ -93,9 +93,7 @@ Invocation overrides leave Codex configuration unchanged.
   closes. [Control them from another machine](docs/guide/remote.md), including
   phones, through an authenticated connector.
 - **Session continuity.** [Resume, fork, or rewind](docs/guide/sessions.md) conversations.
-- **Providers and delegates.** Use [custom Responses providers](docs/guide/providers.md),
-  and [Claude delegates](docs/guide/providers.md#claude-delegates) through the same
-  coordination tools.
+- **Providers.** Use [native OpenAI or custom Responses providers](docs/guide/providers.md).
 - **Composer.** Attach files and skills, ask side questions, run one-off tasks,
   recall presets, and change model, reasoning, tier and permissions in session.
   See the [composer](docs/guide/terminal-ui.md#composer).
@@ -114,8 +112,6 @@ Requirements:
 - Built-in helpers need neither Node.js nor Bun; semantic lookup uses the language
   servers listed in [agent tools](docs/guide/agent-tools.md#wrapped-session-helpers).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
-- Claude delegates additionally need Bun and an authenticated Claude Code
-  installation on the execution machine's `PATH`.
 
 ### Release binaries
 
@@ -187,7 +183,7 @@ imports, and `--oss` remains unsupported. See [launch details](docs/guide/launch
 - [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file` and `mchanges`.
 - [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards and secure GPG passphrase entry.
 - [Server, connector and browser](docs/guide/remote.md): remote control, browser UI and Docker deployment.
-- [Providers and delegates](docs/guide/providers.md): custom Responses, retired-provider migration and Claude delegates.
+- [Providers](docs/guide/providers.md): native OpenAI and custom Responses providers.
 - [Launch and automation](docs/guide/launch.md): launch commands, execution policy and headless runs.
 - [Configuration and metrics](docs/guide/configuration.md): settings file, options, metrics and troubleshooting.
 

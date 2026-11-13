@@ -130,10 +130,7 @@ Cover these when the change touches the boundary:
 - **Execution:** batching/parallelism, interpreter display, PTY/yield/`write_stdin`, bounded output
   and `mread` recovery.
 - **Producer shapes:** Chat/Responses and persisted rollout events at the consuming boundary.
-  Recheck dated host observations after Codex upgrades. Claude Agent SDK messages and control
-  responses: build fixtures from captured SDK output, not hand-authored mock values, and run one
-  live Claude delegate turn before reporting Claude delegate metrics or presentation as working;
-  otherwise report that behavior as unverified.
+  Recheck dated host observations after Codex upgrades.
 - **Logical lifecycle:** for host-turn handling or thread-control waits, cover how host completion,
   failure, interruption, manual compaction, injected input and enclosing-cell re-execution keep or
   settle pending waits and logical work, per

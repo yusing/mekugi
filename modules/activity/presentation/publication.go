@@ -131,7 +131,7 @@ func (m *Model[S, A]) Publish() Publication {
 	return publication
 }
 
-// GenerationSummary is shared by feed-backed and native SDK roster producers.
+// GenerationSummary projects request-scoped tool generation for roster consumers.
 func (facts AgentFacts) GenerationSummary() []Entry {
 	if facts.Generating == "" {
 		return nil

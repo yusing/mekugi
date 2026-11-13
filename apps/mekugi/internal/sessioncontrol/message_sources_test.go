@@ -112,19 +112,3 @@ func TestMessageSourceSelectionPreservesCanonicalAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-func TestClaudeMessageSourcesUseAdmittedReader(t *testing.T) {
-	runtime, _, _ := claudeFixture(t, nil)
-	if _, err := runtime.ReadMessageSources(t.Context(), &control.Member{Thread: "foreign"}, "selection"); err == nil {
-		t.Fatal("foreign runtime identity accepted")
-	}
-	var selected string
-	runtime.SetMessageSourceReader(func(_ context.Context, selection string) (string, error) {
-		selected = selection
-		return "captured", nil
-	})
-	text, err := runtime.ReadMessageSources(t.Context(), &control.Member{Thread: "child"}, "selection")
-	if err != nil || text != "captured" || selected != "selection" {
-		t.Fatalf("Claude reader not used: %q %q %v", text, selected, err)
-	}
-}

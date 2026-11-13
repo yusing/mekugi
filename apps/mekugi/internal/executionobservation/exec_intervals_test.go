@@ -352,7 +352,7 @@ func TestPrivateArtifactWriterDoesNotClaimIsolatedWorktree(t *testing.T) {
 			}
 			p.Windows.open(&execWindow{ref: "writer", group: "writer", workspace: f.workspace, roots: observation.Roots, paths: observation.ScopePaths(), scope: selected})
 			path := filepath.Join(sibling, "test.go")
-			childObservation := changecapture.Named([]string{path}, sibling, captureSource(selected))
+			childObservation := changecapture.NamedUntil([]string{path}, sibling, time.Now().Add(500*time.Millisecond), captureSource(selected))
 			child := mekugiHistory{ToolName: nativeExecCommandToolName, Root: sibling, ExecutingThread: "delegate", ExecObservation: childObservation}
 			if err := publishObservations(f.ctx, selected, p.Changes, nil, sibling, map[string]mekugiHistory{"child": child}); err != nil {
 				t.Fatal(err)

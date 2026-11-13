@@ -19,10 +19,8 @@ machinery below are current design.
 ## Ownership
 
 Thread control owns admitted logical trees, work generations, admission reservations,
-attributed messages/results, descendant waits and their durable dispositions. Each admitted
-backend owns its thread and turn execution, tools, processes, permissions, approvals
-and interruption. Codex owns root execution; qualified Claude models select the
-[Claude delegate backend](../../backends/claude/SPEC.md). The Mekugi server owns each native runtime. Its Session Control retains that
+attributed messages/results, descendant waits and their durable dispositions. Codex owns admitted
+thread and turn execution, tools, processes, permissions, approvals and interruption. The Mekugi server owns each native runtime. Its Session Control retains that
 runtime’s sole host connection and request ledger. Launch supplies the selected
 execution owners; the server admits children and joins their lifetimes.
 
@@ -63,21 +61,11 @@ native request metadata remains unchanged on the provider wire.
 
 ## Operations and admission
 
-- `list_models` takes no arguments and returns models for the other delegate backend:
-  Codex callers receive native SDK choices qualified with `claude:`, while Claude
-  callers receive Codex identifiers from the captured selected provider catalog.
-  Discovery requires admitted caller identity, creates no logical member or work
-  generation, and submits no model input. Missing runtime/catalog acquisition
-  fails explicitly. Native catalog entries advertise supported choices, not
-  guaranteed provider access or account entitlement.
 - `spawn_agent` preserves task name, assignment, role, context, model and effort
   conventions and adds optional `cwd`. It returns confirmed independent host
   identity and visible logical agent name. Task names are nonempty and contain
   only lowercase ASCII letters, digits, underscores and hyphens; each name forms
   one segment of its parent's logical task path.
-  Claude effort choices use the native model's advertised capabilities; a
-  full-history fork inherits its selected effort. Inspection reports native
-  applied effort only after observation, leaving it absent until then.
 - `followup_task` controls an admitted non-root target: start when idle, steer its
   actual running turn, or supersede an unsent wait/wake before reconciling host
   state. Original caller attribution remains attached. Action results identify
@@ -99,12 +87,8 @@ native request metadata remains unchanged on the provider wire.
   usage/window, and completed compactions. Unavailable observations are `null`,
   distinct from a measured zero. Inspection uses live session facts or retained
   observations without starting work or restoring an inactive runtime.
-- `compact` is Claude-only and requests its native context checkpoint before
-  continuing unfinished work. Codex uses native `new_context` with optional
-  [selected-source recovery](../agentguidance/SPEC.md#compaction-context).
-  Each backend's reset tool owns its checkpoint guidance.
 - `wait_agent` accepts `wait_mode?: "any" | "all"`,
-  `timeout_ms?: integer`, `yield_time_ms?: integer`, and `compact?: boolean`. Codex also accepts `reload`
+  `timeout_ms?: integer`, `yield_time_ms?: integer`, and `compact?: boolean`. It also accepts `reload`
   when `compact:true`; invalid selections reject before wait registration.
   Each wait snapshots descendants with unsettled work or unread outcomes;
   omitted mode means `"any"`; omitted compaction means false.
@@ -192,8 +176,7 @@ ordinary message reconciliation, assignment dispatch and wake handling. The targ
 live runtime answers without starting logical work, satisfying waits, changing drafts
 or occupying a human side-question slot; a target without one fails rather than
 being resumed. Each question is independent; prior side-question exchanges are not
-supplied. Codex uses its restricted answer-only /btw fork; Claude uses its native
-side-question control request, never a session fork. A caller that stops waiting
+supplied. Codex uses its restricted answer-only /btw fork. A caller that stops waiting
 abandons the answer; its auxiliary work finishes and cleans up independently.
 
 The result carries the target thread, task name and answer. An answer whose target
@@ -202,42 +185,6 @@ delivering the question as a message or steering the target. `followup_task` ret
 its assignment/start/steer semantics.
 
 ## Prepared children and guidance
-
-### Claude delegates
-
-An explicit `claude:MODEL` selection with `fork_turns:"none"` creates a Claude
-delegate. Backend selection survives role preparation: role instructions remain
-applicable, while a pinned Codex model or effort cannot replace the explicitly
-selected Claude model. For fresh children inheriting Claude, a pinned Codex role
-model replaces inheritance. Full-history children keep their source backend.
-Codex preparation retains its existing precedence.
-Claude model availability is validated by its runtime, with no provider fallback.
-Claude inherits approval policy and role capability limits, and runs without
-filesystem or network sandboxing. Human decisions use the ordinary approval dock
-of its nearest attachable ancestor, retaining the requesting child's attribution.
-Fresh delegates acquire selected preload bodies before inference and retain them
-with their attributed assignment. Claude full-history children fork their own
-backend session; a Codex transcript is never imported as Claude execution history.
-
-Claude receives authenticated coordination tools and invocation-private executable
-frontends. It has its own durable caller identity in the parent's namespace.
-Messages to idle work remain retained-only. Native input UUIDs and persisted
-operation receipts distinguish acceptance from uncertain dispatch. Restart restores
-paused logical work, and explicit follow-up reconciles before resuming the exact
-Claude session. Native background work and interruption settle only on observed outcomes.
-
-A direct Claude `wait_agent` call uses the existing wait state machine. Successful
-batch completion commits its exact local stop, and the backend's post-tool-batch
-hook stops before another provider request. Confirmed hook-stop completion retains
-logical waiting. A later wake appends an attributed synthetic, non-user tool-outcome
-envelope to the same session; it neither replays the original tool nor fabricates
-human input. Nested coordinators preserve descendant completion guards and ordered
-message/result delivery.
-
-Claude roster members are nonattachable. Shared presentation carries this capability
-through live, retained and historical navigation; unavailable metrics remain absent.
-Native Claude edits publish ordinary captured-change receipts through the existing
-capture owner, including observed partial effects from failed or interrupted tools.
 
 ### Codex preparation
 
@@ -503,7 +450,7 @@ Codex reset requests have no cost-estimate veto or preflight acquisition. Native
 its reload selection through the same native reset lifecycle before releasing the
 original wait. Source acquisition and retained selection belong to the
 [native reset contract](../agentguidance/SPEC.md#compaction-context), not provider
-input interception. Claude retains its backend compaction behavior.
+input interception.
 
 For Codex compound waits, private metadata on the authenticated MCP response binds
 the retained wait to its actual native execution cell. Native protects that cell
@@ -523,15 +470,13 @@ satisfied by the same operation. Native publishes a correlated terminal reset
 outcome and ends the host turn as a logical checkpoint without further inference.
 Wake delivery requires both that outcome and actual host settlement, in either
 arrival order. The compound checkpoint is native-owned and never dispatched again
-through Go's compaction request path. Ordinary waits and Claude settlement retain
-their existing paths.
+through Go's compaction request path. Ordinary waits retain their existing path.
 
 Compound native compaction failure preserves the wait and events, surfaces an immediate
 notice, and includes the failed compaction outcome in eventual delivery. Failure
 alone does not start inference. Human input and interruption supersede undispatched
 continuations without changing an already-settled reset outcome. Uncertain native dispatch pauses for reconciliation and is never
-repeated automatically. These semantics apply to Codex roots/delegates and Claude
-delegates.
+repeated automatically. These semantics apply to Codex roots and delegates.
 
 Manual compaction preserves the pending wait and logical work. Its auxiliary
 host turn neither completes the task nor starts a competing continuation; addressed
@@ -690,7 +635,7 @@ over its admitted family; it does not maintain a second counter implementation.
 Totals and their subsets:
 
 - **Compactions:** completed live native context resets, whoever initiated them;
-  accepted native `new_context` or `wait_agent` reset requests, and Claude `compact`;
+  accepted native `new_context` or `wait_agent` reset requests;
   those requests with nonempty effective reload selections. A native `new_context`
   request uses its effective retained selection at acceptance, including an inherited
   selection. Automatic or manual reload alone adds no self-request or preload use.
@@ -725,7 +670,7 @@ count on accepted recipient registration, even if delivery later needs reconcili
 foreign and local btw dispatches count before awaiting their answers. Both use the
 sender's counts, never the recipient's, and repeated operations count once per fact.
 Each use counts for the thread that made it; a descendant sum covers admitted descendants,
-including settled ones. Counts cover the current root launch, including native and Claude
+including settled ones. Counts cover the current root launch, including native
 descendants, and survive child runtime replacement and UI reconnect within that launch.
 A fresh root launch starts empty: checkpoints, resume and fork do not restore historical
 counts. A newly confirmed retained operation can count in the current launch without

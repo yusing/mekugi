@@ -1,58 +1,11 @@
 package codexbinding
 
 import (
-	"context"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"os"
 	"slices"
-	"strings"
-
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
-
-func (d *Driver) listModels(ctx context.Context, caller control.Identity, raw jsontext.Value) (any, error) {
-	var args struct{}
-	if err := json.Unmarshal(raw, &args, json.RejectUnknownMembers(true)); err != nil {
-		return nil, err
-	}
-	member, err := d.control.Caller(caller)
-	if err != nil {
-		return nil, err
-	}
-	if strings.HasPrefix(member.Settings.Model, "claude:") {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		d.mu.RLock()
-		defer d.mu.RUnlock()
-		if d.catalogError != nil {
-			return nil, d.catalogError
-		}
-		if len(d.models) == 0 {
-			return nil, errors.New("selected Codex model catalog is unavailable")
-		}
-		models := make([]control.ModelOption, 0, len(d.models))
-		for _, model := range d.models {
-			models = append(models, control.ModelOption{ID: model.Name})
-		}
-		return struct {
-			Models []control.ModelOption `json:"models"`
-		}{models}, nil
-	}
-	discovery, ok := d.native().(control.ModelDiscovery)
-	if !ok {
-		return nil, errors.New("Claude model discovery is unavailable")
-	}
-	models, err := discovery.DiscoverModels(ctx, caller)
-	if err != nil {
-		return nil, err
-	}
-	return struct {
-		Models []control.ModelOption `json:"models"`
-	}{models}, nil
-}
 
 // CaptureConfiguredCatalog receives the host's effective config. Static
 // catalogs bypass model discovery, so capture their selected source directly.

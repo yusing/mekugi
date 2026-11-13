@@ -5,7 +5,6 @@
 Native OpenAI access and explicitly configured custom Responses providers preserve
 Codex execution, tools, permissions, batching, continuation and per-thread usage.
 Provider access does not create an agent runtime or own a second transcript.
-Claude delegates retain their separate SDK execution and authentication boundary.
 
 The application inference gateway pins the selected route and owns its HTTP and
 WebSocket lifetime. Request preparation, execution admission, retained evidence,
@@ -45,9 +44,8 @@ provider and its base URL must be supplied by imported/explicit overrides; missi
 route information fails instead of being inferred from a provider name. Other
 fields retain ordinary host merging. Explicit CLI selection wins the profile.
 
-Pin this route ahead of model-prefix classification, including model IDs that
-look like retired route names. Do not discover retired credentials, catalogs or
-model defaults, and do not apply built-in effort filtering or price lookup. Keep the
+Do not classify the provider by model-name prefixes or apply built-in effort
+filtering or price lookup. Keep the
 upstream model ID unchanged and prices unknown when no authoritative price exists.
 Do not inject OpenAI-only access-program settings into a custom route.
 

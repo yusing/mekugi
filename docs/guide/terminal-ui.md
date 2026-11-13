@@ -112,7 +112,6 @@ See [saved-review controls](../../modules/changehistory/SPEC.md#terminal-review)
 ## Agents pane
 
 Click an attachable child to read its full transcript; click Main to return.
-Claude delegate rows remain noninteractive and show only available metrics.
 Each runtime keeps its own composer draft, prompts and settings. The child composer
 shows its role, model, reasoning effort and service tier. Historical views remain
 read-only. The One-off tab selects a separate editable conversation.

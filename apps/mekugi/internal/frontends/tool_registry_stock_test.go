@@ -115,12 +115,7 @@ func TestPreloadMcatRecoveryInAdmittedThread(t *testing.T) {
 	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	// Claude invokes ReadSources directly with the child environment.
-	claude, err := compact.ReadSources(t.Context(), string(selection), "", os.Environ(), compact.ChangeReader{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, source := range []compact.CapturedSource{snapshot.Sources[0], claude.Sources[0]} {
+	for _, source := range snapshot.Sources {
 		if source.ExitCode == 0 || !strings.HasPrefix(source.Command, "'mcat'") {
 			t.Fatalf("expected an incomplete mcat source: %+v", source)
 		}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"errors"
 	"net"
 	"slices"
 	"strings"
@@ -14,80 +13,8 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-func TestToolCatalogCallerDescriptions(t *testing.T) {
-	for _, tc := range []struct {
-		claude      bool
-		model, list string
-	}{
-		{false, "For a Claude delegate", "List Claude's native advertised model IDs"},
-		{true, "Use list_models for Codex choices", "List the selected Codex catalog's model IDs"},
-	} {
-		for _, tool := range ToolCatalog(tc.claude) {
-			if tool.Name == "compact" {
-				if !tc.claude {
-					t.Fatal("Codex exposes a duplicate reset tool")
-				}
-				for _, want := range []string{"Batch checkpoint preparation, including task-state JSON writes, and compact in one enclosing execution, with compact last", "then let that execution finish", "safe checkpoint", "below 90% are not compaction triggers"} {
-					if !strings.Contains(tool.Description, want) {
-						t.Errorf("caller claude=%t: compact omits %q: %s", tc.claude, want, tool.Description)
-					}
-				}
-				if strings.Contains(tool.Description, "Call alone") {
-					t.Errorf("caller claude=%t: compact still requires a separate call", tc.claude)
-				}
-			}
-			if tool.Name == "wait_agent" && !strings.Contains(tool.Description, "Call alone and let the enclosing tool execution finish") {
-				t.Errorf("caller claude=%t: wait lost its separate lifecycle: %s", tc.claude, tool.Description)
-			}
-			raw, err := json.Marshal(tool.InputSchema)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, syntax := range []string{"mchanges:", "#L", "$skill", "@path"} {
-				if strings.Contains(tool.Description+string(raw), syntax) {
-					t.Errorf("%s repeats source syntax instead of shared guidance: %s", tool.Name, syntax)
-				}
-			}
-			if tool.Name == "list_models" && !strings.HasPrefix(tool.Description, tc.list) {
-				t.Fatalf("caller claude=%t: %s", tc.claude, tool.Description)
-			}
-			if tool.Name != "spawn_agent" && tool.Name != "send_message" && tool.Name != "followup_task" {
-				continue
-			}
-			if tool.Name == "spawn_agent" && (!strings.Contains(tool.Description, "fork_turns=none") || !strings.Contains(tool.Description, "preload")) {
-				t.Fatalf("caller claude=%t: spawn description omits fresh-child preload: %s", tc.claude, tool.Description)
-			}
-			var schema struct {
-				Properties map[string]struct {
-					Description string `json:"description"`
-				} `json:"properties"`
-			}
-			if err := json.Unmarshal(raw, &schema); err != nil {
-				t.Fatal(err)
-			}
-			message := schema.Properties["message"].Description
-			for _, want := range []string{"File source references", "recipient cwd/permissions"} {
-				if !strings.Contains(message, want) {
-					t.Errorf("caller claude=%t: %s message omits %q: %s", tc.claude, tool.Name, want, message)
-				}
-			}
-			if tool.Name != "spawn_agent" {
-				continue
-			}
-			if !strings.Contains(schema.Properties["model"].Description, tc.model) {
-				t.Fatalf("caller claude=%t: model description %q", tc.claude, schema.Properties["model"].Description)
-			}
-			if !strings.Contains(schema.Properties["preload"].Description, "instruction files") {
-				t.Fatalf("caller claude=%t: preload omits instruction sources", tc.claude)
-			}
-		}
-	}
-}
-
 func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	driver, host, _, caller := reconciliationFixture(t)
-	discovery := &modelDiscoveryHost{Native: host}
-	driver.host = discovery
 	contribution := Codex.MCP(driver)
 	left, right := net.Pipe()
 	server, err := contribution.Server.Connect(t.Context(), &mcp.IOTransport{Reader: left, Writer: left}, nil)
@@ -105,7 +32,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	descriptions := make(map[string]string)
-	for _, tool := range ToolCatalog(false) {
+	for _, tool := range ToolCatalog() {
 		descriptions[tool.Name] = tool.Description
 	}
 	var names []string
@@ -142,7 +69,7 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	expected := []string{"followup_task", "inspect", "interrupt_agent", "list_agents", "list_models", "send_message", "spawn_agent", "wait_agent"}
+	expected := []string{"followup_task", "inspect", "interrupt_agent", "list_agents", "send_message", "spawn_agent", "wait_agent"}
 	if !slices.Equal(names, expected) {
 		t.Fatalf("catalog=%v", names)
 	}
@@ -151,7 +78,6 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"unknown":"file"}]}}`},
 		{"spawn_agent", `{"task_name":"child","message":"task","preload":{"sources":[{"path":"file","ranges":[[1]]}]}}`},
 		{"list_agents", `{"unknown":true}`},
-		{"list_models", `{"backend":"codex"}`},
 		{"wait_agent", `{"compact":"yes"}`},
 		{"inspect", `{}`},
 		{"inspect", `{"target":"/root","unknown":true}`},
@@ -181,11 +107,6 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	}
 	meta := mcp.Meta{"threadId": caller.Thread, "sessionId": caller.Session, "callId": "wait", "itemId": caller.Item, "windowId": "window",
 		"x-codex-turn-metadata": map[string]any{"thread_id": caller.Thread, "session_id": caller.Session, "turn_id": caller.Turn, "codex_version": "0.163.0", "model": "model", "reasoning_effort": "low"}}
-	modelResult, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: "list_models", Meta: meta, Arguments: map[string]any{}})
-	if err != nil || modelResult.IsError || len(modelResult.Content) != 1 {
-		t.Fatalf("model discovery: %+v, %v", modelResult, err)
-	}
-	assertDiscoveredModels(t, []byte(modelResult.Content[0].(*mcp.TextContent).Text))
 	host.ask = func(_ context.Context, target *control.Member, text string) (string, error) {
 		if target.Thread != "child" || text != "question" {
 			t.Fatal("MCP question lost its admitted target or text")
@@ -230,66 +151,6 @@ func TestMCPToolsValidateArgumentsBeforeAdmission(t *testing.T) {
 	}
 	if _, err := driver.Call(t.Context(), caller, "unknown", jsontext.Value(`{}`)); err == nil {
 		t.Fatal("native dispatch admitted an unknown tool")
-	}
-}
-
-type modelDiscoveryHost struct {
-	control.Native
-	calls int
-	err   error
-}
-
-func (h *modelDiscoveryHost) DiscoverModels(ctx context.Context, _ control.Identity) ([]control.ModelOption, error) {
-	h.calls++
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return []control.ModelOption{{ID: "claude:fixture", Name: "Fixture", Description: "Native catalog choice", ResolvedModel: "claude:fixture-version"}}, h.err
-}
-
-func assertDiscoveredModels(t *testing.T, body []byte) {
-	t.Helper()
-	var result struct {
-		Models []control.ModelOption `json:"models"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil || len(result.Models) != 1 || result.Models[0].ID != "claude:fixture" || result.Models[0].Name != "Fixture" || result.Models[0].ResolvedModel != "claude:fixture-version" {
-		t.Fatalf("model identifiers or native metadata lost: %s, %v", body, err)
-	}
-}
-
-func TestNativeModelDiscoveryRequiresAdmittedCaller(t *testing.T) {
-	driver, host, _, caller := reconciliationFixture(t)
-	before, _ := driver.control.Member(caller.Thread)
-	inputs, resumes := len(host.inputs), host.resumes
-	if _, err := driver.Call(t.Context(), caller, "list_models", jsontext.Value(`{}`)); err == nil {
-		t.Fatal("missing native discovery silently succeeded")
-	}
-	discovery := &modelDiscoveryHost{Native: host}
-	driver.host = discovery
-	// Claude discovery is independent of the selected Codex provider catalog.
-	driver.CaptureCatalog([]byte(`{"models":[]}`))
-	value, err := driver.Call(t.Context(), caller, "list_models", jsontext.Value(`{}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertDiscoveredModels(t, value)
-	foreign := caller
-	foreign.Session = "other-session"
-	if _, err := driver.listModels(t.Context(), foreign, jsontext.Value(`{}`)); err == nil || discovery.calls != 1 {
-		t.Fatal("unadmitted caller reached native discovery")
-	}
-	discovery.err = errors.New("native catalog unavailable")
-	if _, err := driver.Call(t.Context(), caller, "list_models", jsontext.Value(`{}`)); !errors.Is(err, discovery.err) {
-		t.Fatalf("native catalog failure hidden: %v", err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if _, err := driver.Call(ctx, caller, "list_models", jsontext.Value(`{}`)); !errors.Is(err, context.Canceled) {
-		t.Fatalf("discovery cancellation lost: %v", err)
-	}
-	after, _ := driver.control.Member(caller.Thread)
-	if len(host.inputs) != inputs || host.resumes != resumes || after.Generation != before.Generation || after.Turn != before.Turn || after.Status != before.Status {
-		t.Fatal("model discovery started work or changed logical admission")
 	}
 }
 
@@ -429,25 +290,5 @@ func TestResetReloadAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
-	}
-	for _, claude := range []bool{false, true} {
-		for _, tool := range ToolCatalog(claude) {
-			if tool.Name != "compact" && tool.Name != "wait_agent" {
-				continue
-			}
-			raw, err := json.Marshal(tool.InputSchema)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var schema struct {
-				Properties map[string]jsontext.Value `json:"properties"`
-			}
-			if err := json.Unmarshal(raw, &schema); err != nil {
-				t.Fatal(err)
-			}
-			if _, ok := schema.Properties["reload"]; ok == claude {
-				t.Fatalf("claude=%t %s reload schema", claude, tool.Name)
-			}
-		}
 	}
 }

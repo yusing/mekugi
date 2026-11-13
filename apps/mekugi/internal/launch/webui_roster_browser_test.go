@@ -179,7 +179,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 	publishRetry()
 	run("wait", "--fn", `!document.querySelector('#panel-content').textContent.includes('Reconnecting')`)
 
-	// Responses and native SDK producers share the same server-pushed roster.
+	// Native generation facts reach the server-pushed roster.
 	generationInputs := new(sessioncontrol.Observations)
 	u.attached.session.ToolInput = generationInputs.ToolInput
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "same-thread", "turn": map[string]any{"id": "tool-turn"}})
@@ -187,60 +187,37 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 	item := sessioncontrol.GenerationItem{ID: "tool-input"}
 	generationInputs.SetToolInput(&generation, "", "same-thread", item, true)
 	generationInputs.IdentifyToolInput(&generation, item, "exec", true, `await tools.apply_patch("*** Begin Patch`)
-	native := newClaudeHookFixture(t).bridge
-	nativeEvents := claudeGenerationEvents(t)
-	for _, raw := range nativeEvents[:2] {
-		if err := native.event(t.Context(), raw); err != nil {
-			t.Fatal(err)
-		}
-	}
-	nativePublication := claudePublication{frame: sessionapi.Frame{Session: sessionapi.Session{Thread: native.info.Thread}}}
 	publishGeneration := func() {
 		t.Helper()
 		applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		u.testMainFrame(100, 8, 0)
-		facts, _ := native.runtime.Metrics()
-		root, members := native.execution.shared.Family("parent")
-		member, _ := native.execution.shared.Member(native.info.Thread)
-		nativePublication.update(root, members, member, nil, facts)
 		var rows []activity.AgentRow
 		for _, row := range u.attached.childSource.Publication(u.attached.presentation, u.attached.source).Roster {
 			if row.Agent.Thread == "same-thread" {
 				rows = append(rows, row)
 			}
 		}
-		rows = append(rows, nativePublication.frame.Agents.Roster...)
 		if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Status: u.attached.presentation.View().Status.Session, Input: &sessionapi.Input{Stoppable: true},
 			Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{Roster: rows},
-			Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root", Status: threadcontrol.Working},
-				{Thread: native.info.Thread, Parent: "same-thread", Task: "/root/child", Status: threadcontrol.Working, NonAttachable: true}}}); err != nil {
+			Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root", Status: threadcontrol.Working}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	publishGeneration()
 	run("wait", "--fn", `!!document.querySelector('header [title="Emitting a patch"]')`)
-	run("wait", "--fn", `(() => { const rows = document.querySelector('#panel-content').textContent; return rows.includes('Emitting a patch') && rows.includes('Spawning subagent') && !rows.includes('Spawning subagent worker'); })()`)
-	if err := native.event(t.Context(), nativeEvents[2]); err != nil {
-		t.Fatal(err)
-	}
-	publishGeneration()
+	run("wait", "--fn", `document.querySelector('#panel-content').textContent.includes('Emitting a patch')`)
 	for _, theme := range []string{"light", "dark"} {
 		run("set", "media", theme)
 		for _, width := range []string{"1280", "390"} {
 			run("set", "viewport", width, "900")
 			run("eval", `if (!document.querySelector('#panel-content')) document.querySelector('button[aria-label^="Agents ("]').click()`)
-			run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('#panel-content button')]; const spawning = rows.find(row => row.textContent.includes('Spawning subagent')); return rows.some(row => row.textContent.includes('Emitting a patch')) && spawning?.querySelector('code')?.textContent === 'worker' && rows.every(row => { const r = row.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }); })()`)
+			run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('#panel-content button')]; return rows.some(row => row.textContent.includes('Emitting a patch')) && rows.every(row => { const r = row.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }); })()`)
 			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 				run("screenshot", filepath.Join(artifacts, "roster-generation-"+theme+"-"+width+".png"))
 			}
 		}
 	}
 	generationInputs.EndGeneration(&generation)
-	for _, raw := range nativeEvents[3:5] {
-		if err := native.event(t.Context(), raw); err != nil {
-			t.Fatal(err)
-		}
-	}
 	publishGeneration()
 	run("wait", "--fn", `!!document.querySelector('header [title="Working"]') && !document.querySelector('header [title="Emitting a patch"]')`)
 	run("wait", "--fn", `!document.querySelector('#panel-content').textContent.includes('Emitting a patch') && !document.querySelector('#panel-content').textContent.includes('Spawning subagent')`)

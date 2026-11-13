@@ -77,30 +77,15 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		result.Preload = string(options.Preload)
 	}
 	model, effort := options.Model, options.ReasoningEffort
-	claude := strings.HasPrefix(settings.Model, "claude:")
-	if model != nil {
-		claude = strings.HasPrefix(*model, "claude:")
-	}
 	// Source: codex-rs/core/src/agent/child_config.rs:52:76,204:244@0df4aa677.
 	// Configured subagent defaults precede roles, including full-history forks.
-	if model == nil && !claude {
+	if model == nil {
 		model = defaults[0]
 	}
-	if effort == nil && !claude {
+	if effort == nil {
 		effort = defaults[1]
 	}
-	if claude {
-		if model != nil || !strings.HasPrefix(settings.Model, "claude:") {
-			settings.Effort = nil
-		}
-		if model != nil {
-			settings.Model = *model
-		}
-		if strings.TrimSpace(strings.TrimPrefix(settings.Model, "claude:")) == "" {
-			return result, errors.New("Claude model must not be empty")
-		}
-		settings.Summary, settings.Tier = nil, nil
-	} else if model != nil {
+	if model != nil {
 		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == *model })
 		if i < 0 && !native {
 			return result, fmt.Errorf("unknown agent model %q", *model)
@@ -113,7 +98,7 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	if effort != nil {
 		settings.Effort = effort
 	}
-	inheritedEffort := !claude && model == nil && effort == nil
+	inheritedEffort := model == nil && effort == nil
 	if defaults[2] != nil {
 		settings.DeveloperInstructions = defaults[2]
 	}
@@ -133,61 +118,30 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 		if !found {
 			return result, fmt.Errorf("unknown agent_type %q", role)
 		}
-		// An explicit Claude selection wins. Fresh children inheriting Claude
-		// may instead use the role's pinned Codex model; full-history children
-		// must keep their source backend.
-		if claude && options.Model == nil && !result.FullHistory && selection.values.Model != nil && !strings.HasPrefix(*selection.values.Model, "claude:") {
-			i := slices.IndexFunc(models, func(m Model) bool { return m.Name == *selection.values.Model })
-			if i < 0 && !native {
-				return result, fmt.Errorf("unknown agent model %q", *selection.values.Model)
-			}
-			settings.Model, settings.Effort = *selection.values.Model, nil
-			if i >= 0 {
-				settings.Effort = models[i].DefaultEffort
-			}
-			if effort != nil {
-				settings.Effort = effort
-			}
-		}
 		if err := applyRole(&settings, selection); err != nil {
 			return result, err
 		}
 		inheritedEffort = inheritedEffort && selection.values.Effort == nil
 	}
-	// Claude validates effort against its native initialization catalog before
-	// accepting input, independently of the Codex model catalog.
-	if !strings.HasPrefix(settings.Model, "claude:") {
-		var config effectiveConfig
-		if len(settings.Preparation) != 0 {
-			if err := json.Unmarshal(settings.Preparation, &config); err != nil {
-				return result, err
-			}
+	var config effectiveConfig
+	if len(settings.Preparation) != 0 {
+		if err := json.Unmarshal(settings.Preparation, &config); err != nil {
+			return result, err
 		}
-		// Claude has no applied Codex summary or tier. Resolve those defaults
-		// from the captured target configuration after role selection, before
-		// freezing the settings sent to the independent Codex runtime.
-		if strings.HasPrefix(result.Settings.Model, "claude:") {
-			if settings.Summary == nil {
-				settings.Summary = config.Config.Summary
-			}
-			if settings.Tier == nil {
-				settings.Tier = config.Config.Tier
-			}
+	}
+	// Session precedence is already settled. Canonicalize the selected tier
+	// before model support filtering and the strict native admission check.
+	settings.Tier = config.codexTier(settings.Tier)
+	if !native && inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
+		ordinary, err := inheritedEffortForModel(models, settings.Model, *settings.Effort)
+		if err != nil {
+			return result, err
 		}
-		// Session precedence is already settled. Canonicalize the selected tier
-		// before model support filtering and the strict native admission check.
-		settings.Tier = config.codexTier(settings.Tier)
-		if !native && inheritedEffort && settings.Effort != nil && *settings.Effort == "ultra" {
-			ordinary, err := inheritedEffortForModel(models, settings.Model, *settings.Effort)
-			if err != nil {
-				return result, err
-			}
-			settings.Effort = new(ordinary)
-		} else if !native && settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
-			i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
-			if i < 0 || !slices.Contains(models[i].Efforts, *settings.Effort) {
-				return result, fmt.Errorf("unsupported reasoning effort %q for %s", *settings.Effort, settings.Model)
-			}
+		settings.Effort = new(ordinary)
+	} else if !native && settings.Effort != nil && (model != nil || effort != nil || settings.Model != result.Settings.Model || !sameEffort(settings.Effort, result.Settings.Effort)) {
+		i := slices.IndexFunc(models, func(m Model) bool { return m.Name == settings.Model })
+		if i < 0 || !slices.Contains(models[i].Efforts, *settings.Effort) {
+			return result, fmt.Errorf("unsupported reasoning effort %q for %s", *settings.Effort, settings.Model)
 		}
 	}
 	// Session tier wins over role configuration, but only when the final model
@@ -216,7 +170,6 @@ func prepareChild(settings control.Settings, limits control.Limits, options Spaw
 	if !filepath.IsAbs(settings.Workspace) || !info.IsDir() {
 		return result, errors.New("agent cwd must be an existing absolute directory")
 	}
-	settings.NonAttachable = strings.HasPrefix(settings.Model, "claude:")
 	result.Settings = settings
 	result.Arguments, err = json.Marshal(&options, json.Deterministic(true))
 	return result, err

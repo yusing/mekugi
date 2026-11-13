@@ -45,8 +45,6 @@ func TestToolGenerationCatalog(t *testing.T) {
 		{"mcp__threadcontrol.interrupt_agent", "Interrupting agent"},
 		{"mcp__threadcontrol.inspect", "Inspecting agent"},
 		{"mcp__threadcontrol.list_agents", "Listing agents"},
-		{"mcp__threadcontrol.list_models", "Listing models"},
-		{"mcp__threadcontrol.compact", "Compacting context"},
 		{"mcp__threadcontrol.wait_agent", "Waiting for agents"},
 	} {
 		for _, name := range []string{test.name, strings.ReplaceAll(test.name, ".", "__")} {

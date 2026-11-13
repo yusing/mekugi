@@ -53,8 +53,6 @@ text without reconstructing an aggregate capture envelope.
 
 ## Capture scope
 
-Claude delegate shell operations retain their native tool identity. Historical
-Edit, Write and NotebookEdit captures remain readable with their original identities.
 Pre-tool observation captures command or explicit named-target baselines before
 execution; terminal success, failure or interruption reconciles observed effects.
 Authenticated native working directories resolve operands without changing the

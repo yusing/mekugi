@@ -42,7 +42,6 @@ context without generating a handover summary. Agents may select files, line ran
 skills and captured-change IDs through native `functions.new_context`, or recover
 needed facts through ordinary reads after reset. `wait_agent(compact:true)` resets
 before delivering the wait's outcome. Requested resets are not vetoed by a cost estimate.
-Claude delegates retain native compaction.
 
 Compact-and-wait first lets its enclosing execution finish. While that execution
 is running or yielded, manual and automatic resets wait rather than interrupt it.

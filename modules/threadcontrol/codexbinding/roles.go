@@ -233,20 +233,16 @@ func applyRole(settings *control.Settings, role roleDefinition) error {
 	if values.Developer != nil {
 		settings.DeveloperInstructions = values.Developer
 	}
-	// Role authority and instructions apply across backends, but Codex model
-	// settings cannot replace the selected native Claude backend.
-	if !strings.HasPrefix(settings.Model, "claude:") {
-		if settings.Tier == nil {
-			settings.Tier = values.Tier
+	if settings.Tier == nil {
+		settings.Tier = values.Tier
+	}
+	for target, value := range map[**string]*string{&settings.Effort: values.Effort, &settings.Summary: values.Summary} {
+		if value != nil {
+			*target = value
 		}
-		for target, value := range map[**string]*string{&settings.Effort: values.Effort, &settings.Summary: values.Summary} {
-			if value != nil {
-				*target = value
-			}
-		}
-		if values.Model != nil {
-			settings.Model = *values.Model
-		}
+	}
+	if values.Model != nil {
+		settings.Model = *values.Model
 	}
 	for key, value := range map[string]*string{"model_verbosity": values.Verbosity, "personality": values.Personality} {
 		if value != nil {

@@ -33,7 +33,6 @@ type ContextUsage struct {
 type FrontendGuidance struct {
 	Descriptions string `json:"descriptions"`
 	Workflow     string `json:"workflow"`
-	Shell        string `json:"shell,omitempty"` // Native-shell descriptions and shared workflow, without Codex execution framing.
 }
 
 // Guidance registers the distinct existing request phases. Callbacks are

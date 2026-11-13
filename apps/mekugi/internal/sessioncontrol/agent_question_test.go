@@ -1,10 +1,8 @@
 package sessioncontrol
 
 import (
-	"context"
 	"encoding/json/jsontext"
 	"errors"
-	"reflect"
 	"testing"
 	"testing/synctest"
 
@@ -60,28 +58,6 @@ func TestAgentQuestionUsesRestrictedForkAndCleansUp(t *testing.T) {
 			t.Fatal("question cleanup retained correlation")
 		}
 	})
-}
-
-func TestClaudeQuestionPreservesPrimaryLedger(t *testing.T) {
-	var calls int
-	r, _, _ := claudeFixture(t, claudeRequestFunc(func(_ context.Context, method string, params jsontext.Value) (jsontext.Value, error) {
-		calls++
-		if method != "side_question" || string(params) != `{"question":"question"}` {
-			t.Fatalf("primary dispatch: %s %s", method, params)
-		}
-		return jsontext.Value(`"answer"`), nil
-	}))
-	before := r.ledger
-	answer, err := r.SideQuestion(t.Context(), &control.Member{Thread: "child", Session: "native-session"}, "question")
-	if err != nil || answer != "answer" {
-		t.Fatalf("answer=%q err=%v", answer, err)
-	}
-	if !reflect.DeepEqual(before, r.ledger) || r.CurrentTurn() != "" || calls != 1 {
-		t.Fatal("question changed primary ledger")
-	}
-	if _, err := r.SideQuestion(t.Context(), &control.Member{Thread: "child", Session: "replacement"}, "question"); err == nil || calls != 1 {
-		t.Fatal("replacement context accepted")
-	}
 }
 
 func TestAgentQuestionStartFailureReturnsAndAllowsCleanup(t *testing.T) {

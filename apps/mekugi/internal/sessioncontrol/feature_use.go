@@ -9,8 +9,8 @@ import (
 	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-// NativeFeatureUse borrows the root connection for one launch, including Claude
-// and retired descendants. Only transport availability lives here, never counts
+// NativeFeatureUse borrows the root connection for one launch, including retired
+// descendants. Only transport availability lives here, never counts
 // or receipts. A failed fact leaves measurement unavailable for the launch.
 type NativeFeatureUse struct {
 	requests featureUseRequests

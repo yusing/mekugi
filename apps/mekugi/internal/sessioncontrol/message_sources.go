@@ -80,23 +80,3 @@ func (r *Requests[T]) ReadMessageSources(ctx context.Context, member *control.Me
 	})
 	return snapshot.AttachmentText(), err
 }
-
-func (r *ClaudeRuntime) SetMessageSourceReader(read func(context.Context, string) (string, error)) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.messageSources = read
-}
-
-func (r *ClaudeRuntime) ReadMessageSources(ctx context.Context, member *control.Member, selection string) (string, error) {
-	r.mu.Lock()
-	err := r.identity(member.Thread)
-	read := r.messageSources
-	r.mu.Unlock()
-	if err != nil {
-		return "", err
-	}
-	if read == nil {
-		return "", errors.New("recipient source acquisition is unavailable")
-	}
-	return read(ctx, selection)
-}

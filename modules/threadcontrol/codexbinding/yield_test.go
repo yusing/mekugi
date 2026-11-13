@@ -3,7 +3,6 @@ package codexbinding
 import (
 	"context"
 	json "encoding/json/v2"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -18,38 +17,6 @@ type progressNative struct {
 	contextID string
 	driver    *Driver
 	requests  int
-}
-
-func TestWaitSummaryGuidanceReachesBothToolCatalogs(t *testing.T) {
-	for _, claude := range []bool{false, true} {
-		found := false
-		for _, tool := range ToolCatalog(claude) {
-			if tool.Name != "wait_agent" {
-				continue
-			}
-			found = true
-			raw, err := json.Marshal(tool.InputSchema)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var schema struct {
-				Properties map[string]struct {
-					Description string `json:"description"`
-					Minimum     int    `json:"minimum"`
-				} `json:"properties"`
-			}
-			if err := json.Unmarshal(raw, &schema); err != nil {
-				t.Fatal(err)
-			}
-			yield := schema.Properties["yield_time_ms"]
-			if yield.Minimum != 300000 || !strings.Contains(yield.Description, "not liveness") || !strings.Contains(yield.Description, "delivery waits for all replies") || !strings.Contains(yield.Description, "omit to disable") {
-				t.Fatalf("claude=%t effective yield guidance=%+v", claude, yield)
-			}
-		}
-		if !found {
-			t.Fatal("wait catalog missing")
-		}
-	}
 }
 
 type progressRuntime struct {

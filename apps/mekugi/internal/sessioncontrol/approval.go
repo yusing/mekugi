@@ -18,7 +18,6 @@ type Approval struct {
 	RequestID jsontext.Value
 	Responses []map[string]any
 	Guard     *ShellApprovalRequest
-	Delegate  *DelegateApprovalRequest
 	Hook      *HookTrust
 }
 
@@ -59,9 +58,6 @@ func (a *Approval) Decide(choice prompt.Choice, reason string, grants ApprovalGr
 	}
 	if choice.Deny && reason != "" {
 		choice.Outcome += ": " + reason
-	}
-	if a.Delegate != nil {
-		return choice.Outcome, a.Delegate.Reply(choice, reason), nil
 	}
 	if a.Guard != nil {
 		if a.Guard.Finished() {

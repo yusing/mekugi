@@ -4,7 +4,7 @@
 
 Continuity uses selected current sources rather than summaries as source substitutes.
 Retain context-usage notices and known-source preload for delegates. Codex resets
-context without a generated summary; Claude retains its native compaction behavior.
+context without a generated summary.
 
 Prompt projection, source-selection syntax, reload orchestration, snapshot fields and
 exact notice thresholds/reset rules below are current design.
@@ -56,10 +56,8 @@ module renders both from the validated invocation catalog, without a duplicate
 checked-in catalog. The application authenticates and publishes both sections
 before exposing its commands.
 
-The same catalog supplies native-shell guidance for Claude delegates. Command
-descriptions, helper workflows and child reply policy are shared and backend-neutral;
-Codex JavaScript examples, exec-output visibility and Codex-specific shell-selection
-guidance appear only in Codex requests.
+The catalog supplies command descriptions, helper workflows, child reply policy and
+Codex JavaScript execution guidance through one authenticated projection.
 
 Capability descriptions remain in the authoritative `exec` description when it
 exposes `tools.exec_command`. Workflow guidance is appended to the Responses `instructions` field, preserving
@@ -166,7 +164,7 @@ context, fork and reset lifetime; the environment producer has no inheritance or
 policy. Same-workspace inherited contributions retain their original observation time;
 fresh contexts and changed workspaces acquire new facts. Prewarm acquires nothing.
 Native cwd, execution shell, date/timezone, child role and permission context remain
-authoritative. Claude retains its native environment supply without an additional snapshot.
+authoritative.
 
 Codex process construction establishes the invocation-local `MEKUGI_ENVIRONMENT_FACTS=1`
 capability only when this supplement owner is installed, discarding inherited values. Native
@@ -184,7 +182,7 @@ Each fresh model-facing milestone also emits a user-only progress event, shown a
 terminal and browser transcript row rather than error feedback. Replaying an annotation emits no event.
 Codex adds developer context after fresh tool results or text-only user input and replays at most five
 boundary associations, preserving native content, identities, base instructions and provider prefixes.
-Claude uses post-tool-batch context. Prewarm, approval, compaction, already-started successors and unknown usage add no notices.
+Prewarm, approval, compaction, already-started successors and unknown usage add no notices.
 
 ## Compaction context
 
@@ -197,7 +195,6 @@ neutral. Model activation and model switches do not replace that policy. Native 
 MCP tools and hooks remain unchanged. It
 excludes client tool outputs from cross-reset retention. Codex self-directed checkpoints
 use native `functions.new_context`; Thread Control offers no second Codex reset tool.
-Claude compaction is unchanged.
 
 An agent can select optional reload sources in native `new_context` or `wait_agent`
 with `compact:true`, using `reload:{sources:[...]}`. A supplied selection replaces the

@@ -27,12 +27,10 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/contracts/observation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"golang.org/x/term"
 
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
@@ -501,19 +499,5 @@ func readReplaySource(ctx context.Context, service *playback.Service, session, d
 	if err != nil {
 		return nil, err
 	}
-	return service.Read(ctx, playback.ReadOptions{Path: path, HistoryDirectory: directory, DebugDirectory: debug, Seed: seed, ThreadMetadata: replayThreadMetadata})
-}
-
-func replayThreadMetadata(store *history.Store, thread string) ([]observation.Thread, int, error) {
-	members, size, err := control.ReadFamily(store, thread)
-	if err != nil {
-		return nil, size, err
-	}
-	var metadata []observation.Thread
-	for _, member := range members {
-		if member.NonAttachable {
-			metadata = append(metadata, observation.Thread{ID: member.Thread, NonAttachable: true})
-		}
-	}
-	return metadata, size, nil
+	return service.Read(ctx, playback.ReadOptions{Path: path, HistoryDirectory: directory, DebugDirectory: debug, Seed: seed})
 }

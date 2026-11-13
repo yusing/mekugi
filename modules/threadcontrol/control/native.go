@@ -28,12 +28,6 @@ type MessageSourceReader interface {
 	ReadMessageSources(context.Context, *Member, string) (string, error)
 }
 
-// ModelDiscovery is an optional application-owned native catalog acquisition.
-// It starts no logical member or work generation and returns spawn identifiers.
-type ModelDiscovery interface {
-	DiscoverModels(context.Context, Identity) ([]ModelOption, error)
-}
-
 // ProgressReader borrows admitted capture and activity publications. Seen counts
 // identify immutable capture chunks already delivered by this caller's yields.
 type ProgressReader interface {
@@ -44,13 +38,6 @@ type ProgressReader interface {
 // recovery owner. No per-developer summary limit applies.
 type ProgressWriter interface {
 	BoundWaitProgress(context.Context, string, WaitProgress) (WaitProgress, error)
-}
-
-type ModelOption struct {
-	ID            string `json:"id"`
-	Name          string `json:"name,omitempty"`
-	Description   string `json:"description,omitempty"`
-	ResolvedModel string `json:"resolved_model,omitempty"`
 }
 
 // Runtime is one admitted native execution owner's typed operations.

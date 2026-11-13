@@ -17,8 +17,7 @@ request ledger, startup admission, Main operations and independent title saves.
 Thread retirement filters late notifications, including newly observed descendants;
 readmission restores that root and its descendants without reviving host work.
 Codex owns request identities, transport, execution, permissions and process lifetime
-for its runtimes. The Claude adapter uses the [native SDK backend](../../../../backends/claude/SPEC.md)
-with its own correlated request receipts rather than Codex protocol emulation.
+for root and descendant runtimes.
 
 Admission follows outstanding operations, not displayed status or elapsed time.
 Request acknowledgement, committed user input and host turn completion are separate
@@ -40,21 +39,17 @@ Developer progress checkpoints use Codex's retained assistant-item injection, ne
 human input or start-or-steer. Active turns consume the attributed item at their
 existing input boundary; idle turns retain it without starting work. Late replies
 remain subject to the checkpoint's exact turn and generation. Native execution
-retains its tool results and continuation handles. Claude supplies these
-checkpoints through its existing completed-tool-batch context hook instead of queued
-input that could interrupt work or start a later turn.
+retains its tool results and continuation handles.
 Coordination inspection uses the same event-loop handoff to read current applied
 settings and session metrics, without issuing a host request or copying a UI frame.
 Agent side questions reuse the restricted side fork through the same request owner,
-without a human dock, and settle on the answer before fork cleanup. Claude runtimes
-use native correlated side requests. Neither enters primary submission, draft,
-assignment or wait handling.
+without a human dock, and settle on the answer before fork cleanup. These questions
+do not enter primary submission, draft, assignment or wait handling.
 Agent-message file snapshots use this same request ledger for bounded native
 `command/exec` reads under the recipient's active permission profile and workspace.
 Fresh children use their admitted preparation until their first turn. An
 unselectable permission profile produces a visible read failure, never a broader
-fallback. Claude uses its existing admitted unsandboxed source reader. Neither
-backend starts model inference to acquire message files; Thread Control retains
+fallback. Acquisition starts no model inference; Thread Control retains
 the immutable result for delivery and confirmation.
 Prepared-child resume preserves retained host identity and checks canonical
 authority before execution. History confirmation can read the retained source
@@ -76,26 +71,6 @@ retains file formatting, configuration validation and persistence authority.
 Child metadata is read once per attached request scope. Its response uses the
 same request ledger; missing metadata does not block admitted Activity, and
 retiring the scope clears both correlation and read admission.
-
-## Claude execution receipts
-
-Claude's request ledger retains the exact native session, frozen preparation,
-unconsumed attributed inputs and dispatch receipts through the selected Session
-History owner. Idle messages do not start native work. Native input start confirms
-dispatch acceptance; the exact terminal input UUID confirms consumption and allows
-the retained payload to retire. A queued acknowledgement establishes neither.
-Unknown dispatch remains visible and is never automatically repeated.
-
-Runtime event processing remains independent of callers awaiting input acceptance.
-Native completion and logical settlement share an admission boundary: a follow-up
-cannot start a new native turn while the preceding logical generation still owns it.
-Transport loss releases those callers as uncertain; interruption targets the actual
-generation. Resume preserves exact native identity and reconciles retained receipts.
-The ledger does not copy the native transcript or own the logical agent tree.
-
-Delegate approvals use ordinary Conversation prompts with their original child
-identity and one live response authority. Cancellation withdraws that request;
-an answer neither starts work nor wakes a logical wait.
 
 ## Interactive operations
 

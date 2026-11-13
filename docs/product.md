@@ -94,8 +94,8 @@ and recoverable, and measures actual traffic without replaying effects.
   agent messages are read under the recipient's permissions and frozen at send
   time. Failed reads remain visible; retries use the captured result instead of
   silently substituting later file contents. For eligible Codex inputs, repeated
-  supplied source bodies can refer to earlier text in the same request. Claude
-  message-source deduplication and legacy unframed snapshots are not covered.
+  supplied source bodies can refer to earlier text in the same request. Legacy
+  unframed snapshots are not covered.
 - **Supply known facts before they are requested.** Codex agents receive
   workspace and Git state and measured context usage, and attached files and
   skills are labeled as reusable, so agents do not spend turns rediscovering them.
@@ -115,7 +115,7 @@ and recoverable, and measures actual traffic without replaying effects.
 - **Agents choose their checkpoints.** Agents compact at points they judge safe,
   informed by measured usage; the 90% notice directs them to compact now.
   Codex native token-budget reset also handles full
-  windows using host-owned thresholds. Claude retains its native compaction policy.
+  windows using host-owned thresholds.
 - **Model-facing text stays minimal.** Guidance, tool descriptions, and results
   preserve meaning in the fewest tokens, without decoration.
 
@@ -175,8 +175,7 @@ Mekugi supplies selected sources before continuation. The latest compaction
 selection remains in effect for later manual or automatic resets until replaced
 or explicitly cleared. Native `functions.new_context` owns standalone checkpoints;
 compact-and-wait uses the same reset lifecycle. Requested resets have no
-cost-estimate veto or duplicate source preflight. Claude delegates retain their
-native compaction behavior.
+cost-estimate veto or duplicate source preflight.
 
 ### Delegate with prepared context
 
@@ -240,9 +239,8 @@ transport-only byte changes.
 
 ## Currently supported scope
 
-Codex is the root execution backend. Claude Code runs only as an optional
-delegate backend under the same thread coordination, owning its native tool
-execution. Headless execution and offline replay retain their own command entrypoints.
+Codex owns root and descendant execution. Headless execution and offline replay
+retain their own command entrypoints.
 
 Mekugi includes:
 

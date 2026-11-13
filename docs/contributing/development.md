@@ -31,14 +31,6 @@ the selected test file under
 `make webui-fmt` formats the browser sources with `bun fmt`, using the existing
 `.oxfmtrc.json` configuration. The assets host returns 503 until assets are built.
 
-`make claude-worker` bundles the pinned Claude Agent SDK worker with Bun for
-embedding. Release and installation builds include it; plain Go builds keep Claude
-optional. `make claude-worker-check` rebuilds it, checks types, and runs the SDK
-transport fixtures. With Bun and Claude Code installed,
-`MEKUGI_TEST_CLAUDE_NATIVE=1 make claude-worker-check` additionally exercises the
-native CLI against a local mock provider. These checks make no paid model requests;
-authenticated provider acceptance remains separate.
-
 After building assets, the opt-in browser fixtures exercise the actual UI,
 connector and server with controlled execution hosts:
 
@@ -187,8 +179,7 @@ checkout's `.worktrees`. Cleanup checks exact repository/worktree identity, sour
 dirt, `git cherry` patch equivalence and unmatched merges, because `git cherry`
 omits merge-only changes. Ignored files also block cleanup, except the fixed
 generated destinations: `apps/mekugi/internal/webui/app/node_modules/`,
-`apps/mekugi/internal/webui/dist/app/`, `backends/claude/node_modules/` and
-`backends/claude/dist/worker.mjs`. These dependencies and bundles are discarded
+`apps/mekugi/internal/webui/dist/app/`. These dependencies and bundles are discarded
 with the worktree; neighboring ignored source/configuration and other output
 paths remain protected. It removes only the checked worktree, then its branch.
 A cleanup failure retains whatever has not yet been removed; status writes

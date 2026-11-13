@@ -275,7 +275,7 @@ func TestWaitSummariesSteerAndContinueNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	coordination := mcp.NewServer(&mcp.Implementation{Name: "threadcontrol", Version: "1"}, nil)
-	for _, tool := range threadbinding.ToolCatalog(false) {
+	for _, tool := range threadbinding.ToolCatalog() {
 		if tool.Name != "send_message" {
 			continue
 		}

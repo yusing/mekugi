@@ -619,8 +619,8 @@ of showing older activity or Working. JavaScript cells identify nested tool call
 before their payload is complete; spawn labels gain the supplied task name when
 available. Unrecognized tools retain their names. These transient labels describe
 generation, not confirmed execution. Responses labels clear after completed-item
-delivery, not argument completion; native Claude SDK labels clear on content-block
-completion. Request completion, failure and transport loss also clear them.
+delivery, not argument completion. Request completion, failure and transport loss
+also clear them.
 Logical waits, retries and compaction retain their status precedence. Terminal and
 browser consume the same detached roster summary; no transcript row is added.
 Thread-control operations share the existing started, follow-up and directed-message

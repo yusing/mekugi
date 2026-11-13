@@ -45,7 +45,6 @@ contracts stay with their owning modules.
 ## Backend and providers
 
 - [Codex](../backends/codex/SPEC.md): host execution, protocols and evidence decoding.
-- [Claude](../backends/claude/SPEC.md): native delegate execution, approvals and retained coordination.
 - [Responses adapter](../backends/codex/responses/SPEC.md): request shaping and stream normalization.
 - Providers: [OpenAI](../providers/openai/SPEC.md) and [custom Responses routing](contracts/provider-routing.md).
 

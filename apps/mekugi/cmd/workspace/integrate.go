@@ -137,8 +137,7 @@ func cleanupIntegration(root, path, checked string) error {
 		// Only ignored output at the fixed Makefile/package build destinations is
 		// disposable. Tracked changes and neighboring ignored source stay protected.
 		switch entry {
-		case "", "!! apps/mekugi/internal/webui/app/node_modules/", "!! apps/mekugi/internal/webui/dist/app/",
-			"!! backends/claude/node_modules/", "!! backends/claude/dist/worker.mjs":
+		case "", "!! apps/mekugi/internal/webui/app/node_modules/", "!! apps/mekugi/internal/webui/dist/app/":
 			continue
 		default:
 			return retained

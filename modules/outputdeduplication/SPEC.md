@@ -183,8 +183,7 @@ applies against the final model-input copy. Removing the composition entry remov
 both phases. Execution-free turns, including independent side questions, use the
 same source projection and savings receipts without creating execution activity.
 Compaction and prewarm keep their existing application paths. Launch opt-out
-selects no duplicate-output projection. Claude's separate SDK input path is not
-projected.
+selects no duplicate-output projection.
 
 ## Records
 

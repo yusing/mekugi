@@ -675,8 +675,6 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		}
 		return "", err
 	}
-	delegateApprovals := sessioncontrol.NewDelegateApprovals(session.ctx)
-	threads.approvals = delegateApprovals
 	return func() (runErr error) {
 		defer func() {
 			// A failed native stream can lose facts before the lifecycle worker
@@ -711,7 +709,6 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		defer c.Input.Close()
 		defer func() { discardDraftImages(session.ownedImages) }()
 		defer c.Output.Close()
-		defer delegateApprovals.Close()
 		exited := false
 		var err error
 		runLoop := func() error {
@@ -819,8 +816,6 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 					persistSessionTitle(&session.Client, session.titleGenerator, &session.attached.feedback, session.clock, update)
 				case request := <-guard.Requests():
 					addGuardApproval(&session.attached, &session.Client, &session.picker, &session.Editor, &session.questions, &session.approvals, session.clock, session.overlayOpen(session.statusPanel, session.resumePicker), session.notifications, session.review, &session.pendingEditReceipts, request)
-				case request := <-delegateApprovals.Requests():
-					addDelegateApproval(&session.attached, &session.Client, &session.picker, &session.Editor, &session.questions, &session.approvals, session.clock, session.overlayOpen(session.statusPanel, session.resumePicker), session.notifications, session.review, &session.pendingEditReceipts, request)
 				case call := <-session.Client.Calls():
 					if err := flushCompletions(); err != nil {
 						return err

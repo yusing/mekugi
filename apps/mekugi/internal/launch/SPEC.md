@@ -37,9 +37,6 @@ Each backend executes through its own Session Control request owner; logical
 coordination, admission and retained waits belong to Thread Control. Child startup
 retains prepared authority and assignment before executing work. No client-view
 subscription is needed for child execution.
-Qualified Claude models use the [native Claude backend](../../../../backends/claude/SPEC.md),
-with approval-only execution and nonattachable roster entries. Backend startup,
-receipts and capture are reusable independently of this delegate admission path.
 After server restart, retained children remain stopped. Explicit admitted input
 can resume the same child identity using its frozen preparation and latest
 host-confirmed settings; reconciliation reads history without starting a runtime.
@@ -170,7 +167,7 @@ No-profile and browser-created invocation behavior is unchanged.
 Main, Codex children, Side, One-off and forked/rewound roots inherit the admitted
 configuration and route. Explicit child model/effort choices override those
 inherited fields without selecting a different provider by model-name prefix.
-Claude delegates retain their separate backend. No per-turn profile reloads.
+No per-turn profile reloads.
 
 Fresh stopped-session resume reloads the selected profile; explicitly imported
 fields override saved values, and explicit CLI fields override the profile.

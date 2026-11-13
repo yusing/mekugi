@@ -42,7 +42,7 @@ func generationIdentity(name string) (label, key string) {
 	name = strings.TrimPrefix(strings.TrimPrefix(name, "functions."), "tools.")
 	name = strings.ReplaceAll(name, ".", "__")
 	switch name {
-	case "request_user_input", "request_user_input_async", "AskUserQuestion":
+	case "request_user_input", "request_user_input_async":
 		return "Asking user question", ""
 	case "mcp__threadcontrol__spawn_agent":
 		return "Spawning subagent", "task_name"
@@ -56,10 +56,6 @@ func generationIdentity(name string) (label, key string) {
 		return "Inspecting agent", "target"
 	case "mcp__threadcontrol__list_agents":
 		return "Listing agents", "path_prefix"
-	case "mcp__threadcontrol__list_models":
-		return "Listing models", ""
-	case "mcp__threadcontrol__compact":
-		return "Compacting context", ""
 	case "mcp__threadcontrol__wait_agent":
 		return "Waiting for agents", ""
 	case "exec":
@@ -68,7 +64,7 @@ func generationIdentity(name string) (label, key string) {
 		return "Waiting for JavaScript", "cell_id"
 	case "apply_patch":
 		return "Emitting a patch", ""
-	case "exec_command", "Bash":
+	case "exec_command":
 		return "Executing a command", ""
 	case "write_stdin":
 		return "Interacting with a command", ""

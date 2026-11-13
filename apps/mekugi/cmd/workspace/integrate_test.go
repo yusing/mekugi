@@ -14,7 +14,7 @@ type integrationFixture struct{ root, source, commit, events string }
 func newIntegrationFixture(t *testing.T) integrationFixture {
 	t.Helper()
 	ignoreFiles := make(map[string]string)
-	for _, path := range []string{".gitignore", "backends/claude/.gitignore"} {
+	for _, path := range []string{".gitignore"} {
 		data, err := os.ReadFile(filepath.Join("../../../..", path))
 		if err != nil {
 			t.Fatal(err)
@@ -88,12 +88,10 @@ func (f integrationFixture) git(t *testing.T, args ...string) string {
 
 func TestIntegrationDirtyRootChecksAndStatusChoices(t *testing.T) {
 	f := newIntegrationFixture(t)
-	// Use the same ignored destinations as make webui and make claude-worker.
+	// Use the same ignored destinations as make webui.
 	for _, path := range []string{
 		"apps/mekugi/internal/webui/app/node_modules/.bun-install",
 		"apps/mekugi/internal/webui/dist/app/assets/app.js",
-		"backends/claude/node_modules/.bun-install",
-		"backends/claude/dist/worker.mjs",
 	} {
 		writeWorkspaceSource(t, filepath.Join(f.source, path), "generated\n")
 	}
@@ -145,8 +143,6 @@ func TestIntegrationProtectsGeneratedOutputNeighbors(t *testing.T) {
 		"apps/mekugi/internal/webui/app/.env.local",
 		"apps/mekugi/internal/webui/dist/.env",
 		"apps/mekugi/internal/webui/dist/app-local/.env",
-		"backends/claude/.env",
-		"backends/claude/dist/worker.mjs.local",
 		"other/node_modules/source.js",
 		"bin/mekugi",
 		"apps/mekugi/internal/webui/app/.env.\nconfiguration",
