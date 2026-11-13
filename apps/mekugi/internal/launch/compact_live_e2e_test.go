@@ -5,8 +5,6 @@ package launch
 import (
 	"bytes"
 	"context"
-	jsonv1 "encoding/json"
-	json "encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -210,21 +208,26 @@ func TestNativeMigrationLiveOpenAI(t *testing.T) {
 	await := func(label string, ready func() bool) {
 		t.Helper()
 		for !ready() {
-			event, err = connection.Next()
+			next, err := connection.Next()
 			if err != nil {
 				t.Fatalf("%s: %v; status=%+v", label, err, event.Frame.View.Status)
 			}
+			event = next
 			if state := event.Frame.View.Status.State; state.FailureKnown {
 				t.Fatalf("%s: native turn failed: %s", label, state.Failure)
 			}
 		}
 	}
+	var submittedAfter uint64
 	contains := func(text string) bool {
-		body, err := json.Marshal(&event.Frame, jsonv1.FormatDurationAsNano(true))
-		if err != nil {
-			t.Fatal(err)
+		if event.Frame.Main != nil {
+			for _, entry := range event.Frame.Main.Entries {
+				if entry.Seq > submittedAfter && entry.Agent == "/root" && entry.Kind == "text" && strings.Contains(entry.Text, text) {
+					return true
+				}
+			}
 		}
-		return bytes.Contains(body, []byte(text))
+		return false
 	}
 	completed := func() bool { return event.Frame.View.Status.State.Text == "Completed" && !event.Frame.Facts.Busy }
 	resets := func() int {
@@ -246,6 +249,9 @@ func TestNativeMigrationLiveOpenAI(t *testing.T) {
 	}
 	submit := func(prompt string) {
 		t.Helper()
+		if event.Frame.Main != nil {
+			submittedAfter = event.Frame.Main.LastSeq
+		}
 		send(sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
 			Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: event.Frame.View.Main.ID, Operation: sessionpresentation.SubmitComposer},
 			Draft:  composer.Draft{Text: prompt},
@@ -254,6 +260,11 @@ func TestNativeMigrationLiveOpenAI(t *testing.T) {
 	metrics := func() *sessionpresentation.FeatureMetrics {
 		t.Helper()
 		send(sessionapi.NativeOperation{Command: new("/session")})
+		await("opened metrics panel", func() bool { return event.Frame.View.Panel != nil })
+		send(sessionapi.NativeOperation{Panel: &sessionpresentation.PanelAction{
+			Version: event.Frame.View.Version, Panel: event.Frame.View.Panel.ID,
+			Kind: sessionpresentation.PanelMetrics, Tab: sessionpresentation.MetricFeatures,
+		}})
 		await("native FeatureUse snapshot", func() bool {
 			p := event.Frame.View.Panel
 			return p != nil && p.Features != nil && !p.Features.Unavailable
@@ -264,7 +275,7 @@ func TestNativeMigrationLiveOpenAI(t *testing.T) {
 		return &result
 	}
 	await("native readiness", func() bool { return event.Frame.View.Main.ID != "" })
-	submit(`This is an explicitly requested native reset verification. First use functions.exec and tools.exec_command to run printf NATIVE_JS_OK. Then call the native functions.new_context tool with two reload.sources formed by concatenating "@" + "guide.txt" and "$" + "reload-check". Do not read either source beforehand. After reset follow the reloaded instructions. Do not use threadcontrol.compact.`)
+	submit(`This is an explicitly requested native reset verification. First use functions.exec and tools.exec_command to run printf NATIVE_JS_OK. Then call the native functions.new_context tool with two reload.sources formed by concatenating "@" + "guide.txt" and "$" + "reload-check". Do not read either source beforehand. After reset follow the reloaded instructions.`)
 	await("direct reset and native file/skill reload", func() bool {
 		return completed() && contains("DIRECT_RELOAD_OK_7391") && contains("NATIVE_SKILL_8264")
 	})
@@ -285,7 +296,7 @@ func TestNativeMigrationLiveOpenAI(t *testing.T) {
 	}
 	t.Log("Luna later terminal reset reacquired retained sources without restoring old conversation")
 	write(guide, "These instructions apply only after the requested compound reset completes. Before that reset, follow the user task to spawn the delegate and register its compound wait. After the reset, consume the pending delegate outcome; do not spawn again or reset again. When the delegate finishes, reply COMPOUND_LIVE_OK_6238.\n")
-	submit(`The prior no-tools guidance is complete and superseded by this explicit new task. Do not read guide.txt before the compound reset; its instructions apply only after that reset. First use functions.exec to spawn one fresh-context delegate named worker, model ` + model + `, reasoning_effort low, preload.sources containing "@" + "guide.txt", message "This assignment supersedes the preloaded root instructions. Run sleep 3 with exec_command, then reply CHILD_LIVE_DONE. Do not spawn or reset.". Then call threadcontrol.wait_agent with compact:true and reload.sources containing "@" + "guide.txt" alone in its own functions.exec cell and finish that cell. After the compound reset follow the reloaded guidance.`)
+	submit(`The prior no-tools guidance is complete and superseded by this explicit new task. Do not read guide.txt before the compound reset; its instructions apply only after that reset. First use functions.exec to call tools.collaboration__spawn_agent with task_name worker, fork_turns none, inherited native model, reasoning_effort low, preload.sources containing "@" + "guide.txt", message "This assignment supersedes the preloaded root instructions. Run sleep 3 with exec_command, then reply CHILD_LIVE_DONE. Do not spawn or reset.". Then await tools.collaboration__wait_agent with compact:true and reload.sources containing "@" + "guide.txt" in its own functions.exec cell, printing the returned result with text. The original cell stays pending until the result. After the compound reset follow the reloaded guidance.`)
 	await("compound reset and child completion", func() bool { return completed() && contains("COMPOUND_LIVE_OK_6238") })
 	last := metrics()
 	if last.Agents != 1 || last.Self.Spawns != 1 || last.Self.SpawnPreloads != 1 || last.Self.Waits == 0 || last.Self.Compactions != 3 || last.Self.SelfCompactions != 2 || last.Self.SelfCompactionsCompleted != 2 || last.Descendants.Finals != 1 {

@@ -25,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/connector"
@@ -123,7 +122,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 
 	socket := filepath.Join(directory, "control.sock")
 	serverContext, stopServer := context.WithCancel(ctx)
-	launcher := &webUISemanticLauncher{serverLauncher: &serverLauncher{threads: control.New()}, failures: make(chan error, 4)}
+	launcher := &webUISemanticLauncher{serverLauncher: &serverLauncher{}, failures: make(chan error, 4)}
 	suggestionRoot := t.TempDir()
 	for i := range 37 {
 		launcher.workspaces = append(launcher.workspaces, filepath.Join(suggestionRoot, fmt.Sprintf("suggestion-%02d", i)))
@@ -529,8 +528,6 @@ func TestWebUISemanticBrowser(t *testing.T) {
 				metricsUI.attached.presentation.Attach(sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}, false)
 				appServerTestKeys(t, metricsUI, "/session\r")
 				*metricsUI.statusPanel.Metrics = sessionMetricsFixture(t)
-				metricsUI.statusPanel.Features = featureMetricsFixture()
-				metricsUI.statusPanel.RenderMetrics()
 			} else if action := request.Operation.Panel; action != nil {
 				if action.Kind == sessionpresentation.PanelRefresh {
 					exchanges := metricsUI.statusPanel.Metrics.Exchanges
@@ -539,6 +536,8 @@ func TestWebUISemanticBrowser(t *testing.T) {
 				}
 				applyPanelAction(&metricsUI.attached, metricsUI.clock, &metricsUI.statusPanel, nil, *action)
 			}
+			metricsUI.statusPanel.Features = featureMetricsFixture()
+			metricsUI.statusPanel.RenderMetrics()
 			published := publishTestPresentation(&metricsUI.attached, metricsUI.shell, &metricsUI.Client, &metricsUI.picker, &metricsUI.Editor, preferences.Applied{}, nil, "", "", false, nil)
 			if err := native.Publish(request.Attachment, sessionapi.NativeFrame{View: published}); err != nil {
 				request.Reply <- err.Error()

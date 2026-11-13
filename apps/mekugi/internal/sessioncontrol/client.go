@@ -9,7 +9,9 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
-// Client binds one actual host connection to its application control lifetime.
+// Client owns thread-local control and borrows the connection's request ledger.
+// Only the invocation's root client has Host; child endpoints cannot close or
+// read the transport. All handles are driven by the same serialized event loop.
 // Main replacement leaves the connection, startup policy, title saves and
 // independent request scopes alive. The event-loop owner serializes access.
 type Client[T any] struct {
@@ -22,10 +24,14 @@ type Client[T any] struct {
 	retired  map[string]string // Retired thread to its former session root.
 }
 
+func (u *Client[T]) ForThread(thread string) Client[T] {
+	return Client[T]{Live: Live{Thread: thread}, Requests: u.Requests.ForThread(thread)}
+}
+
 // Calls admits feature requests after auxiliary execution and acknowledgement
 // settle. The existing channel and ledger retain queued delivery ownership.
 func (u *Client[T]) Calls() <-chan *HostCall {
-	if u.HookReview || u.Shell.BlocksInput(u.Turn) || u.Compaction.Pending() {
+	if u.NativeInputPending || u.HookReview || u.Shell.BlocksInput(u.Turn) || u.Compaction.Pending() {
 		return nil
 	}
 	return u.Requests.Calls()

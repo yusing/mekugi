@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,6 +35,38 @@ func TestRequestWireProjectsStandaloneToolContextWithoutPreparer(t *testing.T) {
 			!bytes.Contains(attempt.forwardBody, []byte("Assignment retained.")) || !bytes.Equal(original, request.OriginalField("input")) {
 			t.Fatalf("wire context was not adapted while preserving native history: %s, %v", attempt.forwardBody, err)
 		}
+	}
+}
+
+func TestNativeSourceReceiptDoesNotReachProviderAPIs(t *testing.T) {
+	for _, custom := range []bool{false, true} {
+		t.Run(map[bool]string{false: "account", true: "custom"}[custom], func(t *testing.T) {
+			requests := make(chan []byte, 1)
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				requests <- body
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"receipt-forwarding\",\"status\":\"completed\",\"output\":[]}}\n\n")
+			}))
+			defer provider.Close()
+			gateway := inferencegateway.NewClient(provider.URL, provider.Client(), ProviderDiagnostics())
+			if custom {
+				gateway.Native = &inferencegateway.NativeProvider{ID: "custom", BaseURL: provider.URL, HTTPClient: provider.Client()}
+			}
+			request, err := codexresponses.ParseRequest([]byte(`{"model":"gpt-6-sol","input":[{"type":"function_call_output","namespace":"context","name":"reload","output":"Exact supplied source","internal_chat_message_metadata_passthrough":{"source_acquisition":{"id":"private-receipt"},"turn_id":"original-turn"}}]}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			executor := Executor{Provider: gateway, Output: io.Discard, Issues: testCriticalErrors()}
+			headers := http.Header{"Authorization": {"Bearer fixture"}, "Chatgpt-Account-Id": {"fixture"}}
+			if err := executor.Execute(t.Context(), t.Context(), request, headers, "session"); err != nil {
+				t.Fatal(err)
+			}
+			forwarded := <-requests
+			if len(forwarded) == 0 || bytes.Contains(forwarded, []byte("source_acquisition")) || bytes.Contains(forwarded, []byte("private-receipt")) || !bytes.Contains(forwarded, []byte("Exact supplied source")) || !bytes.Contains(forwarded, []byte("original-turn")) {
+				t.Fatalf("provider received private facts or lost unrelated context: %s", forwarded)
+			}
+		})
 	}
 }
 

@@ -45,9 +45,12 @@ func (m *Model) ResolveInterrupt(intent InterruptIntent, control *sessioncontrol
 		return false, errors.New("The original session is unavailable.")
 	}
 	target := intent.Target
+	if target.Work != "" && target.Work != control.NativeWork {
+		return false, ErrInterruptUnavailable
+	}
 	if target.Wait != "" || target.Stop != "" {
 		current := control.InterruptTarget()
-		if target.Stop != "" && target.Stop == current.Stop && target.Wait == current.Wait &&
+		if (target.Stop != "" || target.Wait != "") && target.Stop == current.Stop && target.Wait == current.Wait &&
 			(current.Turn == "" || current.Turn == target.Turn) &&
 			(current.Start == "" || current.Start == target.Start) {
 			return true, nil
@@ -89,7 +92,7 @@ func (m *Model) admitInterruptOwner(intent InterruptIntent, control *sessioncont
 }
 
 func sameInterruptWork(target, current sessioncontrol.InterruptTarget) bool {
-	if target.Wait != current.Wait || target.Stop != current.Stop || target.Thread != current.Thread || target.Start != "" && target.Start != current.Start {
+	if target.Work != current.Work || target.Wait != current.Wait || target.Stop != current.Stop || target.Thread != current.Thread || target.Start != "" && target.Start != current.Start {
 		return false
 	}
 	if target.Turn != "" {

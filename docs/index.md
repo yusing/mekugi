@@ -20,6 +20,8 @@ contracts stay with their owning modules.
 
 ## Shared contracts
 
+- [Native agent coordination](contracts/coordination.md): preparation, work, waits, cross-backend delivery and recovery.
+
 - [Composition](contracts/composition.md): workspace membership, contributions and import boundaries.
 - [Record publication](contracts/record-publication.md): filesystem authority, durability, retention and continuity.
 - [Change evidence](contracts/change-evidence.md): observed effects, capture coverage and delivery.

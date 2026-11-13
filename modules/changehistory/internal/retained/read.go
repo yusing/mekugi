@@ -40,6 +40,7 @@ type changeReadOptions struct {
 	cwd           string
 	maxTokens     int
 	ids           []string
+	freeze        *changes.FrozenRead
 }
 
 // A nil collector makes dependency reads strict, as required by recovery and mutation.

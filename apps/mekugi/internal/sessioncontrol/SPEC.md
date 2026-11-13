@@ -12,8 +12,11 @@ authority to a client connection.
 
 The application coordinates Main's submissions, interruption, native shell,
 settings and session replacement. It issues app-server requests and correlates
-their results. Its live client binds the actual app-server connection to one
-request ledger, startup admission, Main operations and independent title saves.
+their results. The invocation owns one actual app-server connection and request
+ledger. Thread-scoped clients borrow that ledger while retaining independent
+input gates, side operations, settings and title saves. Correlation records the
+receiving endpoint separately from the destination thread and retirement scope.
+Retiring one endpoint cannot consume a sibling's response or close the transport.
 Thread retirement filters late notifications, including newly observed descendants;
 readmission restores that root and its descendants without reviving host work.
 Codex owns request identities, transport, execution, permissions and process lifetime
@@ -40,22 +43,20 @@ human input or start-or-steer. Active turns consume the attributed item at their
 existing input boundary; idle turns retain it without starting work. Late replies
 remain subject to the checkpoint's exact turn and generation. Native execution
 retains its tool results and continuation handles.
-Coordination inspection uses the same event-loop handoff to read current applied
-settings and session metrics, without issuing a host request or copying a UI frame.
-Agent side questions reuse the restricted side fork through the same request owner,
-without a human dock, and settle on the answer before fork cleanup. These questions
-do not enter primary submission, draft, assignment or wait handling.
-Agent-message file snapshots use this same request ledger for bounded native
-`command/exec` reads under the recipient's active permission profile and workspace.
-Fresh children use their admitted preparation until their first turn. An
-unselectable permission profile produces a visible read failure, never a broader
-fallback. Acquisition starts no model inference; Thread Control retains
-the immutable result for delivery and confirmation.
+Codex coordination inspection uses passive native observation through that ledger,
+including for unloaded retained children. It neither restores execution nor copies
+a UI frame. Native completed-compaction scalars cover retained history forms that
+cannot be recovered by counting visible transcript items; missing metrics remain
+unavailable.
+Native coordination owns independent agent side questions and their cleanup;
+They do not enter human side docks, primary submission, drafts or wait delivery.
+Native recipient-authorized source acquisition owns message snapshots without
+model inference; native accepted delivery retains the frozen result.
 Prepared-child resume preserves retained host identity and checks canonical
 authority before execution. History confirmation can read the retained source
 without a live host connection. Ordinary child input waits for logical admission
 and uses the same prepared-authority checks as agent assignments. Human starts
-reserve child capacity through Thread Control; human steers name the actual
+use native work admission; human steers name the actual
 running child turn. The existing request ledger reports acceptance, rejection or
 uncertainty without changing the human input's role. Prompt answers, approval
 decisions and cancellation keep their existing authority.
@@ -81,7 +82,7 @@ The admitted start keeps its identity when the host assigns a turn and commits
 input. A delayed cancellation of conclusively completed original work settles
 without interrupting, restoring input from, or canceling compaction for a successor.
 Logical waits retain their own observed identity after the host turn ends. They
-remain busy for replacement/exit admission and cancellable through Thread Control;
+remain busy for replacement/exit admission and cancellable through native agent control;
 no host turn identity is fabricated for cancellation. Human input reconciles and
 supersedes unsent logical continuations before dispatch. Host-turn completion does
 not settle logical work; cancellation retains its captured wait and stop identity.
@@ -124,13 +125,14 @@ selected service tier. No second input-request map or transport retry is created
 
 Session control dispatches manual compaction and consumes native request/reset
 receipts. Native owns reset admission, source acquisition and terminal disposition.
-The [compound-wait boundary](../../../../modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery)
-uses native execution settlement, not a later Go compaction dispatch; Thread Control
-retains logical continuation and wait delivery.
+The [wait boundary](../../../../docs/contracts/coordination.md#logical-waits-and-ordered-delivery)
+retains the original pending native call, not a later Go compaction dispatch or
+replacement wait turn. Native coordination retains logical work and delivery.
 
 `/compact` with Enter requests reset while Main is busy; Tab waits for idle. Native
-admits the reset before interrupting ordinary work and defers it while a compound
-execution is unresolved. A reset covers only requests captured at its start; later
+admits the reset before interrupting ordinary work. A pending native wait services
+reset inline without replacing its task or waiting for a child wake. A reset covers
+only requests captured at its start; later
 requests remain pending. Request/reset identity, not a turn or progress item alone,
 correlates completion. Terminal disposition includes preparation, acquisition and
 post-hooks.

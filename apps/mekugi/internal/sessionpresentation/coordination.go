@@ -10,12 +10,27 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/modules/activity/coordination"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // CoordinationEntry binds the first-party operation to ordinary agent traffic.
 // Host identity remains stable across pending, completed and restored entries.
 func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Item) ActivityEntry {
+	if item.Type == "collabAgentToolCall" && item.Tool == "wait" {
+		entry.Kind = "progress"
+		wait := &activitypresentation.Value{Kind: "progress", From: entry.Agent, Body: "Waiting for"}
+		for _, thread := range item.ReceiverThreadIDs {
+			name := s.KnownCaller(thread)
+			if name == "" {
+				name = thread
+			}
+			wait.WaitTargets = append(wait.WaitTargets, activitypresentation.WaitTarget{Name: name})
+		}
+		if item.TimeoutMS != nil {
+			wait.WaitTimeout = (time.Duration(*item.TimeoutMS) * time.Millisecond).String()
+		}
+		entry.Text, entry.Native.Wait = wait.ProgressText(), wait
+		return entry
+	}
 	entry.Kind, entry.Text = "tool", activitypresentation.MCPText(item)
 	entry.Native.Status, entry.Native.Duration = item.Status, ItemDuration(item)
 	entry.Native.Running = entry.Native.Phase == "item/started" && item.Status == "inProgress"
@@ -93,8 +108,6 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 			entry.Native.InterruptTarget, entry.Native.InterruptID = target, c.ID
 		case "List agents":
 			entry.Text = listed(c.Count, "agent")
-		case "List models":
-			entry.Text = listed(c.Count, "model")
 		case "Inspect":
 			inspected := &activitypresentation.Value{Kind: "progress", From: entry.Agent, Body: "Inspected", WaitTargets: []activitypresentation.WaitTarget{{Name: target}}}
 			entry.Text, entry.Native.Wait = inspected.ProgressText(), inspected
@@ -128,8 +141,8 @@ func coordinationWait(c coordination.Coordination) *activitypresentation.Value {
 	return wait
 }
 
-// RetainedWaitEntry projects an authenticated wake through the ordinary
-// coordination presentation, without restoring or executing the subscription.
+// RetainedWaitEntry renders historical host-admitted wakes without restoring
+// their former Go subscriptions or admitting native work.
 func RetainedWaitEntry(thread, agent, name, output string, at time.Time) (ActivityEntry, bool) {
 	if name != "wait_agent" {
 		return ActivityEntry{}, false
@@ -138,23 +151,32 @@ func RetainedWaitEntry(thread, agent, name, output string, at time.Time) (Activi
 	if !c.Confirmed || c.ID == "" {
 		return ActivityEntry{}, false
 	}
-	entry := ActivityEntry{Agent: agent, Observed: at, Completed: at,
+	entry := ActivityEntry{Agent: agent, Kind: "progress", Observed: at, Completed: at,
 		Native: &NativeItem{Thread: thread, Item: "threadcontrol:wait:" + strings.TrimPrefix(c.ID, thread+":"), Phase: "item/completed"}}
-	entry.Kind = "progress"
 	entry.Native.Wait = coordinationWait(c)
 	entry.Native.Wait.From = agent
 	entry.Text = entry.Native.Wait.ProgressText()
 	return entry, true
 }
 
-// CompactionOutcomeEntry reports the reset's outcome independently of a pending
-// compound wait. The retained operation identity also deduplicates restoration.
-func CompactionOutcomeEntry(thread, agent, id string, result *control.CompactionResult, at time.Time) (ActivityEntry, bool) {
-	if id == "" || result == nil {
+// RetainedCompactionEntry decodes only the former checkpoint result's display
+// facts. Historical outcomes never restore a reset or its Go coordination owner.
+func RetainedCompactionEntry(thread, agent, name, output string, at time.Time) (ActivityEntry, bool) {
+	if name != "compact" && name != "wait_agent" {
+		return ActivityEntry{}, false
+	}
+	var result struct {
+		ID         string `json:"id"`
+		Compaction *struct {
+			State string `json:"state"`
+			Error string `json:"error"`
+		} `json:"compaction"`
+	}
+	if json.Unmarshal([]byte(output), &result) != nil || result.ID == "" || result.Compaction == nil {
 		return ActivityEntry{}, false
 	}
 	kind, text := "progress", ""
-	switch result.State {
+	switch result.Compaction.State {
 	case "skipped":
 		text = "Compaction skipped"
 	case "failed":
@@ -164,27 +186,11 @@ func CompactionOutcomeEntry(thread, agent, id string, result *control.Compaction
 	default:
 		return ActivityEntry{}, false
 	}
-	if result.Error != "" {
-		text += ": " + result.Error
+	if result.Compaction.Error != "" {
+		text += ": " + result.Compaction.Error
 	}
 	return ActivityEntry{Agent: agent, Kind: kind, Text: text, Observed: at, Completed: at,
-		Native: &NativeItem{Thread: thread, Item: "threadcontrol:compact:" + id, Phase: "item/completed"}}, true
-}
-
-// RetainedCompactionEntry consumes only a host-admitted standalone checkpoint
-// output. Its caller retains namespace and client-authored provenance checks.
-func RetainedCompactionEntry(thread, agent, name, output string, at time.Time) (ActivityEntry, bool) {
-	if name != "compact" && name != "wait_agent" {
-		return ActivityEntry{}, false
-	}
-	var result struct {
-		ID         string                    `json:"id"`
-		Compaction *control.CompactionResult `json:"compaction"`
-	}
-	if json.Unmarshal([]byte(output), &result) != nil {
-		return ActivityEntry{}, false
-	}
-	return CompactionOutcomeEntry(thread, agent, result.ID, result.Compaction, at)
+		Native: &NativeItem{Thread: thread, Item: "threadcontrol:compact:" + result.ID, Phase: "item/completed"}}, true
 }
 
 func listed(count int, noun string) string {
@@ -192,42 +198,4 @@ func listed(count int, noun string) string {
 		noun += "s"
 	}
 	return fmt.Sprintf("Listed %d %s", count, noun)
-}
-
-func settledInterrupt(target, status string) string {
-	if status == "interrupted" {
-		return "Interrupted " + target
-	}
-	return "Interrupt settled for " + target + " · " + status
-}
-
-// SetInterruptions also settles non-parent requesters and outcomes observed
-// before their request rows. New rows use this same immutable publication.
-func (s *ActivitySource) SetInterruptions(publication *control.Interruptions) {
-	if s.interruptions == publication {
-		return
-	}
-	s.interruptions = publication
-	for i, previous := range s.Entries {
-		settled := s.settleInterrupt(previous.Source)
-		if settled.Native != previous.Source.Native {
-			s.Model.Replace(i, settled, ActivityContent(settled).Values())
-		}
-	}
-}
-
-func (s *ActivitySource) settleInterrupt(entry ActivityEntry) ActivityEntry {
-	if entry.Native == nil || entry.Native.InterruptID == "" {
-		return entry
-	}
-	if outcome := s.interruptions.Outcome(entry.Native.Thread, entry.Native.InterruptID); outcome != "" {
-		entry.Native = new(*entry.Native)
-		entry.Text = settledInterrupt(entry.Native.InterruptTarget, string(outcome))
-		if entry.Native.Wait != nil {
-			entry.Native.Wait = new(*entry.Native.Wait)
-			entry.Native.Wait.Body = entry.Text
-		}
-		entry.Native.InterruptID = ""
-	}
-	return entry
 }

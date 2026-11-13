@@ -9,7 +9,6 @@ import (
 	"net"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // RunServer owns execution lifetimes independently of connected clients.
@@ -53,7 +52,7 @@ func RunServer(ctx context.Context, args []string, stderr io.Writer) int {
 	defer listener.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	launcher := &serverLauncher{threads: control.New(), sourceSocket: *socket}
+	launcher := &serverLauncher{sourceSocket: *socket}
 	defer func() {
 		if err := launcher.workers.Close(); err != nil {
 			fmt.Fprintln(stderr, "mekugi server worker cleanup:", err)

@@ -24,8 +24,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -60,6 +58,7 @@ import (
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/persistence"
 
@@ -85,7 +84,7 @@ const (
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
 func runInvocation(views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
-	if api == nil || threads == nil || threads.shared == nil || threads.driver == nil {
+	if api == nil || threads == nil {
 		return 1, errors.New("native invocation requires control API and thread execution owners")
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -199,7 +198,6 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 		if err != nil {
 			return 2, err
 		}
-		threads.driver.UseNativeModels()
 		client := profileHTTPClient(route)
 		if capture != nil {
 			client.Transport = capture.Transport(client.Transport)
@@ -256,7 +254,6 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	})
 	threads.retained = retained
 	threads.recovery = recovered
-	threads.contexts = &control
 	if !options.DeduplicateOutput {
 		projections = nil
 	}
@@ -281,10 +278,8 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	}
 	review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
 	defer review.Close()
-	var driver *threadbinding.Driver
-	var inspect func(context.Context, string) (threadcontrol.SessionDetails, error)
-	var contextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
-	contextAttachments = func(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
+	var inspect func(context.Context, string) (observation.SessionDetails, error)
+	contextAttachments := func(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
 		runtime, err := threads.Runtime(thread)
 		if err != nil {
 			return composer.AttachmentSnapshot{}, err
@@ -295,15 +290,14 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 		}
 		return reader.ContextAttachments(ctx, thread, window)
 	}
-	driver = threads.driver
-	inspect = func(ctx context.Context, thread string) (threadcontrol.SessionDetails, error) {
+	inspect = func(ctx context.Context, thread string) (observation.SessionDetails, error) {
 		runtime, err := threads.Runtime(thread)
 		if err != nil {
-			return threadcontrol.SessionDetails{}, err
+			return observation.SessionDetails{}, err
 		}
 		return runtime.Inspect(ctx, thread)
 	}
-	mekugiCalls = executionobservation.New(executionobservation.Config{Inspect: inspect, ThreadControl: driver, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, Event: issues.AddThreadEvent, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+	mekugiCalls = executionobservation.New(executionobservation.Config{ProgressSnapshot: threads.hub.ProgressSnapshot, Inspect: inspect, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, Event: issues.AddThreadEvent, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 	mekugiCalls.ContextAttachments = contextAttachments
 	if segments.Live != nil {
 		if err := segments.Live.RegisterBoundary(mekugiCalls.ObserveNativeBoundary); err != nil {
@@ -354,12 +348,13 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	if capture != nil {
 		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	}
-	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog, threads.driver.CaptureCatalog))
+	catalog := &inferencegateway.ReasoningCatalog{NativeModels: route == nil}
+	threads.catalog = catalog
+	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog, catalog.Capture))
 	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
 	executor := requestexecution.Executor{Provider: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
-	executor.ThreadControl = threads.shared
-	executor.ReasoningChoices = threads.driver.ReasoningChoices
+	executor.ReasoningChoices = catalog.Choices
 	executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
 	executor.SkillsManager, executor.SideThreads, executor.Usage = skillsManagerAvailable, api, usage
 	if diagnosis != nil {

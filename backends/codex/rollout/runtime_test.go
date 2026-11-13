@@ -11,32 +11,6 @@ import (
 	"testing"
 )
 
-func TestRuntimeRequiresExactTurnAndCompleteAuthority(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "rollout.jsonl")
-	data := `{"type":"session_meta","payload":{"id":"thread"}}
-{"type":"turn_context","payload":{"turn_id":"selected","cwd":"/work","model":"actual","effort":"high","approval_policy":"never","approvals_reviewer":"user","permission_profile":{"type":"managed","file_system":{"type":"restricted","entries":[{"path":{"type":"path","path":"/denied"},"access":"deny"}]},"network":"restricted"}}}
-{"type":"turn_context","payload":{"turn_id":"later","cwd":"/other","model":"later","permission_profile":{"type":"disabled"},"approval_policy":"never"}}
-`
-	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
-		t.Fatal(err)
-	}
-	runtime, err := ReadRuntime("thread", path, "selected")
-	if err != nil || runtime.Model != "actual" || runtime.Workspace != "/work" || runtime.Effort == nil || *runtime.Effort != "high" || len(runtime.PermissionProfile) == 0 {
-		t.Fatalf("wrong runtime: %+v, %v", runtime, err)
-	}
-	for _, identity := range [][2]string{{"foreign", "selected"}, {"thread", "missing"}, {"thread", ""}} {
-		if _, err := ReadRuntime(identity[0], path, identity[1]); err == nil {
-			t.Fatalf("accepted unavailable identity %v", identity)
-		}
-	}
-	if err := os.WriteFile(path, []byte(data+`{"type":"turn_context","payload":{"turn_id":"selected","cwd":"/work","model":"actual"}}`+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ReadRuntime("thread", path, "selected"); err == nil {
-		t.Fatal("incomplete latest evidence fell back to older authority")
-	}
-}
-
 func TestAdmissionSettingsSurviveLongTurns(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "root.jsonl")
 	owned := `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_id":"root","thread_settings":{"model":"actual","model_provider_id":"selected","cwd":"/work","permission_profile":{"type":"managed","network":"restricted","file_system":{"type":"restricted","entries":[{"path":{"type":"path","path":"/denied"},"access":"deny"}]}},"approval_policy":"on-request","service_tier":"flex"}}}`

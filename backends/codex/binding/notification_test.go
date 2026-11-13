@@ -102,3 +102,16 @@ func TestNotificationRecoverableTurnFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestNotificationProviderDiagnosticAndRetryStayDistinct(t *testing.T) {
+	for _, retry := range []bool{false, true} {
+		p := Notification{ThreadID: "thread", TurnID: "same-turn", WillRetry: retry, Error: &TurnError{Message: "Provider stream failed", AdditionalDetails: "Exact details"}}
+		event := p.Observation("error", time.Unix(42, 0))
+		if event.TurnID != "same-turn" || event.TurnStatus != "" {
+			t.Fatalf("provider diagnostic acquired terminal authority: %+v", event)
+		}
+		if retry && (event.Retry != "Provider stream failed · Exact details" || event.Diagnostic != "") || !retry && (event.Diagnostic != "Provider stream failed · Exact details" || event.Retry != "") {
+			t.Fatalf("retry and diagnostic conflated: %+v", event)
+		}
+	}
+}

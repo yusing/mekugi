@@ -1,7 +1,6 @@
 package sessionapi
 
 import (
-	json "encoding/json/v2"
 	"fmt"
 	"maps"
 	"strings"
@@ -22,12 +21,23 @@ func TestWaitProgressUsesUnfilteredCapturesWithoutActivity(t *testing.T) {
 	if len(diff.Files) != 0 {
 		t.Fatal("fixture should be invisible in the Diff pane")
 	}
-	targets := []string{"/root/child", "/root/quiet"}
-	progress, seen := h.WaitProgress("root", targets, nil)
-	if len(progress.Agents) != 1 || len(seen) != 3 || progress.Agents[0].Task != "/root/child" || !strings.Contains(progress.Agents[0].Changes, scratch.Change) {
-		t.Fatalf("missing capture/status or included unchanged agent: %+v %v", progress, seen)
+	snapshot := h.ProgressSnapshot("root")
+	if snapshot == nil {
+		t.Fatal("unfiltered snapshot unavailable")
 	}
-	if repeated, cursor := h.WaitProgress("root", targets, seen); len(repeated.Agents) != 0 || len(cursor) != 0 {
+	count := 0
+	for range snapshot.Publication.Progress(map[string]bool{"/root/child": true}, nil) {
+		count++
+	}
+	if count != 3 {
+		t.Fatalf("unfiltered snapshot lost captures: %d", count)
+	}
+	targets := []string{"/root/child", "/root/quiet"}
+	progress, seen := captureProgress(t, h, "root", targets, nil)
+	if len(progress) != 3 || len(seen) != 3 || progress[2].Caller != "/root/child" || progress[2].Change != scratch.Change {
+		t.Fatalf("missing capture or included unchanged agent: %+v %v", progress, seen)
+	}
+	if repeated, cursor := captureProgress(t, h, "root", targets, seen); len(repeated) != 0 || len(cursor) != 0 {
 		t.Fatal("unchanged captures repeated")
 	}
 	late := reviewChunk(1, "/root/child", "", "/project/late", "", "late\n")
@@ -38,14 +48,15 @@ func TestWaitProgressUsesUnfilteredCapturesWithoutActivity(t *testing.T) {
 	frame.Review.Revision++
 	frame.Agents = familyActivity("child", "running follow-up")
 	child.server.frame.Store(&frame)
-	next, cursor := h.WaitProgress("root", targets, seen)
-	if len(next.Agents) != 1 || len(cursor) != 2 || !strings.Contains(next.Agents[0].Changes, late.Change) || !strings.Contains(next.Agents[0].Changes, extension.Change) {
-		t.Fatalf("late or extended capture was lost: %+v %v", next, cursor)
+	next, cursor := captureProgress(t, h, "root", targets, seen)
+	if len(next) != 2 || len(cursor) != 2 || next[0].Change != late.Change || next[1].Change != extension.Change {
+		t.Fatalf("late or extended capture lost: %+v %v", next, cursor)
 	}
 	maps.Copy(seen, cursor)
-	if repeated, _ := h.WaitProgress("root", targets, seen); len(repeated.Agents) != 0 {
+	if repeated, _ := captureProgress(t, h, "root", targets, seen); len(repeated) != 0 {
 		t.Fatal("extended capture repeated")
 	}
+
 }
 
 func TestWaitProgressFreezesAllSelectionsBeforeCombinedOutputBounding(t *testing.T) {
@@ -56,11 +67,11 @@ func TestWaitProgressFreezesAllSelectionsBeforeCombinedOutputBounding(t *testing
 	}
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Workspace: "/project"}})
 	familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/child", Workspace: "/project"}, Agents: familyActivity("child", strings.Repeat("activity", 500)), Review: familyReview(captures...)})
-	progress, cursor := h.WaitProgress("root", []string{"/root/child"}, nil)
-	raw, err := json.Marshal(progress)
-	if err != nil || len(cursor) != len(captures) || len(progress.Agents) != 1 || len(strings.Fields(strings.SplitN(progress.Agents[0].Changes, "\n", 2)[0])) != len(captures) || len(raw) <= 12<<10 {
-		t.Fatalf("freeze dropped bounded-out selections: bytes=%d cursor=%d err=%v", len(raw), len(cursor), err)
+	progress, cursor := captureProgress(t, h, "root", []string{"/root/child"}, nil)
+	if len(cursor) != len(captures) || len(progress) != len(captures) || progress[len(progress)-1].Change != captures[len(captures)-1].Change {
+		t.Fatalf("freeze dropped selections: captures=%d cursor=%d", len(progress), len(cursor))
 	}
+
 }
 
 func TestWaitProgressIncludesRetainedGitDiagnosticsWithoutAuthoredCounts(t *testing.T) {
@@ -75,9 +86,9 @@ func TestWaitProgressIncludesRetainedGitDiagnosticsWithoutAuthoredCounts(t *test
 	view := &changes.ReviewView{Publication: snapshot.Publication, Workspace: "/project", Coverage: "complete", Revision: 1}
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Workspace: "/project"}, Review: view})
 	familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/child", Workspace: "/project"}, Agents: familyActivity("child", "checking out"), Review: view})
-	progress, cursor := h.WaitProgress("root", []string{"/root/child"}, nil)
-	if len(progress.Agents) != 1 || len(cursor) != 1 || !strings.HasPrefix(progress.Agents[0].Changes, git.Change+"\n") {
-		t.Fatalf("Git capture missing provenance or duplicated: %+v", progress)
+	progress, cursor := captureProgress(t, h, "root", []string{"/root/child"}, nil)
+	if len(progress) != 1 || len(cursor) != 1 || progress[0].Change != git.Change {
+		t.Fatalf("Git capture missing or duplicated: %+v", progress)
 	}
 	_, diff := h.Family("root")
 	if len(diff.Files) != 0 || len(diff.Counts.Callers) != 0 {
@@ -116,8 +127,31 @@ func TestWaitProgressKeepsDiagnosticsAcrossAuthoredAppend(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Workspace: "/project"}})
 	familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/child", Workspace: "/project"}, Agents: familyActivity("child", "editing"), Review: &changes.ReviewView{Publication: updated.Publication, Workspace: "/project", Coverage: "complete", Revision: 1}})
-	progress, _ := h.WaitProgress("root", []string{"/root/child"}, nil)
-	if len(progress.Agents) != 1 || !strings.Contains(progress.Agents[0].Changes, git.Change) || !strings.Contains(progress.Agents[0].Changes, another.Change) || len(base.Publication.Diagnostics) != 1 {
-		t.Fatalf("authored append lost or mutated diagnostics: %+v", progress)
+	progress, _ := captureProgress(t, h, "root", []string{"/root/child"}, nil)
+	found := map[string]bool{}
+	for _, capture := range progress {
+		found[capture.Change] = true
 	}
+	if !found[git.Change] || !found[another.Change] || len(base.Publication.Diagnostics) != 1 {
+		t.Fatalf("authored append lost diagnostics: %+v", progress)
+	}
+}
+
+func captureProgress(t *testing.T, h *Hub, thread string, targets []string, seen map[string]int) ([]changes.CaptureProgress, map[string]int) {
+	t.Helper()
+	snapshot := h.ProgressSnapshot(thread)
+	if snapshot == nil {
+		t.Fatal("capture publication unavailable")
+	}
+	callers := make(map[string]bool, len(targets))
+	for _, target := range targets {
+		callers[target] = true
+	}
+	var captures []changes.CaptureProgress
+	cursor := map[string]int{}
+	for capture := range snapshot.Publication.Progress(callers, seen) {
+		captures = append(captures, capture)
+		cursor[capture.Key] = capture.Chunks
+	}
+	return captures, cursor
 }

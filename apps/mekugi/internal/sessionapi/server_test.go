@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -137,18 +137,15 @@ func TestWaitOutcomeProjection(t *testing.T) {
 	}
 }
 
-func TestCompactionRejectionProjection(t *testing.T) {
-	const reason = "Estimated uncached input $0.219230 exceeds last observed input $0.186530. Context was not reset; reload sources were not attached."
-	for _, caller := range []string{"/root", "/root/worker"} {
-		entry, ok := sessionpresentation.CompactionOutcomeEntry("thread", caller, "thread:checkpoint", &threadcontrol.CompactionResult{State: "skipped", Error: reason}, time.Unix(100, 0))
-		if !ok {
-			t.Fatal("rejection was not projected")
-		}
-		content := sessionpresentation.ActivityContent(entry)
-		values := projectValues(content.Values(), false)
-		if len(values) != 1 || values[0].Body != "Compaction skipped: "+reason || values[0].Kind != "progress" {
-			t.Fatalf("rejection missing from shared API: %+v", values)
-		}
+func TestNativeCompactionFailureProjection(t *testing.T) {
+	const reason = "Native context reset failed; selected sources remain retained."
+	entry, ok := sessionpresentation.NativeContextResetEntry(sessioncontrol.ContextReset{Thread: "thread", Turn: "turn", Generation: 1, ResetID: "reset", Status: "failed", Diagnostic: reason}, time.Unix(100, 0))
+	if !ok {
+		t.Fatal("native failure was not projected")
+	}
+	values := projectValues(sessionpresentation.ActivityContent(entry).Values(), false)
+	if len(values) != 1 || values[0].Body != "Compaction not performed: "+reason || values[0].Kind != "error" {
+		t.Fatalf("native failure missing from shared API: %+v", values)
 	}
 }
 

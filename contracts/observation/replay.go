@@ -10,16 +10,19 @@ import (
 type Kind string
 
 const (
-	TurnStarted        Kind = "turn/started"
-	TurnCompleted      Kind = "turn/completed"
-	ItemStarted        Kind = "item/started"
-	ItemCompleted      Kind = "item/completed"
-	AgentDelta         Kind = "item/agentMessage/delta"
-	ReasoningDelta     Kind = "item/reasoning/summaryTextDelta"
-	ReasoningPartAdded Kind = "item/reasoning/summaryPartAdded"
-	CommandDelta       Kind = "item/commandExecution/outputDelta"
-	ProviderStarted    Kind = "replay/providerStarted"
-	ProviderCompleted  Kind = "replay/providerCompleted"
+	TurnStarted               Kind = "turn/started"
+	TurnCompleted             Kind = "turn/completed"
+	ItemStarted               Kind = "item/started"
+	ItemCompleted             Kind = "item/completed"
+	AgentDelta                Kind = "item/agentMessage/delta"
+	ReasoningDelta            Kind = "item/reasoning/summaryTextDelta"
+	ReasoningPartAdded        Kind = "item/reasoning/summaryPartAdded"
+	CommandDelta              Kind = "item/commandExecution/outputDelta"
+	ProviderStarted           Kind = "replay/providerStarted"
+	ProviderCompleted         Kind = "replay/providerCompleted"
+	CoordinationObserved      Kind = "agent/coordination"
+	ContextResetObserved      Kind = "thread/contextReset"
+	SourceAcquisitionObserved Kind = "thread/sourceAcquisition"
 )
 
 // ResponseProgress identifies response activity; callers retain turn admission.
@@ -42,6 +45,14 @@ type Event struct {
 	ThreadStatus, ProcessID, Stdin              string
 	Context                                     Context
 	Retry                                       string // Live retry status, absent for terminal errors.
+	Diagnostic                                  string // Non-retrying provider error, not a turn completion.
+	// Native facts survive live and retained delivery without becoming tool
+	// outputs or execution authority. Inherited preserves recorded attribution.
+	Coordination      *CoordinationProjection
+	NativeMessage     *NativeMessage
+	Reset             *ContextResetEvent
+	SourceAcquisition *SourceAcquisition
+	Inherited         bool
 }
 
 // Thread is admitted metadata, not a filesystem or host-request capability.
@@ -76,6 +87,8 @@ type Item struct {
 	ID, Type, Status, Text, Delivery, Phase, Cwd, Path string
 	Command, ProcessID, ClientID                       string
 	Tool                                               string
+	ReceiverThreadIDs                                  []string
+	TimeoutMS                                          *int64
 	Server                                             string         // MCP server identity.
 	Arguments, Result, Error                           jsontext.Value // Opaque MCP input and outcome.
 	DurationMS                                         *int64

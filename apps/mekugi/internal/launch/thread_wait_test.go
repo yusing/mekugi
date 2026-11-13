@@ -2,126 +2,53 @@ package launch
 
 import (
 	"context"
-	json "encoding/json/v2"
+	"fmt"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-func logicalWaitUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
-	u, threads, at := logicalWaitRunningUI(t, timeout)
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "completed"}})
-	if err := threads.shared.HostCompleted(t.Context(), "main", "first", control.Completed, control.HostFailure{}); err != nil {
-		t.Fatal(err)
-	}
-	return u, threads, at
-}
-
-func logicalWaitRunningUI(t *testing.T, timeout *int64) (*appServerUI, *threadExecution, *time.Time) {
-	t.Helper()
-	check := func(err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	retained, err := history.NewService(control.RecordKinds())
-	check(err)
-	store, err := retained.Open(t.Context(), t.TempDir())
-	check(err)
-	session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "main")
-	check(err)
-	t.Cleanup(session.Close)
-	service := control.New()
-	check(service.AdmitRoot(t.Context(), session, &control.Member{Thread: "main", Session: "session", Task: "/root", Generation: 1, Status: control.Working, AudienceAdmitted: true, Limits: control.Limits{MaxWaitMS: 1000}}))
-	caller := control.Identity{Thread: "main", Session: "session", Turn: "first", Call: "spawn", Item: "exec"}
-	check(service.RequestStarted(t.Context(), caller, true))
-	spawn, err := service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: "worker", Message: "Work", Settings: control.Settings{Workspace: t.TempDir()}, Limits: control.Limits{}})
-	check(err)
-	for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
-		effect, err := service.ClaimEffect(t.Context(), "main", spawn.ID)
-		check(err)
-		if effect == nil || effect.Phase != phase {
-			t.Fatalf("phase %s: %+v", phase, effect)
-		}
-		check(service.EffectAcknowledged(t.Context(), "main", spawn.ID, control.Receipt{Phase: phase, Thread: "child", Session: "child-session", Turn: "child-turn"}))
-	}
-	u, at := newActiveWorkTestUI(t)
-	u.settings.Model, u.settings.Effort = "test-model", "high"
-	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
-	caller.Call = "wait"
-	registration, err := service.RegisterWait(t.Context(), caller, "", timeout, nil, *at)
-	check(err)
-	payload, err := json.Marshal(registration)
-	check(err)
-	envelope, err := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": string(payload)}}})
-	check(err)
-	args := `{}`
-	if timeout != nil {
-		args = `{"timeout_ms":1000}`
-	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "first", "item": binding.ThreadItem{ID: "wait-item", Type: "mcpToolCall", Server: "threadcontrol", Tool: "wait_agent", Status: "completed", Arguments: []byte(args), Result: envelope}})
-	check(service.Execution(t.Context(), "main", "first", "exec", "", true))
-	stop, err := service.ClaimLocalStop(t.Context(), "main", "first", "exec")
-	check(err)
-	if stop == nil {
-		t.Fatal("missing local stop")
-	}
-	driver, err := threadbinding.NewDriver(service)
-	check(err)
-	threads := &threadExecution{shared: service, driver: driver}
-	*at = at.Add(2 * time.Second)
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	u.notifications = &nativeNotifications{relay: func(event, _ string) { t.Errorf("local stop emitted notification %s", event) }}
-	return u, threads, at
-}
-
 func TestUISnapshotLogicalWaiting(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, new(int64(1000)))
+	u, threads, at := nativeWaitUI(t, new(int64(1000)))
 	u.attached.cwd = "/workspace"
 	appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": "main", "status": map[string]any{"type": "idle"}})
 	*at = at.Add(8 * time.Second)
 	rows, _ := u.testMainFrame(80, 8, 0)
 	view := u.attached.presentation.View()
 	if view.Status.Composer.Text != "Waiting for agents" || !view.InterruptAvailable || !u.Busy(false) || view.Status.Session.CompletionKnown || at.Sub(view.Status.Session.Started) != 10*time.Second {
-		t.Fatalf("logical wait lost work: %+v", view.Status)
+		t.Fatalf("native wait lost work: %+v", view.Status)
 	}
 	agent := u.attached.session.Agent("/root")
 	if agent.Final || !agent.Waiting || agent.WorkTimer.At(*at) != 10*time.Second {
-		t.Fatalf("logical roster: %+v", agent)
+		t.Fatalf("native roster: %+v", agent)
 	}
 	assertNativeUISnapshot(t, "logical-waiting", rows)
 	u.testActivity(u.shell.Agents).publishActivity()
 	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); !strings.Contains(text, "Waiting for worker (timeout 1s)") {
-		t.Fatalf("roster lost transcript wait details: %s", text)
+		t.Fatalf("roster lost wait details: %s", text)
 	}
 	assertNativeUISnapshot(t, "logical-waiting-roster", u.shell.Agents.NativeRoster(80, 5, *at, true))
-	if err := threads.shared.Pause(t.Context(), "main"); err != nil {
-		t.Fatal(err)
-	}
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "interrupted"}})
+	root := threads.native.agent("main")
+	root.Work.Disposition, root.Wait = "paused", nil
+	nativeTreeFixture(t, threads)
 	*at = at.Add(time.Hour)
-	rows, _ = u.testMainFrame(80, 8, 0)
+	u.testMainFrame(80, 8, 0)
 	if u.Busy(false) || u.attached.presentation.View().Status.Session.Running || u.attached.session.Agent("/root").WorkTimer.At(*at) != 10*time.Second {
-		t.Fatal("paused work revived")
+		t.Fatal("paused native work revived")
 	}
-	assertNativeUISnapshot(t, "logical-wait-paused", rows)
 }
 
 func TestUISnapshotUsageLimitWaiting(t *testing.T) {
@@ -130,100 +57,118 @@ func TestUISnapshotUsageLimitWaiting(t *testing.T) {
 	t.Cleanup(func() { time.Local = previous })
 	for _, mode := range []string{"true", "false", "capacity"} {
 		t.Run(mode, func(t *testing.T) {
-			timed := mode == "true"
-			u, at := newActiveWorkTestUI(t)
-			u.settings.Model, u.settings.Effort = "test-model", "high"
-			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first"}})
-			retained, err := history.NewService(control.RecordKinds())
-			if err != nil {
-				t.Fatal(err)
-			}
-			store, err := retained.Open(t.Context(), t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "main")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer session.Close()
-			service := control.New()
-			if err := service.AdmitRoot(t.Context(), session, &control.Member{Thread: "main", Session: "session", Task: "/root", Turn: "first", Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true}); err != nil {
-				t.Fatal(err)
-			}
-			driver, err := threadbinding.NewDriver(service)
-			if err != nil {
-				t.Fatal(err)
-			}
-			threads := &threadExecution{shared: service, driver: driver}
+			u, threads, at := nativeRunningUI(t)
 			*at = at.Add(2 * time.Second)
 			u.attached.cwd = "/workspace"
-			var deadline *time.Time
-			if timed {
-				deadline = new(at.Add(time.Hour))
+			wait := appserver.AgentWaitObservation{WaitID: "wait", Mode: "any", Phase: "registered", Reason: new("providerUsageLimit")}
+			if mode == "true" {
+				wait.DeadlineUnixMS = new(at.Add(time.Hour).UnixMilli())
 			}
 			if mode == "capacity" {
-				deadline = new(at.Add(time.Second))
+				wait.Reason = new("providerCapacity")
+				wait.DeadlineUnixMS = new(at.Add(time.Second).UnixMilli())
 			}
-			wait := threads.shared.WaitForUsageLimit
-			if mode == "capacity" {
-				wait = threads.shared.WaitForCapacity
+			observe := func() {
+				t.Helper()
+				root := threads.native.agent("main")
+				root.Work.Disposition, root.Wait = "waiting", &wait
+				nativeTreeFixture(t, threads)
 			}
-			if _, err := wait(t.Context(), "main", "first", deadline); err != nil {
-				t.Fatal(err)
-			}
-			if err := threads.shared.HostCompleted(t.Context(), "main", "first", control.Completed, control.HostFailure{}); err != nil {
-				t.Fatal(err)
-			}
-			syncLogicalWork(&u.attached, &u.Live, threads, *at)
-			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "completed"}})
+			observe()
 			rows, _ := u.testMainFrame(80, 8, 0)
 			view := u.attached.presentation.View()
 			if !view.InterruptAvailable || !view.Status.Session.Running || view.Status.Feedback.Alert || view.Status.Session.CompletionKnown {
-				t.Fatalf("lost virtual wait: %+v", view)
+				t.Fatalf("lost native provider wait: %+v", view)
 			}
 			assertNativeUISnapshot(t, "usage-limit-waiting-"+mode, rows)
 			u.testActivity(u.shell.Agents).publishActivity()
 			assertNativeUISnapshot(t, "usage-limit-roster-"+mode, u.shell.Agents.NativeRoster(80, 5, *at, true))
-			check := func(err error) {
-				t.Helper()
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			if deadline != nil {
-				wake, err := service.PrepareWake(t.Context(), "main", *deadline)
-				check(err)
-				_, err = service.ClaimEffect(t.Context(), "main", wake.ID)
-				check(err)
-				check(service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "retry"}))
-				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "retry"}})
-				syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			if wait.DeadlineUnixMS != nil {
+				root := threads.native.agent("main")
+				root.Work.Disposition, root.Wait = "running", nil
+				nativeTreeFixture(t, threads)
 				u.testMainFrame(100, 8, 0)
 				if strings.Contains(u.attached.presentation.View().Status.Session.Text, "retry at") {
-					t.Fatal("resumed request retained old retry deadline")
+					t.Fatal("running work retained retry deadline")
 				}
-				deadline = new(deadline.Add(time.Minute))
-				_, err = wait(t.Context(), "main", "retry", deadline)
-				check(err)
-				check(service.HostCompleted(t.Context(), "main", "retry", control.Completed, control.HostFailure{}))
-				syncLogicalWork(&u.attached, &u.Live, threads, *at)
-				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "retry", "status": "completed"}})
+				wait.DeadlineUnixMS = new(*wait.DeadlineUnixMS + 60000)
+				observe()
 				u.testMainFrame(100, 8, 0)
-				if !strings.Contains(u.attached.presentation.View().Status.Session.Text, deadline.Format("15:04:05")) {
-					t.Fatal("repeated rejection hid the new deadline")
+				if !strings.Contains(u.attached.presentation.View().Status.Session.Text, time.UnixMilli(*wait.DeadlineUnixMS).Format("15:04:05")) {
+					t.Fatal("repeated rejection hid new native deadline")
 				}
 			}
-			member, _ := service.Member("main")
-			_, err = service.HumanInterrupt(t.Context(), "main", member.Stop.Wait)
-			check(err)
-			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			root := threads.native.agent("main")
+			root.Work.Disposition, root.Wait = "interrupted", nil
+			nativeTreeFixture(t, threads)
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "interrupted"}})
 			u.testMainFrame(100, 8, 0)
 			if u.attached.presentation.View().Status.Session.Running {
-				t.Fatal("interrupted provider wait still appeared running")
+				t.Fatal("interrupted native provider wait remained running")
 			}
 		})
+	}
+}
+
+func TestNativePausedProviderWaitProjection(t *testing.T) {
+	for _, reason := range []string{"providerUsageLimit", ""} {
+		t.Run(reason, func(t *testing.T) {
+			u, threads, at := nativeRunningUI(t)
+			*at = at.Add(2 * time.Second)
+			root := threads.native.agent("main")
+			root.Work.Disposition = "paused"
+			root.Wait = &appserver.AgentWaitObservation{WaitID: "paused-wait", Phase: "registered"}
+			want := "Paused"
+			if reason != "" {
+				root.Wait.Reason = new(reason)
+				want = "Usage limit · paused"
+			}
+			nativeTreeFixture(t, threads)
+			u.testMainFrame(100, 8, 0)
+			view := u.attached.presentation.View()
+			if view.Status.Composer.Text != want || view.Status.Session.Running || view.Status.Session.Animation != sessionpresentation.Static || !view.InterruptAvailable || view.Status.Session.CompletionKnown {
+				t.Fatalf("paused provider fact became active, terminal or unavailable: %+v", view)
+			}
+			if u.Turn != "first" || u.Waiting != "paused-wait" || u.NativeWork != "main-work" {
+				t.Fatalf("paused native authority was replaced: %+v", u.Live)
+			}
+			agent := u.attached.session.Agent("/root")
+			if !agent.Paused || agent.Waiting || agent.Responding || agent.Wait == nil || agent.Wait.Live || agent.Wait.Body != want {
+				t.Fatalf("paused roster became an ordinary active wait: %+v", agent)
+			}
+			assertAgentWork(t, u, "main", *at, 2*time.Second, false)
+			root = threads.native.agent("main")
+			root.Work.Disposition, root.Wait = "running", nil
+			nativeTreeFixture(t, threads)
+			u.testMainFrame(100, 8, 0)
+			if view := u.attached.presentation.View(); view.Status.Composer.Text != "Working" || !view.Status.Session.Running || u.Waiting != "" {
+				t.Fatalf("native running observation retained pause: %+v", view)
+			}
+		})
+	}
+}
+
+func TestNativeChildPausedProviderWaitStaysScoped(t *testing.T) {
+	main, threads, _ := nativeRunningUI(t)
+	child := newAppServerSessionTestUI(t, main.attached.cwd)
+	child.Thread, child.clock = "child", main.clock
+	child.startSession("child", main.attached.cwd)
+	child.attached.presentation.Attach(sessionpresentation.Thread{ID: "child", Caller: "/root"}, false)
+	child.nativeAgent = threads.native.agent("child")
+	threads.native.add(&nativeEndpoint{session: &child.nativeSession, before: func() error { return nil }, after: func() error { return nil }})
+	appServerTestNotify(t, child, "turn/started", map[string]any{"threadId": "child", "turn": map[string]string{"id": "child-turn"}})
+	agent := threads.native.agent("child")
+	agent.Work.Disposition = "paused"
+	agent.Wait = &appserver.AgentWaitObservation{WaitID: "child-wait", Reason: new("providerUsageLimit")}
+	nativeTreeFixture(t, threads)
+	child.testMainFrame(100, 8, 0)
+	view := child.attached.presentation.View()
+	if view.Status.Composer.Text != "Usage limit · paused" || view.Status.Session.Running || !view.InterruptAvailable || child.Turn != "child-turn" || child.NativeWork != "child-work" || child.Waiting != "child-wait" {
+		t.Fatalf("child pause lost native identity or projection: %+v", view)
+	}
+	main.testMainFrame(100, 8, 0)
+	if view := main.attached.presentation.View(); view.Status.Composer.Text != "Working" || !view.Status.Session.Running || main.Waiting != "" {
+		t.Fatalf("child pause replaced Main's native work: %+v", view)
 	}
 }
 
@@ -284,96 +229,115 @@ func TestUISnapshotNativeRetryProgress(t *testing.T) {
 }
 
 func TestLogicalWaitContinuationPreservesElapsed(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, new(int64(1000)))
+	u, threads, at := nativeWaitUI(t, new(int64(1000)))
 	*at = at.Add(8 * time.Second)
-	service := threads.shared
-	wake, err := service.PrepareWake(t.Context(), "main", *at)
-	if err != nil || wake == nil {
-		t.Fatalf("wake: %+v %v", wake, err)
-	}
-	if _, err := service.ClaimEffect(t.Context(), "main", wake.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "continued"}); err != nil {
-		t.Fatal(err)
-	}
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	before := len(u.attached.source.Entries)
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	if len(u.attached.source.Entries) != before {
-		t.Fatal("wake repeated its completion notice")
-	}
-	rows, _ := u.testMainFrame(100, 15, 0)
-	text := ansi.Strip(strings.Join(rows, "\n"))
-	if !strings.Contains(text, "Finished waiting for worker: timeout") {
-		t.Fatalf("invisible timeout wake: %s", text)
-	}
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
+	nativeWaitItemFixture(t, u, "item/completed", new(int64(1000)))
+	root := threads.native.agent("main")
+	root.Work.Disposition, root.Wait = "running", nil
+	nativeTreeFixture(t, threads)
 	*at = at.Add(3 * time.Second)
-	_, _ = u.testMainFrame(80, 8, 0)
+	u.testMainFrame(80, 8, 0)
 	if got := at.Sub(u.attached.presentation.View().Status.Session.Started); got != 13*time.Second {
-		t.Fatalf("elapsed reset across wake: %v", got)
+		t.Fatalf("elapsed reset across native wake: %v", got)
+	}
+}
+
+func TestNativeProviderFailureDiagnosticKeepsOriginalWork(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		t.Run(thread, func(t *testing.T) {
+			u, _, _ := nativeRunningUI(t)
+			if thread == "child" {
+				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first"}})
+			}
+			notify := func(turn, message string, retry bool) {
+				appServerTestNotify(t, u, "error", map[string]any{"threadId": thread, "turnId": turn, "willRetry": retry, "error": map[string]any{"message": message, "additionalDetails": "Exact provider diagnostic"}})
+			}
+			notify("old", "Stale failure", false)
+			notify("first", "Reconnecting... 1/5", true)
+			notify("first", "Reconnecting... 2/5", true)
+			for _, entry := range u.attached.childSource.Entries {
+				if entry.Source.Kind == "error" {
+					t.Fatal("stale failure or retry became a diagnostic row")
+				}
+			}
+			for range 2 {
+				notify("first", "Provider stream failed", false)
+			}
+			count := 0
+			for _, entry := range u.attached.childSource.Entries {
+				if entry.Source.Kind == "error" {
+					count++
+					if entry.Source.ErrorDetail != "Provider stream failed · Exact provider diagnostic" || entry.Source.Native.Turn != "first" {
+						t.Fatalf("provider evidence changed: %+v", entry)
+					}
+				}
+			}
+			if count != 1 || u.Turn != "first" || u.attached.session.RetryStatus(thread) != "" || u.attached.session.Lifecycle(thread).Final {
+				t.Fatalf("provider diagnostic duplicated, retried or completed original work: count=%d turn=%s", count, u.Turn)
+			}
+			view := u.testActivity(u.shell.Agents)
+			if thread == "main" {
+				view = u.testActivity(u.shell.Transcript)
+			}
+			paint := ansi.Strip(strings.Join(view.testRenderConversation(120).Lines, "\n"))
+			if !strings.Contains(paint, "Provider stream failed") {
+				t.Fatalf("provider failure absent from rendered consumer: %s", paint)
+			}
+		})
 	}
 }
 
 func TestSupersededLocalWaitRestoresWorkingRoster(t *testing.T) {
-	u, threads, at := logicalWaitRunningUI(t, nil)
-	if err := threads.shared.Execution(t.Context(), "main", "first", "exec", "", false); err != nil {
-		t.Fatal(err)
-	}
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	u, threads, at := nativeWaitUI(t, nil)
+	nativeWaitSettlementFixture(t, u, appserver.CoordinationWaitResult{Kind: "cancelled", Cause: &appserver.CoordinationWaitCancellation{Kind: "inputSuperseded", DeliveryID: "human-input"}}, nil, nil)
+	root := threads.native.agent("main")
+	root.Work.Disposition, root.Wait = "running", nil
+	nativeTreeFixture(t, threads)
 	agent := u.attached.session.Agent("/root")
 	if agent.Waiting || agent.Wait != nil || agent.WaitingFor != "" || !agent.Responding || u.LocalStop != "" {
-		t.Fatalf("ordinary work retained a stale wait: %+v", agent)
+		t.Fatalf("running native work retained wait: %+v", agent)
 	}
 	u.testActivity(u.shell.Agents).publishActivity()
 	if text := ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 5, *at, true), "\n")); strings.Contains(text, "Waiting for") {
-		t.Fatalf("working roster displays stale wait: %s", text)
+		t.Fatalf("stale wait in roster: %s", text)
 	}
-	// Each owner-loop pass observes the running host again. Unchanged work
-	// must reuse the roster publication, whose identity versions roster pages.
 	published := u.attached.childSource.Publication(u.attached.presentation, u.attached.source)
 	*at = at.Add(time.Second)
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	threads.native.projectAgent(&u.nativeSession)
 	if u.attached.childSource.Publication(u.attached.presentation, u.attached.source) != published {
-		t.Fatal("unchanged running work republished the roster")
+		t.Fatal("unchanged native work republished roster")
 	}
 }
 
 func TestLogicalWaitHumanCancellation(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, nil)
-	if err := threads.driver.Start(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = threads.driver.Stop(t.Context()) })
+	u, threads, _ := nativeWaitUI(t, nil)
+	wire := u.Host.Input.(*appServerTestInput)
 	if c := nativeTestCancel(t, u); c.quit {
-		t.Fatal("wait cancellation quit the client")
+		t.Fatal("wait cancellation quit client")
 	}
-	select {
-	case <-threads.driver.Changed():
-	case <-time.After(3 * time.Second):
-		t.Fatal("wait cancellation did not settle")
+	request := appServerOneRequest(t, wire, "turn/interrupt", "")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
+	if !u.Busy(false) || u.Waiting == "" {
+		t.Fatal("interrupt ack became terminal work")
 	}
-	if failures := threads.driver.Failures(); len(failures) != 0 {
-		t.Fatal(failures)
-	}
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	member, _ := threads.shared.Member("main")
-	if member.Status != control.Interrupted || u.LocalStop != "" || u.Busy(false) {
-		t.Fatalf("canceled work: %+v", member)
+	root := threads.native.agent("main")
+	root.Work.Disposition, root.Wait = "interrupted", nil
+	nativeTreeFixture(t, threads)
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "first", "status": "interrupted"}})
+	if u.NativeWork != "" || u.Waiting != "" || u.Busy(false) {
+		t.Fatal("native interrupted work remained busy")
 	}
 }
 
 func TestUISnapshotLogicalPausedChildren(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, new(int64(1000)))
-	if err := threads.shared.Pause(t.Context(), "main"); err != nil {
-		t.Fatal(err)
-	}
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	u, threads, at := nativeWaitUI(t, new(int64(1000)))
+	threads.native.agent("main").Work.Disposition = "paused"
+	threads.native.agent("child").Work.Disposition = "paused"
+	nativeTreeFixture(t, threads)
 	u.testActivity(u.shell.Agents).publishActivity()
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
 		frame := sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: u.attached.childSource.Publication(u.attached.presentation, u.attached.source)}
-		root, members := threads.shared.Family("main")
+		root, members := threads.native.family("main")
 		if err := publishNativeFamilySource(api, frame, start.Workspace, root, "/root", "", members); err != nil {
 			return err
 		}
@@ -411,117 +375,71 @@ func TestUISnapshotLogicalPausedChildren(t *testing.T) {
 }
 
 func TestRecoveryInputRetriesWithoutAnotherHostMessage(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		u, wire := newAppServerTestUI()
-		u.ctx = t.Context()
-		driver, err := threadbinding.NewDriver(control.New())
-		if err != nil {
-			t.Fatal(err)
-		}
-		restored := make(chan error, 1)
-		u.attached.threadInput = &threadInput{driver: driver, restoration: restored}
-		appServerTestKeys(t, u, "queued during recovery\r")
-		if wire.Len() != 0 || len(u.attached.conversation.Unsent) != 1 {
-			t.Fatal("input bypassed recovery")
-		}
-		restored <- nil
-		for range 2 {
-			if !u.attached.threadInput.preparing() {
-				t.Fatal("deferred input lost its tick retry")
-			}
-			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-				t.Fatal(err)
-			}
-			synctest.Wait()
-		}
-		appServerOneRequest(t, wire, "turn/start", "queued during recovery")
-	})
+	u, wire := newAppServerTestUI()
+	u.NativeInputPending = true
+	u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "queued during recovery"}}
+	if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if wire.Len() != 0 || len(u.attached.conversation.Unsent) != 1 {
+		t.Fatal("input bypassed native admission")
+	}
+	u.NativeInputPending = false
+	if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	appServerOneRequest(t, wire, "turn/start", "queued during recovery")
 }
 
 func TestLogicalWaitKeepsQueuedComposerInput(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, nil)
+	u, threads, _ := nativeWaitUI(t, nil)
 	wire := u.Host.Input.(*appServerTestInput)
-	wire.Reset()
 	appServerTestKeys(t, u, "next assignment\t")
-	member, _ := threads.shared.Member("main")
-	if wire.Len() != 0 || member.Wait.State != "registered" || len(u.attached.conversation.Queued) != 1 || u.attached.threadInput.preparing() {
-		t.Fatalf("queued composer input superseded wait: wire=%s unsent=%d queued=%d preparing=%v member=%+v", wire.String(), len(u.attached.conversation.Unsent), len(u.attached.conversation.Queued), u.attached.threadInput.preparing(), member)
+	if wire.Len() != 0 || len(u.attached.conversation.Queued) != 1 || u.Waiting != "wait" {
+		t.Fatal("queued composer input superseded native wait")
 	}
-	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, nil, ""); len(next.Batch.Parts) != 0 || len(u.attached.conversation.Queued) != 1 {
-		t.Fatal("ordinary input flushing drained the queue during a logical wait")
+	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, nil, ""); len(next.Batch.Parts) != 0 {
+		t.Fatal("ordinary input flushing drained queue during wait")
 	}
-	// Addressed delegate messages still wake the parent. Its queued composer
-	// input remains queued for the resumed turn's completion.
-	message, err := threads.shared.PrepareAction(t.Context(), control.Identity{Thread: "child", Session: "child-session", Turn: "child-turn", Call: "message", Item: "exec"}, "/root", "message", "ready")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := threads.shared.ClaimEffect(t.Context(), "child", message.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := threads.shared.EffectAcknowledged(t.Context(), "child", message.ID, control.Receipt{}); err != nil {
-		t.Fatal(err)
-	}
-	wake, err := threads.shared.PrepareWake(t.Context(), "main", *at)
-	if err != nil || wake == nil {
-		t.Fatalf("addressed message lost wake: %+v %v", wake, err)
-	}
-	if _, err := threads.shared.ClaimEffect(t.Context(), "main", wake.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := threads.shared.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "resumed"}); err != nil {
-		t.Fatal(err)
-	}
+	root := threads.native.agent("main")
+	root.Work.Disposition, root.Wait = "running", nil
+	nativeTreeFixture(t, threads)
 	appServerTestTurn(t, u, "resumed")
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
 	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, nil, ""); len(next.Batch.Parts) != 0 || len(u.attached.conversation.Queued) != 1 {
-		t.Fatal("wake promoted queued composer input into a steer")
+		t.Fatal("native wake promoted queued input into steer")
 	}
 	u.Live.Completed(true)
+	threads.native.agent("main").Work.Disposition = "completed"
+	nativeTreeFixture(t, threads)
 	if next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, nil, ""); len(next.Batch.Parts) != 1 || next.Batch.Parts[0].Text != "next assignment" || next.Steer {
-		t.Fatalf("queue did not release after resumed turn: %+v", next)
+		t.Fatalf("queue did not release after native outcome: %+v", next)
 	}
 }
 
 func TestChildCompactionDoesNotReserveAssignment(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		u, threads, _ := logicalWaitUI(t, new(int64(1000)))
-		if err := threads.shared.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
-			t.Fatal(err)
-		}
-		before, err := threads.shared.Snapshot("child")
-		if err != nil {
-			t.Fatal(err)
-		}
-		u.Thread, u.Turn, u.LocalStop, u.Waiting = "child", "", "", ""
-		u.attached.threadInput = &threadInput{driver: threads.driver, caller: "/root/worker", admitted: true}
-		u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "/compact", Compact: new(conversationmodel.CompactIntent{})}}
-		for range 2 {
-			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
-				t.Fatal(err)
-			}
-			synctest.Wait()
-		}
-		after, err := threads.shared.Snapshot("child")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(after.Effects) != len(before.Effects) || after.Members["child"].Generation != before.Members["child"].Generation || after.Members["child"].Status != control.Completed {
-			t.Fatal("native compaction acquired a human assignment or changed its outcome")
-		}
-		wire := u.Host.Input.(*appServerTestInput)
-		appServerOneRequest(t, wire, "thread/compact/start", "")
-	})
+	u, threads, _ := nativeWaitUI(t, nil)
+	child := threads.native.agent("child")
+	child.Work.Disposition = "completed"
+	u.Thread, u.Turn, u.LocalStop, u.Waiting, u.NativeWork = "child", "", "", "", ""
+	u.attached.threadInput = &threadInput{caller: "/root/worker", admitted: true}
+	u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "/compact", Compact: new(conversationmodel.CompactIntent{})}}
+	if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	appServerOneRequest(t, u.Host.Input.(*appServerTestInput), "thread/compact/start", "")
+	if child.Work.WorkID != "child-work" || child.Work.Disposition != "completed" {
+		t.Fatal("Go compact changed native work snapshot")
+	}
 }
 
 func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, nil)
+	u, threads, at := nativeWaitUI(t, nil)
 	u.attached.cwd = "/workspace"
 	previousWait := u.attached.session.Agent("/root").Wait
 	*at = at.Add(time.Hour)
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	if wake, err := threads.shared.PrepareWake(t.Context(), "main", *at); err != nil || wake != nil {
-		t.Fatalf("deadline-free wait woke without an event: %+v %v", wake, err)
+	threads.native.projectAgent(&u.nativeSession)
+	if u.Waiting != "wait" {
+		t.Fatal("deadline-free wait settled without native outcome")
 	}
 	agent := u.attached.session.Agent("/root")
 	if previousWait == nil || agent.Wait != previousWait {
@@ -541,118 +459,35 @@ func TestUISnapshotLogicalWaitNoTimeout(t *testing.T) {
 	}
 }
 
-func TestLogicalWaitPublicationUsesSelectedWait(t *testing.T) {
-	finished := func(id, stop string) *control.Wait {
-		return &control.Wait{
-			Effect: control.Effect{ID: id, Turn: id + "-turn", State: "completed"}, Stop: stop,
-			Terminal: &control.Event{Kind: "message", Task: "/root/worker"},
+func TestLogicalWaitPublicationUsesNativeIdentity(t *testing.T) {
+	u, _, _ := nativeWaitUI(t, nil)
+	result := appserver.CoordinationWaitResult{Kind: "released", Wake: "events"}
+	messages := []appserver.CoordinationWaitMessage{{DeliveryID: "message", SenderTaskName: new("/root/worker")}}
+	nativeWaitSettlementFixture(t, u, result, nil, messages)
+	nativeWaitSettlementFixture(t, u, result, nil, messages)
+	var found []*sessionpresentation.NativeItem
+	for _, entry := range u.attached.session.Activity().Main.Entries {
+		if item := entry.Source.Native; item != nil && item.Wait != nil {
+			found = append(found, item)
 		}
 	}
-	for _, tc := range []struct {
-		name              string
-		current, recovery *control.Wait
-		want              *control.Wait
-	}{
-		{name: "missing"},
-		{name: "current", current: finished("current", "committed"), want: finished("current", "committed")},
-		{name: "recovery without current", recovery: finished("recovery", "committed"), want: finished("recovery", "committed")},
-		{name: "recovery overrides current", current: finished("current", ""), recovery: finished("recovery", "committed"), want: finished("recovery", "committed")},
-		{name: "recovery does not borrow current stop", current: finished("current", "committed"), recovery: finished("recovery", "")},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			retained, err := history.NewService(control.RecordKinds())
-			if err != nil {
-				t.Fatal(err)
-			}
-			store, err := retained.Open(t.Context(), t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "main")
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(session.Close)
-			service := control.New()
-			if err := service.AdmitRoot(t.Context(), session, &control.Member{
-				Thread: "main", Session: "session", Task: "/root", Status: control.Working,
-				AudienceAdmitted: true, Wait: tc.current, RecoveryWait: tc.recovery,
-			}); err != nil {
-				t.Fatal(err)
-			}
-			driver, err := threadbinding.NewDriver(service)
-			if err != nil {
-				t.Fatal(err)
-			}
-			u, at := newActiveWorkTestUI(t)
-			syncLogicalWork(&u.attached, &u.Live, &threadExecution{shared: service, driver: driver}, *at)
-			var finishedItems []*sessionpresentation.NativeItem
-			for _, entry := range u.attached.session.Activity().Main.Entries {
-				if native := entry.Source.Native; native != nil && native.Wait != nil {
-					finishedItems = append(finishedItems, native)
-				}
-			}
-			if tc.want == nil {
-				if len(finishedItems) != 0 {
-					t.Fatalf("unexpected finished wait: %+v", finishedItems)
-				}
-				return
-			}
-			if len(finishedItems) != 1 {
-				t.Fatalf("finished wait count = %d, want 1", len(finishedItems))
-			}
-			got := finishedItems[0]
-			if got.Item != "threadcontrol:wait:"+tc.want.ID || got.Turn != tc.want.Turn || got.Wait.WaitReason != "message received" {
-				t.Fatalf("wrong selected wait identity or reason: %+v, wait: %+v", got, got.Wait)
-			}
-		})
+	if len(found) != 2 || found[0].Item != "wait-call" || found[1].Item != "native:wait:wait" || found[1].Turn != "first" || found[1].Wait.WaitReason != "message received" {
+		t.Fatalf("native wait identity/reason duplicated or lost: %+v", found)
 	}
 }
 
 func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
-	for _, status := range []control.Status{control.Paused, control.Failed, control.Completed} {
-		t.Run(string(status), func(t *testing.T) {
-			u, threads, at := logicalWaitUI(t, nil)
-			service := threads.shared
-			if status == control.Paused {
-				if err := service.Pause(t.Context(), "child"); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				if err := service.HostCompleted(t.Context(), "child", "child-turn", status, control.HostFailure{}); err != nil {
-					t.Fatal(err)
-				}
-				tree, err := service.Snapshot("child")
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, effect := range tree.Actions() {
-					if effect.Kind != "final" || effect.Caller != "child" {
-						continue
-					}
-					if _, err := service.ClaimEffect(t.Context(), "child", effect.ID); err != nil {
-						t.Fatal(err)
-					}
-					if err := service.EffectAcknowledged(t.Context(), "child", effect.ID, control.Receipt{}); err != nil {
-						t.Fatal(err)
-					}
-				}
-			}
-			wake, err := service.PrepareWake(t.Context(), "main", *at)
-			if err != nil || wake == nil {
-				t.Fatalf("stopped child did not wake: %+v %v", wake, err)
-			}
-			if _, err := service.ClaimEffect(t.Context(), "main", wake.ID); err != nil {
-				t.Fatal(err)
-			}
-			if err := service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "continued"}); err != nil {
-				t.Fatal(err)
-			}
-			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	for _, status := range []string{"paused", "failed", "completed", "interrupted"} {
+		t.Run(status, func(t *testing.T) {
+			u, threads, _ := nativeWaitUI(t, nil)
+			nativeWaitSettlementFixture(t, u, appserver.CoordinationWaitResult{Kind: "released", Wake: "events"}, []appserver.CoordinationWaitOutcome{{Target: appserver.CoordinationTarget{ThreadID: "child", TaskName: "/root/worker", WorkID: "child-work"}, Disposition: status}}, nil)
+			root := threads.native.agent("main")
+			root.Wait = nil
+			root.Work.Disposition = "running"
+			nativeTreeFixture(t, threads)
 			rows, _ := u.testMainFrame(100, 15, 0)
-			want := "Finished waiting for worker: " + string(status)
-			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, want) || strings.Contains(text, string(status)+": completed") {
-				t.Fatalf("stopped-target wake was invisible: %s", text)
+			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for worker: "+status) || strings.Contains(text, status+": completed") {
+				t.Fatalf("stopped-target wake invisible: %s", text)
 			}
 		})
 	}
@@ -661,145 +496,70 @@ func TestLogicalStoppedTargetPublishesWakeReason(t *testing.T) {
 func TestUISnapshotLogicalWaitAllOutcome(t *testing.T) {
 	for _, reason := range []string{"paused", "delivery failed"} {
 		t.Run(reason, func(t *testing.T) {
-			u, threads, at := logicalWaitUI(t, nil)
+			u, threads, _ := nativeWaitUI(t, nil)
 			u.attached.cwd = "/workspace"
-			service := threads.shared
-			check := func(err error) {
-				t.Helper()
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			_, err := service.HumanInput(t.Context(), "main", "next")
-			check(err)
-			caller := control.Identity{Thread: "main", Session: "session", Turn: "next", Call: "wait-all", Item: "exec"}
-			check(service.RequestStarted(t.Context(), caller, true))
-			_, err = service.RegisterWait(t.Context(), caller, control.WaitAll, nil, nil, *at)
-			check(err)
-			check(service.Execution(t.Context(), "main", "next", "exec", "", true))
-			_, err = service.ClaimLocalStop(t.Context(), "main", "next", "exec")
-			check(err)
-			check(service.HostCompleted(t.Context(), "main", "next", control.Completed, control.HostFailure{}))
+			root := threads.native.agent("main")
+			root.Wait.Mode = "all"
+			nativeTreeFixture(t, threads)
+			result := appserver.CoordinationWaitResult{Kind: "released", Wake: "events"}
+			var outcomes []appserver.CoordinationWaitOutcome
 			if reason == "paused" {
-				check(service.Pause(t.Context(), "child"))
+				outcomes = []appserver.CoordinationWaitOutcome{{Target: appserver.CoordinationTarget{ThreadID: "child", TaskName: "/root/worker", WorkID: "child-work"}, Disposition: "paused"}}
 			} else {
-				check(service.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}))
-				tree, err := service.Snapshot("child")
-				check(err)
-				for _, effect := range tree.Effects {
-					if effect.Kind == "final" && effect.Caller == "child" {
-						_, err := service.ClaimEffect(t.Context(), "child", effect.ID)
-						check(err)
-						check(service.EffectAcknowledged(t.Context(), "child", effect.ID, control.Receipt{Error: "injection rejected"}))
-					}
-				}
+				result = appserver.CoordinationWaitResult{Kind: "cancelled", Cause: &appserver.CoordinationWaitCancellation{Kind: "dispatchRejected", Diagnostic: new("injection rejected")}}
 			}
-			wake, err := service.PrepareWake(t.Context(), "main", *at)
-			check(err)
-			if wake == nil {
-				t.Fatal("all-wait did not wake")
-			}
-			_, err = service.ClaimEffect(t.Context(), "main", wake.ID)
-			check(err)
-			check(service.EffectAcknowledged(t.Context(), "main", wake.ID, control.Receipt{Turn: "continued"}))
-			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
-			syncLogicalWork(&u.attached, &u.Live, threads, *at)
+			nativeWaitSettlementFixture(t, u, result, outcomes, nil)
+			root = threads.native.agent("main")
+			root.Wait = nil
+			root.Work.Disposition = "running"
+			nativeTreeFixture(t, threads)
 			rows, _ := u.testMainFrame(80, 10, 0)
 			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for worker: "+reason) || strings.Contains(text, reason+": completed") {
-				t.Fatalf("aggregate wake was invisible: %s", text)
+				t.Fatalf("aggregate wake invisible: %s", text)
 			}
-			snapshot := "logical-wait-all-outcome"
+			name := "logical-wait-all-outcome"
 			if reason == "delivery failed" {
-				snapshot += "-delivery-failed"
+				name += "-delivery-failed"
 			}
-			assertNativeUISnapshot(t, snapshot, rows)
+			assertNativeUISnapshot(t, name, rows)
 		})
 	}
 }
 
 func TestStandaloneCompactionOmitsAgentWaitPresentation(t *testing.T) {
-	u, threads, at := logicalWaitUI(t, nil)
-	s := threads.shared
-	ctx := t.Context()
-	check := func(err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	caller := control.Identity{Thread: "main", Session: "session", Turn: "checkpoint-turn", Call: "compact", Item: "compact-exec"}
-	check(s.RequestStarted(ctx, caller, true))
-	_, err := s.RegisterCompaction(ctx, caller, "", nil, nil, *at, true, "")
-	check(err)
-	check(s.Execution(ctx, caller.Thread, caller.Turn, caller.Item, "", true))
-	_, err = s.ClaimLocalStop(ctx, caller.Thread, caller.Turn, caller.Item)
-	check(err)
-	check(s.HostCompleted(ctx, caller.Thread, caller.Turn, control.Completed, control.HostFailure{}))
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
+	u, threads, _ := nativeRunningUI(t)
+	appServerTestNotify(t, u, "thread/contextReset", sessioncontrol.ContextReset{Thread: "main", Turn: "first", ResetID: "standalone", Status: "started"})
+	nativeTreeFixture(t, threads)
 	if u.attached.session.Lifecycle("main").Wait != nil {
-		t.Fatal("standalone compact published a targetless agent wait")
+		t.Fatal("standalone compact published targetless agent wait")
 	}
-	compact, err := s.ClaimEffect(ctx, caller.Thread, caller.Call+":compact")
-	check(err)
-	check(s.EffectAcknowledged(ctx, caller.Thread, compact.ID, control.Receipt{}))
-	wake, err := s.PrepareWake(ctx, caller.Thread, *at)
-	check(err)
-	_, err = s.ClaimEffect(ctx, caller.Thread, wake.ID)
-	check(err)
-	check(s.EffectAcknowledged(ctx, caller.Thread, wake.ID, control.Receipt{Turn: "continued"}))
-	syncLogicalWork(&u.attached, &u.Live, threads, *at)
-	if u.attached.threadInput.waitID == caller.Call || u.attached.session.Lifecycle("main").Wait != nil {
-		t.Fatal("standalone continuation published an agent-wait outcome")
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "continued"}})
+	for _, entry := range u.attached.source.Entries {
+		if entry.Source.Native != nil && entry.Source.Native.Wait != nil {
+			t.Fatal("standalone continuation published agent-wait outcome")
+		}
 	}
 }
 
 func TestCompactionOutcomeSurvivesWaitCancellation(t *testing.T) {
 	for _, outcome := range []string{"completed", "failed"} {
-		for _, action := range []string{"input", "interrupt"} {
-			t.Run(outcome+"/"+action, func(t *testing.T) {
-				u, threads, at := logicalWaitUI(t, nil)
-				s, ctx := threads.shared, t.Context()
-				id := control.Identity{Thread: "main", Session: "session", Turn: "checkpoint", Call: "checkpoint", Item: "checkpoint-exec"}
-				check := func(err error) {
-					t.Helper()
-					if err != nil {
-						t.Fatal(err)
-					}
+		t.Run(outcome, func(t *testing.T) {
+			u, threads, _ := nativeWaitUI(t, nil)
+			appServerTestKeys(t, u, "/compact\r")
+			request := appServerOneRequest(t, u.Host.Input.(*appServerTestInput), "thread/compact/start", "")
+			compactWaitReset(u, request, "", "accepted", 1)
+			compactWaitReset(u, request, "compact", "started", 1)
+			compactWaitReset(u, request, "compact", outcome, 1)
+			nativeWaitSettlementFixture(t, u, appserver.CoordinationWaitResult{Kind: "cancelled", Cause: &appserver.CoordinationWaitCancellation{Kind: "inputSuperseded"}}, nil, nil)
+			root := threads.native.agent("main")
+			root.Wait = nil
+			root.Work.Disposition = "running"
+			nativeTreeFixture(t, threads)
+			for _, entry := range u.attached.source.Entries {
+				if strings.Contains(entry.Source.Text, "Compaction canceled") {
+					t.Fatalf("settled reset mislabeled after wait cancellation: %q", entry.Source.Text)
 				}
-				check(s.RequestStarted(ctx, id, true))
-				_, err := s.RegisterCompaction(ctx, id, "", nil, nil, *at, false, "")
-				check(err)
-				check(s.Execution(ctx, id.Thread, id.Turn, id.Item, "", true))
-				_, err = s.ClaimLocalStop(ctx, id.Thread, id.Turn, id.Item)
-				check(err)
-				check(s.HostCompleted(ctx, id.Thread, id.Turn, control.Completed, control.HostFailure{}))
-				effect, err := s.ClaimEffect(ctx, id.Thread, id.Call+":compact")
-				check(err)
-				if effect == nil {
-					t.Fatal("no compact dispatch")
-				}
-				receipt := control.Receipt{}
-				if outcome == "failed" {
-					receipt.Error = "native reset failed"
-				}
-				check(s.EffectAcknowledged(ctx, id.Thread, effect.ID, receipt))
-				syncLogicalWork(&u.attached, &u.Live, threads, *at)
-				if action == "input" {
-					_, err = s.HumanInput(ctx, id.Thread, "human-followup")
-				} else {
-					_, err = s.HumanInterrupt(ctx, id.Thread, "")
-				}
-				check(err)
-				syncLogicalWork(&u.attached, &u.Live, threads, *at)
-				if got := s.WaitPublication(id.Thread).Compaction.State; got != outcome {
-					t.Fatalf("canceling wait changed completed reset outcome: %s -> %s", outcome, got)
-				}
-				for _, entry := range u.attached.source.Entries {
-					if strings.Contains(entry.Source.Text, "Compaction canceled") {
-						t.Fatalf("settled reset mislabeled after cancellation: %q", entry.Source.Text)
-					}
-				}
-			})
-		}
+			}
+		})
 	}
 }

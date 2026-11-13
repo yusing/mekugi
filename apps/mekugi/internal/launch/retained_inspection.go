@@ -2,35 +2,16 @@ package launch
 
 import (
 	"context"
+	"errors"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/backends/codex/rollout"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	"github.com/yusing/mekugi/contracts/observation"
 )
 
-// Inspect borrows live facts when available, otherwise reads the admitted source.
-// Neither path admits a runtime or starts work.
-func (e *threadExecution) Inspect(ctx context.Context, thread string) (control.SessionDetails, error) {
-	member, ok := e.shared.Member(thread)
-	if !ok {
-		return control.SessionDetails{}, control.ErrNotAdmitted
+// Inspect borrows passive native facts, including retained unloaded actors.
+// It never creates an endpoint or reconciles work in Go.
+func (e *threadExecution) Inspect(ctx context.Context, thread string) (observation.SessionDetails, error) {
+	if e.native == nil {
+		return observation.SessionDetails{}, errors.New("native observation connection is unavailable")
 	}
-	if runtime, err := e.Runtime(thread); err == nil {
-		if details, err := runtime.Inspect(ctx, thread); err == nil {
-			return details, nil
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		return control.SessionDetails{}, err
-	}
-	observed := rollout.ReadObservations(ctx, thread, member.Path)
-	if err := ctx.Err(); err != nil {
-		return control.SessionDetails{}, err
-	}
-	details := control.SessionDetails{Model: observed.Model, ReasoningEffort: observed.Effort, ServiceTier: observed.Tier,
-		ContextTokens: observed.ContextTokens, ContextWindow: observed.Window, Compactions: observed.Compactions}
-	if details.ServiceTier != nil {
-		details.ServiceTier = new((*inferencegateway.Tiers)(nil).Effective("", *details.ServiceTier, thread))
-	}
-	return details, nil
+	return e.native.root.Client.Requests.ObserveAgent(ctx, thread)
 }

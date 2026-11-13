@@ -49,18 +49,15 @@ func (session *nativeSession) interruptSession(attached *attachedPresentation, p
 // applyInterruption applies the owner's composer consequence and issues at most
 // one native interruption. Host execution remains independent of presentation.
 func applyInterruption(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessioncontrol.Interrupt) error {
-	attached.threadInput.reset()
+	if (intent.Wait != "" || intent.Work != "") && intent.Stop == "" && intent.Turn == "" && intent.ResetRequest == "" {
+		attached.presentation.Status.SetText("Interrupting…")
+		return control.Request("agent/interrupt", map[string]any{"rootThreadId": control.NativeRoot, "threadId": control.Thread})
+	}
 	applyInputRestoration(attached, questions, approvals, picker, control.Turn, clock, attached.presentation.RestoreInterruptedInput(attached.conversation, intent))
 	if intent.ResetRequest != "" {
 		return control.Request("thread/compact/cancel", map[string]any{"threadId": control.Thread, "contextResetRequestId": intent.ResetRequest})
 	}
-	if intent.Stop != "" && attached.interruptWait != nil {
-		attached.interruptWait(control.Thread, intent.Wait)
-		attached.presentation.Status.SetText("Interrupting…")
-		if intent.Turn == "" {
-			return nil
-		}
-	}
+
 	if intent.Turn == "" {
 		return nil
 	}

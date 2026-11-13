@@ -96,10 +96,15 @@ func (p Notification) Observation(method string, at time.Time) observation.Event
 	if method == "turn/started" || method == "turn/completed" {
 		e.TurnID = p.Turn.ID
 	}
-	if method == "error" && p.WillRetry && p.Error != nil {
-		e.Retry = p.Error.Message
+	if method == "error" && p.Error != nil {
+		diagnostic := p.Error.Message
 		if p.Error.AdditionalDetails != "" {
-			e.Retry += " · " + p.Error.AdditionalDetails
+			diagnostic += " · " + p.Error.AdditionalDetails
+		}
+		if p.WillRetry {
+			e.Retry = diagnostic
+		} else {
+			e.Diagnostic = diagnostic
 		}
 	}
 	return e

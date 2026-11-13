@@ -42,7 +42,7 @@ func TestCompactionMeasurementsRetainRestoreReplay(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, "/workspace/replay")
 	restored.retainedSession = u.retainedSession
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{{ID: "compact", Type: "contextCompaction", Status: "completed"}}}})
-	restoreCompactionObservations(&restored.attached, restored.retainedSession, &appServerActivityRestore{})
+	applyCompactionObservations(&restored.attached, &appServerActivityRestore{}, restored.retainedSession.Store.ReadCompaction)
 	if got := restored.attached.source.Entries[0].Values[0].Label; got != want {
 		t.Fatalf("restore label %q, live %q", got, want)
 	}

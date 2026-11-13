@@ -14,7 +14,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func hookTrustTestStartup(t *testing.T, status string) (*appServerUI, *appServerTestInput) {
@@ -198,7 +197,7 @@ func TestHookTrustBrowserStartupCanAttachBeforeConsent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
-		publisher := apiLive{server: api, coordination: control.New(), started: time.Now()}
+		publisher := apiLive{server: api, started: time.Now()}
 		publisher.publish(&u.attached, &u.Client, nil, nil, false, false, time.Now())
 		<-ctx.Done()
 		return ctx.Err()

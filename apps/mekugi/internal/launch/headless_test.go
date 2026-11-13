@@ -16,8 +16,6 @@ import (
 	"testing/iotest"
 	"time"
 
-	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
@@ -53,7 +51,7 @@ func TestHeadlessWrapRedirectedEntryPoint(t *testing.T) {
 		t.Fatalf("missing terminal event: %s", output)
 	}
 	methods, err := os.ReadFile(filepath.Join(dir, "rpc"))
-	if err != nil || string(methods) != "initialize\ninitialized\nconfig/read\ninitialize\ninitialized\nenvironment/info\nthread/start\nmodel/list\nconfig/read\nturn/start\n" {
+	if err != nil || string(methods) != "initialize\ninitialized\nconfig/read\ninitialize\ninitialized\nenvironment/info\nthread/start\nmodel/list\nconfig/read\nagent/observeTree\nturn/start\nagent/observeTree\n" {
 		t.Fatalf("RPC sequence: %s (%v)", methods, err)
 	}
 }
@@ -79,32 +77,6 @@ func TestHeadlessRejectsProviderArgumentsBeforeReadingPrompt(t *testing.T) {
 		if code != 2 || err == nil {
 			t.Fatalf("%v: code=%d error=%v", args, code, err)
 		}
-	}
-}
-
-func TestChildRuntimeOutputSeparation(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "capture.jsonl")
-	reads := filepath.Join(t.TempDir(), "reads.jsonl")
-	setup := &threadSetup{options: launchoptions.Config{CaptureOutput: root}, environment: []string{"MEKUGI_AX_OUTPUT=" + reads}}
-	paths := map[string]bool{root: true, reads: true}
-	for range 3 { // Siblings and a descendant all borrow the frozen family setup.
-		options, environment, err := setup.childOutputs()
-		if err != nil {
-			t.Fatal(err)
-		}
-		path := options.CaptureOutput
-		readPath := strings.TrimPrefix(environment[0], "MEKUGI_AX_OUTPUT=")
-		if paths[path] || paths[readPath] || filepath.Dir(path) != filepath.Dir(readPath) || filepath.Dir(filepath.Dir(path)) != root+".runtimes" {
-			t.Fatalf("overlapping runtime outputs: %q, %q", path, readPath)
-		}
-		paths[path], paths[readPath] = true, true
-		info, err := os.Stat(filepath.Dir(path))
-		if err != nil || info.Mode().Perm() != 0700 {
-			t.Fatalf("private output directory: %v, %v", info, err)
-		}
-	}
-	if setup.options.CaptureOutput != root || setup.environment[0] != "MEKUGI_AX_OUTPUT="+reads {
-		t.Fatal("mutated family output selection")
 	}
 }
 

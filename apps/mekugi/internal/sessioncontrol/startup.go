@@ -12,18 +12,15 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // Startup retains invocation overrides and pre-resume evidence independently of
 // the current attachment. Replacement owns an in-session target until acceptance.
 type Startup struct {
 	History           *history.Store
-	Prepared          *PreparedThread
 	Thread, Workspace string
 	Config            map[string]any
 	Evidence          preferences.Evidence
@@ -31,14 +28,6 @@ type Startup struct {
 	ForkRetention     *ForkRetention
 	ForkSettings      *Settings
 	ForkSettingsAck   bool
-}
-
-// PreparedThread is an internal server admission, never human creation input.
-type PreparedThread struct {
-	Parent, Import string
-	Settings       threadcontrol.Settings
-	Resume         *threadcontrol.ThreadInfo
-	InputPrefix    *codexresponses.InputPrefix
 }
 
 const ResumePicker = "--pick"
@@ -75,34 +64,6 @@ func (r *Requests[T]) OpenSession(s *Startup, control *Live, approvals bool, res
 	var owner T
 	target := s.Target(control)
 	switch {
-	case s.Prepared != nil && control.Thread == "":
-		params, err := s.Prepared.parameters()
-		if err != nil {
-			return OpeningFresh, err
-		}
-		if trust, explicit := s.Config["bypass_hook_trust"]; explicit {
-			config := params["config"].(map[string]jsontext.Value)
-			config["bypass_hook_trust"], err = json.Marshal(trust)
-			if err != nil {
-				return OpeningFresh, err
-			}
-		}
-		r.preparation.Store(s.Prepared)
-		method := "thread/start"
-		opening := OpeningFresh
-		if retained := s.Prepared.Resume; retained != nil {
-			if err := confirmNativeSettings(retained.Thread, retained.Path, s.Prepared.Settings); err != nil {
-				return OpeningResume, err
-			}
-			s.Thread = retained.Thread
-			opening = OpeningResume
-			method, params["threadId"] = "thread/resume", retained.Thread
-		} else if s.Prepared.Import != "" {
-			method = "thread/fork"
-			params["path"], params["threadId"] = s.Prepared.Import, s.Prepared.Parent
-		}
-		_, err = r.Send(method, params, "main", owner)
-		return opening, err
 	case control.Replacement.Target == "" && target == ResumePicker:
 		return OpeningPicker, nil
 	case control.Replacement.Target == "" && target == "--last":
@@ -264,7 +225,7 @@ func (s *Startup) Accept(control *Live, method string, data jsontext.Value) (Acc
 	if method == "thread/resume" && result.Thread.ID != s.Target(control) {
 		return result, errors.New("thread/resume returned a different thread identity")
 	}
-	if method == "thread/fork" && (s.Prepared == nil && !control.Replacement.Forking() || result.Thread.ID == control.Thread) {
+	if method == "thread/fork" && (!control.Replacement.Forking() || result.Thread.ID == control.Thread) {
 		return result, errors.New("thread/fork returned an invalid replacement identity")
 	}
 	return result, nil

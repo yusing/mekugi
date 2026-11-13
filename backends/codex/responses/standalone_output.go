@@ -22,7 +22,7 @@ func StandaloneFunctionOutput(item map[string]jsontext.Value) bool {
 // call to provider-compatible assistant messages. Run after native consumers;
 // retained output shapes and identities remain authoritative locally.
 func ProjectStandaloneOutputs(input []byte) ([]byte, error) {
-	if !bytes.Contains(input, []byte("function_call_output")) {
+	if !bytes.Contains(input, []byte("function_call_output")) && !bytes.Contains(input, []byte(`"source_acquisition"`)) {
 		return input, nil
 	}
 	var items []jsontext.Value
@@ -31,12 +31,25 @@ func ProjectStandaloneOutputs(input []byte) ([]byte, error) {
 	}
 	changed := false
 	for i, raw := range items {
-		if !bytes.Contains(raw, []byte("function_call_output")) {
+		if !bytes.Contains(raw, []byte("function_call_output")) && !bytes.Contains(raw, []byte(`"source_acquisition"`)) {
 			continue
 		}
 		var item map[string]jsontext.Value
 		if err := json.Unmarshal(raw, &item, jsonv1.DefaultOptionsV1()); err != nil {
 			return nil, err
+		}
+		const metadataKey = "internal_chat_message_metadata_passthrough"
+		var metadata map[string]jsontext.Value
+		if json.Unmarshal(item[metadataKey], &metadata) == nil {
+			if _, exists := metadata["source_acquisition"]; exists {
+				delete(metadata, "source_acquisition")
+				if len(metadata) == 0 {
+					delete(item, metadataKey)
+				} else {
+					item[metadataKey] = responses.MustMarshalJSON(metadata)
+				}
+				items[i], changed = responses.MustMarshalJSON(item), true
+			}
 		}
 		if !StandaloneFunctionOutput(item) {
 			continue
@@ -78,9 +91,13 @@ func ProjectStandaloneOutputs(input []byte) ([]byte, error) {
 				parts = append(parts, part)
 			}
 		}
-		items[i] = responses.MustMarshalJSON(map[string]any{
+		projected := map[string]any{
 			"type": "message", "role": "assistant", "content": parts,
-		})
+		}
+		if metadata := item[metadataKey]; len(metadata) != 0 {
+			projected[metadataKey] = metadata
+		}
+		items[i] = responses.MustMarshalJSON(projected)
 		changed = true
 	}
 	if !changed {

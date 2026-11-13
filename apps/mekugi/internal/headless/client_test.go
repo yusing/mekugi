@@ -54,7 +54,7 @@ func (f failedIO) Write([]byte) (int, error) { return 0, f.err }
 
 func TestHeadlessEvidenceBeforeRejection(t *testing.T) {
 	for _, message := range []appserver.Message{
-		{ID: jsontext.Value(`7`), Method: "item/commandExecution/requestApproval", Params: jsontext.Value(`{"threadId":"child"}`)},
+		{Method: "item/started", Params: jsontext.Value(`{"threadId":"child","item":{"type":"agentMessage","delivery":"async","questions":[{"id":"q"}]}}`)},
 		{Method: "item/completed", Params: jsontext.Value(`{"threadId":"child","item":{"type":"agentMessage","delivery":"async","questions":[{"id":"q"}]}}`)},
 	} {
 		var output bytes.Buffer

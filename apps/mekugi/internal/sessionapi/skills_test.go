@@ -11,12 +11,10 @@ import (
 	"reflect"
 	"sync/atomic"
 	"testing"
-
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type skillCatalogRuntime struct {
-	threadcontrol.Runtime
+	NativeRuntime
 	calls atomic.Int32
 }
 
@@ -75,7 +73,7 @@ func TestNativeSkillCatalogRPCAdmissionAndWorkerSocket(t *testing.T) {
 	if _, err := ReadNativeSkillCatalog(t.Context(), ""); err == nil {
 		t.Fatal("worker accepted an unselected thread")
 	}
-	server.BindRequests(struct{ threadcontrol.Runtime }{})
+	server.BindRequests(struct{ NativeRuntime }{})
 	paths, err = ReadNativeSkillCatalog(t.Context(), "child")
 	if err != nil || len(paths) != 0 {
 		t.Fatalf("backend without native skills lost managed fallback: %+v %v", paths, err)

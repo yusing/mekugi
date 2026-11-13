@@ -25,10 +25,11 @@ type executionPresentation struct {
 	source, childSource *sessionpresentation.ActivitySource
 	transcript          observation.Transcript
 	cwd                 string
+	role                string
+	nativeIdentity      bool
 	conversation        *conversationmodel.Session
-	interruptWait       func(string, string)
 	threadInput         *threadInput
-	sideInputs          map[*sessioncontrol.Side]*threadInput
+	sideInputs          map[*sessioncontrol.Side]bool
 	reasoning           *pendingReasoning
 
 	// Progress notice rows belong to the shared Main transcript, not to a view.
@@ -92,7 +93,11 @@ func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Ser
 // Source: apps/mekugi/internal/router/app_server_events.go:23:34@bfd2668c.
 func startAttachedSession(a *attachedPresentation, observations *binding.Observation, thread, workspace string) {
 	a.session.Start(thread)
-	a.session.Activity().StartRoster(sessionpresentation.ActivityAgent{Thread: thread, Name: "/root", Role: "main"})
+	role := a.role
+	if role == "" && !a.nativeIdentity {
+		role = "main"
+	}
+	a.session.Activity().StartRoster(sessionpresentation.ActivityAgent{Thread: thread, Name: "/root", Role: role})
 	a.transcript = observations.NewTranscript(a.session.Scope())
 	clear(a.session.Commands())
 	a.cwd = workspace

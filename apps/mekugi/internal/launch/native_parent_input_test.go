@@ -1,67 +1,32 @@
 package launch
 
 import (
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
-// Retain the real request producer's payloads, including the different initial
-// injection and follow-up continuation carriers, for restoration and UI checks.
+// Parent-authored input is native attributed traffic, never human input.
 func parentInputUI(t *testing.T, sender string) (*appServerUI, []map[string]any) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.attached.threadInput = &threadInput{admitted: true, caller: sender + "/worker"}
 	u.attached.presentation.Publish(sessionpresentation.MainInputs{Feedback: &u.attached.feedback, Conversation: u.attached.conversation, Info: sessionpresentation.MainInfo{Caller: sender + "/worker"}}, sessionpresentation.Caption{})
-	wire := u.Host.Input.(*appServerTestInput)
 	var records []map[string]any
 	for i, body := range []string{"Initial parent assignment.", "Follow-up parent assignment.", "Parent message."} {
-		input := control.NativeInput{Thread: "main", ID: body, Sender: sender, Recipient: sender + "/worker", Kind: "NEW_TASK", Message: body, Run: i == 1}
+		kind := "NEW_TASK"
 		if i == 2 {
-			input.Kind = "MESSAGE"
+			kind = "MESSAGE"
 		}
-		done := make(chan error, 1)
-		wire.Reset()
-		go func() { _, err := u.Requests.Input(t.Context(), input); done <- err }()
-		u.Requests.Dispatch(<-u.Calls())
-		var sent struct {
-			ID     jsontext.Value `json:"id"`
-			Params struct {
-				Items  []map[string]any                         `json:"items"`
-				Output struct{ Namespace, Name, Output string } `json:"toolOutput"`
-			} `json:"params"`
-		}
-		if err := json.Unmarshal(wire.Bytes(), &sent, json.MatchCaseInsensitiveNames(true)); err != nil {
-			t.Fatal(err)
-		}
-		request, _ := u.Requests.Lookup(string(sent.ID))
-		if !u.Requests.CompleteCall(appserver.Message{ID: sent.ID, Result: []byte(`{"turn":{"id":"continued"}}`)}) {
-			t.Fatal("missing correlated acknowledgement")
-		}
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
-		delivery := request.NativeDelivery()
-		if delivery == nil {
-			t.Fatalf("confirmed parent input missing: %+v", input)
-		}
-		publishNativeDelivery(&u.attached, *delivery, time.Date(2026, 10, 1, 12, 0, i, 0, time.Local))
-		var record map[string]any
-		if i == 1 {
-			record = rolloutRecord(i, "response_item", map[string]any{"type": "function_call_output", "namespace": sent.Params.Output.Namespace, "name": sent.Params.Output.Name, "output": sent.Params.Output.Output})
-			record["metadata"] = map[string]any{"client_authored": true}
-		} else {
-			record = rolloutRecord(i, "response_item", sent.Params.Items[0])
-		}
+		record := nativeTrafficFixture(t, u, fmt.Sprint("amsg_", i), sender, sender+"/worker", kind, body, "", time.Date(2026, 10, 1, 12, 0, i, 0, time.Local))
 		records = append(records, record, record)
 	}
 	return u, records
@@ -72,6 +37,7 @@ func TestNativeParentInputLiveAndRestored(t *testing.T) {
 		t.Run(sender, func(t *testing.T) {
 			live, records := parentInputUI(t, sender)
 			restored := newAppServerSessionTestUI(t, live.attached.cwd)
+			restored.attached.threadInput = &threadInput{admitted: true, caller: sender + "/worker"}
 			restored.attached.presentation.Publish(sessionpresentation.MainInputs{Feedback: &restored.attached.feedback, Conversation: restored.attached.conversation, Info: sessionpresentation.MainInfo{Caller: sender + "/worker"}}, sessionpresentation.Caption{})
 			if err := restored.restoreContent(binding.ThreadInfo{ID: "main", Cwd: live.attached.cwd, Path: writeTestRollout(t, "main", records...)}); err != nil {
 				t.Fatal(err)
@@ -118,23 +84,23 @@ func TestUISnapshotNativeParentInput(t *testing.T) {
 
 func TestNativeFollowupRestoreRequiresHostProvenance(t *testing.T) {
 	_, records := parentInputUI(t, "/root")
-	for _, name := range []string{"missing provenance", "tool result", "foreign namespace", "other continuation"} {
+	for _, name := range []string{"ordinary message", "foreign author", "foreign recipient", "missing id"} {
 		t.Run(name, func(t *testing.T) {
-			raw, _ := json.Marshal(records[2])
+			raw, _ := json.Marshal(&records[2])
 			var record map[string]any
 			if err := json.Unmarshal(raw, &record); err != nil {
 				t.Fatal(err)
 			}
 			payload := record["payload"].(map[string]any)
 			switch name {
-			case "missing provenance":
-				delete(record, "metadata")
-			case "tool result":
-				payload["call_id"] = "model-call"
-			case "foreign namespace":
-				payload["namespace"] = "other"
-			case "other continuation":
-				payload["name"] = "wait_agent"
+			case "ordinary message":
+				payload["type"], payload["role"] = "message", "assistant"
+			case "foreign author":
+				payload["author"] = "/root/other"
+			case "foreign recipient":
+				payload["recipient"] = "/root/other"
+			case "missing id":
+				delete(payload, "id")
 			}
 			restored := readRestoredRollout(binding.ThreadInfo{ID: "main", Path: writeTestRollout(t, "main", record)}, "/root")
 			if len(restored.events) != 0 {

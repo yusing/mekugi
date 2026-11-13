@@ -6,9 +6,9 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	jsonv1 "encoding/json"
 
@@ -69,20 +69,31 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			Timestamp time.Time `json:"timestamp"`
 			Type      string    `json:"type"`
 			Metadata  struct {
-				ClientAuthored bool `json:"client_authored"`
-				Inherited      bool `json:"inherited_user_message"`
+				ClientAuthored    bool                              `json:"client_authored"`
+				Inherited         bool                              `json:"inherited_user_message"`
+				Coordination      *appserver.CoordinationProjection `json:"coordination"`
+				SourceAcquisition *appserver.SourceAcquisition      `json:"source_acquisition"`
 			} `json:"metadata"`
 			// Only the fields read here; others are skipped without copying.
 			Payload struct {
 				sessioncontrol.NativeMessage
-				TurnID string `json:"turn_id"`
-				Item   struct {
+				sessioncontrol.ContextReset
+				ThreadID    string                            `json:"threadId"`
+				EventTurnID string                            `json:"turnId"`
+				Projection  *appserver.CoordinationProjection `json:"projection"`
+				TurnID      string                            `json:"turn_id"`
+				Item        struct {
 					ID string `json:"id"`
 				} `json:"item"`
 				Name      string            `json:"name"`
 				Namespace string            `json:"namespace"`
 				CallID    *string           `json:"call_id"`
 				Output    jsonv1.RawMessage `json:"output"`
+				History   []struct {
+					Metadata struct {
+						SourceAcquisition *appserver.SourceAcquisition `json:"source_acquisition"`
+					} `json:"metadata"`
+				} `json:"replacement_history"`
 			} `json:"payload"`
 		}
 		if json.Unmarshal(line, &record) != nil {
@@ -92,6 +103,27 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 		// Retained-only deliveries can precede the first host turn. Their
 		// timestamps place them without inventing a turn or starting work.
 		event := restoredRolloutEvent{turn: turn, anchor: anchor, at: record.Timestamp}
+		if record.Type == "compacted" {
+			for _, item := range p.History {
+				if entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(info.Cwd, info.ID, turn, item.Metadata.SourceAcquisition, record.Timestamp); ok {
+					delivered := event
+					delivered.entry = entry
+					r.events = append(r.events, delivered)
+				}
+			}
+		}
+		if record.Type == "response_item" {
+			if entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(info.Cwd, info.ID, turn, record.Metadata.SourceAcquisition, record.Timestamp); ok {
+				delivered := event
+				delivered.entry = entry
+				r.events = append(r.events, delivered)
+			}
+			for _, entry := range sessionpresentation.NativeCoordinationEntries(info.ID, turn, p.NativeMessage, record.Metadata.Coordination, record.Timestamp, record.Metadata.Inherited) {
+				delivered := event
+				delivered.entry = entry
+				r.events = append(r.events, delivered)
+			}
+		}
 		switch record.Type + "/" + p.Type {
 		case "event_msg/task_started", "event_msg/turn_started":
 			turn, anchor = p.TurnID, ""
@@ -119,25 +151,32 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			if record.Metadata.ClientAuthored && p.CallID == nil && p.Namespace == "threadcontrol" {
 				var output string
 				if json.Unmarshal(p.Output, &output) == nil {
+					if entry, ok := sessionpresentation.RetainedCompactionEntry(info.ID, agent, p.Name, output, record.Timestamp); ok {
+						event.entry = entry
+						r.events = append(r.events, event)
+					}
 					if entry, ok := sessionpresentation.RetainedWaitEntry(info.ID, agent, p.Name, output, record.Timestamp); ok {
 						event.entry = entry
 						r.events = append(r.events, event)
 					}
-					if entry, ok := sessionpresentation.RetainedCompactionEntry(info.ID, agent, p.Name, output, record.Timestamp); ok {
-						event.entry = entry
-						r.events = append(r.events, event)
-					} else if input, ok := sessioncontrol.FollowupDelivery(output); p.Name == "followup_task" && ok {
-						input.Thread = info.ID
-						event.entry = nativeDeliveryEntry(input, control.MessageItemID(input.ID), record.Timestamp, record.Metadata.Inherited)
-						r.events = append(r.events, event)
-					}
 				}
 			}
-		case "response_item/message":
-			if input, ok := p.NativeMessage.Delivery(); ok {
-				input.Thread = info.ID
-				event.entry = nativeDeliveryEntry(input, p.ID, record.Timestamp, record.Metadata.Inherited)
-				r.events = append(r.events, event)
+		case "event_msg/context_reset":
+			reset := p.ContextReset
+			reset.Thread, reset.Turn = p.ThreadID, p.EventTurnID
+			if reset.Thread == info.ID || record.Metadata.Inherited {
+				if entry, ok := sessionpresentation.NativeContextResetEntry(reset, record.Timestamp); ok {
+					event.entry = entry
+					r.events = append(r.events, event)
+				}
+			}
+		case "event_msg/agent_coordination":
+			if p.ThreadID == info.ID || record.Metadata.Inherited {
+				for _, entry := range sessionpresentation.NativeCoordinationEntries(info.ID, p.EventTurnID, sessioncontrol.NativeMessage{}, p.Projection, record.Timestamp, record.Metadata.Inherited) {
+					delivered := event
+					delivered.entry = entry
+					r.events = append(r.events, delivered)
+				}
 			}
 		}
 	}

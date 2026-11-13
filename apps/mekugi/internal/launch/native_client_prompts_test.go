@@ -11,8 +11,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -565,11 +563,10 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 	for _, idle := range []bool{false, true} {
 		t.Run(fmt.Sprint("idle=", idle), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				u, threads, _ := logicalWaitUI(t, nil)
+				u, threads, _ := nativeWaitUI(t, nil)
 				if idle {
-					if err := threads.shared.HostCompleted(t.Context(), "child", "child-turn", control.Completed, control.HostFailure{}); err != nil {
-						t.Fatal(err)
-					}
+					threads.native.agent("child").Work.Disposition = "completed"
+					nativeTreeFixture(t, threads)
 				}
 				u.notifications = new(nativeNotifications)
 				u.Thread, u.Turn, u.LocalStop, u.Waiting = "child", "", "", ""
@@ -577,7 +574,7 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 				if !idle {
 					u.Turn = "child-turn"
 				}
-				u.attached.threadInput = &threadInput{driver: threads.driver, caller: "/root/worker", admitted: true}
+				u.attached.threadInput = &threadInput{caller: "/root/worker", admitted: true}
 				questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{
 					"id": "child-async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which scope?", "questions": []any{map[string]any{"title": "Which scope?", "options": []string{"Narrow", "Broad"}}},
 				}})
@@ -585,7 +582,7 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 				if len(calls) != 1 {
 					t.Fatalf("child question not admitted: %+v", calls)
 				}
-				before, _ := threads.shared.Member("main")
+				before := *threads.native.agent("main")
 				wire := u.Host.Input.(*appServerTestInput)
 				wire.Reset()
 				if refusal := nativeTestAnswers(t, u, nativeTestAnswerBatch(calls[0])); refusal != "" {
@@ -609,8 +606,8 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 				if len(replies) != 1 || replies[0].Answer != "Narrow" {
 					t.Fatalf("child answer payload = %+v", replies)
 				}
-				after, _ := threads.shared.Member("main")
-				if before.Generation != after.Generation || before.Status != after.Status || !reflect.DeepEqual(before.Wait, after.Wait) {
+				after := *threads.native.agent("main")
+				if !reflect.DeepEqual(before.Work, after.Work) || !reflect.DeepEqual(before.Wait, after.Wait) {
 					t.Fatalf("child answer changed parent wait: before=%+v after=%+v", before, after)
 				}
 			})

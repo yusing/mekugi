@@ -16,8 +16,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/libraries/commandargs"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
@@ -57,7 +56,7 @@ type invocationFixture struct {
 func runInvocationFixtureChild() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
-	go func() { <-ctx.Done(); _ = os.Stdin.Close() }()
+	go func() { <-ctx.Done(); os.Exit(0) }()
 	session := invocationFixture{BaseURL: os.Getenv("MEKUGI_BASE_URL"), AXReadOutput: os.Getenv(evidence.AXReadOutputEnvironment)}
 	if startup := os.Getenv("BASH_ENV"); filepath.Base(startup) == "frontend-bash-env" {
 		session.FrontendDirectory = filepath.Join(filepath.Dir(startup), "bin")
@@ -104,12 +103,16 @@ func runInvocationFixtureChild() {
 }
 
 func runFixtureInvocation(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, issues *requestexecution.Failures, ready func(invocationFixture), artifacts func([]string)) error {
+	if observations == nil {
+		bound := conversationbinding.Codex.Observation(conversation)
+		observations = &bound
+	}
 	settings, err := launchoptions.LoadSettings()
 	if err != nil {
 		return err
 	}
 	options = options.ResolveFeatures(settings.Features)
-	directory, err := os.MkdirTemp("", "mekugi-invocation-fixture-")
+	directory, err := os.MkdirTemp("", "mki-")
 	if err != nil {
 		return err
 	}
@@ -138,19 +141,10 @@ func runFixtureInvocation(terminalViews terminalsession.Views, views *sessionpre
 		}
 		observed <- err
 	}()
-	shared := threadcontrol.New()
-	driver, err := threadbinding.NewDriver(shared)
-	if err != nil {
-		listener.Close()
-		return err
-	}
-	if err := driver.Start(ctx); err != nil {
-		listener.Close()
-		return err
-	}
-	defer driver.Stop(context.WithoutCancel(ctx))
 	workspace := directory
-	threads := &threadExecution{shared: shared, driver: driver}
+	hub := sessionapi.NewHub(ctx, nil)
+	defer hub.Close()
+	threads := &threadExecution{hub: hub}
 	code, runErr := runInvocation(views, conversation, live, activity, service, prefs, recovered, segments, changes, usage, agentMetrics, diagnostics, diagnosis, ctx, commands, projections, guidance, naming, observations, nil, options, settings, issues, executable, nil, append(os.Environ(), "MEKUGI_INVOCATION_FIXTURE_OBSERVATION="+observationPath), io.Discard, "", nil, false, artifacts, sessionapi.NewLive(), workspace, threads)
 	listener.Close()
 	observeErr := <-observed

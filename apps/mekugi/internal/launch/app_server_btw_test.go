@@ -10,12 +10,12 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 
 	"github.com/charmbracelet/x/ansi"
@@ -27,9 +27,9 @@ func TestSideForkWaitsForEffectiveCatalog(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"models":[{"slug":"selected","multi_agent_reasoning_effort":"high","supported_reasoning_levels":[{"effort":"high"},{"effort":"max"}]}]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	driver := new(threadbinding.Driver)
-	u.Requests.InheritedEffort = driver.InheritedEffort
-	u.Requests.CaptureConfiguredCatalog = driver.CaptureConfiguredCatalog
+	catalog := &inferencegateway.ReasoningCatalog{}
+	u.Requests.InheritedEffort = catalog.InheritedEffort
+	u.Requests.CaptureConfiguredCatalog = catalog.CaptureConfigured
 	u.Requests.CatalogPending = true
 	u.settings.Model, u.settings.Effort = "selected", "ultra"
 	appServerTestRequest(t, u, "42", "config/read")
@@ -48,14 +48,15 @@ type btwTestRPC struct {
 	ID     int    `json:"id"`
 	Method string `json:"method"`
 	Params struct {
-		ThreadID       string         `json:"threadId"`
-		TurnID         string         `json:"turnId"`
-		ExpectedTurnID string         `json:"expectedTurnId"`
-		ThreadSource   string         `json:"threadSource"`
-		Ephemeral      bool           `json:"ephemeral"`
-		ExcludeTurns   bool           `json:"excludeTurns"`
-		Config         map[string]any `json:"config"`
-		Input          []struct {
+		ThreadID              string         `json:"threadId"`
+		TurnID                string         `json:"turnId"`
+		ExpectedTurnID        string         `json:"expectedTurnId"`
+		ContextResetRequestID string         `json:"contextResetRequestId"`
+		ThreadSource          string         `json:"threadSource"`
+		Ephemeral             bool           `json:"ephemeral"`
+		ExcludeTurns          bool           `json:"excludeTurns"`
+		Config                map[string]any `json:"config"`
+		Input                 []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"input"`

@@ -37,11 +37,11 @@ owns runtime contexts independently of client connections. Ending a thread or st
 the server cancels and joins its runtime. Disconnected viewers release only their
 subscriptions. Restart restores no active runtime or pending request implicitly.
 
-All runtime creation uses one admission and lifetime owner. Human startup,
-native startup and coordinated startup supply their execution inputs to that
-owner; role and logical ancestry do not select a different connection or event
-loop. Frozen coordinated preparation and attributed input retain their existing
-authority checks.
+All runtime creation uses one admission and lifetime owner. Human and native
+startup supply execution inputs to that owner. Native Codex children register
+thread-scoped control/publication endpoints under the same managed invocation,
+without another run closure, process or host reader. Logical ancestry comes from
+native admission, not a second managed process topology.
 
 Main and delegates use the same session attachments, operations and complete
 runtime publications, including retained review. Opening a detail belonging to

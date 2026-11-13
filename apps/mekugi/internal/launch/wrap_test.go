@@ -14,8 +14,6 @@ import (
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
 
@@ -32,7 +30,6 @@ func TestServerInvocationRequiresExecutionOwners(t *testing.T) {
 	for _, execution := range []*threadExecution{
 		nil,
 		{},
-		{shared: control.New(), start: &sessioncontrol.PreparedThread{}},
 	} {
 		code, err := runOwnedInvocation(t.Context(), nil, nil, sessionapi.NewLive(), t.TempDir(), execution)
 		if code != 1 || err == nil {
@@ -207,7 +204,7 @@ func TestFrontendScriptSudo(t *testing.T) {
 
 func TestWrapCodexMissingExecutable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	code, err := runServerSession(t.Context(), nil, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
+	code, err := runServerSession(t.Context(), nil, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{})
 	if code != 1 || err == nil || !strings.Contains(err.Error(), "locate mekugi-app-server") {
 		t.Fatalf("wrap = %d, %v", code, err)
 	}
@@ -258,7 +255,7 @@ func TestRunServerRequiresCustomProvider(t *testing.T) {
 		t.Setenv(key, t.TempDir())
 	}
 	t.Setenv("PATH", t.TempDir())
-	code, err := runServerSession(t.Context(), []string{"custom-provider"}, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
+	code, err := runServerSession(t.Context(), []string{"custom-provider"}, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{})
 	if code != 2 || err == nil || !strings.Contains(err.Error(), "requires a custom Responses provider profile") {
 		t.Fatalf("standalone without provider = %d, %v", code, err)
 	}
@@ -294,7 +291,7 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
-			code, err := runServerSession(ctx, []string{"--shell-guard=false"}, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
+			code, err := runServerSession(ctx, []string{"--shell-guard=false"}, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{})
 			if code != 1 || err == nil {
 				t.Fatalf("wrap = %d, %v", code, err)
 			}

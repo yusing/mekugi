@@ -61,6 +61,7 @@ type Supplements struct {
 	threads    scope.Key[supplementThread]
 	root       string
 	borrowed   string
+	endpoints  map[string]bool
 	events     []queuedSupplement
 	starts     []RequestStart
 	unreturned []Unreturned
@@ -73,8 +74,20 @@ func RequestSupplements(invocation *scope.Store) *Supplements {
 }
 
 func (s *Supplements) Attached(root string) bool {
-	return root != "" && (s.root == root || s.borrowed == root)
+	return root != "" && (s.root == root || s.borrowed == root || s.endpoints[root])
 }
+
+// AttachEndpoint adds a concurrent delivery owner without replacing Main.
+func (s *Supplements) AttachEndpoint(thread string) {
+	if thread == "" {
+		return
+	}
+	if s.endpoints == nil {
+		s.endpoints = make(map[string]bool)
+	}
+	s.endpoints[thread] = true
+}
+func (s *Supplements) DetachEndpoint(thread string) { delete(s.endpoints, thread) }
 
 // Borrow selects the one independently owned auxiliary audience. Empty releases it.
 func (s *Supplements) Borrow(root string) { s.borrowed = root }
@@ -83,6 +96,7 @@ func (s *Supplements) Attach(root string) { s.root = root }
 func (s *Supplements) Detach()            { s.root = "" }
 func (s *Supplements) Clear() {
 	s.root, s.borrowed = "", ""
+	clear(s.endpoints)
 	s.events, s.starts, s.unreturned = nil, nil, nil
 }
 
@@ -178,7 +192,7 @@ func (s *Supplements) Take(audience Audience, now time.Time) []Supplement {
 }
 
 func (s *Supplements) StartRequest(thread string, at time.Time) {
-	if (s.root != "" || s.borrowed != "") && len(s.starts) < 64 {
+	if (s.root != "" || s.borrowed != "" || len(s.endpoints) != 0) && len(s.starts) < 64 {
 		s.starts = append(s.starts, RequestStart{Thread: thread, At: at})
 	}
 }
@@ -200,7 +214,7 @@ func (s *Supplements) TakeStarts(audience Audience) []RequestStart {
 	return starts
 }
 func (s *Supplements) NoteUnreturned(thread string, calls []string) {
-	if s.root == "" && s.borrowed == "" {
+	if s.root == "" && s.borrowed == "" && len(s.endpoints) == 0 {
 		return
 	}
 	for _, call := range calls {

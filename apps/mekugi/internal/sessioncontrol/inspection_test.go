@@ -6,13 +6,13 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestInspectionUsesLocalRuntimeHandoff(t *testing.T) {
@@ -29,7 +29,7 @@ func TestInspectionUsesLocalRuntimeHandoff(t *testing.T) {
 				done <- err
 			}()
 			call := <-requests.Inspections()
-			call.Complete("root", control.SessionDetails{Model: new("actual"), Compactions: new(uint64(0))})
+			call.Complete("root", observation.SessionDetails{Model: new("actual"), SessionMetrics: observation.SessionMetrics{Compactions: new(uint64(0))}})
 			if err := <-done; (err != nil) != (target == "foreign") {
 				t.Fatalf("target %s: %v", target, err)
 			}

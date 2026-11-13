@@ -10,17 +10,20 @@ Native foundation: `runtime/codex/codex-rs/app-server` owns the renamed
 `mekugi-app-server`; `runtime/build.py` builds, tests and packages it. Usage:
 `docs/contributing/development.md#native-app-server`.
 Native summary-free reset/reload belongs to `runtime/codex/codex-rs/core/src/{compact_token_budget,session}`;
-the native rollout/checkpoint retains source selection. `modules/agentguidance/compact/capture.go`
-supplies shared preload/message snapshots, not native reset acquisition.
-Compound wait execution/reset admission belongs to native `core/src/tools/code_mode/compound.rs`;
-`modules/threadcontrol/control/native_compound.go` joins its exact evidence to the logical wait.
-App-server settlement requests and reset receipts cross Session Control's existing connection.
+`compact_token_budget_reload.rs` also acquires Codex preload and message sources.
+The native rollout/checkpoint retains source selection and acquisition facts.
+`modules/agentguidance/compact/capture.go` supplies admitted host source snapshots,
+not native Codex filesystem acquisition.
+Native `core/src/agent/control` and `state/src/{coordination,coordination_wait,coordination_progress}.rs`
+own work, waits, ordered delivery, progress and recovery. `core/src/tools/code_mode/paused.rs`
+keeps original calls pending at the native execution frontier and services auxiliary resets;
+Session Control consumes native work, wait and reset facts.
 Native `core/src/state/manual_reset.rs` owns live manual requests and targeted cancellation;
 Session Control `compaction.go` consumes correlated reset receipts, not item-progress guesses.
 Native `app-server/src/feature_use.rs` owns root-launch FeatureUse reduction;
 `protocol/src/feature_use.rs` carries native and accepted coordination facts.
-Session Control `feature_use.go` borrows the root connection; Thread Control
-`control/features.go` aggregates native snapshots over admitted descendants.
+Session Control borrows the root connection; Session Presentation aggregates native
+snapshots over native-observed admitted membership, without a second counter owner.
 Native fixed features/configuration and the JavaScript-only tool mode belong to
 `runtime/codex/codex-rs/{features,core}`. Launch `wrap.go` admits native sessions;
 `app_server.go` maps caller arguments; `profile_route.go` resolves the
@@ -51,7 +54,7 @@ invocation executable; `catalog.go` reads its bundled model metadata.
 
 | Area | Owners and boundaries |
 | --- | --- |
-| Thread control | `modules/threadcontrol`: server-owned logical trees, admitted agent operations, prepared children/context preloads and retained waits; `{control,codexbinding}/peer.go`: attributed cross-session messages, admitted through `sessionapi/coordination.go`; `control/{waits,lifecycle}.go`: self-compaction checkpoints; `control/summaries.go`: frozen wait-progress collection and nonterminal replies; `control/features.go`: accepted native facts and admitted-family snapshot aggregation; `control/rewind.go`: retained saved-root selection; `{control,codexbinding}/message_sources.go`: immutable recipient-authorized message attachments; Session Control `message_sources.go`: backend source readers; `codexbinding/input.go`: provider-only message identity projection; `codexbinding/inspect.go`: live/retained agent inspection and coordination-result metrics; Session API owns native runtime lifetime, Session Control owns each runtime’s host ledger |
+| Native coordination | `runtime/codex/codex-rs/core/src/agent/{control,child_config}.rs` and `state/src/runtime/coordination*.rs`: registry, preparation, work, waits, source/final delivery and reset; `app-server/src/agent_host.rs`: connection-bound host resources; `sessionapi/coordination.go`: authenticated active foreign routing; Execution Observation `native_{capture_resources,progress}.go`: immutable capture resources; Launch `native_connection.go`: one process/reader/ledger with thread endpoints; `docs/contracts/coordination.md` owns the coordination contract |
 | Activity | `modules/activity/module.go`: historical wait-snapshot retention; `feed`: content/output retention; `coordination`: shared thread-control observation decoding; `presentation`: lifecycle, grouping, source/segment interpretation, roster, commit enrichment and detached publications; `terminalview`: layout, reveal/pacing, cursors, navigation and painting |
 | Conversation | `modules/conversation/{composer,presentation,presets,prompt,completion}`: edits/attachments, drafts/queues/side values, durable reusable input slots, prompts and completion; `transcript`/`codexbinding`: message correlation/history/native mapping; `terminalview`: keys/painting. Session Control owns live replies/dispatch; Launch owns scans, skill writes and image lifetime |
 | Composer predictions | `launch/composer_predictions.go`: asynchronous configuration and source/draft eligibility; `sessioncontrol/prediction.go`: host fork, turn and cleanup; `providers/openai/predictions.go`: authenticated remote configuration and moderation policy |
@@ -65,7 +68,7 @@ invocation executable; `catalog.go` reads its bundled model metadata.
 | Command segments | `modules/commandsegments/{segments,transport,reports}`: live correlation/subscriptions, FIFO, retained publication/adoption; `libraries/shellinstrumentation`: argv/source instrumentation; Launch `exec_track.go`, Execution Observation `exec_report_observation.go`: host integration |
 | Session history | `modules/sessionhistory/history`: namespaces, leases, enrollment, retention and host-call cache; `accounting.go`: revision-bound per-kind totals and interrupted-publication recovery; `{calls,call_requests,host_records,host_attachments}.go`: cache/pins/envelopes and neutral feature dependencies. Feature descriptors own record kinds; Record Transactions coordinates publication |
 | Persistence | `libraries/persistence`: private publication/opened-file admission; `libraries/legacycall`: historical envelopes/snapshot validation; Execution Observation `legacy_call.go`: working-value conversion |
-| Guidance | `runtime/codex/codex-rs/models-manager`: native default instruction templates; `modules/agentguidance`: explicit omission filtering, `contextnotice` measured milestones, shared preload selection, historical summary codec/authorized reads and `compact/capture.go` file/skill/captured-diff acquisition; Execution Observation `{compact_summary,context_preload}.go`: shared preload/snapshot readers and historical recovery; Codex Rollout `compaction.go`: exact native-boundary/reference joins for live, restored and replayed summary dialogs; `codexbinding`: selected frontend descriptions/module `guidance.md`; Frontends `registry.go`: authenticated snapshot. |
+| Guidance | `runtime/codex/codex-rs/models-manager`: native default instruction templates; `modules/agentguidance`: explicit omission filtering, `contextnotice` measured milestones, shared preload selection, historical summary codec/authorized reads and `compact/capture.go` file/skill/captured-diff acquisition; Execution Observation `compact_summary.go`: historical recovery; Codex Rollout `compaction.go`: exact native-boundary/reference joins for live, restored and replayed summary dialogs; `codexbinding`: selected frontend descriptions/module `guidance.md`; Frontends `registry.go`: authenticated snapshot. |
 | Initial context/environment | `backends/codex/responses/input_prefix.go`: immutable initial instruction layer; Session Control owns context lifetime; `modules/agentguidance/environment`: bounded facts acquisition; `modules/agentguidance/codexbinding/environment.go`: stateless initial contribution; Execution Observation `request_preparation.go`: admitted workspace and contribution wiring |
 | Readers | `modules/{fileread,sourceoutline,symbolquery}`: raw reads, structural inspection and semantic queries (`symbolquery/query/rust.go` owns Cargo preflight/safety; `resolver.go` owns the shared LSP lifetime); `libraries/{commandargs,outputbudget}`: grammar/admission; `libraries/sourceanalysis/structure`: shared declarations/coordinates |
 | Command/output tools | `modules/boundedcommand`: bounded foreground execution; `modules/outputrecovery`: retained publication/paging; `modules/outputdeduplication`: duplicate-output projection/local estimates; `backends/codex/binding`: composed inputs |
@@ -114,7 +117,7 @@ Load contracts for boundaries the change crosses. They own details and acceptanc
 they do not expand the requested scope.
 
 - **Host execution and logical coordination:** `backends/codex/SPEC.md#execution-authority`,
-  `modules/threadcontrol/SPEC.md`, `libraries/mcptransport/SPEC.md`,
+  `docs/contracts/coordination.md`, `libraries/mcptransport/SPEC.md`,
   `apps/mekugi/internal/{frontends,headless,launch}/SPEC.md`.
 - **Change evidence:** `docs/contracts/{change-evidence,record-publication}.md`,
   `modules/changehistory/SPEC.md`.

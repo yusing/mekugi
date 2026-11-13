@@ -1068,6 +1068,7 @@ export type InterruptTarget = {
   "Start": string;
   "Wait": string;
   "Stop": string;
+  "Work": string;
 };
 
 export type NativeQuestionAnswer = {

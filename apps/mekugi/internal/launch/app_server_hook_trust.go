@@ -10,7 +10,7 @@ import (
 
 func (session *nativeSession) shouldReviewHooks() bool {
 	bypass, _ := session.Client.Startup.Config["bypass_hook_trust"].(bool)
-	return session.reviewHooks && session.Client.Startup.Prepared == nil && !bypass
+	return session.reviewHooks && !bypass
 }
 
 func (session *nativeSession) beginHookTrust() error {

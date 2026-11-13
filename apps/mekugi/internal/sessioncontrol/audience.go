@@ -20,6 +20,7 @@ type Audience struct {
 	notice        func(string, string)
 	mu            sync.Mutex
 	threads       map[string]*activityThread
+	borrowedSides map[string]string
 	closed        bool
 	invocation    scope.Store
 	supplements   *activitypresentation.Supplements
@@ -43,7 +44,7 @@ func (a *Audience) Observe(thread, parent, name string, child bool) bool {
 	return a.observe(thread, parent, name, child, false)
 }
 
-// ObserveAdmitted accepts logical ancestry supplied by Thread Control. A rewind
+// ObserveAdmitted accepts authoritative native ancestry. A rewind
 // may replace the root without replacing the descendant's observation state.
 func (a *Audience) ObserveAdmitted(thread, parent, name string, child bool) bool {
 	return a.observe(thread, parent, name, child, true)
@@ -201,6 +202,7 @@ func (a *Audience) Close() {
 	defer a.mu.Unlock()
 	a.closed = true
 	clear(a.threads)
+	clear(a.borrowedSides)
 	a.prepared, a.preparedBytes = nil, 0
 	a.supplements.Clear()
 }
@@ -224,6 +226,54 @@ func (a *Audience) AttachRuntime(root string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.supplements.Attach(root)
+}
+
+// AttachEndpoint isolates consumption on an already admitted native thread.
+// It grants no execution authority and retains canonical ancestry.
+func (a *Audience) AttachEndpoint(thread string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if node := a.threads[thread]; !a.closed && node != nil && !node.conflicted {
+		a.supplements.AttachEndpoint(thread)
+	}
+}
+
+func (a *Audience) DetachEndpoint(thread string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.supplements.DetachEndpoint(thread)
+	a.supplements.DetachEndpoint(a.borrowedSides[thread])
+	delete(a.borrowedSides, thread)
+}
+
+// BorrowSideFor keeps each endpoint's selected side independent of siblings.
+func (a *Audience) BorrowSideFor(owner, side string) {
+	if a == nil || owner == "" {
+		return
+	}
+	if side != "" {
+		a.Observe(side, "", "/root", false)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.borrowedSides[owner] == side {
+		return
+	}
+	a.supplements.DetachEndpoint(a.borrowedSides[owner])
+	delete(a.borrowedSides, owner)
+	if node := a.threads[side]; node != nil && !node.conflicted {
+		if a.borrowedSides == nil {
+			a.borrowedSides = make(map[string]string)
+		}
+		a.borrowedSides[owner] = side
+		a.supplements.AttachEndpoint(side)
+	}
 }
 
 // A thinking response starts Conversation's pre-delta block. Host observations,

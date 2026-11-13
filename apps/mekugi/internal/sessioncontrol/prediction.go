@@ -96,11 +96,17 @@ func (r *Requests[T]) PredictionPending() bool {
 		return true
 	}
 	for _, request := range r.pending {
-		if request.Prediction != nil {
+		if request.Consumer == r.consumer && request.Prediction != nil {
 			return true
 		}
 	}
 	return false
+}
+
+func (r *Requests[T]) HasPredictionThread(thread string) bool {
+	r.sidesMu.RLock()
+	defer r.sidesMu.RUnlock()
+	return r.predictions[thread] != nil
 }
 
 func (r *Requests[T]) ClosePrediction(p *Prediction) error {

@@ -10,9 +10,10 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func unlinkedReplyUI(t *testing.T) (*appServerUI, string) {
@@ -23,7 +24,7 @@ func unlinkedReplyUI(t *testing.T) (*appServerUI, string) {
 	}
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	body := string(raw)
-	entry := nativeDeliveryEntry(control.NativeInput{Thread: "main", Sender: "/root/live-section", Recipient: "/root", Kind: "MESSAGE", Message: body}, "retained-message", time.Date(2026, 10, 28, 23, 27, 0, 0, time.Local), false)
+	entry := sessionpresentation.NativeDeliveryEntry(sessioncontrol.NativeDelivery{Thread: "main", Sender: "/root/live-section", Recipient: "/root", Kind: "MESSAGE", Message: body}, "retained-message", time.Date(2026, 10, 28, 23, 27, 0, 0, time.Local), false)
 	// This is the captured live receiving-runtime state: complete parsed reply
 	// content in Main, with no corresponding child-feed entry or Activity link.
 	u.attached.source.ApplyMain(entry)

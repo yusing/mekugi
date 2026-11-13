@@ -16,6 +16,7 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -106,7 +107,7 @@ func TestAttachmentContextRefreshesCurrentSkillsAndPreservesSelections(t *testin
 			if !codexresponses.MatchesCompactReadProgram(program, compact.CaptureCommand(selection)) {
 				t.Fatal("refresh did not use the selected current source")
 			}
-			snapshot, err := compact.ReadSources(t.Context(), selection, dir, nil, compact.ChangeReader{})
+			snapshot, err := (compact.Readers{}).Read(t.Context(), selection, dir, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -346,6 +347,57 @@ func TestAttachmentContextReusesHistoricalExplicitSkill(t *testing.T) {
 	}
 }
 
+func TestAttachmentContextUsesNativeSuccessfulWholeSources(t *testing.T) {
+	for _, purpose := range []string{"preload", "reload"} {
+		for _, test := range []struct {
+			name, reference, kind, sourcePath, sourceName string
+			success, supplied                             bool
+		}{
+			{"file", "@/SKILL.md", "file", "/SKILL.md", "", true, true},
+			{"skill", "$guide", "skill", "", "guide", true, true},
+			{"partial file", "@/SKILL.md#L1", "file", "/SKILL.md", "", true, false},
+			{"partial skill", "$guide#L1", "skill", "", "guide", true, false},
+			{"skill reference", "$guide/reference.md", "skill", "", "guide/reference.md", true, false},
+			{"failed file", "@/SKILL.md", "file", "/SKILL.md", "", false, false},
+			{"failed skill", "$guide", "skill", "", "guide", false, false},
+			{"other file", "@/other.md", "file", "/other.md", "", true, false},
+			{"invalid reference", "not a source", "file", "/SKILL.md", "", true, false},
+		} {
+			t.Run(purpose+"/"+test.name, func(t *testing.T) {
+				p := newManagedMekugiProxy(t)
+				attachTestReplayStore(t, p)
+				p.ContextAttachments = attachmentTestContext([]composer.ContextAttachment{{ID: "submitted", Placeholders: []string{"$guide"}, Skills: []composer.Token{{Name: "guide", Path: "/SKILL.md"}}}})
+				// Native reads supply the exact 22 file bytes. The optional mcat
+				// reader would append a newline, so byte deduplication is not a
+				// substitute for knowing this full source was already selected.
+				body := "CURRENT_ATTACHED_SKILL"
+				source := observation.SourceAcquisitionResult{Reference: test.reference, Kind: test.kind, Path: test.sourcePath, Name: test.sourceName, Success: test.success}
+				receipt := observation.SourceAcquisition{ID: "native-acquisition", Purpose: purpose, Sources: []observation.SourceAcquisitionResult{source}}
+				output := "Reloaded context (tool output).\n" + attachments.SourceRanges(body, []attachments.SourceRange{{Start: 0, End: len(body)}})
+				item := map[string]any{"type": "function_call_output", "namespace": "context", "name": "reload", "output": output, "internal_chat_message_metadata_passthrough": map[string]any{"source_acquisition": receipt}}
+				request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": []any{item}, "tools": testExecResponsesTools()}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				transform, err := p.prepareModelRequest(t.Context(), &request, "routing", "root", codexresponses.TurnMetadata{ThreadID: "root", RequestKind: "turn", ContextWindowID: "native-window", WindowNumber: 1}, true, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer transform.Close()
+				if (len(transform.CompactReload()) == 0) != test.supplied {
+					t.Fatalf("native whole-source selection ignored or partial/failure treated as complete: %s", transform.CompactReload())
+				}
+				if test.supplied {
+					recalled := attachmentTestReadHints(t, p, "root", request.Fields["input"])
+					if !strings.Contains(recalled, "$guide") || strings.Contains(recalled, body) || bytes.Count(request.Fields["input"], []byte(body)) != 1 {
+						t.Fatalf("native source was reacquired or put in initial body recall: %s", recalled)
+					}
+				}
+			})
+		}
+	}
+}
+
 func attachmentTestHint(t *testing.T, input []byte) string {
 	t.Helper()
 	var items []struct {
@@ -408,7 +460,7 @@ func TestAttachmentRecallPreservesProviderPrefix(t *testing.T) {
 		t.Fatal("local skill reader froze incomplete provider hints")
 	}
 	selection := string(mustTestJSON(t, map[string]any{"sources": []compact.SourceIdentity{{Skill: "guide", Path: path}}}))
-	captured, err := compact.ReadSources(t.Context(), selection, dir, nil, compact.ChangeReader{})
+	captured, err := (compact.Readers{}).Read(t.Context(), selection, dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

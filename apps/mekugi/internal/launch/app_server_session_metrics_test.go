@@ -1,12 +1,11 @@
 package launch
 
 import (
-	"context"
 	"encoding/base64"
 
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
@@ -24,8 +23,10 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/persistence"
 
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	"encoding/json/jsontext"
+	"slices"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -339,37 +340,46 @@ func TestUISnapshotNativeSessionShortcuts(t *testing.T) {
 }
 
 func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	driver, err := threadbinding.NewDriver(control.New())
-	if err != nil {
-		t.Fatal(err)
-	}
-	u.preparer = &executionobservation.Preparer{Config: executionobservation.Config{ThreadControl: driver}}
+	u, threads, _ := nativeRunningUI(t)
+	u.ctx = t.Context()
+	threads.features = sessioncontrol.NewNativeFeatureUse(u.Requests)
 	thread := u.attached.presentation.DisplayedThread()
-	if thread == "" {
-		t.Fatal("fixture has no displayed thread")
-	}
-	driver.BindFeatures(featureCountsFixture{thread: {AllWaits: 1}, "other-thread": {AllWaits: 99}})
-	if err := driver.Start(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	defer driver.Stop(t.Context())
 	appServerTestKeys(t, u, "/session\r")
 	p := u.statusPanel
-	receive := func() {
+	receive := func(count uint64) {
+		u.Requests.DispatchMeasurement(<-u.Requests.Inspections())
+		wire := u.Host.Input.(*appServerTestInput)
+		var sent struct {
+			ID     jsontext.Value `json:"id"`
+			Method string         `json:"method"`
+			Params struct {
+				Threads []string `json:"threads"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(wire.Bytes(), &sent); err != nil {
+			t.Fatal(err)
+		}
+		wire.Reset()
+		if sent.Method != "featureUse/read" || !slices.Equal(sent.Params.Threads, []string{thread, "child"}) {
+			t.Fatalf("feature read escaped displayed subtree: %+v", sent)
+		}
+		raw, err := json.Marshal(map[string]any{"threads": map[string]appserver.FeatureUse{thread: {AllWaits: count}, "child": {AllWaits: 3}, "other-thread": {AllWaits: 99}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.Requests.CompleteCall(appserver.Message{ID: sent.ID, Result: raw})
 		result := <-p.metrics.pending
-		response := make(chan control.FeatureSnapshot, 1)
+		response := make(chan sessionpresentation.FeatureSnapshot, 1)
 		response <- result
 		p.metrics.pending = response
 		refreshSessionMetrics(p, u.sessionCapture, p.metrics.refreshed, false)
 	}
-	receive()
+	receive(1)
 	if p.Features == nil || p.Features.Self.AllWaits != 1 {
 		t.Fatalf("opened features = %+v", p.Features)
 	}
-	driver.BindFeatures(featureCountsFixture{thread: {AllWaits: 2}, "other-thread": {AllWaits: 99}})
 	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelRefresh})
-	receive()
+	receive(2)
 	applyPanelAction(&u.attached, u.clock, &u.statusPanel, u.sessionCapture, sessionpresentation.PanelAction{Version: u.attached.presentation.View().Version, Panel: p.ID, Kind: sessionpresentation.PanelMetrics, Tab: 3})
 	if p.MetricTab != 3 {
 		t.Fatal("Features view was rejected")
@@ -389,19 +399,7 @@ func TestSessionMetricsFeaturesFollowDisplayedThread(t *testing.T) {
 func featureMetricsFixture() *sessionpresentation.FeatureMetrics {
 	return &sessionpresentation.FeatureMetrics{
 		Thread: "Main", Agents: 3,
-		Self:        sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 3, SelfCompactions: 8, SelfCompactionsCompleted: 2, SelfCompactionFailures: 1, AssignmentSources: 3, MessageSources: 3, ProgressWaits: 4, ProgressYields: 2, Spawns: 4, SpawnPreloads: 3, PreloadRejections: 1, Messages: 6, SideQuestions: 1, SideQuestionRejections: 1, Waits: 5, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}},
-		Descendants: sessionpresentation.FeatureCounts{FeatureUse: control.FeatureUse{Compactions: 7, SelfCompactions: 10, SelfCompactionsCompleted: 4, SelfCompactionFailures: 2, AssignmentSources: 2, MessageSources: 1, ProgressWaits: 3, ProgressYields: 1, CompactionPreloads: 2, Spawns: 1, Finals: 8, CompletionChanges: 5, Messages: 2, SideQuestions: 2, SideQuestionFailures: 1, Waits: 3}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 2, Occurrences: 4, SavedTokens: -20, Unmeasured: 1}},
+		Self:        sessionpresentation.FeatureCounts{FeatureUse: appserver.FeatureUse{Compactions: 3, SelfCompactions: 8, SelfCompactionsCompleted: 2, SelfCompactionFailures: 1, AssignmentSources: 3, MessageSources: 3, ProgressWaits: 4, ProgressYields: 2, Spawns: 4, SpawnPreloads: 3, PreloadRejections: 1, Messages: 6, SideQuestions: 1, SideQuestionRejections: 1, Waits: 5, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}},
+		Descendants: sessionpresentation.FeatureCounts{FeatureUse: appserver.FeatureUse{Compactions: 7, SelfCompactions: 10, SelfCompactionsCompleted: 4, SelfCompactionFailures: 2, AssignmentSources: 2, MessageSources: 1, ProgressWaits: 3, ProgressYields: 1, CompactionPreloads: 2, Spawns: 1, Finals: 8, CompletionChanges: 5, Messages: 2, SideQuestions: 2, SideQuestionFailures: 1, Waits: 3}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 2, Occurrences: 4, SavedTokens: -20, Unmeasured: 1}},
 	}
-}
-
-type featureCountsFixture map[string]control.FeatureUse
-
-func (f featureCountsFixture) RecordFeature(context.Context, control.FeatureFact) {}
-func (f featureCountsFixture) InvalidateFeatureUse(error)                         {}
-func (f featureCountsFixture) ReadFeatureUse(_ context.Context, threads []string) (map[string]control.FeatureUse, error) {
-	values := make(map[string]control.FeatureUse, len(threads))
-	for _, thread := range threads {
-		values[thread] = f[thread]
-	}
-	return values, nil
 }

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -158,42 +157,30 @@ func TestStartupRejectsStockSessionAndPagesLatest(t *testing.T) {
 	}
 }
 
-func TestStartupExplicitHookTrustForRootAndPreparedChild(t *testing.T) {
-	for _, prepared := range []bool{false, true} {
-		for _, trust := range []*bool{nil, new(false), new(true)} {
-			transport := &requestTransport{id: "start"}
-			requests := NewRequests[string](transport)
-			startup := Startup{Config: make(map[string]any)}
-			if trust != nil {
-				startup.Config["bypass_hook_trust"] = *trust
-			}
-			if prepared {
-				config := `{"unrelated":1}`
-				if trust != nil {
-					config = `{"unrelated":1,"bypass_hook_trust":` + map[bool]string{true: "false", false: "true"}[*trust] + `}`
-				}
-				startup.Prepared = &PreparedThread{Settings: control.Settings{PermissionProfile: []byte(`{"type":"disabled"}`), Config: []byte(config)}}
-			}
-			if _, err := requests.OpenSession(&startup, new(Live), false, ""); err != nil {
-				t.Fatal(err)
-			}
-			data, err := json.Marshal(transport.sends[0].params)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var params struct {
-				Config map[string]any `json:"config"`
-			}
-			if err := json.Unmarshal(data, &params); err != nil {
-				t.Fatal(err)
-			}
-			value, present := params.Config["bypass_hook_trust"]
-			if present != (trust != nil) || trust != nil && value != *trust {
-				t.Fatalf("prepared=%t trust=%v params=%s", prepared, trust, data)
-			}
-			if prepared && params.Config["unrelated"] != float64(1) {
-				t.Fatalf("overwrote inherited config: %s", data)
-			}
+func TestStartupExplicitHookTrustForRoot(t *testing.T) {
+	for _, trust := range []*bool{nil, new(false), new(true)} {
+		transport := &requestTransport{id: "start"}
+		requests := NewRequests[string](transport)
+		startup := Startup{Config: make(map[string]any)}
+		if trust != nil {
+			startup.Config["bypass_hook_trust"] = *trust
+		}
+		if _, err := requests.OpenSession(&startup, new(Live), false, ""); err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal(transport.sends[0].params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var params struct {
+			Config map[string]any `json:"config"`
+		}
+		if err := json.Unmarshal(data, &params); err != nil {
+			t.Fatal(err)
+		}
+		value, present := params.Config["bypass_hook_trust"]
+		if present != (trust != nil) || trust != nil && value != *trust {
+			t.Fatalf("trust=%v params=%s", trust, data)
 		}
 	}
 }

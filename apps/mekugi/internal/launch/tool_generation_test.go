@@ -18,7 +18,7 @@ func TestUISnapshotToolGenerationComposer(t *testing.T) {
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn"}})
 	var generation sessioncontrol.Generation
 	u.controlObservations.SetToolInput(&generation, "", "main", sessioncontrol.GenerationItem{ID: "item"}, true)
-	u.controlObservations.IdentifyToolInput(&generation, sessioncontrol.GenerationItem{ID: "item"}, "exec", true, `await tools.mcp__threadcontrol__spawn_agent({message:"long`)
+	u.controlObservations.IdentifyToolInput(&generation, sessioncontrol.GenerationItem{ID: "item"}, "exec", true, `await tools.collaboration__spawn_agent({message:"long`)
 	refresh := func(want string) string {
 		applyObservedActivity(&u.attached, &u.Client, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.restoring, u.audience)
 		publishActivity(&u.attached, u.shell)
@@ -39,7 +39,7 @@ func TestUISnapshotToolGenerationComposer(t *testing.T) {
 	assertNativeUISnapshot(t, "composer-tool-generation", rows)
 	// Refine another nested operation through the same producer, detached
 	// presentation and both terminal consumers, without adding a tool row.
-	u.controlObservations.IdentifyToolInput(&generation, sessioncontrol.GenerationItem{ID: "item"}, "", false, `null}); await tools.mcp__threadcontrol__inspect({target:"review`)
+	u.controlObservations.IdentifyToolInput(&generation, sessioncontrol.GenerationItem{ID: "item"}, "", false, `null}); await tools.collaboration__inspect_agent({target:"review`)
 	if rows := refresh("Inspecting agent"); !strings.Contains(rows, "Inspecting agent") || strings.Contains(rows, "worker") {
 		t.Fatalf("next tool inherited the old name: %q", rows)
 	}

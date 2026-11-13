@@ -22,7 +22,7 @@ func (r *Requests[T]) NativeSkillCatalog(ctx context.Context, thread string) (ma
 	if err != nil || !filepath.IsAbs(settings.Workspace) {
 		return nil, errors.Join(errors.New("native skill workspace is unavailable"), err)
 	}
-	raw, err := r.call(ctx, thread, "skills/list", map[string]any{"cwds": []string{settings.Workspace}}, nil)
+	raw, err := r.call(ctx, thread, "skills/list", map[string]any{"cwds": []string{settings.Workspace}})
 	if err != nil {
 		return nil, err
 	}

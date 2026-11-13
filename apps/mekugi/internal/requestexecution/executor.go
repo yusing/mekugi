@@ -21,7 +21,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/inference"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -33,7 +32,6 @@ import (
 // Executor runs attempts using borrowed application services. Each invocation
 // keeps its original capture, usage, control and retained-publication owners.
 type Executor struct {
-	ThreadControl    *control.Service
 	Naming           Naming
 	ServiceTiers     *inferencegateway.Tiers
 	Provider         inferencegateway.Forwarder
@@ -80,7 +78,6 @@ type requestAttempt struct {
 	streamResponse    bool
 	responseTransform codexresponses.Transformer
 	finishUsage       bool
-	usageLimited      bool
 	usageRejected     bool
 }
 
@@ -145,9 +142,6 @@ func (a *requestAttempt) run() error {
 	if err := a.prepare(); err != nil {
 		return err
 	}
-	if handled, err := a.completeLocalWait(); handled || err != nil {
-		return err
-	}
 	if local, ok := a.prepared.(interface{ CompactReload() jsontext.Value }); ok && len(local.CompactReload()) > 0 {
 		transportcapture.ObserveLocalResponse(a.startCtx)
 		var body bytes.Buffer
@@ -172,9 +166,6 @@ func (a *requestAttempt) run() error {
 		return err
 	}
 	if err := a.forward(); err != nil {
-		return err
-	}
-	if handled, err := a.completeUsageLimit(); handled || err != nil {
 		return err
 	}
 	if err := a.prepareResponse(); err != nil {
@@ -207,15 +198,6 @@ func (a *requestAttempt) prepare() error {
 		transportcapture.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
 	}
 	a.threadID = codexresponses.ThreadID(a.headers)
-	// Independent runtimes have root-shaped host metadata. Logical membership
-	// supplies their observation identity without rewriting host wire facts.
-	if !a.approvalReview && a.metadataValid && !a.metadata.ActivityIdentityInvalid &&
-		(a.metadata.ThreadID == "" || a.metadata.ThreadID == a.threadID) && a.executor.ThreadControl != nil {
-		if member, ok := a.executor.ThreadControl.Member(a.threadID); ok && member.Parent != "" && a.metadata.SubagentKind == "" {
-			a.metadata.ParentThreadID, a.metadata.AgentName = member.Parent, member.Task
-			a.metadata.SubagentKind = "thread_spawn"
-		}
-	}
 	if !a.approvalReview && a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn {
 		a.executor.Naming.ObserveInput(a.threadID, a.request.Fields["input"])
 	}
@@ -456,7 +438,6 @@ func (a *requestAttempt) prepareResponse() error {
 			return fmt.Errorf("record mekugi request overhead: %w", err)
 		}
 	}
-	a.responseTransform = codexresponses.Compose(usageLimitResponse{a}, a.responseTransform)
 	a.hooks.OnUsage = func(counts inference.Usage) {
 		// Definite rejections sometimes carry zero or stale usage. They never
 		// replace the last measured rate or charge an unadmitted inference.
@@ -552,9 +533,6 @@ func (a *requestAttempt) deliver() error {
 			return fmt.Errorf("execute request: %w", err)
 		}
 	}
-	if a.usageLimited {
-		a.finalization.upstreamTerminalState = responses.TerminalCompleted
-	}
 	a.observeTitleSuccess()
 
 	if a.streamResponse &&
@@ -600,12 +578,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 
 	a.finalization.finish(a.executionCtx, requestErr, a.executor.Output, a.executor.Issues)
 	transportcapture.ObserveRequestOutcome(a.startCtx, a.finalization.outcome.String())
-	if requestErr == nil && !a.usageLimited && a.finishUsage && !a.approvalReview && !a.prewarm && a.metadataValid && a.metadata.RequestKind == responses.Turn && a.finalization.outcome == requestOutcomeCompleted && a.finalization.upstreamTerminalState == responses.TerminalCompleted {
-		if a.executor.ThreadControl != nil {
-			if err := a.executor.ThreadControl.ProviderRecovered(context.WithoutCancel(a.executionCtx), a.threadID, a.metadata.TurnID); err != nil {
-				a.executor.Issues.CleanupNotice(a.sessionID, a.threadID, "provider retry reset", err.Error())
-			}
-		}
+	if requestErr == nil && a.finishUsage && !a.approvalReview && !a.prewarm && a.metadataValid && a.metadata.RequestKind == responses.Turn && a.finalization.outcome == requestOutcomeCompleted && a.finalization.upstreamTerminalState == responses.TerminalCompleted {
 		a.executor.Issues.Notices.RequestSucceeded(a.threadID, time.Now())
 	}
 	_, compatibilityFault := errors.AsType[*inferencegateway.CompatibilityError](requestErr)

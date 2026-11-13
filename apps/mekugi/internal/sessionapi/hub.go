@@ -48,13 +48,22 @@ type Hub struct {
 	preparations     chan struct{}
 }
 type listedSession struct {
-	entry   listed
-	server  *Server
-	runtime *managedSession
+	endpointContext context.Context
+	releaseEndpoint context.CancelFunc
+	entry           listed
+	server          *Server
+	runtime         *managedSession
+	end             func(context.Context) error // Joined native child end; never cancels the shared invocation.
 }
+
+func (s *listedSession) context() context.Context {
+	if s.endpointContext != nil {
+		return s.endpointContext
+	}
+	return s.runtime.ctx
+}
+
 type managedSession struct {
-	parent         *managedSession
-	parentThread   string
 	run            func(context.Context, *Server) error
 	operation      string
 	resume         string
@@ -145,7 +154,7 @@ func (h *Hub) startSession(requestContext context.Context, body jsontext.Value) 
 	if err := decodeBody(body, &start); err != nil {
 		return nil, err
 	}
-	m, _, err := h.admitRuntime(requestContext, nil, start, "", nil)
+	m, _, err := h.admitRuntime(requestContext, nil, start)
 	if err != nil {
 		return nil, runtimeStartFailure(err)
 	}
@@ -161,7 +170,7 @@ func (h *Hub) startSession(requestContext context.Context, body jsontext.Value) 
 // admitRuntime owns construction and registration for every execution input.
 // A native view is installed before execution; frozen preparation supplies the
 // execution operation without changing runtime admission or publication.
-func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start Start, parent string, run func(context.Context, *Server) error) (*managedSession, *rpcSubscription, error) {
+func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start Start) (*managedSession, *rpcSubscription, error) {
 	if h.launcher == nil {
 		return nil, nil, rpcFailure(405, "This server does not start threads.")
 	}
@@ -183,7 +192,7 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 		start.Workspace = filepath.Clean(start.Workspace)
 		if start.Native != nil {
 			start.Native.Workspace = start.Workspace
-		} else if run == nil {
+		} else {
 			options, err := h.launcher.StartOptions(requestContext)
 			if err != nil {
 				return nil, nil, rpcFailure(503, "Start options are unavailable.")
@@ -198,17 +207,6 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 		h.mu.Unlock()
 		return nil, nil, rpcFailure(503, "The server is stopping.")
 	}
-	var parentRuntime *managedSession
-	lifetime := h.ctx
-	if parent != "" {
-		s := h.sessions[parent]
-		if s == nil || s.runtime == nil || s.runtime.ctx.Err() != nil {
-			h.mu.Unlock()
-			return nil, nil, rpcFailure(409, "Parent native runtime is unavailable.")
-		}
-		parentRuntime = s.runtime
-		lifetime = parentRuntime.ctx
-	}
 	resuming := h.sessions[requestedThread] != nil
 	for current := range h.running {
 		resuming = resuming || requestedThread != "" && current.resume == requestedThread
@@ -217,18 +215,12 @@ func (h *Hub) admitRuntime(requestContext, viewContext context.Context, start St
 		h.mu.Unlock()
 		return nil, nil, errThreadOwned
 	}
-	ctx, cancel := context.WithCancel(lifetime)
+	ctx, cancel := context.WithCancel(h.ctx)
 	server := NewPreparedLive(h.launcher.PrepareInput)
 	if start.Replay != nil {
 		server = New()
 	}
-	if parentRuntime != nil {
-		server.preparations = parentRuntime.server.preparations
-	}
-	if run == nil {
-		run = func(ctx context.Context, server *Server) error { return h.launcher.Run(ctx, start, server) }
-	}
-	m := &managedSession{parent: parentRuntime, parentThread: parent, run: run, operation: rand.Text(), resume: requestedThread, ctx: ctx, server: server, inputWorkspace: start.Workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
+	m := &managedSession{run: func(ctx context.Context, server *Server) error { return h.launcher.Run(ctx, start, server) }, operation: rand.Text(), resume: requestedThread, ctx: ctx, server: server, inputWorkspace: start.Workspace, cancel: cancel, done: make(chan struct{}), ready: make(chan string, 1)}
 	m.server.activeThread = h.activeThread
 	m.server.questionOwner = func(call string) *Server { return h.questionOwner(m.server, call) }
 	m.server.family = func() (*Family, *changes.ReviewView) {
@@ -339,7 +331,6 @@ func (h *Hub) run(ctx context.Context, m *managedSession) {
 			m.resume = ""
 		}
 		entry := projectSummary(summary)
-		entry.ParentThread = m.parentThread
 		entry.ID = m.id
 		h.sessions[m.id] = &listedSession{entry: entry, server: m.server, runtime: m}
 		h.publishList()
@@ -354,20 +345,20 @@ func (h *Hub) run(ctx context.Context, m *managedSession) {
 		result <- m.run(ctx, m.server)
 	}()
 	defer func() {
-		if m.server.live {
-			m.server.Native().Finish(m.err)
-		}
 		m.cancel()
 		h.mu.Lock()
-		var children []<-chan struct{}
-		for child := range h.running {
-			if child.parent == m {
-				children = append(children, child.done)
+		var endpoints []*Server
+		for _, s := range h.sessions {
+			if s.runtime == m && s.server != m.server {
+				endpoints = append(endpoints, s.server)
 			}
 		}
+		endpoints = append(endpoints, m.server)
 		h.mu.Unlock()
-		for _, done := range children {
-			<-done
+		for _, endpoint := range endpoints {
+			if endpoint.live {
+				endpoint.Native().Finish(m.err)
+			}
 		}
 		h.mu.Lock()
 		for id, s := range h.sessions {
@@ -427,13 +418,13 @@ func (h *Hub) questionOwner(selected *Server, call string) *Server {
 	root := cmp.Or(origin.FamilyRoot, origin.Session.Thread)
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for runtime := range h.running {
-		frame := runtime.server.frame.Load()
+	for server := range h.endpointsLocked() {
+		frame := server.frame.Load()
 		if frame == nil || cmp.Or(frame.FamilyRoot, frame.Session.Thread) != root {
 			continue
 		}
 		if slices.ContainsFunc(frame.Questions, func(q prompt.CallView) bool { return q.ID == call && !q.Resolved && !q.Sent }) {
-			return runtime.server
+			return server
 		}
 	}
 	return nil

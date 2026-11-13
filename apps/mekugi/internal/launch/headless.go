@@ -9,7 +9,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // runHeadless borrows the ordinary server runtime without a renderer or a
@@ -43,7 +42,7 @@ func runHeadless(ctx context.Context, routerArgs, args []string, input io.Reader
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream := headless.NewStream(output, cancel)
-	launcher := &serverLauncher{threads: control.New(), headless: stream}
+	launcher := &serverLauncher{headless: stream}
 	hub := sessionapi.NewHub(ctx, launcher)
 	launcher.hub = hub
 	thread, err := hub.RunNative(ctx, sessionapi.NativeStart{Workspace: workspace, RouterArgs: routerArgs, Args: args}, prompt)

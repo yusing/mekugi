@@ -4,7 +4,7 @@ Fixtures need the `codex_e2e` tag and the installed Codex. They use deterministi
 fake credentials and isolated home/configuration, never live models or personal shell startup
 files, so they do not establish live-model behavior.
 
-The migrated profile-launch and configured-catalog fixtures use
+The migrated native-thread, compaction, profile-launch and configured-catalog fixtures use
 `mekugi-app-server` and its sibling `mekugi-models.json`. Build them with
 `make build-native` and put `bin/native` on PATH. Remaining stock CLI fixtures
 still require `codex`.

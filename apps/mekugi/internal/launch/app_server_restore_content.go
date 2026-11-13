@@ -6,8 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
-	"github.com/yusing/mekugi/backends/codex/rollout"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -37,22 +36,19 @@ func (session *nativeSession) restorePaneContent(attached *attachedPresentation,
 	session.restoring = r
 	restoreDiffThread(attached, session.review, session.reviewSource, root)
 	attached.presentation.Status.SetText("Restoring Activity…")
-	retainedRollout := readRestoredRollout(root, "/root")
-	references := rollout.CompactionReferences(parent, root.ID, root.Path)
-	for ti := range root.Turns {
-		for ii := range root.Turns[ti].Items {
-			item := &root.Turns[ti].Items[ii]
-			if item.Type != "contextCompaction" {
-				continue
-			}
-			summary, _, err := compact.ReadSummary(session.retainedSession.Store, root.ID, references[item.ID])
-			if err != nil {
-				summary = "Compaction summary unavailable: " + err.Error()
-			}
-			item.Text = summary
-		}
+	var content retainedActivity
+	if session.hydration != nil {
+		content = session.hydration.content
+	} else {
+		content = readRetainedActivity(parent, session.retainedSession, root)
 	}
-	retainedRollout.events = append(retainedRollout.events, restoredHookEvents(attached, session.activity, session.retainedSession, r, root)...)
+	root = content.thread
+	retainedRollout := content.rollout
+	r.notices = append(r.notices, content.notices...)
+	for _, observation := range content.hooks {
+		entry := hookEntry(&attached.session, session.activity, attached.cwd, root.ID, observation, false)
+		retainedRollout.events = append(retainedRollout.events, restoredRolloutEvent{at: observation.At, entry: entry})
+	}
 	var placements []*restoredPlacement
 	for _, event := range retainedRollout.events {
 		entry, ok := sessionpresentation.MainActivityEntry(event.entry)
@@ -63,7 +59,9 @@ func (session *nativeSession) restorePaneContent(attached *attachedPresentation,
 		placements = append(placements, &restoredPlacement{entry: entry, turn: event.turn, anchor: event.anchor, at: event.at})
 	}
 	session.restoreMainHistory(attached, picker, editor, clock, panel, resumePicker, parent, root.Turns, placements, retainedRollout.itemAt)
-	restoreCompactionObservations(attached, session.retainedSession, r)
+	applyCompactionObservations(attached, r, func(thread, item string) (*history.CompactionObservation, int, error) {
+		return content.compactions[[2]string{thread, item}], 0, nil
+	})
 	r.rendered = true
 	for _, notice := range r.notices {
 		restoreHistoryNotice(attached, r, notice.message, notice.incomplete)

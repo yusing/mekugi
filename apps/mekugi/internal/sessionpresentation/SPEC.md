@@ -219,7 +219,7 @@ the text entry and authorized browser image read remain available independently.
 
 Each independent runtime restores its own retained host history. Root restoration
 preserves original item identity, timing, retained output and saved-review scope.
-Thread Control restores logical member identities without starting child runtimes.
+Native passive observation restores admitted identities without starting child work.
 A cold child remains paused in the roster; its transcript is published when its
 runtime is available. Reading a publication never resumes work.
 
@@ -284,7 +284,7 @@ Each runtime reads full host resume history before trimming to its retained
 transcript window.
 
 Roster restoration never treats historical unfinished turns as live work. Only
-confirmed Thread Control outcomes claim delivered assignments/messages. The
+confirmed native delivery facts claim delivered assignments/messages. The
 host-selected rollout supplements missing cell failures, after identity validation,
 within its last 64 MiB. Evidence joins its recorded item anchor, or its recorded
 time when no anchor is available, without reordering existing entries. Later
@@ -498,8 +498,8 @@ failed-read diagnostics rather than claiming successful reads), and output
 deduplication. Source-bearing sends are separate from explicit preloads. Comparison
 rows carry one value per heading column, and both renderers align them; the terminal stacks labels above values when the columns do not
 fit beside them. Native Codex owns the feature counts;
-[Thread Control](../../../../modules/threadcontrol/SPEC.md#feature-use) supplies the
-admitted descendant set and aggregates native snapshots. Deduplication uses the capture snapshot's
+[Native coordination](../../../../docs/contracts/coordination.md#feature-use) supplies the
+admitted descendant set; Session Presentation aggregates native snapshots. Deduplication uses the capture snapshot's
 per-thread receipts and reads off, rather than zero, when the launch disables it.
 Counts cover the current root launch, including settled descendants and child runtime
 replacements, but are not restored on a new launch. Missing or incomplete native

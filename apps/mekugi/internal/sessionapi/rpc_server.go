@@ -764,7 +764,24 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 		if selected.runtime == nil {
 			return nil, rpcFailure(405, "This publication has no owned runtime."), nil
 		}
+		if selected.server != selected.runtime.server {
+			if selected.end == nil {
+				return nil, rpcFailure(405, "This thread has no native end owner."), nil
+			}
+			if err := selected.end(ctx); err != nil {
+				if ctx.Err() != nil {
+					return nil, rpcUnknown("Native end outcome unknown; do not automatically retry."), nil
+				}
+				return nil, rpcFailure(502, err.Error()), nil
+			}
+			return nil, nil, nil
+		}
 		selected.runtime.cancel()
+		select {
+		case <-selected.runtime.done:
+		case <-ctx.Done():
+			return nil, rpcUnknown("End outcome unknown; the runtime is still joining."), nil
+		}
 		return nil, nil, nil
 	case "view/attach":
 		if len(params.Body) != 0 {
@@ -790,7 +807,7 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 			viewContext, cancel := context.WithCancel(viewContext)
 			stop := func() bool { return true }
 			if selected.runtime != nil {
-				stop = context.AfterFunc(selected.runtime.ctx, cancel)
+				stop = context.AfterFunc(selected.context(), cancel)
 			}
 			subscription, failure := selected.server.subscribe(viewContext)
 			if failure != nil {
@@ -809,7 +826,7 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 		if selected.runtime != nil {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithCancel(ctx)
-			stop := context.AfterFunc(selected.runtime.ctx, cancel)
+			stop := context.AfterFunc(selected.context(), cancel)
 			defer stop()
 			defer cancel()
 		}

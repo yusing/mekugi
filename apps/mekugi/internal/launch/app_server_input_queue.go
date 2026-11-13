@@ -65,7 +65,6 @@ func applyInputRestoration(attached *attachedPresentation, questions *nativeQues
 // editQueued returns all locally waiting input to the composer as one stack.
 // Already-sent steers remain host-owned until committed or interrupted.
 func editQueued(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) {
-	attached.threadInput.reset()
 	parts := attached.conversation.TakeWaiting()
 	control.Compaction.CancelQueued(true)
 	restoreDrafts(attached, questions, approvals, picker, control.Turn, clock, parts...)
@@ -104,20 +103,6 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, picker 
 		session.guardHookCheck.readyThread = ""
 		return nil
 	}
-	childInput := attached.threadInput != nil && attached.threadInput.caller != "" && attached.threadInput.caller != "/root"
-	compacting := len(next.Batch.Parts) == 1 && next.Batch.Parts[0].Compact != nil
-	if !compacting && (!next.Steer || session.Client.LocalStop != "" || childInput) {
-		ready, err := attached.threadInput.prepare(parent, session.Client.Thread, session.Client.Requests)
-		if err != nil {
-			restoreDrafts(attached, &session.questions, &session.approvals, picker, session.Client.Turn, clock, next.Batch.Parts...)
-			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
-			return nil
-		}
-		if !ready {
-			attached.conversation.ReturnBatch(next.Batch)
-			return nil
-		}
-	}
 	if picker.waitForSkillBindings(attached, clock, session.Client.Requests, next.Batch.Parts) {
 		attached.conversation.ReturnBatch(next.Batch)
 		picker.refreshPicker(attached, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
@@ -127,11 +112,10 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, picker 
 }
 
 func sendConversationInput(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, parts []conversationmodel.Input, steer bool) error {
-	defer attached.threadInput.reset()
 	defer attached.presentation.PruneInput(&control.Live, attached.conversation)
 	if len(parts) == 1 && parts[0].Compact != nil {
 		intent := sessioncontrol.CompactIntent(*parts[0].Compact)
-		intent.Continue = intent.Continue && control.LocalStop == ""
+		intent.Continue = intent.Continue && control.LocalStop == "" && control.Waiting == ""
 		control.Compaction.Begin(intent)
 		attached.presentation.Status.SetText("Compacting context" + "…")
 		return control.Request("thread/compact/start", map[string]any{"threadId": control.Thread, "contextResetRequestId": control.Compaction.NativeRequestID()})
@@ -143,12 +127,6 @@ func sendConversationInput(attached *attachedPresentation, control *sessioncontr
 	}
 	s := conversationmodel.Submission{Draft: composer.Join(conversationmodel.Drafts(parts)...), Parts: parts}
 	id := rand.Text()
-	if admission := attached.threadInput; admission != nil && admission.ready {
-		id = admission.id
-		if admission.effect != nil {
-			steer = admission.effect.Turn != ""
-		}
-	}
 	input, err := prepareSubmissionInput(&s.Draft, id)
 	if err != nil {
 		restoreDrafts(attached, questions, approvals, picker, control.Turn, clock, parts...)
@@ -161,9 +139,6 @@ func sendConversationInput(attached *attachedPresentation, control *sessioncontr
 	request := sessioncontrol.InputRequest{Thread: control.Thread, ID: id, Input: input}
 	if steer {
 		request.Turn = control.Turn
-		if admission := attached.threadInput; admission != nil && admission.effect != nil {
-			request.Turn = admission.effect.Turn
-		}
 	} else {
 		request.Tier = selectedServiceTier(tiers, model, control.Thread)
 		if len(parts) > 0 && len(binding.QuestionReplies(s.Text)) == 0 {
@@ -182,7 +157,6 @@ func sendConversationInput(attached *attachedPresentation, control *sessioncontr
 	// Admission and skill acquisition can defer a selected continuation. Consume
 	// it only once the input request has reached the ordinary submission owner.
 	control.Compaction.Continue(len(parts) > 0)
-	control.Shell.ConsumeContinuation()
 	if !steer {
 		hook.readyThread = ""
 	}
@@ -192,11 +166,6 @@ func sendConversationInput(attached *attachedPresentation, control *sessioncontr
 			notice = attached.feedback.Text + " " + notice
 		}
 		setNotice(&attached.feedback, presentationTime(clock), notice, true)
-	}
-	if admission := attached.threadInput; admission != nil && admission.effect != nil {
-		effect, driver := admission.effect, admission.driver
-		request.Settled = func(turn string, err error) { driver.HumanInputAcknowledged(effect.Target, effect.ID, turn, err) }
-		admission.effect = nil // The host request owner now retains the outcome.
 	}
 	if _, err := control.Requests.SendInput(request, appServerRequest{}); err != nil {
 		applyInputEffects(attached, questions, approvals, picker, control.Turn, clock, attached.presentation.ApplyInputResult(&control.Live, attached.conversation, control.SubmissionFailed()))

@@ -5,9 +5,43 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
+
+func TestNativeEndpointAudiencesDoNotConsumeSiblingSupplements(t *testing.T) {
+	a := NewAudience(nil)
+	a.Attach("root")
+	for _, child := range []string{"first", "second"} {
+		if !a.ObserveAdmitted(child, "root", "/root/"+child, true) {
+			t.Fatal("native identity rejected")
+		}
+		a.AttachEndpoint(child)
+		a.BorrowSideFor(child, child+"-side")
+	}
+	for _, thread := range []string{"root", "first", "second", "first-side", "second-side"} {
+		a.Collect(activitypresentation.Supplement{Thread: thread, Source: thread, Kind: "error", Text: "progress"})
+		a.BeginResponse(thread, true, time.Now())
+		a.NoteUnreturned(thread, []string{"call-" + thread})
+	}
+	// Root is deliberately consumed first, matching the shared event-loop tick.
+	for _, thread := range []string{"root", "second", "first", "second-side", "first-side"} {
+		_, events := a.Take(thread)
+		starts, unreturned := a.TakeStarts(thread), a.TakeUnreturned(thread)
+		if len(events) != 1 || events[0].Thread != thread || len(starts) != 1 || starts[0].Thread != thread || len(unreturned) != 1 || unreturned[0].Thread != thread {
+			t.Fatalf("endpoint %s consumed another audience: events=%+v starts=%+v unreturned=%+v", thread, events, starts, unreturned)
+		}
+	}
+	a.DetachEndpoint("first")
+	if a.supplements.Attached("first") || a.supplements.Attached("first-side") || !a.supplements.Attached("root") || !a.supplements.Attached("second") || !a.supplements.Attached("second-side") {
+		t.Fatal("endpoint detach crossed delivery ownership")
+	}
+	a.BorrowSideFor("second", "")
+	if a.supplements.Attached("second-side") || !a.supplements.Attached("second") {
+		t.Fatal("side release replaced its endpoint")
+	}
+}
 
 func TestAudienceResolutionMatchesPointQueries(t *testing.T) {
 	a := NewAudience(nil)

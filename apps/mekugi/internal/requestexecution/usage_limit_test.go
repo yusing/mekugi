@@ -2,6 +2,7 @@ package requestexecution
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,11 +14,9 @@ import (
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-func TestUsageLimitWebSocketUpgradeWaitsThroughPrewarm(t *testing.T) {
+func TestUsageLimitWebSocketUpgradeReachesNativeOwner(t *testing.T) {
 	for _, capacity := range []bool{false, true} {
 		t.Run(fmt.Sprint(capacity), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -28,30 +27,21 @@ func TestUsageLimitWebSocketUpgradeWaitsThroughPrewarm(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			retained, err := history.NewService(control.RecordKinds())
-			check(err)
-			store, err := retained.Open(ctx, t.TempDir())
-			check(err)
-			session, err := store.SelectSession(ctx, nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
-			check(err)
-			defer session.Close()
-			service := control.New()
-			check(service.AdmitRoot(ctx, session, &control.Member{Thread: "root", Session: "session", Task: "/root", Turn: "turn", Generation: 1, Status: control.Working, HostRunning: true, AudienceAdmitted: true}))
 			reset := time.Now().Add(time.Hour).Truncate(time.Second)
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", reset.UTC().Format(http.TimeFormat))
 				if capacity {
 					w.WriteHeader(http.StatusServiceUnavailable)
-					io.WriteString(w, `{"error":{"code":"server_is_overloaded"}}`)
+					io.WriteString(w, `{"error":{"code":"server_is_overloaded"},"headers":{"x-provider-fixture":"body"}}`)
 				} else {
 					w.WriteHeader(http.StatusTooManyRequests)
-					io.WriteString(w, `{"error":{"type":"usage_limit_reached"}}`)
+					io.WriteString(w, `{"error":{"type":"usage_limit_reached"},"headers":{"x-provider-fixture":"body"}}`)
 				}
 			}))
 			defer provider.Close()
 			client := inferencegateway.NewClient(provider.URL, provider.Client(), ProviderDiagnostics())
-			executor := Executor{ThreadControl: service, Issues: testCriticalErrors()}
+			executor := Executor{Issues: testCriticalErrors()}
 			endpoint := inferencegateway.NewWebSocketEndpoint(ctx, time.Second, client, executor.ExecuteWebSocket)
 			defer endpoint.Close()
 			server := httptest.NewServer(endpoint)
@@ -62,7 +52,7 @@ func TestUsageLimitWebSocketUpgradeWaitsThroughPrewarm(t *testing.T) {
 			conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: headers})
 			check(err)
 			defer conn.CloseNow()
-			for _, generate := range []bool{false, true} {
+			for _, generate := range []bool{false, true, true} {
 				body := `{"type":"response.create","model":"gpt-test","input":[],"stream":true}`
 				if !generate {
 					body = `{"type":"response.create","model":"gpt-test","input":[],"generate":false,"stream":true}`
@@ -71,21 +61,34 @@ func TestUsageLimitWebSocketUpgradeWaitsThroughPrewarm(t *testing.T) {
 				for {
 					_, body, err := conn.Read(ctx)
 					check(err)
-					if strings.Contains(string(body), `"type":"error"`) || strings.Contains(string(body), `"type":"response.failed"`) {
-						t.Fatalf("usage limit reached host as an error: %s", body)
+					rejected := strings.Contains(string(body), `"type":"error"`) || strings.Contains(string(body), `"type":"response.failed"`)
+					completed := strings.Contains(string(body), `"type":"response.completed"`)
+					if generate && completed || !generate && rejected {
+						t.Fatalf("native provider outcome changed: %s", body)
 					}
-					if strings.Contains(string(body), `"type":"response.completed"`) {
+					if generate && rejected {
+						var event struct {
+							Status int `json:"status"`
+							Error  struct {
+								Type string `json:"type"`
+								Code string `json:"code"`
+							} `json:"error"`
+							Headers map[string]string `json:"headers"`
+						}
+						check(json.Unmarshal(body, &event))
+						status := http.StatusTooManyRequests
+						if capacity {
+							status = http.StatusServiceUnavailable
+						}
+						if event.Status != status || event.Headers["retry-after"] != reset.UTC().Format(http.TimeFormat) || event.Headers["x-provider-fixture"] != "body" || capacity && event.Error.Code != "server_is_overloaded" || !capacity && event.Error.Type != "usage_limit_reached" {
+							t.Fatalf("native owner lost original rejection or retry timing: %s", body)
+						}
+					}
+					if rejected || completed {
 						break
 					}
 				}
-				member, _ := service.Member("root")
-				if !generate {
-					if member.Wait != nil {
-						t.Fatal("prewarm registered a usage wait")
-					}
-				} else if member.Wait == nil || !member.Wait.UsageLimit || member.Wait.Capacity != capacity || member.Wait.Deadline == nil || !member.Wait.Deadline.Equal(reset) {
-					t.Fatalf("upgrade timing did not reach logical wait: %+v", member)
-				}
+
 			}
 
 		})

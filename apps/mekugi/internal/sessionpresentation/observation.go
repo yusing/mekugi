@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -80,6 +81,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 	text := in.Text
 	model.ObserveActivityProgress(p, in.Main, in.Selected, mainSource)
 	main := p.ThreadID == in.Main
+	currentError := false
 	if p.Kind == "error" || p.Kind.ResponseProgress() {
 		active := in.Selected
 		if !main {
@@ -89,6 +91,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			}
 		}
 		if active != "" && p.TurnID == active {
+			currentError = p.Kind == "error"
 			if p.Kind == "error" && p.Retry != "" && !model.replay {
 				s.Lifecycle(p.ThreadID).Retry = &activitypresentation.Value{Kind: "progress", Body: p.Retry, Live: true}
 			} else {
@@ -131,6 +134,43 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 	}
 	now := p.At
 	switch method {
+	case "error":
+		if !currentError {
+			result.Handled, result.Publish = true, false
+			return
+		}
+		if p.Diagnostic != "" {
+			entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: s.Caller(p.ThreadID), Kind: "error", Text: activitypresentation.ErrorPreview(p.Diagnostic), ErrorDetail: p.Diagnostic, Observed: now, Completed: now,
+				Native: &NativeItem{Thread: p.ThreadID, Turn: p.TurnID, Item: "native:error:" + p.Diagnostic, Phase: "item/completed"}})
+		}
+		result.Handled = true
+		return
+	case string(observation.CoordinationObserved), string(observation.SourceAcquisitionObserved):
+		var message sessioncontrol.NativeMessage
+		if p.NativeMessage != nil {
+			message = sessioncontrol.NativeMessage(*p.NativeMessage)
+		}
+		entries = NativeCoordinationEntries(p.ThreadID, p.TurnID, message, p.Coordination, now, p.Inherited || !main)
+		if entry, ok := NativeSourceAcquisitionEntry(in.Workspace, p.ThreadID, p.TurnID, p.SourceAcquisition, now); ok {
+			entries = append(entries, entry)
+		}
+		for i := range entries {
+			entries[i].Seq = s.Activity().NextSequence()
+			if entries[i].Agent == "/root" && (entries[i].Kind == "progress" || entries[i].Kind == "attachments") {
+				entries[i].Agent = s.Caller(p.ThreadID)
+			}
+		}
+		result.Handled, result.Publish = true, len(entries) != 0
+		return
+	case string(observation.ContextResetObserved):
+		if p.Reset != nil {
+			if entry, ok := NativeContextResetEntry(*p.Reset, now); ok {
+				entry.Seq, entry.Agent = s.Activity().NextSequence(), s.Caller(p.ThreadID)
+				entries = append(entries, entry)
+			}
+		}
+		result.Handled, result.Publish = true, len(entries) != 0
+		return
 	case "item/commandExecution/terminalInteraction":
 		if run := s.Commands()[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && p.ProcessID != "" {
 			run.Entry.Native.ProcessID = p.ProcessID
@@ -322,6 +362,10 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			result.Deliveries = append(result.Deliveries, ActivityDelivery{Command: delivery})
 			entries = append(entries, s.commandDone(entry, item, now)...)
 
+		case "collabAgentToolCall":
+			if item.Tool == "wait" {
+				entries = append(entries, s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item))
+			}
 		case "mcpToolCall":
 			entries = append(entries, s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item))
 		case "functionCallOutput":

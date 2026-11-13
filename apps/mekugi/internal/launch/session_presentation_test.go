@@ -40,6 +40,12 @@ func TestNonTerminalDisplayPublishesWithoutActivityOrPaint(t *testing.T) {
 	}
 }
 
+func TestSessionPublicationBeforeNativeIdentity(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.Client.Thread = ""
+	publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, true, u.side)
+}
+
 func TestSessionPaintDoesNotRefreshPublication(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	now := time.Unix(100, 0)

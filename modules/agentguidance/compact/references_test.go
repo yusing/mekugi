@@ -53,7 +53,7 @@ func TestReferenceSelectionRangesAndIndependentMalformedSource(t *testing.T) {
 	}
 	selection := Selection([]SourceIdentity{{Path: name, Ranges: [][2]int{{2, 2}}}})
 	selection = strings.TrimSuffix(selection, "]}") + `,"@bad#L4-L2","$bad/../private"]}`
-	snapshot, err := ReadSources(t.Context(), selection, dir, os.Environ(), ChangeReader{})
+	snapshot, err := (Readers{}).Read(t.Context(), selection, dir, os.Environ())
 	if err != nil || len(snapshot.Sources) != 3 {
 		t.Fatalf("capture: %+v %v", snapshot, err)
 	}

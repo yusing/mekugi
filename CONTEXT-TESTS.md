@@ -134,7 +134,7 @@ Cover these when the change touches the boundary:
 - **Logical lifecycle:** for host-turn handling or thread-control waits, cover how host completion,
   failure, interruption, manual compaction, injected input and enclosing-cell re-execution keep or
   settle pending waits and logical work, per
-  `modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery`.
+  `docs/contracts/coordination.md#logical-waits-and-ordered-delivery`.
 - **Instruction projection:** mixed authorization/tool text, fenced examples and idempotence through
   stock, marked, custom and multipart developer text.
 

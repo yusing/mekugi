@@ -20,7 +20,6 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/transcript"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func familyRuntime(h *Hub, parent *managedSession, frame Frame) *managedSession {
@@ -30,7 +29,7 @@ func familyRuntime(h *Hub, parent *managedSession, frame Frame) *managedSession 
 			frame.FamilyRoot = parent.server.frame.Load().FamilyRoot
 		}
 	}
-	runtime := &managedSession{server: NewLive(), parent: parent}
+	runtime := &managedSession{server: NewLive()}
 	runtime.server.frame.Store(new(frame))
 	h.running[runtime] = struct{}{}
 	return runtime
@@ -53,8 +52,8 @@ func TestFamilyFollowupReplacesPriorFinalActivity(t *testing.T) {
 	for _, priorKind := range []string{"text", "final"} {
 		t.Run(priorKind, func(t *testing.T) {
 			h := NewHub(t.Context(), nil)
-			member := threadcontrol.Participant{Thread: "child", Parent: "root", Task: "/root/child", Status: threadcontrol.Completed}
-			root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root"}, Members: []threadcontrol.Participant{member}})
+			member := sessionpresentation.Participant{Thread: "child", Parent: "root", Task: "/root/child", Status: sessionpresentation.Completed}
+			root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root"}, Members: []sessionpresentation.Participant{member}})
 			prior := activity.Entry{Facts: activity.Facts{Kind: priorKind, Agent: "Main", Text: "## Summary\nPrevious result.\n\n## Details\nEvidence."}, Values: []activity.Value{{Kind: priorKind, Body: "## Summary\nPrevious result."}}}
 			childActivity := familyActivity("child", "")
 			childActivity.Entries, childActivity.MainSummary = []activity.Entry{prior}, []activity.Entry{prior}
@@ -86,10 +85,10 @@ func TestFamilyFollowupReplacesPriorFinalActivity(t *testing.T) {
 				t.Fatal("child missing")
 			}
 			check(prior.Text)
-			for _, status := range []threadcontrol.Status{threadcontrol.Pending, threadcontrol.Working} {
+			for _, status := range []sessionpresentation.WorkStatus{sessionpresentation.Pending, sessionpresentation.WorkRunning} {
 				frame := *root.server.frame.Load()
 				member.Status = status
-				frame.Members = []threadcontrol.Participant{member}
+				frame.Members = []sessionpresentation.Participant{member}
 				root.server.frame.Store(&frame)
 				check("")
 			}
@@ -135,10 +134,10 @@ func TestFamilyOrdinaryPublicationsAndColdTargets(t *testing.T) {
 	rootActivity := familyActivity("root", "main summary")
 	rootActivity.Roster = append(rootActivity.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root/history", Thread: "history", Final: true}}})
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root", Caller: "/root", Workspace: "/project"}, Agents: rootActivity,
-		Status: sessionpresentation.Label{Text: "Main working"}, Members: []threadcontrol.Participant{
-			{Thread: "child", Parent: "root", Task: "/root/child", Role: "worker", Status: threadcontrol.Working},
-			{Thread: "nested", Parent: "child", Task: "/root/child/nested", Role: "reviewer", Status: threadcontrol.Working},
-			{Thread: "cold", Parent: "root", Task: "/root/cold", Role: "explorer", Status: threadcontrol.Completed},
+		Status: sessionpresentation.Label{Text: "Main working"}, Members: []sessionpresentation.Participant{
+			{Thread: "child", Parent: "root", Task: "/root/child", Role: "worker", Status: sessionpresentation.WorkRunning},
+			{Thread: "nested", Parent: "child", Task: "/root/child/nested", Role: "reviewer", Status: sessionpresentation.WorkRunning},
+			{Thread: "cold", Parent: "root", Task: "/root/cold", Role: "explorer", Status: sessionpresentation.Completed},
 		}})
 	childActivity := familyActivity("child", "child summary")
 	child := familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/child", Role: "worker", Workspace: "/project"}, Agents: childActivity})
@@ -174,43 +173,6 @@ func TestFamilyOrdinaryPublicationsAndColdTargets(t *testing.T) {
 	}
 }
 
-func TestFamilyNonAttachableCapabilityReachesRosterConsumers(t *testing.T) {
-	for _, mode := range []string{"live", "cold", "history"} {
-		t.Run(mode, func(t *testing.T) {
-			h := NewHub(t.Context(), nil)
-			publication := familyActivity("root", "main")
-			publication.Roster = append(publication.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{
-				Name: "/root/worker", Thread: "claude", NonAttachable: mode == "history",
-			}}})
-			frame := Frame{Session: Session{Thread: "root"}, Agents: publication}
-			if mode != "history" {
-				frame.Members = []threadcontrol.Participant{{Thread: "claude", Parent: "root", Task: "/root/worker", NonAttachable: true, Status: threadcontrol.Completed}}
-			}
-			root := familyRuntime(h, nil, frame)
-			if mode == "live" {
-				familyRuntime(h, root, Frame{Session: Session{Thread: "claude", Caller: "/root/worker"}, Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Thread: "claude"}}}}}})
-			}
-			family, _ := h.Family("root")
-			if !slices.Equal(family.Threads, []string{"root"}) {
-				t.Fatalf("nonattachable navigation admitted: %v", family.Threads)
-			}
-			roster := projectRoster(family.Agents, "/root")
-			if len(roster.Agents) != 2 {
-				t.Fatalf("nonattachable row disappeared: %+v", roster)
-			}
-			row := roster.Agents[1]
-			if row.Thread != "claude" || !row.NonAttachable || row.InputTokens != nil || row.OutputTokens != nil || row.Cost != nil || row.Context != nil || row.Work != nil || row.Added != nil {
-				t.Fatalf("capability or unknown metrics lost: %+v", row)
-			}
-			view := activityui.NewView()
-			view.UpdateRoster(family.Agents)
-			if !view.Roster()[1].Agent.NonAttachable {
-				t.Fatal("terminal roster lost shared capability")
-			}
-		})
-	}
-}
-
 func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "root"}, Agents: familyActivity("root", "main")})
@@ -218,30 +180,30 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 	view := activityui.NewView()
 	for _, tc := range []struct {
 		name   string
-		status threadcontrol.Status
+		status sessionpresentation.WorkStatus
 		host   activity.AgentFacts
 		kind   string
 		state  string
 		text   string
 	}{
-		{name: "working while host idle", status: threadcontrol.Working, state: "working", text: "child activity"},
-		{name: "pending with stale final", status: threadcontrol.Pending, host: activity.AgentFacts{Final: true}, state: "working", text: "child activity"},
-		{name: "waiting across host completion", status: threadcontrol.Waiting, host: activity.AgentFacts{Final: true}, state: "waiting", text: "Waiting for"},
-		{name: "continuation leaves waiting", status: threadcontrol.Working, host: activity.AgentFacts{Waiting: true}, state: "working", text: "child activity"},
-		{name: "working during native retry", status: threadcontrol.Working, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "waiting", text: "Reconnecting... 2/5"},
-		{name: "completion supersedes stale retry", status: threadcontrol.Completed, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "done", text: "done"},
-		{name: "interruption supersedes stale retry", status: threadcontrol.Interrupted, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "idle", text: "idle"},
-		{name: "completed with stale activity", status: threadcontrol.Completed, host: activity.AgentFacts{Responding: true}, state: "done", text: "done"},
-		{name: "failed while host idle", status: threadcontrol.Failed, state: "error", text: "error"},
-		{name: "interrupted with stale final", status: threadcontrol.Interrupted, host: activity.AgentFacts{Final: true}, state: "idle", text: "idle"},
-		{name: "working clears prior error", status: threadcontrol.Working, kind: "error", state: "working", text: "child activity"},
-		{name: "paused with stale activity", status: threadcontrol.Paused, host: activity.AgentFacts{Responding: true}, state: "paused", text: "paused"},
-		{name: "uncertain with stale activity", status: threadcontrol.Uncertain, host: activity.AgentFacts{Responding: true}, state: "paused", text: "paused"},
+		{name: "working while host idle", status: sessionpresentation.WorkRunning, state: "working", text: "child activity"},
+		{name: "pending with stale final", status: sessionpresentation.Pending, host: activity.AgentFacts{Final: true}, state: "working", text: "child activity"},
+		{name: "waiting across host completion", status: sessionpresentation.Waiting, host: activity.AgentFacts{Final: true}, state: "waiting", text: "Waiting for"},
+		{name: "continuation leaves waiting", status: sessionpresentation.WorkRunning, host: activity.AgentFacts{Waiting: true}, state: "working", text: "child activity"},
+		{name: "working during native retry", status: sessionpresentation.WorkRunning, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "waiting", text: "Reconnecting... 2/5"},
+		{name: "completion supersedes stale retry", status: sessionpresentation.Completed, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "done", text: "done"},
+		{name: "interruption supersedes stale retry", status: sessionpresentation.Interrupted, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "idle", text: "idle"},
+		{name: "completed with stale activity", status: sessionpresentation.Completed, host: activity.AgentFacts{Responding: true}, state: "done", text: "done"},
+		{name: "failed while host idle", status: sessionpresentation.Failed, state: "error", text: "error"},
+		{name: "interrupted with stale final", status: sessionpresentation.Interrupted, host: activity.AgentFacts{Final: true}, state: "idle", text: "idle"},
+		{name: "working clears prior error", status: sessionpresentation.WorkRunning, kind: "error", state: "working", text: "child activity"},
+		{name: "paused with stale activity", status: sessionpresentation.Paused, host: activity.AgentFacts{Responding: true}, state: "paused", text: "paused"},
+		{name: "uncertain with stale activity", status: sessionpresentation.Uncertain, host: activity.AgentFacts{Responding: true}, state: "paused", text: "paused"},
 		{name: "runtime-only fallback", host: activity.AgentFacts{Waiting: true}, state: "waiting", text: "Waiting for"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rootFrame := *root.server.frame.Load()
-			rootFrame.Members = []threadcontrol.Participant{{Thread: "child", Parent: "root", Task: "/root/child", Role: "worker", Status: tc.status}}
+			rootFrame.Members = []sessionpresentation.Participant{{Thread: "child", Parent: "root", Task: "/root/child", Role: "worker", Status: tc.status}}
 			if tc.status == "" {
 				rootFrame.Members = nil
 			}
@@ -401,10 +363,10 @@ func TestFamilyConcurrentRuntimePublication(t *testing.T) {
 
 func TestFamilyLogicalRootReplacementKeepsOldWorkIsolated(t *testing.T) {
 	h := NewHub(t.Context(), nil)
-	members := []threadcontrol.Participant{
-		{Thread: "original", Task: "/root", Status: threadcontrol.Working},
-		{Thread: "child", Parent: "original", Task: "/root/child", Status: threadcontrol.Working},
-		{Thread: "peer", Parent: "original", Task: "/root/peer", Status: threadcontrol.Working},
+	members := []sessionpresentation.Participant{
+		{Thread: "original", Task: "/root", Status: sessionpresentation.WorkRunning},
+		{Thread: "child", Parent: "original", Task: "/root/child", Status: sessionpresentation.WorkRunning},
+		{Thread: "peer", Parent: "original", Task: "/root/peer", Status: sessionpresentation.WorkRunning},
 		{Thread: "cold-peer", Parent: "original", Task: "/root/cold-peer"},
 		{Thread: "cold-nested", Parent: "child", Task: "/root/child/cold"},
 	}
@@ -417,7 +379,7 @@ func TestFamilyLogicalRootReplacementKeepsOldWorkIsolated(t *testing.T) {
 	h.sessions["original"] = &listedSession{server: root.server, runtime: root}
 	root.server.family = func() (*Family, *changes.ReviewView) { return h.Family(root.server.frame.Load().Session.Thread) }
 	publishReviewFrame(t, root.server, Frame{Session: Session{Thread: "replacement", Workspace: "/project"}, FamilyRoot: "replacement",
-		Members: []threadcontrol.Participant{{Thread: "replacement", Task: "/root"}, {Thread: "new-cold", Parent: "replacement", Task: "/root/new-cold"}},
+		Members: []sessionpresentation.Participant{{Thread: "replacement", Task: "/root"}, {Thread: "new-cold", Parent: "replacement", Task: "/root/new-cold"}},
 		Agents:  familyActivity("replacement", "replacement Main"), Review: familyReview(reviewChunk(3, "/root", "", "/project/replacement", "", "replacement\n"))})
 	current, currentReview := h.Family("replacement")
 	if unavailable, _ := h.Family("original"); unavailable != nil {

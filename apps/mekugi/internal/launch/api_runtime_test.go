@@ -21,7 +21,6 @@ import (
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // This exercises the actual invocation acquisition, host pipes and owner loop.
@@ -43,7 +42,7 @@ func TestServerSessionNoTerminal(t *testing.T) {
 			close(releasePreparation)
 		}
 	}()
-	execution := &threadExecution{shared: control.New()}
+	execution := &threadExecution{}
 	launcher := &nativeReattachLauncher{prepare: func(ctx context.Context, workspace string, input sessionapi.InputRequest) (*sessionapi.PreparedInput, error) {
 		if input.NativeDraft != nil && input.NativeDraft.Text == "@message.txt" {
 			close(preparing)
@@ -93,7 +92,7 @@ func TestServerSessionNoTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if execution.setup == nil || execution.driver == nil || execution.retained.Store == nil || execution.retained.Store.Directory() != directory || execution.retained.Limits.Total != history.DefaultStorageBytes || execution.retained.Limits.Kinds["commentary"] != 16<<20 {
+	if execution.setup == nil || execution.native == nil || execution.retained.Store == nil || execution.retained.Store.Directory() != directory || execution.retained.Limits.Total != history.DefaultStorageBytes || execution.retained.Limits.Kinds["commentary"] != 16<<20 {
 		t.Fatalf("server invocation did not capture retained child execution owners: %+v", execution)
 	}
 	events := serverRPCSubscribe(t, rpc, started.ID)
@@ -442,7 +441,7 @@ func (l *nativeRuntimeTestLauncher) Run(ctx context.Context, start sessionapi.St
 
 func TestNativeStartupChooserDisconnectJoinsUnconfirmedHost(t *testing.T) {
 	workspace := installAPIRuntimeHost(t)
-	launcher := &nativeRuntimeTestLauncher{serverLauncher: serverLauncher{threads: control.New()}, joined: make(chan error, 1)}
+	launcher := &nativeRuntimeTestLauncher{serverLauncher: serverLauncher{}, joined: make(chan error, 1)}
 	hub := sessionapi.NewHub(t.Context(), launcher)
 	launcher.hub = hub
 	defer hub.Close()
@@ -480,7 +479,7 @@ func TestNativeStartupChooserDisconnectJoinsUnconfirmedHost(t *testing.T) {
 
 func TestNativeArchiveJoinsOwningRuntime(t *testing.T) {
 	workspace := installAPIRuntimeHost(t)
-	launcher := &nativeRuntimeTestLauncher{serverLauncher: serverLauncher{threads: control.New()}, joined: make(chan error, 1)}
+	launcher := &nativeRuntimeTestLauncher{serverLauncher: serverLauncher{}, joined: make(chan error, 1)}
 	hub := sessionapi.NewHub(t.Context(), launcher)
 	launcher.hub = hub
 	defer hub.Close()

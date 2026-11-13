@@ -3,7 +3,7 @@ package sessioncontrol
 // InterruptTarget captures the host work observed by a consumer. Start keeps an
 // admitted start identifiable through acknowledgement, commitment and turn start.
 type InterruptTarget struct {
-	Thread, Turn, Start, Wait, Stop string
+	Thread, Turn, Start, Wait, Stop, Work string
 }
 
 type InterruptMode uint8
@@ -14,7 +14,7 @@ const (
 )
 
 func (h *Live) InterruptTarget() InterruptTarget {
-	return InterruptTarget{Thread: h.Thread, Turn: h.Turn, Start: h.startOrigin, Wait: h.Waiting, Stop: h.LocalStop}
+	return InterruptTarget{Thread: h.Thread, Turn: h.Turn, Start: h.startOrigin, Wait: h.Waiting, Stop: h.LocalStop, Work: h.NativeWork}
 }
 
 // RequestInterrupt admits the disposition before applying the existing control

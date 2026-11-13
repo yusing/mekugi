@@ -3,67 +3,112 @@
 package launch
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-// Withhold even the reasoning item's creation until the message is painted.
-// Otherwise later text could fill an item that legitimately precedes injection.
+const nativeDeliveryBody = "Delivered before reasoning: keep these exact bytes."
+
+// These fixtures drive actual model-authored native tools, not a Go input bridge.
+func nativeCollabResponse(program, answer string) (*inferencegateway.Response, error) {
+	id := "native-collab-response"
+	item := map[string]any{"type": "message", "id": id, "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": answer}}}
+	if program != "" {
+		item = map[string]any{"type": "custom_tool_call", "id": id, "call_id": id + "-call", "name": "exec", "namespace": "functions", "input": program, "status": "completed"}
+	}
+	wire := routerFaultSSE(
+		map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}},
+		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item},
+		map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item},
+		map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{item}}},
+	)
+	return testGatewayResponse(&http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(wire))}, nil)
+}
+
+// Withhold even the reasoning item's creation until the real worker's message
+// is painted. A later delta must not fill an item ordered before injection.
 type deliveryOrderProvider struct {
 	appReasoningStreamProvider
-	thread chan string
+	mu                      sync.Mutex
+	root                    string
+	calls                   map[string]int
+	mainReady, acknowledged chan struct{}
+	retained                chan bool
 }
 
 func (p *deliveryOrderProvider) ForwardExecution(parent, ctx context.Context, body []byte, headers http.Header, key string) (*inferencegateway.Response, error) {
+	metadata, _ := codexresponses.DecodeTurnMetadata(headers)
 	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
-		metadata, _ := codexresponses.DecodeTurnMetadata(headers)
 		thread = metadata.ThreadID
 	}
-	select {
-	case p.thread <- thread:
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	p.mu.Lock()
+	if p.root == "" {
+		p.root = thread
 	}
-	select {
-	case <-p.stages[0]:
-		return p.appReasoningStreamProvider.ForwardExecution(parent, ctx, body, headers, key)
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	p.calls[thread]++
+	step, main := p.calls[thread], thread == p.root
+	p.mu.Unlock()
+	if main && step == 1 {
+		return nativeCollabResponse(`text(await tools.collaboration__spawn_agent({task_name:"worker",message:"Send the attributed delivery fixture message, then finish.",fork_turns:"none"}));`, "")
 	}
+	if !main {
+		if step == 1 {
+			select {
+			case <-p.mainReady:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return nativeCollabResponse(`await tools.collaboration__send_message({target:"/root",message:`+strconv.Quote(nativeDeliveryBody)+`});`, "")
+		}
+		close(p.acknowledged)
+		return nativeCollabResponse("", "Worker delivery complete.")
+	}
+	if step == 2 {
+		close(p.mainReady)
+		select {
+		case <-p.stages[0]:
+			return p.appReasoningStreamProvider.ForwardExecution(parent, ctx, body, headers, key)
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	p.retained <- bytes.Count(body, []byte(nativeDeliveryBody)) == 1
+	return nativeCollabResponse("", "Retained delivery confirmed.")
 }
 
 // This covers the real runtime injection-to-terminal boundary. Selected waits
 // remain covered separately by TestNativeMessageVisibleBeforeWaitContinuation.
 func TestNativeMessageBeforeReasoningCodexE2E(t *testing.T) {
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := &deliveryOrderProvider{
 		appReasoningStreamProvider: appReasoningStreamProvider{stages: [3]chan struct{}{make(chan struct{}), make(chan struct{}), make(chan struct{})}},
-		thread:                     make(chan string, 1),
+		calls:                      make(map[string]int), mainReady: make(chan struct{}), acknowledged: make(chan struct{}), retained: make(chan bool, 1),
 	}
-	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, p, nil, nil))
+	proxy := newManagedMekugiProxy(t)
+	server := httptest.NewServer(inferencegateway.ResponsesHandler(t.Context(), time.Minute, testRequestExecutor(p, nil, proxy).ExecuteHTTP))
 	defer server.Close()
-	hubs := make(chan *sessionapi.Hub, 1)
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, codex, "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
-	}, "", appServerIntegration{nativeHub: func(hub *sessionapi.Hub) { hubs <- hub }})
+	}, "", testAppServerIntegration(proxy))
 	defer terminal.cancel()
 	// PTY reads may split or combine writes. Inspect every complete synchronized
 	// frame instead of inferring ordering from accumulated final output.
@@ -95,24 +140,14 @@ func TestNativeMessageBeforeReasoningCodexE2E(t *testing.T) {
 		}
 	}
 	awaitFrame("Ready")
-	hub := <-hubs // Startup published the Hub before admitting the ready runtime.
 	terminal.send("Exercise attributed message delivery.\r")
-	var thread string
 	select {
-	case thread = <-p.thread:
+	case <-p.acknowledged:
 	case <-terminal.ctx.Done():
-		t.Fatal("provider did not receive the initial request:", terminal.ctx.Err())
-	}
-	runtime, err := hub.Requests(thread)
-	if err != nil {
-		t.Fatal(err)
-	}
-	const body = "Delivered before reasoning: keep these exact bytes."
-	input := control.NativeInput{Thread: thread, ID: "terminal-message-order", Sender: "/root/worker", Recipient: "/root", Kind: "MESSAGE", Message: body}
-	if _, err := runtime.Input(terminal.ctx, input); err != nil {
-		t.Fatal("installed host injection acknowledgement:", err)
+		t.Fatal("native message tool did not settle:", terminal.ctx.Err())
 	}
 	acknowledged := time.Now()
+	const body = nativeDeliveryBody
 	frame := awaitFrame(body)
 	if !strings.Contains(frame, "✉ worker → main ") || strings.Contains(frame, "public checkpoint") {
 		t.Fatalf("first message frame lost attribution or required reasoning:\n%s", frame)
@@ -130,10 +165,18 @@ func TestNativeMessageBeforeReasoningCodexE2E(t *testing.T) {
 	}
 	close(p.stages[2])
 	awaitFrame("╭─ Completed")
-	// A running host queues injected items until its inference boundary. Verify
-	// durable exact bytes after settlement, separately from immediate painting.
-	if err := runtime.Confirm(terminal.ctx, input); err != nil {
-		t.Fatal("settled host did not retain the exact attributed input:", err)
+	// Confirm exact bytes through the next actual provider request, after the
+	// native recipient consumed the message at its inference boundary.
+	terminal.send("Confirm retained delivery.\r")
+	select {
+	case exact := <-p.retained:
+		if !exact {
+			t.Fatal("native history lost or duplicated attributed input")
+		}
+	case <-terminal.ctx.Done():
+		t.Fatal(terminal.ctx.Err())
 	}
+	awaitFrame("Retained delivery confirmed.")
+	awaitFrame("╭─ Completed")
 	terminal.quit()
 }

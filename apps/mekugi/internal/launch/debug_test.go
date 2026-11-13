@@ -14,7 +14,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/libraries/commandargs"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -66,7 +65,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 				args = append(args, "--capture-output", capture)
 				t.Setenv("MEKUGI_AX_OUTPUT", reads)
 			}
-			code, err := runServerSession(t.Context(), args, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{shared: control.New()})
+			code, err := runServerSession(t.Context(), args, nil, sessionapi.NewLive(), t.TempDir(), &threadExecution{})
 			if err == nil || (test.exit == "0" && code != 1) || (test.exit == "23" && code != 23) {
 				t.Fatalf("wrap exit: %d, %v", code, err)
 			}

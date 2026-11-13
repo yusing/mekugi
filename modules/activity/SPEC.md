@@ -56,13 +56,14 @@ Attribution requires validated stable thread relationships and canonical agent
 identity, never routing-session IDs or message text. Request preparation precedes
 identity admission. Deferred observations keep their originating thread.
 Ambiguous ancestry suppresses attribution, not execution
-or substantive child output. Thread Control outcomes supply assignment and
+or substantive child output. Native coordination facts supply assignment and
 directed-message bodies; host item identity deduplicates their observations.
 
 Supplemental observations use invocation-scoped queues and thread-scoped source
 deduplication, independent of attached feed replacement. The application supplies
-authenticated ancestry and audience snapshots. Main and the active work-capable
-side borrow independent delivery audiences without replacing each other. Queued observations retain their
+authenticated ancestry and audience snapshots. Native thread endpoints and each
+endpoint's active work-capable side borrow independent delivery audiences without
+replacing each other. Queued observations retain their
 source thread until delivery, so unresolved ancestry can become known and invalidated
 ancestry cannot leak into another root. Queue expiry uses arrival time without
 changing an older authored timestamp. Capacity loss produces an auxiliary notice.

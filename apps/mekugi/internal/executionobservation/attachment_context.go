@@ -1,6 +1,7 @@
 package executionobservation
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -12,6 +13,8 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -127,35 +130,21 @@ func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexr
 	if err := requestexecution.OmitCompactedAttachments(request, values); err != nil {
 		return attachmentPreparation{}, err
 	}
-	var items []map[string]jsontext.Value
-	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
-		return attachmentPreparation{}, err
-	}
-	// A caller-selected whole skill already uses the shared current-source reader.
-	// Keep its result and failure instead of scheduling an identical second read.
-	selections, _ := preloadSelections(items)
 	selected := make(map[string]bool)
 	for _, source := range historical {
 		if len(source.Ranges) == 0 && source.Changes == nil {
 			selected[source.Skill+"\x00"+source.Path] = true
 		}
 	}
-	for _, preload := range selections {
-		sources, err := compact.ReloadSources(preload.Selection)
-		if err != nil {
-			return attachmentPreparation{}, err
-		}
-		for _, source := range sources {
-			if len(source.Ranges) == 0 && source.Changes == nil {
-				selected[source.Skill+"\x00"+source.Path] = true
-			}
-		}
-	}
 	explicit := maps.Clone(selected)
+	paths, names := nativeAttachmentSources(request.Fields["input"])
 	var sources []compact.SourceIdentity
 	for _, value := range values {
 		for _, skill := range value.Skills {
 			key := skill.Name + "\x00" + skill.Path
+			if paths[skill.Path] || names[skill.Name] {
+				selected[key], explicit[key] = true, true
+			}
 			if selected[key] {
 				continue
 			}
@@ -179,6 +168,10 @@ func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexr
 		return attachmentPreparation{snapshot: snapshot}, nil
 	}
 
+	var items []map[string]jsontext.Value
+	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
+		return attachmentPreparation{}, err
+	}
 	call, readers, err := compactReaderCall(compact.Record{Reference: "attachments:" + metadata.ContextWindowID, Selection: selection}, items, thread)
 	calls := make(map[string]bool, len(readers))
 	for _, id := range readers {
@@ -188,4 +181,57 @@ func (p *Preparer) prepareAttachmentContext(ctx context.Context, request *codexr
 		return attachmentPreparation{calls: calls, snapshot: snapshot}, nil
 	}
 	return attachmentPreparation{reader: call, calls: calls, snapshot: snapshot, explicit: explicit}, err
+}
+
+// The native prompt supplies this receipt from the retained reload envelope.
+// Only complete, successful source identities retire optional skill acquisition;
+// source prose and byte equality cannot establish that a skill was selected.
+func nativeAttachmentSources(input jsontext.Value) (paths, names map[string]bool) {
+	if !bytes.Contains(input, []byte(`"source_acquisition"`)) {
+		return nil, nil
+	}
+	var items []struct {
+		Type      string         `json:"type"`
+		Name      string         `json:"name"`
+		Namespace string         `json:"namespace"`
+		CallID    jsontext.Value `json:"call_id"`
+		Metadata  struct {
+			SourceAcquisition *observation.SourceAcquisition `json:"source_acquisition"`
+		} `json:"internal_chat_message_metadata_passthrough"`
+	}
+	if json.Unmarshal(input, &items) != nil {
+		return nil, nil
+	}
+	for _, item := range items {
+		receipt := item.Metadata.SourceAcquisition
+		if item.Type != "function_call_output" || item.Namespace != "context" || item.Name != "reload" || len(item.CallID) != 0 && !bytes.Equal(item.CallID, []byte("null")) || receipt == nil || receipt.ID == "" || receipt.Purpose != "preload" && receipt.Purpose != "reload" {
+			continue
+		}
+		for _, source := range receipt.Sources {
+			if !source.Success {
+				continue
+			}
+			ref, err := attachments.ParseReference(source.Reference)
+			if err != nil || len(ref.Ranges) != 0 {
+				continue
+			}
+			switch source.Kind {
+			case "file":
+				if ref.Path != "" && source.Path != "" {
+					if paths == nil {
+						paths = make(map[string]bool)
+					}
+					paths[source.Path] = true
+				}
+			case "skill":
+				if ref.Skill != "" && ref.Skill == source.Name {
+					if names == nil {
+						names = make(map[string]bool)
+					}
+					names[source.Name] = true
+				}
+			}
+		}
+	}
+	return paths, names
 }

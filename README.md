@@ -21,18 +21,18 @@ Invocation overrides leave Codex configuration unchanged.
   handover summary. Agents can [select files, skills and captured changes](modules/agentguidance/SPEC.md#compaction-context)
   needed for unfinished work; Mekugi reads them before the conversation continues,
   so work resumes from current source text.
-- **Agent-chosen checkpoints.** Agents can [compact at safe checkpoints](modules/threadcontrol/SPEC.md#operations-and-admission)
+- **Agent-chosen checkpoints.** Agents can [compact at safe checkpoints](docs/contracts/coordination.md#operations-and-admission)
   and continue, or compact while waiting for delegates. [Measured usage reminders](modules/agentguidance/SPEC.md#context-usage-notices)
   arrive from halfway full when usage is measured, with an instruction to compact
-  at 90%. Early checkpoints can [skip a costlier reset](docs/guide/sessions.md#compaction-and-recovery).
-- **Delegates start prepared.** [Fresh agents start with selected files, skills and captured changes](modules/threadcontrol/SPEC.md#prepared-children-and-guidance)
+  at 90%. [Requested resets run without a cost veto](docs/guide/sessions.md#compaction-and-recovery).
+- **Delegates start prepared.** [Fresh agents start with selected files, skills and captured changes](docs/contracts/coordination.md#prepared-children-and-guidance)
   already loaded. Parents wait for any or all current descendants without polling;
   optional progress yields pair developer summaries with captured changes to help
   catch mistakes before completion, rather than just checking liveness.
   Delegates can coordinate their own children and reply with a short summary and details.
-  Assignments and messages can [snapshot referenced files](modules/threadcontrol/SPEC.md#file-references-in-assignments-and-messages)
+  Assignments and messages can [snapshot referenced files](docs/contracts/coordination.md#file-references-in-assignments-and-messages)
   under the recipient's permissions, including when coordinating across sessions.
-  Agents can also [ask independent side questions](modules/threadcontrol/SPEC.md#independent-side-questions)
+  Agents can also [ask independent side questions](docs/contracts/coordination.md#independent-side-questions)
   without steering the recipient's work, and coordinate across active sessions.
 - **Facts up front.** Codex agents receive an [observed OS and Git snapshot](modules/agentguidance/SPEC.md#environment-snapshot),
   and attached files and skills are marked as reusable, so neither is rediscovered.
@@ -93,7 +93,7 @@ Invocation overrides leave Codex configuration unchanged.
   closes. [Control them from another machine](docs/guide/remote.md), including
   phones, through an authenticated connector.
 - **Session continuity.** [Resume, fork, or rewind](docs/guide/sessions.md) conversations.
-- **Providers.** Use [native OpenAI or custom Responses providers](docs/guide/providers.md).
+- **Providers.** Use [custom Responses providers](docs/guide/providers.md).
 - **Composer.** Attach files and skills, ask side questions, run one-off tasks,
   recall presets, and change model, reasoning, tier and permissions in session.
   See the [composer](docs/guide/terminal-ui.md#composer).
@@ -183,7 +183,7 @@ imports, and `--oss` remains unsupported. See [launch details](docs/guide/launch
 - [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file` and `mchanges`.
 - [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards and secure GPG passphrase entry.
 - [Server, connector and browser](docs/guide/remote.md): remote control, browser UI and Docker deployment.
-- [Providers](docs/guide/providers.md): native OpenAI and custom Responses providers.
+- [Providers](docs/guide/providers.md): custom Responses and retired-provider migration.
 - [Launch and automation](docs/guide/launch.md): launch commands, execution policy and headless runs.
 - [Configuration and metrics](docs/guide/configuration.md): settings file, options, metrics and troubleshooting.
 

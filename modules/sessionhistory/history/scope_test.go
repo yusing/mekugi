@@ -98,6 +98,44 @@ func TestScopeFreshStoreRestoresNamespaceAndInheritedAllocation(t *testing.T) {
 	}
 }
 
+func TestReadAdmittedScopeRequiresPersistedIdentity(t *testing.T) {
+	directory := t.TempDir()
+	store := scopeStore(directory)
+	if _, err := store.ReadAdmittedScope("missing"); err == nil {
+		t.Fatal("allocation default admitted a missing thread")
+	}
+	if _, found, err := store.ReadScope("missing"); found || err != nil {
+		t.Fatalf("admission read published identity: found=%v err=%v", found, err)
+	}
+	if err := store.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
+		if err := tx.InitializeScope(history.Scope{Thread: "root", Namespace: "root"}, nil); err != nil {
+			return err
+		}
+		return tx.InitializeScope(history.Scope{Thread: "child", Namespace: "root", Parent: "root"}, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, thread := range []string{"root", "child"} {
+		scope, err := scopeStore(directory).ReadAdmittedScope(thread)
+		if err != nil || scope.Thread != thread || scope.Namespace != "root" {
+			t.Fatalf("persisted scope=%+v err=%v", scope, err)
+		}
+	}
+	for _, wire := range []string{"", `{`, `{"Version":1,"Thread":"root","Namespace":"other","Parent":"other","Next":0}`} {
+		path := filepath.Join(directory, history.ScopeName("root"))
+		if wire == "" {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.WriteFile(path, []byte(wire), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := scopeStore(directory).ReadAdmittedScope("child"); err == nil {
+			t.Fatalf("child admitted with unavailable root %q", wire)
+		}
+	}
+}
+
 func TestScopeRejectsInvalidRetainedIdentityAndRanges(t *testing.T) {
 	for name, wire := range map[string]string{
 		"wrong thread":            `{"Version":1,"Thread":"other","Namespace":"branch","Next":0}`,

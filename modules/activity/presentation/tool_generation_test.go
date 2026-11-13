@@ -20,9 +20,7 @@ func TestToolGenerationLabels(t *testing.T) {
 	}
 }
 
-// Keep this inventory aligned with the stock execution builtins in
-// backends/codex/binding/execution_source.go and threadcontrol's ToolCatalog.
-// new_context is deliberately omitted: PrepareStockExecution removes it.
+// Cover native JavaScript declarations, direct reset and coordination tools.
 func TestToolGenerationCatalog(t *testing.T) {
 	for _, test := range []struct{ name, want string }{
 		{"exec", "Emitting JavaScript"},
@@ -39,12 +37,21 @@ func TestToolGenerationCatalog(t *testing.T) {
 		{"sleep", "Sleeping"},
 		{"web.run", "Browsing the web"},
 		{"image_gen.imagegen", "Generating an image"},
+		{"collaboration.spawn_agent", "Spawning subagent"},
+		{"collaboration.followup_task", "Assigning follow-up to"},
+		{"collaboration.send_message", "Sending message to"},
+		{"collaboration.interrupt_agent", "Interrupting agent"},
+		{"collaboration.inspect_agent", "Inspecting agent"},
+		{"collaboration.list_agents", "Listing agents"},
+		{"collaboration.wait_agent", "Waiting for agents"},
+		{"new_context", "Compacting context"},
 		{"mcp__threadcontrol.spawn_agent", "Spawning subagent"},
 		{"mcp__threadcontrol.followup_task", "Assigning follow-up to"},
 		{"mcp__threadcontrol.send_message", "Sending message to"},
 		{"mcp__threadcontrol.interrupt_agent", "Interrupting agent"},
-		{"mcp__threadcontrol.inspect", "Inspecting agent"},
+		{"mcp__threadcontrol.inspect_agent", "Inspecting agent"},
 		{"mcp__threadcontrol.list_agents", "Listing agents"},
+		{"mcp__threadcontrol.compact", "Compacting context"},
 		{"mcp__threadcontrol.wait_agent", "Waiting for agents"},
 	} {
 		for _, name := range []string{test.name, strings.ReplaceAll(test.name, ".", "__")} {
@@ -61,11 +68,11 @@ func TestToolGenerationCatalog(t *testing.T) {
 
 func TestToolGenerationIdentityRefinement(t *testing.T) {
 	for _, test := range []struct{ name, input, want string }{
-		{"mcp__threadcontrol__followup_task", `{"target":"worker","message":"long`, "Assigning follow-up to `worker`"},
-		{"mcp__threadcontrol__send_message", `{"message":"hello","target":"agent:main/reviewer"}`, "Sending message to `agent:main/reviewer`"},
+		{"collaboration__followup_task", `{"target":"worker","message":"long`, "Assigning follow-up to `worker`"},
+		{"mcp__threadcontrol__send_message", `{"message":"hello","target":"/root/reviewer"}`, "Sending message to `/root/reviewer`"},
 		{"mcp__threadcontrol__interrupt_agent", `{"target":"worker"`, "Interrupting agent `worker`"},
-		{"mcp__threadcontrol__inspect", `{"target":"worker"}`, "Inspecting agent `worker`"},
-		{"mcp__threadcontrol__list_agents", `{"path_prefix":"agent:main/team"}`, "Listing agents `agent:main/team`"},
+		{"mcp__threadcontrol__inspect_agent", `{"target":"worker"}`, "Inspecting agent `worker`"},
+		{"mcp__threadcontrol__list_agents", `{"path_prefix":"/root/team"}`, "Listing agents `/root/team`"},
 		{"view_image", `{"path":"/tmp/picture.png"}`, "Viewing an image `/tmp/picture.png`"},
 		{"view_image", `{"path":"/tmp/\ud83d\ude00.png"}`, "Viewing an image `/tmp/😀.png`"},
 		{"view_image", `{"path":"/tmp/😀.png"}`, "Viewing an image `/tmp/😀.png`"},

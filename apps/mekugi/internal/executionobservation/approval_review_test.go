@@ -19,11 +19,10 @@ import (
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestApprovalReviewRestoresCompactionAtProvider(t *testing.T) {
@@ -33,11 +32,6 @@ func TestApprovalReviewRestoresCompactionAtProvider(t *testing.T) {
 			defer cancel()
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			driver, err := threadbinding.NewDriver(control.New())
-			if err != nil {
-				t.Fatal(err)
-			}
-			proxy.ThreadControl = driver
 			ref, err := moduletest.StoreCompact(ctx, proxy.Retained, "parent", "exact retained handover", `{"sources":["@must-not-be-read.txt"]}`)
 			if err != nil {
 				t.Fatal(err)
@@ -142,9 +136,6 @@ func TestApprovalReviewRestoresCompactionAtProvider(t *testing.T) {
 			if !bytes.Contains(output, []byte(`"text":"denied"`)) {
 				t.Fatalf("native decision changed: %s", output)
 			}
-			if _, admitted := driver.Coordination().Member("reviewer"); admitted {
-				t.Fatal("reviewer entered managed-agent tree")
-			}
 			if _, found, err := proxy.Retained.Store.ReadScope("reviewer"); found || err != nil {
 				t.Fatal("reviewer published retained scope", err)
 			}
@@ -157,15 +148,14 @@ func TestApprovalReviewPreservesNativeRequestAndChildAdmission(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			driver, err := threadbinding.NewDriver(control.New())
-			if err != nil {
-				t.Fatal(err)
+			tools := testExecResponsesTools()
+			if kind == "thread_spawn" {
+				tools = append(tools, map[string]any{"type": "function", "name": "collaboration.spawn_agent"})
 			}
-			proxy.ThreadControl = driver
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 				"model": "gpt-test", "instructions": "Review the proposed action under the approval policy.",
 				"input": []any{map[string]any{"role": "user", "content": "Review this action."}, map[string]any{"type": "compaction", "encrypted_content": "provider-opaque"}},
-				"tools": testExecResponsesTools(), "tool_choice": "auto",
+				"tools": tools, "tool_choice": "auto",
 				"access_programs": map[string]string{"cyber": "standard"},
 				"text":            map[string]any{"format": map[string]any{"type": "json_schema", "name": "review", "schema": map[string]any{"type": "object"}}},
 			}))
@@ -186,6 +176,17 @@ func TestApprovalReviewPreservesNativeRequestAndChildAdmission(t *testing.T) {
 			} else {
 				metadata["subagent_kind"] = kind
 			}
+			if kind == "thread_spawn" {
+				metadata["parent_thread_id"], metadata["agent_name"] = "root", "/root/native-child"
+				if err := proxy.Retained.Store.Transaction(t.Context(), proxy.Retained.Writes, func(tx *history.Transaction) error {
+					return tx.InitializeScope(history.Scope{Thread: "root", Namespace: "root"}, nil)
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if err := proxy.AdmitNativeChild(t.Context(), appserver.ChildHostAdmissionRequest{RootThreadID: "root", ParentThreadID: "root", ThreadID: "review-thread"}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 			const response = `{"id":"review-result","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"denied"}]}]}`
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(response)}}}
@@ -193,8 +194,11 @@ func TestApprovalReviewPreservesNativeRequestAndChildAdmission(t *testing.T) {
 			var output bytes.Buffer
 			err = executor.ExecuteHTTP(t.Context(), t.Context(), request, headers, &output)
 			if kind == "thread_spawn" {
-				if err == nil || !strings.Contains(err.Error(), "independent child request preceded logical admission") || len(provider.forwarded) != 0 {
-					t.Fatalf("unadmitted child escaped admission: %v, forwards=%d", err, len(provider.forwarded))
+				if err != nil || len(provider.forwarded) != 1 {
+					t.Fatalf("native-admitted child required Go logical admission: %v, forwards=%d", err, len(provider.forwarded))
+				}
+				if scope, err := proxy.Retained.Store.ReadAdmittedScope("review-thread"); err != nil || scope.Namespace != "root" || scope.Parent != "root" {
+					t.Fatalf("native request changed admitted resource scope: %+v, %v", scope, err)
 				}
 				return
 			}
@@ -206,9 +210,6 @@ func TestApprovalReviewPreservesNativeRequestAndChildAdmission(t *testing.T) {
 			}
 			if !strings.Contains(output.String(), `"text":"denied"`) {
 				t.Fatalf("review decision changed: %s", output.String())
-			}
-			if _, admitted := driver.Coordination().Member("review-thread"); admitted {
-				t.Fatal("reviewer entered managed-agent tree")
 			}
 		})
 	}

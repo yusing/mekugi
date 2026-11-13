@@ -1,7 +1,7 @@
 # Module reference
 
 Generated from feature descriptors, Codex binding declarations and application
-composition. 25 of 25 feature modules are selected.
+composition. 24 of 24 feature modules are selected.
 Regenerate with `make generate`; verify with `make check-generated`.
 
 The [composition contract](../contracts/composition.md) defines ownership and
@@ -217,16 +217,6 @@ Resolve semantic definitions and references
 - Contributes: `commands`, `guidance`.
 - Commands: `msymbol`.
 - Codex connections: `executable-frontend`.
-
-## [threadcontrol](../../modules/threadcontrol/SPEC.md)
-
-Coordinate native agent threads and retained descendant waits
-
-- Composition: selected; lifetime: `invocation`.
-- Requires: `sessionhistory`, `agentguidance`.
-- Contributes: `record-kinds`.
-- Records: `threadcontrol`, `threadcontrol-import`, `threadcontrol-message`.
-- Codex connections: `mcp-tools`.
 
 ## [transportdiagnostics](../../modules/transportdiagnostics/SPEC.md)
 

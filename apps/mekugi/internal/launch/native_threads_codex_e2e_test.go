@@ -39,8 +39,8 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	agentevidence "github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -48,7 +48,6 @@ type nativeThreadsProvider struct {
 	spawnSettings                           *spawnSettingsFixture
 	mu                                      sync.Mutex
 	childDirectory, parent, child, waitTurn string
-	compactTurn                             string
 	fullHistory                             bool
 	frozenPrefix                            bool
 	initialFacts                            string
@@ -68,6 +67,7 @@ type nativeThreadsProvider struct {
 	usageLimit                              bool
 	temporaryUsage                          bool
 	concurrentChildren                      bool
+	readerEvidence                          bool
 	compactLatency                          bool
 	compactIssued, compactContinued         time.Time
 	limited                                 map[string]bool
@@ -252,10 +252,14 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	p.calls[metadata.ThreadID]++
 	step, parent := p.calls[metadata.ThreadID], metadata.ThreadID == p.parent
 	if parent && p.recoverFailure {
-		// Exhaust stock host retries on the failed turn. Only a new turn may
-		// reach the resumed-parent assertions; do not mistake a retry for a wake.
-		if metadata.TurnID == p.waitTurn && step-p.recoveryRetries > 4 {
-			p.recoveryRetries++
+		// Keep rejecting retries until the consumer observes the recovery wait
+		// and releases the child. Recovery retains the original native turn.
+		if step-p.recoveryRetries > 4 {
+			select {
+			case <-p.waiting:
+			default:
+				p.recoveryRetries++
+			}
 		}
 		step -= p.recoveryRetries
 	}
@@ -264,6 +268,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		p.child = metadata.ThreadID
 	}
 	var program, answer, failure string
+	reset := false
 	if step == 1 {
 		if !strings.Contains(string(body), "Compaction does not end the task. Treat work spanning compactions as one logical chain of events.") ||
 			strings.Contains(string(body), "the conversation is automatically compacted into a summary") ||
@@ -280,23 +285,21 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 		}
 		catalog := descriptions.String()
-		for _, name := range []string{"spawn_agent", "list_agents", "list_models", "inspect", "compact", "wait_agent", "send_message", "followup_task", "interrupt_agent"} {
-			if !strings.Contains(catalog, "mcp__threadcontrol__"+name+"(args:") {
-				failure = "initial execution catalog omitted threadcontrol declaration: " + name
+		for _, name := range []string{"spawn_agent", "list_agents", "inspect_agent", "wait_agent", "send_message", "followup_task", "interrupt_agent"} {
+			if !strings.Contains(catalog, "collaboration__"+name+"(args:") {
+				failure = "initial execution catalog omitted native collaboration declaration: " + name
 			}
 		}
 		if !strings.Contains(catalog, "task_name: string;") || !strings.Contains(catalog, "message: string;") {
 			failure = "initial execution catalog omitted required spawn arguments"
 		}
-		for _, comment := range []string{
-			"// Task-name segment under this agent. Use lowercase ASCII letters, digits, underscores and hyphens; for example, trace_roster_metrics.",
-			"// Model override for fork_turns=none. Set only when explicitly requested by the user, applicable AGENTS.md instructions, or skill instructions.",
-			"// Required instruction files, skills, task files or retained changes for fork_turns=none, acquired before first inference.",
-			"// Wait timeout in milliseconds. Omit for completion waits; set only for a real deadline.",
-		} {
-			if !strings.Contains(catalog, comment) {
-				failure = "initial execution catalog omitted field comment: " + comment
+		for _, field := range []string{"fork_turns?", "preload?", "cwd?", "timeout_ms?", "yield_time_ms?", "btw?"} {
+			if !strings.Contains(catalog, field) {
+				failure = "initial native catalog omitted parameter: " + field
 			}
+		}
+		if !bytes.Contains(body, []byte(`"name":"new_context"`)) || strings.Contains(catalog, "collaboration__compact(args:") || strings.Contains(catalog, "collaboration tools cannot be called from inside") {
+			failure = "native catalog lost direct reset or advertised the retired calling convention"
 		}
 		modeAt := strings.LastIndex(string(body), "<multi_agent_mode>")
 		wantMode := "Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask"
@@ -304,7 +307,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			wantMode = "Proactive multi-agent delegation is active."
 		}
 		if modeAt < 0 || !strings.Contains(string(body)[modeAt:], wantMode) {
-			failure = "inherited ultra did not select the expected effective delegation mode"
+			mode := "missing"
+			if modeAt >= 0 {
+				mode, _, _ = strings.Cut(string(body)[modeAt:], "</multi_agent_mode>")
+			}
+			failure = fmt.Sprintf("inherited ultra did not select the expected effective delegation mode: parent=%t mode=%q", parent, mode)
 		}
 		if strings.Contains(string(body), "an explicit delegation request in your authenticated parent assignment carries the parent's authority within that assignment, subject to higher-priority limits") != !parent {
 			failure = "parent-assignment delegation authority is not child-only"
@@ -312,19 +319,20 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		if strings.Contains(string(body), "Ask the user directly for clarification with functions.request_user_input_async.") != !parent {
 			failure = "direct user clarification guidance is not child-only"
 		}
-		identity := "Your logical task is agent:main."
+		identity := "Agent name: /root"
 		if !parent {
-			identity = "Your logical task is agent:main/worker. Your parent logical task is agent:main."
+			identity = "Agent name: /root/worker"
 		}
 		if grandchild {
-			identity = "Your logical task is agent:main/worker/reviewer. Your parent logical task is agent:main/worker."
+			identity = "Agent name: /root/worker/reviewer"
 		}
-		if strings.Count(string(body), identity+" Call threadcontrol tools inside functions.exec as tools.mcp__threadcontrol__<name>.") != 1 {
-			failure = "provider prompt omitted or duplicated the logical identity and single calling convention"
+		if strings.Count(string(body), identity+`\nFirst context window id:`) != 1 {
+			failure = "provider context omitted or duplicated the canonical agent identity"
 		}
+
 	}
 	if !p.fullHistory && step == 1 {
-		rootCount := strings.Count(string(body), "You are `agent:main`, the primary agent in a team")
+		rootCount := strings.Count(string(body), "You are `/root`, the primary agent in a team")
 		childCount := strings.Count(string(body), "You are an agent in a team of agents collaborating to complete a task.")
 		wantRoot, wantChild := 0, 1
 		if parent {
@@ -337,18 +345,17 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	switch {
 	case p.compactLatency && parent && step == 1:
 		p.compactIssued = time.Now()
-		p.compactTurn = metadata.TurnID
-		program = `text(await tools.mcp__threadcontrol__compact({}));`
+		reset = true
 	case p.compactLatency && parent && step == 2:
 		p.compactContinued = time.Now()
-		if metadata.TurnID == p.compactTurn || request.PreviousResponse != "" || !completedStandaloneCompaction(request.Input) {
+		if request.PreviousResponse != "" || !completedStandaloneCompaction(request.Input) {
 			failure = "standalone compaction did not deliver its retained continuation"
 		}
 		answer = "MANAGED_PARENT_RESUMED"
 	case grandchild:
 		inherited, assigned := false, false
 		for _, item := range request.Input {
-			if string(item["role"]) != `"assistant"` || string(item["phase"]) != `"commentary"` {
+			if string(item["type"]) != `"agent_message"` {
 				continue
 			}
 			var content []struct {
@@ -358,8 +365,8 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				continue
 			}
 			for _, part := range content {
-				inherited = inherited || part.Text == "Message Type: NEW_TASK\nTask name: agent:main/worker\nSender: agent:main\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT"
-				assigned = assigned || part.Text == "Message Type: NEW_TASK\nTask name: agent:main/worker/reviewer\nSender: agent:main/worker\nPayload:\nGRANDCHILD_ATTRIBUTED_ASSIGNMENT"
+				inherited = inherited || part.Text == "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT"
+				assigned = assigned || part.Text == "Message Type: NEW_TASK\nTask name: /root/worker/reviewer\nSender: /root/worker\nPayload:\nGRANDCHILD_ATTRIBUTED_ASSIGNMENT"
 			}
 		}
 		if step != 1 || !inherited || !assigned || !strings.Contains(string(body), "PARENT_PRIVATE_SENTINEL") {
@@ -369,31 +376,31 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	case parent && p.earlyCompletion && step == 4:
 		answer = "PARENT_PREMATURE_FINAL"
 	case parent && p.earlyCompletion && step == 5:
-		if !strings.Contains(string(body), "completion_guard") || !strings.Contains(string(body), "Active descendants: agent:main/worker. Call wait_agent before completing.") {
+		if !strings.Contains(string(body), "completion_guard") || !strings.Contains(string(body), "Active descendants: /root/worker. Call wait_agent before completing.") {
 			failure = "early completion did not receive retained descendant hint"
 		}
 		p.waitTurn = metadata.TurnID
-		program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
+		program = `text(await tools.collaboration__wait_agent({}));`
 		if p.agentCompact {
-			program = `text(await tools.mcp__threadcontrol__wait_agent({compact:true}));`
+			program = `text(await tools.collaboration__wait_agent({compact:true}));`
 		}
 	case parent && p.earlyCompletion && step == 6:
-		if metadata.TurnID == p.waitTurn || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") {
+		if metadata.TurnID != p.waitTurn || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") {
 			failure = "guarded completion lost native child wake"
 		}
 		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 1:
 		p.users = users
-		program = `text(Object.keys(tools).filter(name => name.includes("threadcontrol"))); text(await tools.mcp__threadcontrol__list_agents({path_prefix:"agent:main"})); text(await tools.mcp__threadcontrol__inspect({target:"agent:main"}));`
+		program = `text(Object.keys(tools).filter(name => name.includes("collaboration"))); text(await tools.collaboration__list_agents({path_prefix:"/root"})); text(await tools.collaboration__inspect_agent({target:"/root"}));`
 	case parent && step == 2:
-		if !strings.Contains(string(body), "compactions") || !strings.Contains(string(body), "context_window") || !strings.Contains(string(body), "reasoning_effort") {
+		if !strings.Contains(string(body), "completedCompactions") || !strings.Contains(string(body), "contextWindow") || !strings.Contains(string(body), "reasoningEffort") {
 			failure = "root inspection omitted applied settings or metrics"
 		}
 		if strings.Contains(string(body), "context_known") || strings.Contains(string(body), "compactions_known") {
 			failure = "root inspection exposed availability flags"
 		}
-		if !strings.Contains(string(body), "mcp__threadcontrol__spawn_agent") || !strings.Contains(string(body), "agent:main") {
-			failure = "replacement MCP discovery/list_agents omitted root or spawn tool"
+		if !strings.Contains(string(body), "collaboration__spawn_agent") || !strings.Contains(string(body), "/root") {
+			failure = "native discovery/list_agents omitted root or spawn tool"
 		}
 		fork := `,fork_turns:"none"`
 		if p.fullHistory {
@@ -414,9 +421,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				assignment += " @private-source.txt"
 			}
 		}
-		program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:` + strconv.Quote(assignment) + fork + `,cwd:` + strconv.Quote(p.childDirectory) + `}));`
+		program = `text(await tools.collaboration__spawn_agent({task_name:"worker",message:` + strconv.Quote(assignment) + fork + `,cwd:` + strconv.Quote(p.childDirectory) + `}));`
 	case parent && step == 3:
-		if !strings.Contains(string(body), "agent:main/worker") {
+		if !strings.Contains(string(body), "/root/worker") {
 			failure = "spawn omitted confirmed logical child"
 			for _, item := range request.Input {
 				if string(item["type"]) == `"function_call_output"` || string(item["type"]) == `"custom_tool_call_output"` {
@@ -425,6 +432,9 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 		}
 		program = `text("PARENT_ACCEPTED_MAILBOX");`
+		if p.readerEvidence {
+			program += `text((await tools.exec_command({cmd:"mcat native-reader.txt",shell:"/bin/bash",login:false})).output);`
+		}
 	case parent && step == 4:
 		if !strings.Contains(string(body), "CHILD_PROGRESS_ALREADY_READ") {
 			failure = "parent input omitted injected mailbox message"
@@ -433,9 +443,12 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			failure = "message reference did not acquire the parent recipient's source"
 		}
 		p.waitTurn = metadata.TurnID
-		program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
+		program = `text(await tools.collaboration__wait_agent({}));`
+		if p.fullHistory {
+			program = `text(await tools.collaboration__wait_agent({wait_mode:"all"}));`
+		}
 		if p.agentCompact {
-			program = `text(await tools.mcp__threadcontrol__wait_agent({compact:true}));`
+			program = `text(await tools.collaboration__wait_agent({compact:true}));`
 		}
 		if p.attachments {
 			if err := os.WriteFile(filepath.Join(p.childDirectory, "SKILL.md"), []byte("CURRENT_ATTACHED_SKILL"), 0600); err != nil {
@@ -445,33 +458,41 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				failure = err.Error()
 			}
 			if p.attachmentReload {
-				source := `{skill:"guide",path:` + strconv.Quote(filepath.Join(p.childDirectory, "SKILL.md")) + `}`
-				program = `text(await tools.mcp__threadcontrol__wait_agent({compact:true,reload:{sources:[` + source + `,` + source + `]}}));`
+				source := strconv.Quote("@" + filepath.Join(p.childDirectory, "SKILL.md"))
+				program = `text(await tools.collaboration__wait_agent({compact:true,reload:{sources:[` + source + `,` + source + `]}}));`
 			}
 		}
 	case parent && step == 5:
 		if p.recoverFailure {
 			completed := false
 			for _, item := range request.Input {
-				if string(item["namespace"]) != `"threadcontrol"` || string(item["name"]) != `"wait_agent"` {
+				var parts []struct {
+					Text string `json:"text"`
+				}
+				if json.Unmarshal(item["content"], &parts) != nil {
 					continue
 				}
-				var output string
-				var wake struct {
-					Event *struct {
-						Kind   string `json:"kind"`
-						Status string `json:"status"`
-						Task   string `json:"task"`
-					} `json:"event"`
-				}
-				if json.Unmarshal(item["output"], &output) == nil && json.Unmarshal([]byte(output), &wake) == nil && wake.Event != nil {
-					completed = wake.Event.Kind == "completed" && wake.Event.Status == "completed" && wake.Event.Task == "agent:main/worker"
+				for _, part := range parts {
+					var wake struct {
+						Reason   string `json:"reason"`
+						Outcomes []struct {
+							Task   string                    `json:"task_name"`
+							Status map[string]jsontext.Value `json:"status"`
+						} `json:"outcomes"`
+					}
+					if json.Unmarshal([]byte(strings.TrimPrefix(part.Text, "Native logical continuation:\n")), &wake) != nil {
+						continue
+					}
+					for _, outcome := range wake.Outcomes {
+						completed = completed || wake.Reason == "descendant_recovery" && outcome.Task == "/root/worker" && outcome.Status["completed"] != nil
+					}
 				}
 			}
 			if !completed {
 				failure = "recovery wake did not identify the completed child"
 			}
 		}
+
 		if p.attachments {
 			if strings.Count(string(body), "CURRENT_ATTACHED_SKILL") != map[bool]int{true: 1, false: 0}[p.attachmentReload] || strings.Contains(string(body), "SELECTED_SCREEN_BYTES") {
 				failure = "reset forced attachment bodies or lost explicit reload"
@@ -485,23 +506,29 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 
 		expectedUsers := p.users
 		if p.compactWait || p.agentCompact {
-			expectedUsers-- // Reset removes the original human prompt.
+			expectedUsers = 1 // Reset replaces the prior conversation with the current environment.
 			if strings.Contains(string(body), "PARENT_PRIVATE_SENTINEL") {
 				failure = "reset retained the original task"
 			}
 		}
-		if p.attachChanges {
-			expectedUsers++ // The shared reload consumer introduces captured context.
+		if request.PreviousResponse != "" {
+			expectedUsers = 0 // Linked requests send only new input items.
 		}
-		if p.attachChanges && (strings.Contains(string(body), "mcp__threadcontrol__attach_changes") || !strings.Contains(string(body), "Reloaded context (tool output)") || !strings.Contains(string(body), "+managed-child-write") || !strings.Contains(string(body), "managed-child.txt")) {
+		waitOutputs := 0
+		for _, item := range request.Input {
+			if string(item["type"]) == `"custom_tool_call_output"` && string(item["call_id"]) == strconv.Quote("managed-"+p.parent+"-4-call") {
+				waitOutputs++
+			}
+		}
+		if p.attachChanges && (!strings.Contains(string(body), "+managed-child-write") || !strings.Contains(string(body), "managed-child.txt")) {
 			failure = "parent completion omitted the delegate's explicitly selected retained diff"
 		}
 		if p.shellWait {
-			if metadata.TurnID == p.waitTurn || users != p.users+1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
-				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, p.users+1, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
+			if metadata.TurnID != p.waitTurn || users != expectedUsers+1 || waitOutputs != 1 || strings.Count(string(body), "<user_shell_command>") != 1 || !strings.Contains(string(body), "SHELL_WAIT_OUTPUT") {
+				failure = fmt.Sprintf("shell continuation: same_turn=%t user_items=%d want=%d original_outputs=%d shell_records=%d has_output=%t", metadata.TurnID == p.waitTurn, users, expectedUsers+1, waitOutputs, strings.Count(string(body), "<user_shell_command>"), strings.Contains(string(body), "SHELL_WAIT_OUTPUT"))
 			}
-		} else if metadata.TurnID == p.waitTurn || !p.attachments && users != expectedUsers || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "agent:main/worker") || !strings.Contains(string(body), "wait_agent") {
-			failure = fmt.Sprintf("local stop/wake: same_turn=%t users=%d want=%d final=%t task=%t wait=%t", metadata.TurnID == p.waitTurn, users, expectedUsers, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "agent:main/worker"), strings.Contains(string(body), "wait_agent"))
+		} else if metadata.TurnID != p.waitTurn || !p.attachments && users != expectedUsers || !strings.Contains(string(body), "MANAGED_CHILD_FINAL") || !strings.Contains(string(body), "/root/worker") || !p.recoverFailure && waitOutputs != 1 {
+			failure = fmt.Sprintf("native wait continuation: same_turn=%t recovery=%t linked=%t users=%d want=%d final=%t task=%t original_outputs=%d", metadata.TurnID == p.waitTurn, p.recoverFailure, request.PreviousResponse != "", users, expectedUsers, strings.Contains(string(body), "MANAGED_CHILD_FINAL"), strings.Contains(string(body), "/root/worker"), waitOutputs)
 		}
 		answer = "MANAGED_PARENT_RESUMED"
 		if p.multipleAnswers && (strings.Count(string(body), "MANAGED_CHILD_FINAL") != 1 || strings.Count(string(body), "LATER_CHILD_FINAL") != 1) {
@@ -549,12 +576,12 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 6:
-		program = `text(await tools.mcp__threadcontrol__list_agents({path_prefix:"agent:main"})); text(await tools.mcp__threadcontrol__followup_task({target:"agent:main/worker",message:"COLD_CHILD_FOLLOWUP"}));`
+		program = `text(await tools.collaboration__list_agents({path_prefix:"/root"})); text(await tools.collaboration__followup_task({target:"/root/worker",message:"COLD_CHILD_FOLLOWUP"}));`
 		if p.messageSources {
-			program = `text(await tools.mcp__threadcontrol__followup_task({target:"agent:main/worker",message:"COLD_CHILD_FOLLOWUP @message-source.txt"}));`
+			program = `text(await tools.collaboration__followup_task({target:"/root/worker",message:"COLD_CHILD_FOLLOWUP @message-source.txt"}));`
 		}
 	case parent && step == 7:
-		program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
+		program = `text(await tools.collaboration__wait_agent({}));`
 	case parent && step == 8:
 		if !strings.Contains(string(body), "MANAGED_CHILD_RECOVERED") {
 			failure = "cold recovery omitted the retained child's attributed result"
@@ -575,10 +602,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				if string(item["role"]) == `"developer"` {
 					developerText.WriteString(part.Text)
 				}
-				if part.Text == "Message Type: NEW_TASK\nTask name: agent:main/worker\nSender: agent:main\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT" && string(item["role"]) == `"assistant"` && string(item["phase"]) == `"commentary"` && part.Type == "output_text" {
+				if part.Text == "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT" && string(item["type"]) == `"agent_message"` && part.Type == "input_text" {
 					assignment = true
 				}
-				if p.messageSources && strings.HasPrefix(part.Text, "Message Type: NEW_TASK\nTask name: agent:main/worker\nSender: agent:main\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT @message-source.txt") && string(item["role"]) == `"assistant"` && part.Type == "output_text" {
+				if p.messageSources && strings.HasPrefix(part.Text, "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\nCHILD_ATTRIBUTED_ASSIGNMENT @message-source.txt") && string(item["type"]) == `"agent_message"` && part.Type == "input_text" {
 					assignment = true
 				}
 				if string(item["role"]) == `"user"` && part.Type == "input_text" && strings.HasPrefix(part.Text, "<environment_context>") && strings.Contains(part.Text, "<cwd>"+p.childDirectory+"</cwd>") && !strings.Contains(part.Text, "CHILD_ATTRIBUTED_ASSIGNMENT") {
@@ -587,21 +614,18 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			}
 		}
 		wantUsers := 1
-		if !strings.Contains(developerText.String(), threadbinding.CompletionChangesGuidance) {
+		if !strings.Contains(developerText.String(), "To attach retained changes to your parent, include explicit mchanges source references in your ordinary final answer.") {
 			failure = "initial child inference omitted completion selection guidance"
-		}
-		if p.preload {
-			wantUsers += 2 // One shared reload context message per selected reader outcome.
 		}
 		inherited := strings.Contains(string(body), "PARENT_PRIVATE_SENTINEL")
 		if inherited != p.fullHistory || !assignment || !environment || !p.fullHistory && users != wantUsers {
 			failure = fmt.Sprintf("child attribution: full_history=%v parent_input=%v assistant_assignment=%v environment=%v user_items=%d", p.fullHistory, inherited, assignment, environment, users)
 		}
-		if p.preload && (!strings.Contains(string(body), "CHILD_PRELOAD_CONTENT") || !strings.Contains(string(body), "missing.txt") || !strings.Contains(string(body), "exit_code=1") || strings.Contains(string(body), "UNSELECTED_PRELOAD_CONTENT") || strings.Contains(string(body), "PARENT_PRELOAD_CONTENT")) {
+		if p.preload && (!strings.Contains(string(body), "CHILD_PRELOAD_CONTENT") || !strings.Contains(string(body), `Source \"@missing.txt\": CONTENT NOT ATTACHED:`) || strings.Contains(string(body), "UNSELECTED_PRELOAD_CONTENT") || strings.Contains(string(body), "PARENT_PRELOAD_CONTENT")) {
 			failure = "initial child inference did not receive selected child-cwd preload and explicit read failure"
 		}
 		if p.messageSources {
-			if !strings.Contains(string(body), "CHILD_MESSAGE_SOURCE") || !strings.Contains(string(body), "NESTED_MESSAGE_SOURCE") || !strings.Contains(string(body), "missing-source.txt") || !strings.Contains(string(body), "exit_code=1") || strings.Contains(string(body), "PARENT_MESSAGE_SOURCE") || strings.Contains(string(body), "ESCAPED_SOURCE_MUST_STAY_LITERAL") {
+			if !strings.Contains(string(body), "CHILD_MESSAGE_SOURCE") || !strings.Contains(string(body), "NESTED_MESSAGE_SOURCE") || !strings.Contains(string(body), `Source \"@missing-source.txt\": CONTENT NOT ATTACHED:`) || strings.Contains(string(body), "PARENT_MESSAGE_SOURCE") || strings.Contains(string(body), "ESCAPED_SOURCE_MUST_STAY_LITERAL") {
 				failure = "spawn reference did not deliver bounded child-cwd sources and visible failures"
 			}
 			if p.deniedMessageSource && (strings.Contains(string(body), "FORBIDDEN_MESSAGE_SOURCE") || !strings.Contains(string(body), "private-source.txt") || !strings.Contains(strings.ToLower(string(body)), "permission denied")) {
@@ -618,24 +642,27 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		}
 		if p.fullHistory {
 			guidance := developerText.String()
-			if strings.Count(guidance, "NATIVE_FIXTURE_CHILD_ROLE") != 1 || strings.Count(guidance, "Your logical task is agent:main/worker.") != 1 || strings.Contains(guidance, "NATIVE_FIXTURE_ROOT_ROLE") {
-				failure = "full-history child guidance omitted child role or retained duplicate/parent generated role"
+			if strings.Count(guidance, "NATIVE_FIXTURE_CHILD_ROLE") != 1 || strings.Count(guidance, "Agent name: /root/worker") != 1 || strings.Count(guidance, "NATIVE_FIXTURE_ROOT_ROLE") != 1 || strings.LastIndex(guidance, "NATIVE_FIXTURE_CHILD_ROLE") < strings.LastIndex(guidance, "NATIVE_FIXTURE_ROOT_ROLE") {
+				failure = "full-history child lost the calling prefix or its effective child role"
 			}
 			call, output := false, false
 			for _, item := range request.Input {
 				call = call || string(item["type"]) == `"custom_tool_call"` && strings.Contains(string(item["input"]), "Object.keys(tools)")
-				output = output || string(item["type"]) == `"custom_tool_call_output"` && strings.Contains(string(item["output"]), "mcp__threadcontrol__spawn_agent")
+				output = output || string(item["type"]) == `"custom_tool_call_output"` && strings.Contains(string(item["output"]), "collaboration__spawn_agent")
 			}
 			if !call || !output {
 				failure = "full-history child lost the parent's completed tool call or result"
 			}
 		}
-		program = `text(await tools.mcp__threadcontrol__send_message({target:"agent:main",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
+		program = `text(await tools.collaboration__send_message({target:"/root",message:"CHILD_PROGRESS_ALREADY_READ"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
 		if p.messageSources {
-			program = `text(await tools.mcp__threadcontrol__send_message({target:"agent:main",message:"CHILD_PROGRESS_ALREADY_READ @message-source.txt"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
+			program = `text(await tools.collaboration__send_message({target:"/root",message:"CHILD_PROGRESS_ALREADY_READ @message-source.txt"})); text(await tools.exec_command({cmd:"pwd; printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
 		}
 		if p.fullHistory {
-			program += `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"reviewer",message:"GRANDCHILD_ATTRIBUTED_ASSIGNMENT",fork_turns:"all"})); text(await tools.mcp__threadcontrol__wait_agent({}));`
+			program += `text(await tools.collaboration__spawn_agent({task_name:"reviewer",message:"GRANDCHILD_ATTRIBUTED_ASSIGNMENT",fork_turns:"all"})); text(await tools.collaboration__wait_agent({}));`
+		}
+		if p.readerEvidence {
+			program += `text((await tools.exec_command({cmd:"mcat managed-child.txt",shell:"/bin/bash",login:false})).output);`
 		}
 	case !parent && step == 2:
 		changeID := ""
@@ -666,8 +693,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		answer = "MANAGED_CHILD_FINAL"
 		if p.agentCompact {
 			answer = ""
-			p.compactTurn = metadata.TurnID
-			program = `text(await tools.mcp__threadcontrol__compact({}));`
+			reset = true
 		}
 		if p.attachChanges {
 			if changeID == "" {
@@ -676,7 +702,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			answer += " Captured changes: mchanges:" + changeID + "."
 		}
 	case !parent && step == 3 && p.agentCompact:
-		if metadata.TurnID == p.compactTurn || request.PreviousResponse != "" || !completedStandaloneCompaction(request.Input) {
+		if request.PreviousResponse != "" || !completedStandaloneCompaction(request.Input) {
 			failure = "child compaction lost standalone continuation"
 		}
 		if strings.Contains(string(body), "CHILD_ATTRIBUTED_ASSIGNMENT") || strings.Contains(string(body), "managed-child-write") {
@@ -696,6 +722,14 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	}
 	p.mu.Unlock()
 	if failure != "" {
+		if export := os.Getenv("MEKUGI_TEST_LIFECYCLE_EXPORT"); export != "" {
+			directory := filepath.Join(export, t.Name())
+			if err := os.MkdirAll(directory, 0700); err != nil {
+				t.Log("provider failure export:", err)
+			} else if err := os.WriteFile(filepath.Join(directory, fmt.Sprintf("%s-%d.json", metadata.ThreadID, step)), body, 0600); err != nil {
+				t.Log("provider failure export:", err)
+			}
+		}
 		t.Error(failure)
 		http.Error(w, failure, 500)
 		p.stop()
@@ -729,6 +763,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	if program != "" {
 		item = map[string]any{"type": "custom_tool_call", "id": id, "call_id": id + "-call", "name": "exec", "namespace": "functions", "input": program, "status": "completed"}
 	}
+	if reset {
+		item = map[string]any{"type": "function_call", "id": id, "call_id": id + "-call", "name": "new_context", "namespace": "functions", "arguments": "{}", "status": "completed"}
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	items := []any{item}
 	if p.deduplication && !parent && step == 1 {
@@ -779,6 +817,14 @@ func (p *nativeThreadsProvider) serveTemporaryUsage(t *testing.T, w http.Respons
 	answer := "MAIN_SEEDED"
 	if !parent {
 		if !bytes.Contains(body, []byte("explicit follow-up")) {
+			if export := os.Getenv("MEKUGI_TEST_LIFECYCLE_EXPORT"); export != "" {
+				directory := filepath.Join(export, t.Name())
+				if err := os.MkdirAll(directory, 0700); err != nil {
+					t.Log("provider failure export:", err)
+				} else if err := os.WriteFile(filepath.Join(directory, fmt.Sprintf("%s-%d.json", thread, step)), body, 0600); err != nil {
+					t.Log("provider failure export:", err)
+				}
+			}
 			t.Error("temporary thread retried without explicit input")
 		}
 		answer = "TEMPORARY_INPUT_ACCEPTED"
@@ -809,7 +855,7 @@ func TestNativeTemporaryUsageLimitInputServerOwnedCodex(t *testing.T) {
 	}
 }
 
-// The public server owns both installed host processes; this client uses native
+// The public server owns the native tree; this client uses native
 // semantic controls without a terminal renderer or live provider credentials.
 func TestNativeThreadsServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{multipleAnswers: true})
@@ -831,9 +877,9 @@ func (p *nativeThreadsProvider) serveConcurrentChildren(t *testing.T, w http.Res
 	if parent {
 		switch step {
 		case 1:
-			program = `const results = await Promise.allSettled(["worker", "helper1", "helper2"].map(task_name => tools.mcp__threadcontrol__spawn_agent({task_name,message:"parallel shared-history work",fork_turns:"none"}))); for (const result of results) { if (result.status !== "fulfilled" || result.value.isError) throw new Error("concurrent spawn failed: " + JSON.stringify(result)); text(result); }`
+			program = `const results = await Promise.allSettled(["worker", "helper1", "helper2"].map(task_name => tools.collaboration__spawn_agent({task_name,message:"parallel shared-history work",fork_turns:"none"}))); for (const result of results) { if (result.status !== "fulfilled" || result.value.isError) throw new Error("concurrent spawn failed: " + JSON.stringify(result)); text(result); }`
 		case 2:
-			program = `text(await tools.mcp__threadcontrol__wait_agent({wait_mode:"all"}));`
+			program = `text(await tools.collaboration__wait_agent({wait_mode:"all"}));`
 		case 3:
 			if strings.Count(string(body), "MANAGED_CHILD_FINAL:") != 3 {
 				t.Error("awakened provider input omitted or repeated concurrent child results")
@@ -907,33 +953,41 @@ func TestNativeThreadsShellWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{shellWait: true})
 }
 
-// Standalone outputs have no correlated call_id after reset. The provider receives
-// an assistant context message, while native history retains the tool identity.
+// Native reset rebuilds the context-window fragment rather than fabricating a
+// completed MCP compact output. No prior call/output pair survives the reset.
 func completedStandaloneCompaction(input []map[string]jsontext.Value) bool {
-	completed := 0
+	count := 0
 	for _, item := range input {
-		if string(item["type"]) != `"message"` || string(item["role"]) != `"assistant"` {
+		if string(item["role"]) != `"developer"` {
 			continue
 		}
 		var content []struct {
-			Type string `json:"type"`
 			Text string `json:"text"`
 		}
-		if json.Unmarshal(item["content"], &content) != nil || len(content) != 2 || content[0].Text != "Tool context: threadcontrol.compact" {
+		if json.Unmarshal(item["content"], &content) != nil {
 			continue
 		}
-		var result struct {
-			State      string `json:"state"`
-			Compaction struct {
-				State string `json:"state"`
-			} `json:"compaction"`
+		var text strings.Builder
+		for _, part := range content {
+			text.WriteString(part.Text)
 		}
-		if content[0].Type != "output_text" || content[1].Type != "output_text" || json.Unmarshal([]byte(content[1].Text), &result) != nil || result.State != "completed" || result.Compaction.State != "completed" {
+		if !strings.Contains(text.String(), "<context_window>") {
+			continue
+		}
+		fields := make(map[string]string)
+		for line := range strings.SplitSeq(text.String(), "\n") {
+			key, value, ok := strings.Cut(line, ": ")
+			if ok {
+				fields[key] = value
+			}
+		}
+		current, previous := fields["Current context window id"], fields["Previous context window id"]
+		if current == "" || previous == "" || current == previous {
 			return false
 		}
-		completed++
+		count++
 	}
-	return completed == 1
+	return count == 1
 }
 
 func TestNativeThreadsAgentCompactWaitServerOwnedCodex(t *testing.T) {
@@ -1008,9 +1062,9 @@ type nativeThreadsScenario struct {
 func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScenario) {
 	t.Helper()
 	fullHistory, shellWait := scenario.fullHistory, scenario.shellWait
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
-		t.Fatal("installed Codex is required:", err)
+		t.Fatal("managed native app-server is required:", err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
@@ -1050,9 +1104,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if err := os.WriteFile(filepath.Join(configRoot, "config.toml"), []byte("chatgpt_base_url = "+strconv.Quote(backend.URL)+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	bundled := exec.CommandContext(ctx, codex, "debug", "models", "--bundled")
-	bundled.Env = environment
-	catalog, err := bundled.Output()
+	catalog, err := bundledModelCatalog(ctx, codex)
 	if err != nil {
 		t.Fatal("bundled account catalog:", err)
 	}
@@ -1090,6 +1142,10 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	catalog, err = json.Marshal(modelCatalog)
 	if err != nil {
+		t.Fatal(err)
+	}
+	catalogPath := filepath.Join(configRoot, "fixture-models.json")
+	if err := os.WriteFile(catalogPath, catalog, 0600); err != nil {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
@@ -1137,6 +1193,12 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	fixture.frozenPrefix = fullHistory && scenario.sameWorkspace
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
 	fixture.deduplication = scenario.deduplication
+	fixture.readerEvidence = scenario.headless
+	if fixture.readerEvidence {
+		if err := os.WriteFile(filepath.Join(workspace, "native-reader.txt"), []byte("ROOT_READER_EVIDENCE"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if scenario.spawnSettings != "" {
 		fixture.spawnSettings = &spawnSettingsFixture{change: scenario.spawnSettings, ready: make(chan struct{}), release: make(chan struct{})}
 	}
@@ -1228,95 +1290,119 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			t.Fatalf("headless logical completion lost family evidence: %s", headlessOutput.output.String())
 		}
 		if capturePath != "" {
-			captures, err := filepath.Glob(capturePath + ".runtimes/*/capture.jsonl")
-			if err != nil || len(captures) != 1 {
-				t.Fatalf("independent child captures: %v, %v", captures, err)
+			capture := capturePath
+			if _, err := os.Stat(filepath.Join(filepath.Dir(capture), "reads.jsonl")); err != nil {
+				available, _ := filepath.Glob(filepath.Join(stateDirectory, "mekugi", "debug", "*", "reads.jsonl"))
+				t.Fatalf("missing runtime-specific read log: %q, %v; bundle logs: %v", capture, err, available)
 			}
-			captures = append(captures, capturePath)
-			for _, capture := range captures {
-				if _, err := os.Stat(filepath.Join(filepath.Dir(capture), "reads.jsonl")); err != nil {
-					available, _ := filepath.Glob(filepath.Join(stateDirectory, "mekugi", "debug", "*", "reads.jsonl"))
-					t.Fatalf("missing runtime-specific read log: %q, %v; bundle logs: %v", capture, err, available)
+			info, err := os.Stat(capture)
+			if err != nil || info.Size() == 0 {
+				t.Fatalf("missing runtime capture %q: %v", capture, err)
+			}
+			paired := false
+			var metrics []byte
+			err = filepath.WalkDir(stateDirectory, func(path string, entry os.DirEntry, err error) error {
+				if err != nil {
+					return err
 				}
-				info, err := os.Stat(capture)
-				if err != nil || info.Size() == 0 {
-					t.Fatalf("missing runtime capture %q: %v", capture, err)
-				}
-				paired := false
-				var metrics []byte
-				err = filepath.WalkDir(stateDirectory, func(path string, entry os.DirEntry, err error) error {
-					if err != nil {
-						return err
-					}
-					if entry.Type()&os.ModeSymlink == 0 || entry.Name() != "capture.jsonl" {
-						return nil
-					}
-					target, err := filepath.EvalSymlinks(path)
-					if err != nil {
-						return err
-					}
-					if target == capture {
-						metrics, err = os.ReadFile(filepath.Join(filepath.Dir(path), "metrics.json"))
-						paired = err == nil
-						return err
-					}
+				if entry.Type()&os.ModeSymlink == 0 || entry.Name() != "capture.jsonl" {
 					return nil
-				})
-				if err != nil || !paired {
-					t.Fatalf("runtime capture has no joined metrics bundle: %q, %v", capture, err)
 				}
-				var snapshot transportcapture.MetricsSnapshot
-				if err := json.Unmarshal(metrics, &snapshot); err != nil {
+				target, err := filepath.EvalSymlinks(path)
+				if err != nil {
+					return err
+				}
+				if target == capture {
+					metrics, err = os.ReadFile(filepath.Join(filepath.Dir(path), "metrics.json"))
+					paired = err == nil
+					return err
+				}
+				return nil
+			})
+			if err != nil || !paired {
+				t.Fatalf("runtime capture has no joined metrics bundle: %q, %v", capture, err)
+			}
+			var snapshot transportcapture.MetricsSnapshot
+			if err := json.Unmarshal(metrics, &snapshot); err != nil {
+				t.Fatal(err)
+			}
+			if health := snapshot.Capture; health.MissingProvider != 0 || health.CaptureErrors != 0 || health.Incomplete != 0 || health.AttemptGaps != 0 || health.WriteErrors != 0 {
+				t.Fatalf("completed headless runtime lost provider evidence: %+v", snapshot.Capture)
+			}
+			raw, err := os.ReadFile(capture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			local := make(map[uint64]bool)
+			capturedThreads := make(map[uint64]string)
+			capturedAttempts := make(map[[2]uint64]bool)
+			for row := range bytes.SplitSeq(bytes.TrimSpace(raw), []byte("\n")) {
+				var record struct {
+					Boundary         string `json:"boundary"`
+					Thread           string `json:"thread_id"`
+					Attempt          uint64 `json:"provider_attempt"`
+					Sequence         uint64 `json:"request_sequence"`
+					ProviderExpected *bool  `json:"provider_expected"`
+				}
+				if err := json.Unmarshal(row, &record); err != nil {
 					t.Fatal(err)
 				}
-				if snapshot.Capture.MissingProvider != 0 {
-					t.Fatalf("completed headless runtime lost provider evidence: %+v", snapshot.Capture)
+				if record.Boundary == "codex" {
+					capturedThreads[record.Sequence] = record.Thread
 				}
-				raw, err := os.ReadFile(capture)
+				if record.Boundary == "provider" {
+					capturedAttempts[[2]uint64{record.Sequence, record.Attempt}] = true
+				}
+				if record.Boundary == "codex" && record.ProviderExpected != nil && !*record.ProviderExpected {
+					local[record.Sequence] = true
+				}
+			}
+			completedThreads := make(map[string]bool)
+			for _, exchange := range snapshot.Exchanges {
+				if exchange.ProviderAttempts == nil || exchange.Status == "completed" && len(exchange.ProviderAttempts) == 0 && !local[exchange.Sequence] {
+					t.Fatalf("headless exchange has no provider decision: %+v", exchange)
+				}
+				if exchange.RequestKind == "turn" && exchange.Status == "completed" && exchange.ResponseComplete {
+					if capturedThreads[exchange.Sequence] != exchange.ThreadID {
+						t.Fatal("shared transport capture lost the metrics thread identity")
+					}
+					for _, attempt := range exchange.ProviderAttempts {
+						if !capturedAttempts[[2]uint64{exchange.Sequence, attempt.Attempt}] {
+							t.Fatal("shared capture lost a measured provider attempt")
+						}
+					}
+					completedThreads[exchange.ThreadID] = true
+				}
+			}
+			fixture.mu.Lock()
+			threads := []string{fixture.parent, fixture.child}
+			fixture.mu.Unlock()
+			if threads[0] == "" || threads[1] == "" || threads[0] == threads[1] {
+				t.Fatal("shared capture lacks distinct native actors")
+			}
+			for _, thread := range threads {
+				if !completedThreads[thread] {
+					t.Fatalf("no completed measured exchange for native actor %s", thread)
+				}
+				reads, err := new(agentevidence.Service).ReadReads(ctx, filepath.Join(filepath.Dir(capture), "reads.jsonl"), thread)
+				if err != nil || reads.Succeeded == 0 || reads.Completed != reads.Started || reads.Incomplete != 0 {
+					t.Fatalf("native actor reader evidence: %+v, %v", reads, err)
+				}
+			}
+			if export := os.Getenv("MEKUGI_TEST_LIFECYCLE_EXPORT"); export != "" {
+				relative, err := filepath.Rel(filepath.Dir(capturePath), capture)
 				if err != nil {
 					t.Fatal(err)
 				}
-				local := make(map[uint64]bool)
-				for row := range bytes.SplitSeq(bytes.TrimSpace(raw), []byte("\n")) {
-					var record struct {
-						Boundary         string `json:"boundary"`
-						Sequence         uint64 `json:"request_sequence"`
-						ProviderExpected *bool  `json:"provider_expected"`
-					}
-					if err := json.Unmarshal(row, &record); err != nil {
-						t.Fatal(err)
-					}
-					if record.Boundary == "codex" && record.ProviderExpected != nil && !*record.ProviderExpected {
-						local[record.Sequence] = true
-					}
+				destination := filepath.Join(export, t.Name(), relative)
+				if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+					t.Fatal(err)
 				}
-				localTurns := 0
-				for _, exchange := range snapshot.Exchanges {
-					if exchange.ProviderAttempts == nil || exchange.Status == "completed" && len(exchange.ProviderAttempts) == 0 && !local[exchange.Sequence] {
-						t.Fatalf("headless exchange has no provider decision: %+v", exchange)
-					}
-					if exchange.RequestKind == "turn" && exchange.Status == "completed" && len(exchange.ProviderAttempts) == 0 && local[exchange.Sequence] {
-						localTurns++
-					}
+				if err := os.WriteFile(destination, raw, 0600); err != nil {
+					t.Fatal(err)
 				}
-				if localTurns == 0 && (capture == capturePath || scenario.preload) {
-					t.Fatalf("headless fixture did not exercise local completion: %s", capture)
-				}
-				if export := os.Getenv("MEKUGI_TEST_LIFECYCLE_EXPORT"); export != "" {
-					relative, err := filepath.Rel(filepath.Dir(capturePath), capture)
-					if err != nil {
-						t.Fatal(err)
-					}
-					destination := filepath.Join(export, t.Name(), relative)
-					if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
-						t.Fatal(err)
-					}
-					if err := os.WriteFile(destination, raw, 0600); err != nil {
-						t.Fatal(err)
-					}
-					if err := os.WriteFile(destination+".metrics.json", metrics, 0600); err != nil {
-						t.Fatal(err)
-					}
+				if err := os.WriteFile(destination+".metrics.json", metrics, 0600); err != nil {
+					t.Fatal(err)
 				}
 			}
 		}
@@ -1347,7 +1433,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if scenario.deniedMessageSource {
 		permissionArgs = []string{"-c", `default_permissions="message-sources"`, "-c", `approval_policy="never"`, "-c", fmt.Sprintf(`permissions.message-sources.filesystem={":root"="read",%q="write",%q="deny"}`, os.TempDir(), filepath.Join(childDirectory, "private-source.txt"))}
 	}
-	args := append(permissionArgs, "-m", "gpt-6-sol", "-c", "features.plugins=false")
+	args := append(permissionArgs, "-m", "gpt-6-sol", "-c", "features.plugins=false", "-c", "model_catalog_json="+strconv.Quote(catalogPath))
 	if scenario.spawnSettings != "default-effort" {
 		args = append(args, "-c", `model_reasoning_effort="ultra"`)
 	}
@@ -1370,10 +1456,11 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		await := func(ready func() bool) {
 			t.Helper()
 			for !ready() {
-				event, err = connection.Next()
+				next, err := connection.Next()
 				if err != nil {
-					t.Fatal("temporary conversation publication:", err)
+					t.Fatalf("temporary conversation publication: %v; status=%+v", err, event.Frame.View.Status)
 				}
+				event = next
 			}
 		}
 		submit := func(text string) {
@@ -1464,10 +1551,11 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		return
 	}
 	for {
-		event, err = connection.Next()
+		next, err := connection.Next()
 		if err != nil {
-			t.Fatal("parent completion:", err)
+			t.Fatalf("parent completion: %v; status=%+v", err, event.Frame.View.Status)
 		}
+		event = next
 		waiting := event.Frame.View.Status.Composer.Text == "Waiting for agents"
 		if scenario.earlyCompletion && waiting {
 			// The completion guard also commits a local stop. Release the child
@@ -1524,7 +1612,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			if event.Frame.View.Status.Session.CompletionKnown {
 				t.Fatal("compaction ended the logical wait")
 			}
-			if compactObserved && event.Frame.View.Interrupt.Turn == "" && event.Frame.View.Status.Composer.Text == "Waiting for agents" {
+			if compactObserved && event.Frame.View.Interrupt.Turn == waitTurn && event.Frame.View.Status.Composer.Text == "Waiting for agents" {
 				close(fixture.waiting)
 				childReleased = true
 			}
@@ -1536,7 +1624,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		if strings.Contains(string(body), "MANAGED_PARENT_RESUMED") {
 			break
 		}
-		failureObserved = failureObserved || strings.Contains(string(body), "MANAGED_PARENT_SERVER_FAILED") || strings.Contains(string(body), "We're currently experiencing high demand")
+		failureObserved = failureObserved || strings.Contains(string(body), "MANAGED_PARENT_SERVER_FAILED") || strings.Contains(string(body), "We’re currently experiencing high demand")
 		if scenario.earlyCompletion && event.Frame.View.Status.Session.CompletionKnown {
 			t.Fatal("early completion published a completed parent while its child was running")
 		}
@@ -1869,7 +1957,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	if err != nil {
 		t.Fatal("cold child publication:", err)
 	}
-	if coldChild.Frame.View.Main.ID != child || coldChild.Frame.View.Caption.Model != "gpt-6-sol" || coldChild.Frame.View.Caption.Effort != "low" || !fullHistory && coldChild.Frame.View.Caption.Role == "" {
+	if coldChild.Frame.View.Main.ID != child || coldChild.Frame.View.Caption.Model != "gpt-6-sol" || coldChild.Frame.View.Caption.Effort != "low" || coldChild.Frame.View.Caption.Role != "" {
 		t.Fatalf("cold child identity=%q settings=%+v", coldChild.Frame.View.Main.ID, coldChild.Frame.View.Caption)
 	}
 	fixture.mu.Lock()
@@ -1995,7 +2083,7 @@ func TestNativeThreadsServerProcessHelper(t *testing.T) {
 	}
 }
 
-// Release the held child only after Main's transient host completion was emitted.
+// Release the held child only after Main's native wait item was emitted.
 // A client that mistakes that boundary for logical completion loses the final
 // parent continuation and fails the provider-count and JSONL assertions.
 type headlessThreadsOutput struct {
@@ -2016,20 +2104,22 @@ func (o *headlessThreadsOutput) Write(data []byte) (int, error) {
 		var message appserver.Message
 		err := json.Unmarshal(rows[:at], &message)
 		o.pending.Next(at + 1)
-		if err != nil || message.Method != "turn/completed" || o.released {
+		if err != nil || message.Method != "item/started" || o.released {
 			continue
 		}
 		var event struct {
 			Thread string `json:"threadId"`
-			Turn   struct {
-				ID string `json:"id"`
-			} `json:"turn"`
+			Turn   string `json:"turnId"`
+			Item   struct {
+				Type string `json:"type"`
+				Tool string `json:"tool"`
+			} `json:"item"`
 		}
 		if json.Unmarshal(message.Params, &event) != nil {
 			continue
 		}
 		o.fixture.mu.Lock()
-		release := event.Thread == o.fixture.parent && event.Turn.ID == o.fixture.waitTurn && o.fixture.waitTurn != ""
+		release := event.Thread == o.fixture.parent && event.Turn == o.fixture.waitTurn && o.fixture.waitTurn != "" && event.Item.Type == "collabAgentToolCall" && event.Item.Tool == "wait"
 		o.fixture.mu.Unlock()
 		if release {
 			o.released = true

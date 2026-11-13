@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func testCompletionSourcesBrowser(t *testing.T, publish func(*activity.Publication), run func(...string) string) {
@@ -40,7 +40,7 @@ func testCompletionSourcesBrowser(t *testing.T, publish func(*activity.Publicati
 	run("wait", "--text", completionTestTrailer)
 	capture("live")
 	// Actual parent delivery has a separate reply projection and disclosure.
-	publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: "final", Sender: "/root/worker", Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: control.Completed,
+	publishNativeDelivery(&u.attached, sessioncontrol.NativeDelivery{Thread: "main", ID: "final", Sender: "/root/worker", Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: "completed",
 		Message: "## Summary\nDelivered parent answer.\n\n## Details\nRetained details.\n" + completionTestTrailer}, time.Now())
 	publish(publication())
 	run("wait", "--text", "Delivered parent answer.")

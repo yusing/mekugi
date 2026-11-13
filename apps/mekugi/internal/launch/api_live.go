@@ -17,13 +17,13 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // apiLive publishes the owned runtime independently of attached viewers.
 type apiLive struct {
 	server       *sessionapi.Server
-	coordination *control.Service
+	native       *nativeConnection
+	nativeThread string // Confirmed child identity while retained hydration is loading.
 	main, agents commandFeed
 	attachment   uint64
 	started      time.Time
@@ -41,7 +41,11 @@ func (w *apiLive) publish(attached *attachedPresentation, control *sessioncontro
 	// A confirmed thread waiting for hook consent is attachable, not executable.
 	// Browser session creation must finish so its existing approval UI can open.
 	ready := apiInputRefusal(attached, control, restoring) == "" || control.HookReview && waiting > 0 && !restoring
-	err := w.server.SetSummary(sessionapi.Summary{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started, Status: view.Status.Session, Waiting: waiting, Ready: ready})
+	thread := control.Thread
+	if thread == "" {
+		thread = w.nativeThread
+	}
+	err := w.server.SetSummary(sessionapi.Summary{Thread: thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started, Status: view.Status.Session, Waiting: waiting, Ready: ready})
 	if err == nil && now.Sub(w.projected) >= apiFrameInterval {
 		w.projected = now
 		if view.Version.Attachment != w.attachment {
@@ -55,7 +59,7 @@ func (w *apiLive) publish(attached *attachedPresentation, control *sessioncontro
 			role = attached.threadInput.role
 		}
 		frame := sessionapi.Frame{
-			Session:    sessionapi.Session{Thread: control.Thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started.UnixMilli(), Caller: caller, Role: role},
+			Session:    sessionapi.Session{Thread: thread, Title: view.Info.Title, Workspace: attached.cwd, Started: w.started.UnixMilli(), Caller: caller, Role: role},
 			Input:      &sessionapi.Input{Reason: apiInputRefusal(attached, control, restoring), Stoppable: sessionpresentation.MainInterruptible(&control.Live, attached.conversation), Waiting: waiting},
 			Prompts:    apiPrompts(attached, control),
 			Questions:  nativePendingQuestions(attached.conversation),
@@ -67,7 +71,10 @@ func (w *apiLive) publish(attached *attachedPresentation, control *sessioncontro
 
 			ChildReplySummary: childSummary,
 		}
-		frame.FamilyRoot, frame.Members = w.coordination.Family(control.Thread)
+		if w.native != nil {
+			frame.FamilyRoot, frame.Members = w.native.family(thread)
+
+		}
 		if review != nil {
 			frame.LiveScope = review.Scope()
 			if previews := review.Preview(); previews != nil {
@@ -92,6 +99,8 @@ func apiInputRefusal(attached *attachedPresentation, control *sessioncontrol.Cli
 	switch {
 	case control.Thread == "" || restoring || control.Replacement.Pending():
 		return "Wait for the session to be ready."
+	case control.NativeInputPending:
+		return "Wait for native agent initialization; pending approvals can still be answered."
 	case control.HookReview:
 		return "Review hook trust before starting work."
 	case !attached.conversation.DraftView().Available:
@@ -190,7 +199,7 @@ func apiIntentRefusal(attached *attachedPresentation, control *sessioncontrol.Cl
 		return "The requested session destination is unavailable."
 	}
 	view := attached.presentation.View()
-	prepared := control.Startup.Prepared != nil && (attached.threadInput == nil || !attached.threadInput.admitted)
+	prepared := control.NativeInputPending
 	if (intent.Action == sessionapi.Send || intent.Action == sessionapi.RunShell) && (prepared || view.Admission.ReadOnly || view.ReadOnly != sessionpresentation.Editable) {
 		return sessionpresentation.ErrInputUnavailable.Error()
 	}

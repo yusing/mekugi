@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type Inspection struct {
@@ -21,7 +21,7 @@ type Inspection struct {
 }
 
 type inspectionResult struct {
-	details     control.SessionDetails
+	details     observation.SessionDetails
 	err         error
 	attachments composer.AttachmentSnapshot
 	cached      bool
@@ -49,7 +49,7 @@ func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window str
 }
 
 func (r *Requests[T]) attachmentHistory(ctx context.Context, thread string) ([]binding.HistoryTurn, error) {
-	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": true}, nil)
+	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": true})
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (request *Inspection) ContextWindow() string { return request.window }
 
 func (request *Inspection) CompleteAttachments(thread string, cache *composer.AttachmentContext) {
 	if request.thread != thread {
-		request.Complete(thread, control.SessionDetails{})
+		request.Complete(thread, observation.SessionDetails{})
 		return
 	}
 	if request.loaded {
@@ -89,7 +89,7 @@ func (r *Requests[T]) DispatchMeasurement(request *Inspection) bool {
 }
 
 // Inspect borrows current facts on the runtime's serialized event loop.
-func (r *Requests[T]) Inspect(ctx context.Context, thread string) (control.SessionDetails, error) {
+func (r *Requests[T]) Inspect(ctx context.Context, thread string) (observation.SessionDetails, error) {
 	request := &Inspection{thread: thread, result: make(chan inspectionResult, 1)}
 	result := r.inspect(ctx, request)
 	return result.details, result.err
@@ -114,10 +114,10 @@ func (r *Requests[T]) inspect(ctx context.Context, request *Inspection) inspecti
 }
 
 // Complete returns only facts belonging to the owning runtime.
-func (request *Inspection) Complete(thread string, details control.SessionDetails) {
+func (request *Inspection) Complete(thread string, details observation.SessionDetails) {
 	result := inspectionResult{details: details}
 	if request.thread != thread {
-		result.details = control.SessionDetails{}
+		result.details = observation.SessionDetails{}
 		result.err = errors.New("inspection target does not belong to this runtime")
 	}
 	request.result <- result

@@ -13,9 +13,13 @@ import (
 	"time"
 )
 
-// The installed host owns the active turn, manual compaction and next turn.
+// The pinned native host owns the active turn, manual compaction and next turn.
 // Queue compaction during a blocked inference, then supply no more user input.
 func TestAppServerQueuedCompactContinuesNativeCodex(t *testing.T) {
+	native, err := exec.LookPath("mekugi-app-server")
+	if err != nil {
+		t.Fatal("managed native app-server is required:", err)
+	}
 	provider := &appQueueProvider{requests: make(chan []byte, 8), gates: []chan struct{}{make(chan struct{})}}
 	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
@@ -28,7 +32,7 @@ func TestAppServerQueuedCompactContinuesNativeCodex(t *testing.T) {
 	}()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, "codex", "app-server", "-c", `model_providers.preview={name="queued-compact",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.token_budget.enabled=true", "-c", "features.token_budget.use_history_notes_extension=false", "-c", `features.token_budget.guidance_message=""`, "-c", `features.token_budget.auto_compact_fallback_prompt=""`, "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, native, "-c", `model_providers.preview={name="queued-compact",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "")

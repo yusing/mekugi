@@ -15,15 +15,19 @@ import (
 // Enter must interrupt blocked Main before compaction, regardless of the host's
 // instant-interrupt setting. The initial inference gate stays closed throughout.
 func TestAppServerCompactEnterInterruptsNativeCodex(t *testing.T) {
-	for _, featureFlag := range []string{"--enable", "--disable"} {
-		t.Run(strings.TrimPrefix(featureFlag, "--"), func(t *testing.T) {
+	native, err := exec.LookPath("mekugi-app-server")
+	if err != nil {
+		t.Fatal("managed native app-server is required:", err)
+	}
+	for _, instant := range []bool{true, false} {
+		t.Run(strconv.FormatBool(instant), func(t *testing.T) {
 			provider := &appQueueProvider{requests: make(chan []byte, 8), gates: []chan struct{}{make(chan struct{})}}
 			server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 			defer server.Close()
 			defer close(provider.gates[0])
 			environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 			terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-				cmd := exec.CommandContext(ctx, "codex", "app-server", featureFlag, "instant_interrupt", "-c", `model_providers.preview={name="compact-steer",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.token_budget.enabled=true", "-c", "features.token_budget.use_history_notes_extension=false", "-c", `features.token_budget.guidance_message=""`, "-c", `features.token_budget.auto_compact_fallback_prompt=""`, "-c", "include_collaboration_mode_instructions=false")
+				cmd := exec.CommandContext(ctx, native, "-c", "features.instant_interrupt="+strconv.FormatBool(instant), "-c", `model_providers.preview={name="compact-steer",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
 			}, "")

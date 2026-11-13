@@ -42,21 +42,23 @@ func generationIdentity(name string) (label, key string) {
 	name = strings.TrimPrefix(strings.TrimPrefix(name, "functions."), "tools.")
 	name = strings.ReplaceAll(name, ".", "__")
 	switch name {
-	case "request_user_input", "request_user_input_async":
+	case "request_user_input", "request_user_input_async", "AskUserQuestion":
 		return "Asking user question", ""
-	case "mcp__threadcontrol__spawn_agent":
+	case "collaboration__spawn_agent", "mcp__threadcontrol__spawn_agent":
 		return "Spawning subagent", "task_name"
-	case "mcp__threadcontrol__followup_task":
+	case "collaboration__followup_task", "mcp__threadcontrol__followup_task":
 		return "Assigning follow-up to", "target"
-	case "mcp__threadcontrol__send_message":
+	case "collaboration__send_message", "mcp__threadcontrol__send_message":
 		return "Sending message to", "target"
-	case "mcp__threadcontrol__interrupt_agent":
+	case "collaboration__interrupt_agent", "mcp__threadcontrol__interrupt_agent":
 		return "Interrupting agent", "target"
-	case "mcp__threadcontrol__inspect":
+	case "collaboration__inspect_agent", "mcp__threadcontrol__inspect_agent":
 		return "Inspecting agent", "target"
-	case "mcp__threadcontrol__list_agents":
+	case "collaboration__list_agents", "mcp__threadcontrol__list_agents":
 		return "Listing agents", "path_prefix"
-	case "mcp__threadcontrol__wait_agent":
+	case "new_context", "mcp__threadcontrol__compact":
+		return "Compacting context", ""
+	case "collaboration__wait_agent", "mcp__threadcontrol__wait_agent":
 		return "Waiting for agents", ""
 	case "exec":
 		return "Emitting JavaScript", ""
@@ -64,7 +66,7 @@ func generationIdentity(name string) (label, key string) {
 		return "Waiting for JavaScript", "cell_id"
 	case "apply_patch":
 		return "Emitting a patch", ""
-	case "exec_command":
+	case "exec_command", "Bash":
 		return "Executing a command", ""
 	case "write_stdin":
 		return "Interacting with a command", ""

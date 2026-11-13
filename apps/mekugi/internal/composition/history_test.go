@@ -28,7 +28,7 @@ import (
 func BenchmarkPeerAdmission(b *testing.B) {
 	for _, records := range []int{128, 120000} {
 		b.Run(fmt.Sprint(records), func(b *testing.B) {
-			runtime, err := Frontends(b.Context(), false, true, "", nil, nil)
+			runtime, err := Frontends(b.Context(), false, true, "", nil)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -42,7 +42,7 @@ func BenchmarkPeerAdmission(b *testing.B) {
 			store := runtime.History.Attach(directory)
 			migrationStarted := time.Now()
 			if err := store.Transaction(b.Context(), nil, func(tx *history.Transaction) error {
-				return tx.Admit(history.Limits{}, "threadcontrol-tree-benchmark", 0)
+				return tx.Admit(history.Limits{}, "call-"+strings.Repeat("f", 64)+".json", 0)
 			}); err != nil {
 				b.Fatal(err)
 			}
@@ -52,8 +52,8 @@ func BenchmarkPeerAdmission(b *testing.B) {
 				for writer := range 2 {
 					owner := runtime.History.Attach(directory)
 					if err := owner.Transaction(b.Context(), nil, func(tx *history.Transaction) error {
-						name := "threadcontrol-tree-benchmark"
-						data := []byte(fmt.Sprint(i, writer))
+						name := "call-" + strings.Repeat("f", 64) + ".json"
+						data := []byte(fmt.Sprintf(`{"iteration":%d,"writer":%d}`, i, writer))
 						if err := tx.Admit(history.Limits{}, name, int64(len(data))); err != nil {
 							return err
 						}
@@ -85,7 +85,7 @@ func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
 				}
 			}
 			t.Setenv("TMPDIR", temp)
-			runtime, err := Frontends(t.Context(), live, true, "", nil, nil)
+			runtime, err := Frontends(t.Context(), live, true, "", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +154,7 @@ func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 }
 
 func TestFrontendsRetainedRequestTimingContribution(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false, true, "", nil, nil)
+	runtime, err := Frontends(t.Context(), false, true, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestFrontendsRetainedRequestTimingContribution(t *testing.T) {
 }
 
 func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false, true, "", nil, nil)
+	runtime, err := Frontends(t.Context(), false, true, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,70 +283,9 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 
 }
 
-func TestFrontendsRetainsHistoricalWaitSnapshots(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false, true, "", nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := runtime.Close(context.WithoutCancel(t.Context())); err != nil {
-			t.Error(err)
-		}
-	})
-	for _, catalogued := range []bool{false, true} {
-		name := "uncatalogued"
-		if catalogued {
-			name = "catalogued"
-		}
-		t.Run(name, func(t *testing.T) {
-			directory := t.TempDir()
-			store := runtime.History.Attach(directory)
-			name := "wait-0002a56ee5625e517b301ff9722d588a16f1cd41c9f8a8599cd1ba8793cd44d6.json"
-			path := filepath.Join(directory, name)
-			data := []byte(`[{"thread":"child","name":"retained name"}]`)
-			if err := os.WriteFile(path, data, 0o600); err != nil {
-				t.Fatal(err)
-			}
-			for _, expired := range []bool{false, true} {
-				used := time.Now()
-				if expired {
-					used = used.Add(-history.SessionRetention - time.Hour)
-					if err := os.Chtimes(filepath.Join(directory, "retention-sweep"), used, used); err != nil {
-						t.Fatal(err)
-					}
-				}
-				if err := os.Chtimes(path, used, used); err != nil {
-					t.Fatal(err)
-				}
-				if catalogued {
-					catalog := history.Catalog{Version: 1, Thread: "retained", LastUsed: used, Files: map[string]bool{name: true}}
-					encoded, err := json.Marshal(&catalog)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := os.WriteFile(filepath.Join(directory, history.SessionName(catalog.Thread)), encoded, 0o600); err != nil {
-						t.Fatal(err)
-					}
-				}
-				if err := store.Cleanup(t.Context(), nil, history.Limits{}, "", nil); err != nil {
-					t.Fatal(err)
-				}
-				got, err := os.ReadFile(path)
-				if expired {
-					if !os.IsNotExist(err) {
-						t.Fatalf("expired snapshot retained: %v", err)
-					}
-				} else if err != nil || string(got) != string(data) {
-					t.Fatalf("recent snapshot changed: %q, %v", got, err)
-				}
-			}
-		})
-	}
-}
-
 func TestFrontendsOwnsWorkspaceCapture(t *testing.T) {
 	directory := t.TempDir()
-	runtime, err := Frontends(t.Context(), false, true, directory, nil, nil)
+	runtime, err := Frontends(t.Context(), false, true, directory, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

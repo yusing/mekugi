@@ -1,6 +1,9 @@
 package sessioncontrol
 
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"github.com/yusing/mekugi/contracts/observation"
+)
 
 // CompactIntent travels with the composer's queued command, not its text or
 // attachments. Continuation is requested only when Main was busy at admission.
@@ -57,16 +60,7 @@ func (c *Compaction) NativeRequestID() string {
 	return c.requestID
 }
 
-type ContextReset struct {
-	Thread     string `json:"threadId"`
-	Turn       string `json:"turnId"`
-	RequestID  string `json:"requestId,omitempty"`
-	Generation uint64 `json:"generation"`
-	ResetID    string `json:"resetId,omitempty"`
-	Status     string `json:"status"`
-	Inline     bool   `json:"inline"`
-	Diagnostic string `json:"diagnostic,omitempty"`
-}
+type ContextReset = observation.ContextResetEvent
 
 func (c *Compaction) ObserveReset(event ContextReset) {
 	if !c.Active() || c.requestID == "" || event.Generation == 0 {

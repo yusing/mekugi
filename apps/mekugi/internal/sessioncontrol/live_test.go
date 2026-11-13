@@ -1,6 +1,7 @@
 package sessioncontrol
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -88,12 +89,11 @@ func TestAppServerLifecycleSettingsRestoration(t *testing.T) {
 
 func TestAppServerLifecycleRejectionKeepsIssuedInterrupt(t *testing.T) {
 	h := Live{Thread: "main"}
+	h.Started("active")
+	h.Interrupt()
 	h.Compaction.Begin(CompactIntent{Continue: true})
-	h.Interrupt()
-	h.Started("compact")
-	h.Interrupt()
 	h.CompactResponse(true)
-	if h.Interruption.BeforeStart || h.AcceptsInput() || h.Interruption.Target != "compact" {
+	if h.Interruption.BeforeStart || h.AcceptsInput() || h.Interruption.Target != "active" {
 		t.Fatal("late rejection forgot the host interrupt already in flight")
 	}
 	h.Completed(false)
@@ -119,5 +119,36 @@ func TestAppServerLifecycleReplacementRetiresOperations(t *testing.T) {
 	}
 	if !h.TakeResumeEffort() || h.TakeResumeEffort() {
 		t.Fatal("replacement failed to transfer target intent once")
+	}
+}
+
+func TestNativeShellModelTurnRetainsOnlyTransportGate(t *testing.T) {
+	for _, ackFirst := range []bool{false, true} {
+		t.Run(fmt.Sprint(ackFirst), func(t *testing.T) {
+			h := Live{Thread: "main", NativeWork: "work", Waiting: "wait"}
+			h.Shell.Begin("")
+			h.Started("combined")
+			if ackFirst {
+				h.Shell.Acknowledge(false, h.Turn)
+			}
+			h.Shell.ModelTurn("unrelated")
+			if !h.AuxiliaryTurn("combined") {
+				t.Fatal("unrelated turn changed shell ownership")
+			}
+			h.Shell.ModelTurn("combined")
+			if h.AuxiliaryTurn("combined") || h.Shell.Standalone() || h.Turn != "combined" {
+				t.Fatal("native same-turn model continuation stayed auxiliary")
+			}
+			if !ackFirst && h.AcceptsInput() {
+				t.Fatal("native continuation bypassed shell acknowledgement")
+			}
+			h.Completed(true)
+			if !ackFirst {
+				h.Shell.Acknowledge(false, h.Turn)
+			}
+			if !h.AcceptsInput() || h.Shell.OwnsTurn("combined") {
+				t.Fatal("combined completion retained shell gate")
+			}
+		})
 	}
 }

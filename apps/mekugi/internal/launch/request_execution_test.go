@@ -14,7 +14,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
@@ -40,8 +39,8 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 				if tc.kind == "custom-http-btw" {
 					model = "custom-test"
 				}
-				driver := new(threadbinding.Driver)
-				driver.CaptureCatalog(mustTestJSON(t, map[string]any{"models": []any{map[string]any{"slug": model, "supports_reasoning_effort_updates": updates, "default_reasoning_level": tc.fallback, "supported_reasoning_levels": []any{map[string]any{"effort": tc.choices}}}}}))
+				catalog := new(inferencegateway.ReasoningCatalog)
+				catalog.Capture(mustTestJSON(t, map[string]any{"models": []any{map[string]any{"slug": model, "supports_reasoning_effort_updates": updates, "default_reasoning_level": tc.fallback, "supported_reasoning_levels": []any{map[string]any{"effort": tc.choices}}}}}))
 				proxy := newManagedMekugiProxy(t)
 				requests := sessioncontrol.NewRequests[appServerRequest](nil)
 				proxy.bindForkRequests(requests)
@@ -58,7 +57,7 @@ func TestAuxiliaryRequestsUseLowReasoning(t *testing.T) {
 				}
 				headers.Set(codexresponses.ThreadIDHeader, "auxiliary")
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-				executor := requestexecution.Executor{Provider: provider, SideThreads: proxy, ReasoningChoices: driver.ReasoningChoices, Output: io.Discard}
+				executor := requestexecution.Executor{Provider: provider, SideThreads: proxy, ReasoningChoices: catalog.Choices, Output: io.Discard}
 				if tc.kind == "custom-http-btw" {
 					executor.Provider = httpOnlyTestProvider{provider}
 				}

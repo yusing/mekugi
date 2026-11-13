@@ -30,7 +30,6 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // This opt-in acceptance drives the embedded application through its visible
@@ -193,7 +192,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	})
 	rootBeforeCold, _ := alpha.frames.Load("same-thread")
 	coldFamily := rootBeforeCold.(sessionapi.Frame)
-	coldFamily.Members = []threadcontrol.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "cold", Parent: "same-thread", Task: "/root/cold"}}
+	coldFamily.Members = []sessionpresentation.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "cold", Parent: "same-thread", Task: "/root/cold"}}
 	if err := alpha.publishFrame(coldFamily); err != nil {
 		t.Fatal(err)
 	}
@@ -737,7 +736,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		captures = append(captures, fmt.Sprintf("Create `/tmp/tree/file%03d.go` +3 -0 · cp", i))
 	}
 	item := activitypresentation.ItemContent{Seq: 1, Agent: "Main", Kind: "tool", Text: strings.Join(captures, "\n\n")}
-	frame := sessionapi.Frame{FamilyRoot: "same-thread", Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "child", Parent: "same-thread", Task: "/root/worker", Role: "worker"}}, Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true},
+	frame := sessionapi.Frame{FamilyRoot: "same-thread", Members: []sessionpresentation.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "child", Parent: "same-thread", Task: "/root/worker", Role: "worker"}}, Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Alpha thread", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true},
 		Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: item.Facts, Values: item.Values(), Revision: 1}}}}
 	if err := alpha.publishFrame(frame); err != nil {
 		t.Fatal(err)
@@ -848,13 +847,13 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		run("set", "viewport", "1280", "900")
 	}
 	// Wait publications retain targets, timeouts and the actual settlement reason.
-	frame.Members[0].Status = threadcontrol.Waiting
+	frame.Members[0].Status = sessionpresentation.Waiting
 	frame.Agents = &activitypresentation.Publication{Roster: []activitypresentation.AgentRow{
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root", Thread: "same-thread", Waiting: true, Wait: &activitypresentation.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitTimeout: "5s"}}}},
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/worker", Thread: "child"}}},
 		{Agent: activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{Name: "/root/history", Thread: "old-child"}}},
 	}}
-	frame.Members = append(frame.Members, threadcontrol.Participant{Thread: "native-worker", Parent: "same-thread", Task: "/root/native-worker", NonAttachable: true})
+	frame.Members = append(frame.Members, sessionpresentation.Participant{Thread: "native-worker", Parent: "same-thread", Task: "/root/native-worker", NonAttachable: true})
 	frame.Main = &activitypresentation.Publication{Entries: []activitypresentation.Entry{
 		{Seq: 2, Agent: "Main", Kind: "tool", Values: []activitypresentation.Value{{Kind: "progress", Body: "Waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "agent:main/worker"}}, WaitTimeout: "5s"}}, Revision: 1},
 		{Seq: 3, Agent: "Main", Kind: "tool", Values: []activitypresentation.Value{{Kind: "progress", Body: "Finished waiting for", WaitTargets: []activitypresentation.WaitTarget{{Name: "/root/worker"}}, WaitReason: "paused"}}, Revision: 1},
@@ -961,7 +960,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	// copying the child's transcript into the parent's feed.
 	frame.Agents = &activitypresentation.Publication{Roster: append([]activitypresentation.AgentRow(nil), frame.Agents.Roster...)}
 	for i, kind := range []string{"progress", "reasoning"} {
-		frame.Members[i].Status = threadcontrol.Working
+		frame.Members[i].Status = sessionpresentation.WorkRunning
 		item := activitypresentation.ItemContent{Kind: kind, Text: "Connecting to provider"}
 		if i == 1 {
 			item.Text = "**Checking child callers**\n\nThe expanded reasoning body stays in the transcript."
@@ -1227,7 +1226,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	const fallbackReply = "## Summary\nSectionless reply complete.\n\n- Focused checks pass.\n\n**Decision needed:** choose a name.\n\n"
 	sectionlessBody := fallbackReply + strings.Repeat("Supporting sectionless evidence.\n\n", 100)
 	for i, text := range []string{"## Summary\nNested review complete.\n\n[evidence]: https://example.com/evidence\n\n## Details\nNested retained details. See [evidence].", strings.Repeat("Nested unstructured reply paragraph.\n\n", 12), sectionlessBody} {
-		entry := nativeDeliveryEntry(threadcontrol.NativeInput{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root", Kind: "MESSAGE", Message: text}, fmt.Sprint(i), time.Now(), false)
+		entry := sessionpresentation.NativeDeliveryEntry(sessioncontrol.NativeDelivery{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root", Kind: "MESSAGE", Message: text}, fmt.Sprint(i), time.Now(), false)
 		applyRestoredMain(&restoredReplies.attached, []*restoredPlacement{{entry: entry}})
 	}
 	outgoing := restoredReplies.attached.session.CoordinationEntry(sessionpresentation.ActivityEntry{Agent: "/root", Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
@@ -1236,7 +1235,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 		Result:    []byte(`{"content":[{"type":"text","text":"{\"state\":\"confirmed\",\"id\":\"outgoing\",\"task_name\":\"agent:main\"}"}]}`),
 	})
 	restoredReplies.attached.source.ApplyMain(outgoing)
-	final := nativeDeliveryEntry(threadcontrol.NativeInput{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root/worker", Kind: "FINAL_ANSWER", Message: "Nested final route."}, "final-route", time.Now(), false)
+	final := sessionpresentation.NativeDeliveryEntry(sessioncontrol.NativeDelivery{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root/worker", Kind: "FINAL_ANSWER", Message: "Nested final route."}, "final-route", time.Now(), false)
 	restoredReplies.attached.source.ApplyMain(final)
 	restoredReplies.attached.source.ApplyMain(sessionpresentation.ActivityEntry{Agent: "/root/worker/new-child", Kind: "start", Start: &sessionpresentation.ActivityStart{}})
 	outbox := activitypresentation.Entry{Facts: outgoing.ActivityFacts(), Values: sessionpresentation.ActivityContent(outgoing).Values()}
@@ -1798,7 +1797,7 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 		}
 		return (&nativeReattachLauncher{}).StartOptions(ctx)
 	}
-	launcher.run = func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+	run := func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server, ready chan<- struct{}) error {
 		machine.sessions.Store(start.Resume, api)
 		if start.Resume == "same-thread" {
 			machine.api = api
@@ -1819,6 +1818,9 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 		}
 		if err := api.SetSummary(sessionapi.Summary{Thread: start.Resume, Title: title, Workspace: directory, Ready: true}); err != nil {
 			return err
+		}
+		if ready != nil {
+			close(ready)
 		}
 		native := api.Native()
 		for {
@@ -1875,6 +1877,9 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 			}
 		}
 	}
+	launcher.run = func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+		return run(ctx, start, api, nil)
+	}
 	listener, err := sessionapi.ListenControl(filepath.Join(directory, "control.sock"))
 	if err != nil {
 		t.Fatal(err)
@@ -1897,8 +1902,27 @@ func newWebUIBrowserMachineWithNative(t *testing.T, ctx context.Context, origin,
 		t.Helper()
 		start := sessionapi.Start{Workspace: directory, Model: "fixture", Resume: thread}
 		if slices.Contains(machine.childThreads, thread) {
-			if _, err := hub.StartPrepared(ctx, "same-thread", thread, directory, func(ctx context.Context, api *sessionapi.Server) error { return launcher.run(ctx, start, api) }); err != nil {
+			childContext, stop := context.WithCancel(ctx)
+			joined, ready := make(chan struct{}), make(chan struct{})
+			api, err := hub.AdoptThread(machine.api, thread, "same-thread", directory, func(wait context.Context) error {
+				stop()
+				select {
+				case <-joined:
+					return nil
+				case <-wait.Done():
+					return wait.Err()
+				}
+			})
+			if err != nil {
+				stop()
 				t.Fatal(err)
+			}
+			go func() { defer close(joined); _ = run(childContext, start, api, ready) }()
+			t.Cleanup(func() { stop(); <-joined })
+			select {
+			case <-ready:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
 			}
 			return
 		}

@@ -2,8 +2,6 @@ package launch
 
 import (
 	"bytes"
-	"encoding/json/jsontext"
-	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -13,59 +11,37 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		live := newAppServerSessionTestUI(t, t.TempDir())
-		wire := live.Host.Input.(*appServerTestInput)
 		var records []map[string]any
 		bodies := []string{"## Summary\nMESSAGE result.\n\n## Details\nPayload:\nMessage evidence.\n", "## Summary\nFINAL_ANSWER result.\n\n## Details\nPayload:\nFinal evidence.\n", "Earlier progress must not replay.\n", "## Summary\nFollow-up result.\n\n## Details\nFollow-up evidence.\n"}
 		for i, kind := range []string{"MESSAGE", "FINAL_ANSWER", "FINAL_ANSWER", "FINAL_ANSWER"} {
 			if kind == "FINAL_ANSWER" {
 				bodies[i] += completionTestTrailer
 			}
-			input := control.NativeInput{Thread: "main", ID: fmt.Sprint(i), Sender: "/root/worker", Recipient: "/root", Kind: kind, Message: bodies[i], SourceGeneration: uint64(i + 1), ParentTurn: fmt.Sprint("turn-", i)}
+			id, outcome := fmt.Sprint("amsg_", i), ""
+			if kind == "FINAL_ANSWER" {
+				outcome = "completed"
+			}
 			if i == 2 {
-				input.ID, input.Outcome = "interrupted", control.Interrupted
+				id, outcome = "amsg_interrupted", "interrupted"
 			}
-			wire.Reset()
-			result := make(chan error, 1)
-			go func() { _, err := live.Requests.Input(t.Context(), input); result <- err }()
-			synctest.Wait()
-			live.Requests.Dispatch(<-live.Calls())
-			var sent struct {
-				ID     jsontext.Value `json:"id"`
-				Params struct {
-					Items []map[string]any `json:"items"`
-				} `json:"params"`
-			}
-			if err := json.Unmarshal(wire.Bytes(), &sent); err != nil {
-				t.Fatal(err)
-			}
-			request, _ := live.Requests.Lookup(string(sent.ID))
-			if !live.Requests.CompleteCall(appserver.Message{ID: sent.ID, Result: []byte(`{}`)}) {
-				t.Fatal("delivery acknowledgement missing")
-			}
-			if err := <-result; err != nil {
-				t.Fatal(err)
-			}
-			publishNativeDelivery(&live.attached, *request.NativeDelivery(), time.Now())
+			record := nativeTrafficFixture(t, live, id, "/root/worker", "/root", kind, bodies[i], outcome, time.Unix(1001+int64(i)*3, 0))
 			entry := live.attached.source.Entries[len(live.attached.source.Entries)-1].Source
-			if entry.Text != bodies[i] || entry.Message.Text != bodies[i] || request.NativeDelivery().Message != input.Message {
-				t.Fatalf("delivery %s: entry=%q message=%q retained=%q want=%q", input.ID, entry.Text, entry.Message.Text, request.NativeDelivery().Message, bodies[i])
+			if entry.Text != bodies[i] || entry.Message.Text != bodies[i] {
+				t.Fatalf("delivery %s: entry=%q message=%q want=%q", id, entry.Text, entry.Message.Text, bodies[i])
 			}
 			if live.attached.source.Entries[len(live.attached.source.Entries)-1].Source.ActivitySeq == 0 {
 				t.Fatalf("live %s delivery lost its child-feed link", kind)
 			}
-			if entry.ActivityFacts().Suppressed != (input.Outcome == control.Interrupted) {
+			if entry.ActivityFacts().Suppressed != (outcome == "interrupted") {
 				t.Fatal("interrupted delivery remained visible or hid ordinary traffic")
 			}
 			// Both deliveries arrive while idle, one before any host turn.
-			record := rolloutRecord(i*3+1, "response_item", sent.Params.Items[0])
 			records = append(records, record, record) // Repeated retained identity must coalesce.
 			if i == 0 {
 				records = append(records,
@@ -74,7 +50,7 @@ func TestNativeDeliveredTrafficSurvivesResume(t *testing.T) {
 					rolloutRecord(3, "event_msg", map[string]any{"type": "task_complete", "turn_id": "saved"}))
 			}
 			// An ordinary assistant's printed envelope supplies no delivery provenance.
-			lookalike := map[string]any{"type": "message", "id": control.MessageItemID("lookalike-" + input.ID), "role": "assistant", "phase": "commentary", "content": sent.Params.Items[0]["content"]}
+			lookalike := map[string]any{"type": "message", "id": "lookalike-" + id, "role": "assistant", "phase": "commentary", "content": record["payload"].(map[string]any)["content"]}
 			records = append(records, rolloutRecord(i*3+1, "response_item", lookalike))
 		}
 		liveRendered := ansi.Strip(strings.Join(live.testActivity(live.shell.Transcript).testRenderConversation(100).Lines, "\n"))
@@ -184,7 +160,6 @@ func TestUISnapshotDeliveredCompletionContext(t *testing.T) {
 		}
 		questions := []string{"Does it affect actual file attachments? We still need XML framing and a diff wrapper.", "yes"}
 		times := []time.Time{start.Add(18*time.Minute + 34*time.Second), start.Add(40*time.Minute + time.Second)}
-		wire := live.Host.Input.(*appServerTestInput)
 		var records []map[string]any
 		for i, body := range bodies {
 			turn := fmt.Sprintf("direct-child-turn-%d", i)
@@ -192,28 +167,8 @@ func TestUISnapshotDeliveredCompletionContext(t *testing.T) {
 				"item": map[string]any{"id": "input-" + turn, "type": "userMessage", "content": []map[string]string{{"type": "text", "text": questions[i]}}}})
 			appServerTestNotify(t, direct, "item/completed", map[string]any{"threadId": "main", "turnId": turn,
 				"item": map[string]any{"id": "answer-" + turn, "type": "agentMessage", "phase": "final_answer", "text": body}})
-			input := control.NativeInput{Thread: "main", ID: turn, Sender: peer, Recipient: "/root", Kind: "FINAL_ANSWER", Message: body, Outcome: control.Completed, SourceGeneration: uint64(i + 5), ParentTurn: turn}
-			wire.Reset()
-			result := make(chan error, 1)
-			go func() { _, err := live.Requests.Input(t.Context(), input); result <- err }()
-			synctest.Wait()
-			live.Requests.Dispatch(<-live.Calls())
-			var sent struct {
-				ID     jsontext.Value `json:"id"`
-				Params struct {
-					Items []map[string]any `json:"items"`
-				} `json:"params"`
-			}
-			if err := json.Unmarshal(wire.Bytes(), &sent); err != nil {
-				t.Fatal(err)
-			}
-			request, _ := live.Requests.Lookup(string(sent.ID))
-			live.Requests.CompleteCall(appserver.Message{ID: sent.ID, Result: []byte(`{}`)})
-			if err := <-result; err != nil {
-				t.Fatal(err)
-			}
-			publishNativeDelivery(&live.attached, *request.NativeDelivery(), times[i])
-			records = append(records, map[string]any{"timestamp": times[i].Format(time.RFC3339Nano), "type": "response_item", "payload": sent.Params.Items[0]})
+			record := nativeTrafficFixture(t, live, turn, peer, "/root", "FINAL_ANSWER", body, "completed", times[i])
+			records = append(records, record)
 		}
 		for _, restored := range []bool{false, true} {
 			u := live

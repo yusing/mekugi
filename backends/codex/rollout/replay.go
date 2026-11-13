@@ -22,18 +22,29 @@ import (
 type replayRecord struct {
 	Timestamp time.Time `json:"timestamp"`
 	Type      string    `json:"type"`
-	Payload   struct {
-		Type      string         `json:"type"`
-		ID        string         `json:"id"`
-		Cwd       string         `json:"cwd"`
-		Thread    string         `json:"thread_id"`
-		Turn      string         `json:"turn_id"`
-		Started   int64          `json:"started_at_ms"`
-		Completed int64          `json:"completed_at_ms"`
-		Item      jsontext.Value `json:"item"`
-		History   []struct {
+	Metadata  struct {
+		Inherited         bool                                `json:"inherited_user_message"`
+		Coordination      *observation.CoordinationProjection `json:"coordination"`
+		SourceAcquisition *observation.SourceAcquisition      `json:"source_acquisition"`
+	} `json:"metadata"`
+	Payload struct {
+		Type           string         `json:"type"`
+		ID             string         `json:"id"`
+		Cwd            string         `json:"cwd"`
+		Thread         string         `json:"thread_id"`
+		Turn           string         `json:"turn_id"`
+		Started        int64          `json:"started_at_ms"`
+		Completed      int64          `json:"completed_at_ms"`
+		Item           jsontext.Value `json:"item"`
+		NativeMetadata struct {
+			Kinds []string `json:"content_item_kinds"`
+		} `json:"internal_chat_message_metadata_passthrough"`
+		History []struct {
 			Type      string `json:"type"`
 			Reference string `json:"encrypted_content"`
+			Metadata  struct {
+				SourceAcquisition *observation.SourceAcquisition `json:"source_acquisition"`
+			} `json:"metadata"`
 		} `json:"replacement_history"`
 	} `json:"payload"`
 }
@@ -78,7 +89,7 @@ func scanReplayLines(ctx context.Context, path string, source io.Reader, visit f
 // retained feature records. Known threads identify inherited sibling evidence.
 func Replay(ctx context.Context, path string, known map[string]bool) (observation.Source, error) {
 	r := observation.Source{Unsupported: make(map[string]int)}
-	var owner, pendingCompaction string
+	var owner, pendingCompaction, activeTurn string
 	ancestors := make(map[string]bool)
 	turns := make(map[string]string)
 	err := readReplayLines(ctx, path, func(line []byte) error {
@@ -99,6 +110,46 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 				return errors.New("session metadata has no thread id")
 			}
 			r.Thread, r.Cwd, owner = p.ID, p.Cwd, p.ID
+			return nil
+		}
+		if rec.Type == "compacted" {
+			for _, item := range p.History {
+				if item.Metadata.SourceAcquisition == nil {
+					continue
+				}
+				if r.Thread == "" || rec.Timestamp.IsZero() {
+					return errors.New("source acquisition requires session metadata and timestamp")
+				}
+				if owner == r.Thread || rec.Metadata.Inherited {
+					r.Events = append(r.Events, observation.Event{At: rec.Timestamp, Kind: observation.SourceAcquisitionObserved, ThreadID: r.Thread, TurnID: activeTurn, SourceAcquisition: item.Metadata.SourceAcquisition, Inherited: rec.Metadata.Inherited})
+				}
+			}
+		}
+		if native, supported, err := replayNativeEvent(rec, line, r.Thread, activeTurn); err != nil {
+			return err
+		} else if supported {
+			if r.Thread == "" {
+				return errors.New("event precedes session metadata")
+			}
+			if rec.Timestamp.IsZero() {
+				return errors.New("event has no timestamp")
+			}
+			if rec.Type == "response_item" && owner != r.Thread && !native.Inherited {
+				return nil // Copied ancestor evidence is not new child traffic.
+			}
+			if native.ThreadID == "" {
+				return errors.New("native event has no thread identity")
+			}
+			if native.ThreadID != r.Thread && !native.Inherited {
+				if known[native.ThreadID] || ancestors[native.ThreadID] {
+					return nil
+				}
+				return errors.New("native event thread does not match rollout metadata")
+			}
+			// Inherited content belongs to this source, but retains its frozen
+			// sender/recipient and reset identity for semantic presentation.
+			native.ThreadID = r.Thread
+			r.Events = append(r.Events, native)
 			return nil
 		}
 		if rec.Type != "event_msg" {
@@ -122,6 +173,7 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 				return nil
 			}
 			turns[p.Turn] = owner
+			activeTurn = p.Turn
 			e.Kind, e.TurnStatus = observation.TurnStarted, "inProgress"
 		case "task_complete", "turn_complete":
 			if previous := turns[p.Turn]; previous != "" && previous != r.Thread {
@@ -171,6 +223,56 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 	return r, nil
 }
 
+// Native history facts are observations, not reconstructed tool results. The
+// message DTO remains uninterpreted here; its existing consumer validates
+// attribution and provenance before publishing any traffic.
+func replayNativeEvent(rec replayRecord, line []byte, thread, turn string) (observation.Event, bool, error) {
+	e := observation.Event{At: rec.Timestamp, ThreadID: thread, TurnID: turn, Inherited: rec.Metadata.Inherited}
+	switch rec.Type + "/" + rec.Payload.Type {
+	case "event_msg/agent_coordination":
+		var record struct {
+			Payload observation.AgentCoordination `json:"payload"`
+		}
+		if err := json.Unmarshal(line, &record); err != nil {
+			return e, false, err
+		}
+		e.Kind, e.ThreadID, e.TurnID, e.Coordination = observation.CoordinationObserved, record.Payload.ThreadID, record.Payload.TurnID, &record.Payload.Projection
+		return e, true, nil
+	case "event_msg/context_reset":
+		var record struct {
+			Payload observation.ContextResetEvent `json:"payload"`
+		}
+		if err := json.Unmarshal(line, &record); err != nil {
+			return e, false, err
+		}
+		e.Kind, e.ThreadID, e.TurnID, e.Reset = observation.ContextResetObserved, record.Payload.Thread, record.Payload.Turn, &record.Payload
+		return e, true, nil
+	}
+	if rec.Type != "response_item" {
+		return e, false, nil
+	}
+	message := rec.Payload.Type == "agent_message" || rec.Payload.Type == "message" &&
+		(slices.Contains(rec.Payload.NativeMetadata.Kinds, "multi_agent.inter_agent_message") || slices.Contains(rec.Payload.NativeMetadata.Kinds, "multi_agent.inter_agent_completion_message"))
+	if !message && rec.Metadata.Coordination == nil && rec.Metadata.SourceAcquisition == nil {
+		return e, false, nil
+	}
+	e.Kind, e.Coordination = observation.CoordinationObserved, rec.Metadata.Coordination
+	e.SourceAcquisition = rec.Metadata.SourceAcquisition
+	if e.SourceAcquisition != nil && !message && e.Coordination == nil {
+		e.Kind = observation.SourceAcquisitionObserved
+	}
+	if message {
+		var record struct {
+			Payload observation.NativeMessage `json:"payload"`
+		}
+		if err := json.Unmarshal(line, &record); err != nil {
+			return e, false, err
+		}
+		e.NativeMessage = &record.Payload
+	}
+	return e, true, nil
+}
+
 func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	var p struct {
 		SavedPath                                          string `json:"saved_path"`
@@ -186,6 +288,8 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 		Process                                            string         `json:"process_id"`
 		Client                                             string         `json:"client_id"`
 		Tool                                               string         `json:"tool"`
+		ReceiverThreadIDs                                  []string       `json:"receiver_thread_ids"`
+		TimeoutMS                                          *int64         `json:"timeout_ms"`
 		Server                                             string         `json:"server"`
 		Name, Namespace                                    string
 		ToolOutput                                         jsontext.Value `json:"output"`
@@ -208,12 +312,13 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 		i.Type, p.SavedPath = "imageGeneration", p.SavedArtifact
 	}
 	switch i.Type {
+	case "collabAgentToolCall":
+		i.ReceiverThreadIDs, i.TimeoutMS = p.ReceiverThreadIDs, p.TimeoutMS
 	case "mcpToolCall":
 		i.Server, i.Arguments, i.Result, i.Error = p.Server, p.Arguments, p.Result, p.Error
 	case "functionCallOutput":
-		// Host-produced standalone outputs retain checkpoint outcomes. Other
-		// function results are not coordination observations.
-		if p.Namespace != "threadcontrol" || p.Name != "compact" && p.Name != "wait_agent" {
+		// Historical standalone wakes are presentation evidence, not live work.
+		if p.Namespace != "threadcontrol" || p.Name != "wait_agent" && p.Name != "compact" {
 			return i, false, nil
 		}
 		i.Server, i.Tool, i.Result = p.Namespace, p.Name, p.ToolOutput

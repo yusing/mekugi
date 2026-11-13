@@ -12,8 +12,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestAppServerCompactContinuationSurvivesDeferredAdmission(t *testing.T) {
@@ -21,30 +19,23 @@ func TestAppServerCompactContinuationSurvivesDeferredAdmission(t *testing.T) {
 		u, wire := newAppServerTestUI()
 		u.ctx = t.Context()
 		u.notifications = &nativeNotifications{relay: func(event, _ string) { t.Errorf("automatic compaction continuation emitted %s", event) }}
-		driver, err := threadbinding.NewDriver(control.New())
-		if err != nil {
-			t.Fatal(err)
-		}
-		u.attached.threadInput = &threadInput{driver: driver}
 		appServerTestTurn(t, u, "reasoning")
 		appServerTestKeys(t, u, "/compact\r")
-		interrupt := appServerOneRequest(t, wire, "turn/interrupt", "")
-		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
-		appServerTestTurnEnd(t, u, "reasoning", "interrupted")
 		compact := appServerOneRequest(t, wire, "thread/compact/start", "")
+		compactWaitReset(u, compact, "", "accepted", 1)
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, compact.ID))
-		appServerTestTurn(t, u, "compact")
-		// Hold the existing admission barrier; preparation may otherwise finish immediately.
-		admission := make(chan error)
-		u.attached.threadInput.restoration = admission
-		appServerTestTurnEnd(t, u, "compact", "completed")
+		appServerTestTurnEnd(t, u, "reasoning", "interrupted")
+		compactTestStart(t, u, compact, "compact", 1)
+		// Native provisional admission blocks input without a Go reservation.
+		u.NativeInputPending = true
+		compactTestEnd(t, u, compact, "compact", "completed", 1)
 		if !u.Compaction.ContinuationPending() || wire.Len() != 0 {
 			t.Fatal("compaction lost continuation during asynchronous admission")
 		}
 		if u.attached.presentation.View().Status.Session.CompletionKnown {
 			t.Fatal("compaction marked the task completed before continuation admission")
 		}
-		close(admission)
+		u.NativeInputPending = false
 		flush := func() {
 			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 				t.Fatal(err)
@@ -107,49 +98,71 @@ func queueBusyCompact(t *testing.T, u *appServerUI, w *appServerTestInput) appSe
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\t")
 	appServerTestTurnEnd(t, u, "work", "completed")
-	return appServerOneRequest(t, w, "thread/compact/start", "")
+	request := appServerOneRequest(t, w, "thread/compact/start", "")
+	compactWaitReset(u, request, "", "accepted", 1)
+	return request
 }
 
 func TestAppServerCompactQueuedContinuesOnceAfterAckAndTurn(t *testing.T) {
 	for _, beforeAck := range []bool{false, true} {
-		t.Run(fmt.Sprint("turnBeforeAck=", beforeAck), func(t *testing.T) {
-			u, w := newAppServerTestUI()
-			u.settings.Model = "gpt-6.1-sol"
-			u.serviceTiers = inferencegateway.NewTiers(map[string]string{u.settings.Model: "priority"})
-			appServerTestKeys(t, u, "/tier default\r")
-			r := queueBusyCompact(t, u, w)
-			ack := fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID)
-			if !beforeAck {
-				appServerTestMessage(t, u, ack)
-				if w.Len() != 0 {
-					t.Fatal("acknowledgement alone continued the task")
+		for _, resetBeforeHost := range []bool{false, true} {
+			t.Run(fmt.Sprintf("turnBeforeAck=%t/resetBeforeHost=%t", beforeAck, resetBeforeHost), func(t *testing.T) {
+				u, w := newAppServerTestUI()
+				u.settings.Model = "gpt-6.1-sol"
+				u.serviceTiers = inferencegateway.NewTiers(map[string]string{u.settings.Model: "priority"})
+				appServerTestKeys(t, u, "/tier default\r")
+				r := queueBusyCompact(t, u, w)
+				ack := fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID)
+				if !beforeAck {
+					appServerTestMessage(t, u, ack)
+					if w.Len() != 0 {
+						t.Fatal("acknowledgement alone continued the task")
+					}
 				}
-			}
-			appServerTestTurn(t, u, "compact-turn")
-			appServerTestTurnEnd(t, u, "compact-turn", "completed")
-			if beforeAck {
+				compactTestStart(t, u, r, "compact-turn", 1)
+				if resetBeforeHost {
+					compactWaitReset(u, r, "compact-turn", "completed", 1)
+				} else {
+					appServerTestTurnEnd(t, u, "compact-turn", "completed")
+				}
+				if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
+					t.Fatal(err)
+				}
 				if w.Len() != 0 {
-					t.Fatal("task continued before compact acknowledgement")
+					t.Fatal("task continued before both reset disposition and host settlement")
+				}
+				if resetBeforeHost {
+					appServerTestTurnEnd(t, u, "compact-turn", "completed")
+				} else {
+					compactWaitReset(u, r, "compact-turn", "completed", 1)
+					if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, t.Context()); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if beforeAck {
+					if w.Len() != 0 {
+						t.Fatal("task continued before compact acknowledgement")
+					}
+					appServerTestTurnEnd(t, u, "compact-turn", "completed")
+					appServerTestMessage(t, u, ack)
+				}
+				start := appServerOneRequest(t, w, "turn/start", "")
+				if len(start.Params.Input) != 0 {
+					t.Fatal("continuation fabricated user input")
+				}
+				if start.Params.ServiceTier != "default" {
+					t.Fatalf("manual reset lost selected default tier: %+v", start)
 				}
 				appServerTestTurnEnd(t, u, "compact-turn", "completed")
 				appServerTestMessage(t, u, ack)
-			}
-			start := appServerOneRequest(t, w, "turn/start", "")
-			if len(start.Params.Input) != 0 {
-				t.Fatal("continuation fabricated user input")
-			}
-			if start.Params.ServiceTier != "default" {
-				t.Fatalf("manual reset lost selected default tier: %+v", start)
-			}
-			appServerTestTurnEnd(t, u, "compact-turn", "completed")
-			appServerTestMessage(t, u, ack)
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"continued"}}}`, start.ID))
-			appServerTestTurnEnd(t, u, "compact-turn", "completed")
-			appServerTestTurnEnd(t, u, "continued", "completed")
-			if w.Len() != 0 || u.Compaction.ContinuationPending() || u.Compaction.AcknowledgementPending() || u.Compaction.Active() {
-				t.Fatalf("duplicate completion restarted task: wire=%q pending=%v", w.String(), u.Compaction.ContinuationPending())
-			}
-		})
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"continued"}}}`, start.ID))
+				appServerTestTurnEnd(t, u, "compact-turn", "completed")
+				appServerTestTurnEnd(t, u, "continued", "completed")
+				if w.Len() != 0 || u.Compaction.ContinuationPending() || u.Compaction.AcknowledgementPending() || u.Compaction.Active() {
+					t.Fatalf("duplicate completion restarted task: wire=%q pending=%v", w.String(), u.Compaction.ContinuationPending())
+				}
+			})
+		}
 	}
 }
 
@@ -163,8 +176,8 @@ func TestAppServerCompactQueuedFollowupWins(t *testing.T) {
 				key = "\t"
 			}
 			appServerTestKeys(t, u, "follow-up"+key)
-			appServerTestTurn(t, u, "compact-turn")
-			appServerTestTurnEnd(t, u, "compact-turn", "completed")
+			compactTestStart(t, u, r, "compact-turn", 1)
+			compactTestEnd(t, u, r, "compact-turn", "completed", 1)
 			if w.Len() != 0 {
 				t.Fatal("follow-up overtook acknowledgement")
 			}
@@ -186,10 +199,12 @@ func TestAppServerCompactQueuedConsecutiveCommandsContinueOnlyAfterLast(t *testi
 	appServerTestTurnEnd(t, u, "work", "completed")
 	for i := range 2 {
 		r := appServerOneRequest(t, w, "thread/compact/start", "")
+		generation := uint64(i + 1)
+		compactWaitReset(u, r, "", "accepted", generation)
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 		turn := fmt.Sprintf("compact-%d", i)
-		appServerTestTurn(t, u, turn)
-		appServerTestTurnEnd(t, u, turn, "completed")
+		compactTestStart(t, u, r, turn, generation)
+		compactTestEnd(t, u, r, turn, "completed", generation)
 	}
 	appServerOneRequest(t, w, "turn/start", "")
 }
@@ -204,8 +219,8 @@ func TestAppServerCompactQueuedFailedOrInterruptedDoesNotContinue(t *testing.T) 
 				if !beforeAck {
 					appServerTestMessage(t, u, ack)
 				}
-				appServerTestTurn(t, u, "compact-turn")
-				appServerTestTurnEnd(t, u, "compact-turn", status)
+				compactTestStart(t, u, r, "compact-turn", 1)
+				compactTestEnd(t, u, r, "compact-turn", status, 1)
 				if beforeAck {
 					appServerTestMessage(t, u, ack)
 				}
@@ -215,8 +230,8 @@ func TestAppServerCompactQueuedFailedOrInterruptedDoesNotContinue(t *testing.T) 
 				appServerTestKeys(t, u, "/compact\r")
 				retry := appServerOneRequest(t, w, "thread/compact/start", "")
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, retry.ID))
-				appServerTestTurn(t, u, "retry")
-				appServerTestTurnEnd(t, u, "retry", "completed")
+				compactTestStart(t, u, retry, "retry", 2)
+				compactTestEnd(t, u, retry, "retry", "completed", 2)
 				if w.Len() != 0 {
 					t.Fatalf("idle retry inherited continuation: %s", w.String())
 				}
@@ -228,8 +243,8 @@ func TestAppServerCompactQueuedFailedOrInterruptedDoesNotContinue(t *testing.T) 
 func TestAppServerCompactQueuedRejectedAfterCompletionDoesNotContinue(t *testing.T) {
 	u, w := newAppServerTestUI()
 	r := queueBusyCompact(t, u, w)
-	appServerTestTurn(t, u, "compact-turn")
-	appServerTestTurnEnd(t, u, "compact-turn", "completed")
+	compactTestStart(t, u, r, "compact-turn", 1)
+	compactTestEnd(t, u, r, "compact-turn", "completed", 1)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
 	if w.Len() != 0 || u.Text != "/compact" || u.Compaction.ContinuationPending() {
 		t.Fatalf("RPC rejection continued or lost command: wire=%q draft=%q", w.String(), u.Text)
@@ -237,8 +252,8 @@ func TestAppServerCompactQueuedRejectedAfterCompletionDoesNotContinue(t *testing
 	appServerTestKeys(t, u, "\r")
 	retry := appServerOneRequest(t, w, "thread/compact/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, retry.ID))
-	appServerTestTurn(t, u, "retry")
-	appServerTestTurnEnd(t, u, "retry", "completed")
+	compactTestStart(t, u, retry, "retry", 2)
+	compactTestEnd(t, u, retry, "retry", "completed", 2)
 	if w.Len() != 0 {
 		t.Fatalf("idle retry revived old continuation: %s", w.String())
 	}
@@ -327,9 +342,11 @@ func TestAppServerCompactCancelThenNormalMainInterrupt(t *testing.T) {
 func TestAppServerCompactCancelCompletionBeforeAckDoesNotQuitOrContinue(t *testing.T) {
 	u, w := newAppServerTestUI()
 	r := queueBusyCompact(t, u, w)
-	appServerTestTurn(t, u, "compact-turn")
-	appServerTestTurnEnd(t, u, "compact-turn", "completed")
+	compactTestStart(t, u, r, "compact-turn", 1)
+	compactTestEnd(t, u, r, "compact-turn", "completed", 1)
 	nativeTestCancel(t, u)
+	cancel := compactTestCancelRequest(t, w, r)
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, cancel.ID))
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	if w.Len() != 0 || u.Compaction.ContinuationPending() || u.Interruption.BeforeStart {
 		t.Fatalf("completion racing cancellation continued task: %s", w.String())
@@ -361,29 +378,44 @@ func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
 }
 
 func TestAppServerCompactQueuedInterruptBeforeCompactStartsCancelsContinuation(t *testing.T) {
-	u, w := newAppServerTestUI()
-	r := queueBusyCompact(t, u, w)
-	nativeTestCancel(t, u)
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
-	appServerTestTurn(t, u, "compact-turn")
-	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
-	// A host completion racing the interrupt must not revive continuation.
-	appServerTestTurnEnd(t, u, "compact-turn", "completed")
-	if w.Len() != 0 || u.Compaction.ContinuationPending() {
-		t.Fatalf("cancelled compaction continued: %s", w.String())
+	for _, startRacesCancel := range []bool{false, true} {
+		t.Run(fmt.Sprint("startRacesCancel=", startRacesCancel), func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			r := queueBusyCompact(t, u, w)
+			nativeTestCancel(t, u)
+			cancel := compactTestCancelRequest(t, w, r)
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, cancel.ID))
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
+			if startRacesCancel {
+				compactTestStart(t, u, r, "compact-turn", 1)
+				// Successful reset racing cancellation cannot revive continuation.
+				compactTestEnd(t, u, r, "compact-turn", "completed", 1)
+			} else {
+				compactWaitReset(u, r, "", "canceled", 1)
+			}
+			if w.Len() != 0 || u.Compaction.ContinuationPending() || u.Compaction.Pending() {
+				t.Fatalf("cancelled compaction continued or failed to settle: %s", w.String())
+			}
+			appServerTestKeys(t, u, "new task\r")
+			appServerOneRequest(t, w, "turn/start", "new task")
+			appServerTestTurn(t, u, "new-work")
+			if w.Len() != 0 || u.Interruption.Target != "" {
+				t.Fatal("settled compaction cancellation targeted later Main work")
+			}
+		})
 	}
 }
 
 func TestAppServerCompactQueuedInterruptDuringCompactionCancelsContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	r := queueBusyCompact(t, u, w)
+	u.notifications = &nativeNotifications{relay: func(event, _ string) { t.Errorf("canceled auxiliary compaction emitted %s", event) }}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
-	appServerTestTurn(t, u, "compact-turn")
+	compactTestStart(t, u, r, "compact-turn", 1)
 	nativeTestCancel(t, u)
-	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
-	appServerTestTurnEnd(t, u, "compact-turn", "completed")
+	cancel := compactTestCancelRequest(t, w, r)
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, cancel.ID))
+	compactTestEnd(t, u, r, "compact-turn", "completed", 1)
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	if w.Len() != 0 || u.Compaction.ContinuationPending() {
 		t.Fatalf("interrupt racing compaction completion restarted task: %s", w.String())
@@ -399,13 +431,15 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 			}
 			if phase != "starting" {
-				appServerTestTurn(t, u, "compact-turn")
+				compactTestStart(t, u, r, "compact-turn", 1)
 			}
 			if phase == "completed-before-ack" {
-				appServerTestTurnEnd(t, u, "compact-turn", "completed")
+				compactTestEnd(t, u, r, "compact-turn", "completed", 1)
 			}
 			appServerTestKeys(t, u, "waiting enter\rwaiting tab\t")
 			nativeTestCancel(t, u)
+			cancel := compactTestCancelRequest(t, w, r)
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, cancel.ID))
 			if u.Text != "waiting enter\nwaiting tab" || len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) != 0 || u.Compaction.ContinuationPending() {
 				t.Fatalf("cancellation did not restore waiting input: draft=%q unsent=%+v queued=%+v", u.Text, u.attached.conversation.Unsent, u.attached.conversation.Queued)
 			}
@@ -413,12 +447,10 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 			}
 			if phase == "starting" {
-				appServerTestTurn(t, u, "compact-turn")
+				compactTestStart(t, u, r, "compact-turn", 1)
 			}
 			if phase != "completed-before-ack" {
-				interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
-				appServerTestTurnEnd(t, u, "compact-turn", "completed")
+				compactTestEnd(t, u, r, "compact-turn", "completed", 1)
 			}
 			if w.Len() != 0 || u.Text != "waiting enter\nwaiting tab" {
 				t.Fatalf("completion racing cancellation dispatched waiting input: wire=%q draft=%q", w.String(), u.Text)
@@ -469,16 +501,15 @@ func TestAppServerCompactSteerRestoresHostOwnedSteer(t *testing.T) {
 		t.Fatal("compact overtook unresolved input submission")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"work"}}`, steer.ID))
-	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-	appServerTestTurnEnd(t, u, "work", "interrupted")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 	compact := appServerOneRequest(t, w, "thread/compact/start", "")
+	compactWaitReset(u, compact, "", "accepted", 1)
+	appServerTestTurnEnd(t, u, "work", "interrupted")
 	if u.Text != "uncommitted" {
 		t.Fatalf("host-owned steer not restored: %q", u.Text)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, compact.ID))
-	appServerTestTurn(t, u, "compact")
-	appServerTestTurnEnd(t, u, "compact", "completed")
+	compactTestStart(t, u, compact, "compact", 1)
+	compactTestEnd(t, u, compact, "compact", "completed", 1)
 	appServerOneRequest(t, w, "turn/start", "")
 }
 
@@ -489,13 +520,12 @@ func TestAppServerCompactSteerWaitsForStartingTurn(t *testing.T) {
 	appServerTestKeys(t, u, "/compact\r")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"work"}}}`, start.ID))
 	if w.Len() != 0 {
-		t.Fatal("interrupt dispatched before host turn identity")
+		t.Fatal("compact dispatched before host turn identity")
 	}
 	appServerTestTurn(t, u, "work")
-	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
+	compact := appServerOneRequest(t, w, "thread/compact/start", "")
+	compactWaitReset(u, compact, "", "accepted", 1)
 	appServerTestTurnEnd(t, u, "work", "interrupted")
-	appServerOneRequest(t, w, "thread/compact/start", "")
 	if u.Text != "task" {
 		t.Fatalf("uncommitted starting input not restored: %q", u.Text)
 	}

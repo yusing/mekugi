@@ -106,8 +106,8 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	if api == nil {
 		return 1, errors.New("server session requires a control API")
 	}
-	if threads == nil || threads.shared == nil || threads.start != nil && threads.setup == nil {
-		return 1, errors.New("server session requires thread execution, shared coordination and child preparation")
+	if threads == nil {
+		return 1, errors.New("server session requires native thread execution resources")
 	}
 	suppliedArgs := slices.Clone(args)
 	args = expandReasoningShortcuts(args)
@@ -146,7 +146,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	var resumeThread string
 	var resumeArgv []string
 	approvals := false
-	if threads.start == nil {
+	{
 		var err error
 		var yolo bool
 		args, resumeThread, yolo, err = appServerArgs(args)
@@ -170,12 +170,6 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 			return 1, fmt.Errorf("locate mekugi-app-server: %w", err)
 		}
 	}
-	if threads.start != nil {
-		options, environment, err = threads.setup.childOutputs()
-		if err != nil {
-			return 1, err
-		}
-	}
 	environment = serverEnvironment(environment)
 	captureDirectory, err := history.ReplayDirectory()
 	if err != nil {
@@ -187,11 +181,11 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 	if threads.setup == nil {
 		threads.setup = &threadSetup{options: options, settings: settings, executable: executable, args: slices.Clone(args), environment: slices.Clone(environment), approvals: approvals}
 	}
-	frontends, err := composition.Frontends(ctx, true, options.ChildReplySummary, captureDirectory, threads.shared, sessionapi.ReadNativeSkillCatalog)
+	frontends, err := composition.Frontends(ctx, true, options.ChildReplySummary, captureDirectory, sessionapi.ReadNativeSkillCatalog)
 	if err != nil {
 		return 1, err
 	}
-	threads.driver, threads.tools = frontends.Threads, frontends.MCP
+	threads.tools = frontends.MCP
 	issues := requestexecution.NewFailures(frontends.Notifications)
 	defer func() {
 		for _, message := range issues.Notices.Pending() {

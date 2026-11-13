@@ -48,6 +48,28 @@ func (s *Store) ReadScope(thread string) (Scope, bool, error) {
 	return decodeScope(data, thread)
 }
 
+// ReadAdmittedScope requires persisted identity, unlike ReadScope's allocation
+// default. Resource readers and child admission must not invent a namespace.
+func (s *Store) ReadAdmittedScope(thread string) (Scope, error) {
+	scope, found, err := s.ReadScope(thread)
+	if err != nil {
+		return Scope{}, err
+	}
+	if !found || thread == "" {
+		return Scope{}, errors.New("thread handle scope is not admitted")
+	}
+	if scope.Namespace != thread {
+		root, exists, err := s.ReadScope(scope.Namespace)
+		if err != nil {
+			return Scope{}, err
+		}
+		if !exists || root.Namespace != scope.Namespace {
+			return Scope{}, errors.New("missing or inconsistent root handle scope")
+		}
+	}
+	return scope, nil
+}
+
 // ScopeInNamespace filters catalog discovery before full scope validation.
 // Unrelated feature metadata cannot affect this namespace's inherited records.
 func (s *Store) ScopeInNamespace(thread, namespace string) (bool, error) {

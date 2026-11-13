@@ -23,7 +23,8 @@ or the explicit product scope. Update affected contracts and consumers together.
 
 ## Execution authority
 
-This boundary governs Codex runtimes.
+This boundary governs root and descendant Codex runtimes. Custom Responses model
+access does not select a different execution backend.
 
 Codex owns stock `apply_patch`, `exec_command`, JavaScript `exec`, permissions,
 sandboxing, processes, yielded sessions and `write_stdin` continuation. Mekugi
@@ -31,14 +32,12 @@ preserves nested tool names, schemas, arguments and host results. Observation,
 presentation and replay never execute a call again, serialize independent
 `Promise.allSettled` calls, or impose a minimum wait duration.
 
-[Thread Control](../../modules/threadcontrol/SPEC.md) coordinates independent
-native runtimes through the Mekugi server. Its compatibility adapter captures
-actual invoking settings and complete permission policy, resolves bounded roles,
-and prepares inherited history. The backend supplies host identity and retained
-facts, while each runtime’s Session Control owns its sole request ledger.
-Native V2 collaboration tools and collaboration-mode prose are disabled at their
-runtime owners. Thread Control retains authenticated role projection and
-coordination history; this does not remove historical V1 native collaboration.
+[Native coordination](../../docs/contracts/coordination.md) owns admitted trees,
+preparation, history forks, work, waits and delivery. Codex children share the
+invocation process and request ledger through thread-scoped endpoints. The native
+registry and StateRuntime retain identity and accepted operation facts; Go supplies
+actual host resources, external execution and presentation, not another coordinator.
+Native V2 tools and role/mode owners supply the effective coordination interface.
 
 The application admits the JavaScript execution interface before inference;
 catalogs exposing top-level `apply_patch` or `exec_command` instead are unsupported.
@@ -91,13 +90,14 @@ line. Native clients retain the latest delivered diagnostics for exit reporting;
 this is not a durable crash log. RPC replies preserve the
 original server request ID; acknowledgement does not establish operation completion.
 
-Compound waits use the existing connection for an awaited
-`thread/compoundWait/settle` server request and a correlated terminal
-`thread/compoundWait/reset` notification. The native execution cell supplies exact
-evidence; Thread Control serializes logical stop admission and returns its
-disposition. Neither notification observation nor provider-input parsing may
-substitute for that reply. Reset completion and host-turn settlement remain
-separate prerequisites under the [wait contract](../../modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery).
+Native waits retain their original task, turn, JavaScript cell and nested tool
+future without yielding or inference. The native pending frontier releases
+quiescent execution capacity; the event result resumes that same call. Auxiliary
+reset preserves this ownership. `turn/checkpointed` remains a completion-pending
+fact, not a waiting-tool stop. The
+[wait contract](../../docs/contracts/coordination.md#logical-waits-and-ordered-delivery)
+owns delivery and reset barriers; Go neither schedules wait resumption nor
+synthesizes a provider response.
 
 Explicit close releases a reader waiting on a paused consumer. Normal shutdown
 closes input. Cancellation instead signals Codex once to interrupt its active
@@ -110,24 +110,22 @@ are never restored from retained evidence.
 
 The root launch's native runtime owns per-thread feature-use counters independently
 of optional analytics and telemetry export. Native lifecycle owners supply reset and
-tool facts; the host supplies typed facts at accepted coordination boundaries. Those
-facts retain the actor's identity rather than using a
-message recipient's identity or native collaboration ancestry.
+tool facts at accepted coordination boundaries. Those facts retain the actor's
+identity rather than using a message recipient's
+identity or native collaboration ancestry.
 
-Native `featureUse/observed` notifications carry semantic facts; the host sends
-them and accepted coordination facts to the root's `featureUse/record` endpoint.
-`featureUse/read` exposes the current launch's snapshots without starting turns,
-inference or idle runtimes. Child runtime replacement and UI reconnect do not restart
-the root launch's counts. A new root launch does not restore them from history.
+Native semantic facts feed the launch-local FeatureUse owner directly, independently of whether a Codex thread is loaded. Counting does not depend on event
+delivery to the host. `featureUse/read` exposes the current launch's snapshots without
+starting turns, inference or idle runtimes. Child runtime replacement and UI reconnect
+do not restart the root launch's counts. A new root launch does not restore them from history.
 Mekugi aggregates admitted-family membership and presents availability; it does not
-increment a parallel set of counters. The [FeatureUse contract](../../modules/threadcontrol/SPEC.md#feature-use)
+increment a parallel set of counters. The [FeatureUse contract](../../docs/contracts/coordination.md#feature-use)
 owns counting boundaries and retained outcomes. General usage, transport and output
 deduplication measurements remain separate owners.
 
-Native removal joins its existing event-producer drain before teardown. If draining
-cannot be guaranteed, `featureUse/unavailable` reports the gap before removal completes.
-Lost fact delivery or an abnormal native stream makes feature-use measurement
-unavailable for the rest of that launch, rather than presenting incomplete counts.
+Snapshot retrieval is demand-driven. The Features page reads when selected or
+explicitly refreshed; other pages and periodic UI updates do not retrieve counters.
+Failed or incomplete snapshot reads are unavailable, not measured zeroes.
 
 ## Transcript observations
 

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 )
 
 func TestConfiguredCatalogNativeCodex(t *testing.T) {
@@ -73,9 +73,9 @@ func TestConfiguredCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	response := awaitHistoryRPC(t, client, id)
-	driver := new(threadbinding.Driver)
-	driver.CaptureConfiguredCatalog(response.Result)
-	if effort, err := driver.InheritedEffort("selected", "ultra"); err != nil || effort != "high" {
+	reasoningCatalog := new(inferencegateway.ReasoningCatalog)
+	reasoningCatalog.CaptureConfigured(response.Result)
+	if effort, err := reasoningCatalog.InheritedEffort("selected", "ultra"); err != nil || effort != "high" {
 		t.Fatalf("host effective config did not select CLI catalog: %q %v; response %s", effort, err, response.Result)
 	}
 }

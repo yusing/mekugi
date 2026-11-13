@@ -10,9 +10,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 const childReplySummaryBody = "## Summary\nFixed exact reply navigation and kept the original evidence available. Focused checks pass, while live model compliance remains unverified.\n\n## Details\n" + "The supporting explanation stays in the retained reply.\n" + "Second detail with **emphasis**.\nThird detail.\nFourth detail.\nFifth detail.\nEnd of evidence."
@@ -37,7 +37,7 @@ func TestUISnapshotChildReplySummary(t *testing.T) {
 					if kind == "native-final" {
 						delivery = "FINAL_ANSWER"
 					}
-					publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: id, Sender: "/root/worker", Recipient: "/root", Kind: delivery, Message: body}, time.Now())
+					publishNativeDelivery(&u.attached, sessioncontrol.NativeDelivery{Thread: "main", ID: id, Sender: "/root/worker", Recipient: "/root", Kind: delivery, Message: body}, time.Now())
 					return
 				}
 				var item any = map[string]any{"id": id, "type": "agentMessage", "phase": "final_answer", "text": body}

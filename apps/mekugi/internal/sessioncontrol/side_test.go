@@ -26,7 +26,7 @@ func TestSideCompletionAndDelayedCleanup(t *testing.T) {
 	if side.Release() != "thread/archive" {
 		t.Fatal("interruption did not finish cleanup")
 	}
-	ledger := new(Requests[*Side])
+	ledger := NewRequests[*Side](nil)
 	ledger.TrackSide("side", &side)
 	ledger.TrackSide("child", &side)
 	ledger.Retire("main")

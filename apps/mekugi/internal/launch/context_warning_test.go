@@ -16,11 +16,11 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/contracts/observation"
 	modelresponses "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -30,8 +30,8 @@ func queueContextWarning(t *testing.T, issues *requestexecution.Failures, thread
 	tokens, window := uint64(600), uint64(1000)
 	preparer := executionobservation.New(executionobservation.Config{
 		Registry: sharedProxyTestRegistry(t), Control: new(sessioncontrol.Observations), Event: issues.AddThreadEvent,
-		Inspect: func(context.Context, string) (control.SessionDetails, error) {
-			return control.SessionDetails{ContextTokens: &tokens, ContextWindow: &window}, nil
+		Inspect: func(context.Context, string) (observation.SessionDetails, error) {
+			return observation.SessionDetails{ContextTokens: &tokens, ContextWindow: &window}, nil
 		},
 	})
 	request := &responses.Request{Fields: map[string]jsontext.Value{"input": jsontext.Value(`[{"role":"user","content":"continue"}]`)}}
@@ -51,8 +51,8 @@ func TestContextUrgentInstructionPreparedRequest(t *testing.T) {
 	preparer := executionobservation.New(executionobservation.Config{
 		Registry: sharedProxyTestRegistry(t), Control: new(sessioncontrol.Observations),
 		Event: func(_, _, _, text string) { events = append(events, text) },
-		Inspect: func(context.Context, string) (control.SessionDetails, error) {
-			return control.SessionDetails{ContextTokens: &tokens, ContextWindow: &window, Compactions: &compactions}, nil
+		Inspect: func(context.Context, string) (observation.SessionDetails, error) {
+			return observation.SessionDetails{ContextTokens: &tokens, ContextWindow: &window, Compactions: &compactions}, nil
 		},
 	})
 	for _, test := range []struct {

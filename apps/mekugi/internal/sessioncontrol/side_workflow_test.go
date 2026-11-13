@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 )
 
 func TestAnswerOnlyClassificationUsesLiveForkLedger(t *testing.T) {
@@ -162,14 +162,14 @@ func TestSideArchiveFailureCanRetryAfterHostClose(t *testing.T) {
 }
 
 func TestSideForkInheritedEffort(t *testing.T) {
-	driver := new(threadbinding.Driver)
-	driver.CaptureCatalog([]byte(`{"models":[{"slug":"model","multi_agent_reasoning_effort":"high","supported_reasoning_levels":[{"effort":"high"},{"effort":"max"},{"effort":"ultra"}]}]}`))
+	catalog := new(inferencegateway.ReasoningCatalog)
+	catalog.Capture([]byte(`{"models":[{"slug":"model","multi_agent_reasoning_effort":"high","supported_reasoning_levels":[{"effort":"high"},{"effort":"max"},{"effort":"ultra"}]}]}`))
 	for _, oneoff := range []bool{false, true} {
 		for _, effort := range []string{"ultra", "max"} {
 			t.Run(fmt.Sprintf("oneoff=%t/%s", oneoff, effort), func(t *testing.T) {
 				transport := &requestTransport{id: "fork"}
 				requests := NewRequests[struct{}](transport)
-				requests.InheritedEffort = driver.InheritedEffort
+				requests.InheritedEffort = catalog.InheritedEffort
 				side := &Side{SideAnswer: &conversationmodel.SideAnswer{OneOff: oneoff, Pending: conversationmodel.Input{Text: "task"}}, Busy: true}
 				if _, err := requests.StartSide(side, SideMain{Thread: "main", Model: "model", Effort: effort}, time.Time{}); err != nil {
 					t.Fatal(err)
@@ -376,6 +376,126 @@ func TestSideAttachmentSubmissionIdentity(t *testing.T) {
 			t.Fatal("side submission lost unique identity or original contents")
 		}
 		previous = snapshot.ID
+	}
+}
+
+func TestSideNativeInterruptUsesOwnRootAndWaitsForExactTerminalWork(t *testing.T) {
+	transport := &requestTransport{id: "interrupt"}
+	requests := NewRequests[struct{}](transport)
+	side := &Side{SideAnswer: &conversationmodel.SideAnswer{}, Source: "main", Thread: "side", Turn: "side-turn", Busy: true}
+	requests.TrackSide("side", side)
+	side.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "side-work", Disposition: "waiting"}, Wait: &appserver.AgentWaitObservation{WaitID: "side-wait"}})
+	for range 2 {
+		if _, err := requests.InterruptSide(side); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(transport.sends) != 1 || transport.sends[0].method != "agent/interrupt" {
+		t.Fatalf("native work interruption was not issued once: %+v", transport.sends)
+	}
+	params := transport.sends[0].params.(map[string]any)
+	if params["rootThreadId"] != "side" || params["threadId"] != "side" || params["turnId"] != nil {
+		t.Fatalf("side interruption borrowed Main's authority or invented a turn: %+v", params)
+	}
+	request, ok := requests.Take("interrupt")
+	if !ok || request.Side != side || request.SideInterrupt != "side-work" {
+		t.Fatalf("native interruption lost exact side owner: %+v", request)
+	}
+	update, err := requests.ObserveSide(appserver.Message{Result: []byte(`{}`)}, request, "replacement-main")
+	if err != nil || !update.Handled || !side.Busy || side.Waiting != "side-wait" || side.NativeWork != "side-work" || side.Interruption.Target != "side-work" {
+		t.Fatalf("acknowledgement settled native work: side=%+v update=%+v err=%v", side, update, err)
+	}
+	for _, stale := range []appserver.AgentObservation{
+		{ThreadID: "main", Work: &appserver.AgentWorkObservation{WorkID: "side-work", Disposition: "interrupted"}},
+		{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "earlier-work", Disposition: "interrupted"}},
+	} {
+		side.ObserveNativeWork(stale)
+		if !side.Busy || side.NativeWork != "side-work" || side.Waiting != "side-wait" {
+			t.Fatal("foreign or stale observation settled side work")
+		}
+	}
+	side.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "side-work", Disposition: "interrupted"}})
+	if side.Busy || side.NativeWork != "" || side.Waiting != "" || side.Interruption.Target != "" || side.Status != "interrupted" || len(transport.sends) != 1 {
+		t.Fatalf("exact native terminal did not settle without another host request: %+v", side)
+	}
+}
+
+func TestSideStaleNativeInterruptResponseCannotClearCurrentRequest(t *testing.T) {
+	for _, rejected := range []bool{false, true} {
+		t.Run(fmt.Sprint(rejected), func(t *testing.T) {
+			transport := &requestTransport{id: "old-interrupt"}
+			requests := NewRequests[struct{}](transport)
+			side := &Side{SideAnswer: &conversationmodel.SideAnswer{}, Thread: "side", Busy: true}
+			requests.TrackSide("side", side)
+			side.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "old-work", Disposition: "running"}})
+			if _, err := requests.InterruptSide(side); err != nil {
+				t.Fatal(err)
+			}
+			old, _ := requests.Take("old-interrupt")
+			if _, err := requests.ObserveSide(appserver.Message{Method: "turn/started", Params: []byte(`{"threadId":"side","turn":{"id":"new-turn"}}`)}, Request[struct{}]{}, "main"); err != nil {
+				t.Fatal(err)
+			}
+			side.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "new-work", Disposition: "waiting"}, Wait: &appserver.AgentWaitObservation{WaitID: "new-wait"}})
+			transport.id = "new-interrupt"
+			if _, err := requests.InterruptSide(side); err != nil {
+				t.Fatal(err)
+			}
+			response := appserver.Message{Result: []byte(`{}`)}
+			if rejected {
+				response.Error = &appserver.Error{Message: "old request rejected"}
+			}
+			update, err := requests.ObserveSide(response, old, "main")
+			if err != nil || update.NoticeError || !side.Busy || side.NativeWork != "new-work" || side.Waiting != "new-wait" || side.Interruption.Target != "new-work" {
+				t.Fatalf("stale response changed current interruption: side=%+v update=%+v err=%v", side, update, err)
+			}
+			current, _ := requests.Take("new-interrupt")
+			update, err = requests.ObserveSide(appserver.Message{Error: &appserver.Error{Message: "current request rejected"}}, current, "main")
+			if err != nil || !update.NoticeError || side.Interruption.Target != "" || !side.Busy || side.NativeWork != "new-work" || side.Waiting != "new-wait" {
+				t.Fatalf("current rejection lost waiting work or retained interruption gate: side=%+v update=%+v err=%v", side, update, err)
+			}
+		})
+	}
+}
+
+func TestSidePausedNativeWorkPreservesWaitAndInterruption(t *testing.T) {
+	for _, reason := range []string{"providerUsageLimit", ""} {
+		t.Run(reason, func(t *testing.T) {
+			transport := &requestTransport{id: "interrupt"}
+			requests := NewRequests[struct{}](transport)
+			side := &Side{SideAnswer: &conversationmodel.SideAnswer{}, Thread: "side", Turn: "side-turn", Busy: true}
+			requests.TrackSide("side", side)
+			wait := &appserver.AgentWaitObservation{WaitID: "side-wait"}
+			want := "Paused"
+			if reason != "" {
+				wait.Reason, want = new(reason), "Usage limit · paused"
+			}
+			side.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "side-work", Disposition: "paused"}, Wait: wait})
+			if side.Busy || side.Waiting != "side-wait" || side.NativeWork != "side-work" || side.Turn != "side-turn" || side.Status != want || side.Alert {
+				t.Fatalf("paused native identity or reason lost: %+v", side)
+			}
+			if target := side.InterruptTarget(); target.Thread != "side" || target.Turn != "side-turn" || target.Wait != "side-wait" {
+				t.Fatalf("paused interruption unavailable: %+v", target)
+			}
+			for range 2 {
+				if _, err := requests.InterruptSide(side); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(transport.sends) != 1 || transport.sends[0].method != "agent/interrupt" {
+				t.Fatalf("paused interruption was not native and unique: %+v", transport.sends)
+			}
+			request, _ := requests.Take("interrupt")
+			if _, err := requests.ObserveSide(appserver.Message{Result: []byte(`{}`)}, request, "main"); err != nil {
+				t.Fatal(err)
+			}
+			if side.Busy || side.Waiting != "side-wait" || side.NativeWork != "side-work" || side.Turn != "side-turn" {
+				t.Fatal("interrupt acknowledgement settled paused native work")
+			}
+			side.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "side-work", Disposition: "interrupted"}})
+			if side.Status != "interrupted" || side.Busy || side.Waiting != "" || side.NativeWork != "" || side.Turn != "" {
+				t.Fatalf("native terminal did not settle paused work: %+v", side)
+			}
+		})
 	}
 }
 

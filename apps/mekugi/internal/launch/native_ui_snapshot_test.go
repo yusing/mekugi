@@ -10,7 +10,6 @@ import (
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -65,7 +64,7 @@ func TestComposerWorkspaceStatus(t *testing.T) {
 func TestUISnapshotPreparedChildReadOnly(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }
-	u.Startup.Prepared = &sessioncontrol.PreparedThread{Parent: "parent"}
+	u.NativeInputPending = true
 	u.attached.presentation.Status.Text, u.settings.Model = "Ready", "child-model"
 	u.Text = "retained draft"
 	var rows []string

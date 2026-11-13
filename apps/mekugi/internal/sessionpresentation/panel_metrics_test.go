@@ -5,66 +5,36 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	"github.com/yusing/mekugi/contracts/observation"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
-	check := func(err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	retained, err := history.NewService(control.RecordKinds())
-	check(err)
-	store, err := retained.Open(t.Context(), t.TempDir())
-	check(err)
-	session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "root")
-	check(err)
-	t.Cleanup(session.Close)
-	service := control.New()
-	check(service.AdmitRoot(t.Context(), session, &control.Member{Thread: "root", Session: "root-session", Task: "/root", AudienceAdmitted: true}))
-	spawn := func(parent, turn, name, thread string) {
-		t.Helper()
-		caller := control.Identity{Thread: parent, Session: parent + "-session", Turn: turn, Call: "spawn-" + name, Item: "exec"}
-		check(service.RequestStarted(t.Context(), caller, parent == "root"))
-		reservation, err := service.ReserveSpawn(t.Context(), caller, control.SpawnRequest{Name: name, Message: "work", Settings: control.Settings{Workspace: t.TempDir()}})
-		check(err)
-		for _, phase := range []string{"create", "assignment_input", "admit", "initial"} {
-			_, err := service.ClaimEffect(t.Context(), parent, reservation.ID)
-			check(err)
-			check(service.EffectAcknowledged(t.Context(), parent, reservation.ID, control.Receipt{Phase: phase, Thread: thread, Session: thread + "-session", Turn: thread + "-turn"}))
-		}
-	}
-	spawn("root", "root-turn", "worker", "worker")
-	spawn("worker", "worker-turn", "nested", "nested")
-	check(service.HostCompleted(t.Context(), "nested", "nested-turn", control.Completed, control.HostFailure{}))
 	counts := featureCountsFixture{
 		"root":      {Spawns: 1, SpawnPreloads: 1},
 		"worker":    {Spawns: 1, AllWaits: 1},
 		"nested":    {CompletionChanges: 1},
 		"unrelated": {SideQuestions: 1},
 	}
-	read := func(thread string) control.FeatureSnapshot {
-		return service.ReadFeatureUse(t.Context(), thread, counts)
+	read := func(thread string) FeatureSnapshot {
+		descendants := map[string][]string{"root": {"worker", "nested"}, "worker": {"nested"}}
+		return ReadNativeFeatureUse(t.Context(), thread, descendants[thread], counts)
 	}
 	snapshot := &transportcapture.MetricsSnapshot{Schema: "mekugi.capture.metrics.v7", OutputDeduplicationThreads: map[string]transportcapture.OutputDeduplicationMetrics{
 		"root": {Projections: 1, Occurrences: 1}, "worker": {Projections: 1, Occurrences: 2, SavedTokens: 20}, "nested": {Projections: 1, Occurrences: 4, SavedTokens: 40}, "unrelated": {Projections: 1, Occurrences: 8},
 	}}
-	got := NewFeatureMetrics("worker", service, snapshot, true, read("worker"))
+	got := NewFeatureMetrics("worker", "worker", snapshot, true, read("worker"))
 	want := FeatureMetrics{
-		Self:        FeatureCounts{FeatureUse: control.FeatureUse{Spawns: 1, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 1, Occurrences: 2, SavedTokens: 20}},
-		Descendants: FeatureCounts{FeatureUse: control.FeatureUse{CompletionChanges: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 1, Occurrences: 4, SavedTokens: 40}},
+		Self:        FeatureCounts{FeatureUse: observation.FeatureUse{Spawns: 1, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 1, Occurrences: 2, SavedTokens: 20}},
+		Descendants: FeatureCounts{FeatureUse: observation.FeatureUse{CompletionChanges: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 1, Occurrences: 4, SavedTokens: 40}},
 		Thread:      "worker", Agents: 1,
 	}
 	if *got != want {
 		t.Fatalf("worker features = %+v", *got)
 	}
-	counts["root"] = control.FeatureUse{Spawns: 1, SpawnPreloads: 1, ProgressWaits: 1, ProgressYields: 1, AssignmentSources: 1, MessageSources: 1, SelfCompactionsCompleted: 1, SelfCompactionFailures: 1}
-	counts["nested"] = control.FeatureUse{CompletionChanges: 1, ProgressWaits: 2, ProgressYields: 2, AssignmentSources: 2, MessageSources: 2, SelfCompactionsCompleted: 2, SelfCompactionFailures: 2}
-	root := NewFeatureMetrics("root", service, snapshot, true, read("root"))
+	counts["root"] = observation.FeatureUse{Spawns: 1, SpawnPreloads: 1, ProgressWaits: 1, ProgressYields: 1, AssignmentSources: 1, MessageSources: 1, SelfCompactionsCompleted: 1, SelfCompactionFailures: 1}
+	counts["nested"] = observation.FeatureUse{CompletionChanges: 1, ProgressWaits: 2, ProgressYields: 2, AssignmentSources: 2, MessageSources: 2, SelfCompactionsCompleted: 2, SelfCompactionFailures: 2}
+	root := NewFeatureMetrics("root", "Main", snapshot, true, read("root"))
 	if root.Thread != "Main" || root.Agents != 2 || root.Self.SpawnPreloads != 1 || root.Descendants.AllWaits != 1 || root.Descendants.CompletionChanges != 1 || root.Descendants.OutputDeduplication.Occurrences != 6 || root.Descendants.SideQuestions != 0 {
 		t.Fatalf("root features = %+v", *root)
 	}
@@ -95,21 +65,40 @@ func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 		t.Fatalf("features note = %q", values[[2]string{"Features", ""}])
 	}
 	// A disabled feature reads off, never as zero receipts.
-	off := cells(NewFeatureMetrics("root", service, snapshot, false, read("root")))
+	off := cells(NewFeatureMetrics("root", "Main", snapshot, false, read("root")))
 	if _, counted := off[[2]string{"Output deduplication", "Occurrences"}]; counted || off[[2]string{"Output deduplication", ""}] != "Off for this launch." {
 		t.Fatalf("disabled deduplication = %v", off)
 	}
 }
 
 // Snapshot fixture, not a second feature counter producer.
-type featureCountsFixture map[string]control.FeatureUse
+type featureCountsFixture map[string]observation.FeatureUse
 
-func (f featureCountsFixture) RecordFeature(context.Context, control.FeatureFact) {}
-func (f featureCountsFixture) InvalidateFeatureUse(error)                         {}
-func (f featureCountsFixture) ReadFeatureUse(_ context.Context, threads []string) (map[string]control.FeatureUse, error) {
-	values := make(map[string]control.FeatureUse, len(threads))
+func (f featureCountsFixture) ReadFeatureUse(_ context.Context, threads []string) (map[string]observation.FeatureUse, error) {
+	values := make(map[string]observation.FeatureUse, len(threads))
 	for _, thread := range threads {
-		values[thread] = f[thread]
+		if value, ok := f[thread]; ok {
+			values[thread] = value
+		}
 	}
 	return values, nil
+}
+
+func TestUnavailableNativeFeaturesKeepSelectedDeduplication(t *testing.T) {
+	for _, reader := range []FeatureReader{nil, featureCountsFixture{"root": {Spawns: 99}}} {
+		use := ReadNativeFeatureUse(t.Context(), "root", []string{"child"}, reader)
+		if use.Err == nil || len(use.Threads) != 1 || use.Threads[0] != "child" {
+			t.Fatalf("failed native measurement lost selection: %+v", use)
+		}
+		capture := &transportcapture.MetricsSnapshot{OutputDeduplicationThreads: map[string]transportcapture.OutputDeduplicationMetrics{"root": {Occurrences: 2}, "child": {Occurrences: 3}, "foreign": {Occurrences: 99}}}
+		metrics := NewFeatureMetrics("root", "Main", capture, true, use)
+		if !metrics.Unavailable || metrics.Agents != 1 || metrics.Self.OutputDeduplication.Occurrences != 2 || metrics.Descendants.OutputDeduplication.Occurrences != 3 {
+			t.Fatalf("failed native measurement changed independent deduplication: %+v", metrics)
+		}
+		for _, field := range featureFields(metrics, true) {
+			if field.Group == "Spawns" && field.Label == "Total" && (len(field.Values) != 2 || field.Values[0] != "unavailable" || field.Values[1] != "unavailable") {
+				t.Fatalf("failure became measured zero: %+v", field)
+			}
+		}
+	}
 }

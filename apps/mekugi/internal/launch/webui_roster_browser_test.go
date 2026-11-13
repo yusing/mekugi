@@ -16,7 +16,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestWebUIBrowserRosterSemantics(t *testing.T) {
@@ -39,7 +38,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 			{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root", Thread: "same-thread"}}},
 			{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root/worker", Thread: "cold", Responding: true}, Status: "responding", Summary: []activity.Entry{{Facts: hook.Facts, Values: hook.Values()}}}},
 		}},
-		Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "cold", Parent: "same-thread", Task: "/root/worker", Status: threadcontrol.Working}},
+		Members: []sessionpresentation.Participant{{Thread: "same-thread", Task: "/root"}, {Thread: "cold", Parent: "same-thread", Task: "/root/worker", Status: sessionpresentation.WorkRunning}},
 	}
 	if err := machine.publishFrame(frame); err != nil {
 		t.Fatal(err)
@@ -105,7 +104,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 		if step.phase == "item/completed" {
 			source.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Thread: "cold", AgentLifecycle: activity.AgentLifecycle{Final: true}}}})
 			frame.Agents = &activity.Publication{Roster: append([]activity.AgentRow{frame.Agents.Roster[0]}, source.Publication(new(sessionpresentation.Model), nil).Roster...)}
-			frame.Members[1].Status = threadcontrol.Completed
+			frame.Members[1].Status = sessionpresentation.Completed
 			if err := machine.publishFrame(frame); err != nil {
 				t.Fatal(err)
 			}
@@ -114,12 +113,12 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 				run("screenshot", filepath.Join(artifacts, "roster-reasoning-settled.png"))
 			}
 			source.Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Thread: "cold", AgentLifecycle: activity.AgentLifecycle{Responding: true}}}})
-			frame.Members[1].Status = threadcontrol.Working
+			frame.Members[1].Status = sessionpresentation.WorkRunning
 		}
 	}
 	// Cold restoration keeps the admitted member without an attached child feed.
 	frame.Agents = &activity.Publication{Roster: frame.Agents.Roster[:1]}
-	frame.Members[1].Status = threadcontrol.Paused
+	frame.Members[1].Status = sessionpresentation.Paused
 	if err := machine.publishFrame(frame); err != nil {
 		t.Fatal(err)
 	}
@@ -149,12 +148,12 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 				}
 			}
 		}
-		state := threadcontrol.Working
+		state := sessionpresentation.WorkRunning
 		if u.Turn == "" {
-			state = threadcontrol.Interrupted
+			state = sessionpresentation.Interrupted
 		}
 		if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Input: &sessionapi.Input{Stoppable: true},
-			Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root", Status: state}, {Thread: "child", Parent: "same-thread", Task: "/root/worker", Status: state}},
+			Members: []sessionpresentation.Participant{{Thread: "same-thread", Task: "/root", Status: state}, {Thread: "child", Parent: "same-thread", Task: "/root/worker", Status: state}},
 			Status:  u.attached.presentation.View().Status.Session,
 			Main:    u.attached.source.Publication(u.attached.presentation, nil), Agents: agents}); err != nil {
 			t.Fatal(err)
@@ -199,7 +198,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 		}
 		if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Status: u.attached.presentation.View().Status.Session, Input: &sessionapi.Input{Stoppable: true},
 			Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{Roster: rows},
-			Members: []threadcontrol.Participant{{Thread: "same-thread", Task: "/root", Status: threadcontrol.Working}}}); err != nil {
+			Members: []sessionpresentation.Participant{{Thread: "same-thread", Task: "/root", Status: sessionpresentation.WorkRunning}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -244,6 +243,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 	run("wait", "--fn", `!!document.querySelector('header [title="Completed"]')`)
 	for _, oneOff := range []bool{false, true} {
 		u.attached.conversation.Side.OneOff = oneOff
+		u.attached.conversation.Side.Status = "Working"
 		generationInputs.SetToolInput(&generation, "", "side", item, true)
 		generationInputs.IdentifyToolInput(&generation, item, "exec", true, `await tools.mcp__threadcontrol__spawn_agent({message:"long`)
 		for _, want := range []string{"Spawning subagent", "Spawning subagent `worker`", "Working"} {
@@ -272,5 +272,32 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 				}
 			}
 		}
+		u.attached.conversation.Side.Status = "Usage limit · paused"
+		view := m.Publish(sessionpresentation.MainInputs{Control: &u.Live, Conversation: u.attached.conversation,
+			Info: sessionpresentation.MainInfo{Workspace: machine.workdir}, Feedback: &u.attached.feedback,
+			SideInterrupt: sessioncontrol.InterruptTarget{Thread: side.ID, Turn: "side-turn"}}, sessionpresentation.Caption{})
+		if !view.InterruptAvailable {
+			t.Fatal("paused side lost its retained interrupt target")
+		}
+		if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Status: view.Status.Session, Input: &sessionapi.Input{Stoppable: view.InterruptAvailable}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := machine.api.Native().Publish(attachment.Attachment, sessionapi.NativeFrame{View: view}); err != nil {
+			t.Fatal(err)
+		}
+		run("wait", "--fn", `document.querySelector('#composer-hint')?.textContent.trim() === 'Usage limit · paused' && !!document.querySelector('header [title="Completed"]') && !!document.querySelector('button[aria-label="Stop"]:not(:disabled)')`)
 	}
+	if err := m.Display(sessionpresentation.DisplayIntent{Version: m.View().Version, Thread: m.View().Main}); err != nil {
+		t.Fatal(err)
+	}
+	u.Turn, u.Waiting, u.WaitLabel = "paused-turn", "paused-wait", "Usage limit · paused"
+	view := m.Publish(sessionpresentation.MainInputs{Control: &u.Live, Conversation: u.attached.conversation,
+		Info: sessionpresentation.MainInfo{Workspace: machine.workdir}, Feedback: &u.attached.feedback, Paused: true}, sessionpresentation.Caption{})
+	if err := machine.publishFrame(sessionapi.Frame{Session: frame.Session, Status: view.Status.Session, Input: &sessionapi.Input{Stoppable: view.InterruptAvailable}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := machine.api.Native().Publish(attachment.Attachment, sessionapi.NativeFrame{View: view}); err != nil {
+		t.Fatal(err)
+	}
+	run("wait", "--fn", `document.querySelector('#composer-hint')?.textContent.includes("Enter steers main's turn") && !!document.querySelector('header [title="Usage limit · paused"]') && !!document.querySelector('button[aria-label="Stop"]:not(:disabled)') && !document.querySelector('header').getAnimations({subtree:true}).some(animation => animation.effect?.getTiming().iterations === Infinity)`)
 }

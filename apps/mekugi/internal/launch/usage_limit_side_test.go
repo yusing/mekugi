@@ -1,121 +1,94 @@
 package launch
 
 import (
-	json "encoding/json/v2"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
+
+func sideNativeWait(t *testing.T, u *appServerUI, thread string, deadline *int64) {
+	t.Helper()
+	b := u.Client.Requests.Side(thread)
+	if b == nil {
+		t.Fatal("missing native side root")
+	}
+	disposition := "waiting"
+	if deadline == nil {
+		disposition = "paused"
+	}
+	b.ObserveNativeWork(appserver.AgentObservation{ThreadID: thread, Work: &appserver.AgentWorkObservation{WorkID: thread + "-work", Disposition: disposition}, Wait: &appserver.AgentWaitObservation{WaitID: thread + "-wait", Reason: new("providerUsageLimit"), DeadlineUnixMS: deadline}})
+}
 
 func TestTemporaryUsageLimitWaitingAndClose(t *testing.T) {
 	for _, timed := range []bool{false, true} {
 		for _, closure := range []string{"explicit", "thread/closed", "thread/archived", "interrupt"} {
-			t.Run(fmt.Sprintf("/oneoff question/%t/%s", timed, closure), func(t *testing.T) {
-				check := func(err error) {
-					t.Helper()
-					if err != nil {
-						t.Fatal(err)
-					}
-				}
+			t.Run(fmt.Sprintf("%t/%s", timed, closure), func(t *testing.T) {
 				u, wire := newAppServerTestUI()
 				defer terminalTest(u).Diff.Close()
 				appServerTestKeys(t, u, "/oneoff question\r")
 				btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
 				btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
-				retained, err := history.NewService(control.RecordKinds())
-				check(err)
-				store, err := retained.Open(t.Context(), t.TempDir())
-				check(err)
-				session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "side")
-				check(err)
-				defer session.Close()
-				service := control.New()
-				check(service.AdmitRoot(t.Context(), session, &control.Member{Thread: "side", Session: "session", Task: "/root", Generation: 1, Turn: "side-turn", Status: control.Working, HostRunning: true, AudienceAdmitted: true}))
-				driver, err := threadbinding.NewDriver(service)
-				check(err)
-				check(driver.Start(t.Context()))
-				defer driver.Stop(t.Context())
-				u.Requests.Coordination, u.Requests.InterruptWait = service, driver.Interrupt
-				syncLogicalWork(&u.attached, &u.Live, &threadExecution{shared: service, driver: driver}, time.Now())
-				await := func() {
-					t.Helper()
-					select {
-					case <-driver.Changed():
-					case <-time.After(5 * time.Second):
-						t.Fatal("logical lifecycle did not settle")
-					}
-				}
-				deliverCompletion := func(turn string) {
-					t.Helper()
-					params, err := json.Marshal(map[string]any{"threadId": "side", "turn": map[string]any{"id": turn, "status": "completed"}})
-					check(err)
-					reduced, err := driver.Observe("turn/completed", params)
-					check(err)
-					message := appserver.Message{Method: "turn/completed", Params: params}
-					deferred, err := deferLogicalCompletion(&u.attached, &u.Live, message, reduced, u.Requests)
-					check(err)
-					if !deferred {
-						t.Fatal("temporary completion bypassed logical checkpoint")
-					}
-					await()
-					check(u.attached.threadInput.flushCompletions(u.message))
-				}
-				reset := time.Now().Add(time.Hour)
-				var deadline *time.Time
+				var deadline *int64
 				if timed {
-					deadline = &reset
+					deadline = new(time.Now().Add(time.Hour).UnixMilli())
 				}
-				_, err = service.WaitForUsageLimit(t.Context(), "side", "side-turn", deadline)
-				check(err)
-				deliverCompletion("side-turn")
+				sideNativeWait(t, u, "side", deadline)
 				u.sideFrame(100, 24)
 				status := u.attached.presentation.View().Status.Composer
-				if !status.Running || !strings.Contains(strings.ToLower(status.Text), "usage limit") || !u.side.Busy || u.side.Turn != "" {
-					t.Fatalf("temporary wait settled: status=%+v side=%+v", status, u.side)
+				if status.Running != timed || !strings.Contains(strings.ToLower(status.Text), "usage limit") || u.side.Busy != timed || u.side.Turn != "side-turn" || !u.attached.presentation.View().InterruptAvailable {
+					t.Fatalf("native side wait completed: %+v", status)
 				}
 				if timed {
-					wake, err := service.PrepareWake(t.Context(), "side", reset)
-					check(err)
-					_, err = service.ClaimEffect(t.Context(), "side", wake.ID)
-					check(err)
-					check(service.EffectAcknowledged(t.Context(), "side", wake.ID, control.Receipt{Turn: "continued"}))
-					appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "side", "turn": map[string]any{"id": "continued"}})
-					if u.side.Waiting != "" || !u.side.Busy || u.side.Turn != "continued" {
-						t.Fatal("continuation lost temporary conversation state")
+					u.side.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "side-work", Disposition: "running"}})
+					if u.side.Waiting != "" || !u.side.Busy || u.side.Turn != "side-turn" {
+						t.Fatal("native continuation lost side identity")
 					}
-					_, err = service.WaitForUsageLimit(t.Context(), "side", "continued", &reset)
-					check(err)
-					deliverCompletion("continued")
+					sideNativeWait(t, u, "side", deadline)
 				}
-				if closure == "interrupt" {
-					check(terminalTest(u).send("\x1b"))
-					if u.side == nil || u.side.Closed || u.side.Waiting != "" || u.side.Busy || wire.Len() != 0 {
-						t.Fatal("Escape did not cancel the logical wait while retaining One-off")
+				switch closure {
+				case "interrupt":
+					if err := terminalTest(u).send("\x1b"); err != nil {
+						t.Fatal(err)
 					}
-				} else if closure == "explicit" {
-					check(closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages))
+					request := btwTestRequest(t, wire, "agent/interrupt", "side")
+					var params map[string]any
+					raw, err := json.Marshal(request.Params)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := json.Unmarshal(raw, &params); err != nil {
+						t.Fatal(err)
+					}
+					// The request decoder keeps threadId; the actual transport is covered by
+					// the sessioncontrol side-native fixture below for rootThreadId as well.
+					btwTestReply(t, u, request, `{}`)
+					if u.side == nil || u.side.Closed || u.side.Waiting == "" || u.side.Busy != timed {
+						t.Fatal("interrupt ack settled side work")
+					}
+					u.side.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", RootThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "side-work", Disposition: "interrupted"}})
+					if u.side.Waiting != "" || u.side.Busy {
+						t.Fatal("native interruption did not settle side")
+					}
+				case "explicit":
+					if err := closeSide(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
+						t.Fatal(err)
+					}
+					btwTestReply(t, u, btwTestRequest(t, wire, "turn/interrupt", "side"), `{}`)
 					btwTestReply(t, u, btwTestRequest(t, wire, "thread/archive", "side"), `{}`)
-				} else {
+				default:
 					appServerTestNotify(t, u, closure, map[string]any{"threadId": "side"})
 					if !u.side.Unloaded() || !u.RetiredThread("side", "") {
-						t.Fatal("native closure did not retire temporary conversation")
+						t.Fatal("native closure did not retire side")
 					}
 				}
-				await()
-				wake, err := service.PrepareWake(t.Context(), "side", reset.Add(time.Hour))
-				check(err)
-				if wake != nil {
-					t.Fatal("closed temporary conversation retained its provider wake")
+				if wire.Len() != 0 {
+					t.Fatalf("Go replayed a native wake: %s", wire.String())
 				}
 			})
 		}
@@ -126,81 +99,55 @@ func TestTemporaryUsageLimitExplicitInputSupersedesWait(t *testing.T) {
 	for _, command := range []string{"/btw question", "/oneoff question"} {
 		for _, resumed := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/%t", command, resumed), func(t *testing.T) {
-				synctest.Test(t, func(t *testing.T) {
-					check := func(err error) {
-						t.Helper()
-						if err != nil {
-							t.Fatal(err)
-						}
+				u, wire := newAppServerTestUI()
+				u.attached.ctx = t.Context()
+				defer terminalTest(u).Diff.Close()
+				appServerTestKeys(t, u, command+"\r")
+				btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
+				btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
+				b := u.side
+				if command == "/btw question" {
+					b = u.BTW
+				}
+				sideNativeWait(t, u, "side", nil)
+				b.Drafts.Queued = append(b.Drafts.Queued, conversationmodel.Input{Text: "queued follow-up"})
+				flush := func() {
+					t.Helper()
+					if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{}, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+						t.Fatal(err)
 					}
-					u, wire := newAppServerTestUI()
-					u.attached.ctx = t.Context()
-					defer terminalTest(u).Diff.Close()
-					appServerTestKeys(t, u, command+"\r")
-					btwTestReply(t, u, btwTestRequest(t, wire, "thread/fork", "main"), `{"thread":{"id":"side"}}`)
-					btwTestReply(t, u, btwTestRequest(t, wire, "turn/start", "side"), `{"turn":{"id":"side-turn"}}`)
-					b := u.side
-					if command == "/btw question" {
-						b = u.BTW
+				}
+				flush()
+				if wire.Len() != 0 || b.Waiting == "" {
+					t.Fatal("queued input superseded native wait")
+				}
+				if resumed {
+					b.ObserveNativeWork(appserver.AgentObservation{ThreadID: "side", Work: &appserver.AgentWorkObservation{WorkID: "side-work", Disposition: "running"}})
+				}
+				text := "new instruction"
+				if command == "/btw question" {
+					text = "/btw " + text
+				}
+				appServerTestKeys(t, u, text+"\r")
+				flush()
+				if resumed && command == "/btw question" {
+					if wire.Len() != 0 || u.Editor.Text != text || len(b.Drafts.Queued) != 1 {
+						t.Fatal("running BTW input bypassed its ordinary busy-draft policy")
 					}
-					retained, err := history.NewService(control.RecordKinds())
-					check(err)
-					store, err := retained.Open(t.Context(), t.TempDir())
-					check(err)
-					session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "side")
-					check(err)
-					defer session.Close()
-					service := control.New()
-					check(service.AdmitRoot(t.Context(), session, &control.Member{Thread: "side", Session: "session", Task: "/root", Generation: 1, Turn: "side-turn", Status: control.Working, HostRunning: true, AudienceAdmitted: true}))
-					driver, err := threadbinding.NewDriver(service)
-					check(err)
-					u.Requests.Coordination = service
-					syncLogicalWork(&u.attached, &u.Live, &threadExecution{shared: service, driver: driver}, time.Now())
-					_, err = service.WaitForUsageLimit(t.Context(), "side", "side-turn", nil)
-					check(err)
-					check(service.HostCompleted(t.Context(), "side", "side-turn", control.Completed, control.HostFailure{}))
-					appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "completed"}})
-					b.Drafts.Queued = append(b.Drafts.Queued, conversationmodel.Input{Text: "queued follow-up"})
-					flush := func() {
-						check(flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{}, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations))
-					}
-					flush()
-					if wire.Len() != 0 || b.Waiting == "" {
-						t.Fatal("queued input superseded the usage wait")
-					}
-					if resumed {
-						check(service.RequestStarted(t.Context(), control.Identity{Thread: "side", Session: "session", Turn: "timer-resumed"}, true))
-					}
-					text := "new instruction"
-					if command == "/btw question" {
-						text = "/btw " + text
-					}
-					appServerTestKeys(t, u, text+"\r")
-					synctest.Wait()
-					flush()
-					method := "turn/start"
-					if resumed {
-						method = "turn/steer"
-					}
-					request := btwTestRequest(t, wire, method, "side")
-					if !strings.Contains(fmt.Sprint(request.Params.Input), "new instruction") || b.Waiting != "" || len(b.Drafts.Queued) != 1 || b.Drafts.Queued[0].Text != "queued follow-up" {
-						t.Fatal("explicit input did not supersede waiting while retaining the queue")
-					}
-					if resumed && request.Params.ExpectedTurnID != "timer-resumed" {
-						t.Fatal("input did not steer the already-resumed host turn")
-					}
-					if resumed && request.Params.Environments != nil {
-						t.Fatal("steering included start-only environment settings")
-					}
-					member, _ := service.Member("side")
-					if member.Stop != nil || member.Wait != nil && member.Wait.State != "canceled" {
-						t.Fatal("explicit input left the usage stop armed")
-					}
-					btwTestReply(t, u, request, `{"turn":{"id":"new-turn"}}`)
-					if len(u.attached.sideInputs) != 0 {
-						t.Fatal("submitted side input retained its admission")
-					}
-				})
+					return
+				}
+				method := "turn/steer"
+				request := btwTestRequest(t, wire, method, "side")
+				if !strings.Contains(fmt.Sprint(request.Params.Input), "new instruction") || len(b.Drafts.Queued) != 1 || b.Drafts.Queued[0].Text != "queued follow-up" {
+					t.Fatal("direct native input lost text or queued follow-up")
+				}
+				if request.Params.ExpectedTurnID != "side-turn" || request.Params.Environments != nil {
+					t.Fatal("side steering used wrong turn or start-only settings")
+				}
+				btwTestReply(t, u, request, `{"turn":{"id":"new-turn"}}`)
+				if len(u.attached.sideInputs) != 0 {
+					t.Fatal("native-dispatched side input retained its local lock")
+				}
 			})
 		}
 	}
@@ -209,32 +156,13 @@ func TestTemporaryUsageLimitExplicitInputSupersedesWait(t *testing.T) {
 func TestUsageLimitOneoffPreservesIndependentChildReplies(t *testing.T) {
 	for _, running := range []bool{true, false} {
 		t.Run(fmt.Sprint(running), func(t *testing.T) {
-			check := func(err error) {
-				t.Helper()
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
 			u, wire := newAppServerTestUI()
 			defer terminalTest(u).Diff.Close()
 			u.startSession("main", "/workspace")
 			oneoffTestStart(t, u, wire)
 			oneoffTestChild(t, u)
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "oneoff-child", "turn": map[string]any{"id": "child-turn"}})
-			retained, err := history.NewService(control.RecordKinds())
-			check(err)
-			store, err := retained.Open(t.Context(), t.TempDir())
-			check(err)
-			session, err := store.SelectSession(t.Context(), nil, history.Limits{Total: history.DefaultStorageBytes}, "oneoff")
-			check(err)
-			defer session.Close()
-			service := control.New()
-			check(service.AdmitRoot(t.Context(), session, &control.Member{Thread: "oneoff", Session: "session", Task: "/root", Generation: 1, Turn: "oneoff-turn", Status: control.Working, HostRunning: true, AudienceAdmitted: true}))
-			u.Requests.Coordination = service
-			_, err = service.WaitForUsageLimit(t.Context(), "oneoff", "oneoff-turn", nil)
-			check(err)
-			check(service.HostCompleted(t.Context(), "oneoff", "oneoff-turn", control.Completed, control.HostFailure{}))
-			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
+			sideNativeWait(t, u, "oneoff", nil)
 			if u.side.Waiting == "" {
 				t.Fatal("usage limit did not pause One-off")
 			}

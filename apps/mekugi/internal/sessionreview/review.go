@@ -77,6 +77,10 @@ func New(ctx context.Context, live *previewmodel.Service, notice func(string, st
 	return r
 }
 
+// NewEndpoint borrows the invocation's live-preview producer, but gives the
+// requesting thread its own projection, subscriptions and attachment lifetime.
+func (r *Review) NewEndpoint(ctx context.Context) *Review { return New(ctx, r.live, r.notice) }
+
 func (r *Review) Preview() *previewmodel.Session {
 	if r == nil {
 		return nil

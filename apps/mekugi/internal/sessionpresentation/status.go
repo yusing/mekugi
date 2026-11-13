@@ -98,6 +98,7 @@ type MainInputs struct {
 	ClientEditors          bool // Editor contents remain client-owned, outside this view's retained publication.
 	Restoring, SideRunning bool
 	BTWRunning             bool
+	Paused                 bool // Borrowed native lifecycle observation, not host-turn completion.
 	SideThreads            []string
 	SideInterrupt          sessioncontrol.InterruptTarget
 	Processes              int
@@ -197,7 +198,7 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 	if in.Retry != "" && turn != "" && !archiving && !base.Alert {
 		v.Status.Session.Text, v.Status.Session.Animation = in.Retry, Pulse
 	}
-	if in.Control != nil && in.Control.LocalStop != "" && turn == "" {
+	if in.Control != nil && (in.Control.Waiting != "" || (in.Control.LocalStop != "" || in.Control.NativeWork != "") && turn == "") {
 		text := "Working"
 		if in.Control.Waiting != "" {
 			text = "Waiting for agents"
@@ -206,6 +207,9 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 			}
 		}
 		v.Status.Session = Label{Text: text, Running: true, Animation: Pulse, Started: state.Started}
+	}
+	if in.Paused {
+		v.Status.Session.Running, v.Status.Session.Animation = false, Static
 	}
 	if m.DisplayingSide() && in.Conversation.Side != nil {
 		side := in.Conversation.Side
@@ -252,7 +256,7 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 	}
 	s := &v.Status
 	s.State = base
-	s.Animating = in.Processes > 0 || in.SideRunning || v.BTWRunning || !state.Alert && (turn != "" || pending || s.Session.Running)
+	s.Animating = in.Processes > 0 || in.SideRunning || v.BTWRunning || !in.Paused && !state.Alert && (turn != "" || pending || s.Session.Running)
 	v.ProjectComposerStatus(in.Conversation.PromptEditor.Parked.Snapshot.Text != "")
 	if v.Displayed.ID != v.Main.ID {
 		return v
@@ -387,5 +391,5 @@ func (m *Model) sessionLabel(l Label, turn string, pending, archiving, shell boo
 // MainInterruptible reports whether Main has work an interruption stops,
 // whichever thread is displayed.
 func MainInterruptible(control *sessioncontrol.Live, conversation *conversationmodel.Session) bool {
-	return control.Turn != "" || control.LocalStop != "" || control.Starting() || control.InputPending() || control.Compaction.Pending() || control.Compaction.ContinuationPending() || len(conversation.Unsent)+len(conversation.Queued) > 0
+	return control.Turn != "" || control.LocalStop != "" || control.Waiting != "" || control.NativeWork != "" || control.Starting() || control.InputPending() || control.Compaction.Pending() || control.Compaction.ContinuationPending() || len(conversation.Unsent)+len(conversation.Queued) > 0
 }

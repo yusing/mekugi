@@ -6,16 +6,25 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type compactionMetrics struct {
+	native    *observation.SessionMetrics
 	completed map[string]struct{}
 	known     bool
 	started   string
 	progress  *activity.Value
 	context   *observation.Context
 	at        time.Time
+}
+
+// ObserveNativeMetrics replaces passive facts, including unavailable values.
+// Native counts all retained representations; transcript item recounting cannot
+// recover compressed or inherited history and must not override this scalar.
+func (s *Attachment) ObserveNativeMetrics(thread string, metrics observation.SessionMetrics) {
+	if store := s.Thread(thread); store != nil {
+		compactionMetricKey.Value(store).native = new(metrics)
+	}
 }
 
 var compactionMetricKey scope.Key[compactionMetrics]
@@ -94,13 +103,16 @@ func (s *Attachment) finishCompaction(thread, id string) {
 	}
 }
 
-func (s *Attachment) InspectionMetrics(thread string) control.SessionMetrics {
-	var metrics control.SessionMetrics
+func (s *Attachment) InspectionMetrics(thread string) observation.SessionMetrics {
+	var metrics observation.SessionMetrics
 	if s.retired {
 		return metrics
 	}
 	if store := s.FindThread(thread); store != nil {
 		state := compactionMetricKey.Value(store)
+		if state.native != nil {
+			return *state.native
+		}
 		if state.known {
 			metrics.Compactions = new(uint64(len(state.completed)))
 		}

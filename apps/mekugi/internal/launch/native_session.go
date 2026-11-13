@@ -35,9 +35,18 @@ import (
 // nativeSession owns the serialized execution loop and invocation-lifetime collaborators.
 // Helpers borrow explicit view slots and editors, keeping Main's slots independent.
 type nativeSession struct {
-	preparer     *executionobservation.Preparer
-	attached     attachedPresentation
-	reviewSource *changecapture.Service
+	hydrating            bool
+	hydration            *nativeHydration
+	hydrationResults     chan *nativeHydration
+	nativeCheckpoint     *appserver.TurnCheckpointed
+	connection           *nativeConnection
+	nativeAgent          *appserver.AgentObservation
+	nativeRosterRevision uint64
+	nativeRosterRoot     string
+	preparer             *executionobservation.Preparer
+	finalCaptures        *nativeFinalCaptures
+	attached             attachedPresentation
+	reviewSource         *changecapture.Service
 	*composer.Editor
 	history  *history.Service
 	segments *reports.Service

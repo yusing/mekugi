@@ -19,11 +19,10 @@ Mekugi preserves the caller's base `instructions` value and every system or deve
 except for complete explicit omission blocks and the
 marked Mekugi workflow section appended to base instructions. Its owned environment
 supplement is projected separately after static instructions as described below.
-Independent-thread role projection additionally consumes Thread Control's admitted
-content provenance and detached logical caller. It adapts only authenticated role
-parts to the replacement MCP interface and selected workspace. Effective mode
-parts and caller-authored lookalikes remain unchanged; missing or conflicting
-provenance never authorizes a text-based replacement.
+Native child preparation and model/role owners assemble coordination guidance and
+admitted identity directly. Agent Guidance does not rewrite stock collaboration
+text into another tool interface; custom instructions and effective mode text
+retain their native authority.
 It does not detect stock prompt shapes, replace editing sections, select model-specific workflows,
 inspect `model_instructions_file`, or create or modify caller instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
@@ -194,7 +193,7 @@ is disabled, guidance and fallback prompts are absent, and remaining-token remin
 neutral. Model activation and model switches do not replace that policy. Native context assembly makes no automatic `notes.thread_hint` request; caller-configured
 MCP tools and hooks remain unchanged. It
 excludes client tool outputs from cross-reset retention. Codex self-directed checkpoints
-use native `functions.new_context`; Thread Control offers no second Codex reset tool.
+use native `functions.new_context`; there is no second Codex reset tool.
 
 An agent can select optional reload sources in native `new_context` or `wait_agent`
 with `compact:true`, using `reload:{sources:[...]}`. A supplied selection replaces the
@@ -224,18 +223,19 @@ performs an automatic inventory. An empty selection is valid. There is no fixed
 source-count limit; oversized captures fail explicitly and require smaller selections.
 These storage bounds do not establish a complete-request token-fit guarantee.
 
-Fresh delegate [context preload](../threadcontrol/SPEC.md#prepared-children-and-guidance)
+Fresh delegate [context preload](../../docs/contracts/coordination.md#prepared-children-and-guidance)
 uses the same selection and retained-result delivery. Reads use the continuing
 thread's or selected child's workspace, permissions and approvals. Codex supplies
 `AGENTS.md`; automatic acquisition excludes it at every directory level, including
 explicit selections and previously captured results. Select needed implementations,
 callers, tests, fixtures and guidance for the next unfinished operation.
 
-Native reset reads selected files through the receiving runtime's filesystem;
-skill names resolve through its native catalog. Shared preload/message file
-selections use `mcat` with its normal range, output and recovery bounds. An
-incomplete read reports its failure and any available continuation; omitted rows
-are not acquired context. Captured-change selections use their admitted reader.
+Native Codex reset, preload and message acquisition read selected files through
+the receiving runtime's filesystem; skill names resolve through its native catalog.
+Host-owned acquisition uses its admitted readers. Native filesystem
+limits and admitted reader bounds apply. An incomplete read reports its failure;
+omitted rows are not acquired context. Managed skills and captured-change selections
+keep their admitted readers.
 
 Successfully selected file and skill text also resolves nested references using
 the same grammar, including JSON string values.
@@ -249,9 +249,11 @@ same permissions, approvals, byte budget and immutable reload/preload snapshot.
 Source acquisition uses the receiving native permissions. A denied or failed
 source does not prevent the others from completing. Native reset retains completed
 source bodies and diagnostics as tool data in replacement history, without a Go
-reload command, synthetic provider calls or provider-side expansion. Shared delegate preload,
-message and completion acquisition keep retained snapshot delivery and its provider
-projection. One introduction identifies the bodies as reusable read context.
+reload command, synthetic provider calls or provider-side expansion. Delegate preload,
+message and completion acquisition retain frozen bodies and diagnostics, not instructions
+to reread their paths. Successful whole-source identities suppress optional attachment
+reacquisition; failed or partial reads do not. One introduction identifies the bodies as
+reusable read context.
 Inference waits for terminal acquisition and never receives accumulated partial
 results. Publication failures remain explicit. Source rows participate in ordinary
 output deduplication.

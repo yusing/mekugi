@@ -10,7 +10,6 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/activity/terminalview"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -22,7 +21,7 @@ func TestFamilyRosterKeepsObservedCompaction(t *testing.T) {
 	model := new(sessionpresentation.Model)
 	model.Attach(sessionpresentation.Thread{ID: "root", Caller: "/root"}, false)
 	h := NewHub(t.Context(), nil)
-	frame := Frame{Session: Session{Thread: "root", Caller: "/root"}, Members: []threadcontrol.Participant{{Thread: "root", Task: "/root", Status: threadcontrol.Working}}}
+	frame := Frame{Session: Session{Thread: "root", Caller: "/root"}, Members: []sessionpresentation.Participant{{Thread: "root", Task: "/root", Status: sessionpresentation.WorkRunning}}}
 	attached.ObserveCompactionStart("root", "compact")
 	source.Apply(sessionpresentation.ActivityEvent{Agents: attached.Roster()})
 	frame.Agents = source.Publication(model, nil)
@@ -46,13 +45,13 @@ func TestFamilyRosterKeepsObservedCompaction(t *testing.T) {
 func TestUISnapshotFamilyRosterResumedDelegates(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	frame := Frame{Session: Session{Thread: "root", Caller: "/root"}, Agents: familyActivity("root", "main")}
-	frame.Members = []threadcontrol.Participant{{Thread: "root", Task: "/root", Status: threadcontrol.Working}}
+	frame.Members = []sessionpresentation.Participant{{Thread: "root", Task: "/root", Status: sessionpresentation.WorkRunning}}
 	for i := range 30 {
-		status := threadcontrol.Completed
+		status := sessionpresentation.Completed
 		if i < 3 {
-			status = threadcontrol.Working
+			status = sessionpresentation.WorkRunning
 		}
-		frame.Members = append(frame.Members, threadcontrol.Participant{
+		frame.Members = append(frame.Members, sessionpresentation.Participant{
 			Thread: fmt.Sprintf("child%d", i), Task: fmt.Sprintf("/root/child%d", i), Status: status,
 		})
 	}
@@ -82,23 +81,23 @@ func TestUISnapshotFamilyRosterResumedDelegates(t *testing.T) {
 
 func TestFamilyColdRosterLifecycleReplacesPriorStatus(t *testing.T) {
 	for _, tc := range []struct {
-		state threadcontrol.Status
+		state sessionpresentation.WorkStatus
 		want  string
 	}{
-		{threadcontrol.Pending, "responding"}, {threadcontrol.Working, "responding"},
-		{threadcontrol.Waiting, "waiting"}, {threadcontrol.Paused, "paused"},
-		{threadcontrol.Uncertain, "paused"}, {threadcontrol.Completed, "answered"},
-		{threadcontrol.Failed, "error"},
+		{sessionpresentation.Pending, "responding"}, {sessionpresentation.WorkRunning, "responding"},
+		{sessionpresentation.Waiting, "waiting"}, {sessionpresentation.Paused, "paused"},
+		{sessionpresentation.Uncertain, "paused"}, {sessionpresentation.Completed, "answered"},
+		{sessionpresentation.Failed, "error"},
 	} {
 		frame := Frame{Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: activity.Agent{
 			Thread: "child", Status: "error", LatestKind: "error",
-		}}}}, Members: []threadcontrol.Participant{{Thread: "child", Task: "/root/child", Status: tc.state}}}
+		}}}}, Members: []sessionpresentation.Participant{{Thread: "child", Task: "/root/child", Status: tc.state}}}
 		publication := familyRoster(&frame, nil)
 		got := publication.Roster[0].Agent.Status
 		if got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.state, got, tc.want)
 		}
-		if tc.state == threadcontrol.Paused || tc.state == threadcontrol.Uncertain {
+		if tc.state == sessionpresentation.Paused || tc.state == sessionpresentation.Uncertain {
 			projected := projectRoster(publication, "/root").Agents[0]
 			if projected.State != "paused" || projected.WorkSince != 0 {
 				t.Errorf("cold paused member lost its state or restarted its clock: %+v", projected)

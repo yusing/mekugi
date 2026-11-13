@@ -355,12 +355,16 @@ func TestAcceptanceSuppliedMessageSources(t *testing.T) {
 		header, footer := "reader: exit_code=0\n", "\nreader diagnostic\n"
 		return "Keep these instructions.\n" + attachments.SourceRanges(header+body+footer, []attachments.SourceRange{{Start: len(header), End: len(header) + len(body)}})
 	}
-	for _, kind := range []string{"multi_agent.inter_agent_message", "multi_agent.inter_agent_completion_message"} {
+	for _, kind := range []string{"agent_message", "multi_agent.inter_agent_message", "multi_agent.inter_agent_completion_message"} {
 		t.Run(kind, func(t *testing.T) {
+			carrier := item{"type": "message", "role": "assistant", "id": "threadcontrol_" + strings.Repeat("a", 64), "phase": "commentary",
+				"content": []item{{"type": "output_text", "text": message(body)}},
+				"internal_chat_message_metadata_passthrough": item{"content_item_kinds": []string{kind}}}
+			if kind == "agent_message" {
+				carrier = item{"type": "agent_message", "author": "/root", "recipient": "/root/worker", "content": []item{textPart(message(body))}}
+			}
 			input := encode(t, []item{
-				{"type": "message", "role": "assistant", "id": "threadcontrol_" + strings.Repeat("a", 64), "phase": "commentary",
-					"content": []item{{"type": "output_text", "text": message(body)}},
-					"internal_chat_message_metadata_passthrough": item{"content_item_kinds": []string{kind}}},
+				carrier,
 				{"role": "user", "content": []item{textPart("Side question\n" + attachments.SourceRanges(body, []attachments.SourceRange{{Start: 0, End: len(body)}}))}},
 				{"type": "function_call_output", "namespace": "threadcontrol", "name": "followup_task", "output": message(body)},
 				tool("compact-reload", "reader: exit_code=0\n"+body),
@@ -391,6 +395,11 @@ func TestAcceptanceSuppliedMessageSources(t *testing.T) {
 func TestAcceptanceSuppliedMessageExclusions(t *testing.T) {
 	text := attachments.SourceRanges("source bytes", []attachments.SourceRange{{Start: 0, End: len("source bytes")}})
 	for _, excluded := range []item{
+		{"type": "agent_message", "recipient": "/root", "content": []item{textPart(text)}},
+		{"type": "agent_message", "author": "/root", "content": []item{textPart(text)}},
+		{"type": "agent_message", "author": "/root", "recipient": "/root/worker", "content": text},
+		{"type": "agent_message", "author": "/root", "recipient": "/root/worker", "content": []item{{"type": "output_text", "text": text}}},
+		{"type": "agent_message", "author": "/root", "recipient": "/root/worker", "content": []item{textPart(text), {"type": "encrypted_content", "encrypted_content": "opaque"}}},
 		{"role": "developer", "content": []item{textPart(text)}},
 		{"role": "assistant", "content": []item{{"type": "output_text", "text": text}}},
 		{"role": "user", "content": text},

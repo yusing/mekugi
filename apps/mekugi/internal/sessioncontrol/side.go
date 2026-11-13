@@ -22,6 +22,7 @@ type Side struct {
 	*conversationmodel.SideAnswer
 	Thread, Turn                string
 	Waiting                     string // Detached logical-stop identity; the feature owns its lifetime.
+	NativeWork                  string // Observed native generation, not a Go work reservation.
 	Source, Model, Effort, Tier string
 	ForkPending                 bool
 	Busy, Starting, Closed      bool
@@ -29,8 +30,18 @@ type Side struct {
 	release                     forkRelease
 	Settings                    Settings
 	LowReasoning                bool
-	question                    *AgentQuestion
 	cacheKey                    string
+}
+
+// OwnedSides supplies final cleanup to the sole connection owner.
+func (r *Requests[T]) OwnedSides() []*Side {
+	r.sidesMu.RLock()
+	defer r.sidesMu.RUnlock()
+	var sides []*Side
+	for _, side := range r.sides {
+		sides = append(sides, side)
+	}
+	return sides
 }
 
 func (s *Side) PrepareSettings(change map[string]any) SettingsPlan {
@@ -43,7 +54,7 @@ func (s *Side) Ready(replacing bool) bool {
 
 // InterruptTarget keeps a pending fork/start identifiable after host admission.
 func (s *Side) InterruptTarget() InterruptTarget {
-	if s == nil || s.Closed || s.Unloaded() || !s.Busy && !s.Starting {
+	if s == nil || s.Closed || s.Unloaded() || !s.Busy && !s.Starting && s.NativeWork == "" {
 		return InterruptTarget{}
 	}
 	thread := s.Thread

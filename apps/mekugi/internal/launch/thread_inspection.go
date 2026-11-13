@@ -4,12 +4,12 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
-func threadInspection(session *sessionpresentation.Attachment, thread string, applied preferences.Applied, tiers *inferencegateway.Tiers) control.SessionDetails {
-	details := control.SessionDetails{SessionMetrics: session.InspectionMetrics(thread)}
+func threadInspection(session *sessionpresentation.Attachment, thread string, applied preferences.Applied, tiers *inferencegateway.Tiers) observation.SessionDetails {
+	details := observation.SessionDetails{SessionMetrics: session.InspectionMetrics(thread)}
 	if applied.Model != "" {
 		details.Model = new(applied.Model)
 		details.ReasoningEffort = new(applied.Effort)

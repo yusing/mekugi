@@ -13,7 +13,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestWebUIBrowserInterruptedTraffic(t *testing.T) {
@@ -66,7 +65,6 @@ func TestWebUIBrowserInterruptedTraffic(t *testing.T) {
 	run("wait", "--text", "Interrupt requested for /root/worker")
 	run("wait", "--text", "Listed 2 agents")
 	f.complete(t)
-	publishNativeDelivery(&u.attached, control.NativeInput{Thread: "main", ID: "interrupted", Sender: "/root/worker", Recipient: "/root", Kind: "FINAL_ANSWER", Outcome: control.Interrupted, Message: "Earlier progress must not replay."}, u.clock())
 	publish()
 	for _, width := range []int{1280, 768, 390} {
 		run("set", "viewport", fmt.Sprint(width), "900")

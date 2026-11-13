@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -26,7 +25,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
@@ -52,7 +50,7 @@ func TestAPILiveReviewPreviewAndViewedImage(t *testing.T) {
 	setLiveScope(live, preview.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	live.Update(preview.Preview{ID: "edit", Thread: "main", Workspace: workspace, Caller: "/root", Status: "streaming", Files: []diffmodel.ReviewFile{file}}, false)
 	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
-		publisher := apiLive{server: api, coordination: control.New(), started: time.Now()}
+		publisher := apiLive{server: api, started: time.Now()}
 		publisher.publish(&u.attached, &u.Client, testReview(live), u.reviewSource, false, false, time.Now())
 		<-ctx.Done()
 		return ctx.Err()
@@ -199,132 +197,6 @@ func TestAPICommandFeedRetainsOnlyCurrentCommands(t *testing.T) {
 	if first.Entries[0].Command != command {
 		t.Fatal("previous publication was mutated")
 	}
-}
-
-func TestAPILiveFamilyReviewAndWaitingRoster(t *testing.T) {
-	u, threads, _ := logicalWaitUI(t, new(int64(1000)))
-	workspace := u.attached.cwd
-	capture := func(key, caller, before, after string, order uint64) changepresentation.Publication {
-		return changepresentation.Publication{}.With(changepresentation.GroupCaptures([]changepresentation.Chunk{{
-			Key: key, Workspace: workspace, CaptureOrder: order, Caller: caller, Change: key,
-			Review: diffmodel.RenderReviewFile(filepath.Join(workspace, "file.go"), filepath.Join(workspace, "file.go"), before, after),
-		}}))
-	}
-	root := capture("root1", "/root", "one\n", "one\nparent\n", 1)
-	u.reviewSource.PublishReview(u.attached.session.Scope(), &changepresentation.Snapshot{Publication: root}, workspace, "complete", "")
-	child := changepresentation.ReviewView{Revision: 1, Workspace: workspace, Publication: capture("child1", "/root/worker", "one\nparent\n", "one\nchild\n", 2)}
-	refresh := make(chan chan struct{})
-	launcher := &nativeReattachLauncher{run: func(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
-		publisher := apiLive{server: api, coordination: threads.shared, started: time.Now()}
-		now := time.Now()
-		publisher.publish(&u.attached, &u.Client, nil, u.reviewSource, false, false, now)
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case done := <-refresh:
-				now = now.Add(apiFrameInterval)
-				publisher.publish(&u.attached, &u.Client, nil, u.reviewSource, false, false, now)
-				close(done)
-			}
-		}
-	}}
-	hub := sessionapi.NewHub(t.Context(), launcher)
-	threads.hub = hub
-	defer hub.Close()
-	endpoint := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
-	defer endpoint.Close()
-	rpc, err := sessionapi.OpenRPC(t.Context(), endpoint.Client(), endpoint.URL+sessionapi.RPCPath, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rpc.Close()
-	serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "fixture"})
-	childReady := make(chan struct{})
-	_, err = hub.StartPrepared(t.Context(), "main", "", workspace, func(ctx context.Context, api *sessionapi.Server) error {
-		if err := api.SetSummary(sessionapi.Summary{Thread: "child", Workspace: workspace, Ready: true}); err != nil {
-			return err
-		}
-		if err := api.Publish(sessionapi.Frame{FamilyRoot: "main", Session: sessionapi.Session{Thread: "child", Workspace: workspace}, Review: &child, Agents: &activity.Publication{}}); err != nil {
-			return err
-		}
-		close(childReady)
-		<-ctx.Done()
-		return ctx.Err()
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	<-childReady
-	done := make(chan struct{})
-	refresh <- done
-	<-done
-	events := serverRPCSubscribe(t, rpc, "main")
-	defer events.Close()
-	wait, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	event, err := events.Next(wait)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var state struct {
-		Review struct {
-			Page    sessionapi.PageCursor `json:"page"`
-			Callers []struct {
-				Caller string `json:"caller"`
-			} `json:"callers"`
-		} `json:"review"`
-		Roster struct {
-			Agents []struct {
-				Content *sessionapi.ContentReference `json:"content"`
-				Name    string                       `json:"name"`
-				State   string                       `json:"state"`
-				Wait    *struct {
-					Body        string `json:"body"`
-					WaitTimeout string `json:"waitTimeout"`
-					Waits       []struct {
-						Name string `json:"name"`
-					} `json:"waits"`
-				} `json:"wait"`
-			} `json:"agents"`
-		} `json:"roster"`
-	}
-	if err := json.Unmarshal(event.Data, &state); err != nil {
-		t.Fatal(err)
-	}
-	savedFile := readAPIReviewFile(t, endpoint, rpc, state.Review.Page)
-	if len(savedFile.Origins) != 2 || len(state.Review.Callers) != 2 {
-		t.Fatalf("shared publication lost family captures: %s", event.Data)
-	}
-	for _, caller := range state.Review.Callers {
-		cursor := state.Review.Page
-		cursor.Caller = caller.Caller
-		file := readAPIReviewFile(t, endpoint, rpc, cursor)
-		if len(file.Origins) != 1 || file.Origins[0].Caller != caller.Caller {
-			t.Fatalf("caller projection borrowed another caller's edits: %+v", caller)
-		}
-	}
-	for _, agent := range state.Roster.Agents {
-		if agent.Name == "/root" {
-			if agent.Content != nil {
-				var content struct {
-					Agent jsontext.Value `json:"agent"`
-				}
-				if err := json.Unmarshal(readAPIResource(t, endpoint, "content", "main", agent.Content), &content); err != nil {
-					t.Fatal(err)
-				}
-				if err := json.Unmarshal(content.Agent, &agent); err != nil {
-					t.Fatal(err)
-				}
-				t.Logf("hydrated %d-byte deferred roster row", len(content.Agent))
-			}
-			if agent.State != "waiting" || agent.Wait == nil || agent.Wait.Body != "Waiting for" || agent.Wait.WaitTimeout != "1s" || len(agent.Wait.Waits) != 1 || agent.Wait.Waits[0].Name != "/root/worker" {
-				t.Fatalf("shared roster lost canonical logical wait: %s", event.Data)
-			}
-			return
-		}
-	}
-	t.Fatal("shared roster lost Main")
 }
 
 type apiReviewFile struct {

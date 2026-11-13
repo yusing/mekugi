@@ -10,7 +10,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 const (
@@ -25,8 +24,6 @@ type HostCall struct {
 	ctx           context.Context
 	method, scope string
 	params        jsontext.Value
-	input         *control.NativeInput
-	completion    PreparedCompletion
 	phase         atomic.Uint32
 	result        chan hostCallResult
 }
@@ -40,16 +37,12 @@ func (r *Requests[T]) Calls() <-chan *HostCall { return r.calls }
 
 // call may run in an MCP handler. Cancellation before dispatch prevents the
 // operation; cancellation after dispatch relinquishes observation, not execution.
-func (r *Requests[T]) call(ctx context.Context, scope, method string, params any, input *control.NativeInput) (jsontext.Value, error) {
-	return r.callPrepared(ctx, scope, method, params, input, PreparedCompletion{})
-}
-
-func (r *Requests[T]) callPrepared(ctx context.Context, scope, method string, params any, input *control.NativeInput, completion PreparedCompletion) (jsontext.Value, error) {
+func (r *Requests[T]) call(ctx context.Context, scope, method string, params any) (jsontext.Value, error) {
 	raw, err := json.Marshal(params)
 	if err != nil || scope == "" {
 		return nil, &binding.DispatchError{Outcome: binding.NotDispatched, Method: method, Cause: errors.Join(errors.New("native operation requires a thread and valid parameters"), err)}
 	}
-	call := &HostCall{ctx: ctx, method: method, scope: scope, params: raw, input: input, completion: completion, result: make(chan hostCallResult, 1)}
+	call := &HostCall{ctx: ctx, method: method, scope: scope, params: raw, result: make(chan hostCallResult, 1)}
 	canceled := func(cause error) (jsontext.Value, error) {
 		outcome := binding.Uncertain
 		if call.phase.CompareAndSwap(callQueued, callCanceled) || call.phase.Load() == callCanceled {
@@ -59,7 +52,7 @@ func (r *Requests[T]) callPrepared(ctx context.Context, scope, method string, pa
 	}
 	calls := r.calls
 	var inspections chan *Inspection
-	if method == "featureUse/record" || method == "featureUse/read" {
+	if method == "featureUse/read" || method == "agent/observe" || method == "agent/observeTree" || method == "agent/foreign/receive" {
 		calls, inspections = nil, r.inspections
 	}
 	select {
@@ -86,24 +79,13 @@ func (r *Requests[T]) callPrepared(ctx context.Context, scope, method string, pa
 	}
 }
 
-// NativeDelivery borrows the typed attribution retained by the sole host ledger.
-// The consumer publishes it only after a successful correlated acknowledgement.
-func (request Request[T]) NativeDelivery() *control.NativeInput {
-	if request.call == nil || request.call.input == nil {
-		return nil
+func (r *Requests[T]) ExternalForeignReceive(ctx context.Context, root string, request appserver.AgentForeignRequest) (appserver.AgentForeignResponse, error) {
+	var response appserver.AgentForeignResponse
+	raw, err := r.call(ctx, root, "agent/foreign/receive", request)
+	if err == nil {
+		err = json.Unmarshal(raw, &response)
 	}
-	input := request.call.input
-	if input.Kind == "NEW_TASK" && input.Message != "" || !input.Run && (input.Kind == "MESSAGE" || input.Kind == "FINAL_ANSWER") {
-		return new(*input)
-	}
-	return nil
-}
-
-func (request Request[T]) Completion() PreparedCompletion {
-	if request.call == nil {
-		return PreparedCompletion{}
-	}
-	return request.call.completion
+	return response, err
 }
 
 // Dispatch runs only on the ledger's event-loop owner. Sending failures are

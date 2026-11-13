@@ -199,7 +199,11 @@ func (session *nativeSession) restoreMainHistory(attached *attachedPresentation,
 		}
 	}
 	for index, turn := range turns {
-		session.restoredSegments = prepareCommandSegments(parent, session.retained, session.segments, session.Client.Thread, attached.cwd, turn)
+		if session.hydration != nil {
+			session.restoredSegments = session.hydration.content.segments[turn.ID]
+		} else {
+			session.restoredSegments = prepareCommandSegments(parent, session.retained, session.segments, session.Client.Thread, attached.cwd, turn)
+		}
 		placements := byTurn[index]
 		slots := positions[index].Slots(restoredPositions(placements))
 		place := func(indices []int) {
@@ -313,7 +317,10 @@ func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation,
 				Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: "item/completed", Duration: sessionpresentation.ItemDuration(facts), CompactionTimed: facts.DurationMS != nil},
 			}}})
 		}
-	case "mcpToolCall":
+	case "mcpToolCall", "collabAgentToolCall":
+		if item.Type == "collabAgentToolCall" && item.Tool != "wait" {
+			return
+		}
 		entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Agent: attached.session.Caller(session.Client.Thread), CallID: item.ID, Observed: presentationTime(clock),
 			Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Status: item.Status, Duration: sessionpresentation.ItemDuration(facts)}}
 		entry = attached.session.CoordinationEntry(entry, facts)

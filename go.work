@@ -41,7 +41,6 @@ use (
 	./modules/sourceoutline
 	./modules/sudoapproval
 	./modules/symbolquery
-	./modules/threadcontrol
 	./modules/transportdiagnostics
 	./modules/usage
 	./providers/openai

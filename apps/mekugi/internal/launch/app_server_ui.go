@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -30,7 +31,6 @@ import (
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 	"github.com/yusing/mekugi/providers/openai"
 )
@@ -72,17 +72,49 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	if err != nil {
 		return nil, err
 	}
+	session.Client.Startup.Thread, session.Client.Startup.Workspace = resumeThread, resumeCwd
+	session.resumeArgv = slices.Clone(session.resumeArgv)
+	if session.profile != nil {
+		session.Client.Startup.Config = profileResumeConfig(cmd.Args, session.resumeArgv, session.profile)
+	} else {
+		session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
+	}
+	processCwd, _ := filepath.Abs(cmd.Dir)
+	connection := newNativeConnection(session, api, threads, prefs, cmd.Environ(), processCwd, guards, skillsManager, childSummary)
+	session.connection = connection
+	threads.native = connection
+	endpoint, err := session.prepareEndpoint(prefs, cmd.Environ(), processCwd, guard, guards, skillsManager, predictionProvider, api, childSummary, threads, guardHash)
+	if err == nil {
+		connection.add(endpoint)
+		err = session.Client.Request("initialize", nil)
+	}
+	if err != nil {
+		if endpoint != nil {
+			_ = endpoint.finish(err)
+		}
+		session.Client.Host.Close()
+		<-session.Client.Host.Done
+		return nil, err
+	}
+	return connection.run, nil
+}
+
+func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, environment []string, processCwd string, guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, skillsManager bool, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution, guardHash string) (*nativeEndpoint, error) {
+	endpointContext, cancelEndpoint := context.WithCancel(session.ctx)
+	session.ctx = endpointContext
+	endpoint := &nativeEndpoint{session: session, api: api, cancel: cancelEndpoint}
+	session.hydrationResults = make(chan *nativeHydration)
+	nativeOn(endpoint, func() <-chan *nativeHydration { return session.hydrationResults }, func(result *nativeHydration, _ bool) error { return session.acceptNativeHydration(result) })
 	hooks := new(executionHooks)
 	hooks.toolInput = session.controlObservations.ToolInput
 	session.attached = newAttachedPresentation(session.ctx, session.presentationState, session.conversationState, session.observations, hooks)
-	processCwd, _ := filepath.Abs(cmd.Dir)
+	session.attached.threadInput = &threadInput{}
 	session.attached.cwd = processCwd
-	inputHistory := newInputHistory(cmd.Environ(), processCwd)
+	inputHistory := newInputHistory(environment, processCwd)
 	session.attached.inputHistory = inputHistory
 
 	session.ownedImages = make(map[string]bool)
-	c := session.Client.Host
-	session.Client.Startup.Thread = resumeThread
+	c := session.connection.root.Client.Host
 	session.Client.Startup.History = session.retained.Store
 	attachPresentation(&session.attached, &session.picker, &session.Editor, &session.questions, &session.approvals, session.Client.Thread, &session.review, &session.commits, session.ctx, session.retained, session.changeSource, session.activity != nil)
 	session.attached.presentation.Status.Set("Connecting…", false)
@@ -94,48 +126,25 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		session.approvals.guards = guards
 	}
 	if skillsManager {
-		session.skillEnvironment = cmd.Environ()
-	}
-	session.resumeArgv = slices.Clone(session.resumeArgv)
-	if session.profile != nil {
-		session.Client.Startup.Config = profileResumeConfig(cmd.Args, session.resumeArgv, session.profile)
-	} else {
-		session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
+		session.skillEnvironment = environment
 	}
 	if threads.features == nil {
 		threads.features = sessioncontrol.NewNativeFeatureUse(session.Client.Requests)
 	}
-	threads.driver.BindFeatures(threads.features)
-	session.Client.Requests.Features = threads.features
+	if threads.catalog != nil {
+		session.Client.Requests.InheritedEffort = threads.catalog.InheritedEffort
+		session.Client.Requests.CaptureConfiguredCatalog = threads.catalog.CaptureConfigured
+	}
 	api.BindRequests(session.Client.Requests)
-	api.BindCoordination(threads.shared, threads.driver.DeliverMessages)
 	if session.preparer != nil {
 		session.Client.Requests.InputContext = session.controlObservations.ContextIdentity
-		session.Client.Requests.PrepareCompletion = session.preparer.PrepareCompletion
 		session.Client.Requests.AdmitSideFork = session.preparer.AdmitFork
 	}
 	api.BindSideThreads(session.Client.Requests.HasSideThread)
-	session.Client.Requests.Coordination, session.Client.Requests.InterruptWait = threads.shared, threads.driver.Interrupt
-	session.Client.Requests.InheritedEffort = threads.driver.InheritedEffort
-	session.Client.Requests.CaptureConfiguredCatalog = threads.driver.CaptureConfiguredCatalog
-	api.BindChildAttachment(threads.AttachChild)
-	session.Client.Startup.Prepared = threads.start
-	if err := threads.driver.Connect(threads, session.audience); err != nil {
-		c.Close()
-		<-c.Done
-		return nil, err
-	}
-	threadChanges := threads.driver.Changed()
+	api.BindChildAttachment(session.connection.attachChild)
 	session.notifications = new(nativeNotifications)
-	session.Client.Startup.Workspace = resumeCwd
 	if prefs != nil {
 		session.panes = &nativePreferences{service: prefs}
-	}
-	if err := session.Client.Request("initialize", nil); err != nil {
-		_ = inputHistory.close()
-		c.Close()
-		<-c.Done
-		return nil, err
 	}
 
 	settlePresentation(&session.attached, &session.Client, &session.picker, &session.Editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.clock, &session.questions, &session.approvals, session.overlayOpen(session.statusPanel, session.resumePicker))
@@ -172,66 +181,13 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	}
 	var startupView string
 	var latestResponse *appserver.Message
-	var restoredCoordination string
 
-	var dispatchHost func(appserver.Message, bool) error
-	flushCompletions := func() error {
-		return session.attached.threadInput.flushCompletions(func(m appserver.Message) error { return dispatchHost(m, false) })
-	}
 	session.dispatch = func(m appserver.Message) error {
-		if err := flushCompletions(); err != nil {
-			return err
-		}
-		if err := dispatchHost(m, true); err != nil {
-			return err
-		}
-		return flushCompletions()
-	}
-	dispatchHost = func(m appserver.Message, observe bool) error {
-		if m.Method == "thread/contextReset" {
-			var receipt sessioncontrol.ContextReset
-			if err := json.Unmarshal(m.Params, &receipt, json.RejectUnknownMembers(true)); err != nil {
-				return err
-			}
-			if receipt.Thread == session.Client.Thread {
-				session.Client.Compaction.ObserveReset(receipt)
-			}
-		}
-		if m.Method == "thread/compoundWait/settle" {
-			var input threadcontrol.CompoundSettlement
-			if err := json.Unmarshal(m.Params, &input, json.RejectUnknownMembers(true)); err != nil {
-				return session.Client.Requests.Respond(m.ID, threadcontrol.CompoundDisposition{Action: "uncertain", Ticket: input.Ticket, Diagnostic: err.Error()})
-			}
-			threads.driver.SettleCompound(input, func(result threadcontrol.CompoundDisposition, err error) {
-				if err != nil {
-					result.Action, result.Diagnostic = "uncertain", err.Error()
-				}
-				if err := session.Client.Requests.Respond(m.ID, result); err != nil {
-					threads.driver.NativeCompoundReplyFailed(input, err)
-				}
-			})
-			return nil
-		}
 		response, correlated := session.Client.Requests.Lookup(string(m.ID))
 		if session.Client.CompleteCall(m) {
-			if m.Error == nil {
-				if input := response.NativeDelivery(); input != nil {
-					stageNativeDelivery(&session.attached, *input, response.Completion(), presentationTime(session.clock))
-				}
-			}
 			return nil
 		}
-		syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
-		if observe {
-			reduced, err := observeLogicalHost(threads.driver, &session.Client.Live, m)
-			if err != nil {
-				return err
-			}
-			deferred, err := deferLogicalCompletion(&session.attached, &session.Client.Live, m, reduced, session.Client.Requests)
-			if err != nil || deferred {
-				return err
-			}
-		}
+		session.connection.projectAgent(session)
 		if m.Method == "" {
 			if response, ok := session.Client.Requests.Lookup(string(m.ID)); ok {
 				if handled, warning := session.Client.Requests.ProcessResponse(response, m); handled {
@@ -286,27 +242,22 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		}
 		err := session.dispatchHostMessage(&session.attached, &session.picker, &session.Editor, session.clock, &session.side, &session.statusPanel, &session.resumePicker, session.ctx, m)
 		adoptStartupChooser()
-		if err == nil && session.retainedSession.Thread != "" && session.retainedSession.Thread != restoredCoordination {
-			restoredCoordination = session.retainedSession.Thread
-			syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
-			session.attached.threadInput.restoration = threads.driver.Restore(session.retainedSession)
-		}
 		predictions.observe(m, session.Client.Thread)
 		if err == nil && threads.headless != nil && correlated && m.Method == "" && m.Error != nil && (response.Method == "turn/start" || response.Method == "turn/steer") {
 			return fmt.Errorf("%s: %s", response.Method, m.Error.Message)
 		}
 		return err
 	}
-	live := &apiLive{server: api, coordination: threads.shared, started: time.Now()}
+	live := &apiLive{server: api, native: session.connection, started: time.Now()}
+	if session.nativeAgent != nil {
+		live.nativeThread = session.nativeAgent.ThreadID
+	}
 	session.notifications.relay = func(event, message string) { native.notify(session.attached.executionPresentation, event, message) }
 	nativeRequests, nativeClosed := api.Native().Requests(), native.closed
 	intents := api.Intents()
 	live.publish(&session.attached, &session.Client, session.review, session.reviewSource, session.restoring != nil, childSummary, presentationTime(session.clock))
 	native.retiring = func(view *nativeSessionView) error {
 		defer pruneDraftImages(session.ownedImages, session.Editor, session.attached.conversation, &session.questions, &session.approvals, session.side, session.attached.hooks.nativeImages)
-		if view.startup && session.Client.Thread == "" && (session.Client.Startup.Thread == sessioncontrol.ResumePicker || session.Client.Startup.Thread == "--last") {
-			session.quitRequested = true
-		}
 
 		return nil
 	}
@@ -675,380 +626,374 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		}
 		return "", err
 	}
-	return func() (runErr error) {
-		defer func() {
-			// A failed native stream can lose facts before the lifecycle worker
-			// receives them. Keep the root's retained counts, but do not report
-			// the family's partial measurement as complete after a child exits.
-			if runErr != nil {
-				threads.features.InvalidateFeatureUse(runErr)
-			}
-		}()
-		if threads.headless != nil {
-			defer func() {
-				if runErr != nil && !errors.Is(runErr, context.Canceled) {
-					threads.headless.Fail(runErr)
-				}
-			}()
+
+	session.review.Loader = sessionreview.NewLoader(session.ctx, session.review.Projection)
+	review := session.review
+	review.Preview().Enable()
+	session.review.Loader.AwaitResync()
+	sub := review.Subscribe()
+	diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
+	autoChanged := review.Changed()
+	resubscribe := func() {
+		review.Unsubscribe(sub)
+		session.review.Loader.AwaitResync()
+		sub = review.Subscribe()
+		diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
+	}
+	endpoint.before = func() error {
+		if session.quitRequested {
+			return errNativeEndpointStopped
 		}
-		defer session.Client.Requests.Close()
-		defer session.managedSkills.Wait()
-		defer native.close()
-		defer func() { _ = predictions.clear(&session.Client, session.attached.conversation) }()
-		session.review.Loader = sessionreview.NewLoader(session.ctx, session.review.Projection)
-		defer session.review.Loader.Close()
-		defer func() {
-			session.retainedSession.Close()
-		}()
-		defer session.picker.cancelScan()
-		defer session.picker.cancelManagedSkills()
-		defer func() { session.commits.Close() }()
-		if session.audience != nil {
-			defer session.audience.Detach()
+		return native.failure
+	}
+	nativeOn(endpoint, func() <-chan error { return session.Client.Startup.ForkRetained() }, func(retainedErr error, _ bool) error {
+		pending := session.Client.Startup.ForkRetention
+		pending.Err, pending.Complete = retainedErr, true
+		if err := session.dispatch(pending.Message); err != nil {
+			return err
 		}
-		defer c.Input.Close()
-		defer func() { discardDraftImages(session.ownedImages) }()
-		defer c.Output.Close()
-		exited := false
-		var err error
-		runLoop := func() error {
-			review := session.review
-			review.Preview().Enable()
-			defer func() { review.Preview().Disable() }()
-			session.review.Loader.AwaitResync()
-			sub := review.Subscribe()
-			defer func() { review.Unsubscribe(sub) }()
-			diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
-			autoChanged := review.Changed()
-			resubscribe := func() {
-				review.Unsubscribe(sub)
-				session.review.Loader.AwaitResync()
-				sub = review.Subscribe()
-				diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan historyLoad { return inputHistory.loads }, func(result historyLoad, _ bool) error {
+		inputHistory.loaded(session.attached.conversation, result)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan error { return inputHistory.failures }, func(historyErr error, _ bool) error {
+		setNotice(&session.attached.feedback, presentationTime(session.clock), "Input history unavailable: "+historyErr.Error(), true)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan predictionConfiguration { return predictions.results }, func(result predictionConfiguration, _ bool) error {
+		if err := syncPredictions(); err != nil {
+			return err
+		}
+		if err := predictions.configured(result, &session.Client); err != nil {
+			return err
+		}
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan struct{} { return autoChanged }, func(_ struct{}, _ bool) error {
+		session.review.Projection.Workspace = review.Workspace()
+		publishReview(&session.attached, session.review, session.reviewSource)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan struct{} { return diffGap }, func(_ struct{}, _ bool) error {
+		resubscribe()
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan struct{} { return previewGap }, func(_ struct{}, _ bool) error {
+		resubscribe()
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan sessionreview.Result { return session.review.Loader.Updates() }, func(result sessionreview.Result, _ bool) error {
+		if sub.Invalidated() {
+			resubscribe()
+		}
+		loadedReview(&session.attached, session.review, session.reviewSource, &session.pendingEditReceipts, result)
+		if err := finishRestoredContent(&session.attached, &session.Client, &session.picker, &session.restoring, &session.review, session.dispatch, &session.resumePending); err != nil {
+			return err
+		}
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan struct{} { return diffReady }, func(_ struct{}, _ bool) error {
+		if !admitReviewEvents(&session.attached, session.review, session.reviewSource, &session.pendingEditReceipts, session.ctx, sub, review.TakePreviews(sub)...) {
+			resubscribe()
+		}
+		if err := finishRestoredContent(&session.attached, &session.Client, &session.picker, &session.restoring, &session.review, session.dispatch, &session.resumePending); err != nil {
+			return err
+		}
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan sessionreview.Event { return diffEvents }, func(event sessionreview.Event, _ bool) error {
+		if !admitReviewEvents(&session.attached, session.review, session.reviewSource, &session.pendingEditReceipts, session.ctx, sub, event) {
+			resubscribe()
+		}
+		if err := finishRestoredContent(&session.attached, &session.Client, &session.picker, &session.restoring, &session.review, session.dispatch, &session.resumePending); err != nil {
+			return err
+		}
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan pickerScanResult { return session.picker.scanResults }, func(result pickerScanResult, _ bool) error {
+		session.picker.applyScan(session.attached.cwd, session.picker.completionTarget(session.Editor.Draft, session.attached.conversation.ShellMode()), result)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan struct{} { return session.commits.Updates() }, func(_ struct{}, _ bool) error {
+		startCommitReads(&session.attached, session.commits)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan commandSegmentWrite { return session.commandSegmentWrites }, func(result commandSegmentWrite, _ bool) error {
+		commandSegmentRetained(&session.commandSegmentPending, session.issues, result)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan sessionTitleUpdate { return session.titleUpdates }, func(update sessionTitleUpdate, _ bool) error {
+		persistSessionTitle(&session.Client, session.titleGenerator, &session.attached.feedback, session.clock, update)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan *sessioncontrol.ShellApprovalRequest { return guard.Requests() }, func(request *sessioncontrol.ShellApprovalRequest, _ bool) error {
+		return session.connection.guardRequest(request)
+	})
+	nativeOn(endpoint, func() <-chan *sessioncontrol.HostCall { return session.Client.Calls() }, func(call *sessioncontrol.HostCall, _ bool) error {
+		session.Client.Dispatch(call)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan *sessioncontrol.Inspection { return session.Client.Requests.Inspections() }, func(inspection *sessioncontrol.Inspection, _ bool) error {
+		session.observeInspection(inspection)
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan string { return nativeClosed }, func(id string, _ bool) error {
+		native.retire(id)
+		if id == startupView && session.Client.Thread == "" {
+			// Until a thread is confirmed, the startup chooser is the sole
+			// owner of this invocation. Ordinary attached views do not own it.
+			session.quitRequested = true
+		}
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan sessionapi.NativeRequest { return nativeRequests }, func(request sessionapi.NativeRequest, _ bool) error {
+		var refusal string
+		var operationErr error
+		if request.Attach {
+			refusal = native.attach(request, &session.attached, session.Client.Thread)
+			if refusal == "" && request.Startup != "" && startupView == "" {
+				startupView = request.Attachment
+				if latestResponse != nil {
+					response := *latestResponse
+					latestResponse = nil
+					operationErr = session.dispatch(response)
+				}
 			}
-			tick := time.NewTicker(33 * time.Millisecond)
-			defer tick.Stop()
-			for {
-				if threads.headless != nil {
-					if session.questions.Count(session.Client.Thread) > 0 || len(session.approvals.Pending) > 0 {
-						return errors.New("headless cannot answer pending questions or approvals; continue interactively")
-					}
-					if threads.start == nil {
-						if !session.Client.Requests.Pending() && session.Client.Turn == "" && !session.attached.threadInput.preparing() {
-							lifecycle := session.attached.session.Lifecycle(session.Client.Thread)
-							member, ok := threads.shared.Member(session.Client.Thread)
-							if lifecycle.Final && (!ok || member.Status == threadcontrol.Completed) {
-								return nil
-							}
-							if ok {
-								switch member.Status {
-								case threadcontrol.Failed, threadcontrol.Interrupted, threadcontrol.Paused, threadcontrol.Uncertain:
-									return fmt.Errorf("headless logical Main: %s", member.Status)
-								}
-							} else if lifecycle.Turns > 0 && !lifecycle.Responding && !lifecycle.Waiting && !session.Client.Compaction.Pending() {
-								return errors.New("headless Main turn failed or was interrupted")
-							}
-						}
-					}
-				}
-				if session.quitRequested {
-					return nil
-				}
-				if native.failure != nil {
-					return native.failure
-				}
-				select {
-				case retainedErr := <-session.Client.Startup.ForkRetained():
-					pending := session.Client.Startup.ForkRetention
-					pending.Err, pending.Complete = retainedErr, true
-					if err := session.dispatch(pending.Message); err != nil {
-						return err
-					}
-				case result := <-inputHistory.loads:
-					inputHistory.loaded(session.attached.conversation, result)
-				case historyErr := <-inputHistory.failures:
-					setNotice(&session.attached.feedback, presentationTime(session.clock), "Input history unavailable: "+historyErr.Error(), true)
-				case <-session.ctx.Done():
-					return session.ctx.Err()
-				case result := <-predictions.results:
-					if err := syncPredictions(); err != nil {
-						return err
-					}
-					if err := predictions.configured(result, &session.Client); err != nil {
-						return err
-					}
-				case <-autoChanged:
-					session.review.Projection.Workspace = review.Workspace()
-					publishReview(&session.attached, session.review, session.reviewSource)
-				case <-diffGap:
-					resubscribe()
-				case <-previewGap:
-					resubscribe()
-				case result := <-session.review.Loader.Updates():
-					if sub.Invalidated() {
-						resubscribe()
-					}
-					loadedReview(&session.attached, session.review, session.reviewSource, &session.pendingEditReceipts, result)
-					if err := finishRestoredContent(&session.attached, &session.Client, &session.picker, &session.restoring, &session.review, session.dispatch, &session.resumePending); err != nil {
-						return err
-					}
-				case <-diffReady:
-					if !admitReviewEvents(&session.attached, session.review, session.reviewSource, &session.pendingEditReceipts, session.ctx, sub, review.TakePreviews(sub)...) {
-						resubscribe()
-					}
-					if err := finishRestoredContent(&session.attached, &session.Client, &session.picker, &session.restoring, &session.review, session.dispatch, &session.resumePending); err != nil {
-						return err
-					}
-				case event := <-diffEvents:
-					if !admitReviewEvents(&session.attached, session.review, session.reviewSource, &session.pendingEditReceipts, session.ctx, sub, event) {
-						resubscribe()
-					}
-					if err := finishRestoredContent(&session.attached, &session.Client, &session.picker, &session.restoring, &session.review, session.dispatch, &session.resumePending); err != nil {
-						return err
-					}
-				case result := <-session.picker.scanResults:
-					session.picker.applyScan(session.attached.cwd, session.picker.completionTarget(session.Editor.Draft, session.attached.conversation.ShellMode()), result)
-				case <-session.commits.Updates():
-					startCommitReads(&session.attached, session.commits)
-				case err := <-session.commandSegmentWrites:
-					commandSegmentRetained(&session.commandSegmentPending, session.issues, err)
-				case update := <-session.titleUpdates:
-					persistSessionTitle(&session.Client, session.titleGenerator, &session.attached.feedback, session.clock, update)
-				case request := <-guard.Requests():
-					addGuardApproval(&session.attached, &session.Client, &session.picker, &session.Editor, &session.questions, &session.approvals, session.clock, session.overlayOpen(session.statusPanel, session.resumePicker), session.notifications, session.review, &session.pendingEditReceipts, request)
-				case call := <-session.Client.Calls():
-					if err := flushCompletions(); err != nil {
-						return err
-					}
-					session.Client.Dispatch(call)
-				case inspection := <-session.Client.Requests.Inspections():
-					if session.Client.Requests.DispatchMeasurement(inspection) {
-						continue
-					}
-					target := inspection.Target()
-					switch {
-					case inspection.ContextWindow() != "" && (target == session.Client.Thread || session.Client.Requests.HasSideThread(target)):
-						inspection.CompleteAttachments(target, session.conversationState.Attachments(session.attached.session.Thread(target)))
-					case target == session.Client.Thread:
-						inspection.Complete(target, threadInspection(&session.attached.session, target, session.settings, session.serviceTiers))
-					case session.Client.Requests.HasSideThread(target):
-						inspection.Complete(target, threadcontrol.SessionDetails{SessionMetrics: session.attached.session.InspectionMetrics(target)})
-					default:
-						inspection.Complete(session.Client.Thread, threadcontrol.SessionDetails{})
-					}
-				case question := <-session.Client.Requests.Questions():
-					session.Client.Requests.DispatchQuestion(question)
-				case <-threadChanges:
-					if err := flushCompletions(); err != nil {
-						return err
-					}
-					syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
-					for _, failure := range threads.driver.Failures() {
-						session.issues.AddThreadNotice(session.Client.Thread, session.Client.Turn, "threadcontrol", failure.Error())
-					}
-				case message, ok := <-c.Messages:
-					if !ok {
-						exited = true
-						return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
-					}
-					if threads.headless != nil {
-						if err := threads.headless.Observe(message); err != nil {
-							return err
-						}
-					}
-					if err := session.dispatch(message); err != nil || session.quitRequested {
-						return err
-					}
-				case id := <-nativeClosed:
-					native.retire(id)
-				case request := <-nativeRequests:
-					var refusal string
-					var operationErr error
-					if request.Attach {
-						refusal = native.attach(request, &session.attached, session.Client.Thread)
-						if refusal == "" && request.Startup != "" && startupView == "" {
-							startupView = request.Attachment
-							if latestResponse != nil {
-								response := *latestResponse
-								latestResponse = nil
-								operationErr = session.dispatch(response)
-							}
-						}
-						adoptStartupChooser()
+			adoptStartupChooser()
+		} else {
+			var view *nativeSessionView
+			view, refusal = native.admit(request, &session.attached, session.Client.Thread)
+			if refusal == "" {
+				switch operation := request.Operation; {
+				case operation.Answers != nil:
+					refusal, operationErr = session.applyNativeAnswers(&session.attached, &session.picker, &session.Editor, session.side, session.clock, session.overlayOpen(session.statusPanel, session.resumePicker), session.ctx, *operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
+				case operation.Approval != nil:
+					record, choice, err := view.attached.presentation.Approval(*operation.Approval, session.approvals.Approvals)
+					if err != nil {
+						refusal = err.Error()
 					} else {
-						var view *nativeSessionView
-						view, refusal = native.admit(request, &session.attached, session.Client.Thread)
-						if refusal == "" {
-							switch operation := request.Operation; {
-							case operation.Answers != nil:
-								refusal, operationErr = session.applyNativeAnswers(&session.attached, &session.picker, &session.Editor, session.side, session.clock, session.overlayOpen(session.statusPanel, session.resumePicker), session.ctx, *operation.Answers, request.Prepared, request.Context, request.RemoteHuman())
-							case operation.Approval != nil:
-								record, choice, err := view.attached.presentation.Approval(*operation.Approval, session.approvals.Approvals)
-								if err != nil {
-									refusal = err.Error()
-								} else {
-									operationErr = session.applyApproval(&session.attached, &session.picker, &session.Editor, session.clock, view.attached.grants, session.approvals.handles[record], choice, operation.Approval.Reason)
-								}
-							default:
-								refusal, operationErr = applyNativeOperation(view, request)
-							}
-							view.projected = time.Time{}
-						}
+						operationErr = session.applyApproval(&session.attached, &session.picker, &session.Editor, session.clock, view.attached.grants, session.approvals.handles[record], choice, operation.Approval.Reason)
 					}
-					if request.Operation.Receipt != nil {
-						pruneDraftImages(session.ownedImages, session.Editor, session.attached.conversation, &session.questions, &session.approvals, session.side, session.attached.hooks.nativeImages)
-					}
-					if operationErr != nil {
-						refusal = "The session failed: " + operationErr.Error()
-					}
-					// Mutation acknowledgement is a publication barrier for keyboard
-					// continuations. Publish before releasing the requesting client.
-					native.publish(&session.attached, &session.Client, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.review, session.reviewSource, nativePublicationFacts(&session.attached, session.panes, session.exitUsage, session.replayDebugDirectory, session.archived, session.notifications, session.Client.Thread, &predictions), presentationTime(session.clock))
-					if request.Reply != nil {
-						request.Reply <- refusal
-					}
-					if operationErr != nil {
-						return operationErr
-					}
-				case intent := <-intents:
-					refusal := apiIntentRefusal(&session.attached, &session.Client, intent)
-					var intentErr error
-					if refusal == "" {
-						if intent.Action == sessionapi.RunShell {
-							refusal, intentErr = session.submitAPIShell(&session.attached, &session.picker, session.clock, session.ctx, intent.Text)
-						} else {
-							refusal, intentErr = session.applyAPIIntent(&session.attached, &session.picker, &session.Editor, session.clock, &session.side, session.overlayOpen(session.statusPanel, session.resumePicker), session.ctx, intent)
-						}
-					}
-					if intentErr != nil {
-						refusal = "The session failed: " + intentErr.Error()
-					}
-					if intent.Reply != nil {
-						intent.Reply <- refusal
-					}
-					if intentErr != nil || session.quitRequested {
-						return intentErr
-					}
-				case <-tick.C:
-					if session.picker.pollManagedSkills(&session.attached, session.clock) {
-						session.picker.refreshPicker(&session.attached, session.clock, session.Client.Requests, session.Editor, session.ctx, session.skillEnvironment)
-					}
-					if err := flushCompletions(); err != nil {
-						return err
-					}
-					syncLogicalWork(&session.attached, &session.Client.Live, threads, presentationTime(session.clock))
-					threads.driver.Tick(presentationTime(session.clock), session.Client.Requests.RuntimeThreads(session.Client.Thread))
-					if len(session.attached.sideInputs) > 0 || session.side != nil && len(session.side.Drafts.Unsent) > 0 {
-						if err := flushBTW(&session.attached, &session.Client, &session.picker, &session.questions, &session.approvals, session.clock, session.settings, &session.side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations); err != nil {
-							return err
-						}
-					}
-					if session.Client.Shell.Continuation() || session.attached.threadInput.preparing() || len(session.attached.conversation.Unsent) > 0 {
-						if err := session.flushInput(&session.attached, &session.picker, session.clock, &session.Editor, session.ctx); err != nil {
-							return err
-						}
-					}
-					refreshSessionMetrics(session.statusPanel, session.sessionCapture, presentationTime(session.clock), false)
-					applyObservedActivity(&session.attached, &session.Client, session.usage, session.review, &session.approvals, &session.pendingEditReceipts, session.clock, session.restoring, session.audience)
-					publishPresentation(&session.attached, &session.Client, &session.picker, &session.Editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side)
-					session.flushStreamOutput(&session.attached, session.clock, session.ctx)
-					startCommitReads(&session.attached, session.commits)
-					paneError(session.attached.source, session.panes.savePrepared(presentationTime(session.clock), false))
-					if !expireNotice(&session.attached.feedback, presentationTime(session.clock)) {
-						expireApprovals(&session.attached, &session.Client, &session.picker, &session.Editor, &session.questions, &session.approvals, session.clock, session.notifications, session.review, &session.pendingEditReceipts)
-					}
-					for _, view := range native.views {
-						if view.ctx.Err() != nil || view.attached.executionPresentation != session.attached.executionPresentation {
-							continue
-						}
-						expireNotice(&view.attached.feedback, presentationTime(session.clock))
-						refreshSessionMetrics(view.panel, session.sessionCapture, presentationTime(session.clock), false)
-						if view.notices != nil && nativeErrorsWaiting(session.issues, session.Client.Thread, session.audience) {
-							// Unpainted claims yield to newer composer errors; rows stay deduped.
-							view.notices.finish(terminalsession.NoticeReceipt{})
-							view.notices = nil
-						}
-						if view.notices == nil {
-							requestEditor := new(composer.Editor)
-							view.notices = applyCriticalNotices(&view.attached, &session.Client, &view.picker, &requestEditor, session.clock, session.settings, session.serviceTiers, session.title, session.backendVersion, &session.restoring, &session.side, session.audience, session.issues)
-						}
-					}
-					notices := applyCriticalNotices(&session.attached, &session.Client, &session.picker, &session.Editor, session.clock, session.settings, session.serviceTiers, session.title, session.backendVersion, &session.restoring, &session.side, session.audience, session.issues)
-					settlePresentation(&session.attached, &session.Client, &session.picker, &session.Editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.clock, &session.questions, &session.approvals, session.overlayOpen(session.statusPanel, session.resumePicker))
-					live.publish(&session.attached, &session.Client, session.review, session.reviewSource, session.restoring != nil, childSummary, presentationTime(session.clock))
-					native.publish(&session.attached, &session.Client, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.review, session.reviewSource, nativePublicationFacts(&session.attached, session.panes, session.exitUsage, session.replayDebugDirectory, session.archived, session.notifications, session.Client.Thread, &predictions), presentationTime(session.clock))
-					// Publication is not a native paint receipt. Release claims without
-					// acknowledging notices that no terminal has displayed.
-					notices.finish(terminalsession.NoticeReceipt{})
-					continue
+				default:
+					refusal, operationErr = applyNativeOperation(view, request)
 				}
-				if err := syncPredictions(); err != nil {
-					return err
-				}
-				settlePresentation(&session.attached, &session.Client, &session.picker, &session.Editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.clock, &session.questions, &session.approvals, session.overlayOpen(session.statusPanel, session.resumePicker))
-				live.publish(&session.attached, &session.Client, session.review, session.reviewSource, session.restoring != nil, childSummary, presentationTime(session.clock))
-				native.publish(&session.attached, &session.Client, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.review, session.reviewSource, nativePublicationFacts(&session.attached, session.panes, session.exitUsage, session.replayDebugDirectory, session.archived, session.notifications, session.Client.Thread, &predictions), presentationTime(session.clock))
+				view.projected = time.Time{}
 			}
 		}
-		err = runLoop()
-		if !exited {
-			cleanup, cancel := context.WithTimeout(context.WithoutCancel(session.ctx), 3*time.Second)
-			err = errors.Join(err, session.Client.Requests.ArchiveSides(cleanup, c.Messages, session.side, session.Client.BTW))
-			cancel()
+		if request.Operation.Receipt != nil {
+			pruneDraftImages(session.ownedImages, session.Editor, session.attached.conversation, &session.questions, &session.approvals, session.side, session.attached.hooks.nativeImages)
 		}
+		if operationErr != nil {
+			refusal = "The session failed: " + operationErr.Error()
+		}
+		// Mutation acknowledgement is a publication barrier for keyboard
+		// continuations. Publish before releasing the requesting client.
+		native.publish(&session.attached, &session.Client, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.review, session.reviewSource, nativePublicationFacts(&session.attached, session.panes, session.exitUsage, session.replayDebugDirectory, session.archived, session.notifications, session.Client.Thread, &predictions), presentationTime(session.clock))
+		if request.Reply != nil {
+			request.Reply <- refusal
+		}
+		if operationErr != nil {
+			return operationErr
+		}
+		return nil
+	})
+	nativeOn(endpoint, func() <-chan sessionapi.Intent { return intents }, func(intent sessionapi.Intent, _ bool) error {
+		refusal := apiIntentRefusal(&session.attached, &session.Client, intent)
+		var intentErr error
+		if refusal == "" {
+			if intent.Action == sessionapi.RunShell {
+				refusal, intentErr = session.submitAPIShell(&session.attached, &session.picker, session.clock, session.ctx, intent.Text)
+			} else {
+				refusal, intentErr = session.applyAPIIntent(&session.attached, &session.picker, &session.Editor, session.clock, &session.side, session.overlayOpen(session.statusPanel, session.resumePicker), session.ctx, intent)
+			}
+		}
+		if intentErr != nil {
+			refusal = "The session failed: " + intentErr.Error()
+		}
+		if intent.Reply != nil {
+			intent.Reply <- refusal
+		}
+		if intentErr != nil || session.quitRequested {
+			return intentErr
+		}
+		return nil
+	})
+	endpoint.tick = func() error {
+		if session.picker.pollManagedSkills(&session.attached, session.clock) {
+			session.picker.refreshPicker(&session.attached, session.clock, session.Client.Requests, session.Editor, session.ctx, session.skillEnvironment)
+		}
+		session.connection.projectAgent(session)
+		if len(session.attached.sideInputs) > 0 || session.side != nil && len(session.side.Drafts.Unsent) > 0 {
+			if err := flushBTW(&session.attached, &session.Client, &session.picker, &session.questions, &session.approvals, session.clock, session.settings, &session.side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations); err != nil {
+				return err
+			}
+		}
+		if len(session.attached.conversation.Unsent) > 0 {
+			if err := session.flushInput(&session.attached, &session.picker, session.clock, &session.Editor, session.ctx); err != nil {
+				return err
+			}
+		}
+		refreshSessionMetrics(session.statusPanel, session.sessionCapture, presentationTime(session.clock), false)
+		applyObservedActivity(&session.attached, &session.Client, session.usage, session.review, &session.approvals, &session.pendingEditReceipts, session.clock, session.restoring, session.audience)
+		publishPresentation(&session.attached, &session.Client, &session.picker, &session.Editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side)
+		session.flushStreamOutput(&session.attached, session.clock, session.ctx)
+		startCommitReads(&session.attached, session.commits)
+		paneError(session.attached.source, session.panes.savePrepared(presentationTime(session.clock), false))
+		if !expireNotice(&session.attached.feedback, presentationTime(session.clock)) {
+			expireApprovals(&session.attached, &session.Client, &session.picker, &session.Editor, &session.questions, &session.approvals, session.clock, session.notifications, session.review, &session.pendingEditReceipts)
+		}
+		for _, view := range native.views {
+			if view.ctx.Err() != nil || view.attached.executionPresentation != session.attached.executionPresentation {
+				continue
+			}
+			expireNotice(&view.attached.feedback, presentationTime(session.clock))
+			refreshSessionMetrics(view.panel, session.sessionCapture, presentationTime(session.clock), false)
+			if view.notices != nil && nativeErrorsWaiting(session.issues, session.Client.Thread, session.audience) {
+				// Unpainted claims yield to newer composer errors; rows stay deduped.
+				view.notices.finish(terminalsession.NoticeReceipt{})
+				view.notices = nil
+			}
+			if view.notices == nil {
+				requestEditor := new(composer.Editor)
+				view.notices = applyCriticalNotices(&view.attached, &session.Client, &view.picker, &requestEditor, session.clock, session.settings, session.serviceTiers, session.title, session.backendVersion, &session.restoring, &session.side, session.audience, session.issues)
+			}
+		}
+		notices := applyCriticalNotices(&session.attached, &session.Client, &session.picker, &session.Editor, session.clock, session.settings, session.serviceTiers, session.title, session.backendVersion, &session.restoring, &session.side, session.audience, session.issues)
+		settlePresentation(&session.attached, &session.Client, &session.picker, &session.Editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.clock, &session.questions, &session.approvals, session.overlayOpen(session.statusPanel, session.resumePicker))
+		live.publish(&session.attached, &session.Client, session.review, session.reviewSource, session.restoring != nil, childSummary, presentationTime(session.clock))
+		native.publish(&session.attached, &session.Client, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.review, session.reviewSource, nativePublicationFacts(&session.attached, session.panes, session.exitUsage, session.replayDebugDirectory, session.archived, session.notifications, session.Client.Thread, &predictions), presentationTime(session.clock))
+		// Publication is not a native paint receipt. Release claims without
+		// acknowledging notices that no terminal has displayed.
+		notices.finish(terminalsession.NoticeReceipt{})
+		return nil
+	}
+	endpoint.after = func() error {
+		session.connection.projectAgent(session)
+		if err := syncPredictions(); err != nil {
+			return err
+		}
+		settlePresentation(&session.attached, &session.Client, &session.picker, &session.Editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.clock, &session.questions, &session.approvals, session.overlayOpen(session.statusPanel, session.resumePicker))
+		live.publish(&session.attached, &session.Client, session.review, session.reviewSource, session.restoring != nil, childSummary, presentationTime(session.clock))
+		native.publish(&session.attached, &session.Client, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.review, session.reviewSource, nativePublicationFacts(&session.attached, session.panes, session.exitUsage, session.replayDebugDirectory, session.archived, session.notifications, session.Client.Thread, &predictions), presentationTime(session.clock))
+		return session.connection.observeTree()
+	}
+	endpoint.finish = func(runErr error) error {
+		endpoint.cancel()
+		session.audience.DetachEndpoint(session.Client.Thread)
+		session.Client.Requests.Close()
+		_ = predictions.clear(&session.Client, session.attached.conversation)
+		session.Client.Requests.RetireEndpoint()
+		session.managedSkills.Wait()
+		review.Unsubscribe(sub)
+		review.Preview().Disable()
+		session.review.Loader.Close()
+		session.retainedSession.Close()
+		session.picker.cancelScan()
+		session.picker.cancelManagedSkills()
+		session.commits.Close()
 		_ = session.panes.savePrepared(presentationTime(session.clock), true)
 		if session.panes != nil {
-			err = errors.Join(err, session.panes.writer.close(session.panes.attachment, presentationTime(session.clock)))
-		}
-		if !exited {
-			if session.ctx.Err() != nil {
-				_ = c.Cancel()
-			}
-			err = errors.Join(err, c.Shutdown())
+			runErr = errors.Join(runErr, session.panes.writer.close(session.panes.attachment, presentationTime(session.clock)))
 		}
 		finishCommandSegments(&session.commandSegmentWrites, &session.commandSegmentPending, session.issues)
 		for _, view := range native.views {
 			view.projected = time.Time{}
 		}
 		native.publish(&session.attached, &session.Client, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.review, session.reviewSource, nativePublicationFacts(&session.attached, session.panes, session.exitUsage, session.replayDebugDirectory, session.archived, session.notifications, session.Client.Thread, &predictions), presentationTime(session.clock))
-		for key, run := range session.attached.session.Commands() {
-			if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
-				session.execTrack.ReleaseOutput(key)
-			}
-		}
+		releaseSegmentOutputs(&session.attached, session.execTrack)
 		session.review.Close()
 		session.Editor = hideQuestionEditor(&session.questions, session.attached.conversation, session.Editor, session.Client.Thread)
 		hideApprovals(&session.approvals, &session.attached.conversation.PromptEditor, &session.attached.conversation.Editor)
 		inputHistory.saveDraft(session.attached.conversation, session.Editor)
-		_ = inputHistory.close()
+		runErr = errors.Join(runErr, inputHistory.close())
 		session.attached.releaseSideInputs()
 		session.attached.session.Retire()
-		if err != nil {
-			if diagnostic := c.Diagnostics.Snapshot(); diagnostic != "" {
-				if threads.headless != nil {
-					err = fmt.Errorf("%w\nCodex: %s", err, diagnostic)
-				}
-			}
-		}
-		return err
-	}, nil
+		discardDraftImages(session.ownedImages)
+		native.close()
+		return runErr
+	}
+	return endpoint, nil
 }
 
 // appServerRequest contains response routing data, not a second request ledger.
 // Main's lifecycle scope retires on confirmed replacement. Side conversations
 // and title saves retain their own completion and cleanup across that boundary.
 type appServerRequest struct {
-	history  *appServerHistoryRead
-	view     string
-	metadata string
-	menu     uint64
-	label    string
-	title    *sessioncontrol.NameSave
-	status   *appServerStatusReport
-	hook     *sessioncontrol.Approval
+	nativeTree string
+	nativeEnd  *nativeEndRequest
+	history    *appServerHistoryRead
+	view       string
+	metadata   string
+	menu       uint64
+	label      string
+	title      *sessioncontrol.NameSave
+	status     *appServerStatusReport
+	hook       *sessioncontrol.Approval
 }
 
 func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, m appserver.Message) (err error) {
+	if m.Method == "turn/started" && session.nativeCheckpoint != nil {
+		var started struct {
+			ThreadID string `json:"threadId"`
+			Turn     struct {
+				ID string `json:"id"`
+			} `json:"turn"`
+		}
+		if json.Unmarshal(m.Params, &started) == nil && started.ThreadID == session.Client.Thread && started.Turn.ID != session.nativeCheckpoint.TurnID {
+			session.nativeCheckpoint = nil
+		}
+	}
+	if handled, err := session.observeNativeCheckpoint(m); handled {
+		return err
+	}
+	if m.Method == "thread/contextReset" {
+		var receipt sessioncontrol.ContextReset
+		if err := json.Unmarshal(m.Params, &receipt, json.RejectUnknownMembers(true)); err != nil {
+			return err
+		}
+		if receipt.Thread == session.Client.Thread {
+			session.Client.Compaction.ObserveReset(receipt)
+			if entry, ok := sessionpresentation.NativeContextResetEntry(receipt, presentationTime(clock)); ok {
+				entry.Seq = attached.session.Activity().NextSequence()
+				sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+			}
+		}
+	}
+	if m.Method == "rawResponseItem/completed" {
+		var event struct {
+			Thread            string                            `json:"threadId"`
+			Turn              string                            `json:"turnId"`
+			Item              sessioncontrol.NativeMessage      `json:"item"`
+			Coordination      *appserver.CoordinationProjection `json:"coordination"`
+			SourceAcquisition *appserver.SourceAcquisition      `json:"sourceAcquisition"`
+		}
+		if err := json.Unmarshal(m.Params, &event); err != nil {
+			return err
+		}
+		if event.Thread == session.Client.Thread {
+			session.observeNativeShellContinuation(event.Turn, event.Coordination)
+			publishNativeCoordination(attached, event.Thread, event.Turn, event.Item, event.Coordination, presentationTime(clock))
+			if entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(attached.cwd, event.Thread, event.Turn, event.SourceAcquisition, presentationTime(clock)); ok {
+				entry.Seq = attached.session.Activity().NextSequence()
+				sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+			}
+		}
+	}
+	if m.Method == "agent/coordination" {
+		var event appserver.AgentCoordination
+		if err := json.Unmarshal(m.Params, &event); err != nil {
+			return err
+		}
+		if event.ThreadID == session.Client.Thread {
+			session.observeNativeShellContinuation(event.TurnID, &event.Projection)
+			publishNativeCoordination(attached, event.ThreadID, event.TurnID, sessioncontrol.NativeMessage{}, &event.Projection, presentationTime(clock))
+		}
+	}
+	if handled, err := session.finalCaptureMessage(m); handled {
+		return err
+	}
 	if handled, complete, err := hydrateHistory(&session.Client, m); handled {
 		if err != nil {
 			return err
@@ -1057,6 +1002,9 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			return session.dispatch(*complete)
 		}
 		return nil
+	}
+	if held, err := session.beginNativeHydration(m); held || err != nil {
+		return err
 	}
 	defer func() {
 		if r := session.Client.Rewind; r != nil && r.Completed && r.Failed && r.Item == "" && session.shellEdits.pending != nil && session.shellEdits.pending.Thread() == r.Thread {
@@ -1087,9 +1035,6 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 	if handled, err := session.Client.ObservePrediction(m, response); handled {
 		return err
 	}
-	if session.Client.Requests.ObserveAgentQuestion(m, response) {
-		return nil
-	}
 	if sessionTitleMessage(&session.Client, session.titleGenerator, &attached.feedback, clock, &session.title, m, response.Owner.title) {
 		return nil
 	}
@@ -1102,7 +1047,14 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 		if err != nil {
 			return err
 		}
-
+		if session.connection != nil && update.Side != nil && update.Side.Thread != "" && !update.Side.Unloaded() {
+			if m.Method == "turn/checkpointed" || m.Method == "" && response.Method == "thread/fork" {
+				session.connection.invalidateTree(update.Side.Thread)
+				if err := session.connection.observeRoot(update.Side.Thread, 0); err != nil {
+					return err
+				}
+			}
+		}
 		if update.Flush {
 			return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
 		}
@@ -1142,7 +1094,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				return nil
 			}
 			if len(session.resumePending) == 256 {
-				return errors.New("resume event capacity exceeded; session state is incomplete")
+				return errors.New("agent view event backlog exceeded; select the agent again to reload history and pending prompts; native work continues")
 			}
 			session.resumePending = append(session.resumePending, m)
 			return nil
@@ -1188,6 +1140,14 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 		}
 		if method == "turn/start" || method == "turn/steer" {
 			submissionResponse(attached, &session.Client, picker, &session.questions, &session.approvals, clock, method, m.Error)
+			return nil
+		}
+		if method == "agent/interrupt" {
+			if m.Error != nil {
+				setNotice(&attached.feedback, presentationTime(clock), "Native interruption rejected: "+m.Error.Message, true)
+			}
+			// Acceptance is not a terminal work receipt. Passive native facts
+			// retain the captured Work/Wait until native settles them.
 			return nil
 		}
 		if method == "thread/shellCommand" {
@@ -1414,6 +1374,8 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				return err
 			}
 			startAttachedSession(attached, session.observations, session.Client.Thread, result.Thread.Cwd)
+			session.nativeRosterRoot = ""
+			session.nativeCheckpoint = nil
 			if session.shouldReviewHooks() {
 				if err := session.beginHookTrust(); err != nil {
 					return err
@@ -1430,11 +1392,14 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 					return err
 				}
 			}
-			if session.retained.Store != nil || session.panes != nil {
+			if session.hydration != nil {
+				session.retainedSession = session.hydration.retained
+				session.hydration.retained = history.Session{}
+			} else if session.retained.Store != nil || session.panes != nil {
 				err := openRetainedSession(parent, session.history, &session.retainedSession, session.Client.Thread, session.retained.Store, session.retained.Writes, session.retained.Limits)
-				// Prepared children acquire their parent's namespace in logical admission.
+				// Native host admission already initialized child retained scope.
 				// Only an ordinary root can enroll itself before its first turn.
-				if err == nil && session.Client.Startup.Prepared == nil {
+				if err == nil && (session.nativeAgent == nil || session.nativeAgent.ParentThreadID == nil) {
 					err = session.retainedSession.Store.Transaction(parent, session.retainedSession.Writes, func(tx *history.Transaction) error {
 						return tx.InitializeScope(history.Scope{Thread: session.Client.Thread, Namespace: session.retainedSession.Namespace}, nil)
 					})
@@ -1451,23 +1416,25 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				session.controlObservations.RewindContext(result.Thread.ID, result.Thread.Cwd)
 			} else {
 				session.controlObservations.RefreshContext(result.Thread.ID)
-				if prepared := session.Client.Startup.Prepared; method == "thread/fork" && prepared != nil && prepared.Import != "" && session.preparer != nil {
-					if result.Thread.Cwd == prepared.Settings.Workspace {
-						session.controlObservations.AdmitInputPrefix(result.Thread.ID, result.Thread.Cwd, prepared.InputPrefix)
-					}
-				} else if method == "thread/fork" && session.preparer != nil {
+				if method == "thread/fork" && session.preparer != nil {
 					session.preparer.AdmitFork(forkSource, result.Thread.ID, result.Thread.Cwd)
 				}
 			}
-			restoreCompactionMetrics(&attached.session, result.Thread)
+			if session.connection == nil {
+				restoreCompactionMetrics(&attached.session, result.Thread)
+			} else {
+				attached.session.ObserveNativeMetrics(session.Client.Thread, observation.SessionMetrics{})
+				session.connection.projectAgent(session)
+			}
 			restoreUsage(session.usage, result.Thread)
 			observeCost(session.usage, session.Client.Thread, attached.session.Agent("/root"))
 			if attached.childSource != nil {
 				attached.childSource.Apply(sessionpresentation.ActivityEvent{Agents: attached.session.Roster()})
 			}
 			if session.audience != nil {
-				if session.Client.Startup.Prepared != nil {
-					session.audience.AttachRuntime(session.Client.Thread)
+				if session.nativeAgent != nil && session.nativeAgent.ParentThreadID != nil {
+					// The invocation already owns the shared audience. Hydrating a
+					// child view cannot replace it or enroll model execution.
 				} else {
 					session.audience.Attach(session.Client.Thread)
 				}
@@ -1487,7 +1454,12 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				}
 			}
 			if session.panes != nil {
-				paneError(attached.source, session.panes.open(result.Thread.Cwd, session.Client.Thread, method == "thread/resume"))
+				if session.hydration != nil {
+					session.panes.attachment = session.hydration.panes
+					paneError(attached.source, session.hydration.paneErr)
+				} else {
+					paneError(attached.source, session.panes.open(result.Thread.Cwd, session.Client.Thread, method == "thread/resume"))
+				}
 			}
 			if method == "thread/resume" || method == "thread/fork" || method == "thread/revert" {
 				repair, err := result.RepairDefaultEffort(&session.Client.Live)
@@ -1651,7 +1623,7 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 				attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock))
 			}
 			settleInput(attached, &session.Client, picker, &session.questions, &session.approvals, clock, p.Turn.ID, p.Turn.Status == "interrupted")
-			if !localStop && !continuing && !shellTurn && p.Turn.Status == "completed" && session.questions.Count(session.Client.Thread) == 0 {
+			if !localStop && !continuing && !shellTurn && !compactTurn && p.Turn.Status == "completed" && session.questions.Count(session.Client.Thread) == 0 {
 				session.notifications.notify(&attached.feedback, clock, "agent-turn-complete", "Agent turn complete")
 			}
 			for _, c := range session.questions.calls() {
@@ -1733,7 +1705,7 @@ func applyObservedActivity(attached *attachedPresentation, control *sessioncontr
 		borrowed = target.ID
 		roots = append(roots, borrowed)
 	}
-	audience.BorrowSide(borrowed)
+	audience.BorrowSideFor(control.Thread, borrowed)
 	var entries []sessionpresentation.ActivityEntry
 	admitted := false
 	if borrowed != "" {

@@ -6,6 +6,7 @@ import (
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/legacycall"
 
@@ -1096,12 +1097,13 @@ func (p *nativePreview) serve() {
 			ID     jsontext.Value `json:"id"`
 			Method string         `json:"method"`
 			Params struct {
-				Input       []map[string]any `json:"input"`
-				ClientID    string           `json:"clientUserMessageId"`
-				ThreadID    string           `json:"threadId"`
-				Model       string           `json:"model"`
-				Effort      string           `json:"effort"`
-				ServiceTier jsontext.Value   `json:"serviceTier"`
+				Input                 []map[string]any `json:"input"`
+				ClientID              string           `json:"clientUserMessageId"`
+				ThreadID              string           `json:"threadId"`
+				Model                 string           `json:"model"`
+				Effort                string           `json:"effort"`
+				ServiceTier           jsontext.Value   `json:"serviceTier"`
+				ContextResetRequestID string           `json:"contextResetRequestId"`
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(line, &request); err != nil || len(request.ID) == 0 {
@@ -1153,10 +1155,16 @@ func (p *nativePreview) serve() {
 		switch request.Method {
 		case "thread/compact/start":
 			thread := request.Params.ThreadID
+			reset := sessioncontrol.ContextReset{Thread: thread, RequestID: request.Params.ContextResetRequestID, Generation: uint64(p.message), Status: "accepted"}
+			p.notify("thread/contextReset", reset)
 			p.notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn}})
+			reset.Turn, reset.ResetID, reset.Status = turn, turn, "started"
+			p.notify("thread/contextReset", reset)
 			item := map[string]any{"id": fmt.Sprintf("preview-compaction-%d", p.message), "type": "contextCompaction"}
 			p.notify("item/started", map[string]any{"threadId": thread, "turnId": turn, "item": item})
 			p.notify("item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": item})
+			reset.Status = "completed"
+			p.notify("thread/contextReset", reset)
 			p.notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn, "status": "completed"}})
 		case "thread/settings/update":
 			model, effort, tier := p.ui.settings.Model, p.ui.settings.Effort, p.ui.settings.Tier

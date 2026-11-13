@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -16,30 +15,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
-
-// Auxiliary turns execute and retain output in Codex without
-// acquiring or completing logical model work.
-func observeLogicalHost(driver *threadbinding.Driver, live *sessioncontrol.Live, message appserver.Message) (<-chan error, error) {
-	if message.Method == "turn/started" || message.Method == "turn/completed" {
-		p, err := binding.DecodeNotification(message.Method, message.Params)
-		if err != nil {
-			return nil, err
-		}
-		if message.Method == "turn/completed" && p.ThreadID == live.Thread && live.CompactionStopsWait(p.Turn.ID) {
-			driver.CheckpointWait(p.ThreadID, p.Turn.ID)
-			return nil, nil
-		}
-		if p.ThreadID == live.Thread && live.AuxiliaryTurn(p.Turn.ID) {
-			if message.Method == "turn/completed" && live.Compaction.Starting() {
-				// Native manual admission replaced the old model turn before the
-				// new auxiliary compact turn started.
-				return driver.Observe(message.Method, message.Params)
-			}
-			return nil, nil
-		}
-	}
-	return driver.Observe(message.Method, message.Params)
-}
 
 // Source: codex-rs/tui/src/chatwidget/input_submission.rs:36:67@1cc7e236.
 // Codex owns execution, cancellation and history: active shell results inject
@@ -88,9 +63,6 @@ func (session *nativeSession) dispatchShell(attached *attachedPresentation, cloc
 	}
 	session.shellEdits.pending = edit
 	session.Client.Shell.Begin(session.Client.Turn)
-	if session.Client.LocalStop != "" {
-		session.Client.Shell.WakeAfterSettlement()
-	}
 	setNotice(&attached.feedback, presentationTime(clock), "Shell command submitted", false)
 	return nil
 }

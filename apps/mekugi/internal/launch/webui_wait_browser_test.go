@@ -167,10 +167,7 @@ func TestWebUIBrowserWaitTargetDuringRepublication(t *testing.T) {
 	page := httptest.NewServer(webui.Handler())
 	defer page.Close()
 	machine := newWebUIBrowserMachine(t, ctx, page.URL, "Running", strings.Repeat("d", 64))
-	u, threads, at := logicalWaitRunningUI(t, nil)
-	if err := threads.shared.Execution(t.Context(), "main", "first", "exec", "", false); err != nil {
-		t.Fatal(err)
-	}
+	u, threads, at := nativeRunningUI(t)
 	wait := activity.Value{Kind: "progress", Body: "Waiting for", WaitTargets: []activity.WaitTarget{{Name: "agent:main/target"}}}
 	main := &activity.Publication{Entries: []activity.Entry{{Seq: 1, Agent: "Main", Kind: "tool", Text: wait.ProgressText(), Values: []activity.Value{wait}, Revision: 1}}}
 	var fillers []activity.AgentRow
@@ -181,7 +178,7 @@ func TestWebUIBrowserWaitTargetDuringRepublication(t *testing.T) {
 	// Each pass observes the running host as the owner loop does, and
 	// publishes a new roster publication as transcript or output changes do.
 	publish := func() error {
-		syncLogicalWork(&u.attached, &u.Live, threads, *at)
+		threads.native.projectAgent(&u.nativeSession)
 		live := u.attached.childSource.Publication(u.attached.presentation, u.attached.source)
 		agents := new(*live)
 		agents.Roster = append(append(slices.Clone(live.Roster), fillers...), target)

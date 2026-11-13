@@ -36,7 +36,7 @@ func (h *Hub) startNative(requestContext, viewContext context.Context, body json
 	if err := decodeBody(body, &native); err != nil {
 		return nil, err
 	}
-	_, subscription, err := h.admitRuntime(requestContext, viewContext, Start{Workspace: native.Workspace, Native: &native}, "", nil)
+	_, subscription, err := h.admitRuntime(requestContext, viewContext, Start{Workspace: native.Workspace, Native: &native})
 	if err != nil {
 		return nil, runtimeStartFailure(err)
 	}
@@ -46,7 +46,7 @@ func (h *Hub) startNative(requestContext, viewContext context.Context, body json
 // RunNative admits an invocation without a renderer and submits one literal
 // prompt through the existing runtime input owner. It joins the owned family.
 func (h *Hub) RunNative(ctx context.Context, native NativeStart, prompt string) (string, error) {
-	m, _, err := h.admitRuntime(ctx, nil, Start{Workspace: native.Workspace, Native: &native}, "", nil)
+	m, _, err := h.admitRuntime(ctx, nil, Start{Workspace: native.Workspace, Native: &native})
 	if err != nil {
 		return "", err
 	}

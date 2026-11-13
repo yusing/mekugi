@@ -29,8 +29,6 @@ import (
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -135,22 +133,13 @@ type nativeFixtureLauncher struct {
 }
 
 func (l *nativeFixtureLauncher) Run(ctx context.Context, _ sessionapi.Start, api *sessionapi.Server) error {
-	threads := &threadExecution{hub: l.hub, shared: control.New(), setup: &threadSetup{}}
-	var err error
-	threads.driver, err = threadbinding.NewDriver(threads.shared)
-	if err != nil {
-		return err
-	}
-	if err := threads.driver.Start(ctx); err != nil {
-		return err
-	}
-	defer threads.driver.Stop(context.WithoutCancel(ctx))
+	threads := &threadExecution{hub: l.hub, setup: &threadSetup{}}
 	return l.run(ctx, api, threads)
 }
 
 // Real server fixtures use the same admitted owners as production startup.
 func newTestServerHub(ctx context.Context) *sessionapi.Hub {
-	launcher := &serverLauncher{threads: control.New()}
+	launcher := &serverLauncher{}
 	hub := sessionapi.NewHub(ctx, launcher)
 	launcher.hub = hub
 	return hub

@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"github.com/yusing/mekugi/modules/livepreview/preview"
 	"math"
 	"net"
 	"net/http"
@@ -18,11 +17,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
-
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -124,41 +124,40 @@ type Server struct {
 	family          func() (*Family, *changes.ReviewView)
 	questionOwner   func(string) *Server
 
-	mu                  sync.Mutex
-	profileIdentity     ProfileIdentity
-	requests            threadcontrol.Runtime
-	coordination        *threadcontrol.Service
-	deliverCoordination func(context.Context, string) error
-	sideThreads         func(string) bool
-	childAttachment     func(context.Context, string, string) error
-	childAttach         sync.Mutex
-	published           bool
-	attachment          uint64
-	readAttachment      string
-	contentVersions     map[string]uint64
-	sharedDeferred      map[string]bool
-	nativePanel         *nativePanelPublication
-	panelChanged        chan struct{}
-	session             Session
-	playback            *Playback
-	input               *Input
-	prompts             jsontext.Value
-	status              jsontext.Value
-	main                feed
-	agents              feed
-	roster              jsontext.Value
-	rosterSource        *activitypresentation.Publication
-	rosterValue         *roster
-	rosterRevision      uint64
-	review              jsontext.Value
-	reviewRevision      uint64
-	reviewWorkspace     string
-	reviewSource        *changes.ReviewView
-	livePreviews        jsontext.Value
-	liveSource          []preview.Preview
-	subscribers         map[chan publication]struct{}
-	frame               atomic.Pointer[Frame] // Raw local input; family projections never feed back here.
-	summary             []byte                // The latest summary event.
+	mu              sync.Mutex
+	profileIdentity ProfileIdentity
+	requests        NativeRuntime
+	nativeForeign   func(context.Context, appserver.AgentForeignRequest) (appserver.AgentForeignResponse, error)
+	sideThreads     func(string) bool
+	childAttachment func(context.Context, string, string) error
+	childAttach     sync.Mutex
+	published       bool
+	attachment      uint64
+	readAttachment  string
+	contentVersions map[string]uint64
+	sharedDeferred  map[string]bool
+	nativePanel     *nativePanelPublication
+	panelChanged    chan struct{}
+	session         Session
+	playback        *Playback
+	input           *Input
+	prompts         jsontext.Value
+	status          jsontext.Value
+	main            feed
+	agents          feed
+	roster          jsontext.Value
+	rosterSource    *activitypresentation.Publication
+	rosterValue     *roster
+	rosterRevision  uint64
+	review          jsontext.Value
+	reviewRevision  uint64
+	reviewWorkspace string
+	reviewSource    *changes.ReviewView
+	livePreviews    jsontext.Value
+	liveSource      []preview.Preview
+	subscribers     map[chan publication]struct{}
+	frame           atomic.Pointer[Frame] // Raw local input; family projections never feed back here.
+	summary         []byte                // The latest summary event.
 }
 
 // ActiveThread queries the supplied execution registry. It grants no ownership

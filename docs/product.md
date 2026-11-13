@@ -62,9 +62,8 @@ and recoverable, and measures actual traffic without replaying effects.
   names, schemas, results, and authority. Mekugi adds executable helpers that run
   through stock command execution instead of custom editing tools, edit
   languages, or rewritten transports. A replacement interface has to be taught,
-  guarded, and repaired in every request; the stock interface already is. Agent
-  coordination is the one replaced interface: the `threadcontrol` tools replace
-  native collaboration while thread execution stays with the backend.
+  guarded, and repaired in every request; the stock interface already is. Native V2 collaboration owns agent
+  coordination for root and descendant Codex execution.
 - **Auxiliary features stay non-invasive.** Progress, metrics, and diagnostics
   do not decide whether an edit, command, or provider response succeeds.
 - **One component owns each meaning.** Features share observed facts instead of
@@ -194,7 +193,7 @@ of at least five minutes, ask changed agents for summaries from existing evidenc
 and return one combined yield with captured-change selections. No new captures
 means no progress wake. The original work and its continuation handles remain
 intact; a further wait is needed after a yield. See the
-[wait contract](../modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery).
+[wait contract](contracts/coordination.md#logical-waits-and-ordered-delivery).
 
 ### Undo what the user rejects
 
@@ -239,8 +238,10 @@ transport-only byte changes.
 
 ## Currently supported scope
 
-Codex owns root and descendant execution. Headless execution and offline replay
-retain their own command entrypoints.
+Codex owns root and descendant execution. Configured Responses providers supply
+model access without selecting a different execution runtime. User credentials,
+configuration, histories and already-priced totals are not removed. Headless
+execution and offline replay retain their own command entrypoints.
 
 Mekugi includes:
 

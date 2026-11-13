@@ -68,3 +68,19 @@ func TestItemObservationUnknownOutcomesRemainUnknown(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeCollabWaitObservationPreservesDetachedTargets(t *testing.T) {
+	var native ThreadItem
+	if err := json.Unmarshal([]byte(`{"id":"wait-call","type":"collabAgentToolCall","tool":"wait","status":"inProgress","receiverThreadIds":["child"],"timeoutMs":1000}`), &native); err != nil {
+		t.Fatal(err)
+	}
+	item := native.Observation()
+	if item.Type != "collabAgentToolCall" || item.ID != "wait-call" || item.Tool != "wait" || item.Status != "inProgress" || !reflect.DeepEqual(item.ReceiverThreadIDs, []string{"child"}) || item.TimeoutMS == nil || *item.TimeoutMS != 1000 {
+		t.Fatalf("native wait facts lost: %+v", item)
+	}
+	item.ReceiverThreadIDs[0] = "changed"
+	*item.TimeoutMS = 1
+	if native.ReceiverThreadIDs[0] != "child" || *native.TimeoutMS != 1000 {
+		t.Fatal("wait projection changed the native source")
+	}
+}

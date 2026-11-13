@@ -122,7 +122,7 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 			continue
 		}
 		if suppliedMessage(item) {
-			if content, ok := projectDuplicateTextParts(item["content"], -1, "assistant", nil, projectSources); ok {
+			if content, ok := projectDuplicateTextParts(item["content"], -1, responses.StringField(item, "role"), nil, projectSources); ok {
 				item["content"] = content
 				items[at] = responses.MustMarshalJSON(item)
 				changed = true
@@ -191,9 +191,25 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 	return result
 }
 
-// Attributed message sources are not ordinary assistant prose. Keep the native
-// identity and part provenance checks ahead of provider-only identity removal.
+// Attributed message sources are not ordinary assistant prose. Native agent
+// messages carry their own identity; historical assistant carriers additionally
+// require part provenance. Mixed encrypted content cannot establish plaintext.
 func suppliedMessage(item map[string]jsonv1.RawMessage) bool {
+	if responses.StringField(item, "type") == "agent_message" {
+		if responses.StringField(item, "author") == "" || responses.StringField(item, "recipient") == "" {
+			return false
+		}
+		var content []map[string]jsonv1.RawMessage
+		if json.Unmarshal(item["content"], &content) != nil || len(content) == 0 {
+			return false
+		}
+		for _, part := range content {
+			if responses.StringField(part, "type") != "input_text" {
+				return false
+			}
+		}
+		return true
+	}
 	if responses.StringField(item, "type") != "message" || responses.StringField(item, "role") != "assistant" || responses.StringField(item, "phase") != "commentary" {
 		return false
 	}

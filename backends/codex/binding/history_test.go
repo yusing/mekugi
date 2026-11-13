@@ -55,7 +55,7 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 				Content: jsontext.Value(`[{"type":"text","text":"User content","unknown":9007199254740993}]`),
 				Phase:   "final_answer", ExitCode: new(7),
 				CommandActions: []CommandAction{{Type: "read", Command: "cat file", Path: "file", Query: "needle"}}, Changes: []FileChange{change},
-				Tool: "wait",
+				Tool: "wait", ReceiverThreadIDs: []string{"agent"},
 			}},
 		}},
 	}

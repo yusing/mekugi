@@ -5,8 +5,9 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"slices"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -45,7 +46,6 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
@@ -204,7 +204,6 @@ func (c *Composition) Add[D, S any, B interface {
 }
 
 type Runtime struct {
-	Threads              *threadbinding.Driver
 	MCP                  []binding.MCPServer
 	Terminal             terminalsession.Views
 	Presentation         *sessionpresentation.Service

@@ -6,7 +6,6 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -65,9 +64,6 @@ func (s *Stream) Observe(m appserver.Message) error {
 		return s.err
 	}
 	err := json.MarshalEncode(s.output, &m)
-	if err == nil && m.Method != "" && len(m.ID) != 0 {
-		err = fmt.Errorf("headless cannot answer host request %s; continue interactively", m.Method)
-	}
 	if err == nil && (m.Method == "item/started" || m.Method == "item/completed") {
 		var event struct {
 			Item struct {

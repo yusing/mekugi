@@ -15,7 +15,6 @@ import (
 	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // Family is shared navigation, independent of the selected runtime's transcript.
@@ -37,15 +36,22 @@ func (h *Hub) Family(thread string) (*Family, *changes.ReviewView) {
 	return h.family(thread, true)
 }
 
+// ProgressSnapshot borrows the immutable family capture publication without
+// renderer Diff filtering. Consumers must not mutate the returned snapshot.
+func (h *Hub) ProgressSnapshot(thread string) *changes.ReviewView {
+	_, review := h.family(thread, false)
+	return review
+}
+
 func (h *Hub) family(thread string, forDiff bool) (*Family, *changes.ReviewView) {
 	if thread == "" {
 		return nil, nil
 	}
 	h.mu.Lock()
-	var selected *managedSession
+	var selected *Server
 	if session := h.sessions[thread]; session != nil {
 		if frame := session.server.frame.Load(); frame != nil && frame.Session.Thread == thread {
-			selected = session.runtime
+			selected = session.server
 		}
 	}
 	if selected == nil {
@@ -53,7 +59,7 @@ func (h *Hub) family(thread string, forDiff bool) (*Family, *changes.ReviewView)
 		// admitted runtime already owns its confirmed raw thread identity.
 		for runtime := range h.running {
 			if frame := runtime.server.frame.Load(); frame != nil && frame.Session.Thread == thread {
-				selected = runtime
+				selected = runtime.server
 				break
 			}
 		}
@@ -62,7 +68,7 @@ func (h *Hub) family(thread string, forDiff bool) (*Family, *changes.ReviewView)
 		h.mu.Unlock()
 		return nil, nil
 	}
-	selectedFrame := selected.server.frame.Load()
+	selectedFrame := selected.frame.Load()
 	if selectedFrame == nil {
 		h.mu.Unlock()
 		return nil, nil
@@ -70,12 +76,12 @@ func (h *Hub) family(thread string, forDiff bool) (*Family, *changes.ReviewView)
 	familyRoot := cmp.Or(selectedFrame.FamilyRoot, selectedFrame.Session.Thread)
 	frames := make(map[string]familySource)
 	active := make(map[string]bool)
-	for runtime := range h.running {
-		if frame := runtime.server.frame.Load(); frame != nil && frame.Session.Thread != "" {
+	for server := range h.endpointsLocked() {
+		if frame := server.frame.Load(); frame != nil && frame.Session.Thread != "" {
 			logical := cmp.Or(frame.FamilyRoot, frame.Session.Thread)
 			active[logical] = true
 			if logical == familyRoot {
-				frames[frame.Session.Thread] = familySource{Frame: frame, owner: runtime}
+				frames[frame.Session.Thread] = familySource{Frame: frame, owner: server}
 			}
 		}
 	}
@@ -125,7 +131,7 @@ type familyProjection struct {
 type familyState struct {
 	mu      sync.Mutex
 	sources map[string]familySource
-	members []threadcontrol.Participant
+	members []sessionpresentation.Participant
 	family  *Family
 	review  *changes.ReviewView
 	diffs   map[string]*changes.ReviewView
@@ -135,7 +141,7 @@ type familyState struct {
 // survive runtime replacement and cannot identify that revision sequence.
 type familySource struct {
 	*Frame
-	owner *managedSession
+	owner *Server
 }
 
 func (p *familyState) project(root *Frame, frames map[string]familySource, workspace string, revision *atomic.Uint64, forDiff bool) (*Family, *changes.ReviewView) {
@@ -370,7 +376,7 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 			add(row)
 		}
 	}
-	members := make(map[string]threadcontrol.Participant, len(root.Members))
+	members := make(map[string]sessionpresentation.Participant, len(root.Members))
 	for _, member := range root.Members {
 		members[member.Thread] = member
 		if member.Thread == "" {
@@ -421,10 +427,10 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 		row := &publication.Roster[rows[member.Thread]]
 		priorResponse := !row.Agent.Responding || row.Agent.Final
 		row.Agent.NonAttachable = member.NonAttachable
-		row.Agent.Responding = member.Status == threadcontrol.Working || member.Status == threadcontrol.Pending
-		row.Agent.Waiting = member.Status == threadcontrol.Waiting || row.Agent.Compacting || row.Agent.Retrying && row.Agent.Responding
-		row.Agent.Paused = member.Status == threadcontrol.Paused || member.Status == threadcontrol.Uncertain
-		row.Agent.Final = member.Status == threadcontrol.Completed
+		row.Agent.Responding = member.Status == sessionpresentation.WorkRunning || member.Status == sessionpresentation.Pending
+		row.Agent.Waiting = member.Status == sessionpresentation.Waiting || row.Agent.Compacting || row.Agent.Retrying && row.Agent.Responding
+		row.Agent.Paused = member.Status == sessionpresentation.Paused || member.Status == sessionpresentation.Uncertain
+		row.Agent.Final = member.Status == sessionpresentation.Completed
 		// Logical follow-up admission precedes the runtime's next response.
 		// Keep the old answer in its transcript, not as the new work's activity.
 		if row.Agent.Responding && len(row.Agent.Summary) > 0 {
@@ -433,7 +439,7 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 				row.Agent.Summary = nil
 			}
 		}
-		if member.Status == threadcontrol.Failed {
+		if member.Status == sessionpresentation.Failed {
 			row.Agent.LatestKind = "error"
 		} else if row.Agent.LatestKind == "error" {
 			row.Agent.LatestKind = ""

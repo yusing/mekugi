@@ -73,13 +73,11 @@ observations.
 
 ## Current delivery and failure behavior
 
-An admitted Thread Control wait can finish its host turn locally with an empty
-completed response. It sends no provider request, charges no provider usage and
-adds no user input. Logical waiting and subsequent attributed continuations stay
-with Thread Control rather than the request lifetime.
-Provider usage-limit and overload/capacity rejections use the same cancellable
-logical stop, without publishing a terminal error. Thread Control owns
-[provider timing and capacity backoff](../../../../modules/threadcontrol/SPEC.md#logical-waits-and-ordered-delivery).
+Native coordination checkpoints logical waits at actual execution settlement.
+Request Execution neither creates an empty provider response nor owns logical
+work, stop eligibility, wait timers or recovery. Native owns
+[provider timing and capacity backoff](../../../../docs/contracts/coordination.md#logical-waits-and-ordered-delivery);
+provider execution retains ordinary transport/rejection evidence and accounting.
 
 Raw provider usage is observed before response projection. Definite provider
 rejections do not charge inferred execution; uncertain transport failures retain

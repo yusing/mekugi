@@ -3,13 +3,11 @@
 package sessioncontrol
 
 import (
-	"context"
 	"encoding/json/jsontext"
+	"errors"
 	"sync"
-	"sync/atomic"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
@@ -31,6 +29,7 @@ type Transport interface {
 type Request[T any] struct {
 	Method        string
 	Scope         string
+	Consumer      string // Endpoint receiving the reply, not the request's target or retirement scope.
 	Owner         T
 	Side          *Side
 	SideInput     *conversationmodel.Input
@@ -47,27 +46,28 @@ type Request[T any] struct {
 // Requests is the sole request ledger for one application client. Its event-loop
 // owner serializes issuance and response delivery; it does not execute host work.
 type Requests[T any] struct {
-	Coordination             *control.Service
-	Features                 control.FeatureSource
-	InterruptWait            func(thread, wait string)
+	*requestLedger[T]
+	consumer                 string
 	InheritedEffort          func(model, effort string) (string, error)
 	CaptureConfiguredCatalog func([]byte)
 	CatalogPending           bool
 	InputContext             func(string) string
-	PrepareCompletion        func(context.Context, control.NativeInput) (PreparedCompletion, error)
 	AdmitSideFork            func(source, thread, workspace string)
-	preparation              atomic.Pointer[PreparedThread]
-	transport                Transport
-	pending                  map[string]Request[T]
 	sidesMu                  sync.RWMutex
 	sides                    map[string]*Side
 	predictions              map[string]*Prediction
 	cacheThread, cacheKey    string // Guarded by sidesMu; forks freeze their own copy.
 	calls                    chan *HostCall
 	inspections              chan *Inspection
-	questions                chan *AgentQuestion
 	closed                   chan struct{}
 	closeOnce                sync.Once
+}
+
+// One connection owns correlation. Thread handles borrow it while retaining
+// independent admission queues, side operations and cancellation lifetimes.
+type requestLedger[T any] struct {
+	transport Transport
+	pending   map[string]Request[T]
 }
 
 func (r *Requests[T]) ContextIdentity(thread string) string {
@@ -78,10 +78,32 @@ func (r *Requests[T]) ContextIdentity(thread string) string {
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {
-	return &Requests[T]{transport: transport, pending: make(map[string]Request[T]), calls: make(chan *HostCall), inspections: make(chan *Inspection), questions: make(chan *AgentQuestion), closed: make(chan struct{})}
+	return &Requests[T]{requestLedger: &requestLedger[T]{transport: transport, pending: make(map[string]Request[T])}, calls: make(chan *HostCall), inspections: make(chan *Inspection), closed: make(chan struct{})}
+}
+
+// ForThread borrows the actual connection ledger. Only its event-loop owner may
+// issue or settle requests through either handle. No transport reader is added.
+func (r *Requests[T]) ForThread(thread string) *Requests[T] {
+	return &Requests[T]{requestLedger: r.requestLedger, consumer: thread,
+		calls: make(chan *HostCall), inspections: make(chan *Inspection), closed: make(chan struct{}),
+		InputContext:  r.InputContext,
+		AdmitSideFork: r.AdmitSideFork, InheritedEffort: r.InheritedEffort}
+}
+
+// RetireEndpoint releases only this endpoint's outstanding observations.
+func (r *Requests[T]) RetireEndpoint() {
+	for id, request := range r.pending {
+		if request.Consumer == r.consumer {
+			request.retireCall()
+			delete(r.pending, id)
+		}
+	}
 }
 
 func (r *Requests[T]) Initialize(owner T) (string, error) {
+	if r.consumer != "" {
+		return "", errors.New("thread endpoint cannot initialize the connection")
+	}
 	id, err := r.transport.Initialize()
 	if err == nil {
 		r.pending[id] = Request[T]{Method: "initialize", Owner: owner}
@@ -92,7 +114,7 @@ func (r *Requests[T]) Initialize(owner T) (string, error) {
 func (r *Requests[T]) Send(method string, params any, scope string, owner T) (string, error) {
 	id, err := r.transport.Send(method, params, true)
 	if err == nil {
-		r.pending[id] = Request[T]{Method: method, Scope: scope, Owner: owner}
+		r.pending[id] = Request[T]{Method: method, Scope: scope, Consumer: r.consumer, Owner: owner}
 	}
 	return id, err
 }
@@ -141,21 +163,28 @@ func (r *Requests[T]) Forget(id string) {
 
 func (r *Requests[T]) Retire(scope string) {
 	for id, request := range r.pending {
-		if request.Scope == scope {
+		if request.Scope == scope && request.Consumer == r.consumer {
 			request.retireCall()
 			delete(r.pending, id)
 		}
 	}
 }
 
-func (r *Requests[T]) Pending() bool { return len(r.pending) != 0 }
+func (r *Requests[T]) Pending() bool {
+	for _, request := range r.pending {
+		if request.Consumer == r.consumer {
+			return true
+		}
+	}
+	return false
+}
 
 // PendingSideInputs borrows the input provenance still awaiting a host outcome.
 // Main submissions remain with Conversation's submitted-input owner.
 func (r *Requests[T]) PendingSideInputs() []conversationmodel.Input {
 	var inputs []conversationmodel.Input
 	for _, request := range r.pending {
-		if request.SideInput != nil {
+		if request.Consumer == r.consumer && request.SideInput != nil {
 			inputs = append(inputs, *request.SideInput)
 		}
 	}

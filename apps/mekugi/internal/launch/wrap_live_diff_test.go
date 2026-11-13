@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 func TestAutoWrapProcess(t *testing.T) {
@@ -115,14 +116,12 @@ func TestAutoWrapProcess(t *testing.T) {
 			signal.Notify(interrupt, os.Interrupt)
 			go func() {
 				<-interrupt
-				select {
-				case <-runtimeStarted:
-					_ = os.WriteFile(markerPath+".joined", []byte("joined"), 0600)
-				default:
-				}
+				_ = os.WriteFile(markerPath+".joined", []byte("joined"), 0600)
 				os.Exit(0)
 			}()
 		}
+		workStatus := ""
+		revision := uint64(1)
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			var request struct {
@@ -172,6 +171,16 @@ func TestAutoWrapProcess(t *testing.T) {
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{}}`+"\n", request.ID)
 			case "model/list":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"data":[]}}`+"\n", request.ID)
+			case "agent/observeTree":
+				agent := appserver.AgentObservation{ThreadID: "auto-wrap", RootThreadID: "auto-wrap", Path: new("/root"), Loaded: true, Attachable: new(true), CanAcceptDirectInput: new(true)}
+				if workStatus != "" {
+					agent.Work = &appserver.AgentWorkObservation{WorkID: "fixture-work", Disposition: workStatus}
+				}
+				response, err := json.Marshal(map[string]any{"id": request.ID, "result": map[string]any{"tree": appserver.AgentTreeObservation{RootThreadID: "auto-wrap", ObservationRevision: revision, Agents: []appserver.AgentObservation{agent}}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				fmt.Fprintln(os.Stdout, string(response))
 			case "environment/info":
 				close(runtimeStarted)
 				if headlessHost && scenario == "startup" {
@@ -222,6 +231,9 @@ func TestAutoWrapProcess(t *testing.T) {
 					status = scenario
 				}
 				fmt.Fprintf(os.Stdout, `{"method":"turn/completed","params":{"threadId":"auto-wrap","turn":{"id":"test-turn","status":%q}}}`+"\n", status)
+				workStatus = status
+				revision++
+				fmt.Fprintf(os.Stdout, `{"method":"agent/treeChanged","params":{"rootThreadId":"auto-wrap","observationRevision":%d}}`+"\n", revision)
 			}
 		}
 		if err := scanner.Err(); err != nil {

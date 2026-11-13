@@ -119,6 +119,6 @@ func (s *presetStore[T]) Save(slot int, value presets.Slot) (presets.Slot, error
 	_, err = s.requests.call(s.ctx, s.thread, "config/value/write", map[string]any{
 		"keyPath": "tui.presets." + key, "value": write, "mergeStrategy": "replace",
 		"filePath": file, "expectedVersion": version,
-	}, nil)
+	})
 	return value, err
 }

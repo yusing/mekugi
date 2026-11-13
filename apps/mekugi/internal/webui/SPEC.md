@@ -323,7 +323,7 @@ recording, Space or `p` restarts, as the play button does.
 ### Agents
 
 The roster lists Main and its agents as a tree by display name, as the terminal
-roster does. Each agent shows its role, its state (working, waiting, idle, done or
+roster does. Each agent shows its role, its state (working, waiting, paused, idle, done or
 error), what a working agent is doing now or when a finished one last replied,
 its work time, the lines it changed, token usage, cost, turns, round trips,
 skills, output rate and context use. A role colours the agent's state dot,

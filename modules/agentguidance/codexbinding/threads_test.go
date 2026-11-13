@@ -2,7 +2,6 @@ package codexbinding_test
 
 import (
 	"bytes"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"reflect"
 	"testing"
@@ -37,18 +36,9 @@ func encodeThreadFixture(t *testing.T, value any) []byte {
 
 func threadProjectionFixture(t *testing.T) (map[string]any, []guidance.Replacement) {
 	t.Helper()
-	fragments, err := binding.NativeInstructionFragments("admitted-thread", jsontext.Value(nativeThreadInstructions))
-	if err != nil || len(fragments) != 3 {
-		t.Fatalf("native fragments = %+v, %v", fragments, err)
-	}
-	var replacements []guidance.Replacement
-	for _, fragment := range fragments {
-		switch fragment.Kind {
-		case "multi_agent.role_instructions":
-			replacements = append(replacements, guidance.Replacement{Fragment: fragment, Text: "Projected logical role."})
-		case "multi_agent.usage_hint":
-			replacements = append(replacements, guidance.Replacement{Fragment: fragment, Text: ""})
-		}
+	replacements := []guidance.Replacement{
+		{Fragment: guidance.Fragment{Thread: "admitted-thread", Item: "native-policy", Index: 0, Kind: "multi_agent.role_instructions", Text: "<multi_agent_role>Native role.</multi_agent_role>"}, Text: "Projected logical role."},
+		{Fragment: guidance.Fragment{Thread: "admitted-thread", Item: "native-policy", Index: 2, Kind: "multi_agent.usage_hint", Text: "Native usage hint."}},
 	}
 	var item map[string]any
 	if err := json.Unmarshal([]byte(nativeThreadInstructions), &item); err != nil {

@@ -33,16 +33,18 @@ type ThreadItem struct {
 	Results          []jsontext.Value             `json:"results"`
 	// Content is variant-specific: user input blocks or raw reasoning strings.
 	// Decode only userMessage content; reasoning presentation uses Summary.
-	Content        jsontext.Value  `json:"content"`
-	Phase          string          `json:"phase"`
-	ExitCode       *int            `json:"exitCode"`
-	CommandActions []CommandAction `json:"commandActions"`
-	Changes        []FileChange    `json:"changes"`
-	Tool           string          `json:"tool"`
-	Server         string          `json:"server"`
-	Arguments      jsontext.Value  `json:"arguments"`
-	Result         jsontext.Value  `json:"result"`
-	Error          jsontext.Value  `json:"error"`
+	Content           jsontext.Value  `json:"content"`
+	Phase             string          `json:"phase"`
+	ExitCode          *int            `json:"exitCode"`
+	CommandActions    []CommandAction `json:"commandActions"`
+	Changes           []FileChange    `json:"changes"`
+	Tool              string          `json:"tool"`
+	ReceiverThreadIDs []string        `json:"receiverThreadIds"`
+	TimeoutMS         *int64          `json:"timeoutMs"`
+	Server            string          `json:"server"`
+	Arguments         jsontext.Value  `json:"arguments"`
+	Result            jsontext.Value  `json:"result"`
+	Error             jsontext.Value  `json:"error"`
 }
 
 // Source: apps/mekugi/internal/router/app_server_events.go:74:82@[eaad597b] appServerFileChange.

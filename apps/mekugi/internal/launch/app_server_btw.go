@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"crypto/rand"
 	"slices"
 	"strings"
 	"time"
@@ -88,7 +89,7 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 		setNotice(&attached.feedback, presentationTime(clock), "Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
-	if (*owner) != nil && ((*owner).Starting || attached.sideInputs[*owner] != nil || (*owner).Busy && (*owner).Waiting == "" && (command || (*owner).Turn == "")) {
+	if (*owner) != nil && ((*owner).Starting || attached.sideInputs[*owner] || (*owner).Busy && (*owner).Waiting == "" && (command || (*owner).Turn == "")) {
 		setNotice(&attached.feedback, presentationTime(clock), "Side answer still running · wait for it or Esc to close", false)
 		return nil
 	}
@@ -129,9 +130,9 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 	pending.MessageBoundary = messageBoundary
 	if b.Waiting != "" {
 		if attached.sideInputs == nil {
-			attached.sideInputs = make(map[*sessioncontrol.Side]*threadInput)
+			attached.sideInputs = make(map[*sessioncontrol.Side]bool)
 		}
-		attached.sideInputs[b] = &threadInput{driver: attached.threadInput.driver}
+		attached.sideInputs[b] = true
 		b.Begin(question, pending)
 	} else if b.Busy || len(b.Drafts.Unsent) > 0 {
 		b.Drafts.Unsent = append(b.Drafts.Unsent, pending)
@@ -159,18 +160,6 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 		return nil
 	}
 	admission := attached.sideInputs[b]
-	if admission != nil && !b.Closed && !b.Unloaded() {
-		ready, err := admission.prepare(attached.ctx, b.Thread, control.Requests)
-		if err != nil {
-			attached.releaseSideInput(b)
-			applySideUpdate(attached, control, clock, sessioncontrol.SideUpdate{Side: b, Restore: b.Pending, Notice: err.Error(), NoticeError: true})
-			b.Pending = conversationmodel.Input{}
-			return nil
-		}
-		if ready {
-			b.Waiting = ""
-		}
-	}
 	if b != nil && !b.LowReasoning && !b.Closed && !b.Unloaded() && !b.Starting {
 		for len(b.Drafts.Unsent) > 0 && (b.Waiting != "" || b.Turn != "" || b.Pending.Text == "") {
 			next := 0
@@ -246,7 +235,7 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 			}
 		}
 	}
-	if !b.Ready(control.Replacement.Pending()) && (admission == nil || !admission.ready) {
+	if !b.Ready(control.Replacement.Pending()) && !admission {
 		return nil
 	}
 	if b.OneOff && b.Thread != "" && b.Pending.Text != "" {
@@ -265,24 +254,14 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 		Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier,
 		Blocked: control.SideForkBlocked(), Replacing: control.Replacement.Pending(),
 	}
-	if admission != nil && admission.ready {
-		main.Input = &sessioncontrol.InputRequest{Thread: b.Thread, ID: admission.id}
-		if member, ok := control.Requests.Coordination.Member(b.Thread); ok && member.HostRunning {
-			main.Input.Turn = member.Turn
-		}
-		if effect := admission.effect; effect != nil {
-			main.Input.Turn = effect.Turn
-			driver := admission.driver
-			main.Input.Settled = func(turn string, err error) { driver.HumanInputAcknowledged(effect.Target, effect.ID, turn, err) }
-		}
+	if admission {
+		main.Input = &sessioncontrol.InputRequest{Thread: b.Thread, ID: rand.Text(), Turn: b.Turn}
 	}
 	update, err := control.Requests.StartSide(b, main, presentationTime(clock))
-	if admission != nil && admission.ready && (update.TurnRequested || update.Handled || err != nil) {
-		if update.TurnRequested {
-			admission.effect = nil // The ordinary request ledger now owns settlement.
-		}
+	if admission && (update.TurnRequested || update.Handled || err != nil) {
 		attached.releaseSideInput(b)
 	}
+
 	if update.TurnRequested {
 		if b.OneOff {
 			hook.readyThread = ""

@@ -131,7 +131,7 @@ func TestAppServerResumePendingBound(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := u.message(m); err == nil || !strings.Contains(err.Error(), "capacity") {
+	if err := u.message(m); err == nil || !strings.Contains(err.Error(), "backlog exceeded") {
 		t.Fatalf("missing bounded recovery failure: %v", err)
 	}
 }

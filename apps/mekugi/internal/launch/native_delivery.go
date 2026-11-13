@@ -1,70 +1,40 @@
 package launch
 
 import (
-	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-// Reuse the runtime's completion staging while a selected wait's host delivery
-// settles. Ordinary messages and answers outside that subscription stay immediate.
-func stageNativeDelivery(attached *attachedPresentation, input control.NativeInput, prepared sessioncontrol.PreparedCompletion, now time.Time) {
-	p := attached.threadInput
-	var waitID string
-	if input.Kind == "FINAL_ANSWER" && p != nil && p.driver != nil {
-		if wait := p.driver.Coordination().WaitPublication(input.Thread); wait != nil && slices.Contains(wait.Targets, input.Sender) {
-			waitID = wait.ID
-		}
+// A semantic event without a response item uses the same projection and item
+// identity as retained replay; Activity owns deduplication and ordering.
+func publishNativeCoordination(attached *attachedPresentation, thread, turn string, item sessioncontrol.NativeMessage, facts *appserver.CoordinationProjection, at time.Time) {
+	entries := sessionpresentation.NativeCoordinationEntries(thread, turn, item, facts, at, false)
+	for i := range entries {
+		entries[i].Seq = attached.session.Activity().NextSequence()
 	}
-	execution := attached.executionPresentation
-	publish := func() bool {
-		if execution != attached.executionPresentation {
-			return true
-		}
-		if waitID != "" {
-			if wait := p.driver.Coordination().WaitPublication(input.Thread); wait != nil && wait.ID == waitID && !wait.Settled() {
-				return false
-			}
-		}
-		publishNativeDelivery(attached, input, now)
-		if len(prepared.Reload) != 0 {
-			entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Agent: "/root", Kind: "tool", Observed: now, Completed: now,
-				Native: &sessionpresentation.NativeItem{Thread: input.Thread, Item: prepared.Source, Phase: "item/completed", Command: prepared.Reload[0].Command, Reload: prepared.Reload}}
-			sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
-		}
-		return true
-	}
-	if publish() {
+	sessionpresentation.ApplyActivity(attached.source, attached.childSource, entries, nil)
+}
+
+// Native resumes model work inside the shell turn after durable shell output or
+// a claimed wait delivery. This only updates the existing physical-turn gate.
+func (session *nativeSession) observeNativeShellContinuation(turn string, facts *appserver.CoordinationProjection) {
+	if facts == nil || facts.Wait == nil {
 		return
 	}
-	p.completions = append(p.completions, logicalCompletion{publish: publish})
-}
-
-func publishNativeDelivery(attached *attachedPresentation, input control.NativeInput, now time.Time) {
-	entry := nativeDeliveryEntry(input, control.MessageItemID(input.ID), now, false)
-	entry.Seq = attached.session.Activity().NextSequence()
-	sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
-}
-
-func nativeDeliveryEntry(input control.NativeInput, item string, now time.Time, inherited bool) sessionpresentation.ActivityEntry {
-	entry := sessionpresentation.ActivityEntry{Agent: input.Sender, Kind: "final", Text: input.Message, Observed: now, Completed: now,
-		Native: &sessionpresentation.NativeItem{Thread: input.Thread, Item: item, Phase: "item/completed", Status: string(input.Outcome)}}
-	recipient := "Main"
-	if inherited {
-		recipient = input.Recipient
+	wait := facts.Wait
+	if wait.CallerThreadID != session.Client.Thread || wait.CallerWorkID == "" || wait.CallerWorkID != session.Client.NativeWork {
+		return
 	}
-	if input.Kind == "NEW_TASK" {
-		entry.Kind = "assignment"
-		entry.Assignment = &sessionpresentation.ActivityAssignment{ID: item, From: input.Sender, To: recipient, Text: input.Message}
+	if wait.Result.Kind == "cancelled" {
+		if wait.Result.Cause == nil || wait.Result.Cause.Kind != "shellOutput" {
+			return
+		}
+		turn = wait.Result.Cause.TurnID
+	} else if wait.Result.Kind != "released" {
+		return
 	}
-	if input.Kind == "MESSAGE" {
-		entry.Kind = "reply"
-	}
-	if input.Kind == "MESSAGE" || input.Kind == "FINAL_ANSWER" {
-		entry.Message = &sessionpresentation.ActivityMessage{From: input.Sender, To: recipient, Text: input.Message}
-	}
-	return entry
+	session.Client.Shell.ModelTurn(turn)
 }

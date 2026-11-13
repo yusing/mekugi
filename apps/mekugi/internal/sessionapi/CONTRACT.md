@@ -171,7 +171,10 @@ not cancel execution. A successful result is `{"id":ID}` after readiness.
 Startup failure receives 502; losing that response is still an ambiguous outcome
 to the client.
 
-End returns a successful null result after canceling the selected runtime. Server shutdown cancels
+End returns a successful null result after joining the selected runtime. A native
+child uses targeted native end/join; ending it never closes the shared root
+connection or archives history. Native refusal remains an error, including when
+the native endpoint is unavailable. Server shutdown cancels
 and joins every runtime it owns. Disconnecting a stream or connector leaves
 execution running. Saved history remains with Session History; startup never
 implicitly resumes saved work or resubmits earlier requests.
@@ -192,16 +195,16 @@ Replay starts no backend/provider and opens no writable history store.
 
 ## Internal agent coordination
 
-[Thread Control](../../../../modules/threadcontrol/SPEC.md) admits prepared native
-children through the server’s runtime owner, independently of renderer subscriptions.
-Preparation supplies frozen execution settings and an optional retained fork import.
-Confirmed creation, durable logical admission, attributed assignment retention
-and execution are distinct
-acknowledgements. Ordinary human input becomes available after logical child
-admission and uses that child's actual runtime. An idle child acquires a tracked
-assignment and concurrency reservation; a running child receives a steer. Its
-result follows the existing parent-delivery lifecycle. Prompt answers, approval
-decisions and cancellation retain their existing authority.
+Native [thread coordination](../../../../docs/contracts/coordination.md) admits
+Codex children independently of renderer subscriptions. The owning connection
+supplies authoritative membership and passive observations; the server registers
+their presentation/control endpoints beneath the existing invocation, not as
+additional processes. Confirmed creation, logical admission, assignment retention
+and execution remain distinct acknowledgements. Ordinary human input uses native
+child admission: an idle child acquires tracked work and a running child receives
+a steer, preserving human role and parent delivery. Queueing alone does not wake
+a logical wait. Prompt answers and approval decisions keep their original native
+request identity and thread authority.
 
 Agent calls carry authenticated host-call identity through the invocation’s MCP
 connection. Native/remote JSON-RPC authority cannot impersonate that identity.

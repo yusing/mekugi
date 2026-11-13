@@ -30,16 +30,24 @@ it starts no execution runtime and owns no connector credentials.
 
 ### Replaceable runtime composition
 
-[Thread Control](../../../../modules/threadcontrol/SPEC.md) creates independent
-native child runtimes through the Mekugi server. Launch reuses the captured
-provider/configuration selection and supplies each child’s actual scoped owners.
-Each backend executes through its own Session Control request owner; logical
-coordination, admission and retained waits belong to Thread Control. Child startup
-retains prepared authority and assignment before executing work. No client-view
-subscription is needed for child execution.
-After server restart, retained children remain stopped. Explicit admitted input
-can resume the same child identity using its frozen preparation and latest
-host-confirmed settings; reconciliation reads history without starting a runtime.
+Native [thread coordination](../../../../docs/contracts/coordination.md) creates
+Codex children on the invocation's existing process and connection. One host reader
+and request ledger route responses and notifications to thread-scoped control and
+presentation endpoints. Endpoint acquisition neither creates logical work nor
+reconstructs a child's permissions from its parent. Native owns admission, work,
+waits and settings; passive observations supply family publications. A trusted,
+awaited host callback admits retained capture resources before child startup.
+No client-view subscription is needed for child execution.
+After server restart, retained children remain stopped. Explicit Codex-child
+attachment uses the existing native connection and parent-owned restoration,
+without dispatching input. Passive inspection does not load a child. View disposal
+releases only presentation; child ending requires native targeted shutdown and join,
+not closing the invocation, unsubscribing or archiving saved history.
+Child retained-data acquisition runs outside the shared event loop and publishes
+loading until its detached snapshot is installed. An overflowing hydration queue
+retires only the affected view with explicit reattachment guidance; native work
+and sibling observations continue. Host-resource cancellation retires its exact
+native request ID, suppresses late replies and joins acquisition at invocation end.
 
 ## Invocation selection
 
@@ -109,7 +117,7 @@ Rewind's optional captured-edit reversal uses those tools through the host's
 native shell under the [session-control contract](../sessioncontrol/SPEC.md).
 
 `codex headless --yolo` selects the [headless adapter](../headless/SPEC.md), using
-the same admitted runtime and Thread Control without a renderer. Its task-owned
+the same admitted runtime and native coordination without a renderer. Its task-owned
 family is joined on completion or cancellation. Launch rejects resume and
 unsupported CLI options; explicit `--yolo` is required because the adapter cannot
 answer approvals.
@@ -213,10 +221,8 @@ alone do not establish that host boundary.
 ## Model catalog
 
 Native OpenAI model discovery remains with the runtime. The shared start picker
-reads `mekugi-models.json` shipped beside the native executable for offline choices;
-it contains no retired
-provider groups or aliases. An old saved picker namespace rejects rather than
-selecting another provider. Static and remote custom catalogs preserve their
+reads `mekugi-models.json` shipped beside the native executable for offline choices.
+Static and remote custom catalogs preserve their
 metadata while enforcing the supported JavaScript execution interface.
 
 Profile imports pass supplied static catalogs to the native runtime without
@@ -356,7 +362,7 @@ its own completion and failure output contract.
 ## Acceptance
 
 Catalog assembly tests cover native v2 selection, unknown metadata, byte-preserving
-forwarding, retired-provider rejection and invocation model identities. Actual subprocess and
+forwarding and invocation model identities. Actual subprocess and
 PTY fixtures cover authentication, catalog selection, argument preservation,
 private frontend dispatch, independent invocations,
 startup cancellation and terminal handoff, signals, host failure and exit codes,

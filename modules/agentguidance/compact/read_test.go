@@ -217,7 +217,7 @@ func TestReloadRefreshesManagedMetadataSource(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(directory, "current"), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
-		result, err := ReadSources(t.Context(), string(selection), directory, os.Environ(), ChangeReader{})
+		result, err := (Readers{}).Read(t.Context(), string(selection), directory, os.Environ())
 		if err != nil || len(result.Sources) != 1 || result.Sources[0].ExitCode != 0 || result.Sources[0].Stdout != body {
 			t.Fatalf("current managed instructions unavailable: %+v, %v", result, err)
 		}
@@ -243,7 +243,7 @@ func TestReloadMcatQuotedRangesAndLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
+	snapshot, err := (Readers{}).Read(t.Context(), string(selection), dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestReloadNestedSelectedText(t *testing.T) {
 		}
 	}
 	selection, _ := json.Marshal(map[string]any{"sources": []SourceIdentity{{Path: "state.json", Ranges: [][2]int{{1, 1}}}, {Path: "missing"}}})
-	snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
+	snapshot, err := (Readers{}).Read(t.Context(), string(selection), dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestReloadPunctuatedReferences(t *testing.T) {
 	}
 	// Explicit selections are exact even without quoting the punctuation-ending path.
 	const selection = `{"sources":["@root."]}`
-	snapshot, err := ReadSources(t.Context(), selection, dir, os.Environ(), ChangeReader{})
+	snapshot, err := (Readers{}).Read(t.Context(), selection, dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,20 @@ func TestReloadDocumentationExamplesRemainLiteral(t *testing.T) {
 	if examples != 1 {
 		t.Fatalf("expected one copyable selection example, found %d", examples)
 	}
-	selection := Selection([]SourceIdentity{{Path: path}})
+	// Exercise every illustrative reference without making unrelated documentation
+	// growth exceed the reader's normal output budget.
+	start := strings.Index(string(body), "### Source-reference syntax\n")
+	if start < 0 {
+		t.Fatal("source-reference syntax section is missing")
+	}
+	end := len(body)
+	if next := strings.Index(string(body[start:]), "\n## "); next >= 0 {
+		end = start + next + 1
+	}
+	expected := string(body[start:end])
+	first := strings.Count(string(body[:start]), "\n") + 1
+	last := strings.Count(string(body[:end]), "\n")
+	selection := Selection([]SourceIdentity{{Path: path, Ranges: [][2]int{{first, last}}}})
 	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{selection}})
 	if err != nil {
 		t.Fatal(err)
@@ -362,7 +375,7 @@ func TestReloadDocumentationExamplesRemainLiteral(t *testing.T) {
 	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Sources) != 1 || snapshot.Sources[0].ExitCode != 0 || snapshot.Sources[0].Stderr != "" || snapshot.Sources[0].Stdout != string(body) {
+	if len(snapshot.Sources) != 1 || snapshot.Sources[0].ExitCode != 0 || snapshot.Sources[0].Stderr != "" || snapshot.Sources[0].Stdout != expected {
 		t.Fatalf("documentation acquired illustrative references: %+v", snapshot.Sources)
 	}
 }
@@ -378,7 +391,7 @@ func TestReloadLiteralReferenceMarkers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	snapshot, err := ReadSources(t.Context(), `{"sources":[{"path":"root"}]}`, dir, os.Environ(), ChangeReader{})
+	snapshot, err := (Readers{}).Read(t.Context(), `{"sources":[{"path":"root"}]}`, dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +422,7 @@ func TestReloadSkillReferences(t *testing.T) {
 		{Skill: "chosen/references/guide.md", Path: filepath.Join(dir, "SKILL.md"), Ranges: [][2]int{{2, 2}}},
 	} {
 		selection, _ := json.Marshal(map[string]any{"sources": []SourceIdentity{source}})
-		snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
+		snapshot, err := (Readers{}).Read(t.Context(), string(selection), dir, os.Environ())
 		if err != nil || snapshot.Sources[0].ExitCode != 0 || !strings.Contains(snapshot.Sources[0].Stdout, "reference") || strings.Contains(snapshot.Sources[0].Stdout, "first") {
 			t.Fatalf("%+v: %+v %v", source, snapshot, err)
 		}
@@ -431,7 +444,7 @@ func TestReloadNestedShallowerBranch(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	snapshot, err := ReadSources(t.Context(), `{"sources":[{"path":"root"}]}`, dir, os.Environ(), ChangeReader{})
+	snapshot, err := (Readers{}).Read(t.Context(), `{"sources":[{"path":"root"}]}`, dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +474,7 @@ func TestReloadManagedNestedWorkspaceAndNativeHostExclusion(t *testing.T) {
 		{Skill: "chosen", Path: "placeholder/SKILL.md"},
 		{Skill: "chosen/references/AGENTS.md", Path: "SKILL.md"},
 	}})
-	snapshot, err := ReadSources(t.Context(), string(selection), dir, os.Environ(), ChangeReader{})
+	snapshot, err := (Readers{}).Read(t.Context(), string(selection), dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
 	}

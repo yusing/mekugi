@@ -455,10 +455,10 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 	if s.upstreamRejection != nil {
 		response := s.upstreamRejection
 		s.upstreamRejection = nil
-		return &Response{Response: response, Transport: "websocket", UnknownPrice: s.provider.Native != nil}, nil
+		return webSocketHTTPResponse(&Response{Response: response, Transport: "websocket", UnknownPrice: s.provider.Native != nil}, nil)
 	}
 	if !s.provider.NativeContinuations() {
-		return s.provider.ForwardExecution(startCtx, responseCtx, native, headers, cacheKey)
+		return webSocketHTTPResponse(s.provider.ForwardExecution(startCtx, responseCtx, native, headers, cacheKey))
 	}
 	payload, handshake, err := s.provider.webSocketRequest(native, headers, cacheKey)
 	if err != nil {
@@ -486,7 +486,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 			payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 			_ = body.Close()
 			if _, limited, _ := ProviderWait(payload, rejected.Header, time.Now()); limited {
-				return &Response{Response: &http.Response{StatusCode: rejected.StatusCode, Header: rejected.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}, Transport: "websocket", UnknownPrice: s.provider.Native != nil}, nil
+				return webSocketHTTPResponse(&Response{Response: &http.Response{StatusCode: rejected.StatusCode, Header: rejected.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}, Transport: "websocket", UnknownPrice: s.provider.Native != nil}, nil)
 			}
 			return nil, &WebSocketStatusError{Status: rejected.StatusCode, body: payload}
 		}

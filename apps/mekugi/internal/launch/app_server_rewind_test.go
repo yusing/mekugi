@@ -171,23 +171,22 @@ func TestAppServerRewindPreservesExecutionReaders(t *testing.T) {
 	u.attached.hooks.compaction = func(string, string) func(context.Context) (string, error) {
 		return func(context.Context) (string, error) { summaries++; return "retained summary", nil }
 	}
-	side, input := new(sessioncontrol.Side), &threadInput{ready: true}
-	u.attached.sideInputs = map[*sessioncontrol.Side]*threadInput{side: input}
+	side := new(sessioncontrol.Side)
+	u.attached.sideInputs = map[*sessioncontrol.Side]bool{side: true}
 	rewindTestTurns(t, u, w)
 	appServerTestKeys(t, u, "\r\r")
 	rewind := resumeTestOne(t, w, "thread/revert")
-	mainInput := &threadInput{ready: true}
+	mainInput := &threadInput{admitted: true}
 	u.attached.threadInput = mainInput
-	u.attached.interruptWait = func(string, string) { t.Fatal("retired interrupt reader called") }
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work"}}}`, rewind.ID))
 	resumeTestSettle(t, u, w)
-	if u.attached.hooks != hooks || u.attached.threadInput == mainInput || u.attached.interruptWait != nil {
+	if u.attached.hooks != hooks || u.attached.threadInput == mainInput {
 		t.Fatal("rewind copied hooks or retained Main input/interrupt state")
 	}
 	if models == 0 || u.attached.hooks.compaction == nil {
 		t.Fatal("rewind detached model or compaction readers")
 	}
-	if u.attached.sideInputs[side] != input || !input.ready {
+	if !u.attached.sideInputs[side] {
 		t.Fatal("Main rewind retired an independent Side input admission")
 	}
 	text, err := u.attached.hooks.compaction("main", "summary")(t.Context())

@@ -16,7 +16,6 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -300,58 +299,6 @@ func coordinationActivityItems(t *testing.T) []binding.ThreadItem {
 	return items
 }
 
-func TestCompactionRejectionRestoredAndReplay(t *testing.T) {
-	for _, name := range []string{"compact", "wait_agent"} {
-		for _, state := range []string{"skipped", "failed"} {
-			t.Run(name+"/"+state, func(t *testing.T) {
-				const reason = "Estimated uncached input exceeds the last cached input. Context was not reset; reload sources were not attached."
-				wake := control.NativeInput{ID: "main:checkpoint", Wake: &control.WaitResult{State: "completed", Compaction: &control.CompactionResult{State: state, Error: reason, Reload: `{"sources":["@state.json"]}`}}}
-				output := wake.RetainedWaitOutput()
-				for _, provenance := range []string{"owned", "missing", "tool-call", "foreign"} {
-					payload := map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": name, "output": output}
-					if provenance == "tool-call" {
-						payload["call_id"] = "ordinary"
-					}
-					if provenance == "foreign" {
-						payload["namespace"] = "other"
-					}
-					record := rolloutRecord(1, "response_item", payload)
-					record["metadata"] = map[string]any{"client_authored": provenance != "missing"}
-					u := newAppServerSessionTestUI(t, t.TempDir())
-					root := binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd, Path: writeTestRollout(t, "main", record, record)}
-					if err := u.restoreContent(root); err != nil {
-						t.Fatal(err)
-					}
-					text := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(100).Lines, "\n"))
-					want := 0
-					if provenance == "owned" {
-						want = 1
-					}
-					if strings.Count(text, "reload sources were not attached") != want || strings.Contains(text, "Attached") || strings.Contains(text, "scheduled") {
-						t.Fatalf("restored %s outcome:\n%s", provenance, text)
-					}
-				}
-				path := replayTestWrite(t, t.TempDir(), "compaction.jsonl", replayTestMeta("main"), replayTestItem("main", "continued", replayTestEpoch, replayTestEpoch+1, map[string]any{
-					"type": "FunctionCallOutput", "id": "outcome", "namespace": "threadcontrol", "name": name, "output": output,
-				}))
-				source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
-				if err != nil {
-					t.Fatal(err)
-				}
-				p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
-				t.Cleanup(p.close)
-				if err := p.advance(p.Until); err != nil {
-					t.Fatal(err)
-				}
-				painted := replayPlaybackTestPaint(t, p, 100, 30)
-				if !strings.Contains(painted, "reload sources were not attached") || strings.Contains(painted, "Attached") {
-					t.Fatalf("replay lost rejection:\n%s", painted)
-				}
-			})
-		}
-	}
-}
-
 func TestThreadControlTrafficLiveRestoredReplay(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	items := coordinationActivityItems(t)
@@ -560,108 +507,6 @@ func coordinationTestCall(t *testing.T, id, tool, thread, task, message string) 
 	return binding.ThreadItem{ID: id, Type: "mcpToolCall", Server: "threadcontrol", Tool: tool, Status: "completed", Arguments: args, Result: result}
 }
 
-func catalogInspectItems(t *testing.T) []binding.ThreadItem {
-	t.Helper()
-	var items []binding.ThreadItem
-	for _, operation := range []struct{ id, tool, args, result, status string }{
-		{"models", "list_models", `{}`, `{"models":[{"model":"a"},{"model":"b"}]}`, "completed"},
-		{"one-model", "list_models", `{}`, `{"models":[{"model":"a"}]}`, "completed"},
-		{"one-agent", "list_agents", `{}`, `{"agents":[{"agent_name":"/root"}]}`, "completed"},
-		{"no-models", "list_models", `{}`, `{"models":[]}`, "completed"},
-		{"bad-models", "list_models", `{}`, `{}`, "completed"},
-		{"inspect", "inspect", `{"target":"worker"}`, `{"thread_id":"worker-thread","task_name":"/root/worker"}`, "completed"},
-		{"bad-inspect", "inspect", `{"target":"worker"}`, `{}`, "completed"},
-		{"pending-inspect", "inspect", `{"target":"worker"}`, ``, "inProgress"},
-	} {
-		item := binding.ThreadItem{ID: operation.id, Type: "mcpToolCall", Server: "threadcontrol", Tool: operation.tool, Status: operation.status, Arguments: jsontext.Value(operation.args)}
-		if operation.result != "" {
-			result, err := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": operation.result}}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			item.Result = result
-		}
-		items = append(items, item)
-	}
-	return items
-}
-
-func TestUISnapshotThreadControlCatalogAndInspect(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
-	u.clock = func() time.Time { return now }
-	view := u.testActivity(u.shell.Transcript)
-	view.Clock, view.Painter.Theme, view.Conversation = u.clock, diffrender.DarkTheme, true
-	view.testAudience()
-	for _, item := range catalogInspectItems(t) {
-		phase := "item/completed"
-		if item.Status == "inProgress" {
-			phase = "item/started"
-		}
-		appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-	}
-	now = now.Add(time.Second)
-	settleActivity(now, view)
-	for _, width := range []int{38, 80} {
-		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/threadcontrol-catalog-inspect-%d.txt", width), append(view.testRenderConversation(width).Lines, "plain after rows"), width)
-	}
-}
-
-func TestThreadControlCatalogAndInspectLiveRestoredReplay(t *testing.T) {
-	items := catalogInspectItems(t)
-	want := []string{"Listed 2 models", "Listed 1 model", "Listed 1 agent", "Listed 0 models", "List models · unconfirmed", "Inspected worker", "Inspect worker · unconfirmed", "Inspect worker · pending"}
-	check := func(source *sessionpresentation.ActivitySource) {
-		t.Helper()
-		if len(source.Entries) != len(items) {
-			t.Fatalf("missing operations: %+v", source.Entries)
-		}
-		for i, text := range want {
-			entry := source.Entries[i]
-			body, targets := text, 0
-			if items[i].ID == "inspect" {
-				body, targets = "Inspected", 1
-			}
-			if len(entry.Values) != 1 || entry.Values[0].Kind != "progress" || entry.Values[0].Body != body || entry.Values[0].From != "/root" || entry.Values[0].DetailCode == "" ||
-				len(entry.Values[0].WaitTargets) != targets || entry.Values[0].WaitReason != "" || entry.Values[0].WaitTimeout != "" || targets == 1 && entry.Values[0].WaitTargets[0].Name != "/root/worker" {
-				t.Fatalf("%s projected %+v; want progress %q with %d agent targets and no wait lifecycle", items[i].ID, entry.Values, text, targets)
-			}
-		}
-	}
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	for _, item := range items {
-		phase := "item/completed"
-		if item.Status == "inProgress" {
-			phase = "item/started"
-		}
-		appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-	}
-	check(u.attached.source)
-	restored := newAppServerSessionTestUI(t, t.TempDir())
-	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: items}})
-	check(restored.attached.source)
-	for i, item := range items {
-		if item.Status != "completed" {
-			continue
-		}
-		path := replayTestWrite(t, t.TempDir(), "catalog.jsonl", replayTestMeta("main"), replayTestItem("main", "turn", replayTestEpoch, replayTestEpoch+1000, map[string]any{
-			"type": "McpToolCall", "id": item.ID, "server": item.Server, "tool": item.Tool, "status": item.Status, "arguments": item.Arguments, "result": item.Result,
-		}))
-		source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
-		t.Cleanup(p.close)
-		if err := p.advance(p.Until); err != nil {
-			t.Fatal(err)
-		}
-		painted := replayPlaybackTestPaint(t, p, 80, 30)
-		if strings.Contains(painted, "MCP") || strings.Contains(painted, `"content"`) || !strings.Contains(painted, want[i]) {
-			t.Fatalf("%s replay rendered %q instead of %q:\n%s", item.ID, painted, want[i], painted)
-		}
-	}
-}
-
 // The empty registration and separately delivered wake are captured host shapes,
 // not the former synthetic single-text waiting acknowledgement.
 func TestThreadControlEmptyWaitLiveRestoredReplay(t *testing.T) {
@@ -760,6 +605,42 @@ func TestThreadControlRetainedWaitOutcome(t *testing.T) {
 			}
 			if text := replayPlaybackTestPaint(t, p, 160, 30); tt.want != "" && !strings.Contains(text, tt.want) || tt.want == "" && strings.Contains(text, "Finished waiting") {
 				t.Fatalf("replay lost wake:\n%s", text)
+			}
+		})
+	}
+}
+
+func TestThreadControlRetainedCompactionOutcome(t *testing.T) {
+	for _, tc := range []struct{ name, tool, state, want string }{
+		{"standalone-skipped", "compact", "skipped", "Compaction skipped: retained diagnostic"},
+		{"wait-failed", "wait_agent", "failed", "Compaction not performed: retained diagnostic"},
+		{"standalone-canceled", "compact", "canceled", "Compaction canceled: retained diagnostic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := fmt.Sprintf(`{"id":"checkpoint","compaction":{"state":%q,"error":"retained diagnostic"}}`, tc.state)
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			record := rolloutRecord(1, "response_item", map[string]any{"type": "function_call_output", "namespace": "threadcontrol", "name": tc.tool, "output": output})
+			record["metadata"] = map[string]any{"client_authored": true}
+			if err := u.restoreContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd, Path: writeTestRollout(t, "main", record, record)}); err != nil {
+				t.Fatal(err)
+			}
+			if text := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(160).Lines, "\n")); strings.Count(text, tc.want) != 1 {
+				t.Fatalf("restored checkpoint outcome: %s", text)
+			}
+			path := replayTestWrite(t, t.TempDir(), "checkpoint.jsonl", replayTestMeta("main"), replayTestItem("main", "continued", replayTestEpoch, replayTestEpoch+1, map[string]any{
+				"type": "FunctionCallOutput", "id": "checkpoint", "namespace": "threadcontrol", "name": tc.tool, "output": output,
+			}))
+			source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+			t.Cleanup(p.close)
+			if err := p.advance(p.Until); err != nil {
+				t.Fatal(err)
+			}
+			if text := replayPlaybackTestPaint(t, p, 160, 30); strings.Count(text, tc.want) != 1 {
+				t.Fatalf("replayed checkpoint outcome: %s", text)
 			}
 		})
 	}

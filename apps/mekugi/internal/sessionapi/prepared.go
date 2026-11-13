@@ -5,8 +5,7 @@ import (
 	"errors"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
+	"github.com/yusing/mekugi/contracts/observation"
 )
 
 func (s *Server) forkClassifier() sessioncontrol.ForkClassifier {
@@ -43,7 +42,11 @@ func (s *Server) ForkCacheKey(thread string) string {
 	return ""
 }
 
-func (s *Server) BindRequests(requests threadcontrol.Runtime) {
+type NativeRuntime interface {
+	Inspect(context.Context, string) (observation.SessionDetails, error)
+}
+
+func (s *Server) BindRequests(requests NativeRuntime) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requests = requests
@@ -57,22 +60,18 @@ func (s *Server) BindSideThreads(owns func(string) bool) {
 	s.sideThreads = owns
 }
 
-func (h *Hub) Requests(thread string) (threadcontrol.Runtime, error) {
+func (h *Hub) Requests(thread string) (NativeRuntime, error) {
 	h.mu.Lock()
 	s := h.sessions[thread]
 	if s == nil || s.runtime == nil || s.runtime.ctx.Err() != nil {
-		runtimes := make([]*managedSession, 0, len(h.running))
-		for runtime := range h.running {
-			runtimes = append(runtimes, runtime)
-		}
+		endpoints := h.endpointsLocked()
 		h.mu.Unlock()
 		// Publication can enter Hub while holding the server lock. Resolve the
 		// borrowed request owner only after releasing the registry lock.
-		for _, runtime := range runtimes {
-			if runtime.ctx.Err() != nil {
+		for server, runtime := range endpoints {
+			if runtime == nil || runtime.ctx.Err() != nil {
 				continue
 			}
-			server := runtime.server
 			server.mu.Lock()
 			owns, requests := server.sideThreads, server.requests
 			server.mu.Unlock()
@@ -90,22 +89,6 @@ func (h *Hub) Requests(thread string) (threadcontrol.Runtime, error) {
 		return nil, errors.New("native runtime has no admitted request owner")
 	}
 	return server.requests, nil
-}
-
-// StartPrepared admits execution owned by an existing native runtime. Launch
-// supplies frozen execution dependencies; Hub retains the single runtime registry
-// and joins child lifetimes. No renderer or ordinary initial input is required.
-var ErrPreparedNotStarted = errors.New("prepared runtime was not started")
-
-func (h *Hub) StartPrepared(request context.Context, parent, resume, workspace string, run func(context.Context, *Server) error) (string, error) {
-	if parent == "" || run == nil {
-		return "", errors.Join(ErrPreparedNotStarted, errors.New("prepared runtime requires a parent and execution owner"))
-	}
-	m, _, err := h.admitRuntime(request, nil, Start{Workspace: workspace, Resume: resume}, parent, run)
-	if err != nil {
-		return "", errors.Join(ErrPreparedNotStarted, err)
-	}
-	return m.waitReady(request)
 }
 
 // BindChildAttachment supplies the prepared runtime owner used by explicit

@@ -89,11 +89,7 @@ func TestAppServerShellWaitsForCompaction(t *testing.T) {
 				appServerTestTurn(t, u, "work")
 			}
 			appServerTestKeys(t, u, "/compact\r")
-			method := "thread/compact/start"
-			if prerequisite {
-				method = "turn/interrupt"
-			}
-			request := appServerOneRequest(t, wire, method, "")
+			request := appServerOneRequest(t, wire, "thread/compact/start", "")
 			acknowledgement := fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID)
 			if phase == "running" {
 				appServerTestMessage(t, u, acknowledgement)
@@ -101,9 +97,9 @@ func TestAppServerShellWaitsForCompaction(t *testing.T) {
 			if prerequisite {
 				appServerTestTurnEnd(t, u, "work", "interrupted")
 			} else {
-				appServerTestTurn(t, u, "compact")
+				compactTestStart(t, u, request, "compact", 1)
 				if phase == "completion-before-ack" {
-					appServerTestTurnEnd(t, u, "compact", "completed")
+					compactTestEnd(t, u, request, "compact", "completed", 1)
 				}
 			}
 			appServerTestKeys(t, u, "!pwd\r")
@@ -114,7 +110,7 @@ func TestAppServerShellWaitsForCompaction(t *testing.T) {
 				return // Existing busy-turn shell coverage checks ordinary Main admission.
 			}
 			if phase == "running" {
-				appServerTestTurnEnd(t, u, "compact", "completed")
+				compactTestEnd(t, u, request, "compact", "completed", 1)
 			} else {
 				appServerTestMessage(t, u, acknowledgement)
 			}

@@ -147,12 +147,6 @@ func (r Readers) Capture(ctx context.Context, request command.Request) (command.
 	return command.Output{Delivery: capturedDelivery{string(data)}}, nil
 }
 
-// ReadSources acquires the shared selection in an admitted runtime environment.
-// The caller owns policy admission and durable context retention.
-func ReadSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader) (Snapshot, error) {
-	return (Readers{Changes: changes}).Read(ctx, selection, directory, environment)
-}
-
 func (r Readers) Read(ctx context.Context, selection, directory string, environment []string) (Snapshot, error) {
 	return readSources(ctx, selection, directory, environment, r.Changes, r.Run, r.Skills)
 }
@@ -160,15 +154,6 @@ func (r Readers) Read(ctx context.Context, selection, directory string, environm
 // SourceRunner executes a reader under its receiving runtime's permissions.
 // Output must be bounded by limit; an overflow must not look like a complete read.
 type SourceRunner func(ctx context.Context, script string, limit int) (CapturedSource, error)
-
-// ReadSourcesWithRunner shares selection, nesting and capture bounds with reloads,
-// while leaving process execution and permissions with the receiving runtime.
-func ReadSourcesWithRunner(ctx context.Context, selection, directory string, run SourceRunner) (Snapshot, error) {
-	if run == nil {
-		return Snapshot{}, errors.New("source runner is unavailable")
-	}
-	return (Readers{Run: run}).Read(ctx, selection, directory, nil)
-}
 
 func readSources(ctx context.Context, selection, directory string, environment []string, changes ChangeReader, run SourceRunner, catalog func(context.Context) (map[string][]string, error)) (Snapshot, error) {
 	ctx, cancel := context.WithCancel(ctx)

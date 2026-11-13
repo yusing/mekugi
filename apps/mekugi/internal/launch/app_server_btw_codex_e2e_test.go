@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sync"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -21,9 +22,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type btwCodexRequest struct {
@@ -34,7 +32,7 @@ type btwCodexRequest struct {
 
 func TestAgentQuestionNativeCodex(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,18 +47,16 @@ func TestAgentQuestionNativeCodex(t *testing.T) {
 		}
 	}()
 	proxy := newManagedMekugiProxy(t)
-	server := httptest.NewServer(inferencegateway.ResponsesHandler(t.Context(), time.Minute, testRequestExecutor(p, nil, proxy).ExecuteHTTP))
+	agentProvider := &agentQuestionCodexProvider{btwCodexProvider: p, gate: make(chan struct{}), done: make(chan error, 1)}
+	server := httptest.NewServer(inferencegateway.ResponsesHandler(t.Context(), time.Minute, testRequestExecutor(agentProvider, nil, proxy).ExecuteHTTP))
 	defer server.Close()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	integration := testAppServerIntegration(proxy)
-	hubs := make(chan *sessionapi.Hub, 1)
-	integration.nativeHub = func(hub *sessionapi.Hub) { hubs <- hub }
 	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, codex, "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "", integration)
-	hub := <-hubs
 	next := func() btwCodexRequest {
 		t.Helper()
 		select {
@@ -73,28 +69,15 @@ func TestAgentQuestionNativeCodex(t *testing.T) {
 	}
 	terminal.await("Ready")
 	terminal.send("Main seed\r")
-	sourceRequest := next()
+	next()
 	terminal.await("completed")
-	metadata, _ := codexresponses.DecodeTurnMetadata(sourceRequest.headers)
-	target := &control.Member{Thread: metadata.ThreadID, Session: metadata.ThreadID, Settings: control.Settings{Model: "gpt-6-astra"}}
-	owner, err := hub.Requests(target.Thread)
-	if err != nil {
-		t.Fatal(err)
-	}
 	terminal.send("Main running\r")
 	next()
 	terminal.await("Working")
 	terminal.send("/btw Side question\r")
 	human := next()
 	terminal.await("Side streaming answer")
-	done := make(chan error, 1)
-	go func() {
-		answer, err := owner.SideQuestion(terminal.ctx, target, "Side followup AGENT-QUESTION")
-		if err == nil && answer != "Side followup answer" {
-			err = fmt.Errorf("unexpected side answer: %q", answer)
-		}
-		done <- err
-	}()
+	close(agentProvider.gate)
 	agent := next()
 	if !bytes.Contains(agent.body, []byte("Main seed")) || !bytes.Contains(agent.body, []byte("Main running")) || bytes.Contains(agent.body, []byte("Side streaming answer")) {
 		t.Fatal("agent question captured the wrong primary context")
@@ -105,7 +88,7 @@ func TestAgentQuestionNativeCodex(t *testing.T) {
 		t.Fatal("agent question occupied the human BTW slot")
 	}
 	select {
-	case err := <-done:
+	case err := <-agentProvider.done:
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,14 +110,63 @@ func TestAgentQuestionNativeCodex(t *testing.T) {
 	terminal.quit()
 }
 
-type btwCodexProvider struct {
-	requests                       chan btwCodexRequest
-	mainGate, sideGate, cancelGate chan struct{}
-	canceled                       chan struct{}
+// The worker asks through its normal functions.exec tool, while the parent and
+// human BTW requests are independently held open by the consuming test.
+type agentQuestionCodexProvider struct {
+	*btwCodexProvider
+	mu                    sync.Mutex
+	root                  string
+	rootCalls, childCalls int
+	gate                  chan struct{}
+	done                  chan error
 }
 
-func (p *btwCodexProvider) ForwardExecution(ctx, responseCtx context.Context, body []byte, headers http.Header, key string) (*inferencegateway.Response, error) {
-	p.requests <- btwCodexRequest{bytes.Clone(body), key, headers.Clone()}
+func (p *agentQuestionCodexProvider) ForwardExecution(ctx, responseCtx context.Context, body []byte, headers http.Header, key string) (*inferencegateway.Response, error) {
+	prompt := btwLastUserPrompt(body)
+	// Side answers retain the parent's context, so classify by their actual new
+	// user question before looking for the copied worker assignment.
+	if strings.Contains(prompt, "Side question") || strings.Contains(prompt, "Side followup") {
+		return p.btwCodexProvider.ForwardExecution(ctx, responseCtx, body, headers, key)
+	}
+	metadata, _ := codexresponses.DecodeTurnMetadata(headers)
+	p.mu.Lock()
+	if p.root == "" {
+		p.root = metadata.ThreadID
+	}
+	main := metadata.ThreadID == p.root
+	if main {
+		p.rootCalls++
+	} else {
+		p.childCalls++
+	}
+	step := p.rootCalls
+	if !main {
+		step = p.childCalls
+	}
+	p.mu.Unlock()
+	if main && step == 2 {
+		return nativeCollabResponse(`text(await tools.collaboration__spawn_agent({task_name:"worker",message:"WORKER_QUESTION",fork_turns:"none"}));`, "")
+	}
+	if !main {
+		if step == 1 {
+			select {
+			case <-p.gate:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return nativeCollabResponse(`text(await tools.collaboration__send_message({target:"/root",btw:true,message:"Side followup AGENT-QUESTION"}));`, "")
+		}
+		var err error
+		if !bytes.Contains(body, []byte("Side followup answer")) {
+			err = fmt.Errorf("native model question omitted the returned answer")
+		}
+		p.done <- err
+		return nativeCollabResponse("", "Worker question complete.")
+	}
+	return p.btwCodexProvider.ForwardExecution(ctx, responseCtx, body, headers, key)
+}
+
+func btwLastUserPrompt(body []byte) string {
 	var request struct {
 		Input []struct {
 			Role    string `json:"role"`
@@ -143,8 +175,8 @@ func (p *btwCodexProvider) ForwardExecution(ctx, responseCtx context.Context, bo
 			} `json:"content"`
 		} `json:"input"`
 	}
-	if err := json.Unmarshal(body, &request); err != nil {
-		return nil, err
+	if json.Unmarshal(body, &request) != nil {
+		return ""
 	}
 	prompt := ""
 	for _, item := range request.Input {
@@ -155,6 +187,18 @@ func (p *btwCodexProvider) ForwardExecution(ctx, responseCtx context.Context, bo
 			}
 		}
 	}
+	return prompt
+}
+
+type btwCodexProvider struct {
+	requests                       chan btwCodexRequest
+	mainGate, sideGate, cancelGate chan struct{}
+	canceled                       chan struct{}
+}
+
+func (p *btwCodexProvider) ForwardExecution(ctx, responseCtx context.Context, body []byte, headers http.Header, key string) (*inferencegateway.Response, error) {
+	p.requests <- btwCodexRequest{bytes.Clone(body), key, headers.Clone()}
+	prompt := btwLastUserPrompt(body)
 	if strings.Contains(prompt, "Main running") {
 		select {
 		case <-p.mainGate:
@@ -216,16 +260,16 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			active := scenario == "active"
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
-			codex, err := exec.LookPath("codex")
+			codex, err := exec.LookPath("mekugi-app-server")
 			if err != nil {
 				t.Fatal(err)
 			}
 			p := &btwCodexProvider{requests: make(chan btwCodexRequest, 12), mainGate: make(chan struct{}), sideGate: make(chan struct{}), cancelGate: make(chan struct{}), canceled: make(chan struct{})}
 			proxy := newManagedMekugiProxy(t)
-			driver := new(threadbinding.Driver)
-			driver.CaptureCatalog([]byte(`{"models":[{"slug":"gpt-6-sol","default_reasoning_level":"high","supports_reasoning_effort_updates":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]},{"slug":"gpt-6-astra","default_reasoning_level":"high","supports_reasoning_effort_updates":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}`))
+			catalog := new(inferencegateway.ReasoningCatalog)
+			catalog.Capture([]byte(`{"models":[{"slug":"gpt-6-sol","default_reasoning_level":"high","supports_reasoning_effort_updates":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]},{"slug":"gpt-6-astra","default_reasoning_level":"high","supports_reasoning_effort_updates":true,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]}]}`))
 			executor := testRequestExecutor(p, nil, proxy)
-			executor.ReasoningChoices = driver.ReasoningChoices
+			executor.ReasoningChoices = catalog.Choices
 			server := httptest.NewServer(inferencegateway.ResponsesHandler(t.Context(), time.Minute, executor.ExecuteHTTP))
 			defer server.Close()
 			defer func() {
@@ -239,7 +283,7 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			}()
 			environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 			command := func(ctx context.Context) *exec.Cmd {
-				cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+				cmd := exec.CommandContext(ctx, codex, "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.multi_agent_v2.enabled=true", "-c", "features.multi_agent_v2.disable_native_tools=false")
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
 			}

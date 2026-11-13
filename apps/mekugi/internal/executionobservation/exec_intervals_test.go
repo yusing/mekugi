@@ -687,7 +687,7 @@ func TestYieldedNamedWriterPatchIntervals(t *testing.T) {
 						t.Fatalf("writer-first composition lost endpoints: %q, %v", net, err)
 					}
 					selection := string(responses.MustMarshalJSON(map[string]any{"sources": []any{map[string]any{"changes": query.IDs}}}))
-					preload, err := compact.ReadSources(transform.ctx, selection, workspace, nil, compact.ChangeReader{Service: retained.changes, Scope: retained.scoped(transform.ctx).changeScope()})
+					preload, err := (compact.Readers{Changes: compact.ChangeReader{Service: retained.changes, Scope: retained.scoped(transform.ctx).changeScope()}}).Read(transform.ctx, selection, workspace, nil)
 					if err != nil || len(preload.Sources) != 1 || preload.Sources[0].ExitCode != 0 || preload.Sources[0].Stderr != "" || preload.Sources[0].Stdout != net {
 						t.Fatalf("composed change preload lost evidence or status: %+v, %v", preload, err)
 					}

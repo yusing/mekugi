@@ -58,7 +58,7 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime, err := composition.Frontends(ctx, false, true, directory, nil, nil)
+			runtime, err := composition.Frontends(ctx, false, true, directory, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -191,7 +191,7 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			if len(modelRequest.Input) != 3 || modelRequest.Input[1].Output != wantSource || modelRequest.Input[2].Output != wantRepeat {
 				t.Fatalf("provider input = %+v", modelRequest.Input)
 			}
-			wantInstructions, wantContent := "Keep authority.", "Keep policy.\n\n"
+			wantInstructions, wantContent := "Keep authority.", input[0]["content"].(string)
 			if !tc.withoutGuidance {
 				specs := make([]command.Spec, len(runtime.Commands))
 				for i, contribution := range runtime.Commands {
@@ -207,7 +207,7 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 				wantInstructions, wantContent = instructions, input[0]["content"].(string)
 			}
 			if modelRequest.Instructions != wantInstructions || modelRequest.Input[0].Content != wantContent {
-				t.Fatalf("provider guidance: instructions=%q content=%q", modelRequest.Instructions, modelRequest.Input[0].Content)
+				t.Fatalf("provider guidance: instructions match=%v content=%q", modelRequest.Instructions == wantInstructions, modelRequest.Input[0].Content)
 			}
 			if len(modelRequest.Tools) != 1 || strings.Contains(modelRequest.Tools[0].Description, "<!-- mekugi-frontends:start -->") == tc.withoutGuidance {
 				t.Fatalf("provider command guidance: %+v", modelRequest.Tools)

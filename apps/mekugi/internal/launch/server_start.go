@@ -16,13 +16,11 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/backends/codex/rollout"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 type serverLauncher struct {
 	headless     *headless.Stream
 	workers      frontends.WorkerImage
-	threads      *threadcontrol.Service
 	hub          *sessionapi.Hub
 	sourceSocket string
 	mu           sync.Mutex
@@ -120,7 +118,7 @@ func (l *serverLauncher) Run(ctx context.Context, start sessionapi.Start, api *s
 	if start.Replay != nil {
 		return runServerReplay(ctx, *start.Replay, api)
 	}
-	execution := &threadExecution{hub: l.hub, shared: l.threads, workers: &l.workers, sourceSocket: l.sourceSocket, headless: l.headless}
+	execution := &threadExecution{hub: l.hub, workers: &l.workers, sourceSocket: l.sourceSocket, headless: l.headless}
 	if start.Native != nil {
 		if start.Native.Environment != nil {
 			ctx = context.WithValue(ctx, invocationEnvironmentKey{}, start.Native.Environment)

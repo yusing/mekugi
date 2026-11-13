@@ -26,7 +26,6 @@ import (
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 func TestProfileLaunchInstalledCodex(t *testing.T) {
@@ -179,12 +178,12 @@ func TestProfileLaunchInstalledCodex(t *testing.T) {
 					if isParent {
 						switch step {
 						case 1:
-							program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:"Run one stock JavaScript shell tool, then finish",fork_turns:"none"}));`
+							program = `text(await tools.collaboration__spawn_agent({task_name:"worker",message:"Run one stock JavaScript shell tool, then finish",fork_turns:"none"}));`
 							if auth == "anonymous" {
 								program = strings.Replace(program, `fork_turns:"none"`, `fork_turns:"none",preload:{sources:["@preload.txt"]}`, 1)
 							}
 						case 2:
-							program = `text(await tools.mcp__threadcontrol__wait_agent({wait_mode:"all"}));`
+							program = `await tools.collaboration__wait_agent({wait_mode:"all"});`
 						default:
 							answer = "PROFILE_PARENT_COMPLETE"
 						}
@@ -423,7 +422,7 @@ func TestProfileLaunchProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 		stream := headless.NewStream(os.Stdout, cancel)
-		launcher := &serverLauncher{threads: control.New(), headless: stream}
+		launcher := &serverLauncher{headless: stream}
 		hub := sessionapi.NewHub(ctx, launcher)
 		launcher.hub = hub
 		args := []string{"-pwork", "--yolo", "-c", "features.plugins=false", "-c", "bypass_hook_trust=true"}

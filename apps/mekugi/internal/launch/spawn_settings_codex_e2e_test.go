@@ -74,18 +74,18 @@ func (p *spawnSettingsFixture) serve(t *testing.T, w http.ResponseWriter, r *htt
 			if metadata.Model != wantModel || metadata.Effort != wantEffort {
 				t.Errorf("updated invoking settings = %s/%s, want %s/%s", metadata.Model, metadata.Effort, wantModel, wantEffort)
 			}
-			program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:"Finish immediately",fork_turns:"none"}));`
+			program = `text(await tools.collaboration__spawn_agent({task_name:"worker",message:"Finish immediately",fork_turns:"none"}));`
 			if p.change == "override" {
-				program = `text(await tools.mcp__threadcontrol__spawn_agent({task_name:"worker",message:"Finish immediately",fork_turns:"none",model:"gpt-6-sol",reasoning_effort:"low"}));`
+				program = `text(await tools.collaboration__spawn_agent({task_name:"worker",message:"Finish immediately",fork_turns:"none",model:"gpt-6-sol",reasoning_effort:"low"}));`
 			}
 		case 3:
 			if metadata.TurnID != p.turn || bytes.Contains(body, []byte("settings disagree")) {
 				t.Error("fresh spawn required a reset or rejected current invoking settings")
 			}
-			if !bytes.Contains(body, []byte(`agent:main/worker`)) || !bytes.Contains(body, []byte(`confirmed`)) {
-				t.Error("fresh MCP spawn with current settings did not confirm the child")
+			if !bytes.Contains(body, []byte(`/root/worker`)) || !bytes.Contains(body, []byte(`thread_id`)) {
+				t.Error("fresh native spawn with current settings did not confirm the child")
 			}
-			program = `text(await tools.mcp__threadcontrol__wait_agent({}));`
+			program = `await tools.collaboration__wait_agent({});`
 		case 4:
 			if !bytes.Contains(body, []byte("INVOKING_CHILD_DONE")) {
 				t.Error("spawned child did not complete through the native runtime")

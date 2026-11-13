@@ -7,6 +7,9 @@ type Live struct {
 	RolloutPath              string // Host-selected source, replaced with the admitted thread.
 	Thread, Turn             string
 	Waiting, LocalStop       string // Detached logical wait and stopped host-turn identities.
+	NativeWork               string // Unsettled native work identity, independent of host turns.
+	NativeRoot               string // Native-confirmed family authority for trusted controls.
+	NativeInputPending       bool   // Provisional native admission permits prompts, not direct work.
 	WaitLabel                string
 	HasUserTurn              bool
 	HookReview               bool // Startup trust must settle before any execution.
@@ -59,7 +62,7 @@ func (h *Live) Completed(success bool) {
 	h.Compaction.Completed(h.Turn, success)
 	h.Turn, h.AwaitingTurn = "", false
 	h.startOrigin = ""
-	h.Shell.completed(success)
+	h.Shell.completed()
 	h.Interruption.Finish()
 }
 
@@ -74,25 +77,25 @@ func (h *Live) CompactResponse(failed bool) {
 // AcceptsInput is the host gate. Questions and history restoration retain
 // their own owners and are checked by the adapter before this gate.
 func (h *Live) AcceptsInput() bool {
-	return h.Thread != "" && !h.HookReview && !h.Replacement.Pending() && !h.Starting() &&
+	return h.Thread != "" && !h.NativeInputPending && !h.HookReview && !h.Replacement.Pending() && !h.Starting() &&
 		!h.InputPending() && !h.SteerInterruptAckPending && !h.Compaction.Pending() &&
 		!h.Settings.BlocksInput() && !h.Shell.BlocksInput(h.Turn) &&
 		(h.Turn == "" || h.Turn != h.Interruption.Target)
 }
 
 func (h *Live) AcceptsShell() bool {
-	return !h.HookReview && !h.Replacement.Pending() && !h.Shell.Pending && !h.Shell.wake && h.Shell.origin == nil &&
+	return !h.NativeInputPending && !h.HookReview && !h.Replacement.Pending() && !h.Shell.Pending && h.Shell.origin == nil &&
 		!h.Starting() && !h.Compaction.Pending() && !h.InputPending() &&
 		h.Interruption.Target == "" && !h.SteerInterruptAckPending
 }
 
 func (h *Live) AcceptsSettings() bool {
-	return h.Thread != "" && !h.HookReview && !h.Starting() && !h.Replacement.Pending()
+	return h.Thread != "" && !h.NativeInputPending && !h.HookReview && !h.Starting() && !h.Replacement.Pending()
 }
 
 func (h *Live) Busy(waitingInput bool) bool {
-	return h.HookReview || h.Turn != "" || h.LocalStop != "" || h.Starting() || h.Compaction.Pending() ||
-		h.InputPending() || h.Settings.Pending() || h.Shell.Pending || h.Shell.Continuation() || waitingInput
+	return h.HookReview || h.Turn != "" || h.LocalStop != "" || h.Waiting != "" || h.NativeWork != "" || h.Starting() || h.Compaction.Pending() ||
+		h.InputPending() || h.Settings.Pending() || h.Shell.Pending || waitingInput
 }
 
 // LeaveThread retires source operations together after confirmed replacement.
@@ -117,6 +120,7 @@ func (o *Interruption) Finish() { *o = Interruption{} }
 // Interrupt names one request and the immediate composer consequence, if any.
 // An empty Turn issues no host request. Pending retains deferred cancellation.
 type Interrupt struct {
+	Work                    string
 	Turn, Label             string
 	ResetRequest            string
 	Wait, Stop              string
@@ -135,7 +139,7 @@ func (h *Live) PrepareEscape(hasUnsentSteer bool) bool {
 }
 
 func (h *Live) Interrupt() Interrupt {
-	r := Interrupt{Turn: h.Turn, Wait: h.Waiting, Stop: h.LocalStop}
+	r := Interrupt{Turn: h.Turn, Wait: h.Waiting, Stop: h.LocalStop, Work: h.NativeWork}
 	alreadyCancelled := h.Compaction.cancelled
 	if h.Compaction.Cancel() {
 		r.Wait, r.Stop = "", ""
@@ -193,11 +197,10 @@ type Shell struct {
 	origin  *string
 	phase   shellPhase
 	turn    string
-	wake    bool
 }
 
 func (o *Shell) Begin(turn string) {
-	o.turn, o.wake = "", false
+	o.turn = ""
 	o.Pending, o.origin = true, new(turn)
 	if turn == "" {
 		o.phase = shellStarting
@@ -210,15 +213,16 @@ func (o *Shell) Standalone() bool { return o.phase != shellIdle }
 func (o *Shell) OwnsTurn(turn string) bool {
 	return turn != "" && (turn == o.turn || o.phase == shellStarting || o.origin != nil && turn != *o.origin)
 }
-func (o *Shell) WakeAfterSettlement() { o.wake = true }
-func (o *Shell) Continuation() bool   { return o.wake && !o.Pending && o.phase == shellIdle }
-func (o *Shell) ConsumeContinuation() { o.wake = false }
-func (o *Shell) completed(success bool) {
-	if o.Standalone() {
-		o.wake = o.wake && success
+
+// ModelTurn observes native model continuation in the shell's physical turn.
+// Keep the transport acknowledgement gate, but its final is no longer auxiliary.
+func (o *Shell) ModelTurn(turn string) {
+	if !o.OwnsTurn(turn) {
+		return
 	}
-	o.phase = shellIdle
+	o.turn, o.phase, o.origin = "", shellIdle, nil
 }
+func (o *Shell) completed() { o.phase = shellIdle }
 func (o *Shell) started(turn string) {
 	if o.origin != nil && turn != *o.origin {
 		o.phase, o.origin = shellRunning, nil
@@ -231,7 +235,6 @@ func (o *Shell) started(turn string) {
 func (o *Shell) Acknowledge(failed bool, turn string) {
 	o.Pending = false
 	if failed {
-		o.wake = false
 		o.Identified()
 		if turn == "" {
 			o.phase = shellIdle

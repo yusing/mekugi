@@ -3,8 +3,9 @@ package sessionpresentation
 import (
 	"cmp"
 	"fmt"
+
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	"github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	usagepresentation "github.com/yusing/mekugi/modules/usage/presentation"
 )
@@ -16,7 +17,7 @@ const metricFeatures = 3
 
 // FeatureCounts are model-facing feature uses and counted attempts in this launch.
 type FeatureCounts struct {
-	control.FeatureUse
+	observation.FeatureUse
 	OutputDeduplication transportcapture.OutputDeduplicationMetrics
 }
 
@@ -34,24 +35,10 @@ type FeatureMetrics struct {
 
 // NewFeatureMetrics joins native counts with capture-owned deduplication receipts
 // over the same admitted threads. Failed native reads are not measured zeros.
-func NewFeatureMetrics(thread string, coordination *control.Service, snapshot *transportcapture.MetricsSnapshot, deduplicate bool, use control.FeatureSnapshot) *FeatureMetrics {
-	metrics := FeatureMetrics{DeduplicationOff: !deduplicate, Unavailable: use.Err != nil}
+func NewFeatureMetrics(thread, name string, snapshot *transportcapture.MetricsSnapshot, deduplicate bool, use FeatureSnapshot) *FeatureMetrics {
+	metrics := FeatureMetrics{Thread: name, DeduplicationOff: !deduplicate, Unavailable: use.Err != nil}
 	metrics.Self.FeatureUse, metrics.Descendants.FeatureUse = use.Self, use.Descendants
 	descendants := use.Threads
-	if coordination != nil {
-		if use.Err != nil {
-			descendants = nil
-			for _, member := range coordination.Descendants(thread) {
-				descendants = append(descendants, member.Thread)
-			}
-		}
-		if member, ok := coordination.Member(thread); ok {
-			metrics.Thread = pathdisplay.AgentDisplayName(member.Task)
-			if member.Parent == "" {
-				metrics.Thread = "Main"
-			}
-		}
-	}
 	metrics.Agents = len(descendants)
 	if snapshot != nil {
 		metrics.Self.OutputDeduplication = snapshot.OutputDeduplicationThreads[thread]

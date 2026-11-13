@@ -106,3 +106,25 @@ func TestStandaloneOutputContentAndUnrelatedHistory(t *testing.T) {
 		}
 	}
 }
+
+func TestStandaloneOutputsRemoveOnlyPrivateSourceReceipt(t *testing.T) {
+	input := []byte(`[{"type":"function_call_output","namespace":"context","name":"reload","output":"Exact source body","internal_chat_message_metadata_passthrough":{"source_acquisition":{"id":"private"},"turn_id":"retained-turn","content_item_kinds":["user.text"]}},{"type":"message","role":"user","content":[],"internal_chat_message_metadata_passthrough":{"source_acquisition":{"id":"private"},"turn_id":"other-turn"}},{"type":"message","role":"user","content":[],"internal_chat_message_metadata_passthrough":{"source_acquisition":{"id":"private"}}}]`)
+	original := bytes.Clone(input)
+	projected, err := ProjectStandaloneOutputs(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var items []map[string]jsontext.Value
+	if err := json.Unmarshal(projected, &items); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(projected, []byte("source_acquisition")) || !bytes.Contains(projected, []byte("Exact source body")) || !bytes.Equal(input, original) {
+		t.Fatalf("private receipt leaked or native evidence changed: %s", projected)
+	}
+	if !responses.SameJSONValue(items[0]["internal_chat_message_metadata_passthrough"], []byte(`{"content_item_kinds":["user.text"],"turn_id":"retained-turn"}`)) {
+		t.Fatalf("unrelated reload metadata changed: %s", projected)
+	}
+	if !responses.SameJSONValue(items[1]["internal_chat_message_metadata_passthrough"], []byte(`{"turn_id":"other-turn"}`)) || len(items[2]["internal_chat_message_metadata_passthrough"]) != 0 {
+		t.Fatalf("neighboring metadata was lost or empty private shell retained: %s", projected)
+	}
+}

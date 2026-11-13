@@ -165,6 +165,16 @@ func (c *Client) Respond(id jsontext.Value, result any) error {
 	return err
 }
 
+// RespondError rejects a server request without inventing a successful result.
+func (c *Client) RespondError(id jsontext.Value, failure Error) error {
+	encoded, err := json.Marshal(&Message{ID: id, Error: &failure})
+	if err != nil {
+		return err
+	}
+	_, err = c.Input.Write(append(encoded, '\n'))
+	return err
+}
+
 func (c *Client) Close() {
 	// A paused consumer may leave the reader waiting to deliver a message,
 	// rather than reading stdout. Closing the pipe alone cannot release it.

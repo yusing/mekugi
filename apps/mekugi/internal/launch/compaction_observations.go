@@ -28,7 +28,7 @@ func retainCompaction(retained history.Session, entry sessionpresentation.Activi
 	})
 }
 
-func restoreCompactionObservations(attached *attachedPresentation, retained history.Session, restoring *appServerActivityRestore) {
+func applyCompactionObservations(attached *attachedPresentation, restoring *appServerActivityRestore, read func(string, string) (*history.CompactionObservation, int, error)) {
 	for _, source := range []*sessionpresentation.ActivitySource{attached.source, attached.childSource} {
 		for i, record := range source.Entries {
 			entry := record.Source
@@ -36,7 +36,7 @@ func restoreCompactionObservations(attached *attachedPresentation, retained hist
 			if entry.Kind != "compaction" || n == nil {
 				continue
 			}
-			r, _, err := retained.Store.ReadCompaction(n.Thread, n.Item)
+			r, _, err := read(n.Thread, n.Item)
 			if err != nil {
 				restoreHistoryNotice(attached, restoring, "Compaction measurements unavailable: "+err.Error(), true)
 				continue

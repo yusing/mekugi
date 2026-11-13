@@ -11,7 +11,6 @@ import (
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 )
 
 // Frame is one detached renderer input. Launch builds it from admitted owners;
@@ -24,8 +23,8 @@ type Frame struct {
 	Questions  []prompt.CallView // Detached live questions, including native-only metadata.
 	Attachment uint64            // A change restarts entry sequences.
 	Status     sessionpresentation.Label
-	FamilyRoot string                      // Admitted logical family, independent of runtime lifetime.
-	Members    []threadcontrol.Participant // Admitted coordination facts, never transcript history.
+	FamilyRoot string                            // Admitted logical family, independent of runtime lifetime.
+	Members    []sessionpresentation.Participant // Admitted coordination facts, never transcript history.
 	Main       *activitypresentation.Publication
 	// Agents is the child feed: each agent's own activity, and the roster.
 	Agents    *activitypresentation.Publication

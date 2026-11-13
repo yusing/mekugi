@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -26,12 +28,11 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	threadbinding "github.com/yusing/mekugi/modules/threadcontrol/codexbinding"
-	threadcontrol "github.com/yusing/mekugi/modules/threadcontrol/control"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -40,9 +41,9 @@ const applyPatchToolName = "apply_patch"
 
 // Config supplies borrowed invocation owners. Startup owns their lifetimes.
 type Config struct {
+	ProgressSnapshot   func(string) *changepresentation.ReviewView
 	ContextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
-	Inspect            func(context.Context, string) (threadcontrol.SessionDetails, error)
-	ThreadControl      *threadbinding.Driver
+	Inspect            func(context.Context, string) (observation.SessionDetails, error)
 	Registry           *frontends.Registry
 	InputProjections   []binding.InputProjection
 	Usage              *accounting.Service
@@ -92,7 +93,6 @@ type mekugiTranslationState struct {
 
 type mekugiResponseTransform struct {
 	owners           *Preparer
-	localWaitItem    string
 	compactReload    jsonv1.RawMessage
 	inputPrefix      *codexresponses.InputPrefix
 	generation       sessioncontrol.Generation
@@ -104,8 +104,6 @@ type mekugiResponseTransform struct {
 	execGroup        string
 	shellThreadID    string // Runtime identity remains available when activity attribution is invalid.
 	model            string
-	invokingModel    string
-	invokingEffort   string
 	visible          map[string]mekugiHistory
 	historySessionID string
 	retainedRequest  *history.CallRequest
@@ -186,28 +184,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			}
 		}
 	}
-	var preloadActivity []activitypresentation.Supplement
-
-	if p.ThreadControl != nil || metadataValid && bytes.Contains(request.Fields["input"], []byte("threadcontrol")) {
-		if !metadataValid {
-			return nil, errors.New("context preload requires valid metadata")
-		}
-		pending, calls, supplements, err := p.preparePreloadInput(request, sessionID, threadID, metadata, prewarm)
-		if err != nil {
-			return nil, err
-		}
-		if len(pending) > 0 {
-			reload = pending
-		}
-		preloadActivity = supplements
-		if reloadCalls == nil {
-			reloadCalls = calls
-		} else {
-			for id := range calls {
-				reloadCalls[id] = true
-			}
-		}
-	}
 	if reloadCalls == nil && bytes.Contains(request.Fields["input"], []byte(compact.SnapshotPrefix)) {
 		reloadCalls = make(map[string]bool)
 	}
@@ -242,9 +218,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		}
 		if !prewarm {
 			p.Control.PreparingContextReset(threadID)
-			if err := p.consumeThreadInput(ctx, threadID, sessionID, request); err != nil {
-				return nil, err
-			}
 		}
 		if err := p.observeCompactionInput(ctx, request, sessionID, threadID, metadata); err != nil {
 			if _, incompatible := errors.AsType[*inferencegateway.CompatibilityError](err); incompatible {
@@ -263,22 +236,12 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	if !metadataValid || (!prewarm && metadata.RequestKind != responseevents.Turn) {
 		return nil, errors.New("mekugi rewrite requires valid turn metadata")
 	}
-	if p.ThreadControl != nil {
-		if err := binding.ValidateIndependentThreadCatalog(request); err != nil {
-			return nil, err
-		}
-	}
 	p.Windows.markBackground(threadID, metadata.TurnID)
 	// Execution-free requests retain native tools and schema; admitted thread
 	// identity guidance still follows the same visible namespace as execution.
 	if codexresponses.ExecutionFree(request) {
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
-		}
-		if !prewarm {
-			if err := p.consumeThreadInput(ctx, threadID, sessionID, request); err != nil {
-				return nil, err
-			}
 		}
 		if !prewarm {
 			input, err := hydrateCompactSnapshots(request.Fields["input"], reloadOutputs)
@@ -366,39 +329,11 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 			return nil, err
 		}
 	}
-	var localWaitItem string
-	if p.ThreadControl != nil {
-		selected := observationScope(ctx, p.Retained)
-		session := history.Session{Store: selected.Store, Thread: selected.Thread, Namespace: selected.Namespace, Limits: selected.Limits, Writes: selected.Writes, Context: ctx}
-		if err := p.ThreadControl.AdmitRequest(ctx, session, threadcontrol.Identity{Thread: threadID, Session: sessionID, Turn: metadata.TurnID}, metadata.SubagentKind == ""); err != nil {
-			retained.Finish(false)
-			return nil, err
-		}
-		instructions, err := p.ThreadControl.Instructions(ctx, threadID, request.Model())
-		if err == nil {
-			err = p.projectThreadInstructions(request, instructions)
-		}
-		if err != nil {
-			retained.Finish(false)
-			return nil, err
-		}
-		if err := p.consumeThreadInput(ctx, threadID, sessionID, request); err != nil {
-			retained.Finish(false)
-			return nil, err
-		}
-		localWaitItem, err = p.observeThreadWait(ctx, threadID, metadata.TurnID, codeModeToolName, request, visible)
-		if err != nil {
-			retained.Finish(false)
-			return nil, err
-		}
-	}
 	activityThreadID := p.admitActivityThread(threadID, metadata)
 	if activityThreadID != "" {
-		p.Audience.Collect(preloadActivity...)
 		p.Audience.BeginResponse(activityThreadID, false, time.Now())
 	}
 	transform := &mekugiResponseTransform{
-		localWaitItem:    localWaitItem,
 		compactReload:    reload,
 		owners:           p,
 		ctx:              ctx,
@@ -406,8 +341,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		shellTurnID:      metadata.TurnID,
 		shellThreadID:    threadID,
 		model:            strings.TrimSpace(request.Model() + " " + request.ReasoningEffort()),
-		invokingModel:    metadata.Model,
-		invokingEffort:   metadata.Effort,
 		historySessionID: historySessionID,
 		visible:          visible,
 		retainedRequest:  retained,
@@ -458,13 +391,7 @@ func (p *Preparer) admitActivityThread(threadID string, metadata codexresponses.
 		if name == "" && metadata.SubagentKind == "" {
 			name = "/root"
 		}
-		var observed bool
-		if p.ThreadControl != nil {
-			observed = p.ThreadControl.Coordination().ObserveAudience(threadID, p.Audience.ObserveAdmitted)
-		} else {
-			observed = p.Audience.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "")
-		}
-		if observed {
+		if p.Audience.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "") {
 			activityThreadID = threadID
 		}
 	}

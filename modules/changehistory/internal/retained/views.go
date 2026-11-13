@@ -143,6 +143,9 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 			return "", fmt.Errorf("change %s has pending or retired history; cannot produce a complete composed view; use --history to inspect it", id)
 		}
 	}
+	if options.freeze != nil {
+		return "", s.freezeNetCaptures(ctx, options, index)
+	}
 	var paths []string
 	filters := options.paths
 	if options.resolvedPaths != nil {
@@ -158,6 +161,10 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 	if err != nil {
 		return "", err
 	}
+	return renderNetCaptures(options, index, captures)
+}
+
+func renderNetCaptures(options changeReadOptions, index changeIndex, captures []changeCapture) (string, error) {
 	var failures []error
 	matched := len(options.paths) == 0
 	chains := make(map[string]*diffmodel.ReviewComposition)
