@@ -22,6 +22,48 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestSessionUIReplaySelectedThreadKeepsNativeIdentity(t *testing.T) {
+	for _, test := range []struct {
+		name, thread, caller string
+		metadata             map[string]any
+	}{
+		{"root", "root", "/root", map[string]any{"source": "cli"}},
+		{"delegate", "child", "/root/worker", map[string]any{"parent_thread_id": "parent", "agent_path": "/root/worker"}},
+		{"native spawn source", "child", "/root/nested/worker", map[string]any{"source": map[string]any{"subagent": map[string]any{"thread_spawn": map[string]any{"parent_thread_id": "parent", "agent_path": "/root/nested/worker"}}}}},
+		{"unavailable delegate path", "child", "/root/child", map[string]any{"parent_thread_id": "parent"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			metadata := replayTestMeta(test.thread)
+			for key, value := range test.metadata {
+				metadata["payload"].(map[string]any)[key] = value
+			}
+			path := replayTestWrite(t, t.TempDir(), "selected.jsonl", metadata,
+				replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
+				replayTestItem(test.thread, "turn", replayTestEpoch+1000, replayTestEpoch+2000, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"type": "Text", "text": "selected thread answer"}}}),
+				replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
+			)
+			source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+			t.Cleanup(p.close)
+			for _, at := range []time.Duration{2 * time.Second, 500 * time.Millisecond} {
+				if err := p.advance(at); err != nil {
+					t.Fatal(err)
+				}
+				view := p.ui.sessionView()
+				if view.Main.Caller != test.caller || view.Info.Caller != test.caller || view.Displayed != view.Main {
+					t.Fatalf("replay selected another identity at %s: %+v", at, view.Main)
+				}
+				if agent := p.ui.session.Activity().Agent(test.thread); agent == nil || agent.Name != test.caller {
+					t.Fatalf("replay roster identity at %s = %+v", at, agent)
+				}
+			}
+		})
+	}
+}
+
 func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 	t.Parallel()
 	path := replayTestWrite(t, t.TempDir(), "root.jsonl", replayTestMeta("root"),

@@ -1,6 +1,7 @@
 package rollout
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,34 @@ import (
 
 	"github.com/yusing/mekugi/contracts/observation"
 )
+
+func TestReplaySelectedIdentityUsesNativeSessionMetadata(t *testing.T) {
+	for _, test := range []struct {
+		name, metadata, path string
+	}{
+		{"root", `"source":"cli"`, "/root"},
+		{"native path", `"parent_thread_id":"parent","agent_path":"/root/worker"`, "/root/worker"},
+		{"native spawn source", `"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent","agent_path":"/root/worker"}}}`, "/root/worker"},
+		{"unavailable path", `"parent_thread_id":"parent"`, ""},
+		{"subagent without path", `"source":{"subagent":"review"}`, ""},
+		{"child with root alias", `"parent_thread_id":"parent","agent_path":"/root"`, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "rollout.jsonl")
+			data := fmt.Sprintf("{\"type\":\"session_meta\",\"payload\":{\"id\":\"selected\",\"cwd\":\"/selected\",%s}}\n{\"type\":\"session_meta\",\"payload\":{\"id\":\"inherited-parent\",\"cwd\":\"/parent\",\"source\":\"cli\"}}\n", test.metadata)
+			if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			source, err := Replay(t.Context(), path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if source.Thread != "selected" || source.Cwd != "/selected" || source.AgentPath != test.path {
+				t.Fatalf("selected native metadata = %+v, want path %q", source, test.path)
+			}
+		})
+	}
+}
 
 func TestReplayRetainsNativeCoordinationWithoutToolReconstruction(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rollout.jsonl")

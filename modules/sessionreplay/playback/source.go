@@ -103,7 +103,11 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 		r.Workspaces[thread] = decoded.Cwd
 		if r.Thread == "" {
 			r.Thread, r.Cwd = thread, decoded.Cwd
-			r.Threads[thread] = "/root"
+		}
+		// Confirmed spawn facts retain a child's identity when an older rollout
+		// has no lineage metadata and therefore decodes with the root default.
+		if decoded.AgentPath != "" && (decoded.AgentPath != "/root" || r.Threads[thread] == "") {
+			r.Threads[thread] = decoded.AgentPath
 		}
 		for kind, n := range decoded.Unsupported {
 			if err := ctx.Err(); err != nil {

@@ -399,7 +399,7 @@ func familyRoster(root *Frame, frames map[string]familySource) *activity.Publica
 		add(activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Thread: id}}})
 		row := &publication.Roster[rows[id]]
 		name := cmp.Or(frame.Session.Caller, members[id].Task, row.Agent.Name)
-		if id == root.Session.Thread {
+		if name == "" && id == root.Session.Thread {
 			name = "/root"
 		}
 		role := cmp.Or(frame.Session.Role, members[id].Role, row.Agent.Role)

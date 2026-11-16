@@ -100,9 +100,10 @@ func (v *ActivitySource) Publication(session *Model, main *ActivitySource) *acti
 	if main != nil {
 		mainSummary := mainPublication.MainSummary
 		publication.MainSummary = mainSummary
+		local := session.View().Main
 		for i := range publication.Roster {
 			agent := &publication.Roster[i].Agent
-			if agent.Name != "/root" {
+			if local.ID != "" && agent.Thread != local.ID || local.ID == "" && agent.Name != "/root" {
 				continue
 			}
 			if agent.Generating == "" {
@@ -149,7 +150,9 @@ func (v *ActivitySource) publicationCurrent(session *Model, main *activitypresen
 			return false
 		}
 		prior := published.Roster[index].Agent
-		sameSkills := main != nil && facts.Name == "/root" || slices.Equal(skills[facts.Name], prior.Skills)
+		local := session.View().Main
+		own := local.ID != "" && facts.Thread == local.ID || local.ID == "" && facts.Name == "/root"
+		sameSkills := main != nil && own || slices.Equal(skills[facts.Name], prior.Skills)
 		if !sameSkills ||
 			!slices.Equal(session.StatusItems(presentationcontract.Thread{ID: facts.Thread, OutputThroughput: facts.OutputThroughput}, presentationcontract.AgentMetric), prior.StatusItems) {
 			return false

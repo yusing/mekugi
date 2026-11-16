@@ -44,11 +44,7 @@ invocation executable; `catalog.go` reads its bundled model metadata.
 
 | Area | Owners and boundaries |
 | --- | --- |
-<<<<<<< HEAD
 | Native coordination | `core/src/thread_manager/{observation,view}.rs`: native thread/subtree inspection, shared thread construction and foreign destination operations; `app-server/src/agent_host.rs`: connection-bound host resources; `sessionapi/coordination.go`: authenticated active foreign routing; Execution Observation `native_{capture_resources,progress}.go`: retained capture-range selection; Launch `native_connection.go`: one process/reader/request ledger with thread endpoints; `docs/contracts/coordination.md` owns the coordination contract |
-=======
-| Native coordination | `core/src/thread_manager/observation.rs`: stock thread/subtree-based passive inspection and foreign destination operations; `app-server/src/agent_host.rs`: connection-bound host resources; `sessionapi/coordination.go`: authenticated active foreign routing; Execution Observation `native_{capture_resources,progress}.go`: retained capture-range selection; Launch `native_connection.go`: one process/reader/request ledger with thread endpoints; `docs/contracts/coordination.md` owns the coordination contract |
->>>>>>> 95bf0a2 (docs(agents): centralize native guidance in the fork)
 | Activity | `modules/activity/module.go`: historical wait-snapshot retention; `feed`: content/output retention; `coordination`: shared thread-control observation decoding; `presentation`: lifecycle, grouping, source/segment interpretation, roster, commit enrichment and detached publications; `terminalview`: layout, reveal/pacing, cursors, navigation and painting |
 | Conversation | `modules/conversation/{composer,presentation,presets,prompt,completion}`: edits/attachments, drafts/queues/side values, durable reusable input slots, prompts and completion; `transcript`/`codexbinding`: message correlation/history/native mapping; `terminalview`: keys/painting. Session Control owns live replies/dispatch; Launch owns scans, skill writes and image lifetime |
 | Composer predictions | `launch/composer_predictions.go`: asynchronous configuration and source/draft eligibility; `sessioncontrol/prediction.go`: host fork, turn and cleanup; `providers/openai/predictions.go`: authenticated remote configuration and moderation policy |

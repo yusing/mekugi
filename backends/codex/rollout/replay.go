@@ -31,6 +31,9 @@ type replayRecord struct {
 		Type           string         `json:"type"`
 		ID             string         `json:"id"`
 		Cwd            string         `json:"cwd"`
+		ParentThreadID string         `json:"parent_thread_id"`
+		AgentPath      string         `json:"agent_path"`
+		Source         jsontext.Value `json:"source"`
 		Thread         string         `json:"thread_id"`
 		Turn           string         `json:"turn_id"`
 		Started        int64          `json:"started_at_ms"`
@@ -110,6 +113,37 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 				return errors.New("session metadata has no thread id")
 			}
 			r.Thread, r.Cwd, owner = p.ID, p.Cwd, p.ID
+			r.AgentPath = p.AgentPath
+			child := p.ParentThreadID != ""
+			if p.Source.Kind() == '{' {
+				var source struct {
+					SubAgent jsontext.Value `json:"subagent"`
+				}
+				if err := json.Unmarshal(p.Source, &source); err != nil {
+					return err
+				}
+				if len(source.SubAgent) != 0 {
+					child = true
+					if source.SubAgent.Kind() == '{' {
+						var subagent struct {
+							Spawn struct {
+								Path string `json:"agent_path"`
+							} `json:"thread_spawn"`
+						}
+						if err := json.Unmarshal(source.SubAgent, &subagent); err != nil {
+							return err
+						}
+						if r.AgentPath == "" {
+							r.AgentPath = subagent.Spawn.Path
+						}
+					}
+				}
+			}
+			if child && r.AgentPath == "/root" {
+				r.AgentPath = ""
+			} else if !child && r.AgentPath == "" {
+				r.AgentPath = "/root"
+			}
 			return nil
 		}
 		if rec.Type == "compacted" {

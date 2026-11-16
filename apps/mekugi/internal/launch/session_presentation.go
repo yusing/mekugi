@@ -78,6 +78,9 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 	}
 	caption = sessionCaption(&attached.session, m, caption, tiers)
 	info := sessionpresentation.MainInfo{Workspace: attached.cwd, Title: cmp.Or(control.Names.Pending(control.Thread), title), BackendVersion: backend, Skills: attached.source.ActiveSkills()["Main"]}
+	if view.Main.Caller != "/root" {
+		info.Caller = view.Main.Caller
+	}
 	if logical := attached.threadInput; logical != nil && logical.admitted {
 		info.Caller = logical.caller
 		if view.Displayed.ID == view.Main.ID {
@@ -116,7 +119,7 @@ func attachPresentation(attached *attachedPresentation, picker *composerPicker, 
 	picker.State, picker.MenuState = &conversation.Completion, attached.presentation.Menu()
 	questions.Questions, approvals.Approvals = &conversation.Questions, &conversation.Approvals
 	m := attached.presentation
-	m.Attach(sessionpresentation.Thread{ID: cmp.Or(main, "/root"), Caller: "/root"}, false)
+	m.Attach(sessionpresentation.Thread{ID: cmp.Or(main, "/root"), Caller: cmp.Or(attached.session.KnownCaller(main), "/root")}, false)
 }
 
 // settlePresentation runs before another intent can observe this session.

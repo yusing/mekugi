@@ -49,7 +49,7 @@ func (s *replayAttachment) sessionView() sessionpresentation.View {
 		processes++
 	}
 	return s.presentation.Publish(sessionpresentation.MainInputs{
-		Info:               sessionpresentation.MainInfo{Workspace: s.cwd, Skills: s.source.ActiveSkills()["Main"]},
+		Info:               sessionpresentation.MainInfo{Workspace: s.cwd, Caller: s.presentation.View().Main.Caller, Skills: s.source.ActiveSkills()["Main"]},
 		DisplayedWorkspace: s.workspace(s.presentation.View().Displayed.ID),
 		RecordedTurn:       s.Turn, Conversation: s.conversation, Feedback: &s.feedback, Processes: processes,
 	}, sessionCaption(&s.session, s.presentation, sessionpresentation.Caption{}, nil))
@@ -155,12 +155,17 @@ func (o replayOwners) attachment(source *playback.Source) *replayAttachment {
 	u := &replayAttachment{cwd: source.Cwd, workspaces: source.Workspaces}
 	u.session.Start(source.Thread)
 	u.presentation = o.views.Session(u.session.Scope())
-	u.presentation.Attach(sessionpresentation.Thread{ID: source.Thread, Caller: "/root"}, true)
+	caller := cmp.Or(source.Threads[source.Thread], sessionpresentation.Placeholder(source.Thread))
+	u.presentation.Attach(sessionpresentation.Thread{ID: source.Thread, Caller: caller}, true)
 	u.presentation.Status.Set("Replay", false)
 	u.conversation = o.conversation.Session(u.session.Scope())
 	u.transcript = o.observations.NewTranscript(u.session.Scope())
 	state := u.session.Activity()
-	state.StartRoster(sessionpresentation.ActivityAgent{Thread: source.Thread, Name: "/root", Role: "main"})
+	role := ""
+	if caller == "/root" {
+		role = "main"
+	}
+	state.StartRoster(sessionpresentation.ActivityAgent{Thread: source.Thread, Name: caller, Role: role})
 	u.source = &sessionpresentation.ActivitySource{Model: &state.Main, Audience: sessionpresentation.MainAudience, Coverage: "CONNECTING"}
 	u.childSource = &sessionpresentation.ActivitySource{Model: &state.Children, Audience: sessionpresentation.ChildAudience}
 	return u

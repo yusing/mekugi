@@ -138,7 +138,9 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 	v := &nativeSessionView{remoteHuman: request.RemoteHuman(), thread: request.Thread, startup: request.Startup != "", initial: true, ctx: request.ViewContext}
 	v.attached = attachedPresentation{executionPresentation: execution.executionPresentation, presentation: n.models.Session(v.scope.Scope()), view: request.Attachment, effects: &v.effects, grants: sessioncontrol.NewApprovalGrants(n.guards)}
 	v.files.context, v.activity = v.ctx, n.activity
-	v.attached.presentation.Attach(sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}, false)
+	main := execution.presentation.View().Main
+	main.ID = request.Thread
+	v.attached.presentation.Attach(main, false)
 	v.picker.State, v.picker.MenuState = n.completions.Value(v.scope.Scope()), v.attached.presentation.Menu()
 	v.picker.view = request.Attachment
 	v.stop = context.AfterFunc(request.ViewContext, func() {
@@ -333,7 +335,7 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 		if v.thread == control.Thread && v.attached.executionPresentation != execution.executionPresentation {
 			n.replacePresentation(v, execution)
 			v.attached.executionPresentation = execution.executionPresentation
-			v.attached.presentation.Attach(sessionpresentation.Thread{ID: control.Thread, Caller: "/root"}, false)
+			v.attached.presentation.Attach(execution.presentation.View().Main, false)
 		}
 		if !v.initial && v.thread != control.Thread {
 			if (!v.startup || v.thread != "") && id != n.replacing || control.Thread == "" {
@@ -345,7 +347,11 @@ func (n *nativeViews) publish(execution *attachedPresentation, control *sessionc
 				n.replacePresentation(v, execution)
 			}
 			v.attached.executionPresentation = execution.executionPresentation
-			v.attached.presentation.Attach(sessionpresentation.Thread{ID: control.Thread, Caller: "/root"}, false)
+			v.attached.presentation.Attach(execution.presentation.View().Main, false)
+		}
+		local, current := execution.presentation.View().Main, v.attached.presentation.View().Main
+		if local.ID == current.ID && local.Caller != current.Caller {
+			v.attached.presentation.RenameCaller(current.Caller, local.Caller)
 		}
 		n.reconcileEffects(v)
 		v.picker.pollPresets()

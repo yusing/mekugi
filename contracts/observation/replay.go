@@ -123,6 +123,7 @@ type FileChange struct {
 // Source is one decoded rollout, before timing synthesis or retained-record joins.
 type Source struct {
 	Thread, Cwd string
+	AgentPath   string // Empty when the native canonical identity is unavailable.
 	Events      []Event
 	Unsupported map[string]int
 	Bytes       int

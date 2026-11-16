@@ -31,6 +31,30 @@ func TestActivityPublicationKeepsMainSkillsImmutable(t *testing.T) {
 	}
 }
 
+func TestActivityPublicationSelectedNativeChildOwnsLocalSummary(t *testing.T) {
+	source := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
+	main := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
+	session := new(Model)
+	session.Attach(Thread{ID: "child", Caller: "/root/worker"}, false)
+	source.Apply(ActivityEvent{Agents: []ActivityAgent{{Name: "/root/worker", Thread: "child"}, {Name: "/root", Thread: "parent"}}})
+	main.Apply(ActivityEvent{Entries: []ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "child answer"}}})
+	main.RestoreSkills("Main", activitypresentation.SkillSet{"commit"})
+	publication := source.Publication(session, main)
+	for _, row := range publication.Roster {
+		agent := row.Agent
+		if agent.Thread == "child" {
+			if len(agent.Summary) != 1 || agent.Summary[0].Text != "child answer" || !slices.Equal(agent.Skills, activitypresentation.SkillSet{"commit"}) {
+				t.Fatalf("selected child lost its local summary or skills: %+v", agent)
+			}
+		} else if len(agent.Summary) != 0 || len(agent.Skills) != 0 {
+			t.Fatalf("parent borrowed child summary or skills: %+v", agent)
+		}
+	}
+	if source.Publication(session, main) != publication {
+		t.Fatal("unchanged child publication was not reused")
+	}
+}
+
 func TestActivityPublicationReusesUnchangedInputs(t *testing.T) {
 	source := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
 	main := &ActivitySource{Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}

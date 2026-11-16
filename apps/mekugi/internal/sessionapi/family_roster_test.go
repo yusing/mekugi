@@ -42,6 +42,53 @@ func TestFamilyRosterKeepsObservedCompaction(t *testing.T) {
 	}
 }
 
+func TestFamilySelectedChildKeepsCanonicalIdentityAndOwnMetrics(t *testing.T) {
+	h := NewHub(t.Context(), nil)
+	parent := activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root", Thread: "parent", ContextKnown: true, ContextTokens: 9000, InputTokens: 319800, OutputTokens: 1900, Roundtrips: 9, Cost: 1.5}}
+	child := activity.Agent{AgentFacts: activity.AgentFacts{Name: "/root/worker", Thread: "child", ContextKnown: true, ContextTokens: 1000, InputTokens: 1234, OutputTokens: 56, Roundtrips: 1, Cost: .01}}
+	root := familyRuntime(h, nil, Frame{Session: Session{Thread: "parent", Caller: "/root"}, Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: parent}, {Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: child.Name, Thread: child.Thread}}}}}, Members: []sessionpresentation.Participant{{Thread: "child", Parent: "parent", Task: "/root/worker"}}})
+	familyRuntime(h, root, Frame{Session: Session{Thread: "child", Caller: "/root/worker"}, Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: child}, {Agent: parent}}}})
+	family, _ := h.Family("child")
+	if family == nil || family.Root != "parent" || len(family.Agents.Roster) != 2 {
+		t.Fatalf("selected child family = %+v", family)
+	}
+	for _, row := range family.Agents.Roster {
+		want := parent
+		if row.Agent.Thread == "child" {
+			want = child
+		}
+		got := row.Agent
+		if got.Name != want.Name || got.ContextTokens != want.ContextTokens || got.InputTokens != want.InputTokens || got.OutputTokens != want.OutputTokens || got.Roundtrips != want.Roundtrips || got.Cost != want.Cost {
+			t.Fatalf("%s family metrics differ from its owner: %+v, want %+v", got.Thread, got, want)
+		}
+	}
+}
+
+func TestFamilyOwnerKeepsSuppliedCanonicalIdentity(t *testing.T) {
+	for _, test := range []struct {
+		name, caller, rowName, want string
+	}{
+		{"root default", "", "", "/root"},
+		{"root identity", "/root", "/root", "/root"},
+		{"independently resumed delegate", "/root/worker", "/root/worker", "/root/worker"},
+		{"retained delegate roster", "", "/root/worker", "/root/worker"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := NewHub(t.Context(), nil)
+			owner := activity.Agent{AgentFacts: activity.AgentFacts{Thread: "owner", Name: test.rowName, ContextKnown: true, ContextTokens: 1000, InputTokens: 1234, OutputTokens: 56}}
+			familyRuntime(h, nil, Frame{Session: Session{Thread: "owner", Caller: test.caller}, Agents: &activity.Publication{Roster: []activity.AgentRow{{Agent: owner}}}})
+			family, _ := h.Family("owner")
+			if family == nil || family.Root != "owner" || len(family.Agents.Roster) != 1 {
+				t.Fatalf("independent family = %+v", family)
+			}
+			got := family.Agents.Roster[0].Agent
+			if got.Name != test.want || got.Thread != "owner" || got.ContextTokens != owner.ContextTokens || got.InputTokens != owner.InputTokens || got.OutputTokens != owner.OutputTokens {
+				t.Fatalf("family ownership replaced native identity or metrics: %+v", got)
+			}
+		})
+	}
+}
+
 func TestUISnapshotFamilyRosterResumedDelegates(t *testing.T) {
 	h := NewHub(t.Context(), nil)
 	frame := Frame{Session: Session{Thread: "root", Caller: "/root"}, Agents: familyActivity("root", "main")}

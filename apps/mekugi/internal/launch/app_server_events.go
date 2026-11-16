@@ -24,9 +24,9 @@ import (
 
 func restoreThreadSettings(session *sessionpresentation.Attachment, info binding.ThreadInfo) {
 	s := session
-	path := s.KnownCaller(info.ID)
-	restoreContextUsage(s.Agent(path), info)
-	if agent := s.Agent(path); !agent.SettingsLive {
+	agent := s.Activity().Agent(info.ID)
+	restoreContextUsage(agent, info)
+	if !agent.SettingsLive {
 		settings := rollout.ResumeSettings(info.ID, info.Path, time.Time{})
 		if model, ok := settings["model"].(string); ok {
 			agent.Settings.Model = model
@@ -116,7 +116,8 @@ func (session *nativeSession) sessionEvent(attached *attachedPresentation, clock
 		if method == "thread/tokenUsage/updated" && p.ThreadID == session.Client.Thread {
 			session.exitUsage = p.TokenUsage.Total
 		}
-		observeCost(session.usage, p.ThreadID, s.Agent(s.Caller(p.ThreadID)))
+		s.Caller(p.ThreadID)
+		observeCost(session.usage, p.ThreadID, s.Activity().Agent(p.ThreadID))
 	}
 	if result.Publish {
 		attached.hooks.deliverActivity(attached.executionPresentation, result.Deliveries)

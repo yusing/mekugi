@@ -88,16 +88,23 @@ func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Ser
 	return a
 }
 
-// startAttachedSession admits the host's root identity without replacing the
+// startAttachedSession admits the host-selected identity without replacing the
 // session scope, its parked input or its borrowed models.
 // Source: apps/mekugi/internal/router/app_server_events.go:23:34@bfd2668c.
 func startAttachedSession(a *attachedPresentation, observations *binding.Observation, thread, workspace string) {
+	name := a.session.KnownCaller(thread)
+	if name == "" {
+		name = "/root"
+		if a.nativeIdentity {
+			name = sessionpresentation.Placeholder(thread)
+		}
+	}
 	a.session.Start(thread)
 	role := a.role
 	if role == "" && !a.nativeIdentity {
 		role = "main"
 	}
-	a.session.Activity().StartRoster(sessionpresentation.ActivityAgent{Thread: thread, Name: "/root", Role: role})
+	a.session.Activity().StartRoster(sessionpresentation.ActivityAgent{Thread: thread, Name: name, Role: role})
 	a.transcript = observations.NewTranscript(a.session.Scope())
 	clear(a.session.Commands())
 	a.cwd = workspace

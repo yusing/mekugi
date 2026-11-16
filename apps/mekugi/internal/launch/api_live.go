@@ -51,7 +51,7 @@ func (w *apiLive) publish(attached *attachedPresentation, control *sessioncontro
 		if view.Version.Attachment != w.attachment {
 			w.main, w.agents, w.attachment = commandFeed{}, commandFeed{}, view.Version.Attachment
 		}
-		caller, role := "/root", ""
+		caller, role := view.Main.Caller, attached.role
 		if attached.threadInput != nil {
 			if attached.threadInput.caller != "" {
 				caller = attached.threadInput.caller
