@@ -133,6 +133,10 @@ artifacts.
 Both commands use the pinned V8 environment; tests inherit the fork's 8 MiB test
 stack default. No cache cleanup is needed between runs.
 
+The native runner honors Cargo's configured target directory, including global
+`build.target-dir` and `CARGO_TARGET_DIR` overrides. V8 downloads and Cargo build
+outputs use that same directory.
+
 Builds and the default native regression suite put executables in `bin/native`;
 packaging puts the archive in `bin/mekugi-native.tar.gz`. `make build-binaries` places the complete client and
 runtime together in `bin/`; `make install` installs both in the Go binary directory.

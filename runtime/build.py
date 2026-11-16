@@ -3,6 +3,7 @@
 
 import argparse
 import io
+import json
 import os
 from pathlib import Path
 import shutil
@@ -46,11 +47,12 @@ def main():
     if target not in {"x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-apple-darwin"}:
         parser.error(f"unsupported native package host: {target}")
     spec = TARGET_SPECS[target]
-    target_dir = Path(os.environ.get("CARGO_TARGET_DIR", str(RUST / "target")))
-    if not target_dir.is_absolute():
-        target_dir = RUST / target_dir
     env = dict(os.environ)
-    env["CARGO_TARGET_DIR"] = str(target_dir)
+    metadata = json.loads(subprocess.check_output(
+        ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1"],
+        cwd=RUST, env=env, text=True,
+    ))
+    target_dir = Path(metadata["target_directory"])
     # Cargo's test loader can find a host-local shared OpenSSL that an extracted
     # package cannot. Link its static archives into both runtime executables.
     env["OPENSSL_STATIC"] = "1"

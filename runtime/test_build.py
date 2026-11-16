@@ -1,6 +1,7 @@
 """Native runner routing checks, without a Rust build or dependency download."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
@@ -16,22 +17,44 @@ spec.loader.exec_module(build)
 
 
 class NativeRunnerTests(unittest.TestCase):
-    def run_action(self, *arguments, stack=None):
+    def run_action(self, *arguments, stack=None, target_config="shared-target", target_env=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             rust = root / "codex-rs"
             rust.mkdir()
-            (rust / "Cargo.lock").touch()
+            (rust / "Cargo.toml").write_text('[package]\nname = "runner-test"\nversion = "0.1.0"\nedition = "2021"\n')
+            (rust / "src").mkdir()
+            (rust / "src/lib.rs").touch()
+            (rust / "Cargo.lock").write_text('version = 4\n\n[[package]]\nname = "runner-test"\nversion = "0.1.0"\n')
+            cargo_home = root / "cargo-home"
+            cargo_home.mkdir()
+            if target_config is not None:
+                (cargo_home / "config.toml").write_text(f'[build]\ntarget-dir = {json.dumps(target_config)}\n')
+            expected_target = Path(target_env) if target_env is not None else (
+                Path(target_config) if target_config is not None else rust / "target"
+            )
+            if not expected_target.is_absolute():
+                # Environment paths are cwd-relative; config paths are relative
+                # to the directory containing CARGO_HOME.
+                expected_target = (rust if target_env is not None else root) / expected_target
             targets = ModuleType("codex_package.targets")
             targets.TARGET_SPECS = {"x86_64-unknown-linux-gnu": SimpleNamespace(is_linux=True)}
             v8 = ModuleType("codex_package.v8")
-            v8.resolve_codex_v8_cargo_env = lambda *_args, **_kwargs: {"RUSTY_V8_ARCHIVE": "pinned-v8"}
-            environment = {"CARGO_TARGET_DIR": str(root / "target"), "BASH_ENV": "hook", "MEKUGI_EXEC_TRACK": "1"}
+            environment = {"PATH": os.environ["PATH"], "CARGO_HOME": str(cargo_home), "BASH_ENV": "hook", "MEKUGI_EXEC_TRACK": "1"}
+            if target_env is not None:
+                environment["CARGO_TARGET_DIR"] = target_env
             if stack is not None:
                 environment["RUST_MIN_STACK"] = stack
             output = root / "output"
             # Wrapper flags precede the separator; Cargo arguments remain untouched.
             argv = ["build.py", arguments[0], "--output", str(output), *arguments[1:]]
+            check_output = build.subprocess.check_output
+
+            def compiler_or_metadata(command, **kwargs):
+                if command[0] == "rustc":
+                    return "host: x86_64-unknown-linux-gnu\n"
+                return check_output(command, **kwargs)
+
             with (
                 patch.object(build, "RUST", rust),
                 patch.object(build, "CODEX", root),
@@ -39,11 +62,22 @@ class NativeRunnerTests(unittest.TestCase):
                 patch.object(sys, "path", sys.path.copy()),
                 patch.dict(os.environ, environment, clear=True),
                 patch.dict(sys.modules, {"codex_package.targets": targets, "codex_package.v8": v8}),
-                patch.object(build.subprocess, "check_output", return_value="host: x86_64-unknown-linux-gnu\n"),
+                patch.object(build.subprocess, "check_output", side_effect=compiler_or_metadata),
+                patch.object(v8, "resolve_codex_v8_cargo_env", create=True, return_value={"RUSTY_V8_ARCHIVE": "pinned-v8"}) as resolve_v8,
                 patch.object(build, "run") as run,
                 patch.object(build.shutil, "copy2") as copy,
             ):
                 build.main()
+                self.assertEqual(resolve_v8.call_args.kwargs["cache_root"], expected_target / "v8-artifacts")
+                for call in run.call_args_list:
+                    self.assertEqual(call.args[1].get("CARGO_TARGET_DIR"), target_env)
+                for call in copy.call_args_list:
+                    if call.args[0].name != "models.json":
+                        profile = run.call_args_list[0].args[0][4]
+                        profile_dir = "debug" if profile == "dev" else profile
+                        self.assertEqual(call.args[0].parent, expected_target / profile_dir)
+                if expected_target != rust / "target":
+                    self.assertFalse((rust / "target").exists())
                 return run.call_args_list, copy.call_count, output.exists()
 
     def test_focused_test_skips_runtime_build_and_preserves_filter(self):
@@ -89,6 +123,17 @@ class NativeRunnerTests(unittest.TestCase):
         calls, copies, _ = self.run_action("build")
         self.assertEqual(calls[0].args[0][:5], ["cargo", "build", "--locked", "--profile", "release"])
         self.assertEqual(copies, 4)
+
+    def test_cargo_target_directory_configuration(self):
+        for config, environment in [
+            ("shared-target", None),
+            ("/configured-target", None),
+            ("shared-target", "relative-override"),
+            ("shared-target", "/environment-target"),
+            (None, None),
+        ]:
+            with self.subTest(config=config, environment=environment):
+                self.run_action("build", target_config=config, target_env=environment)
 
 
 if __name__ == "__main__":
