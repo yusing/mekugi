@@ -15,7 +15,6 @@ var Codex = Bindings{
 			ContextUsage: func(input binding.InstructionInput, admitted binding.ContextUsage) (binding.InstructionUpdate, error) {
 				return projectContextUsage(input, admitted, &service.ContextNotices)
 			},
-			InitialContext:    environmentPrefix,
 			Threads:           projectThreadInstructions,
 			BeforePreparation: beforePreparation,
 			AfterAttachments:  afterAttachments,

@@ -81,9 +81,6 @@ func TestContextUrgentInstructionPreparedRequest(t *testing.T) {
 			if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 				t.Fatal(err)
 			}
-			items = slices.DeleteFunc(items, func(item map[string]jsontext.Value) bool {
-				return strings.HasPrefix(modelresponses.StringField(item, "content"), "<mekugi_environment_facts>")
-			})
 			if test.want == "" {
 				if len(items) != 1 || len(events) != before {
 					t.Fatalf("unexpected repeated milestone: input=%s events=%v", request.Fields["input"], events[before:])

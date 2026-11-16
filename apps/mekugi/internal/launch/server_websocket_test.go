@@ -482,16 +482,6 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 							wantInput = "next"
 						}
 						wantItems := 1
-						if i == 1 {
-							environmentFacts(t, responses.MustMarshalJSON(request))
-							wantItems++
-							if len(warmInput.([]any)) != 0 {
-								// Facts must precede the warmed user context, so that
-								// conversation prefix cannot be reused on first inference.
-								wantParent = ""
-								wantItems++
-							}
-						}
 						if responses.StringField(request, "previous_response_id") != wantParent {
 							t.Errorf("parent = %s", request["previous_response_id"])
 						}

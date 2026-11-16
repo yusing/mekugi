@@ -46,7 +46,6 @@ type Observations struct {
 	contextIdentity   string
 	contextRevision   map[string]uint64
 	contextCompaction map[string]string
-	inputContexts     map[string]*inputContext
 }
 
 // ObserveCompactionContext consumes the request's native context-window identity,
@@ -61,16 +60,8 @@ func (o *Observations) ObserveCompactionContext(thread, reference string) {
 	if o.contextCompaction == nil {
 		o.contextCompaction = make(map[string]string)
 	}
-	current := o.inputContexts[thread]
-	opening := current != nil && current.opening
-	if opening {
-		current.opening = false
-	}
 	if o.contextCompaction[thread] == reference {
 		return
-	}
-	if !opening {
-		delete(o.inputContexts, thread)
 	}
 	o.contextCompaction[thread] = reference
 	if o.contextRevision == nil {
@@ -91,7 +82,6 @@ func (o *Observations) RefreshContext(thread string) {
 		o.contextRevision = make(map[string]uint64)
 	}
 	o.contextRevision[thread]++
-	delete(o.inputContexts, thread)
 }
 
 // ContextIdentity distinguishes live history across reset, rewind and cold resume.

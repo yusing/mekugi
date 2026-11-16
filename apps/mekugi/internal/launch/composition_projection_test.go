@@ -16,7 +16,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -179,10 +178,6 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			}
 			if err := json.Unmarshal(wire, &modelRequest); err != nil {
 				t.Fatal(err)
-			}
-			if !tc.withoutGuidance {
-				environmentFacts(t, wire)
-				modelRequest.Input = slices.Delete(modelRequest.Input, 1, 2)
 			}
 			wantSource, wantRepeat := body, body
 			if tc.projected {

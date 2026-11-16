@@ -17,7 +17,6 @@ import (
 func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) (requestexecution.Prepared, error) {
 	var t *mekugiResponseTransform
 	var err error
-	var prefix *codexresponses.InputPrefix
 	if input.ApprovalReview {
 		if err := p.restoreApprovalReviewContext(ctx, request, input); err != nil {
 			return nil, err
@@ -32,23 +31,7 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 		}
 	}
 	if !input.Prewarm && !input.ApprovalReview && input.MetadataValid && input.Metadata.RequestKind == "turn" && input.Session != "" && input.Thread != "" && !input.Metadata.ActivityIdentityInvalid && (input.Metadata.ThreadID == "" || input.Metadata.ThreadID == input.Thread) {
-		workspace := p.observationDirectory(input.Metadata.Directories, input.Thread)
-		if t != nil {
-			workspace = t.directory
-		}
 		p.Control.ObserveCompactionContext(input.Thread, input.Metadata.ContextWindowID)
-		prefix = p.Control.InputPrefix(input.Session, input.Thread, workspace)
-		if p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.InitialContext != nil {
-			err := prefix.Contribute(request, func() ([]jsonv1.RawMessage, error) {
-				return p.Registry.Guidance.InitialContext(ctx, workspace)
-			})
-			if err != nil {
-				if t != nil {
-					t.Close()
-				}
-				return nil, err
-			}
-		}
 	}
 	if input.MetadataValid && input.Session != "" && input.Thread != "" && !input.Metadata.ActivityIdentityInvalid &&
 		(input.Metadata.ThreadID == "" || input.Metadata.ThreadID == input.Thread) && p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.ContextUsage != nil {
@@ -86,7 +69,6 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 	if t == nil {
 		return nil, nil
 	}
-	t.inputPrefix = prefix
 	if input.MetadataValid && !t.generationOnly {
 		observeReview(p.Review, t.directory, t.threadID, input.Metadata)
 		if !input.Automatic {
@@ -108,11 +90,6 @@ func (p *Preparer) AdmitFork(source, thread, workspace string) {
 		return
 	}
 	p.Review.IncludeThread(directory, thread, false)
-	p.Control.ForkInputPrefix(source, thread, directory)
-}
-
-func (t *mekugiResponseTransform) FreezeInputPrefix(request *codexresponses.Request) error {
-	return t.inputPrefix.Freeze(request)
 }
 
 func (t *mekugiResponseTransform) Usage() *accounting.Observation { return t.usageTracker }

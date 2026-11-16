@@ -53,11 +53,6 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				if responses.StringField(request, "instructions") != warmedInstructions {
 					t.Error("continuation changed or lost base workflow")
 				}
-				if id == "turn" {
-					environmentFacts(t, responses.MustMarshalJSON(request))
-				} else if bytes.Contains(request["input"], []byte("mekugi_environment_facts")) {
-					t.Error("continuation resent the confirmed environment prefix")
-				}
 			}
 			var input []json.RawMessage
 			_ = json.Unmarshal(request["input"], &input)
@@ -87,7 +82,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				if !responses.SameJSONValue(warmedTools, request["tools"]) {
 					t.Error("first turn changed the warmed tool catalog")
 				}
-				if responses.StringField(request, "previous_response_id") != "warm" || len(input) != 2 {
+				if responses.StringField(request, "previous_response_id") != "warm" || len(input) != 1 {
 					t.Errorf("first turn discarded warmed prefix: parent=%q items=%d", responses.StringField(request, "previous_response_id"), len(input))
 				}
 			case "next", "astra", "astra-next":

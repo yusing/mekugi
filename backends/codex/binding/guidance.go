@@ -1,7 +1,6 @@
 package binding
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 
@@ -39,7 +38,6 @@ type FrontendGuidance struct {
 // invocation-immutable; the application owns request copies and catalog indexing.
 type Guidance struct {
 	ContextUsage      func(InstructionInput, ContextUsage) (InstructionUpdate, error)
-	InitialContext    func(context.Context, string) ([]json.RawMessage, error)
 	Threads           func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
 	BeforePreparation func(InstructionInput) (InstructionUpdate, error)
 	AfterAttachments  func(InstructionInput, bool) (InstructionUpdate, error)

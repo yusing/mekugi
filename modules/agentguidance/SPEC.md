@@ -17,8 +17,8 @@ Assemble contributed frontend guidance and project explicit omissions and select
 
 Mekugi preserves the caller's base `instructions` value and every system or developer message,
 except for complete explicit omission blocks and the
-marked Mekugi workflow section appended to base instructions. Its owned environment
-supplement is projected separately after static instructions as described below.
+marked Mekugi workflow section appended to base instructions. The native runtime owns
+the environment supplement described below, independently of Go guidance projection.
 Native child preparation and model/role owners assemble coordination guidance and
 admitted identity directly. Agent Guidance does not rewrite stock collaboration
 text into another tool interface; custom instructions and effective mode text
@@ -132,7 +132,7 @@ examples remain unchanged; Codex still owns its selection and execution.
 
 ## Environment snapshot
 
-Agent Guidance supplements Codex's native environment context with a snapshot-reuse hint,
+The native runtime includes in its existing environment context a snapshot-reuse hint,
 platform and OS identity/version, kernel release, the current user's home directory, and an explicitly observed
 Git snapshot. The home directory comes from the platform's user-home environment and remains
 explicitly unavailable when it cannot be resolved; it does not depend on workspace or Git discovery.
@@ -149,24 +149,18 @@ branches exist, the count of further unpushed commits are included. Hooks config
 status excludes file use the applicable Git configuration scopes; other facts remain
 configuration-isolated. Git account identity, email and remote URLs are excluded. Unavailable facts and truncation are explicit; acquisition neither
 fetches nor mutates a repository and optional failures do not block inference.
-The supplement is a developer input after the leading static instructions and
-before the first user or conversation item. It never splits tool/result history.
-Refresh removes inherited copies from base instructions and developer text before
-inserting the current snapshot once. Static contents, native conversation items
-and tool/result history boundaries remain intact; ordinary continuations reuse
-the confirmed provider prefix.
-
-Acquisition is a stateless contribution to the
-[frozen initial input prefix](../../apps/mekugi/internal/requestexecution/SPEC.md#initial-input-prefix),
-against the admitted execution workspace before generating inference. That owner supplies
-context, fork and reset lifetime; the environment producer has no inheritance or refresh
-policy. Same-workspace inherited contributions retain their original observation time;
-fresh contexts and changed workspaces acquire new facts. Prewarm acquires nothing.
-Native cwd, execution shell, date/timezone, child role and permission context remain
-authoritative.
+The facts render inside the existing native `ENVIRONMENT_CONTEXT`, using its normal
+initial placement and context-update path. They never split tool/result history.
+Existing native history and world-state persistence retain the observation
+for same-workspace inherited context. Fresh contexts, reset windows and changed
+workspaces obtain current facts; ordinary continuations reuse the recorded facts.
+Workspace changes use the native context-update path without rewriting earlier
+conversation or tool/result history. There is no Go contribution or replacement
+prefix freezer. Native cwd, execution shell, date/timezone, child role and permission
+context remain authoritative. Prewarm acquires nothing.
 
 Codex process construction establishes the invocation-local `MEKUGI_ENVIRONMENT_FACTS=1`
-capability only when this supplement owner is installed, discarding inherited values. Native
+capability only when the native environment owner is installed, discarding inherited values. Native
 hooks observe the app-server environment; native tool-process construction removes this capability
 after caller overrides without changing unrelated shell policy. Each Mekugi child establishes
 its own capability. Standalone Codex launched from a tool shell keeps its original hook context.

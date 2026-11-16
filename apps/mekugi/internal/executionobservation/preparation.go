@@ -94,7 +94,6 @@ type mekugiTranslationState struct {
 type mekugiResponseTransform struct {
 	owners           *Preparer
 	compactReload    jsonv1.RawMessage
-	inputPrefix      *codexresponses.InputPrefix
 	generation       sessioncontrol.Generation
 	generationOnly   bool
 	toolTrace        requestexecution.Trace
@@ -215,9 +214,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	if metadataValid && metadata.RequestKind == responseevents.Compaction {
 		if err := codexresponses.ValidateCompaction(request, metadata); err != nil {
 			return nil, err
-		}
-		if !prewarm {
-			p.Control.PreparingContextReset(threadID)
 		}
 		if err := p.observeCompactionInput(ctx, request, sessionID, threadID, metadata); err != nil {
 			if _, incompatible := errors.AsType[*inferencegateway.CompatibilityError](err); incompatible {

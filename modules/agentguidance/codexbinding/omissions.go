@@ -37,11 +37,5 @@ func beforePreparation(input binding.InstructionInput) (binding.InstructionUpdat
 		}
 		return content, textChanged, nil
 	})
-	if err != nil {
-		return request, err
-	}
-	cleaned, err := stripEnvironment(request.InstructionInput)
-	cleaned.InstructionsChanged = cleaned.InstructionsChanged || request.InstructionsChanged
-	cleaned.InputChanged = cleaned.InputChanged || request.InputChanged
-	return cleaned, err
+	return request, err
 }

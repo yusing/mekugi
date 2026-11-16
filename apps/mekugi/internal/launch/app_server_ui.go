@@ -1397,13 +1397,9 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				}
 			}
 			restoreContextUsage(attached.session.Activity().Agent(session.Client.Thread), result.Thread)
-			if method == "thread/revert" {
-				session.controlObservations.RewindContext(result.Thread.ID, result.Thread.Cwd)
-			} else {
-				session.controlObservations.RefreshContext(result.Thread.ID)
-				if method == "thread/fork" && session.preparer != nil {
-					session.preparer.AdmitFork(forkSource, result.Thread.ID, result.Thread.Cwd)
-				}
+			session.controlObservations.RefreshContext(result.Thread.ID)
+			if method == "thread/fork" && session.preparer != nil {
+				session.preparer.AdmitFork(forkSource, result.Thread.ID, result.Thread.Cwd)
 			}
 			if session.connection == nil {
 				restoreCompactionMetrics(&attached.session, result.Thread)

@@ -47,7 +47,6 @@ func TestWorkflowInstructionsProviderDelivery(t *testing.T) {
 			if tc.name == "refresh" {
 				want += "trailing policy"
 			}
-			environmentFacts(t, provider.forwarded[0])
 			actual := responses.StringField(got.Fields, "instructions")
 			if actual != want {
 				t.Fatal("provider changed caller or workflow instruction bytes")
@@ -90,7 +89,6 @@ func TestWorkflowInstructionsExecutionFree(t *testing.T) {
 	if err := json.Unmarshal(provider.forwarded[0], &got); err != nil {
 		t.Fatal(err)
 	}
-	environmentFacts(t, provider.forwarded[0])
 	base := responses.StringField(got, "instructions")
 	if base != "Caller-owned policy." || bytes.Contains(provider.forwarded[0], []byte("mekugi-workflow")) {
 		t.Fatal("execution-free request gained workflow instructions")

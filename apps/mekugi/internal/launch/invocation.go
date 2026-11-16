@@ -418,7 +418,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	}
 	cmd.Args = append(cmd.Args, overrides...)
 	cmd.Dir = workspace
-	cmd.Env = append(slices.DeleteFunc(codexEnvironmentCapability(environment, guidance != nil && guidance.InitialContext != nil), func(entry string) bool {
+	cmd.Env = append(slices.DeleteFunc(codexEnvironmentCapability(environment), func(entry string) bool {
 		return strings.HasPrefix(entry, shellhook.Environment+"=")
 	}), "MEKUGI_BASE_URL="+baseURL)
 	if threads.sourceSocket != "" {
