@@ -298,8 +298,11 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				failure = "initial native catalog omitted parameter: " + field
 			}
 		}
-		if !bytes.Contains(body, []byte(`"name":"new_context"`)) || strings.Contains(catalog, "collaboration__compact(args:") || strings.Contains(catalog, "collaboration tools cannot be called from inside") {
+		if !bytes.Contains(body, []byte(`"name":"new_context"`)) || strings.Contains(catalog, "collaboration__compact(args:") {
 			failure = "native catalog lost direct reset or advertised the retired calling convention"
+		}
+		if bytes.Contains(body, []byte("collaboration tools cannot be called from inside")) || bytes.Contains(body, []byte("All agents use the same current working directory.")) {
+			failure = "native agent guidance contradicts JavaScript tool calls or child cwd"
 		}
 		modeAt := strings.LastIndex(string(body), "<multi_agent_mode>")
 		wantMode := "Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask"
