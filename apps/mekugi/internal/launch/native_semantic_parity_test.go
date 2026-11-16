@@ -10,19 +10,118 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	"github.com/yusing/mekugi/providers/openai"
 )
+
+func TestNativePredictionForkPreservesInheritedConfiguration(t *testing.T) {
+	if os.Getenv("MEKUGI_TEST_PREDICTION_HOST") == "1" {
+		decoder, encoder := jsontext.NewDecoder(os.Stdin), jsontext.NewEncoder(os.Stdout)
+		for {
+			var request struct {
+				ID     jsontext.Value `json:"id"`
+				Method string         `json:"method"`
+				Params jsontext.Value `json:"params"`
+			}
+			if err := json.UnmarshalDecode(decoder, &request); err != nil {
+				if !errors.Is(err, io.EOF) {
+					t.Fatal(err)
+				}
+				os.Exit(0)
+			}
+			if len(request.ID) == 0 {
+				continue
+			}
+			if request.Method == "thread/fork" {
+				// Echo the received wire envelope, not the caller's pre-transport map.
+				if err := json.MarshalEncode(encoder, map[string]any{"method": "fixture/predictionFork", "params": request.Params}); err != nil {
+					t.Fatal(err)
+				}
+				continue
+			}
+			result := jsontext.Value(`{}`)
+			if request.Method == "thread/start" {
+				cwd, err := os.Getwd()
+				if err != nil {
+					t.Fatal(err)
+				}
+				result, err = json.Marshal(map[string]any{"thread": map[string]any{"id": "main", "cwd": cwd}})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if request.Method == "thread/resume" {
+				result = jsontext.Value(`{"thread":{"id":"main","turns":[{"id":"source","status":"completed"}]},"model":"gpt-6-astra","modelProvider":"openai"}`)
+			}
+			if err := json.MarshalEncode(encoder, map[string]any{"id": request.ID, "result": result}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	t.Setenv(shellhook.Environment, "")
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	u, _ := newAppServerTestUI()
+	session := &u.nativeSession
+	session.ctx = ctx
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNativePredictionForkPreservesInheritedConfiguration$")
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(), "MEKUGI_TEST_PREDICTION_HOST=1")
+	// Production startup must install every request policy before prediction begins.
+	_, err := session.start(testPreferences(), cmd, nil, nil, false, "", nil, sessionapi.NewLive(), false, &threadExecution{setup: &threadSetup{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		for _, endpoint := range session.connection.endpoints {
+			if err := endpoint.finish(nil); err != nil {
+				t.Error(err)
+			}
+		}
+		if err := session.Client.Host.Shutdown(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if err := session.Client.Requests.StartPrediction(&sessioncontrol.Prediction{SourceThread: "main", SourceTurn: "source"}); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("prediction fork did not reach the host:", ctx.Err())
+		case message, ok := <-session.Client.Host.Messages:
+			if !ok {
+				t.Fatal("prediction host disconnected")
+			}
+			if message.Method == "fixture/predictionFork" {
+				var params map[string]any
+				if err := json.Unmarshal(message.Params, &params); err != nil {
+					t.Fatal(err)
+				}
+				if params["threadId"] != "main" || params["experimentalPredictionMode"] != true || params["ephemeral"] != true || params["excludeTurns"] != true || params["threadSource"] != "composer_predictions" || len(params) != 5 {
+					t.Fatalf("prediction fork changed inherited configuration or lost prediction semantics: %s", message.Params)
+				}
+				return
+			}
+			if err := session.connection.message(message); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
 
 func TestNativePredictionProducerEligibility(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
