@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/guidance"
-	"github.com/yusing/mekugi/modules/agentguidance/contextnotice"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -15,7 +14,6 @@ type Service struct {
 	Changes           changes.Service
 	History           *history.Service
 	NativeSkills      func(context.Context, string) (map[string][]string, error)
-	ContextNotices    contextnotice.Store
 	ChildReplySummary bool
 	Sections          map[string]string
 }

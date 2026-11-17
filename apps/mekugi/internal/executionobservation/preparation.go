@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/contracts/observation"
-
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -43,7 +41,6 @@ const applyPatchToolName = "apply_patch"
 type Config struct {
 	ProgressSnapshot   func(string) *changepresentation.ReviewView
 	ContextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
-	Inspect            func(context.Context, string) (observation.SessionDetails, error)
 	Registry           *frontends.Registry
 	InputProjections   []binding.InputProjection
 	Usage              *accounting.Service
@@ -60,7 +57,6 @@ type Config struct {
 	Recovery           *recovery.Service
 	PublishChanges     func([]changes.Update)
 	Notice             func(string, string, string, string)
-	Event              func(string, string, string, string)
 }
 
 // New binds request preparation to the composed owners without acquiring resources.

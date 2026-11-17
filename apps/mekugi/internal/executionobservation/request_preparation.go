@@ -4,7 +4,6 @@ import (
 	"context"
 	jsonv1 "encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -32,31 +31,6 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 	}
 	if !input.Prewarm && !input.ApprovalReview && input.MetadataValid && input.Metadata.RequestKind == "turn" && input.Session != "" && input.Thread != "" && !input.Metadata.ActivityIdentityInvalid && (input.Metadata.ThreadID == "" || input.Metadata.ThreadID == input.Thread) {
 		p.Control.ObserveCompactionContext(input.Thread, input.Metadata.ContextWindowID)
-	}
-	if input.MetadataValid && input.Session != "" && input.Thread != "" && !input.Metadata.ActivityIdentityInvalid &&
-		(input.Metadata.ThreadID == "" || input.Metadata.ThreadID == input.Thread) && p.Registry != nil && p.Registry.Guidance != nil && p.Registry.Guidance.ContextUsage != nil {
-		admitted := binding.ContextUsage{Session: input.Session, Thread: input.Thread, FreshInput: input.FreshInput}
-		if !input.Prewarm && !input.ApprovalReview && input.Metadata.RequestKind == "turn" && !input.Automatic && p.Inspect != nil {
-			if details, err := p.Inspect(ctx, input.Thread); err == nil && details.ContextTokens != nil && details.ContextWindow != nil {
-				admitted.Tokens, admitted.Window = *details.ContextTokens, *details.ContextWindow
-				if details.Compactions != nil {
-					admitted.Compactions = *details.Compactions
-				}
-			}
-		}
-		admitted.Notify = func(text string) {
-			if p.Event != nil {
-				p.Event(input.Session, input.Thread, fmt.Sprintf("context-usage:%d:%s", admitted.Compactions, text), text)
-			}
-		}
-		if err := requestexecution.ProjectInstructions(request, func(text binding.InstructionInput) (binding.InstructionUpdate, error) {
-			return p.Registry.Guidance.ContextUsage(text, admitted)
-		}); err != nil {
-			if t != nil {
-				t.Close()
-			}
-			return nil, err
-		}
 	}
 	if t == nil && !input.Prewarm && !input.ApprovalReview && input.MetadataValid && input.Metadata.RequestKind == "turn" {
 		// Execution-free turns retain native payloads but still publish message

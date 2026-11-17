@@ -58,7 +58,6 @@ import (
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/persistence"
 
@@ -278,7 +277,6 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	}
 	review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
 	defer review.Close()
-	var inspect func(context.Context, string) (observation.SessionDetails, error)
 	contextAttachments := func(ctx context.Context, thread, window string) (composer.AttachmentSnapshot, error) {
 		runtime, err := threads.Runtime(thread)
 		if err != nil {
@@ -290,14 +288,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 		}
 		return reader.ContextAttachments(ctx, thread, window)
 	}
-	inspect = func(ctx context.Context, thread string) (observation.SessionDetails, error) {
-		runtime, err := threads.Runtime(thread)
-		if err != nil {
-			return observation.SessionDetails{}, err
-		}
-		return runtime.Inspect(ctx, thread)
-	}
-	mekugiCalls = executionobservation.New(executionobservation.Config{ProgressSnapshot: threads.hub.ProgressSnapshot, Inspect: inspect, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, Event: issues.AddThreadEvent, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+	mekugiCalls = executionobservation.New(executionobservation.Config{ProgressSnapshot: threads.hub.ProgressSnapshot, Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 	mekugiCalls.ContextAttachments = contextAttachments
 	if segments.Live != nil {
 		if err := segments.Live.RegisterBoundary(mekugiCalls.ObserveNativeBoundary); err != nil {

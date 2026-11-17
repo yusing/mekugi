@@ -959,6 +959,12 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			return err
 		}
 		if event.Thread == session.Client.Thread {
+			for i, kind := range event.Item.Metadata.Kinds {
+				if strings.HasPrefix(kind, "context_usage.notice.") && event.Item.Role == "developer" && i < len(event.Item.Content) {
+					text := event.Item.Content[i].Text
+					session.issues.AddThreadEvent("", event.Thread, "context-usage:"+event.Item.ID+":"+event.Turn+":"+kind, text)
+				}
+			}
 			publishNativeCoordination(attached, event.Thread, event.Turn, event.Item, event.Coordination, presentationTime(clock))
 			if entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(attached.cwd, event.Thread, event.Turn, event.SourceAcquisition, presentationTime(clock)); ok {
 				entry.Seq = attached.session.Activity().NextSequence()

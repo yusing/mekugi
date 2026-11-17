@@ -1,106 +1,36 @@
 package launch
 
 import (
-	"context"
-	"encoding/json/jsontext"
-	json "encoding/json/v2"
 	"io"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/contracts/observation"
-	modelresponses "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
-// Exercise the admitted request's milestone and invocation notice queue together.
-func queueContextWarning(t *testing.T, issues *requestexecution.Failures, thread string) {
+// Deliver the native typed notice through the ordinary app-server message consumer.
+func queueContextWarning(t *testing.T, u *appServerUI, thread string) {
 	t.Helper()
-	tokens, window := uint64(600), uint64(1000)
-	preparer := executionobservation.New(executionobservation.Config{
-		Registry: sharedProxyTestRegistry(t), Control: new(sessioncontrol.Observations), Event: issues.AddThreadEvent,
-		Inspect: func(context.Context, string) (observation.SessionDetails, error) {
-			return observation.SessionDetails{ContextTokens: &tokens, ContextWindow: &window}, nil
+	appServerTestNotify(t, u, "rawResponseItem/completed", map[string]any{
+		"threadId": thread, "turnId": "turn", "item": map[string]any{
+			"type": "message", "role": "developer",
+			"content": []map[string]string{{"type": "input_text", "text": "Mekugi context usage: 60% (600/1000 tokens)."}},
+			"internal_chat_message_metadata_passthrough": map[string]any{"content_item_kinds": []string{"context_usage.notice.60"}},
 		},
 	})
-	request := &responses.Request{Fields: map[string]jsontext.Value{"input": jsontext.Value(`[{"role":"user","content":"continue"}]`)}}
-	prepared, err := preparer.Prepare(t.Context(), request, requestexecution.Preparation{Session: t.Name(), Thread: thread, MetadataValid: true, Metadata: responses.TurnMetadata{RequestKind: "turn"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared != nil {
-		prepared.Close()
-	}
-}
-
-func TestContextUrgentInstructionPreparedRequest(t *testing.T) {
-	var tokens, compactions uint64
-	window := uint64(1000)
-	var events []string
-	preparer := executionobservation.New(executionobservation.Config{
-		Registry: sharedProxyTestRegistry(t), Control: new(sessioncontrol.Observations),
-		Event: func(_, _, _, text string) { events = append(events, text) },
-		Inspect: func(context.Context, string) (observation.SessionDetails, error) {
-			return observation.SessionDetails{ContextTokens: &tokens, ContextWindow: &window, Compactions: &compactions}, nil
-		},
-	})
-	for _, test := range []struct {
-		name                string
-		tokens, compactions uint64
-		input, want         string
-	}{
-		{"below", 899, 0, `[{"role":"user","content":"continue"}]`, "Mekugi context usage: 89% (899/1000 tokens)."},
-		{"threshold", 900, 0, `[{"type":"function_call_output","call_id":"call","output":"done"}]`, "Mekugi context usage: 90% (900/1000 tokens). You must compact now."},
-		{"already emitted", 950, 0, `[{"type":"function_call_output","call_id":"next","output":"done"}]`, ""},
-		{"reset", 0, 1, `[{"role":"user","content":"after compaction"}]`, ""},
-		{"above after reset", 950, 1, `[{"role":"user","content":"continue after compaction"}]`, "Mekugi context usage: 95% (950/1000 tokens). You must compact now."},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			tokens, compactions = test.tokens, test.compactions
-			before := len(events)
-			request := &responses.Request{Fields: map[string]jsontext.Value{"input": jsontext.Value(test.input)}}
-			prepared, err := preparer.Prepare(t.Context(), request, requestexecution.Preparation{Session: "session", Thread: "main", MetadataValid: true, Metadata: responses.TurnMetadata{RequestKind: "turn"}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if prepared != nil {
-				prepared.Close()
-			}
-			var items []map[string]jsontext.Value
-			if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
-				t.Fatal(err)
-			}
-			if test.want == "" {
-				if len(items) != 1 || len(events) != before {
-					t.Fatalf("unexpected repeated milestone: input=%s events=%v", request.Fields["input"], events[before:])
-				}
-				return
-			}
-			if len(items) != 2 || modelresponses.StringField(items[1], "role") != "developer" || modelresponses.StringField(items[1], "content") != "<system-reminder>\n"+test.want+"\n</system-reminder>" {
-				t.Fatalf("model-facing milestone: %s", request.Fields["input"])
-			}
-			if !slices.Equal(events[before:], []string{test.want}) {
-				t.Fatalf("progress differs from model instruction: %v", events[before:])
-			}
-		})
-	}
 }
 
 func TestUISnapshotContextEventReachesTerminal(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Client.Thread = t.Name()
-	queueContextWarning(t, u.issues, u.Client.Thread)
+	queueContextWarning(t, u, u.Client.Thread)
 	delivery := applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 	if delivery == nil || u.attached.feedback.Text != "" || len(u.attached.source.Entries) != 1 {
 		t.Fatalf("context event missing from the transcript or shown as composer feedback: %+v", u.attached.feedback)
@@ -135,7 +65,7 @@ func TestUISnapshotContextEventReachesTerminal(t *testing.T) {
 func TestNativeContextEventReceiptRequiresItsVisibleRow(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	queueContextWarning(t, u.issues, u.Thread)
+	queueContextWarning(t, u, u.Thread)
 	claim := func() *nativeCriticalNoticeDelivery {
 		return applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, u.audience, u.issues)
 	}
@@ -217,7 +147,7 @@ func TestNativeContextEventReceiptRequiresItsVisibleRow(t *testing.T) {
 func TestNativeContextEventSurvivesFeedTrim(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	queueContextWarning(t, u.issues, u.Thread)
+	queueContextWarning(t, u, u.Thread)
 	delivery := applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, "", "", &u.restoring, &u.side, u.audience, u.issues)
 	original := delivery.entries[0]
 	entries := make([]sessionpresentation.ActivityEntry, activitypresentation.FeedLimit)

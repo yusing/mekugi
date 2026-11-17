@@ -12,9 +12,6 @@ var Codex = Bindings{
 	Frontends: true,
 	Guidance: func(service *policy.Service) binding.Guidance {
 		return binding.Guidance{
-			ContextUsage: func(input binding.InstructionInput, admitted binding.ContextUsage) (binding.InstructionUpdate, error) {
-				return projectContextUsage(input, admitted, &service.ContextNotices)
-			},
 			Threads:           projectThreadInstructions,
 			BeforePreparation: beforePreparation,
 			AfterAttachments:  afterAttachments,
