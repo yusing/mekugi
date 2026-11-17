@@ -352,7 +352,7 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 		i.Server, i.Arguments, i.Result, i.Error = p.Server, p.Arguments, p.Result, p.Error
 	case "functionCallOutput":
 		// Historical standalone wakes are presentation evidence, not live work.
-		if p.Namespace != "threadcontrol" || p.Name != "wait_agent" && p.Name != "compact" {
+		if !(p.Namespace == "threadcontrol" && (p.Name == "wait_agent" || p.Name == "compact") || p.Namespace == "context" && (p.Name == "attachments" || p.Name == "preload")) {
 			return i, false, nil
 		}
 		i.Server, i.Tool, i.Result = p.Namespace, p.Name, p.ToolOutput

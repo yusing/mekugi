@@ -18,6 +18,9 @@ type ThreadItem struct {
 	ID               string                       `json:"id"`
 	ClientID         string                       `json:"clientId"` // userMessage: the submission's clientUserMessageId.
 	Type             string                       `json:"type"`
+	Name             string                       `json:"name"`
+	Namespace        string                       `json:"namespace"`
+	Output           jsontext.Value               `json:"output"`
 	Text             string                       `json:"text"`
 	Summary          []string                     `json:"summary"`
 	Command          string                       `json:"command"`

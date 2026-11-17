@@ -124,9 +124,8 @@ func (p *Preparer) readCompact(ctx context.Context, reference string) (compact.R
 
 // Prewarm projects immutable history without publishing a scope or running readers.
 type compactPreparation struct {
-	reader  jsontext.Value
-	calls   map[string]bool
-	sources []compact.SourceIdentity
+	reader jsontext.Value
+	calls  map[string]bool
 }
 
 func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata, prewarm bool) (compactPreparation, error) {
@@ -152,7 +151,6 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		return compactPreparation{}, err
 	}
 	var pending jsontext.Value
-	var explicit []compact.SourceIdentity
 	var contextReference string
 	readCalls := make(map[string]bool)
 	for _, item := range items {
@@ -164,8 +162,6 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 		if err != nil {
 			return compactPreparation{}, err
 		}
-		sources, _ := compact.ReloadSources(record.Selection)
-		explicit = append(explicit, sources...)
 		contextReference = record.Reference
 		call, calls, callErr := compactReaderCall(record, items, thread)
 		for _, id := range calls {
@@ -201,7 +197,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 	}
 	if prewarm {
 		request.Fields["input"], err = json.Marshal(items)
-		return compactPreparation{calls: readCalls, sources: explicit}, err
+		return compactPreparation{calls: readCalls}, err
 	}
 	release()
 	ctx, release, err = beginRetainedSession(ctx, p.Retained.Store, p.Retained.Writes, p.Retained.Limits, thread, session)
@@ -221,7 +217,7 @@ func (p *Preparer) prepareCompactInput(ctx context.Context, request *codexrespon
 	if err == nil && metadata.RequestKind == responses.Turn && metadata.ContextWindowID == "" {
 		p.Control.ObserveCompactionContext(thread, contextReference)
 	}
-	return compactPreparation{reader: pending, calls: readCalls, sources: explicit}, err
+	return compactPreparation{reader: pending, calls: readCalls}, err
 }
 
 // Only the provider view changes. Host history and observation retain the exact
@@ -342,7 +338,7 @@ func compactReaderCall(record compact.Record, items []map[string]jsontext.Value,
 
 // Hydrate only authenticated completed reload results. Original host history and
 // its short retained reference remain untouched for observation and replay.
-func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, calls map[string]bool, thread string, metadata codexresponses.TurnMetadata, publish bool, optional *attachmentPreparation) (map[string]jsontext.Value, error) {
+func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, calls map[string]bool, thread string, metadata codexresponses.TurnMetadata, publish bool) (map[string]jsontext.Value, error) {
 	outputs := make(map[string]jsontext.Value)
 	if len(calls) == 0 && !bytes.Contains(input, []byte(compact.SnapshotPrefix)) {
 		return outputs, nil
@@ -437,13 +433,7 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 				continue
 			}
 			reloads = append(reloads, activity.ReloadSource{Command: command, Path: selected[i].Path, Skill: selected[i].Skill, Changes: strings.Join(selected[i].Changes, " "), ExitCode: new(source.ExitCode)})
-			if !optional.calls[id] {
-				parts = append(parts, map[string]string{"type": "input_text", "text": source.Text()})
-			}
-		}
-		if optional.calls[id] {
-			optional.skills = &captured
-			parts = nil
+			parts = append(parts, map[string]string{"type": "input_text", "text": source.Text()})
 		}
 		outputs[id] = responses.MustMarshalJSON(parts)
 		if publish && metadata.RequestKind == responses.Turn {

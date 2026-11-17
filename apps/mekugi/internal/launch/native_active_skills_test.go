@@ -3,6 +3,7 @@ package launch
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/testsupport/moduletest"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -20,7 +20,7 @@ import (
 func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 	const thread = "main"
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(composer.SkillFrames("council", "/work/council/SKILL.md", "# Council\n"))}})
+	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(moduletest.SkillFrames("council", "/work/council/SKILL.md", "# Council\n"))}})
 	info := binding.ThreadInfo{ID: thread, Cwd: u.attached.cwd, AgentNickname: "worker", AgentRole: "worker", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{
 		{ID: "old", Type: "commandExecution", Command: "skills-mgr get old", ExitCode: new(0)},
 		{ID: "boundary", Type: "contextCompaction"},

@@ -123,16 +123,13 @@ idempotent projection applies to ordinary, prewarm, execution-free, and replayed
 messages without modifying Codex configuration files. When `skills-mgr` is unavailable,
 selected-skill messages remain unchanged.
 
-Native-composer file and skill frames identify their supplied content as reusable
-read context, so agents need only read sources for edits or missing/newer content.
-Skill snapshots provide the actual selected instructions through the attachment
-projection, resolving managed metadata placeholders through `skills-mgr` even for
-user-invoked skills omitted from its model catalog. Matching standalone Codex skill
-injections, including compact name references, are omitted from provider input only
-when a successful snapshot supplies that source's instructions. Native matches retain the metadata
-path; managed snapshots take precedence by name. Omission notices do not suppress
-Codex's available instructions. Unrelated messages and quoted
-examples remain unchanged; Codex still owns its selection and execution.
+Native source outputs identify their bodies as reusable read context. Accepted
+user references use the same native reader as preload and reload, separately from
+user-authored text. Matching textual skill references use that reader rather than
+also loading a stock skill prompt; failures retain explicit source diagnostics.
+Managed metadata placeholders resolve through `skills-mgr`, including user-invoked
+skills omitted from its model catalog. Go does not read file or skill bodies during
+submission or provider forwarding.
 
 ## Environment snapshot
 
@@ -245,15 +242,16 @@ for managed skills. Only selected rows are scanned, never omitted rows or captur
 diffs. The root counts as depth 1; references beyond depth 3 retain visible errors.
 Host-owned `AGENTS.md` stays excluded at every depth. Nested results remain inside
 the root's retained result with command identities and failure status, using the
-same permissions, approvals, byte budget and immutable reload/preload snapshot.
+same native access and acquisition bounds.
 
 Source acquisition uses the receiving native permissions. A denied or failed
 source does not prevent the others from completing. Native reset retains completed
 source bodies and diagnostics as tool data in replacement history, without a Go
 reload command, synthetic provider calls or provider-side expansion. Delegate preload,
-message and completion acquisition retain frozen bodies and diagnostics, not instructions
-to reread their paths. Successful whole-source identities suppress optional attachment
-reacquisition; failed or partial reads do not. One introduction identifies the bodies as
+accepted user input retain bodies and diagnostics, not instructions
+to reread their paths. A later accepted input acquires its named sources again;
+continuation and resume do not. Final-answer acquisition selects captured changes,
+not another file or skill read. One introduction identifies the bodies as
 reusable read context.
 Inference waits for terminal acquisition and never receives accumulated partial
 results. Publication failures remain explicit. Source rows participate in ordinary
@@ -316,7 +314,6 @@ record kind in the shared retained-session store; captured sources use output
 recovery records. Its binding
 registers early omission filtering, late selected-skill projection, frontend assembly, and marked-description and base-workflow replacement.
 Omissions run before preparation, including compaction and execution-free requests.
-Attachment matching precedes selected-skill compaction.
 Projection errors stop forwarding. With zero guidance contributions, the module
 still handles its instruction policies and descriptions of selected commands.
 Removing the module removes its reload helper, projections and assembly; other

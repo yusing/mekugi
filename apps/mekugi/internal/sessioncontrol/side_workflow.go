@@ -200,7 +200,7 @@ func (r *Requests[T]) StartSide(s *Side, main SideMain, now time.Time) (SideUpda
 	if main.Input != nil {
 		id, turn = main.Input.ID, main.Input.Turn
 	}
-	input, err := s.prepareInput(&s.Pending.Draft, id, turn == "")
+	input, err := s.prepareInput(&s.Pending.Draft, turn == "")
 	if err != nil {
 		return s.fail(err.Error()), nil
 	}
@@ -586,7 +586,7 @@ func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversation
 	}
 	var owner T
 	submission := rand.Text()
-	prepared, err := s.prepareInput(&input.Draft, submission, turn == "")
+	prepared, err := s.prepareInput(&input.Draft, turn == "")
 	if err != nil {
 		return SideUpdate{Handled: true, Side: s, Restore: input, Notice: err.Error(), NoticeError: true}, nil
 	}
@@ -607,10 +607,7 @@ func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversation
 	return SideUpdate{}, nil
 }
 
-func (s *Side) prepareInput(draft *composer.Draft, id string, scoped bool) ([]map[string]any, error) {
-	if err := draft.IdentifyAttachments(id); err != nil {
-		return nil, err
-	}
+func (s *Side) prepareInput(draft *composer.Draft, scoped bool) ([]map[string]any, error) {
 	var input []map[string]any
 	if scoped {
 		input = s.input(*draft)
@@ -622,7 +619,7 @@ func (s *Side) prepareInput(draft *composer.Draft, id string, scoped bool) ([]ma
 		text, _ := part["text"].(string)
 		textBytes += len(text)
 	}
-	if (len(draft.Attachments) > 0 || len(draft.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
+	if (len(draft.Selections) > 0 || len(draft.Files) > 0 || len(draft.Skills) > 0 || draft.AnswerSelections != "") && textBytes > codexresponses.UserTextLimit {
 		return nil, errors.New("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.")
 	}
 	return input, nil

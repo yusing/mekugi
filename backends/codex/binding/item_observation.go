@@ -28,6 +28,9 @@ func (i ThreadItem) Observation() observation.Item {
 		out.Server = i.Server
 		out.Arguments, out.Result, out.Error = slices.Clone(i.Arguments), slices.Clone(i.Result), slices.Clone(i.Error)
 	}
+	if i.Type == "functionCallOutput" {
+		out.Server, out.Tool, out.Result = i.Namespace, i.Name, slices.Clone(i.Output)
+	}
 	if i.Type == "collabAgentToolCall" {
 		out.ReceiverThreadIDs = slices.Clone(i.ReceiverThreadIDs)
 		if i.TimeoutMS != nil {

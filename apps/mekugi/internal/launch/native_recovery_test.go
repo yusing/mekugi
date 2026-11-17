@@ -107,7 +107,6 @@ func TestExplicitWaitingEditMovesToRequestingView(t *testing.T) {
 	file := composer.UploadAttachment("file", []byte("snapshot"))
 	file.Start, file.End = 7, 12
 	draft := composer.Draft{Text: "queued @file", Files: []composer.Token{file}}
-	draft.SnapshotFiles("")
 	u.attached.conversation.QueueInput(conversation.Input{Draft: draft, Origin: h.event.Attachment, Delivery: h.view.effects.input()}, true)
 	r := target.effects.reserve(1)
 	target.effects.current = r

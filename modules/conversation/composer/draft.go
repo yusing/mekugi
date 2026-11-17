@@ -41,6 +41,7 @@ type Draft struct {
 	CursorBack                        int
 	Images, Files, Skills, Selections []Token
 	AnswerImages                      []string
+	AnswerSelections                  string
 	Attachments                       []string
 	AttachmentNotice                  string
 	InHistory                         bool
@@ -201,6 +202,7 @@ func Join(parts ...Draft) Draft {
 		joined.Text += part.Text
 		joined.Attachments = append(joined.Attachments, part.Attachments...)
 		joined.AnswerImages = append(joined.AnswerImages, part.AnswerImages...)
+		joined.AnswerSelections += part.AnswerSelections
 		if part.AttachmentNotice != "" {
 			joined.AttachmentNotice = part.AttachmentNotice
 		}

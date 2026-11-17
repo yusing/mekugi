@@ -16,8 +16,6 @@ import (
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -42,31 +40,16 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	u.Skills = append(u.Skills, composer.Token{Start: start, End: len(u.Text), Name: "review", Path: skillPath})
 	draft := prepareDraft(&u.picker, u.attached.cwd, nil, draftSnapshot(u.Editor).Draft)
 	input := conversationbinding.Input(draft.Draft)
-	foundSkillContents := false
-	for _, part := range input {
-		if raw, ok := part["text"].(string); ok {
-			frames, ok := attachments.Decode(raw)
-			if ok {
-				for _, frame := range frames {
-					if frame == composer.SkillFrames("review", skillPath, "Review instruction 世界.\n")[0] {
-						foundSkillContents = true
-					}
-				}
-			}
-		}
-	}
-	if !foundSkillContents {
-		t.Fatalf("native skill source and contents missing from direct draft input: %+v", input)
-	}
+
 	content, err := json.Marshal(input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text, spans, ok := sessionpresentation.UserText(content)
-	if !ok || text != draft.Text || len(spans) != 4 {
+	if !ok || text != draft.Text || len(spans) != 3 {
 		t.Fatalf("lost typed spans or bound literal lookalike: %q %+v", text, spans)
 	}
-	if spans[0].Kind != activitypresentation.FileToken || spans[1].Kind != activitypresentation.ImageToken || spans[2].Kind != activitypresentation.FileToken || spans[3].Kind != activitypresentation.SkillToken {
+	if spans[0].Kind != activitypresentation.ImageToken || spans[1].Kind != activitypresentation.FileToken || spans[2].Kind != activitypresentation.SkillToken {
 		t.Fatalf("lost token kinds: %+v", spans)
 	}
 	check := func(v *activityAdapter) {

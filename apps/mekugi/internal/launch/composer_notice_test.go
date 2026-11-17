@@ -9,17 +9,11 @@ import (
 	"testing"
 	"time"
 
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -47,13 +41,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				u.Text = "/unknown"
 				appServerTestKeys(t, u, "\r")
 			case "attachment":
-				d := conversationmodel.Input{Files: []composer.Token{{Path: "/missing/setup.sh"}}}
-				d.SnapshotFiles("/missing")
-				setNotice(&u.attached.feedback, presentationTime(u.clock), d.AttachmentNotice, true)
-				frames, ok := attachments.Decode(d.Attachments[0])
-				if !ok || strings.Contains(strings.Join(frames, "\n"), d.AttachmentNotice) || !strings.Contains(strings.Join(frames, "\n"), "CONTENT NOT ATTACHED") {
-					t.Fatal("UI warning leaked into the model attachment result")
-				}
+				setNotice(&u.attached.feedback, presentationTime(u.clock), "Selection exceeds the mention limit", true)
 			case "host":
 				appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"active","status":"failed","error":{"message":"provider failed\nFull diagnostics"}}}}`)
 			}

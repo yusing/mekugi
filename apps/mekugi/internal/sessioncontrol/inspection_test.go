@@ -6,6 +6,8 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/contracts/observation"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -46,11 +48,11 @@ func TestAttachmentContextReadsHistoryOncePerWindow(t *testing.T) {
 		requests := NewRequests[struct{}](transport)
 		var cache composer.AttachmentContext
 		draft := composer.Draft{Text: "[Selected 1]", Selections: []composer.Token{{Start: 0, End: 12, Text: "selected bytes"}}}
-		draft.SnapshotFiles("")
-		if err := draft.IdentifyAttachments("source"); err != nil {
+		draft.Attachments = []string{attachments.Encode(moduletest.SelectionFrames(draft.Text[draft.Selections[0].Start:draft.Selections[0].End], draft.Selections[0].Source, draft.Selections[0].Text))}
+		if err := moduletest.IdentifyAttachments(&draft.Attachments, "source"); err != nil {
 			t.Fatal(err)
 		}
-		content, _ := json.Marshal(conversationbinding.Input(draft))
+		content, _ := json.Marshal(moduletest.WithLegacyAttachments(conversationbinding.Input(draft), draft.Attachments))
 		response, _ := json.Marshal(map[string]any{"thread": binding.ThreadInfo{ID: "root", Turns: []binding.HistoryTurn{{Items: []binding.ThreadItem{{ID: "user", Type: "userMessage", Content: content}, {ID: "reset", Type: "contextCompaction", Status: "completed"}}}}}})
 		for _, window := range []string{"one", "one", "two", "two"} {
 			result := make(chan composer.AttachmentSnapshot, 1)

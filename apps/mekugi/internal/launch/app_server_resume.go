@@ -310,6 +310,11 @@ func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation,
 		method = "item/started"
 	}
 	switch item.Type {
+	case "functionCallOutput":
+		sessionpresentation.ReduceObservation(&attached.session, attached.presentation, attached.source, attached.childSource, attached.transcript, session.activity.Outputs(attached.session.Scope()), sessionpresentation.ObservationInput{
+			Event: observation.Event{Kind: observation.Kind(method), ThreadID: session.Client.Thread, TurnID: turn.ID, ItemID: item.ID, Item: facts, At: presentationTime(clock)},
+			Text:  text, Main: session.Client.Thread, Selected: session.Client.Turn, Workspace: attached.cwd,
+		})
 	case "contextCompaction":
 		if sessionpresentation.CompletedCompaction(item.Status) {
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{

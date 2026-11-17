@@ -2,7 +2,6 @@ package launch
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"image"
 	"io"
@@ -40,9 +39,6 @@ func prepareNativeDraft(ctx context.Context, workspace string, source composer.D
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	if len(draft.Attachments) == 0 {
-		draft.SnapshotFiles(workspace)
 	}
 	var acquired []string
 	defer func() {
@@ -85,7 +81,7 @@ func prepareNativeDraft(ctx context.Context, workspace string, source composer.D
 		}
 	}
 	validation := draft.Clone()
-	if _, err := prepareSubmissionInput(&validation, rand.Text()); err != nil {
+	if _, err := prepareSubmissionInput(&validation); err != nil {
 		return nil, &sessionapi.InputError{Message: err.Error(), Limit: true}
 	}
 	if err := ctx.Err(); err != nil {

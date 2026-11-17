@@ -13,13 +13,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 	"github.com/yusing/mekugi/contracts/observation"
 	modelattachments "github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 func TestWebUIBrowserDisclosures(t *testing.T) {
@@ -69,7 +70,7 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	mcp := activity.ItemContent{Seq: 15, Agent: "Main", Kind: "tool", Text: activity.MCPText(observation.Item{Server: "plane", Tool: "workitem_relation", Status: "failed"})}
 	publication.Entries = append(publication.Entries, activity.Entry{Facts: mcp.Facts, Values: mcp.Values()})
 	// Skills attached without source paths keep their names and outputs.
-	skillFrames := slices.Concat(composer.SkillFrames("review", "", "# Review\n\nCheck callers.\n"), composer.SkillFrames("commit", "", "# Commit\n\nUse conventional subjects.\n\nSign off.\n"))
+	skillFrames := slices.Concat(moduletest.SkillFrames("review", "", "# Review\n\nCheck callers.\n"), moduletest.SkillFrames("commit", "", "# Commit\n\nUse conventional subjects.\n\nSign off.\n"))
 	skillContent, err := json.Marshal([]map[string]string{{"type": "text", "text": modelattachments.Encode(skillFrames)}})
 	if err != nil {
 		t.Fatal(err)

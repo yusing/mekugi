@@ -2,27 +2,20 @@
 package composer
 
 import (
+	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 const SelectionPrefix = "[Selected "
+const UserSelectionsPrefix = "\n\n---\nUser selections:\n"
 
 func SelectionLabel(label string) bool {
 	return strings.HasPrefix(label, SelectionPrefix) && strings.HasSuffix(label, "]") && !strings.ContainsAny(label, "\n")
-}
-
-// selectionFrames quotes one mentioned selection. Content splits like file
-// frames; nothing is dropped silently.
-func (d Draft) selectionFrames(selection Token) []string {
-	label := d.Text[selection.Start:selection.End]
-	frames := frameText(selection.Text, func(_, _, _ int) string { return "" })
-	for i, body := range frames {
-		frames[i] = attachments.FormatSelection(label, selection.Source, body)
-	}
-	return frames
 }
 
 // RestoreSelections rebinds mentions from their submitted frames, so recalled
@@ -53,4 +46,46 @@ func RestoreSelections(text string, frames []string) []Token {
 	}
 	slices.SortFunc(selections, func(a, b Token) int { return a.Start - b.Start })
 	return selections
+}
+
+// UserSelections appends supplied text as ordinary Markdown in the user's input.
+func (d Draft) UserSelections() string {
+	var text strings.Builder
+	appendSelection := func(label, source, body string) {
+		if text.Len() == 0 {
+			text.WriteString(UserSelectionsPrefix)
+		}
+		fmt.Fprintf(&text, "- %s:", label)
+		format, _ := sourcekind.Classify(source)
+		if !strings.ContainsAny(body, "\r\n") && format.Language == "" && !strings.HasPrefix(strings.ToLower(label), "diff") {
+			text.WriteString(" " + body + "\n")
+			return
+		}
+		longest, run := 0, 0
+		for _, character := range body {
+			if character == '`' {
+				run++
+				longest = max(longest, run)
+			} else {
+				run = 0
+			}
+		}
+		fence := strings.Repeat("`", max(3, longest+1))
+		text.WriteString("\n  " + fence + format.Language + "\n  ")
+		text.WriteString(strings.ReplaceAll(body, "\n", "\n  "))
+		if !strings.HasSuffix(body, "\n") {
+			text.WriteString("\n  ")
+		}
+		text.WriteString(fence + "\n")
+	}
+	for _, selection := range d.Selections {
+		label := strings.TrimSuffix(strings.TrimPrefix(d.Text[selection.Start:selection.End], SelectionPrefix), "]")
+		appendSelection(label, selection.Source, selection.Text)
+	}
+	for _, file := range d.Files {
+		if file.Source == "upload" {
+			appendSelection("Uploaded "+file.Name, "", file.Text)
+		}
+	}
+	return strings.TrimSuffix(text.String(), "\n")
 }

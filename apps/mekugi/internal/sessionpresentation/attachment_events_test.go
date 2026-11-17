@@ -5,17 +5,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 func TestAttachmentParametersCoverSelectionsAndOmissions(t *testing.T) {
-	frames := composer.FileFrames("/workspace/file", "file body")
-	frames = append(frames, composer.SkillFrames("review", "", "skill body")...)
+	frames := moduletest.FileFrames("/workspace/file", "file body")
+	frames = append(frames, moduletest.SkillFrames("review", "", "skill body")...)
 	frames = append(frames,
-		attachments.FormatSelection("[Selected text]", "screen", "first "),
-		attachments.FormatSelection("[Selected text]", "screen", "second"),
+		moduletest.FormatSelection("[Selected text]", "screen", "first "),
+		moduletest.FormatSelection("[Selected text]", "screen", "second"),
 		`Attached skill "denied": CONTENT NOT ATTACHED ("permission denied"). Read separately.`,
 		"Attached skill references: remaining contents NOT ATTACHED (attachment budget exceeded). Read remaining referenced skills separately if needed.",
 		"Attached file references: remaining contents NOT ATTACHED (attachment budget exceeded). Read remaining referenced files separately if needed.",

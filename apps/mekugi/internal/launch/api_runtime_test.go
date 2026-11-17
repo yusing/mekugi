@@ -279,7 +279,7 @@ func TestServerSessionNoTerminal(t *testing.T) {
 	wants := []struct{ method, text string }{
 		{"turn/start", "first remote input before native preparation"},
 		{"turn/steer", "second remote input while native preparation is blocked"},
-		{"turn/steer", "captured input"},
+		{"turn/steer", "@message.txt"},
 		{"turn/steer", "progress before queued-input editing"},
 		{"turn/steer", "release queued input"},
 		{"turn/start", "queued native input\nlocal draft"},

@@ -410,10 +410,6 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 				btwTestReply(t, u, r, `{"thread":{"id":"side"}}`)
 				r = btwTestRequest(t, w, "turn/start", "side")
 			}
-			frame := ansi.Strip(strings.Join(u.btwRows(100, 10), "\n"))
-			if !strings.Contains(frame, "File contents omitted") {
-				t.Fatalf("missing attachment warning: %s", frame)
-			}
 			appServerTestKeys(t, u, "new draft")
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
 			if !strings.HasPrefix(u.Text, "/btw\n") || !strings.Contains(u.Text, "Explain ") || !strings.HasSuffix(u.Text, "new draft") || len(u.Images) != 1 || len(u.Files) != 1 {

@@ -456,7 +456,7 @@ Pressed links and item targets retain their attachment, displayed thread and
 workspace from the delivered frame, including when publication advances before
 the press. Later source updates cannot redirect the click to another destination.
 
-The application binds Reference to the [conversation attachment pipeline](../../../../modules/conversation/SPEC.md#attachment-snapshots)
+The application binds Reference to the [conversation attachment pipeline](../../../../modules/conversation/SPEC.md#attachments)
 and labels selections using their original item or diff-row attribution. A frame
 retains its source-copy annotations independently of selection highlighting.
 Clipboard bytes, painted rows and their source context advance only after a successful

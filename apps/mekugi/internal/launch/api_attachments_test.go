@@ -4,16 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -41,15 +38,8 @@ func TestAPISelectionReferenceSubmission(t *testing.T) {
 		t.Fatal(refusal)
 	}
 	requests := appServerTurnRequests(t, wire)
-	var frames []string
-	for _, part := range requests[0].Params.Input {
-		if decoded, ok := attachments.Decode(part.Text); ok {
-			frames = append(frames, decoded...)
-		}
-	}
-	restored := composer.RestoreSelections(prepared.Draft.Text, frames)
-	if len(restored) != 2 || restored[0].Text != quote || restored[0].Source != "source.go" || !strings.Contains(strings.Join(frames, ""), "Quoted from the user's screen, not a separate request") {
-		t.Fatalf("submitted reference framing: %q, restored=%+v", frames, restored)
+	if text := requests[0].text(); !strings.HasPrefix(text, prepared.Draft.Text) || strings.Count(text, quote) != 2 || !strings.Contains(text, "User selections:") {
+		t.Fatalf("submitted selection text: %q", text)
 	}
 	selection.Data = new(base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", attachments.Budget))))
 	if _, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{Attachments: []sessionapi.Attachment{selection}}); err == nil {
@@ -67,102 +57,57 @@ func TestAPISelectionReferenceSubmission(t *testing.T) {
 	}
 }
 
-func TestAPIAttachmentSnapshotAdmissionAndContinuation(t *testing.T) {
+func TestAPIUserSelectionsReachAppServerAsPlainMarkdown(t *testing.T) {
 	workspace := t.TempDir()
-	path := filepath.Join(workspace, "host.txt")
-	if err := os.WriteFile(path, []byte("captured host contents"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	borrowed := pasteTestImage(t)
-	image, err := os.ReadFile(borrowed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := sessionapi.InputRequest{Attachments: []sessionapi.Attachment{
-		{Source: "upload", Name: "../../label.png", Data: new(base64.StdEncoding.EncodeToString([]byte("uploaded text, not an image")))},
-		{Source: "path", Path: "host.txt"},
-		{Source: "upload", Name: "picture", Data: new(base64.StdEncoding.EncodeToString(image))},
-		{Source: "path", Path: borrowed},
-		{Source: "path", Path: "."},
-	}}
-	prepared, err := prepareAPIInput(t.Context(), workspace, request)
+	prepared, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{Text: "Explain [Selected diff]", Attachments: []sessionapi.Attachment{
+		{Source: "selection", Name: "diff", Path: "sample.rs", Data: new(base64.StdEncoding.EncodeToString([]byte("before\nafter"))), Inline: true},
+		{Source: "upload", Name: "notes.txt", Data: new(base64.StdEncoding.EncodeToString([]byte("uploaded notes")))},
+		{Source: "path", Path: "missing source.rs"},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer prepared.Cleanup()
-	acquired := prepared.Draft.Images[0].Path
-	t.Cleanup(func() { _ = os.Remove(acquired) }) // A submitted image is deliberately retained.
-	if len(prepared.Draft.Images) != 2 || len(prepared.Draft.Files) != 3 || prepared.Draft.Images[1].Path != borrowed {
-		t.Fatalf("attachment classification: %+v", prepared.Draft)
-	}
-	if err := os.WriteFile(path, []byte("changed source"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	u, wire := newAppServerTestUI()
 	u.startSession("main", workspace)
-	intent := sessionapi.Intent{Action: sessionapi.Send, Prepared: prepared, Thread: "main", Workspace: workspace, Context: t.Context()}
-	u.attached.conversation.Approvals.Open = true
-	if refusal := apiTestIntent(t, u, intent); refusal == "" || prepared.Admitted() {
-		t.Fatal("open prompt admitted an attachment")
-	}
-	if _, err := os.Stat(acquired); err != nil {
-		t.Fatal("retry lost its acquired image", err)
-	}
-	u.attached.conversation.Approvals.Open = false
-	if refusal := apiTestIntent(t, u, intent); refusal != "" {
+	if refusal := apiTestIntent(t, u, sessionapi.Intent{Action: sessionapi.Send, Prepared: prepared, Context: t.Context(), Thread: "main", Workspace: workspace}); refusal != "" {
 		t.Fatal(refusal)
 	}
 	requests := appServerTurnRequests(t, wire)
-	if len(requests) != 1 || requests[0].Method != "turn/start" {
-		t.Fatalf("first input: %+v", requests)
+	if len(requests) != 1 {
+		t.Fatalf("native requests: %+v", requests)
 	}
-	var frames []string
-	var images []string
-	for _, part := range requests[0].Params.Input {
-		if part.Path != "" {
-			images = append(images, part.Path)
-		}
-		if decoded, ok := attachments.Decode(part.Text); ok {
-			frames = append(frames, decoded...)
+	text := requests[0].text()
+	for _, expected := range []string{"Explain [Selected diff]", `@'missing source.rs'`, "\n---\nUser selections:\n", "- diff:\n  ```rust\n  before\n  after\n  ```", "- Uploaded notes.txt: uploaded notes"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("missing %q in native user input: %q", expected, text)
 		}
 	}
-	if len(images) != 2 || images[0] != acquired || images[1] != borrowed || len(frames) != 3 || !strings.Contains(frames[0], "uploaded text, not an image") || !strings.Contains(frames[1], "captured host contents") || !strings.Contains(frames[2], "directory tree") {
-		t.Fatalf("snapshot order/content: images=%v frames=%q", images, frames)
+	if strings.Contains(text, "mekugi-file-attachments") || strings.Contains(text, "CONTENT NOT ATTACHED") {
+		t.Fatalf("Go emitted a file envelope or acquired a host source: %q", text)
 	}
-	retained := conversationbinding.CompactedAttachments([]binding.HistoryTurn{{Items: []binding.ThreadItem{{ID: "submission", Type: "userMessage", Content: mustTestJSON(t, requests[0].Params.Input)}, {ID: "reset", Type: "contextCompaction", Status: "completed"}}}})
-	var descriptors []string
-	for _, value := range retained {
-		for _, image := range value.Images {
-			descriptors = append(descriptors, image.Path)
+}
+
+func TestAPIExpandedSelectionTextLimitPreservesInput(t *testing.T) {
+	const label = "[Selected message]"
+	draft := composer.Draft{Text: label, Selections: []composer.Token{{Start: 0, End: len(label), Text: strings.Repeat("x", responses.UserTextLimit)}}}
+	if prepared, err := prepareNativeDraft(t.Context(), t.TempDir(), draft); prepared != nil || err == nil {
+		if prepared != nil {
+			prepared.Cleanup()
 		}
+		t.Fatalf("expanded text exceeded the host limit without refusal: %v", err)
+	} else if failure, ok := errors.AsType[*sessionapi.InputError](err); !ok || !failure.Limit {
+		t.Fatalf("wrong limit classification: %v", err)
 	}
-	if strings.Join(descriptors, "\x00") != strings.Join(images, "\x00") {
-		t.Fatalf("prepared host/upload image descriptors lost: %v", descriptors)
+	if len(draft.Selections) != 1 || draft.Selections[0].Text != strings.Repeat("x", responses.UserTextLimit) {
+		t.Fatal("limit rejection consumed supplied text")
 	}
-	prepared.Cleanup()
-	if !prepared.Admitted() || u.ownedImages[acquired] {
-		t.Fatal("submitted image did not transfer to existing continuation retention")
-	}
-	for _, imagePath := range images {
-		if _, err := os.Stat(imagePath); err != nil {
-			t.Fatal("continuation image was removed", err)
-		}
-	}
-	// Later input uses the same preparation and admission path while Main runs.
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"turn"}}}`, requests[0].ID))
-	appServerTestTurn(t, u, "turn")
-	later, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{Attachments: []sessionapi.Attachment{{Source: "upload", Name: "later.txt", Data: new(base64.StdEncoding.EncodeToString([]byte("later snapshot")))}}})
+	draft.Selections[0].Text = "nearby valid selection"
+	prepared, err := prepareNativeDraft(t.Context(), t.TempDir(), draft)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer later.Cleanup()
-	if refusal := apiTestIntent(t, u, sessionapi.Intent{Action: sessionapi.Send, Prepared: later, Context: t.Context(), Thread: "main", Workspace: workspace}); refusal != "" {
-		t.Fatal(refusal)
-	}
-	requests = appServerTurnRequests(t, wire)
-	if len(requests) != 1 || requests[0].Method != "turn/steer" || !strings.Contains(requests[0].text(), "later snapshot") {
-		t.Fatalf("later input: %+v", requests)
-	}
+	prepared.Cleanup()
 }
 
 func TestAPIAttachmentCancellationAndPermanentErrors(t *testing.T) {
@@ -206,11 +151,9 @@ func TestAPIAttachmentCancellationAndPermanentErrors(t *testing.T) {
 			t.Fatalf("error lacks permanent classification: %v", err)
 		}
 	}
-	omitted, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{Attachments: []sessionapi.Attachment{{Source: "upload", Name: "binary", Data: new(base64.StdEncoding.EncodeToString([]byte{0}))}}})
-	if err != nil || omitted.Draft.AttachmentNotice == "" || !strings.Contains(omitted.Draft.Attachments[0], "CONTENT NOT ATTACHED") {
-		t.Fatalf("existing omission semantics lost: prepared=%+v err=%v", omitted, err)
+	if _, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{Attachments: []sessionapi.Attachment{{Source: "upload", Name: "binary", Data: new(base64.StdEncoding.EncodeToString([]byte{0}))}}}); err == nil {
+		t.Fatal("binary content accepted as text")
 	}
-	omitted.Cleanup()
 	// Failure after acquisition releases the newly written file, never the
 	// preceding borrowed path or a caller-selected upload name.
 	temporary := t.TempDir()
@@ -227,7 +170,11 @@ func TestAPIAttachmentCancellationAndPermanentErrors(t *testing.T) {
 
 func TestAPIAttachmentCombinedUploadLimit(t *testing.T) {
 	workspace := t.TempDir()
-	chunk := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("x", sessionapi.UploadLimit/2)))
+	data, err := os.ReadFile(pasteTestImage(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := base64.StdEncoding.EncodeToString(append(data, make([]byte, sessionapi.UploadLimit/2-len(data))...))
 	input := sessionapi.InputRequest{Attachments: []sessionapi.Attachment{{Source: "upload", Name: "one", Data: new(chunk)}, {Source: "upload", Name: "two", Data: new(chunk)}}}
 	prepared, err := prepareAPIInput(t.Context(), workspace, input)
 	if err != nil {

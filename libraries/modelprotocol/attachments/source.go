@@ -33,9 +33,9 @@ func SourceRanges(text string, bodies []SourceRange) string {
 // ProjectSources accepts only a complete terminal attachment. Earlier quoted
 // envelopes and unselected diagnostics stay literal. Validation finishes before
 // callbacks, so malformed input cannot seed request-local references.
-func ProjectSources(text string, project func(string) string) string {
+func sourceEnvelope(text string) (start, body, n int, ranges []SourceRange, valid bool) {
 	if !strings.HasSuffix(text, sourceSuffix) {
-		return text
+		return
 	}
 	for at := 0; at < len(text); {
 		start := strings.Index(text[at:], sourcePrefix)
@@ -58,29 +58,94 @@ func ProjectSources(text string, project func(string) string) string {
 		if !ok || !found || err != nil || n < 0 || strconv.Itoa(n) != length || n != len(text)-body-len(sourceSuffix) {
 			continue
 		}
-		var ranges []SourceRange
 		end := 0
 		for coordinate := range strings.SplitSeq(coordinates, ",") {
+			if coordinates == "" {
+				break
+			}
 			first, last, ok := strings.Cut(coordinate, ":")
 			left, leftErr := strconv.Atoi(first)
 			right, rightErr := strconv.Atoi(last)
 			if !ok || leftErr != nil || rightErr != nil || strconv.Itoa(left) != first || strconv.Itoa(right) != last || left < end || right < left || right > n || left < n && !utf8.RuneStart(text[body+left]) || right < n && !utf8.RuneStart(text[body+right]) {
-				return text
+				return 0, 0, 0, nil, false
 			}
 			ranges = append(ranges, SourceRange{left, right})
 			end = right
 		}
-		var result strings.Builder
-		at = 0
-		for i, span := range ranges {
-			result.WriteString(text[body+at : body+span.Start])
-			first := result.Len()
-			result.WriteString(project(text[body+span.Start : body+span.End]))
-			ranges[i] = SourceRange{first, result.Len()}
-			at = span.End
-		}
-		result.WriteString(text[body+at : body+n])
-		return text[:start] + SourceRanges(result.String(), ranges)
+		return start, body, n, ranges, true
 	}
-	return text
+	return 0, 0, 0, nil, false
+}
+
+// ProjectSources changes only validated source bodies, preserving their framing.
+func ProjectSources(text string, project func(string) string) string {
+	start, body, n, ranges, valid := sourceEnvelope(text)
+	if !valid || len(ranges) == 0 {
+		return text
+	}
+	var result strings.Builder
+	at := 0
+	for i, span := range ranges {
+		result.WriteString(text[body+at : body+span.Start])
+		first := result.Len()
+		result.WriteString(project(text[body+span.Start : body+span.End]))
+		ranges[i] = SourceRange{first, result.Len()}
+		at = span.End
+	}
+	result.WriteString(text[body+at : body+n])
+	return text[:start] + SourceRanges(result.String(), ranges)
+}
+
+// SourceContent is one native reader result. Body bytes are not parsed as receipts.
+type SourceContent struct{ Reference, Body, Error string }
+
+// SourceContents decodes native output framing without interpreting supplied text.
+func SourceContents(text string) []SourceContent {
+	_, body, n, ranges, valid := sourceEnvelope(text)
+	if !valid {
+		return nil
+	}
+	var results []SourceContent
+	at, index := 0, 0
+	for at < n {
+		rest := text[body+at : body+n]
+		if rest[0] == '\n' {
+			at++
+			continue
+		}
+		line, _, _ := strings.Cut(rest, "\n")
+		header, found := strings.CutPrefix(line, "Source ")
+		quoted, err := strconv.QuotedPrefix(header)
+		if !found || err != nil {
+			return nil
+		}
+		reference, err := strconv.Unquote(quoted)
+		if err != nil {
+			return nil
+		}
+		ending := header[len(quoted):]
+		at += len(line) + 1
+		value := SourceContent{Reference: reference}
+		if ending == ":" {
+			if index >= len(ranges) || ranges[index].Start != at {
+				return nil
+			}
+			span := ranges[index]
+			value.Body = text[body+span.Start : body+span.End]
+			at = span.End
+			index++
+		} else if reason, ok := strings.CutPrefix(ending, ": CONTENT NOT ATTACHED: "); ok {
+			value.Error, err = strconv.Unquote(reason)
+			if err != nil {
+				return nil
+			}
+		} else {
+			return nil
+		}
+		results = append(results, value)
+	}
+	if index != len(ranges) {
+		return nil
+	}
+	return results
 }

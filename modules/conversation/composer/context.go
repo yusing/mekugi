@@ -9,14 +9,14 @@ import (
 )
 
 // ContextAttachment preserves submitted identities and selected bytes. File and
-// skill bodies are excluded: files are recalled explicitly and skills refreshed.
+// skill bodies are excluded; their sources are recalled explicitly.
 type ContextAttachment struct {
-	ID           string
-	Original     [32]byte
-	Placeholders []string
-	Selection    attachments.Snapshot
-	Skills       []Token
-	Images       []Token
+	ID            string
+	Original      [32]byte
+	Placeholders  []string
+	Selection     attachments.Snapshot
+	SelectionText string
+	Images        []Token
 }
 
 // AttachmentSnapshot borrows the active window's optional recall publication.
@@ -79,7 +79,6 @@ func cloneContextAttachments(values []ContextAttachment) []ContextAttachment {
 	for i := range copy {
 		copy[i].Placeholders = slices.Clone(copy[i].Placeholders)
 		copy[i].Selection.Frames = slices.Clone(copy[i].Selection.Frames)
-		copy[i].Skills = slices.Clone(copy[i].Skills)
 		copy[i].Images = slices.Clone(copy[i].Images)
 	}
 	return copy

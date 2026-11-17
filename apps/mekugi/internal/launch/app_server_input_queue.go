@@ -31,10 +31,7 @@ func prepareDraft(picker *composerPicker, workspace string, environment []string
 	d := conversationmodel.Input{Draft: draft}
 	d.ReplyCount = len(binding.QuestionReplies(d.Text))
 	picker.bindSkills(workspace, &d, true)
-	if len(d.Attachments) == 0 {
-		d.SnapshotFiles(workspace)
-	}
-	snapshotDraftSkills(workspace, environment, &d)
+
 	return d
 }
 
@@ -121,12 +118,12 @@ func sendConversationInput(attached *attachedPresentation, control *sessioncontr
 	}
 	for i := range parts {
 		picker.bindSkills(attached.cwd, &parts[i], true)
-		snapshotDraftSkills(attached.cwd, environment, &parts[i])
+
 		parts[i].ReplyCount = len(binding.QuestionReplies(parts[i].Text))
 	}
 	s := conversationmodel.Submission{Draft: composer.Join(conversationmodel.Drafts(parts)...), Parts: parts}
 	id := rand.Text()
-	input, err := prepareSubmissionInput(&s.Draft, id)
+	input, err := prepareSubmissionInput(&s.Draft)
 	if err != nil {
 		restoreDrafts(attached, questions, approvals, picker, control.Turn, clock, parts...)
 		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)

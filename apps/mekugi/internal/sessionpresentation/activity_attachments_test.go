@@ -5,15 +5,16 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 func TestAttachmentValuesNameSkillsWithoutSourcePaths(t *testing.T) {
 	frames := slices.Concat(
-		composer.SkillFrames("review", "", "# Review\n\nCheck callers.\n"),
-		composer.SkillFrames("commit", "", "# Commit\n"),
-		composer.SkillFrames("guide", "/workspace/SKILL.md", "# Guide\n"),
+		moduletest.SkillFrames("review", "", "# Review\n\nCheck callers.\n"),
+		moduletest.SkillFrames("commit", "", "# Commit\n"),
+		moduletest.SkillFrames("guide", "/workspace/SKILL.md", "# Guide\n"),
 	)
 	content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
 	if err != nil {

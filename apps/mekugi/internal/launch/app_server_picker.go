@@ -86,11 +86,7 @@ func (p *composerPicker) refreshPicker(attached *attachedPresentation, clock fun
 	}
 	for _, stack := range [][]conversationmodel.Input{attached.conversation.Unsent, attached.conversation.Queued} {
 		for i := range stack {
-			before := len(stack[i].Skills)
 			p.bindSkills(attached.cwd, &stack[i], true)
-			if len(stack[i].Skills) > before {
-				snapshotDraftSkills(attached.cwd, environment, &stack[i])
-			}
 		}
 	}
 	if attached.view == "" && !attached.presentation.DisplayingSide() && (attached.conversation.Questions.Current() != nil || attached.conversation.Approvals.Open) {

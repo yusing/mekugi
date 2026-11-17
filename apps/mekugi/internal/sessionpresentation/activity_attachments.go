@@ -143,3 +143,40 @@ func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation
 	}
 	return blocks
 }
+
+// NativeAttachmentValues reads only native source-output framing. User prose and
+// source bodies cannot introduce receipts; retained and live items share this path.
+func NativeAttachmentValues(cwd, id, output string) []activitypresentation.Value {
+	var values []activitypresentation.Value
+	for i, source := range attachments.SourceContents(output) {
+		ref, err := attachments.ParseReference(source.Reference)
+		if err != nil {
+			if source.Error != "" {
+				values = append(values, activitypresentation.Value{Kind: "op", Verb: "Attach failed", AttachmentKind: "omission", Label: textsanitize.Safe(source.Reference+" · "+source.Error, false)})
+			}
+			continue
+		}
+		value := activitypresentation.Value{Kind: "op", Verb: "Attached", AttachmentKind: "file", AttachmentID: id + "/" + strconv.Itoa(i)}
+		switch {
+		case ref.Skill != "":
+			value.Verb, value.AttachmentKind, value.Label = "Attached skill", "skill", ref.Skill
+		case ref.Changes != nil:
+			value.Verb, value.AttachmentKind, value.Label = "Attached changes", "change", strings.TrimPrefix(source.Reference, "mchanges:")
+		default:
+			value.Path = pathdisplay.ForWorkspace(cwd, ref.Path)
+			value.Reads = []activitymodel.Read{{Path: ref.Path}}
+		}
+		if source.Error != "" {
+			value.Verb = "Attach failed"
+			if value.Label != "" {
+				value.Label += " · "
+			}
+			value.Label += source.Error
+		} else {
+			value.Tail = strings.Split(textsanitize.Safe(source.Body, false), "\n")
+		}
+		value.Label = textsanitize.Safe(value.Label, false)
+		values = append(values, value)
+	}
+	return values
+}

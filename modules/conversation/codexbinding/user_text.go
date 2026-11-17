@@ -25,6 +25,9 @@ func UserText(content jsontext.Value) (string, []composer.Span, bool) {
 	imageCount := 0
 	for _, content := range contents {
 		if content.Type == "text" {
+			if len(binding.QuestionReplies(text)) > 0 {
+				continue // Accompanying selections belong to Asked, like reply images.
+			}
 			if _, attached := attachments.Decode(content.Text); attached {
 				continue
 			}

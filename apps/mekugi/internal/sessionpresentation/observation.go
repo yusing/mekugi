@@ -369,6 +369,15 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 		case "mcpToolCall":
 			entries = append(entries, s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item))
 		case "functionCallOutput":
+			if method == "item/completed" && item.Server == "context" && (item.Tool == "attachments" || item.Tool == "preload") {
+				var output string
+				if json.Unmarshal(item.Result, &output) == nil {
+					if values := NativeAttachmentValues(in.Workspace, id, output); len(values) > 0 {
+						native.Attachments = values
+						entries = append(entries, ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "attachments", Observed: now, Native: native})
+					}
+				}
+			}
 			if method == "item/completed" && item.Server == "threadcontrol" {
 				var output string
 				if json.Unmarshal(item.Result, &output) == nil {

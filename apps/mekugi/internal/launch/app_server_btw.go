@@ -193,7 +193,7 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 				return nil
 			}
 			picker.bindSkills(attached.cwd, &parts[0], true)
-			snapshotDraftSkills(attached.cwd, environment, &parts[0])
+
 			input = parts[0]
 			if turn == "" && b.OneOff {
 				if ready, err := hook.checkThread(control.Requests, thread, attached.cwd, func() { b.Status = "Checking approval guard…" }); !ready || err != nil {
@@ -234,7 +234,7 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 		return nil
 	}
 	picker.bindSkills(attached.cwd, &parts[0], true)
-	snapshotDraftSkills(attached.cwd, environment, &parts[0])
+
 	b.Pending = parts[0]
 	main := sessioncontrol.SideMain{
 		Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier,

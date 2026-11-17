@@ -8,7 +8,6 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	json "encoding/json/v2"
-	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
@@ -26,41 +25,10 @@ func ProjectFileAttachments(request *codexresponses.Request) (bool, map[int]stri
 	}
 	var projected []map[string]jsontext.Value
 	changed := false
-	attachedSkills := make(map[string]bool)
+
 	for _, item := range items {
 		var role string
 		_ = json.Unmarshal(item["role"], &role)
-		var parts []map[string]jsontext.Value
-		if role != "user" || json.Unmarshal(item["content"], &parts) != nil {
-			continue
-		}
-		for _, part := range parts {
-			var kind, text string
-			_ = json.Unmarshal(part["type"], &kind)
-			_ = json.Unmarshal(part["text"], &text)
-			if kind != "input_text" {
-				continue
-			}
-			frames, _ := attachments.Decode(text)
-			for _, frame := range frames {
-				if name, path, rest := attachments.ParseSkillFrame(frame); name != "" && strings.HasPrefix(rest, " (UTF-8 bytes ") {
-					attachedSkills[name+"\x00"+path] = true
-				}
-			}
-		}
-	}
-	isAttachedSkill := func(text string) bool {
-		name, path := attachments.SelectedSkillSource(text)
-		return name != "" && (attachedSkills[name+"\x00"] || path != "" && attachedSkills[name+"\x00"+path])
-	}
-	for _, item := range items {
-		var role string
-		_ = json.Unmarshal(item["role"], &role)
-		var selectedText string
-		if role == "user" && json.Unmarshal(item["content"], &selectedText) == nil && isAttachedSkill(selectedText) {
-			changed = true
-			continue
-		}
 		var parts []map[string]jsontext.Value
 		if role != "user" || json.Unmarshal(item["content"], &parts) != nil {
 			projected = append(projected, item)
@@ -73,12 +41,6 @@ func ProjectFileAttachments(request *codexresponses.Request) (bool, map[int]stri
 			var kind, text string
 			_ = json.Unmarshal(part["type"], &kind)
 			_ = json.Unmarshal(part["text"], &text)
-			// Codex can independently inject the same skill from $name. The
-			// durable snapshot already supplies its selected instructions.
-			if kind == "input_text" && isAttachedSkill(text) {
-				changed = true
-				continue
-			}
 			snapshot, ok := attachments.DecodeSnapshot(text)
 			if kind == "input_text" && ok {
 				attached = append(attached, snapshot.Frames...)

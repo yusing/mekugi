@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 )
@@ -79,9 +78,8 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if input[1].Type != "localImage" || input[1].Path != first || input[2].Type != "localImage" || input[2].Path != second {
 		t.Fatalf("images became paths: %+v", input)
 	}
-	frames, ok := attachments.Decode(input[3].Text)
-	if !ok || len(frames) != 2 || !strings.HasSuffix(frames[0], "\nfirst quote\n</selected-text>") || !strings.HasSuffix(frames[1], "\nsecond quote\n</selected-text>") {
-		t.Fatalf("answer selections lost: %q", frames)
+	if text := input[3].Text; text != "\n\n---\nUser selections:\n- message: first quote\n- message 2: second quote" {
+		t.Fatalf("answer selections lost: %q", text)
 	}
 	content, err := json.Marshal(conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft))
 	if err != nil {

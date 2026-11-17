@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	json "encoding/json/v2"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -30,6 +31,8 @@ func CompactedAttachments(turns []binding.HistoryTurn) []composer.ContextAttachm
 				continue
 			}
 			var placeholders []string
+			var selectionLabels []string
+			var suppliedText string
 			var images []composer.Token
 			for i, source := range userImages(parts) {
 				if strings.HasPrefix(source, "data:") {
@@ -44,7 +47,17 @@ func CompactedAttachments(turns []binding.HistoryTurn) []composer.ContextAttachm
 					continue
 				}
 				for _, span := range ElementSpans(part.Text, part.Elements) {
-					placeholders = append(placeholders, part.Text[span.Start:span.End])
+					label := part.Text[span.Start:span.End]
+					placeholders = append(placeholders, label)
+					if span.Kind == composer.Selection || strings.HasPrefix(label, "[Uploaded ") {
+						selectionLabels = append(selectionLabels, label)
+					}
+				}
+			}
+			if len(parts) > 1 {
+				last := parts[len(parts)-1]
+				if last.Type == "text" && strings.HasPrefix(last.Text, composer.UserSelectionsPrefix) {
+					suppliedText = strings.Join(selectionLabels, "\n") + last.Text
 				}
 			}
 			for _, part := range parts {
@@ -56,22 +69,20 @@ func CompactedAttachments(turns []binding.HistoryTurn) []composer.ContextAttachm
 					continue
 				}
 				value := composer.ContextAttachment{ID: snapshot.ID, Original: sha256.Sum256([]byte(part.Text)), Placeholders: placeholders, Images: images, Selection: attachments.Snapshot{ID: snapshot.ID}}
-				seen := make(map[string]bool)
 				for _, frame := range snapshot.Frames {
 					if attachments.SelectionFrame(frame) {
 						value.Selection.Frames = append(value.Selection.Frames, frame)
 					}
-					if name, path, _ := attachments.ParseSkillFrame(frame); name != "" && !seen[name+"\x00"+path] {
-						seen[name+"\x00"+path] = true
-						value.Skills = append(value.Skills, composer.Token{Name: name, Path: path})
+					if name, _, _ := attachments.ParseSkillFrame(frame); name != "" && !slices.Contains(value.Placeholders, "$"+name) {
+						value.Placeholders = append(value.Placeholders, "$"+name)
 					}
 				}
 				result = append(result, value)
 				placeholders = nil
 				images = nil
 			}
-			if len(images) > 0 {
-				result = append(result, composer.ContextAttachment{Images: images})
+			if len(images) > 0 || len(placeholders) > 0 || suppliedText != "" {
+				result = append(result, composer.ContextAttachment{Images: images, Placeholders: placeholders, SelectionText: suppliedText})
 			}
 		}
 	}

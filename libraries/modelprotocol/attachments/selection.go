@@ -14,31 +14,6 @@ type Selection struct {
 	Header, Body, Footer string
 }
 
-// FormatSelection preserves literal content inside an explicit selection boundary.
-func FormatSelection(label, source, body string) string {
-	header := `<selected-text label="` + html.EscapeString(label) + `"`
-	if source != "" {
-		header += ` source="` + html.EscapeString(source) + `"`
-	}
-	header = strings.NewReplacer("\n", "&#10;", "\r", "&#13;", "\t", "&#9;").Replace(header)
-	header += ">\n" + selectionNotice
-	if diffSelection(label) {
-		// The extra newline belongs to framing, not the selected bytes.
-		longest, run := 0, 0
-		for _, r := range body {
-			if r == '`' {
-				run++
-				longest = max(longest, run)
-			} else {
-				run = 0
-			}
-		}
-		fence := strings.Repeat("`", max(3, longest+1))
-		body = fence + "diff\n" + body + "\n" + fence
-	}
-	return header + body + "\n</selected-text>"
-}
-
 func diffSelection(label string) bool {
 	return label == "[Selected diff]" || strings.HasPrefix(label, "[Selected diff ")
 }

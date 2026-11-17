@@ -16,8 +16,6 @@ import (
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
@@ -101,12 +99,8 @@ func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 	if err := json.Unmarshal(lines[len(lines)-1], &sent); err != nil {
 		t.Fatal(err)
 	}
-	if len(sent.Params.Input) != 2 || sent.Params.Input[1].Type != "text" {
-		t.Fatalf("pasted skill contents not attached: %+v", sent.Params.Input)
-	}
-	frames, ok := attachments.Decode(sent.Params.Input[1].Text)
-	if !ok || len(frames) != 1 || frames[0] != composer.SkillFrames("review", path, instructions)[0] {
-		t.Fatalf("pasted skill lost its source path or contents: %+v", frames)
+	if len(sent.Params.Input) != 1 || sent.Params.Input[0].Text != "use $review please" {
+		t.Fatalf("skill reference was not sent as user text: %+v", sent.Params.Input)
 	}
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"rejected"}}`)
 	if u.Text != "use $review please" || len(u.Skills) != 1 || u.Skills[0].Path != path {

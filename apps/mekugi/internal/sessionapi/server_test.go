@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	activityfeed "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -441,7 +442,7 @@ func TestCompactReloadPublication(t *testing.T) {
 
 func TestPathlessSkillAttachmentProjection(t *testing.T) {
 	t.Parallel()
-	frames := slices.Concat(composer.SkillFrames("review", "", "# Review\n"), composer.SkillFrames("commit", "", "# Commit\n"))
+	frames := slices.Concat(moduletest.SkillFrames("review", "", "# Review\n"), moduletest.SkillFrames("commit", "", "# Commit\n"))
 	content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
 	if err != nil {
 		t.Fatal(err)

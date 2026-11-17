@@ -119,8 +119,8 @@ func TestConnectorServerAttachmentInputAndDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(log), "first uploaded bytes") || !strings.Contains(string(log), "execution-machine file bytes") || !strings.Contains(string(log), "later uploaded bytes") {
-		t.Fatal("connector/socket/server input lost an attachment snapshot")
+	if !strings.Contains(string(log), "first uploaded bytes") || !strings.Contains(string(log), "@host.txt") || !strings.Contains(string(log), "later uploaded bytes") || strings.Contains(string(log), "execution-machine file bytes") {
+		t.Fatal("connector/socket/server input lost supplied text or acquired a native source")
 	}
 	for line := range strings.SplitSeq(string(log), "\n") {
 		method, params, _ := strings.Cut(line, " ")

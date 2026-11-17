@@ -20,27 +20,10 @@ func OmitCompactedAttachments(request *codexresponses.Request, context []compose
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		return err
 	}
-	staleSkill := func(text string) bool {
-		name, path := attachments.SelectedSkillSource(text)
-		if name == "" {
-			return false
-		}
-		for _, value := range context {
-			for _, skill := range value.Skills {
-				if skill.Name == name && (path == "" || skill.Path == "" || path == skill.Path) {
-					return true
-				}
-			}
-		}
-		return false
-	}
 	var retained []map[string]jsontext.Value
 	for _, item := range items {
 		if responses.StringField(item, "role") != "user" {
 			retained = append(retained, item)
-			continue
-		}
-		if text := responses.StringField(item, "content"); text != "" && staleSkill(text) {
 			continue
 		}
 		var parts []map[string]jsontext.Value
@@ -52,10 +35,6 @@ func OmitCompactedAttachments(request *codexresponses.Request, context []compose
 		changed := false
 		for _, part := range parts {
 			text := responses.StringField(part, "text")
-			if responses.StringField(part, "type") == "input_text" && staleSkill(text) {
-				changed = true
-				continue
-			}
 			snapshot, valid := attachments.DecodeSnapshot(text)
 			matched := false
 			if responses.StringField(part, "type") == "input_text" && valid {

@@ -93,7 +93,7 @@ attachment bindings. Main history and shared persisted recall remain separate.
 Replacing Side starts a fresh editor history; rejected input remains a draft.
 
 Joining drafts preserves send order, separates nonempty entries with newlines,
-retains immutable attachment snapshots and keeps the last entry's caret. Rejected
+retains supplied text and attachment bindings and keeps the last entry's caret. Rejected
 or withdrawn input can return before newly typed text without losing attachment
 identity. Application-only payload metadata stays outside draft state. Queued input retains
 its next-turn delivery mode through recovery; explicit steering promotes only
@@ -192,45 +192,34 @@ pending. Its result updates only the matching workspace catalog; a late failure
 remains a notice without replacing a new query's or reopened manager's error.
 Plugin browsing is outside this picker.
 
-### Attachment snapshots
+### Attachments
 
-Uploaded text is snapshotted from supplied bytes through the same framing and
-omission budget as host files. Its name is a display label, not a filesystem path;
-no temporary text file or reloadable host source is invented. Ordered external
-input may combine borrowed paths and byte uploads before queue admission. The
-session adapter acquires image files and transfers only its own newly acquired
-files at admission; the composer's mutable editor and picker remain independent
-of asynchronous acquisition.
+The composer retains selected screen text and uploaded text from supplied bytes.
+Upload names are display labels, not filesystem paths; text uploads create no
+temporary file. Ordered external input may combine paths, selections and uploads.
+The session adapter acquires image files and transfers only its own newly acquired
+files at admission; the mutable editor and picker remain independent of that work.
 
-Submission and queueing snapshot selected text files and directories from the
-active thread's absolute workspace. Repeated paths attach once per draft. Frames
-carry source paths and byte ranges, prefer line boundaries and split long lines
-only at UTF-8 boundaries. Contents remain user input, never developer or system
-instructions. Queued payloads and host history retain the submitted bytes across
-fork, resume and provider changes without reopening their source. Recalled editable
-bindings take a fresh snapshot when submitted again. Final submission gives each
-envelope a durable identity independent of its contents. Identical submissions
-remain distinct; request refresh, forks and resume preserve the submitted identity.
-Version 1 envelopes remain readable without inventing a submission identity.
+Before app-server delivery, Go appends supplied text to ordinary user input as
+Markdown under `User selections:`, preserving the original prompt. Entries retain
+their selection labels. Multiline text, code and diffs use collision-free fences,
+with a source language when known. Question answers use the same Markdown as
+accompanying text without changing their reply envelope. Selections over 96 KiB
+are refused with a notice. Text uploads require UTF-8 without NUL bytes.
 
-Submitted file [source references](../agentguidance/SPEC.md#source-reference-syntax)
-select whole files or line ranges.
-Selections of different ranges in one file remain distinct. Malformed references
-retain individual omission evidence. Skill references require enabled,
-unambiguous catalog identities; native paths remain internal metadata.
-Captured-change acquisition is not supported by the composer or external input API.
+Go forwards file and skill references without reading their contents. When native
+records accepted user input, its shared [source reader](../agentguidance/SPEC.md#source-reference-syntax)
+attaches referenced files, skills and captured changes as separate tool data.
+This also covers references in supplied selection/upload text. Queue admission
+does not read sources. A newly accepted reference reads again; continuation,
+fork, resume and replay reuse already recorded results. Read failures remain
+explicit alongside successful sources. Live and restored Activity receipts expose
+the retained bodies and failures. Historical Go attachment envelopes remain readable.
 
-Selected text can contain nested file references, including JSON string values.
-Relative references resolve beside the containing host file; uploads, screen selections and managed
-skills use the active workspace. The selected attachment counts as depth 1;
-depth 3 is the last acquired level. Deeper references produce an explicit omission
-in the snapshot and a composer notice. Nested reads share the attachment budget,
-deduplicate paths, and retain the same immutable submission lifecycle. Directory
-listings are not scanned for references.
-
-Native and managed skill instructions use the same framing, budgets and omission
-receipts as files, never a synthetic native path or name-only replacement. Replay
-recovers immutable instructions and identity without rerunning the manager.
+File references select whole files or line ranges; different ranges remain distinct.
+Repeated sources are acquired once per input. Nested references use the shared
+reader's grammar, depth and capacity limits; directory trees are not scanned for
+references. Skills use native catalog identities rather than caller-supplied paths.
 After a context boundary, provider input offers short, kind-separated `mread`
 hints instead of automatically restoring attachment bodies. Each window freezes
 its complete hint at the start of provider input, so assistant/tool continuations
@@ -240,29 +229,16 @@ Submitted images retain markers and source descriptors, including image-only and
 question-answer inputs. Embedded images retain a descriptor without their pixels.
 These references do not change image-file ownership or lifetime.
 
-Current skill instructions are acquired once through the shared stock reader,
-with Codex permissions and approvals, and frozen as optional evidence. Managed
-metadata paths retain their identity while the manager supplies current instructions.
-Completed reads remain reusable within that window, including after resume and
-fork; the next boundary refreshes skills again. Explicit selected preload and
-reload still supply their bodies and suppress duplicate skill acquisition and initial body-recall hints. Already
+Skill recall supplies placeholders, not an automatic reread. Explicit preload
+and reload use the native reader and supply their selected bodies. Already
 published hints remain unchanged when later selections supply the same source.
-Consuming optional evidence participates in the same source deduplication.
-Native history supplies attachment identity for the selected fork or rewind prefix.
+Native history supplies the selected fork or rewind prefix.
 Host text elements retain file/skill byte ranges relative to each text part;
 native skill metadata can restore unambiguous bindings when elements are absent.
 Explicit elements take precedence for repeated labels; absent metadata leaves
 lookalikes literal. The backend binding decodes these elements and question-reply
 envelopes into neutral composer spans and question identities; display adapters
-map those values without decoding the host protocol again. Oversized or unreadable instructions produce omissions rather
-than truncated instructions.
-
-Each draft has a 192 KiB encoded attachment budget, half reserved for omission
-notices. Submission identity must fit this envelope budget; an oversized supplied
-envelope remains unsent with a notice rather than becoming ordinary prompt text.
-File reads are bounded to 96 KiB and content frames to 24 KiB. Unreadable,
-non-regular/non-directory, non-UTF-8, NUL-containing, oversized and over-budget
-sources produce explicit omission frames; the composer reports the first omission.
+map those values without decoding the host protocol again.
 
 Directories attach deterministic name-only trees, never recursive file contents.
 Root children are depth 1 and their children depth 2. Deeper descendants and child
@@ -277,20 +253,10 @@ omitted whole rather than selecting a filesystem-order subset. Incomplete trees
 carry an explicit truncation marker; a fully filtered tree is identified as empty.
 Ignore input is bounded to 64 KiB across at most 64 ancestor levels and visited
 children. Unavailable ignore rules explicitly omit the affected listing. Directory
-snapshots share file envelopes, receipts and content dialogs.
+results share native source receipts and content dialogs.
 
-Selected-text mentions follow file frames in the same envelope, preserving their
-label and optional source path. Their XML boundaries retain the selection label, optional source and quoted-input
-meaning without byte coordinates. Selected diffs also carry a collision-free
-Markdown diff fence. Initial delivery and optional recall use the same framing;
-recall publishes quoted text rather than a serialized attachment envelope.
-Selections over 96 KiB are refused with a notice.
-A quote exceeding the remaining envelope budget becomes an explicit omission
-frame, reported by the composer. Question answers use the same bound tokens and
-quoted attachments as Main.
-
-Submissions carrying attachments or skills, including stacked input and encoded
-snapshots, must fit a conservative 1 MiB UTF-8 text budget. Larger input returns
+Submissions carrying attachments or skills, including stacked input and expanded
+selection/upload Markdown, must fit a conservative 1 MiB UTF-8 text budget. Larger input returns
 unsent with an actionable notice. Ordinary text limits remain Codex-owned. This
 bounds attachment growth, not the context size of an existing conversation.
 
@@ -348,7 +314,7 @@ all-skipped call still sends an empty response. Hidden synchronous requests keep
 ordinary input queued instead of steering. Async answers stay batched by call and
 are committed by thread, item and question index.
 
-Images and selected-text snapshots accompany answers. Images are numbered across
+Images and selected text accompany answers. Images are numbered across
 the batch, survive rejection and remain host-owned after submission. Sync
 attachments follow the completed response as a companion input. Queued replies
 can be reconciled before dispatch; transmitted input stays host-owned. Pending
@@ -388,18 +354,18 @@ retains queued compaction intent, not its execution lifecycle.
 
 Answers steer during an active turn, start a turn when idle or queue until input
 admission permits delivery. Steers and asynchronous answers accepted during an
-assistant message retain that message's boundary and their input snapshots; a
+assistant message retain that message's boundary and supplied input; a
 later message cannot postpone already-accepted input.
 Deferred answers also wait for a tool's generated input to finish, not for
 execution to finish. Outside assistant-message generation, ordinary prompts retain
-instant interruption and can pass answers deferred by tool-input generation. Payload snapshots retain attachment bytes and
+instant interruption and can pass answers deferred by tool-input generation. Payloads retain supplied text, attachment bindings and
 neutral question identity until [session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md#submission-and-interruption)
 settles submission. That owner also defines interruption, rejection, native-shell
 recovery and session replacement. A rejected or withdrawn payload remains editable
 and returns before newer drafts; committed input is never restored or resent.
 
 Retained input can expose editable text segments around immutable attachment tokens.
-Replacing those segments preserves token identity and prepared attachment snapshots.
+Replacing those segments preserves token identity and supplied text.
 
 Queue batches, submitted-payload matching, acknowledgement history and restoration
 belong to this session owner. Restoring ordinary input while a prompt is open

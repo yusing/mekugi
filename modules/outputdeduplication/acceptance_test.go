@@ -179,8 +179,8 @@ func TestAcceptanceDurableAttachmentBodies(t *testing.T) {
 func TestAcceptanceChunkedSelectionAndWholeReload(t *testing.T) {
 	body := "START_SENTINEL" + strings.Repeat("a", 30000) + "END_SENTINEL"
 	draft := composer.Draft{Text: "[Selected diff]", Selections: []composer.Token{{Start: 0, End: len("[Selected diff]"), Text: body}}}
-	draft.SnapshotFiles("")
-	if err := draft.IdentifyAttachments("selection"); err != nil {
+	draft.Attachments = []string{attachments.Encode(moduletest.SelectionFrames(draft.Text[draft.Selections[0].Start:draft.Selections[0].End], draft.Selections[0].Source, draft.Selections[0].Text))}
+	if err := moduletest.IdentifyAttachments(&draft.Attachments, "selection"); err != nil {
 		t.Fatal(err)
 	}
 	for _, reloadFirst := range []bool{false, true} {
@@ -325,7 +325,7 @@ func TestAcceptanceSingleBaseEditsThroughHostAndAttachment(t *testing.T) {
 func TestAcceptanceRecoveredAttachmentsAndExplicitReload(t *testing.T) {
 	var draft composer.Draft
 	draft.Skills = []composer.Token{{Name: "guide", Path: "/SKILL.md"}}
-	draft.SnapshotSkills(func(_, _ string) ([]byte, error) { return []byte("SHORT_SKILL"), nil })
+	draft.Attachments = []string{attachments.Encode(moduletest.SkillFrames(draft.Skills[0].Name, draft.Skills[0].Path, "SHORT_SKILL"))}
 	skill := draft.Attachments[0]
 	selection := attachments.Snapshot{ID: "submitted", Frames: []string{"Selected text for \"[Selected 1]\" (UTF-8 bytes 0:15 of 15):\nSHORT_SELECTION"}}.Encode()
 	for _, prefix := range []string{"", "<mekugi-file-attachments-v0>\nmalformed\n"} {

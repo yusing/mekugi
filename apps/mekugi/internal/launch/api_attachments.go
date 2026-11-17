@@ -3,7 +3,6 @@ package launch
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -21,7 +20,7 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-// prepareAPIInput borrows host paths and snapshots text before admission. It
+// prepareAPIInput borrows host references and frames supplied text. It
 // never touches the session's editor, picker, queue or request ledger.
 func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.InputRequest) (_ *sessionapi.PreparedInput, err error) {
 	if input.NativeDraft != nil {
@@ -43,7 +42,6 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 	var draft composer.Draft
 	var text strings.Builder
 	text.WriteString(input.Text)
-	var sources []composer.AttachmentSource
 	var acquired []string
 	defer func() {
 		if err != nil {
@@ -73,11 +71,8 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 				path = filepath.Join(workspace, path)
 			}
 			path = filepath.Clean(path)
-			label = "@" + pathdisplay.ForWorkspace(workspace, path)
+			label = (attachments.Reference{Path: pathdisplay.ForWorkspace(workspace, path)}).String()
 			isImage = imageFile(path)
-			if !isImage {
-				sources = append(sources, composer.AttachmentSource{Path: path})
-			}
 		case "upload", "selection":
 			if strings.TrimSpace(attachment.Name) == "" || attachment.Source == "upload" && attachment.Path != "" || attachment.Data == nil {
 				return nil, invalid("An upload requires a display name and base64 data, without a host path.", false)
@@ -143,7 +138,9 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 					return nil, writeErr
 				}
 			} else {
-				sources = append(sources, composer.AttachmentSource{Name: attachment.Name, Data: data})
+				if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+					return nil, invalid("Text uploads require UTF-8 without NUL bytes.", false)
+				}
 				upload = composer.UploadAttachment(attachment.Name, data)
 			}
 			label = "[Uploaded " + attachment.Name + "]"
@@ -170,7 +167,7 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 	}
 	draft.Text = text.String()
 	slices.SortFunc(draft.Selections, func(a, b composer.Token) int { return a.Start - b.Start })
-	draft.SnapshotSources(workspace, sources)
+
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -180,7 +177,7 @@ func prepareAPIInput(ctx context.Context, workspace string, input sessionapi.Inp
 		}
 	}
 	validation := draft.Clone()
-	if _, err := prepareSubmissionInput(&validation, rand.Text()); err != nil {
+	if _, err := prepareSubmissionInput(&validation); err != nil {
 		return nil, invalid(err.Error(), true)
 	}
 	if strings.TrimSpace(draft.Text) == "" {

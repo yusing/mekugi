@@ -3,6 +3,8 @@ package launch
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -36,8 +38,10 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	draft := conversationmodel.Input{Text: "Review files", Files: []composer.Token{{Path: path}, {Path: filepath.Join(cwd, "missing.txt")}}}
-	draft.SnapshotFiles(cwd)
-	content, err := json.Marshal(conversationbinding.Input(draft.Draft))
+	frames := moduletest.FileFrames(path, strings.Repeat("private file contents\n", 1500))
+	frames = append(frames, "Attached file "+strconv.Quote(filepath.Join(cwd, "missing.txt"))+": CONTENT NOT ATTACHED (\"no such file or directory\"). Read separately.")
+	draft.Attachments = []string{attachments.Encode(frames)}
+	content, err := json.Marshal(moduletest.WithLegacyAttachments(conversationbinding.Input(draft.Draft), draft.Draft.Attachments))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,6 +85,34 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	}
 }
 
+func TestNativeSourceOutputsProduceLiveAndRestoredAttachmentReceipts(t *testing.T) {
+	header := "\nSource \"@/workspace/source.rs\":\n"
+	body := "original source\nSource \"@literal\":\n"
+	failure := "\nSource \"$missing\": CONTENT NOT ATTACHED: \"native skill unavailable\"\n"
+	output := attachments.SourceRanges(header+body+"\n"+failure, []attachments.SourceRange{{Start: len(header), End: len(header) + len(body)}})
+	raw, err := json.Marshal(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := binding.ThreadItem{ID: "native-source", Type: "functionCallOutput", Namespace: "context", Name: "attachments", Output: raw}
+	live, _ := newAppServerTestUI()
+	live.startSession("main", "/workspace")
+	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	restored, _ := newAppServerTestUI()
+	restored.startSession("main", "/workspace")
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
+	for name, ui := range map[string]*appServerUI{"live": live, "restored": restored} {
+		entries := ui.attached.source.Entries
+		if len(entries) != 1 {
+			t.Fatalf("%s source lifecycle did not reach Activity: %+v", name, entries)
+		}
+		values := entries[0].Source.Native.Attachments
+		if len(values) != 2 || values[0].Path != "source.rs" || strings.Join(values[0].Tail, "\n") != body || values[1].Verb != "Attach failed" || !strings.Contains(values[1].Label, "unavailable") {
+			t.Fatalf("source receipts: %+v", values)
+		}
+	}
+}
+
 func TestLiveActivityAttachmentDisplayPaths(t *testing.T) {
 	cwd := t.TempDir()
 	inside := filepath.Join(cwd, "nested", "my `file`.txt")
@@ -120,7 +152,7 @@ func TestUISnapshotExpandedSkillMatchesDialog(t *testing.T) {
 	const body = "# Commit\n\nA documented project convention (**contributing guide**, `commitlint` or similar config) takes precedence over the message format below.\n\n## Shape commits\n\n- Make each commit one coherent, independently valid change.\n\n```sh\ngit status --short\n```"
 	for _, child := range []bool{false, true} {
 		v := sharedEventsView(child)
-		content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(composer.SkillFrames("commit", "/workspace/SKILL.md", body))}})
+		content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(moduletest.SkillFrames("commit", "/workspace/SKILL.md", body))}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -152,9 +184,9 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 		for _, body := range []string{"", "one", "one\n\nlast\n", "\x1b[2Jtab\tvalue\r\x07\n", strings.Repeat("界", attachments.Chunk)} {
 			for _, skill := range []bool{false, true} {
 				v := sharedEventsView(child)
-				frames := composer.FileFrames("/workspace/sample.go", body)
+				frames := moduletest.FileFrames("/workspace/sample.go", body)
 				if skill {
-					frames = composer.SkillFrames("guide", "/workspace/SKILL.md", body)
+					frames = moduletest.SkillFrames("guide", "/workspace/SKILL.md", body)
 				}
 				frames = append(frames, "Attached file \"/workspace/missing\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
 				content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
@@ -226,8 +258,8 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 
 func TestUISnapshotAttachmentDialogs(t *testing.T) {
 	v := sharedEventsView(false)
-	frames := composer.FileFrames("/workspace/sample.go", "package sample\n\nfunc Answer() int { return 42 }\n")
-	frames = append(frames, composer.SkillFrames("guide", "/workspace/SKILL.md", "# Guide\n\nUse **submitted** instructions.\n")...)
+	frames := moduletest.FileFrames("/workspace/sample.go", "package sample\n\nfunc Answer() int { return 42 }\n")
+	frames = append(frames, moduletest.SkillFrames("guide", "/workspace/SKILL.md", "# Guide\n\nUse **submitted** instructions.\n")...)
 	frames = append(frames, "Attached file \"/workspace/missing.txt\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
 	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
 	applyTranscriptFixture(v, true, "/workspace", "main", "main", "turn", "input", "item/completed", "", binding.ThreadItem{Type: "userMessage", Content: content})
@@ -256,8 +288,8 @@ func TestUISnapshotDirectoryAttachment(t *testing.T) {
 		}
 	}
 	draft := conversationmodel.Input{Text: "Review @src", Files: []composer.Token{{Path: "src"}}}
-	draft.SnapshotFiles(cwd)
-	content, _ := json.Marshal(conversationbinding.Input(draft.Draft))
+	draft.Attachments = []string{attachments.Encode(moduletest.FileFrames(root, "./\n- main.go\n- nested/\n  - child.go\n"))}
+	content, _ := json.Marshal(moduletest.WithLegacyAttachments(conversationbinding.Input(draft.Draft), draft.Draft.Attachments))
 	v := sharedEventsView(false)
 	applyTranscriptFixture(v, true, cwd, "main", "main", "turn", "input", "item/completed", "", binding.ThreadItem{Type: "userMessage", Content: content})
 	feed := v.RenderFeed(80, 40)
@@ -276,17 +308,17 @@ func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 		for _, second := range []string{"first\n", "second\n"} {
 			var drafts []conversationmodel.Input
 			for _, body := range []string{"first\n", second} {
-				frames := composer.FileFrames("/workspace/sample.txt", body)
+				frames := moduletest.FileFrames("/workspace/sample.txt", body)
 				if skill {
-					frames = composer.SkillFrames("guide", "/workspace/SKILL.md", body)
+					frames = moduletest.SkillFrames("guide", "/workspace/SKILL.md", body)
 				}
 				drafts = append(drafts, conversationmodel.Input{Text: "review", Attachments: []string{attachments.Encode(frames)}})
 			}
 			joined := conversationmodel.Join(drafts...)
-			if err := joined.IdentifyAttachments("stacked"); err != nil {
+			if err := moduletest.IdentifyAttachments(&joined.Attachments, "stacked"); err != nil {
 				t.Fatal(err)
 			}
-			content, err := json.Marshal(conversationbinding.Input(joined.Draft))
+			content, err := json.Marshal(moduletest.WithLegacyAttachments(conversationbinding.Input(joined.Draft), joined.Draft.Attachments))
 			if err != nil {
 				t.Fatal(err)
 			}

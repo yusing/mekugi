@@ -21,5 +21,3 @@ func TextInput(text string, elements []InputTextElement) map[string]any {
 func ImageInput(path string) map[string]any {
 	return map[string]any{"type": "localImage", "path": path}
 }
-
-func AttachmentInput(text string) map[string]any { return appserver.Input(text)[0] }

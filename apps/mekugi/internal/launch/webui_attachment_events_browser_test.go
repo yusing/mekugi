@@ -11,12 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/webui"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 func TestWebUIBrowserAttachmentEvents(t *testing.T) {
@@ -30,10 +31,10 @@ func TestWebUIBrowserAttachmentEvents(t *testing.T) {
 	page := httptest.NewServer(webui.Handler())
 	defer page.Close()
 	machine := newWebUIBrowserMachine(t, ctx, page.URL, "Attachments", strings.Repeat("f", 64))
-	frames := composer.FileFrames("/workspace/source.go", strings.Repeat("retained source ", 50)+"\nlast line")
-	frames = append(frames, composer.SkillFrames("review", "", "# Review\nCheck callers.")...)
-	frames = append(frames, composer.SkillFrames("commit", "", "# Commit\nPreserve intent.")...)
-	frames = append(frames, `Attached file "/workspace/missing.go": CONTENT NOT ATTACHED ("not found"). Read separately.`, attachments.FormatSelection("[Selected text]", "screen", "quoted source"))
+	frames := moduletest.FileFrames("/workspace/source.go", strings.Repeat("retained source ", 50)+"\nlast line")
+	frames = append(frames, moduletest.SkillFrames("review", "", "# Review\nCheck callers.")...)
+	frames = append(frames, moduletest.SkillFrames("commit", "", "# Commit\nPreserve intent.")...)
+	frames = append(frames, `Attached file "/workspace/missing.go": CONTENT NOT ATTACHED ("not found"). Read separately.`, moduletest.FormatSelection("[Selected text]", "screen", "quoted source"))
 	content, err := json.Marshal([]map[string]string{{"type": "text", "text": (attachments.Snapshot{ID: "submitted", Frames: frames}).Encode()}})
 	if err != nil {
 		t.Fatal(err)

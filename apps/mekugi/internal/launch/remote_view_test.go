@@ -18,7 +18,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -372,16 +371,8 @@ func TestRemoteViewDescriptorsUsePublicSnapshotAndLimits(t *testing.T) {
 	operation := sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: sessionpresentation.ComposerIntent{Operation: sessionpresentation.SubmitComposer}, Input: input}}
 	code, body := h.send(operation, func(request sessionapi.NativeRequest) string {
 		draft := request.Prepared.Draft
-		var frames []string
-		for _, envelope := range draft.Attachments {
-			decoded, ok := attachments.Decode(envelope)
-			if !ok {
-				t.Fatal("invalid attachment envelope")
-			}
-			frames = append(frames, decoded...)
-		}
-		if len(frames) != 2 || !strings.Contains(frames[0], "host snapshot") || !strings.Contains(frames[1], "uploaded snapshot") {
-			t.Fatal("public descriptor order or content changed")
+		if len(draft.Files) != 2 || draft.Files[0].Path != filepath.Join(u.attached.cwd, "source.txt") || draft.Files[1].Name != "label.txt" || !strings.Contains(draft.UserSelections(), "uploaded snapshot") || len(draft.Attachments) != 0 {
+			t.Fatalf("public descriptor order or content changed: %+v", draft)
 		}
 		if !request.Prepared.Admit(request.Context, u.ownedImages) {
 			t.Fatal("prepared input could not transfer to existing owner")

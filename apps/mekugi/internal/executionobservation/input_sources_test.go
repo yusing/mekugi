@@ -44,7 +44,7 @@ func TestSuppliedSourcesThroughNativePreparedRequest(t *testing.T) {
 			}
 			// The user attachment producer supplies the same bytes independently.
 			draft := composer.Draft{Skills: []composer.Token{{Name: "guide", Path: "/never-reopen/guide"}}}
-			draft.SnapshotSkills(func(_, _ string) ([]byte, error) { return []byte(body), nil })
+			draft.Attachments = []string{attachments.Encode(moduletest.SkillFrames(draft.Skills[0].Name, draft.Skills[0].Path, body))}
 			items = append(items, map[string]any{"role": "user", "content": []map[string]string{{"type": "input_text", "text": draft.Attachments[0]}}})
 			original := responses.MustMarshalJSON(items)
 			for _, enabled := range []bool{true, false} {
@@ -165,7 +165,7 @@ func TestNativeReloadDeduplicatesRecoveredShortSkill(t *testing.T) {
 	}
 	p.InputProjections = []binding.InputProjection{outputdeduplication.Module.Bindings.InputProjection(service)}
 	draft := composer.Draft{Skills: []composer.Token{{Name: "guide", Path: "/workspace/SKILL.md"}}}
-	draft.SnapshotSkills(func(_, _ string) ([]byte, error) { return []byte(body), nil })
+	draft.Attachments = []string{attachments.Encode(moduletest.SkillFrames(draft.Skills[0].Name, draft.Skills[0].Path, body))}
 	header := "\nSource \"@/workspace/SKILL.md\":\n"
 	reload := "Reloaded context (tool output). These source bodies are already read context; reread only missing or changed content. Failed reads are not complete context.\n" + attachments.SourceRanges(header+body+"\n", []attachments.SourceRange{{Start: len(header), End: len(header) + len(body)}})
 	items := []map[string]any{

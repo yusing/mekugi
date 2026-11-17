@@ -355,7 +355,7 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 		clear(secretEditors)
 		clear(secretAnswers)
 		renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
-		if len(answerDraft.AnswerImages) > 0 || len(answerDraft.Attachments) > 0 {
+		if len(answerDraft.AnswerImages) > 0 || answerDraft.AnswerSelections != "" {
 			d := conversationmodel.Input{Draft: answerDraft, MessageBoundary: session.controlObservations.AssistantMessage(attached.cwd, c.Thread)}
 			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c.Call, true
 			for i, path := range answerDraft.AnswerImages {
@@ -398,8 +398,8 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 	return session.flushInput(attached, picker, clock, editor, parent)
 }
 
-// Answers use composer attachment snapshots. Keep the async reply envelope
-// intact while the host processes accompanying images and quoted selections.
+// Keep the reply envelope intact and render selections before replacing the
+// editor text with it. Images and ordinary Markdown accompany the answer.
 func questionAnswerAttachments(c *prompt.Call, secrets map[int]composer.State, secretAnswers map[int][]string) composer.Draft {
 	var paths []string
 	var drafts []composer.Draft
@@ -438,8 +438,8 @@ func questionAnswerAttachments(c *prompt.Call, secrets map[int]composer.State, s
 		}
 	}
 	attached := composer.Join(drafts...)
-	attached.SnapshotFiles("") // Answer editors bind selections, not files.
-	return composer.Draft{AnswerImages: paths, Attachments: attached.Attachments, AttachmentNotice: attached.AttachmentNotice}
+
+	return composer.Draft{AnswerImages: paths, AnswerSelections: attached.UserSelections()}
 }
 
 // Already-transmitted input belongs to Codex. Only local unsent batches can
@@ -460,7 +460,7 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 			continue
 		}
 		attached := questionAnswerAttachments(c, nil, nil)
-		part.AnswerImages, part.Attachments, part.AttachmentNotice = attached.AnswerImages, attached.Attachments, attached.AttachmentNotice
+		part.AnswerImages, part.AnswerSelections = attached.AnswerImages, attached.AnswerSelections
 		part.Text = conversationbinding.PendingQuestionReply(c, part.Text)
 		part.ReplyCount = len(binding.QuestionReplies(part.Text))
 		if part.Text == "" {

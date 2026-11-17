@@ -61,7 +61,7 @@ func TestNativeViewQueuedImageClaimsEndAtReceiptOrDisconnect(t *testing.T) {
 	}
 }
 
-func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
+func TestNativeSideImageAdmissionAndPendingReplacementClaims(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	workspace := t.TempDir()
 	u.startSession("main", workspace)
@@ -74,11 +74,8 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	u.attached.hooks.nativeImages = n.imageClaims
 	u.side = &sessioncontrol.Side{SideAnswer: &conversation.SideAnswer{Key: "existing"}, Thread: "side"}
 	u.attached.conversation.Side = u.side.SideAnswer
-	file, image := filepath.Join(workspace, "source.txt"), pasteTestImage(t)
-	if err := os.WriteFile(file, []byte("captured contents"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	draft := composer.Draft{Text: "@source.txt [Image 1]", Files: []composer.Token{{Start: 0, End: 11, Path: "source.txt"}}, Images: []composer.Token{{Start: 12, End: 21, Path: image}}}
+	image := pasteTestImage(t)
+	draft := composer.Draft{Text: "[Image 1]", Images: []composer.Token{{Start: 0, End: 9, Path: image}}}
 	prepare := func(draft composer.Draft) *sessionapi.PreparedInput {
 		t.Helper()
 		prepared, err := prepareAPIInput(t.Context(), workspace, sessionapi.InputRequest{NativeDraft: &draft})
@@ -108,11 +105,8 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 	refused.Cleanup()
 	u.side.Busy = false
 	prepared := prepare(draft)
-	if err := os.WriteFile(file, []byte("changed after preparation"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if editor := submit(prepared); editor.Text != "" || !prepared.Admitted() || !strings.Contains(wire.String(), "captured contents") || strings.Contains(wire.String(), "changed after preparation") {
-		t.Fatalf("side submission reread or lost preparation: %s", wire.String())
+	if editor := submit(prepared); editor.Text != "" || !prepared.Admitted() || !strings.Contains(wire.String(), prepared.Draft.Images[0].Path) {
+		t.Fatalf("side submission lost its admitted image: %s", wire.String())
 	}
 	// A pending replacement owns its copied image before any replacement host
 	// operation, and cancelling that chooser releases only the server copy.
@@ -142,17 +136,14 @@ func TestNativeSidePreparedSnapshotsAndPendingReplacementClaims(t *testing.T) {
 		t.Fatal("cancel reclaimed client source:", err)
 	}
 	confirmed := prepare(oneoff)
-	if err := os.WriteFile(file, []byte("changed after replacement preparation"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	editor = submit(confirmed)
 	previous := u.side
 	view = publishSessionView(&v.attached, &u.Client, &v.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, true)
 	action = sessionpresentation.MenuAction{Version: view.Version, Menu: view.Menu.ID, Kind: sessionpresentation.MenuAccept, Choice: view.Menu.Choices[1].Identity()}
 	u.nativeSession.applyMenuResult(&v.attached, &v.picker, &editor, &u.side, u.clock, false, t.Context(), terminalsession.MenuResult{Action: action, Handled: true})
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.side, n.imageClaims)
-	if u.side == previous || u.side.Pending.Origin != "view" || v.picker.sideTask != nil || strings.Contains(strings.Join(u.side.Pending.Attachments, ""), "changed after replacement preparation") {
-		t.Fatal("confirmed replacement lost origin or re-acquired its snapshot")
+	if u.side == previous || u.side.Pending.Origin != "view" || v.picker.sideTask != nil {
+		t.Fatal("confirmed replacement lost its origin or retained the chooser")
 	}
 	if _, err := os.Stat(confirmed.Draft.Images[0].Path); err != nil {
 		t.Fatal("admitted side pending input lost its image claim:", err)

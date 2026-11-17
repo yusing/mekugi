@@ -12,14 +12,6 @@ func setBTWTest(u *appServerUI, side *sessioncontrol.Side) {
 	u.BTW = side
 }
 
-func (u *appServerUI) btwRows(width, height int) []string {
-	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	if height < 1 {
-		return nil
-	}
-	return u.shell.Main.BTW.Render(&u.shell.Transcript.Painter, presentationTime(u.clock), width, height).Rows
-}
-
 func (u *appServerUI) sideFrame(width, height int) []string {
 	screen := vt.NewEmulator(width, height)
 	defer screen.Close()

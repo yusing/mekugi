@@ -7,7 +7,6 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
-	"maps"
 	"strings"
 	"time"
 
@@ -151,7 +150,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 	var reload jsonv1.RawMessage
 	var reloadCalls map[string]bool
 	var attachments attachmentPreparation
-	var historical []compact.SourceIdentity
 	if bytes.Contains(request.Fields["input"], []byte(compact.Prefix)) {
 		if !metadataValid {
 			return nil, errors.New("compaction recovery requires valid metadata")
@@ -160,29 +158,19 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		if err != nil {
 			return nil, err
 		}
-		reload, reloadCalls, historical = prepared.reader, prepared.calls, prepared.sources
+		reload, reloadCalls = prepared.reader, prepared.calls
 	}
 	if metadataValid && !metadata.ActivityIdentityInvalid && (metadata.ThreadID == "" || metadata.ThreadID == threadID) {
-		prepared, err := p.prepareAttachmentContext(ctx, request, threadID, metadata, prewarm, historical)
+		prepared, err := p.prepareAttachmentContext(ctx, request, threadID, metadata, prewarm)
 		if err != nil {
 			return nil, err
 		}
 		attachments = prepared
-		if len(reload) == 0 {
-			reload = prepared.reader
-		}
-		if reloadCalls == nil {
-			reloadCalls = maps.Clone(prepared.calls)
-		} else {
-			for id := range prepared.calls {
-				reloadCalls[id] = true
-			}
-		}
 	}
 	if reloadCalls == nil && bytes.Contains(request.Fields["input"], []byte(compact.SnapshotPrefix)) {
 		reloadCalls = make(map[string]bool)
 	}
-	reloadOutputs, err := p.compactSnapshots(ctx, request.Fields["input"], reloadCalls, threadID, metadata, !prewarm, &attachments)
+	reloadOutputs, err := p.compactSnapshots(ctx, request.Fields["input"], reloadCalls, threadID, metadata, !prewarm)
 	if err != nil {
 		return nil, err
 	}

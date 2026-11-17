@@ -9,11 +9,9 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
-func TestQuestionSelectedTextUsesComposerAttachments(t *testing.T) {
+func TestQuestionSelectedTextUsesPlainMarkdown(t *testing.T) {
 	for _, mode := range []string{"async", "sync note", "async option"} {
 		t.Run(mode, func(t *testing.T) {
 			sync := mode == "sync note"
@@ -56,8 +54,7 @@ func TestQuestionSelectedTextUsesComposerAttachments(t *testing.T) {
 				}
 			}
 			input := conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)
-			frames, ok := attachments.Decode(input[len(input)-1]["text"].(string))
-			if !ok || len(frames) != 1 || !strings.HasSuffix(frames[0], "\nquoted\n</selected-text>") || !strings.Contains(frames[0], `"[Selected message]"`) {
+			if text := input[len(input)-1]["text"].(string); text != "\n\n---\nUser selections:\n- message: quoted" {
 				t.Fatalf("selection lost in transport: %+v", input)
 			}
 		})
@@ -103,8 +100,7 @@ func TestQuestionSecretAndOrdinarySelectionsKeepDistinctLabels(t *testing.T) {
 	}
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "mixed-selection"})
 	input := conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)
-	frames, ok := attachments.Decode(input[len(input)-1]["text"].(string))
-	if !ok || len(frames) != 2 || !strings.Contains(frames[0], `"[Selected message]"`) || !strings.HasSuffix(frames[0], "\nprivate quote\n</selected-text>") || !strings.Contains(frames[1], `"[Selected message 2]"`) || !strings.HasSuffix(frames[1], "\nordinary quote\n</selected-text>") {
-		t.Fatalf("companion selection frames = %q", frames)
+	if text := input[len(input)-1]["text"].(string); text != "\n\n---\nUser selections:\n- message: private quote\n- message 2: ordinary quote" {
+		t.Fatalf("companion selections = %q", text)
 	}
 }

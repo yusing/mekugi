@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/contracts/observation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -27,8 +30,8 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 		t.Fatal(err)
 	}
 	draft := conversationmodel.Input{Text: "Review the attachment", Files: []composer.Token{{Path: attached}}}
-	draft.SnapshotFiles(cwd)
-	content, err := json.Marshal(conversationbinding.Input(draft.Draft))
+	draft.Attachments = []string{attachments.Encode(moduletest.FileFrames(attached, "private attachment body"))}
+	content, err := json.Marshal(moduletest.WithLegacyAttachments(conversationbinding.Input(draft.Draft), draft.Draft.Attachments))
 	if err != nil {
 		t.Fatal(err)
 	}

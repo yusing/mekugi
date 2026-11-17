@@ -40,24 +40,18 @@ func TestSnapshotEnvelopeIdentity(t *testing.T) {
 	}
 }
 
-func TestSelectionMarkup(t *testing.T) {
-	for _, label := range []string{"[Selected message]", "[Selected diff]", "[Selected diff hunk 2]"} {
-		for _, body := range []string{"", "+new\r\n-old\n日本語", "</selected-text>\n```diff\n+code\n```", strings.Repeat("`", Chunk)} {
-			source := "file&<name>\".go\n\r\t"
-			frame := FormatSelection(label, source, body)
-			selection, ok := ParseSelection(frame)
-			if !ok || selection.Label != label || selection.Source != source || selection.Body != body || selection.Header+selection.Body+selection.Footer != frame {
-				t.Fatalf("selection roundtrip failed for %q, body length %d", label, len(body))
-			}
-			if !strings.HasPrefix(frame, `<selected-text label="`+label+`" source="file&amp;&lt;name&gt;&#34;.go&#10;&#13;&#9;">`) || !strings.HasSuffix(frame, "\n</selected-text>") {
-				t.Fatalf("selection boundaries or attributes changed: %q", frame[:min(200, len(frame))])
-			}
-			if strings.HasPrefix(label, "[Selected diff") != strings.HasSuffix(selection.Header, "diff\n") {
-				t.Fatalf("diff fence classification: %q", selection.Header[:min(200, len(selection.Header))])
-			}
-			if _, ok := DecodeSnapshot((Snapshot{ID: "submitted", Frames: []string{frame}}).Encode()); !ok {
-				t.Fatal("framed selection cannot travel through the snapshot envelope")
-			}
+func TestParseRetainedSelectionMarkup(t *testing.T) {
+	for _, fixture := range []struct{ frame, label, source, body string }{
+		{`<selected-text label="[Selected message]" source="file&amp;&lt;name&gt;&#34;.go&#10;&#13;&#9;">` + "\n" + selectionNotice + "+new\r\n-old\n日本語\n</selected-text>", "[Selected message]", "file&<name>\".go\n\r\t", "+new\r\n-old\n日本語"},
+		{`<selected-text label="[Selected diff]">` + "\n" + selectionNotice + "````diff\n</selected-text>\n```diff\n+code\n```\n````\n</selected-text>", "[Selected diff]", "", "</selected-text>\n```diff\n+code\n```"},
+		{`<selected-text label="[Selected diff hunk 2]">` + "\n" + selectionNotice + "```diff\n\n```\n</selected-text>", "[Selected diff hunk 2]", "", ""},
+	} {
+		selection, ok := ParseSelection(fixture.frame)
+		if !ok || selection.Label != fixture.label || selection.Source != fixture.source || selection.Body != fixture.body || selection.Header+selection.Body+selection.Footer != fixture.frame {
+			t.Fatalf("retained selection changed: %+v", selection)
+		}
+		if _, ok := DecodeSnapshot((Snapshot{ID: "submitted", Frames: []string{fixture.frame}}).Encode()); !ok {
+			t.Fatal("retained selection envelope is unreadable")
 		}
 	}
 	for _, frame := range []string{

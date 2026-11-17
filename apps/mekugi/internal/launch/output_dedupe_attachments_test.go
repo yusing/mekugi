@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -16,7 +18,6 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 func TestUISnapshotOutputDeduplicationAttachments(t *testing.T) {
@@ -33,26 +34,15 @@ func TestUISnapshotOutputDeduplicationAttachments(t *testing.T) {
 	var retained []binding.ThreadItem
 	var snapshots []attachments.Snapshot
 	for i, body := range []string{file, file + "new final line\n", file + "new final line\n"} {
-		u, w := newAppServerTestUI()
-		frames := append(composer.FileFrames("/workspace/file.txt", body), composer.SkillFrames("guide", "", skill)...)
-		draft := conversationmodel.Input{Text: "review snapshots", Attachments: []string{attachments.Encode(frames)}}
-		if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{draft}, false); err != nil {
-			t.Fatal(err)
-		}
-		sent := appServerTurnRequests(t, w)
-		if len(sent) != 1 {
-			t.Fatalf("submission requests: %d", len(sent))
-		}
-		snapshot, ok := attachments.DecodeSnapshot(sent[0].Params.Input[1].Text)
-		if !ok || snapshot.ID != sent[0].Params.ClientUserMessageID+"/0" || len(snapshot.Frames) < 3 {
-			t.Fatalf("missing durable chunked submission identity: %+v", snapshot)
-		}
+		frames := append(moduletest.FileFrames("/workspace/file.txt", body), moduletest.SkillFrames("guide", "", skill)...)
+		snapshot := attachments.Snapshot{ID: fmt.Sprintf("retained-%d", i), Frames: frames}
 		snapshots = append(snapshots, snapshot)
-		content, _ := json.Marshal(sent[0].Params.Input)
+		contents := []map[string]string{{"type": "text", "text": "review snapshots"}, {"type": "text", "text": snapshot.Encode()}}
+		content, _ := json.Marshal(contents)
 		retained = append(retained, binding.ThreadItem{Type: "userMessage", ID: fmt.Sprintf("user-%d", i), Content: content})
 		var parts []any
-		for _, part := range sent[0].Params.Input {
-			parts = append(parts, map[string]any{"type": "input_text", "text": part.Text})
+		for _, part := range contents {
+			parts = append(parts, map[string]any{"type": "input_text", "text": part["text"]})
 		}
 		input = append(input, map[string]any{"role": "user", "content": parts, "internal_chat_message_metadata_passthrough": map[string]any{"turn_id": "same-turn"}})
 	}
@@ -232,16 +222,16 @@ func TestSelectionLargeDiffFenceSurvivesModelProjection(t *testing.T) {
 	const label = "[Selected diff]"
 	body := strings.Repeat("`", attachments.Chunk)
 	draft := composer.Draft{Text: label, Selections: []composer.Token{{Start: 0, End: len(label), Text: body}}}
-	draft.SnapshotFiles("")
-	if err := draft.IdentifyAttachments("selection"); err != nil {
+	draft.Attachments = []string{attachments.Encode(moduletest.SelectionFrames(draft.Text[draft.Selections[0].Start:draft.Selections[0].End], draft.Selections[0].Source, draft.Selections[0].Text))}
+	if err := moduletest.IdentifyAttachments(&draft.Attachments, "selection"); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, ok := attachments.DecodeSnapshot(draft.Attachments[0])
 	if !ok {
 		t.Fatal("selection producer emitted an invalid envelope")
 	}
-	file := composer.FileFrames("/file.txt", "FILE_BODY")[0]
-	skill := composer.SkillFrames("guide", "", "SKILL_BODY")[0]
+	file := moduletest.FileFrames("/file.txt", "FILE_BODY")[0]
+	skill := moduletest.SkillFrames("guide", "", "SKILL_BODY")[0]
 	snapshot.Frames = append(snapshot.Frames, file, skill)
 	input := []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": snapshot.Encode()}}}}
 	proxy := newManagedMekugiProxy(t)

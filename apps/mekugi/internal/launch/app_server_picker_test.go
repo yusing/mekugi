@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
@@ -79,57 +78,6 @@ func TestComposerFilePickerScopesAndCoalescesRequests(t *testing.T) {
 	requests = pickerRequests(t, w)
 	if len(requests) != 3 || len(requests[2].Params.Roots) != 1 || requests[2].Params.Roots[0] != "/work/two" {
 		t.Fatalf("workspace change did not request fresh search: %+v", requests)
-	}
-}
-
-func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
-	u, w := newAppServerTestUI()
-	workspace := t.TempDir()
-	path := filepath.Join(workspace, "quiet", "SKILL.md")
-	const instructions = "Picker skill instructions 世界.\n"
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(instructions), 0600); err != nil {
-		t.Fatal(err)
-	}
-	u.attached.cwd = workspace
-	appServerTestKeys(t, u, "$qu")
-	requests := pickerRequests(t, w)
-	if len(requests) != 1 || requests[0].Method != "skills/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != workspace {
-		t.Fatalf("skill list scope = %+v", requests)
-	}
-	pickerReply(t, u, requests[0].ID, fmt.Sprintf(`{"data":[{"cwd":"/other","skills":[{"name":"quiet","path":"/other/SKILL.md","enabled":true}]},{"cwd":%q,"skills":[{"name":"quiet","path":%q,"enabled":true,"interface":{"shortDescription":"Short help"}},{"name":"queue","path":"/work/queue/SKILL.md","enabled":false},{"name":"build","path":"/work/build/SKILL.md","enabled":true}]}]}`, workspace, path))
-	if len(u.picker.Choices) != 1 || u.picker.Choices[0].Name != "quiet" || u.picker.Choices[0].Description != "Short help" {
-		t.Fatalf("skill filtering = %+v", u.picker.Choices)
-	}
-	appServerTestKeys(t, u, "\t")
-	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path || len(u.attached.source.Entries) != 0 {
-		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.Text, u.Skills, len(u.attached.source.Entries))
-	}
-	w.Reset()
-	appServerTestKeys(t, u, "\r")
-	var request struct {
-		Params struct {
-			Input []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"input"`
-		} `json:"params"`
-	}
-	if err := json.Unmarshal(bytes.TrimSpace(w.Bytes()), &request); err != nil {
-		t.Fatal(err)
-	}
-	if len(request.Params.Input) != 2 || request.Params.Input[1].Type != "text" {
-		t.Fatalf("skill contents were not sent in a text attachment: %+v", request.Params.Input)
-	}
-	frames, ok := attachments.Decode(request.Params.Input[1].Text)
-	if !ok || len(frames) != 1 || frames[0] != composer.SkillFrames("quiet", path, instructions)[0] {
-		t.Fatalf("skill contents or source path missing: %+v", frames)
-	}
-	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"rejected"}}`)
-	if u.Text != "$quiet" || len(u.Skills) != 1 || u.Skills[0].Path != path {
-		t.Fatalf("rejected submission lost skill: draft=%q skills=%+v", u.Text, u.Skills)
 	}
 }
 

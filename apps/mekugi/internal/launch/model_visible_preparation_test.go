@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/modules/conversation/composer"
-	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
@@ -23,13 +23,12 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 	proxy.inputProjections = testInputProjections()
 	trace := newNativeTraceFixture(t)
 	proxy.nativeTrace = nativetrace.NewWithNotice(trace.root, nil)
-	u, writer := newAppServerTestUI()
+	u, _ := newAppServerTestUI()
 	u.audience = proxy.activity
 	u.attached.cwd = t.TempDir()
 	// The real thread/start response installs both the audience and production
 	// detail lookup, before host history or any prepared content exists.
 	replaceAppServerTestSession(t, u, "thread")
-	writer.Reset()
 	var body strings.Builder
 	for i := range 40 {
 		fmt.Fprintf(&body, "distinctive source row %02d with attachment content\n", i)
@@ -39,28 +38,18 @@ func TestModelVisiblePreparedRequestThroughNativeDialogs(t *testing.T) {
 	var history []binding.ThreadItem
 	var second attachments.Snapshot
 	for i := range 2 {
-		frames := append(composer.FileFrames("/workspace/file.txt", file), composer.SkillFrames("guide", "", skill)...)
-		draft := conversation.Input{Text: "inspect snapshots", Attachments: []string{attachments.Encode(frames)}}
-		if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversation.Input{draft}, false); err != nil {
-			t.Fatal(err)
-		}
-		sent := appServerTurnRequests(t, writer)
-		if len(sent) != 1 {
-			t.Fatalf("submissions: %d", len(sent))
-		}
+		frames := append(moduletest.FileFrames("/workspace/file.txt", file), moduletest.SkillFrames("guide", "", skill)...)
+		snapshot := attachments.Snapshot{ID: fmt.Sprintf("retained-%d", i), Frames: frames}
+		contents := []map[string]string{{"type": "text", "text": "inspect snapshots"}, {"type": "text", "text": snapshot.Encode()}}
 		var parts []any
-		for _, part := range sent[0].Params.Input {
-			parts = append(parts, map[string]string{"type": "input_text", "text": part.Text})
+		for _, part := range contents {
+			parts = append(parts, map[string]string{"type": "input_text", "text": part["text"]})
 		}
 		input = append(input, map[string]any{"role": "user", "content": parts})
-		content, _ := json.Marshal(sent[0].Params.Input)
+		content, _ := json.Marshal(contents)
 		history = append(history, binding.ThreadItem{Type: "userMessage", ID: fmt.Sprint("user-", i), Content: content})
 		if i == 1 {
-			var ok bool
-			second, ok = attachments.DecodeSnapshot(sent[0].Params.Input[1].Text)
-			if !ok {
-				t.Fatal("missing submitted identity")
-			}
+			second = snapshot
 		}
 	}
 	const patch = "*** Begin Patch\n*** Add File: one.txt\n+one\n*** Add File: two.txt\n+two\n*** End Patch"

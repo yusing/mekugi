@@ -9,15 +9,42 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
+
+func TestSideRepliesAppendUserSelectionsAndRejectExpandedOverflow(t *testing.T) {
+	for _, oversize := range []bool{false, true} {
+		side := &Side{SideAnswer: &conversationmodel.SideAnswer{ID: 1}, Thread: "side", Turn: "turn", Busy: true}
+		transport := &requestTransport{id: "steer"}
+		requests := NewRequests[struct{}](transport)
+		const label = "[Selected message]"
+		body := "selected reply"
+		if oversize {
+			body = strings.Repeat("x", codexresponses.UserTextLimit)
+		}
+		input := conversationmodel.Input{Text: label, Selections: []composer.Token{{Start: 0, End: len(label), Text: body}}}
+		update, err := requests.ReplySide(side, "side", "turn", input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if oversize {
+			if !update.NoticeError || update.Restore.Selections[0].Text != body || len(transport.sends) != 0 {
+				t.Fatal("overflow was sent or its supplied text was lost")
+			}
+			continue
+		}
+		params := transport.sends[0].params.(map[string]any)
+		parts := params["input"].([]map[string]any)
+		if got := parts[len(parts)-1]["text"]; got != "\n\n---\nUser selections:\n- message: selected reply" {
+			t.Fatalf("side user input: %q", got)
+		}
+	}
+}
 
 func TestAnswerOnlyClassificationUsesLiveForkLedger(t *testing.T) {
 	for _, oneoff := range []bool{false, true} {
@@ -353,58 +380,6 @@ func TestSideWorkflowWithoutRenderer(t *testing.T) {
 			response, _ := requests.Take("next")
 			if _, err := requests.ObserveSide(appserver.Message{Result: []byte(`{"turn":{"id":"turn"}}`)}, response, "main"); err != nil || side.Turn != "" || side.Busy {
 				t.Fatal("late start acknowledgement revived completed side work")
-			}
-		})
-	}
-}
-
-func TestSideAttachmentSubmissionIdentity(t *testing.T) {
-	body := "immutable side snapshot\n"
-	envelope := attachments.Encode(composer.FileFrames("/workspace/side.txt", body))
-	var previous string
-	for range 2 {
-		side := &Side{SideAnswer: &conversationmodel.SideAnswer{Pending: conversationmodel.Input{Text: "question", Attachments: []string{envelope}}}, Thread: "side", Busy: true}
-		transport := &requestTransport{id: "start"}
-		requests := NewRequests[struct{}](transport)
-		update, err := requests.StartSide(side, SideMain{Thread: "main"}, time.Time{})
-		if err != nil || !update.TurnRequested {
-			t.Fatalf("side start: %+v %v", update, err)
-		}
-		params := transport.sends[0].params.(map[string]any)
-		input := params["input"].([]map[string]any)
-		snapshot, ok := attachments.DecodeSnapshot(input[len(input)-1]["text"].(string))
-		if !ok || snapshot.ID == "" || snapshot.ID == previous || snapshot.Frames[0] != composer.FileFrames("/workspace/side.txt", body)[0] {
-			t.Fatal("side submission lost unique identity or original contents")
-		}
-		previous = snapshot.ID
-	}
-}
-
-func TestSideSteeringAttachmentPreparation(t *testing.T) {
-	for _, oversize := range []bool{false, true} {
-		t.Run(fmt.Sprint(oversize), func(t *testing.T) {
-			side := &Side{SideAnswer: &conversationmodel.SideAnswer{ID: 1}, Thread: "side", Turn: "turn", Busy: true}
-			transport := &requestTransport{id: "steer"}
-			requests := NewRequests[struct{}](transport)
-			input := conversationmodel.Input{Text: "read attached", Attachments: []string{attachments.Encode(composer.FileFrames("/workspace/file.txt", "same bytes"))}}
-			if oversize {
-				input.Text = strings.Repeat("x", codexresponses.UserTextLimit)
-			}
-			update, err := requests.ReplySide(side, "side", "turn", input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if oversize {
-				if !update.Handled || !update.NoticeError || update.Restore.Text != input.Text || len(update.Restore.Attachments) != 1 || len(transport.sends) != 0 || !side.Busy {
-					t.Fatal("invalid steering was dispatched or lost instead of restored")
-				}
-				return
-			}
-			params := transport.sends[0].params.(map[string]any)
-			parts := params["input"].([]map[string]any)
-			snapshot, ok := attachments.DecodeSnapshot(parts[len(parts)-1]["text"].(string))
-			if !ok || snapshot.ID == "" || !strings.HasPrefix(snapshot.ID, params["clientUserMessageId"].(string)) {
-				t.Fatalf("steering attachment lost submission identity: %+v", snapshot)
 			}
 		})
 	}

@@ -34,8 +34,8 @@ func Input(d composer.Draft) []map[string]any {
 	for _, path := range d.AnswerImages {
 		input = append(input, binding.ImageInput(path))
 	}
-	for _, attachment := range d.Attachments {
-		input = append(input, binding.AttachmentInput(attachment))
+	if selections := d.AnswerSelections + d.UserSelections(); selections != "" {
+		input = append(input, binding.TextInput(selections, nil))
 	}
 	return input
 }

@@ -1,28 +1,17 @@
 package launch
 
 import (
-	"encoding/json/jsontext"
-
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
-	json "encoding/json/v2"
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 
@@ -61,72 +50,11 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 	}
 }
 
-func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "explain ")
-	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "diff hunk @amber1:42-45", "+new\n-old", "a.go")
-	d := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
-	if err := d.Draft.IdentifyAttachments("selected-submission"); err != nil {
-		t.Fatal(err)
-	}
-	input := conversationbinding.Input(d.Draft)
-	if len(input) != 2 {
-		t.Fatalf("input = %+v", input)
-	}
-	elements, _ := input[0]["text_elements"].([]binding.InputTextElement)
-	if input[0]["text"] != "explain [Selected diff hunk @amber1:42-45] " || len(elements) != 1 || elements[0].Placeholder != "[Selected diff hunk @amber1:42-45]" {
-		t.Fatalf("prompt part = %+v", input[0])
-	}
-	envelope, _ := input[1]["text"].(string)
-	frames, ok := attachments.Decode(envelope)
-	want := "<selected-text label=\"[Selected diff hunk @amber1:42-45]\" source=\"a.go\">\nQuoted from the user's screen, not a separate request:\n```diff\n+new\n-old\n```\n</selected-text>"
-	if !ok || !slices.Equal(frames, []string{want}) {
-		t.Fatalf("frames = %q, %v", frames, ok)
-	}
-	// The model receives the quote as its own user message.
-	content, _ := json.Marshal([]map[string]string{{"type": "input_text", "text": "explain [Selected diff hunk @amber1:42-45] "}, {"type": "input_text", "text": envelope}})
-	items, _ := json.Marshal([]map[string]jsontext.Value{{"type": []byte(`"message"`), "role": []byte(`"user"`), "content": content}})
-	request := &codexresponses.Request{Fields: map[string]jsontext.Value{"input": items}}
-	if changed, _ := requestexecution.ProjectFileAttachments(request); !changed || !strings.Contains(string(request.Fields["input"]), `+new\n-old`) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") || strings.Contains(string(request.Fields["input"]), "UTF-8 bytes") {
-		t.Fatalf("projected input = %s", request.Fields["input"])
-	}
-	var projected []map[string]jsontext.Value
-	if err := json.Unmarshal(request.Fields["input"], &projected); err != nil || len(projected) != 2 {
-		t.Fatalf("projected messages: %s, %v", request.Fields["input"], err)
-	}
-	var quote []map[string]string
-	if err := json.Unmarshal(projected[1]["content"], &quote); err != nil || len(quote) != 1 || quote[0]["text"] != want {
-		t.Fatalf("model quote: %s, %v", projected[1]["content"], err)
-	}
-	for _, noise := range []struct{ name, text string }{
-		{"JSON", `"frames":`}, {"v2", "v2"}, {"id", "selected-submission"},
-		{"byte coordinates", "UTF-8 bytes"}, {"file-attachments label", "file-attachments"},
-	} {
-		if strings.Contains(quote[0]["text"], noise.text) {
-			t.Fatalf("model quote contains %s: %s", noise.name, quote[0]["text"])
-		}
-	}
-	t.Logf("Initial model-visible selection:\n%s", quote[0]["text"])
-	// The host echo keeps the concise label as one styled token.
-	spans := conversationbinding.ElementSpans(input[0]["text"].(string), elements)
-	if len(spans) != 1 || spans[0].Kind != composer.Selection {
-		t.Fatalf("transcript spans = %+v", spans)
-	}
-}
-
 func TestComposerSelectionOverBudgetIsExplicit(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("a", attachments.Budget/2+1), "")
 	if len(u.Selections) != 0 || u.Text != "" {
 		t.Fatalf("oversized selection inserted: %q", u.Text)
-	}
-	for range 3 {
-		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("b\n", attachments.Budget/5), "")
-	}
-	d := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
-	frames, ok := attachments.Decode(d.Attachments[0])
-	if !ok || !strings.Contains(frames[len(frames)-1], "CONTENT NOT ATTACHED (attachment budget exceeded)") || d.AttachmentNotice == "" {
-		t.Fatalf("omission missing: ok=%v notice=%q last=%q", ok, d.AttachmentNotice, frames[len(frames)-1][:40])
 	}
 }
 
@@ -242,18 +170,8 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		if len(requests) != 1 || requests[0].Method != "turn/start" {
 			t.Fatalf("retry requests = %+v", requests)
 		}
-		var text string
-		var frames []string
-		for _, part := range requests[0].Params.Input {
-			if attached, ok := attachments.Decode(part.Text); ok {
-				frames = append(frames, attached...)
-			} else if part.Type == "text" {
-				text += part.Text
-			}
-		}
-		restored := composer.RestoreSelections(text, frames)
-		if len(restored) != 2 || restored[0].Text != "first quote" || restored[1].Text != "second quote" || text[restored[0].Start:restored[0].End] == text[restored[1].Start:restored[1].End] {
-			t.Fatalf("retry lost distinct quotes: text=%q restored=%+v", text, restored)
+		if text := requests[0].text(); text != "[Selected message]\n[Selected message 2]\n\n---\nUser selections:\n- message: first quote\n- message 2: second quote" {
+			t.Fatalf("retry lost distinct quotes: %q", text)
 		}
 	})
 	t.Run("pending labels stay distinct", func(t *testing.T) {
@@ -275,34 +193,6 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "replacement quote", "")
 		if u.Text != "[Selected message] " {
 			t.Fatalf("inactive parked editor reserved a label: %q", u.Text)
-		}
-	})
-	t.Run("omissions never overflow the envelope", func(t *testing.T) {
-		u, _ := newAppServerTestUI()
-		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("a", attachments.Budget/2-1024), "")
-		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", strings.Repeat("b", attachments.Budget/2-3072), "")
-		for range 40 {
-			insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "tiny but over budget", "")
-		}
-		d := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
-		frames, ok := attachments.Decode(d.Attachments[0])
-		if !ok || len(d.Attachments[0]) > attachments.Budget || !strings.Contains(frames[len(frames)-1], "remaining mentions: CONTENT NOT ATTACHED") {
-			t.Fatalf("envelope %d bytes decoded=%v", len(d.Attachments[0]), ok)
-		}
-	})
-	t.Run("resume recalls quotes", func(t *testing.T) {
-		u, _ := newAppServerTestUI()
-		insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "why ")
-		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "diff hunk @amber1:3", strings.Repeat("x\n", attachments.Chunk), "a.go")
-		insertSelection(&u.attached, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "short", "")
-		d := prepareDraft(&u.picker, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
-		frames, _ := attachments.Decode(d.Attachments[0])
-		restored := composer.RestoreSelections(d.Text, frames)
-		if len(restored) != 2 || restored[0].Text != strings.Repeat("x\n", attachments.Chunk) || restored[0].Source != "a.go" || d.Text[restored[1].Start:restored[1].End] != "[Selected message]" || restored[1].Text != "short" {
-			t.Fatalf("restored = %+v", restored)
-		}
-		if len(frames) < 3 {
-			t.Fatalf("long selection was not split: %d frames", len(frames))
 		}
 	})
 }

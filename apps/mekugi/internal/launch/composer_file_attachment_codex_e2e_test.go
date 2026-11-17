@@ -18,7 +18,7 @@ import (
 )
 
 func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
-	codex, err := exec.LookPath("codex")
+	codex, err := exec.LookPath("mekugi-app-server")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	t.Cleanup(func() { server.Close() })
 	newCommand := func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server",
+		cmd := exec.CommandContext(ctx, codex,
 			"-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
 			"-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`,
 			"-c", "features.plugins=false")
@@ -47,6 +47,8 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 		case body := <-provider.requests:
 			var request struct {
 				Input []struct {
+					Type    string `json:"type"`
+					Output  string `json:"output"`
 					Role    string `json:"role"`
 					Content []struct {
 						Type string `json:"type"`
@@ -58,24 +60,25 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 				t.Fatal(err)
 			}
 			var attached strings.Builder
-			promptIndex, frames := -1, 0
+			promptIndex, sources := -1, 0
 			for index, item := range request.Input {
 				for _, part := range item.Content {
-					if part.Text == "Review @"+name+" " {
+					if strings.TrimSpace(part.Text) == "Review @"+name {
 						promptIndex = index
 					}
-					if strings.HasPrefix(part.Text, "Attached file "+strconv.Quote(path)+" (") {
-						if item.Role != "user" || len(item.Content) != 1 || promptIndex < 0 || index <= promptIndex {
-							t.Fatal("file content was not a separate user message after the inline prompt")
+				}
+				for _, source := range attachments.SourceContents(item.Output) {
+					if source.Reference == "@"+name {
+						if item.Type != "function_call_output" || promptIndex < 0 || index <= promptIndex || source.Error != "" {
+							t.Fatalf("source did not follow its input as native tool data: %+v", source)
 						}
-						_, data, _ := strings.Cut(part.Text, ":\n")
-						attached.WriteString(data)
-						frames++
+						attached.WriteString(source.Body)
+						sources++
 					}
 				}
 			}
-			if attached.String() != content || frames < 2 {
-				t.Fatalf("native host lost snapshot bytes or chunking: %d bytes in %d frames", attached.Len(), frames)
+			if attached.String() != content || sources != 1 {
+				t.Fatalf("native host lost recorded source bytes: %d bytes in %d sources", attached.Len(), sources)
 			}
 		case <-terminal.ctx.Done():
 			t.Fatal("no provider request for file attachment")
@@ -88,7 +91,7 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 	first.send("\t\r")
 	first.await("completed")
 	check(first)
-	first.await("Attached")
+	first.await("Attach " + name)
 	if strings.Contains(first.screen.String(), "mekugi-file-attachments-v1") {
 		t.Fatal("attachment envelope leaked into terminal")
 	}
@@ -96,25 +99,25 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	// Fresh router handler and Codex process must recover only the submitted snapshot.
+	// A fresh handler and native process reuse the recorded source without reopening it.
 	server.Close()
 	server = httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	second := startAppResumeTerminal(t, newCommand, "--last")
 	second.await("Ready")
-	second.await("Attached")
-	second.send("Continue from the attached snapshot\r")
+	second.await("Attach " + name)
+	second.send("Continue from the attached source\r")
 	second.await("completed")
 	check(second)
 	second.quit()
 }
 
-// Both skill sources use the @file snapshot envelope and byte framing.
+// Native and managed instructions share the accepted-input source reader.
 func TestSkillContentsNativeCodexE2E(t *testing.T) {
 	for _, name := range []string{"native", "managed", "user-invoked"} {
 		managed := name != "native"
 		hidden := name == "user-invoked"
 		t.Run(name, func(t *testing.T) {
-			codex, err := exec.LookPath("codex")
+			codex, err := exec.LookPath("mekugi-app-server")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -169,7 +172,7 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 			server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 			defer server.Close()
 			command := func(ctx context.Context) *exec.Cmd {
-				cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
+				cmd := exec.CommandContext(ctx, codex, "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
 			}
@@ -192,6 +195,8 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 			case body := <-provider.requests:
 				var request struct {
 					Input []struct {
+						Type    string `json:"type"`
+						Output  string `json:"output"`
 						Role    string `json:"role"`
 						Content []struct {
 							Type string `json:"type"`
@@ -203,8 +208,9 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 					t.Fatal(err)
 				}
 				var attached strings.Builder
-				frames, prompts, markers := 0, 0, 0
+				sources, prompts, markers := 0, 0, 0
 				for _, item := range request.Input {
+					markers += strings.Count(item.Output, marker)
 					for _, part := range item.Content {
 						if part.Text == prompt {
 							prompts++
@@ -213,27 +219,19 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 						if strings.Contains(part.Text, "STALE-NATIVE-CONTENTS") || strings.Contains(part.Text, `<skill name="`+skill+`"`) {
 							t.Fatal("redundant native injection reached provider")
 						}
-						if strings.HasPrefix(part.Text, "Attached skill "+strconv.Quote(skill)) {
-							if item.Role != "user" {
-								t.Fatal("skill snapshot is not a user message")
+					}
+					for _, source := range attachments.SourceContents(item.Output) {
+						if source.Reference == "$"+skill {
+							if item.Type != "function_call_output" || source.Error != "" {
+								t.Fatalf("skill was not acquired as native tool data: %+v", source)
 							}
-							if (!managed || hidden) && !strings.Contains(part.Text, " from "+strconv.Quote(source)) {
-								t.Fatal("metadata source path lost")
-							}
-							if !strings.Contains(part.Text, attachments.ReadGuidance) {
-								t.Fatal("attachment reuse guidance missing at provider")
-							}
-							_, content, ok := strings.Cut(part.Text, ":\n")
-							if !ok {
-								t.Fatal("missing skill frame body")
-							}
-							attached.WriteString(content)
-							frames++
+							attached.WriteString(source.Body)
+							sources++
 						}
 					}
 				}
-				if prompts != 1 || frames < 2 || markers != 1 || attached.String() != instructions {
-					t.Fatalf("snapshot missing or duplicated: prompts=%d frames=%d markers=%d bytes=%d", prompts, frames, markers, attached.Len())
+				if prompts != 1 || sources != 1 || markers != 1 || attached.String() != instructions {
+					t.Fatalf("source missing or duplicated: prompts=%d sources=%d markers=%d bytes=%d", prompts, sources, markers, attached.Len())
 				}
 			case <-first.ctx.Done():
 				t.Fatal("no skill provider request")

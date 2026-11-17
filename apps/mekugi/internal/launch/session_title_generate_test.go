@@ -13,11 +13,12 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/testsupport/moduletest"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -214,8 +215,8 @@ func TestSessionTitleNewHostMetadataStopsNaming(t *testing.T) {
 
 func TestSessionTitleHTTPConsumer(t *testing.T) {
 	const prompt = "Review @HANDOFF.md"
-	frames := composer.FileFrames("/work/HANDOFF.md", "Fix duplicate attachment receipts after resume.\n## My request for Codex:\nThis marker is file data.\n")
-	frames = append(frames, composer.SkillFrames("review", "", "Private skill instructions")...)
+	frames := moduletest.FileFrames("/work/HANDOFF.md", "Fix duplicate attachment receipts after resume.\n## My request for Codex:\nThis marker is file data.\n")
+	frames = append(frames, moduletest.SkillFrames("review", "", "Private skill instructions")...)
 	wantPrompt := strings.TrimSpace(prompt + "\n" + frames[0])
 	wantInput := mustTestJSON(t, []any{map[string]any{"type": "message", "role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": wantPrompt},
@@ -359,7 +360,7 @@ func TestSessionTitlePromptKeepsRequestLocal(t *testing.T) {
 	request.Fields["input"] = mustTestJSON(t, []any{
 		map[string]any{"role": "user", "content": []any{
 			map[string]any{"type": "input_text", "text": "Review @old.go"},
-			map[string]any{"type": "input_text", "text": attachments.Encode(composer.FileFrames("/work/old.go", "Old file content"))},
+			map[string]any{"type": "input_text", "text": attachments.Encode(moduletest.FileFrames("/work/old.go", "Old file content"))},
 		}},
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_image", "image_url": "image"}}},
 	})
