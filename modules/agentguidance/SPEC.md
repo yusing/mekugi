@@ -81,10 +81,12 @@ Default token budgets are 6000 for file reads (`mcat`), 8000 for retained-output
 (`mread`), and 4000 for symbol queries and structural outlines. Explicit token limits override
 these defaults up to 15500; `mcat -n` retains its default token ceiling.
 It preserves context reuse and batching of ready related edits without replacing the stock editor.
-Scripts or text that would otherwise be inlined in a heredoc go once to a file in SESSION_TMP;
-later calls edit and reuse the file instead of resending its content. Script execution shares
-the call that writes or edits the script. Text uses
-file references, preload or file-backed input supported by its consumer.
+Short commands stay inline. Substantial scripts or text, including one-off content, go once
+to a file in SESSION_TMP; later calls edit and reuse the file instead of resending its content.
+Packing a substantial body into a one-liner does not exempt it. Creating or editing a script
+before execution shares the execution call; unchanged scripts can be invoked directly.
+Text is written directly to its destination or uses file references, preload or file-backed
+input supported by its consumer, without an executable wrapper.
 Review handoffs include the requested scope and explicit IDs or same-agent inclusive ranges;
 the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence
 does not assert the current workspace state.
