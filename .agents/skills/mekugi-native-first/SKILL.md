@@ -10,36 +10,20 @@ and Rust code already ported from it, are evidence of current means, not require
 
 ## Establish the native delta
 
-Use the existing task ledger to distinguish the required outcome, the native
-capability that already serves it, and the concrete missing behavior. Do not create
-another planning artifact or make former Go schemas the acceptance contract.
+Use the existing task ledger to compare the required behavior with what the native owner
+already provides, what it lacks, and why the gap belongs in the proposed change. Inspect
+plausible native producers and consumers, including differently named facilities, before
+choosing a new mechanism. Do not make former Go schemas the acceptance contract.
 
-Inspect the actual native producer and consumer before designing an extension.
-Distinguish stock Codex facilities from fork-added machinery: consult the relevant
-pre-change baseline when HEAD already contains the workaround being reconsidered.
-Check differently named facilities and composition of existing operations, not just
-matching tool names. Do not infer a host limitation from the Go adapter's design.
+Reusing generic native infrastructure does not establish that the feature owner is missing.
+A new owner is justified by a distinct responsibility, not a different trigger, template, or
+delivery destination. Extend the existing implementation where the responsibility remains
+the same, preserving stock schemas and lifecycles except for required observable changes.
 
-Examples of distinctions worth checking, not automatic implementation recipes:
-
-- Reset may compose with waiting instead of requiring reset fields on the wait tool.
-- Context-only inference may reuse BTW rather than another model-client path.
-- Cross-session messaging may already exist through message boards; verify whether
-  they also satisfy the requested addressing, notification and auxiliary operations.
-- Retained changes may need frozen IDs/ranges, not another snapshot of their content.
-
-## Extend the owner, not the workaround
-
-Reuse native execution, scheduling, cancellation, message delivery, history,
-permissions and auxiliary inference. Share their implementation, not merely copy its
-design into a new helper. Preserve stock schemas and lifecycles unless a required
-observable change needs a specific delta.
-
-Treat Go-era registrations, acknowledgements, dispatch/consumption states, synthetic
-continuations, polling, stores and callback protocols as candidates for removal, not
-items to translate into Rust. For proposed new state, persistence, timers, transport
-or snapshots, identify the concrete gap in existing native ownership first. Ordinary
-aggregation of outcomes does not by itself require a new lifecycle.
+Distinguish stock facilities from fork-added workarounds using the relevant pre-change
+baseline. Go-era registrations, acknowledgements, dispatch states, synthetic continuations,
+polling, stores and callback protocols are candidates for removal, not translation into
+Rust. Ordinary aggregation of outcomes does not itself require a new lifecycle.
 
 Prove composition at its real boundary. A request acknowledgement is not completion;
 check pending and immediately ready results, interruption and retained evidence where
