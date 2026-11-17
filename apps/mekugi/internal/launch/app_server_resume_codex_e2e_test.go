@@ -112,7 +112,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 		cmd := exec.CommandContext(ctx, codex, "app-server",
 			"-c", `model_providers.`+providerName+`={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
 			"-c", "model_provider="+strconv.Quote(providerName),
-			"-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+			"-c", "features.plugins=false")
 		if model != "" {
 			cmd.Args = append(cmd.Args, "-c", "model="+strconv.Quote(model))
 		}
@@ -438,7 +438,7 @@ func TestAppServerResumePickerNativeCodex(t *testing.T) {
 		cmd := exec.CommandContext(ctx, codex, "app-server",
 			"-c", `model_providers.pickerpreview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
 			"-c", `model_provider="pickerpreview"`, "-c", `model="gpt-6-astra"`,
-			"-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+			"-c", "features.plugins=false")
 		cmd.Env = environment
 		cmd.Dir = workspace
 		return cmd

@@ -189,7 +189,7 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 		t.Fatalf("initialize fixture workspace: %v: %s", err, output)
 	}
 	command := func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `openai_base_url=`+strconv.Quote(router.URL+"/v1"), "-c", `model_provider="openai"`, "-c", `model_reasoning_effort="low"`, "-c", `web_search="live"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `openai_base_url=`+strconv.Quote(router.URL+"/v1"), "-c", `model_provider="openai"`, "-c", `model_reasoning_effort="low"`, "-c", `web_search="live"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}

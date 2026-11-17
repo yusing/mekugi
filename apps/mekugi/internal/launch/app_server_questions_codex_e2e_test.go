@@ -125,7 +125,7 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 
 			environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 			terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-				cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.questions={name="questions",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="questions"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false", "-c", "features.default_mode_request_user_input=true")
+				cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.questions={name="questions",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="questions"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.default_mode_request_user_input=true")
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
 			}, "")

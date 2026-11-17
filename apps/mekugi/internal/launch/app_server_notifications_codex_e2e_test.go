@@ -38,7 +38,7 @@ func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", `tui.notification_method="osc9"`, "-c", `tui.notification_condition="unfocused"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", `tui.notification_method="osc9"`, "-c", `tui.notification_condition="unfocused"`, "-c", "features.plugins=false")
 	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), t.TempDir()
 	outer, inner, err := pty.Open()
 	if err != nil {

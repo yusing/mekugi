@@ -35,7 +35,7 @@ func TestSideForkDuringMainCompactionNativeCodex(t *testing.T) {
 	}()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, "codex", "app-server", "-c", `model_providers.preview={name="side-compaction",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, "codex", "app-server", "-c", `model_providers.preview={name="side-compaction",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "")
@@ -154,7 +154,7 @@ func TestAppServerBTWCompactionNativeCodexE2E(t *testing.T) {
 	defer server.Close()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.btw_fixture={name="btw_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="btw_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false", "-c", "model_auto_compact_token_limit=100000")
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.btw_fixture={name="btw_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="btw_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "model_auto_compact_token_limit=100000")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "", testAppServerIntegration(proxy))

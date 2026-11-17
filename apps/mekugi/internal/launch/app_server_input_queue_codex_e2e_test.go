@@ -62,7 +62,7 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	}()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="Native control fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="mock-model"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="Native control fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="mock-model"`, "-c", "features.plugins=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "")

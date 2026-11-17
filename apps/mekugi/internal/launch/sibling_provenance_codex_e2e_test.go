@@ -92,7 +92,7 @@ func TestAppServerUserInputProvenanceNativeCodexE2E(t *testing.T) {
 					} else {
 						environment = routerFaultCodexEnvironment(t)
 					}
-					cmd := exec.CommandContext(ctx, codex, "app-server", "-c", provider, "-c", selection, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.goals=false", "-c", "include_collaboration_mode_instructions=false")
+					cmd := exec.CommandContext(ctx, codex, "app-server", "-c", provider, "-c", selection, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.goals=false")
 					cmd.Env, cmd.Dir = environment, t.TempDir()
 					client, err := appserver.Start(cmd)
 					if err != nil {

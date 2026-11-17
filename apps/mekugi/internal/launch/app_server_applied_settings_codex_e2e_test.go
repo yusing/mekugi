@@ -136,7 +136,7 @@ func TestAppServerAppliedSettingsProcessHelper(t *testing.T) {
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, "codex", "app-server", "-c",
 			`model_providers.preview={name="applied-settings",base_url=`+strconv.Quote(os.Getenv("MEKUGI_SETTINGS_PROCESS_PROVIDER")+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
-			"-c", `model_provider="preview"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+			"-c", `model_provider="preview"`, "-c", "features.plugins=false")
 		if thread == "" {
 			cmd.Args = append(cmd.Args, "-c", `model="gpt-6-astra"`)
 		}

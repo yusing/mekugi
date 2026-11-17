@@ -35,7 +35,7 @@ func TestAppServerSideSettingsNativeCodex(t *testing.T) {
 	defer server.Close()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`, "-c", "features.plugins=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "")
@@ -137,7 +137,7 @@ func TestAppServerLiveSettingsNativeCodex(t *testing.T) {
 	}()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="low"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="low"`, "-c", "features.plugins=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "")
@@ -249,7 +249,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
 	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), t.TempDir()
 	client, err := appserver.Start(cmd)
 	if err != nil {

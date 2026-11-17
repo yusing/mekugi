@@ -53,7 +53,7 @@ func TestComposerPredictionNativeCodex(t *testing.T) {
 		_, _ = io.WriteString(w, strings.ReplaceAll(string(wire), strconv.Quote("Recovered after a retry."), strconv.Quote(answer)))
 	}))
 	defer server.Close()
-	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_provider="openai"`, "-c", `openai_base_url=`+strconv.Quote(server.URL+"/v1"), "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_provider="openai"`, "-c", `openai_base_url=`+strconv.Quote(server.URL+"/v1"), "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false")
 	cmd.Env = append(routerFaultCodexEnvironment(t), "OPENAI_API_KEY=fixture-token")
 	cmd.Dir = t.TempDir()
 	client, err := sessioncontrol.Start[struct{}](cmd, func(appserver.Message) {})

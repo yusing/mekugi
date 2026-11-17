@@ -51,7 +51,7 @@ func TestAPIShellServerOwnedNativeCodex(t *testing.T) {
 	commandArgs := []string{"app-server",
 		"-c", `model_providers.preview={name="preview",base_url=` + strconv.Quote(provider.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`,
 		"-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`,
-		"-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false"}
+		"-c", "features.plugins=false"}
 	environment := slices.DeleteFunc(serverEnvironment(routerFaultCodexEnvironment(t)), func(entry string) bool {
 		key, _, _ := strings.Cut(entry, "=")
 		return slices.Contains([]string{"OPENAI_API_KEY", "CODEX_API_KEY", "CHATGPT_API_KEY", "XAI_API_KEY", "OPENAI_BASE_URL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"}, key)
