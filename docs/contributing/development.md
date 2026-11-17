@@ -136,6 +136,10 @@ stack default. No cache cleanup is needed between runs.
 The native runner honors Cargo's configured target directory, including global
 `build.target-dir` and `CARGO_TARGET_DIR` overrides. V8 downloads and Cargo build
 outputs use that same directory.
+The runner forwards `CARGO_TARGET_DIR` and `CARGO_INCREMENTAL=0`/`1` as Cargo
+options rather than compiler environment variables, avoiding unnecessary sccache
+key splits. Equivalent configured and environment settings can reuse the same
+cache entries; genuinely different compilation settings still have separate keys.
 
 Builds and the default native regression suite put executables in `bin/native`;
 packaging puts the archive in `bin/mekugi-native.tar.gz`. `make build-binaries` places the complete client and

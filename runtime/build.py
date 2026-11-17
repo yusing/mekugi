@@ -18,6 +18,24 @@ RUST = CODEX / "codex-rs"
 
 
 def run(args, env):
+    args = list(args)
+    env = dict(env)
+    separator = args.index("--") if "--" in args else len(args)
+    options = []
+    # sccache hashes CARGO_* variables, even when their values merely restate
+    # Cargo configuration. Pass these overrides as options instead.
+    target_dir = env.pop("CARGO_TARGET_DIR", None)
+    if target_dir is not None and not any(
+        arg == "--target-dir" or arg.startswith("--target-dir=")
+        for arg in args[:separator]
+    ):
+        options.extend(["--target-dir", target_dir])
+    incremental = env.get("CARGO_INCREMENTAL")
+    if incremental in {"0", "1"}:
+        env.pop("CARGO_INCREMENTAL")
+        # This environment override wins over config, including caller --config.
+        options.extend(["--config", f"build.incremental={'true' if incremental == '1' else 'false'}"])
+    args[separator:separator] = options
     subprocess.run(args, cwd=RUST, env=env, check=True)
 
 

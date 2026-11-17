@@ -16,6 +16,57 @@ build = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(build)
 
 
+class CargoEnvironmentTests(unittest.TestCase):
+    def run_cargo(self, args, env):
+        original = dict(env)
+        with patch.object(build.subprocess, "run") as run:
+            build.run(args, env)
+        self.assertEqual(env, original)
+        self.assertEqual(run.call_args.kwargs["cwd"], build.RUST)
+        self.assertTrue(run.call_args.kwargs["check"])
+        return run.call_args.args[0], run.call_args.kwargs["env"]
+
+    def test_configured_defaults_do_not_add_overrides(self):
+        args = ["cargo", "check", "--locked"]
+        command, env = self.run_cargo(args, {"OPENSSL_STATIC": "1"})
+        self.assertEqual(command, args)
+        self.assertEqual(env, {"OPENSSL_STATIC": "1"})
+
+    def test_environment_overrides_use_options_before_test_filter(self):
+        args = ["cargo", "test", "--locked", "--", "--target-dir=filter"]
+        command, env = self.run_cargo(args, {
+            "CARGO_TARGET_DIR": "relative-target", "CARGO_INCREMENTAL": "0",
+        })
+        self.assertEqual(command, [
+            "cargo", "test", "--locked", "--target-dir", "relative-target",
+            "--config", "build.incremental=false", "--", "--target-dir=filter",
+        ])
+        self.assertEqual(env, {})
+
+    def test_explicit_target_flag_wins_over_environment(self):
+        for flag in (["--target-dir", "selected"], ["--target-dir=selected"]):
+            with self.subTest(flag=flag):
+                args = ["cargo", "check", *flag]
+                command, env = self.run_cargo(args, {"CARGO_TARGET_DIR": "unused"})
+                self.assertEqual(command, args)
+                self.assertEqual(env, {})
+
+    def test_incremental_environment_wins_over_caller_config(self):
+        for value, setting in [("0", "false"), ("1", "true")]:
+            with self.subTest(value=value):
+                opposite = "true" if value == "0" else "false"
+                args = ["cargo", "check", "--config", f"build.incremental={opposite}"]
+                command, env = self.run_cargo(args, {"CARGO_INCREMENTAL": value})
+                self.assertEqual(command, [*args, "--config", f"build.incremental={setting}"])
+                self.assertEqual(env, {})
+
+    def test_other_environment_values_remain_cargos_responsibility(self):
+        args = ["cargo", "check"]
+        command, env = self.run_cargo(args, {"CARGO_INCREMENTAL": "invalid"})
+        self.assertEqual(command, args)
+        self.assertEqual(env, {"CARGO_INCREMENTAL": "invalid"})
+
+
 class NativeRunnerTests(unittest.TestCase):
     def run_action(self, *arguments, stack=None, target_config="shared-target", target_env=None):
         with tempfile.TemporaryDirectory() as directory:
