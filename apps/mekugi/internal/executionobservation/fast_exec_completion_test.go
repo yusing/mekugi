@@ -25,7 +25,7 @@ import (
 )
 
 func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
-	t.Parallel()
+	// Keep the production capture deadline from competing with the package's parallel fixtures.
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("Python is required for this shell execution fixture")
 	}
