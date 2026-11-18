@@ -119,7 +119,15 @@ func TestNativeHydrationTransfersReadySnapshotOnlyOnEventLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	message := appserver.Message{ID: []byte(id), Result: []byte(`{"thread":{"id":"child","cwd":"/workspace"}}`)}
+	start := appserver.Message{Method: "turn/started", Params: []byte(`{"threadId":"child","turn":{"id":"active"}}`)}
+	oldCompletion := appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"old"}}`)}
+	liveCompletion := appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"active"}}`)}
+	u.connection.buffered = map[string][]appserver.Message{"child": {start, oldCompletion, liveCompletion}}
+	u.connection.bufferedCount = 3
+	message := appserver.Message{ID: []byte(id), Result: []byte(`{"thread":{"id":"child","cwd":"/workspace","historyMode":"paginated","turns":[{"id":"old","status":"completed"},{"id":"active","status":"inProgress"}]}}`)}
+	if handled, _, err := hydrateHistory(&u.Client, message); handled || err != nil {
+		t.Fatal("populated resume was replaced by stored pages", err)
+	}
 	held, err := u.beginNativeHydration(message)
 	if !held || err != nil {
 		t.Fatal(held, err)
@@ -145,5 +153,8 @@ func TestNativeHydrationTransfersReadySnapshotOnlyOnEventLoop(t *testing.T) {
 	}
 	if !dispatched || u.hydrating || u.hydration != nil || u.Client.Requests.Pending() {
 		t.Fatal("event-loop hydration did not settle once")
+	}
+	if remaining := u.connection.buffered["child"]; len(remaining) != 1 || string(remaining[0].Params) != string(liveCompletion.Params) || u.connection.bufferedCount != 1 {
+		t.Fatal("snapshot fence discarded live completion or retained duplicate lifecycle events")
 	}
 }

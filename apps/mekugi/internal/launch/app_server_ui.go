@@ -1213,7 +1213,12 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				return err
 			}
 			return openSession(attached, &session.Client, picker, clock, resumePicker, session.approvalMode)
-		case "thread/start", "thread/resume", "thread/fork", "thread/revert":
+		case "thread/start", "thread/resume", "thread/fork", "thread/revert", "thread/read":
+			inspection := method == "thread/read"
+			if inspection && (!session.nativeReadOnly || session.hydration == nil) {
+				return nil
+			}
+			restore := method != "thread/start"
 			forkSource := session.Client.Thread
 			result, err := session.Client.Startup.Accept(&session.Client.Live, method, m.Result)
 			if err != nil {
@@ -1231,6 +1236,11 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			if method == "thread/revert" {
 				result.Model, result.ReasoningEffort, result.ServiceTier = session.settings.Model, session.settings.Effort, session.settings.Tier
 				result.PermissionState = session.Client.Settings.Permissions
+			}
+			if inspection {
+				result.Model = nativeValue(result.Thread.Model)
+				result.ReasoningEffort = nativeValue(result.Thread.ReasoningEffort)
+				result.ServiceTier = nativeValue(result.Thread.ServiceTier)
 			}
 			if held, err := session.Client.Requests.PrepareForkEffort(&session.Client.Startup, &session.Client.Live, method, &result, appServerRequest{label: "fork/settings"}); held {
 				if err != nil {
@@ -1348,12 +1358,12 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			attached.presentation.Status.SetText("Ready")
 			session.title = result.Thread.Name
 			session.titleGenerator.register(result.Thread)
-			if name := session.Client.Names.Attach(session.Client.Thread); name != "" {
+			if name := session.Client.Names.Attach(session.Client.Thread); name != "" && !inspection {
 				session.titleGenerator.nameChanged(session.Client.Thread, name)
 				requestSessionTitle(&session.Client, &attached.feedback, clock, session.Client.Names.Next(session.Client.Thread))
 			}
 			session.settings.Model, session.settings.Effort, session.settings.Tier = result.Model, result.ReasoningEffort, result.ServiceTier
-			if method == "thread/resume" || method == "thread/fork" || method == "thread/revert" {
+			if restore && !inspection {
 				session.Client.Settings.RestoreEffort = session.Client.TakeResumeEffort()
 			}
 			if method == "thread/start" {
@@ -1362,14 +1372,16 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 					session.usage.MarkNew(result.Thread.ID)
 				}
 			}
-			session.models, session.modelsLoading = nil, true // A cleared or switched session lists them again.
-			if err := session.Client.Request("model/list", map[string]any{"includeHidden": true}); err != nil {
-				return err
-			}
 			session.nativeRosterRoot = ""
-			if session.shouldReviewHooks() {
-				if err := session.beginHookTrust(); err != nil {
+			if !inspection {
+				session.models, session.modelsLoading = nil, true // A cleared or switched session lists them again.
+				if err := session.Client.Request("model/list", map[string]any{"includeHidden": true}); err != nil {
 					return err
+				}
+				if session.shouldReviewHooks() {
+					if err := session.beginHookTrust(); err != nil {
+						return err
+					}
 				}
 			}
 			if method == "thread/start" {
@@ -1377,7 +1389,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			}
 			session.retainedSession.Close()
 			session.retainedSession = history.Session{}
-			if session.notifications != nil {
+			if !inspection && session.notifications != nil {
 				session.Client.Requests.CatalogPending = true
 				if err := session.Client.Request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
 					return err
@@ -1430,7 +1442,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its
 			// steer/interrupt target meanwhile.
-			if method == "thread/resume" || method == "thread/fork" || method == "thread/revert" {
+			if restore && !inspection {
 				for _, turn := range result.Thread.Turns {
 					if turn.Status == "inProgress" {
 						session.Client.Turn = turn.ID
@@ -1447,6 +1459,9 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				} else {
 					paneError(attached.source, session.panes.open(result.Thread.Cwd, session.Client.Thread, method == "thread/resume"))
 				}
+			}
+			if inspection {
+				return session.restorePaneContent(attached, picker, editor, clock, panel, resumePicker, parent, result.Thread)
 			}
 			if method == "thread/resume" || method == "thread/fork" || method == "thread/revert" {
 				repair, err := result.RepairDefaultEffort(&session.Client.Live)

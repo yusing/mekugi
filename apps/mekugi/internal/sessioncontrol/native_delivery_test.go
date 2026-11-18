@@ -31,6 +31,9 @@ func TestNativeMessageSupportedCarriersPreservePayload(t *testing.T) {
 			t.Run(kind+"/"+shape, func(t *testing.T) {
 				body := "Status: failed\nStatus: interrupted\nPayload:\nverbatim final\n"
 				item := nativeMessageFixture(kind, body)
+				if kind == "FINAL_ANSWER" && shape == "agent_message" {
+					item.Content = append(item.Content, nativeMessageText{Type: "input_text", Text: "private capture context"})
+				}
 				if shape == "message" {
 					item.Type, item.Role = "message", "assistant"
 					provenance := "multi_agent.inter_agent_message"

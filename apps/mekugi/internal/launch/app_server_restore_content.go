@@ -40,7 +40,7 @@ func (session *nativeSession) restorePaneContent(attached *attachedPresentation,
 	if session.hydration != nil {
 		content = session.hydration.content
 	} else {
-		content = readRetainedActivity(parent, session.retainedSession, root)
+		content = readRetainedActivity(parent, session.retainedSession, root, nativeMailTask(attached, root.ID))
 	}
 	root = content.thread
 	retainedRollout := content.rollout

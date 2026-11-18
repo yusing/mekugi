@@ -1,9 +1,12 @@
 package launch
 
 import (
+	"cmp"
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -24,6 +27,7 @@ type nativeHydration struct {
 	panes    *preferences.Attachment
 	paneErr  error
 	err      error
+	prefix   int
 }
 
 type retainedActivity struct {
@@ -35,8 +39,8 @@ type retainedActivity struct {
 	notices     []restoredHistoryNotice
 }
 
-func readRetainedActivity(ctx context.Context, retained history.Session, root binding.ThreadInfo) retainedActivity {
-	result := retainedActivity{thread: root, rollout: readRestoredRollout(root, "/root"), compactions: make(map[[2]string]*history.CompactionObservation)}
+func readRetainedActivity(ctx context.Context, retained history.Session, root binding.ThreadInfo, task string) retainedActivity {
+	result := retainedActivity{thread: root, rollout: readRestoredRollout(root, cmp.Or(task, "/root")), compactions: make(map[[2]string]*history.CompactionObservation)}
 	references := rollout.CompactionReferences(ctx, root.ID, root.Path)
 	for ti := range result.thread.Turns {
 		for ii := range result.thread.Turns[ti].Items {
@@ -93,7 +97,7 @@ func (session *nativeSession) beginNativeHydration(message appserver.Message) (b
 		return false, nil
 	}
 	request, ok := session.Client.Requests.Lookup(string(message.ID))
-	if !ok || request.Method != "thread/resume" || request.Side != nil || request.Prediction != nil {
+	if !ok || request.Method != "thread/resume" && !(session.nativeReadOnly && session.Client.Thread == "" && request.Method == "thread/read") || request.Side != nil || request.Prediction != nil {
 		return false, nil
 	}
 	if session.hydration != nil {
@@ -106,6 +110,9 @@ func (session *nativeSession) beginNativeHydration(message appserver.Message) (b
 	if err != nil {
 		return true, err
 	}
+	if accepted.Thread.ID != session.nativeAgent.ID {
+		return true, errors.New("native child history returned a different thread identity")
+	}
 	session.hydrating = true
 	session.restoring = new(appServerActivityRestore)
 	session.attached.presentation.Status.SetText("Loading agent history…")
@@ -116,11 +123,12 @@ func (session *nativeSession) beginNativeHydration(message appserver.Message) (b
 	if session.panes != nil {
 		prefs = session.panes.service
 	}
-	result := &nativeHydration{message: message}
+	result := &nativeHydration{message: message, prefix: len(session.connection.buffered[accepted.Thread.ID])}
+	task := session.nativeAgent.AgentPath()
 	session.connection.workers.Go(func() {
 		result.err = openRetainedSession(ctx, service, &result.retained, accepted.Thread.ID, retained.Store, retained.Writes, retained.Limits)
 		if result.err == nil {
-			result.content = readRetainedActivity(ctx, result.retained, accepted.Thread)
+			result.content = readRetainedActivity(ctx, result.retained, accepted.Thread, task)
 			result.content.segments = make(map[string]map[string]*reports.Report)
 			for _, turn := range accepted.Thread.Turns {
 				if ctx.Err() != nil {
@@ -155,7 +163,48 @@ func (session *nativeSession) acceptNativeHydration(result *nativeHydration) err
 		result.retained.Close()
 		return fmt.Errorf("agent history acquisition failed: %w", result.err)
 	}
+	if session.Client.Thread != "" {
+		// An established inspection only hydrates again on a successful
+		// resume of the runtime that its parent reopened.
+		session.nativeReadOnly = false
+	}
 	session.hydration = result
 	defer func() { result.retained.Close(); session.hydration = nil }()
+	// Lifecycle notifications can overlap the native snapshot. Replaying those
+	// starts or completions would count already restored work a second time.
+	thread := result.content.thread
+	pending := session.connection.buffered[thread.ID]
+	if len(pending) != 0 && len(thread.Turns) != 0 {
+		turns := make(map[string]string, len(thread.Turns))
+		active := false
+		for _, turn := range thread.Turns {
+			turns[turn.ID] = turn.Status
+			active = active || turn.Status == "inProgress"
+		}
+		index := 0
+		remaining := slices.DeleteFunc(pending, func(message appserver.Message) bool {
+			index++
+			if active && index <= result.prefix && message.Method == "thread/status/changed" {
+				// The completed resume handshake is newer than these status
+				// samples. Do not pause the restored live turn with stale idle.
+				return true
+			}
+			if message.Method != "turn/started" && message.Method != "turn/completed" {
+				return false
+			}
+			var event struct {
+				Turn struct {
+					ID string `json:"id"`
+				} `json:"turn"`
+			}
+			if err := json.Unmarshal(message.Params, &event); err != nil {
+				return false
+			}
+			status, seen := turns[event.Turn.ID]
+			return seen && (message.Method == "turn/started" || status != "inProgress")
+		})
+		session.connection.buffered[thread.ID] = remaining
+		session.connection.bufferedCount -= len(pending) - len(remaining)
+	}
 	return session.dispatch(result.message)
 }

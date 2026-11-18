@@ -40,6 +40,9 @@ func (p *Preparer) AdmitNativeChild(ctx context.Context, input appserver.ChildHo
 	}); err != nil {
 		return err
 	}
+	// Native calls this barrier for a newly reserved child before it starts.
+	// Neither passive discovery nor presentation attachment proves freshness.
+	p.Usage.MarkNew(input.ThreadID)
 	// A remote-only child has no local workspace. Do not borrow its parent's cwd
 	// or manufacture an execution window before the first actual request.
 	if input.LocalCwd != nil {

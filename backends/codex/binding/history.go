@@ -14,6 +14,7 @@ type ThreadItem struct {
 	SourceAcquisition *observation.SourceAcquisition `json:"sourceAcquisition,omitzero"`
 	CompactionMethod  observation.CompactionMethod   `json:"compactionMethod,omitzero"`
 	DurationMS        *int64                         `json:"durationMs"`
+	CompletedAtMS     *int64                         `json:"completedAtMs,omitzero"`
 	Delivery          string                         `json:"delivery"`
 	Questions         []Question                     `json:"questions"`
 	ID                string                         `json:"id"`

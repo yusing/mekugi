@@ -270,6 +270,11 @@ func (entry ItemContent) Values() (blocks []Value) {
 		if command.CaptureText != "" && command.Display != "" &&
 			(command.Running || command.Duration > 0 || command.ExitCode != 0 || len(command.Tail) > 0 || hasOutput(command.Output, command.OutputContent)) {
 			blocks, projected := commandSources(command.Display, true)
+			if read := Operations(ShellSource(command.Display, command.Directory)); len(read) == 1 && read[0].Instant() {
+				// A grouped capture may be anchored to a read because it has
+				// no observed writer. Keep the read separate from its effects.
+				blocks, projected = read, true
+			}
 			compound := command.Compound(blocks)
 			if !projected || len(blocks) == 0 {
 				blocks = []Value{commandRun(command.Display, true)}

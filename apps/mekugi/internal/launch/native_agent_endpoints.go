@@ -90,8 +90,18 @@ func (c *nativeConnection) treeResponse(root string, message appserver.Message) 
 		agent := &family.threads[i]
 		family.members = append(family.members, sessionpresentation.Participant{Thread: agent.ID, Parent: agent.ParentThreadID, Task: agent.AgentPath(), Role: agent.AgentRole, Status: nativeWorkStatus(agent)})
 		if endpoint := c.byThread[agent.ID]; endpoint != nil {
-			endpoint.session.nativeAgent = agent
-			c.projectAgent(endpoint.session)
+			session := endpoint.session
+			session.nativeAgent = agent
+			c.projectAgent(session)
+			if session.nativeReadOnly && agent.IsLoaded() && session.Client.Thread != "" && session.restoring == nil {
+				// The parent reactivated a retained child while this view was open.
+				// Join the loaded runtime without replacing the selected endpoint.
+				if err := session.Client.Request("thread/resume", map[string]any{"threadId": agent.ID}); err != nil {
+					setNotice(&session.attached.feedback, presentationTime(session.clock), "Could not join live agent: "+err.Error(), true)
+				} else {
+					session.restoring = new(appServerActivityRestore)
+				}
+			}
 			continue
 		}
 		// Retained and external members remain passive until explicitly selected.
@@ -127,7 +137,7 @@ func (c *nativeConnection) projectAgent(session *nativeSession) {
 	session.nativeAgent = agent
 	root, _ := c.family(thread)
 	session.Client.NativeRoot = root
-	session.Client.NativeInputPending = agent.CanAcceptDirectInput != nil && !*agent.CanAcceptDirectInput
+	session.Client.NativeInputPending = session.nativeReadOnly || agent.CanAcceptDirectInput != nil && !*agent.CanAcceptDirectInput
 	family := c.families[root]
 	attached.threadInput.admitted = true
 	attached.threadInput.caller, attached.threadInput.role = agent.AgentPath(), agent.AgentRole
@@ -229,7 +239,7 @@ func (c *nativeConnection) attachEndpoint(parent, thread string, explicit bool) 
 		return nil, err
 	}
 	r := c.root
-	session := &nativeSession{connection: c, nativeAgent: agent, preparer: r.preparer, reviewSource: r.reviewSource,
+	session := &nativeSession{connection: c, nativeAgent: agent, nativeReadOnly: !agent.IsLoaded(), preparer: r.preparer, reviewSource: r.reviewSource,
 		presentationState: r.presentationState, conversationState: r.conversationState, activity: r.activity, history: r.history, segments: r.segments,
 		ctx: r.ctx, clock: r.clock, controlObservations: r.controlObservations, usage: r.usage, audience: r.audience, review: r.review.NewEndpoint(r.ctx),
 		execWindows: r.execWindows, nativeTrace: r.nativeTrace, retained: r.retained, changeSource: r.changeSource, snapshots: r.snapshots, recovered: r.recovered,
@@ -249,8 +259,14 @@ func (c *nativeConnection) attachEndpoint(parent, thread string, explicit bool) 
 	session.attached.nativeIdentity = true
 	c.add(endpoint)
 	session.audience.AttachEndpoint(thread)
-	// No root configuration or permission overrides cross this attachment.
-	if err := session.Client.Request("thread/resume", map[string]any{"threadId": thread}); err != nil {
+	// Attaching a retained-only child cannot start native work. Loaded
+	// children need resume's listener and live snapshot, not a passive read.
+	method, params := "thread/resume", map[string]any{"threadId": thread}
+	if session.nativeReadOnly {
+		method = "thread/read"
+		params["includeTurns"] = true
+	}
+	if err := session.Client.Request(method, params); err != nil {
 		c.retire(endpoint, err)
 		return nil, err
 	}

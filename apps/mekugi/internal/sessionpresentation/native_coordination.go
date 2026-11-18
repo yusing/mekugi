@@ -128,6 +128,21 @@ func NativeDeliveryEntry(input sessioncontrol.NativeDelivery, item string, at ti
 	return entry
 }
 
+// LocalNativeMail projects a native item only onto an endpoint that owns one
+// end of the message. The local transcript labels that participant Main.
+func LocalNativeMail(thread, task string, item sessioncontrol.NativeMessage, at time.Time, inherited bool) (ActivityEntry, bool) {
+	input, ok := item.Delivery()
+	if !ok || !inherited && task != input.Recipient && (task != input.Sender || input.Kind != "MESSAGE") {
+		return ActivityEntry{}, false
+	}
+	input.Thread = thread
+	entry := NativeDeliveryEntry(input, item.ID, at, inherited)
+	if !inherited && task == input.Sender && entry.Message != nil {
+		entry.Message.From, entry.Message.To = "Main", input.Recipient
+	}
+	return entry, true
+}
+
 // NativeContextResetEntry paints the actual reset receipt, independently of any
 // wait cancellation. Ordinary success is already the native compaction item.
 func NativeContextResetEntry(reset sessioncontrol.ContextReset, at time.Time) (ActivityEntry, bool) {

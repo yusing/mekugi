@@ -194,7 +194,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		return
 	}
 	if p.childReady != nil {
-		p.serveChildActivity(t, w, r, metadata.ThreadID)
+		p.serveChildActivity(t, w, r, metadata.ThreadID, body)
 		return
 	}
 	if request.PreviousResponse == "" {
@@ -877,7 +877,7 @@ func TestNativeChildActivityServerOwnedCodex(t *testing.T) {
 // Keep this script independent of the larger coordination scenario's prompt
 // and reply fixtures. Neither side receives its final response until the child
 // has run the command and the client can observe the active family roster.
-func (p *nativeThreadsProvider) serveChildActivity(t *testing.T, w http.ResponseWriter, r *http.Request, thread string) {
+func (p *nativeThreadsProvider) serveChildActivity(t *testing.T, w http.ResponseWriter, r *http.Request, thread string, body []byte) {
 	p.mu.Lock()
 	if p.parent == "" {
 		p.parent = thread
@@ -892,15 +892,26 @@ func (p *nativeThreadsProvider) serveChildActivity(t *testing.T, w http.Response
 	var program, answer, summary string
 	switch {
 	case parent && step == 1:
-		program = `text(await tools.collaboration__spawn_agent({task_name:"worker",message:"Run the command and finish.",fork_turns:"none"}));`
+		program = `text(await tools.collaboration__spawn_agent({task_name:"worker",message:"Run the command and finish.",fork_turns:"none"}));
+text(await tools.collaboration__send_message({target:"/root/worker",message:"MANAGED_ROOT_OUTBOX"}));
+text(await tools.collaboration__send_message({target:"/root/absent",message:"MANAGED_REJECTED_MAIL"}));`
 	case parent && step == 2:
 		program = `text(await tools.collaboration__wait_agent({wait_mode:"all"}));`
 	case parent && step == 3:
 		answer = "MANAGED_PARENT_RESUMED"
+	case parent && step == 4:
+		program = `text(await tools.collaboration__followup_task({target:"/root/worker",message:"Continue in the open child transcript."}));`
+	case parent && step == 5:
+		answer = "MANAGED_PARENT_FOLLOWUP"
 	case !parent && step == 1:
 		summary = "Child reasoning before command"
-		program = `text(await tools.exec_command({cmd:"printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));`
+		program = `text(await tools.exec_command({cmd:"cat activity-skill/SKILL.md",shell:"/bin/bash",login:false}));
+text(await tools.exec_command({cmd:"printf managed-child-write > managed-child.txt",shell:"/bin/bash",login:false}));
+text(await tools.collaboration__send_message({target:"/root",message:"MANAGED_MAIN_INBOX"}));`
 	case !parent && step == 2:
+		if !bytes.Contains(body, []byte("Confirmed child skill read")) {
+			t.Error("native child never received the skill-read result")
+		}
 		p.childReady <- thread
 		select {
 		case <-p.waiting:
@@ -909,6 +920,8 @@ func (p *nativeThreadsProvider) serveChildActivity(t *testing.T, w http.Response
 		}
 		summary = "Child reasoning after command"
 		answer = "MANAGED_CHILD_FINAL"
+	case !parent && step == 3:
+		answer = "MANAGED_CHILD_FOLLOWUP"
 	default:
 		t.Errorf("unexpected child activity request: parent=%t step=%d", parent, step)
 		http.Error(w, "unexpected child activity request", http.StatusInternalServerError)
@@ -928,7 +941,8 @@ func (p *nativeThreadsProvider) serveChildActivity(t *testing.T, w http.Response
 	for index, output := range items {
 		events = append(events, map[string]any{"type": "response.output_item.added", "output_index": index, "item": output}, map[string]any{"type": "response.output_item.done", "output_index": index, "item": output})
 	}
-	events = append(events, map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": items}})
+	events = append(events, map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": items,
+		"usage": map[string]any{"input_tokens": 100, "output_tokens": 20, "total_tokens": 120, "input_tokens_details": map[string]int{"cached_tokens": 0}, "output_tokens_details": map[string]int{"reasoning_tokens": 0}}}})
 	w.Header().Set("Content-Type", "text/event-stream")
 	fmt.Fprint(w, routerFaultSSE(events...))
 }
@@ -1265,6 +1279,13 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	fixture.compactLatency = scenario.compactionRecords > 0
 	if scenario.childActivity {
 		fixture.childReady = make(chan string, 1)
+		skillDirectory := filepath.Join(childDirectory, "activity-skill")
+		if err := os.Mkdir(skillDirectory, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDirectory, "SKILL.md"), []byte("Confirmed child skill read\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	fixture.frozenPrefix = fullHistory && scenario.sameWorkspace
 	fixture.temporaryUsage = scenario.temporaryUsageCommand != ""
@@ -1821,7 +1842,18 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		t.Fatalf("independent child runtime publication: child=%q attachment=%q error=%v", childEvent.Frame.View.Main.ID, childEvent.Attachment, err)
 	}
 	if scenario.childActivity {
+		// The parent can finish on the ordinary reply before the child ends.
+		// Get the child's committed lifecycle before exercising a cold restart.
+		for childEvent.Frame.Agents == nil || !slices.ContainsFunc(childEvent.Frame.Agents.Roster, func(row presentation.AgentRow) bool {
+			return row.Agent.Thread == child && row.Agent.Final && !row.Agent.Responding
+		}) {
+			childEvent, err = childView.Next()
+			if err != nil {
+				t.Fatal("child continuation:", err)
+			}
+		}
 		assertNativeChildCommandOrder(t, childEvent.Frame.Main)
+		assertNativeMainMail(t, event.Frame.Main)
 		for _, entry := range event.Frame.Main.Entries {
 			if nativeChildCommand(entry) {
 				t.Fatal("child command leaked into parent's Thread pane")
@@ -2055,17 +2087,50 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	if scenario.childActivity {
 		defer attachedChild.Close()
-		for coldChild.Frame.View.Main.ID != child || !coldChild.Frame.View.Admission.Submit {
-			coldChild, err = attachedChild.Next()
-			if err != nil {
-				t.Fatal("cold child transcript:", err)
-			}
+		if coldChild.Frame.View.Main.ID != child || coldChild.Frame.View.Admission.Submit {
+			t.Fatalf("retained child selection did not open read-only: thread=%q submit=%t", coldChild.Frame.View.Main.ID, coldChild.Frame.View.Admission.Submit)
 		}
 		assertNativeChildCommandOrder(t, coldChild.Frame.Main)
+		assertNativeMainMail(t, event.Frame.Main)
+		var retainedAgent presentation.Agent
+		if agents := coldChild.Frame.Agents; agents != nil {
+			for _, row := range agents.Roster {
+				if row.Agent.Thread == child {
+					retainedAgent = row.Agent
+					break
+				}
+			}
+		}
+		if !retainedAgent.WorkKnown || !retainedAgent.WorkSince.IsZero() || !slices.Contains(retainedAgent.Skills, "activity-skill") ||
+			!retainedAgent.TokensKnown || !retainedAgent.UsagePartial || !retainedAgent.CostKnown || !retainedAgent.CostPartial || retainedAgent.Cost <= 0 {
+			t.Fatalf("retained child roster: skills=%v work=%t since=%v tokens=%t partial=%t cost=%f known=%t costPartial=%t",
+				retainedAgent.Skills, retainedAgent.WorkKnown, retainedAgent.WorkSince, retainedAgent.TokensKnown, retainedAgent.UsagePartial,
+				retainedAgent.Cost, retainedAgent.CostKnown, retainedAgent.CostPartial)
+		}
 		fixture.mu.Lock()
-		defer fixture.mu.Unlock()
-		if fixture.calls[parent] != counts[parent] || fixture.calls[child] != counts[child] {
-			t.Fatalf("cold child resume started inference: %v", fixture.calls)
+		coldParentCalls, coldChildCalls := fixture.calls[parent], fixture.calls[child]
+		fixture.mu.Unlock()
+		if coldParentCalls != counts[parent] || coldChildCalls != counts[child] {
+			t.Fatalf("cold child selection started inference: Main=%d child=%d", coldParentCalls, coldChildCalls)
+		}
+		_, err := connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
+			Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
+			Draft:  composer.Draft{Text: "Resume the retained worker with new work."},
+		}})
+		if err != nil {
+			t.Fatal("cold child follow-up:", err)
+		}
+		for {
+			liveChild, err := attachedChild.Next()
+			if err != nil {
+				t.Fatal("open child transcript did not follow new native work:", err)
+			}
+			if transcript := liveChild.Frame.Main; transcript != nil && slices.ContainsFunc(transcript.Entries, func(entry presentation.Entry) bool {
+				return entry.Kind == "text" && entry.Agent == "Main" && entry.Text == "MANAGED_CHILD_FOLLOWUP"
+			}) {
+				assertNativeChildCommandOrder(t, transcript)
+				break
+			}
 		}
 		return
 	}
@@ -2153,8 +2218,28 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 }
 
+func assertNativeMainMail(t *testing.T, feed *presentation.Publication) {
+	t.Helper()
+	type route struct{ sender, recipient, body string }
+	var got []route
+	for _, entry := range feed.Entries {
+		if entry.Kind != "reply" {
+			continue
+		}
+		for _, value := range entry.Values {
+			if value.From != "" && value.To != "" {
+				got = append(got, route{value.From, value.To, entry.Text})
+			}
+		}
+	}
+	want := []route{{"Main", "/root/worker", "MANAGED_ROOT_OUTBOX"}, {"/root/worker", "Main", "MANAGED_MAIN_INBOX"}}
+	if len(got) != len(want) || !slices.Contains(got, want[0]) || !slices.Contains(got, want[1]) {
+		t.Fatalf("main native mail = %+v, want %+v", got, want)
+	}
+}
+
 func nativeChildCommand(entry presentation.Entry) bool {
-	return entry.Kind == "tool" && strings.Contains(entry.Text, "managed-child.txt")
+	return entry.Kind == "tool" && strings.Contains(entry.Text, "printf managed-child-write > managed-child.txt")
 }
 
 func assertNativeChildCommandOrder(t *testing.T, transcript *presentation.Publication) {
@@ -2167,11 +2252,16 @@ func assertNativeChildCommandOrder(t *testing.T, transcript *presentation.Public
 	for i, entry := range transcript.Entries {
 		switch {
 		case nativeChildCommand(entry) && entry.OutputComplete:
+			if command >= 0 {
+				t.Fatal("child transcript repeated the retained command")
+			}
 			command = i
 		case entry.Kind == "reasoning" && strings.Contains(entry.Text, first):
 			before = i
 		case entry.Kind == "reasoning" && strings.Contains(entry.Text, last):
 			after = i
+		case strings.Contains(entry.Text, "PARENT_PRIVATE_SENTINEL") || entry.Text == "MANAGED_PARENT_RESUMED":
+			t.Fatal("Main transcript leaked into selected child")
 		}
 	}
 	if before < 0 || command <= before || after <= command {
@@ -2198,30 +2288,40 @@ func assertNativeChildRosterCommand(t *testing.T, ctx context.Context, root *ses
 	defer child.Close()
 	stop := context.AfterFunc(ctx, func() { _ = child.Close() })
 	defer stop()
-	var lastKind string
+	var lastKind, roster string
+	var activity []string
 	for {
 		event, err := child.Next()
 		if err != nil {
-			t.Fatalf("active child's family roster did not publish its settled command: latest=%q error=%v", lastKind, err)
+			t.Fatalf("active child did not publish its transcript and roster: latest=%q %s activity=%v error=%v", lastKind, roster, activity, err)
 		}
 		if event.Frame.Family == nil || event.Frame.Family.Agents == nil {
 			continue
 		}
-		parentWaiting := slices.ContainsFunc(event.Frame.Family.Agents.Roster, func(row presentation.AgentRow) bool {
-			return row.Agent.Name == "/root" && row.Agent.Waiting && row.Agent.Wait != nil
-		})
-		if !parentWaiting {
-			continue
-		}
 		for _, row := range event.Frame.Family.Agents.Roster {
 			agent := row.Agent
-			if agent.Thread != thread || agent.Name != "/root/worker" || !agent.Responding || agent.Generating != "" {
+			if agent.Thread != thread || agent.Name != "/root/worker" || !agent.Responding {
 				continue
 			}
 			lastKind = agent.LatestKind
-			for _, entry := range agent.Summary {
+			roster = fmt.Sprintf("work=%t since=%v skills=%v tokens=%t partial=%t cost=%f known=%t", agent.WorkKnown, agent.WorkSince, agent.Skills, agent.TokensKnown, agent.UsagePartial, agent.Cost, agent.CostKnown)
+			if event.Frame.Main == nil {
+				continue
+			}
+			activity = activity[:0]
+			for _, entry := range event.Frame.Main.Entries {
+				activity = append(activity, fmt.Sprintf("%s/%s %q (running=%t unconfirmed=%t)", entry.Agent, entry.Kind, entry.Text, entry.Running, entry.Unconfirmed))
+				for _, value := range entry.Values {
+					if value.Kind == "reads" {
+						activity = append(activity, fmt.Sprintf("%s:%v:exit=%d", value.Verb, value.Reads, value.ExitCode))
+					}
+				}
+			}
+			for _, entry := range event.Frame.Main.Entries {
 				if nativeChildCommand(entry) && entry.OutputComplete {
-					return
+					if agent.WorkKnown && !agent.WorkSince.IsZero() && slices.Contains(agent.Skills, "activity-skill") && agent.TokensKnown && !agent.UsagePartial && agent.CostKnown && agent.Cost > 0 {
+						return
+					}
 				}
 			}
 		}

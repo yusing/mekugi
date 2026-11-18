@@ -314,8 +314,18 @@ func (c *nativeConnection) message(message appserver.Message) error {
 				endpoint = c.endpoints[0]
 			}
 		}
-		if endpoint != nil && endpoint.session != c.root && request.Method == "thread/resume" && message.Error != nil {
+		if endpoint != nil && endpoint.session != c.root && endpoint.session.Client.Thread == "" && (request.Method == "thread/resume" || request.Method == "thread/read") && message.Error != nil {
 			c.retire(endpoint, fmt.Errorf("native child attachment failed: %s", message.Error.Message))
+			return nil
+		}
+		if endpoint != nil && endpoint.session.nativeReadOnly && endpoint.session.restoring != nil && request.Method == "thread/resume" && message.Error != nil {
+			// The child can unload between discovery and subscribing. Retain
+			// the existing inspection instead of tearing down its viewer.
+			c.root.Client.Requests.Take(string(message.ID))
+			session := endpoint.session
+			session.restoring = nil
+			setNotice(&session.attached.feedback, presentationTime(session.clock), "Could not join live agent: "+message.Error.Message, true)
+			c.ready(endpoint)
 			return nil
 		}
 	} else {
@@ -332,7 +342,7 @@ func (c *nativeConnection) message(message appserver.Message) error {
 		if endpoint == nil && (thread == "" || c.root.Client.Thread == "") {
 			endpoint = c.endpoints[0]
 		}
-		if endpoint != nil && endpoint.session != c.root && endpoint.session.Client.Thread == "" {
+		if endpoint != nil && endpoint.session != c.root && (endpoint.session.Client.Thread == "" || endpoint.session.nativeReadOnly && endpoint.session.restoring != nil) {
 			c.bufferHydration(thread, message, endpoint)
 			return nil
 		}

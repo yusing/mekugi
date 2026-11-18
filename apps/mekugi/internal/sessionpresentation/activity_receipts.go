@@ -74,7 +74,14 @@ func (v *ActivitySource) ApplyCapturedEdits(receipts []*changepresentation.Recei
 				// duplicates receipts or drops neighboring operations.
 				original := activitypresentation.ShellSource(frontends.ShellDisplaySource(DisplayCommand(entry.Native.Command)), entry.Native.CommandCwd)
 				paragraphs := activitymodel.Paragraphs(original)
-				if len(paragraphs) > 1 {
+				// A grouped receipt without a witnessed writer can land on a
+				// standalone read. It supplements that operation, not replaces it.
+				keepRead := false
+				if len(receipt.Calls) > 1 && len(paragraphs) == 1 {
+					block := activitymodel.ParseOperation(paragraphs[0])
+					keepRead = block.Kind == "reads" && slices.Contains([]string{"Read", "Skill", "List", "Search", "Inspect"}, block.Verb)
+				}
+				if len(paragraphs) > 1 || keepRead {
 					var parts []string
 					inserted := false
 					for _, paragraph := range paragraphs {

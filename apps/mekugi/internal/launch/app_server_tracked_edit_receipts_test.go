@@ -472,3 +472,21 @@ func TestCapturedReceiptAnchorsFinalContributingHost(t *testing.T) {
 		t.Fatalf("capture did not follow formatter: %+v", view.blocks(1))
 	}
 }
+func TestAppServerGroupedCaptureKeepsUnsegmentedSkillRead(t *testing.T) {
+	view := newActivityAdapter()
+	for i, source := range []string{"cat .agents/skills/fixture/SKILL.md", "cat > a.go"} {
+		item := []string{"anchor", "writer"}[i]
+		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
+			Seq: uint64(i + 1), Agent: "Main", Kind: "tool", CallID: item, Text: toolActivityShell(source), OutputTail: []string{"kept"},
+			Native: &sessionpresentation.NativeItem{Thread: "main", Item: item, Command: source, Exit: new(0)},
+		}}})
+	}
+	for range 2 {
+		view.ApplyCapturedEdits(trackedEditReceiptData("main", "anchor", "writer"))
+		blocks := view.blocks(0)
+		if len(blocks) != 3 || blocks[0].Kind != "reads" || blocks[0].Verb != "Skill" || blocks[0].Segment ||
+			!blocks[0].Exited || blocks[0].ExitCode != 0 || strings.Join(blocks[0].Tail, "") != "kept" || !blocks[1].Effect || !blocks[2].Effect {
+			t.Fatalf("grouped capture replaced the unsegmented skill read: %+v", blocks)
+		}
+	}
+}

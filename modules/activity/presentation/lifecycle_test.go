@@ -37,4 +37,13 @@ func TestAgentLifecycleObservedAndRestoredTiming(t *testing.T) {
 	if !agent.Responding || !agent.WorkTimer.Since.IsZero() || agent.Started != start || agent.LastResponse != start.Add(9*time.Second) || agent.WorkTimer.At(start.Add(24*time.Hour)) != 9*time.Second {
 		t.Fatalf("restoration invented work or changed response admission: %+v", agent)
 	}
+	active := start.Add(time.Minute)
+	agent.RestoreActiveSince(active)
+	if !agent.WorkTimer.Known || agent.WorkTimer.At(active.Add(3*time.Second)) != 12*time.Second {
+		t.Fatalf("active restoration omitted the current interval: %+v", agent)
+	}
+	agent.TurnCompleted(true, active.Add(4*time.Second))
+	if !agent.WorkTimer.Since.IsZero() || agent.WorkTimer.At(active.Add(time.Hour)) != 13*time.Second {
+		t.Fatalf("completed restoration charged idle time: %+v", agent)
+	}
 }

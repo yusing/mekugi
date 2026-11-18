@@ -88,6 +88,15 @@ func (a *AgentLifecycle) Restore(intervals iter.Seq2[time.Time, time.Time], turn
 	a.Turns, a.Responding = turns, responding
 }
 
+// RestoreActiveSince anchors an already admitted live turn at its recorded
+// start without counting it again or extending a completed work interval.
+func (a *AgentLifecycle) RestoreActiveSince(start time.Time) {
+	if start.IsZero() || !a.Responding {
+		return
+	}
+	a.WorkTimer.update(true, start)
+}
+
 // Source: apps/mekugi/internal/router/app_server_restore_content.go:362@1bcbdd5a.
 func (a *AgentLifecycle) RestoreFinal(completed bool) { a.Final = completed }
 

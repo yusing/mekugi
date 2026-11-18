@@ -62,6 +62,12 @@ func hydrateHistory(control *sessioncontrol.Client[appServerRequest], message ap
 	if err != nil || result.Thread.HistoryMode != "paginated" {
 		return false, nil, nil
 	}
+	// A populated resume reply is already full history. For a loaded thread
+	// it also carries the listener's live snapshot, including items the store
+	// has not received yet. The pages are only for replies without history.
+	if request.Method == "thread/resume" && len(result.Thread.Turns) != 0 {
+		return false, nil, nil
+	}
 	read := &appServerHistoryRead{message: message, thread: result.Thread, cursors: make(map[string]bool)}
 	read.thread.Turns = nil
 	request.Owner.history = read

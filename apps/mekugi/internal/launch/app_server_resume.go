@@ -193,6 +193,7 @@ func (session *nativeSession) restoreMainHistory(attached *attachedPresentation,
 	// Native history can reach receipts older than the bounded rollout scan.
 	// Prefer its item anchor even if a rollout copy was ascribed another turn.
 	var nativeReceipts map[string]struct{}
+	var activeSince time.Time
 	for index, turn := range turns {
 		for _, item := range turn.Items {
 			if item.Type != "contextCompaction" || !sessionpresentation.CompletedCompaction(item.Status) || item.SourceAcquisition == nil {
@@ -272,11 +273,16 @@ func (session *nativeSession) restoreMainHistory(attached *attachedPresentation,
 		}
 		if turn.Status == "inProgress" {
 			session.Client.Turn = turn.ID
-			attached.presentation.Status.Started = presentationTime(clock)
+			if session.nativeAgent != nil && session.nativeAgent.ParentThreadID != "" && !session.nativeReadOnly {
+				activeSince = historyTime(turn.StartedAt)
+			}
+			attached.presentation.Status.Started = cmp.Or(activeSince, presentationTime(clock))
 			attached.presentation.Status.SetText("Working")
 		}
 	}
-	attached.session.Lifecycle(session.Client.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), session.Client.Turn != "")
+	lifecycle := attached.session.Lifecycle(session.Client.Thread)
+	lifecycle.Restore(restoredAgentIntervals(turns), uint64(len(turns)), session.Client.Turn != "")
+	lifecycle.RestoreActiveSince(activeSince)
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
 	attached.session.Activity().AdvanceSequence(attached.source.LastSeq)
 	applyActivity(attached, &session.approvals, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, attached.session.Roster())
@@ -339,7 +345,7 @@ func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation,
 		}
 	}
 	method := "item/completed"
-	if turn.Status == "inProgress" && (item.Type == "agentMessage" || item.Status == "inProgress") {
+	if turn.Status == "inProgress" && (item.Type == "agentMessage" && item.CompletedAtMS == nil || item.Status == "inProgress") {
 		method = "item/started"
 	}
 	switch item.Type {

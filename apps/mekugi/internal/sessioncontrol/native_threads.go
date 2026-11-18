@@ -41,7 +41,7 @@ type nativeMessageText = observation.NativeMessageText
 // Delivery consumes only host-recorded plaintext. Native author/recipient fields
 // are authoritative; envelope headers cannot impersonate a different actor.
 func (item NativeMessage) Delivery() (input NativeDelivery, ok bool) {
-	if item.ID == "" || len(item.Content) != 1 || item.Content[0].Type != "input_text" {
+	if item.ID == "" || len(item.Content) == 0 || item.Content[0].Type != "input_text" {
 		return input, false
 	}
 	input, ok = nativeAttributedInput(item.Content[0].Text)
@@ -50,15 +50,22 @@ func (item NativeMessage) Delivery() (input NativeDelivery, ok bool) {
 	}
 	switch item.Type {
 	case "agent_message":
+		// Native appends capture context after the authored envelope. It is
+		// model input, not part of the message shown to either participant.
 		if item.Author != input.Sender || item.Recipient != input.Recipient {
 			return NativeDelivery{}, false
+		}
+		for _, part := range item.Content[1:] {
+			if input.Kind != "FINAL_ANSWER" || part.Type != "input_text" {
+				return NativeDelivery{}, false
+			}
 		}
 	case "message":
 		kind := "multi_agent.inter_agent_message"
 		if input.Kind == "FINAL_ANSWER" {
 			kind = "multi_agent.inter_agent_completion_message"
 		}
-		if item.Role != "assistant" || len(item.Metadata.Kinds) != 1 || item.Metadata.Kinds[0] != kind {
+		if len(item.Content) != 1 || item.Role != "assistant" || len(item.Metadata.Kinds) != 1 || item.Metadata.Kinds[0] != kind {
 			return NativeDelivery{}, false
 		}
 	default:

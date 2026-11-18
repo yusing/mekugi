@@ -40,6 +40,7 @@ type nativeSession struct {
 	hydrationResults     chan *nativeHydration
 	connection           *nativeConnection
 	nativeAgent          *binding.ThreadInfo
+	nativeReadOnly       bool
 	nativeRosterResponse string
 	nativeRosterRoot     string
 	preparer             *executionobservation.Preparer

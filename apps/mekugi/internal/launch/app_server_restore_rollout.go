@@ -3,6 +3,7 @@ package launch
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -41,6 +42,10 @@ type restoredRolloutEvent struct {
 // readRestoredRollout restores timestamps, execution failures and attributed deliveries.
 func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout {
 	r := restoredRollout{itemAt: make(map[string]time.Time)}
+	mailTask := agent
+	if info.ParentThreadID != "" {
+		mailTask = cmp.Or(info.AgentPath(), agent)
+	}
 	f, stat, ok := rollout.Open(info.ID, info.Path)
 	if !ok {
 		return r
@@ -83,7 +88,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				Projection  *appserver.CoordinationProjection `json:"projection"`
 				TurnID      string                            `json:"turn_id"`
 				Item        struct {
-					ID string `json:"id"`
+					sessioncontrol.NativeMessage
 				} `json:"item"`
 				Name      string            `json:"name"`
 				Namespace string            `json:"namespace"`
@@ -117,6 +122,13 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				delivered.entry = entry
 				r.events = append(r.events, delivered)
 			}
+			if p.Type == "agent_message" && record.Metadata.Coordination == nil {
+				if entry, ok := sessionpresentation.LocalNativeMail(info.ID, mailTask, p.NativeMessage, record.Timestamp, record.Metadata.Inherited); ok {
+					event.entry = entry
+					r.events = append(r.events, event)
+				}
+				continue
+			}
 			for _, entry := range sessionpresentation.NativeCoordinationEntries(info.ID, turn, p.NativeMessage, record.Metadata.Coordination, record.Timestamp, record.Metadata.Inherited) {
 				delivered := event
 				delivered.entry = entry
@@ -124,6 +136,11 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			}
 		}
 		switch record.Type + "/" + p.Type {
+		case "event_msg/raw_response_item":
+			if entry, ok := sessionpresentation.LocalNativeMail(info.ID, mailTask, p.Item.NativeMessage, record.Timestamp, record.Metadata.Inherited); ok {
+				event.entry = entry
+				r.events = append(r.events, event)
+			}
 		case "event_msg/task_started", "event_msg/turn_started":
 			turn, anchor = p.TurnID, ""
 		case "event_msg/task_complete", "event_msg/turn_complete", "event_msg/turn_aborted":
