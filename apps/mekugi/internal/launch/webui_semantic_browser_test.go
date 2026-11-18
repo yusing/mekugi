@@ -40,10 +40,22 @@ import (
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
-// TestWebUIControlsBrowser bounds acceptance to links, metrics and process controls.
+type webUISemanticLane string
+
+const (
+	webUIControls webUISemanticLane = "controls"
+	webUIMetrics  webUISemanticLane = "metrics"
+	webUIFull     webUISemanticLane = "semantic"
+)
+
+// TestWebUIControlsBrowser covers links, file details, status and process controls.
 func TestWebUIControlsBrowser(t *testing.T) {
-	t.Setenv("MEKUGI_TEST_WEBUI_CONTROLS", "1")
-	TestWebUISemanticBrowser(t)
+	testWebUISemanticBrowser(t, webUIControls)
+}
+
+// TestWebUIMetricsBrowser covers metrics without depending on file details.
+func TestWebUIMetricsBrowser(t *testing.T) {
+	testWebUISemanticBrowser(t, webUIMetrics)
 }
 
 // The visible browser consumes the real server and connector. Only Codex is a
@@ -53,6 +65,10 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		serveWebUISemanticHost(t)
 		os.Exit(0)
 	}
+	testWebUISemanticBrowser(t, webUIFull)
+}
+
+func testWebUISemanticBrowser(t *testing.T, lane webUISemanticLane) {
 	if os.Getenv("MEKUGI_TEST_WEBUI_BROWSER") != "1" {
 		t.Skip("set MEKUGI_TEST_WEBUI_BROWSER=1 after make webui, with agent-browser installed")
 	}
@@ -73,23 +89,6 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	if err := os.MkdirAll(workspace, 0700); err != nil {
 		t.Fatal(err)
 	}
-	previewFile := filepath.Join(workspace, "image with space.png")
-	preview := image.NewRGBA(image.Rect(0, 0, 48, 32))
-	for y := range 32 {
-		for x := range 48 {
-			preview.SetRGBA(x, y, color.RGBA{uint8(20 + x*4), 90, uint8(150 + y*3), 255})
-		}
-	}
-	var pngData bytes.Buffer
-	if err := png.Encode(&pngData, preview); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(previewFile, pngData.Bytes(), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("# Browser file details fixture\n\n**Highlighted file content**"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	ledger := filepath.Join(directory, "host.jsonl")
 	t.Setenv("MEKUGI_TEST_WEBUI_SEMANTIC_LOG", ledger)
 	bin := t.TempDir()
@@ -104,28 +103,16 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
-	retainedDirectory, err := history.ReplayDirectory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	retained, err := testHistory().Open(ctx, retainedDirectory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []string{"saved", "recorded"} {
-		_, release, err := retained.BeginSession(ctx, nil, history.Limits{}, id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		release()
-	}
-
 	socket := filepath.Join(directory, "control.sock")
 	serverContext, stopServer := context.WithCancel(ctx)
 	launcher := &webUISemanticLauncher{serverLauncher: &serverLauncher{}, failures: make(chan error, 4)}
-	suggestionRoot := t.TempDir()
-	for i := range 37 {
-		launcher.workspaces = append(launcher.workspaces, filepath.Join(suggestionRoot, fmt.Sprintf("suggestion-%02d", i)))
+	if lane == webUIMetrics {
+		launcher.workspaces = []string{workspace}
+	} else {
+		suggestionRoot := t.TempDir()
+		for i := range 37 {
+			launcher.workspaces = append(launcher.workspaces, filepath.Join(suggestionRoot, fmt.Sprintf("suggestion-%02d", i)))
+		}
 	}
 	hub := sessionapi.NewHub(serverContext, launcher)
 	launcher.hub = hub
@@ -161,7 +148,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	defer bridge.Close()
 	remote := httptest.NewServer(bridge)
 	defer remote.Close()
-	identityCommand := exec.CommandContext(ctx, browser, "--engine", "chrome", "session", "id", "--scope", "worktree", "--prefix", "webui-semantic")
+	identityCommand := exec.CommandContext(ctx, browser, "--engine", "chrome", "session", "id", "--scope", "worktree", "--prefix", "webui-"+string(lane))
 	identityCommand.Env = browserEnvironment
 	identity, err := identityCommand.CombinedOutput()
 	if err != nil {
@@ -331,6 +318,174 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		}
 		viewport("1280", "720")
 	}
+	connect := func(name, url string) {
+		t.Helper()
+		run("find", "label", "Machine name", "fill", name)
+		run("find", "label", "Connector URL", "fill", url)
+		run("find", "label", "Access token", "fill", token)
+		button("Connect")
+	}
+	run("open", page.URL)
+	if lane == webUIMetrics {
+		viewport("1280", "720")
+		connect("Execution", remote.URL)
+		run("wait", "--text", "What should main work on?")
+		run("find", "role", "button", "click", "--name", "Workspace on Execution")
+		run("find", "label", "Workspace path", "fill", workspace)
+		run("press", "Enter")
+		run("wait", "--fn", `document.querySelector('button[title=`+strconv.Quote(workspace)+`]') !== null`)
+		run("find", "label", "First message", "fill", "browser metrics input")
+		button("Start thread")
+		run("wait", "--text", "Browser host answer 1")
+		message("/session")
+		run("wait", "--text", "Session metrics")
+		run("wait", "--text", "Requests")
+		// Notes span their group; labelled values align in one tabular column.
+		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-slot=dialog-content] [data-slot=table-row]')]; return rows.length > 0 && rows.some(row => !row.querySelector('th') && row.querySelector('td')?.colSpan === 2) && rows.every(row => { const label = row.querySelector('th'), value = row.querySelector('td'); return value && (label ? label.textContent.trim() !== '' && value.colSpan === 1 && getComputedStyle(value).fontVariantNumeric.includes('tabular-nums') : value.colSpan === 2); }); })()`)
+		capture("session-metrics")
+		button("Transport")
+		run("wait", "--text", "Provider requests")
+		button("Exchanges")
+		run("wait", "--fn", `!!document.querySelector('[aria-label="Retained exchange"]') || document.body.textContent.includes("No completed exchanges yet")`)
+		button("Features")
+		run("wait", "--fn", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')?.textContent.includes("Self-initiated")`)
+		capture("session-features-live")
+		closeDialog()
+		// A populated capture exercises the browser buttons through the actual
+		// shared panel action owner; the ordinary host fixture has no provider traffic.
+		var metricsUI *appServerUI
+		metricsMachine := newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Metrics", token, func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
+			if request.Attach {
+				metricsUI, _ = newAppServerTestUI()
+				metricsUI.Thread = request.Thread
+				metricsUI.startSession(request.Thread, request.Workspace)
+				metricsUI.attached.presentation.Attach(sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}, false)
+				appServerTestKeys(t, metricsUI, "/session\r")
+				*metricsUI.statusPanel.Metrics = sessionMetricsFixture(t)
+			} else if action := request.Operation.Panel; action != nil {
+				if action.Kind == sessionpresentation.PanelRefresh {
+					exchanges := metricsUI.statusPanel.Metrics.Exchanges
+					metricsUI.statusPanel.Metrics.Exchanges = append(exchanges, exchanges[len(exchanges)-1])
+					metricsUI.statusPanel.Metrics.Exchanges[len(exchanges)].Sequence++
+				}
+				applyPanelAction(&metricsUI.attached, metricsUI.clock, &metricsUI.statusPanel, nil, *action)
+			}
+			metricsUI.statusPanel.Features = featureMetricsFixture()
+			metricsUI.statusPanel.RenderMetrics()
+			published := publishTestPresentation(&metricsUI.attached, metricsUI.shell, &metricsUI.Client, &metricsUI.picker, &metricsUI.Editor, preferences.Applied{}, nil, "", "", false, nil)
+			if err := native.Publish(request.Attachment, sessionapi.NativeFrame{View: published}); err != nil {
+				request.Reply <- err.Error()
+			} else {
+				request.Reply <- ""
+			}
+			return true
+		})
+		button("Machines")
+		button("Add machine")
+		connect("Metrics", metricsMachine.remote.URL)
+		run("wait", "--text", "Metrics thread")
+		run("find", "text", "Metrics thread", "click", "--exact")
+		run("wait", "--text", "Session metrics")
+		button("Exchanges")
+		run("wait", "--text", "2 of 2")
+		button("Older")
+		run("wait", "--text", "1 of 2")
+		button("Transport")
+		button("Exchanges")
+		run("wait", "--text", "1 of 2")
+		button("Newer")
+		run("wait", "--text", "2 of 2")
+		button("Refresh")
+		run("wait", "--text", "3 of 3")
+		capture("session-exchanges")
+		// Long metrics scroll beneath the pinned title and navigation, which cover
+		// the dialog's top edge and keep phone touch targets; a view switched
+		// while scrolled stays reachable.
+		pinned := `((long) => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); d.scrollTop = d.scrollHeight; const r = d.getBoundingClientRect(); const nav = [...d.querySelectorAll('button[aria-label="Close dialog"], [aria-label="Session metrics view"] button, [aria-label="Retained exchange"] button')]; const last = [...d.querySelectorAll('button')].at(-1).getBoundingClientRect(); const strip = document.elementFromPoint(r.left + r.width / 2, r.top + 4); return (!long || d.scrollTop > 0) && !!strip && nav[0].closest('header').parentElement.contains(strip) && nav.length >= 5 && last.bottom <= r.bottom && nav.every(b => { const x = b.getBoundingClientRect(); return x.top >= r.top && x.bottom <= r.bottom && (hit => !!hit && (b.contains(hit) || (b.disabled && b.parentElement.contains(hit))))(document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)) && (innerWidth > 640 || x.height >= 44); }); })`
+		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "720"}, {"phone", "390", "844"}} {
+			viewport(size.width, size.height)
+			for _, theme := range []string{"dark", "light"} {
+				run("set", "media", theme)
+				for _, tab := range []struct {
+					name, text string
+					long       bool
+				}{{"Exchanges", "of 3", true}, {"Transport", "Provider requests", false}} {
+					run("eval", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').scrollTop = 1e6`)
+					button(tab.name)
+					run("wait", "--text", tab.text)
+					if strings.TrimSpace(run("eval", pinned+"("+strconv.FormatBool(tab.long)+")")) != "true" {
+						t.Fatalf("%s %s %s: metrics navigation scrolled away or lost its touch target: %s", tab.name, size.name, theme, run("eval", `(() => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); return {dialog: d.getBoundingClientRect().toJSON(), scroll: d.scrollTop, height: d.scrollHeight, buttons: [...d.querySelectorAll('button')].map(b => { const x = b.getBoundingClientRect(); return [b.textContent.trim() || b.ariaLabel, Math.round(x.top), Math.round(x.bottom), document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)?.closest('button') === b]; })}; })()`))
+					}
+					if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+						run("screenshot", filepath.Join(artifacts, "session-metrics-scrolled-"+strings.ToLower(tab.name)+"-"+size.name+"-"+theme+".png"))
+					}
+				}
+			}
+		}
+		// Keyboard focus reaches the pinned views and switches them.
+		run("focus", `[aria-label="Session metrics view"] button:nth-child(3)`)
+		run("press", "Enter")
+		run("wait", "--text", "of 3")
+		viewport("1280", "720")
+		button("Features")
+		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 8 10') && rows.includes('Self completed 2 4') && rows.includes('Self failed 1 2') && rows.includes('Progress enabled 4 3') && rows.includes('Progress delivered 2 1') && rows.includes('Assignments 3 2') && rows.includes('Messages 3 1') && rows.includes('With edit ranges 0 5') && rows.includes('Saved bytes 4936 800') && rows.includes('Saved tokens (est.) 1234 200'); })()`)
+		capture("session-features")
+		// The additional rows remain readable and reachable beneath pinned navigation.
+		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"phone", "390", "844"}} {
+			viewport(size.width, size.height)
+			for _, theme := range []string{"dark", "light"} {
+				run("set", "media", theme)
+				if strings.TrimSpace(run("eval", pinned+"(true)")) != "true" {
+					t.Fatal("Features navigation lost at bottom", size.name, theme)
+				}
+				if strings.TrimSpace(run("eval", `(() => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); return d.scrollWidth <= d.clientWidth && [...d.querySelectorAll('td,th')].every(cell => { const r = cell.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }); })()`)) != "true" {
+					t.Fatal("Features cells overflow", size.name, theme)
+				}
+				if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+					run("screenshot", filepath.Join(artifacts, "session-features-scrolled-"+size.name+"-"+theme+".png"))
+				}
+			}
+		}
+		if strings.Contains(run("eval", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').textContent`), "[ older") {
+			t.Fatal("browser metrics advertise terminal shortcuts")
+		}
+		t.Log("live metrics, populated Features values and responsive navigation passed")
+		return
+	}
+
+	retainedDirectory, err := history.ReplayDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, err := testHistory().Open(ctx, retainedDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"saved", "recorded"} {
+		_, release, err := retained.BeginSession(ctx, nil, history.Limits{}, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		release()
+	}
+
+	previewFile := filepath.Join(workspace, "image with space.png")
+	preview := image.NewRGBA(image.Rect(0, 0, 48, 32))
+	for y := range 32 {
+		for x := range 48 {
+			preview.SetRGBA(x, y, color.RGBA{uint8(20 + x*4), 90, uint8(150 + y*3), 255})
+		}
+	}
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, preview); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(previewFile, pngData.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("# Browser file details fixture\n\n**Highlighted file content**"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	narrowAttachment := func(field, destination string) {
 		t.Helper()
 		const filename = "mekugi-upload-2444056966607230000.png"
@@ -349,13 +504,9 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		run("wait", "--fn", fmt.Sprintf(`!document.querySelector('img[alt="Preview of %s"]') && document.querySelector(%q).value === window.narrowDraft`, filename, field))
 		viewport("1280", "720")
 	}
-	run("open", page.URL)
 	run("snapshot", "-i")
 	capture("welcome")
-	run("find", "label", "Machine name", "fill", "Execution")
-	run("find", "label", "Connector URL", "fill", remote.URL)
-	run("find", "label", "Access token", "fill", token)
-	button("Connect")
+	connect("Execution", remote.URL)
 	run("wait", "--text", "What should main work on?")
 	run("wait", "--text", "suggestion-00")
 	run("find", "role", "button", "click", "--name", "Workspace on Execution")
@@ -477,20 +628,6 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		}
 	}
 	viewport("1280", "720")
-	message("/session")
-	run("wait", "--text", "Session metrics")
-	run("wait", "--text", "Requests")
-	// Notes span their group; labelled values align in one tabular column.
-	run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[data-slot=dialog-content] [data-slot=table-row]')]; return rows.length > 0 && rows.some(row => !row.querySelector('th') && row.querySelector('td')?.colSpan === 2) && rows.every(row => { const label = row.querySelector('th'), value = row.querySelector('td'); return value && (label ? label.textContent.trim() !== '' && value.colSpan === 1 && getComputedStyle(value).fontVariantNumeric.includes('tabular-nums') : value.colSpan === 2); }); })()`)
-	capture("session-metrics")
-	button("Transport")
-	run("wait", "--text", "Provider requests")
-	button("Exchanges")
-	run("wait", "--fn", `!!document.querySelector('[aria-label="Retained exchange"]') || document.body.textContent.includes("No completed exchanges yet")`)
-	button("Features")
-	run("wait", "--fn", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]')?.textContent.includes("Self-initiated")`)
-	capture("session-features-live")
-	closeDialog()
 	message("/status")
 	run("wait", "--text", "Session status")
 	if strings.TrimSpace(run("eval", `document.querySelectorAll('[data-slot=dialog-content] [data-slot=table-row]').length > 0 && Array.from(document.querySelectorAll('[data-slot=dialog-content] [data-slot=table-row], [data-slot=dialog-content] [data-slot=table-row] > *')).every(el => getComputedStyle(el).borderTopWidth === '0px' && getComputedStyle(el).borderBottomWidth === '0px')`)) != "true" {
@@ -509,7 +646,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 	run("wait", "--fn", `!document.querySelector('button[aria-label="Stop sleep 101"]') && !!document.querySelector('button[aria-label="Stop sleep 102"]')`)
 	button("Stop sleep 102")
 	run("wait", "--fn", `!document.querySelector('[aria-label="Active processes"]')`)
-	if os.Getenv("MEKUGI_TEST_WEBUI_CONTROLS") == "1" {
+	if lane == webUIControls {
 		body, err := os.ReadFile(ledger)
 		if err != nil {
 			t.Fatal(err)
@@ -517,108 +654,7 @@ func TestWebUISemanticBrowser(t *testing.T) {
 		if strings.Count(string(body), "thread/backgroundTerminals/terminate ") != 3 || strings.Contains(string(body), "turn/interrupt ") {
 			t.Fatal("individual Stop lost its host identity or interrupted the turn")
 		}
-		// A populated capture exercises the browser buttons through the actual
-		// shared panel action owner; the ordinary host fixture has no provider traffic.
-		var metricsUI *appServerUI
-		metricsMachine := newWebUIBrowserMachineWithNative(t, ctx, page.URL, "Metrics", token, func(native *sessionapi.Native, request sessionapi.NativeRequest) bool {
-			if request.Attach {
-				metricsUI, _ = newAppServerTestUI()
-				metricsUI.Thread = request.Thread
-				metricsUI.startSession(request.Thread, request.Workspace)
-				metricsUI.attached.presentation.Attach(sessionpresentation.Thread{ID: request.Thread, Caller: "/root"}, false)
-				appServerTestKeys(t, metricsUI, "/session\r")
-				*metricsUI.statusPanel.Metrics = sessionMetricsFixture(t)
-			} else if action := request.Operation.Panel; action != nil {
-				if action.Kind == sessionpresentation.PanelRefresh {
-					exchanges := metricsUI.statusPanel.Metrics.Exchanges
-					metricsUI.statusPanel.Metrics.Exchanges = append(exchanges, exchanges[len(exchanges)-1])
-					metricsUI.statusPanel.Metrics.Exchanges[len(exchanges)].Sequence++
-				}
-				applyPanelAction(&metricsUI.attached, metricsUI.clock, &metricsUI.statusPanel, nil, *action)
-			}
-			metricsUI.statusPanel.Features = featureMetricsFixture()
-			metricsUI.statusPanel.RenderMetrics()
-			published := publishTestPresentation(&metricsUI.attached, metricsUI.shell, &metricsUI.Client, &metricsUI.picker, &metricsUI.Editor, preferences.Applied{}, nil, "", "", false, nil)
-			if err := native.Publish(request.Attachment, sessionapi.NativeFrame{View: published}); err != nil {
-				request.Reply <- err.Error()
-			} else {
-				request.Reply <- ""
-			}
-			return true
-		})
-		button("Machines")
-		button("Add machine")
-		run("find", "label", "Machine name", "fill", "Metrics")
-		run("find", "label", "Connector URL", "fill", metricsMachine.remote.URL)
-		run("find", "label", "Access token", "fill", token)
-		button("Connect")
-		run("wait", "--text", "Metrics thread")
-		run("find", "text", "Metrics thread", "click", "--exact")
-		run("wait", "--text", "Session metrics")
-		button("Exchanges")
-		run("wait", "--text", "2 of 2")
-		button("Older")
-		run("wait", "--text", "1 of 2")
-		button("Transport")
-		button("Exchanges")
-		run("wait", "--text", "1 of 2")
-		button("Newer")
-		run("wait", "--text", "2 of 2")
-		button("Refresh")
-		run("wait", "--text", "3 of 3")
-		capture("session-exchanges")
-		// Long metrics scroll beneath the pinned title and navigation, which cover
-		// the dialog's top edge and keep phone touch targets; a view switched
-		// while scrolled stays reachable.
-		pinned := `((long) => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); d.scrollTop = d.scrollHeight; const r = d.getBoundingClientRect(); const nav = [...d.querySelectorAll('button[aria-label="Close dialog"], [aria-label="Session metrics view"] button, [aria-label="Retained exchange"] button')]; const last = [...d.querySelectorAll('button')].at(-1).getBoundingClientRect(); const strip = document.elementFromPoint(r.left + r.width / 2, r.top + 4); return (!long || d.scrollTop > 0) && !!strip && nav[0].closest('header').parentElement.contains(strip) && nav.length >= 5 && last.bottom <= r.bottom && nav.every(b => { const x = b.getBoundingClientRect(); return x.top >= r.top && x.bottom <= r.bottom && (hit => !!hit && (b.contains(hit) || (b.disabled && b.parentElement.contains(hit))))(document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)) && (innerWidth > 640 || x.height >= 44); }); })`
-		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "720"}, {"phone", "390", "844"}} {
-			viewport(size.width, size.height)
-			for _, theme := range []string{"dark", "light"} {
-				run("set", "media", theme)
-				for _, tab := range []struct {
-					name, text string
-					long       bool
-				}{{"Exchanges", "of 3", true}, {"Transport", "Provider requests", false}} {
-					run("eval", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').scrollTop = 1e6`)
-					button(tab.name)
-					run("wait", "--text", tab.text)
-					if strings.TrimSpace(run("eval", pinned+"("+strconv.FormatBool(tab.long)+")")) != "true" {
-						t.Fatalf("%s %s %s: metrics navigation scrolled away or lost its touch target: %s", tab.name, size.name, theme, run("eval", `(() => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); return {dialog: d.getBoundingClientRect().toJSON(), scroll: d.scrollTop, height: d.scrollHeight, buttons: [...d.querySelectorAll('button')].map(b => { const x = b.getBoundingClientRect(); return [b.textContent.trim() || b.ariaLabel, Math.round(x.top), Math.round(x.bottom), document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2)?.closest('button') === b]; })}; })()`))
-					}
-					if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
-						run("screenshot", filepath.Join(artifacts, "session-metrics-scrolled-"+strings.ToLower(tab.name)+"-"+size.name+"-"+theme+".png"))
-					}
-				}
-			}
-		}
-		// Keyboard focus reaches the pinned views and switches them.
-		run("focus", `[aria-label="Session metrics view"] button:nth-child(3)`)
-		run("press", "Enter")
-		run("wait", "--text", "of 3")
-		viewport("1280", "720")
-		button("Features")
-		run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('[role=dialog][data-slot=dialog-content] [data-slot=table-row]')].map(row => [...row.children].map(cell => cell.textContent.trim()).join(' ')); return rows.includes('Compaction Self Descendants') && rows.includes('Self-initiated 8 10') && rows.includes('Self completed 2 4') && rows.includes('Self failed 1 2') && rows.includes('Progress enabled 4 3') && rows.includes('Progress delivered 2 1') && rows.includes('Assignments 3 2') && rows.includes('Messages 3 1') && rows.includes('With edit ranges 0 5') && rows.includes('Saved bytes 4936 800') && rows.includes('Saved tokens (est.) 1234 200'); })()`)
-		capture("session-features")
-		// The additional rows remain readable and reachable beneath pinned navigation.
-		for _, size := range []struct{ name, width, height string }{{"desktop", "1280", "900"}, {"phone", "390", "844"}} {
-			viewport(size.width, size.height)
-			for _, theme := range []string{"dark", "light"} {
-				run("set", "media", theme)
-				if strings.TrimSpace(run("eval", pinned+"(true)")) != "true" {
-					t.Fatal("Features navigation lost at bottom", size.name, theme)
-				}
-				if strings.TrimSpace(run("eval", `(() => { const d = document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]'); return d.scrollWidth <= d.clientWidth && [...d.querySelectorAll('td,th')].every(cell => { const r = cell.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }); })()`)) != "true" {
-					t.Fatal("Features cells overflow", size.name, theme)
-				}
-				if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
-					run("screenshot", filepath.Join(artifacts, "session-features-scrolled-"+size.name+"-"+theme+".png"))
-				}
-			}
-		}
-		if strings.Contains(run("eval", `document.querySelector('[role=dialog][data-slot=dialog-content][data-state=open]').textContent`), "[ older") {
-			t.Fatal("browser metrics advertise terminal shortcuts")
-		}
-		t.Log("links, machine-local details, metrics views, grouped status and individual process lifecycle passed")
+		t.Log("links, machine-local details, grouped status and individual process lifecycle passed")
 		return
 	}
 
@@ -1351,7 +1387,7 @@ func serveWebUISemanticHost(t *testing.T) {
 			if key == "browser later input" {
 				answer = "Browser later input answer"
 			}
-			if inputs == 1 {
+			if inputs == 1 && key == "browser first input" {
 				answer += "\n\nAutomatic https://example.com/auto and [Website](https://example.com/markdown). [Workspace notes](notes.md)"
 			}
 			history := binding.HistoryTurn{ID: id, Status: "completed", Items: []binding.ThreadItem{{ID: fmt.Sprintf("user-%d", inputs), Type: "userMessage", Content: content}, {ID: fmt.Sprintf("answer-%d", inputs), Type: "agentMessage", Text: answer}}}
