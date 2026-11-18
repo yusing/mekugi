@@ -13,8 +13,8 @@ coordinator's lifecycles. Do not add another assignment ledger, wait state machi
 or conversation store.
 
 Retain one interactive UI and the stock JavaScript execution interface. Stock
-non-wait schemas and names are accepted. Address agents by canonical task path or exact
-thread ID; relative task-name addressing is unsupported. The wait interface changes
+non-wait schemas and names are accepted. Address agents by a task path relative to the
+caller, a canonical task path, or an exact thread ID where supported. The wait interface changes
 explicitly; parity with the former Go schema is not a goal. Resume is product-local.
 Parents can wait for any or all selected descendant outcomes. Addressed messages
 retain native wake behavior. Progress is opt-in and change-driven; one combined
