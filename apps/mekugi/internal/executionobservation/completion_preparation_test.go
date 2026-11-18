@@ -2,11 +2,15 @@ package executionobservation
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
@@ -14,6 +18,50 @@ import (
 type completionReads struct {
 	changes.Service
 	reads atomic.Int32
+}
+
+func TestParentFinalCaptureAfterLabeledWorkerResult(t *testing.T) {
+	f := newMChangesSliceFixture(t, "capture-parent")
+	bindTestHandleScope(t, f.store, f.ctx, "", "")
+	p := newManagedMekugiProxy(t)
+	setTestProxyStore(p, f.store)
+	child := f.thread + "-worker"
+	directory := filepath.Join(f.workspace, "native")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.AdmitNativeChild(f.ctx, appserver.ChildHostAdmissionRequest{RootThreadID: f.thread, ParentThreadID: f.thread, ThreadID: child, LocalCwd: &directory}); err != nil {
+		t.Fatal(err)
+	}
+	model, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "input": []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]any{"role": "user", "content": "edit"}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transform, err := p.prepareRequest(t.Context(), &model, child, child, codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: child, ParentThreadID: f.thread, SubagentKind: "thread_spawn", Directories: map[string]json.RawMessage{directory: nil}}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transform.Close()
+	transform.sessionShell = "bash"
+	call := map[string]any{"type": "custom_tool_call", "id": "edit-item", "call_id": "edit", "name": "exec", "input": `text(await tools.exec_command({cmd:"echo after > file.txt"}));`, "status": "completed"}
+	if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "r", "status": "completed", "output": []any{call}})); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(directory, "file.txt"), "after\n")
+	parts := []map[string]string{{"type": "input_text", "text": "[call c1]\nScript completed\nWall time 0.1 seconds\nOutput:\n"}, {"type": "input_text", "text": strings.Repeat("long output\n", 32)}}
+	request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{"type": "custom_tool_call_output", "call_id": "edit", "output": parts}})}}
+	if _, err := p.reconcileVisibleInput(transform.ctx, &request, directory, transform.historySessionID); err != nil {
+		t.Fatal(err)
+	}
+	output := projectedEditOutput(t, &request, "edit")
+	if len(output) != 3 || output[0]["text"] != parts[0]["text"] || output[1]["text"] != parts[1]["text"] {
+		t.Fatalf("missing receipt after original result: %+v", output)
+	}
+	id := output[2]["text"].(string)
+	result, err := p.PrepareNativeFinalCapture(t.Context(), appserver.FinalCaptureRequest{RootThreadID: f.thread, ThreadID: child, RecipientThreadID: f.thread, RecipientCwd: &f.workspace, OperationID: "work", Sources: []string{"mchanges:" + id}})
+	if err != nil || result == nil || result.ResourceRef == "" || !strings.Contains(result.FullText, "+after\n") || strings.Contains(result.FullText, "exit_code=1") {
+		t.Fatalf("parent did not receive published edit: %+v, %v", result, err)
+	}
 }
 
 func (reader *completionReads) Read(ctx context.Context, selected changes.Scope, query changes.Query) (string, error) {

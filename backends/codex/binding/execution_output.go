@@ -77,6 +77,16 @@ func DecodeExecutionResult(toolName string, raw jsonv1.RawMessage) ExecutionResu
 // router carrier or transparent native-result projection as well.
 func CodeModeExecutionHeader(text string) (status, cell string, body string) {
 	first, rest, ok := strings.Cut(text, "\n")
+	// Native output deduplication can label the host's short status part
+	// when another part contains reusable text. Only accept the leading
+	// label; references and status-like lines in program output are not facts.
+	if number, labeled := strings.CutPrefix(first, "[call c"); labeled {
+		number, valid := strings.CutSuffix(number, "]")
+		if !valid || number == "" || number[0] == '0' || strings.Trim(number, "0123456789") != "" {
+			return "", "", ""
+		}
+		first, rest, ok = strings.Cut(rest, "\n")
+	}
 	if !ok {
 		return "", "", ""
 	}
