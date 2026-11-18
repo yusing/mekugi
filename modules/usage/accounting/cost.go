@@ -42,7 +42,10 @@ type tokenPrice struct {
 // charges or live billing quotes. Other providers need explicitly supplied rates.
 // GPT-6.1 Sol source (2026-09-30): https://developers.openai.com/api/docs/pricing
 // GPT-6.1 Terra source (2026-10-27): https://developers.openai.com/api/docs/models/gpt-6.1-terra
+// GPT-6.2 Astra and Sol source (2026-11-18): https://developers.openai.com/api/docs/pricing
 var tokenReferencePrices = map[string]tokenPrice{
+	"gpt-6.2-astra":   {8, 0.4, 40, 16, 0.8, 60},
+	"gpt-6.2-sol":     {2, 0.1, 10, 4, 0.2, 15},
 	"gpt-6-astra":     {10, 1, 50, 20, 2, 75},
 	"gpt-6-astra-pro": {10, 1, 50, 20, 2, 75},
 	"gpt-6.1-sol":     {2, 0.1, 10, 4, 0.2, 15},
@@ -62,6 +65,8 @@ var tokenReferencePrices = map[string]tokenPrice{
 // multiplier: GPT-5.5 has a different premium and no published long-context rate.
 // Source (2026-09-12): https://developers.openai.com/api/docs/pricing#text-tokens
 var tokenFastReferencePrices = map[string]tokenPrice{
+	"gpt-6.2-astra": {16, 0.8, 80, 32, 1.6, 120},
+	"gpt-6.2-sol":   {4, 0.2, 20, 8, 0.4, 30},
 	"gpt-6-astra":   {20, 2, 100, 40, 4, 150},
 	"gpt-6.1-sol":   {4, 0.2, 20, 8, 0.4, 30},
 	"gpt-6.1-terra": {2, 0.1, 10, 4, 0.2, 15},
@@ -119,7 +124,8 @@ func estimateReferenceCost(model, serviceTier string, counts inference.Usage) Co
 	var cacheWritePremium float64
 	if counts.CacheWriteTokens != 0 {
 		switch model {
-		case "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
+		case "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra",
+			"gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
 			// Writes are part of uncached input, charged at 1.25x its rate.
 			cacheWritePremium = float64(counts.CacheWriteTokens) * price.input * .25 / 1_000_000
 		default:

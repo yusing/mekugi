@@ -15,6 +15,14 @@ func TestTokenCostServiceTiers(t *testing.T) {
 		uncached, cached, output float64
 		known                    bool
 	}{
+		{"gpt-6.2-astra", "default", 272_000, .8, .0688, .4, true},
+		{"gpt-6.2-astra", "default", 272_001, 1.6, .1376008, .6, true},
+		{"openai/gpt-6.2-astra", "fast", 272_000, 1.6, .1376, .8, true},
+		{"gpt-6.2-astra", "priority", 272_001, 3.2, .2752016, 1.2, true},
+		{"gpt-6.2-sol", "default", 272_000, .2, .0172, .1, true},
+		{"gpt-6.2-sol", "default", 272_001, .4, .0344002, .15, true},
+		{"gpt-6.2-sol", "fast", 272_000, .4, .0344, .2, true},
+		{"openai/gpt-6.2-sol", "priority", 272_001, .8, .0688004, .3, true},
 		{"gpt-6-astra", "default", 200_000, 1, .1, .5, true},
 		{"gpt-6-astra", "priority", 200_000, 2, .2, 1, true},
 		{"gpt-6-sol", "default", 200_000, .2, .02, .1, true},
@@ -92,6 +100,10 @@ func TestTokenCostCacheWrites(t *testing.T) {
 		input                   uint64
 		wantUncached, wantTotal float64
 	}{
+		{"gpt-6.2-astra", "default", 200_000, .88, 1.32},
+		{"gpt-6.2-astra", "priority", 300_000, 3.52, 5.04},
+		{"gpt-6.2-sol", "default", 200_000, .22, .33},
+		{"gpt-6.2-sol", "priority", 300_000, .88, 1.26},
 		{"gpt-6-astra", "default", 200_000, 1.1, 1.7},
 		{"gpt-6-astra", "fast", 200_000, 2.2, 3.4},
 		{"gpt-6-astra", "priority", 300_000, 4.4, 6.7},
@@ -120,7 +132,8 @@ func TestTokenCostCacheWrites(t *testing.T) {
 				totals.Observation("thread", "", tc.model, tc.tier).Observe(counts)
 			}
 			report, ok := totals.Snapshot("thread")
-			if !ok || report.InputTokens != 2*tc.input || report.CacheWriteTokens != 80_000 {
+			if !ok || report.InputTokens != 2*tc.input || report.CacheWriteTokens != 80_000 ||
+				!report.Cost.Known || math.Abs(report.Cost.Total()-2*tc.wantTotal) > 1e-10 {
 				t.Fatalf("report=%+v", report)
 			}
 		})
