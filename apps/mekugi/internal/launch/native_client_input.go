@@ -95,9 +95,9 @@ func (c *nativeClient) withInput(thread, displayed sessionpresentation.Thread, t
 	c.refreshView(time.Now())
 }
 
-// A menu/panel continuation or resume edit owns the key that opened it. Subsequent
-// input waits for that semantic result; navigation outside the resume chooser
-// and cancellation do not acquire the editor and remain independent.
+// Subsequent composer input needs the editor produced by a completion, even
+// when the accepting key had no continuation (for example, Tab then Enter).
+// Navigation outside the resume chooser and cancellation remain independent.
 func (c *nativeClient) drainInput() {
 	if c.event.Attachment == "" {
 		return
@@ -105,7 +105,8 @@ func (c *nativeClient) drainInput() {
 	for i := 0; i < len(c.input); {
 		pending := c.request(nativeSemanticCall)
 		dependent := func(call *nativeClientCall) bool {
-			return call != nil && (call.next != nil || call.operation.Resume != nil && call.operation.Resume.Kind != sessionpresentation.ResumePage)
+			return call != nil && (call.next != nil || call.acceptingCompletion ||
+				call.operation.Resume != nil && call.operation.Resume.Kind != sessionpresentation.ResumePage)
 		}
 		queued := c.input[i]
 		event := queued.event

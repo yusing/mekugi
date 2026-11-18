@@ -171,6 +171,8 @@ type nativeClientCall struct {
 	err        error
 	cancel     context.CancelFunc
 	discard    bool
+
+	acceptingCompletion bool
 }
 
 type nativeClient struct {
@@ -346,6 +348,9 @@ func (c *nativeClient) enqueue(operation sessionapi.NativeOperation, next *termi
 		}
 	}
 	call := &nativeClientCall{owner: c, target: c.event.Target(), operation: operation, next: next, nextInput: c.event.Frame.View.Input, nextView: c.event.Frame.View.Displayed, nextEditor: nextEditor, after: after}
+	if menu := c.event.Frame.View.Menu; menu != nil && menu.Kind == sessionpresentation.MenuCompletion {
+		call.acceptingCompletion = operation.Menu != nil && operation.Menu.Kind == sessionpresentation.MenuAccept && operation.Menu.Menu == menu.ID
+	}
 	if operation.Output != nil {
 		call.unresolved = slices.Clone(operation.Output.Demands)
 	}

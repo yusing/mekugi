@@ -18,6 +18,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -435,6 +436,59 @@ func TestNativeClientResumeSearchKeepsIndependentInput(t *testing.T) {
 				t.Fatal("Ctrl-C did not reach the chooser while search was pending")
 			}
 		})
+	}
+}
+
+func TestNativeClientCompletionSettlesBeforeSubmitting(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	c := nativeTestPromptClient(u)
+	defer c.renderer.terminal.Diff.Close()
+	const partial, complete = "Read @rep", "Read @report.txt "
+	editor, _ := c.selectedEditor()
+	editor.InsertText(partial)
+	_, target := c.selectedEditor()
+	c.event.Frame.CompletionTarget = target
+	c.event.Frame.View.Menu = &sessionpresentation.MenuView{ID: 1, Kind: sessionpresentation.MenuCompletion, View: completion.View{
+		Target:  completion.Target{Kind: '@', Start: len("Read "), End: len(partial), Query: "rep"},
+		Choices: []completion.Choice{{Name: "report.txt", Path: "report.txt"}},
+	}}
+	c.refresh(time.Now())
+	c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\t"})
+	c.queueInput(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\r"})
+	c.drainInput()
+	if len(c.calls) != 1 || c.calls[0].operation.Menu == nil || len(c.input) != 1 {
+		t.Fatal("Enter did not wait for the queued completion")
+	}
+	pending := c.calls[0]
+	c.calls = nil
+	c.requests[nativeSemanticCall] = pending
+	c.drainInput()
+	if len(c.calls) != 0 || len(c.input) != 1 {
+		t.Fatal("Enter did not wait for the in-flight completion")
+	}
+	event := c.event
+	event.Frame.View.Menu = nil
+	event.Frame.View.Version.Revision++
+	event.Frame.Effects = []sessionapi.NativeEffect{{
+		ID: 1, Thread: "main", Target: &target,
+		Action:  &composer.Action{Kind: composer.DeleteAction, End: len(partial)},
+		Restore: &composer.Draft{Text: complete, Files: []composer.Token{{Start: len("Read "), End: len(complete) - 1, Path: "report.txt"}}},
+	}}
+	c.accept(event)
+	pending.complete, pending.result.Version = true, event.Frame.View.Version
+	r := &nativeClientRuntime{active: c, owners: []*nativeClient{c}}
+	r.settle()
+	c.drainInput()
+	var submitted []*sessionapi.NativeComposerInput
+	for _, call := range c.calls {
+		if call.operation.Composer != nil {
+			submitted = append(submitted, call.operation.Composer)
+		}
+	}
+	if len(c.input) != 0 || len(submitted) != 1 || submitted[0].Intent.Operation != sessionpresentation.SubmitComposer ||
+		submitted[0].Draft.Text != complete || len(submitted[0].Draft.Files) != 1 || submitted[0].Draft.Files[0].Path != "report.txt" {
+		t.Fatal("Enter did not submit the completed file draft exactly once")
 	}
 }
 
