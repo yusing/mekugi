@@ -177,7 +177,7 @@ environment, without blocking native control or host-event dispatch. Query edits
 share the pending acquisition; only its current workspace and catalog may adopt
 the result. Replacement cancels old work, which the runtime joins on shutdown.
 Managed names take precedence over same-named Codex entries.
-Submission or queueing resolves them with `skills-mgr get --codex NAME`, including
+The native reader resolves them when it records accepted input, including
 explicitly invoked skills omitted from the managed model catalog. Native entries
 retain their exact metadata source path through editing and history. Managed
 placeholders retain their metadata identity while acquisition reads the manager's

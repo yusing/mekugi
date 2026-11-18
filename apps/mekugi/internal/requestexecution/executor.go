@@ -40,7 +40,6 @@ type Executor struct {
 	Issues           *Failures
 	Observations     Preparer
 	Guidance         *binding.Guidance
-	SkillsManager    bool
 	ReasoningChoices func(string) (string, []string, bool)
 	SideThreads      sessioncontrol.ForkClassifier
 	Usage            *accounting.Service
@@ -289,16 +288,6 @@ func (a *requestAttempt) prepareWire() error {
 		}
 	}
 	attachmentsProjected, attachmentIDs := ProjectFileAttachments(&a.request)
-	// Match attachment sources before compact skill rewriting drops native paths.
-	if !a.approvalReview && a.executor.Observations != nil {
-		if guidance := a.executor.Guidance; guidance != nil {
-			if err := ProjectInstructions(&a.request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
-				return guidance.AfterAttachments(input, a.executor.SkillsManager)
-			}); err != nil {
-				return err
-			}
-		}
-	}
 	projectedInput, err := codexresponses.ProjectStandaloneOutputs(a.request.Fields["input"])
 	if err != nil {
 		return fmt.Errorf("project standalone tool context: %w", err)

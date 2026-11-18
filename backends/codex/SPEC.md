@@ -292,12 +292,12 @@ receipts and the treatment of historical observation-only captures.
 
 ## Guidance projection
 
-One composed guidance registration provides three explicit request phases: before
-preparation, at execution preparation, and after attachment matching. It receives
+One composed guidance registration provides omission filtering before preparation
+and guidance updates at execution preparation. It receives
 only instruction/input bytes, returns changed-field flags, and can reject malformed
 owned carriers. The application applies changed input through its catalog-indexing
 boundary; provider-prefix reconciliation remains later in the request pipeline.
-Late selected-skill projection receives invocation-discovered manager availability.
+The native runtime constructs selected-skill identities directly.
 The same registration assembles selected frontend descriptions and refreshes or
 removes its marked tool-description section. Duplicate or incomplete registrations
 fail activation. No registration means these effects are absent.

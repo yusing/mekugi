@@ -11,7 +11,7 @@ exact notice thresholds/reset rules below are current design.
 
 ## Purpose and scope
 
-Assemble contributed frontend guidance and project explicit omissions and selected-skill identities without changing caller authority.
+Assemble contributed frontend guidance and apply explicit omissions without changing caller authority.
 
 ## Behavior
 
@@ -114,14 +114,24 @@ parts remain intact. Each text part is processed independently, including fenced
 multiple complete blocks are supported. Unmatched markers and bytes outside complete blocks are
 preserved. Filtering also applies to prewarm and execution-free requests.
 
-When `skills-mgr` is executable in the native process PATH, native configuration omits
-the stock skill catalog so managed catalog guidance is not duplicated. Without it,
-native skill-catalog configuration applies, enabled by default. Native skill loading and
-explicit selection remain available. When `skills-mgr` is executable, the router replaces explicitly selected Codex skill
-instructions with the compact identity `<skill name="…"/>` before provider forwarding. This
-idempotent projection applies to ordinary, prewarm, execution-free, and replayed selected-skill
-messages without modifying Codex configuration files. When `skills-mgr` is unavailable,
-selected-skill messages remain unchanged.
+When the local workspace is explicitly trusted and it or the user has a
+`skills-mgr` selection, the manager's XML catalog replaces the stock catalog in
+model context without a hook. Catalog conditions are evaluated in process
+without a Bash wrapper. A condition can explicitly run external commands with
+app-server permissions, so only the local workspace covered by existing
+project trust can supply this catalog. If the whole managed catalog exceeds the
+skills context budget, the runtime warns and omits it rather than showing a
+partial catalog.
+The current workspace supplies the host catalog; unchanged catalogs are not
+appended on continuation. A failed acquisition reports a warning without
+substituting the stock host catalog. Untrusted workspaces, workspaces without a
+selection, and remote executors keep stock catalog behavior.
+`skills.include_instructions` controls automatic
+catalog display for either source, enabled by default. The native runtime records
+explicitly selected skill prompts as compact `<skill name="…"/>` identities
+when the manager resolves the skill, and as full skill instructions otherwise. Recorded
+selections carry through subsequent requests without a router rewrite. Ordinary
+user text is not a selected-skill identity.
 
 Native source outputs identify their bodies as reusable read context. Accepted
 user references use the same native reader as preload and reload, separately from
@@ -229,11 +239,13 @@ explicit selections and previously captured results. Select needed implementatio
 callers, tests, fixtures and guidance for the next unfinished operation.
 
 Native Codex reset, preload and message acquisition read selected files through
-the receiving runtime's filesystem; skill names resolve through its native catalog.
+the receiving runtime's filesystem; skill names resolve through its managed or
+native catalog. A manager-advertised name takes precedence over a native copy,
+and a marked placeholder supports explicit acquisition even when unlisted.
 Host-owned acquisition uses its admitted readers. Native filesystem
 limits and admitted reader bounds apply. An incomplete read reports its failure;
-omitted rows are not acquired context. Managed skills and captured-change selections
-keep their admitted readers.
+omitted rows are not acquired context. A failed managed read does not substitute
+stale native instructions. Captured-change selections keep their admitted reader.
 
 Successfully selected file and skill text also resolves nested references using
 the same grammar, including JSON string values.
@@ -312,7 +324,7 @@ descriptions keep only operation-specific acquisition and delivery rules.
 The module has no background resources. Historical summaries retain their contributed
 record kind in the shared retained-session store; captured sources use output
 recovery records. Its binding
-registers early omission filtering, late selected-skill projection, frontend assembly, and marked-description and base-workflow replacement.
+registers early omission filtering, frontend assembly, and marked-description and base-workflow replacement.
 Omissions run before preparation, including compaction and execution-free requests.
 Projection errors stop forwarding. With zero guidance contributions, the module
 still handles its instruction policies and descriptions of selected commands.
@@ -337,9 +349,13 @@ command execution remains available. Provider compatibility prose belongs to its
    descriptions exactly once and excludes absent command supplements. Changed valid
    descriptions render directly; the snapshot and projected bytes match.
 5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.
-6. With `skills-mgr` in PATH, the native runtime omits stock skill-catalog instructions
-   and selected skill wrappers reach the provider as `<skill name="…"/>`. Without it,
-   native catalog configuration and selected-skill content remain available.
+6. In a trusted local workspace with a `skills-mgr` selection and no catalog hook,
+   generating requests see the
+   managed catalog instead of the stock catalog, without appending a second
+   copy on continuation. Selected native skill prompts appear as
+   `<skill name="…"/>` without a Go rewrite. Without the manager, the stock
+   catalog and full selected-skill content remain available. A textual skill
+   reference attaches its source once and does not also emit a selection prompt.
 7. Codex manual and automatic resets make no summary inference. Optional selected
    sources reach the first continuation without unrelated artifact contents or
    selection metadata; tool schemas and cache identity remain stable. Completed

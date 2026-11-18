@@ -95,29 +95,20 @@ func (stoppedProvider) ForwardExecution(context.Context, context.Context, []byte
 	return nil, errors.New("provider stopped by fixture")
 }
 
-// The real request lifecycle captures instructions after every guidance
-// projection, immediately before the provider is called.
+// The real request lifecycle captures the projected instructions sent to the provider.
 func TestRetainInstructionsObservesGuidanceProjection(t *testing.T) {
 	service, retention, directory := testInstructionRetention(t)
 	request, err := codexresponses.ParseRequest([]byte(`{"model":"model-a","instructions":"base","input":[{"role":"user","content":"hello"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	project := func(marker string) func(binding.InstructionInput) (binding.InstructionUpdate, error) {
-		return func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
-			text, ok := responses.DecodeString(input.Instructions)
-			if !ok {
-				return binding.InstructionUpdate{}, errors.New("fixture instructions")
-			}
-			input.Instructions = responses.MustMarshalJSON(text + " " + marker)
-			return binding.InstructionUpdate{InstructionInput: input, InstructionsChanged: true}, nil
-		}
-	}
 	executor := Executor{
 		Provider: stoppedProvider{}, Observations: new(lifecyclePreparation), Issues: testCriticalErrors(), Instructions: retention,
 		Guidance: &binding.Guidance{
-			BeforePreparation: project("<mekugi_environment_facts>facts</mekugi_environment_facts>"),
-			AfterAttachments:  func(input binding.InstructionInput, _ bool) (binding.InstructionUpdate, error) { return project("guidance")(input) },
+			BeforePreparation: func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+				input.Instructions = responses.MustMarshalJSON("projected base")
+				return binding.InstructionUpdate{InstructionInput: input, InstructionsChanged: true}, nil
+			},
 		},
 	}
 	headers := http.Header{}
@@ -129,7 +120,7 @@ func TestRetainInstructionsObservesGuidanceProjection(t *testing.T) {
 	if err != nil || report.Status != diagnostic.InstructionsAvailable {
 		t.Fatalf("report = %+v %v", report, err)
 	}
-	if got := report.Content[report.Revisions[0].Instructions].Text; got != "base <mekugi_environment_facts>facts</mekugi_environment_facts> guidance" {
+	if got := report.Content[report.Revisions[0].Instructions].Text; got != "projected base" {
 		t.Fatalf("captured instructions = %q", got)
 	}
 }

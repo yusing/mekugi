@@ -31,15 +31,14 @@ type FrontendGuidance struct {
 type Guidance struct {
 	Threads           func(InstructionInput, []guidance.Replacement) (InstructionUpdate, error)
 	BeforePreparation func(InstructionInput) (InstructionUpdate, error)
-	AfterAttachments  func(InstructionInput, bool) (InstructionUpdate, error)
 	Frontends         func([]command.Spec) (FrontendGuidance, error)
 	ToolDescription   func(description, guide string, remove bool) (string, error)
 	BaseInstructions  func(instructions json.RawMessage, workflow string, remove bool) (json.RawMessage, error)
 }
 
 func (r *Registry) Guidance(guidance Guidance) error {
-	if guidance.BeforePreparation == nil || guidance.AfterAttachments == nil || guidance.Frontends == nil || guidance.ToolDescription == nil || guidance.BaseInstructions == nil {
-		return errors.New("guidance requires all request phases and frontend operations")
+	if guidance.BeforePreparation == nil || guidance.Frontends == nil || guidance.ToolDescription == nil || guidance.BaseInstructions == nil {
+		return errors.New("guidance requires before-preparation projection and frontend operations")
 	}
 	if r.guidance != nil {
 		return errors.New("duplicate guidance registration")

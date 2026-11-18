@@ -14,7 +14,6 @@ var Codex = Bindings{
 		return binding.Guidance{
 			Threads:           projectThreadInstructions,
 			BeforePreparation: beforePreparation,
-			AfterAttachments:  afterAttachments,
 			Frontends: func(commands []command.Spec) (binding.FrontendGuidance, error) {
 				return frontendGuide(commands, service.Sections, service.ChildReplySummary)
 			},

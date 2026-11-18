@@ -155,8 +155,13 @@ Captures exclude prompts, patches, and credentials.
 
 - **Instructions:** wrapped sessions disable `/goal`; `<!-- mekugi:omit -->` through
   `<!-- /mekugi:omit -->` omits marked blocks without changing files/unmarked policy.
-  With `skills-mgr`, managed selections attach instructions and the stock catalog is
-  disabled for the session. See [guidance](../../modules/agentguidance/SPEC.md).
+  In a trusted local workspace with a project or global `skills-mgr` selection,
+  the manager's catalog replaces Codex's stock skill catalog. Catalog conditions
+  can run external commands, so trust only workspaces you control.
+  You can disable the `skills-mgr` catalog injection hook for Mekugi and remove
+  the old `skills.include_instructions = false` workaround. Set it to `false`
+  only if you want to hide the automatic catalog.
+  See [guidance](../../modules/agentguidance/SPEC.md).
 - **Recovery:** see [compaction](sessions.md#compaction-and-recovery) and [storage](sessions.md#replay-storage).
 - **Frontend commands:** [compiled helpers](../../apps/mekugi/internal/frontends/SPEC.md) run through stock
   execution. JavaScript plugin loading has been removed; existing plugin files

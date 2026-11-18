@@ -340,7 +340,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	executor := requestexecution.Executor{Provider: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
 	executor.ReasoningChoices = catalog.Choices
 	executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
-	executor.SkillsManager, executor.SideThreads, executor.Usage = skillsManagerAvailable, api, usage
+	executor.SideThreads, executor.Usage = api, usage
 	if diagnosis != nil {
 		executor.Instructions = diagnosis.RetainInstructions(retained.Store, retained.Writes, retained.Limits)
 	}
