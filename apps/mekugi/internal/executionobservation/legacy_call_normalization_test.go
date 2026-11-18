@@ -1,8 +1,9 @@
 package executionobservation
 
 import (
-	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"slices"
+
+	"github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 // Keep request-local state out of immutable replay comparisons as well as JSON.

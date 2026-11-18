@@ -2,9 +2,10 @@ package sessionpresentation_test
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/conversation/completion"
-	"testing"
 )
 
 func TestMenuPublicationAndChoiceAdmission(t *testing.T) {

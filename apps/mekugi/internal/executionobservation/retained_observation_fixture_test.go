@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/yusing/mekugi/libraries/diffmodel"
-	"github.com/yusing/mekugi/modules/changehistory/evidence"
 	"path/filepath"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/evidence"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/legacycall"

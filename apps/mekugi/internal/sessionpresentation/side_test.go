@@ -2,9 +2,10 @@ package sessionpresentation_test
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"testing"
 )
 
 func TestSideCloseTargetsPublishedExchange(t *testing.T) {

@@ -3,10 +3,11 @@ package sessioncontrol
 import (
 	"encoding/json/jsontext"
 	"errors"
-	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"reflect"
 	"testing"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )

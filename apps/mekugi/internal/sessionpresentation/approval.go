@@ -2,6 +2,7 @@ package sessionpresentation
 
 import (
 	"errors"
+
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 

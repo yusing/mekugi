@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"

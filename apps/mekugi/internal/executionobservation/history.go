@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"maps"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
 

@@ -1,8 +1,9 @@
 package presentation
 
 import (
-	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"testing"
+
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
 func TestSteerQueuedPreservesBoundInputAndSpecialEntries(t *testing.T) {

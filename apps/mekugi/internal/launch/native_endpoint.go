@@ -13,7 +13,7 @@ var errNativeEndpointStopped = errors.New("native endpoint requested end")
 // nativeEndpoint has only presentation/control lifetime. Sources are selected
 // by the invocation's sole event loop, never by an endpoint goroutine.
 type nativeEndpoint struct {
-	cancel context.CancelFunc
+	cancel  context.CancelFunc
 	session *nativeSession
 	api     *sessionapi.Server
 	sources []nativeEventSource

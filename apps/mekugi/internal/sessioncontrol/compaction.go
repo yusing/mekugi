@@ -2,6 +2,7 @@ package sessioncontrol
 
 import (
 	"crypto/rand"
+
 	"github.com/yusing/mekugi/contracts/observation"
 )
 
