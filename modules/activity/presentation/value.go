@@ -43,9 +43,9 @@ type Value struct {
 	feed.Content
 	// ReplyDetails is the supporting section, or the headingless excerpt body
 	// when ReplySummary is empty. Body always retains the original source.
-	ReplySummary, ReplyDetails                    string
-	DetailCode                                    string `json:",omitempty"` // Original tool evidence, displayed only in details.
-	Repeated                                      string
+	ReplySummary, ReplyDetails string
+	DetailCode                 string `json:",omitempty"` // Original tool evidence, displayed only in details.
+
 	AutoReload                                    bool   // Native compaction reader, distinct from a submitted attachment.
 	AttachmentKind                                string // file, skill, change, selection or omission.
 	AttachmentID                                  string // Durable submitted snapshot and source, shared by its chunks.

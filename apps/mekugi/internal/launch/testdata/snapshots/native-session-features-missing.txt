@@ -1,8 +1,6 @@
 
 
 
-
-
   ╭ Session · Features ─────────────────────────────────────────── Esc close ╮
   │                                                                          │
   │  Features  ────────────────────────────────────────────────────────────  │
@@ -43,12 +41,14 @@
   │  Assignments              3            2                                 │
   │  Messages                 3            1                                 │
   │                                                                          │
-  │  Output deduplication  ────────────────────────────────────────────────  │
-  │  Unavailable for this frontend.                                          │
+  │  Output deduplication  Self  Descendants                                 │
+  │  Saved bytes           4936          800                                 │
+  │  Saved tokens (est.)   1234          200                                 │
+  │  Net model-input savings after reference overhead, summed across         │
+  │  requests. Tokens use a local 4-byte estimate, not provider billing      │
+  │  savings.                                                                │
   │                                                                          │
   ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ───────────────────────────╯
-
-
 
 
 

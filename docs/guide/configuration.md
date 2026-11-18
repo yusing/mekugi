@@ -11,7 +11,6 @@ rewritten:
 ```toml
 [features]
 shell_guard = true
-deduplicate_output = true
 child_reply_summary = true
 debug = false
 
@@ -25,8 +24,8 @@ an explicit CLI value first, then its file value, then the built-in default show
 above. Missing files, sections, and keys keep built-in defaults. Unknown keys and
 non-boolean feature values fail startup without printing configuration contents.
 
-For example, set `deduplicate_output = false` to keep repeated model input by
-default, then run `mekugi --deduplicate-output codex` to enable it for one launch.
+For example, set `shell_guard = false`, then run `mekugi --shell-guard codex`
+to enable guarding for one launch.
 Bare boolean flags mean true; use `--debug=false` or `--shell-guard=false` to
 explicitly disable a feature. Repeated flags use the last value. Flags must precede
 `codex` and `--`; arguments after the delimiter belong to Codex. Overrides apply
@@ -118,7 +117,6 @@ See the
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
 | `--shell-guard` | `true` | Guard UI remote writes and sudo commands; securely answer GPG passphrase requests, even with `--yolo` |
-| `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
 | `--child-reply-summary` | `true` | Show child-authored summaries in Main, with the original behind Open reply |
 | `--timeout` | `10m` | Wait for response start |
 | `--stream-idle-timeout` | `4m` | Limit provider-message or HTTP-byte gaps |
@@ -128,9 +126,9 @@ See the
 The boolean defaults above apply when no matching [feature setting](#mekugi-settings) exists.
 Use `--ansi-faint=off` if a multiplexer hides mosh.
 
-With output deduplication enabled, transcript rows mark replaced output as
-`repeated` or `N lines repeated`, and the `/session` Features tab shows occurrences and
-estimated saved tokens. See the [projection contract](../../modules/outputdeduplication/SPEC.md).
+Native output deduplication is automatic. The `/session` Features tab shows net
+saved bytes and estimated tokens across model requests; full results stay in
+history and the UI. See the [projection contract](../../backends/codex/SPEC.md#output-deduplication).
 
 ## Metrics
 

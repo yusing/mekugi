@@ -86,8 +86,8 @@ This body selection cannot prevent an upstream eligibility-service failure
 during WebSocket upgrade before the body is sent.
 
 Projection never changes original tool arguments, host history or retained
-evidence. [Output deduplication](../../modules/outputdeduplication/SPEC.md) runs
-last on model input. Growing original input preserves earlier projected items;
+evidence. Native [output deduplication](../../backends/codex/SPEC.md#output-deduplication)
+projects history into model input before the transport boundary. Growing original input preserves earlier projected items;
 changed options, instructions or tool catalogs can require the backend to rebase
 an explicit continuation. HTTP-only custom routes send full history rather than
 using a dedicated connection's confirmed prefix. Reconciliation diagnostics

@@ -30,9 +30,8 @@ func SourceRanges(text string, bodies []SourceRange) string {
 	return sourcePrefix + strconv.Itoa(len(text)) + "\" bodies=\"" + ranges.String() + "\">\n" + text + sourceSuffix
 }
 
-// ProjectSources accepts only a complete terminal attachment. Earlier quoted
-// envelopes and unselected diagnostics stay literal. Validation finishes before
-// callbacks, so malformed input cannot seed request-local references.
+// sourceEnvelope accepts only a complete terminal attachment. Earlier quoted
+// envelopes and unselected diagnostics stay outside its source ranges.
 func sourceEnvelope(text string) (start, body, n int, ranges []SourceRange, valid bool) {
 	if !strings.HasSuffix(text, sourceSuffix) {
 		return
@@ -75,25 +74,6 @@ func sourceEnvelope(text string) (start, body, n int, ranges []SourceRange, vali
 		return start, body, n, ranges, true
 	}
 	return 0, 0, 0, nil, false
-}
-
-// ProjectSources changes only validated source bodies, preserving their framing.
-func ProjectSources(text string, project func(string) string) string {
-	start, body, n, ranges, valid := sourceEnvelope(text)
-	if !valid || len(ranges) == 0 {
-		return text
-	}
-	var result strings.Builder
-	at := 0
-	for i, span := range ranges {
-		result.WriteString(text[body+at : body+span.Start])
-		first := result.Len()
-		result.WriteString(project(text[body+span.Start : body+span.End]))
-		ranges[i] = SourceRange{first, result.Len()}
-		at = span.End
-	}
-	result.WriteString(text[body+at : body+n])
-	return text[:start] + SourceRanges(result.String(), ranges)
 }
 
 // SourceContent is one native reader result. Body bytes are not parsed as receipts.

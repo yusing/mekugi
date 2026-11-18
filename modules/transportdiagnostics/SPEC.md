@@ -17,7 +17,7 @@ client/provider boundaries, including retries and automatic steering successors.
 It does not select providers, execute tools, retry requests, reconstruct output
 content, estimate transport tokens, or own connection reuse. Per-thread retained
 accounting belongs to [usage](../usage/SPEC.md), local projection estimates to
-[output deduplication](../outputdeduplication/SPEC.md#local-savings-estimates), and
+native [output deduplication](../../backends/codex/SPEC.md#output-deduplication), and
 reader/edit evidence to [agent metrics](../agentmetrics/SPEC.md).
 
 [Diagnostics](../diagnostics/SPEC.md) owns debug bundles; the application owns
@@ -53,14 +53,6 @@ for response parsing per boundary. Exceeding the bound preserves delivery and
 marks structured evidence incomplete. JSON, compressed bodies and supported SSE
 framing produce equivalent observations without rewriting delivered bytes.
 Raw content is discarded after observation.
-
-Deduplication totals aggregate supplied repetition and savings receipts across
-all threads and requests in the invocation; receipts from requests with a thread
-identity are also totaled per thread across independent runtimes in the launch
-family, including completed descendants. Other transport totals and artifacts
-remain scoped to their runtime recorder. Negative savings and unmeasured
-projections remain explicit. These estimates are separate from provider usage
-and billing and are not restored on resume.
 
 When debug write accounting is supplied, snapshots expose successful byte counts
 from instrumented writes in this process, including partial writes and temporary

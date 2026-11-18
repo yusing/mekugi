@@ -48,6 +48,8 @@ func ReadNativeFeatureUse(ctx context.Context, thread string, descendants []stri
 }
 
 func addFeatureUse(u *observation.FeatureUse, other observation.FeatureUse) {
+	u.OutputDeduplicationBytes += other.OutputDeduplicationBytes
+	u.OutputDeduplicationTokens += other.OutputDeduplicationTokens
 	u.Compactions += other.Compactions
 	u.SelfCompactions += other.SelfCompactions
 	u.CompactionPreloads += other.CompactionPreloads

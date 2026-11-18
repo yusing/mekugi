@@ -22,8 +22,8 @@ type Settings struct {
 type Features struct {
 	ChildReplySummary *bool `toml:"child_reply_summary"`
 	ShellGuard        *bool `toml:"shell_guard"`
-	DeduplicateOutput *bool `toml:"deduplicate_output"`
-	Debug             *bool `toml:"debug"`
+
+	Debug *bool `toml:"debug"`
 }
 
 // ResolveFeatures applies file defaults without replacing explicit CLI choices.
@@ -31,9 +31,6 @@ type Features struct {
 func (c Config) ResolveFeatures(features Features) Config {
 	if features.ShellGuard != nil && !c.shellGuardSet {
 		c.ShellGuard = *features.ShellGuard
-	}
-	if features.DeduplicateOutput != nil && !c.deduplicateOutputSet {
-		c.DeduplicateOutput = *features.DeduplicateOutput
 	}
 	if features.ChildReplySummary != nil && !c.childReplySummarySet {
 		c.ChildReplySummary = *features.ChildReplySummary

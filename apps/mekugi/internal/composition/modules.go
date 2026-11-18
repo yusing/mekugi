@@ -24,7 +24,6 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments"
 	"github.com/yusing/mekugi/modules/fileread"
-	"github.com/yusing/mekugi/modules/outputdeduplication"
 	"github.com/yusing/mekugi/modules/outputrecovery"
 	"github.com/yusing/mekugi/modules/remotewriteapproval"
 	"github.com/yusing/mekugi/modules/sessionhistory"
@@ -88,7 +87,6 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	c.Add(sourceoutline.Module, func() sourceoutline.Deps { return sourceoutline.Deps{} })
 	c.Add(fileread.Module, func() fileread.Deps { return fileread.Deps{} })
 	c.Add(symbolquery.Module, func() symbolquery.Deps { return symbolquery.Deps{} })
-	c.Add(outputdeduplication.Module, func() outputdeduplication.Deps { return outputdeduplication.Deps{} })
 	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
 	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
 	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })

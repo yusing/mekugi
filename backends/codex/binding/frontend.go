@@ -12,7 +12,7 @@ type Registrar interface {
 	Observation(Observation) error
 	Rollout(func(RolloutSource) error) error
 	Frontend(command.Spec) error
-	InputProjection(InputProjection) error
+
 	Guidance(Guidance) error
 	SessionNaming(SessionNaming) error
 	ShellApproval(ShellApproval) error
@@ -24,9 +24,9 @@ type Registry struct {
 	observations *Observation
 	guards       []ShellApproval
 	commands     []command.Spec
-	projections  []InputProjection
-	guidance     *Guidance
-	naming       *SessionNaming
+
+	guidance *Guidance
+	naming   *SessionNaming
 }
 
 func (r *Registry) Frontend(spec command.Spec) error {

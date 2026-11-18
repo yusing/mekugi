@@ -1,6 +1,8 @@
 
 
 
+
+
     ╭ Session · Features ───────────────────────────────────────────────── Esc close ╮
     │                                                                                │
     │  Features  ──────────────────────────────────────────────────────────────────  │
@@ -41,16 +43,14 @@
     │  Messages                 3            1                                       │
     │                                                                                │
     │  Output deduplication  Self  Descendants                                       │
-    │  Occurrences             12            4                                       │
-    │  Saved tokens (est.)   1234          -20                                       │
-    │  Unmeasured               0            1                                       │
-    │  Occurrences count receipts per request projection, including repeated         │
-    │  history. Saved tokens are a net local estimate after reference overhead,      │
-    │  negative when references cost more than the output they replace, and not      │
-    │  provider billing savings. Unmeasured counts projections whose savings could   │
-    │  not be estimated; they are excluded from saved tokens.                        │
+    │  Saved bytes           4936          800                                       │
+    │  Saved tokens (est.)   1234          200                                       │
+    │  Net model-input savings after reference overhead, summed across requests.     │
+    │  Tokens use a local 4-byte estimate, not provider billing savings.             │
     │                                                                                │
     ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ─────────────────────────────────╯
+
+
 
 
 

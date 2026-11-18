@@ -222,13 +222,13 @@ type Runtime struct {
 	Naming               *binding.SessionNaming
 	Observation          *binding.Observation
 	Guidance             *binding.Guidance
-	InputProjections     []binding.InputProjection
-	Changes              *changecapture.Service
-	Segments             *segments.Service
-	Recovery             *recovery.Service
-	History              *history.Service
-	Commands             []command.Contribution
-	started              []entry
+
+	Changes  *changecapture.Service
+	Segments *segments.Service
+	Recovery *recovery.Service
+	History  *history.Service
+	Commands []command.Contribution
+	started  []entry
 }
 
 func (r *Runtime) Close(ctx context.Context) error {
@@ -325,7 +325,6 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}
-	runtime.InputProjections = binder.InputProjections()
 	runtime.Guidance = binder.RegisteredGuidance()
 	runtime.Naming = binder.RegisteredNaming()
 	runtime.Observation = binder.RegisteredObservation()

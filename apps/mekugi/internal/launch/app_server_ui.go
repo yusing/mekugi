@@ -1425,7 +1425,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				} else {
 					session.audience.Attach(session.Client.Thread)
 				}
-				attached.bindRepetitions(session.audience, session.Client.Thread)
+				attached.bindPreparedContent(session.audience, session.Client.Thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its

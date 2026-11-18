@@ -356,14 +356,6 @@ func (p *Painter) Block(block Block, width int) []string {
 			lines = append(lines, strings.Repeat(" ", block.cell(block.RowVerb()))+trailer)
 		}
 	}
-	if block.Repeated != "" && len(lines) > 0 {
-		suffix := terminalui.Dim + " · " + block.Repeated + terminalui.Undim
-		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
-			lines[0] += suffix
-		} else {
-			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), terminalui.Dim+block.Repeated+terminalui.Undim, width)...)
-		}
-	}
 	// Row metadata is appended after compact path headings. Keep it selectable
 	// independently while joining it to the original heading in whole-row copies.
 	if p.CopySource && !p.LayoutOnly && len(lines) > 0 {

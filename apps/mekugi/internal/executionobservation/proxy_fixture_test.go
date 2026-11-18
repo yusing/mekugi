@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/backends/codex/binding"
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -105,7 +103,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
 
 func newProxyWithSharedTestRegistry(t *testing.T, registry *frontends.Registry) *Preparer {
 	t.Helper()
-	proxy := newMekugiProxy(registry, nil, newTestUsage(t), testHistory())
+	proxy := newMekugiProxy(registry, newTestUsage(t), testHistory())
 	t.Cleanup(func() {
 		if err := proxy.Close(); err != nil {
 			t.Error(err)
@@ -209,11 +207,11 @@ func (p *Preparer) Close() error {
 	return nil
 }
 
-func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service, service *history.Service) *Preparer {
+func newMekugiProxy(registry *frontends.Registry, usage *accounting.Service, service *history.Service) *Preparer {
 	if registry == nil {
 		return nil
 	}
-	proxy := &Preparer{Config: Config{Registry: registry, Calls: service.Calls(), Review: sessionreview.New(context.Background(), nil, nil), InputProjections: slices.Clone(projections), Usage: usage, Control: new(sessioncontrol.Observations), PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}, Windows: &Windows{}}}
+	proxy := &Preparer{Config: Config{Registry: registry, Calls: service.Calls(), Review: sessionreview.New(context.Background(), nil, nil), Usage: usage, Control: new(sessioncontrol.Observations), PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}, Windows: &Windows{}}}
 	proxy.Audience = sessioncontrol.NewAudience(func(category, message string) { proxy.notice("", "", category, message) })
 	return proxy
 }

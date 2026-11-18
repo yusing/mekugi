@@ -14,8 +14,6 @@ func TestSplitCommand(t *testing.T) {
 		{"--debug"},
 		{"--shell-guard"},
 		{"--shell-guard=false"},
-		{"--deduplicate-output"},
-		{"--deduplicate-output=false"},
 		{"--ansi-faint=off"},
 		{"--ansi-faint", "on"},
 		{"--ansi-faint=auto"},
@@ -30,17 +28,6 @@ func TestSplitCommand(t *testing.T) {
 		if err != nil || !slices.Equal(gotPrefix, prefix) || !slices.Equal(gotCommand, command) {
 			t.Errorf("SplitCommand(%q) = %q, %q, %v", args, gotPrefix, gotCommand, err)
 		}
-	}
-}
-
-func TestDuplicateOutputFlagDefaultAndOptOut(t *testing.T) {
-	config := new(Config)
-	flags := newFlags(io.Discard, config)
-	if !config.DeduplicateOutput {
-		t.Fatal("duplicate output projection must default on")
-	}
-	if err := flags.Parse([]string{"--deduplicate-output=false"}); err != nil || config.DeduplicateOutput {
-		t.Fatalf("opt-out = %v, %v", config.DeduplicateOutput, err)
 	}
 }
 
@@ -123,7 +110,7 @@ func TestPublicOptionsExposeOneInterface(t *testing.T) {
 }
 
 func TestFeatureFlagsPreserveSyntaxAndHostArguments(t *testing.T) {
-	for _, name := range []string{"shell-guard", "deduplicate-output", "child-reply-summary", "debug"} {
+	for _, name := range []string{"shell-guard", "child-reply-summary", "debug"} {
 		if _, err := Parse([]string{"--" + name + "=invalid"}); err == nil {
 			t.Fatalf("accepted invalid %s", name)
 		}
@@ -139,8 +126,8 @@ func TestFeatureFlagsPreserveSyntaxAndHostArguments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resolved := parsed.ResolveFeatures(Features{ShellGuard: new(true), DeduplicateOutput: new(true), ChildReplySummary: new(true), Debug: new(true)})
-		if name == "shell-guard" && resolved.ShellGuard || name == "deduplicate-output" && resolved.DeduplicateOutput || name == "debug" && resolved.Debug || name == "child-reply-summary" && resolved.ChildReplySummary {
+		resolved := parsed.ResolveFeatures(Features{ShellGuard: new(true), ChildReplySummary: new(true), Debug: new(true)})
+		if name == "shell-guard" && resolved.ShellGuard || name == "debug" && resolved.Debug || name == "child-reply-summary" && resolved.ChildReplySummary {
 			t.Fatal("delimiter lost explicit false")
 		}
 	}

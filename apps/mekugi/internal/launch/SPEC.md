@@ -58,7 +58,7 @@ output paths and resources belong to each run. Configuration errors identify the
 failure without quoting credential-bearing file contents.
 
 The existing Mekugi `config.toml` accepts optional `[features]` boolean defaults:
-`shell_guard = true`, `deduplicate_output = true`, `child_reply_summary = true`,
+`shell_guard = true`, `child_reply_summary = true`,
 and `debug = false`. Each feature
 resolves explicit CLI value, then file value, then built-in default independently.
 Bare flags mean true, `=false` explicitly disables, and the last repeated flag
@@ -278,8 +278,6 @@ when guarding is enabled, otherwise `Tracking shell segments`. With guarding off
 explicit caller `PreToolUse` conflicts preserve caller settings and leave sh
 untracked; Bash keeps its independent startup path.
 
-The effective `deduplicate_output` setting controls only the
-[model-input projection](../../../../modules/outputdeduplication/SPEC.md).
 Runtime contracts belong to
 [Responses integration](../../../../docs/contracts/responses-transport.md),
 [session history](../../../../modules/sessionhistory/SPEC.md), and

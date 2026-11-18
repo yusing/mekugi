@@ -56,7 +56,6 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 		value        func(Config) bool
 	}{
 		{"shell_guard", "shell-guard", true, func(c Config) bool { return c.ShellGuard }},
-		{"deduplicate_output", "deduplicate-output", true, func(c Config) bool { return c.DeduplicateOutput }},
 		{"child_reply_summary", "child-reply-summary", true, func(c Config) bool { return c.ChildReplySummary }},
 		{"debug", "debug", false, func(c Config) bool { return c.Debug }},
 	} {
@@ -117,7 +116,6 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 	}
 	for _, body := range []string{
 		"[features]\nshell_guard = 'private-secret'\n",
-		"[features]\ndeduplicate_output = 1\n",
 		"[features]\ndebug = []\n",
 		"[features]\nchild_reply_summary = 'private-secret'\n",
 		"[features]\nprivate_secret = true\n",
@@ -133,19 +131,19 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 			}
 		}
 	}
-	if err := os.WriteFile(path, []byte("[features]\nshell_guard = false\ndeduplicate_output = true\ndebug = true\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("[features]\nshell_guard = false\nchild_reply_summary = false\ndebug = true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	settings, err := LoadSettings()
 	if err != nil {
 		t.Fatal(err)
 	}
-	parsed, err := Parse([]string{"--deduplicate-output=false"})
+	parsed, err := Parse([]string{"--child-reply-summary"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	resolved := parsed.ResolveFeatures(settings.Features)
-	if resolved.ShellGuard || resolved.DeduplicateOutput || !resolved.Debug {
+	if resolved.ShellGuard || !resolved.ChildReplySummary || !resolved.Debug {
 		t.Fatalf("features were not independent: %+v", resolved)
 	}
 }

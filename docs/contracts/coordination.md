@@ -230,8 +230,8 @@ support is a cutover obligation, not a reason to retain a second coordinator.
 
 Keep one launch-local native reducer fed by actual semantic events. Adapt emission
 sites to stock owners, not port-specific lifecycle transitions. Count reset,
-spawn/preload, delivered final changes, message/BTW/source sends, all-mode waits and
-actually delivered progress. Unchanged probes and failed/uncertain yields do not count
+spawn/preload, delivered final changes, message/BTW/source sends, all-mode waits,
+actually delivered progress and native model-input deduplication savings. Unchanged probes and failed/uncertain yields do not count
 as delivered progress.
 
 Expose snapshots on demand, without host-reflected events, duplicate counters or

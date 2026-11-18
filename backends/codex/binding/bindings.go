@@ -8,14 +8,14 @@ import (
 // Bindings declares existing Codex connections. Factories receive the constructed
 // service during registration; reference collection never invokes them.
 type Bindings[S any] struct {
-	Observation     func(S) Observation
-	Frontends       bool // Exposes the descriptor's command contributions.
-	Rollout         func(S, RolloutSource) error
-	InputProjection func(S) InputProjection
-	Guidance        func(S) Guidance
-	SessionNaming   func(S) SessionNaming
-	ShellApproval   func(S) ShellApproval
-	MCP             func(S) MCPServer
+	Observation func(S) Observation
+	Frontends   bool // Exposes the descriptor's command contributions.
+	Rollout     func(S, RolloutSource) error
+
+	Guidance      func(S) Guidance
+	SessionNaming func(S) SessionNaming
+	ShellApproval func(S) ShellApproval
+	MCP           func(S) MCPServer
 }
 
 func (b Bindings[S]) Register(r Registrar, service S, commands []command.Definition[S]) error {
@@ -33,11 +33,6 @@ func (b Bindings[S]) Register(r Registrar, service S, commands []command.Definit
 	}
 	if b.Rollout != nil {
 		if err := r.Rollout(func(source RolloutSource) error { return b.Rollout(service, source) }); err != nil {
-			return err
-		}
-	}
-	if b.InputProjection != nil {
-		if err := r.InputProjection(b.InputProjection(service)); err != nil {
 			return err
 		}
 	}
@@ -72,7 +67,6 @@ func (b Bindings[S]) Reference() module.BindingReference {
 	}{
 		{"executable-frontend", b.Frontends},
 		{"rollout", b.Rollout != nil},
-		{"input-projection", b.InputProjection != nil},
 		{"guidance-projection", b.Guidance != nil},
 		{"thread-naming", b.SessionNaming != nil},
 		{"shell-approval", b.ShellApproval != nil},

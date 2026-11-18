@@ -5,7 +5,7 @@ import (
 )
 
 func metricsFromRecords(mode string, records []captureRecord) (MetricsSnapshot, error) {
-	recorder := &Recorder{metrics: newMetricsSnapshot(mode), deduplication: new(OutputDeduplicationTotals)}
+	recorder := &Recorder{metrics: newMetricsSnapshot(mode)}
 	fronts := make(map[string]captureRecord)
 	providers := make(map[string][]captureRecord)
 	var order []string

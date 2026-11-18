@@ -381,7 +381,6 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	u.flushTestStreamOutput(&u.attached, u.shell, u.clock, u.ctx)
 	view := u.testActivity(u.shell.Transcript)
-	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 	if !view.MarkUnreturned("main", "cmd") {
 		t.Fatal("output note was not admitted")
 	}
@@ -389,7 +388,7 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 		view.ApplyCapturedEdits([]*changepresentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: receiptText}})
 		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
 		frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
-		if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 || strings.Contains(frame, "exit 1") {
+		if strings.Count(frame, "output not returned to the model") != 1 || strings.Contains(frame, "exit 1") {
 			t.Fatalf("held frame lost current annotations or exposed its delayed outcome:\n%s", frame)
 		}
 		if (receiptText != "") != strings.Contains(frame, "+1 -1") {
@@ -398,7 +397,7 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 	}
 	rollCommandOutput(u)
 	frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
-	if !strings.Contains(frame, "exit 1") || strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 {
+	if !strings.Contains(frame, "exit 1") || strings.Count(frame, "output not returned to the model") != 1 {
 		t.Fatalf("released frame lost canonical failure or annotations:\n%s", frame)
 	}
 }
@@ -423,7 +422,7 @@ func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
 	now = now.Add(time.Hour)
 	rollCommandOutput(u)
 	u.testActivity(u.shell.Transcript).RenderFeed(100, 30)
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
 	if settleActivity(now.Add(activityui.OutputDebounce-time.Nanosecond), u.testActivity(u.shell.Transcript)) {
 		t.Fatal("annotation refresh reset display settlement to host completion")
 	}

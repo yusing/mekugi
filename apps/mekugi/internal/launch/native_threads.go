@@ -14,25 +14,23 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 // threadExecution joins the supplied runtime registry and feature owner. It owns
 // no process registry, request ledger, or retained thread state.
 type threadExecution struct {
-	native        *nativeConnection
-	headless      *headless.Stream
-	workers       *frontends.WorkerImage
-	sourceSocket  string
-	hub           *sessionapi.Hub
-	catalog       *inferencegateway.ReasoningCatalog
-	features      *sessioncontrol.NativeFeatureUse
-	retained      changes.Scope
-	recovery      *recovery.Service
-	windows       *executionobservation.Windows
-	deduplication *transportcapture.OutputDeduplicationTotals
-	tools         []binding.MCPServer
-	setup         *threadSetup
+	native       *nativeConnection
+	headless     *headless.Stream
+	workers      *frontends.WorkerImage
+	sourceSocket string
+	hub          *sessionapi.Hub
+	catalog      *inferencegateway.ReasoningCatalog
+	features     *sessioncontrol.NativeFeatureUse
+	retained     changes.Scope
+	recovery     *recovery.Service
+	windows      *executionobservation.Windows
+	tools        []binding.MCPServer
+	setup        *threadSetup
 }
 
 // The invoking runtime freezes configuration before child admission. Descendants

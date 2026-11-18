@@ -45,7 +45,7 @@ func TargetRun(values []Value, counts []int) (Value, int) {
 	joins := func(i int) bool {
 		b := values[i]
 		return b.Kind == "reads" && !b.Running && !b.Skipped && !b.Pending && b.Approval == "" && b.Results == nil && b.ExitCode == 0 &&
-			b.Repeated == "" && (b.Verb == "Skill" || b.Verb == "Read" && b.Exited || b.Started.IsZero() && b.Duration == 0) && count(i) >= 0
+			(b.Verb == "Skill" || b.Verb == "Read" && b.Exited || b.Started.IsZero() && b.Duration == 0) && count(i) >= 0
 	}
 	end := 1
 	for end < len(values) && sameAction(values[0], values[end]) && joins(0) && joins(end) {

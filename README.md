@@ -39,7 +39,7 @@ Invocation overrides leave Codex configuration unchanged.
 - **Fewer output tokens, recoverable reads.** [Session helpers](docs/guide/agent-tools.md)
   bound reads, symbol lookups, outlines and command output. Incomplete retained
   reads name their exact continuation; `mrun` discards output outside its selected window.
-  [Repeated output and supplied source bodies](modules/outputdeduplication/SPEC.md) can become references to
+  [Repeated output and supplied source bodies](backends/codex/SPEC.md#output-deduplication) can become references to
   earlier visible text, and [marked instruction blocks](docs/guide/configuration.md#troubleshooting-and-integrations)
   can be omitted. Full results stay in evidence and the UI.
 

@@ -3,9 +3,7 @@ package sessionpresentation
 import (
 	"slices"
 	"strconv"
-	"strings"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -20,7 +18,7 @@ type ActivitySource struct {
 	Coverage    string
 	publication *activityPublication
 	Prepared    func(thread, id string) (activitypresentation.PreparedContent, bool)
-	Repetition  func(thread, id string) string // Authenticated invocation-owned annotations.
+	// Authenticated invocation-owned annotations.
 }
 
 type ActivityAudience uint8
@@ -60,32 +58,6 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 			if plan, ok := v.reloads[entry.Native.Thread]; ok && plan.turn == "" {
 				delete(v.reloads, entry.Native.Thread)
 			}
-		}
-		if entry.Kind == "output_dedupe" {
-			for i, previous := range v.Entries {
-				if strings.HasPrefix(entry.CallID, attachments.ReceiptPrefix) {
-					if previous.Source.Kind == "attachments" && previous.Source.Native != nil && entry.Native != nil && previous.Source.Native.Thread == entry.Native.Thread &&
-						slices.ContainsFunc(previous.Values, func(value activitypresentation.Value) bool { return value.AttachmentID == entry.CallID }) {
-						v.Model.Mutate(i, func(record *ActivityRecord) {
-							for j := range record.Values {
-								if record.Values[j].AttachmentID == entry.CallID {
-									record.Values[j].Repeated = entry.Text
-								}
-							}
-						})
-					}
-					continue
-				}
-				if previous.Source.Native == nil || previous.Source.Native.Item != entry.CallID || entry.Native == nil || previous.Source.Native.Thread != entry.Native.Thread {
-					continue
-				}
-				v.Model.Mutate(i, func(record *ActivityRecord) {
-					if len(record.Values) > 0 {
-						record.Values[len(record.Values)-1].Repeated = entry.Text
-					}
-				})
-			}
-			continue
 		}
 		if entry.Agent == "Main" && entry.Kind == "text" && entry.Native != nil {
 			for _, question := range slices.Backward(v.Entries) {
@@ -158,7 +130,6 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 			continue
 		}
 		blocks := ActivityContent(entry).Values()
-		v.annotateRepetitions(entry, blocks)
 		v.Model.Append(entry, blocks)
 	}
 	v.Model.Trim(activitypresentation.FeedLimit)
@@ -194,23 +165,6 @@ func (v *ActivitySource) RemoveThinking(native *NativeItem) {
 			v.Model.Remove(i, i+1)
 			return
 		}
-	}
-}
-
-func (v *ActivitySource) annotateRepetitions(entry ActivityEntry, values []activitypresentation.Value) {
-	if v.Repetition == nil || entry.Native == nil || len(values) == 0 {
-		return
-	}
-	if entry.Kind == "attachments" {
-		for i := range values {
-			if values[i].AttachmentID != "" {
-				values[i].Repeated = v.Repetition(entry.Native.Thread, values[i].AttachmentID)
-			}
-		}
-		return
-	}
-	if label := v.Repetition(entry.Native.Thread, entry.Native.Item); label != "" {
-		values[len(values)-1].Repeated = label
 	}
 }
 

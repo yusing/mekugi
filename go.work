@@ -30,7 +30,6 @@ use (
 	./modules/fileread
 	./modules/livepreview
 	./modules/notifications
-	./modules/outputdeduplication
 	./modules/outputrecovery
 	./modules/remotewriteapproval
 	./modules/sessionhistory

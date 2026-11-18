@@ -6,7 +6,7 @@ Own Codex process transport, native-trace observations and rollout decoding. Cod
 execution, permission, process, and host-session authority. The application chooses an
 invocation, interprets lifecycle facts, and owns session presentation and intent.
 The [Responses adapter](responses/SPEC.md) owns model-path adaptation; executable
-frontend and input-projection registrations use the binding package.
+frontend registrations use the binding package.
 
 ## Required capabilities and constraints
 
@@ -55,7 +55,7 @@ shell, host results and process authority. Bash tracking uses shell startup.
 [Shell instrumentation](../../libraries/shellinstrumentation/SPEC.md) owns the
 shared rewrite and recognition rules.
 
-[Output deduplication](../../modules/outputdeduplication/SPEC.md) changes only
+[Output deduplication](#output-deduplication) changes only
 eligible model-input text after original-output consumers finish. Separate
 [change notices](../../docs/contracts/change-evidence.md#delivery-and-presentation)
 require retained evidence. Neither replaces host output or grants execution authority.
@@ -118,8 +118,9 @@ starting turns, inference or idle runtimes. Child runtime replacement and UI rec
 do not restart the root launch's counts. A new root launch does not restore them from history.
 Mekugi aggregates admitted-family membership and presents availability; it does not
 increment a parallel set of counters. The [FeatureUse contract](../../docs/contracts/coordination.md#feature-use)
-owns counting boundaries and retained outcomes. General usage, transport and output
-deduplication measurements remain separate owners.
+owns counting boundaries and retained outcomes. Native model-input projection reports
+output-deduplication savings through the same owner. Provider usage and transport
+measurements remain separate.
 
 Snapshot retrieval is demand-driven. The Features page reads when selected or
 explicitly refreshed; other pages and periodic UI updates do not retrieve counters.
@@ -207,16 +208,36 @@ Secrets travel only to the askpass pipe; they are absent from grant identities.
 The application owns shared socket lifetime and UI delivery, while modules own
 policy and exact grants. Removing a module does not change another module's grants.
 
-## Input projection
+## Output deduplication
 
-Bindings register named two-phase projections in composition order. Preparation
-receives the original input before application additions; application receives the
-final model-input copy after evidence observation. Registrations contain no
-request-local state. Each preparation returns its own application function.
-Duplicate names and incomplete registrations fail activation.
+Native history-to-model-input projection replaces repeated text tool outputs,
+supplied source bodies and exact line-aligned runs with references. User text,
+assistant prose and images remain unchanged. Stored history, UI, inspection and
+replay retain originals; evidence consumers use those originals before projection.
 
-Projection results carry input bytes and repetition receipts for the application
-consumer, without exposing backend execution or private request objects.
+Each request starts a fresh forward pass: keep the first literal copy, reference
+only literal text still visible earlier in that request, and never rewrite an
+earlier projected item. Appending input preserves the projected prefix. Removing
+the earlier copy, including on reset, makes the remaining copy literal again.
+An exact line run can also reference earlier literal lines in the same tool
+output.
+Reusable tool outputs have an upfront `[call cN]` line. Whole references use
+`[identical to call cN above]`; runs use
+`[identical to call cN#L40-L112 above]`. Sources use their own reference without
+call labels, and file-line ranges use original file numbers.
+
+Matching preserves exact bytes and line endings. Runs reuse at least 192 bytes;
+every replacement saves at least 128 bytes after reference and label overhead.
+The literal search window is 256 KiB. Highly similar bodies may instead use a
+line-range reference plus a diff against one of the four newest whole literal
+bodies, reusing at least 192 bytes and saving at least 128 bytes. A diff must be
+strictly smaller than partial references; ties keep the partial representation.
+
+Native FeatureUse reports net saved bytes and estimated tokens, summed across
+model requests. Tokens use a local four-byte estimate. These launch-local figures
+are not provider billing savings and are not restored on a fresh launch. Missing
+native measurements remain unavailable. There is no launch switch or transcript
+repetition label.
 
 ## Execution evidence
 

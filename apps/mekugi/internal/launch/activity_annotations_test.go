@@ -29,7 +29,6 @@ func TestCapturedEditRetainsOutputAnnotations(t *testing.T) {
 				if filterFirst {
 					note()
 				}
-				v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 				if !filterFirst {
 					note()
 				}
@@ -44,7 +43,7 @@ func TestCapturedEditRetainsOutputAnnotations(t *testing.T) {
 							v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(3 + pass), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
 						}
 						frame := ansi.Strip(strings.Join(v.RenderFeed(100, 30).Lines, "\n"))
-						if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 {
+						if strings.Count(frame, "output not returned to the model") != 1 {
 							t.Fatalf("approval=%v: reparse lost or duplicated notes:\n%s", approve, frame)
 						}
 					}

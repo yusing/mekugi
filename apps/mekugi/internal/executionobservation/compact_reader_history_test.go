@@ -11,13 +11,10 @@ import (
 
 	"github.com/yusing/mekugi/testsupport/moduletest"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
-	"github.com/yusing/mekugi/modules/outputdeduplication"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
@@ -109,63 +106,6 @@ func TestCompactReloadProviderInputHidesOrchestration(t *testing.T) {
 				t.Fatal("ordinary tool history changed")
 			}
 		})
-	}
-}
-
-func TestCompactReloadDeduplicatesOrdinaryReread(t *testing.T) {
-	p := newManagedMekugiProxy(t)
-	attachTestReplayStore(t, p)
-	service, err := outputdeduplication.Module.New(outputdeduplication.Deps{}, module.Slots{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.InputProjections = []binding.InputProjection{outputdeduplication.Module.Bindings.InputProjection(service)}
-	selection := `{"sources":["@selected.txt"]}`
-	ref, err := moduletest.StoreCompact(t.Context(), p.Retained, "root", "handover", selection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	record := compact.Record{Version: 1, Reference: ref, Selection: selection}
-	call, _, err := compactReaderCall(record, nil, "root")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var reader map[string]jsontext.Value
-	if err := json.Unmarshal(call, &reader); err != nil {
-		t.Fatal(err)
-	}
-	body := strings.Repeat("Source rows shared with an ordinary unnumbered read.\n", 12)
-	result := compactTestSnapshot(t, p, compact.Snapshot{Selection: selection, Sources: []compact.CapturedSource{{Command: "cat selected.txt", Stdout: body}}})
-	input := []any{
-		map[string]any{"type": "compaction", "encrypted_content": ref}, reader,
-		map[string]any{"type": "custom_tool_call_output", "call_id": reader["call_id"], "output": result},
-		map[string]any{"type": "custom_tool_call", "call_id": "reread", "name": "exec", "input": `text((await tools.exec_command({cmd:"cat selected.txt"})).output)`},
-		map[string]any{"type": "custom_tool_call_output", "call_id": "reread", "output": body},
-	}
-	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "instructions": testBaseInstructions, "tools": testExecResponsesTools(), "input": input}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	original := bytes.Clone(request.OriginalField("input"))
-	metadata := codexresponses.TurnMetadata{ThreadID: "root", RequestKind: "turn", Directories: map[string]jsonv1.RawMessage{t.TempDir(): jsonv1.RawMessage(`{}`)}}
-	transform, err := p.prepareRequest(t.Context(), &request, "routing", "root", metadata, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer transform.Close()
-	var visible []map[string]jsontext.Value
-	if err := json.Unmarshal(request.Fields["input"], &visible); err != nil {
-		t.Fatal(err)
-	}
-	var repeated string
-	if err := json.Unmarshal(visible[len(visible)-1]["output"], &repeated); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(repeated, "See O1") || strings.Contains(repeated, body) || !bytes.Contains(visible[1]["content"], []byte(`O1:\n`)) {
-		t.Fatalf("reload source was not reusable by deduplication: %s", request.Fields["input"])
-	}
-	if len(transform.compactReload) != 0 || !bytes.Equal(original, request.OriginalField("input")) {
-		t.Fatal("replayed completed read or changed native evidence")
 	}
 }
 

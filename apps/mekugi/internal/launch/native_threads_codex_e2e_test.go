@@ -1750,7 +1750,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			if err != nil {
 				t.Fatal("open Features consumer:", err)
 			}
-			for event.Frame.View.Panel == nil || event.Frame.View.Panel.Features == nil {
+			for event.Frame.View.Panel == nil || event.Frame.View.Panel.Features == nil || event.Frame.View.Panel.Features.Unavailable {
 				*event, err = connection.Next()
 				if err != nil {
 					t.Fatal("Features publication:", err)
@@ -1759,9 +1759,8 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			return event.Frame.View.Panel.Features
 		}
 		parentFeatures, childFeatures := features(connection, &event), features(childView, &childEvent)
-		self, descendants := parentFeatures.Self.OutputDeduplication, parentFeatures.Descendants.OutputDeduplication
-		if childFeatures.Self.OutputDeduplication.Occurrences == 0 || descendants != childFeatures.Self.OutputDeduplication || self.Occurrences != 0 || childFeatures.Descendants.OutputDeduplication != (transportcapture.OutputDeduplicationMetrics{}) {
-			t.Fatalf("completed admitted child's request receipts lost or mixed in Features: parent=%+v child=%+v", parentFeatures, childFeatures)
+		if childFeatures.Self.OutputDeduplicationBytes == 0 || childFeatures.Self.OutputDeduplicationTokens == 0 || parentFeatures.Descendants.OutputDeduplicationBytes != childFeatures.Self.OutputDeduplicationBytes || parentFeatures.Descendants.OutputDeduplicationTokens != childFeatures.Self.OutputDeduplicationTokens || parentFeatures.Self.OutputDeduplicationBytes != 0 || childFeatures.Descendants.OutputDeduplicationBytes != 0 {
+			t.Fatalf("completed admitted child's native savings lost or mixed in Features: parent=%+v child=%+v", parentFeatures, childFeatures)
 		}
 	}
 	if scenario.preload {

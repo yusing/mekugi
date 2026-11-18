@@ -29,23 +29,23 @@ import (
 // observationFixture owns only integration-test setup. Each request enters the
 // production preparer through its public interface and the same borrowed owners.
 type observationFixture struct {
-	registry         *frontends.Registry
-	inputProjections []binding.InputProjection
-	usage            *accounting.Service
-	review           *sessionreview.Review
-	activity         *sessioncontrol.Audience
-	execWindows      *executionobservation.Windows
-	nativeTrace      *nativetrace.Reader
-	control          *sessioncontrol.Observations
-	forks            atomic.Pointer[sessionapi.Server]
-	previewTiming    previewbinding.Timing
-	calls            *history.CallCache
-	retained         changes.Scope
-	changeSource     changes.Service
-	snapshots        *changecapture.Workspaces
-	recovered        *recovery.Service
-	publishChanges   func([]changes.Update)
-	noticeSink       func(string, string, string, string)
+	registry *frontends.Registry
+
+	usage          *accounting.Service
+	review         *sessionreview.Review
+	activity       *sessioncontrol.Audience
+	execWindows    *executionobservation.Windows
+	nativeTrace    *nativetrace.Reader
+	control        *sessioncontrol.Observations
+	forks          atomic.Pointer[sessionapi.Server]
+	previewTiming  previewbinding.Timing
+	calls          *history.CallCache
+	retained       changes.Scope
+	changeSource   changes.Service
+	snapshots      *changecapture.Workspaces
+	recovered      *recovery.Service
+	publishChanges func([]changes.Update)
+	noticeSink     func(string, string, string, string)
 }
 
 func (p *observationFixture) IsSideThread(thread string) bool {
@@ -77,22 +77,21 @@ func (p *observationFixture) Prepare(ctx context.Context, request *codexresponse
 
 func (p *observationFixture) preparer() *executionobservation.Preparer {
 	return executionobservation.New(executionobservation.Config{
-		Registry:         p.registry,
-		InputProjections: p.inputProjections,
-		Usage:            p.usage,
-		Review:           p.review,
-		Audience:         p.activity,
-		Windows:          p.execWindows,
-		NativeTrace:      p.nativeTrace,
-		Control:          p.control,
-		PreviewTiming:    p.previewTiming,
-		Calls:            p.calls,
-		Retained:         p.retained,
-		Changes:          p.changeSource,
-		Checkpoints:      p.snapshots,
-		Recovery:         p.recovered,
-		PublishChanges:   p.publishChanges,
-		Notice:           p.noticeSink,
+		Registry:       p.registry,
+		Usage:          p.usage,
+		Review:         p.review,
+		Audience:       p.activity,
+		Windows:        p.execWindows,
+		NativeTrace:    p.nativeTrace,
+		Control:        p.control,
+		PreviewTiming:  p.previewTiming,
+		Calls:          p.calls,
+		Retained:       p.retained,
+		Changes:        p.changeSource,
+		Checkpoints:    p.snapshots,
+		Recovery:       p.recovered,
+		PublishChanges: p.publishChanges,
+		Notice:         p.noticeSink,
 	})
 }
 func (p *observationFixture) notice(session, thread, category, message string) {

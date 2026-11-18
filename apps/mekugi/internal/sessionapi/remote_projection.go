@@ -31,7 +31,7 @@ func publicValues(values []activity.Value) ([]activity.Value, bool) {
 			}
 		}
 		if own || members || requested {
-			v.Body, v.Code, v.Repeated, v.ReplySummary, v.ReplyDetails = "", "", "", "", ""
+			v.Body, v.Code, v.ReplySummary, v.ReplyDetails = "", "", "", ""
 			v.Tail = nil
 			if out == nil {
 				out = slices.Clone(values)

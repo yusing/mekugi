@@ -20,18 +20,18 @@ import (
 type sessionMetricsPanel struct {
 	refreshed time.Time
 	// Feature use compares the thread displayed at open with its descendants.
-	thread      string
-	connection  *nativeConnection
-	name        string
-	deduplicate bool
-	pending     <-chan sessionpresentation.FeatureSnapshot
-	features    sessionpresentation.FeatureSnapshot
+	thread     string
+	connection *nativeConnection
+	name       string
+
+	pending  <-chan sessionpresentation.FeatureSnapshot
+	features sessionpresentation.FeatureSnapshot
 }
 
 func (session *nativeSession) showSessionMetrics(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker) {
 	(*panel) = newStatusReport(attached.presentation, session.replayDebugDirectory)
 	(*panel).Workspace = attached.cwd
-	(*panel).metrics = &sessionMetricsPanel{thread: attached.presentation.DisplayedThread(), deduplicate: session.deduplicateOutput, features: sessionpresentation.FeatureSnapshot{Err: errors.New("native feature measurement is pending")}}
+	(*panel).metrics = &sessionMetricsPanel{thread: attached.presentation.DisplayedThread(), features: sessionpresentation.FeatureSnapshot{Err: errors.New("native feature measurement is pending")}}
 	(*panel).metrics.connection = session.connection
 	(*panel).Metrics = new(transportcapture.MetricsSnapshot)
 	session.deleteDraftRange(attached, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
@@ -91,10 +91,8 @@ func refreshSessionMetrics(p *appServerStatusReport, capture *transportcapture.R
 	}
 	p.Features = nil
 	if m.connection != nil {
-		p.Features = sessionpresentation.NewFeatureMetrics(m.thread, m.name, p.Metrics, m.deduplicate, m.features)
+		p.Features = sessionpresentation.NewFeatureMetrics(m.name, m.features)
 	}
-	// Features carries the joined totals; panel clones and publications skip the per-thread map.
-	p.Metrics.OutputDeduplicationThreads = nil
 	p.RenderMetrics()
 	return true
 }

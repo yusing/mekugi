@@ -235,7 +235,7 @@ func (c *nativeConnection) attachEndpoint(parent, thread string, explicit bool) 
 		execWindows: r.execWindows, nativeTrace: r.nativeTrace, retained: r.retained, changeSource: r.changeSource, snapshots: r.snapshots, recovered: r.recovered,
 		publishChanges: r.publishChanges, captureNotice: r.captureNotice, execTrack: r.execTrack, issues: r.issues, serviceTiers: r.serviceTiers,
 		sessionCapture: r.sessionCapture, replayDebugDirectory: r.replayDebugDirectory, observations: r.observations, approvalMode: r.approvalMode,
-		deduplicateOutput: r.deduplicateOutput, backendVersion: r.backendVersion}
+		backendVersion: r.backendVersion}
 	session.Client = r.Client.ForThread(thread)
 	session.Client.NativeRoot = root
 	session.Client.Thread = "" // Native identity is known; the presentation is not hydrated yet.

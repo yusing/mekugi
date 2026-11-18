@@ -7,7 +7,6 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"io"
-	"maps"
 	"net/http"
 	"slices"
 
@@ -121,19 +120,15 @@ type exchangeMetrics struct {
 
 // MetricsSnapshot is a detached, capture-owned metrics view.
 type MetricsSnapshot struct {
-	OutputDeduplication OutputDeduplicationMetrics `json:"output_deduplication,omitzero"`
-	// OutputDeduplicationThreads attributes receipts to their request thread across
-	// the launch family when recorders share totals; other metrics stay runtime-local.
-	OutputDeduplicationThreads map[string]OutputDeduplicationMetrics `json:"output_deduplication_threads,omitempty"`
-	StorageWrites       *persistence.Snapshot      `json:"storage_writes,omitempty"`
-	Schema              string                     `json:"schema"`
-	Mode                string                     `json:"mode"`
-	Requests            requestTotals              `json:"requests"`
-	Usage               usageMetrics               `json:"usage"`
-	Cache               cacheMetrics               `json:"cache"`
-	Transport           transportMetrics           `json:"transport"`
-	Exchanges           []exchangeMetrics          `json:"exchanges"`
-	Capture             captureHealth              `json:"capture"`
+	StorageWrites *persistence.Snapshot `json:"storage_writes,omitempty"`
+	Schema        string                `json:"schema"`
+	Mode          string                `json:"mode"`
+	Requests      requestTotals         `json:"requests"`
+	Usage         usageMetrics          `json:"usage"`
+	Cache         cacheMetrics          `json:"cache"`
+	Transport     transportMetrics      `json:"transport"`
+	Exchanges     []exchangeMetrics     `json:"exchanges"`
+	Capture       captureHealth         `json:"capture"`
 }
 
 // ServeHTTP exposes capture-owned calculations on the router's existing
@@ -158,7 +153,6 @@ func (r *Recorder) snapshot() MetricsSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	snapshot := r.metrics.Clone()
-	snapshot.OutputDeduplicationThreads = r.deduplication.snapshot()
 	snapshot.StorageWrites = r.writes.Snapshot()
 	diagnoseCacheExchanges(snapshot.Exchanges)
 	return snapshot
@@ -249,7 +243,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 // Clone isolates consumers of an already detached snapshot.
 func (source MetricsSnapshot) Clone() MetricsSnapshot {
 	clone := source
-	clone.OutputDeduplicationThreads = maps.Clone(source.OutputDeduplicationThreads)
 	if source.StorageWrites != nil {
 		clone.StorageWrites = new(*source.StorageWrites)
 	}

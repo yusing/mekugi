@@ -22,7 +22,6 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/inference"
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -30,7 +29,6 @@ import (
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
@@ -41,21 +39,21 @@ type Config struct {
 	ProgressSnapshot   func(string) *changepresentation.ReviewView
 	ContextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
 	Registry           *frontends.Registry
-	InputProjections   []binding.InputProjection
-	Usage              *accounting.Service
-	Review             *sessionreview.Review
-	Audience           *sessioncontrol.Audience
-	Windows            *Windows
-	NativeTrace        *nativetrace.Reader
-	Control            *sessioncontrol.Observations
-	PreviewTiming      previewbinding.Timing
-	Calls              *history.CallCache
-	Retained           changes.Scope
-	Changes            changes.Service
-	Checkpoints        *changecapture.Workspaces
-	Recovery           *recovery.Service
-	PublishChanges     func([]changes.Update)
-	Notice             func(string, string, string, string)
+
+	Usage          *accounting.Service
+	Review         *sessionreview.Review
+	Audience       *sessioncontrol.Audience
+	Windows        *Windows
+	NativeTrace    *nativetrace.Reader
+	Control        *sessioncontrol.Observations
+	PreviewTiming  previewbinding.Timing
+	Calls          *history.CallCache
+	Retained       changes.Scope
+	Changes        changes.Service
+	Checkpoints    *changecapture.Workspaces
+	Recovery       *recovery.Service
+	PublishChanges func([]changes.Update)
+	Notice         func(string, string, string, string)
 }
 
 // New binds request preparation to the composed owners without acquiring resources.
@@ -229,26 +227,9 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 				return nil, err
 			}
 			request.Fields["input"] = input
-			var projections []binding.PreparedInputProjection
-			for _, registration := range p.InputProjections {
-				projections = append(projections, registration.Prepare(input))
-			}
-			// Side questions have no execution observer, but their supplied
-			// attachments still share the current request's visible sources.
-			p.projectInput(ctx, request, "", projections, nil)
 			reloadOutputs = nil
 		}
 		return nil, projectReload()
-	}
-	projectionInput, err := hydrateCompactSnapshots(request.Fields["input"], reloadOutputs)
-	if err != nil {
-		return nil, err
-	}
-	var projections []binding.PreparedInputProjection
-	if !prewarm {
-		for _, registration := range p.InputProjections {
-			projections = append(projections, registration.Prepare(projectionInput))
-		}
 	}
 	// Discover an execution owner before projecting tools: a native
 	// handshake may not yet carry the instruction or tool catalog of a turn.
@@ -350,7 +331,6 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		return nil, err
 	}
 	reloadOutputs = nil
-	p.projectInput(ctx, request, activityThreadID, projections, visible)
 	if err := projectReload(); err != nil {
 		transform.Close()
 		return nil, err
@@ -376,52 +356,4 @@ func (p *Preparer) admitActivityThread(threadID string, metadata codexresponses.
 		}
 	}
 	return activityThreadID
-}
-
-// Apply only after original evidence consumers. Execution-free requests share
-// measurement without manufacturing execution activity or changing host history.
-func (p *Preparer) projectInput(ctx context.Context, request *codexresponses.Request, activityThreadID string, projections []binding.PreparedInputProjection, visible map[string]mekugiHistory) {
-	for _, project := range projections {
-		before := request.Fields["input"]
-		result := project(before)
-		if !bytes.Equal(before, result.Input) {
-			request.Fields["input"] = result.Input
-		}
-		summary := result.Receipt
-		if summary == nil {
-			continue
-		}
-		transportcapture.ObserveOutputDeduplication(ctx, summary.OutputRepetitions, summary.SavedTokens, summary.TokensMeasured)
-		if activityThreadID == "" {
-			continue
-		}
-		for id, label := range summary.RepeatedAttachments {
-			p.Audience.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + id, Kind: "output_dedupe", CallID: id, Text: label})
-		}
-		if len(summary.RepeatedCalls) == 0 {
-			continue
-		}
-		var originalItems []map[string]jsonv1.RawMessage
-		_ = json.Unmarshal(request.OriginalField("input"), &originalItems)
-		sources := make(map[string]string)
-		for _, item := range originalItems {
-			if responseevents.StringField(item, "type") == "custom_tool_call" {
-				sources[responseevents.StringField(item, "call_id")] = responseevents.StringField(item, "input")
-			}
-		}
-		for call, label := range summary.RepeatedCalls {
-			target := call
-			source := sources[call]
-			if history, ok := visible[call]; ok {
-				source = history.CarrierPayload
-				if source == "" {
-					source = history.Script
-				}
-			}
-			if commands := p.NativeTrace.ReadCell(activityThreadID, call, source).ExecCommands(); len(commands) > 0 {
-				target = commands[len(commands)-1]
-			}
-			p.Audience.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + call, Kind: "output_dedupe", CallID: target, Text: label})
-		}
-	}
 }

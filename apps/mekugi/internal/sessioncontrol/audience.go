@@ -346,21 +346,6 @@ func (a *Audience) Take(root string) (activitypresentation.Audience, []activityp
 	return audience, a.supplements.Take(audience, time.Now())
 }
 
-// Repetition resolves a retained annotation for one arriving/restored source.
-// It does not replay the supplement queue or publish unrelated history.
-func (a *Audience) Repetition(root, thread, id string) string {
-	if a == nil {
-		return ""
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.closed || root == "" || a.rootLocked(thread) != root {
-		return ""
-	}
-	node := a.threads[thread]
-	return a.supplements.Repetition(root, &node.state, id)
-}
-
 // BorrowSide admits the active work-capable side without detaching Main.
 func (a *Audience) BorrowSide(root string) {
 	if a == nil {

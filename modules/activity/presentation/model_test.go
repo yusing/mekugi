@@ -26,9 +26,9 @@ func TestModelRecordsRetention(t *testing.T) {
 	revision := model.Entries[2].Revision
 	model.Mutate(2, func(record *Record[modelSource]) {
 		record.Source.Body = "updated"
-		record.Values[0].Repeated = "not returned"
+		record.Values[0].Approval = "not returned"
 	})
-	if changed := model.Entries[2]; changed.Revision <= revision || changed.Source.Seq != 3 || changed.Source.Body != "updated" || changed.Values[0].Repeated != "not returned" {
+	if changed := model.Entries[2]; changed.Revision <= revision || changed.Source.Seq != 3 || changed.Source.Body != "updated" || changed.Values[0].Approval != "not returned" {
 		t.Fatalf("mutation detached a source or its values: %+v", changed)
 	}
 	if retired := model.Trim(2); !slices.Equal(retired, []uint64{2, 3}) {

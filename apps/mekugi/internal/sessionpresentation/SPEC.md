@@ -497,12 +497,12 @@ deduplication. Source-bearing sends are separate from explicit preloads. Compari
 rows carry one value per heading column, and both renderers align them; the terminal stacks labels above values when the columns do not
 fit beside them. Native Codex owns the feature counts;
 [Native coordination](../../../../docs/contracts/coordination.md#feature-use) supplies the
-admitted descendant set; Session Presentation aggregates native snapshots. Deduplication uses the capture snapshot's
-per-thread receipts and reads off, rather than zero, when the launch disables it.
+admitted descendant set; Session Presentation aggregates native snapshots. Output
+deduplication reports net saved bytes and locally estimated tokens from those same
+snapshots, summed across model requests and separate from provider billing savings.
 Counts cover the current root launch, including settled descendants and child runtime
 replacements, but are not restored on a new launch. Missing or incomplete native
-measurement is unavailable rather than zero; it does not hide separately available
-output-deduplication measurements.
+measurement, including output-deduplication savings, is unavailable rather than zero.
 
 Transport snapshots refresh once per second only while open, or immediately with `r`.
 Native feature counters are read once when Features is selected and again with `r`

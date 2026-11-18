@@ -6,41 +6,37 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/observation"
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 	counts := featureCountsFixture{
 		"root":      {Spawns: 1, SpawnPreloads: 1},
-		"worker":    {Spawns: 1, AllWaits: 1},
-		"nested":    {CompletionChanges: 1},
-		"unrelated": {SideQuestions: 1},
+		"worker":    {Spawns: 1, AllWaits: 1, OutputDeduplicationBytes: 80, OutputDeduplicationTokens: 20},
+		"nested":    {CompletionChanges: 1, OutputDeduplicationBytes: 160, OutputDeduplicationTokens: 40},
+		"unrelated": {SideQuestions: 1, OutputDeduplicationBytes: 999, OutputDeduplicationTokens: 249},
 	}
 	read := func(thread string) FeatureSnapshot {
 		descendants := map[string][]string{"root": {"worker", "nested"}, "worker": {"nested"}}
 		return ReadNativeFeatureUse(t.Context(), thread, descendants[thread], counts)
 	}
-	snapshot := &transportcapture.MetricsSnapshot{Schema: "mekugi.capture.metrics.v7", OutputDeduplicationThreads: map[string]transportcapture.OutputDeduplicationMetrics{
-		"root": {Projections: 1, Occurrences: 1}, "worker": {Projections: 1, Occurrences: 2, SavedTokens: 20}, "nested": {Projections: 1, Occurrences: 4, SavedTokens: 40}, "unrelated": {Projections: 1, Occurrences: 8},
-	}}
-	got := NewFeatureMetrics("worker", "worker", snapshot, true, read("worker"))
+	got := NewFeatureMetrics("worker", read("worker"))
 	want := FeatureMetrics{
-		Self:        FeatureCounts{FeatureUse: observation.FeatureUse{Spawns: 1, AllWaits: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 1, Occurrences: 2, SavedTokens: 20}},
-		Descendants: FeatureCounts{FeatureUse: observation.FeatureUse{CompletionChanges: 1}, OutputDeduplication: transportcapture.OutputDeduplicationMetrics{Projections: 1, Occurrences: 4, SavedTokens: 40}},
+		Self:        FeatureCounts{FeatureUse: counts["worker"]},
+		Descendants: FeatureCounts{FeatureUse: counts["nested"]},
 		Thread:      "worker", Agents: 1,
 	}
 	if *got != want {
 		t.Fatalf("worker features = %+v", *got)
 	}
 	counts["root"] = observation.FeatureUse{Spawns: 1, SpawnPreloads: 1, ProgressWaits: 1, ProgressYields: 1, AssignmentSources: 1, MessageSources: 1, SelfCompactionsCompleted: 1, SelfCompactionFailures: 1}
-	counts["nested"] = observation.FeatureUse{CompletionChanges: 1, ProgressWaits: 2, ProgressYields: 2, AssignmentSources: 2, MessageSources: 2, SelfCompactionsCompleted: 2, SelfCompactionFailures: 2}
-	root := NewFeatureMetrics("root", "Main", snapshot, true, read("root"))
-	if root.Thread != "Main" || root.Agents != 2 || root.Self.SpawnPreloads != 1 || root.Descendants.AllWaits != 1 || root.Descendants.CompletionChanges != 1 || root.Descendants.OutputDeduplication.Occurrences != 6 || root.Descendants.SideQuestions != 0 {
+	counts["nested"] = observation.FeatureUse{CompletionChanges: 1, ProgressWaits: 2, ProgressYields: 2, AssignmentSources: 2, MessageSources: 2, SelfCompactionsCompleted: 2, SelfCompactionFailures: 2, OutputDeduplicationBytes: 160, OutputDeduplicationTokens: 40}
+	root := NewFeatureMetrics("Main", read("root"))
+	if root.Thread != "Main" || root.Agents != 2 || root.Self.SpawnPreloads != 1 || root.Descendants.AllWaits != 1 || root.Descendants.CompletionChanges != 1 || root.Descendants.OutputDeduplicationTokens != 60 || root.Descendants.OutputDeduplicationBytes != 240 || root.Descendants.SideQuestions != 0 {
 		t.Fatalf("root features = %+v", *root)
 	}
 	cells := func(features *FeatureMetrics) map[[2]string]string {
 		values := make(map[[2]string]string)
-		for _, field := range MetricFields(&PanelView{Metrics: snapshot, Features: features}, MetricFeatures, 0) {
+		for _, field := range MetricFields(&PanelView{Features: features}, MetricFeatures, 0) {
 			if len(field.Values) > 0 {
 				values[[2]string{field.Group, field.Label}] = strings.Join(field.Values, "/")
 			} else {
@@ -64,11 +60,6 @@ func TestFeatureMetricsSeparateSelectedThreadFromAllDescendants(t *testing.T) {
 	if !strings.Contains(values[[2]string{"Features", ""}], "Self is Main; Descendants sums its admitted agents (2)") {
 		t.Fatalf("features note = %q", values[[2]string{"Features", ""}])
 	}
-	// A disabled feature reads off, never as zero receipts.
-	off := cells(NewFeatureMetrics("root", "Main", snapshot, false, read("root")))
-	if _, counted := off[[2]string{"Output deduplication", "Occurrences"}]; counted || off[[2]string{"Output deduplication", ""}] != "Off for this launch." {
-		t.Fatalf("disabled deduplication = %v", off)
-	}
 }
 
 // Snapshot fixture, not a second feature counter producer.
@@ -84,21 +75,24 @@ func (f featureCountsFixture) ReadFeatureUse(_ context.Context, threads []string
 	return values, nil
 }
 
-func TestUnavailableNativeFeaturesKeepSelectedDeduplication(t *testing.T) {
-	for _, reader := range []FeatureReader{nil, featureCountsFixture{"root": {Spawns: 99}}} {
-		use := ReadNativeFeatureUse(t.Context(), "root", []string{"child"}, reader)
-		if use.Err == nil || len(use.Threads) != 1 || use.Threads[0] != "child" {
-			t.Fatalf("failed native measurement lost selection: %+v", use)
-		}
-		capture := &transportcapture.MetricsSnapshot{OutputDeduplicationThreads: map[string]transportcapture.OutputDeduplicationMetrics{"root": {Occurrences: 2}, "child": {Occurrences: 3}, "foreign": {Occurrences: 99}}}
-		metrics := NewFeatureMetrics("root", "Main", capture, true, use)
-		if !metrics.Unavailable || metrics.Agents != 1 || metrics.Self.OutputDeduplication.Occurrences != 2 || metrics.Descendants.OutputDeduplication.Occurrences != 3 {
-			t.Fatalf("failed native measurement changed independent deduplication: %+v", metrics)
-		}
-		for _, field := range featureFields(metrics, true) {
-			if field.Group == "Spawns" && field.Label == "Total" && (len(field.Values) != 2 || field.Values[0] != "unavailable" || field.Values[1] != "unavailable") {
-				t.Fatalf("failure became measured zero: %+v", field)
+func TestNativeDeduplicationSavingsNeedCompleteFeatureRead(t *testing.T) {
+	use := ReadNativeFeatureUse(t.Context(), "root", []string{"child"}, featureCountsFixture{
+		"root": {OutputDeduplicationBytes: 512, OutputDeduplicationTokens: 128},
+	})
+	if use.Err == nil {
+		t.Fatal("missing child measurement was accepted")
+	}
+	fields := MetricFields(&PanelView{Features: NewFeatureMetrics("Main", use)}, MetricFeatures, 0)
+	found := 0
+	for _, field := range fields {
+		if field.Group == "Output deduplication" && !field.Heading && len(field.Values) > 0 {
+			found++
+			if strings.Join(field.Values, "/") != "unavailable/unavailable" {
+				t.Fatalf("incomplete savings became a measured value: %+v", field)
 			}
 		}
+	}
+	if found != 2 {
+		t.Fatalf("native savings rows missing: %+v", fields)
 	}
 }

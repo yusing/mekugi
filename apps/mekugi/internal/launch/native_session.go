@@ -63,7 +63,6 @@ type nativeSession struct {
 	approvals             nativeApprovalDock
 	approvalMode          bool
 	reviewHooks           bool
-	deduplicateOutput     bool // Launch option; /session distinguishes off from zero.
 	guardHookCheck        approvalHookCheck
 	statusPanel           *appServerStatusReport
 	sessionCapture        *transportcapture.Recorder

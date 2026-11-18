@@ -19,17 +19,6 @@ func continuationTestCall(name, id, input string) map[string]json.RawMessage {
 	}
 }
 
-func continuationTestOutput(id string, parts ...string) map[string]json.RawMessage {
-	var content []any
-	for _, part := range parts {
-		content = append(content, map[string]any{"type": "input_text", "text": part})
-	}
-	return map[string]json.RawMessage{
-		"type": responses.MustMarshalJSON("custom_tool_call_output"), "call_id": responses.MustMarshalJSON(id),
-		"output": responses.MustMarshalJSON(content),
-	}
-}
-
 func TestNativeExecutionMetadataBoundary(t *testing.T) {
 	for _, test := range []struct {
 		text string

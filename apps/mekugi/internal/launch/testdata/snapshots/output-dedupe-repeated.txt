@@ -1,2 +1,0 @@
-└ Read file.txt · repeated
-       ┆ original output

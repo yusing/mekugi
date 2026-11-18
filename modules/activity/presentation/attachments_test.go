@@ -8,7 +8,7 @@ import (
 func TestAttachmentEventRetainsParameters(t *testing.T) {
 	values := []Value{
 		{Kind: "op", Verb: "Attached", AttachmentKind: "file", Path: "a.go", AttachmentID: "first", Tail: []string{"original"}},
-		{Kind: "op", Verb: "Attached", AttachmentKind: "file", Path: "a.go", AttachmentID: "second", Tail: []string{"new snapshot"}, Repeated: "same as O1"},
+		{Kind: "op", Verb: "Attached", AttachmentKind: "file", Path: "a.go", AttachmentID: "second", Tail: []string{"new snapshot"}},
 		{Kind: "op", Verb: "Attach failed", AttachmentKind: "file", Path: "missing", Label: "not found"},
 		{Kind: "op", Verb: "Attached skill", AttachmentKind: "skill", Label: "review", Tail: []string{"# Review"}},
 		{Kind: "op", Verb: "Attached changes", AttachmentKind: "change", Label: "amber1..3"},
@@ -21,7 +21,7 @@ func TestAttachmentEventRetainsParameters(t *testing.T) {
 		t.Fatalf("not one counted event: %+v", event.Values)
 	}
 	pages := DetailPages(event.Values)
-	if len(pages) != len(values) || pages[0].AttachmentID != "first" || pages[1].AttachmentID != "second" || pages[1].Repeated != "same as O1" || pages[0].ID == pages[1].ID {
+	if len(pages) != len(values) || pages[0].AttachmentID != "first" || pages[1].AttachmentID != "second" || pages[0].ID == pages[1].ID {
 		t.Fatalf("lost source identities: %+v", pages)
 	}
 	values[0].Tail = []string{"refreshed"}

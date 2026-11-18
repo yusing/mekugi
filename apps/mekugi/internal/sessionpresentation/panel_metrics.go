@@ -6,7 +6,6 @@ import (
 
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	usagepresentation "github.com/yusing/mekugi/modules/usage/presentation"
 )
 
@@ -19,7 +18,6 @@ const MetricFeatures = 3
 // FeatureCounts are model-facing feature uses and counted attempts in this launch.
 type FeatureCounts struct {
 	observation.FeatureUse
-	OutputDeduplication transportcapture.OutputDeduplicationMetrics
 }
 
 // FeatureMetrics separates the selected thread from the sum of all of its
@@ -29,30 +27,23 @@ type FeatureMetrics struct {
 	// Thread names Self for display; Agents counts the summed descendants.
 	Thread string
 	Agents int
-	// DeduplicationOff distinguishes a disabled feature from zero receipts.
-	DeduplicationOff bool
-	Unavailable      bool
+
+	Unavailable bool
 }
 
-// NewFeatureMetrics joins native counts with capture-owned deduplication receipts
-// over the same admitted threads. Failed native reads are not measured zeros.
-func NewFeatureMetrics(thread, name string, snapshot *transportcapture.MetricsSnapshot, deduplicate bool, use FeatureSnapshot) *FeatureMetrics {
-	metrics := FeatureMetrics{Thread: name, DeduplicationOff: !deduplicate, Unavailable: use.Err != nil}
+// NewFeatureMetrics projects native launch counts over the admitted threads.
+// Failed native reads are not measured zeros.
+func NewFeatureMetrics(name string, use FeatureSnapshot) *FeatureMetrics {
+	metrics := FeatureMetrics{Thread: name, Unavailable: use.Err != nil}
 	metrics.Self.FeatureUse, metrics.Descendants.FeatureUse = use.Self, use.Descendants
 	descendants := use.Threads
 	metrics.Agents = len(descendants)
-	if snapshot != nil {
-		metrics.Self.OutputDeduplication = snapshot.OutputDeduplicationThreads[thread]
-		for _, id := range descendants {
-			metrics.Descendants.OutputDeduplication.Add(snapshot.OutputDeduplicationThreads[id])
-		}
-	}
 	return &metrics
 }
 
 // featureFields compares Self with Descendants in one table per feature family.
 // Each family's first row is its total; later rows count subsets or failed attempts.
-func featureFields(f *FeatureMetrics, captured bool) (fields []StatusField) {
+func featureFields(f *FeatureMetrics) (fields []StatusField) {
 	if f == nil {
 		return []StatusField{{Group: "Features", Value: "Feature use is unavailable for this frontend. Live launch counts are not restored from saved sessions."}}
 	}
@@ -65,7 +56,7 @@ func featureFields(f *FeatureMetrics, captured bool) (fields []StatusField) {
 		fields = append(fields, StatusField{Group: group, Heading: true, Values: []string{"Self", "Descendants"}})
 		for _, r := range rows {
 			values := []string{fmt.Sprint(r.self), fmt.Sprint(r.descendants)}
-			if f.Unavailable && group != "Output deduplication" {
+			if f.Unavailable {
 				values = []string{"unavailable", "unavailable"}
 			}
 			fields = append(fields, StatusField{Group: group, Label: r.label, Values: values})
@@ -78,16 +69,8 @@ func featureFields(f *FeatureMetrics, captured bool) (fields []StatusField) {
 	table("Messages", row{"Sent", self.Messages, desc.Messages}, row{"With btw", self.SideQuestions, desc.SideQuestions}, row{"btw rejected", self.SideQuestionRejections, desc.SideQuestionRejections}, row{"btw failed", self.SideQuestionFailures, desc.SideQuestionFailures})
 	table("Waits", row{"Registered", self.Waits, desc.Waits}, row{"All mode", self.AllWaits, desc.AllWaits}, row{"Progress enabled", self.ProgressWaits, desc.ProgressWaits}, row{"Progress delivered", self.ProgressYields, desc.ProgressYields})
 	table("Source-bearing sends", row{"Total", self.AssignmentSources + self.MessageSources, desc.AssignmentSources + desc.MessageSources}, row{"Assignments", self.AssignmentSources, desc.AssignmentSources}, row{"Messages", self.MessageSources, desc.MessageSources})
-	switch {
-	case f.DeduplicationOff:
-		fields = append(fields, StatusField{Group: "Output deduplication", Value: "Off for this launch."})
-	case !captured:
-		fields = append(fields, StatusField{Group: "Output deduplication", Value: "Unavailable for this frontend."})
-	default:
-		s, d := self.OutputDeduplication, desc.OutputDeduplication
-		table("Output deduplication", row{"Occurrences", s.Occurrences, d.Occurrences}, row{"Saved tokens (est.)", s.SavedTokens, d.SavedTokens}, row{"Unmeasured", s.Unmeasured, d.Unmeasured})
-		fields = append(fields, StatusField{Group: "Output deduplication", Value: "Occurrences count receipts per request projection, including repeated history. Saved tokens are a net local estimate after reference overhead, negative when references cost more than the output they replace, and not provider billing savings. Unmeasured counts projections whose savings could not be estimated; they are excluded from saved tokens."})
-	}
+	table("Output deduplication", row{"Saved bytes", self.OutputDeduplicationBytes, desc.OutputDeduplicationBytes}, row{"Saved tokens (est.)", self.OutputDeduplicationTokens, desc.OutputDeduplicationTokens})
+	fields = append(fields, StatusField{Group: "Output deduplication", Value: "Net model-input savings after reference overhead, summed across requests. Tokens use a local 4-byte estimate, not provider billing savings."})
 	return fields
 }
 
@@ -119,11 +102,11 @@ func MetricFields(body *PanelView, tab, exchange int) (fields []StatusField) {
 			add(group, label, *value)
 		}
 	}
-	s := *body.Metrics
 	if tab == MetricFeatures {
-		fields = featureFields(body.Features, s.Schema != "")
+		fields = featureFields(body.Features)
 		return
 	}
+	s := *body.Metrics
 	if tab == 0 && body.DebugDirectory != "" {
 		add("Debug", "Directory", pathdisplay.ForWorkspace(body.Workspace, body.DebugDirectory))
 		fields[len(fields)-1].Path = true

@@ -229,7 +229,7 @@ not assign individual files to segments. Partial edits expose only retained evid
 Complete no-effect or unfinished calls produce neither summary nor change notice;
 continuations receive theirs when the edit finishes.
 
-[Duplicate-output projection](../../modules/outputdeduplication/SPEC.md) can
+[Duplicate-output projection](../../backends/codex/SPEC.md#output-deduplication) can
 reference eligible repeated model-input text only after observation and retention
 consume its original content; it preserves the change notice. Provisional values
 never establish durable evidence. Omitting live preview leaves saved review and

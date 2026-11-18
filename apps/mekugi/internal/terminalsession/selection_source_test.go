@@ -26,7 +26,7 @@ func TestCommonPathSelectionCopiesOriginalOperands(t *testing.T) {
 		}
 		blocks = activityui.MergeTargets(activityui.GroupOperations(blocks))
 		blocks[0].Duration, blocks[0].Workdir, blocks[0].ShowWorkdir = time.Second, "/workspace", true
-		blocks[0].Approval, blocks[0].Repeated = "Approved", "again"
+		blocks[0].Approval = "Approved"
 		p := activityui.Painter{
 			CopySource: true}
 		rows := p.Block(blocks[0], 100)
@@ -40,7 +40,7 @@ func TestCommonPathSelectionCopiesOriginalOperands(t *testing.T) {
 		if !strings.Contains(got, "src/one.go") || !strings.Contains(got, "src/two.go") || strings.ContainsAny(got, "{}") || command == "rg needle" && !strings.Contains(got, "needle") {
 			t.Errorf("%s copied %q", source, got)
 		}
-		for _, suffix := range []string{"/workspace", "1s", "Approved", "again"} {
+		for _, suffix := range []string{"/workspace", "1s", "Approved"} {
 			if !strings.Contains(got, suffix) {
 				t.Errorf("%s copy lost %q: %q", source, suffix, got)
 			}
