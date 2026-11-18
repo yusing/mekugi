@@ -17,6 +17,13 @@ type FrozenCapture struct {
 	FirstChunk, LastChunk                            uint64
 }
 
+// ProjectedCapture distinguishes reusable net-diff bytes from plain notices.
+// Read errors are reported separately, even when a partial diff is available.
+type ProjectedCapture struct {
+	Text string
+	Diff bool
+}
+
 // LegacyFrozenRead is the read-only version-1 completion format. New selections
 // never populate it; old sessions may still reference these retained bytes.
 type LegacyFrozenRead struct {

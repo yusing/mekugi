@@ -223,17 +223,19 @@ func (p *Preparer) renderNativeFinal(ctx context.Context, selected changes.Scope
 		body.WriteString("Captures already reported by yield summaries omitted; explicit mchanges reads retain full diffs.\n")
 	}
 	result := compact.CapturedSource{}
+	var sources []completionSource
 	for _, source := range resource.Sources {
 		output := compact.CapturedSource{Command: source.Command}
+		var projection changes.ProjectedCapture
 		var err error
 		if source.Capture != nil || source.Legacy != nil {
 			if p.Changes == nil {
 				return "", errors.New("completion capture projector is unavailable")
 			}
 			if source.Legacy != nil {
-				output.Stdout, err = p.Changes.ProjectLegacyFrozen(ctx, *source.Legacy, seen)
+				projection, err = p.Changes.ProjectLegacyFrozen(ctx, *source.Legacy, seen)
 			} else {
-				output.Stdout, err = p.Changes.ProjectFrozen(ctx, selected, *source.Capture, seen)
+				projection, err = p.Changes.ProjectFrozen(ctx, selected, *source.Capture, seen)
 			}
 		} else {
 			err = errors.New(source.Error)
@@ -241,13 +243,15 @@ func (p *Preparer) renderNativeFinal(ctx context.Context, selected changes.Scope
 		if err != nil {
 			output.ExitCode, output.Stderr = 1, "mchanges: "+err.Error()+"\n"
 		}
+		output.Stdout = projection.Text
+		if projection.Diff {
+			start := body.Len() + len((compact.CapturedSource{Command: output.Command, ExitCode: output.ExitCode}).Text())
+			sources = append(sources, completionSource{command: source.Command, start: start, end: start + len(output.Stdout)})
+		}
 		body.WriteString(output.Text())
 		body.WriteByte('\n')
 		result.ExitCode = max(result.ExitCode, output.ExitCode)
 	}
 	result.Stdout = body.String()
-	if err := boundCompletion(ctx, &result, retained); err != nil {
-		return "", err
-	}
-	return result.Text(), nil
+	return boundCompletion(ctx, result, sources, retained)
 }

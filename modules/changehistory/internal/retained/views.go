@@ -161,10 +161,11 @@ func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions,
 	if err != nil {
 		return "", err
 	}
-	return renderNetCaptures(options, index, captures)
+	projection, err := renderNetCaptures(options, index, captures)
+	return projection.Text, err
 }
 
-func renderNetCaptures(options changeReadOptions, index changeIndex, captures []changeCapture) (string, error) {
+func renderNetCaptures(options changeReadOptions, index changeIndex, captures []changeCapture) (changes.ProjectedCapture, error) {
 	var failures []error
 	matched := len(options.paths) == 0
 	chains := make(map[string]*diffmodel.ReviewComposition)
@@ -234,10 +235,11 @@ func renderNetCaptures(options changeReadOptions, index changeIndex, captures []
 			}
 			output.WriteString(file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(options.workspace, file.BeforePath), pathdisplay.ForWorkspace(options.workspace, file.AfterPath)))
 			if output.Len() > changes.MaxReadBytes {
-				return "", errors.New("change read exceeds 64 MiB; narrow the range or paths after --")
+				return changes.ProjectedCapture{}, errors.New("change read exceeds 64 MiB; narrow the range or paths after --")
 			}
 		}
 	}
+	hasDiff := output.Len() != 0
 	if !matched && len(failures) == 0 {
 		fmt.Fprintf(&output, "no captured files match paths after -- in workspace %q\n", options.workspace)
 	} else if output.Len() == 0 && len(failures) == 0 {
@@ -247,8 +249,9 @@ func renderNetCaptures(options changeReadOptions, index changeIndex, captures []
 			output.WriteString("no net changes in selected captured history\n")
 		}
 	}
+	projection := changes.ProjectedCapture{Text: output.String(), Diff: hasDiff}
 	if len(failures) > 0 {
-		return output.String(), &partialChangeReadError{errors.Join(failures...)}
+		return projection, &partialChangeReadError{errors.Join(failures...)}
 	}
-	return output.String(), nil
+	return projection, nil
 }

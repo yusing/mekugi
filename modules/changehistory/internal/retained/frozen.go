@@ -60,7 +60,7 @@ changes:
 	return nil
 }
 
-func (*service) ProjectFrozen(ctx context.Context, selected changes.Scope, frozen changes.FrozenRead, seen map[string]uint64) (string, error) {
+func (*service) ProjectFrozen(ctx context.Context, selected changes.Scope, frozen changes.FrozenRead, seen map[string]uint64) (changes.ProjectedCapture, error) {
 	index := changeIndex{Workspace: frozen.Workspace, workspaces: make(map[string]string), Changes: make(map[string]trackedChange)}
 	options := changeReadOptions{workspace: frozen.Workspace, unavailable: make(changeReadFailures)}
 	if len(seen) != 0 {
@@ -73,23 +73,23 @@ func (*service) ProjectFrozen(ctx context.Context, selected changes.Scope, froze
 	for _, capture := range frozen.Captures {
 		stream, _, err := changes.ParseID(capture.ChangeID)
 		if err != nil {
-			return "", err
+			return changes.ProjectedCapture{}, err
 		}
 		if capture.Workspace == "" || capture.Correlation == "" || capture.CallID == "" || capture.FirstChunk == 0 || capture.FirstChunk-1 > capture.LastChunk {
-			return "", errors.New("invalid frozen capture range")
+			return changes.ProjectedCapture{}, errors.New("invalid frozen capture range")
 		}
 		name := legacycall.Name(capture.Workspace, capture.CallID, false)
 		if _, exists := ranges[name]; exists {
-			return "", errors.New("duplicate frozen capture record")
+			return changes.ProjectedCapture{}, errors.New("duplicate frozen capture record")
 		}
 		ranges[name] = capture
 		if workspace, exists := index.workspaces[stream]; exists && workspace != capture.Workspace {
-			return "", errors.New("inconsistent frozen capture workspace")
+			return changes.ProjectedCapture{}, errors.New("inconsistent frozen capture workspace")
 		}
 		index.workspaces[stream] = capture.Workspace
 		change, exists := index.Changes[capture.ChangeID]
 		if exists && change.Correlation != capture.Correlation {
-			return "", errors.New("inconsistent frozen capture correlation")
+			return changes.ProjectedCapture{}, errors.New("inconsistent frozen capture correlation")
 		}
 		change.Correlation = capture.Correlation
 		change.Calls = append(change.Calls, trackedCall{ID: capture.CallID})
@@ -98,13 +98,13 @@ func (*service) ProjectFrozen(ctx context.Context, selected changes.Scope, froze
 			options.ids = append(options.ids, capture.ChangeID)
 		}
 	}
-	var text string
+	var projection changes.ProjectedCapture
 	err := selectedStore(selected).locked(ctx, func(store *store) error {
 		captures, err := store.loadChangeCaptures(ctx, frozen.Workspace, index, options.ids, nil, options.unavailable, options.yielded, ranges)
 		if err != nil {
 			return err
 		}
-		text, err = renderNetCaptures(options, index, captures)
+		projection, err = renderNetCaptures(options, index, captures)
 		for _, id := range options.ids {
 			if failure := options.unavailable[id]; failure != nil {
 				err = errors.Join(err, fmt.Errorf("change %s: %w", id, failure))
@@ -113,17 +113,17 @@ func (*service) ProjectFrozen(ctx context.Context, selected changes.Scope, froze
 		return err
 	})
 	if frozen.Fallback != "" {
-		text = frozen.Fallback
+		projection = changes.ProjectedCapture{Text: frozen.Fallback}
 	}
 	if frozen.Diagnostic != "" {
 		err = errors.Join(errors.New(frozen.Diagnostic), err)
 	}
-	return text, err
+	return projection, err
 }
 
 // ProjectLegacyFrozen reads the historical copied format without publishing new
 // copies or reselecting IDs. New completions use metadata-only ProjectFrozen.
-func (*service) ProjectLegacyFrozen(ctx context.Context, frozen changes.LegacyFrozenRead, seen map[string]uint64) (string, error) {
+func (*service) ProjectLegacyFrozen(ctx context.Context, frozen changes.LegacyFrozenRead, seen map[string]uint64) (changes.ProjectedCapture, error) {
 	index := changeIndex{Workspace: frozen.Workspace, workspaces: make(map[string]string)}
 	options := changeReadOptions{workspace: frozen.Workspace}
 	if len(seen) != 0 {
@@ -133,34 +133,34 @@ func (*service) ProjectLegacyFrozen(ctx context.Context, frozen changes.LegacyFr
 	bytes := 0
 	for _, source := range frozen.Captures {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return changes.ProjectedCapture{}, err
 		}
 		stream, _, err := changes.ParseID(source.ChangeID)
 		if err != nil {
-			return "", err
+			return changes.ProjectedCapture{}, err
 		}
 		index.workspaces[stream] = source.Workspace
 		capture := changeCapture{id: source.ChangeID, order: source.Order, coverage: source.Coverage}
 		for _, file := range source.Files {
 			if file.Key == "" || file.Chunk == 0 {
-				return "", errors.New("invalid legacy capture chunk")
+				return changes.ProjectedCapture{}, errors.New("invalid legacy capture chunk")
 			}
 			if seen[file.Key] < file.Chunk {
 				bytes += len(file.File.Diff)
 				if bytes > changes.MaxReadBytes {
-					return "", errors.New("legacy capture exceeds 64 MiB")
+					return changes.ProjectedCapture{}, errors.New("legacy capture exceeds 64 MiB")
 				}
 				capture.files = append(capture.files, file.File)
 			}
 		}
 		captures = append(captures, capture)
 	}
-	text, err := renderNetCaptures(options, index, captures)
+	projection, err := renderNetCaptures(options, index, captures)
 	if frozen.Fallback != "" {
-		text = frozen.Fallback
+		projection = changes.ProjectedCapture{Text: frozen.Fallback}
 	}
 	if frozen.Diagnostic != "" {
 		err = errors.Join(errors.New(frozen.Diagnostic), err)
 	}
-	return text, err
+	return projection, err
 }

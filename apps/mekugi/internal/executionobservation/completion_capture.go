@@ -3,8 +3,11 @@ package executionobservation
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/outputbudget"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -14,44 +17,86 @@ import (
 // diagnostics and its continuation. Explicit preloads and reloads remain full.
 const CompletionTokens = 4000
 
-func boundCompletion(ctx context.Context, result *compact.CapturedSource, retained *recovery.Session) error {
+type completionSource struct {
+	command    string
+	start, end int
+}
+
+// Frame only complete, visible diff rows. Leave the raw prefix and retained
+// suffix in their original representation, including paging diagnostics.
+func completionText(result compact.CapturedSource, sources []completionSource) string {
+	var text strings.Builder
+	var bodies []attachments.SourceRange
+	through := 0
+	for _, source := range sources {
+		if source.start >= len(result.Stdout) {
+			break
+		}
+		end := source.end
+		if end > len(result.Stdout) {
+			end = source.start + strings.LastIndexByte(result.Stdout[source.start:], '\n') + 1
+		}
+		if end <= source.start {
+			break
+		}
+		text.WriteString(result.Stdout[through:source.start])
+		fmt.Fprintf(&text, "Source %q:\n", source.command)
+		start := text.Len()
+		text.WriteString(result.Stdout[source.start:end])
+		bodies = append(bodies, attachments.SourceRange{Start: start, End: text.Len()})
+		through = end
+	}
+	if len(bodies) == 0 {
+		return result.Text()
+	}
+	text.WriteString(result.Stdout[through:])
+	result.Stdout = text.String()
+	return attachments.SourceRanges(result.Text(), bodies)
+}
+
+func boundCompletion(ctx context.Context, result compact.CapturedSource, sources []completionSource, retained *recovery.Session) (string, error) {
 	budget := outputbudget.Budget{}
-	fits, err := budget.Fits(result.Text(), CompletionTokens)
-	if err != nil || fits {
-		return err
+	// Avoid copying a full retained diff just to reject it on the byte limit.
+	if len(result.Stdout) <= 4*CompletionTokens {
+		text := completionText(result, sources)
+		if fits, err := budget.Fits(text, CompletionTokens); err != nil || fits {
+			return text, err
+		}
 	}
 	if retained == nil {
-		return errors.New("completion output recovery is unavailable")
+		return "", errors.New("completion output recovery is unavailable")
 	}
 	refs, err := retained.Reserve(ctx, 1)
 	if err != nil {
-		return err
+		return "", err
 	}
 	result.Stderr = recovery.NextCall(refs[0], CompletionTokens)
 	trailerTokens, err := budget.Count("\n" + result.Stderr)
 	if err != nil {
-		return err
+		return "", err
 	}
 	full := result.Stdout
 	remaining := CompletionTokens - trailerTokens
+	var text string
 	for {
 		prefix, err := budget.SelectText(full, remaining, false)
 		if err != nil {
-			return err
+			return "", err
 		}
 		result.Stdout = prefix.Text
-		tokens, err := budget.Count(result.Text())
+		text = completionText(result, sources)
+		tokens, err := budget.Count(text)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if tokens <= CompletionTokens {
 			break
 		}
 		remaining -= tokens - CompletionTokens
 		if remaining <= 0 {
-			return errors.New("completion continuation exceeds output budget")
+			return "", errors.New("completion continuation exceeds output budget")
 		}
 	}
 	_, err = retained.PublishAt(ctx, refs[0], command.OmittedOutput{Stdout: full[len(result.Stdout):]}, result.ExitCode)
-	return err
+	return text, err
 }

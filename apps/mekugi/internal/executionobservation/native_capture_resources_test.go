@@ -4,11 +4,13 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/outputbudget"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -27,6 +29,11 @@ func TestNativeFinalProjectionUsesOnlySelectedRetainedRanges(t *testing.T) {
 	frozen, err := p.PrepareNativeFinalCapture(t.Context(), input)
 	if err != nil || frozen == nil || frozen.ResourceRef == "" || !strings.Contains(frozen.FullText, "+seen-content") || !strings.Contains(frozen.FullText, "+remaining-content") || reader.reads.Load() != 1 {
 		t.Fatalf("full frozen capture=%+v err=%v reads=%d", frozen, err, reader.reads.Load())
+	}
+	source, _ := finalCaptureSource(t, frozen.FullText, "'mchanges' '"+id+"'")
+	explicit, _, status := f.run(t, "mchanges "+id)
+	if status != 0 || source != explicit {
+		t.Fatalf("attached source and explicit diff do not match: status=%d, source=%q, explicit=%q", status, source, explicit)
 	}
 	_, retained, err := p.nativeCaptureScope(f.thread, f.thread)
 	if err != nil {
@@ -89,7 +96,8 @@ func TestNativeFinalProjectionUsesOnlySelectedRetainedRanges(t *testing.T) {
 func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 	f := newMChangesSliceFixture(t, "native-final-recovery")
 	id := f.reserve(t, f.thread, "large")
-	content := strings.Repeat("unchanged capture evidence belongs to this retained range\n", 1500) + "frozen-end\n"
+	content := "visible line of retained evidence\n" +
+		strings.Repeat("oversized line of retained evidence ", 1600) + "frozen-end\n"
 	f.publish(t, id, "large", "large-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "large.txt", "", content)}})
 	p := testProxyWithStore(f.store)
 	reader := &completionReads{Service: p.Changes}
@@ -109,8 +117,23 @@ func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 		t.Fatal(err)
 	}
 	recovered, err := retained.Snapshot(ref)
-	if err != nil || !strings.Contains(recovered.Stdout, "+frozen-end") {
+	if err != nil || !strings.Contains(recovered.Stdout, "frozen-end") {
 		t.Fatalf("full fallback lost omitted suffix: %v", err)
+	}
+	command := "'mchanges' '" + id + "'"
+	source, payload := finalCaptureSource(t, frozen.FullText, command)
+	withoutRecovery, _, _ := strings.Cut(payload, "\nread: incomplete;")
+	rawPrefix := strings.Replace(withoutRecovery, fmt.Sprintf("Source %q:\n", command), "", 1)
+	header := command + ": exit_code=0\n"
+	want := header + diffmodel.RenderReviewFile("", "large.txt", "", content).UnifiedDiff() + "\n"
+	if got := rawPrefix + recovered.Stdout; got != want {
+		t.Fatalf("prefix and continuation changed original bytes: got %d bytes, want %d", len(got), len(want))
+	}
+	if !strings.HasSuffix(source, "+visible line of retained evidence\n") || !strings.Contains(rawPrefix, "+oversized line") || strings.Contains(source, "oversized line") {
+		t.Fatal("a partially visible row was marked as a deduplication source")
+	}
+	if tokens, err := new(outputbudget.Budget).Count(frozen.FullText); err != nil || tokens > CompletionTokens {
+		t.Fatalf("framing exceeded completion budget: %d, %v", tokens, err)
 	}
 	f.publish(t, id, "large", "late-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "late.txt", "", "late-content\n")}})
 	projection := appserver.FinalCaptureProjectRequest{RootThreadID: f.thread, ThreadID: "worker", OperationID: "work", RecipientThreadID: f.thread,
@@ -179,6 +202,10 @@ func TestNativeFinalFrozenReadPreservesIndependentCaptureErrors(t *testing.T) {
 	if err != nil || frozen == nil || frozen.ResourceRef == "" || !strings.Contains(frozen.FullText, "+available-content") || !strings.Contains(frozen.FullText, "exit_code=1") {
 		t.Fatalf("unavailable target discarded independent captured bytes or its error: %+v err=%v", frozen, err)
 	}
+	source, _ := finalCaptureSource(t, frozen.FullText, "'mchanges' '"+id+"' '"+missing+"'")
+	if !strings.HasSuffix(source, "+available-content\n") || strings.Contains(source, "mchanges:") {
+		t.Fatalf("partial capture did not isolate available diff bytes: %q", source)
+	}
 }
 
 func TestFrozenFinalRangesEnforceBothChunkBoundsWithoutCopyingEvidence(t *testing.T) {
@@ -208,14 +235,14 @@ func TestFrozenFinalRangesEnforceBothChunkBoundsWithoutCopyingEvidence(t *testin
 		t.Fatalf("selection cost grew with evidence bytes: bytes=%d err=%v", len(metadata), err)
 	}
 	selection.Captures[0].FirstChunk, selection.Captures[0].LastChunk = 2, 2
-	text, err := p.Changes.ProjectFrozen(t.Context(), reader.Scope, selection, nil)
-	if err != nil || strings.Contains(text, "lower-content") || strings.Contains(text, "upper-content") || !strings.Contains(text, "+large capture content") {
+	projection, err := p.Changes.ProjectFrozen(t.Context(), reader.Scope, selection, nil)
+	if err != nil || !projection.Diff || strings.Contains(projection.Text, "lower-content") || strings.Contains(projection.Text, "upper-content") || !strings.Contains(projection.Text, "+large capture content") {
 		t.Fatalf("projection ignored exact lower/upper bounds: err=%v", err)
 	}
 	capture := selection.Captures[0]
 	key := changes.CaptureKey(capture.Workspace, capture.Caller, capture.ChangeID, capture.Order)
-	text, err = p.Changes.ProjectFrozen(t.Context(), reader.Scope, selection, map[string]uint64{key: 2})
-	if err != nil || strings.Contains(text, "+large capture content") {
+	projection, err = p.Changes.ProjectFrozen(t.Context(), reader.Scope, selection, map[string]uint64{key: 2})
+	if err != nil || projection.Diff || !strings.Contains(projection.Text, "no new net changes") {
 		t.Fatalf("acknowledged selected range repeated: %v", err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -227,6 +254,21 @@ func TestFrozenFinalRangesEnforceBothChunkBoundsWithoutCopyingEvidence(t *testin
 	if _, err := p.Changes.ProjectFrozen(t.Context(), reader.Scope, selection, nil); err == nil {
 		t.Fatal("missing frozen upper bound became complete evidence")
 	}
+}
+
+func finalCaptureSource(t *testing.T, text, reference string) (string, string) {
+	t.Helper()
+	header, rest, _ := strings.Cut(text, "\n")
+	payload, ok := strings.CutSuffix(rest, "\n</mekugi-source-v1>")
+	var length, start, end int
+	n, err := fmt.Sscanf(header, "<mekugi-source-v1 bytes=\"%d\" bodies=\"%d:%d\">", &length, &start, &end)
+	if !ok || err != nil || n != 3 || len(payload) != length || start < 0 || start >= end || end > length {
+		t.Fatalf("invalid single-source framing: header=%q, length=%d", header, len(payload))
+	}
+	if !strings.HasSuffix(payload[:start], fmt.Sprintf("\nSource %q:\n", reference)) {
+		t.Fatalf("source header does not name %q", reference)
+	}
+	return payload[start:end], payload
 }
 
 func TestNativeFinalRetainedVersionOneProjectsWithoutRestoringCoordinator(t *testing.T) {

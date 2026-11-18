@@ -106,8 +106,8 @@ type Service interface {
 	Parse([]string, string) (Query, error)
 	Read(context.Context, Scope, Query) (string, error)
 	Freeze(context.Context, Scope, Query) (FrozenRead, error)
-	ProjectFrozen(context.Context, Scope, FrozenRead, map[string]uint64) (string, error)
-	ProjectLegacyFrozen(context.Context, LegacyFrozenRead, map[string]uint64) (string, error)
+	ProjectFrozen(context.Context, Scope, FrozenRead, map[string]uint64) (ProjectedCapture, error)
+	ProjectLegacyFrozen(context.Context, LegacyFrozenRead, map[string]uint64) (ProjectedCapture, error)
 	MutationPaths(context.Context, Scope, Query) ([]string, error)
 	Execute(context.Context, command.Request) (command.Output, error)
 }
