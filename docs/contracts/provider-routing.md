@@ -11,6 +11,11 @@ WebSocket lifetime. Request preparation, execution admission, retained evidence,
 accounting and notices remain shared consumers. Native Codex owns credential
 acquisition and retries. Native OpenAI must not depend on a proxy service.
 
+For capacity errors it recognizes, the native runtime honors usable `Retry-After`
+advice. Without advice, it waits one second before the first retry and doubles
+the delay for each further unadvised retry, up to 30 seconds. Existing retry
+limits still apply.
+
 ## Shared service tiers and failures
 
 Confirmed service-tier choices are scoped by native thread and exact requested

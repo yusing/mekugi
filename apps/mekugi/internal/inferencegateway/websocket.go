@@ -70,8 +70,7 @@ func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, prov
 				body := attempt.HTTPErrorBody(response.Body, response.StatusCode, response.Header.Get("Content-Type"), response.Header.Get("Content-Encoding"))
 				payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 				_ = body.Close()
-				_, limited, _ := ProviderWait(payload, response.Header, time.Now())
-				if limited {
+				if IsProviderLimitRejection(payload) {
 					s.upstreamRejection = &http.Response{StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}
 				} else {
 					for _, name := range []string{"Content-Type", "Content-Encoding", "Retry-After", "X-Request-Id"} {
@@ -485,7 +484,7 @@ func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body 
 			// by Codex for authentication recovery or rate-limit handling.
 			payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 			_ = body.Close()
-			if _, limited, _ := ProviderWait(payload, rejected.Header, time.Now()); limited {
+			if IsProviderLimitRejection(payload) {
 				return webSocketHTTPResponse(&Response{Response: &http.Response{StatusCode: rejected.StatusCode, Header: rejected.Header.Clone(), Body: io.NopCloser(bytes.NewReader(payload))}, Transport: "websocket", UnknownPrice: s.provider.Native != nil}, nil)
 			}
 			return nil, &WebSocketStatusError{Status: rejected.StatusCode, body: payload}

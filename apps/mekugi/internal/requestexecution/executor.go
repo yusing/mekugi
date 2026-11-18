@@ -178,7 +178,7 @@ func (a *requestAttempt) prepare() error {
 		return fmt.Errorf("prepare request: %w", inferencegateway.WithRequestStartCause(a.startCtx, err))
 	}
 	a.hooks.onProviderFailure = func(payload []byte, stream bool) {
-		if _, rejected, _ := inferencegateway.ProviderWait(payload, a.response.Header, time.Now()); rejected {
+		if inferencegateway.IsProviderLimitRejection(payload) {
 			a.usageRejected, a.finishUsage = true, false
 		}
 		if !stream && a.response.StatusCode >= http.StatusBadRequest {

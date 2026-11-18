@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
 
@@ -55,7 +54,7 @@ func (c *Client) ForwardExecution(startCtx, responseCtx context.Context, body []
 	if c.Native != nil {
 		response, err := c.Native.forward(startCtx, responseCtx, body, headers)
 		if rejection, ok := errors.AsType[*httptransport.Rejection](err); ok {
-			if _, limited, _ := ProviderWait(rejection.Detail, rejection.Header, time.Now()); limited {
+			if IsProviderLimitRejection(rejection.Detail) {
 				return &Response{Response: &http.Response{StatusCode: rejection.Status, Header: rejection.Header, Body: io.NopCloser(bytes.NewReader(rejection.Detail))}, Provider: c.Native.ID, UnknownPrice: true}, nil
 			}
 			failure := NewProviderHTTPError(c.Native.ID, rejection.Status, rejection.Detail)
