@@ -19,7 +19,7 @@ reads `MEKUGI_E2E_MODEL`, which the Makefile sets; raw `go test` runs must set i
 | Fixture | Coverage and limits |
 | --- | --- |
 | OpenAI | Local base-URL override: web-tool exposure, turn metadata, reasoning-effort updates and workspace routing over WebSockets and HTTP/SSE fallback; WebSocket prewarm and side-thread continuity. `TestCodeModeOnlyCatalogNativeCodex` covers account-catalog execution-mode enforcement with a stale shared cache, stock JavaScript shell execution, and authenticated standalone web search through its returned tool result, without a profile |
-| Compaction | `TestCompactReloadNativeCodex`: built-in OpenAI manual/automatic summary-free reset over HTTP/WebSockets, selected and missing-source reload, stable tool/cache identity and immutable fresh-resume results. Deterministic local responses establish installed-host behavior, without live-model selection claims |
+| Compaction | `TestAppServerCompactEnterInterruptsNativeCodex` and `TestAppServerQueuedCompactContinuesNativeCodex`: terminal interrupt, queueing and continuation. Native reset, reload and cancellation belong to the Rust app-server compaction suite. |
 | Frontends | Authenticated command through stock `tools.exec_command`: cwd, environment, argv/stdin separation and exit status |
 | mrun | Codex-owned PTY yield and `write_stdin` continuation |
 | mchanges | Nested stock patch/shell calls with unprinted results; durable receipts, net review, cross-thread explicit IDs, caught failures and cross-request yielded completion; traces removed before reads, replay store reopened |
