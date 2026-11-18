@@ -135,7 +135,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 	for _, thread := range []string{"same-thread", "child"} {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "retry-turn"}})
 		appServerTestNotify(t, u, "error", map[string]any{"threadId": thread, "turnId": "retry-turn", "willRetry": true,
-			"error": map[string]any{"message": "Reconnecting... 2/5", "additionalDetails": "Server overloaded"}})
+			"error": map[string]any{"message": "Retrying in 5m 11s (1/5)", "additionalDetails": "Server overloaded"}})
 	}
 	publishRetry := func() {
 		t.Helper()
@@ -165,8 +165,8 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 		run("eval", `if (!document.querySelector('#panel-content')) document.querySelector('button[aria-label^="Agents ("]').click()`)
 		for _, theme := range []string{"light", "dark"} {
 			run("set", "media", theme)
-			run("wait", "--fn", `!!document.querySelector('[title="Reconnecting... 2/5 · Server overloaded"]')`)
-			run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('#panel-content button')].filter(row => row.textContent.includes('Reconnecting... 2/5')); return rows.length >= 2 && rows.every(row => { const r = row.getBoundingClientRect(); return row.textContent.includes('Server overloaded') && r.left >= 0 && r.right <= innerWidth; }); })()`)
+			run("wait", "--fn", `!!document.querySelector('[title="Retrying in 5m 11s (1/5) · Server overloaded"]')`)
+			run("wait", "--fn", `(() => { const rows = [...document.querySelectorAll('#panel-content button')].filter(row => row.textContent.includes('Retrying in 5m 11s (1/5)')); return rows.length >= 2 && rows.every(row => { const r = row.getBoundingClientRect(); return row.textContent.includes('Server overloaded') && r.left >= 0 && r.right <= innerWidth; }); })()`)
 			if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
 				run("screenshot", filepath.Join(artifacts, "roster-retry-"+theme+"-"+width+".png"))
 			}
@@ -176,7 +176,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "retry-turn", "status": "interrupted"}})
 	}
 	publishRetry()
-	run("wait", "--fn", `!document.querySelector('#panel-content').textContent.includes('Reconnecting')`)
+	run("wait", "--fn", `!document.querySelector('#panel-content').textContent.includes('Retrying in 5m 11s')`)
 
 	// Native generation facts reach the server-pushed roster.
 	generationInputs := new(sessioncontrol.Observations)

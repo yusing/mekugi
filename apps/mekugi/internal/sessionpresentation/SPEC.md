@@ -368,11 +368,13 @@ The terminal receives only editor-restoration effects and user feedback.
 ## Session title and progress
 
 Live retry notifications temporarily replace Working with the host's retry message,
-attempt and cause when supplied. Current response activity or turn termination
-clears that status; stale turns and historical replay cannot revive it. Main,
-child and side views share this progress. Logical provider waits show their cause
-and actual retry deadline when known, or an explicit paused usage limit when no
-deadline exists. Status publication neither changes retry policy nor adds history rows.
+attempt and cause when supplied. Server-directed capacity waits between sampling
+attempts show the initial delay from the first retry in both the terminal and web UI. Current response
+activity or turn termination clears that status; stale turns and historical replay
+cannot revive it. Main, child and side views share this progress. Logical provider
+waits show their cause and actual retry deadline when known, or an explicit paused
+usage limit when no deadline exists. Status publication neither changes retry
+policy nor adds history rows.
 
 `/title NAME` immediately names Main without interrupting work or submitting model
 input, then saves through [session control](../sessioncontrol/SPEC.md#thread-names).

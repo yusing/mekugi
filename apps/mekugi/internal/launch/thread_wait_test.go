@@ -27,7 +27,8 @@ func TestUISnapshotNativeRetryProgress(t *testing.T) {
 				appServerTestNotify(t, u, "error", map[string]any{"threadId": thread, "turnId": turn, "willRetry": retry,
 					"error": map[string]any{"message": message, "additionalDetails": "Server overloaded", "codexErrorInfo": "serverOverloaded"}})
 			}
-			for _, message := range []string{"Reconnecting... 1/5", "Reconnecting... 2/5"} {
+			const capacityRetry = "Retrying in 5m 11s (1/5)"
+			for _, message := range []string{capacityRetry, "Reconnecting... 2/5"} {
 				notify("first", message, true)
 				rows, _ := u.testMainFrame(100, 8, 0)
 				view := u.attached.presentation.View()
@@ -36,6 +37,11 @@ func TestUISnapshotNativeRetryProgress(t *testing.T) {
 				}
 				if got := u.attached.session.RetryStatus(thread); !strings.Contains(got, message) || !strings.Contains(got, "Server overloaded") {
 					t.Fatalf("retry facts lost: %q", got)
+				}
+				if message == capacityRetry && thread == "main" {
+					if frame := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(frame, capacityRetry+" · Server overloaded") {
+						t.Fatalf("capacity retry not rendered in the terminal:\n%s", frame)
+					}
 				}
 				if message == "Reconnecting... 2/5" {
 					if thread == "main" {
