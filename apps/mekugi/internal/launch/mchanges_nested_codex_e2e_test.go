@@ -180,8 +180,8 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 				p.sawPending = true
 			}
 			if p.overlapProgram != "" && p.overlapCell == "" && p.laterProgram == "" {
-				if !strings.Contains(result.Text, "formatter-no-op") {
-					return nil, fmt.Errorf("formatter comparison did not complete before overlap: %s", result.Text)
+				if !strings.Contains(result.Text, "runner-ready") {
+					return nil, fmt.Errorf("runner did not reach the overlap boundary: %s", result.Text)
 				}
 				p.overlapCell = cell
 				p.waitCall = p.callID + "-overlap"
@@ -264,7 +264,7 @@ func TestMChangesNoOpFormatterOverlapNativeCodexE2E(t *testing.T) {
 		writeTestFile(t, filepath.Join(workspace, name+".expected"), content)
 	}
 	writeTestFile(t, filepath.Join(workspace, "Makefile"), ".PHONY: test\ntest:\n\t@i=0; while ! grep -q 'Value = 2' first_test.go; do i=$$((i+1)); test $$i -lt 400 || exit 1; sleep 0.05; done\n\t@sleep 1; printf 'check-passed\\n'\n")
-	command := "gofmt -w first_test.go second_test.go && cmp first_test.go first_test.go.expected && cmp second_test.go second_test.go.expected && printf 'formatter-no-op\\n' && mrun --max-tokens 2000 make test"
+	command := "gofmt -w first_test.go second_test.go && cmp first_test.go first_test.go.expected && cmp second_test.go second_test.go.expected && printf 'runner-ready\\n' && mrun --max-tokens 2000 make test"
 	program := "// @exec: {\"yield_time_ms\": 2000}\nconst started = await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + ", yield_time_ms: 1000});\ntext(started.output);\nif (typeof started.session_id !== 'number') throw new Error('check did not yield');\nconst ended = await tools.write_stdin({session_id: started.session_id, chars: '', yield_time_ms: 10000});\ntext(ended.output);\nif (ended.exit_code !== 0) throw new Error('check failed');"
 	patch := "*** Begin Patch\n*** Update File: first_test.go\n@@\n-const Value = 1\n+const Value = 2\n*** End Patch\n"
 	provider := &mchangesNestedCodexProvider{
@@ -294,6 +294,68 @@ func TestMChangesNoOpFormatterOverlapNativeCodexE2E(t *testing.T) {
 	t.Logf("patch %s: net_status=%d net_stderr=%q\n%s", edited.ChangeID, net.status, net.stderr, net.stdout)
 	if net.status != 0 || net.stderr != "" || !strings.Contains(net.stdout, "-const Value = 1\n+const Value = 2") || history.status != 0 || history.stderr != "" || strings.Contains(history.stdout, "overlapping writer endpoint unavailable") {
 		t.Fatalf("overlapping patch lost complete evidence: net=%+v history=%+v", net, history)
+	}
+}
+
+func TestMChangesSubmoduleBatchDuringRunnerNativeCodex(t *testing.T) {
+	module, workspace := newGitFixture(t), newGitFixture(t)
+	for _, name := range []string{"direct.go", "first.go", "second.go", "third.go", "untouched.go"} {
+		module.write(name, "package fixture\n\nconst value = 1\n")
+	}
+	module.write("Makefile", "check:\n\t@printf 'runner-ready\\n'\n\t@i=0; until grep -q 'value = 2' third.go; do i=$$((i+1)); test $$i -lt 400 || exit 1; sleep .05; done\n")
+	module.run("add", ".")
+	module.run("commit", "-qm", "base")
+	workspace.run("-c", "protocol.file.allow=always", "submodule", "add", "-q", module.dir, "native")
+	nested := filepath.Join(workspace.dir, "native")
+	t.Setenv(routerTestWorkerEnvironment, "1")
+	registry, err := buildToolRegistryForTest(t, t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	store, err := openMekugiReplayStore(registry.ReplayDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	setCodexFrontendLoginEnvironment(t, registry.FrontendDirectory)
+	runner := "python3 -c 'import subprocess; subprocess.run([\"make\", \"check\"], check=True)'"
+	program := "// @exec: {\"yield_time_ms\":2000}\nconst r = await tools.exec_command({cmd:" + strconv.Quote(runner) + ", workdir:" + strconv.Quote(nested) + ",yield_time_ms:1000}); text(r.output); if(!r.session_id) throw Error('expected running check'); text(await tools.write_stdin({session_id:r.session_id,chars:'',yield_time_ms:10000}));"
+	edit := `python3 - <<'PY'
+from pathlib import Path
+base = Path('native')
+p = base / 'direct.go'
+p.write_text(p.read_text().replace('= 1', '=2'))
+for name in ['first.go', 'second.go', 'third.go', 'untouched.go']:
+    if name == 'untouched.go': raise SystemExit(7)
+    p = base / name
+    p.write_text(p.read_text().replace('= 1', '= 2'))
+PY`
+	format := "gofmt -w native/direct.go"
+	provider := &mchangesNestedCodexProvider{program: program, callID: "python-runner", finalMessage: "check completed", expectPending: true, store: store, workspace: workspace.dir,
+		overlapProgram: "const r = await tools.exec_command({cmd:" + strconv.Quote(edit) + "}); if(r.exit_code!==7) throw Error('expected partial write'); const f = await tools.exec_command({cmd:" + strconv.Quote(format) + "}); if(f.exit_code!==0) throw Error('format failed'); text('batch finished '.repeat(40));"}
+	thread := runMChangesNestedCodexCell(t, "codex", registry, store, workspace.dir, provider)
+	ctx, release, err := store.beginSession(t.Context(), thread, "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	check, found, err := store.scoped(ctx).lookup(ctx, workspace.dir, legacycall.ExecCallID(provider.callID, true))
+	if err != nil || !found || len(check.ReviewFiles) != 0 || check.ChangeID != "" {
+		t.Fatalf("runner claimed batch edits: found=%v id=%q files=%d err=%v", found, check.ChangeID, len(check.ReviewFiles), err)
+	}
+	batch, found, err := store.scoped(ctx).lookup(ctx, workspace.dir, legacycall.ExecCallID(provider.callID+"-overlap", true))
+	if err != nil || !found || batch.ChangeID == "" {
+		t.Fatalf("missing batch: found=%v err=%v", found, err)
+	}
+	net := runMChangesNestedShell(t, registry, workspace.dir, thread, "mchanges "+batch.ChangeID)
+	if net.status != 0 || strings.Count(net.stdout, "-const value = 1") != 4 || strings.Count(net.stdout, "+const value = 2") != 4 || strings.Contains(net.stdout, "untouched.go") {
+		t.Fatalf("partial batch and formatter lost endpoints: %+v", net)
 	}
 }
 

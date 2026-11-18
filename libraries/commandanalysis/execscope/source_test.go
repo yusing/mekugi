@@ -13,6 +13,7 @@ func TestPythonPathJoinUnknownSegmentsStayOpen(t *testing.T) {
 	for _, source := range []string{"name = 'a'\nname += '.txt'\n(Path('src') / name).write_text('new')",
 		"name = 'a.txt'\nname = unknown()\n(Path('src') / name).write_text('new')",
 		"for name in ['a.txt', unknown()]:\n (Path('src') / name).write_text('new')",
+		"p = Path('before')\nfor name in names():\n p = Path('inside')\np.write_text('new')",
 	} {
 		result := inspectExecSource(execProviderInput{cwd: t.TempDir(), deadline: time.Now().Add(time.Second)}, source, "", sourceparse.Python, true)
 		if !result.open || len(result.scope) != 0 {

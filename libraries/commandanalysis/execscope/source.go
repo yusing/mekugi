@@ -529,12 +529,13 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 		if left != nil && left.Kind() == "identifier" {
 			name := s.text(left)
 			s.assigned[name]++
-			// A top-level Python assignment replaces the value before the next
-			// statement. Keep each write's scope as we walk; reassignment need
-			// not discard literal paths in ordinary sequential rewrite scripts.
+			// An assignment in a straight-line sequence replaces the previous
+			// value there, including when a batch reuses its target variable
+			// in the immediate body of a for loop.
 			statement := node.Parent()
 			straightLine := s.python && statement != nil && statement.Kind() == "expression_statement" &&
-				statement.Parent() != nil && statement.Parent().Kind() == "module"
+				statement.Parent() != nil && (statement.Parent().Kind() == "module" ||
+				statement.Parent().Kind() == "block" && statement.Parent().Parent().Kind() == "for_statement")
 			text := s.python && s.pythonText(right, 0)
 			if s.assigned[name] == 1 || straightLine {
 				segments := s.literalSegments(right, 0)
@@ -586,6 +587,9 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 			paths := s.paths(right)
 			if s.python {
 				s.clearPythonLoopBindings(node.ChildByFieldName("body"), 0)
+				// A skipped iteration cannot establish the final value of a
+				// name assigned by the body. Later writes must resolve afresh.
+				defer s.clearPythonLoopBindings(node.ChildByFieldName("body"), 0)
 			}
 			if s.state.Segments == nil {
 				s.state.Segments = make(map[string][]string)
@@ -596,6 +600,7 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 			delete(s.pythonItems, s.text(left))
 		} else if s.python && left != nil {
 			s.bindPythonItems(left, right)
+			defer s.clearPythonLoopBindings(node.ChildByFieldName("body"), 0)
 		}
 	}
 	if function, args := sourceparse.Call(node); function != nil {
