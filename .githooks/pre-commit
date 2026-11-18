@@ -9,6 +9,14 @@ for state in rebase-merge rebase-apply; do
     fi
 done
 
+# A pointer-only update does not change any files in the staged checkout.
+staged_changes=$(git diff --cached --raw --no-color --no-renames --ignore-submodules=none)
+if [ -n "$staged_changes" ] && printf '%s\n' "$staged_changes" |
+    awk '$1 != ":160000" || $2 != "160000" { exit 1 }'; then
+    printf 'Skipping commit checks for a submodule pointer-only update.\n'
+    exit 0
+fi
+
 docs_changed=0
 if git diff --cached --quiet -- '*.md' '*.mdx' '*.rst' '*.adoc' '*.txt' \
     ':(glob,exclude)**/.worktrees/**' ':(glob,exclude)**/node_modules/**' \

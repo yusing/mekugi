@@ -84,6 +84,7 @@ Go source changes select snapshot packages through transitive imports, including
 platform-tagged imports. Snapshot baseline changes select their owning package; shared
 renderer changes still check downstream rendering consumers. Other inputs, including build
 configuration and resources without known ownership, retain the full snapshot gate.
+The hook skips both checks when the only staged changes update existing submodule pointers.
 It skips commits made while a rebase is in progress, including amended or reworded steps, so
 run `make docs-check` on the rebased tip when documentation changed, and
 `make test-ui-snapshots` when UI sources changed.
