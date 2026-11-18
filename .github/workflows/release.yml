@@ -81,6 +81,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends pkg-config libcap-dev libssl-dev
+      - name: Enable unprivileged user namespaces
+        if: runner.os == 'Linux'
+        run: |
+          # Match upstream Codex CI on the disposable Ubuntu runners.
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          if sysctl -n kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - name: Test and package native runtime
         env:
           CARGO_BUILD_JOBS: '2'
@@ -88,8 +96,13 @@ jobs:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           PLATFORM: ${{ matrix.platform }}
         run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            make build-native NATIVE_PROFILE=dev-small
+            # Exercise network namespace setup with the bundled binary, not a host bwrap.
+            bin/native/bwrap --unshare-user --unshare-net --ro-bind / / -- /bin/true
+          fi
           # App-server integration fixtures use debug-only startup options.
-          make test-native
+          make test-native NATIVE_PROFILE=dev-small
           make package-native NATIVE_ARCHIVE="$RUNNER_TEMP/artifacts/mekugi-native_${PLATFORM}.tar.gz"
           bin/native/mekugi-app-server --help
       - name: Build and package
