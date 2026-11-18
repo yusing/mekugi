@@ -96,3 +96,48 @@ func TestNativeSourceAcquisitionLiveRestoredAndReplay(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeResetRestoresHistoryReceipt(t *testing.T) {
+	for _, sidecar := range []bool{false, true} {
+		name := "history only"
+		if sidecar {
+			name = "both representations"
+		}
+		t.Run(name, func(t *testing.T) {
+			cwd := t.TempDir()
+			ui := newAppServerSessionTestUI(t, cwd)
+			receipt := &appserver.SourceAcquisition{ID: "reset-receipt", Purpose: "reload", Sources: []appserver.SourceAcquisitionResult{
+				{Reference: "@selected.txt", Kind: "file", Path: filepath.Join(cwd, "selected.txt"), Success: true},
+			}}
+			root := binding.ThreadInfo{ID: "main", Cwd: cwd, Turns: []binding.HistoryTurn{
+				{ID: "past", Status: "completed"},
+				{ID: "reset", Status: "completed", Items: []binding.ThreadItem{
+					{ID: "compact", Type: "contextCompaction", Status: "completed", SourceAcquisition: receipt},
+					{ID: "following", Type: "agentMessage", Text: "Retained response."},
+				}},
+			}}
+			if sidecar {
+				// A rollout copy can be attributed to an adjacent turn when only
+				// native history has the compaction item with the receipt.
+				root.Path = writeTestRollout(t, "main",
+					rolloutRecord(1, "event_msg", map[string]any{"type": "task_started", "turn_id": "past"}),
+					rolloutRecord(2, "compacted", map[string]any{
+						"replacement_history":          []map[string]any{{"type": "function_call_output", "output": "OPAQUE_MODEL_BODY"}},
+						"replacement_history_metadata": []map[string]any{{"source_acquisition": receipt}},
+					}),
+				)
+			}
+			if err := ui.restoreContent(root); err != nil {
+				t.Fatal(err)
+			}
+			entries := ui.attached.source.Entries
+			if len(entries) != 3 || entries[0].Source.Kind != "compaction" || entries[1].Source.Kind != "attachments" || entries[2].Source.Text != "Retained response." {
+				t.Fatalf("expected one attachment following its compaction, got %+v", entries)
+			}
+			attachment := entries[1]
+			if attachment.Source.Agent != "Main" || attachment.Source.Native.Turn != "reset" || len(attachment.Values) != 1 || attachment.Values[0].Path != "selected.txt" || !attachment.Values[0].AutoReload {
+				t.Fatalf("restored receipt lost its turn or selected file: %+v", attachment)
+			}
+		})
+	}
+}

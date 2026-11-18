@@ -182,20 +182,53 @@ func appServerResumeConfig(args, resumeArgv []string) map[string]any {
 // History is presentation evidence, not a stream of live lifecycle events.
 // In particular, old edits and collaboration calls must not revive previews,
 // processes or child agents. restoreMainHistory
-// also places restored evidence the host's history omits among Main's items: at its rollout anchor, or by time for evidence from
-// another thread. itemAt holds the root's retained item completion times.
+// places restored evidence among Main's items: after its native item or
+// rollout anchor, or by time for evidence from another thread. itemAt holds
+// the root's retained item completion times.
 func (session *nativeSession) restoreMainHistory(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, panel **appServerStatusReport, resumePicker **appServerResumePicker, parent context.Context, turns []binding.HistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
 	previousSegments := session.restoredSegments
 	defer func() { session.restoredSegments = previousSegments }()
 	positions := historyPositions(turns, itemAt)
 	byTurn := make(map[int][]*restoredPlacement)
+	// Native history can reach receipts older than the bounded rollout scan.
+	// Prefer its item anchor even if a rollout copy was ascribed another turn.
+	var nativeReceipts map[string]struct{}
+	for index, turn := range turns {
+		for _, item := range turn.Items {
+			if item.Type != "contextCompaction" || !sessionpresentation.CompletedCompaction(item.Status) || item.SourceAcquisition == nil {
+				continue
+			}
+			at := cmp.Or(itemAt[item.ID], historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt)))
+			entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(attached.cwd, session.Client.Thread, turn.ID, item.SourceAcquisition, at)
+			if !ok {
+				continue
+			}
+			entry, ok = sessionpresentation.MainActivityEntry(entry, true)
+			if !ok {
+				continue
+			}
+			if nativeReceipts == nil {
+				nativeReceipts = make(map[string]struct{})
+			}
+			if _, seen := nativeReceipts[entry.Native.Item]; seen {
+				continue
+			}
+			nativeReceipts[entry.Native.Item] = struct{}{}
+			byTurn[index] = append(byTurn[index], &restoredPlacement{entry: entry, turn: turn.ID, anchor: item.ID, at: at})
+		}
+	}
 	for _, p := range placements {
+		if p.entry.Kind == "attachments" && p.entry.Native != nil && p.entry.Native.Thread == session.Client.Thread {
+			if _, seen := nativeReceipts[p.entry.Native.Item]; seen {
+				continue
+			}
+		}
 		index := p.position().TurnFor(positions)
 		if index >= 0 {
 			byTurn[index] = append(byTurn[index], p)
 		} else if p.entry.Kind == "hook" || p.turn == "" {
 			// A retained delivery can arrive before the receiver has any turns.
-			applyRestoredMain(attached, []*restoredPlacement{p})
+			applyRestoredMain(attached, session.Client.Thread, []*restoredPlacement{p})
 		}
 	}
 	for index, turn := range turns {
@@ -208,7 +241,7 @@ func (session *nativeSession) restoreMainHistory(attached *attachedPresentation,
 		slots := positions[index].Slots(restoredPositions(placements))
 		place := func(indices []int) {
 			for _, index := range indices {
-				applyRestoredMain(attached, placements[index:index+1])
+				applyRestoredMain(attached, session.Client.Thread, placements[index:index+1])
 			}
 		}
 		place(slots[0])
@@ -249,7 +282,7 @@ func (session *nativeSession) restoreMainHistory(attached *attachedPresentation,
 	applyActivity(attached, &session.approvals, session.review, &session.pendingEditReceipts, session.Client.Thread, clock, nil, attached.session.Roster())
 }
 
-func applyRestoredMain(attached *attachedPresentation, placements []*restoredPlacement) {
+func applyRestoredMain(attached *attachedPresentation, thread string, placements []*restoredPlacement) {
 	for _, p := range placements {
 		entry := p.entry
 		if entry.Observed.IsZero() {
@@ -259,7 +292,7 @@ func applyRestoredMain(attached *attachedPresentation, placements []*restoredPla
 			// Retained deliveries need the same exact Activity target as live
 			// deliveries for summary disclosure and opening their original body.
 			entry.Seq = attached.session.Activity().NextSequence()
-			sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+			sessionpresentation.ApplyActivity(thread, attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 		} else {
 			attached.source.ApplyMain(entry)
 		}
@@ -329,7 +362,7 @@ func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation,
 		entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Agent: attached.session.Caller(session.Client.Thread), CallID: item.ID, Observed: presentationTime(clock),
 			Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Status: item.Status, Duration: sessionpresentation.ItemDuration(facts)}}
 		entry = attached.session.CoordinationEntry(entry, facts)
-		sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+		sessionpresentation.ApplyActivity(session.Client.Thread, attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 	case "imageView", "imageGeneration":
 		text, images := sessionpresentation.ImagePresentation(facts, method, attached.cwd)
 		if text == "" {

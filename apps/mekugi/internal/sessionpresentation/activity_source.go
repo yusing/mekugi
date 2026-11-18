@@ -67,6 +67,21 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 				}
 			}
 		}
+		if entry.Kind == "exit" {
+			for i, previous := range slices.Backward(v.Entries) {
+				if previous.Source.Agent != entry.Agent || previous.Source.CallID != entry.CallID || entry.CallID == "" ||
+					entry.Native != nil && !entry.Native.SameItem(previous.Source.Native) {
+					continue
+				}
+				code, _ := strconv.Atoi(entry.Text)
+				command := CommandPresentation(previous.Source)
+				blocks := activitypresentation.CommandExit(v.SourceValues(i), command.Display, code, entry.OutputTail, entry.OutputOmit, entry.OutputClipped)
+				command.ApplyFacts(blocks)
+				v.Model.Replace(i, previous.Source, blocks)
+				break
+			}
+			continue
+		}
 		v.settleNativeInterrupt(&entry)
 		if entry.Kind != "reasoning" && v.MergeNative(entry) {
 			continue
@@ -115,19 +130,6 @@ func (v *ActivitySource) Apply(event ActivityEvent) {
 			if updated {
 				continue
 			}
-		}
-		if entry.Kind == "exit" {
-			for i, v0 := range slices.Backward(v.Entries) {
-				if v0.Source.Agent == entry.Agent && v0.Source.CallID == entry.CallID && entry.CallID != "" {
-					code, _ := strconv.Atoi(entry.Text)
-					command := CommandPresentation(v0.Source)
-					blocks := activitypresentation.CommandExit(v.SourceValues(i), command.Display, code, entry.OutputTail, entry.OutputOmit, entry.OutputClipped)
-					command.ApplyFacts(blocks)
-					v.Model.Replace(i, v0.Source, blocks)
-					break
-				}
-			}
-			continue
 		}
 		blocks := ActivityContent(entry).Values()
 		v.Model.Append(entry, blocks)

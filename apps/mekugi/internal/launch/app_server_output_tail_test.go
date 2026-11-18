@@ -677,13 +677,14 @@ func TestOutputCollapseSharesFrameAcrossPanes(t *testing.T) {
 	start := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 	late := start.Add(activityui.OutputDebounce / 2)
 	for i, agent := range []string{"/root", "/root/worker"} {
+		thread := []string{u.Thread, "worker"}[i]
 		at := start
 		if i == 1 {
 			at = late
 		}
 		applyActivity(&u.attached, &u.approvals, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{
-			{Seq: uint64(i*2 + 1), Agent: agent, Kind: "tool", Text: "Run `echo result`", Observed: at, Completed: at, OutputTail: []string{"first output line", "last output line"}, Native: &sessionpresentation.NativeItem{Thread: agent, Item: "cmd"}},
-			{Seq: uint64(i*2 + 2), Agent: agent, Kind: "reasoning", Text: "**Next step**", Observed: at, Native: &sessionpresentation.NativeItem{Thread: agent, Item: "next"}},
+			{Seq: uint64(i*2 + 1), Agent: agent, Kind: "tool", Text: "Run `echo result`", Observed: at, Completed: at, OutputTail: []string{"first output line", "last output line"}, Native: &sessionpresentation.NativeItem{Thread: thread, Item: "cmd"}},
+			{Seq: uint64(i*2 + 2), Agent: agent, Kind: "reasoning", Text: "**Next step**", Observed: at, Native: &sessionpresentation.NativeItem{Thread: thread, Item: "next"}},
 		}, nil)
 	}
 	render := func(view *activityAdapter) string {

@@ -92,7 +92,7 @@ func compactReloadUI(t *testing.T, sources []compact.SourceIdentity, child bool)
 		defer prepared.Close()
 		for _, entry := range takeNativeActivity(u.audience, "main") {
 			entry.Seq = u.attached.childSource.LastSeq + 1
-			sessionpresentation.ApplyActivity(u.attached.source, u.attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+			sessionpresentation.ApplyActivity(u.Thread, u.attached.source, u.attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 		}
 		return prepared.(interface{ CompactReload() jsontext.Value }).CompactReload()
 	}

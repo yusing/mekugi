@@ -118,6 +118,9 @@ func (a *Attachment) Roster() []ActivityAgent {
 		if a.ToolInput != nil && agents[i].Responding {
 			agents[i].Generating = a.ToolInput(agents[i].Thread)
 		}
+		if waits := *nativeWaits.Value(a.Thread(agents[i].Thread)); len(waits) > 0 {
+			agents[i].Waiting, agents[i].Wait = true, waits[len(waits)-1].progress
+		}
 		if retry := agents[i].Retry; retry != nil {
 			agents[i].Waiting, agents[i].Wait = true, retry
 		}

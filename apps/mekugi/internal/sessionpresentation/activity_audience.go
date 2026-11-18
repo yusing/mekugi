@@ -17,11 +17,15 @@ func ActivityOwner(entry ActivityEntry) string {
 	return entry.Agent
 }
 
-// MainActivityEntry projects one collector entry into Main's audience.
-// Ordinary root activity stays in Main, but a directed message belongs at
-// both ends, and a child's start and answer show where Main follows them.
-func MainActivityEntry(entry ActivityEntry) (ActivityEntry, bool) {
-	main := entry.Agent == "/root" && (entry.Kind == "compaction" || entry.Kind == "compact_reload" || entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress" || entry.Kind == "attachments")
+// MainActivityEntry projects one collector entry into the local transcript.
+// Local operations stay in that transcript, but a directed message belongs at
+// both ends, and a child's start and answer show where the attachment follows them.
+func MainActivityEntry(entry ActivityEntry, local bool) (ActivityEntry, bool) {
+	main := local && (entry.Kind == "compaction" || entry.Kind == "compact_reload" || entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress" || entry.Kind == "attachments")
+	if main {
+		entry.Agent = "Main"
+		return entry, true
+	}
 	if (entry.Kind == "assignment" || entry.Kind == "start") && entry.Assignment != nil {
 		main = true
 		entry.Agent = entry.Assignment.From
@@ -52,19 +56,22 @@ func (v *ActivitySource) ApplyMain(entry ActivityEntry) {
 	v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 }
 
-// applyActivity projects the collector once into the two audiences. Ordinary
-// root activity stays in Main, but a directed message belongs at both ends.
-func ApplyActivity(main, children *ActivitySource, entries []ActivityEntry, agents []ActivityAgent) {
+// ApplyActivity projects the collector once into the two audiences.
+func ApplyActivity(localThread string, main, children *ActivitySource, entries []ActivityEntry, agents []ActivityAgent) {
 	paneEntries := slices.Clone(entries)
 	for i := range paneEntries {
 		paneEntries[i].Agent = ActivityOwner(paneEntries[i])
 	}
 	children.Apply(ActivityEvent{Entries: paneEntries, Agents: agents})
 	for i, entry := range entries {
-		if entry.Native != nil && children.OutsideMain(entry.Native.Thread) {
-			continue
+		local := entry.Agent == "/root" // Legacy observations have no native identity.
+		if entry.Native != nil && entry.Native.Thread != "" {
+			local = entry.Native.Thread == localThread
+			if !local && children.OutsideMain(entry.Native.Thread) {
+				continue
+			}
 		}
-		if entry, admitted := MainActivityEntry(entry); admitted {
+		if entry, admitted := MainActivityEntry(entry, local); admitted {
 			if MainActivityLinked(entry) {
 				entry.ActivitySeq = children.EntrySeq(paneEntries[i])
 			}

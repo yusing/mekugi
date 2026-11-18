@@ -943,7 +943,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			session.Client.Compaction.ObserveReset(receipt)
 			if entry, ok := sessionpresentation.NativeContextResetEntry(receipt, presentationTime(clock)); ok {
 				entry.Seq = attached.session.Activity().NextSequence()
-				sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+				sessionpresentation.ApplyActivity(session.Client.Thread, attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 			}
 		}
 	}
@@ -968,7 +968,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			publishNativeCoordination(attached, event.Thread, event.Turn, event.Item, event.Coordination, presentationTime(clock))
 			if entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(attached.cwd, event.Thread, event.Turn, event.SourceAcquisition, presentationTime(clock)); ok {
 				entry.Seq = attached.session.Activity().NextSequence()
-				sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+				sessionpresentation.ApplyActivity(session.Client.Thread, attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 			}
 		}
 	}
@@ -1631,7 +1631,7 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 }
 
 func applyActivity(attached *attachedPresentation, approvals *nativeApprovalDock, review *sessionreview.Review, pending *[]*changepresentation.Receipt, main string, clock func() time.Time, entries []sessionpresentation.ActivityEntry, agents []sessionpresentation.ActivityAgent) {
-	sessionpresentation.ApplyActivity(attached.source, attached.childSource, entries, agents)
+	sessionpresentation.ApplyActivity(main, attached.source, attached.childSource, entries, agents)
 	applyCapturedEdits(attached, review, pending)
 	// Reconcile the independent guard and host channels without re-entering
 	// Activity publication. Remove each ready request before applying its update.
@@ -1649,7 +1649,7 @@ func applyActivity(attached *attachedPresentation, approvals *nativeApprovalDock
 		if attached.session.KnownCaller(main) == "" {
 			attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{entry}})
 		} else {
-			sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+			sessionpresentation.ApplyActivity(main, attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 			applyCapturedEdits(attached, review, pending)
 		}
 	}

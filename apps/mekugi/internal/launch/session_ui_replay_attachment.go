@@ -65,13 +65,13 @@ func (s *replayAttachment) apply(o replayOwners, source *playback.Source, at tim
 	case e.Hook != nil:
 		entry := hookEntry(&s.session, o.activity, s.workspace(e.ThreadID), e.ThreadID, *e.Hook, false)
 		entry.Seq = s.session.Activity().NextSequence()
-		sessionpresentation.ApplyActivity(s.source, s.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+		sessionpresentation.ApplyActivity(source.Thread, s.source, s.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 	case e.Kind == observation.ProviderStarted:
 		if e.ThreadID == "" {
 			return
 		}
 		updates := s.transcript.ProviderStarted(e.ThreadID, e.At, s.session.Thread(e.ThreadID))
-		sessionpresentation.ApplyActivity(s.source, s.childSource, s.session.AdmitText(updates, source.Thread), nil)
+		sessionpresentation.ApplyActivity(source.Thread, s.source, s.childSource, s.session.AdmitText(updates, source.Thread), nil)
 	case e.Kind == observation.ProviderCompleted:
 	default:
 		if s.message(source, at, e.Event) {

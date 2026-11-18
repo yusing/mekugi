@@ -12,7 +12,7 @@ func TestNativeDetailUnknownSkillCallerIsStale(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", t.TempDir())
 	u.attached.session.RegisterThread(observation.Thread{ID: "child", Path: "/root/child"})
-	sessionpresentation.ApplyActivity(u.attached.source, u.attached.childSource, nil, u.attached.session.Roster())
+	sessionpresentation.ApplyActivity(u.Thread, u.attached.source, u.attached.childSource, nil, u.attached.session.Roster())
 	for _, roster := range []bool{false, true} {
 		c := &nativeClient{event: sessionapi.NativeEvent{Frame: sessionapi.NativeFrame{View: u.attached.presentation.View()}}}
 		if roster {

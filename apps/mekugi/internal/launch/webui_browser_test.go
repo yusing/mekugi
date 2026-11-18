@@ -1227,7 +1227,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	sectionlessBody := fallbackReply + strings.Repeat("Supporting sectionless evidence.\n\n", 100)
 	for i, text := range []string{"## Summary\nNested review complete.\n\n[evidence]: https://example.com/evidence\n\n## Details\nNested retained details. See [evidence].", strings.Repeat("Nested unstructured reply paragraph.\n\n", 12), sectionlessBody} {
 		entry := sessionpresentation.NativeDeliveryEntry(sessioncontrol.NativeDelivery{Thread: "main", Sender: "/root/worker/reviewer", Recipient: "/root", Kind: "MESSAGE", Message: text}, fmt.Sprint(i), time.Now(), false)
-		applyRestoredMain(&restoredReplies.attached, []*restoredPlacement{{entry: entry}})
+		applyRestoredMain(&restoredReplies.attached, restoredReplies.Thread, []*restoredPlacement{{entry: entry}})
 	}
 	outgoing := restoredReplies.attached.session.CoordinationEntry(sessionpresentation.ActivityEntry{Agent: "/root", Native: &sessionpresentation.NativeItem{Phase: "item/completed"}}, observation.Item{
 		Type: "mcpToolCall", Server: "threadcontrol", Tool: "send_message", Status: "completed",

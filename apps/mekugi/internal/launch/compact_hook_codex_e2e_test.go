@@ -24,11 +24,14 @@ import (
 	"github.com/coder/websocket"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/mcptransport"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 )
 
 func TestCompactReloadNativeCodex(t *testing.T) {
@@ -148,6 +151,7 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 	defer func() { client.Close() }()
 	completed, compactions := 0, 0
 	var contextTokens, totalTokens, resetContext, resetTotal uint64
+	var live *appServerUI
 	next := func() appserver.Message {
 		for {
 			select {
@@ -172,6 +176,11 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 					completed++
 				}
 				if m.Method == "item/completed" && bytes.Contains(m.Params, []byte(`"contextCompaction"`)) {
+					if live != nil {
+						if err := live.message(m); err != nil {
+							t.Fatal(err)
+						}
+					}
 					compactions++
 					resetContext, resetTotal = contextTokens, totalTokens
 				}
@@ -230,6 +239,15 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 		t.Fatal(err)
 	}
 	thread := result.Thread.ID
+	newPresentation := func() *appServerUI {
+		u := newAppServerSessionTestUI(t, workspace)
+		u.Thread = thread
+		u.startSession(thread, workspace)
+		return u
+	}
+	if !automatic {
+		live = newPresentation()
+	}
 	runTurn("turn/start", map[string]any{"threadId": thread, "input": appserver.Input("ORIGINAL_TASK_SENTINEL")})
 	initial, afterTool := request(), request()
 	if !bytes.Contains(initial, []byte("read_note")) || bytes.Contains(initial, []byte("mcp__notes__blocked")) {
@@ -292,6 +310,53 @@ func testCompactReloadNativeCodex(t *testing.T, automatic, socket bool) {
 		t.Fatal("original task is unavailable for ordinary recall")
 	}
 	client.Close()
+	if live != nil {
+		var read struct {
+			Thread binding.ThreadInfo `json:"thread"`
+		}
+		if err := json.Unmarshal(original.Result, &read); err != nil {
+			t.Fatal(err)
+		}
+		restored := newPresentation()
+		if err := restored.restoreContent(read.Thread); err != nil {
+			t.Fatal(err)
+		}
+		src, err := replayTestService(t, nil).Read(t.Context(), playback.ReadOptions{Path: read.Thread.Path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		replay := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), src, 1)
+		defer replay.close()
+		if err := replay.advance(src.End.Sub(src.Start)); err != nil {
+			t.Fatal(err)
+		}
+		var acquisition string
+		for _, output := range []struct {
+			name   string
+			source *sessionpresentation.ActivitySource
+		}{{"live", live.attached.source}, {"restore", restored.attached.source}, {"replay", replay.ui.source}} {
+			count := 0
+			for _, row := range output.source.Entries {
+				if row.Source.Kind != "attachments" {
+					continue
+				}
+				count++
+				if len(row.Values) != 2 || row.Values[0].Path != "selected.json" || row.Values[0].ExitCode != 0 || !row.Values[0].AutoReload || row.Values[1].Path != "missing.json" || row.Values[1].ExitCode == 0 {
+					t.Fatalf("%s: reload outcomes = %+v", output.name, row.Values)
+				}
+				if acquisition == "" {
+					acquisition = row.Source.Native.Item
+				}
+				if acquisition != row.Source.Native.Item {
+					t.Fatalf("%s: receipt identity changed", output.name)
+				}
+			}
+			if count != 1 {
+				t.Fatalf("%s: got %d reload attachment entries, want one", output.name, count)
+			}
+		}
+		live = nil
+	}
 	client = newClient()
 	initialize()
 	call("thread/resume", map[string]any{"threadId": thread})

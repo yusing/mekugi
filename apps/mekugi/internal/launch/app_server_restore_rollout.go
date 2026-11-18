@@ -90,10 +90,9 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				CallID    *string           `json:"call_id"`
 				Output    jsonv1.RawMessage `json:"output"`
 				History   []struct {
-					Metadata struct {
-						SourceAcquisition *appserver.SourceAcquisition `json:"source_acquisition"`
-					} `json:"metadata"`
+					Metadata rollout.SourceMetadata `json:"metadata"`
 				} `json:"replacement_history"`
+				HistoryMetadata rollout.ReplacementMetadata `json:"replacement_history_metadata"`
 			} `json:"payload"`
 		}
 		if json.Unmarshal(line, &record) != nil {
@@ -104,8 +103,8 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 		// timestamps place them without inventing a turn or starting work.
 		event := restoredRolloutEvent{turn: turn, anchor: anchor, at: record.Timestamp}
 		if record.Type == "compacted" {
-			for _, item := range p.History {
-				if entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(info.Cwd, info.ID, turn, item.Metadata.SourceAcquisition, record.Timestamp); ok {
+			for i, item := range p.History {
+				if entry, ok := sessionpresentation.NativeSourceAcquisitionEntry(info.Cwd, info.ID, turn, p.HistoryMetadata.Acquisition(i, item.Metadata), record.Timestamp); ok {
 					delivered := event
 					delivered.entry = entry
 					r.events = append(r.events, delivered)

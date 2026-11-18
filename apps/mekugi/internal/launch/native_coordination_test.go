@@ -274,6 +274,7 @@ func TestNativeWaitItemPreservesIdentityAndTimeoutOnRestore(t *testing.T) {
 	if err := restored.restoreContent(info); err != nil {
 		t.Fatal(err)
 	}
+	assertNativeRosterWait(t, restored, false)
 	for _, view := range []*appServerUI{live, restored} {
 		entries := view.attached.source.Entries
 		if len(entries) != 1 || entries[0].Source.Native == nil {
@@ -295,4 +296,41 @@ func TestPausedWaitOutcomeDoesNotConfirmInterruption(t *testing.T) {
 	if len(entries) != 2 || entries[0].Source.Text != "Interrupt requested for /root/worker" || entries[1].Source.Kind != "progress" {
 		t.Fatalf("paused reserved work became terminal: %+v", entries)
 	}
+}
+
+func assertNativeRosterWait(t *testing.T, u *appServerUI, waiting bool) {
+	t.Helper()
+	publication := u.attached.childSource.Publication(u.attached.presentation, u.attached.source)
+	found := false
+	for _, row := range publication.Roster {
+		if row.Agent.Thread == "main" {
+			found = true
+			if row.Agent.Waiting != waiting || (row.Agent.Status == "waiting") != waiting || (row.Agent.Wait != nil) != waiting {
+				t.Fatalf("issuing roster row = %+v, want waiting %t", row.Agent, waiting)
+			}
+		} else if row.Agent.Waiting {
+			t.Fatalf("receiver marked as waiting: %+v", row.Agent)
+		}
+	}
+	if !found {
+		t.Fatal("missing issuing roster row")
+	}
+}
+
+func TestNativeWaitRosterMatchesItem(t *testing.T) {
+	u, _, _ := nativeWaitUI(t, nil)
+	assertNativeRosterWait(t, u, true)
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "first", "item": map[string]any{"id": "other", "type": "collabAgentToolCall", "tool": "wait", "status": "completed"}})
+	assertNativeRosterWait(t, u, true)
+	nativeWaitItemFixture(t, u, "item/completed", nil)
+	assertNativeRosterWait(t, u, false)
+}
+
+func TestNativeWaitRosterInterrupted(t *testing.T) {
+	u, _, _ := nativeWaitUI(t, nil)
+	assertNativeRosterWait(t, u, true)
+	appServerTestTurnEnd(t, u, "first", "interrupted")
+	assertNativeRosterWait(t, u, false)
+	nativeWaitItemFixture(t, u, "item/started", nil)
+	assertNativeRosterWait(t, u, false)
 }

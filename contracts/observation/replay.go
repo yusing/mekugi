@@ -79,6 +79,7 @@ const (
 // question options preserve opaque user-content blocks for their own consumer;
 // raw/private reasoning is never included.
 type Item struct {
+	SourceAcquisition                                  *SourceAcquisition
 	CompactionMethod                                   CompactionMethod
 	CompactionContext                                  *Context
 	SavedPath                                          string

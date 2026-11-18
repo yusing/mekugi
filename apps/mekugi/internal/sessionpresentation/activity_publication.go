@@ -107,6 +107,8 @@ func (v *ActivitySource) Publication(session *Model, main *ActivitySource) *acti
 				continue
 			}
 			if agent.Generating == "" {
+				// The attached runtime's transcript is its roster summary source.
+				// Its local operations are admitted by thread ID before publication.
 				agent.Summary = mainSummary
 			}
 			agent.Skills = slices.Clone(main.ActiveSkills()["Main"])

@@ -190,6 +190,7 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 		{name: "pending with stale final", status: sessionpresentation.Pending, host: activity.AgentFacts{Final: true}, state: "working", text: "child activity"},
 		{name: "waiting across host completion", status: sessionpresentation.Waiting, host: activity.AgentFacts{Final: true}, state: "waiting", text: "Waiting for"},
 		{name: "continuation leaves waiting", status: sessionpresentation.WorkRunning, host: activity.AgentFacts{Waiting: true}, state: "working", text: "child activity"},
+		{name: "working during native wait", status: sessionpresentation.WorkRunning, host: activity.AgentFacts{Waiting: true, Wait: &activity.Value{Kind: "progress", Body: "Waiting for worker"}}, state: "waiting", text: "Waiting for worker"},
 		{name: "working during native retry", status: sessionpresentation.WorkRunning, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "waiting", text: "Reconnecting... 2/5"},
 		{name: "completion supersedes stale retry", status: sessionpresentation.Completed, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "done", text: "done"},
 		{name: "interruption supersedes stale retry", status: sessionpresentation.Interrupted, host: activity.AgentFacts{Waiting: true, Retrying: true}, state: "idle", text: "idle"},
@@ -212,7 +213,7 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 			childFrame.Agents = familyActivity("child", "child activity")
 			host := &childFrame.Agents.Roster[0].Agent
 			host.Responding, host.Waiting, host.Final = tc.host.Responding, tc.host.Waiting, tc.host.Final
-			host.Retrying = tc.host.Retrying
+			host.Wait, host.Retrying = tc.host.Wait, tc.host.Retrying
 			if host.Retrying {
 				host.Wait = &activity.Value{Kind: "progress", Body: "Reconnecting... 2/5", Live: true}
 			}

@@ -287,6 +287,9 @@ func (v *View) Visible(entry activitypresentation.Entry) bool {
 	if v.ChildrenOnly && entry.Agent == "/root" {
 		return false
 	}
+	if v.Conversation && !v.ChildrenOnly {
+		return true // The local transcript has already selected its audience.
+	}
 	return !v.displayingChild() || entry.Agent == v.displayedCaller()
 }
 

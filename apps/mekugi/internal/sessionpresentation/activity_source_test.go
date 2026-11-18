@@ -16,7 +16,7 @@ func TestActivitySourceAdmissionWithoutRenderer(t *testing.T) {
 	main := &ActivitySource{Model: &feeds.Main, Audience: MainAudience}
 	children := &ActivitySource{Model: &feeds.Children, Audience: ChildAudience}
 	now := time.Unix(100, 0)
-	ApplyActivity(main, children, []ActivityEntry{
+	ApplyActivity("main", main, children, []ActivityEntry{
 		{Seq: 1, Agent: "/root", Kind: "reasoning", Text: "**Checking inputs**", Observed: now},
 		{Seq: 2, Agent: "/root/worker", Kind: "reasoning", Text: "**Checking child**", Observed: now},
 		{Seq: 3, Agent: "/root/worker", Kind: "final", Text: "Child result", Observed: now},

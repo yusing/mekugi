@@ -38,6 +38,81 @@ func TestPreparedChildStartupPreservesObservationAudience(t *testing.T) {
 	}
 }
 
+func TestCanonicalChildCommandInThreadAndRoster(t *testing.T) {
+	workspace := t.TempDir()
+	child, _ := newAppServerTestUI()
+	child.ctx = t.Context()
+	child.Startup.Thread = "child"
+	child.nativeAgent = &binding.ThreadInfo{ID: "child", ParentThreadID: "main", Source: []byte(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker"}}}`)}
+	appServerTestRequest(t, child, "1", "thread/resume")
+	appServerTestMessage(t, child, `{"id":1,"result":{"thread":{"id":"child","turns":[]}}}`)
+	parent := newAppServerSessionTestUI(t, workspace)
+	appServerTestNotify(t, parent, "thread/started", map[string]any{"thread": child.nativeAgent})
+	for _, ui := range []*appServerUI{child, parent} {
+		appServerTestNotify(t, ui, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "turn"}})
+	}
+	notify := func(ui *appServerUI, phase string, item binding.ThreadItem) {
+		appServerTestNotify(t, ui, phase, map[string]any{"threadId": "child", "turnId": "turn", "item": item})
+	}
+	command := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "fixture-command LOCAL_CASE", Status: "inProgress"}
+	first := binding.ThreadItem{ID: "before", Type: "reasoning", Summary: []string{"**Local reasoning before**"}}
+	last := binding.ThreadItem{ID: "after", Type: "reasoning", Summary: []string{"**Local reasoning after**"}}
+	notify(child, "item/completed", first)
+	child.controlObservations = new(sessioncontrol.Observations)
+	child.attached.session.ToolInput = child.controlObservations.ToolInput
+	var generation sessioncontrol.Generation
+	call := sessioncontrol.GenerationItem{ID: "exec"}
+	child.controlObservations.SetToolInput(&generation, workspace, "child", call, true)
+	child.controlObservations.IdentifyToolInput(&generation, call, "exec", true, `await tools.exec_command({cmd: "fixture-command`)
+	notify(child, "item/started", command)
+	roster := func() activity.Agent {
+		t.Helper()
+		publication := child.attached.childSource.Publication(child.attached.presentation, child.attached.source)
+		for _, row := range publication.Roster {
+			if row.Agent.Thread == "child" && row.Agent.Name == "/root/worker" && row.Agent.Responding {
+				return row.Agent
+			}
+		}
+		t.Fatalf("active canonical child missing from roster: %+v", publication.Roster)
+		return activity.Agent{}
+	}
+	if agent := roster(); len(agent.Summary) != 1 || agent.Generating != "Executing a command" || agent.Summary[0].Kind != "progress" {
+		t.Fatalf("transient tool generation lost its roster label: %+v", agent)
+	}
+	child.controlObservations.EndGeneration(&generation)
+	command.Status, command.ExitCode, command.AggregatedOutput = "failed", new(7), new("LOCAL_CASE\n")
+	notify(child, "item/completed", command)
+	notify(parent, "item/completed", command)
+	if agent := roster(); len(agent.Summary) != 1 || agent.Generating != "" || agent.Summary[0].Kind != "tool" || !strings.Contains(agent.Summary[0].Text, "LOCAL_CASE") {
+		t.Fatalf("active child's roster did not show its completed command: %+v", agent)
+	}
+	notify(child, "item/completed", last)
+	assertTranscript := func(ui *appServerUI) {
+		t.Helper()
+		ui.shell.Transcript.Conversation = true
+		rollCommandOutput(ui)
+		transcript := ansi.Strip(strings.Join(ui.testActivity(ui.shell.Transcript).RenderFeed(100, 28).Lines, "\n"))
+		before, cmd, after := strings.Index(transcript, "Local reasoning before"), strings.Index(transcript, "LOCAL_CASE"), strings.Index(transcript, "Local reasoning after")
+		if before < 0 || cmd <= before || after <= cmd || !strings.Contains(transcript, "exit 7") {
+			var admitted []string
+			for _, record := range ui.attached.source.Entries {
+				admitted = append(admitted, record.Source.Agent+":"+record.Source.Kind+":"+record.Source.Text)
+			}
+			t.Fatalf("child Thread pane lost command order or outcome: admitted=%q\n%s", admitted, transcript)
+		}
+	}
+	assertTranscript(child)
+	if strings.Contains(strings.Join(parent.testActivity(parent.shell.Transcript).RenderFeed(100, 28).Lines, "\n"), "LOCAL_CASE") {
+		t.Fatal("child command leaked into parent's Thread pane")
+	}
+
+	reopened, _ := newAppServerTestUI()
+	reopened.ctx, reopened.Startup.Thread, reopened.nativeAgent = t.Context(), "child", child.nativeAgent
+	appServerTestRequest(t, reopened, "1", "thread/resume")
+	appServerTestMessage(t, reopened, `{"id":1,"result":{"thread":{"id":"child","turns":[{"id":"turn","status":"completed","items":[{"id":"before","type":"reasoning","summary":["**Local reasoning before**"]},{"id":"command","type":"commandExecution","command":"fixture-command LOCAL_CASE","status":"failed","exitCode":7,"aggregatedOutput":"LOCAL_CASE\n"},{"id":"after","type":"reasoning","summary":["**Local reasoning after**"]}]}]}}}`)
+	assertTranscript(reopened)
+}
+
 func TestChildFamilyRosterPreservesMainSummary(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("child", t.TempDir())

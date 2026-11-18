@@ -3,14 +3,36 @@ package sessionpresentation
 import (
 	json "encoding/json/v2"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/modules/activity/coordination"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
+
+// Native wait items can overlap across outstanding cells in one thread.
+type nativeWaitItem struct {
+	turn, item string
+	progress   *activitypresentation.Value
+}
+
+var nativeWaits scope.Key[[]nativeWaitItem]
+
+func (s *Attachment) observeWaitItem(entry ActivityEntry) {
+	n := entry.Native
+	waits := nativeWaits.Value(s.Thread(n.Thread))
+	index := slices.IndexFunc(*waits, func(w nativeWaitItem) bool { return w.turn == n.Turn && w.item == n.Item })
+	switch {
+	case n.Phase == "item/started" && n.Status == "inProgress" && index < 0:
+		*waits = append(*waits, nativeWaitItem{n.Turn, n.Item, n.Wait})
+	case n.Phase == "item/completed" && index >= 0:
+		*waits = slices.Delete(*waits, index, index+1)
+	}
+}
 
 // CoordinationEntry binds the first-party operation to ordinary agent traffic.
 // Host identity remains stable across pending, completed and restored entries.

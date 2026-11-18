@@ -106,7 +106,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 		if !result.Publish {
 			return
 		}
-		ApplyActivity(mainSource, childSource, entries, s.Roster())
+		ApplyActivity(in.Main, mainSource, childSource, entries, s.Roster())
 		for i := range result.Deliveries {
 			command := result.Deliveries[i].Command
 			if command == nil {
@@ -283,6 +283,10 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 				}
 				entry := ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, Kind: "compaction", Text: summary, Observed: now, Native: native}
 				entries = append(entries, entry)
+				if attached, ok := NativeSourceAcquisitionEntry(in.Workspace, p.ThreadID, p.TurnID, item.SourceAcquisition, now); ok {
+					attached.Seq, attached.Agent = s.Activity().NextSequence(), agent
+					entries = append(entries, attached)
+				}
 				if !completed {
 					result.Compaction = new(entry)
 				}
@@ -364,7 +368,15 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 
 		case "collabAgentToolCall":
 			if item.Tool == "wait" {
-				entries = append(entries, s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item))
+				entry := s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item)
+				entries = append(entries, entry)
+				active := in.Selected
+				if !main {
+					active = s.Agent(agent).Turn
+				}
+				if !model.replay && !in.AuxiliaryTurn && id != "" && (active == "" || active == p.TurnID) && s.Transcript(p.ThreadID, p.TurnID).Turn != nil {
+					s.observeWaitItem(entry)
+				}
 			}
 		case "mcpToolCall":
 			entries = append(entries, s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item))
@@ -427,7 +439,7 @@ func (s *Attachment) commandDone(entry ActivityEntry, item observation.Item, now
 	CommandOutput(&entry, item, now)
 	done := []ActivityEntry{entry}
 	if item.ExitCode != nil && *item.ExitCode != 0 {
-		exit := ActivityEntry{Seq: s.Activity().NextSequence(), Agent: entry.Agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: entry.CallID, Observed: now}
+		exit := ActivityEntry{Seq: s.Activity().NextSequence(), Agent: entry.Agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: entry.CallID, Observed: now, Native: entry.Native}
 		exit.OutputTail, exit.OutputOmit, exit.OutputClipped = OutputTail(item.AggregatedOutput)
 		done = append(done, exit)
 	}

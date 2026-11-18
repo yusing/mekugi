@@ -15,5 +15,5 @@ func publishNativeCoordination(attached *attachedPresentation, thread, turn stri
 	for i := range entries {
 		entries[i].Seq = attached.session.Activity().NextSequence()
 	}
-	sessionpresentation.ApplyActivity(attached.source, attached.childSource, entries, nil)
+	sessionpresentation.ApplyActivity(thread, attached.source, attached.childSource, entries, nil)
 }

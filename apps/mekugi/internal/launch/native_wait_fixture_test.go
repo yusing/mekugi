@@ -102,5 +102,5 @@ func nativeWaitSettlementFixture(t *testing.T, u *appServerUI, result appserver.
 func publishNativeDelivery(attached *attachedPresentation, input sessioncontrol.NativeDelivery, now time.Time) {
 	entry := sessionpresentation.NativeDeliveryEntry(input, input.ID, now, false)
 	entry.Seq = attached.session.Activity().NextSequence()
-	sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+	sessionpresentation.ApplyActivity(attached.presentation.View().Main.ID, attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 }

@@ -51,7 +51,8 @@ func (session *nativeSession) restorePaneContent(attached *attachedPresentation,
 	}
 	var placements []*restoredPlacement
 	for _, event := range retainedRollout.events {
-		entry, ok := sessionpresentation.MainActivityEntry(event.entry)
+		// These events were admitted from the attached rollout, including retained inheritance.
+		entry, ok := sessionpresentation.MainActivityEntry(event.entry, true)
 		if !ok {
 			continue
 		}

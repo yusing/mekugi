@@ -19,6 +19,20 @@ import (
 	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
+type SourceMetadata struct {
+	SourceAcquisition *observation.SourceAcquisition `json:"source_acquisition"`
+}
+
+// ReplacementMetadata is the aligned metadata sidecar for native compacted history.
+type ReplacementMetadata []SourceMetadata
+
+func (m ReplacementMetadata) Acquisition(index int, inline SourceMetadata) *observation.SourceAcquisition {
+	if index < len(m) {
+		return m[index].SourceAcquisition
+	}
+	return inline.SourceAcquisition
+}
+
 type replayRecord struct {
 	Timestamp time.Time `json:"timestamp"`
 	Type      string    `json:"type"`
@@ -43,12 +57,11 @@ type replayRecord struct {
 			Kinds []string `json:"content_item_kinds"`
 		} `json:"internal_chat_message_metadata_passthrough"`
 		History []struct {
-			Type      string `json:"type"`
-			Reference string `json:"encrypted_content"`
-			Metadata  struct {
-				SourceAcquisition *observation.SourceAcquisition `json:"source_acquisition"`
-			} `json:"metadata"`
+			Type      string         `json:"type"`
+			Reference string         `json:"encrypted_content"`
+			Metadata  SourceMetadata `json:"metadata"`
 		} `json:"replacement_history"`
+		HistoryMetadata ReplacementMetadata `json:"replacement_history_metadata"`
 	} `json:"payload"`
 }
 
@@ -147,15 +160,16 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 			return nil
 		}
 		if rec.Type == "compacted" {
-			for _, item := range p.History {
-				if item.Metadata.SourceAcquisition == nil {
+			for i, item := range p.History {
+				receipt := p.HistoryMetadata.Acquisition(i, item.Metadata)
+				if receipt == nil {
 					continue
 				}
 				if r.Thread == "" || rec.Timestamp.IsZero() {
 					return errors.New("source acquisition requires session metadata and timestamp")
 				}
 				if owner == r.Thread || rec.Metadata.Inherited {
-					r.Events = append(r.Events, observation.Event{At: rec.Timestamp, Kind: observation.SourceAcquisitionObserved, ThreadID: r.Thread, TurnID: activeTurn, SourceAcquisition: item.Metadata.SourceAcquisition, Inherited: rec.Metadata.Inherited})
+					r.Events = append(r.Events, observation.Event{At: rec.Timestamp, Kind: observation.SourceAcquisitionObserved, ThreadID: r.Thread, TurnID: activeTurn, SourceAcquisition: receipt, Inherited: rec.Metadata.Inherited})
 				}
 			}
 		}
