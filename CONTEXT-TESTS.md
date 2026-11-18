@@ -39,6 +39,11 @@ regression.
 
 ## Select coverage
 
+When migrating behavior from Go to the native runtime, or before selecting a Go E2E test that
+requires a built native binary, check what the native Rust suite already covers. Move missing
+native behavior coverage to Rust and remove Go E2E cases already covered there. Keep Go E2E
+coverage only for distinct Go-side integration behavior.
+
 Start with the changed package/module from `CONTEXT-MEKUGI.md`, then its affected consumers.
 Use explicit member package paths, adding `/...` for a module's subpackages. Use `@workspace`
 for broad/cross-package contracts. The table identifies integration seams, not a requirement
