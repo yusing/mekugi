@@ -1586,6 +1586,10 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 				}
 			}
 		}
+		// Cancellation can finish an admitted compact task before turn/started.
+		if p.ThreadID == session.Client.Thread && p.Turn.ID != session.Client.Turn {
+			session.Client.Compaction.Completed(p.Turn.ID, p.Turn.Status == "completed")
+		}
 		if p.ThreadID == session.Client.Thread && p.Turn.ID == session.Client.Turn {
 			shellTurn := session.Client.Shell.OwnsTurn(p.Turn.ID)
 			compactTurn := session.Client.Compaction.OwnsTurn(p.Turn.ID)

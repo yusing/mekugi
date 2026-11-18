@@ -26,18 +26,17 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 			}}
 			appServerTestKeys(t, u, "/compact\r")
 			r := appServerOneRequest(t, w, "thread/compact/start", "")
-			compactWaitReset(u, r, "", "accepted", 1)
 			if !u.Compaction.AcknowledgementPending() || !u.Starting() || u.attached.conversation.Submitted[u.Submission().ID].Text != "" || len(u.attached.source.Entries) != 0 {
 				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.Compaction.AcknowledgementPending(), u.Starting(), u.attached.source.Entries)
 			}
 			if beforeAck {
-				compactTestStart(t, u, r, "compact-turn", 1)
-				compactTestEnd(t, u, r, "compact-turn", "completed", 1)
+				compactTestStart(t, u, r, "compact-turn")
+				compactTestEnd(t, u, r, "compact-turn", "completed")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 			if !beforeAck {
-				compactTestStart(t, u, r, "compact-turn", 1)
-				compactTestEnd(t, u, r, "compact-turn", "completed", 1)
+				compactTestStart(t, u, r, "compact-turn")
+				compactTestEnd(t, u, r, "compact-turn", "completed")
 			}
 			if u.Compaction.Pending() || u.Starting() || u.Text != "" || len(appServerTurnRequests(t, w)) != 0 {
 				t.Fatalf("compact lifecycle not settled: pending=%v starting=%v draft=%q", u.Compaction.Pending(), u.Starting(), u.Text)
@@ -56,16 +55,15 @@ func TestAppServerCompactBusyQueuesAheadOfLaterText(t *testing.T) {
 	}
 	appServerTestTurnEnd(t, u, "work", "completed")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
-	compactWaitReset(u, r, "", "accepted", 1)
 	if len(u.attached.conversation.Unsent) != 1 || u.attached.conversation.Unsent[0].Text != "after compact" {
 		t.Fatalf("input behind compact lost: %+v", u.attached.conversation.Unsent)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
-	compactTestStart(t, u, r, "compact-turn", 1)
+	compactTestStart(t, u, r, "compact-turn")
 	if got := appServerTurnRequests(t, w); len(got) != 0 {
 		t.Fatalf("text overtook compaction: %+v", got)
 	}
-	compactTestEnd(t, u, r, "compact-turn", "completed", 1)
+	compactTestEnd(t, u, r, "compact-turn", "completed")
 	appServerOneRequest(t, w, "turn/start", "after compact")
 	if u.Compaction.Pending() || u.Compaction.ContinuationPending() {
 		t.Fatal("following input left compaction pending or eligible for duplicate continuation")
@@ -95,8 +93,8 @@ func TestAppServerClearWaitsForCompactAcknowledgement(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "/compact\r")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
-	compactTestStart(t, u, r, "compact-turn", 1)
-	compactTestEnd(t, u, r, "compact-turn", "completed", 1)
+	compactTestStart(t, u, r, "compact-turn")
+	compactTestEnd(t, u, r, "compact-turn", "completed")
 	appServerTestKeys(t, u, "/clear\r")
 	if w.Len() != 0 || u.Replacement.Pending() || !u.Compaction.AcknowledgementPending() || strings.TrimSpace(u.Text) != "/clear" {
 		t.Fatalf("clear overtook compact acknowledgement: wire=%q clearing=%v compact=%v draft=%q", w.String(), u.Replacement.Pending(), u.Compaction.AcknowledgementPending(), u.Text)

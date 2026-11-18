@@ -7,6 +7,7 @@ func TestCompactionCancellationOwnsOnlyItsRequest(t *testing.T) {
 		live := Live{Thread: "main", Turn: "original"}
 		live.Compaction.Begin(CompactIntent{Continue: true})
 		id := live.Compaction.NativeRequestID()
+		live.Compaction.ObserveReset(ContextReset{RequestID: id, Turn: "compact-turn", Status: "accepted"})
 		if started {
 			live.Started("compact-turn")
 		}
@@ -17,8 +18,12 @@ func TestCompactionCancellationOwnsOnlyItsRequest(t *testing.T) {
 		if again := live.Interrupt(); again.ResetRequest != "" || again.Turn != "" {
 			t.Fatalf("duplicate cancellation: %+v", again)
 		}
-		live.Compaction.ObserveReset(ContextReset{RequestID: id, Generation: 1, Status: "accepted"})
-		live.Compaction.ObserveReset(ContextReset{RequestID: id, Generation: 1, Status: "canceled"})
+		live.Compaction.ObserveReset(ContextReset{RequestID: "other", Turn: "compact-turn", Status: "completed"})
+		if live.Compaction.resetDone {
+			t.Fatal("unrelated reset settled manual work")
+		}
+		live.Compaction.ObserveReset(ContextReset{RequestID: id, Turn: "compact-turn", Status: "canceled"})
+		live.Compaction.Completed("compact-turn", false)
 		live.Compaction.Acknowledge(false)
 		if live.Compaction.Pending() || live.Compaction.Continue(false) {
 			t.Fatal("canceled request retained reset or continuation")

@@ -34,10 +34,7 @@ type Compaction struct {
 	continueTask bool
 	cancelled    bool
 	success      bool
-	inline       bool
 	requestID    string
-	generation   uint64
-	resetID      string
 	resetDone    bool
 	hostDone     bool
 }
@@ -47,7 +44,7 @@ func (c *Compaction) Begin(intent CompactIntent) {
 }
 
 func (c *Compaction) Started(turn string) {
-	if c.phase == compactStarting {
+	if c.phase == compactStarting && (c.requestID == "" || turn == c.turn) {
 		c.phase, c.turn = compactRunning, turn
 	}
 }
@@ -64,41 +61,25 @@ func (c *Compaction) NativeRequestID() string {
 type ContextReset = observation.ContextResetEvent
 
 func (c *Compaction) ObserveReset(event ContextReset) {
-	if !c.Active() || c.requestID == "" || event.Generation == 0 {
+	if !c.Active() || c.requestID == "" || event.RequestID != c.requestID || event.Turn == "" {
 		return
 	}
-	if event.Status == "accepted" {
-		if event.RequestID == c.requestID && c.generation == 0 {
-			c.generation = event.Generation
+	if event.Status == "accepted" && c.turn == "" {
+		c.turn = event.Turn
+		return
+	}
+	if event.Turn != c.turn || c.resetDone {
+		return
+	}
+	switch event.Status {
+	case "completed", "failed", "canceled":
+		c.resetDone, c.success = true, event.Status == "completed"
+		if !c.success {
+			c.continueTask = false
 		}
-		return
-	}
-	if c.generation == 0 || event.Generation < c.generation {
-		return
-	}
-	if event.Status == "canceled" && event.ResetID == "" && c.resetID == "" {
-		c.phase, c.turn, c.continueTask = compactCompleted, "", false
-		return
-	}
-	terminal := event.Status == "completed" || event.Status == "failed" || event.Status == "canceled"
-	if c.resetID == "" && event.ResetID != "" && event.Turn != "" && (event.Status == "started" || terminal) {
-		// A native terminal disposition remains authoritative if abort prevented
-		// delivery of its started progress event.
-		c.phase, c.turn, c.resetID, c.inline = compactRunning, event.Turn, event.ResetID, event.Inline
-	}
-	if event.Status == "started" {
-		return
-	}
-	if c.resetID == "" || event.ResetID != c.resetID || event.Turn != c.turn || c.resetDone ||
-		!terminal {
-		return
-	}
-	c.resetDone, c.success = true, event.Status == "completed"
-	if c.inline || !c.success {
-		c.continueTask = false
-	}
-	if c.inline || c.hostDone {
-		c.phase, c.turn = compactCompleted, ""
+		if c.hostDone {
+			c.phase, c.turn = compactCompleted, ""
+		}
 	}
 }
 
@@ -106,7 +87,7 @@ func (c *Compaction) Completed(turn string, success bool) {
 	if c.turn != turn || turn == "" {
 		return
 	}
-	if c.requestID != "" && c.phase == compactRunning {
+	if c.requestID != "" && c.Active() {
 		c.hostDone = true
 		if !success {
 			// Forced host cancellation is itself terminal evidence, including
@@ -145,7 +126,7 @@ func (c *Compaction) Active() bool {
 
 // OwnsTurn also recognizes the first start notification before Started runs.
 func (c *Compaction) OwnsTurn(turn string) bool {
-	return turn != "" && !c.inline && (c.Starting() || c.phase == compactRunning && c.turn == turn)
+	return turn != "" && (c.Starting() && c.requestID == "" || c.Active() && c.turn == turn)
 }
 
 func (c *Compaction) Pending() bool { return c.ackPending || c.Active() || c.turn != "" }

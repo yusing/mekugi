@@ -1155,11 +1155,9 @@ func (p *nativePreview) serve() {
 		switch request.Method {
 		case "thread/compact/start":
 			thread := request.Params.ThreadID
-			reset := sessioncontrol.ContextReset{Thread: thread, RequestID: request.Params.ContextResetRequestID, Generation: uint64(p.message), Status: "accepted"}
+			reset := sessioncontrol.ContextReset{Thread: thread, RequestID: request.Params.ContextResetRequestID, Turn: turn, Status: "accepted"}
 			p.notify("thread/contextReset", reset)
 			p.notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn}})
-			reset.Turn, reset.ResetID, reset.Status = turn, turn, "started"
-			p.notify("thread/contextReset", reset)
 			item := map[string]any{"id": fmt.Sprintf("preview-compaction-%d", p.message), "type": "contextCompaction"}
 			p.notify("item/started", map[string]any{"threadId": thread, "turnId": turn, "item": item})
 			p.notify("item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": item})

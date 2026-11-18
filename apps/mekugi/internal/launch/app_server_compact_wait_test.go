@@ -8,25 +8,24 @@ import (
 
 // The test UI dispatches host notifications directly. The connection's reset
 // receipt handler feeds this same manual-compaction owner in production.
-func compactWaitReset(u *appServerUI, request appServerTurnRequest, turn, status string, generation uint64) {
+func compactWaitReset(u *appServerUI, request appServerTurnRequest, turn, status string) {
 	u.Compaction.ObserveReset(sessioncontrol.ContextReset{Thread: "main", RequestID: request.Params.ContextResetRequestID,
-		Turn: turn, Generation: generation, ResetID: turn, Status: status})
+		Turn: turn, Status: status})
 }
 
-func compactTestStart(t *testing.T, u *appServerUI, request appServerTurnRequest, turn string, generation uint64) {
+func compactTestStart(t *testing.T, u *appServerUI, request appServerTurnRequest, turn string) {
 	t.Helper()
-	compactWaitReset(u, request, "", "accepted", generation)
-	compactWaitReset(u, request, turn, "started", generation)
+	compactWaitReset(u, request, turn, "accepted")
 	appServerTestTurn(t, u, turn)
 }
 
-func compactTestEnd(t *testing.T, u *appServerUI, request appServerTurnRequest, turn, status string, generation uint64) {
+func compactTestEnd(t *testing.T, u *appServerUI, request appServerTurnRequest, turn, status string) {
 	t.Helper()
 	resetStatus := status
 	if status == "interrupted" {
 		resetStatus = "canceled"
 	}
-	compactWaitReset(u, request, turn, resetStatus, generation)
+	compactWaitReset(u, request, turn, resetStatus)
 	appServerTestTurnEnd(t, u, turn, status)
 }
 

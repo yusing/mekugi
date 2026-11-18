@@ -130,18 +130,17 @@ replacement wait turn. Native owns delivery. Special reset/wait composition is
 deferred and is not an additional Go control mode.
 
 `/compact` with Enter requests reset while Main is busy; Tab waits for idle. Native
-admits the reset before interrupting ordinary work. A reset covers
-only requests captured at its start; later
-requests remain pending. Request/reset identity, not a turn or progress item alone,
-correlates completion. Terminal disposition includes preparation, acquisition and
+admits the reset before interrupting ordinary work. Each manual admission identifies its replacement compact turn and request.
+Only a terminal reset receipt matching that request and turn settles the reset;
+unrelated automatic and standalone resets cannot settle it. Terminal disposition includes preparation, acquisition and
 post-hooks.
 
 The command separates text batches and never becomes model input. A replacement
 compact turn remains auxiliary. Its acknowledgement, successful reset disposition
 and actual host settlement precede any Go-initiated continuation. An intent admitted
 while busy continues with waiting input, otherwise one native empty-input turn;
-idle compaction stays idle. An inline reset leaves continuation with native, adding
-no empty-input turn. Acknowledging reset does not establish arbitrary same-cell
+idle compaction stays idle. Inline automatic and standalone resets remain native and add
+no Go continuation. Acknowledging reset does not establish arbitrary same-cell
 reset-and-wait ordering.
 
 With an empty draft, Ctrl-C restores queued compaction and waiting input without

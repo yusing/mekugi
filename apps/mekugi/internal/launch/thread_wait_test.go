@@ -219,9 +219,8 @@ func TestCompactionOutcomeSurvivesWaitCancellation(t *testing.T) {
 			u, threads, _ := nativeWaitUI(t, nil)
 			appServerTestKeys(t, u, "/compact\r")
 			request := appServerOneRequest(t, u.Host.Input.(*appServerTestInput), "thread/compact/start", "")
-			compactWaitReset(u, request, "", "accepted", 1)
-			compactWaitReset(u, request, "compact", "started", 1)
-			compactWaitReset(u, request, "compact", outcome, 1)
+			compactWaitReset(u, request, "compact", "accepted")
+			compactWaitReset(u, request, "compact", outcome)
 			nativeWaitSettlementFixture(t, u, appserver.CoordinationWaitResult{Kind: "cancelled", Cause: &appserver.CoordinationWaitCancellation{Kind: "inputSuperseded"}}, nil, nil)
 			nativeTreeFixture(t, threads)
 			for _, entry := range u.attached.source.Entries {

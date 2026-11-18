@@ -36,10 +36,7 @@ func TestSideForkDuringMainCompaction(t *testing.T) {
 				compact := btwTestRequest(t, wire, "thread/compact/start", "main")
 				reset := func(status string) {
 					turn := "compact-turn"
-					if status == "accepted" {
-						turn = ""
-					}
-					appServerTestNotify(t, u, "thread/contextReset", sessioncontrol.ContextReset{Thread: "main", RequestID: compact.Params.ContextResetRequestID, Turn: turn, Generation: 1, ResetID: turn, Status: status})
+					appServerTestNotify(t, u, "thread/contextReset", sessioncontrol.ContextReset{Thread: "main", RequestID: compact.Params.ContextResetRequestID, Turn: turn, Status: status})
 				}
 				reset("accepted")
 				if gate == "acknowledged" {
@@ -47,7 +44,6 @@ func TestSideForkDuringMainCompaction(t *testing.T) {
 				}
 				if gate == "running" || gate == "completed" {
 					appServerTestTurn(t, u, "compact-turn")
-					reset("started")
 				}
 				if gate == "completed" {
 					reset("completed")
@@ -84,7 +80,6 @@ func TestSideForkDuringMainCompaction(t *testing.T) {
 				}
 				if gate == "starting" || gate == "acknowledged" {
 					appServerTestTurn(t, u, "compact-turn")
-					reset("started")
 				}
 				if gate != "completed" {
 					reset("completed")

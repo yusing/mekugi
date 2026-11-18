@@ -149,6 +149,9 @@ func NativeContextResetEntry(reset sessioncontrol.ContextReset, at time.Time) (A
 		text += ": " + reset.Diagnostic
 	}
 	id := reset.ResetID
+	if id == "" && reset.RequestID != "" {
+		id = reset.RequestID
+	}
 	if id == "" {
 		id = strconv.FormatUint(reset.Generation, 10)
 	}
