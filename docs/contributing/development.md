@@ -43,6 +43,13 @@ absolute executable. They cover machine isolation, reconnection, semantic contro
 attached-input recovery, native continuation and replay. Live-provider behavior and
 deployed TLS require separate checks.
 
+Run the session metrics and responsive Features checks independently of the
+file-details flow:
+
+```sh
+MEKUGI_TEST_WEBUI_BROWSER=1 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestWebUIMetricsBrowser$'
+```
+
 The build, test, lint, generation, and snapshot recipes enumerate the explicit
 `go.work` members. The repository root has no Go module; use these recipes or
 explicit member package paths for root-level Go commands. `make build-binaries`
