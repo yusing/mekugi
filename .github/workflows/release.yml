@@ -84,9 +84,12 @@ jobs:
       - name: Test and package native runtime
         env:
           CARGO_BUILD_JOBS: '2'
+          # Use system Git for V8's nested Git dependencies instead of Cargo's libgit2 transport.
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           PLATFORM: ${{ matrix.platform }}
         run: |
-          make test-native NATIVE_PROFILE=release
+          # App-server integration fixtures use debug-only startup options.
+          make test-native
           make package-native NATIVE_ARCHIVE="$RUNNER_TEMP/artifacts/mekugi-native_${PLATFORM}.tar.gz"
           bin/native/mekugi-app-server --help
       - name: Build and package
