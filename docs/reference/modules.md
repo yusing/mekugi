@@ -1,7 +1,7 @@
 # Module reference
 
 Generated from feature descriptors, Codex binding declarations and application
-composition. 24 of 24 feature modules are selected.
+composition. 23 of 23 feature modules are selected.
 Regenerate with `make generate`; verify with `make check-generated`.
 
 The [composition contract](../contracts/composition.md) defines ownership and
@@ -117,14 +117,6 @@ Deliver bounded notices, failure details and recovery summaries
 - Composition: selected; lifetime: `invocation`.
 - Requires: none.
 - Codex connections: none.
-
-## [outputdeduplication](../../modules/outputdeduplication/SPEC.md)
-
-Project repeated model-input output as visible references
-
-- Composition: selected; lifetime: `stateless`.
-- Requires: none.
-- Codex connections: `input-projection`.
 
 ## [outputrecovery](../../modules/outputrecovery/SPEC.md)
 

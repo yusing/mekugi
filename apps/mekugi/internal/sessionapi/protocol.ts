@@ -1043,6 +1043,7 @@ export type Draft = {
   "Skills": Array<Token>;
   "Selections": Array<Token>;
   "AnswerImages": Array<string>;
+  "AnswerSelections": string;
   "Attachments": Array<string>;
   "AttachmentNotice": string;
   "InHistory": boolean;
@@ -1437,8 +1438,6 @@ export type StatusField = {
 };
 
 export type MetricsSnapshot = {
-  "output_deduplication"?: OutputDeduplicationMetrics;
-  "output_deduplication_threads"?: Record<string, OutputDeduplicationMetrics>;
   "storage_writes"?: (Snapshot | null);
   "schema": string;
   "mode": string;
@@ -1455,7 +1454,6 @@ export type FeatureMetrics = {
   "Descendants": FeatureCounts;
   "Thread": string;
   "Agents": number;
-  "DeduplicationOff": boolean;
   "Unavailable": boolean;
 };
 
@@ -1501,7 +1499,6 @@ export type Value = {
   "ReplySummary": string;
   "ReplyDetails": string;
   "DetailCode"?: string;
-  "Repeated": string;
   "AutoReload": boolean;
   "AttachmentKind": string;
   "AttachmentID": string;
@@ -1546,7 +1543,7 @@ export type Value = {
   "Live": boolean;
   "Thought": number;
   "Failed": boolean;
-} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "Repeated" | "AutoReload" | "AttachmentKind" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "TailClipped" | "SourceOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought" | "Failed">;
+} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "AutoReload" | "AttachmentKind" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "TailClipped" | "SourceOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought" | "Failed">;
 
 export type ItemContent = {
   "Command": Command;
@@ -1642,13 +1639,6 @@ export type Completion_Choice = {
   "Preset": boolean;
 };
 
-export type OutputDeduplicationMetrics = {
-  "projections": number;
-  "occurrences": number;
-  "saved_tokens": number;
-  "unmeasured": number;
-};
-
 export type Snapshot = {
   "bytes": number;
   "scope": string;
@@ -1721,8 +1711,8 @@ export type captureHealth = {
 };
 
 export type FeatureCounts = {
-  "OutputDeduplication": OutputDeduplicationMetrics;
-} & Omit<FeatureUse, "OutputDeduplication">;
+
+} & FeatureUse;
 
 export type ItemRef = {
   "ThreadID": string;
@@ -1953,6 +1943,8 @@ export type payloadMetrics = {
 };
 
 export type FeatureUse = {
+  "outputDeduplicationBytes": number;
+  "outputDeduplicationTokens": number;
   "compactions": number;
   "selfCompactions": number;
   "compactionPreloads": number;
