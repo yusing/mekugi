@@ -22,6 +22,7 @@ export function textDraft(text = "", cursorBack = 0): Draft {
     Skills: [],
     Selections: [],
     AnswerImages: [],
+    AnswerSelections: "",
     Attachments: [],
     AttachmentNotice: "",
     InHistory: false,
