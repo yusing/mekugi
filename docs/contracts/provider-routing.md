@@ -16,6 +16,11 @@ advice. Without advice, it waits one second before the first retry and doubles
 the delay for each further unadvised retry, up to 30 seconds. Existing retry
 limits still apply.
 
+When a provider reports `usage_limit_reached` during a user turn, the turn waits
+until the reported reset, or until `Retry-After` if no reset was provided. This
+wait does not consume stream retries. With neither, the turn stays paused until
+steered or interrupted. Other quota and account errors remain terminal.
+
 ## Shared service tiers and failures
 
 Confirmed service-tier choices are scoped by native thread and exact requested
