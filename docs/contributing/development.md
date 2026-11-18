@@ -114,10 +114,13 @@ make package-native
 Building needs Python 3.11+, Rustup, a C/C++ toolchain and, on Linux,
 `pkg-config`, `libcap-dev` and `libssl-dev`. Rustup selects the fork's pinned
 toolchain; the build uses its pinned V8 downloader. First builds need network
-access. Checks and tests default to `dev-small`; builds and packages default to
-`release`. `NATIVE_PROFILE` overrides either default. CI runs native integration
-tests in `dev-small` for the debug-only fixtures and smoke-tests the packaged
-release binary. `CARGO_BUILD_JOBS=2` limits compile concurrency.
+access. Checks and tests default to `dev-small`. `make build-native` uses the
+`release` profile with LTO disabled by default to reduce peak build memory.
+Use `make build-native NATIVE_PROFILE=release` to use the release profile's
+ThinLTO setting. `make package-native` and CI release packaging use that setting
+by default. CI runs native integration tests in `dev-small` and smoke-tests the
+packaged release binary. To cap local compile concurrency, optionally set
+`CARGO_BUILD_JOBS=2`; the native runner does not set a jobs limit.
 
 For an affected crate, forward Cargo selectors through `NATIVE_ARGS`:
 

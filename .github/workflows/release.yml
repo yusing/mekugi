@@ -99,7 +99,7 @@ jobs:
           test "$(go env GOOS)_$(go env GOARCH)" = "$PLATFORM"
           package_dir="$RUNNER_TEMP/package"
           mkdir -p "$package_dir" "$RUNNER_TEMP/artifacts"
-          make build-binaries BUILD_OUTPUT="$package_dir" BUILD_LDFLAGS="-s -w -X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG"
+          make build-binaries NATIVE_PROFILE=release BUILD_OUTPUT="$package_dir" BUILD_LDFLAGS="-s -w -X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG"
           "$package_dir/mekugi" --help
           cp LICENSE "$package_dir/"
           cp runtime/codex/NOTICE "$package_dir/NOTICE"

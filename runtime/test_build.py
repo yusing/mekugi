@@ -68,7 +68,7 @@ class CargoEnvironmentTests(unittest.TestCase):
 
 
 class NativeRunnerTests(unittest.TestCase):
-    def run_action(self, *arguments, stack=None, target_config="shared-target", target_env=None):
+    def run_action(self, *arguments, stack=None, target_config="shared-target", target_env=None, release_lto=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             rust = root / "codex-rs"
@@ -96,14 +96,20 @@ class NativeRunnerTests(unittest.TestCase):
                 environment["CARGO_TARGET_DIR"] = target_env
             if stack is not None:
                 environment["RUST_MIN_STACK"] = stack
+            if release_lto is not None:
+                environment["CARGO_PROFILE_RELEASE_LTO"] = release_lto
             output = root / "output"
             # Wrapper flags precede the separator; Cargo arguments remain untouched.
             argv = ["build.py", arguments[0], "--output", str(output), *arguments[1:]]
+            if arguments[0] == "package":
+                argv.extend(["--archive", str(root / "native.tar.gz")])
             check_output = build.subprocess.check_output
 
             def compiler_or_metadata(command, **kwargs):
                 if command[0] == "rustc":
                     return "host: x86_64-unknown-linux-gnu\n"
+                if command[0] == "git":
+                    return b"test-revision"
                 return check_output(command, **kwargs)
 
             with (
@@ -117,6 +123,7 @@ class NativeRunnerTests(unittest.TestCase):
                 patch.object(v8, "resolve_codex_v8_cargo_env", create=True, return_value={"RUSTY_V8_ARCHIVE": "pinned-v8"}) as resolve_v8,
                 patch.object(build, "run") as run,
                 patch.object(build.shutil, "copy2") as copy,
+                patch.object(build.tarfile, "open"),
             ):
                 build.main()
                 self.assertEqual(resolve_v8.call_args.kwargs["cache_root"], expected_target / "v8-artifacts")
@@ -170,10 +177,20 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertEqual(calls[0].args[0][4], "release")
         self.assertEqual(calls[0].args[1]["RUST_MIN_STACK"], "16777216")
 
-    def test_production_build_remains_release(self):
-        calls, copies, _ = self.run_action("build")
-        self.assertEqual(calls[0].args[0][:5], ["cargo", "build", "--locked", "--profile", "release"])
-        self.assertEqual(copies, 4)
+    def test_local_build_and_release_packaging_lto(self):
+        for arguments, override, expected_lto in [
+            (("build", "--profile", ""), None, "off"),
+            (("build", "--profile", ""), "thin", "thin"),
+            (("build", "--profile", "release"), None, None),
+            (("package", "--profile", ""), None, None),
+        ]:
+            with self.subTest(arguments=arguments, override=override):
+                calls, copies, _ = self.run_action(*arguments, release_lto=override)
+                self.assertEqual(len(calls), 1)
+                command, env = calls[0].args
+                self.assertEqual(command[:5], ["cargo", "build", "--locked", "--profile", "release"])
+                self.assertEqual(env.get("CARGO_PROFILE_RELEASE_LTO"), expected_lto)
+                self.assertEqual(copies, 4)
 
     def test_cargo_target_directory_configuration(self):
         for config, environment in [

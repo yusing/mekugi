@@ -42,7 +42,7 @@ def run(args, env):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("check", "build", "test", "package"))
-    parser.add_argument("--profile", help="default: dev-small for check/test, release for build/package")
+    parser.add_argument("--profile", help="default: dev-small for check/test, release without LTO for build, release for package")
     parser.add_argument("--output", type=Path, default=ROOT / "bin/native")
     parser.add_argument("--archive", type=Path, default=ROOT / "bin/mekugi-native.tar.gz")
     argv = sys.argv[1:]
@@ -77,6 +77,8 @@ def main():
     # Package Cargo outputs directly; never strip bwrap after an integrity hash
     # may have been compiled into the server.
     env.setdefault("CARGO_PROFILE_RELEASE_STRIP", "symbols")
+    if args.action == "build" and not args.profile:
+        env.setdefault("CARGO_PROFILE_RELEASE_LTO", "off")
     env.update(resolve_codex_v8_cargo_env(spec, cache_root=target_dir / "v8-artifacts"))
     if args.action in {"check", "test"}:
         env.pop("BASH_ENV", None)

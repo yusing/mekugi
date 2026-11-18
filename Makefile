@@ -18,7 +18,7 @@ WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace
 .PHONY: integrate
 BUILD_OUTPUT ?= bin
 BUILD_LDFLAGS ?= -s -w
-# Empty lets the native runner choose dev-small for tests, release for packaging.
+# Empty uses the native runner's default for each action.
 NATIVE_PROFILE ?=
 NATIVE_ARGS ?=
 NATIVE_OUTPUT ?= bin/native
