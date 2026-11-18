@@ -103,3 +103,43 @@ func TestDocumentationGitDiscovery(t *testing.T) {
 		t.Fatalf("tracked ignored document was skipped: %v", err)
 	}
 }
+
+func TestDocumentationGitWorktreeDeletion(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_DIR", filepath.Join(root, ".git"))
+	t.Setenv("GIT_WORK_TREE", root)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(root, ".git", "index"))
+	t.Setenv("GIT_COMMON_DIR", filepath.Join(root, ".git"))
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "--quiet")
+	git("config", "user.name", "Test")
+	git("config", "user.email", "test@example.com")
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("deleted.md", "# Deleted\n")
+	write("README.md", "# Guide\n")
+	git("add", "deleted.md", "README.md")
+	git("-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--quiet", "-m", "fixture")
+	if err := os.Remove(filepath.Join(root, "deleted.md")); err != nil {
+		t.Fatal(err)
+	}
+	write("new.md", "[guide](README.md#guide)\n")
+	if err := checkDocs(root); err != nil {
+		t.Fatalf("check current worktree: %v", err)
+	}
+	write("new.md", "[deleted](deleted.md)\n")
+	if err := checkDocs(root); err == nil || !strings.Contains(err.Error(), "deleted.md") || !strings.Contains(err.Error(), "new.md") {
+		t.Fatalf("untracked document's dangling link: %v", err)
+	}
+}

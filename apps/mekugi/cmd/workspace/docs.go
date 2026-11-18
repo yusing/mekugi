@@ -104,7 +104,13 @@ func documentationPaths(root string) ([]string, error) {
 		}
 		for name := range strings.SplitSeq(string(data), "\x00") {
 			if documentPath(name) {
-				paths = append(paths, filepath.Join(root, name))
+				path := filepath.Join(root, name)
+				if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+					continue
+				} else if err != nil {
+					return nil, err
+				}
+				paths = append(paths, path)
 			}
 		}
 		return paths, nil
