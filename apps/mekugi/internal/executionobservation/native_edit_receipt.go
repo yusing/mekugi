@@ -18,6 +18,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
 )
@@ -130,9 +131,20 @@ func agentEditNotice(ctx context.Context, selected changes.Scope, source changes
 	warned := make(map[string]bool)
 	addWarnings := func(record mekugiHistory) {
 		for _, file := range record.reviews() {
-			if file.Incomplete != "" && !warned[file.Incomplete] {
-				warned[file.Incomplete] = true
-				warnings = append(warnings, file.Incomplete)
+			if file.Incomplete == "" {
+				continue
+			}
+			for _, path := range []string{file.BeforePath, file.AfterPath} {
+				reason := file.Incomplete
+				if path != "" {
+					reason = fmt.Sprintf("%q: %s", pathdisplay.ForWorkspace(workspace, path), reason)
+				} else if file.BeforePath != file.AfterPath {
+					continue
+				}
+				if !warned[reason] {
+					warned[reason] = true
+					warnings = append(warnings, reason)
+				}
 			}
 		}
 		if outcome := record.ExecOutcome; outcome != nil && outcome.Coverage == "partial" {

@@ -221,7 +221,8 @@ the same retained files and hunks as `mchanges`, including effects of failed
 commands and both endpoints of moves. After persistence, a separate text part
 adds only the capture IDs to the agent-visible result; original host content
 remains intact. Incomplete or failed capture emits an explicit capture warning,
-independent of command exit status. Details remain available through `mchanges`
+independent of command exit status. The warning identifies known incomplete
+paths; truncated warnings point to the retained history. Details remain available through `mchanges`
 and interactive receipts. Receipts retain the last witnessed writer's host and
 segment boundary independently of later commands, so live and restored
 Activity place the combined effect after its source commands. That boundary does

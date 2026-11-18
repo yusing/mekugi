@@ -294,6 +294,7 @@ func TestAgentEditNoticeCaptureDiagnosticsWithoutStatistics(t *testing.T) {
 			switch scenario {
 			case "incomplete":
 				record.ReviewFiles[0].Incomplete = "baseline unavailable"
+				record.ReviewFiles = append(record.ReviewFiles, diffmodel.ReviewFile{BeforePath: filepath.Join(workspace, "second"), Incomplete: "baseline unavailable"})
 			case "scope-only":
 				record.ChangeID, record.ReviewFiles = "", nil
 				record.ExecOutcome.Coverage, record.ExecOutcome.ScopeReason = "partial", "workspace checkpoint unavailable"
@@ -325,7 +326,7 @@ func TestAgentEditNoticeCaptureDiagnosticsWithoutStatistics(t *testing.T) {
 			}
 			want := record.ChangeID
 			if scenario == "incomplete" {
-				want += "\nCapture incomplete: baseline unavailable"
+				want += "\nCapture incomplete: \"file\": baseline unavailable; \"second\": baseline unavailable"
 			}
 			if scenario == "scope-only" {
 				want = "Capture incomplete: workspace checkpoint unavailable"
