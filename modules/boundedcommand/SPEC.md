@@ -16,7 +16,7 @@ continuation. It creates no private continuation handle or recovery store.
 
 ## Behavior
 
-`mrun (-n N|--max-tokens N) [--tail] [--] COMMAND [ARG...]` runs a foreground
+`mrun (-n N|--max-tokens N) [--head|--tail] [--] COMMAND [ARG...]` runs a foreground
 command under the host's existing process, stdin, cancellation, and continuation
 authority. The first non-option operand starts the command; all subsequent
 arguments belong to it. `--` explicitly marks the same boundary.
@@ -26,8 +26,9 @@ display-only wrapper recognition.
 `-n` selects up to N rows per stream. `--max-tokens` takes a positive integer,
 capped at 15500, and bounds the combined selected command text. When stdout is
 nonempty, stderr receives at most half that budget; stdout receives the remainder. Token-window selection
-may cut a row. `--tail` selects the ending instead of the beginning. Output
-outside the selected window is discarded, not promised as recoverable.
+may cut a row. By default, or with `--tail`, `mrun` keeps the ending. Use `--head`
+to keep the beginning. Choose at most one direction flag. Output outside the
+selected window is discarded, not promised as recoverable.
 
 Delivery is separately capped at 15500 tokens and ends on complete rows. Only
 overflow of this delivery page is retained for `mread`; retained stderr consists

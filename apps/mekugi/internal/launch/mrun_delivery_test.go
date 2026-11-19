@@ -51,7 +51,7 @@ func TestShellRunnerMRunDeliveryOverflowKeepsRowsAndRecoversOnlyCommandStderr(t 
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
 	// Retained stderr beyond the first delivery spans two mread pages.
-	const maxLines = 8_000
+	const maxLines, firstLine = 8_000, 2_001
 	invocation := newShellWorkerTestInvocation(t.TempDir(), "BASH_ENV=")
 	command := fmt.Sprintf(
 		`mrun -n %d -- sh -c 'seq -f "out-%%05g" 1 10000; seq -f "err-%%05g" 1 10000 >&2'`, maxLines,
@@ -60,8 +60,8 @@ func TestShellRunnerMRunDeliveryOverflowKeepsRowsAndRecoversOnlyCommandStderr(t 
 	const notice = "mrun: output incomplete: 8000-line limit reached\n"
 	visibleStderr, receipt, foundNotice := strings.Cut(stderr, notice)
 	if status != 0 || stdout == "" || !strings.HasSuffix(stdout, "\n") ||
-		!strings.HasPrefix(stdout, "out-00001\n") || strings.Count(stdout, "\n") >= maxLines ||
-		!foundNotice || !strings.HasPrefix(visibleStderr, "err-00001\n") || !strings.HasSuffix(visibleStderr, "\n") {
+		!strings.HasPrefix(stdout, "out-02001\n") || strings.Count(stdout, "\n") >= maxLines ||
+		!foundNotice || !strings.HasPrefix(visibleStderr, "err-02001\n") || !strings.HasSuffix(visibleStderr, "\n") {
 		t.Fatalf("delivery page is not a complete bounded result: status=%d stdout=%q stderr=%q", status, stdout[:min(len(stdout), 80)], stderr[:min(len(stderr), 160)])
 	}
 	codec, err := tokenizer.New()
@@ -81,8 +81,8 @@ func TestShellRunnerMRunDeliveryOverflowKeepsRowsAndRecoversOnlyCommandStderr(t 
 		t.Fatalf("initial stderr page contains no complete rows: %q", visibleStderr)
 	}
 	visibleRows := len(firstErr)
-	if visibleStderr != mrunDeliverySequence("err", visibleRows) {
-		t.Fatal("initial stderr delivery is not a complete source-row prefix")
+	if visibleStderr != mrunDeliverySequence("err", firstLine, visibleRows) {
+		t.Fatal("initial stderr delivery is not a complete prefix of the selected rows")
 	}
 	ref := mrunDeliveryReadReference(t, receipt)
 	var recovered strings.Builder
@@ -113,7 +113,7 @@ func TestShellRunnerMRunDeliveryOverflowKeepsRowsAndRecoversOnlyCommandStderr(t 
 	if pages < 2 {
 		t.Fatalf("stderr recovery used %d pages; want a continued mread", pages)
 	}
-	if got, want := visibleStderr+recovered.String(), mrunDeliverySequence("err", maxLines); got != want {
+	if got, want := visibleStderr+recovered.String(), mrunDeliverySequence("err", firstLine, maxLines); got != want {
 		t.Fatalf("genuine stderr recovery changed command rows: got %d bytes, want %d", len(got), len(want))
 	}
 }
@@ -125,7 +125,7 @@ func TestShellRunnerMRunRecoversOversizedLFStderrRow(t *testing.T) {
 	_, stdoutUnits := mrunOversizedLFRow(t, "a")
 	stderrRow, stderrUnits := mrunOversizedLFRow(t, "b")
 	invocation := newShellWorkerTestInvocation(t.TempDir(), "BASH_ENV=")
-	command := fmt.Sprintf(`mrun -n 1 -- sh -c 'yes a | head -n %d | tr "\n" " "; printf "\n"; yes b | head -n %d | tr "\n" " " >&2; printf "\n" >&2; printf "discarded stdout\n"; printf "discarded stderr\n" >&2'`, stdoutUnits, stderrUnits)
+	command := fmt.Sprintf(`mrun --head -n 1 -- sh -c 'yes a | head -n %d | tr "\n" " "; printf "\n"; yes b | head -n %d | tr "\n" " " >&2; printf "\n" >&2; printf "discarded stdout\n"; printf "discarded stderr\n" >&2'`, stdoutUnits, stderrUnits)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, command, nil, invocation)
 	if status != 0 || stdout != "" || strings.Count(stderr, generatedNotice) != 1 {
 		t.Fatalf("oversized-row delivery: status=%d stdout=%q stderr=%q", status, stdout[:min(len(stdout), 80)], stderr[:min(len(stderr), 160)])
@@ -238,9 +238,9 @@ func mrunDeliveryStderrBody(t *testing.T, page string) string {
 	return body
 }
 
-func mrunDeliverySequence(prefix string, count int) string {
+func mrunDeliverySequence(prefix string, first, count int) string {
 	var rows strings.Builder
-	for index := 1; index <= count; index++ {
+	for index := first; index < first+count; index++ {
 		fmt.Fprintf(&rows, "%s-%05d\n", prefix, index)
 	}
 	return rows.String()

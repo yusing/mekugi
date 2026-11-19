@@ -110,8 +110,8 @@ func TestFrontendMRunRowsReconstructThroughMRead(t *testing.T) {
 				t.Setenv("TMPDIR", spools)
 				marker := filepath.Join(t.TempDir(), "executions")
 				args := mrunStreamArguments(t, 90000, 70000, newline, 23, marker, "")
-				if tail {
-					args = append([]string{"--tail"}, args...)
+				if !tail {
+					args = append([]string{"--head"}, args...)
 				}
 				var stdout, stderr bytes.Buffer
 				checkedWrite := deliveryWriter(func(p []byte) (int, error) {

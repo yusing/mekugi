@@ -10,7 +10,7 @@ instructions. Ask for one by name when you want a specific read or review:
 | Command | Purpose | Requirements |
 | --- | --- | --- |
 | `mread` | Continue retained output without rerunning | Replay directory access |
-| `mrun` | Bound foreground output, optionally keeping its ending | The wrapped command |
+| `mrun` | Bound foreground output, keeping the ending by default; `--head` keeps the beginning | The wrapped command |
 | `mchanges` | Review/compose/revert/reapply captured edits by ID | Replay directory access |
 | `mcat` | Batched UTF-8 reads, ranges, tails | None |
 | `msymbol` | Batched definitions/references | Go: `gopls`; JS/TS/JSON: TypeScript 7 `tsc`; Python: `pyright-langserver`; Rust: see below |

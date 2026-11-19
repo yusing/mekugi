@@ -216,6 +216,7 @@ func TestClassifyMRunWrappers(t *testing.T) {
 	const workdir = "/work"
 	for _, pair := range [][2]string{
 		{"mrun -n 20 rm target", "rm target"},
+		{"mrun --head -n 20 rm target", "rm target"},
 		{"mrun --max-tokens=2000 --tail -- cat target", "cat target"},
 		{"env -u BASH_ENV mrun --tail -n 20 -- rm target", "rm target"},
 		{"rtk proxy mrun -n 20 rm target", "rm target"},
@@ -236,6 +237,7 @@ func TestClassifyMRunWrappers(t *testing.T) {
 	for _, command := range []string{
 		"mrun rm target", "mrun -n 0 rm target", "mrun --help rm target",
 		"mrun -n 20 -n 30 rm target", "mrun --max-tokens 100 --max-tokens 200 rm target",
+		"mrun --tail -n 20 --head rm target",
 		`mrun -n "$LIMIT" rm target`, `mrun -n 20 "$COMMAND" target`,
 		"./mrun -n 20 rm target", "/usr/bin/mrun -n 20 rm target",
 		"mrun() { command cat \"$@\"; }; mrun -n 20 rm target",

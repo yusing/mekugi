@@ -42,6 +42,9 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if strings.Count(got, guide.Descriptions) != 1 {
 			t.Error("exec description must include frontend guidance exactly once")
 		}
+		if !strings.Contains(got, "end by default") || !strings.Contains(got, "[--head|--tail]") {
+			t.Error("exec description does not tell agents how to select the mrun output window")
+		}
 		instructions := responses.StringField(fields, "instructions")
 		if instructions != guide.Workflow || strings.Contains(instructions, "Pass `shell:") != (runtime.GOOS == "darwin") {
 			t.Fatal("base instructions lost workflow")

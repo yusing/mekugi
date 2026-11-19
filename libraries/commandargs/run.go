@@ -14,9 +14,12 @@ type RunOptions struct {
 	Tail   bool
 }
 
+const runUsageError = "expected -n N or --max-tokens N, optionally --head or --tail, then [--] COMMAND [ARG...]"
+
 // ParseRunOptions separates mrun options from the untouched child argv.
 func ParseRunOptions(arguments []string) (RunOptions, []string, error) {
-	var options RunOptions
+	options := RunOptions{Tail: true}
+	directionSet := false
 	for len(arguments) > 0 {
 		arguments = ExpandMaxTokensOption(arguments)
 		switch arguments[0] {
@@ -41,24 +44,24 @@ func ParseRunOptions(arguments []string) (RunOptions, []string, error) {
 			}
 			options.Lines = number
 			arguments = arguments[2:]
-
-		case "--tail":
-			if options.Tail {
-				return options, nil, fmt.Errorf("--tail cannot repeat")
+		case "--head", "--tail":
+			if directionSet {
+				return options, nil, errors.New("specify --head or --tail at most once")
 			}
-			options.Tail = true
+			directionSet = true
+			options.Tail = arguments[0] == "--tail"
 			arguments = arguments[1:]
 		case "--":
 			if (options.Tokens == 0 && options.Lines == 0) || len(arguments) < 2 || arguments[1] == "" {
-				return options, nil, fmt.Errorf("expected -n N or --max-tokens N, optionally --tail, then -- COMMAND [ARG...]")
+				return options, nil, errors.New(runUsageError)
 			}
 			return options, arguments[1:], nil
 		default:
 			if !strings.HasPrefix(arguments[0], "-") && arguments[0] != "" && (options.Tokens != 0 || options.Lines != 0) {
 				return options, arguments, nil
 			}
-			return options, nil, fmt.Errorf("expected -n N or --max-tokens N, optionally --tail, then -- COMMAND [ARG...]")
+			return options, nil, errors.New(runUsageError)
 		}
 	}
-	return options, nil, fmt.Errorf("expected -n N or --max-tokens N, optionally --tail, then -- COMMAND [ARG...]")
+	return options, nil, errors.New(runUsageError)
 }

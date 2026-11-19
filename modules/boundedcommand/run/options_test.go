@@ -21,9 +21,9 @@ func TestCommandArgumentPolicy(t *testing.T) {
 	}
 	for _, boundary := range [][]string{{"echo"}, {"--", "echo"}} {
 		args := append([]string{"--max-tokens=42"}, boundary...)
-		args = append(args, "--max-tokens=99", "-n", "2")
+		args = append(args, "--max-tokens=99", "-n", "2", "--head")
 		_, command, err := commandargs.ParseRunOptions(args)
-		if err != nil || !reflect.DeepEqual(command, []string{"echo", "--max-tokens=99", "-n", "2"}) {
+		if err != nil || !reflect.DeepEqual(command, []string{"echo", "--max-tokens=99", "-n", "2", "--head"}) {
 			t.Fatalf("command boundary: %q %v", command, err)
 		}
 	}

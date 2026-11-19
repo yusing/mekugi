@@ -49,7 +49,7 @@ func fixtureArgv(t *testing.T, mode string, arguments ...string) []string {
 func TestRegisteredCommandPreservesArgvStdinAndStatus(t *testing.T) {
 	t.Parallel()
 	contribution := registeredCommand(t)
-	argv := fixtureArgv(t, "echo", "", "two words", "$literal;*", "--tail", "日本語")
+	argv := fixtureArgv(t, "echo", "", "two words", "$literal;*", "--head", "--tail", "日本語")
 	input := "stdin\x00with\r\nbytes\n"
 	stdin, err := os.CreateTemp(t.TempDir(), "stdin")
 	if err != nil {
@@ -74,13 +74,15 @@ func TestRegisteredCommandPreservesArgvStdinAndStatus(t *testing.T) {
 func TestRegisteredCommandSelectsAndDiscardsRows(t *testing.T) {
 	t.Parallel()
 	contribution := registeredCommand(t)
-	for _, tail := range []bool{false, true} {
-		t.Run(fmt.Sprintf("tail=%t", tail), func(t *testing.T) {
+	for _, tc := range []struct{ name, flag, want string }{
+		{"default", "", "row 00003\nrow 00004\n"},
+		{"head", "--head", "row 00000\nrow 00001\n"},
+		{"tail", "--tail", "row 00003\nrow 00004\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			arguments := []string{"-n", "2"}
-			want := "row 00000\nrow 00001\n"
-			if tail {
-				arguments = append(arguments, "--tail")
-				want = "row 00003\nrow 00004\n"
+			if tc.flag != "" {
+				arguments = append(arguments, tc.flag)
 			}
 			arguments = append(arguments, "--")
 			arguments = append(arguments, fixtureArgv(t, "rows", "5")...)
@@ -88,8 +90,8 @@ func TestRegisteredCommandSelectsAndDiscardsRows(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Stdout != want || got.Stderr != "mrun: output incomplete: 2-line limit reached\n" || got.ExitCode != 0 || got.OmittedOutput != nil {
-				t.Fatalf("output=%+v, want stdout=%q and no retained discarded rows", got, want)
+			if got.Stdout != tc.want || got.Stderr != "mrun: output incomplete: 2-line limit reached\n" || got.ExitCode != 0 || got.OmittedOutput != nil {
+				t.Fatalf("output=%+v, want stdout=%q and no retained discarded rows", got, tc.want)
 			}
 		})
 	}
