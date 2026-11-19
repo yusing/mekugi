@@ -177,6 +177,13 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 		fmt.Fprint(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"native-prewarm\",\"status\":\"in_progress\",\"output\":[]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"native-prewarm\",\"status\":\"completed\",\"output\":[]}}\n\n")
 		return
 	}
+	if p.childReady != nil && bytes.Contains(body, []byte("Answer the question below from the supplied context.")) && bytes.Contains(body, []byte("Are the command results ready?")) {
+		if len(request.Tools) != 0 {
+			t.Error("side question offered tools")
+		}
+		writeChildActivityResponse(w, "activity-side", "", "", "The command results are ready.")
+		return
+	}
 	metadata, ok := codexresponses.DecodeTurnMetadata(r.Header)
 	if !ok && request.Model == "gpt-6-luna" && len(request.Tools) == 0 && strings.HasPrefix(request.Instructions, "Generate a concise session title") && r.Header.Get("Authorization") == "Bearer fixture-access" && r.Header.Get("ChatGPT-Account-Id") == "fixture-account" {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -900,9 +907,15 @@ text(await tools.collaboration__send_message({target:"/root/absent",message:"MAN
 	case parent && step == 3:
 		answer = "MANAGED_PARENT_RESUMED"
 	case parent && step == 4:
-		program = `text(await tools.collaboration__followup_task({target:"/root/worker",message:"Continue in the open child transcript."}));`
+		program = `text(await tools.collaboration__followup_task({target:"/root/worker",message:"Continue in the open child transcript."}));
+text(await tools.collaboration__send_message({target:"/root/worker",message:"Are the command results ready?",btw:true}));`
 	case parent && step == 5:
+		if !bytes.Contains(body, []byte("The command results are ready.")) {
+			t.Error("side answer missing from tool result")
+		}
 		answer = "MANAGED_PARENT_FOLLOWUP"
+	case parent && step == 6:
+		answer = "MANAGED_PARENT_ACKNOWLEDGED"
 	case !parent && step == 1:
 		summary = "Child reasoning before command"
 		program = `text(await tools.exec_command({cmd:"cat activity-skill/SKILL.md",shell:"/bin/bash",login:false}));
@@ -921,6 +934,9 @@ text(await tools.collaboration__send_message({target:"/root",message:"MANAGED_MA
 		summary = "Child reasoning after command"
 		answer = "MANAGED_CHILD_FINAL"
 	case !parent && step == 3:
+		if !bytes.Contains(body, []byte("Continue in the open child transcript.")) || bytes.Contains(body, []byte("Are the command results ready?")) {
+			t.Error("side question leaked into primary child input or follow-up missing")
+		}
 		answer = "MANAGED_CHILD_FOLLOWUP"
 	default:
 		t.Errorf("unexpected child activity request: parent=%t step=%d", parent, step)
@@ -928,7 +944,9 @@ text(await tools.collaboration__send_message({target:"/root",message:"MANAGED_MA
 		p.stop()
 		return
 	}
-	id := fmt.Sprintf("activity-%s-%d", thread, step)
+	writeChildActivityResponse(w, fmt.Sprintf("activity-%s-%d", thread, step), program, summary, answer)
+}
+func writeChildActivityResponse(w http.ResponseWriter, id, program, summary, answer string) {
 	item := map[string]any{"type": "message", "id": id + "-msg", "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": answer}}}
 	if program != "" {
 		item = map[string]any{"type": "custom_tool_call", "id": id + "-call", "call_id": id + "-call", "name": "exec", "namespace": "functions", "input": program, "status": "completed"}
@@ -1853,6 +1871,8 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 		assertNativeChildCommandOrder(t, childEvent.Frame.Main)
+		assertNativeTaskTraffic(t, childEvent.Frame.Main, "/root/worker", false)
+		assertNativeTaskTraffic(t, event.Frame.Main, "/root", false)
 		assertNativeMainMail(t, event.Frame.Main)
 		for _, entry := range event.Frame.Main.Entries {
 			if nativeChildCommand(entry) {
@@ -2020,53 +2040,56 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	// A new server and host process recover only retained identities. Attaching a
 	// resumed parent leaves its child cold until explicit selection or input.
 	childView.Close()
-	connection.Close()
-	if err := cmd.Process.Signal(os.Interrupt); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-joined:
-	case <-ctx.Done():
-		t.Fatal("cold shutdown:", ctx.Err())
-	}
-	if processErr != nil {
-		t.Fatal("cold shutdown:", processErr)
-	}
-	cmd = exec.Command(os.Args[0], "-test.run=^TestNativeThreadsServerProcessHelper$")
-	cmd.Env, cmd.Dir, cmd.Stdout, cmd.Stderr = environment, workspace, &diagnostics, &diagnostics
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	joined = make(chan struct{})
-	go func() { processErr = cmd.Wait(); close(joined) }()
-	serverCLIAwait(t, func() bool { _, err := os.Stat(socket); return err == nil })
-	connection, err = sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{
-		Workspace: workspace, RouterArgs: []string{"--shell-guard=false"},
-		Args: append(permissionArgs, "-c", "features.plugins=false", "-c", `model_reasoning_effort="high"`, "resume", root),
-	})
-	if err != nil {
-		t.Fatal("cold resume:", err)
-	}
-	defer connection.Close()
-	var readiness string
-	for {
-		event, err = connection.Next()
-		if err != nil {
-			t.Fatal("cold root readiness:", err, readiness)
+	reopen := func() {
+		connection.Close()
+		if err := cmd.Process.Signal(os.Interrupt); err != nil {
+			t.Fatal(err)
 		}
-		retainedChild := false
-		if family := event.Frame.Family; family != nil && family.Agents != nil {
-			for _, row := range family.Agents.Roster {
-				if row.Agent.Thread == child && row.Agent.Name == "/root/worker" && (row.Agent.Final || scenario.childActivity) {
-					retainedChild = true
+		select {
+		case <-joined:
+		case <-ctx.Done():
+			t.Fatal("cold shutdown:", ctx.Err())
+		}
+		if processErr != nil {
+			t.Fatal("cold shutdown:", processErr)
+		}
+		cmd = exec.Command(os.Args[0], "-test.run=^TestNativeThreadsServerProcessHelper$")
+		cmd.Env, cmd.Dir, cmd.Stdout, cmd.Stderr = environment, workspace, &diagnostics, &diagnostics
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		joined = make(chan struct{})
+		go func() { processErr = cmd.Wait(); close(joined) }()
+		serverCLIAwait(t, func() bool { _, err := os.Stat(socket); return err == nil })
+		connection, err = sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{
+			Workspace: workspace, RouterArgs: []string{"--shell-guard=false"},
+			Args: append(permissionArgs, "-c", "features.plugins=false", "-c", `model_reasoning_effort="high"`, "resume", root),
+		})
+		if err != nil {
+			t.Fatal("cold resume:", err)
+		}
+		var readiness string
+		for {
+			event, err = connection.Next()
+			if err != nil {
+				t.Fatal("cold root readiness:", err, readiness)
+			}
+			retainedChild := false
+			if family := event.Frame.Family; family != nil && family.Agents != nil {
+				for _, row := range family.Agents.Roster {
+					if row.Agent.Thread == child && row.Agent.Name == "/root/worker" && (row.Agent.Final || scenario.childActivity) {
+						retainedChild = true
+					}
 				}
 			}
+			if event.Frame.View.Main.ID == root && event.Frame.View.Admission.Submit && retainedChild {
+				break
+			}
+			readiness = fmt.Sprintf("thread=%q submit=%t retained_child=%t", event.Frame.View.Main.ID, event.Frame.View.Admission.Submit, retainedChild)
 		}
-		if event.Frame.View.Main.ID == root && event.Frame.View.Admission.Submit && retainedChild {
-			break
-		}
-		readiness = fmt.Sprintf("thread=%q submit=%t retained_child=%t", event.Frame.View.Main.ID, event.Frame.View.Admission.Submit, retainedChild)
 	}
+	reopen()
+	defer func() { _ = connection.Close() }()
 	childReply, childMessage = false, false
 	if event.Frame.Main != nil {
 		for _, entry := range event.Frame.Main.Entries {
@@ -2091,6 +2114,8 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			t.Fatalf("retained child selection did not open read-only: thread=%q submit=%t", coldChild.Frame.View.Main.ID, coldChild.Frame.View.Admission.Submit)
 		}
 		assertNativeChildCommandOrder(t, coldChild.Frame.Main)
+		assertNativeTaskTraffic(t, coldChild.Frame.Main, "/root/worker", false)
+		assertNativeTaskTraffic(t, event.Frame.Main, "/root", false)
 		assertNativeMainMail(t, event.Frame.Main)
 		var retainedAgent presentation.Agent
 		if agents := coldChild.Frame.Agents; agents != nil {
@@ -2129,9 +2154,57 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 				return entry.Kind == "text" && entry.Agent == "Main" && entry.Text == "MANAGED_CHILD_FOLLOWUP"
 			}) {
 				assertNativeChildCommandOrder(t, transcript)
+				assertNativeTaskTraffic(t, transcript, "/root/worker", true)
 				break
 			}
 		}
+		for {
+			event, err = connection.Next()
+			if err != nil {
+				t.Fatal("follow-up Main publication:", err)
+			}
+			if event.Frame.Main != nil && slices.ContainsFunc(event.Frame.Main.Entries, func(e presentation.Entry) bool { return e.Kind == "text" && e.Text == "MANAGED_PARENT_FOLLOWUP" }) {
+				break
+			}
+		}
+		// A completion is queued for the next sampling boundary, not inferred
+		// from acceptance of either the assignment or the side answer.
+		for !event.Frame.View.Admission.Submit {
+			event, err = connection.Next()
+			if err != nil {
+				t.Fatal("follow-up settlement:", err)
+			}
+		}
+		_, err = connection.Send(ctx, event.Target(), sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{
+			Intent: sessionpresentation.ComposerIntent{Version: event.Frame.View.Version, Thread: root, Operation: sessionpresentation.SubmitComposer},
+			Draft:  composer.Draft{Text: "Acknowledge the worker result."},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for {
+			event, err = connection.Next()
+			if err != nil {
+				t.Fatal("result acknowledgement:", err)
+			}
+			if event.Frame.Main != nil && slices.ContainsFunc(event.Frame.Main.Entries, func(e presentation.Entry) bool { return e.Text == "MANAGED_PARENT_ACKNOWLEDGED" }) {
+				break
+			}
+		}
+		assertNativeTaskTraffic(t, event.Frame.Main, "/root", true)
+		attachedChild.Close()
+		reopen()
+		assertNativeTaskTraffic(t, event.Frame.Main, "/root", true)
+		restored, err := connection.Attach(ctx, child)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer restored.Close()
+		reopened, err := restored.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertNativeTaskTraffic(t, reopened.Frame.Main, "/root/worker", true)
 		return
 	}
 	if coldChild.Frame.View.Main.ID != child || coldChild.Frame.View.Caption.Model != "gpt-6-sol" || coldChild.Frame.View.Caption.Effort != "low" || coldChild.Frame.View.Caption.Role != "" {
@@ -2235,6 +2308,62 @@ func assertNativeMainMail(t *testing.T, feed *presentation.Publication) {
 	want := []route{{"Main", "/root/worker", "MANAGED_ROOT_OUTBOX"}, {"/root/worker", "Main", "MANAGED_MAIN_INBOX"}}
 	if len(got) != len(want) || !slices.Contains(got, want[0]) || !slices.Contains(got, want[1]) {
 		t.Fatalf("main native mail = %+v, want %+v", got, want)
+	}
+}
+
+// Check the published routes and the actual transcript, not the JavaScript call text.
+func assertNativeTaskTraffic(t *testing.T, feed *presentation.Publication, caller string, followup bool) {
+	t.Helper()
+	if feed == nil {
+		t.Fatal("missing task transcript")
+	}
+	from, to, kind := "Main", "/root/worker", "start"
+	if caller != "/root" {
+		from, to, kind = "/root", "Main", "assignment"
+	}
+	check := func(kind, from, to, body string) {
+		t.Helper()
+		count := 0
+		for _, e := range feed.Entries {
+			if e.Kind != kind {
+				continue
+			}
+			for _, v := range e.Values {
+				if v.Body == body && v.From == from && v.To == to {
+					count++
+				}
+			}
+		}
+		if count != 1 {
+			t.Fatalf("got %d %s values from %s to %s with %q", count, kind, from, to, body)
+		}
+	}
+	check(kind, from, to, "Run the command and finish.")
+	if followup {
+		check("assignment", from, to, "Continue in the open child transcript.")
+		if caller == "/root" {
+			check("progress", from, to, "Are the command results ready?")
+			check("progress", to, from, "The command results are ready.")
+			check("final", to, from, "MANAGED_CHILD_FOLLOWUP")
+		}
+	}
+	view := activityui.NewView()
+	view.Conversation = true
+	view.Update(feed, activityui.Display{MainCaller: caller, Caller: caller})
+	rendered := strings.Join(view.RenderFeed(110, 120).Lines, "\n")
+	frame := ansi.Strip(rendered)
+	if strings.Count(frame, "Run the command and finish.") != 1 || followup && strings.Count(frame, "Continue in the open child transcript.") != 1 {
+		t.Fatalf("assignment rendering for %s:\n%s", caller, frame)
+	}
+	if followup {
+		count := 0
+		if caller == "/root" {
+			count = 1
+		}
+		if strings.Count(frame, "Are the command results ready?") != count || strings.Count(frame, "The command results are ready.") != count {
+			t.Fatalf("side exchange rendering for %s:\n%s", caller, frame)
+		}
+		t.Logf("Rendered %s transcript:\n%s", caller, rendered)
 	}
 }
 

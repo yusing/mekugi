@@ -47,6 +47,7 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 				Message string `json:"message"`
 			}{Message: "Host failure"},
 			Items: []ThreadItem{{
+				Kind: "completed", AgentPath: "/root/reader", Model: "model-id", ReasoningEffort: "high",
 				DurationMS: new(int64(123)), Delivery: "async", ID: "item", ClientID: "submission", Type: "commandExecution",
 				Questions: []Question{{ID: "question", Header: "Choice", Question: "Which one?", Title: "Pick one", IsSecret: true,
 					Options: jsontext.Value(`[{"label":"A","description":"First"}]`)}},

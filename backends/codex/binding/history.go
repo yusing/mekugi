@@ -11,6 +11,14 @@ import (
 // ThreadItem retains native item payloads without presentation state.
 // Source: apps/mekugi/internal/router/app_server_ui.go:70:107@[eaad597b] appServerItem.
 type ThreadItem struct {
+	Kind              string                         `json:"kind"`
+	AgentPath         string                         `json:"agentPath"`
+	Assignment        string                         `json:"assignment"`
+	Model             string                         `json:"model"`
+	ReasoningEffort   string                         `json:"reasoningEffort"`
+	Target            string                         `json:"target"`
+	Question          string                         `json:"question"`
+	Answer            string                         `json:"answer"`
 	SourceAcquisition *observation.SourceAcquisition `json:"sourceAcquisition,omitzero"`
 	CompactionMethod  observation.CompactionMethod   `json:"compactionMethod,omitzero"`
 	DurationMS        *int64                         `json:"durationMs"`

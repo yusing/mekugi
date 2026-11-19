@@ -15,6 +15,39 @@ import (
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 )
 
+func TestSessionUIReplayNativeSpawnFollowupAndSideAnswer(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(fmt.Sprint("legacy=", legacy), func(t *testing.T) {
+			start := map[string]any{"type": "SubAgentActivity", "kind": "started", "id": "spawn", "agent_path": "/root/worker", "model": "gpt-6-sol", "assignment": "Read the parser."}
+			spawn := replayTestItem("main", "turn", replayTestEpoch, replayTestEpoch+1, start)
+			if legacy {
+				start["type"], start["event_id"] = "sub_agent_activity", "spawn"
+				delete(start, "id")
+				spawn = replayTestRecord("event_msg", replayTestEpoch+1, start)
+			}
+			mail := map[string]any{"type": "agent_message", "id": "followup", "author": "/root", "recipient": "/root/worker", "content": []map[string]string{{"type": "input_text", "text": "Message Type: NEW_TASK\nTask name: /root/worker\nSender: /root\nPayload:\nReport the result."}}}
+			raw := replayTestRecord("event_msg", replayTestEpoch+2, map[string]any{"type": "raw_response_item", "item": mail})
+			side := replayTestItem("main", "turn", replayTestEpoch+2, replayTestEpoch+3, map[string]any{"type": "Extension", "kind": "collaboration.side_question", "id": "question", "target": "/root/worker", "question": "Is the parser ready?", "answer": "The parser is ready."})
+			path := replayTestWrite(t, t.TempDir(), "main.jsonl", replayTestMeta("main"), spawn, raw, raw, side)
+			source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+			t.Cleanup(p.close)
+			if err := p.advance(p.Until); err != nil {
+				t.Fatal(err)
+			}
+			painted := replayPlaybackTestPaint(t, p, 110, 60)
+			for _, body := range []string{"Read the parser.", "Report the result.", "Is the parser ready?", "The parser is ready."} {
+				if strings.Count(painted, body) != 1 {
+					t.Errorf("%q missing or repeated in replay:\n%s", body, painted)
+				}
+			}
+		})
+	}
+}
+
 func TestSessionUIReplayNativeFactsMatchLivePresentation(t *testing.T) {
 	for _, carrier := range []string{"event", "function_call_output", "custom_tool_call_output"} {
 		t.Run(carrier, func(t *testing.T) {
@@ -130,7 +163,11 @@ func TestSessionUIReplayNativeMessageCarriersPreserveBodyAndAttribution(t *testi
 						}
 						item["role"], item["internal_chat_message_metadata_passthrough"] = "assistant", map[string]any{"content_item_kinds": []string{provenance}}
 					}
-					records := []map[string]any{replayTestMeta("main")}
+					meta := replayTestMeta("main")
+					if !inherited {
+						meta["payload"].(map[string]any)["agent_path"] = "/root/worker"
+					}
+					records := []map[string]any{meta}
 					for _, at := range []int64{replayTestEpoch, replayTestEpoch + 1000} {
 						record := replayTestRecord("response_item", at, item)
 						record["metadata"] = map[string]any{"inherited_user_message": inherited}
