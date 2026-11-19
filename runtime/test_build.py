@@ -153,7 +153,7 @@ class NativeRunnerTests(unittest.TestCase):
 
     def test_check_uses_metadata_only_command_without_packaging(self):
         for args, selectors in [
-            ([], ["-p", "codex-app-server", "--tests"]),
+            ([], ["-p", "codex-app-server", "-p", "codex-app-server-subprocess-tests", "--tests"]),
             (["--", "-p", "codex-core", "--tests"], ["-p", "codex-core", "--tests"]),
         ]:
             with self.subTest(args=args):
@@ -165,29 +165,33 @@ class NativeRunnerTests(unittest.TestCase):
 
     def test_default_regression_suite_keeps_runtime_helpers(self):
         calls, copies, output = self.run_action("test", "--profile", "")
-        self.assertEqual([call.args[0][1] for call in calls], ["build", "test", "test", "test"])
-        self.assertTrue(all(call.args[0][4] == "dev-small" for call in calls))
-        self.assertIn("codex-code-mode-host", calls[0].args[0])
-        self.assertIn("bwrap", calls[0].args[0])
+        selection = ["--locked", "--profile", "dev-small", "-p", "codex-app-server",
+                     "-p", "codex-code-mode-host", "-p", "codex-bwrap",
+                     "-p", "codex-app-server-subprocess-tests"]
+        build_cmd, compile_env = calls[0].args
+        self.assertEqual(build_cmd, ["cargo", "build", *selection, "--bin", "mekugi-app-server",
+                                     "--bin", "codex-code-mode-host", "--bin", "bwrap", "--test", "subprocess"])
+        self.assertEqual(calls[1].args[0], ["cargo", "test", *selection, "--bin", "mekugi-app-server"])
         self.assertEqual(copies, 4)
-        suite, compile_env = calls[2].args
-        run_suite, suite_env = calls[3].args
-        self.assertEqual(suite, [*run_suite[:run_suite.index("--")], "--no-run"])
+        self.assertEqual(len(calls), 3)
+        run_suite, suite_env = calls[2].args
+        self.assertEqual(run_suite, ["cargo", "test", *selection, "--test", "subprocess"])
         for name in ("mekugi-app-server", "codex-code-mode-host"):
             key = f"CARGO_BIN_EXE_{name}"
             self.assertNotIn(key, compile_env)
             self.assertEqual(suite_env[key], str(output / name))
 
     def test_filtered_integration_uses_staged_pair_only_during_execution(self):
-        test_filter = "suite::v2::code_mode_host"
+        test_filter = "websocket"
         calls, copies, output = self.run_action("test", "--test-filter", test_filter)
-        self.assertEqual([call.args[0][1] for call in calls], ["build", "test", "test"])
+        self.assertEqual([call.args[0][1] for call in calls], ["build", "test"])
         self.assertEqual(copies, 4)
-        suite = ["cargo", "test", "--locked", "--profile", "dev-small", "-p", "codex-app-server", "--test", "all"]
-        compile_cmd, compile_env = calls[1].args
-        run_cmd, run_env = calls[2].args
-        self.assertEqual(compile_cmd, [*suite, "--no-run"])
-        self.assertEqual(run_cmd, [*suite, "--", test_filter])
+        compile_cmd, compile_env = calls[0].args
+        run_cmd, run_env = calls[1].args
+        targets = ["--test", "subprocess", "--test", "all"]
+        self.assertEqual(compile_cmd[-4:], targets)
+        self.assertEqual(run_cmd, ["cargo", "test", *compile_cmd[2:compile_cmd.index("--bin")],
+                                   *targets, "--", test_filter])
         for name in ("mekugi-app-server", "codex-code-mode-host"):
             key = f"CARGO_BIN_EXE_{name}"
             self.assertNotIn(key, compile_env)

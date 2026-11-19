@@ -90,20 +90,32 @@ def main():
         env.pop("MEKUGI_EXEC_TRACK", None)
         # Match the fork's test runner: large async test futures need this stack.
         env.setdefault("RUST_MIN_STACK", "8388608")
+    subprocess_test_package = "codex-app-server-subprocess-tests"
     if args.action == "check":
         run(["cargo", "check", "--locked", "--profile", profile,
-             *(cargo_args or ["-p", "codex-app-server", "--tests"])], env)
+             *(cargo_args or ["-p", "codex-app-server", "-p", subprocess_test_package, "--tests"])], env)
         return
     if args.action == "test" and cargo_args:
         # Focused library checks do not need the app-server or packaged helpers.
         run(["cargo", "test", "--locked", "--profile", profile, *cargo_args], env)
         return
-    cargo = ["cargo", "build", "--locked", "--profile", profile]
     binaries = [("codex-app-server", "mekugi-app-server"), ("codex-code-mode-host", "codex-code-mode-host")]
     if spec.is_linux:
         binaries.append(("codex-bwrap", "bwrap"))
-    for package, binary in binaries:
-        cargo.extend(["-p", package, "--bin", binary])
+    selection = ["--locked", "--profile", profile]
+    for package, _ in binaries:
+        selection.extend(["-p", package])
+    suite_targets = []
+    if args.action == "test":
+        selection.extend(["-p", subprocess_test_package])
+        suite_targets.extend(["--test", "subprocess"])
+        if args.test_filter is not None:
+            suite_targets.extend(["--test", "all"])
+    cargo = ["cargo", "build", *selection]
+    for _, binary in binaries:
+        cargo.extend(["--bin", binary])
+    # Resolve the selected test dependencies alongside the staged runtime.
+    cargo.extend(suite_targets)
     run(cargo, env)
 
     profile_dir = "debug" if profile == "dev" else profile
@@ -113,24 +125,15 @@ def main():
         shutil.copy2(target_dir / profile_dir / binary, output / binary)
     shutil.copy2(RUST / "models-manager/models.json", output / "mekugi-models.json")
     if args.action == "test":
-        filters = [args.test_filter] if args.test_filter is not None else [
-            "suite::v2::command_exec", "suite::v2::connection_handling",
-            "suite::v2::code_mode_host", "suite::strict_config",
-        ]
+        filters = ["--", args.test_filter] if args.test_filter is not None else []
         if args.test_filter is None:
-            run(["cargo", "test", "--locked", "--profile", profile,
-                 "-p", "codex-app-server", "--bin", "mekugi-app-server"], env)
-        suite = ["cargo", "test", "--locked", "--profile", profile,
-                 "-p", "codex-app-server", "--test", "all"]
-        # Keep checkout-specific CARGO_BIN_EXE paths out of compiler cache keys.
-        run([*suite, "--no-run"], env)
-        # Cargo builds the app-server for these tests, not its companion host.
-        # Run the suite against the same sibling layout we just staged.
+            run(["cargo", "test", *selection, "--bin", "mekugi-app-server"], env)
+        # Give the suites the staged sibling layout without changing compiler inputs.
         suite_env = env | {
             f"CARGO_BIN_EXE_{name}": str(output / name)
             for name in ("mekugi-app-server", "codex-code-mode-host")
         }
-        run([*suite, "--", *filters], suite_env)
+        run(["cargo", "test", *selection, *suite_targets, *filters], suite_env)
         return
     if args.action == "build":
         print(output)

@@ -141,7 +141,8 @@ make test-native NATIVE_ARGS='-p codex-core --lib -- capture_delivery'
 ```
 
 To run matching app-server integration cases with the freshly staged server and
-code-mode host, use a test name or substring instead of Cargo selectors:
+code-mode host, use a test name or substring instead of Cargo selectors. The
+filter applies to both the subprocess and broader app-server integration suites:
 
 ```sh
 make test-native NATIVE_TEST_FILTER='suite::v2::code_mode_host'
@@ -153,6 +154,10 @@ Focused Cargo selectors skip separate runtime staging and packaging. A test-name
 filter limits execution, not compilation of the selected test binary. Keep the same
 profile and target directory across runs; Cargo retains separate check and test
 artifacts.
+When staging the runtime for integration tests, `test-native` builds the runtime
+binaries and selected suites together. By default it does not build the broader
+app-server integration suite. The default subprocess harness does not link the
+app-server library, so an app-server-only source edit does not rebuild it.
 Both commands use the pinned V8 environment; tests inherit the fork's 8 MiB test
 stack default. No cache cleanup is needed between runs.
 
