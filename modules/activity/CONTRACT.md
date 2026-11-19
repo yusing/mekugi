@@ -549,9 +549,10 @@ and clears unread counts; paused views offer Back to bottom above the composer.
 
 The composer shows a live count only while commands from Main or admitted children
 are running. `/ps` opens the shared dialog with one tab per whole invocation in start
-order, including a single-command tab. Each page retains owning agent, original
-display source, output and outcome. New commands join while open, and completed
-pages remain until closing. Empty state is
+order, including a single-command tab. A running process shows its observed active
+segment, or the invocation command when no active boundary is known. Each page
+retains owning agent, original invocation source, output and outcome. New commands
+join while open, and completed pages remain until closing. Empty state is
 explicit. Yielded commands remain running until host completion; restored history
 never revives them. Session switching closes the dialog. Reading or closing it
 neither interrupts work nor submits model input.

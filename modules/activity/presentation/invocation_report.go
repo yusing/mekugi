@@ -51,6 +51,7 @@ type invocationSegment struct {
 
 type invocationReport struct {
 	segments                                   []invocationSegment
+	active, display                            string // Current observed segment, before and after display unwrapping.
 	separate, terminal, lossy, ended, complete bool
 	exit                                       int
 }
@@ -69,6 +70,7 @@ func (i *Invocation) SegmentText(index int) string {
 func (i *Invocation) ObserveSegments(report SegmentReport) (changed, loss bool) {
 	r := &i.report
 	lossy := r.lossy || report.Lossy
+	var active string
 	for len(r.segments) < len(report.Segments) {
 		r.segments = append(r.segments, invocationSegment{})
 	}
@@ -76,6 +78,9 @@ func (i *Invocation) ObserveSegments(report SegmentReport) (changed, loss bool) 
 		segment := &r.segments[index]
 		facts := observed
 		facts.Output = ""
+		if observed.Began && !observed.Finished {
+			active = observed.Analysis
+		}
 		changed = changed || segment.facts != facts
 		segment.facts = facts
 		segment.vcs = VCSOutputSource(observed.Analysis)
@@ -98,6 +103,9 @@ func (i *Invocation) ObserveSegments(report SegmentReport) (changed, loss bool) 
 		}
 	}
 	complete := report.Ended && report.Closed && report.Done
+	if active != r.active {
+		r.active, r.display = active, shellDisplaySource(active)
+	}
 	separate := !report.Terminal && len(report.Segments) != 1 && !lossy && !(report.Ended && !complete)
 	changed = changed || r.separate != separate || r.terminal != report.Terminal || r.lossy != lossy || r.ended != report.Ended || r.complete != complete || r.exit != report.ExitCode
 	r.separate, r.terminal, r.lossy, r.ended, r.complete, r.exit = separate, report.Terminal, lossy, report.Ended, complete, report.ExitCode
@@ -122,6 +130,15 @@ func (i *Invocation) ObserveSegments(report SegmentReport) (changed, loss bool) 
 		}
 	}
 	return changed, loss
+}
+
+// ProcessCommand keeps process ownership at the invocation while showing the
+// command actually running. Without an open segment boundary, do not guess.
+func (i *Invocation) ProcessCommand() (command, whole string) {
+	if display := i.report.display; !i.complete && !i.report.ended && display != "" && display != i.source.Display {
+		return display, i.source.Display
+	}
+	return i.source.Display, ""
 }
 
 // ReportSnapshot projects admitted segment boundaries. Final projection marks

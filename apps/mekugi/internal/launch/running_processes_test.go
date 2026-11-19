@@ -117,24 +117,55 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	}
 }
 
-func TestRunningProcessesTrackedCompletion(t *testing.T) {
+func TestUISnapshotRunningProcessesTrackedCompletion(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
-	script := "pwd && sleep 1"
+	now := time.Unix(1000, 0)
+	u.clock = func() time.Time { return now }
+	u.testActivity(u.shell.Agents).Clock = u.clock
+	const command = "cargo check --quiet --locked -p codex-core -p codex-app-server -p codex-state --tests"
+	script := "cat > edit.py <<'PY'\nprint('start')\n" + strings.Repeat("print('editing')\n", 48) + "print('end')\nPY\npython3 edit.py\nmrun --max-tokens 4000 " + command
 	processNotify(t, u, "main", "cmd", "/usr/bin/bash -lc "+quoteShellWord(script), "inProgress")
+	appServerTestKeys(t, u, "/ps\r")
+	terminalTest(u).outputKey("\r")
+	const width, height = 112, 12
+	processDialog(u, width, height)
+	terminalTest(u).Dialog.Key("g") // Inspect the beginning before tracking starts.
+	if got := terminalTest(u).Dialog.Pages[0].Code; got != script {
+		t.Fatalf("untracked process command = %q", got)
+	}
 	report := dialExecTrackReport(t, hub, script)
 	report.send(
 		segmenttransport.Message{Type: segmenttransport.Begin, Index: 0},
 		segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
 		segmenttransport.Message{Type: segmenttransport.Begin, Index: 1},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 2},
 	)
-	awaitMain(t, u, "Running sleep 1")
-	if runningProcessCount(&u.attached.session) != 1 {
-		t.Fatal("segments changed the host process count")
+	awaitMain(t, u, "Running cargo check")
+	if processes := u.attached.session.Processes(); len(processes) != 1 || processes[0].Command != command {
+		t.Fatalf("published processes = %+v", processes)
 	}
 	// Tracked output retains a copied Activity row; late host identity belongs
 	// to the canonical running operation, not that earlier display snapshot.
 	appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "processId": "42"})
+	now = now.Add(2*time.Minute + 43*time.Second)
+	updated := processDialog(u, width, height)
+	terminalTest(u).outputKey("\x1b")
 	appServerTestKeys(t, u, "/ps\r")
+	terminalTest(u).outputKey("\r") // A newly opened live detail follows the tail.
+	opened := processDialog(u, width, height)
+	for _, frame := range [][]string{updated, opened} {
+		if got := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(got, "Command: "+command) {
+			t.Fatalf("active command outside viewport:\n%s", got)
+		}
+	}
+	if got := ansi.Strip(strings.Join(updated, "\n")); !strings.Contains(got, "print('start')") || strings.Contains(got, "print('end')") {
+		t.Fatalf("update lost paused viewport:\n%s", got)
+	}
+	if got := ansi.Strip(strings.Join(opened, "\n")); !strings.Contains(got, "print('end')") || strings.Contains(got, "print('start')") {
+		t.Fatalf("opening no longer follows tail:\n%s", got)
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-active-segment.txt", append(updated, opened...), width)
 	stop := terminalTest(u).Dialog.Key("x")
 	if stop.Process == nil || stop.Process.ID != "42" || stop.Process.Item != "cmd" {
 		t.Fatal("tracked command lost late Stop identity")
@@ -142,6 +173,10 @@ func TestRunningProcessesTrackedCompletion(t *testing.T) {
 	processNotify(t, u, "main", "cmd", "/usr/bin/bash -lc "+quoteShellWord(script), "completed")
 	if runningProcessCount(&u.attached.session) != 0 {
 		t.Fatal("completed command remained listed while its segment report drained")
+	}
+	processDialog(u, 84, 18)
+	if got := terminalTest(u).Dialog.Pages[0].Code; got != script {
+		t.Fatalf("completed process retained a running segment: %q", got)
 	}
 }
 

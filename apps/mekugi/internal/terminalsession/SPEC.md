@@ -393,9 +393,11 @@ The application resolves and reads files; rendering receives their content or er
 
 `/ps` opens an inline Background list below the composer, not a modal dialog,
 with active-shell count, syntax-highlighted command, owner and status.
-Up/Down selects a process; Enter or a row click opens Shell details with status,
-runtime, full syntax-highlighted command and retained streaming output in the
-same inline surface. Left returns to the list;
+Up/Down selects a process; Enter or a row click opens Shell details in the same
+inline surface. The list and details show the current tracked command when known;
+details keep that command visible while scrolling the invocation source and output.
+Runtime and status describe the whole invocation.
+Left returns to the list;
 Escape closes either view, and Enter/Space also closes details. Output remains
 scrollable and searchable. Completed processes stay in the open list until it
 closes; reopening lists only live processes. New live processes join in start order.

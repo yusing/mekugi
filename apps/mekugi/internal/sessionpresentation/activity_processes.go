@@ -7,7 +7,6 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
@@ -53,9 +52,10 @@ func processValues(source *ActivitySource, pages []activitypresentation.DetailPa
 	for _, record := range source.Entries {
 		page, ok := bySource[record.Source.Seq]
 		if n := record.Source.Native; ok && n != nil {
+			command, whole := n.Invocation.ProcessCommand()
 			value := activitypresentation.Value{
 				Source: record.Source.Seq, Owner: page.Owner, Kind: "op", Verb: "Run", Lang: "bash",
-				Code:   frontends.ShellDisplaySource(DisplayCommand(n.Command)),
+				Code: command, DetailCode: whole,
 				Output: RetainedOutputID(n.Output, 1), Tail: record.Source.OutputTail, TailOmitted: record.Source.OutputOmit, TailClipped: record.Source.OutputClipped,
 				Running: n.Running, Approval: n.Approval,
 				Started: n.CommandStarted, Ended: n.CommandEnded, Duration: n.Duration, NotificationTiming: true,
@@ -80,7 +80,8 @@ type Process struct {
 
 func processIdentity(entry ActivityEntry) Process {
 	n := entry.Native
-	return Process{Thread: n.Thread, Turn: n.Turn, Item: n.Item, ID: n.ProcessID, Agent: entry.Agent, Command: frontends.ShellDisplaySource(DisplayCommand(n.Command))}
+	command, _ := n.Invocation.ProcessCommand()
+	return Process{Thread: n.Thread, Turn: n.Turn, Item: n.Item, ID: n.ProcessID, Agent: entry.Agent, Command: command}
 }
 
 func (s *Attachment) Processes() []Process {

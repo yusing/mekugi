@@ -58,6 +58,13 @@ func (d *ContentDialog) PaintProcesses(rows []string, rect Rect) {
 		d.theme.Accent() + d.Document.Title + terminalui.Reset + "  " + detail,
 		"",
 	}
+	// Keep the active command visible when following output or inspecting a
+	// long invocation. Reuse the header spacer only when its body row is offscreen.
+	if d.ProcessDetail && d.Pages[d.Page].DetailCode != "" {
+		if row := d.starts[processCommandLine]; row < d.top || row >= d.top+d.rows {
+			lines[2] = ansi.Truncate(d.Document.Lines[processCommandLine].Text, rect.W-4, "…")
+		}
+	}
 	for i, row := range d.body {
 		if d.Selection != nil {
 			row = d.Selection.Row(d.Selection.DocumentY(i), d.theme)
@@ -78,6 +85,8 @@ func (d *ContentDialog) PaintProcesses(rows []string, rect Rect) {
 		}
 	}
 }
+
+const processCommandLine = 2 // Status and runtime precede the command in Shell details.
 
 func (d *ContentDialog) layoutProcess(width int) {
 	page := d.Pages[d.Page]
@@ -143,7 +152,7 @@ func (d *ContentDialog) layoutProcess(width int) {
 		// Reuse retained-output painting and its release/omission notices, but
 		// expose the whole command as metadata rather than a second code block.
 		value := page.Value
-		value.Code = ""
+		value.Code, value.DetailCode = "", ""
 		block := activityui.Block{Value: value}
 		if key.output {
 			block.OutputSnapshot = &d.Output.View
@@ -159,10 +168,20 @@ func (d *ContentDialog) layoutProcess(width int) {
 		lines := []terminalui.DialogLine{
 			{Text: "Status:  " + d.processStatus(d.Page), Wrap: true},
 			{},
-			{Text: "Command: " + strings.Join(d.View.Painter.Highlight("bash", textsanitize.Safe(page.Code, false)), "\n"), Wrap: true},
-			{},
-			{Text: "Output:"},
 		}
+		addSource := func(label, code string) {
+			for i, row := range d.View.Painter.Highlight("bash", textsanitize.Safe(code, false)) {
+				if i == 0 {
+					row = label + row
+				}
+				lines = append(lines, terminalui.DialogLine{Text: row, Wrap: true})
+			}
+		}
+		addSource("Command: ", page.Code)
+		if page.DetailCode != "" {
+			addSource("Invocation: ", page.DetailCode)
+		}
+		lines = append(lines, terminalui.DialogLine{}, terminalui.DialogLine{Text: "Output:"})
 		document.Lines = append(lines, document.Lines...)
 		d.SetDocument(document, width)
 		d.laidKey = key
