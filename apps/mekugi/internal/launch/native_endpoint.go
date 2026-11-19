@@ -23,6 +23,8 @@ type nativeEndpoint struct {
 	finish  func(error) error
 	ending  bool
 	waiters []nativeAttachRequest
+	views   *nativeViews
+	exit    *nativeTerminalExit
 }
 
 type nativeEventSource struct {

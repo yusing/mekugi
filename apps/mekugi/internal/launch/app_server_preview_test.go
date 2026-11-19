@@ -324,7 +324,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		t.Helper()
 		for _, key := range []byte(s) {
 			if key == 3 {
-				quit = nativeTestCancel(t, p.ui).quit
+				quit = nativeTestExitRequested(nativeTestCancel(t, p.ui))
 			} else if err := terminalTest(p.ui).key(key); err != nil {
 				t.Fatal(err)
 			}

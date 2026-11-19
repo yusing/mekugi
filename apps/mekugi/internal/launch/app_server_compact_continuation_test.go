@@ -70,6 +70,9 @@ func nativeTestCancel(t *testing.T, u *appServerUI) *nativeClient {
 		return c
 	}
 	for _, call := range c.calls {
+		if call.operation.Command != nil && *call.operation.Command == "/quit" {
+			continue
+		}
 		if call.operation.Interrupt == nil {
 			t.Fatalf("cancellation queued a non-interrupt operation: %+v", call.operation)
 		}
@@ -555,7 +558,7 @@ func TestNativeCancelDraftUndoLockAndIdleQuit(t *testing.T) {
 	}
 	c.renderer.terminal.Main.InterruptLocked = false
 	nativeTestInput(c, "\x03")
-	if !c.quit || len(c.calls) != 0 {
-		t.Fatal("idle cancellation did not quit locally")
+	if c.quit || !nativeTestExitRequested(c) {
+		t.Fatal("idle cancellation did not request an ordinary exit")
 	}
 }

@@ -39,6 +39,13 @@ type KeyContinuation struct {
 	regular bool
 }
 
+// ReadOnlyExit recognizes the normal empty-composer exit on an attached owner
+// that does not accept edits. Observational child and replay panes keep their
+// existing input routing.
+func (m *Main) ReadOnlyExit(next KeyContinuation) bool {
+	return next.key == "\x03" && m.session.ReadOnly == sessionpresentation.Editable && m.session.Admission.ReadOnly
+}
+
 // Continuation submits an accepted slash completion without accepting its menu
 // again. Pointer selection needs the same post-menu Enter phase as the keyboard.
 func (r MenuResult) Continuation() *KeyContinuation {

@@ -264,8 +264,9 @@ never repeat these operations.
 stops its turn and exits only after host success; failure keeps the session usable.
 It requires an established session outside restoration/replacement. New submissions
 and switches wait while it is pending; displayed children never change its target.
-`/quit` exits only while idle. Exit prints unsent drafts and stacked input; unresolved
-or uncommitted transmitted input says outcome unknown and is never resent.
+Native terminal exit follows the [launch lifecycle](../launch/SPEC.md#lifecycle-and-failure).
+Exit prints unsent drafts and stacked input; unresolved or uncommitted transmitted
+input says outcome unknown and is never resent.
 
 Side-thread correlation outlives a closed side conversation or Main replacement until delayed
 fork/start responses and cleanup settle. A later start acknowledgement cannot revive

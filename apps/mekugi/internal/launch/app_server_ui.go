@@ -150,6 +150,7 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 	settlePresentation(&session.attached, &session.Client, &session.picker, &session.Editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, session.side, session.clock, &session.questions, &session.approvals, session.overlayOpen(session.statusPanel, session.resumePicker))
 	predictions := composerPredictions{provider: predictionProvider, results: make(chan predictionConfiguration, 1)}
 	native := newNativeViews(session.ctx, api.Native(), session.presentationState, session.activity, session.Client.Requests)
+	endpoint.views = native
 	native.guards = session.approvals.guards
 	session.approvals.allows = native.allowsApproval
 	hooks.bind(native, api, session.compactionReader)
@@ -263,6 +264,12 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 	}
 	applyNativeOperation := func(view *nativeSessionView, request sessionapi.NativeRequest) (refusal string, err error) {
 		operation := request.Operation
+		if operation.Command != nil && *operation.Command == "/quit" {
+			return session.connection.checkTerminalExit(endpoint, view, exitOffer, nil)
+		}
+		if operation.Menu != nil && view.picker.Kind == sessionpresentation.MenuExit {
+			return session.connection.chooseTerminalExit(endpoint, view, request)
+		}
 		inputThread := view.attached.presentation.View().Input.ID
 		if operation.Menu != nil && operation.Menu.Thread != "" {
 			inputThread = operation.Menu.Thread
@@ -753,6 +760,9 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 		var operationErr error
 		if request.Attach {
 			refusal = native.attach(request, &session.attached, session.Client.Thread)
+			if refusal == "" && endpoint.exit != nil && endpoint.exit.action == exitDeferred {
+				endpoint.exit = nil
+			}
 			if refusal == "" && request.Startup != "" && startupView == "" {
 				startupView = request.Attachment
 				if latestResponse != nil {
@@ -762,6 +772,8 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 				}
 			}
 			adoptStartupChooser()
+		} else if endpoint.api.Native().ReleaseDone() != nil {
+			refusal = "The session is finishing."
 		} else {
 			var view *nativeSessionView
 			view, refusal = native.admit(request, &session.attached, session.Client.Thread)
@@ -800,6 +812,12 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 		return nil
 	})
 	nativeOn(endpoint, func() <-chan sessionapi.Intent { return intents }, func(intent sessionapi.Intent, _ bool) error {
+		if endpoint.api.Native().ReleaseDone() != nil {
+			if intent.Reply != nil {
+				intent.Reply <- "The session is finishing."
+			}
+			return nil
+		}
 		refusal := apiIntentRefusal(&session.attached, &session.Client, intent)
 		var intentErr error
 		if refusal == "" {
@@ -923,6 +941,7 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 type appServerRequest struct {
 	nativeTree string
 	nativeEnd  *nativeEndRequest
+	nativeIdle *nativeEndpoint
 	history    *appServerHistoryRead
 	view       string
 	metadata   string

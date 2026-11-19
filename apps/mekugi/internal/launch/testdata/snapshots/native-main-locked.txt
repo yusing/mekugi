@@ -5,6 +5,6 @@ Mekugi dev • codex
 
 
 
-╭─ Ready · Locked · /unlock restores Esc and Ctrl-C · /quit exits when idle ───────────────────────╮
+╭─ Ready · Locked · /unlock restores Esc and Ctrl-C · /quit is still available ────────────────────╮
 │ ❯                                                                                                │
 ╰───────────────────────────────────────────────────────────────────────────────────────────── 0% ─╯

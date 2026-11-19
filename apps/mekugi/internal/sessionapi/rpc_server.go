@@ -800,7 +800,29 @@ func (c *rpcConnection) dispatch(ctx context.Context, method string, params RPCP
 			}
 		}
 		return c.subscribe(ctx, params.Subscription, func(viewContext context.Context) (*rpcSubscription, *RPCError) {
-			return selected.server.Native().attach(ctx, viewContext, target, params.Startup, c.authority)
+			subscription, failure := selected.server.Native().attach(ctx, viewContext, target, params.Startup, c.authority)
+			if failure != errNativeReleasing {
+				return subscription, failure
+			}
+			joined := selected.server.Native().ReleaseDone()
+			if selected.server == selected.runtime.server {
+				joined = selected.runtime.done
+			}
+			if joined != nil {
+				select {
+				case <-joined:
+				case <-ctx.Done():
+					return nil, rpcFailure(503, "The selected native runtime is still finishing.")
+				}
+			}
+			if selected.server != selected.runtime.server {
+				if failure = h.attachThread(ctx, params.Thread, c.authority); failure == nil {
+					if current, denied := h.lookup(params.Thread, "", c.authority); denied == nil {
+						return current.server.Native().attach(ctx, viewContext, requestTarget{current.entry.Thread, current.entry.Workspace}, "", c.authority)
+					}
+				}
+			}
+			return nil, rpcFailure(404, "No such thread; it has ended.")
 		})
 	case "session/subscribe":
 		return c.subscribe(ctx, params.Subscription, func(viewContext context.Context) (*rpcSubscription, *RPCError) {

@@ -335,20 +335,20 @@ func (c *nativeConnection) endChild(ctx context.Context, thread string) error {
 func (c *nativeConnection) endEndpoint(request *nativeEndRequest) {
 	endpoint := c.byThread[request.thread]
 	if err := request.ctx.Err(); err != nil {
-		request.reply <- err
+		request.complete(err)
 		return
 	}
 	if endpoint == nil || endpoint.session == c.root {
-		request.reply <- errors.New("native end requires an admitted non-root endpoint")
+		request.complete(errors.New("native end requires an admitted non-root endpoint"))
 		return
 	}
 	if endpoint.ending {
-		request.reply <- errors.New("native end is already pending")
+		request.complete(errors.New("native end is already pending"))
 		return
 	}
 	_, err := c.root.Client.Requests.Send("agent/end", map[string]any{"rootThreadId": endpoint.session.Client.NativeRoot, "threadId": request.thread}, "native/end", appServerRequest{nativeEnd: request})
 	if err != nil {
-		request.reply <- err
+		request.complete(err)
 		return
 	}
 	endpoint.ending = true
@@ -359,7 +359,7 @@ func (c *nativeConnection) ended(request *nativeEndRequest, message appserver.Me
 		if endpoint := c.byThread[request.thread]; endpoint != nil {
 			endpoint.ending = false
 		}
-		request.reply <- fmt.Errorf("native end rejected: %s", message.Error.Message)
+		request.complete(fmt.Errorf("native end rejected: %s", message.Error.Message))
 		return
 	}
 	// The native reply is the join fence. Retirement follows that fact, never
@@ -368,7 +368,10 @@ func (c *nativeConnection) ended(request *nativeEndRequest, message appserver.Me
 		ThreadIDs []string `json:"threadIds"`
 	}
 	if err := json.Unmarshal(message.Result, &result); err != nil || !slices.Contains(result.ThreadIDs, request.thread) {
-		request.reply <- errors.New("native end returned no confirmed target join")
+		if endpoint := c.byThread[request.thread]; endpoint != nil {
+			endpoint.ending = false
+		}
+		request.complete(errors.New("native end returned no confirmed target join"))
 		return
 	}
 	for _, thread := range result.ThreadIDs {
@@ -376,7 +379,7 @@ func (c *nativeConnection) ended(request *nativeEndRequest, message appserver.Me
 			c.retire(endpoint, nil)
 		}
 	}
-	request.reply <- nil
+	request.complete(nil)
 }
 
 func (c *nativeConnection) retire(endpoint *nativeEndpoint, outcome error) {

@@ -74,6 +74,7 @@ type nativeSessionView struct {
 	effects               nativeViewEffects
 	notification          *sessionapi.NativeEffect
 	notices               *nativeCriticalNoticeDelivery
+	exitWork              []nativeExitWork
 }
 
 func newNativeViews(parent context.Context, api *sessionapi.Native, models *sessionpresentation.Service, activity *activitymodel.Service, requests *sessioncontrol.Requests[appServerRequest]) *nativeViews {

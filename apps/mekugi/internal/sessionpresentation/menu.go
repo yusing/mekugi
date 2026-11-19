@@ -10,6 +10,7 @@ const (
 	MenuManageSkills MenuKind = "manage"
 	MenuSettings     MenuKind = "settings"
 	MenuArchive      MenuKind = "archive"
+	MenuExit         MenuKind = "exit"
 	MenuRewind       MenuKind = "rewind"
 	MenuRewindEdits  MenuKind = "rewind-edits"
 	MenuSideReplace  MenuKind = "side-replace"

@@ -45,6 +45,9 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 	case sessionpresentation.MenuArchive:
 		view.Title = "Archive this session?"
 		view.Explanation = archivePrompt(control)
+	case sessionpresentation.MenuExit:
+		view.Title = "Exit this session?"
+		view.Explanation = "Work is still running. Stop ends work in this session and its delegates."
 
 	case sessionpresentation.MenuRewind:
 		view.Dialog = true

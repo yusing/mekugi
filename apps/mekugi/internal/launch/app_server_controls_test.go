@@ -49,7 +49,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "/unlock\r")
 			c = nativeTestCancel(t, u)
-			quit := c.quit
+			quit := nativeTestExitRequested(c)
 			if u.attached.interruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}

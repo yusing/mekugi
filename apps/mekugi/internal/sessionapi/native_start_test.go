@@ -36,6 +36,70 @@ func TestNativeStartupReportsInitializationFailure(t *testing.T) {
 	}
 }
 
+func TestNativeResumeAtIdleReleaseWaitsForRuntimeRetirement(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		commit, joining, join := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		launcher := &nativeStartupLauncher{run: func(ctx context.Context, start Start, server *Server) error {
+			native := server.Native()
+			request := <-native.Requests()
+			if err := server.SetSummary(Summary{Thread: "confirmed", Workspace: start.Workspace, Ready: true}); err != nil {
+				return err
+			}
+			frame := nativeTestFrame("confirmed", 1)
+			frame.View.Info.Workspace = start.Workspace
+			frame.Switch = &NativeSwitch{To: "confirmed", Origin: request.Attachment}
+			if err := native.Publish(request.Attachment, frame); err != nil {
+				return err
+			}
+			request.Reply <- ""
+			<-commit
+			if !native.BeginRelease(request.Attachment, nil) {
+				return errors.New("release did not acquire the sole attachment")
+			}
+			close(joining)
+			<-join
+			return nil
+		}}
+		hub := NewHub(t.Context(), launcher)
+		defer hub.Close()
+		conn := pipeControl(t, hub)
+		controlInitialize(t, conn)
+		controlWrite(t, conn, string(testJSON(t, map[string]any{"jsonrpc": "2.0", "id": "start", "method": "native/start", "params": RPCParams{Subscription: "view", Body: testJSON(t, NativeStart{Workspace: t.TempDir()})}})))
+		if reply := controlRead(t, conn); reply.Error != nil {
+			t.Fatal(reply.Error)
+		}
+		_ = controlRead(t, conn) // Initial native snapshot.
+		close(commit)
+		<-joining
+
+		resume := pipeControl(t, hub)
+		controlInitialize(t, resume)
+		controlWrite(t, resume, `{"jsonrpc":"2.0","id":"resume","method":"view/attach","params":{"thread":"confirmed","subscription":"reattached"}}`)
+		reply := make(chan RPCMessage, 1)
+		go func() { reply <- controlRead(t, resume) }()
+		synctest.Wait()
+		var early bool
+		select {
+		case <-reply:
+			early = true
+		default:
+		}
+		close(join)
+		if early {
+			t.Fatal("resume responded before its owner joined")
+		}
+		result := <-reply
+		if result.Error == nil || result.Error.Data == nil || result.Error.Data.Status != 404 {
+			t.Fatalf("resume did not receive saved-history fallback after join: %+v", result)
+		}
+		hub.mu.Lock()
+		defer hub.mu.Unlock()
+		if hub.sessions["confirmed"] != nil {
+			t.Fatal("saved-history fallback raced live registration")
+		}
+	})
+}
+
 func TestNativeStartupRegistersBeforePublishingConfirmedTarget(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		registering, release, published := make(chan struct{}), make(chan struct{}), make(chan struct{})

@@ -38,5 +38,5 @@ func (session *nativeSession) controlsCommand(attached *attachedPresentation, pi
 }
 
 func lockNotice(attached *attachedPresentation, clock func() time.Time) {
-	setNotice(&attached.feedback, presentationTime(clock), "Locked · /unlock restores Esc and Ctrl-C · /quit exits when idle", false)
+	setNotice(&attached.feedback, presentationTime(clock), "Locked · /unlock restores Esc and Ctrl-C · /quit is still available", false)
 }

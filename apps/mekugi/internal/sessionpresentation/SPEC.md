@@ -267,10 +267,11 @@ For a native target already running in the server, the same idle admission inste
 attaches the renderer to that existing execution owner. The source view remains
 usable until the destination supplies its initial snapshot. Pending input and
 consequences keep that source interaction alive after the visible switch. An unavailable target
-reports failure without issuing a duplicate host resume. `/quit` detaches a native
-view; confirmed `/archive` retires the archived execution and its owned resources.
+reports failure without issuing a duplicate host resume. Native terminal exit uses
+the [launch lifecycle](../launch/SPEC.md#lifecycle-and-failure); confirmed `/archive`
+retires the archived execution and its owned resources.
 Closing a startup resume chooser before a thread is selected ends that unconfirmed
-startup. Closing a view after startup selection leaves admitted execution running.
+startup. Disconnecting a view after startup selection leaves admitted execution running.
 
 `/fork` switches to the host-created branch through this same attachment and
 history restoration flow. It has no selection dialog and never submits a prompt.

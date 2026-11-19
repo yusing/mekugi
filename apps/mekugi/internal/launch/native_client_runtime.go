@@ -107,7 +107,7 @@ func (r *nativeClientRuntime) drainKeys(keys <-chan byte, now time.Time) {
 
 func nativeCallLane(operation sessionapi.NativeOperation) int {
 	switch {
-	case operation.Answers != nil || operation.Composer != nil && !strings.HasPrefix(strings.TrimSpace(operation.Composer.Draft.Text), "/"):
+	case operation.Answers != nil || operation.Command != nil && *operation.Command == "/quit" || operation.Composer != nil && !strings.HasPrefix(strings.TrimSpace(operation.Composer.Draft.Text), "/"):
 		return nativeInputCall
 	case operation.Output != nil:
 		return nativeObservationCall
@@ -245,9 +245,9 @@ func (r *nativeClientRuntime) schedule() {
 		for i := 0; i < len(owner.calls); {
 			call := owner.calls[i]
 			lane := nativeCallLane(call.operation)
-			input := call.operation.Composer != nil || call.operation.Answers != nil
+			input := lane == nativeInputCall || call.operation.Composer != nil
 			if owner.requests[lane] != nil || input && slices.ContainsFunc(owner.requests[:], func(pending *nativeClientCall) bool {
-				return pending != nil && (pending.operation.Composer != nil || pending.operation.Answers != nil)
+				return pending != nil && (nativeCallLane(pending.operation) == nativeInputCall || pending.operation.Composer != nil)
 			}) {
 				i++
 				continue

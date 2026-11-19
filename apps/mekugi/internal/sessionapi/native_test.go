@@ -80,6 +80,33 @@ func nativeTestFrame(thread string, attachment uint64) NativeFrame {
 	}}
 }
 
+func TestNativeReleaseArbitratesCompetingRootAndChildViews(t *testing.T) {
+	root, child := NewLive().Native(), NewLive().Native()
+	mainView, main, failure := root.newView(t.Context(), requestTarget{"root", "/workspace"}, "", localNativeView)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	defer mainView.close()
+	childView, _, failure := child.newView(t.Context(), requestTarget{"child", "/workspace"}, "", remoteHumanView)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	defer childView.close()
+	if root.BeginRelease(main.Attachment, []*Native{child}) || root.ReleaseDone() != nil || child.ReleaseDone() != nil {
+		t.Fatal("a child's registered view did not prevent root release")
+	}
+	childView.close()
+	if !root.BeginRelease(main.Attachment, []*Native{child}) {
+		t.Fatal("release did not acquire the unobserved subtree")
+	}
+	if view, _, failure := child.newView(t.Context(), requestTarget{"child", "/workspace"}, "", remoteHumanView); failure != errNativeReleasing {
+		if view != nil {
+			view.close()
+		}
+		t.Fatalf("child attach crossed the root release fence: %v", failure)
+	}
+}
+
 func TestNativeStatusAnchorDoesNotRepublish(t *testing.T) {
 	for _, authority := range []viewAuthority{localNativeView, remoteHumanView} {
 		native := NewLive().Native()

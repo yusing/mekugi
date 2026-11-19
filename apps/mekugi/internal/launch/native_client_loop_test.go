@@ -400,7 +400,7 @@ func TestNativeClientPTYDraftAndDetach(t *testing.T) {
 		t.Fatal(err)
 	}
 	await("continued editing")
-	if _, err := master.WriteString("\x03/quit\r"); err != nil {
+	if _, err := master.WriteString("\x03/detach\r"); err != nil {
 		t.Fatal(err)
 	}
 	select {

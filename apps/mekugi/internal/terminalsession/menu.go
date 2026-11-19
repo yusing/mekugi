@@ -54,6 +54,12 @@ func (m *Menu) Open() bool { return m.body != nil }
 func (m *Menu) Modal() bool {
 	return m.body != nil && m.body.Kind != sessionpresentation.MenuCompletion
 }
+
+// The inline exit prompt keeps its input priority without using a dialog.
+func (m *Menu) capturesInput() bool {
+	return m.body != nil && (m.body.Dialog || m.body.Kind == sessionpresentation.MenuExit)
+}
+
 func (m *Menu) action(kind sessionpresentation.MenuActionKind) sessionpresentation.MenuAction {
 	return sessionpresentation.MenuAction{Version: m.version, Menu: m.body.ID, Kind: kind}
 }
@@ -141,7 +147,7 @@ func (m *Menu) Key(key string) MenuResult {
 		}
 	case "\t":
 		switch p.Kind {
-		case sessionpresentation.MenuArchive, sessionpresentation.MenuSideReplace, sessionpresentation.MenuSettings:
+		case sessionpresentation.MenuArchive, sessionpresentation.MenuExit, sessionpresentation.MenuSideReplace, sessionpresentation.MenuSettings:
 			move(1)
 		case sessionpresentation.MenuCompletion:
 			if len(p.Choices) > 0 {

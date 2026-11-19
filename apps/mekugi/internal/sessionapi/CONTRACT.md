@@ -303,11 +303,16 @@ renderer to that owner rather than executing another host resume. The source
 view remains alive until the destination supplies a valid initial snapshot and
 its own pending input and editor consequences have settled. A
 failed attachment keeps the source view usable and never falls back to starting
-another runtime. Saved-thread resume retains the existing startup path.
+another runtime. A new native attachment cancels deferred idle release unless
+release has already committed. In that case attachment waits for the old owner
+to join before reporting that there is no live root to attach. Saved-thread
+resume retains the existing startup path.
 
 Native streams finish with an `exit` event containing `code` and optional
-`message` after runtime cleanup. Initialization failure can produce this event
-before the first snapshot. EOF without an exit event is a transport failure,
+`message` after runtime cleanup. An accepted local terminal exit that leaves
+execution running sends a successful `exit` only to that renderer.
+Initialization failure can produce an exit event before the first snapshot.
+EOF without an exit event is a transport failure,
 not evidence that work ended. Disconnecting at either stage leaves admitted work
 running. Clients never repeat startup automatically after an ambiguous response.
 

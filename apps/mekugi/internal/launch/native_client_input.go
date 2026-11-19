@@ -411,10 +411,18 @@ func (c *nativeClient) details(version sessionpresentation.Version, request sess
 }
 
 func (c *nativeClient) continueKey(next terminalsession.KeyContinuation) {
-	if !c.prepareComposerInput() {
+	u := c.renderer.terminal
+	menu := c.event.Frame.View.Menu
+	if (menu == nil || menu.Kind != sessionpresentation.MenuExit) && !c.prepareComposerInput() {
+		if u.Main.ReadOnlyExit(next) {
+			if u.Main.InterruptLocked {
+				c.notice = "Locked · /unlock restores Esc and Ctrl-C"
+			} else {
+				c.requestTerminalExit()
+			}
+		}
 		return
 	}
-	u := c.renderer.terminal
 	for {
 		transcript := u.Transcript
 		if c.event.Frame.View.Displayed.ID != c.event.Frame.View.Main.ID {
@@ -514,13 +522,19 @@ func (c *nativeClient) composer(input terminalsession.ComposerInput) {
 		case view.InterruptAvailable:
 			c.enqueue(sessionapi.NativeOperation{Interrupt: &sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.RestoreWaiting}}, nil, nil)
 		default:
-			c.quit = true
+			c.requestTerminalExit()
 		}
 		return
 	case sessionpresentation.SubmitComposer, sessionpresentation.QueueComposer:
-		if command := strings.TrimSpace(editor.Text); command == "/quit" || command == "/detach" {
+		switch strings.TrimSpace(editor.Text) {
+		case "/detach":
 			editor.Take()
 			c.quit = true
+			return
+		case "/quit":
+			editor.Take()
+			c.requestTerminalExit()
+			c.refresh(time.Now())
 			return
 		}
 		if !c.inputAvailable() {
@@ -559,6 +573,14 @@ func (c *nativeClient) composer(input terminalsession.ComposerInput) {
 	}
 	c.enqueue(sessionapi.NativeOperation{Composer: &sessionapi.NativeComposerInput{Intent: intent, Draft: value, Consumed: after != nil}}, nil, after)
 	c.refresh(time.Now())
+}
+
+func (c *nativeClient) requestTerminalExit() {
+	if c.event.Frame.View.Main.ID == "" {
+		c.quit = true
+		return
+	}
+	c.enqueue(sessionapi.NativeOperation{Command: new("/quit")}, nil, nil)
 }
 
 func (c *nativeClient) dialog(intent terminalsession.DialogIntent) {

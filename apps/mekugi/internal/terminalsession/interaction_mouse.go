@@ -24,12 +24,13 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 		yield(InputEffect{Dialog: &intent})
 		return
 	}
-	if main != nil && main.Menu.Dialog() && main.session.ReadOnly == sessionpresentation.Editable && shell.Focus == 0 {
+	if main != nil && main.Menu.capturesInput() && main.session.ReadOnly == sessionpresentation.Editable && shell.Focus == 0 {
 		if !release {
 			x, y := x-shell.Layout.Main.X, y-shell.Layout.Main.Y
 			r := main.Menu.Rect
 			result := MenuResult{Handled: true}
-			if button == 0 && (!r.Contains(x, y) || y == r.Y && x >= r.X+r.W-terminalui.DialogCloseWidth-3) {
+			closeDialog := main.Menu.Dialog() && y == r.Y && x >= r.X+r.W-terminalui.DialogCloseWidth-3
+			if button == 0 && (!r.Contains(x, y) || closeDialog) {
 				result = main.Menu.Key("\x1b")
 			} else if r.Contains(x, y) {
 				result = main.Menu.Mouse(button&^28, y)

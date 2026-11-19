@@ -74,6 +74,15 @@ type nativeEndRequest struct {
 	ctx    context.Context
 	thread string
 	reply  chan error
+	onDone func(error)
+}
+
+func (r *nativeEndRequest) complete(err error) {
+	if r.onDone != nil {
+		r.onDone(err)
+	} else {
+		r.reply <- err
+	}
 }
 
 func newNativeConnection(root *nativeSession, api *sessionapi.Server, threads *threadExecution, prefs *preferences.Service, environment []string, _ string, guards []binding.ShellApproval, skillsManager, childSummary bool) *nativeConnection {
@@ -182,6 +191,9 @@ func (c *nativeConnection) run() (runErr error) {
 				return err
 			}
 			c.ready(endpoint)
+			if err := c.advanceTerminalExit(endpoint); err != nil {
+				return err
+			}
 		}
 		return c.observeTree()
 	})
@@ -305,6 +317,11 @@ func (c *nativeConnection) message(message appserver.Message) error {
 		if request.Owner.nativeEnd != nil {
 			c.root.Client.Requests.Take(string(message.ID))
 			c.ended(request.Owner.nativeEnd, message)
+			return nil
+		}
+		if request.Owner.nativeIdle != nil {
+			c.root.Client.Requests.Take(string(message.ID))
+			c.releasedTerminalChild(request.Owner.nativeIdle, message)
 			return nil
 		}
 		endpoint = c.byThread[request.Consumer]

@@ -83,7 +83,7 @@ type InputEffect struct {
 // Source: apps/mekugi/internal/router/terminal_ui.go:39:136@d16ed250.
 func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEffect] {
 	return func(yield func(InputEffect) bool) {
-		if in.Dialog != nil || in.Main != nil && in.Main.Menu.Dialog() {
+		if in.Dialog != nil || in.Main != nil && in.Main.Menu.capturesInput() {
 			state.Prefix = false
 			state.resizeUntil = time.Time{}
 		}
@@ -104,7 +104,7 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 			if in.Main == nil {
 				return
 			}
-			if in.Dialog != nil || in.Main.Menu.Dialog() || in.Shell.Focus != 0 || in.Main.Panel.Open() || in.Main.Resume.Open() || in.Main.session.ReadOnly != sessionpresentation.Editable {
+			if in.Dialog != nil || in.Main.Menu.capturesInput() || in.Shell.Focus != 0 || in.Main.Panel.Open() || in.Main.Resume.Open() || in.Main.session.ReadOnly != sessionpresentation.Editable {
 				in.Main.CancelPaste()
 				return
 			}
@@ -136,7 +136,7 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 			return
 		}
 		key := event.Text
-		if in.Main != nil && in.Main.Menu.Dialog() {
+		if in.Main != nil && in.Main.Menu.capturesInput() {
 			in.send(state, key, yield)
 			return
 		}
@@ -230,7 +230,7 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 		yield(InputEffect{Dialog: &intent})
 		return
 	}
-	if in.Main != nil && in.Main.Menu.Dialog() && in.Main.session.ReadOnly == sessionpresentation.Editable {
+	if in.Main != nil && in.Main.Menu.capturesInput() && in.Main.session.ReadOnly == sessionpresentation.Editable {
 		result := in.Main.Menu.Key(key)
 		yield(InputEffect{Menu: &result})
 		return

@@ -30,9 +30,11 @@ type Native struct {
 	prepare       func(context.Context, string, InputRequest) (*PreparedInput, error)
 	done          chan struct{}
 	exit          *NativeExit
+	releasing     chan struct{}
 }
 
-// NativeExit is the joined runtime outcome, distinct from a disconnected client.
+// NativeExit is the joined runtime outcome, or a confirmed local exit that
+// leaves the runtime running. Transport loss does not produce this event.
 // Only the private native stream publishes the diagnostic.
 type NativeExit struct {
 	Code    int    `json:"code"`
@@ -182,6 +184,9 @@ func (n *Native) Finish(err error) {
 	}
 	outcome.Message = textsanitize.Safe(outcome.Message, false)
 	n.exit = &outcome
+	if n.releasing != nil {
+		close(n.releasing)
+	}
 	data, _ := encodeEvent("exit", outcome)
 	remoteData, _ := encodeEvent("exit", outcome.forView(remoteHumanView))
 	for _, view := range n.views {
@@ -202,6 +207,72 @@ func (n *Native) Close(id string) {
 		view.cancel(nil)
 	}
 }
+
+// CloseView lets an accepted local exit leave a still-running runtime.
+func (n *Native) CloseView(id string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if view := n.views[id]; view != nil && view.authority == localNativeView && n.exit == nil {
+		event, _ := encodeEvent("exit", NativeExit{})
+		view.queue.push(event)
+	}
+}
+
+func (n *Native) hasOtherViews(id string) bool {
+	for name, view := range n.views {
+		if name != id && view.ctx.Err() == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (n *Native) HasOtherViews(id string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.hasOtherViews(id)
+}
+
+func (n *Native) CancelRelease() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.releasing != nil && n.exit == nil {
+		close(n.releasing)
+		n.releasing = nil
+	}
+}
+
+func (n *Native) ReleaseDone() <-chan struct{} {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.releasing
+}
+
+// BeginRelease arbitrates deliberate retirement against concurrent attachment
+// registration. The execution owner supplies the exact affected endpoints.
+func (n *Native) BeginRelease(id string, descendants []*Native) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, child := range descendants {
+		child.mu.Lock()
+		defer child.mu.Unlock()
+	}
+	if n.releasing != nil || n.exit != nil || n.hasOtherViews(id) {
+		return false
+	}
+	for _, child := range descendants {
+		if child.releasing != nil || child.exit != nil || child.hasOtherViews("") {
+			return false
+		}
+	}
+	n.releasing = make(chan struct{})
+	for _, child := range descendants {
+		child.releasing = make(chan struct{})
+	}
+	return true
+}
+
+var errNativeReleasing = rpcFailure(409, "The selected native runtime is finishing.")
 
 // Publish encodes detached values before releasing them to a client. Subsequent
 // patches replace the complete native frame; they never merge editor state.
@@ -416,6 +487,11 @@ func (n *Native) newView(ctx context.Context, target requestTarget, startup stri
 	v := &nativeView{authority: authority, target: target, startup: startup, ctx: ctx, cancel: cancel, queue: &nativePublications{ready: make(chan struct{}, 1)}}
 	id := rand.Text()
 	n.mu.Lock()
+	if n.releasing != nil {
+		n.mu.Unlock()
+		cancel(nil)
+		return nil, NativeRequest{}, errNativeReleasing
+	}
 	if n.exit != nil {
 		event, _ := encodeEvent("exit", n.exit.forView(authority))
 		v.queue.push(event)
@@ -464,7 +540,7 @@ func (n *Native) request(ctx context.Context, target requestTarget, startup stri
 	}
 	n.mu.Lock()
 	v := n.views[mutation.Attachment]
-	valid := authority != 0 && v != nil && v.authority == authority && v.ctx.Err() == nil && v.started && v.target == target && v.startup == startup && mutation.Version.SameAttachment(v.version)
+	valid := n.releasing == nil && authority != 0 && v != nil && v.authority == authority && v.ctx.Err() == nil && v.started && v.target == target && v.startup == startup && mutation.Version.SameAttachment(v.version)
 	var viewContext context.Context
 	if valid {
 		viewContext = v.ctx

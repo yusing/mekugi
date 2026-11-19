@@ -293,11 +293,16 @@ owners, joins their lifetimes, and binds live and replay observations to the sha
 session presentation. Module state stays with its composed owner.
 
 Before terminal attachment, Ctrl-C cancels the client's startup wait. An already
-admitted server runtime remains independent of that wait. Attached input uses the
-existing semantic interrupt and exit controls; quitting or terminating the client
-releases its renderer without stopping execution. The terminal-only `/detach`
-command leaves the native attachment, including during active work, keeping the session
-available to `--resume` and the WebUI. `/quit` retains the same local exit behavior.
+admitted server runtime remains independent of that wait. An ordinary attached exit
+releases idle execution without archiving its history. If work can either continue
+or be stopped, `/quit` offers Continue in background and Stop inline. Escape
+cancels and keeps the attachment. Stop targets this session and its delegates,
+not unrelated sessions. Continue leaves running work available to `--resume`
+and the WebUI. An
+idle owner can stay up to let running delegates finish; reattaching to the live
+owner cancels that deferred release. After release, resume opens saved history.
+Explicit `/detach` and a lost connection close only the renderer without prompting
+or stopping execution.
 The [native Herdr adapter](../herdr/SPEC.md) observes the client's active attachment
 through its existing server connection. Native effects route panel selection and
 temporary pane visibility through the same reattachment, draft and renderer owners.

@@ -22,7 +22,7 @@ func (m *Menu) Height(width int) int {
 	if strings.HasPrefix(string(p.Kind), "preset") {
 		return len(presetHeader(p, width)) + max(1, len(p.Choices)) + 3
 	}
-	if p.Kind == "archive" || p.Kind == "rewind" || p.Kind == "side-replace" {
+	if p.Kind == "archive" || p.Kind == "rewind" || p.Kind == "side-replace" || p.Kind == sessionpresentation.MenuExit {
 		return min(8, max(1, len(p.Choices))) + 3 + len(panelWrap(p.Explanation, max(1, width-4)))
 	}
 	return conversationui.PickerHeight(len(p.Choices), conversationui.PickerOptions{SkillsMenu: p.Kind == "menu", Manage: p.Kind == "manage"}, width)
@@ -55,7 +55,7 @@ func (m *Menu) Render(painter *terminalui.Painter, selection string, width, heig
 	if height > 1 {
 		footer := ""
 		switch p.Kind {
-		case "archive", "rewind", "side-replace":
+		case "archive", "rewind", "side-replace", sessionpresentation.MenuExit:
 			put(0, "  "+bold+p.Title+reset)
 			if height >= 5 {
 				for _, line := range panelWrap(p.Explanation, max(1, width-4)) {
@@ -116,7 +116,10 @@ func (m *Menu) ModalFrame(view *activityui.View, now time.Time, width, height in
 	return frame
 }
 
-func (m *Menu) Dialog() bool { return m.body != nil && m.body.Dialog }
+func (m *Menu) Dialog() bool {
+	// Older detached servers still publish a dialog hint for the quit prompt.
+	return m.body != nil && m.body.Dialog && m.body.Kind != sessionpresentation.MenuExit
+}
 
 func (m *Menu) dialogFrame(view *activityui.View, now time.Time, width, height int) []string {
 	frame := view.Render(width, height, now)
