@@ -1414,7 +1414,11 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 					setNotice(&attached.feedback, presentationTime(clock), "Session history could not be opened: "+err.Error(), true)
 				}
 			}
-			restoreContextUsage(attached.session.Activity().Agent(session.Client.Thread), result.Thread)
+			contextAgent := attached.session.Activity().Agent(session.Client.Thread)
+			applyContextUsage(contextAgent, result.Thread)
+			if inspection {
+				restoreContextUsage(contextAgent, result.Thread)
+			}
 			session.controlObservations.RefreshContext(result.Thread.ID)
 			if method == "thread/fork" && session.preparer != nil {
 				session.preparer.AdmitFork(forkSource, result.Thread.ID, result.Thread.Cwd)

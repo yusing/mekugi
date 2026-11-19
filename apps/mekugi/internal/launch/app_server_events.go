@@ -25,7 +25,7 @@ import (
 func restoreThreadSettings(session *sessionpresentation.Attachment, info binding.ThreadInfo) {
 	s := session
 	agent := s.Activity().Agent(info.ID)
-	restoreContextUsage(agent, info)
+	applyContextUsage(agent, info)
 	if !agent.SettingsLive {
 		settings := rollout.ResumeSettings(info.ID, info.Path, time.Time{})
 		if model, ok := settings["model"].(string); ok {
