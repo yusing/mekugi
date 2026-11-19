@@ -12,7 +12,6 @@ import (
 
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -38,7 +37,6 @@ const applyPatchToolName = "apply_patch"
 type Config struct {
 	ProgressSnapshot   func(string) *changepresentation.ReviewView
 	ContextAttachments func(context.Context, string, string) (composer.AttachmentSnapshot, error)
-	Registry           *frontends.Registry
 
 	Usage          *accounting.Service
 	Review         *sessionreview.Review
@@ -215,8 +213,7 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		return nil, errors.New("mekugi rewrite requires valid turn metadata")
 	}
 	p.Windows.markBackground(threadID, metadata.TurnID)
-	// Execution-free requests retain native tools and schema; admitted thread
-	// identity guidance still follows the same visible namespace as execution.
+	// Execution-free requests do not initialize capture.
 	if codexresponses.ExecutionFree(request) {
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
@@ -231,28 +228,17 @@ func (p *Preparer) prepareModelRequest(ctx context.Context, request *codexrespon
 		}
 		return nil, projectReload()
 	}
-	// Discover an execution owner before projecting tools: a native
-	// handshake may not yet carry the instruction or tool catalog of a turn.
-	if prewarm {
-		tools := codexresponses.DecodeToolCatalog(request.Fields)
-		execution, err := binding.PrepareStockExecution(request.Fields, tools, p.Registry.FrontendGuidance, p.Registry.Guidance)
-		if err != nil {
-			return nil, err
-		}
-		if execution == "" {
-			return nil, projectReload()
-		}
-	}
-	tools := codexresponses.DecodeToolCatalog(request.Fields)
-	directory := p.observationDirectory(metadata.Directories, threadID)
-	responseContract := codexresponses.CaptureResponseContract(request.Fields)
-	codeModeToolName, err := binding.PrepareStockExecution(request.Fields, tools, p.Registry.FrontendGuidance, p.Registry.Guidance)
+	// Recognize the native execution tool for observation, without changing its
+	// catalog or assuming that a prewarm handshake has tools at all.
+	codeModeToolName, err := binding.StockExecutionTool(codexresponses.DecodeToolCatalog(request.Fields))
 	if err != nil {
 		return nil, err
 	}
 	if prewarm {
 		return nil, projectReload()
 	}
+	directory := p.observationDirectory(metadata.Directories, threadID)
+	responseContract := codexresponses.CaptureResponseContract(request.Fields)
 	if strings.TrimSpace(threadID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 	}

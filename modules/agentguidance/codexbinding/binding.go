@@ -2,23 +2,9 @@ package codexbinding
 
 import (
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/modules/agentguidance/internal/policy"
+	"github.com/yusing/mekugi/modules/agentguidance/compact"
 )
 
-type Bindings = binding.Bindings[*policy.Service]
+type Bindings = binding.Bindings[*compact.CaptureService]
 
-var Codex = Bindings{
-	Frontends: true,
-	Guidance: func(service *policy.Service) binding.Guidance {
-		return binding.Guidance{
-			Threads:           projectThreadInstructions,
-			BeforePreparation: beforePreparation,
-			Frontends: func(commands []command.Spec) (binding.FrontendGuidance, error) {
-				return frontendGuide(commands, service.Sections, service.ChildReplySummary)
-			},
-			ToolDescription:  toolDescription,
-			BaseInstructions: baseInstructions,
-		}
-	},
-}
+var Codex = Bindings{Frontends: true}

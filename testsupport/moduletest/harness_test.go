@@ -9,8 +9,8 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
 
@@ -24,7 +24,7 @@ func TestFrontendBinderConformance(t *testing.T) {
 	} {
 		t.Run(factory.name, func(t *testing.T) {
 			binder := factory.new()
-			valid := command.Spec{Name: "read", Description: "bounded read"}
+			valid := command.Spec{Name: "read"}
 			if err := binder.Frontend(valid); err != nil {
 				t.Fatal(err)
 			}
@@ -39,11 +39,11 @@ func TestHarnessOwnsTemporaryResourceLifecycle(t *testing.T) {
 	var events []string
 	t.Run("module", func(t *testing.T) {
 		script := new(moduletest.Scripted)
-		spec := command.Contribution{Name: "read", Description: "bounded read"}
+		spec := command.Contribution{Name: "read"}
 		descriptor := module.Descriptor[string, *service, binding.Bindings[*service], module.NoViews]{
 			ID: "resource", Lifetime: module.Invocation, Resources: []string{"temporary resource"}, Contributes: module.Contributions[*service]{Commands: []command.Definition[*service]{{Spec: spec.Spec}}},
 			New: func(dir string, slots module.Slots) (*service, error) {
-				if dir != directory || !slices.Equal(slots.Guidance, []guidance.Section{{Command: "read", Text: "bounded read"}}) {
+				if dir != directory || len(slots.RecordKinds) != 1 || slots.RecordKinds[0].ID != "bounded-read" {
 					t.Fatalf("dependencies=%q slots=%v", dir, slots)
 				}
 				events = append(events, "construct")
@@ -65,7 +65,7 @@ func TestHarnessOwnsTemporaryResourceLifecycle(t *testing.T) {
 				return os.Remove(s.path)
 			},
 		}
-		got := moduletest.New(t, descriptor, directory, module.Slots{Guidance: []guidance.Section{{Command: "read", Text: "bounded read"}}}, script)
+		got := moduletest.New(t, descriptor, directory, module.Slots{RecordKinds: []recordkind.Spec{{ID: "bounded-read"}}}, script)
 		if got.path != path || !slices.Equal(script.Commands(), []command.Spec{spec.Spec}) {
 			t.Fatalf("service=%+v commands=%v", got, script.Commands())
 		}

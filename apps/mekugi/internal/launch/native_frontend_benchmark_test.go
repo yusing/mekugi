@@ -18,7 +18,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := frontends.New(b.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replay})
+	registry, err := frontends.New(b.Context(), frontends.Config{Commands: testCommands(), ReplayDirectory: replay})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := frontends.New(b.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replay})
+	registry, err := frontends.New(b.Context(), frontends.Config{Commands: testCommands(), ReplayDirectory: replay})
 	if err != nil {
 		b.Fatal(err)
 	}

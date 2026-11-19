@@ -57,11 +57,6 @@ func testExecResponsesTools() []any {
 	}
 }
 
-func newManagedMekugiProxy(t *testing.T) *Preparer {
-	t.Helper()
-	return newProxyWithSharedTestRegistry(t, sharedProxyTestRegistry(t))
-}
-
 func (p *Preparer) prepareRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
 	return p.prepareModelRequest(ctx, request, sessionID, threadID, metadata, metadataValid, false)
 }

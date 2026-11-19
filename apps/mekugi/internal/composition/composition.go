@@ -33,7 +33,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
@@ -77,7 +76,6 @@ type entry struct {
 	commands     []command.Contribution
 	records      []recordkind.Spec
 	references   []reference.Resolver
-	guidance     []guidance.Section
 	frontends    bool
 	validFactory bool
 	construct    func(module.Slots, binding.Registrar) error
@@ -107,7 +105,6 @@ func (c *Composition) Add[D, S any, B interface {
 		lifetime: descriptor.Lifetime, resources: slices.Clone(descriptor.Resources),
 		records:      slices.Clone(descriptor.Contributes.RecordKinds),
 		references:   slices.Clone(descriptor.Contributes.References),
-		guidance:     slices.Clone(descriptor.Contributes.Guidance),
 		frontends:    backend.Frontends,
 		validFactory: descriptor.New != nil && deps != nil,
 	}
@@ -177,9 +174,6 @@ func (c *Composition) Add[D, S any, B interface {
 		if !descriptor.HostsInspection {
 			slots.Inspection = nil
 		}
-		if !descriptor.HostsGuidance {
-			slots.Guidance = nil
-		}
 		if !descriptor.HostsRecords {
 			slots.RecordKinds = nil
 		}
@@ -221,7 +215,6 @@ type Runtime struct {
 	Guards               []binding.ShellApproval
 	Naming               *binding.SessionNaming
 	Observation          *binding.Observation
-	Guidance             *binding.Guidance
 
 	Changes  *changecapture.Service
 	Segments *segments.Service
@@ -258,7 +251,6 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 	var inspections []inspection.Contribution
 	var diagnostics []diagnosticsection.Contribution
 	var references []reference.Resolver
-	var guidance []guidance.Section
 	positions := make(map[module.ID]int)
 	var failures []error
 	for i, node := range c.entries {
@@ -275,7 +267,6 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		status = append(status, node.presentation...)
 		records = append(records, node.records...)
 		references = append(references, node.references...)
-		guidance = append(guidance, node.guidance...)
 		inspections = append(inspections, node.inspection...)
 		diagnostics = append(diagnostics, node.diagnostics...)
 	}
@@ -321,11 +312,10 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder); err != nil {
+		if err := node.construct(module.Slots{DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), RecordKinds: slices.Clone(records), References: slices.Clone(references)}, binder); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}
-	runtime.Guidance = binder.RegisteredGuidance()
 	runtime.Naming = binder.RegisteredNaming()
 	runtime.Observation = binder.RegisteredObservation()
 	runtime.Guards = binder.RegisteredGuards()

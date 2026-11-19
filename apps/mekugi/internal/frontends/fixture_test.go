@@ -65,7 +65,7 @@ func buildRegistryForTest(t *testing.T, ctx context.Context) (*Registry, error) 
 	if _, err := testHistory().Open(ctx, replay); err != nil {
 		return nil, err
 	}
-	return New(ctx, Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replay})
+	return New(ctx, Config{Commands: testCommands(), ReplayDirectory: replay})
 }
 
 var sharedRegistry *Registry
@@ -84,7 +84,7 @@ func sharedTestRegistry(t *testing.T) *Registry {
 		if _, sharedRegistryError = testHistory().Open(t.Context(), replay); sharedRegistryError != nil {
 			return
 		}
-		sharedRegistry, sharedRegistryError = New(t.Context(), Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replay})
+		sharedRegistry, sharedRegistryError = New(t.Context(), Config{Commands: testCommands(), ReplayDirectory: replay})
 	})
 	if sharedRegistryError != nil {
 		t.Fatal(sharedRegistryError)

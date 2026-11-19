@@ -4,20 +4,12 @@ import "fmt"
 
 // Spec is an executable contribution, independent of the backend's wire format.
 type Spec struct {
-	Name, Description string
+	Name string
 }
 
-func (s Spec) Validate() error {
-	if err := ValidateName(s.Name); err != nil {
-		return err
-	}
-	if s.Description == "" {
-		return fmt.Errorf("%q: inconsistent executable contribution", s.Name)
-	}
-	return nil
-}
+func (s Spec) Validate() error { return ValidateName(s.Name) }
 
-// ValidateName accepts portable executable leaf names, also safe in guidance tags.
+// ValidateName accepts portable executable leaf names.
 func ValidateName(name string) error {
 	if name == "" || name == "." || name == ".." {
 		return fmt.Errorf("%q: invalid executable name", name)

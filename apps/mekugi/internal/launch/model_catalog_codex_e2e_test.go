@@ -3,7 +3,6 @@
 package launch
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	json "encoding/json/v2"
@@ -24,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 // Real Codex consumes the account catalog through the same handler and launch
@@ -130,18 +130,44 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			workflow := proxy.registry.FrontendGuidance.Workflow
+			const helper = "mchanges --list"
 			base := responses.StringField(request.Fields, "instructions")
-			if strings.Count(base, workflow) != 1 {
-				return fmt.Errorf("native request lost separated base workflow")
+			if strings.Contains(base, helper) {
+				return fmt.Errorf("native request put shell helper guidance in base instructions")
 			}
-			for _, field := range []string{"input", "tools"} {
-				if bytes.Contains(request.Fields[field], []byte("Keep command output in tool results")) {
-					return fmt.Errorf("native request retained workflow in %s", field)
+			catalog := codexresponses.DecodeToolCatalog(request.Fields)
+			var descriptions int
+			var countExecGuidance func(*codexresponses.ToolSection)
+			countExecGuidance = func(section *codexresponses.ToolSection) {
+				for _, tool := range section.Tools {
+					if tool == nil {
+						continue
+					}
+					if tool.Type() == "custom" && tool.Name() == "exec" {
+						if strings.Contains(tool.Description(), helper) {
+							descriptions++
+						}
+					}
+					if tool.Nested != nil {
+						countExecGuidance(tool.Nested)
+					}
 				}
 			}
-			_, err = binding.PrepareStockExecution(request.Fields, codexresponses.DecodeToolCatalog(request.Fields), binding.FrontendGuidance{}, nil)
-			return err
+			countExecGuidance(catalog.Top)
+			for _, section := range catalog.Additional {
+				countExecGuidance(section)
+			}
+			if descriptions != 1 {
+				return fmt.Errorf("native exec advertised the selected helper in %d descriptions", descriptions)
+			}
+			execution, err := binding.StockExecutionTool(catalog)
+			if err != nil {
+				return err
+			}
+			if execution != "exec" {
+				return fmt.Errorf("native request did not advertise stock exec")
+			}
+			return nil
 		},
 	}
 	attachTestReplayStore(t, proxy)
@@ -167,6 +193,10 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 		"-c", "chatgpt_base_url=" + strconv.Quote(router.URL),
 		"-c", "model_reasoning_effort=" + strconv.Quote("low"),
 	}, nil)
+	environment, err = frontendShellEnvironment(environment, proxy.registry.FrontendDirectory, "", nil, segmenttransport.Endpoints{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	terminal := startAppResumeTerminalWithIntegration(t, func(runCtx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(runCtx, codex, nativeAppServerArgs(args)...)
 		cmd.Env, cmd.Dir = environment, workspace

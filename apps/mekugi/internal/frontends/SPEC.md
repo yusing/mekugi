@@ -64,10 +64,10 @@ prerequisites. There is no JavaScript or WASM plugin runtime.
 Application composition selects the compiled catalog. The Codex binding collects
 executable registrations from descriptor command contributions when the module declares
 its executable-frontend connection. Before construction, this frontend owner validates
-the complete catalog once for names, descriptions and implementation availability. It
+the complete catalog once for names and implementation availability. It
 authenticates and publishes invocation snapshots, pins workers, and exposes PATH.
-Contributions use portable executable leaf names, reject duplicates, and pair a
-command description with its compiled implementation and read-observation policy.
+Contributions pair a portable executable leaf name with its compiled
+implementation and read-observation policy. Duplicate names are rejected.
 
 Launch recognizes frontend executable identity before application composition and
 before launcher operand dispatch. The recognized worker receives the composed
@@ -77,13 +77,10 @@ Descriptors declare commands before construction; execution starts only after
 successful activation. Stateful commands receive their constructed module service
 through typed composition and an explicit authenticated per-call scope.
 
-The [guidance module](../../../../modules/agentguidance/SPEC.md) renders selected,
-validated capability descriptions and command-owned workflow guidance as separate
-sections. The catalog identity binds the delivered guidance sections without writing a separate
-guidance file. The authenticated catalog snapshot lists command names and is published
-before commands are exposed. Capability descriptions populate the
-execution tool; workflow guidance populates base instructions. Guidance remains call-local. Guidance assembly and metrics are
-optional; their absence leaves authenticated catalog validation and dispatch intact.
+The invocation authenticates the selected command names before exposing its
+commands. The [guidance owner](../../../../modules/agentguidance/SPEC.md)
+describes available helpers in native shell tool context independently of
+dispatch.
 
 Read observation uses the caller-supplied AX output path authenticated in the
 invocation snapshot. When that path is empty, it falls back to

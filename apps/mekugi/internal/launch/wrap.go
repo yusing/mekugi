@@ -210,7 +210,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		directory := filepath.Dir(debugPaths[0])
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
-	return runInvocation(frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, environment, os.Stderr, resumeThread, resumeArgv, approvals, func(paths []string) { debugPaths = paths }, api, workspace, threads)
+	return runInvocation(frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, environment, os.Stderr, resumeThread, resumeArgv, approvals, func(paths []string) { debugPaths = paths }, api, workspace, threads)
 }
 
 // Reasoning shortcuts are session-local Codex config overrides. Preserve option

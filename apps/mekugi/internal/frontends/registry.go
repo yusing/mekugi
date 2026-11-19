@@ -6,25 +6,23 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	jsonv1 "encoding/json"
-	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
 )
 
 const (
 	manifestFilename = "workers.json"
+	manifestVersion  = 4
 )
 
 // Config supplies the compiled commands and invocation-owned publication paths.
 // Publication uses MEKUGI_RUNTIME_DIR or the OS temporary directory.
 type Config struct {
 	Commands        []command.Contribution
-	Guidance        *binding.Guidance
 	ReplayDirectory string
 	AXReadOutput    string
 	WorkerImage     *WorkerImage
@@ -63,7 +61,11 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 		return nil, errors.New("locate tool runtime directory: MEKUGI_RUNTIME_DIR must be an absolute path")
 	}
 	runtimeDirectory = filepath.Clean(runtimeDirectory)
-	commands, guidance := config.Commands, config.Guidance
+	commands := config.Commands
+	names := make([]string, len(commands))
+	for i, contribution := range commands {
+		names[i] = contribution.Name
+	}
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
 		return nil, fmt.Errorf("create tool runtime directory: %w", err)
 	}
@@ -77,32 +79,10 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	if err := config.WorkerImage.pin(filepath.Join(snapshotDirectory, workerExecutableFilename)); err != nil {
 		return fail(err)
 	}
-	names := make([]string, len(commands))
-	for i, contribution := range commands {
-		names[i] = contribution.Name
-	}
-	var frontendGuidance binding.FrontendGuidance
-	if guidance != nil {
-		specs := make([]command.Spec, len(commands))
-		for i, contribution := range commands {
-			specs[i] = contribution.Spec
-		}
-		frontendGuidance, err = guidance.Frontends(specs)
-		if err != nil {
-			return fail(err)
-		}
-	}
-
-	guidanceBytes, err := json.Marshal(&frontendGuidance)
-	if err != nil {
-		return fail(fmt.Errorf("encode frontend guidance: %w", err))
-	}
-	guidanceHash := sha256.Sum256(guidanceBytes)
 	manifest := workerManifest{
 		ReplayDirectory: config.ReplayDirectory,
 		AXReadOutput:    config.AXReadOutput,
-		Version:         3,
-		GuidanceSHA256:  hex.EncodeToString(guidanceHash[:]),
+		Version:         manifestVersion,
 		Tools:           names,
 	}
 	registryID := registryIdentity(manifest)
@@ -132,8 +112,6 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 		SnapshotDir:       snapshotDirectory,
 		ReplayDirectory:   config.ReplayDirectory,
 		FrontendDirectory: frontendDirectory,
-		FrontendGuidance:  frontendGuidance,
-		Guidance:          guidance,
 	}, nil
 }
 

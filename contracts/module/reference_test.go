@@ -10,7 +10,6 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/diagnosticsection"
-	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
@@ -21,7 +20,7 @@ func TestDescriptorReference(t *testing.T) {
 	descriptor := Descriptor[struct{}, struct{}, NoBindings, NoViews]{
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
-		HostsGuidance: true, HostsRecords: true, HostsReferences: true,
+		HostsRecords: true, HostsReferences: true,
 		HostsInspection: true, HostsDiagnosticSections: true,
 		New:   func(struct{}, Slots) (struct{}, error) { panic("New executed") },
 		Start: func(context.Context, struct{}) error { panic("Start executed") },
@@ -29,11 +28,10 @@ func TestDescriptorReference(t *testing.T) {
 		Contributes: Contributions[struct{}]{
 			Presentation: []presentation.Status{{ID: "example.status", Placements: []presentation.Placement{presentation.ComposerCaption}, Text: func(presentation.Thread) string { panic("status projection executed") }}},
 			Commands: []command.Definition[struct{}]{
-				{Name: "reader", Description: "Read source",
+				{Name: "reader",
 					Run: func(struct{}, context.Context, command.Request) (command.Output, error) { panic("Run executed") }},
-				{Name: "writer", Description: "Write source"},
+				{Name: "writer"},
 			},
-			Guidance: []guidance.Section{{Command: "reader", Text: "Private guidance prose"}},
 			RecordKinds: []recordkind.Spec{
 				{ID: "changes", Match: func(string) bool { panic("Match executed") },
 					Dependencies: func(recordkind.Record) ([]string, error) { panic("record Dependencies executed") },
@@ -71,8 +69,8 @@ func TestDescriptorReference(t *testing.T) {
 	want := Reference{
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
-		Contributes: []string{"commands", "guidance", "record-kinds", "references", "inspection", "diagnostic-sections", "presentation"},
-		Hosts:       []string{"guidance", "record-kinds", "references", "inspection", "diagnostic-sections"},
+		Contributes: []string{"commands", "record-kinds", "references", "inspection", "diagnostic-sections", "presentation"},
+		Hosts:       []string{"record-kinds", "references", "inspection", "diagnostic-sections"},
 		Commands:    []string{"reader", "writer"}, Records: []string{"changes", "cursor", "output"}, References: []string{"changes"},
 	}
 	got := descriptor.Reference()
@@ -101,9 +99,9 @@ func TestDescriptorReference(t *testing.T) {
 func TestDescriptorReferenceSlotsAreIndependent(t *testing.T) {
 	descriptor := Descriptor[struct{}, struct{}, NoBindings, NoViews]{
 		HostsRecords: true,
-		Contributes:  Contributions[struct{}]{Guidance: []guidance.Section{{Command: "reader"}}},
+		Contributes:  Contributions[struct{}]{References: []reference.Resolver{{Field: "source"}}},
 	}
-	want := Reference{Contributes: []string{"guidance"}, Hosts: []string{"record-kinds"}}
+	want := Reference{Contributes: []string{"references"}, Hosts: []string{"record-kinds"}, References: []string{"source"}}
 	if got := descriptor.Reference(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Reference() = %+v, want %+v", got, want)
 	}

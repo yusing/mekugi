@@ -34,8 +34,8 @@ pins and dispatches that catalog under the [frontend contract](../../apps/mekugi
 Descriptors declare typed dependencies, executable commands, record kinds and
 resource lifetimes. Composition validates the whole list before construction:
 unique identities, dependency presence and order, and lifecycle consistency.
-The frontend owner validates command names, descriptions and compiled implementations
-once before construction.
+The frontend owner validates command names and compiled implementations once
+before construction.
 
 Codex bindings declare their supported connection families. The backend registers
 those declarations at activation; missing or invalid required connections fail

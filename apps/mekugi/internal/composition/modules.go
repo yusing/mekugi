@@ -72,7 +72,7 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 		return changehistory.Deps{History: history.Value(), Directory: captureDirectory}
 	})
 	c.Add(agentguidance.Module, func() agentguidance.Deps {
-		return agentguidance.Deps{ChildReplySummary: childReplySummary, Changes: changes.Value().Service, History: history.Value(), NativeSkills: nativeSkills}
+		return agentguidance.Deps{Changes: changes.Value().Service, History: history.Value(), NativeSkills: nativeSkills}
 	})
 	replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps {
 		return sessionreplay.Deps{History: history.Value(), Timing: transport.Value().ReplayTiming}

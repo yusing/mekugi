@@ -73,7 +73,7 @@ func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest.GuidanceSHA256 = "altered"
+	manifest.Tools = append(manifest.Tools, "altered")
 	if err := writeToolWorkerManifest(registry.SnapshotDir, manifest); err != nil {
 		t.Fatal(err)
 	}

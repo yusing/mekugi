@@ -1,1 +1,0 @@
-When only structure is needed, prefer inspect_file to a full-file read; read source only for information missing from the outline or current context. Reuse known locations instead of outlining a file again.

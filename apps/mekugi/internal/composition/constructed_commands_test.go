@@ -23,7 +23,7 @@ func TestConstructedCommandBindsServiceAndDependencies(t *testing.T) {
 			return &dependency{value: "constructed dependency"}, nil
 		},
 	}, emptyDeps)
-	spec := command.Spec{Name: "constructed", Description: "constructed service command"}
+	spec := command.Spec{Name: "constructed"}
 	calls := 0
 	constructed := c.Add(module.Descriptor[*dependency, *service, binding.Bindings[*service], module.NoViews]{
 		ID: "contributor", Requires: []module.ID{"dependency"}, Lifetime: module.Invocation,

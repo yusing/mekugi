@@ -80,7 +80,7 @@ func buildToolRegistryForTest(
 	if debug, _ := requestexecution.DebugRequest(ctx); debug != nil {
 		axReadOutput = debug.ReadLogPath()
 	}
-	return frontends.New(ctx, frontends.Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: filepath.Join(directory, "replay"), AXReadOutput: axReadOutput})
+	return frontends.New(ctx, frontends.Config{Commands: testCommands(), ReplayDirectory: filepath.Join(directory, "replay"), AXReadOutput: axReadOutput})
 }
 
 func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
@@ -93,7 +93,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
 		if _, fixture.err = openMekugiReplayStore(filepath.Join(fixture.directory, "replay")); fixture.err != nil {
 			return
 		}
-		fixture.registry, fixture.err = frontends.New(t.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: filepath.Join(fixture.directory, "replay")})
+		fixture.registry, fixture.err = frontends.New(t.Context(), frontends.Config{Commands: testCommands(), ReplayDirectory: filepath.Join(fixture.directory, "replay")})
 	})
 	if fixture.err != nil {
 		t.Fatal(fixture.err)
@@ -101,9 +101,9 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
 	return fixture.registry
 }
 
-func newProxyWithSharedTestRegistry(t *testing.T, registry *frontends.Registry) *Preparer {
+func newManagedMekugiProxy(t *testing.T) *Preparer {
 	t.Helper()
-	proxy := newMekugiProxy(registry, newTestUsage(t), testHistory())
+	proxy := newMekugiProxy(newTestUsage(t), testHistory())
 	t.Cleanup(func() {
 		if err := proxy.Close(); err != nil {
 			t.Error(err)
@@ -207,11 +207,8 @@ func (p *Preparer) Close() error {
 	return nil
 }
 
-func newMekugiProxy(registry *frontends.Registry, usage *accounting.Service, service *history.Service) *Preparer {
-	if registry == nil {
-		return nil
-	}
-	proxy := &Preparer{Config: Config{Registry: registry, Calls: service.Calls(), Review: sessionreview.New(context.Background(), nil, nil), Usage: usage, Control: new(sessioncontrol.Observations), PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}, Windows: &Windows{}}}
+func newMekugiProxy(usage *accounting.Service, service *history.Service) *Preparer {
+	proxy := &Preparer{Config: Config{Calls: service.Calls(), Review: sessionreview.New(context.Background(), nil, nil), Usage: usage, Control: new(sessioncontrol.Observations), PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}, Windows: &Windows{}}}
 	proxy.Audience = sessioncontrol.NewAudience(func(category, message string) { proxy.notice("", "", category, message) })
 	return proxy
 }

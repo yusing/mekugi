@@ -32,13 +32,25 @@ func (c Config) ResolveFeatures(features Features) Config {
 	if features.ShellGuard != nil && !c.shellGuardSet {
 		c.ShellGuard = *features.ShellGuard
 	}
-	if features.ChildReplySummary != nil && !c.childReplySummarySet {
-		c.ChildReplySummary = *features.ChildReplySummary
+	if summary, ok := c.ChildReplySummaryOverride(features); ok {
+		c.ChildReplySummary = summary
 	}
 	if features.Debug != nil && !c.debugSet {
 		c.Debug = *features.Debug
 	}
 	return c
+}
+
+// ChildReplySummaryOverride returns only an explicit Mekugi choice, so the
+// unset default does not override native configuration.
+func (c Config) ChildReplySummaryOverride(features Features) (bool, bool) {
+	if c.childReplySummarySet {
+		return c.ChildReplySummary, true
+	}
+	if features.ChildReplySummary != nil {
+		return *features.ChildReplySummary, true
+	}
+	return false, false
 }
 
 // LoadSettings reads Mekugi configuration without loading provider credentials.

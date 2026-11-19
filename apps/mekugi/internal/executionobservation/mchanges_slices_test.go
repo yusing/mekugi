@@ -174,16 +174,9 @@ func TestMChangesHistoryReportsSavedEffectsWithoutCommandResult(t *testing.T) {
 	}
 }
 
-func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
+func TestMChangesSlicesArgumentsAndWorkspaceErrors(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "slice-arguments")
-	description := f.registry.FrontendGuidance.Descriptions
-	_, usageErr := testChanges().Parse([]string{"--invalid"}, f.workspace)
-	agentUsage := strings.TrimPrefix(usageErr.Error(), "unknown option --invalid; ")
-	if !strings.Contains(description, "Usage: `"+agentUsage+"`") {
-		t.Fatalf("agent-facing mchanges usage does not match parser usage: %q", description)
-	}
-
 	var ids []string
 	for i := range 2 {
 		correlation := fmt.Sprintf("argument-edit-%d", i+1)

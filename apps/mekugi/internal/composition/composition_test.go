@@ -9,13 +9,13 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/contracts/recordkind"
 )
 
 type testService struct {
-	name     string
-	guidance []guidance.Section
+	name    string
+	records []recordkind.Spec
 }
 type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings[*testService], module.NoViews]
 
@@ -33,14 +33,14 @@ func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 	return testDescriptor{
 		ID: id, Lifetime: module.Stateless, Contributes: module.Contributions[*testService]{Commands: definitions},
 		New: func(_ struct{}, slots module.Slots) (*testService, error) {
-			return &testService{string(id), slots.Guidance}, nil
+			return &testService{string(id), slots.RecordKinds}, nil
 		},
 		Bindings: binding.Bindings[*testService]{Frontends: len(specs) != 0},
 	}
 }
 func emptyDeps() struct{} { return struct{}{} }
 func frontend(name string) command.Contribution {
-	return command.Contribution{Name: name, Description: "test frontend", Run: func(context.Context, command.Request) (command.Output, error) { return command.Output{}, nil }}
+	return command.Contribution{Name: name, Run: func(context.Context, command.Request) (command.Output, error) { return command.Output{}, nil }}
 }
 
 func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
@@ -48,17 +48,17 @@ func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
 	base := c.Add(descriptor("base"), emptyDeps)
 	type deps struct{ Base *testService }
 	host := c.Add(module.Descriptor[deps, *testService, binding.Bindings[*testService], module.NoViews]{
-		ID: "host", Requires: []module.ID{"base"}, Lifetime: module.Stateless, HostsGuidance: true,
+		ID: "host", Requires: []module.ID{"base"}, Lifetime: module.Stateless, HostsRecords: true,
 		New: func(d deps, slots module.Slots) (*testService, error) {
 			if d.Base != base.Value() {
 				t.Fatal("typed dependency lost identity")
 			}
-			return &testService{d.Base.name, slots.Guidance}, nil
+			return &testService{d.Base.name, slots.RecordKinds}, nil
 		},
 	}, func() deps { return deps{base.Value()} })
 	contribution := frontend("later")
 	later := descriptor("later", contribution)
-	later.Contributes.Guidance = []guidance.Section{{Command: "later", Text: "read"}}
+	later.Contributes.RecordKinds = []recordkind.Spec{{ID: "later"}}
 	c.Add(later, emptyDeps)
 	registry := new(binding.Registry)
 	runtime, err := c.Activate(t.Context(), registry)
@@ -70,10 +70,10 @@ func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if len(base.Value().guidance) != 0 {
+	if len(base.Value().records) != 0 {
 		t.Fatal("non-host received slots")
 	}
-	if host.Value().name != "base" || !slices.Equal(host.Value().guidance, later.Contributes.Guidance) || !slices.EqualFunc(registry.Commands(), runtime.Commands, func(a command.Spec, b command.Contribution) bool { return a == b.Spec }) {
+	if host.Value().name != "base" || len(host.Value().records) != 1 || host.Value().records[0].ID != "later" || !slices.EqualFunc(registry.Commands(), runtime.Commands, func(a command.Spec, b command.Contribution) bool { return a == b.Spec }) {
 		t.Fatalf("host=%+v registered=%v runtime=%v", host.Value(), registry.Commands(), runtime.Commands)
 	}
 }
@@ -108,7 +108,7 @@ func TestCompositionValidatesBeforeConstruction(t *testing.T) {
 		{"order", []testDescriptor{func() testDescriptor { d := descriptor("consumer"); d.Requires = []module.ID{"dependency"}; return d }(), descriptor("dependency")}, "requires dependency before it"},
 		{"duplicate module", []testDescriptor{descriptor("same"), descriptor("same")}, "duplicate module same"},
 		{"duplicate frontend", []testDescriptor{descriptor("first", frontend("same")), descriptor("second", frontend("same"))}, "duplicate frontend"},
-		{"invalid frontend", []testDescriptor{descriptor("invalid", command.Contribution{Name: "bad"})}, "inconsistent executable contribution"},
+		{"invalid frontend", []testDescriptor{descriptor("invalid", command.Contribution{Name: "bad"})}, "has no compiled implementation"},
 		{"missing frontend connection", []testDescriptor{func() testDescriptor {
 			d := descriptor("missing-connection", frontend("read"))
 			d.Bindings.Frontends = false

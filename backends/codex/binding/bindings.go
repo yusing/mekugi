@@ -12,7 +12,6 @@ type Bindings[S any] struct {
 	Frontends   bool // Exposes the descriptor's command contributions.
 	Rollout     func(S, RolloutSource) error
 
-	Guidance      func(S) Guidance
 	SessionNaming func(S) SessionNaming
 	ShellApproval func(S) ShellApproval
 	MCP           func(S) MCPServer
@@ -33,11 +32,6 @@ func (b Bindings[S]) Register(r Registrar, service S, commands []command.Definit
 	}
 	if b.Rollout != nil {
 		if err := r.Rollout(func(source RolloutSource) error { return b.Rollout(service, source) }); err != nil {
-			return err
-		}
-	}
-	if b.Guidance != nil {
-		if err := r.Guidance(b.Guidance(service)); err != nil {
 			return err
 		}
 	}
@@ -67,7 +61,6 @@ func (b Bindings[S]) Reference() module.BindingReference {
 	}{
 		{"executable-frontend", b.Frontends},
 		{"rollout", b.Rollout != nil},
-		{"guidance-projection", b.Guidance != nil},
 		{"thread-naming", b.SessionNaming != nil},
 		{"shell-approval", b.ShellApproval != nil},
 		{"observation", b.Observation != nil},

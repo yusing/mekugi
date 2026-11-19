@@ -58,7 +58,7 @@ invocation executable; `catalog.go` reads its bundled model metadata.
 | Command segments | `modules/commandsegments/{segments,transport,reports}`: live correlation/subscriptions, FIFO, retained publication/adoption; `libraries/shellinstrumentation`: argv/source instrumentation; Launch `exec_track.go`, Execution Observation `exec_report_observation.go`: host integration |
 | Session history | `modules/sessionhistory/history`: namespaces, leases, enrollment, retention and host-call cache; `accounting.go`: revision-bound per-kind totals and interrupted-publication recovery; `{calls,call_requests,host_records,host_attachments}.go`: cache/pins/envelopes and neutral feature dependencies. Feature descriptors own record kinds; Record Transactions coordinates publication |
 | Persistence | `libraries/persistence`: private publication/opened-file admission; `libraries/legacycall`: historical envelopes/snapshot validation; Execution Observation `legacy_call.go`: working-value conversion |
-| Guidance | `runtime/codex/codex-rs/models-manager`: native default instruction templates; `modules/agentguidance`: explicit omission filtering, shared preload selection, historical summary codec/authorized reads and `compact/capture.go` file/skill/captured-diff acquisition; Execution Observation `compact_summary.go`: historical recovery; Codex Rollout `compaction.go`: exact native-boundary/reference joins for live, restored and replayed summary dialogs; `codexbinding`: selected frontend descriptions/module `guidance.md`; Frontends `registry.go`: authenticated snapshot. |
+| Guidance | Native model templates live in `codex-rs/models-manager`. Native `core/src/mekugi_guidance` describes available shell helpers and supplies the child reply rule. Go `modules/agentguidance` retains shared preload selection and historical summary evidence and readers. |
 | Context usage | `runtime/codex/codex-rs/core/src/session/token_budget.rs`: measured milestones and durable history; native `app-server/src/request_processors/token_usage_replay.rs`: live thread attachment measurements; Launch raw-item delivery renders progress |
 | Native source acquisition | `runtime/codex/codex-rs/core/src/context_sources.rs`: shared file/skill/change readers, accepted-input references and preload; sibling `context_sources_skills.rs`: explicit skill sources; `context_sources_directory.rs`: name-only trees; `core/src/compact_token_budget.rs`: reset-specific selection; `ext/skills/src/managed.rs`: in-process manager reads for sources and the host catalog; `ext/skills/src/fragments.rs`: selected-skill prompts and identities. Conversation `composer/selections.go` and `codexbinding/input.go` append supplied selection/upload Markdown without host-source reads |
 | Initial context/environment | `runtime/codex/codex-rs/core/src/context/world_state/environment_facts.rs`: native facts acquisition; sibling `environment_facts.sh`: bounded read-only OS/Git collection; `core/src/session/world_state.rs`: existing environment-context wiring; `core/src/context/world_state/environment.rs`: environment rendering and snapshot reuse; `core/src/exec_env.rs`: session scratch preparation and `SESSION_TMP` shell environment |
@@ -100,8 +100,8 @@ Cross-owner adapter entry points:
   `sessionreview/rewind.go` selects retained changes at the rewind boundary.
 - Dialog/file admission: `launch/{activity_details,markdown_file_dialog}.go`;
   native editor/restoration: `launch/{native_client_editor,native_client_restoration}.go`.
-- Guidance consumers: `executionobservation/instruction_cache_test.go`, Launch prewarm,
-  `stock_guidance_workflow_test.go` and `testdata/instruction-cleanup/`.
+- Guidance consumers: native Responses requests and the Launch helper E2E
+  checks exercising discovery through the local shell PATH.
 
 ## Boundary contracts
 

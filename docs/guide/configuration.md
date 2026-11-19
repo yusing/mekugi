@@ -153,8 +153,7 @@ Captures exclude prompts, patches, and credentials.
 
 ## Troubleshooting and integrations
 
-- **Instructions:** wrapped sessions disable `/goal`; `<!-- mekugi:omit -->` through
-  `<!-- /mekugi:omit -->` omits marked blocks without changing files/unmarked policy.
+- **Instructions:** wrapped sessions disable `/goal`.
   In a trusted local workspace with a project or global `skills-mgr` selection,
   the manager's catalog replaces Codex's stock skill catalog. Catalog conditions
   can run external commands, so trust only workspaces you control.

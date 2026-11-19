@@ -16,7 +16,6 @@ func TestBindingsReference(t *testing.T) {
 	bindings := Bindings[struct{}]{
 		Frontends:     true,
 		Rollout:       func(struct{}, RolloutSource) error { panic("Rollout executed") },
-		Guidance:      func(struct{}) Guidance { panic("Guidance executed") },
 		SessionNaming: func(struct{}) SessionNaming { panic("SessionNaming executed") },
 		ShellApproval: func(struct{}) ShellApproval { panic("ShellApproval executed") },
 		Observation:   func(struct{}) Observation { panic("Observation executed") },
@@ -24,7 +23,7 @@ func TestBindingsReference(t *testing.T) {
 	want := module.BindingReference{
 		Mechanisms: []string{
 			"executable-frontend", "rollout",
-			"guidance-projection", "thread-naming", "shell-approval", "observation",
+			"thread-naming", "shell-approval", "observation",
 		},
 	}
 	got := bindings.Reference()
@@ -44,7 +43,6 @@ func TestBindingsReference(t *testing.T) {
 		{name: "empty"},
 		{name: "frontend", bindings: Bindings[struct{}]{Frontends: bindings.Frontends}, want: module.BindingReference{Mechanisms: []string{"executable-frontend"}}},
 		{name: "rollout", bindings: Bindings[struct{}]{Rollout: bindings.Rollout}, want: module.BindingReference{Mechanisms: []string{"rollout"}}},
-		{name: "guidance", bindings: Bindings[struct{}]{Guidance: bindings.Guidance}, want: module.BindingReference{Mechanisms: []string{"guidance-projection"}}},
 		{name: "naming", bindings: Bindings[struct{}]{SessionNaming: bindings.SessionNaming}, want: module.BindingReference{Mechanisms: []string{"thread-naming"}}},
 		{name: "observation", bindings: Bindings[struct{}]{Observation: bindings.Observation}, want: module.BindingReference{Mechanisms: []string{"observation"}}},
 		{name: "approval", bindings: Bindings[struct{}]{ShellApproval: bindings.ShellApproval}, want: module.BindingReference{Mechanisms: []string{"shell-approval"}}},
@@ -60,7 +58,7 @@ func TestBindingsReference(t *testing.T) {
 func TestBindingsRegister(t *testing.T) {
 	wantCalls := []string{
 		"executable-frontend", "executable-frontend", "rollout",
-		"guidance-projection", "thread-naming", "shell-approval", "observation",
+		"thread-naming", "shell-approval", "observation",
 	}
 	for failAt := 0; failAt <= len(wantCalls); failAt++ {
 		name := "success"
@@ -77,7 +75,7 @@ func TestBindingsRegister(t *testing.T) {
 				}
 				factories = append(factories, mechanism)
 			}
-			commands := []command.Definition[*int]{{Name: "reader", Description: "Read"}, {Name: "writer", Description: "Write"}}
+			commands := []command.Definition[*int]{{Name: "reader"}, {Name: "writer"}}
 			bindings := Bindings[*int]{
 				Frontends: true,
 				Rollout: func(got *int, source RolloutSource) error {
@@ -87,10 +85,6 @@ func TestBindingsRegister(t *testing.T) {
 						t.Fatalf("rollout source identity = %q, %v", identity, err)
 					}
 					return nil
-				},
-				Guidance: func(got *int) Guidance {
-					checkService(got, "guidance-projection")
-					return Guidance{Frontends: func([]command.Spec) (FrontendGuidance, error) { return FrontendGuidance{Descriptions: "guide"}, nil }}
 				},
 				SessionNaming: func(got *int) SessionNaming {
 					checkService(got, "thread-naming")
@@ -135,12 +129,7 @@ func TestBindingsRegister(t *testing.T) {
 			if !slices.EqualFunc(registrar.frontends, commands, func(a command.Spec, b command.Definition[*int]) bool { return a == b.Spec }) || registrar.naming.NewThread == nil || registrar.approval.Kind != Sudo {
 				t.Fatalf("registered values differ: %+v", registrar)
 			}
-			if registrar.guidance.Frontends == nil {
-				t.Fatal("guidance factory value was not registered")
-			}
-			if guide, err := registrar.guidance.Frontends(nil); err != nil || guide.Descriptions != "guide" {
-				t.Fatalf("registered guidance = %q, %v", guide, err)
-			}
+
 		})
 	}
 }
@@ -155,8 +144,7 @@ func TestEmptyBindingsRegister(t *testing.T) {
 func TestBindingsRegisterRolloutError(t *testing.T) {
 	failure := errors.New("rollout attachment failed")
 	bindings := Bindings[struct{}]{
-		Rollout:  func(struct{}, RolloutSource) error { return failure },
-		Guidance: func(struct{}) Guidance { panic("registered after rollout failure") },
+		Rollout: func(struct{}, RolloutSource) error { return failure },
 	}
 	registrar := new(referenceRegistrar)
 	if err := bindings.Register(registrar, struct{}{}, nil); !errors.Is(err, failure) {
@@ -173,7 +161,6 @@ type referenceRegistrar struct {
 	failure   error
 	frontends []command.Spec
 
-	guidance Guidance
 	naming   SessionNaming
 	approval ShellApproval
 }
@@ -196,11 +183,6 @@ func (r *referenceRegistrar) Rollout(attach func(RolloutSource) error) error {
 		return err
 	}
 	return attach(RolloutSource{Identity: func(path string) (string, error) { return path + " identity", nil }})
-}
-
-func (r *referenceRegistrar) Guidance(guidance Guidance) error {
-	r.guidance = guidance
-	return r.record("guidance-projection")
 }
 
 func (r *referenceRegistrar) SessionNaming(naming SessionNaming) error {

@@ -99,12 +99,12 @@ native workspace contains disabled scripts and procedural macros. It does not es
 that every cold native query fits the shared 30-second deadline. Dependency preparation:
 [Rust semantic queries](docs/guide/agent-tools.md#rust-semantic-queries).
 
-Frontend descriptions and supplementary `guidance.md` belong to command modules;
-`modules/agentguidance` renders the selected catalog and its Codex binding owns layout/projection.
-After changing frontend guidance, check authenticated snapshots and prepared requests:
+The native tool builder describes Mekugi helpers available on the shell PATH.
+Check both the native rendering and the wrapped launcher:
 
 ```sh
-make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/frontends ./apps/mekugi/internal/launch ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
+make test-native NATIVE_ARGS='-p codex-core --lib -- mekugi_guidance::tests'
+make test TEST_PACKAGES='./apps/mekugi/internal/frontends ./apps/mekugi/internal/launch' TEST_RUN='Guidance|ComposedFrontendCatalog|ToolFrontend'
 ```
 
 ## Static checks

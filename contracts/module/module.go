@@ -6,7 +6,6 @@ import (
 	"github.com/yusing/mekugi/contracts/diagnosticsection"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/recordkind"
@@ -34,7 +33,6 @@ const (
 type Slots struct {
 	DiagnosticSections []diagnosticsection.Contribution
 	Inspection         []inspection.Contribution
-	Guidance           []guidance.Section
 	RecordKinds        []recordkind.Spec
 	References         []reference.Resolver
 }
@@ -45,7 +43,6 @@ type Contributions[S any] struct {
 	Presentation       []presentation.Status
 	DiagnosticSections []diagnosticsection.Definition[S]
 	Inspection         []inspection.Definition[S]
-	Guidance           []guidance.Section
 	Commands           []command.Definition[S]
 	RecordKinds        []recordkind.Spec
 	References         []reference.Resolver
@@ -61,7 +58,6 @@ type Descriptor[D, S, B, V any] struct {
 	Lifetime                Lifetime
 	Resources               []string
 	Contributes             Contributions[S]
-	HostsGuidance           bool
 	HostsRecords            bool
 	HostsReferences         bool
 	HostsInspection         bool

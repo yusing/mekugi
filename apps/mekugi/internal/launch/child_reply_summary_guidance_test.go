@@ -1,67 +1,59 @@
 package launch
 
 import (
-	jsonv1 "encoding/json"
+	"context"
+	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
-	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-	"github.com/yusing/mekugi/backends/codex/binding"
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"time"
 )
 
 func TestChildReplySummaryGuidanceInvocation(t *testing.T) {
-	var inherited string
-	for _, enabled := range []bool{true, false, true} {
-		options, err := launchoptions.Parse(nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		options = options.ResolveFeatures(launchoptions.Features{ChildReplySummary: new(enabled)})
-		runtime, err := composition.Frontends(t.Context(), false, options.ChildReplySummary, "", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer runtime.Close(t.Context())
-		dir := t.TempDir()
-		registry, err := frontends.New(t.Context(), frontends.Config{Commands: runtime.Commands, Guidance: runtime.Guidance, ReplayDirectory: filepath.Join(dir, "replay")})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer registry.Close()
-		for _, history := range []string{"fresh assembly", "inherited assembly"} {
-			base := "Preserve caller exact-output policy."
-			if history == "inherited assembly" {
-				base += "\n" + inherited
-			}
-			fields := map[string]jsonv1.RawMessage{
-				"instructions": responses.MustMarshalJSON(base),
-				"input":        responses.MustMarshalJSON([]any{testCodeModeAdditionalTools(testCodeModeDescription)}),
-			}
-			for range 2 {
-				if _, err := binding.PrepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), registry.FrontendGuidance, runtime.Guidance); err != nil {
+	for _, tc := range []struct {
+		name, settings string
+		args, expected []string
+	}{
+		{name: "unset"},
+		{name: "disabled via settings", settings: "false", expected: []string{"false"}},
+		{name: "disabled via CLI", settings: "true", args: []string{"--child-reply-summary=false"}, expected: []string{"false"}},
+		{name: "enabled via CLI", settings: "false", args: []string{"--child-reply-summary=true"}, expected: []string{"true"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", config)
+			if tc.settings != "" {
+				directory := filepath.Join(config, "mekugi")
+				if err := os.Mkdir(directory, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				body := "[features]\nchild_reply_summary = " + tc.settings + "\n"
+				if err := os.WriteFile(filepath.Join(directory, "config.toml"), []byte(body), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
-			got := responses.StringField(fields, "instructions")
-			want := 0
-			if enabled {
-				want = 1
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			ready, done := make(chan invocationFixture, 1), make(chan error, 1)
+			go func() {
+				done <- testRunSession(testHistory(), testRecovery(), ctx, testCommands(), tc.args, nil,
+					func(session invocationFixture) { ready <- session }, nil)
+			}()
+			var session invocationFixture
+			select {
+			case session = <-ready:
+			case err := <-done:
+				t.Fatalf("app server stopped before readiness: %v", err)
+			case <-ctx.Done():
+				t.Fatal("app server did not become ready")
 			}
-			if strings.Count(got, "For child-to-parent") != want || !strings.Contains(got, "Preserve caller exact-output policy.") || !strings.Contains(got, "Keep command output in tool results") {
-				t.Fatalf("enabled=%v history=%q guidance=%s", enabled, history, got)
+			cancel()
+			if err := <-done; err != nil {
+				t.Fatal(err)
 			}
-			if enabled && (!strings.Contains(got, "long enough to benefit from structure") || !strings.Contains(got, "Short replies may stay plain, including substantive replies with supporting details.")) {
-				t.Fatal("child authoring guidance lost length condition or short-reply exemption")
+			if !slices.Equal(session.ChildReplySummaryOverrides, tc.expected) {
+				t.Fatalf("native overrides = %v, want %v", session.ChildReplySummaryOverrides, tc.expected)
 			}
-			if runtime.Terminal.ChildReplySummary != enabled {
-				t.Fatal("guidance and presentation diverged")
-			}
-		}
-		inherited = registry.FrontendGuidance.Workflow
+		})
 	}
 }

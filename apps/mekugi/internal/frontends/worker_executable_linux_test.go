@@ -76,7 +76,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 	var image WorkerImage
 	defer image.Close()
-	config := Config{Commands: testCommands(), Guidance: testGuidance(), ReplayDirectory: replayDirectory, WorkerImage: &image}
+	config := Config{Commands: testCommands(), ReplayDirectory: replayDirectory, WorkerImage: &image}
 	registry, err := New(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)

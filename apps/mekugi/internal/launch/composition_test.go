@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
@@ -30,7 +29,7 @@ func TestCompositionFrontendCatalog(t *testing.T) {
 	runtime := testComposition(t)
 	directory := t.TempDir()
 	registry, err := frontends.New(t.Context(), frontends.Config{
-		Commands: runtime.Commands, Guidance: runtime.Guidance,
+		Commands:        runtime.Commands,
 		ReplayDirectory: filepath.Join(directory, "replay"),
 	})
 	if err != nil {
@@ -47,11 +46,7 @@ func TestCompositionFrontendCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
-		name := entry.Name()
-		names = append(names, name)
-		if strings.Count(registry.FrontendGuidance.Descriptions, "<tool name=\""+name+"\">") != 1 {
-			t.Fatalf("%s missing or repeated in authenticated guidance", name)
-		}
+		names = append(names, entry.Name())
 	}
 	slices.Sort(names)
 	if !slices.Equal(names, []string{"inspect_file", "mcat", "mchanges", "mread", "mreload", "mrun", "msymbol"}) {

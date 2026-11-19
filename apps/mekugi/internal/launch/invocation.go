@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -82,7 +83,7 @@ const (
 
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func runInvocation(views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, guidance *binding.Guidance, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
+func runInvocation(views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
 	if api == nil || threads == nil {
 		return 1, errors.New("native invocation requires control API and thread execution owners")
 	}
@@ -223,7 +224,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	if debug != nil {
 		axReadOutput = debug.ReadLogPath()
 	}
-	registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: threads.workers})
+	registry, err = frontends.New(ctx, frontends.Config{Commands: commands, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: threads.workers})
 	if err != nil {
 		return 1, fmt.Errorf("initialize tool registry: %w", err)
 	}
@@ -281,7 +282,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 		}
 		return reader.ContextAttachments(ctx, thread, window)
 	}
-	mekugiCalls = executionobservation.New(executionobservation.Config{ProgressSnapshot: threads.hub.ProgressSnapshot, Registry: registry, Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+	mekugiCalls = executionobservation.New(executionobservation.Config{ProgressSnapshot: threads.hub.ProgressSnapshot, Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 	mekugiCalls.ContextAttachments = contextAttachments
 	if segments.Live != nil {
 		if err := segments.Live.RegisterBoundary(mekugiCalls.ObserveNativeBoundary); err != nil {
@@ -339,7 +340,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 
 	executor := requestexecution.Executor{Provider: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
 	executor.ReasoningChoices = catalog.Choices
-	executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
+	executor.Observations = mekugiCalls
 	executor.SideThreads, executor.Usage = api, usage
 	if diagnosis != nil {
 		executor.Instructions = diagnosis.RetainInstructions(retained.Store, retained.Writes, retained.Limits)
@@ -391,6 +392,9 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	}
 
 	cmd := exec.CommandContext(ctx, executable, nativeAppServerArgs(codexArgs(baseURL, args, route))...)
+	if summary, ok := options.ChildReplySummaryOverride(config.Features); ok {
+		cmd.Args = append(cmd.Args, "-c", "features.child_reply_summary="+strconv.FormatBool(summary))
+	}
 	self, err := os.Executable()
 	if err != nil {
 		return stopFailedStartup(err)

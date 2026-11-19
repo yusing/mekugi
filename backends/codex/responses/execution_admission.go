@@ -8,9 +8,8 @@ import (
 // Source: internal/router/request.go:40:125@06fc40e4 execution admission.
 
 // ExecutionFree identifies catalogs that need no editing or
-// process-execution projection. Other tools and output schemas remain Codex-owned.
+// process-execution observation. Tools and output schemas remain Codex-owned.
 func ExecutionFree(r *Request) bool {
-	// Admission precedes explicit instruction omission, which can remove input items.
 	catalog := DecodeToolCatalog(r.Fields)
 	if catalog.InputError != nil {
 		return false
@@ -59,8 +58,8 @@ func ExecutionFree(r *Request) bool {
 	if !acceptSection(catalog.Top, true) {
 		return false
 	}
-	for _, group := range catalog.Additional {
-		if !group.Tools.Array || !acceptSection(group.Tools, true) {
+	for _, section := range catalog.Additional {
+		if !section.Array || !acceptSection(section, true) {
 			return false
 		}
 	}

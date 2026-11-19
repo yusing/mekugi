@@ -19,7 +19,6 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
@@ -39,7 +38,6 @@ type Executor struct {
 	Output           io.Writer
 	Issues           *Failures
 	Observations     Preparer
-	Guidance         *binding.Guidance
 	ReasoningChoices func(string) (string, []string, bool)
 	SideThreads      sessioncontrol.ForkClassifier
 	Usage            *accounting.Service
@@ -221,14 +219,6 @@ func (a *requestAttempt) prepare() error {
 	requestedTier := responses.StringField(a.request.Fields, "service_tier")
 	if tier := a.executor.ServiceTiers.Effective(a.request.Model(), requestedTier, a.threadID); tier != requestedTier {
 		a.request.Fields["service_tier"] = responses.MustMarshalJSON(tier)
-	}
-
-	if !a.approvalReview && a.executor.Observations != nil {
-		if guidance := a.executor.Guidance; guidance != nil {
-			if err := ProjectInstructions(&a.request, guidance.BeforePreparation); err != nil {
-				return err
-			}
-		}
 	}
 
 	// Only the WebSocket provider guarantees non-generating warmup for every

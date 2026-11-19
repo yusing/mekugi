@@ -97,7 +97,7 @@ func (invocation *Invocation) Run(service *history.Service, recovered *recovery.
 	if err != nil {
 		return fail(err)
 	}
-	if manifest.Version != 3 {
+	if manifest.Version != manifestVersion {
 		return fail(errors.New("tool worker manifest is inconsistent"))
 	}
 	if manifest.RegistryID != expectedRegistryID {

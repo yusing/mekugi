@@ -1,7 +1,6 @@
 package responses_test
 
 import (
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"reflect"
 	"testing"
@@ -30,42 +29,6 @@ func TestRequestCatalogSectionStates(t *testing.T) {
 			assertCatalogWire(t, request, tc.body)
 		})
 	}
-}
-
-func TestRequestCatalogPreservesExtensionsDuringEncoding(t *testing.T) {
-	request := parseCatalogRequest(t, `{"tools":[{"type":"function","name":"top","description":"old","provider":{"opaque":[1,true]}}],"input":[{"type":"additional_tools","group_extension":{"keep":true},"tools":[{"type":"namespace","name":"space","namespace_extension":"keep","tools":[{"type":"function","name":"nested","description":"old","parameters":{"type":"object"},"plugin_extension":["keep"]}]}]}]}`)
-	catalog := responses.DecodeToolCatalog(request.Fields)
-	catalog.Top.Tools[0].SetDescription("new top")
-	if err := catalog.EncodeTop(request.Fields); err != nil {
-		t.Fatal(err)
-	}
-	group := catalog.Additional[0]
-	nested := group.Tools.Tools[0].Nested
-	nested.Tools[0].SetDescription("new nested")
-	if err := catalog.EncodeAdditional(request.Fields, group, nested); err != nil {
-		t.Fatal(err)
-	}
-	assertCatalogWire(t, request, `{"tools":[{"type":"function","name":"top","description":"new top","provider":{"opaque":[1,true]}}],"input":[{"type":"additional_tools","group_extension":{"keep":true},"tools":[{"type":"namespace","name":"space","namespace_extension":"keep","tools":[{"type":"function","name":"nested","description":"new nested","parameters":{"type":"object"},"plugin_extension":["keep"]}]}]}]}`)
-}
-
-func TestRequestCatalogRawFieldsAreAuthoritative(t *testing.T) {
-	request := parseCatalogRequest(t, `{"tools":[{"type":"function","name":"old","description":"old"}]}`)
-	catalog := responses.DecodeToolCatalog(request.Fields)
-	tool := catalog.Top.Tools[0]
-	tool.SetRawField("type", jsontext.Value(`"custom"`))
-	tool.SetRawField("name", jsontext.Value(`"new"`))
-	tool.SetRawField("description", jsontext.Value(`"raw description"`))
-	if tool.Type() != "custom" || tool.Name() != "new" || tool.Description() != "raw description" {
-		t.Fatalf("stale getters: type=%q name=%q description=%q", tool.Type(), tool.Name(), tool.Description())
-	}
-	tool.SetDescription("final description")
-	if tool.Description() != "final description" || string(tool.RawField("description")) != `"final description"` {
-		t.Fatal("description setter and raw field diverged")
-	}
-	if err := catalog.EncodeTop(request.Fields); err != nil {
-		t.Fatal(err)
-	}
-	assertCatalogWire(t, request, `{"tools":[{"type":"custom","name":"new","description":"final description"}]}`)
 }
 
 func parseCatalogRequest(t *testing.T, body string) responses.Request {

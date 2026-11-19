@@ -11,21 +11,13 @@ exact notice thresholds/reset rules below are current design.
 
 ## Purpose and scope
 
-Assemble contributed frontend guidance and apply explicit omissions without changing caller authority.
+Present native tool and collaboration guidance without changing caller authority.
 
 ## Behavior
 
-Mekugi preserves the caller's base `instructions` value and every system or developer message,
-except for complete explicit omission blocks and the
-marked Mekugi workflow section appended to base instructions. The native runtime owns
-the environment supplement described below, independently of Go guidance projection.
-Native child preparation and model/role owners assemble coordination guidance and
-admitted identity directly. Agent Guidance does not rewrite stock collaboration
-text into another tool interface; custom instructions and effective mode text
-retain their native authority.
-It does not detect stock prompt shapes, replace editing sections, select model-specific workflows,
-inspect `model_instructions_file`, or create or modify caller instruction files. It does not restore the
-retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
+Mekugi preserves caller instructions. Native model and role owners assemble
+coordination guidance and admitted identity. Custom instructions and effective
+mode text retain their native authority.
 
 Default model instructions belong to the native runtime's bundled model catalog.
 The default catalog uses its complete model-message set even when cached or remote discovery
@@ -47,29 +39,12 @@ is preserved without request-time matching.
 Planning guidance and the stock plan tool remain host-owned. Native configuration omits
 collaboration-mode instructions.
 
-Each executable helper owns its capability description and command-keyed workflow
-guidance. Descriptions contain capabilities, syntax, options and output semantics;
-workflow guidance explains when and how to use the helper during a task. Absent
-command contributions contribute neither description nor workflow guidance. The
-module renders both from the validated invocation catalog, without a duplicate
-checked-in catalog. The application authenticates and publishes both sections
-before exposing its commands.
+The native tool builder describes available Mekugi shell helpers in the stock
+`tools.exec_command` entry. It uses the selected local shell's PATH, without a
+guidance handoff from the launcher. Unavailable helpers contribute no text.
+Requests without command execution do not advertise helpers. These are shell
+commands, not new tools or an alternative execution interface.
 
-The catalog supplies command descriptions, helper workflows, child reply policy and
-Codex JavaScript execution guidance through one authenticated projection.
-
-Capability descriptions remain in the authoritative `exec` description when it
-exposes `tools.exec_command`. Workflow guidance is appended to the Responses `instructions` field, preserving
-any existing value. Codex's selected base text remains unchanged when carried as
-a developer input message; Mekugi does not infer its identity from message order
-or wording. The workflow section is part of the request's base instruction layer,
-not conversation history or a tool description. Stock names, schemas,
-inputs, results, and execution authority stay unchanged. Refresh replaces each
-marked section in place; malformed or duplicate markers reject before forwarding.
-
-The base workflow section explains when the tools reduce work:
-structural outlines for navigation, semantic references for caller-impacting edits, bounded
-command windows and retained-output recovery, and explicit captured-change ranges for reviewers.
 Capability descriptions include support for ordinary shell pipes.
 Only macOS hosts include execution guidance to select Bash explicitly unless
 the task requires another shell. This leaves Codex's account-shell detection and
@@ -91,28 +66,12 @@ Review handoffs include the requested scope and explicit IDs or same-agent inclu
 the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence
 does not assert the current workspace state.
 
-The invocation's `child_reply_summary` feature conditionally contributes a rule
-inside the existing marked workflow section. Enabled children author child-to-parent
-directed messages and final answers long enough to benefit from structure with a concise, meaningful
-`## Summary` in the same existing reply generation, followed by supporting sections
-under headings the child chooses.
-The summary states the actual result, findings or blocker and material uncertainty,
-normally in one to three sentences. Short replies may remain plain, including substantive
-replies with supporting details; they need no padding or duplicate summary.
-Higher-priority exact-output requirements and root ordinary answers are unchanged.
-There is no separate summary message, repair turn or extra model request.
-Disabled invocations omit only this rule. Authenticated assembly applies the
-current invocation value once to fresh/no-history children, forks, switches and
-resumed requests, preserving caller text outside the owned workflow section.
-
-Before provider forwarding, the router strips blocks enclosed by the exact HTML comments
-`<!-- mekugi:omit -->` and `<!-- /mekugi:omit -->`, including both comments. This is an explicit
-caller-authored filtering contract. It applies to top-level instructions,
-system and developer message text, and the `<INSTRUCTIONS>` body of Codex user-role instruction
-context, including AGENTS.md. Ordinary user messages, assistant history, tool results, and non-text
-parts remain intact. Each text part is processed independently, including fenced text; nested and
-multiple complete blocks are supported. Unmatched markers and bytes outside complete blocks are
-preserved. Filtering also applies to prewarm and execution-free requests.
+When `child_reply_summary` is enabled, native children start substantial
+messages to their parent and final replies with `## Summary`. The summary gives
+the outcome or blocker and material uncertainty, followed by supporting detail.
+Short replies may stay plain. Higher-priority exact-output requirements and
+ordinary root answers are unchanged. The policy is applied to the existing
+reply generation, including for resumed children.
 
 When the local workspace is explicitly trusted and it or the user has a
 `skills-mgr` selection, the manager's XML catalog replaces the stock catalog in

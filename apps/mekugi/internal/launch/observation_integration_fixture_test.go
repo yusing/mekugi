@@ -77,7 +77,6 @@ func (p *observationFixture) Prepare(ctx context.Context, request *codexresponse
 
 func (p *observationFixture) preparer() *executionobservation.Preparer {
 	return executionobservation.New(executionobservation.Config{
-		Registry:       p.registry,
 		Usage:          p.usage,
 		Review:         p.review,
 		Audience:       p.activity,

@@ -17,15 +17,8 @@ import (
 // failure behavior.
 type ToolCatalog struct {
 	Top        *ToolSection
-	Additional []*AdditionalTools
-	inputItems []jsontext.Value
+	Additional []*ToolSection
 	InputError error
-}
-
-type AdditionalTools struct {
-	itemIndex int
-	item      map[string]jsontext.Value
-	Tools     *ToolSection
 }
 
 type ToolSection struct {
@@ -36,8 +29,7 @@ type ToolSection struct {
 	Err   error
 }
 
-// Tool exposes the stable Responses tool fields while its
-// raw object remains authoritative for unknown extensions.
+// Tool exposes the stable Responses tool fields for observation.
 type Tool struct {
 	Nested *ToolSection
 	fields map[string]jsontext.Value
@@ -66,31 +58,6 @@ func newTool(fields map[string]jsontext.Value) *Tool {
 	return tool
 }
 
-func (tool *Tool) MarshalJSON() ([]byte, error) {
-	if tool == nil || tool.fields == nil {
-		return []byte("null"), nil
-	}
-	return responses.MarshalJSON(tool.fields)
-}
-
-// setDescription updates the tool description in both the field and the underlying map.
-func (tool *Tool) SetDescription(description string) {
-	tool.fields["description"] = responses.MustMarshalJSON(description)
-}
-
-// rawField returns the raw JSON for the named field.
-func (tool *Tool) RawField(name string) jsontext.Value {
-	if tool == nil || tool.fields == nil {
-		return nil
-	}
-	return tool.fields[name]
-}
-
-// setRawField updates a raw JSON field in the tool definition.
-func (tool *Tool) SetRawField(name string, value jsontext.Value) {
-	tool.fields[name] = value
-}
-
 // DecodeToolCatalog decodes the tool catalog from a Responses request.
 func DecodeToolCatalog(fields map[string]jsontext.Value) *ToolCatalog {
 	rawTop, topPresent := fields["tools"]
@@ -102,11 +69,12 @@ func DecodeToolCatalog(fields map[string]jsontext.Value) *ToolCatalog {
 	if !inputPresent {
 		return catalog
 	}
-	if err := json.Unmarshal(rawInput, &catalog.inputItems, jsonv1.DefaultOptionsV1()); err != nil {
+	var items []jsontext.Value
+	if err := json.Unmarshal(rawInput, &items, jsonv1.DefaultOptionsV1()); err != nil {
 		catalog.InputError = err
 		return catalog
 	}
-	for itemIndex, rawItem := range catalog.inputItems {
+	for _, rawItem := range items {
 		var item map[string]jsontext.Value
 		if err := json.Unmarshal(rawItem, &item, jsonv1.DefaultOptionsV1()); err != nil {
 			catalog.InputError = errors.Join(catalog.InputError, err)
@@ -116,11 +84,7 @@ func DecodeToolCatalog(fields map[string]jsontext.Value) *ToolCatalog {
 			continue
 		}
 		rawTools, toolsPresent := item["tools"]
-		catalog.Additional = append(catalog.Additional, &AdditionalTools{
-			itemIndex: itemIndex,
-			item:      item,
-			Tools:     decodeToolSection(rawTools, toolsPresent),
-		})
+		catalog.Additional = append(catalog.Additional, decodeToolSection(rawTools, toolsPresent))
 	}
 	return catalog
 }
@@ -150,49 +114,6 @@ func decodeToolSection(raw jsontext.Value, present bool) *ToolSection {
 		section.Tools[index] = tool
 	}
 	return section
-}
-
-// encodeTop encodes the top-level tools back into the request fields.
-func (c *ToolCatalog) EncodeTop(fields map[string]jsontext.Value) error {
-	encoded, err := responses.MarshalJSON(c.Top.Tools)
-	if err != nil {
-		return err
-	}
-	fields["tools"] = encoded
-	return nil
-}
-
-// encodeAdditional encodes additional tools back into the request fields.
-func (c *ToolCatalog) EncodeAdditional(fields map[string]jsontext.Value, group *AdditionalTools, section *ToolSection) error {
-	if section != group.Tools {
-		for _, tool := range group.Tools.Tools {
-			if tool == nil || tool.Nested != section {
-				continue
-			}
-			encoded, err := responses.MarshalJSON(section.Tools)
-			if err != nil {
-				return err
-			}
-			tool.SetRawField("tools", encoded)
-			break
-		}
-	}
-	encodedTools, err := responses.MarshalJSON(group.Tools.Tools)
-	if err != nil {
-		return err
-	}
-	group.item["tools"] = encodedTools
-	encodedItem, err := responses.MarshalJSON(group.item)
-	if err != nil {
-		return err
-	}
-	c.inputItems[group.itemIndex] = encodedItem
-	encodedInput, err := responses.MarshalJSON(c.inputItems)
-	if err != nil {
-		return err
-	}
-	fields["input"] = encodedInput
-	return nil
 }
 
 func (tool *Tool) IsObject() bool      { return tool != nil && tool.fields != nil }

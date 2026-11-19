@@ -118,6 +118,31 @@ func (s CapturedSource) Text() string {
 	return body
 }
 
+// CaptureService attaches admitted source readers for the reload command.
+type CaptureService struct {
+	Changes      changes.Service
+	History      *history.Service
+	NativeSkills func(context.Context, string) (map[string][]string, error)
+}
+
+func (s *CaptureService) Capture(ctx context.Context, request command.Request) (command.Output, error) {
+	reader := ChangeReader{Service: s.Changes}
+	if s.History != nil && request.Scope.Directory != "" {
+		reader.Scope = changes.Scope{
+			Store:     s.History.Attach(request.Scope.Directory),
+			Namespace: request.Scope.Namespace,
+			Thread:    request.Scope.Thread,
+		}
+	}
+	readers := Readers{Changes: reader}
+	if s.NativeSkills != nil {
+		readers.Skills = func(ctx context.Context) (map[string][]string, error) {
+			return s.NativeSkills(ctx, request.Scope.Thread)
+		}
+	}
+	return readers.Capture(ctx, request)
+}
+
 // Readers borrows admitted acquisition owners. Skills returns native metadata
 // only; Run, when supplied, retains the receiving runtime's read permissions.
 type Readers struct {

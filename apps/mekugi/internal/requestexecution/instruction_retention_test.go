@@ -1,6 +1,7 @@
 package requestexecution
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"errors"
@@ -10,9 +11,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
@@ -89,39 +88,55 @@ func TestRetainInstructionsKeepsForwardedProjection(t *testing.T) {
 	}
 }
 
-type stoppedProvider struct{}
+type stoppedProvider struct{ body []byte }
 
-func (stoppedProvider) ForwardExecution(context.Context, context.Context, []byte, http.Header, string) (*inferencegateway.Response, error) {
+func (p *stoppedProvider) ForwardExecution(_ context.Context, _ context.Context, body []byte, _ http.Header, _ string) (*inferencegateway.Response, error) {
+	p.body = bytes.Clone(body)
 	return nil, errors.New("provider stopped by fixture")
 }
 
-// The real request lifecycle captures the projected instructions sent to the provider.
-func TestRetainInstructionsObservesGuidanceProjection(t *testing.T) {
+func TestNativeInstructionsForwardAndRetainUnchanged(t *testing.T) {
 	service, retention, directory := testInstructionRetention(t)
-	request, err := codexresponses.ParseRequest([]byte(`{"model":"model-a","instructions":"base","input":[{"role":"user","content":"hello"}]}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	executor := Executor{
-		Provider: stoppedProvider{}, Observations: new(lifecyclePreparation), Issues: testCriticalErrors(), Instructions: retention,
-		Guidance: &binding.Guidance{
-			BeforePreparation: func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
-				input.Instructions = responses.MustMarshalJSON("projected base")
-				return binding.InstructionUpdate{InstructionInput: input, InstructionsChanged: true}, nil
-			},
-		},
-	}
-	headers := http.Header{}
-	headers.Set(codexresponses.ThreadIDHeader, "thread")
-	if err := executor.Execute(t.Context(), t.Context(), request, headers, "session"); err == nil || !strings.Contains(err.Error(), "provider stopped by fixture") {
-		t.Fatalf("request did not reach the provider: %v", err)
-	}
-	report, err := service.ReadInstructions(t.Context(), directory, "thread", true, 4096)
-	if err != nil || report.Status != diagnostic.InstructionsAvailable {
-		t.Fatalf("report = %+v %v", report, err)
-	}
-	if got := report.Content[report.Revisions[0].Instructions].Text; got != "projected base" {
-		t.Fatalf("captured instructions = %q", got)
+	for _, tc := range []struct{ thread, base string }{
+		{thread: "omitted"},
+		{thread: "empty", base: `""`},
+		{thread: "custom", base: `"caller policy\n"`},
+	} {
+		t.Run(tc.thread, func(t *testing.T) {
+			body := `{"model":"model-a","input":[{"type":"message","role":"developer","content":"inherited policy\n"}]`
+			if tc.base != "" {
+				body += `,"instructions":` + tc.base
+			}
+			request, err := codexresponses.ParseRequest([]byte(body + "}"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider := new(stoppedProvider)
+			executor := Executor{
+				Provider: provider, Observations: new(lifecyclePreparation),
+				Issues: testCriticalErrors(), Instructions: retention,
+			}
+			headers := http.Header{}
+			headers.Set(codexresponses.ThreadIDHeader, tc.thread)
+			if err := executor.Execute(t.Context(), t.Context(), request, headers, "session"); err == nil || !strings.Contains(err.Error(), "provider stopped by fixture") {
+				t.Fatalf("request did not reach the provider: %v", err)
+			}
+			got, err := codexresponses.ParseRequest(provider.body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got.Fields["instructions"]) != tc.base || !bytes.Equal(got.Fields["input"], request.OriginalField("input")) {
+				t.Fatal("provider did not receive the native base or inherited developer text unchanged")
+			}
+			report, err := service.ReadInstructions(t.Context(), directory, tc.thread, true, 4096)
+			if err != nil || report.Status != diagnostic.InstructionsAvailable || len(report.Revisions) != 1 {
+				t.Fatalf("report = %+v, %v", report, err)
+			}
+			revision := report.Revisions[0]
+			if len(revision.DeveloperMessages) != 1 || report.Content[revision.DeveloperMessages[0]].Text != `{"content":"inherited policy\n","role":"developer","type":"message"}` {
+				t.Fatal("inspection did not retain native developer text")
+			}
+		})
 	}
 }
 
