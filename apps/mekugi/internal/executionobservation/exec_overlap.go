@@ -35,6 +35,8 @@ type execWindow struct {
 	thread                   string
 	turn                     string
 	source, workspace, shell string
+	nativeDirectory          *changecapture.Observation
+	dynamic                  bool // The cell may supply its working directory at native dispatch.
 	// group identifies the response that emitted the call.
 	group  string
 	paths  []string

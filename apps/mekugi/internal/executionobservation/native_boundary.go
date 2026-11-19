@@ -5,8 +5,10 @@ import (
 	"context"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -42,8 +44,12 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 		if request.Tool != "Bash" && request.Tool != applyPatchToolName {
 			return
 		}
+		var directoryWitness *changecapture.Observation
+		if request.Tool == "Bash" && incoming.dynamic && call.Command.Workdir != incoming.workspace && filepath.IsAbs(call.Command.Workdir) {
+			directoryWitness = p.nativeDirectory(ctx, incoming, call)
+		}
 		cuts := p.Windows.intervalCuts([]string{incoming.ref})
-		if request.Tool == "Bash" && len(cuts) == 0 {
+		if request.Tool == "Bash" && len(cuts) == 0 && directoryWitness == nil {
 			return
 		}
 		var eager mekugiHistory
@@ -71,7 +77,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 			if err != nil {
 				return
 			}
-		} else {
+		} else if len(cuts) > 0 {
 			shell := call.Command.Shell
 			if shell == "" {
 				shell = incoming.shell
@@ -88,15 +94,23 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 				}
 			}
 		}
-		if len(paths) == 0 || ctx.Err() != nil {
+		if len(paths) == 0 && directoryWitness == nil || ctx.Err() != nil {
 			return
 		}
 		// An earlier command in this same cell keeps the earliest cell baseline.
 		// A terminal poll belongs to its original writer, not the incoming cell.
 		priorWriter := false
 		priorCalls := p.NativeTrace.ReadCell(request.Thread, incoming.ref, incoming.source).Calls()
-		for _, prior := range priorCalls {
+		for i, prior := range priorCalls {
 			if prior.ID == request.Item {
+				// The checkpoint was acquired while this command was held. If
+				// another writing tool was dispatched concurrently, there is no
+				// witnessed order between its effects and the snapshot read.
+				if directoryWitness != nil && len(directoryWitness.Checkpoints) != 0 && slices.ContainsFunc(priorCalls[i+1:], func(other nativetrace.Call) bool {
+					return other.Tool == nativeExecCommandToolName || other.Tool == applyPatchToolName
+				}) {
+					directoryWitness = nil
+				}
 				break
 			}
 			if prior.Tool == nativeExecCommandToolName && prior.LocalEnvironment {
@@ -175,7 +189,7 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 		if request.Tool != applyPatchToolName || eagerPatch {
 			paths = shared
 		}
-		if len(paths) == 0 {
+		if len(paths) == 0 && directoryWitness == nil {
 			return
 		}
 		paths = slices.Compact(slices.Sorted(slices.Values(paths)))
@@ -249,7 +263,11 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 				baseline.ExecObservation = &changecapture.Observation{Excluded: shared}
 			}
 		} else {
-			baseline.ExecObservation = &changecapture.Observation{Files: files}
+			if directoryWitness == nil {
+				directoryWitness = new(changecapture.Observation)
+			}
+			baseline.ExecObservation = directoryWitness
+			baseline.ExecObservation.Files = files
 		}
 		// Publication precedes releasing the native pre-tool boundary. Each
 		// terminal interval closes only shared paths; other scope remains open.
@@ -279,11 +297,55 @@ func (p *Preparer) ObserveNativeBoundary(ctx context.Context, request transport.
 			return
 		}
 		state.mu.Lock()
+		if directoryWitness != nil && len(directoryWitness.Checkpoints) != 0 {
+			// Interval cuts issued by another runtime need the same witness
+			// before this cell returns. The per-tool record owns restoration.
+			cwdOnly := *directoryWitness
+			cwdOnly.Files = nil
+			incoming.nativeDirectory = &cwdOnly
+			incoming.roots = changecapture.AddRoot(incoming.roots, directory)
+		}
 		incoming.paths = slices.Compact(slices.Sorted(slices.Values(append(incoming.paths, paths...))))
 		incoming.roots = changecapture.AddRoot(incoming.roots, incoming.workspace)
 		state.mu.Unlock()
 		return
 	}
+}
+
+func (p *Preparer) nativeDirectory(ctx context.Context, w *execWindow, call nativetrace.Call) *changecapture.Observation {
+	if p.Checkpoints == nil {
+		return nil
+	}
+	original, found, err := lookupObservation(ctx, w.scope, w.workspace, w.ref)
+	if err != nil || !found || original.ExecObservation == nil {
+		return nil
+	}
+	o, directory := original.ExecObservation, filepath.Clean(call.Command.Workdir)
+	if !o.NeedsDirectory(w.workspace, directory) {
+		return nil
+	}
+	deadline, _ := ctx.Deadline()
+	class := func(call nativetrace.Call) execscope.Class {
+		command := call.Command
+		return execscope.Classify(execscope.Input{Command: command.Command, Directory: cmp.Or(command.Workdir, w.workspace), Shell: cmp.Or(command.Shell, w.shell), Deadline: deadline, Changes: storeChangeResolver(ctx, w.scope, p.Changes)}).Class
+	}
+	knownClass := class(call)
+	if knownClass == execscope.Neutral {
+		return &changecapture.Observation{Class: knownClass.String()}
+	}
+	// A later command cannot establish the cell's original bytes after an
+	// earlier writer might already have modified this independently scoped cwd.
+	for _, prior := range p.NativeTrace.ReadCell(w.thread, w.ref, w.source).Calls() {
+		if prior.ID == call.ID {
+			break
+		}
+		if prior.Tool == applyPatchToolName || prior.Tool == nativeExecCommandToolName && (!prior.LocalEnvironment || class(prior) != execscope.Neutral) {
+			return nil
+		}
+	}
+	result := o.CaptureDirectory(ctx, p.Checkpoints, w.workspace, directory)
+	result.Class = knownClass.String()
+	return result
 }
 
 func (p *Preparer) prepareTerminalBoundary(ctx context.Context, workspace string, cut execIntervalCut, endpoints []changecapture.File) (*execIntervalContinuation, error) {
@@ -370,9 +432,22 @@ func (p *Preparer) loadNativeBoundaries(ctx context.Context, workspace, callID s
 					patches = append(patches, patch)
 				}
 			}
-		} else if found && baseline.ExecObservation != nil && h.ExecObservation != nil {
-			copy := *h.ExecObservation
-			copy.Files = rebaseNativeFiles(copy.Files, baseline.ExecObservation.Files)
+		} else if o := h.ExecObservation; o != nil {
+			copy := *o
+			if found && baseline.ExecObservation != nil {
+				if len(baseline.ExecObservation.Checkpoints) != 0 {
+					copy = changecapture.Merge([]changecapture.Member{{Observation: copy}, {Observation: *baseline.ExecObservation, Sequence: 1}})
+					copy.Files = o.Files // named files still follow the native boundary rule below.
+				}
+				copy.Files = rebaseNativeFiles(copy.Files, baseline.ExecObservation.Files)
+			}
+			if tool.LocalEnvironment && o.LiteralClass != "" && copy.NeedsDirectory(workspace, tool.Command.Workdir) &&
+				(!found || baseline.ExecObservation == nil || baseline.ExecObservation.Class != execscope.Neutral.String()) {
+				copy.Unresolved = true
+				if !strings.Contains(copy.Reason, "native working directory checkpoint unavailable") {
+					copy.Reason = strings.TrimPrefix(copy.Reason+"; native working directory checkpoint unavailable", "; ")
+				}
+			}
 			h.ExecObservation = &copy
 		}
 	}

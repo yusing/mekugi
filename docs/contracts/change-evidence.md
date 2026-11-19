@@ -103,6 +103,9 @@ independently of sibling commands still running.
 
 An `exec` cell with nonliteral command input receives workspace snapshots;
 that fallback does not establish pre-edit baselines for dynamic patches.
+An authenticated command can add a separately scoped working directory at
+its native pre-tool boundary before a writer has run in the cell. A missing
+required checkpoint leaves partial coverage, not a reconstructed baseline.
 
 Native Shell Mode uses the same recorder, including for apply/revert. Only its
 matching terminal host item completes capture; acknowledgements and replayed

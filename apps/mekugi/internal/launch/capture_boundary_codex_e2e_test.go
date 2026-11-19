@@ -98,6 +98,65 @@ func TestCaptureDynamicPatchNativeCodex(t *testing.T) {
 	}
 }
 
+func TestCaptureDynamicWorkdirNativeCodex(t *testing.T) {
+	for _, hooked := range []bool{true, false} {
+		t.Run("boundary="+strconv.FormatBool(hooked), func(t *testing.T) {
+			parent, nested := newGitFixture(t), newGitFixture(t)
+			parent.write(".gitignore", "linked/\n")
+			nested.write("one.md", "original\n")
+			nested.write("two.md", "original\n")
+			nested.run("add", ".")
+			nested.run("commit", "-qm", "base")
+			workdir := filepath.Join(parent.dir, "linked")
+			nested.run("worktree", "add", "--detach", workdir)
+			t.Setenv(routerTestWorkerEnvironment, "1")
+			registry, err := buildToolRegistryForTest(t, t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := registry.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			store, err := openMekugiReplayStore(registry.ReplayDirectory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("CODEX_HOME", t.TempDir())
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			setCodexFrontendLoginEnvironment(t, registry.FrontendDirectory)
+			script := filepath.Join(t.TempDir(), "docs.py")
+			command := "cat > " + script + " <<'PY'\nfrom pathlib import Path\nfor p in Path('.').glob('*.md'):\n p.write_text(p.read_text().replace('original', 'updated'))\nPY\npython3 " + script
+			program := "const w=[" + strconv.Quote(workdir) + "].join(''); text(await tools.exec_command({workdir:w,cmd:" + strconv.Quote(command) + "}));"
+			provider := &mchangesNestedCodexProvider{program: program, callID: "dynamic-workdir", finalMessage: "edits completed"}
+			if !hooked {
+				provider.codexArgs = []string{"-c", "hooks.PreToolUse=[]"}
+			}
+			thread := runMChangesNestedCodexCell(t, "codex", registry, store, parent.dir, provider)
+			ctx, release, err := store.beginSession(t.Context(), thread, "inspect")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			receipt, found, err := store.scoped(ctx).lookup(ctx, parent.dir, legacycall.ExecCallID(provider.callID, true))
+			if err != nil || !found || receipt.ExecOutcome == nil || receipt.ExecOutcome.Exit == nil || *receipt.ExecOutcome.Exit != 0 {
+				t.Fatalf("missing terminal outcome: %+v, %v", receipt.ExecOutcome, err)
+			}
+			if !hooked {
+				if receipt.ExecOutcome.Coverage != changecapture.CoveragePartial || !strings.Contains(provider.terminalOutput, "native working directory checkpoint unavailable") {
+					t.Fatalf("missed boundary reported complete: %+v", receipt.ExecOutcome)
+				}
+				return
+			}
+			net := runMChangesNestedShell(t, registry, parent.dir, thread, "mchanges "+receipt.ChangeID)
+			if receipt.ChangeID == "" || !strings.Contains(provider.terminalOutput, receipt.ChangeID) || receipt.ExecOutcome.Coverage != changecapture.CoverageExact || net.status != 0 || strings.Count(net.stdout, "-original\n+updated") != 2 {
+				t.Fatalf("missing dynamic cwd edits: receipt=%+v net=%+v", receipt.ExecOutcome, net)
+			}
+		})
+	}
+}
+
 func TestCaptureTerminalWriterBoundaryNativeCodex(t *testing.T) {
 	for _, mode := range []string{"no-op", "restore", "patch", "dynamic-patch", "shell-then-dynamic-patch", "read-only-then-dynamic-patch"} {
 		t.Run(mode, func(t *testing.T) {

@@ -49,6 +49,7 @@ type mchangesNestedCodexProvider struct {
 	threadID                  string
 	turns                     int
 	resultSeen                bool
+	terminalOutput            string
 	finalMessage              string
 	waitCall                  string
 	expectPending, sawPending bool
@@ -191,6 +192,7 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil)
 		}
 		p.resultSeen = result.Terminal
+		p.terminalOutput = string(item.Output)
 		break
 	}
 	if !p.resultSeen {
@@ -716,7 +718,7 @@ func runMChangesNestedCodexCell(
 		t.Fatal(err)
 	}
 	defer boundaryServer.Close()
-	boundaryOwner := executionobservation.New(executionobservation.Config{Windows: proxy.execWindows, NativeTrace: proxy.nativeTrace, Changes: proxy.changeSource})
+	boundaryOwner := executionobservation.New(executionobservation.Config{Windows: proxy.execWindows, NativeTrace: proxy.nativeTrace, Changes: proxy.changeSource, Checkpoints: store.snapshots})
 	if err := boundaryServer.RegisterBoundary(boundaryOwner.ObserveNativeBoundary); err != nil {
 		t.Fatal(err)
 	}

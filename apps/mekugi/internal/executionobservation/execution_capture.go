@@ -34,6 +34,7 @@ func admitExecutionWindow(windows *Windows, review *sessionreview.Review, window
 	var commands []commandanalysis.Command
 	if observation != nil {
 		observation.Group = window.group
+		window.dynamic = observation.LiteralClass != ""
 		window.roots = slices.Clone(observation.Roots)
 		window.paths = append(window.paths, observation.ScopePaths()...)
 		commands = observation.Commands

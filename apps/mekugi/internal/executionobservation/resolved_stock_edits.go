@@ -47,6 +47,13 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 				return c.Command == command.Command && c.Workdir == command.Workdir && (command.Shell == "" || command.Shell == c.Shell)
 			})
 			if i < 0 {
+				if original.LiteralClass != "" {
+					// The trace establishes the actual terminal command, never its
+					// pre-edit bytes.
+					copy.Commands = append(copy.Commands, command)
+					copy.CommandClasses = append(copy.CommandClasses, execscope.Opaque.String())
+
+				}
 				continue
 			}
 			command = original.Commands[i]

@@ -280,8 +280,10 @@ func (p *Preparer) splitExecInterval(ctx, acquisition context.Context, workspace
 	p.Windows.state().mu.Lock()
 	window := p.Windows.find(cut.writer)
 	active := window != nil && window.closed.IsZero()
+	var directory *changecapture.Observation
 	fallback := active && !window.background
 	if active {
+		directory = window.nativeDirectory
 		// Physical scope can overlap another authored workspace. Retained
 		// identity always remains the interrupted writer's, not the edit's.
 		workspace = cmp.Or(cut.workspace, window.workspace, workspace)
@@ -297,6 +299,10 @@ func (p *Preparer) splitExecInterval(ctx, acquisition context.Context, workspace
 	}
 	if !found || original.ExecObservation == nil {
 		return nil
+	}
+	if directory != nil {
+		merged := changecapture.Merge([]changecapture.Member{{Observation: *original.ExecObservation}, {Observation: *directory, Sequence: 1}})
+		original.ExecObservation = &merged
 	}
 	cut.codeMode = original.ExecObservation.CodeMode
 	intervals, err := readExecIntervals(ctx, cut.scope, p.Changes, workspace, cut.writer, cut.codeMode)

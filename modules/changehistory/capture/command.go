@@ -343,29 +343,7 @@ func Capture(ctx context.Context, commands []commandanalysis.Command, dynamic, c
 		directories = append(directories, slices.Sorted(maps.Keys(observation.Checkpoints))...)
 		inventoryBudget := maxExecObservationBytes - len(responses.MustMarshalJSON(observation))
 		for _, directory := range directories {
-			checkpoint := env.Workspaces.checkpoint(ctx, directory, true)
-			tree := checkpoint.tree
-			inventoryBytes := len(responses.MustMarshalJSON(checkpoint.omissions)) + len(responses.MustMarshalJSON(directory)) + 2
-			if checkpoint.omissions != nil && inventoryBytes <= inventoryBudget {
-				inventoryBudget -= inventoryBytes
-				if observation.CheckpointOmissions == nil {
-					observation.CheckpointOmissions = make(map[string][]string)
-				}
-				observation.CheckpointOmissions[directory] = checkpoint.omissions
-			}
-			if directory == env.Directory {
-				observation.Tree = tree
-			} else {
-				if observation.Checkpoints == nil {
-					observation.Checkpoints = make(map[string]string)
-				}
-				observation.Checkpoints[directory] = tree
-			}
-			observation.Roots = AddRoot(observation.Roots, directory)
-			if tree == "" {
-				observation.Unresolved = true
-				observation.Reason = strings.TrimPrefix(observation.Reason+"; workspace checkpoint unavailable", "; ")
-			}
+			inventoryBudget = observation.captureCheckpoint(ctx, env.Workspaces, env.Directory, directory, inventoryBudget)
 			observed = true
 		}
 	}
@@ -373,6 +351,41 @@ func Capture(ctx context.Context, commands []commandanalysis.Command, dynamic, c
 		return nil, false
 	}
 	return observation, true
+}
+
+func (o *Observation) captureCheckpoint(ctx context.Context, workspaces *Workspaces, workspace, directory string, inventoryBudget int) int {
+	checkpoint := workspaces.checkpoint(ctx, directory, true)
+	tree := checkpoint.tree
+	inventoryBytes := len(responses.MustMarshalJSON(checkpoint.omissions)) + len(responses.MustMarshalJSON(directory)) + 2
+	if checkpoint.omissions != nil && inventoryBytes <= inventoryBudget {
+		inventoryBudget -= inventoryBytes
+		if o.CheckpointOmissions == nil {
+			o.CheckpointOmissions = make(map[string][]string)
+		}
+		o.CheckpointOmissions[directory] = checkpoint.omissions
+	}
+	if directory == workspace {
+		o.Tree = tree
+	} else {
+		if o.Checkpoints == nil {
+			o.Checkpoints = make(map[string]string)
+		}
+		o.Checkpoints[directory] = tree
+	}
+	o.Roots = AddRoot(o.Roots, directory)
+	if tree == "" {
+		o.Unresolved = true
+		o.Reason = strings.TrimPrefix(o.Reason+"; workspace checkpoint unavailable", "; ")
+	}
+	return inventoryBudget
+}
+
+// CaptureDirectory acquires only the independent cwd, using the metadata
+// budget remaining after the cell's original observation.
+func (o *Observation) CaptureDirectory(ctx context.Context, workspaces *Workspaces, workspace, directory string) *Observation {
+	extra := new(Observation)
+	extra.captureCheckpoint(ctx, workspaces, workspace, directory, maxExecObservationBytes-len(responses.MustMarshalJSON(o)))
+	return extra
 }
 
 // A nested repository has its own ignore/index authority and is not covered by
@@ -387,27 +400,46 @@ func checkpointDirectories(workspace string, commands []commandanalysis.Command,
 		if !filepath.IsAbs(directory) || slices.Contains(directories, directory) || i < len(classes) && classes[i] == execscope.Neutral.String() {
 			continue
 		}
-		covered := slices.ContainsFunc(directories, func(root string) bool {
-			if !changes.PathWithin(directory, root) {
-				return false
-			}
-			physicalRoot, rootErr := filepath.EvalSymlinks(root)
-			physicalDirectory, directoryErr := filepath.EvalSymlinks(directory)
-			if rootErr != nil || directoryErr != nil || !changes.PathWithin(physicalDirectory, physicalRoot) {
-				return false
-			}
-			for path := physicalDirectory; path != physicalRoot; path = filepath.Dir(path) {
-				if _, err := os.Lstat(filepath.Join(path, ".git")); !errors.Is(err, os.ErrNotExist) {
-					return false
-				}
-			}
-			return true
-		})
+		covered := slices.ContainsFunc(directories, func(root string) bool { return checkpointCovers(root, directory) })
 		if !covered {
 			directories = append(directories, directory)
 		}
 	}
 	return directories
+}
+
+func checkpointCovers(root, directory string) bool {
+	if root == directory {
+		return true
+	}
+	if !changes.PathWithin(directory, root) {
+		return false
+	}
+	physicalRoot, rootErr := filepath.EvalSymlinks(root)
+	physicalDirectory, directoryErr := filepath.EvalSymlinks(directory)
+	if rootErr != nil || directoryErr != nil || !changes.PathWithin(physicalDirectory, physicalRoot) {
+		return false
+	}
+	for path := physicalDirectory; path != physicalRoot; path = filepath.Dir(path) {
+		if _, err := os.Lstat(filepath.Join(path, ".git")); !errors.Is(err, os.ErrNotExist) {
+			return false
+		}
+	}
+	return true
+}
+
+// NeedsDirectory distinguishes a separate repository or external working
+// directory from one already covered by a pre-execution checkpoint.
+func (o *Observation) NeedsDirectory(workspace, directory string) bool {
+	if !filepath.IsAbs(directory) || checkpointCovers(workspace, directory) {
+		return false
+	}
+	for root := range o.Checkpoints {
+		if checkpointCovers(root, directory) {
+			return false
+		}
+	}
+	return true
 }
 
 // observeCommands classifies commands and captures their scope before
