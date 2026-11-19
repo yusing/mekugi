@@ -100,7 +100,7 @@ func TestNativeResolverSessionDeadline(t *testing.T) {
 		started := time.Now()
 		_, err := server.request(ctx, "textDocument/references", nil)
 		var failure *symbolFailure
-		if !errors.As(err, &failure) || failure.class != "resolver_timeout" || time.Since(started) != 30*time.Second {
+		if !errors.As(resolverError(ctx, "gopls", err), &failure) || failure.class != "resolver_timeout" || time.Since(started) != 30*time.Second {
 			t.Fatalf("session deadline: %v after %s", err, time.Since(started))
 		}
 	})

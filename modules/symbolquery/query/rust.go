@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,9 +46,6 @@ func prepareRust(ctx context.Context, scope command.ProcessScope, root, scratch 
 		err := cmd.Run()
 		retireResolver(cmd, scope)
 		if ctx.Err() != nil {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return nil, resolverTimeoutError()
-			}
 			return nil, ctx.Err()
 		}
 		if err != nil {
@@ -460,12 +456,12 @@ func (l *lspClient) rustReady(ctx context.Context) error {
 	for l.rustStatus == nil || !l.rustStatus.Quiescent {
 		select {
 		case <-ctx.Done():
-			if ctx.Err() == context.DeadlineExceeded {
-				return resolverTimeoutError()
-			}
 			return ctx.Err()
 		case event, ok := <-l.events:
 			if !ok {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				return rustCoverage("language server exited before ready")
 			}
 			if event.err != nil {

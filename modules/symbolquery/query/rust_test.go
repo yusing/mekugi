@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -453,10 +456,73 @@ func TestNativeSymbolRustLoadingDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
 	defer cancel()
 	client := lspClient{events: make(chan rpcEvent)}
-	err := client.rustReady(ctx)
+	err := resolverError(ctx, "rust", client.rustReady(ctx))
 	failure, ok := err.(*symbolFailure)
 	if !ok || failure.class != "resolver_timeout" {
 		t.Fatalf("loading deadline: %v", err)
+	}
+}
+
+func TestNativeSymbolRustBatchDeadline(t *testing.T) {
+	root := rustWorkspace(t)
+	core := filepath.Join(root, "core/src/lib.rs")
+	log := installSymbolResolvers(t, map[string]symbolResolverFixture{"rust-analyzer": {
+		RustHealth: "ok", Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(core, 1, 7, 13)},
+		WithholdReply: "textDocument/references",
+	}})
+	installRustPrerequisites(t, root)
+	queries := []*symbolQuery{
+		{mode: "def", path: core, name: "r#type"},
+		{mode: "refs", path: core, name: "r#type"},
+		{mode: "refs", path: "caller/src/lib.rs", name: "read"},
+	}
+	cache := map[string]*symbolSource{}
+	for _, q := range queries {
+		var err error
+		q.file, err = loadSymbolSource(t.Context(), root, q.path, "", cache)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := selectSymbol(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	runLSP(ctx, command.StandaloneProcess, root, "rust", t.TempDir(), queries)
+	if q := queries[0]; q.err != nil || len(q.locations) != 1 || q.locations[0].path != core {
+		t.Fatalf("completed definition: %v, %v", q.locations, q.err)
+	}
+	for _, q := range queries[1:] {
+		f, ok := errors.AsType[*symbolFailure](q.err)
+		if !ok || f.class != "resolver_timeout" || !strings.Contains(f.message, "Cargo workspace root") || strings.Contains(f.message, "narrower") {
+			t.Fatalf("unfinished %s: %v", q.path, q.err)
+		}
+	}
+	var opens, refs int
+	for _, event := range readSymbolLog(t, log) {
+		switch event.Message.Method {
+		case "textDocument/didOpen":
+			opens++
+		case "textDocument/references":
+			refs++
+		}
+	}
+	if opens != 1 || refs != 1 {
+		t.Fatalf("opened %d documents, requested %d references", opens, refs)
+	}
+}
+
+func TestResolverPipeInterruption(t *testing.T) {
+	expired, stop := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer stop()
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, err := range []error{os.ErrClosed, syscall.EPIPE, io.EOF, io.ErrUnexpectedEOF} {
+		f, ok := errors.AsType[*symbolFailure](resolverError(expired, "rust", err))
+		if !ok || f.class != "resolver_timeout" || resolverError(canceled, "rust", err) != context.Canceled || resolverError(t.Context(), "rust", err) != err {
+			t.Fatalf("misclassified pipe interruption: %v", err)
+		}
 	}
 }
 

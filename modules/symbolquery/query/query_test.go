@@ -33,6 +33,7 @@ type symbolResolverFixture struct {
 	MutatePath        string
 	MutatedSource     string
 	ErrorMethod       string
+	WithholdReply     string
 	RustHealth        string
 	RustDegradeMethod string
 	Diagnostic        string
@@ -192,7 +193,7 @@ func TestNativeSymbolResolverProcess(t *testing.T) {
 			status, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "experimental/serverStatus", "params": map[string]any{"health": health, "quiescent": true}})
 			fmt.Printf("Content-Length: %d\r\n\r\n%s", len(status), status)
 		}
-		if len(event.Message.ID) == 0 {
+		if len(event.Message.ID) == 0 || method == fixture.WithholdReply {
 			continue
 		}
 		var result any

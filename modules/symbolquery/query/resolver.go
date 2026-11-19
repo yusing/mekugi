@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -39,8 +40,20 @@ func (b *boundedResolverOutput) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-func resolverTimeoutError() error {
-	return &symbolFailure{"resolver_timeout", "resolver exceeded the 30 s limit; retry with a narrower --workspace ROOT"}
+// Classify at the time of failure: a later tuple's timeout must not relabel
+// a server failure from a tuple that finished before the deadline.
+func resolverError(ctx context.Context, resolver string, err error) error {
+	if ctx.Err() != nil && (errors.Is(err, os.ErrClosed) || errors.Is(err, syscall.EPIPE) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
+		err = ctx.Err()
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		hint := "retry with a narrower --workspace ROOT"
+		if resolver == "rust" {
+			hint = "keep the Cargo workspace root; try unfinished batch targets separately (a single cold query may still time out)"
+		}
+		return &symbolFailure{"resolver_timeout", "resolver exceeded the 30 s limit; " + hint}
+	}
+	return err
 }
 func resolverStartError(name string, err error) error {
 	if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
@@ -226,9 +239,6 @@ func (l *lspClient) handleServerMessage(m rpcMessage) error {
 }
 func (l *lspClient) request(ctx context.Context, method string, params any) (jsontext.Value, error) {
 	if err := ctx.Err(); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, resolverTimeoutError()
-		}
 		return nil, err
 	}
 	if pipe, ok := l.input.(interface{ SetWriteDeadline(time.Time) error }); ok {
@@ -249,13 +259,10 @@ func (l *lspClient) request(ctx context.Context, method string, params any) (jso
 	for {
 		select {
 		case <-ctx.Done():
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return nil, resolverTimeoutError()
-			}
 			return nil, ctx.Err()
 		case event, ok := <-l.events:
 			if !ok {
-				return nil, errors.New("language server exited before replying")
+				return nil, fmt.Errorf("language server exited before replying: %w", io.EOF)
 			}
 			if event.err != nil {
 				return nil, fmt.Errorf("language server protocol: %w", event.err)
@@ -356,6 +363,7 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 		name, args = "gopls", []string{"serve"}
 	}
 	failAll := func(err error) {
+		err = resolverError(deadline, resolver, err)
 		for _, q := range queries {
 			q.err = err
 		}
@@ -506,12 +514,16 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 		if q.err != nil {
 			continue
 		}
+		if err := deadline.Err(); err != nil {
+			q.err = resolverError(deadline, resolver, err)
+			continue
+		}
 		if customBuild {
 			// A previous tuple's inferred tag must not change this tuple's
 			// default build, including mutually exclusive test variants.
 			lsp.configuration["buildFlags"] = []string{}
 			if err := lsp.notify("workspace/didChangeConfiguration", map[string]any{}); err != nil {
-				q.err = err
+				q.err = resolverError(deadline, resolver, err)
 				continue
 			}
 			customBuild = false
@@ -528,7 +540,7 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 			}
 			err = lsp.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{"uri": uri, "languageId": language, "version": 1, "text": q.file.parsed.Source}})
 			if err != nil {
-				q.err = err
+				q.err = resolverError(deadline, resolver, err)
 				continue
 			}
 			opened[uri] = true
@@ -541,7 +553,7 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 		}
 		if resolver == "rust" {
 			if err := lsp.rustReady(deadline); err != nil {
-				q.err = err
+				q.err = resolverError(deadline, resolver, err)
 				continue
 			}
 			coverageRevision := lsp.rustRevision
@@ -560,7 +572,7 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 				}
 			}
 			if err := lsp.rustReady(deadline); err != nil {
-				q.err = err
+				q.err = resolverError(deadline, resolver, err)
 				continue
 			}
 			if lsp.rustRevision != coverageRevision {
@@ -605,10 +617,7 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 					checkedGoFlags = true
 				}
 				if err := deadline.Err(); err != nil {
-					q.err = err
-					if errors.Is(err, context.DeadlineExceeded) {
-						q.err = resolverTimeoutError()
-					}
+					q.err = resolverError(deadline, resolver, err)
 					continue
 				}
 				if !inferGoTags {
@@ -626,7 +635,7 @@ func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolv
 			}
 		}
 		if e != nil {
-			q.err = e
+			q.err = resolverError(deadline, resolver, e)
 			continue
 		}
 		q.locations, q.err = parseLocations(raw, q.mode)

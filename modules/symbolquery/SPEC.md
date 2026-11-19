@@ -76,7 +76,10 @@ batched references share a source inventory after those results. Go queries, inc
 command-owned gopls LSP server. Its unused Staticcheck diagnostics are disabled
 without changing semantic workspace or test coverage. No detached cross-invocation
 daemon is started. The session deadline is 30 seconds, shared by its queries;
-timeouts use `resolver_timeout` and suggest a narrower `--workspace ROOT`. Final pipe
+timeouts use `resolver_timeout`. For Cargo, retain the enclosing workspace root:
+trying unfinished targets separately avoids earlier tuples consuming their time,
+but a single cold query may still exceed the deadline. Other languages suggest
+a narrower `--workspace ROOT`. Final pipe
 drain and protocol shutdown are bounded to one second; gopls receives only 100 ms
 for protocol shutdown after its queries finish, so unrelated background diagnostics
 cannot delay completed results. Protocol replies receive a separate one-second
