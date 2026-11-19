@@ -136,7 +136,7 @@ class NativeRunnerTests(unittest.TestCase):
                         self.assertEqual(call.args[0].parent, expected_target / profile_dir)
                 if expected_target != rust / "target":
                     self.assertFalse((rust / "target").exists())
-                return run.call_args_list, copy.call_count, output.exists()
+                return run.call_args_list, copy.call_count, output if output.exists() else None
 
     def test_focused_test_skips_runtime_build_and_preserves_filter(self):
         calls, copies, output = self.run_action("test", "--", "-p", "codex-core", "--lib", "--", "capture_delivery")
@@ -165,12 +165,18 @@ class NativeRunnerTests(unittest.TestCase):
 
     def test_default_regression_suite_keeps_runtime_helpers(self):
         calls, copies, output = self.run_action("test", "--profile", "")
-        self.assertEqual([call.args[0][1] for call in calls], ["build", "test", "test"])
+        self.assertEqual([call.args[0][1] for call in calls], ["build", "test", "test", "test"])
         self.assertTrue(all(call.args[0][4] == "dev-small" for call in calls))
         self.assertIn("codex-code-mode-host", calls[0].args[0])
         self.assertIn("bwrap", calls[0].args[0])
         self.assertEqual(copies, 4)
-        self.assertTrue(output)
+        suite, compile_env = calls[2].args
+        run_suite, suite_env = calls[3].args
+        self.assertEqual(suite, [*run_suite[:run_suite.index("--")], "--no-run"])
+        for name in ("mekugi-app-server", "codex-code-mode-host"):
+            key = f"CARGO_BIN_EXE_{name}"
+            self.assertNotIn(key, compile_env)
+            self.assertEqual(suite_env[key], str(output / name))
 
     def test_explicit_profile_and_stack_override_defaults(self):
         calls, _, _ = self.run_action("test", "--profile", "release", "--", "-p", "codex-core", "--lib", stack="16777216")

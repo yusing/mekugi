@@ -110,10 +110,19 @@ def main():
     if args.action == "test":
         run(["cargo", "test", "--locked", "--profile", profile,
              "-p", "codex-app-server", "--bin", "mekugi-app-server"], env)
-        run(["cargo", "test", "--locked", "--profile", profile,
-             "-p", "codex-app-server", "--test", "all", "--",
+        suite = ["cargo", "test", "--locked", "--profile", profile,
+                 "-p", "codex-app-server", "--test", "all"]
+        # Keep checkout-specific CARGO_BIN_EXE paths out of compiler cache keys.
+        run([*suite, "--no-run"], env)
+        # Cargo builds the app-server for these tests, not its companion host.
+        # Run the suite against the same sibling layout we just staged.
+        suite_env = env | {
+            f"CARGO_BIN_EXE_{name}": str(output / name)
+            for name in ("mekugi-app-server", "codex-code-mode-host")
+        }
+        run([*suite, "--",
              "suite::v2::command_exec", "suite::v2::connection_handling",
-             "suite::v2::code_mode_host", "suite::strict_config"], env)
+             "suite::v2::code_mode_host", "suite::strict_config"], suite_env)
         return
     if args.action == "build":
         print(output)
