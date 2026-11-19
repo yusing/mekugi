@@ -39,6 +39,16 @@ func TestExtractCopyReusedParser(t *testing.T) {
 	}
 }
 
+func TestAttachCopyPreservesRepeatedFragmentPositions(t *testing.T) {
+	fragment := CopyFragment{ID: 1, Table: 9, Text: "same", Width: 4}
+	other := CopyFragment{ID: 2, Table: 9, Text: "other", Width: 5}
+	row := AttachCopy("same other same", []CopySpan{{0, fragment}, {5, other}, {11, fragment}})
+	clean, spans := ExtractCopy(row)
+	if clean != "same other same" || len(spans) != 3 || spans[0].Column != 0 || spans[1].Column != 5 || spans[2].Column != 11 || spans[0].ID != spans[2].ID {
+		t.Fatalf("clean=%q spans=%+v", clean, spans)
+	}
+}
+
 func BenchmarkExtractCopy(b *testing.B) {
 	for _, annotated := range []bool{false, true} {
 		name, row := "plain", "\x1b[12G\x1b[32mterminal output 猫\x1b[0m"

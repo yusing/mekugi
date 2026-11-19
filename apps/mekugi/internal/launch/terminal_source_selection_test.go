@@ -3,6 +3,8 @@ package launch
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +85,88 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestUISnapshotTerminalTableWrappedCellSelection(t *testing.T) {
+	const source = "First | Middle | Last\n--- | --- | ---\nleft unrelated content | middle unrelated content | labeled described choices options can also carry previews"
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprint(reverse), func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			t.Cleanup(func() { terminalTest(u).Diff.Close() })
+			applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: source})
+			var wire bytes.Buffer
+			if err := u.testPaint(&wire, 60, 30); err != nil {
+				t.Fatal(err)
+			}
+			term := terminalTest(u)
+			type point struct{ x, y int }
+			var fragments []point
+			var spans []terminalui.CopySpan
+			for y, row := range term.Frame.Copy {
+				for _, span := range row {
+					if span.Table != 0 && span.Row == 1 && span.Cell == 2 && span.Width > 0 {
+						if len(fragments) > 0 && fragments[len(fragments)-1].y == y {
+							continue
+						}
+						fragments = append(fragments, point{span.Column, y})
+						spans = append(spans, span)
+					}
+				}
+			}
+			if len(fragments) < 2 {
+				t.Fatalf("cell did not wrap: %+v", spans)
+			}
+			a, b := fragments[0], fragments[1]
+			b.x += spans[1].Width - 1
+			if reverse {
+				a, b = b, a
+			}
+			before := slices.Clone(term.Frame.Rows)
+			selectionTestDrag(t, term, a.x, a.y, b.x, b.y)
+			want := spans[0].Text + spans[1].Gap + spans[1].Text
+			if got := term.Selection.Text(); got != want {
+				t.Fatalf("copy=%q want %q", got, want)
+			}
+			after := slices.Clone(before)
+			term.paintSelection(after)
+			paint := func(rows []string) *vt.Emulator {
+				screen := vt.NewEmulator(60, len(rows))
+				t.Cleanup(func() { screen.Close() })
+				for y, row := range rows {
+					fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
+				}
+				return screen
+			}
+			oldScreen, selectedScreen := paint(before), paint(after)
+			for i, p := range fragments[:2] {
+				left, right := term.Selection.Bounds(p.y)
+				if left != p.x || right != p.x+spans[i].Width {
+					t.Fatalf("bounds=%d:%d cell=%d:%d", left, right, p.x, p.x+spans[i].Width)
+				}
+				if oldScreen.CellAt(p.x, p.y).Style.Bg == selectedScreen.CellAt(p.x, p.y).Style.Bg || oldScreen.CellAt(5, p.y).Style != selectedScreen.CellAt(5, p.y).Style {
+					t.Fatal("selection fill missing or spilled into left cell")
+				}
+			}
+			if !reverse {
+				var rows []string
+				for _, selected := range []bool{false, true} {
+					for y := fragments[0].y; y <= fragments[1].y; y++ {
+						row := term.Selection.Rows[y]
+						if selected {
+							row = term.Selection.Row(y, u.shell.Transcript.Painter.Theme)
+						}
+						rows = append(rows, row)
+					}
+				}
+				rows = append(rows, "plain after selection")
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/table-wrapped-selection.txt", rows, 60)
+			}
+			term.selectionAction(terminalsession.SelectionCopy)
+			if !strings.Contains(term.Frame.Clipboard, base64.StdEncoding.EncodeToString([]byte(want))) {
+				t.Fatal("clipboard missing selected cell text")
+			}
+		})
 	}
 }
 

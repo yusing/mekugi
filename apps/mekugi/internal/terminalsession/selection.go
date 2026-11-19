@@ -231,6 +231,25 @@ func (s *Selection) Ordered() (int, int, int, int) {
 	return ax, ay, bx, by
 }
 
+// tableCell limits a drag whose endpoints both land in the same logical cell.
+// A normal cross-cell or whole-table drag retains screen-order selection.
+func (s *Selection) tableCell() (terminalui.CopyFragment, bool) {
+	at := func(x, y int) (terminalui.CopyFragment, bool) {
+		if y < 0 || y >= len(s.CopySource) {
+			return terminalui.CopyFragment{}, false
+		}
+		for _, span := range s.CopySource[y] {
+			if span.Table != 0 && !span.Rule && !span.Omit && span.Width > 0 && x >= span.Column && x < span.Column+span.Width {
+				return span.CopyFragment, true
+			}
+		}
+		return terminalui.CopyFragment{}, false
+	}
+	a, ok := at(s.startX, s.startY)
+	b, endOK := at(s.endX, s.endY)
+	return a, ok && endOK && a.Table == b.Table && a.Row == b.Row && a.Cell == b.Cell
+}
+
 // Bounds is the selected text of row y, as a half-open column range.
 func (s *Selection) Bounds(y int) (int, int) {
 	ax, ay, bx, by := s.Ordered()
@@ -239,9 +258,13 @@ func (s *Selection) Bounds(y int) (int, int) {
 	}
 	var left, right int
 	annotated := false
+	cell, inCell := s.tableCell()
 	if y < len(s.CopySource) {
 		for _, span := range s.CopySource[y] {
 			if span.Column < s.Rect.X || span.Column >= s.Rect.X+s.Rect.W {
+				continue
+			}
+			if inCell && (span.Table != cell.Table || span.Row != cell.Row || span.Cell != cell.Cell || span.Rule || span.Omit) {
 				continue
 			}
 			if !annotated {
@@ -253,6 +276,9 @@ func (s *Selection) Bounds(y int) (int, int) {
 				right = max(right, span.Column+span.Width)
 			}
 		}
+	}
+	if inCell && !annotated {
+		return 0, 0
 	}
 	if annotated {
 		right = min(right, s.Rect.X+s.Rect.W)
@@ -323,6 +349,7 @@ func (s *Selection) Text() string {
 		}
 	}
 	ax, ay, bx, by := s.Ordered()
+	cell, inCell := s.tableCell()
 	for y := first; y <= last && y < len(s.Rows); y++ {
 		left, right := s.Rect.X, s.Rect.X+s.Rect.W
 		if y == ay {
@@ -339,6 +366,9 @@ func (s *Selection) Text() string {
 					continue
 				}
 				annotated = true
+				if inCell && (span.Table != cell.Table || span.Row != cell.Row || span.Cell != cell.Cell || span.Rule || span.Omit) {
+					continue
+				}
 				if f, ok := span.Clip(left, right); ok {
 					parts = append(parts, f)
 				}
