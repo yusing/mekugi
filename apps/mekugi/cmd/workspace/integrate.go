@@ -15,6 +15,8 @@ func integrate(args []string) error {
 	flags := flag.NewFlagSet("integrate", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	commits := flags.String("commits", "", "space-separated commits in cherry-pick order")
+	merge := flags.String("merge", "", "reviewed Mekugi ref to merge, including its native change")
+	verifyNative := flags.Bool("verify-native", false, "verify the native checkout matches the committed pin")
 	items := flags.String("items", "", "space-separated Plane items")
 	state := flags.String("state", "", "Main-selected Plane state")
 	checked := flags.String("checked-head", "", "Main attests prior checks at this full HEAD")
@@ -28,7 +30,10 @@ func integrate(args []string) error {
 	if (len(strings.Fields(*items)) == 0) != (*state == "") || finalize && (!*accept || flags.NArg() == 0 && *checked == "") {
 		return errors.New("status/cleanup require Main --accept and check argv or --checked-head; --items and --state must be paired")
 	}
-	if *checked != "" && (*commits != "" || flags.NArg() > 0) {
+	if *merge != "" && *commits != "" {
+		return errors.New("--merge and --commits are mutually exclusive")
+	}
+	if *checked != "" && (*commits != "" || *merge != "" || flags.NArg() > 0) {
 		return errors.New("--checked-head reuses prior checks; do not combine it with new commits or check argv")
 	}
 	root, err := integrationGit(".", "rev-parse", "--show-toplevel")
@@ -46,8 +51,18 @@ func integrate(args []string) error {
 		}
 		picks = append(picks, hash)
 	}
-	if len(picks) > 0 {
-		if err := integrationCommand(root, "git", append([]string{"cherry-pick"}, picks...)...); err != nil {
+	var originalPin, mergedNative string
+	if *merge != "" {
+		mergedNative, err = mergeIntegration(root, *merge)
+		if err != nil {
+			return err
+		}
+	} else if len(picks) > 0 {
+		originalPin, err = integrationPin(root, "HEAD")
+		if err != nil {
+			return err
+		}
+		if err := integrationCommand(root, "git", append([]string{"-c", "submodule.recurse=false", "cherry-pick"}, picks...)...); err != nil {
 			return err
 		}
 	}
@@ -57,6 +72,23 @@ func integrate(args []string) error {
 	}
 	if *checked != "" && *checked != head {
 		return errors.New("Main's checked HEAD does not match the current full HEAD")
+	}
+	var pin string
+	if *verifyNative || len(picks) > 0 || mergedNative != "" {
+		pin, err = integrationPin(root, head)
+		if err != nil {
+			return err
+		}
+	}
+	native := *verifyNative || mergedNative != "" || len(picks) > 0 && pin != originalPin
+	if native {
+		if mergedNative != "" && pin != mergedNative {
+			return fmt.Errorf("Mekugi HEAD %s records native pin %s, expected merged native HEAD %s; inspect both repositories", head, pin, mergedNative)
+		}
+		fmt.Fprintf(os.Stdout, "Mekugi HEAD: %s; native pin: %s\n", head, pin)
+		if _, err := verifyIntegrationNative(root, pin); err != nil {
+			return err
+		}
 	}
 	if flags.NArg() > 0 {
 		if err := integrationCommand(root, flags.Arg(0), flags.Args()[1:]...); err != nil {
@@ -69,6 +101,11 @@ func integrate(args []string) error {
 	}
 	if current != head {
 		return errors.New("HEAD changed during checks; no status or cleanup performed")
+	}
+	if native && flags.NArg() > 0 {
+		if _, err := verifyIntegrationNative(root, pin); err != nil {
+			return err
+		}
 	}
 	fmt.Fprintf(os.Stdout, "Integration HEAD: %s. No acceptance or check coverage inferred.\n", head)
 	for item := range strings.FieldsSeq(*items) {
@@ -163,10 +200,15 @@ func cleanupIntegration(root, path, checked string) error {
 }
 
 func integrationGit(directory string, args ...string) (string, error) {
+	data, err := integrationGitOutput(directory, args...)
+	return strings.TrimSpace(data), err
+}
+
+func integrationGitOutput(directory string, args ...string) (string, error) {
 	command := exec.Command("git", args...)
 	command.Dir, command.Stderr = directory, os.Stderr
 	data, err := command.Output()
-	return strings.TrimSpace(string(data)), err
+	return string(data), err
 }
 
 func integrationCommand(directory, name string, args ...string) error {
@@ -174,9 +216,5 @@ func integrationCommand(directory, name string, args ...string) error {
 	command := exec.Command(name, args...)
 	command.Dir = directory
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := command.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "integration stopped; inspect retained state before retrying")
-		return err
-	}
-	return nil
+	return command.Run()
 }

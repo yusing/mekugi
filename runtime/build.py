@@ -45,12 +45,17 @@ def main():
     parser.add_argument("--profile", help="default: dev-small for check/test, release without LTO for build, release for package")
     parser.add_argument("--output", type=Path, default=ROOT / "bin/native")
     parser.add_argument("--archive", type=Path, default=ROOT / "bin/mekugi-native.tar.gz")
+    parser.add_argument("--test-filter", help="run matching app-server integration tests against the staged runtime")
     argv = sys.argv[1:]
     separator = argv.index("--") if "--" in argv else len(argv)
     cargo_args = argv[separator + 1:]
     args = parser.parse_args(argv[:separator])
     if cargo_args and args.action not in {"check", "test"}:
         parser.error("Cargo selectors after -- are supported only by check and test")
+    if args.test_filter is not None and (
+        args.action != "test" or cargo_args or not args.test_filter or args.test_filter.startswith("-")
+    ):
+        parser.error("--test-filter requires a test name or substring for test without Cargo selectors")
     profile = args.profile or ("dev-small" if args.action in {"check", "test"} else "release")
     if not (RUST / "Cargo.lock").is_file():
         parser.error("initialize the pinned submodule: git submodule update --init runtime/codex")
@@ -108,8 +113,13 @@ def main():
         shutil.copy2(target_dir / profile_dir / binary, output / binary)
     shutil.copy2(RUST / "models-manager/models.json", output / "mekugi-models.json")
     if args.action == "test":
-        run(["cargo", "test", "--locked", "--profile", profile,
-             "-p", "codex-app-server", "--bin", "mekugi-app-server"], env)
+        filters = [args.test_filter] if args.test_filter is not None else [
+            "suite::v2::command_exec", "suite::v2::connection_handling",
+            "suite::v2::code_mode_host", "suite::strict_config",
+        ]
+        if args.test_filter is None:
+            run(["cargo", "test", "--locked", "--profile", profile,
+                 "-p", "codex-app-server", "--bin", "mekugi-app-server"], env)
         suite = ["cargo", "test", "--locked", "--profile", profile,
                  "-p", "codex-app-server", "--test", "all"]
         # Keep checkout-specific CARGO_BIN_EXE paths out of compiler cache keys.
@@ -120,9 +130,7 @@ def main():
             f"CARGO_BIN_EXE_{name}": str(output / name)
             for name in ("mekugi-app-server", "codex-code-mode-host")
         }
-        run([*suite, "--",
-             "suite::v2::command_exec", "suite::v2::connection_handling",
-             "suite::v2::code_mode_host", "suite::strict_config"], suite_env)
+        run([*suite, "--", *filters], suite_env)
         return
     if args.action == "build":
         print(output)

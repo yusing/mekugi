@@ -178,6 +178,21 @@ class NativeRunnerTests(unittest.TestCase):
             self.assertNotIn(key, compile_env)
             self.assertEqual(suite_env[key], str(output / name))
 
+    def test_filtered_integration_uses_staged_pair_only_during_execution(self):
+        test_filter = "suite::v2::code_mode_host"
+        calls, copies, output = self.run_action("test", "--test-filter", test_filter)
+        self.assertEqual([call.args[0][1] for call in calls], ["build", "test", "test"])
+        self.assertEqual(copies, 4)
+        suite = ["cargo", "test", "--locked", "--profile", "dev-small", "-p", "codex-app-server", "--test", "all"]
+        compile_cmd, compile_env = calls[1].args
+        run_cmd, run_env = calls[2].args
+        self.assertEqual(compile_cmd, [*suite, "--no-run"])
+        self.assertEqual(run_cmd, [*suite, "--", test_filter])
+        for name in ("mekugi-app-server", "codex-code-mode-host"):
+            key = f"CARGO_BIN_EXE_{name}"
+            self.assertNotIn(key, compile_env)
+            self.assertEqual(run_env[key], str(output / name))
+
     def test_explicit_profile_and_stack_override_defaults(self):
         calls, _, _ = self.run_action("test", "--profile", "release", "--", "-p", "codex-core", "--lib", stack="16777216")
         self.assertEqual(calls[0].args[0][4], "release")

@@ -86,6 +86,258 @@ func (f integrationFixture) git(t *testing.T, args ...string) string {
 	return strings.TrimSpace(string(data))
 }
 
+type nativeIntegrationFixture struct {
+	integrationFixture
+	parent, nativeBase, oldPin, incomingPin string
+}
+
+func newNativeIntegrationFixture(t *testing.T, divergent bool) nativeIntegrationFixture {
+	t.Helper()
+	f := nativeIntegrationFixture{integrationFixture: newIntegrationFixture(t)}
+	f.git(t, "init", "-b", "main", integrationNativePath)
+	native := func(args ...string) string {
+		t.Helper()
+		return f.git(t, append([]string{"-C", integrationNativePath}, args...)...)
+	}
+	native("commit", "--allow-empty", "-m", "native base")
+	f.nativeBase = native("rev-parse", "HEAD")
+	native("switch", "-c", "reviewed")
+	writeWorkspaceSource(t, integrationNativePath+"/reviewed", "native reviewed\n")
+	native("add", "reviewed")
+	native("commit", "-m", "native reviewed")
+	f.incomingPin = native("rev-parse", "HEAD")
+	native("switch", "main")
+	if divergent {
+		writeWorkspaceSource(t, integrationNativePath+"/neighbor", "native neighbor\n")
+		native("add", "neighbor")
+		native("commit", "-m", "native neighbor")
+	}
+	f.oldPin = native("rev-parse", "HEAD")
+	writeWorkspaceSource(t, ".gitmodules", "[submodule \"runtime/codex\"]\n\tpath = runtime/codex\n\turl = ../codex\n")
+	f.git(t, "add", ".gitmodules")
+	f.git(t, "update-index", "--add", "--cacheinfo", "160000,"+f.oldPin+","+integrationNativePath)
+	f.git(t, "commit", "-m", "pin native")
+	f.parent = f.git(t, "rev-parse", "HEAD")
+	f.git(t, "-C", f.source, "switch", "-C", "task/reviewed", f.parent)
+	f.review(t, f.incomingPin)
+	return f
+}
+
+func (f *nativeIntegrationFixture) review(t *testing.T, pin string) {
+	t.Helper()
+	f.git(t, "-C", f.source, "update-index", "--cacheinfo", "160000,"+pin+","+integrationNativePath)
+	writeWorkspaceSource(t, filepath.Join(f.source, "tracked"), "reviewed\n")
+	f.git(t, "-C", f.source, "add", "tracked")
+	f.git(t, "-C", f.source, "commit", "-m", "reviewed pair")
+	f.commit = f.git(t, "-C", f.source, "rev-parse", "HEAD")
+}
+
+func TestIntegrationMergeKeepsBothHistoriesAndChecksCommittedPin(t *testing.T) {
+	f := newNativeIntegrationFixture(t, true)
+	writeWorkspaceSource(t, "go.work.sum", "unrelated edit\n")
+	writeWorkspaceSource(t, "untracked", "unrelated file\n")
+	check := `test "$(git rev-parse HEAD:runtime/codex)" = "$(git -C runtime/codex rev-parse HEAD)" && check pair`
+	if err := integrate([]string{"--merge", f.commit, "--", "sh", "-ec", check}); err != nil {
+		t.Fatal(err)
+	}
+	if parents := f.git(t, "show", "-s", "--format=%P", "HEAD"); parents != f.parent+" "+f.commit {
+		t.Fatalf("Mekugi parents: %s", parents)
+	}
+	if parents := f.git(t, "-C", integrationNativePath, "show", "-s", "--format=%P", "HEAD"); parents != f.oldPin+" "+f.incomingPin {
+		t.Fatalf("native parents: %s", parents)
+	}
+	for path, want := range map[string]string{"go.work.sum": "unrelated edit\n", "untracked": "unrelated file\n", f.events: "check pair\n"} {
+		if data, err := os.ReadFile(path); err != nil || string(data) != want {
+			t.Fatalf("%s: got %q, %v, want %q", path, data, err, want)
+		}
+	}
+}
+
+func TestIntegrationMergeResolvesDivergentGitlinks(t *testing.T) {
+	f := newNativeIntegrationFixture(t, true)
+	f.git(t, "-C", integrationNativePath, "commit", "--allow-empty", "-m", "advance native main")
+	nativeBefore := f.git(t, "-C", integrationNativePath, "rev-parse", "HEAD")
+	f.git(t, "update-index", "--cacheinfo", "160000,"+nativeBefore+","+integrationNativePath)
+	f.git(t, "commit", "-m", "advance Mekugi pin")
+	if err := integrate([]string{"--merge", f.commit}); err != nil {
+		t.Fatal(err)
+	}
+	if parents := f.git(t, "-C", integrationNativePath, "show", "-s", "--format=%P", "HEAD"); parents != nativeBefore+" "+f.incomingPin {
+		t.Fatalf("native parents: %s", parents)
+	}
+	if pin := f.git(t, "rev-parse", "HEAD:"+integrationNativePath); pin != f.git(t, "-C", integrationNativePath, "rev-parse", "HEAD") {
+		t.Fatalf("committed gitlink is not the native merge result: %s", pin)
+	}
+}
+
+func TestIntegrationMergeIgnoresUnchangedIncomingOldPin(t *testing.T) {
+	f := newNativeIntegrationFixture(t, true)
+	f.git(t, "-C", f.source, "switch", "-C", "task/go-only", f.parent)
+	writeWorkspaceSource(t, filepath.Join(f.source, "go-only"), "reviewed\n")
+	f.git(t, "-C", f.source, "add", "go-only")
+	f.git(t, "-C", f.source, "commit", "-m", "Go-only change")
+	commit := f.git(t, "-C", f.source, "rev-parse", "HEAD")
+	// Advance the parent gitlink without checking out that native commit.
+	f.git(t, "update-index", "--cacheinfo", "160000,"+f.incomingPin+","+integrationNativePath)
+	f.git(t, "commit", "-m", "separate native update")
+	if err := integrate([]string{"--merge", commit, "--", "check", "go-only"}); err != nil {
+		t.Fatal(err)
+	}
+	if pin := f.git(t, "rev-parse", "HEAD:"+integrationNativePath); pin != f.incomingPin {
+		t.Fatalf("Go-only merge changed the destination pin to %s", pin)
+	}
+	if native := f.git(t, "-C", integrationNativePath, "rev-parse", "HEAD"); native != f.oldPin {
+		t.Fatalf("Go-only merge moved the native checkout to %s", native)
+	}
+}
+
+func TestIntegrationMergeChecksPinChangedOnBothBranches(t *testing.T) {
+	f := newNativeIntegrationFixture(t, false)
+	f.git(t, "update-index", "--cacheinfo", "160000,"+f.incomingPin+","+integrationNativePath)
+	f.git(t, "commit", "-m", "independently pin the same native change")
+	head := f.git(t, "rev-parse", "HEAD")
+	// Both reviewed tips pin the new commit, but the checkout is still at the base pin.
+	if err := integrate([]string{"--merge", f.commit, "--", "check"}); err == nil {
+		t.Fatal("paired merge accepted the stale native checkout")
+	}
+	if f.git(t, "rev-parse", "HEAD") != head {
+		t.Fatal("Mekugi advanced after preflight rejection")
+	}
+	if _, err := os.Stat(f.events); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("check ran after preflight rejection: %v", err)
+	}
+}
+
+func TestIntegrationMergePreflight(t *testing.T) {
+	for _, scenario := range []string{"dirty native", "detached native", "native branch", "Mekugi branch", "wrong native pin", "missing incoming", "rewind", "busy Mekugi", "busy native", "ignored Mekugi collision", "ignored native collision"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newNativeIntegrationFixture(t, true)
+			var protected string
+			switch scenario {
+			case "dirty native":
+				writeWorkspaceSource(t, integrationNativePath+"/local", "keep\n")
+			case "detached native":
+				f.git(t, "-C", integrationNativePath, "switch", "--detach", f.oldPin)
+			case "native branch":
+				f.git(t, "-C", integrationNativePath, "switch", "-c", "wrong")
+			case "Mekugi branch":
+				f.git(t, "switch", "-c", "wrong")
+			case "wrong native pin":
+				f.git(t, "-C", integrationNativePath, "reset", "--keep", f.nativeBase)
+			case "missing incoming":
+				f.review(t, strings.Repeat("1", len(f.incomingPin)))
+			case "rewind":
+				f.review(t, f.nativeBase)
+			case "busy Mekugi":
+				writeWorkspaceSource(t, f.git(t, "rev-parse", "--git-path", "MERGE_HEAD"), f.commit+"\n")
+			case "busy native":
+				path := f.git(t, "-C", integrationNativePath, "rev-parse", "--path-format=absolute", "--git-path", "MERGE_HEAD")
+				writeWorkspaceSource(t, path, f.incomingPin+"\n")
+			case "ignored Mekugi collision":
+				writeWorkspaceSource(t, filepath.Join(f.source, "private"), "incoming\n")
+				f.git(t, "-C", f.source, "add", "-f", "private")
+				f.git(t, "-C", f.source, "commit", "-m", "collision")
+				f.commit = f.git(t, "-C", f.source, "rev-parse", "HEAD")
+				protected = "private"
+				writeWorkspaceSource(t, protected, "keep\n")
+			case "ignored native collision":
+				writeWorkspaceSource(t, integrationNativePath+"/.git/info/exclude", "/reviewed\n")
+				protected = integrationNativePath + "/reviewed/local"
+				writeWorkspaceSource(t, protected, "keep\n")
+			}
+			native := f.git(t, "-C", integrationNativePath, "rev-parse", "HEAD")
+			if err := integrate([]string{"--merge", f.commit, "--", "check"}); err == nil {
+				t.Fatal("unsafe paired merge succeeded")
+			}
+			if f.git(t, "rev-parse", "HEAD") != f.parent || f.git(t, "-C", integrationNativePath, "rev-parse", "HEAD") != native {
+				t.Fatal("a repository advanced after preflight rejection")
+			}
+			if _, err := os.Stat(f.events); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("check ran after preflight rejection: %v", err)
+			}
+			if protected != "" {
+				if data, err := os.ReadFile(protected); err != nil || string(data) != "keep\n" {
+					t.Fatalf("ignored local file changed: %q, %v", data, err)
+				}
+			}
+		})
+	}
+}
+
+func TestIntegrationMergeRetainsPartialState(t *testing.T) {
+	for _, scenario := range []string{"conflict", "commit hook"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newNativeIntegrationFixture(t, false)
+			switch scenario {
+			case "conflict":
+				writeWorkspaceSource(t, "tracked", "Mekugi conflict\n")
+				f.git(t, "commit", "-am", "conflict")
+			case "commit hook":
+				hook := f.git(t, "rev-parse", "--git-path", "hooks/pre-commit")
+				writeWorkspaceSource(t, hook, "#!/bin/sh\nexit 1\n")
+				if err := os.Chmod(hook, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			head := f.git(t, "rev-parse", "HEAD")
+			if err := integrate([]string{"--merge", f.commit, "--accept", "--items", "MEKUGI-1", "--state", "Done", "--cleanup", f.source, "--", "check"}); err == nil {
+				t.Fatal("failed parent merge reported success")
+			}
+			if f.git(t, "rev-parse", "HEAD") != head || f.git(t, "-C", integrationNativePath, "rev-parse", "HEAD") != f.incomingPin {
+				t.Fatal("partial result was lost or parent committed")
+			}
+			if _, err := os.Stat(f.events); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("checks or Plane ran after failure: %v", err)
+			}
+			if _, err := os.Stat(f.source); err != nil {
+				t.Fatalf("source worktree removed: %v", err)
+			}
+			if f.git(t, "rev-parse", "MERGE_HEAD") != f.commit {
+				t.Fatal("Mekugi merge state not retained")
+			}
+			if scenario == "conflict" && f.git(t, "diff", "--name-only", "--diff-filter=U") != "tracked" {
+				t.Fatal("Mekugi conflict not retained")
+			}
+		})
+	}
+}
+
+func TestIntegrationNativeChecksUseTheFinalPin(t *testing.T) {
+	for _, scenario := range []string{"prepared pick", "mismatched pick", "moves during check", "checked-head moved", "checked-head matches"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newNativeIntegrationFixture(t, false)
+			args := []string{"--commits", f.commit, "--", "check"}
+			switch scenario {
+			case "prepared pick":
+				f.git(t, "-C", integrationNativePath, "merge", "--ff-only", f.incomingPin)
+			case "moves during check":
+				args = []string{"--merge", f.commit, "--accept", "--items", "MEKUGI-1", "--state", "Done", "--",
+					"git", "-C", integrationNativePath, "switch", "--detach", f.oldPin}
+			case "checked-head moved", "checked-head matches":
+				if err := integrate([]string{"--merge", f.commit}); err != nil {
+					t.Fatal(err)
+				}
+				if scenario == "checked-head moved" {
+					f.git(t, "-C", integrationNativePath, "switch", "--detach", f.oldPin)
+				}
+				args = []string{"--checked-head", f.git(t, "rev-parse", "HEAD"), "--verify-native", "--accept", "--items", "MEKUGI-1", "--state", "Done"}
+			}
+			ok := scenario == "prepared pick" || scenario == "checked-head matches"
+			if err := integrate(args); (err == nil) != ok {
+				t.Fatalf("expected success=%t, got %v", ok, err)
+			}
+			if !ok {
+				if _, err := os.Stat(f.events); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("unexpected check or finalization: %v", err)
+				}
+			}
+			if pin := f.git(t, "rev-parse", "HEAD:"+integrationNativePath); pin != f.incomingPin {
+				t.Fatalf("expected the committed pin to remain %s, got %s", f.incomingPin, pin)
+			}
+		})
+	}
+}
+
 func TestIntegrationDirtyRootChecksAndStatusChoices(t *testing.T) {
 	f := newIntegrationFixture(t)
 	// Use the same ignored destinations as make webui.

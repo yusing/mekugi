@@ -96,13 +96,12 @@ jobs:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           PLATFORM: ${{ matrix.platform }}
         run: |
+          # App-server integration fixtures use debug-only startup options.
+          make test-native NATIVE_PROFILE=dev-small
           if [[ "$RUNNER_OS" == Linux ]]; then
-            make build-native NATIVE_PROFILE=dev-small
             # Exercise network namespace setup with the bundled binary, not a host bwrap.
             bin/native/bwrap --unshare-user --unshare-net --ro-bind / / -- /bin/true
           fi
-          # App-server integration fixtures use debug-only startup options.
-          make test-native NATIVE_PROFILE=dev-small
           make package-native NATIVE_ARCHIVE="$RUNNER_TEMP/artifacts/mekugi-native_${PLATFORM}.tar.gz"
           bin/native/mekugi-app-server --help
       - name: Build and package

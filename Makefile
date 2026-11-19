@@ -21,6 +21,7 @@ BUILD_LDFLAGS ?= -s -w
 # Empty uses the native runner's default for each action.
 NATIVE_PROFILE ?=
 NATIVE_ARGS ?=
+NATIVE_TEST_FILTER ?=
 NATIVE_OUTPUT ?= bin/native
 NATIVE_ARCHIVE ?= bin/mekugi-native.tar.gz
 NATIVE_BINARIES = mekugi-app-server codex-code-mode-host $(if $(filter Linux,$(shell uname -s)),bwrap)
@@ -78,7 +79,7 @@ check-native:
 	python3 runtime/build.py check --profile '$(NATIVE_PROFILE)' -- $(NATIVE_ARGS)
 
 test-native:
-	python3 runtime/build.py test --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' -- $(NATIVE_ARGS)
+	python3 runtime/build.py test --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' $(if $(NATIVE_TEST_FILTER),--test-filter '$(value NATIVE_TEST_FILTER)') -- $(NATIVE_ARGS)
 
 package-native:
 	python3 runtime/build.py package --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' --archive '$(NATIVE_ARCHIVE)'

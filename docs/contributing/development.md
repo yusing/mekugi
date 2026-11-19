@@ -136,10 +136,17 @@ make check-native NATIVE_ARGS='-p codex-core --tests'
 make test-native NATIVE_ARGS='-p codex-core --lib -- capture_delivery'
 ```
 
+To run matching app-server integration cases with the freshly staged server and
+code-mode host, use a test name or substring instead of Cargo selectors:
+
+```sh
+make test-native NATIVE_TEST_FILTER='suite::v2::code_mode_host'
+```
+
 Use `check-native` to catch compilation errors without generating or linking the
 application and test binaries.
-Focused tests skip unrelated runtime binaries and packaging. A test-name filter
-limits execution, not compilation of the selected test binary. Keep the same
+Focused Cargo selectors skip separate runtime staging and packaging. A test-name
+filter limits execution, not compilation of the selected test binary. Keep the same
 profile and target directory across runs; Cargo retains separate check and test
 artifacts.
 Both commands use the pinned V8 environment; tests inherit the fork's 8 MiB test
@@ -181,20 +188,36 @@ these checks and compare protocol changes with client consumers before packaging
 
 Main can batch ready operations through the [workspace helper](../../apps/mekugi/cmd/workspace/integrate.go),
 without a receipt or acceptance-state store. Supply explicit commits in pick order
-and check argv after `--`; use the existing check selection appropriate to the batch:
+or one reviewed Mekugi merge ref, and check argv after `--`:
 
 ```sh
 make integrate INTEGRATE_ARGS='--commits "COMMIT1 COMMIT2" -- make test TEST_PACKAGES=./apps/mekugi/cmd/workspace'
+make integrate INTEGRATE_ARGS='--merge REVIEWED_MEKUGI_REF -- make test-native'
 ```
 
-Preparation does not infer acceptance or set statuses. It prints the resulting
-HEAD. After Main's QA, reuse already-completed related-batch checks by explicitly
+If the reviewed branch changes the native pin, `--merge` integrates that exact
+native commit first, then commits the resulting native revision in the Mekugi
+merge. Both checkouts must be on `main`; initialize a clean native checkout at
+the current Mekugi pin and make the reviewed native commit available locally.
+A branch with an unchanged older pin merges without touching native. Native
+pin rewinds and conflicts outside the gitlink require manual resolution.
+
+Native batches print both revisions and verify the committed pin against the
+clean native checkout before and after checks. For a prepared pin-changing
+cherry-pick, arrange the native checkout at the new pin first; a mismatch
+stops checks, not the already-completed pick.
+
+Preparation does not infer acceptance or set statuses. After Main's QA,
+reuse already-completed related-batch checks by explicitly
 attesting their full HEAD and choosing the desired status:
 
 ```sh
 make integrate INTEGRATE_ARGS='--checked-head FULL_HEAD --accept --items "MEKUGI-123 MEKUGI-124" --state "Pending QA"'
 make integrate INTEGRATE_ARGS='--checked-head FULL_HEAD --accept --items "MEKUGI-123 MEKUGI-124" --state Done --cleanup .worktrees/task-name'
 ```
+
+Add `--verify-native` when reusing checks for a native batch to verify the
+current native checkout against that HEAD's pin.
 
 `--accept` is Main's explicit authorization of the requested status/cleanup, not
 an inferred result of a passed command. Check argv can instead accompany these
@@ -206,8 +229,12 @@ immutable-clean-tree certificate. Its full hash must match current HEAD and
 cannot accompany new picks. No fresh full suite is imposed for each item.
 
 A staged index is refused before mutation; unrelated unstaged/untracked files
-are not staged, stashed or discarded. Native cherry-pick refuses actual overlaps,
-retains configured signing and leaves failed/partial picks for inspection.
+are not staged, stashed or discarded. Git cherry-pick refuses actual overlaps
+and retains configured signing. Merges also refuse local untracked or ignored
+paths that overlap the incoming tree. If either half of a paired merge fails,
+inspect the reported Git states and finish or abort any retained merge
+manually. Earlier writes are not rolled back, and checks and finalization do
+not run after a merge failure.
 Check or Plane failures stop the sequence before cleanup; all requested statuses
 must succeed first. Earlier successful writes are not rolled back. Inspect an
 uncertain Plane write before retrying.
@@ -219,7 +246,8 @@ omits merge-only changes. Ignored files also block cleanup, except the fixed
 generated destinations: `apps/mekugi/internal/webui/app/node_modules/`,
 `apps/mekugi/internal/webui/dist/app/`. These dependencies and bundles are discarded
 with the worktree; neighboring ignored source/configuration and other output
-paths remain protected. It removes only the checked worktree, then its branch.
+paths remain protected. It removes only the checked Mekugi worktree, then its
+branch. Clean up native source worktrees separately.
 A cleanup failure retains whatever has not yet been removed; status writes
 remain, and a failed branch removal leaves the branch for
 recovery. Serialize integration and source edits; this is sequencing, not a
