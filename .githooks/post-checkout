@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+# A fresh checkout has an all-zero old HEAD; ordinary switches do not.
+[ "$3" = 1 ] || exit 0
+case "$1" in
+    ''|*[!0]*) exit 0 ;;
+esac
+
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir)
+[ "$(git rev-parse --absolute-git-dir)" != "$common_dir" ] || exit 0
+case "$common_dir" in
+    */.git) source_dir=${common_dir%/.git}/graphify-out ;;
+    *) exit 0 ;;
+esac
+
+[ -d "$source_dir" ] || exit 0
+[ ! -e graphify-out ] && [ ! -L graphify-out ] || exit 0
+cp -a "$source_dir" graphify-out

@@ -77,11 +77,15 @@ Use `make test-host` for the focused installed-Codex checks with local mock prov
 see [host acceptance](../../CONTEXT-AUTOMATED-TESTS.md).
 Built-in frontends are Go. `make preview-native-ui` uses no models.
 `make test-ui-snapshots` checks fixtures; review before updating. See [snapshot procedures](testing-snapshots.md).
-Enable the repository's commit gate once per clone:
+Enable the repository's Git hooks from the main checkout once per clone:
 
 ```sh
 git config --local core.hooksPath "$(git rev-parse --show-toplevel)/.githooks"
 ```
+
+When Git checks out a new linked worktree, the hook seeds it with a copy of the main
+checkout's Graphify output, if present. This is a snapshot, not a refresh, and it
+does not replace existing output.
 
 When documentation changes are staged, the gate checks local link targets and Markdown
 heading anchors across the staged documentation. It excludes dependency, build and
