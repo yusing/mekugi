@@ -154,6 +154,15 @@ Focused Cargo selectors skip separate runtime staging and packaging. A test-name
 filter limits execution, not compilation of the selected test binary. Keep the same
 profile and target directory across runs; Cargo retains separate check and test
 artifacts.
+
+In the `dev-small` profile, `codex-core` and `codex-git-utils` use rustc's
+incremental compilation. Their first builds seed local artifacts; later edits
+can reuse them. Other crates remain eligible for sccache. If your global Cargo
+config sets `build.incremental = false`, scope that default to `[profile.dev]`
+instead so it does not suppress the package settings. With sccache as the
+compiler wrapper, set `SCCACHE_ALLOW_INCREMENTAL=1` so incremental builds
+bypass the cache.
+
 When staging the runtime for integration tests, `test-native` builds the runtime
 binaries and selected suites together. By default it does not build the broader
 app-server integration suite. The default subprocess harness does not link the
