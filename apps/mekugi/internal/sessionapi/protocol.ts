@@ -1274,6 +1274,7 @@ export type Label = {
   "Running": boolean;
   "Animation": number;
   "Started": string;
+  "Wait"?: WaitTiming;
   "Completion": number;
   "CompletionKnown": boolean;
   "FailureKnown": boolean;
@@ -1570,6 +1571,11 @@ export type File = {
   "Highlighted": boolean;
   "Origins": Array<Origin>;
   "Baseline": number;
+};
+
+export type WaitTiming = {
+  "Since"?: string;
+  "Elapsed"?: number;
 };
 
 export type TextUpdate = {
