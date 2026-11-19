@@ -105,9 +105,12 @@ permissions and role restrictions. Fix demonstrated inheritance gaps at native
 preparation, not in parallel prepared-agent records or Go-built transcript imports.
 
 Fresh children may acquire `preload:{sources:[...]}` before first inference through
-the shared reload reader. Apply child authority and preserve partial failures and
-native history retention. Full-history children use native inheritance; do not
-replace stock parameter forms merely to match the old Go implementation.
+the shared reload reader. A malformed top-level reference rejects the spawn before
+starting a child; the caller can correct it and retry with the same task name.
+Well-formed references are read under child authority. Read failures, including
+when no source can be read, remain individual diagnostics retained alongside any
+acquired content. Full-history children use native inheritance; do not replace stock
+parameter forms merely to match the old Go implementation.
 
 Keep native model/role/mode guidance assembly. JavaScript exposure must not erase
 role guidance or require a replacement collaboration skill. Remove obsolete Go
