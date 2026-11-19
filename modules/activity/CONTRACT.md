@@ -693,7 +693,8 @@ observed final answer without a newer open response or error, not verified task
 completion. Finished children retain separate selectable rows and their captured
 edit and usage metrics when visible; names never collapse into a comma-joined
 summary. The unfocused roster grows to show active agents within terminal bounds.
-The displayed child and Main take priority as capacity permits. Errors remain
+Idle children fold into overflow unless their transcript is displayed. The
+displayed child and Main take priority as capacity permits. Errors remain
 in counts and ordinary browsing without keeping the unfocused roster open;
 finished children are hidden first. Manual browsing applies only while the roster
 is focused; leaving it restores these compact priorities. Overflow counts include

@@ -75,6 +75,43 @@ func TestUISnapshotNativeRosterOneRow(t *testing.T) {
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-roster-one-row.txt", rows, 64)
 }
 
+func TestNativeRosterFoldsOneIdleChildUntilDisplayed(t *testing.T) {
+	v := NewView()
+	const child = "/root/child"
+	publication := &presentation.Publication{Roster: []presentation.AgentRow{
+		{Agent: presentation.Agent{Name: "/root"}},
+		{Agent: presentation.Agent{Name: child}, Depth: 1},
+	}}
+	v.Update(publication, Display{Caller: "/root"})
+	now := time.Unix(100, 0)
+	checkFolded := func() {
+		t.Helper()
+		lines := v.NativeRoster(80, 10, now, false)
+		if len(lines) != 3 || len(v.Hits) != 1 || v.Hits[0].Agent != "/root" ||
+			!strings.Contains(ansi.Strip(lines[2]), "+1 more · ^B 3 to browse") {
+			t.Fatalf("idle child should only take the overflow row: hits=%+v rows=%q", v.Hits, lines)
+		}
+	}
+	checkFolded()
+
+	v.NativeRoster(80, 10, now, true)
+	if len(v.Hits) != 2 || v.Hits[1].Agent != child {
+		t.Fatalf("idle child missing from focused browsing: %+v", v.Hits)
+	}
+	hit := v.Hits[1]
+	v.PointAgent('\r', hit.Row, hit.First)
+	if v.DisplayRequest == nil || v.DisplayRequest.Caller != child {
+		t.Fatalf("idle row could not be opened: %+v", v.DisplayRequest)
+	}
+	v.Update(publication, Display{Caller: child})
+	lines := v.NativeRoster(80, 10, now, false)
+	if len(lines) != 3 || len(v.Hits) != 2 || v.Hits[1].Agent != child {
+		t.Fatalf("displayed idle child should be pinned: hits=%+v rows=%q", v.Hits, lines)
+	}
+	v.Update(publication, Display{Caller: "/root"})
+	checkFolded()
+}
+
 func TestUISnapshotNativeRosterScroll(t *testing.T) {
 	v := NewView()
 	v.Painter.Theme = diffrender.DarkTheme
@@ -178,7 +215,7 @@ func TestUISnapshotNativeRosterUnpinnedErrorsAndHiddenParents(t *testing.T) {
 			agent.Status, agent.LatestKind = "error", "error"
 		case name == "/root/target_95":
 			agent.Status, agent.Final = "answered", true
-		case name == "/root/target_95_codex":
+		case name == "/root/target_95/browser", name == "/root/target_95_codex":
 			agent.Status, agent.Responding = "responding", true
 		}
 		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: agent, Depth: strings.Count(name, "/") - 1})

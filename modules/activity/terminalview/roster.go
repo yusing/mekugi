@@ -224,7 +224,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 }
 
 // collapsedRoster admits the displayed row and Main before other active rows,
-// then inactive children. Errors remain browsable without keeping the strip open.
+// folding unselected idle children into overflow even when space is available.
 // Keep canonical order and ancestry within the subset.
 func (v *View) collapsedRoster(rows []activitypresentation.AgentRow, limit int, selected string) []activitypresentation.AgentRow {
 	priority := func(row activitypresentation.AgentRow) int {
@@ -243,26 +243,28 @@ func (v *View) collapsedRoster(rows []activitypresentation.AgentRow, limit int, 
 			return 5
 		}
 	}
-	indices := make([]int, len(rows))
+	indices := make([]int, 0, len(rows))
 	preferred := 0
 	for i, row := range rows {
-		indices[i] = i
+		if row.Agent.Status == "" && row.Agent.Name != selected && row.Agent.Name != "/root" {
+			continue
+		}
+		indices = append(indices, i)
 		if priority(row) < 4 {
 			preferred++
 		}
 	}
 	if preferred < len(rows) {
-		preferred++ // Overflow or one finished row when everyone fits.
+		preferred++ // Reserve room for overflow when some rows are not preferred.
 	}
 	limit = min(limit, max(4, preferred))
-	count := min(len(rows), limit)
-	if count < len(rows) && limit > 1 {
-		count--
+	if len(rows) > limit && limit > 1 {
+		limit--
 	}
 	slices.SortStableFunc(indices, func(a, b int) int { return cmp.Compare(priority(rows[a]), priority(rows[b])) })
-	indices = indices[:count]
+	indices = indices[:min(len(indices), limit)]
 	slices.Sort(indices)
-	visible := make([]activitypresentation.AgentRow, 0, count)
+	visible := make([]activitypresentation.AgentRow, 0, len(indices))
 	for _, i := range indices {
 		visible = append(visible, rows[i])
 	}

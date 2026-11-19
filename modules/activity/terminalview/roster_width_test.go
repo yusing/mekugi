@@ -75,7 +75,7 @@ func TestRosterFocusPreservesColumnAlignment(t *testing.T) {
 	v := NewView()
 	publication := &presentation.Publication{}
 	for _, name := range []string{"/root", "/root/long-reviewer", "/root/b"} {
-		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{AgentFacts: presentation.AgentFacts{Name: name}}})
+		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{Name: name, Responding: true, Status: "responding"}})
 	}
 	v.Update(publication, Display{Caller: "/root", SideCaller: "/oneoff"})
 	var previous string

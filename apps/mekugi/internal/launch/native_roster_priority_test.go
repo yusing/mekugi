@@ -71,3 +71,49 @@ func TestUISnapshotNativeRosterActivePriority(t *testing.T) {
 		})
 	}
 }
+
+func TestUISnapshotNativeRosterFoldsIdleChildren(t *testing.T) {
+	const width, height = 100, 26
+	u, _ := newAppServerTestUI()
+	u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }
+	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
+	u.shell.Transcript.Painter.Theme, u.shell.Agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+	u.attached.presentation.Status.Text, u.settings.Model, u.settings.Effort = "Ready", "snapshot-model", "high"
+	u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{
+		{Name: "/root", Responding: true},
+		{Name: "/root/idle-a"},
+		{Name: "/root/idle-b"},
+		{Name: "/root/idle-c"},
+		{Name: "/root/idle-d"},
+		{Name: "/root/idle-e"},
+		{Name: "/root/idle-f"},
+		{Name: "/root/idle-g"},
+		{Name: "/root/work-a", Responding: true},
+		{Name: "/root/work-b", Responding: true},
+		{Name: "/root/work-c", Responding: true},
+		{Name: "/root/done-a", Final: true},
+		{Name: "/root/done-b", Final: true},
+		{Name: "/root/done-c", Final: true},
+		{Name: "/root/done-d", Final: true},
+	}
+	screen := vt.NewEmulator(width, height)
+	defer screen.Close()
+	if err := u.testPaint(screen, width, height); err != nil {
+		t.Fatal(err)
+	}
+	frame := screen.String()
+	if !strings.Contains(frame, "15 · 4 working · 4 finished") || !strings.Contains(frame, "+11 more · ^B 3 to browse") {
+		t.Fatalf("folding changed status counts or lost the browse hint:\n%s", frame)
+	}
+	var names []string
+	for _, hit := range u.shell.Agents.Hits {
+		if !hit.Skills {
+			names = append(names, hit.Agent)
+		}
+	}
+	want := []string{"/root", "/root/work-a", "/root/work-b", "/root/work-c"}
+	if !slices.Equal(names, want) || terminalTest(u).Layout.Roster.H != 6 {
+		t.Fatalf("want only Main, working children and overflow in six rows; got %v and %+v", names, terminalTest(u).Layout)
+	}
+	assertNativeUISnapshot(t, "native-roster-folds-idle-children", strings.Split(frame, "\n"))
+}

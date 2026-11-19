@@ -34,6 +34,9 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": thread + " result\n\n" + strings.Join([]string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta"}, "\n\n")}})
 	}
+	// Exercise clicking a compact row without focusing Agents: the child is
+	// working again, so it is visible while Main or Diff has focus.
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
 	screen := vt.NewEmulator(140, 36)
 	defer screen.Close()
 	paint := func(name string) string {
