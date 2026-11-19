@@ -233,6 +233,9 @@ func openErrorDetails(attached *attachedPresentation, terminal *terminalsession.
 }
 
 func openSkills(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, surface *terminalsession.Attachment, view *activityui.View, agent string) {
+	if view == terminal.Agents && attached.presentation.ActivityTarget(agent, attached.childSource).ID == attached.presentation.View().Main.ID {
+		view, agent = terminal.Transcript, "Main"
+	}
 	files.openSkills(attached, activitySource(attached, terminal, view), agent)
 	surface.Selection, surface.Dialog = nil, nil
 	files.prepareOutput(&attached.session, surface)

@@ -22,10 +22,69 @@ import (
 // status counts and session totals. Rows show state, then timer, edited lines,
 // tokens, cost and turns; turns drop first when narrow.
 func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []string {
+	lines, heading := v.NativeRosterPanel(width, limit, now, focused)
+	if len(lines) > 0 {
+		lines[0] = heading.Render("", "", "")
+	}
+	return lines
+}
+
+// RosterHeading paints a roster rule after the surrounding layout has measured
+// the active transcript. The rule always occupies the first roster row.
+type RosterHeading struct {
+	width    int
+	focused  bool
+	detail   string
+	right    string
+	overflow string
+}
+
+func (h RosterHeading) Render(active, title, scroll string) string {
+	const sep = terminalui.Dim + " · " + terminalui.Undim
+	detail := h.detail
+	if h.overflow != "" {
+		detail = h.overflow + " · " + detail
+	}
+	left := terminalui.PaneTitle(3, "Agents", detail, h.focused)
+	if active != "" {
+		if ansi.StringWidth(left+sep+active)+5 > h.width {
+			left = terminalui.PaneTitle(3, "Agents", "", h.focused)
+		}
+		left += sep + active
+		if title != "" && h.width-ansi.StringWidth(left)-ansi.StringWidth(sep)-5 < 2 {
+			left = terminalui.PaneTitle(3, active, "", h.focused)
+		}
+	} else if h.overflow != "" && ansi.StringWidth(terminalui.PaneTitle(3, "Agents", h.overflow, h.focused))+4 > h.width {
+		left = terminalui.PaneTitle(3, h.overflow, "", h.focused)
+	}
+	right := h.right
+	if scroll != "" {
+		if right != "" {
+			right = scroll + sep + right
+		} else {
+			right = scroll
+		}
+	}
+	if title != "" {
+		room := h.width - ansi.StringWidth(left) - ansi.StringWidth(sep) - 5
+		if right != "" && room > ansi.StringWidth(right)+4 {
+			room -= ansi.StringWidth(right) + 2
+		}
+		if room > 0 {
+			left += sep + ansi.Truncate(title, room, "…")
+		}
+	}
+	return terminalui.PaneRule("─", "─", "─", left, right, h.width, terminalui.PaneBorder(h.focused))
+}
+
+// NativeRosterPanel reserves the first row for the heading and paints agent
+// rows and their hit targets. The caller supplies the heading's session label.
+func (v *View) NativeRosterPanel(width, limit int, now time.Time, focused bool) ([]string, RosterHeading) {
 	rows := v.Roster()
 	v.Hits = v.Hits[:0]
+	heading := RosterHeading{width: width, focused: focused}
 	if len(rows) == 0 || width < 20 || limit < 1 {
-		return nil
+		return nil, heading
 	}
 	// The remembered child is only a toggle target, not the displayed selection.
 	selectedCaller := cmp.Or(v.displayedCaller(), "/root")
@@ -81,8 +140,8 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	if len(totals) > 0 {
 		right = terminalui.Dim + strings.Join(totals, " · ") + terminalui.Undim
 	}
-	heading := terminalui.PaneTitle(3, "Agents", detail, focused)
-	lines := []string{terminalui.PaneRule("─", "─", "─", heading, right, width, terminalui.PaneBorder(focused))}
+	heading.detail, heading.right = detail, right
+	lines := []string{""}
 
 	legend := ""
 	if focused && limit > 1 {
@@ -136,12 +195,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	}
 	hidden := len(rows) - len(visible)
 	if hidden > 0 && limit == 1 {
-		overflow := fmt.Sprintf("+%d more", hidden)
-		heading = terminalui.PaneTitle(3, "Agents", overflow+" · "+detail, focused)
-		if ansi.StringWidth(terminalui.PaneTitle(3, "Agents", overflow, focused))+4 > width {
-			heading = terminalui.PaneTitle(3, overflow, "", focused)
-		}
-		lines[0] = terminalui.PaneRule("─", "─", "─", heading, right, width, terminalui.PaneBorder(focused))
+		heading.overflow = fmt.Sprintf("+%d more", hidden)
 	}
 	nameWidth := 4
 	for index := range visible {
@@ -180,10 +234,9 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 	next := 0
 	for _, item := range laid {
 		room := max(1, stateEnd-ansi.StringWidth(item.prefix))
-		// A child's skill count ends its state cell and opens those skills.
-		// Main's count is in Main's title.
+		// A skill count ends its agent's state cell and opens those skills.
 		label := ""
-		if set := item.row.Agent.Skills; set != nil && item.row.Agent.Name != "/root" {
+		if set := item.row.Agent.Skills; set != nil {
 			label = SkillLabel(set)
 		}
 		if room-ansi.StringWidth(label)-2 < 8 {
@@ -220,7 +273,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		lines = append(lines, legend)
 	}
 	v.RosterOffset, v.rosterEnd, v.RosterSelected = start, end, selectedCaller
-	return lines
+	return lines, heading
 }
 
 // collapsedRoster admits the displayed row and Main before other active rows,

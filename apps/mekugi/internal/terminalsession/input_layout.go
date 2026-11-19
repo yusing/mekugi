@@ -72,12 +72,3 @@ func (in FrameInput) TerminalColor(reply string) {
 		in.Shell.Auxiliary.SetTheme(theme)
 	}
 }
-
-// Source: apps/mekugi/internal/router/terminal_ui.go:542:549@ac13a4fc.
-func (in FrameInput) ClearSkillsHover() {
-	for _, view := range []*activityui.View{in.Transcript, in.Agents} {
-		if view != nil {
-			view.SkillsHover = ""
-		}
-	}
-}

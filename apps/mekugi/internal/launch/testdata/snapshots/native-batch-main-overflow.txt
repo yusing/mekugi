@@ -1,48 +1,48 @@
-┌ 1 Main ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│LIVE · 4 files · 3–4/4 · ^B e next                                                                                                        │
-│  main · ◐ A two.txt +40 -0                                                                                                               │
-│  24│+two_line_24                                                                                                                         │
-│  25│+two_line_25                                                                                                                         │
-│  26│+two_line_26                                                                                                                         │
-│  27│+two_line_27                                                                                                                         │
-│  28│+two_line_28                                                                                                                         │
-│  29│+two_line_29                                                                                                                         │
-│  30│+two_line_30                                                                                                                         │
-│  31│+two_line_31                                                                                                                         │
-│  32│+two_line_32                                                                                                                         │
-│  33│+two_line_33                                                                                                                         │
-│  34│+two_line_34                                                                                                                         │
-│  35│+two_line_35                                                                                                                         │
-│  36│+two_line_36                                                                                                                         │
-│  37│+two_line_37                                                                                                                         │
-│  38│+two_line_38                                                                                                                         │
-│  39│+two_line_39                                                                                                                         │
-│▎ 40│+two_line_40                                                                                                                         │
-│  main · ◐ A three.txt +40 -0                                                                                                             │
-│  23│+three_line_23                                                                                                                       │
-│  24│+three_line_24                                                                                                                       │
-│  25│+three_line_25                                                                                                                       │
-│  26│+three_line_26                                                                                                                       │
-│  27│+three_line_27                                                                                                                       │
-│  28│+three_line_28                                                                                                                       │
-│  29│+three_line_29                                                                                                                       │
-│  30│+three_line_30                                                                                                                       │
-│  31│+three_line_31                                                                                                                       │
-│  32│+three_line_32                                                                                                                       │
-│  33│+three_line_33                                                                                                                       │
-│  34│+three_line_34                                                                                                                       │
-│  35│+three_line_35                                                                                                                       │
-│  36│+three_line_36                                                                                                                       │
-│  37│+three_line_37                                                                                                                       │
-│  38│+three_line_38                                                                                                                       │
-│  39│+three_line_39                                                                                                                       │
-│▎ 40│+three_line_40                                                                                                                       │
-│                                                                                                                                          │
-│╭─ Ready ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮│
-││ ❯                                                                                                                                      ││
-│╰────────────────────────────────────────────────────────────────────────────────────────────── /workspace • snapshot-model (high) • 0% ─╯│
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-─ 3 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+LIVE · 4 files · 3–4/4 · ^B e next
+  main · ◐ A two.txt +40 -0
+  23│+two_line_23
+  24│+two_line_24
+  25│+two_line_25
+  26│+two_line_26
+  27│+two_line_27
+  28│+two_line_28
+  29│+two_line_29
+  30│+two_line_30
+  31│+two_line_31
+  32│+two_line_32
+  33│+two_line_33
+  34│+two_line_34
+  35│+two_line_35
+  36│+two_line_36
+  37│+two_line_37
+  38│+two_line_38
+  39│+two_line_39
+▎ 40│+two_line_40
+  main · ◐ A three.txt +40 -0
+  22│+three_line_22
+  23│+three_line_23
+  24│+three_line_24
+  25│+three_line_25
+  26│+three_line_26
+  27│+three_line_27
+  28│+three_line_28
+  29│+three_line_29
+  30│+three_line_30
+  31│+three_line_31
+  32│+three_line_32
+  33│+three_line_33
+  34│+three_line_34
+  35│+three_line_35
+  36│+three_line_36
+  37│+three_line_37
+  38│+three_line_38
+  39│+three_line_39
+▎ 40│+three_line_40
+
+╭─ Ready ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────── /workspace • snapshot-model (high) • 0% ─╯
+─ 3 Agents · 2 · Main ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    +2 more · ^B 3 to browse
 
  1 Main  2 Diff  3 Agents   ^B e next live · ^B 1-3 views · ^E expand events

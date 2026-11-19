@@ -286,7 +286,8 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 	search := next("search")
 	await("Search: needle")
 	send("\x7f\x7f\b\b\b\bneedle\x7f\b")
-	await("Search: need ")
+	// Screen text trims trailing blanks without the old frame's right edge.
+	await("Search: need\n")
 	snapshot("native-resume-burst-search")
 	// Separate PTY writes and rendered resize acknowledgements exercise read
 	// boundaries inside a character, not merely a multibyte string in one read.
@@ -299,9 +300,9 @@ func TestUISnapshotNativeResumePagingPTY(t *testing.T) {
 	await("Type to search")
 	quiet(3)
 	send("\x8cneedle\x7f\x7f")
-	await("Search: 界need ")
+	await("Search: 界need\n")
 	resize(18)
-	await("Search: 界need ")
+	await("Search: 界need\n")
 	snapshot("native-resume-unicode-search")
 	send("\x7f\x7f\x7f\x7f\x7f")
 	await("Saved conversation 07")

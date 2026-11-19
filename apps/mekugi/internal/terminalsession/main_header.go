@@ -29,7 +29,7 @@ func (in FrameInput) Header() sessionpresentation.FrontendHeader {
 			h.Name, h.Detail = v.Side.Label, ""
 		}
 	} else {
-		h.Title = strings.Join(strings.Fields(textsanitize.Safe(v.Info.Title, false)), " ")
+		h.Title = sessionTitle(v.Info.Title)
 	}
 	view := in.displayedTranscript()
 	h.Above = max(0, view.Offset)
@@ -42,33 +42,25 @@ func (in FrameInput) Header() sessionpresentation.FrontendHeader {
 	return h
 }
 
-// Source: apps/mekugi/internal/router/app_server_questions.go:510:527,
-// app_server_session_title.go:104:119 and app_server_ui.go:963:979@9fbf51e1.
-func (m *Main) titleDetail(focused bool) string {
-	var details []string
-	if !focused && m.session.Questions.Count > 0 {
-		details = append(details, fmt.Sprintf("?%d", m.session.Questions.Count))
+func (in FrameInput) rosterThreadLabel() string {
+	v := in.Main.session
+	if v.Displayed.ID != v.Main.ID {
+		if v.Displayed == v.SideThread && v.Side != nil {
+			return v.Side.Label
+		}
+		return in.Agents.Painter.Agent(v.Displayed.Caller)
 	}
-	if set := m.session.Info.Skills; set != nil {
-		details = append(details, activityui.SkillLabel(set))
+	if v.Info.Caller != "" && v.Info.Caller != "/root" {
+		return in.Agents.Painter.Agent(v.Info.Caller)
 	}
-	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), terminalui.Dim+" · "+terminalui.Undim)
+	if in.Shell.Focus != 0 && v.Questions.Count > 0 {
+		return fmt.Sprintf("Main ?%d", v.Questions.Count)
+	}
+	return "Main"
 }
 
-func (m *Main) HeaderRight(view *activityui.View, width int, focused bool) string {
-	scroll := scrollLabel(view)
-	name := m.session.Info.Title
-	title := strings.Join(strings.Fields(textsanitize.Safe(name, false)), " ")
-	if title == "" {
-		return scroll
-	}
-	// Account for both labels' framing spaces and one separating border cell.
-	available := width - 2 - ansi.StringWidth(terminalui.PaneTitle(1, "Main", m.titleDetail(focused), focused)) - 5
-	if scroll != "" && available > ansi.StringWidth(scroll)+6 {
-		title = ansi.Truncate(title, available-ansi.StringWidth(scroll)-3, "…")
-		return scroll + " · " + title
-	}
-	return ansi.Truncate(title, max(0, available), "…")
+func sessionTitle(title string) string {
+	return strings.Join(strings.Fields(textsanitize.Safe(title, false)), " ")
 }
 
 // scrollLabel shows how much of the feed lies above the viewport and, once

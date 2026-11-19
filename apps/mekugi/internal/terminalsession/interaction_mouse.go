@@ -10,12 +10,6 @@ import (
 func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEffect) bool) {
 	button, x, y, release := pointer.Button, pointer.X, pointer.Y, pointer.Release
 	main, shell := in.Main, in.Shell
-	if main != nil {
-		in.Transcript.SkillsHover = ""
-		if button == 35 && !release && in.Dialog == nil && shell.Layout.MainSkills.Contains(x, y) {
-			in.Transcript.SkillsHover = "Main"
-		}
-	}
 	if in.Agents != nil && (in.Dialog != nil || !shell.Layout.Roster.Contains(x, y)) {
 		in.Agents.SkillsHover = ""
 	}
@@ -150,11 +144,6 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 				in.Live.ScrollBatch(main.session.Displayed.Caller, terminalui.PaneWheelDown)
 			}
 		}
-		return
-	}
-	if button&^28 == 0 && !release && main != nil && shell.Layout.MainSkills.Contains(x, y) {
-		shell.Focus = 0
-		yield(InputEffect{Details: &DetailInput{Version: main.session.Version, View: in.Transcript, Kind: SkillDetails, Caller: "Main"}})
 		return
 	}
 	pane := -1

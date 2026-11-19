@@ -1,27 +1,27 @@
-┌ 1 One-off ───────────────────────────────────────────────────────────────────────────────────────┐
-│❯ inspect the workspace                                                                  12:00:00 │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│                                                                                                  │
-│• Attachment delivery failed · Enter in empty composer retries                                    │
-│  ↳ Attachments accompanying answers to image:                                                    │
-│    [Image 1]                                                                                     │
-│                                                                                                  │
-│                                                                                                  │
-│╭─ ◐ Working · ✗ rejected · Enter in an empty One-off composer retries the attachment delivery ──╮│
-││ ❯                                                                                              ││
-│╰────────────────────────────────────────────────────────────────────────────── /workspace • 0% ─╯│
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
-─ 3 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────────
+❯ inspect the workspace                                                                    12:00:00
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+• Attachment delivery failed · Enter in empty composer retries
+  ↳ Attachments accompanying answers to image:
+    [Image 1]
+
+
+╭─ ◐ Working · ✗ rejected · Enter in an empty One-off composer retries the attachment delivery ────╮
+│ ❯                                                                                                │
+╰──────────────────────────────────────────────────────────────────────────────── /workspace • 0% ─╯
+─ 3 Agents · 2 · 1 working · One-off ───────────────────────────────────────────────────────────────
  ● main  idle
  ◐ └ worker  Asked 1 question · sending                                                          0%
 

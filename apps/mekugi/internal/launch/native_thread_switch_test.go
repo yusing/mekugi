@@ -57,7 +57,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		}
 	}
 	paint("native-thread-main-full")
-	if terminalTest(u).Layout.Main.W != 138 || terminalTest(u).Layout.Vertical != -1 {
+	if terminalTest(u).Layout.Main.W != 140 || terminalTest(u).Layout.Vertical != -1 {
 		t.Fatalf("initial geometry: %+v", terminalTest(u).Layout)
 	}
 	click := func(agent string) {
@@ -81,6 +81,10 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		t.Fatal("clicking an agent focused the roster")
 	}
 	frame := paint("native-thread-child-full")
+	heading := strings.Split(frame, "\n")[terminalTest(u).Layout.Roster.Y]
+	if !rosterHeadingNames(heading, "reader") {
+		t.Fatalf("displayed child is missing from the roster heading: %q", heading)
+	}
 	if terminalTest(u).Layout.Roster.H != rosterHeight {
 		t.Fatal("clicking an agent expanded the roster")
 	}
@@ -106,7 +110,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	keys("\x022")
 	paint("native-thread-child-unsplit")
-	if terminalTest(u).Layout.Main.W != 138 || terminalTest(u).Layout.Diff.W != 0 || terminalTest(u).Focus != 0 {
+	if terminalTest(u).Layout.Main.W != 140 || terminalTest(u).Layout.Diff.W != 0 || terminalTest(u).Focus != 0 {
 		t.Fatal("closing Diff did not reclaim its width")
 	}
 	// Viewing a published child does not request native graph metadata.

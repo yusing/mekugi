@@ -17,6 +17,7 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
@@ -458,11 +459,17 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 			await("0.25x")
 			write("-")
 			await("0.125x")
-			// The focused Main title confirms pane selection.
+			// The active thread is emphasized in the roster when Main has focus.
 			write("\x021+")
 			awaitFrame("focused Main at 0.25x", func() bool {
-				mainTitle := screen.CellAt(2, 0)
-				return mainTitle != nil && mainTitle.Content == "1" && mainTitle.Style.Attrs&uv.AttrBold != 0 && strings.Contains(screen.String(), "0.25x")
+				frame := screen.String()
+				for y, row := range strings.Split(frame, "\n") {
+					if before, _, ok := strings.Cut(row, " · Main "); ok && rosterHeadingNames(row, "Main") {
+						cell := screen.CellAt(ansi.StringWidth(before)+3, y)
+						return cell != nil && cell.Style.Attrs&uv.AttrBold != 0 && strings.Contains(frame, "0.25x")
+					}
+				}
+				return false
 			})
 			if !strings.Contains(screen.String(), "Replay terminal row 36.") {
 				t.Fatalf("switching back to Main lost the transcript:\n%s", screen.String())

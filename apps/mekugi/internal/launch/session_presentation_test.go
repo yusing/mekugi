@@ -229,14 +229,15 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Unpublished activity"}}})
 	rows, _ := u.mainFrame(100, 24, 0)
 	painted := strings.Join(rows, "\n")
-	if !strings.Contains(painted, "codex v1.2.3") || strings.Contains(painted, "9.9.9") || strings.Contains(painted, "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Published title") {
+	if !strings.Contains(painted, "codex v1.2.3") || strings.Contains(painted, "9.9.9") || strings.Contains(painted, "Unpublished activity") {
 		t.Fatalf("Main consulted unpublished owners: %s", painted)
 	}
 	if err := paintSession(&u.attached, u.shell, &u.detailFiles, u.ctx, presentationTime(u.clock), io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
 	outer := strings.Join(terminalTest(u).Frame.Rows, "\n")
-	if !strings.Contains(outer, "Published title") || !strings.Contains(outer, "codex v1.2.3") || strings.Contains(outer, "Unpublished") {
+	heading := terminalTest(u).Frame.Rows[terminalTest(u).Layout.Roster.Y]
+	if !strings.Contains(heading, "Published title") || !strings.Contains(outer, "codex v1.2.3") || strings.Contains(outer, "Unpublished") {
 		t.Fatalf("outer frame consulted unpublished owners: %s", outer)
 	}
 	if !reflect.DeepEqual(u.attached.presentation.View(), before) {
@@ -244,7 +245,7 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	}
 	settleTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	rows, _ = u.mainFrame(100, 24, 0)
-	if !strings.Contains(strings.Join(rows, "\n"), "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Unpublished title") || u.attached.presentation.View().Info.Workspace != "/unpublished" {
+	if !strings.Contains(strings.Join(rows, "\n"), "Unpublished activity") || u.publishedTitle() != "Unpublished title" || u.attached.presentation.View().Info.Workspace != "/unpublished" {
 		t.Fatal("explicit publication did not advance Main")
 	}
 }

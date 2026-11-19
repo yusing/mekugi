@@ -121,7 +121,9 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 			focused := event.Text == "\x1b[I"
 			if !focused {
 				state.resizeUntil = time.Time{}
-				in.ClearSkillsHover()
+				if in.Agents != nil {
+					in.Agents.SkillsHover = ""
+				}
 			}
 			yield(InputEffect{Focused: &focused})
 			return

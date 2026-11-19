@@ -1,35 +1,35 @@
-┌ 1 Main ────────────────────────────────────────────────────────────┐┌ 2 Diff · saved · no captured edits yet ─── diff focus · CONNECTING ┐
-│● main                                                     12:00:00 ││  CONNECTING                                                        │
-│┃ main result                                                       ││                                                                    │
-│┃                                                                   ││                                                                    │
-│┃ alpha                                                             ││                                                                    │
-│┃                                                                   ││                                                                    │
-│┃ beta                                                              ││                                                                    │
-│┃                                                                   ││                                                                    │
-│┃ gamma                                                             ││                                                                    │
-│┃                                                                   ││                                                                    │
-│┃ delta                                                             ││                                                                    │
-│┃                                                                   ││                                                                    │
-│┃ epsilon                                                           ││                                                                    │
-│┃                                                                   ││                                                                    │
-│┃ zeta                                                              ││                                                                    │
-│┃                                                                   ││                                                                    │
-│┃ eta                                                               ││                                                                    │
-│                                                                    ││                                                                    │
-│✓ reader finished                                          12:00:00 ││                                                                    │
-││ child result                                                      ││                                                                    │
-││ alpha                                                             ││                                                                    │
-││ beta                                                              ││                                                                    │
-││ gamma…                                                            ││                                                                    │
-│╰─↩ Open reply · +4 lines                                           ││                                                                    │
-│                                                                    ││                                                                    │
-│                                                                    ││                                                                    │
-│                                                                    ││                                                                    │
-│╭──────────────────────────────────────────────────────────────────╮││                                                                    │
-││ ❯ retained draft                                                 │││                                                                    │
-│╰─────────────── /workspace • parent-model (high) • priority • 0% ─╯││                                                                    │
-└────────────────────────────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────┘
-─ 3 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+● main                                                       12:00:00 ┌ 2 Diff · saved · no captured edits yet ─── diff focus · CONNECTING ┐
+┃ main result                                                         │  CONNECTING                                                        │
+┃                                                                     │                                                                    │
+┃ alpha                                                               │                                                                    │
+┃                                                                     │                                                                    │
+┃ beta                                                                │                                                                    │
+┃                                                                     │                                                                    │
+┃ gamma                                                               │                                                                    │
+┃                                                                     │                                                                    │
+┃ delta                                                               │                                                                    │
+┃                                                                     │                                                                    │
+┃ epsilon                                                             │                                                                    │
+┃                                                                     │                                                                    │
+┃ zeta                                                                │                                                                    │
+┃                                                                     │                                                                    │
+┃ eta                                                                 │                                                                    │
+                                                                      │                                                                    │
+✓ reader finished                                            12:00:00 │                                                                    │
+│ child result                                                        │                                                                    │
+│ alpha                                                               │                                                                    │
+│ beta                                                                │                                                                    │
+│ gamma…                                                              │                                                                    │
+╰─↩ Open reply · +4 lines                                             │                                                                    │
+                                                                      │                                                                    │
+                                                                      │                                                                    │
+                                                                      │                                                                    │
+                                                                      │                                                                    │
+                                                                      │                                                                    │
+╭────────────────────────────────────────────────────────────────────╮│                                                                    │
+│ ❯ retained draft                                                   ││                                                                    │
+╰───────────────── /workspace • parent-model (high) • priority • 0% ─╯└────────────────────────────────────────────────────────────────────┘
+─ 3 Agents · 2 · 1 working · Main ──────────────────────────────────────────────────────────────────────────────────────────────────────────
  ● main  idle
  ◐ └ reader  child result                                                                                                    25K/100K • 25%
 

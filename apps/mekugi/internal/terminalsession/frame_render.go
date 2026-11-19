@@ -115,18 +115,25 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	transcript.ImageDemands, transcript.ImagePlacements = nil, nil
 	mainEdit := !shell.ExternalPanes && !in.LiveHidden && (slices.Contains(in.Live.Callers(), caller) || caller == "/root" && len(in.Live.Callers()) > 0)
 	var roster []string
+	var heading activityui.RosterHeading
+	var title string
+	if view.Displayed.ID == view.Main.ID {
+		title = sessionTitle(view.Info.Title)
+	}
 	if shell.RosterLabel != "" && !shell.ExternalPanes {
-		roster = in.Agents.NativeRoster(width, shell.Panes.RosterLimit(width, height), in.Now, shell.Focus == 3)
+		limit := shell.Panes.RosterLimit(width, height)
+		roster, heading = in.Agents.NativeRosterPanel(width, limit, in.Now, shell.Focus == 3)
+		// A title can be published before the first agent row arrives.
+		if len(roster) == 0 && title != "" && width >= 20 && limit > 0 {
+			roster = []string{""}
+		}
 	} else {
 		in.Agents.Hits = nil
 	}
 	plan := shell.Plan(width, height, len(roster))
 	processRect := Rect{}
 	processLimit := 0
-	content := ShellContent{Roster: roster, MainName: "Main"}
-	if view.Info.Caller != "" && view.Info.Caller != "/root" {
-		content.MainName = "Thread"
-	}
+	content := ShellContent{Roster: roster}
 	if plan.Left.W >= 4 && plan.Left.H >= 1 {
 		iw, ih := plan.Layout.Main.W, plan.Layout.Main.H
 		processes := in.Dialog != nil && in.Dialog.Processes
@@ -182,27 +189,13 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 				}
 			}
 		}
-		if plan.Framed {
-			content.MainDetail = in.Main.titleDetail(shell.Focus == 0)
-			if view.Info.Caller != "" && view.Info.Caller != "/root" {
-				content.MainDetail = in.Agents.Painter.Agent(view.Info.Caller)
-			}
-			if set := view.Info.Skills; set != nil {
-				content.MainSkills = activityui.SkillLabel(set)
-				if in.Transcript.SkillsHover == "Main" {
-					content.MainDetail = strings.TrimSuffix(content.MainDetail, content.MainSkills) + activityui.Underline(content.MainSkills)
-				}
-			}
-			content.MainRight = in.Main.HeaderRight(in.Transcript, plan.Left.W, shell.Focus == 0)
-			if view.Displayed.ID != view.Main.ID {
-				content.MainName, content.MainDetail = "Thread", in.Agents.Painter.Agent(view.Displayed.Caller)
-				if view.Displayed == view.SideThread {
-					content.MainName, content.MainDetail = view.Side.Label, ""
-				}
-				content.MainSkills = ""
-				content.MainRight = strings.TrimSpace(scrollLabel(in.Agents))
-			}
+	}
+	if plan.Roster > 0 {
+		active := in.rosterThreadLabel()
+		if shell.Focus == 0 {
+			active = "\x1b[1m" + active + "\x1b[22m"
 		}
+		roster[0] = heading.Render(active, title, scrollLabel(transcript))
 	}
 	if plan.Right.W >= 4 && plan.Right.H >= 1 {
 		content.Diff, err = in.Diff.Paint(ctx, shell.Auxiliary, plan.Layout.Diff.W, plan.Layout.Diff.H)

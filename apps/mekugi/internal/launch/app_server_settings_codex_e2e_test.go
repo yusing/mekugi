@@ -55,7 +55,7 @@ func TestAppServerSideSettingsNativeCodex(t *testing.T) {
 		t.Fatal(terminal.ctx.Err())
 	}
 	terminal.awaitMatch("One-off idle", func(frame string) bool {
-		return strings.Contains(frame, "1 One-off") && strings.Contains(frame, "completed")
+		return rosterHeadingNames(frame, "One-off") && strings.Contains(frame, "completed")
 	})
 	terminal.send("\x1b[1;2B")
 	terminal.await("Settings saved for next turn")
@@ -77,7 +77,7 @@ func TestAppServerSideSettingsNativeCodex(t *testing.T) {
 	terminal.awaitMatch("side completed", func(frame string) bool { return strings.Contains(frame, "╭─ completed") })
 	terminal.send("\x021") // Select Main without closing Side.
 	terminal.awaitMatch("Main selected", func(frame string) bool {
-		return strings.HasPrefix(frame, "┌ 1 Main") && strings.Contains(frame, "gpt-6-astra (high)")
+		return rosterHeadingNames(frame, "Main") && strings.Contains(frame, "gpt-6-astra (high)")
 	})
 	terminal.send("Main settings request\r")
 	select {

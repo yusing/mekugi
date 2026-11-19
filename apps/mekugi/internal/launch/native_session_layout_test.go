@@ -135,8 +135,8 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			}
 			lines := strings.Split(frame, "\n")
 			r := terminalTest(u).Layout.Roster
-			if r.H == 0 || !strings.Contains(lines[r.Y-1], "┘") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
-				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
+			if r.H == 0 || !strings.HasPrefix(lines[r.Y-1], "╰") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
+				t.Fatalf("roster must follow the composer with padding only below:\n%s", frame)
 			}
 			u.testActivity(u.shell.Agents).setDisplayFilter(false, u.shell.Agents.Selected)
 			appServerTestKeys(t, u, "/live\r")

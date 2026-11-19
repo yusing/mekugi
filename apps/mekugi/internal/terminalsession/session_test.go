@@ -91,7 +91,7 @@ func TestFrameCommitsClipboardAndRowsTogether(t *testing.T) {
 func TestPaneGeometryAndDividerIntent(t *testing.T) {
 	panes := Panes{Focus: 1, DiffOpen: true, Split: 67}
 	layout, _, _, framed, roster := panes.Geometry(140, 30, 4)
-	if !framed || roster != 4 || layout.Vertical != 67 || layout.Main.W != 65 || layout.Diff.W != 71 {
+	if !framed || roster != 4 || layout.Vertical != 67 || layout.Main != (Rect{0, 0, 67, 24}) || layout.Diff.W != 71 {
 		t.Fatalf("wide layout: %+v", layout)
 	}
 	if handled, _ := panes.Drag(Mouse{X: 67, Y: 3}, layout, 25); !handled {
@@ -104,7 +104,7 @@ func TestPaneGeometryAndDividerIntent(t *testing.T) {
 	}
 	panes.Select(1)
 	layout, _, _, _, _ = panes.Geometry(140, 30, 4)
-	if panes.Focus != 0 || layout.Main.W != 138 || layout.Diff != (Rect{}) {
+	if panes.Focus != 0 || layout.Main.W != 140 || layout.Diff != (Rect{}) {
 		t.Fatalf("closing Diff: %+v", layout)
 	}
 	layout, _, _, _, _ = panes.Geometry(1, 1, 0)
@@ -154,13 +154,13 @@ func TestShellExternalPanesReclaimStatusRow(t *testing.T) {
 	}
 }
 
-func TestShellNativeCompanionReclaimsFrameInsets(t *testing.T) {
+func TestMainUsesFullPaneBoundsWithOrWithoutCompanion(t *testing.T) {
 	for _, size := range []struct{ width, height int }{{1, 1}, {20, 7}, {80, 8}, {120, 24}} {
 		s := Shell{RosterLabel: "Agents"}
 		standalone := s.Plan(size.width, size.height, 0)
 		s.SetExternalPanes(true)
 		plan := s.Plan(size.width, size.height, 0)
-		if plan.Framed {
+		if plan.DiffFramed {
 			t.Fatalf("%+v: native companion retained frame", size)
 		}
 		if plan.Left.W >= 4 && plan.Left.H > 0 && plan.Main != plan.Left {

@@ -52,8 +52,10 @@ or storage capability. Live sessions and playback use the same frame. Shortcut
 visibility and the keyboard-interruption lock stay with terminal state.
 The outer frame consumes the attached terminal views and detached session facts.
 It composes Main, preview, roster, saved pane, dialog and frozen selection, then
-returns output demands or delivery-ready rows with prompt visibility. It owns
-header/status painting, frame decoration, status-tab targets and final pane geometry. Prompt visibility
+returns output demands or delivery-ready rows with prompt visibility. The
+transcript is unframed; the roster heading names the displayed thread and shows
+its title when available. Loaded skills appear on their agent's roster row.
+The terminal owns status-tab targets and final pane geometry. Prompt visibility
 is calculated against that geometry and active overlays; only successful terminal
 delivery makes a visible prompt ready for input. Notice receipts name the painted
 attachment and feedback revision and distinguish the composer from Main transcript

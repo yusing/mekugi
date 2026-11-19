@@ -46,9 +46,9 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"active","status":"failed","error":{"message":"provider failed\nFull diagnostics"}}}}`)
 			}
 			full, draft, turn, sent := u.composerErrorText(), u.Text, u.Turn, wire.String()
-			screen := vt.NewEmulator(tc.width+2, 16)
+			screen := vt.NewEmulator(tc.width, 16)
 			defer screen.Close()
-			if err := u.testPaint(screen, tc.width+2, 16); err != nil {
+			if err := u.testPaint(screen, tc.width, 16); err != nil {
 				t.Fatal(err)
 			}
 			click := func(rect terminalsession.Rect) {

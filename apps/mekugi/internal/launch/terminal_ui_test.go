@@ -150,12 +150,15 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					assertCollapsed := func() {
 						t.Helper()
 						paint()
-						content := terminalTest(u).Layout.Main
-						if saved {
-							content = terminalTest(u).Layout.Diff
+						layout := terminalTest(u).Layout
+						end := 39 // The last row is the status line.
+						if layout.Roster.H > 0 {
+							end = layout.Roster.Y
 						}
-						if terminalTest(u).Layout.Live.H != 0 || content.Y != 1 || content.H != terminalTest(u).Layout.Main.H || strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
-							t.Fatalf("empty Live area did not collapse: %+v\n%s", terminalTest(u).Layout, screen.String())
+						if layout.Live.H != 0 || layout.Main.Y != 0 || layout.Main.H != end ||
+							saved && (layout.Diff.Y != 1 || layout.Diff.H != end-2) ||
+							strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
+							t.Fatalf("empty Live area did not collapse: %+v\n%s", layout, screen.String())
 						}
 					}
 					assertCollapsed()

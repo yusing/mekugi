@@ -42,14 +42,19 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 	if err := u.testPaint(screen, 120, 28); err != nil {
 		t.Fatal(err)
 	}
-	assertNativeUISnapshot(t, "native-main-title-active-skills", strings.Split(screen.String(), "\n")[:1])
+	rows := strings.Split(screen.String(), "\n")
+	roster := terminalTest(u).Layout.Roster
+	assertNativeUISnapshot(t, "native-roster-main-active-skills", rows[roster.Y:roster.Y+roster.H])
+	if strings.Count(screen.String(), label) != 1 {
+		t.Fatal("the loaded skill count must appear once")
+	}
 	x, y := -1, -1
 	for row, text := range strings.Split(screen.String(), "\n") {
 		if before, _, ok := strings.Cut(text, label); ok {
 			x, y = ansi.StringWidth(before), row
 		}
 	}
-	if x < 0 {
+	if x < 0 || y <= roster.Y || y >= roster.Y+roster.H {
 		t.Fatalf("confirmed skill count missing after restore and trim: %v", view.ActiveSkills()[owner])
 	}
 

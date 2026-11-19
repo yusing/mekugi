@@ -372,16 +372,9 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 			}
 		}
 	}
-	await(func(s string) bool { return strings.Contains(s, "2 Diff") && strings.Contains(s, "new live") })
-	assertCompanionFrame := func() {
-		t.Helper()
-		if top := strings.Split(screen.String(), "\n")[0]; strings.Contains(top, "┌") || strings.Contains(top, "1 Main") {
-			t.Fatalf("native companion did not reclaim top frame row: %q", top)
-		}
-	}
-	if !strings.Contains(strings.Split(screen.String(), "\n")[0], "1 Main") {
-		t.Fatal("standalone terminal lost its frame before companion observation")
-	}
+	await(func(s string) bool {
+		return strings.Contains(s, "2 Diff") && strings.Contains(s, "new live") && rosterHeadingNames(s, "Main")
+	})
 	if _, err = master.WriteString("parent draft"); err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +386,6 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 	await(func(s string) bool {
 		return !strings.Contains(s, "2 Diff") && !strings.Contains(s, "3 Agents") && !strings.Contains(s, "new live") && strings.Contains(s, "parent draft")
 	})
-	assertCompanionFrame()
 	if initial.Header == nil || initial.Header.Above == 0 {
 		initial = finishObserve(startObserve(initial), "main")
 	}
@@ -455,11 +447,8 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 		t.Fatal("release failed")
 	}
 	await(func(s string) bool {
-		return strings.Contains(s, "2 Diff") && strings.Contains(s, "3 Agents") && strings.Contains(s, "parent draft") && strings.Contains(s, "new live")
+		return strings.Contains(s, "2 Diff") && rosterHeadingNames(s, "Main") && strings.Contains(s, "parent draft") && strings.Contains(s, "new live")
 	})
-	if !strings.Contains(strings.Split(screen.String(), "\n")[0], "1 Main") {
-		t.Fatal("companion release did not restore standalone framing")
-	}
 	if ready := os.Getenv("MEKUGI_TEST_HERDR_FIXTURE_READY"); ready != "" {
 		data, _ := json.Marshal(struct {
 			PID    int    `json:"pid"`

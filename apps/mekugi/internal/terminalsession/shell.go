@@ -45,15 +45,14 @@ type ShellPlan struct {
 	Layout
 	Left, Right           Rect
 	Width, Height, Roster int
-	Framed                bool
+	DiffFramed            bool
 }
 
 type ShellContent struct {
-	Main, Diff, Roster                 []string
-	MainName, MainDetail, MainRight    string
-	MainSkills, DiffSummary, DiffState string
-	Dock                               Rect
-	Status                             ShellStatus
+	Main, Diff, Roster     []string
+	DiffSummary, DiffState string
+	Dock                   Rect
+	Status                 ShellStatus
 }
 
 type ShellStatus struct {
@@ -81,14 +80,8 @@ func (s *Shell) Plan(width, height, roster int) ShellPlan {
 		// Geometry normally reserves a status row, which external panes hide.
 		geometryHeight++
 	}
-	layout, left, right, framed, kept := panes.Geometry(width, geometryHeight, roster)
-	if s.ExternalPanes {
-		framed = false
-		if layout.Main.W > 0 {
-			layout.Main = left
-		}
-	}
-	return ShellPlan{layout, left, right, width, height, kept, framed}
+	layout, left, right, diffFramed, kept := panes.Geometry(width, geometryHeight, roster)
+	return ShellPlan{layout, left, right, width, height, kept, diffFramed}
 }
 
 // Compose performs no feature lookup or effects; the caller supplies prepared rows.
@@ -108,21 +101,11 @@ func (s *Shell) Compose(plan ShellPlan, in ShellContent) []string {
 		if in.Dock.H > 0 {
 			layout.Live = Rect{layout.Main.X, layout.Main.Y + in.Dock.Y, layout.Main.W, in.Dock.H}
 		}
-		if !plan.Framed {
-			draw(left, in.Main)
-		} else {
-			title := terminalui.PaneTitle(1, in.MainName, in.MainDetail, s.Focus == 0)
-			// A truncated title has no reliable skill target.
-			if in.MainSkills != "" && strings.HasSuffix(ansi.Strip(in.MainDetail), in.MainSkills) && ansi.StringWidth(title)+5 <= left.W {
-				end := left.X + 2 + ansi.StringWidth(title)
-				layout.MainSkills = Rect{end - ansi.StringWidth(in.MainSkills), left.Y, ansi.StringWidth(in.MainSkills), 1}
-			}
-			draw(left, terminalui.PaneBox(left.W, left.H, title, in.MainRight, s.Focus == 0, in.Main, nil))
-		}
+		draw(left, in.Main)
 	}
 	if right := plan.Right; right.W >= 4 && right.H >= 1 {
 		body := append(in.Diff[:min(len(in.Diff), layout.Diff.H)], make([]string, max(0, layout.Diff.H-len(in.Diff)))...)
-		if plan.Framed {
+		if plan.DiffFramed {
 			title := terminalui.PaneTitle(2, s.AuxiliaryLabel, in.DiffSummary, s.Focus == 1)
 			draw(right, terminalui.PaneBox(right.W, right.H, title, in.DiffState, s.Focus == 1, body, nil))
 		} else {

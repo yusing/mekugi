@@ -7,11 +7,11 @@ func (r Rect) Contains(x, y int) bool {
 	return r.W > 0 && r.H > 0 && x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
 }
 
-// Layout is the geometry of the last composed frame. Live and MainSkills are
-// filled by the content painter, whose row allocation determines their bounds.
+// Layout is the geometry of the last composed frame. The content painter
+// fills Live once it knows where the dock fits inside Main.
 type Layout struct {
-	Main, Diff, Roster, Live, MainSkills Rect
-	Vertical, RosterHorizontal           int
+	Main, Diff, Roster, Live   Rect
+	Vertical, RosterHorizontal int
 }
 
 // Panes retains local focus and the user's column width, independently of any
@@ -105,9 +105,9 @@ func (p *Panes) RosterLimit(width, height int) int {
 }
 
 // Geometry reserves the status row and roster, then fits Main and saved Diff.
-// It returns outer frames, content rectangles and the retained roster row count.
+// It returns pane bounds, content rectangles and the retained roster row count.
 // Source: apps/mekugi/internal/router/native_shell.go:288:334@70e7ce50 terminalUI.paintNative
-func (p *Panes) Geometry(width, height, rosterRows int) (layout Layout, left, right Rect, framed bool, keptRoster int) {
+func (p *Panes) Geometry(width, height, rosterRows int) (layout Layout, left, right Rect, diffFramed bool, keptRoster int) {
 	if height-1-rosterRows < 8 {
 		rosterRows = 0
 	}
@@ -116,7 +116,6 @@ func (p *Panes) Geometry(width, height, rosterRows int) (layout Layout, left, ri
 		padding = 1
 	}
 	top := max(0, height-1-rosterRows-padding)
-	framed = top >= 8
 	layout = Layout{Vertical: -1, RosterHorizontal: -1}
 	if rosterRows > 0 {
 		layout.RosterHorizontal = top
@@ -136,15 +135,15 @@ func (p *Panes) Geometry(width, height, rosterRows int) (layout Layout, left, ri
 	default:
 		right = Rect{0, 0, width, top}
 	}
-	content := func(frame Rect) Rect {
-		if frame.W < 4 || frame.H < 1 {
-			return Rect{}
-		}
-		if framed {
-			return Rect{frame.X + 1, frame.Y + 1, frame.W - 2, frame.H - 2}
-		}
-		return frame
+	if left.W >= 4 && left.H > 0 {
+		layout.Main = left
 	}
-	layout.Main, layout.Diff = content(left), content(right)
-	return layout, left, right, framed, rosterRows
+	if right.W >= 4 && right.H > 0 {
+		layout.Diff = right
+		diffFramed = right.H >= 8
+		if diffFramed {
+			layout.Diff = Rect{right.X + 1, right.Y + 1, right.W - 2, right.H - 2}
+		}
+	}
+	return layout, left, right, diffFramed, rosterRows
 }

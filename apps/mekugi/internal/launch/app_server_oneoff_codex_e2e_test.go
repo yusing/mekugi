@@ -139,7 +139,7 @@ func TestAppServerOneoffNativeCodexE2E(t *testing.T) {
 		t.Fatal("one-off did not inherit Main's tools")
 	}
 	terminal.awaitMatch("one-off automatically selected", func(frame string) bool {
-		return strings.Contains(frame, "┌ 1 One-off")
+		return rosterHeadingNames(frame, "One-off")
 	})
 	result := next()
 	resultMetadata, _ := codexresponses.DecodeTurnMetadata(result.headers)
@@ -152,7 +152,7 @@ func TestAppServerOneoffNativeCodexE2E(t *testing.T) {
 	}
 	terminal.send("\x021")
 	terminal.awaitMatch("Main selected before BTW", func(frame string) bool {
-		return strings.Contains(frame, "┌ 1 Main") && !strings.Contains(frame, "┌ 1 One-off")
+		return rosterHeadingNames(frame, "Main")
 	})
 	terminal.send("/btw BTW_WHILE_ONEOFF\r")
 	question := next()
@@ -164,7 +164,7 @@ func TestAppServerOneoffNativeCodexE2E(t *testing.T) {
 	terminal.await("/btw · completed")
 	terminal.send("\x1b")
 	terminal.awaitMatch("BTW closed while One-off remains", func(frame string) bool {
-		return !strings.Contains(frame, "/btw ·") && strings.Contains(frame, "┌ 1 Main") && strings.Contains(frame, "One-off")
+		return !strings.Contains(frame, "/btw ·") && rosterHeadingNames(frame, "Main") && strings.Contains(frame, "One-off")
 	})
 	terminal.send("\x021Main continuation\r")
 	after := next()
@@ -183,7 +183,7 @@ func TestAppServerOneoffNativeCodexE2E(t *testing.T) {
 	terminal.send("\x1b[<0;12;30M\x1b[<0;12;30m")
 	terminal.await("ONEOFF_FINISHED")
 	terminal.awaitMatch("completed one-off retained", func(frame string) bool {
-		return strings.Contains(frame, "┌ 1 One-off") && strings.Contains(frame, "╭─ completed") &&
+		return rosterHeadingNames(frame, "One-off") && strings.Contains(frame, "╭─ completed") &&
 			strings.Contains(frame, "Ran  printf") && strings.Contains(frame, "Read oneoff-written.txt") &&
 			strings.Contains(frame, "┆ ONEOFF_ENV_INHERITED")
 	})

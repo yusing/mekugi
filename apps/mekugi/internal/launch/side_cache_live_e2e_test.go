@@ -127,7 +127,7 @@ func TestSideCacheEligibilityLiveOpenAI(t *testing.T) {
 						}
 						terminal.send(selectView)
 						terminal.awaitMatch(label+" selected", func(frame string) bool {
-							return strings.Contains(frame, "┌ 1 "+label)
+							return rosterHeadingNames(frame, label)
 						})
 					}
 					prompt := "Without using tools, join these parts with no spaces and reply with only the result: " + parts + "."

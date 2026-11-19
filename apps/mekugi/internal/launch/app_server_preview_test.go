@@ -308,8 +308,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	render("roster pick", "1 Thread", "tester")
-	if !shell.DiffOpen || !shell.main.attached.presentation.DisplayingChild() || shell.Agents.Selected != "/root/tester" {
+	frame = render("roster pick", "tester")
+	if !rosterHeadingNames(frame, "tester") || !shell.DiffOpen || !shell.main.attached.presentation.DisplayingChild() || shell.Agents.Selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }

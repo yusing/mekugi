@@ -178,7 +178,7 @@ func TestAppServerSessionTitleComposerRename(t *testing.T) {
 				t.Fatal("rename disturbed the running task")
 			}
 			// The header updates before the metadata response, not merely after it.
-			if !strings.Contains(u.mainHeaderRight(120, true), "修復 session title") {
+			if u.publishedTitle() != "修復 session title" {
 				t.Fatal("manual title not immediately visible")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
@@ -218,7 +218,7 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 			u.Thread, u.Startup.Thread = "", "saved"
 			u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 			appServerTestKeys(t, u, "/title First name\r/title Final name\r")
-			if wire.Len() != 0 || u.Names.Pending("") != "Final name" || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
+			if wire.Len() != 0 || u.Names.Pending("") != "Final name" || u.publishedTitle() != "Final name" {
 				t.Fatalf("pre-session title: pending=%q wire=%q", u.Names.Pending(""), wire.String())
 			}
 			appServerTestRequest(t, u, "100", method)
@@ -228,7 +228,7 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 			if len(requests) != wantRequests || requests[0].Method != "thread/name/set" || requests[0].Params.ThreadID != "saved" || requests[0].Params.Name != "Final name" || requests[1].Method != "model/list" {
 				t.Fatalf("start title persistence: %+v", requests)
 			}
-			if u.Names.Pending("") != "" || u.titleGenerator.acceptCandidate("saved") || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
+			if u.Names.Pending("") != "" || u.titleGenerator.acceptCandidate("saved") || u.publishedTitle() != "Final name" {
 				t.Fatal("thread creation lost the manual title or enabled generation")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, requests[0].ID))
@@ -291,7 +291,7 @@ func TestAppServerSessionTitleSerializesManualRenames(t *testing.T) {
 				}
 				older := sessionTitleTestOne(t, wire)
 				appServerTestKeys(t, u, "/title Latest name\r")
-				if wire.Len() != 0 || !strings.Contains(u.mainHeaderRight(120, true), "Latest name") {
+				if wire.Len() != 0 || u.publishedTitle() != "Latest name" {
 					t.Fatal("rename was not immediately displayed and serialized")
 				}
 				response := `"result":{}`
@@ -306,7 +306,7 @@ func TestAppServerSessionTitleSerializesManualRenames(t *testing.T) {
 				if !failed {
 					appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Older name"}}`)
 				}
-				if !strings.Contains(u.mainHeaderRight(120, true), "Latest name") {
+				if u.publishedTitle() != "Latest name" {
 					t.Fatal("older confirmation overwrote pending manual display")
 				}
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, latest.ID))

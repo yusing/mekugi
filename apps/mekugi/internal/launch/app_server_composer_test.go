@@ -19,15 +19,11 @@ func appServerComposerScreenText(t *testing.T, frame []byte, width, height int) 
 	}
 	var text strings.Builder
 	for row := range strings.SplitSeq(screen.String(), "\n") {
-		inner := width
-		if strings.HasPrefix(row, "││") {
-			row, inner = ansi.Cut(row, 1, width-1), width-2 // Inside the Main pane frame.
-		}
 		if !strings.HasPrefix(row, "│ ") {
 			continue
 		}
 		// Exclude the border and prompt columns, preserving whitespace across wraps.
-		text.WriteString(ansi.Cut(row, 4, inner-1))
+		text.WriteString(ansi.Cut(row, 4, width-1))
 	}
 	return strings.TrimRight(text.String(), " ")
 }

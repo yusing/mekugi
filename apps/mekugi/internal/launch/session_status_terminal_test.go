@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,8 +55,17 @@ func (u *appServerUI) recallInput(backward bool) {
 	}
 }
 
-func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
-	return u.shell.Main.HeaderRight(u.shell.Transcript, width, focused)
+func (u *appServerUI) publishedTitle() string {
+	return u.shell.FrameInput(presentationTime(u.clock), mekugiVersion()).Header().Title
+}
+
+func rosterHeadingNames(frame, thread string) bool {
+	for row := range strings.Lines(frame) {
+		if strings.HasPrefix(row, "─ 3 Agents ") {
+			return strings.Contains(row, " · "+thread+" ")
+		}
+	}
+	return false
 }
 
 // mainFrame hydrates identified output between terminal-only render passes.

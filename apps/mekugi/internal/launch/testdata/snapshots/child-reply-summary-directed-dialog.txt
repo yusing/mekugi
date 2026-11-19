@@ -1,27 +1,27 @@
-┌ 1 Main ──────────────────────────────────────────────────────────────────────────────────────────┐
-│✉ worker → main                                                                          11:50:00 │
-││ An unrelated reply.                                                                             │
-│├─✉ worker → main · 1s                                                                            │
-││ Fixed exact reply navigation and kept the original evidence available. Focused checks pass,     │
-││ while live model compliance remains unverified.                                                 │
-│╰─↩ Open reply                                                                                    │
-│                                                                                                  │
-│    ╭─ /root/worker ─────────────────────────────────────────────────────────────────── [×] ─╮    │
-│    │                                                                                        │    │
-│    ├────────────────────────────────────────────────────────────────────────────────────────┤    │
-│    │ The supporting explanation stays in the retained reply.                                │    │
-│    │ Second detail with emphasis.                                                           │    │
-│    │ Third detail.                                                                          │    │
-│    │ Fourth detail.                                                                         │    │
-│    │ Fifth detail.                                                                          │    │
-│    │ End of evidence.                                                                       │    │
-│    ╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ──────────────────────────────────────╯    │
-│                                                                                                  │
-│╭────────────────────────────────────────────────────────────────────────────────────────────────╮│
-││ ❯                                                                                              ││
-│╰────────────────────────────────────────────────────────────────────────────── /workspace • 0% ─╯│
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
-─ 3 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────
+✉ worker → main                                                                            11:50:00
+│ An unrelated reply.
+├─✉ worker → main · 1s
+│ Fixed exact reply navigation and kept the original evidence available. Focused checks pass, while
+│ live model compliance remains unverified.
+╰─↩ Open reply
+
+
+     ╭─ /root/worker ─────────────────────────────────────────────────────────────────── [×] ─╮
+     │                                                                                        │
+     ├────────────────────────────────────────────────────────────────────────────────────────┤
+     │ The supporting explanation stays in the retained reply.                                │
+     │ Second detail with emphasis.                                                           │
+     │ Third detail.                                                                          │
+     │ Fourth detail.                                                                         │
+     │ Fifth detail.                                                                          │
+     │ End of evidence.                                                                       │
+     ╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ──────────────────────────────────────╯
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                                │
+╰──────────────────────────────────────────────────────────────────────────────── /workspace • 0% ─╯
+─ 3 Agents · 2 · Main ──────────────────────────────────────────────────────────────────────────────
  ● main  idle
    +1 more · ^B 3 to browse
 
