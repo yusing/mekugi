@@ -1076,8 +1076,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	if !ok {
 		t.Fatal("child runtime publication unavailable")
 	}
-	const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
-	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}}}}}); err != nil {
+	if err := alpha.publishFrame(sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Role: "worker", Workspace: alpha.workdir}, Input: &sessionapi.Input{Stoppable: true}, Main: &activitypresentation.Publication{Entries: []activitypresentation.Entry{{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{browserPixelPNG}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	// The process dock can leave this lazy image above the transcript scrollport.
@@ -1086,7 +1085,7 @@ func TestWebUIBrowserMachines(t *testing.T) {
 	run("wait", "--fn", "document.querySelector('img[alt=\"Attached image 1\"]')?.naturalWidth === 1")
 	generated := activitypresentation.ItemContent{Seq: 98, Agent: "Main", Kind: "tool", Text: "Generated `artwork.png`", Images: []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(previewFixturePNG(t))}}
 	childEntries := []activitypresentation.Entry{
-		{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{pixel}},
+		{Seq: 97, Agent: "You", Kind: "text", Text: "Child image\n\n[Child file](child.md)", Images: []string{browserPixelPNG}},
 		{Facts: generated.Facts, Values: generated.Values()},
 	}
 	childSession := func(entries ...activitypresentation.Entry) sessionapi.Frame {

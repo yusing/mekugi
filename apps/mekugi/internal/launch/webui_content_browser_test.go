@@ -22,6 +22,8 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
+const browserPixelPNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+
 // Unrelated publications must neither restart a bound image read nor hide
 // hydrated content while a newer revision loads. Oversized activity details
 // keep their body through refreshes of the same selection. Resource responses
@@ -54,6 +56,8 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 		request.Reply <- ""
 		return true
 	})
+	machine.childThreads = []string{"child"}
+	machine.start("child")
 	var imageReads, imageAborts, contentReads, detailReads atomic.Int32
 	var holdImage, holdContent, holdDetails, failDetails, failContent atomic.Bool
 	holdImage.Store(true)
@@ -127,7 +131,6 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 		remote.Close()
 	}()
 
-	const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="
 	// Sequence 1 lies outside the latest feed window, so changing it replaces
 	// the browser's complete window with new entry objects.
 	entries := make([]activitypresentation.Entry, 0, 63)
@@ -135,10 +138,10 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 		entries = append(entries, activitypresentation.Entry{Seq: seq, Agent: "Main", Kind: "text", Text: fmt.Sprintf("Earlier step %d.", seq), Revision: 1})
 	}
 	entries = append(entries,
-		activitypresentation.Entry{Seq: 61, Agent: "You", Kind: "text", Text: "Bound image", Images: []string{pixel}, Revision: 1},
+		activitypresentation.Entry{Seq: 61, Agent: "You", Kind: "text", Text: "Bound image", Images: []string{browserPixelPNG}, Revision: 1},
 		activitypresentation.Entry{Seq: 62, Agent: "Main", Kind: "text", Text: "Status 1", Revision: 1},
 	)
-	frame := sessionapi.Frame{Session: sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Content thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}}
+	frame := sessionapi.Frame{FamilyRoot: "same-thread", Session: sessionapi.Session{Thread: "child", Caller: "/root/worker", Title: "Content child thread", Workspace: machine.workdir}, Input: &sessionapi.Input{Stoppable: true}}
 	publish := func() {
 		t.Helper()
 		frame.Main = &activitypresentation.Publication{Entries: append([]activitypresentation.Entry(nil), entries...)}
@@ -234,6 +237,9 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	run("find", "role", "button", "click", "--name", "Connect", "--exact")
 	run("wait", "--text", "Content thread")
 	run("find", "text", "Content thread", "click", "--exact")
+	// Only the adopted child owns this image. Enter its selected-thread URL
+	// before exercising held reads, independently of the machine workflow.
+	run("eval", `const selection = new URLSearchParams(location.hash.slice(1)); selection.set('thread', 'child'); location.hash = selection.toString();`)
 	run("wait", "--text", "Loading image 1…")
 	await("the image read", func() bool { return imageReads.Load() == 1 })
 
@@ -268,6 +274,11 @@ func TestWebUIBrowserContentReads(t *testing.T) {
 	// Oversized streamed text is published as a preview and hydrated by
 	// separate reads; the tail is only visible in complete content.
 	holdImage.Store(false)
+	entries[60].Images = nil
+	frame.Session = sessionapi.Session{Thread: "same-thread", Caller: "/root", Title: "Content thread", Workspace: machine.workdir}
+	publish()
+	run("find", "text", "Content thread", "click", "--exact")
+	run("wait", "--text", "Status 5")
 	holdContent.Store(true)
 	stream := strings.Repeat("Streamed prose. ", 300)
 	entries = append(entries, activitypresentation.Entry{Seq: 63, Agent: "Main", Kind: "text", Text: stream + "TAIL_ONE", Revision: 1})
