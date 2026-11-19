@@ -66,6 +66,9 @@ queues and provisional transcript rows; control decides which submissions settle
 return to the composer or requeue. [Session presentation](../sessionpresentation/SPEC.md)
 owns attachment lifetime, displayed-thread and history reconstruction. Control
 issues its observational reads without changing execution or input identity.
+An attachment recall cache miss after a context reset reads native history on
+the inspection lane even when the thread cannot accept direct input. The
+ordinary host-call admission gate remains in effect.
 Reusable presets use the same host request ledger for configuration reads and
 per-slot, version-checked writes to Codex's active user configuration. The host
 retains file formatting, configuration validation and persistence authority.

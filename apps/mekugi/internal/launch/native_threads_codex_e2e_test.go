@@ -69,6 +69,7 @@ type nativeThreadsProvider struct {
 	temporaryUsage                          bool
 	concurrentChildren                      bool
 	readerEvidence                          bool
+	childReset                              bool
 	childReady                              chan string
 	compactLatency                          bool
 	compactIssued, compactContinued         time.Time
@@ -198,6 +199,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	if metadata.RequestKind == "compaction" {
 		t.Error("summary-free reset requested provider inference")
 		http.Error(w, "unexpected summary inference", 500)
+		return
+	}
+	if p.childReset {
+		p.serveChildReset(t, w, r, metadata, request.PreviousResponse)
 		return
 	}
 	if p.childReady != nil {
@@ -881,6 +886,44 @@ func TestNativeChildActivityServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{childActivity: true})
 }
 
+func (p *nativeThreadsProvider) serveChildReset(t *testing.T, w http.ResponseWriter, r *http.Request, metadata codexresponses.TurnMetadata, previousResponse string) {
+	p.mu.Lock()
+	thread := metadata.ThreadID
+	if p.parent == "" {
+		p.parent = thread
+	}
+	parent := thread == p.parent
+	p.calls[thread]++
+	step := p.calls[thread]
+	p.mu.Unlock()
+	id := fmt.Sprintf("reset-%s-%d", thread, step)
+	switch {
+	case parent && step == 1:
+		writeChildActivityResponse(w, id, `text(await tools.collaboration__spawn_agent({task_name:"worker",message:"Reset this context once, then finish.",fork_turns:"none"}));`, "", "")
+	case parent && step == 2:
+		writeChildActivityResponse(w, id, `text(await tools.collaboration__wait_agent({wait_mode:"all"}));`, "", "")
+	case parent && step == 3:
+		writeChildActivityResponse(w, id, "", "", "MANAGED_PARENT_RESUMED")
+	case !parent && step == 1 && metadata.WindowNumber == 0:
+		p.childReady <- thread
+		select {
+		case <-p.waiting:
+		case <-r.Context().Done():
+			return
+		}
+		writeNativeThreadResponse(w, id, []any{map[string]any{
+			"type": "function_call", "id": id + "-call", "call_id": id + "-call",
+			"name": "new_context", "namespace": "functions", "arguments": "{}", "status": "completed",
+		}})
+	case !parent && step == 2 && metadata.WindowNumber == 1 && metadata.ContextWindowID != "" && previousResponse == "":
+		writeChildActivityResponse(w, id, "", "", "MANAGED_CHILD_RESET_CONTINUED")
+	default:
+		t.Errorf("unexpected reset inference: parent=%t step=%d window=%d linked=%t", parent, step, metadata.WindowNumber, previousResponse != "")
+		http.Error(w, "unexpected reset request", http.StatusInternalServerError)
+		p.stop()
+	}
+}
+
 // Keep this script independent of the larger coordination scenario's prompt
 // and reply fixtures. Neither side receives its final response until the child
 // has run the command and the client can observe the active family roster.
@@ -955,6 +998,10 @@ func writeChildActivityResponse(w http.ResponseWriter, id, program, summary, ans
 	if summary != "" {
 		items = append([]any{map[string]any{"type": "reasoning", "id": id + "-reasoning", "summary": []any{map[string]any{"type": "summary_text", "text": summary}}}}, items...)
 	}
+	writeNativeThreadResponse(w, id, items)
+}
+
+func writeNativeThreadResponse(w http.ResponseWriter, id string, items []any) {
 	events := []any{map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}}}
 	for index, output := range items {
 		events = append(events, map[string]any{"type": "response.output_item.added", "output_index": index, "item": output}, map[string]any{"type": "response.output_item.done", "output_index": index, "item": output})
@@ -1098,6 +1145,10 @@ func TestNativeThreadsAgentCompactWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{compactWait: true, agentCompact: true})
 }
 
+func TestNativeChildResetHistoryReadServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{childReset: true})
+}
+
 func TestNativeThreadsCompactWaitServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{compactWait: true})
 }
@@ -1152,6 +1203,7 @@ func TestNativeThreadsAttachmentResetServerOwnedCodex(t *testing.T) {
 
 type nativeThreadsScenario struct {
 	childActivity                                                                                                                                                     bool
+	childReset                                                                                                                                                        bool
 	spawnSettings                                                                                                                                                     string
 	sameWorkspace                                                                                                                                                     bool
 	deniedMessageSource                                                                                                                                               bool
@@ -1295,8 +1347,11 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	fixture.deniedMessageSource = scenario.deniedMessageSource
 	fixture.concurrentChildren = scenario.concurrentChildren
 	fixture.compactLatency = scenario.compactionRecords > 0
-	if scenario.childActivity {
+	fixture.childReset = scenario.childReset
+	if scenario.childReset || scenario.childActivity {
 		fixture.childReady = make(chan string, 1)
+	}
+	if scenario.childActivity {
 		skillDirectory := filepath.Join(childDirectory, "activity-skill")
 		if err := os.Mkdir(skillDirectory, 0700); err != nil {
 			t.Fatal(err)
@@ -1664,6 +1719,38 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		measureCompactionDelivery(t, connection, fixture)
 		t.Logf("local native account-policy requests: %d", policyRequests.Load())
 		return
+	}
+	if scenario.childReset {
+		var child string
+		select {
+		case child = <-fixture.childReady:
+		case <-ctx.Done():
+			t.Fatal("child never requested its initial inference:", ctx.Err())
+		}
+		childView, err := connection.Attach(ctx, child)
+		if err != nil {
+			t.Fatal("attach child before reset:", err)
+		}
+		defer childView.Close()
+		next, err := childView.Next()
+		if err != nil {
+			t.Fatal("child admission before reset:", err)
+		}
+		if next.Frame.View.Main.ID != child || !next.Frame.View.Admission.ReadOnly || next.Frame.View.Admission.Submit {
+			t.Fatalf("pre-reset V2 child unexpectedly admits direct input: %+v", next.Frame.View.Admission)
+		}
+		close(fixture.waiting)
+		for {
+			next, err = connection.Next()
+			if err != nil {
+				t.Fatal("V2 child did not continue after new_context:", err)
+			}
+			if next.Frame.Main != nil && slices.ContainsFunc(next.Frame.Main.Entries, func(entry presentation.Entry) bool {
+				return entry.Agent == "/root/worker" && entry.Kind == "final" && entry.Text == "MANAGED_CHILD_RESET_CONTINUED"
+			}) {
+				return
+			}
+		}
 	}
 	if scenario.childActivity {
 		select {
