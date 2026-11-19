@@ -297,8 +297,18 @@ func readSources(ctx context.Context, selection, directory string, environment [
 			}
 		}
 		seen[key] = capturedFile{body, base, result.Command, depth}
-		if source.Changes != nil {
-			return result // Captured diffs are evidence, not reference-bearing text.
+		name := source.readPath()
+		if source.Skill != "" {
+			_, relative, ok := strings.Cut(source.Skill, "/")
+			name = "SKILL.md"
+			if ok {
+				name = relative
+			}
+		}
+		switch strings.ToLower(filepath.Ext(name)) {
+		case ".md", ".txt", ".json":
+		default:
+			return result
 		}
 
 		for reference := range attachments.References(body) {

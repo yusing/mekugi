@@ -252,8 +252,8 @@ limits and admitted reader bounds apply. An incomplete read reports its failure;
 omitted rows are not acquired context. A failed managed read does not substitute
 stale native instructions. Captured-change selections keep their admitted reader.
 
-Successfully selected file and skill text also resolves nested references using
-the same grammar, including JSON string values.
+Only selected files ending in .md, .json or .txt resolve nested references,
+including those in JSON strings. The same extension rule applies to skill files.
 Relative references resolve beside a native source, or in the admitted workspace
 for managed skills. Only selected rows are scanned, never omitted rows or captured
 diffs. The root counts as depth 1; references beyond depth 3 retain visible errors.

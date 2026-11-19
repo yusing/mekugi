@@ -260,8 +260,9 @@ func TestReloadNestedSelectedText(t *testing.T) {
 	testMcat(t)
 	dir := t.TempDir()
 	for name, body := range map[string]string{
-		"state.json": "{\"next\":\"@child\"}\n@not-selected\n",
-		"child":      "child body @leaf @AGENTS.md", "leaf": "leaf body @too-deep",
+		"state.json": "{\"next\":\"@child.md\"}\n@not-selected\n",
+		"child.md":   "child body @leaf.txt @AGENTS.md @code.rs", "leaf.txt": "leaf body @too-deep",
+		"code.rs": "SOURCE_LITERAL @forbidden.txt", "forbidden.txt": "FORBIDDEN_NESTED_CODE",
 		"too-deep": "FORBIDDEN_DEPTH", "AGENTS.md": "HOST_ONLY", "not-selected": "UNSELECTED",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
@@ -274,10 +275,10 @@ func TestReloadNestedSelectedText(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := snapshot.Sources[0].Text()
-	if !strings.Contains(body, "child body") || !strings.Contains(body, "leaf body") || !strings.Contains(body, "depth limit 3 exceeded") || snapshot.Sources[0].ExitCode == 0 || snapshot.Sources[1].ExitCode == 0 {
+	if !strings.Contains(body, "SOURCE_LITERAL @forbidden.txt") || !strings.Contains(body, "child body") || !strings.Contains(body, "leaf body") || !strings.Contains(body, "depth limit 3 exceeded") || snapshot.Sources[0].ExitCode == 0 || snapshot.Sources[1].ExitCode == 0 {
 		t.Fatal(body)
 	}
-	for _, excluded := range []string{"FORBIDDEN_DEPTH", "UNSELECTED", "HOST_ONLY"} {
+	for _, excluded := range []string{"FORBIDDEN_DEPTH", "FORBIDDEN_NESTED_CODE", "UNSELECTED", "HOST_ONLY"} {
 		if strings.Contains(body, excluded) {
 			t.Fatal(body)
 		}
@@ -291,8 +292,8 @@ func TestReloadPunctuatedReferences(t *testing.T) {
 	testMcat(t)
 	dir := t.TempDir()
 	for name, body := range map[string]string{
-		"root.": `Read @child#L2-L2. @"with spaces."#L2-L2! {"next":"@exact."} @missing? \@literal`,
-		"child": "UNSELECTED\nRANGED_CHILD\nUNSELECTED\n", "with spaces.": "UNSELECTED\nRANGED_QUOTED\n",
+		"root.md": `Read @child#L2-L2. @"with spaces."#L2-L2! {"next":"@exact."} @missing? \@literal`,
+		"child":   "UNSELECTED\nRANGED_CHILD\nUNSELECTED\n", "with spaces.": "UNSELECTED\nRANGED_QUOTED\n",
 		"exact.": "EXACT_JSON", "exact": "WRONG_JSON_PATH", "root": "WRONG_SELECTION_PATH", "literal": "WRONG_LITERAL",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
@@ -300,7 +301,7 @@ func TestReloadPunctuatedReferences(t *testing.T) {
 		}
 	}
 	// Explicit selections are exact even without quoting the punctuation-ending path.
-	const selection = `{"sources":["@root."]}`
+	const selection = `{"sources":["@root.md","@exact."]}`
 	snapshot, err := (Readers{}).Read(t.Context(), selection, dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
@@ -316,7 +317,7 @@ func TestReloadPunctuatedReferences(t *testing.T) {
 			t.Fatalf("wrong source acquired: %s", body)
 		}
 	}
-	if snapshot.Selection != selection || len(snapshot.Sources) != 1 || snapshot.Sources[0].ExitCode == 0 || strings.Count(snapshot.Sources[0].Stdout, "exit_code=1") != 1 {
+	if snapshot.Selection != selection || len(snapshot.Sources) != 2 || strings.TrimSpace(snapshot.Sources[1].Stdout) != "EXACT_JSON" || snapshot.Sources[0].ExitCode == 0 || strings.Count(snapshot.Sources[0].Stdout, "exit_code=1") != 1 {
 		t.Fatalf("selection identity or failed-read evidence changed: %+v", snapshot)
 	}
 }
@@ -384,14 +385,14 @@ func TestReloadLiteralReferenceMarkers(t *testing.T) {
 	testMcat(t)
 	dir := t.TempDir()
 	for name, body := range map[string]string{
-		"root":        "@ @@ @@@\n@@ -1,2 +3,4 @@\n@\"with spaces\" @'@'",
+		"root.md":     "@ @@ @@@\n@@ -1,2 +3,4 @@\n@\"with spaces\" @'@'",
 		"with spaces": "quoted path contents", "@": "explicit at-sign path",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	snapshot, err := (Readers{}).Read(t.Context(), `{"sources":[{"path":"root"}]}`, dir, os.Environ())
+	snapshot, err := (Readers{}).Read(t.Context(), `{"sources":[{"path":"root.md"}]}`, dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,12 +440,12 @@ func TestReloadSkillReferences(t *testing.T) {
 func TestReloadNestedShallowerBranch(t *testing.T) {
 	testMcat(t)
 	dir := t.TempDir()
-	for name, body := range map[string]string{"root": "@a @b", "a": "@b", "b": "branch body @c", "c": "reachable leaf"} {
+	for name, body := range map[string]string{"root.md": "@a.txt @b.json", "a.txt": "@b.json", "b.json": "branch body @c", "c": "reachable leaf"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	snapshot, err := (Readers{}).Read(t.Context(), `{"sources":[{"path":"root"}]}`, dir, os.Environ())
+	snapshot, err := (Readers{}).Read(t.Context(), `{"sources":[{"path":"root.md"}]}`, dir, os.Environ())
 	if err != nil {
 		t.Fatal(err)
 	}

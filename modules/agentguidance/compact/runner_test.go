@@ -17,7 +17,7 @@ func TestMessageSourceRunnerSharesNestedBounds(t *testing.T) {
 			body = "ROOT_BYTES @nested"
 		}
 		return CapturedSource{Command: script, Stdout: body}, nil
-	}}).Read(t.Context(), `{"sources":[{"path":"root"}]}`, t.TempDir(), nil)
+	}}).Read(t.Context(), `{"sources":[{"path":"root.md"}]}`, t.TempDir(), nil)
 	if err != nil || len(limits) != 2 || limits[0] != history.MaxRecordBytes || limits[1] >= limits[0] || !strings.Contains(snapshot.Text(), "LEAF_BYTES") {
 		t.Fatalf("shared runner bounds: %v %s %v", limits, snapshot.Text(), err)
 	}
