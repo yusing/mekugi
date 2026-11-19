@@ -24,6 +24,12 @@ func (i ThreadItem) Observation() observation.Item {
 	if i.Type == "agentMessage" || i.Type == "contextCompaction" {
 		out.Text = i.Text
 	}
+	if i.Type == "subAgentActivity" && i.Kind == "started" && i.AgentPath != "" {
+		out.AgentStart = &observation.AgentStart{AgentPath: i.AgentPath, Assignment: i.Assignment, Model: i.Model, ReasoningEffort: i.ReasoningEffort}
+	}
+	if i.Type == "agentSideQuestion" && i.Target != "" {
+		out.SideAnswer = &observation.SideAnswer{Target: i.Target, Question: i.Question, Answer: i.Answer}
+	}
 	if i.Type == "mcpToolCall" {
 		out.Server = i.Server
 		out.Arguments, out.Result, out.Error = slices.Clone(i.Arguments), slices.Clone(i.Result), slices.Clone(i.Error)

@@ -80,6 +80,27 @@ func (s *Attachment) observeWaitItem(entry ActivityEntry) {
 // CoordinationEntry binds the first-party operation to ordinary agent traffic.
 // Host identity remains stable across pending, completed and restored entries.
 func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Item) ActivityEntry {
+	if q := item.SideAnswer; q != nil {
+		from := entry.Agent
+		if from == "/root" {
+			from = "Main"
+		}
+		entry.Kind, entry.Text = "progress", "Side question "+q.Target+" · answered"
+		entry.SideQuestion = &activitypresentation.SideQuestion{From: from, To: q.Target, Question: q.Question, Answer: q.Answer, Answered: true}
+		return entry
+	}
+	if start := item.AgentStart; start != nil {
+		from := entry.Agent
+		if from == "/root" {
+			from = "Main"
+		}
+		entry.Agent, entry.Kind = start.AgentPath, "start"
+		entry.Start = &ActivityStart{Model: start.Model, Effort: start.ReasoningEffort}
+		if start.Assignment != "" {
+			entry.Assignment = &ActivityAssignment{ID: item.ID, From: from, To: start.AgentPath, Text: start.Assignment}
+		}
+		return entry
+	}
 	if item.Type == "collabAgentToolCall" && item.Tool == "wait" {
 		entry.Kind = "progress"
 		wait := &activitypresentation.Value{Kind: "progress", From: entry.Agent, Body: "Waiting for"}

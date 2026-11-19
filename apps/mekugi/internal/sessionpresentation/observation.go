@@ -150,7 +150,13 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 		if p.NativeMessage != nil {
 			message = sessioncontrol.NativeMessage(*p.NativeMessage)
 		}
-		entries = NativeCoordinationEntries(p.ThreadID, p.TurnID, message, p.Coordination, now, p.Inherited || !main)
+		if message.Type == "agent_message" && p.Coordination == nil {
+			if entry, ok := LocalNativeMail(p.ThreadID, s.KnownCaller(p.ThreadID), message, now, p.Inherited || !main); ok {
+				entries = append(entries, entry)
+			}
+		} else {
+			entries = NativeCoordinationEntries(p.ThreadID, p.TurnID, message, p.Coordination, now, p.Inherited || !main)
+		}
 		if entry, ok := NativeSourceAcquisitionEntry(in.Workspace, p.ThreadID, p.TurnID, p.SourceAcquisition, now); ok {
 			entries = append(entries, entry)
 		}
@@ -370,6 +376,10 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 			result.Deliveries = append(result.Deliveries, ActivityDelivery{Command: delivery})
 			entries = append(entries, s.commandDone(entry, item, now)...)
 
+		case "subAgentActivity", "agentSideQuestion":
+			if method == "item/completed" && (item.AgentStart != nil || item.SideAnswer != nil) {
+				entries = append(entries, s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item))
+			}
 		case "collabAgentToolCall":
 			if item.Tool == "wait" {
 				entry := s.CoordinationEntry(ActivityEntry{Seq: s.Activity().NextSequence(), Agent: agent, CallID: id, Observed: now, Native: native}, item)

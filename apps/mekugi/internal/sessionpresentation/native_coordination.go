@@ -132,13 +132,18 @@ func NativeDeliveryEntry(input sessioncontrol.NativeDelivery, item string, at ti
 // end of the message. The local transcript labels that participant Main.
 func LocalNativeMail(thread, task string, item sessioncontrol.NativeMessage, at time.Time, inherited bool) (ActivityEntry, bool) {
 	input, ok := item.Delivery()
-	if !ok || !inherited && task != input.Recipient && (task != input.Sender || input.Kind != "MESSAGE") {
+	outbound := !inherited && task == input.Sender && (input.Kind == "MESSAGE" || input.Kind == "NEW_TASK")
+	if !ok || !inherited && task != input.Recipient && !outbound {
 		return ActivityEntry{}, false
 	}
 	input.Thread = thread
 	entry := NativeDeliveryEntry(input, item.ID, at, inherited)
-	if !inherited && task == input.Sender && entry.Message != nil {
-		entry.Message.From, entry.Message.To = "Main", input.Recipient
+	if outbound {
+		if entry.Assignment != nil {
+			entry.Assignment.From, entry.Assignment.To = "Main", input.Recipient
+		} else {
+			entry.Message.From, entry.Message.To = "Main", input.Recipient
+		}
 	}
 	return entry, true
 }

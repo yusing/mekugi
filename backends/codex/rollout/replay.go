@@ -182,7 +182,7 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 			if rec.Timestamp.IsZero() {
 				return errors.New("event has no timestamp")
 			}
-			if rec.Type == "response_item" && owner != r.Thread && !native.Inherited {
+			if (rec.Type == "response_item" || rec.Payload.Type == "raw_response_item") && owner != r.Thread && !native.Inherited {
 				return nil // Copied ancestor evidence is not new child traffic.
 			}
 			if native.ThreadID == "" {
@@ -216,6 +216,27 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 				owner = r.Thread
 			}
 			return nil
+		case "sub_agent_activity":
+			if owner != r.Thread {
+				return nil
+			}
+			var record struct {
+				Payload struct {
+					EventID                 string `json:"event_id"`
+					AgentPath               string `json:"agent_path"`
+					ReasoningEffort         string `json:"reasoning_effort"`
+					Kind, Assignment, Model string
+				} `json:"payload"`
+			}
+			if err := json.Unmarshal(line, &record, json.MatchCaseInsensitiveNames(true)); err != nil {
+				return err
+			}
+			start := record.Payload
+			if start.Kind != "started" || start.EventID == "" || start.AgentPath == "" {
+				return nil
+			}
+			e.Kind, e.ItemID, e.TurnID, e.Started = observation.ItemCompleted, start.EventID, activeTurn, e.At
+			e.Item = observation.Item{ID: start.EventID, Type: "subAgentActivity", AgentStart: &observation.AgentStart{AgentPath: start.AgentPath, Assignment: start.Assignment, Model: start.Model, ReasoningEffort: start.ReasoningEffort}}
 		case "task_started", "turn_started":
 			if previous := turns[p.Turn]; previous != "" && previous != r.Thread {
 				return nil
@@ -277,6 +298,16 @@ func Replay(ctx context.Context, path string, known map[string]bool) (observatio
 func replayNativeEvent(rec replayRecord, line []byte, thread, turn string) (observation.Event, bool, error) {
 	e := observation.Event{At: rec.Timestamp, ThreadID: thread, TurnID: turn, Inherited: rec.Metadata.Inherited}
 	switch rec.Type + "/" + rec.Payload.Type {
+	case "event_msg/raw_response_item":
+		var item observation.NativeMessage
+		if err := json.Unmarshal(rec.Payload.Item, &item); err != nil {
+			return e, false, err
+		}
+		if item.Type != "agent_message" {
+			return e, false, nil
+		}
+		e.Kind, e.NativeMessage = observation.CoordinationObserved, &item
+		return e, true, nil
 	case "event_msg/agent_coordination":
 		var record struct {
 			Payload observation.AgentCoordination `json:"payload"`
@@ -326,6 +357,10 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 		SavedPath                                          string `json:"saved_path"`
 		SavedArtifact                                      string `json:"savedPath"`
 		Kind                                               string `json:"kind"`
+		AgentPath                                          string `json:"agent_path"`
+		Assignment, Model                                  string
+		Target, Question, Answer                           string
+		ReasoningEffort                                    string `json:"reasoning_effort"`
 		Source                                             string `json:"source"`
 		Type, ID, Status, Text, Delivery, Phase, Cwd, Path string
 		Content                                            jsontext.Value `json:"content"`
@@ -359,7 +394,17 @@ func replayItem(raw jsontext.Value) (observation.Item, bool, error) {
 	if i.Type == "extension" && p.Kind == "image_gen.generation" {
 		i.Type, p.SavedPath = "imageGeneration", p.SavedArtifact
 	}
+	if i.Type == "extension" && p.Kind == "collaboration.side_question" && p.Target != "" {
+		i.Type = "agentSideQuestion"
+	}
 	switch i.Type {
+	case "agentSideQuestion":
+		i.SideAnswer = &observation.SideAnswer{Target: p.Target, Question: p.Question, Answer: p.Answer}
+	case "subAgentActivity":
+		if p.Kind != "started" || p.AgentPath == "" {
+			return i, false, nil
+		}
+		i.AgentStart = &observation.AgentStart{AgentPath: p.AgentPath, Assignment: p.Assignment, Model: p.Model, ReasoningEffort: p.ReasoningEffort}
 	case "collabAgentToolCall":
 		i.ReceiverThreadIDs, i.TimeoutMS = p.ReceiverThreadIDs, p.TimeoutMS
 	case "mcpToolCall":

@@ -79,6 +79,8 @@ const (
 // question options preserve opaque user-content blocks for their own consumer;
 // raw/private reasoning is never included.
 type Item struct {
+	AgentStart                                         *AgentStart
+	SideAnswer                                         *SideAnswer
 	SourceAcquisition                                  *SourceAcquisition
 	CompactionMethod                                   CompactionMethod
 	CompactionContext                                  *Context
@@ -104,6 +106,11 @@ type Item struct {
 	Action                                             *WebSearchAction
 	Results                                            *int
 }
+
+// AgentStart records the accepted child identity, resolved settings and any plaintext assignment.
+type AgentStart struct{ AgentPath, Assignment, Model, ReasoningEffort string }
+
+type SideAnswer struct{ Target, Question, Answer string }
 
 type CommandAction struct{ Type, Command, Path, Query string }
 type WebSearchAction struct {

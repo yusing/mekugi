@@ -361,8 +361,11 @@ func (session *nativeSession) restoreHistoryItem(attached *attachedPresentation,
 				Native: &sessionpresentation.NativeItem{Thread: session.Client.Thread, Turn: turn.ID, Item: item.ID, Phase: "item/completed", Duration: sessionpresentation.ItemDuration(facts), CompactionTimed: facts.DurationMS != nil},
 			}}})
 		}
-	case "mcpToolCall", "collabAgentToolCall":
+	case "mcpToolCall", "collabAgentToolCall", "subAgentActivity", "agentSideQuestion":
 		if item.Type == "collabAgentToolCall" && item.Tool != "wait" {
+			return
+		}
+		if (item.Type == "subAgentActivity" || item.Type == "agentSideQuestion") && (method != "item/completed" || facts.AgentStart == nil && facts.SideAnswer == nil) {
 			return
 		}
 		entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Agent: attached.session.Caller(session.Client.Thread), CallID: item.ID, Observed: presentationTime(clock),
