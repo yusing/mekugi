@@ -1,8 +1,10 @@
 package sessioncontrol
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
 	"testing"
 	"testing/synctest"
 
@@ -42,10 +44,23 @@ func TestInspectionUsesLocalRuntimeHandoff(t *testing.T) {
 	})
 }
 
-func TestAttachmentContextReadsHistoryOncePerWindow(t *testing.T) {
+func TestAttachmentContextReadsHistoryOncePerWindowWithDirectInputDisabled(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		transport := &requestTransport{id: "7"}
 		requests := NewRequests[struct{}](transport)
+		client := &Client[struct{}]{Requests: requests}
+		client.Thread = "child"
+		client.NativeInputPending = true
+		if client.Calls() != nil {
+			t.Fatal("ordinary host calls admitted with direct input disabled")
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		mutation := make(chan error, 1)
+		go func() {
+			_, err := requests.call(ctx, client.Thread, "turn/start", map[string]any{"threadId": client.Thread})
+			mutation <- err
+		}()
 		var cache composer.AttachmentContext
 		draft := composer.Draft{Text: "[Selected 1]", Selections: []composer.Token{{Start: 0, End: 12, Text: "selected bytes"}}}
 		draft.Attachments = []string{attachments.Encode(moduletest.SelectionFrames(draft.Text[draft.Selections[0].Start:draft.Selections[0].End], draft.Selections[0].Source, draft.Selections[0].Text))}
@@ -53,33 +68,42 @@ func TestAttachmentContextReadsHistoryOncePerWindow(t *testing.T) {
 			t.Fatal(err)
 		}
 		content, _ := json.Marshal(moduletest.WithLegacyAttachments(conversationbinding.Input(draft), draft.Attachments))
-		response, _ := json.Marshal(map[string]any{"thread": binding.ThreadInfo{ID: "root", Turns: []binding.HistoryTurn{{Items: []binding.ThreadItem{{ID: "user", Type: "userMessage", Content: content}, {ID: "reset", Type: "contextCompaction", Status: "completed"}}}}}})
+		response, _ := json.Marshal(map[string]any{"thread": binding.ThreadInfo{ID: client.Thread, Turns: []binding.HistoryTurn{{Items: []binding.ThreadItem{{ID: "user", Type: "userMessage", Content: content}, {ID: "reset", Type: "contextCompaction", Status: "completed"}}}}}})
 		for _, window := range []string{"one", "one", "two", "two"} {
 			result := make(chan composer.AttachmentSnapshot, 1)
 			failure := make(chan error, 1)
 			go func() {
-				values, err := requests.ContextAttachments(t.Context(), "root", window)
+				values, err := requests.ContextAttachments(ctx, client.Thread, window)
 				failure <- err
 				result <- values
 			}()
 			query := <-requests.Inspections()
 			_, cached := cache.Get(window)
-			query.CompleteAttachments("root", &cache)
+			if query.Target() != client.Thread || query.ContextWindow() != window {
+				t.Fatalf("unexpected cache inspection: target=%q window=%q", query.Target(), query.ContextWindow())
+			}
+			query.CompleteAttachments(client.Thread, &cache)
 			if !cached {
-				call := <-requests.Calls()
+				synctest.Wait()
+				var inspection *Inspection
+				select {
+				case inspection = <-requests.Inspections():
+				default:
+					t.Fatal("cold-window history is not available on the inspection lane")
+				}
+				call := inspection.measurement
 				var params struct {
 					Thread  string `json:"threadId"`
 					Include bool   `json:"includeTurns"`
 				}
-				if json.Unmarshal(call.params, &params) != nil || call.method != "thread/read" || params.Thread != "root" || !params.Include {
-					t.Fatalf("unexpected history acquisition: %s %s", call.method, call.params)
+				if call == nil || json.Unmarshal(call.params, &params) != nil || call.method != "thread/read" || params.Thread != client.Thread || !params.Include {
+					t.Fatalf("unexpected history acquisition: %+v", call)
 				}
-				requests.Dispatch(call)
-				if !requests.CompleteCall(appserver.Message{ID: jsontext.Value(`7`), Result: response}) {
+				if !requests.DispatchMeasurement(inspection) || !client.CompleteCall(appserver.Message{ID: jsontext.Value(`7`), Result: response}) {
 					t.Fatal("history reply not consumed")
 				}
 				query = <-requests.Inspections()
-				query.CompleteAttachments("root", &cache)
+				query.CompleteAttachments(client.Thread, &cache)
 			}
 			values := (<-result).Values
 			if err := <-failure; err != nil {
@@ -97,6 +121,11 @@ func TestAttachmentContextReadsHistoryOncePerWindow(t *testing.T) {
 		}
 		if len(transport.sends) != 2 {
 			t.Fatalf("history read count=%d", len(transport.sends))
+		}
+		cancel()
+		err := <-mutation
+		if failure, ok := errors.AsType[*binding.DispatchError](err); !ok || failure.Outcome != binding.NotDispatched || !errors.Is(err, context.Canceled) {
+			t.Fatalf("direct-input mutation did not remain gated: %v", err)
 		}
 	})
 }

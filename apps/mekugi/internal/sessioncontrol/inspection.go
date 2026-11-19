@@ -49,7 +49,7 @@ func (r *Requests[T]) ContextAttachments(ctx context.Context, thread, window str
 }
 
 func (r *Requests[T]) attachmentHistory(ctx context.Context, thread string) ([]binding.HistoryTurn, error) {
-	raw, err := r.call(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": true})
+	raw, err := r.callInspection(ctx, thread, "thread/read", map[string]any{"threadId": thread, "includeTurns": true})
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (r *Requests[T]) attachmentHistory(ctx context.Context, thread string) ([]b
 
 // ReadThreadDetails observes native facts without restoring or starting the thread.
 func (r *Requests[T]) ReadThreadDetails(ctx context.Context, thread string) (observation.SessionDetails, error) {
-	raw, err := r.call(ctx, thread, "thread/inspect", map[string]any{"threadId": thread})
+	raw, err := r.callInspection(ctx, thread, "thread/inspect", map[string]any{"threadId": thread})
 	if err != nil {
 		return observation.SessionDetails{}, err
 	}

@@ -35,9 +35,17 @@ type hostCallResult struct {
 
 func (r *Requests[T]) Calls() <-chan *HostCall { return r.calls }
 
-// call may run in an MCP handler. Cancellation before dispatch prevents the
-// operation; cancellation after dispatch relinquishes observation, not execution.
 func (r *Requests[T]) call(ctx context.Context, scope, method string, params any) (jsontext.Value, error) {
+	return r.callHost(ctx, scope, method, params, false)
+}
+
+func (r *Requests[T]) callInspection(ctx context.Context, scope, method string, params any) (jsontext.Value, error) {
+	return r.callHost(ctx, scope, method, params, true)
+}
+
+// callHost may run in an MCP handler. Cancellation before dispatch prevents the
+// operation; cancellation after dispatch relinquishes observation, not execution.
+func (r *Requests[T]) callHost(ctx context.Context, scope, method string, params any, inspection bool) (jsontext.Value, error) {
 	raw, err := json.Marshal(params)
 	if err != nil || scope == "" {
 		return nil, &binding.DispatchError{Outcome: binding.NotDispatched, Method: method, Cause: errors.Join(errors.New("native operation requires a thread and valid parameters"), err)}
@@ -52,7 +60,7 @@ func (r *Requests[T]) call(ctx context.Context, scope, method string, params any
 	}
 	calls := r.calls
 	var inspections chan *Inspection
-	if method == "featureUse/read" || method == "thread/inspect" || method == "thread/subtree/list" || method == "agent/foreign/receive" {
+	if inspection {
 		calls, inspections = nil, r.inspections
 	}
 	select {
@@ -81,7 +89,7 @@ func (r *Requests[T]) call(ctx context.Context, scope, method string, params any
 
 func (r *Requests[T]) ExternalForeignReceive(ctx context.Context, root string, request appserver.AgentForeignRequest) (appserver.AgentForeignResponse, error) {
 	var response appserver.AgentForeignResponse
-	raw, err := r.call(ctx, root, "agent/foreign/receive", request)
+	raw, err := r.callInspection(ctx, root, "agent/foreign/receive", request)
 	if err == nil {
 		err = json.Unmarshal(raw, &response)
 	}

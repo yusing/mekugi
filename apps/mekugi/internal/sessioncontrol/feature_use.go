@@ -33,7 +33,7 @@ func (r *Requests[T]) readFeatureUse(ctx context.Context, threads []string) (map
 	if len(threads) == 0 || threads[0] == "" {
 		return nil, errors.New("feature measurement requires an actor")
 	}
-	raw, err := r.call(ctx, threads[0], "featureUse/read", struct {
+	raw, err := r.callInspection(ctx, threads[0], "featureUse/read", struct {
 		Threads []string `json:"threads"`
 	}{threads})
 	if err != nil {
