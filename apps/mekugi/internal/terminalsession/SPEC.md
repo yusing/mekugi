@@ -391,20 +391,28 @@ that result. Reopening rereads without monitoring.
 HTTP(S) links copy destinations in transcripts and do nothing on dialog click.
 The application resolves and reads files; rendering receives their content or error.
 
-`/ps` opens an inline Background list below the composer, not a modal dialog,
-with active-shell count, syntax-highlighted command, owner and status.
-Up/Down selects a process; Enter or a row click opens Shell details in the same
-inline surface. The list and details show the current tracked command when known;
-details keep that command visible while scrolling the invocation source and output.
-Runtime and status describe the whole invocation.
-Left returns to the list;
-Escape closes either view, and Enter/Space also closes details. Output remains
-scrollable and searchable. Completed processes stay in the open list until it
-closes; reopening lists only live processes. New live processes join in start order.
-`x` (or `s`) requests the selected process's stop when the host
-has supplied a process identity. Stopping dismisses the surface so admission or
-host failures remain visible. A completed or replaced process cannot redirect
-the request to another invocation. Closing the surface alone leaves work running.
+`/ps` and the running-process count open the same inline process inspector in
+Main, hiding the composer without losing its draft. One running shell opens
+directly in details. With multiple shells, Up/Down selects one and Enter or a
+row click opens its details. Left backs out one level, preserving the selected
+process on return to the list. Escape closes the inspector without stopping work.
+
+Details pin the owner, status, runtime and command on separate rows above a
+framed output viewport. The inspector starts at its content height and grows
+with output up to half the Main pane, or its minimum height in a short pane.
+Only output scrolls; search and selection operate within it. Live output follows
+the tail until the reader scrolls away. The frame shows new lines without moving
+the viewport, and End returns to the tail. Long commands fit into the available
+space; `v` opens the full syntax-highlighted invocation, `y` copies it, and
+Left returns to the same output position. Completions from other shells appear
+as a one-line notice without changing the selected process or its viewport.
+
+Completed processes stay in the open list until it closes; reopening lists only
+live processes. New live processes join in start order. `x` (or `s`) requests
+the selected process's stop when the host has supplied a process identity.
+Stopping dismisses the inspector so admission or host failures remain visible.
+A completed or replaced process cannot redirect the request to another
+invocation.
 
 ## Selection and source copy
 

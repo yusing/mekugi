@@ -114,6 +114,8 @@ func (session *nativeSession) applyEffect(attached *attachedPresentation, termin
 		switch intent.Kind {
 		case terminalsession.ErrorDetails:
 			openErrorDetails(attached, terminal, files, surface, intent.View)
+		case terminalsession.ProcessDetails:
+			files.openRunningProcesses(attached)
 		case terminalsession.SkillDetails:
 			openSkills(attached, terminal, files, surface, intent.View, intent.Caller)
 		}

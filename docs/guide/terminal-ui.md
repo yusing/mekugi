@@ -40,13 +40,14 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   active user/profile configuration and labels.
   Existing Mekugi preset files remain untouched and unused. Presets contain text,
   not attachments.
-- A breathing count shows running commands from Main and its children. `/ps` opens
-  the Background list below the composer, without a dialog. Select with Up/Down
-  and press Enter to view the syntax-highlighted command, status, runtime and live
-  output in the same area. Left returns to the list; Escape closes, and Enter or
-  Space also closes details. Press `x` (or `s`) to stop the selected process when
-  the host provides its process identity. Viewing or closing leaves work running;
-  stopping closes the process view and reports failures.
+- Type `/ps` or click the running-process count to inspect commands from
+  Main and its children without stopping them. One running shell opens directly;
+  otherwise use Up/Down and Enter to select a shell. The composer is hidden,
+  but your draft stays intact. Only the output frame scrolls; End resumes
+  following live output. Press `v` to open the exact invocation and `y` to
+  copy it. Left backs out one level and Esc closes the inspector. Press `x`
+  (or `s`) to stop the selected shell when available. Stopping dismisses the
+  inspector so failures stay visible.
 - `@` attaches files; `@!` includes ignored files. VCS metadata is excluded;
   unreadable/oversized content has omission notices. Directories attach two-level
   trees honoring `.gitignore`, bounded to 256 entries/16 KiB with truncation notices.

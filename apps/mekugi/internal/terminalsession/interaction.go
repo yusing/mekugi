@@ -30,6 +30,7 @@ type DetailKind uint8
 const (
 	ErrorDetails DetailKind = iota + 1
 	SkillDetails
+	ProcessDetails
 )
 
 type DetailInput struct {

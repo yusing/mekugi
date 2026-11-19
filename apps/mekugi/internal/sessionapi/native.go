@@ -201,10 +201,11 @@ type NativeQuestionAnswer struct {
 type NativeDetailKind string
 
 const (
-	NativeEntryDetails NativeDetailKind = "entry"
-	NativeFileDetails  NativeDetailKind = "file"
-	NativeErrorDetails NativeDetailKind = "error"
-	NativeSkillDetails NativeDetailKind = "skills"
+	NativeEntryDetails   NativeDetailKind = "entry"
+	NativeFileDetails    NativeDetailKind = "file"
+	NativeErrorDetails   NativeDetailKind = "error"
+	NativeSkillDetails   NativeDetailKind = "skills"
+	NativeProcessDetails NativeDetailKind = "processes"
 )
 
 type NativeDetailRequest struct {

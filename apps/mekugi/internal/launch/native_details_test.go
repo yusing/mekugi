@@ -3,11 +3,14 @@ package launch
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -451,4 +454,46 @@ func (r *nativeClientRenderer) updateNativeDetailTest(view *nativeSessionView) {
 	frame.Main = view.attached.source.Publication(view.attached.presentation, nil)
 	frame.Agents = view.attached.childSource.Publication(view.attached.presentation, view.attached.source)
 	r.update(frame, frame.View.Draft, frame.View.PromptDraft, time.Now())
+}
+
+func TestNativeRunningCountOpensProcessesWithoutConsumingDraft(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	_, view, _ := nativeDetailTestViews(t, u)
+	c := nativeTestPromptClient(u)
+	c.editor("main").InsertText("keep this draft")
+	for i := range 2 {
+		processNotify(t, u, "main", fmt.Sprint(i), "sleep 30", "inProgress")
+		publishSessionView(&view.attached, &u.Client, &view.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, nil, true)
+		frame := nativeDetailFrame(view)
+		c.accept(sessionapi.NativeEvent{Attachment: "first", Frame: frame})
+		c.calls = nil
+		terminal := c.renderer.terminal
+		terminal.Width, terminal.Height = 100, 32
+		rendered, err := c.renderer.render(t.Context(), io.Discard, time.Now(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, _ := terminalsession.Screen(100, 32, rendered.Rows, -1, -1)
+		for y := range rows {
+			rows[y] = ansi.Strip(rows[y])
+		}
+		x, y := dialogFramePoint(t, rows, fmt.Sprintf("%d running processes", i+1))
+		x, y = x+1, y+1
+		c.dispatch(terminalsession.Input{Kind: terminalsession.MouseInput, Text: fmt.Sprintf("\x1b[<0;%d;%dM", x, y)})
+		if len(c.calls) != 1 || c.calls[0].operation.Details == nil ||
+			c.calls[0].operation.Details.Kind != sessionapi.NativeProcessDetails {
+			t.Fatal("click did not request process inspection without composer input")
+		}
+		if refusal := view.applyView(c.calls[0].operation); refusal != "" {
+			t.Fatal(refusal)
+		}
+		newFrame := nativeDetailFrame(view)
+		c.accept(sessionapi.NativeEvent{Attachment: "first", Frame: newFrame})
+		if d := terminal.Dialog; d == nil || len(d.Pages) != i+1 ||
+			d.ProcessDetail != (i == 0) || c.editor("main").Text != "keep this draft" {
+			t.Fatal("click did not open the expected process view")
+		}
+		view.files.closeOutput()
+	}
 }

@@ -37,6 +37,8 @@ type Dialog struct {
 	Page, top     int
 	follow        bool
 	rows          int
+	bodyOffset    int // Additional fixed rows above the scrollable body.
+	bodyInset     int // Additional horizontal chrome around the body.
 	rect          Rect
 	body          []string
 	indents       []int
@@ -435,8 +437,12 @@ func (d *Dialog) Mouse(button, x, y int, release bool) DialogIntent {
 }
 
 // Source: apps/mekugi/internal/router/terminal_selection.go:77:185@563f0c37.
+func (d *Dialog) bodyRect() Rect {
+	return Rect{d.rect.X + 2 + d.bodyInset, d.rect.Y + d.Chrome() - 1 + d.bodyOffset, d.rect.W - 4 - 2*d.bodyInset, d.rows}
+}
+
 func (d *Dialog) selectionMouse(button, x, y int, release bool) (DialogIntent, bool) {
-	body := Rect{d.rect.X + 2, d.rect.Y + d.Chrome() - 1, d.rect.W - 4, d.rows}
+	body := d.bodyRect()
 	mouseX, mouseY := x-body.X, y-body.Y
 	if s := d.Selection; s != nil {
 		if s.Mouse(button, mouseX, mouseY, release) {

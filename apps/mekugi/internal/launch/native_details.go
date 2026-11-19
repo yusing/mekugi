@@ -96,6 +96,8 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		}
 	case sessionapi.NativeErrorDetails:
 		v.files.openErrorDetails(&v.attached, source)
+	case sessionapi.NativeProcessDetails:
+		v.files.openRunningProcesses(&v.attached)
 	case sessionapi.NativeSkillDetails:
 		v.files.openSkills(&v.attached, source, request.Caller)
 	case sessionapi.NativeEntryDetails:

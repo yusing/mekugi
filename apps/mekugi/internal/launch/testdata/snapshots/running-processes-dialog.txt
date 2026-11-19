@@ -1,5 +1,5 @@
 "  \x1b[38;2;86;212;221m────────────────────────────────────────────────────────────────────────────\x1b[m  "
-"  \x1b[38;2;86;212;221mBackground\x1b[m  2 active shells · 1 / 2                                           "
+"  \x1b[1mBackground\x1b[m  2 active shells · 1 / 2                                           "
 "                                                                                "
 "  \x1b[38;2;86;212;221m❯ \x1b[mmain · \x1b[38;2;210;168;255mgo\x1b[m \x1b[38;2;242;192;120mtest\x1b[m ./...                                              running   "
 "    worker · \x1b[38;2;242;192;120mcd\x1b[m ~/projects/example \x1b[38;2;255;123;114m&&\x1b[m \x1b[38;2;210;168;255mgo\x1b[m \x1b[38;2;242;192;120mtest\x1b[m ./... -run TestBackgr…  running   "

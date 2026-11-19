@@ -20,9 +20,10 @@ func (m *Main) Update(view sessionpresentation.View) {
 }
 
 type MainOptions struct {
-	Now     time.Time
-	Focused bool
-	Version string
+	Now          time.Time
+	Focused      bool
+	HideComposer bool
+	Version      string
 }
 
 // Render paints the attached views without resolving source output. The application
@@ -42,7 +43,7 @@ func (m *Main) Render(transcript *activityui.View, painter *activityui.Painter, 
 	picker := presentation.ReadOnly == sessionpresentation.Editable && m.Menu.Open() && options.Focused
 	width, height = max(1, width), max(1, height)
 	m.Menu.Rect, m.PromptRect = Rect{}, Rect{}
-	m.NoticeDetails, m.NoticeDismiss = Rect{}, Rect{}
+	m.NoticeDetails, m.NoticeDismiss, m.ProcessCount = Rect{}, Rect{}, Rect{}
 	prompts.Rect = Rect{}
 	if !readOnly && presentation.Panel != nil {
 		m.ContentPainted = false
@@ -60,7 +61,8 @@ func (m *Main) Render(transcript *activityui.View, painter *activityui.Painter, 
 		return MainFrame{Rows: m.Menu.ModalFrame(transcript, options.Now, width, height), Demands: transcript.OutputDemands()}
 	}
 	in := mainInput{
-		Session: presentation, Draft: presentation.Draft.Draft, Now: options.Now, ReadOnly: readOnly,
+		HideComposer: options.HideComposer,
+		Session:      presentation, Draft: presentation.Draft.Draft, Now: options.Now, ReadOnly: readOnly,
 		Focused: options.Focused, Empty: transcript.Empty(),
 		Picker: picker, Welcome: welcome(options.Version, presentation.Info.BackendVersion), Selection: SelectionStyle(&painter.Painter), TurnIdle: presentation.Interrupt.Turn == "",
 	}

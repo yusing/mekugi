@@ -23,6 +23,7 @@ type ContentDialog struct {
 	Pages         []sessionpresentation.DetailItem
 	Processes     bool
 	ProcessDetail bool
+	process       processPane
 	File          *activitypresentation.DetailFile
 	Image         *terminalui.ImagePreview // Borrowed from the physical frontend's image cache.
 	ImageReady    bool
@@ -52,6 +53,9 @@ type contentDialogKey struct {
 func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 	if d.ID != view.ID {
 		return
+	}
+	if view.Processes {
+		d.updateProcesses(view)
 	}
 	d.Pages, d.Processes, d.Revision = view.Pages, view.Processes, view.Revision
 	tabs := make([]DialogTab, len(d.Pages))
@@ -179,7 +183,7 @@ func (d *ContentDialog) ImageSource() terminalui.ImageSource {
 
 func (d *ContentDialog) Paint(rows []string, width, height int) {
 	if d.Processes {
-		d.PaintProcesses(rows, Rect{W: width, H: height})
+		d.paintProcesses(rows, Rect{W: width, H: height}, height)
 		return
 	}
 	bodyWidth := d.Prepare(width, height)
@@ -215,7 +219,7 @@ func (d *ContentDialog) Invalidate() { d.laidKey = contentDialogKey{} }
 // Key toggles the selected output without changing the application's page identity.
 func (d *ContentDialog) Key(key string) DialogIntent {
 	if d.Selection == nil && len(d.Pages) > 0 && d.width > 0 {
-		d.Layout(d.width)
+		d.Layout(d.width + d.bodyInset*2)
 	}
 	if d.Processes && d.Selection == nil && !d.Typing {
 		return d.processKey(key)
@@ -232,7 +236,7 @@ func (d *ContentDialog) Key(key string) DialogIntent {
 				d.Invalidate()
 				// Copy and search immediately after toggling use the selected document.
 				if d.width > 0 {
-					d.Layout(d.width)
+					d.Layout(d.width + d.bodyInset*2)
 				}
 			}
 		}
@@ -243,17 +247,32 @@ func (d *ContentDialog) Key(key string) DialogIntent {
 
 // Mouse synchronizes selected content before a gesture can freeze its document.
 func (d *ContentDialog) Mouse(button, x, y int, release bool) DialogIntent {
-	if d.Processes && d.rect.Contains(x, y) && y < d.rect.Y+d.Chrome()-1 && button&^28 == 0 {
-		return DialogIntent{}
-	}
-	if d.Processes && !d.ProcessDetail {
-		return d.processMouse(button, x, y, release)
+	if d.Processes {
+		if !d.ProcessDetail {
+			return d.processMouse(button, x, y, release)
+		}
+		body := d.bodyRect()
+		switch button &^ 28 {
+		case 64, 65:
+			if !body.Contains(x, y) {
+				return DialogIntent{}
+			}
+		case 0:
+			if d.Selection == nil && d.rect.Contains(x, y) && y < body.Y+d.rows &&
+				!body.Contains(x, y) {
+				return DialogIntent{}
+			}
+		}
 	}
 	if d.Selection == nil && len(d.Pages) > 0 && d.width > 0 {
-		d.Layout(d.width)
+		d.Layout(d.width + d.bodyInset*2)
 		if button&^28 == 0 && !release {
 			d.layoutBody()
 		}
 	}
-	return d.Dialog.Mouse(button, x, y, release)
+	intent := d.Dialog.Mouse(button, x, y, release)
+	if d.Processes && !release && button&^28 == 65 {
+		d.observeProcessTail()
+	}
+	return intent
 }

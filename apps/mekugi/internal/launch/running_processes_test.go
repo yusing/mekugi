@@ -3,11 +3,13 @@ package launch
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
@@ -81,7 +83,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	for i := range 30 {
 		appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "cmd", "delta": fmt.Sprintf("output %02d\n", i)})
 		if i == 0 {
-			if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "● live") || !strings.Contains(got, "output 00") {
+			if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "Following") || !strings.Contains(got, "output 00") {
 				t.Fatalf("dialog did not stream live output: %s", got)
 			}
 		}
@@ -91,7 +93,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	}
 	// The open page keeps its final output; the next /ps omits it.
 	processNotify(t, u, "child", "cmd", "make test", "completed")
-	if got := drawOutputDialog(terminalTest(u)); runningProcessCount(&u.attached.session) != 1 || strings.Contains(got, "● live") || !strings.Contains(got, "output 29") || !strings.Contains(got, "exit 0") {
+	if got := drawOutputDialog(terminalTest(u)); runningProcessCount(&u.attached.session) != 1 || strings.Contains(got, "Following") || !strings.Contains(got, "output 29") || !strings.Contains(got, "exit 0") {
 		t.Fatalf("completed command lost its open page: %s", got)
 	}
 	entries := make([]sessionpresentation.ActivityEntry, liveActivityFeedLimit)
@@ -126,7 +128,6 @@ func TestUISnapshotRunningProcessesTrackedCompletion(t *testing.T) {
 	script := "cat > edit.py <<'PY'\nprint('start')\n" + strings.Repeat("print('editing')\n", 48) + "print('end')\nPY\npython3 edit.py\nmrun --max-tokens 4000 " + command
 	processNotify(t, u, "main", "cmd", "/usr/bin/bash -lc "+quoteShellWord(script), "inProgress")
 	appServerTestKeys(t, u, "/ps\r")
-	terminalTest(u).outputKey("\r")
 	const width, height = 112, 12
 	processDialog(u, width, height)
 	terminalTest(u).Dialog.Key("g") // Inspect the beginning before tracking starts.
@@ -150,22 +151,27 @@ func TestUISnapshotRunningProcessesTrackedCompletion(t *testing.T) {
 	appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "processId": "42"})
 	now = now.Add(2*time.Minute + 43*time.Second)
 	updated := processDialog(u, width, height)
+	d := terminalTest(u).Dialog
+	d.Key("v")
+	expanded := processDialog(u, width, height)
+	if got := ansi.Strip(strings.Join(expanded, "\n")); !strings.Contains(got, "print('start')") || strings.Contains(got, "print('end')") {
+		t.Fatalf("invocation did not open at its start:\n%s", got)
+	}
+	if got := d.Key("y"); got.Action != terminalsession.DialogCopy || got.Text != script {
+		t.Fatal("invocation copy lost the original script")
+	}
+	d.Key("\x1b[D")
 	terminalTest(u).outputKey("\x1b")
 	appServerTestKeys(t, u, "/ps\r")
-	terminalTest(u).outputKey("\r") // A newly opened live detail follows the tail.
 	opened := processDialog(u, width, height)
 	for _, frame := range [][]string{updated, opened} {
-		if got := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(got, "Command: "+command) {
-			t.Fatalf("active command outside viewport:\n%s", got)
+		got := ansi.Strip(strings.Join(frame, "\n"))
+		if !strings.Contains(got, "Command: "+command) || !strings.Contains(got, "Waiting for output…") ||
+			strings.Contains(got, "print('start')") || strings.Contains(got, "print('end')") {
+			t.Fatalf("active command or the distinct output viewport was lost:\n%s", got)
 		}
 	}
-	if got := ansi.Strip(strings.Join(updated, "\n")); !strings.Contains(got, "print('start')") || strings.Contains(got, "print('end')") {
-		t.Fatalf("update lost paused viewport:\n%s", got)
-	}
-	if got := ansi.Strip(strings.Join(opened, "\n")); !strings.Contains(got, "print('end')") || strings.Contains(got, "print('start')") {
-		t.Fatalf("opening no longer follows tail:\n%s", got)
-	}
-	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-active-segment.txt", append(updated, opened...), width)
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-active-segment.txt", append(updated, expanded...), width)
 	stop := terminalTest(u).Dialog.Key("x")
 	if stop.Process == nil || stop.Process.ID != "42" || stop.Process.Item != "cmd" {
 		t.Fatal("tracked command lost late Stop identity")
@@ -319,8 +325,10 @@ func TestRunningProcessesDetailNavigation(t *testing.T) {
 		t.Fatalf("resize hid selected process: %s", got)
 	}
 	d.Key("\r")
-	got := strings.Join(processDialog(u, 100, 24), "\n")
-	if !strings.Contains(got, "Shell details") || !strings.Contains(got, "No output available") || !strings.Contains(got, "Status:  running") {
+	got := ansi.Strip(strings.Join(processDialog(u, 100, 24), "\n"))
+	if !strings.Contains(got, "Status: running") ||
+		!strings.Contains(got, "Command: sleep 24") || strings.Count(got, "sleep 24") != 1 ||
+		!strings.Contains(got, "Waiting for output…") {
 		t.Fatalf("missing selected process details: %s", got)
 	}
 	for _, key := range []string{"/", "not-found", "\r"} {
@@ -330,7 +338,7 @@ func TestRunningProcessesDetailNavigation(t *testing.T) {
 		t.Fatalf("failed search hid its result: %s", got)
 	}
 	now = now.Add(124 * time.Second)
-	if got := strings.Join(processDialog(u, 100, 24), "\n"); !strings.Contains(got, "Runtime: 2m4s") {
+	if got := strings.Join(processDialog(u, 100, 24), "\n"); !strings.Contains(ansi.Strip(got), "Runtime: 2m4s") {
 		t.Fatalf("runtime did not advance without output: %s", got)
 	}
 	if d.Key("x").Process != nil {
@@ -351,7 +359,7 @@ func TestRunningProcessesDetailNavigation(t *testing.T) {
 		t.Fatal("completed process remained stoppable")
 	}
 	d.Key("\r")
-	if got := strings.Join(processDialog(u, 100, 24), "\n"); !strings.Contains(got, "Status:  exit 1") {
+	if got := strings.Join(processDialog(u, 100, 24), "\n"); !strings.Contains(ansi.Strip(got), "Status: exit 1") {
 		t.Fatalf("failed completion lost its status: %s", got)
 	}
 	for _, key := range []string{"\r", " "} {
@@ -396,6 +404,10 @@ func TestUISnapshotRunningProcessesInline(t *testing.T) {
 	}
 	processNotify(t, u, "main", "cmd", "printf '%s\\n' \"$HOME\" && sleep 30", "inProgress")
 	appServerTestKeys(t, u, "/ps\r")
+	if !terminalTest(u).Dialog.ProcessDetail {
+		t.Fatal("a single running shell should open directly in details")
+	}
+	terminalTest(u).outputKey("\x1b[D")
 	for _, detail := range []bool{false, true} {
 		if detail {
 			terminalTest(u).outputKey("\r")
@@ -414,7 +426,7 @@ func TestUISnapshotRunningProcessesInline(t *testing.T) {
 			text := ansi.Strip(strings.Join(rows, "\n"))
 			title := "Background"
 			if detail {
-				title = "Shell details"
+				title = "Status: running"
 			}
 			panelRow := -1
 			for i, row := range rows {
@@ -422,11 +434,128 @@ func TestUISnapshotRunningProcessesInline(t *testing.T) {
 					panelRow = i
 				}
 			}
-			composer := terminal.Main.ComposerRect
-			if composer.H == 0 || panelRow < terminal.Shell.Layout.Main.Y+composer.Y+composer.H || strings.Contains(text, "[×]") {
-				t.Fatalf("process surface is not below composer: %s", text)
+			if terminal.Main.ComposerRect.H != 0 || panelRow < 0 || strings.Contains(text, "[×]") {
+				t.Fatalf("process surface or hidden composer not rendered as expected: %s", text)
 			}
 			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/running-processes-inline-%t-%t.txt", detail, external), append(rows, "plain"), 100)
 		}
 	}
+}
+
+func TestRunningProcessesOutputViewport(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	now := time.Unix(1000, 0)
+	u.clock = func() time.Time { return now }
+	u.testActivity(u.shell.Agents).Clock = u.clock
+	const command = "printf first\nprintf second"
+	processNotify(t, u, "main", "primary", command, "inProgress")
+	processNotify(t, u, "main", "other", "go test ./...", "inProgress")
+	appServerTestKeys(t, u, "/ps\r")
+	terminalTest(u).outputKey("\r")
+	d := terminalTest(u).Dialog
+	output := func(first, end int) {
+		for i := first; i < end; i++ {
+			appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{
+				"threadId": "main", "turnId": "t", "itemId": "primary",
+				"delta": fmt.Sprintf("log %02d\n", i),
+			})
+		}
+	}
+	screen := func() []string {
+		return renderedDialogRows(processDialog(u, 80, 10), 80)
+	}
+	output(0, 20)
+	rows := screen()
+	_, owner := dialogFramePoint(t, rows, "main")
+	_, status := dialogFramePoint(t, rows, "Status: running")
+	_, runtime := dialogFramePoint(t, rows, "Runtime:")
+	_, commandRow := dialogFramePoint(t, rows, "Command:")
+	if status != owner+1 || runtime != status+1 || commandRow != runtime+1 {
+		t.Fatalf("process metadata does not occupy separate rows: %q", rows)
+	}
+	if !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "Following") {
+		t.Fatalf("opening did not follow output: %q", rows)
+	}
+	d.Key("g")
+	rows = screen()
+	x, y := dialogFramePoint(t, rows, "Command:")
+	d.Mouse(65, x, y, false) // The pinned command does not scroll the log.
+	before := screen()
+	if !strings.Contains(ansi.Strip(strings.Join(before, "\n")), "log 00") {
+		t.Fatal("wheel outside output moved the viewport")
+	}
+	output(20, 23)
+	processNotify(t, u, "main", "other", "go test ./...", "failed")
+	after := screen()
+	plain := ansi.Strip(strings.Join(after, "\n"))
+	_, top := dialogFramePoint(t, before, "log 00")
+	if d.Page != 0 || before[top] != after[top] ||
+		!slices.Equal(rows[owner:commandRow+1], after[owner:commandRow+1]) ||
+		!strings.Contains(plain, "23 lines · +3 new · End to follow") ||
+		!strings.Contains(plain, "go test ./... · exit 1 ·") ||
+		strings.Contains(plain, "paused") || strings.Contains(plain, "log 22") {
+		t.Fatalf("output or completion moved the reader:\n%s", plain)
+	}
+	d.Key("v")
+	if copied := d.Key("y"); copied.Action != terminalsession.DialogCopy || copied.Text != command {
+		t.Fatalf("copy invocation: %+v", copied)
+	}
+	d.Key("\x1b[D")
+	if got := screen(); got[top] != before[top] {
+		t.Fatal("invocation view lost the log position")
+	}
+	d.Key("\x1b[F")
+	plain = ansi.Strip(strings.Join(screen(), "\n"))
+	if !strings.Contains(plain, "log 22") || !strings.Contains(plain, "Following") {
+		t.Fatalf("End did not resume following:\n%s", plain)
+	}
+	d.Key("\x1b[D")
+	if d.ProcessDetail || d.Page != 0 || d.Key("\x1b[D").Action != terminalsession.DialogClose {
+		t.Fatal("Left did not return to the same process, then close")
+	}
+}
+
+func TestRunningProcessesInlineHeight(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	u.shell.Shell.SetExternalPanes(true)
+	processNotify(t, u, "main", "cmd", "sleep 30", "inProgress")
+	appServerTestKeys(t, u, "/ps\r")
+	output := func(delta string) {
+		t.Helper()
+		appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{
+			"threadId": "main", "turnId": "t", "itemId": "cmd", "delta": delta,
+		})
+	}
+	const width, height = 100, 32
+	screen := vt.NewEmulator(width, height)
+	defer screen.Close()
+	check := func(want int, visible string) {
+		t.Helper()
+		if err := u.testPaint(screen, width, height); err != nil {
+			t.Fatal(err)
+		}
+		rows := strings.Split(ansi.Strip(screen.String()), "\n")
+		_, status := dialogFramePoint(t, rows, "Status: running")
+		_, bottom := dialogFramePoint(t, rows, "╰─")
+		if status < 2 || !strings.Contains(rows[status-2], "────") {
+			t.Fatalf("missing divider above process details:\n%s", screen.String())
+		}
+		if got := bottom - status + 4; got != want {
+			t.Fatalf("process panel height = %d, want %d:\n%s", got, want, screen.String())
+		}
+		dialogFramePoint(t, rows[status:bottom], visible)
+	}
+	check(9, "Waiting for output…")
+	output("first\n")
+	check(9, "first")
+	output(strings.Repeat("x", 100) + "\n")
+	check(11, "Output · 2 lines")
+	for i := range 25 {
+		output(fmt.Sprintf("log %02d\n", i))
+	}
+	check(16, "log 24")
+	terminalTest(u).Dialog.Key("v")
+	check(9, "Invocation")
+	terminalTest(u).Dialog.Key("\x1b[D")
+	check(16, "log 24")
 }

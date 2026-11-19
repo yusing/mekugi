@@ -1,18 +1,21 @@
 package terminalsession
 
 import (
+	"cmp"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func (d *ContentDialog) processStatus(index int) string {
-	page := d.Pages[index]
+func processStatus(page sessionpresentation.DetailItem) string {
 	switch {
 	case page.Running:
 		return "running"
@@ -23,70 +26,206 @@ func (d *ContentDialog) processStatus(index int) string {
 	}
 }
 
-// PaintProcesses paints an inline surface below the composer, without a modal
-// backdrop or dialog border. Navigation and retained-output selection are shared
-// with other content views.
-func (d *ContentDialog) PaintProcesses(rows []string, rect Rect) {
-	if rect.W < 12 || rect.H < d.Chrome()+1 {
+// Divider, owner, status, runtime, command, two frame edges, output, footer.
+const processDetailMinHeight = 9
+
+type processPane struct {
+	invocation                  bool
+	logState                    dialogPageState
+	seenLines, outputLines      int
+	completion                  string
+	dropped                     int
+	command                     string
+	commandWidth, commandBudget int
+	commandTheme                diffrender.Theme
+	commandRows                 []string
+}
+
+// processDetailHeight measures the same wrapped rows the viewport will paint.
+func (d *ContentDialog) processDetailHeight(width, limit int) int {
+	if width < 12 || limit < processDetailMinHeight {
+		return limit
+	}
+	if d.Selection != nil && (d.rect.W != width || d.rect.H > limit) {
+		d.Selection = nil
+	}
+	width -= 4
+	if d.Selection == nil {
+		d.Layout(width)
+	}
+	commandRows := d.processCommandRows(d.Pages[d.Page].Code, width, limit)
+	fixed := processDetailMinHeight - 2 + len(commandRows)
+	return fixed + min(max(1, d.total()), limit-fixed)
+}
+
+// paintProcesses keeps the selector or fixed detail chrome in the Main pane.
+func (d *ContentDialog) paintProcesses(rows []string, rect Rect, limit int) {
+	minimum := d.Chrome() + 1
+	if d.ProcessDetail {
+		minimum = processDetailMinHeight
+	}
+	if rect.W < 12 || rect.H < minimum {
 		d.rect, d.Selection = Rect{}, nil
 		return
 	}
 	if d.rect != rect {
 		d.Selection = nil
 	}
-	d.rect, d.rows, d.theme = rect, rect.H-d.Chrome(), d.View.Painter.Theme
-	padding := !d.ProcessDetail && d.rows > 1
-	if padding {
-		d.rows--
-	}
-	if d.Selection == nil {
-		d.Layout(rect.W - 4)
-	}
-	d.layoutBody()
-	detail := d.Document.Detail
-	if len(d.Pages) > 1 {
-		detail += fmt.Sprintf(" · %d / %d", d.Page+1, len(d.Pages))
-	}
-	if d.Document.Live {
-		detail += " · ● live"
-		if !d.follow {
-			detail += " · paused"
+	d.rect, d.theme = rect, d.View.Painter.Theme
+	width := rect.W - 4
+	d.rows, d.bodyOffset, d.bodyInset = rect.H-d.Chrome(), 0, 0
+	lines := []string{d.theme.Accent() + strings.Repeat("─", width) + terminalui.Reset}
+	if !d.ProcessDetail {
+		padding := d.rows > 1
+		if padding {
+			d.rows--
 		}
-	}
-	lines := []string{
-		d.theme.Accent() + strings.Repeat("─", rect.W-4) + terminalui.Reset,
-		d.theme.Accent() + d.Document.Title + terminalui.Reset + "  " + detail,
-		"",
-	}
-	// Keep the active command visible when following output or inspecting a
-	// long invocation. Reuse the header spacer only when its body row is offscreen.
-	if d.ProcessDetail && d.Pages[d.Page].DetailCode != "" {
-		if row := d.starts[processCommandLine]; row < d.top || row >= d.top+d.rows {
-			lines[2] = ansi.Truncate(d.Document.Lines[processCommandLine].Text, rect.W-4, "…")
+		d.Layout(width)
+		d.layoutBody()
+		lines = append(lines,
+			boldProcessLabel(d.Document.Title)+"  "+d.Document.Detail,
+			"",
+		)
+		lines = append(lines, d.body...)
+		if padding {
+			lines = append(lines, "")
 		}
-	}
-	for i, row := range d.body {
-		if d.Selection != nil {
-			row = d.Selection.Row(d.Selection.DocumentY(i), d.theme)
-		}
-		lines = append(lines, row)
-	}
-	if padding {
-		lines = append(lines, "")
+	} else {
+		lines = d.appendProcessDetail(lines, width, limit)
 	}
 	footer := d.footer(rect.W)
 	if d.Selection != nil {
 		footer = " " + SelectionHints.Render()
+	} else if d.ProcessDetail && d.process.completion != "" && !d.Typing {
+		notice := terminalui.Dim + d.process.completion + terminalui.Reset
+		if space := width - ansi.StringWidth(footer) - ansi.StringWidth(notice); space >= 3 {
+			footer += strings.Repeat(" ", space) + notice
+		} else {
+			footer = notice
+		}
 	}
 	lines = append(lines, footer)
 	for i, line := range lines {
 		if y := rect.Y + i; y >= 0 && y < len(rows) {
-			rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m  %s\x1b[0m", rect.X+1, ansi.Truncate(line, rect.W-4, ""))
+			rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m  %s\x1b[0m", rect.X+1, ansi.Truncate(line, width, ""))
 		}
 	}
 }
 
-const processCommandLine = 2 // Status and runtime precede the command in Shell details.
+func boldProcessLabel(text string) string { return "\x1b[1m" + text + "\x1b[22m" }
+
+func processSummary(command string) string {
+	return strings.Join(strings.Fields(textsanitize.Safe(command, false)), " ")
+}
+
+func (d *ContentDialog) processRuntime(page sessionpresentation.DetailItem) string {
+	elapsed := activityui.RunElapsed(activityui.Block{Value: page.Value}, d.View.Now())
+	if elapsed == "" {
+		return "0s"
+	}
+	return elapsed
+}
+
+func (d *ContentDialog) updateProcesses(view sessionpresentation.DetailView) {
+	if d.ProcessDetail && len(d.Pages) > 0 {
+		// Pages join in start order and remain until the selection closes.
+		for i, next := range view.Pages {
+			if i < len(d.Pages) && i != d.Page && next.ID == d.Pages[i].ID &&
+				d.Pages[i].Running && !next.Running {
+				d.process.completion = processSummary(next.Code) + " · " +
+					processStatus(next) + " · " + d.processRuntime(next)
+			}
+		}
+	}
+	if !d.ready && len(view.Pages) == 1 && view.Pages[0].Running {
+		d.ProcessDetail, d.follow = true, true
+	}
+}
+
+func (d *ContentDialog) appendProcessDetail(lines []string, width, limit int) []string {
+	page := d.Pages[d.Page]
+	owner := textsanitize.Safe(pathdisplay.AgentDisplayName(page.Owner), false)
+	lines = append(lines,
+		boldProcessLabel(ansi.Truncate(owner, width, "…")),
+		boldProcessLabel("Status:")+" "+processStatus(page),
+		boldProcessLabel("Runtime:")+" "+d.processRuntime(page),
+	)
+	lines = append(lines, d.processCommandRows(page.Code, width, limit)...)
+	// The shared dialog already reserves three rows above the body.
+	// The output frame's top edge adds one to these metadata rows.
+	d.bodyOffset, d.bodyInset = len(lines)-2, 1
+	d.rows -= d.bodyOffset + 1 // Bottom edge has its own row.
+	if d.Selection == nil {
+		d.Layout(width)
+	}
+	d.layoutBody()
+	label := "Invocation"
+	if !d.process.invocation {
+		count := d.process.outputLines
+		label = fmt.Sprintf("Output · %d lines", count)
+		if count == 1 {
+			label = "Output · 1 line"
+		}
+		if d.follow {
+			d.process.seenLines = count
+			if d.Document.Live {
+				label += " · Following"
+			}
+		} else if d.Document.Live || count > d.process.seenLines {
+			if unread := max(0, count-d.process.seenLines); unread > 0 {
+				label += fmt.Sprintf(" · +%d new · End to follow", unread)
+			} else {
+				label += " · End to follow"
+			}
+		}
+	}
+	color, reset := d.theme.Accent(), terminalui.Reset
+	label = ansi.Truncate(label, width-5, "…")
+	// Place the frame one cell outside the selectable body, leaving its offsets
+	// identical to the shared dialog's text-selection geometry.
+	lines = append(lines, color+"╭─ "+reset+boldProcessLabel(label)+" "+color+
+		strings.Repeat("─", width-ansi.StringWidth(label)-5)+"╮"+reset)
+	for i, row := range d.body {
+		if d.Selection != nil {
+			row = d.Selection.Row(d.Selection.DocumentY(i), d.theme)
+		}
+		lines = append(lines, color+"│"+reset+row+strings.Repeat(" ", max(0, width-2-ansi.StringWidth(row)))+color+"│"+reset)
+	}
+	return append(lines, color+"╰"+strings.Repeat("─", width-2)+"╯"+reset)
+}
+
+func (d *ContentDialog) processCommandRows(code string, width, limit int) []string {
+	// Leave enough log rows even for chained commands and multiline scripts.
+	budget := max(1, (limit-processDetailMinHeight)/3)
+	theme := d.View.Painter.Theme
+	p := &d.process
+	if p.commandRows != nil && p.command == code && p.commandTheme == theme &&
+		p.commandWidth == width && p.commandBudget == budget {
+		return p.commandRows
+	}
+	p.command, p.commandTheme, p.commandWidth, p.commandBudget = code, theme, width, budget
+	safe := textsanitize.Safe(code, false)
+	label := boldProcessLabel("Command:") + " "
+	var rows []string
+	if len(safe) <= width*budget {
+		for i, row := range d.View.Painter.Highlight("bash", safe) {
+			if i == 0 {
+				row = label + row
+			}
+			rows = append(rows, terminalui.Wrap(row, width, true)...)
+		}
+	}
+	if len(rows) == 0 || len(rows) > budget {
+		first, _, multiline := strings.Cut(safe, "\n")
+		if multiline {
+			first += " …"
+		}
+		short := ansi.Truncate(first, width-ansi.StringWidth(label), "…")
+		rows = []string{label + strings.Join(d.View.Painter.Highlight("bash", short), "")}
+	}
+	p.commandRows = rows
+	return rows
+}
 
 func (d *ContentDialog) layoutProcess(width int) {
 	page := d.Pages[d.Page]
@@ -110,13 +249,16 @@ func (d *ContentDialog) layoutProcess(width int) {
 			}
 		}
 		document.Detail = fmt.Sprintf("%d active shells", active)
+		if len(d.Pages) > 1 {
+			document.Detail += fmt.Sprintf(" · %d / %d", d.Page+1, len(d.Pages))
+		}
 		if page.Source == 0 {
 			document.Add(terminalui.DialogLine{Text: "No running processes"})
 		} else {
 			for i, item := range d.Pages {
 				command := strings.Join(strings.Fields(textsanitize.Safe(item.Code, false)), " ")
 				owner := textsanitize.Safe(pathdisplay.AgentDisplayName(item.Owner), false)
-				status := d.processStatus(i)
+				status := processStatus(item)
 				command = strings.Join(d.View.Painter.Highlight("bash", command), " ")
 				label := ansi.Truncate(owner+" · "+command, max(1, width-len(status)-5), "…")
 				label += strings.Repeat(" ", max(1, width-ansi.StringWidth(label)-len(status)-3)) + status
@@ -136,61 +278,93 @@ func (d *ContentDialog) layoutProcess(width int) {
 		}
 		return
 	}
-	d.Footer = "← back · Esc/Enter/Space close · ↑↓ scroll"
-	if d.StopAvailable {
-		d.Footer = "← back · Esc/Enter/Space close · x stop"
+	d.Footer = "← back · ↑↓ scroll · / find · v invocation · y copy · Esc"
+	if d.process.invocation {
+		d.Footer = "←/v output · ↑↓ scroll · y copy invocation · Esc"
 	}
-	if width < 44 {
-		d.Footer = "← back · Esc close · ↑↓ scroll"
+	if d.StopAvailable && !d.process.invocation {
+		d.Footer = "x stop · " + d.Footer
+	}
+	if width-6 < ansi.StringWidth(d.Footer) && !d.process.invocation {
+		d.Footer = "← back · v invocation · Esc"
 		if d.StopAvailable {
-			d.Footer = "← back · Esc close · x stop"
+			d.Footer = "x stop · " + d.Footer
 		}
 	}
+	width -= 2 // The two output-frame edges are not selectable text.
 	key := contentDialogKey{id: page.ID, revision: page.Revision, width: width, version: page.OutputVersion, retained: page.Retained, theme: d.View.Painter.Theme}
 	key.output = d.Output != nil && d.Output.Page == page.ID && d.Output.Version == page.OutputVersion
-	if key != d.laidKey {
-		// Reuse retained-output painting and its release/omission notices, but
-		// expose the whole command as metadata rather than a second code block.
-		value := page.Value
-		value.Code, value.DetailCode = "", ""
-		block := activityui.Block{Value: value}
-		if key.output {
-			block.OutputSnapshot = &d.Output.View
+	if key == d.laidKey {
+		return
+	}
+	if d.process.invocation {
+		source := cmp.Or(page.DetailCode, page.Code)
+		document := terminalui.DialogPage{Text: source}
+		for i, row := range d.View.Painter.Highlight("bash", textsanitize.Safe(source, false)) {
+			document.Add(terminalui.DialogLine{Number: i + 1, Gutter: "│", Text: row})
 		}
-		document := d.View.Painter.DialogPage(block, width)
-		document.Title = "Shell details"
-		if document.Text == "" {
-			document.Text = page.Code
-		}
-		if len(value.Tail) == 0 && value.TailOmitted == 0 && (block.OutputSnapshot == nil || len(block.OutputSnapshot.Lines) == 0 && !block.OutputSnapshot.Released && block.OutputSnapshot.Dropped == 0) {
-			document.Lines = []terminalui.DialogLine{{Text: terminalui.Dim + "No output available" + terminalui.Undim}}
-		}
-		lines := []terminalui.DialogLine{
-			{Text: "Status:  " + d.processStatus(d.Page), Wrap: true},
-			{},
-		}
-		addSource := func(label, code string) {
-			for i, row := range d.View.Painter.Highlight("bash", textsanitize.Safe(code, false)) {
-				if i == 0 {
-					row = label + row
-				}
-				lines = append(lines, terminalui.DialogLine{Text: row, Wrap: true})
-			}
-		}
-		addSource("Command: ", page.Code)
-		if page.DetailCode != "" {
-			addSource("Invocation: ", page.DetailCode)
-		}
-		lines = append(lines, terminalui.DialogLine{}, terminalui.DialogLine{Text: "Output:"})
-		document.Lines = append(lines, document.Lines...)
 		d.SetDocument(document, width)
 		d.laidKey = key
+		return
 	}
-	elapsed := activityui.RunElapsed(activityui.Block{Value: page.Value}, d.View.Now())
-	if elapsed == "" {
-		elapsed = "0s"
+	// Use the shared retained-output renderer, but keep metadata out of its
+	// scrollable, searchable and selectable document.
+	value := page.Value
+	value.Code, value.DetailCode = "", ""
+	block := activityui.Block{Value: value}
+	if key.output {
+		block.OutputSnapshot = &d.Output.View
 	}
-	d.Document.Lines[1] = terminalui.DialogLine{Text: "Runtime: " + elapsed}
+	document := d.View.Painter.DialogPage(block, width)
+	document.Live = page.Running
+	lines, dropped := len(page.Tail), page.TailOmitted
+	if block.OutputSnapshot != nil && !block.OutputSnapshot.Released {
+		lines, dropped = len(block.OutputSnapshot.Lines), block.OutputSnapshot.Dropped
+	}
+	previous := d.process.outputLines
+	d.process.outputLines = lines + dropped
+	if previous == 0 && d.follow {
+		d.process.seenLines = d.process.outputLines
+	}
+	// If retention moved the beginning of the stream, keep the same numbered
+	// row when possible, rather than following its old index into new output.
+	number, wrap := 0, 0
+	if !d.follow && d.process.dropped != dropped && d.laidKey.id == key.id && len(d.starts) > 0 {
+		i := sort.SearchInts(d.starts[1:], d.top+1)
+		if i < len(d.Document.Lines) {
+			number, wrap = d.Document.Lines[i].Number, d.top-d.starts[i]
+		}
+	}
+	d.process.dropped = dropped
+	if d.process.outputLines == 0 && document.Text == "" {
+		document.Text = page.Code
+	}
+	d.SetDocument(document, width)
+	if number > 0 {
+		i := sort.Search(len(document.Lines), func(i int) bool {
+			return document.Lines[i].Number >= number
+		})
+		if i < len(document.Lines) {
+			d.top = d.starts[i]
+			if document.Lines[i].Number == number {
+				d.top += min(wrap, d.starts[i+1]-d.starts[i]-1)
+			}
+		}
+	}
+	d.laidKey = key
+}
+
+func (d *ContentDialog) toggleProcessInvocation() {
+	if d.process.invocation {
+		log := d.process.logState
+		d.top, d.match, d.follow, d.Typing = log.top, log.match, log.follow, log.typing
+		d.missed, d.draft, d.query = log.missed, log.draft, log.query
+	} else {
+		d.process.logState = dialogPageState{d.top, d.match, d.follow, d.Typing, d.missed, d.draft, d.query}
+		d.top, d.match, d.follow, d.missed, d.draft, d.query = 0, -1, false, false, "", ""
+	}
+	d.process.invocation = !d.process.invocation
+	d.Invalidate()
 }
 
 func (d *ContentDialog) processKey(key string) DialogIntent {
@@ -205,7 +379,15 @@ func (d *ContentDialog) processKey(key string) DialogIntent {
 	}
 	if d.ProcessDetail {
 		switch key {
+		case "v":
+			d.toggleProcessInvocation()
+			return DialogIntent{}
 		case "\x1b[D", "h":
+			if d.process.invocation {
+				d.toggleProcessInvocation()
+				return DialogIntent{}
+			}
+			d.process = processPane{}
 			d.ProcessDetail = false
 			d.top, d.follow = 0, false
 			d.Invalidate()
@@ -215,10 +397,15 @@ func (d *ContentDialog) processKey(key string) DialogIntent {
 		case "\x1b[C", "l":
 			return DialogIntent{}
 		}
-		return d.Dialog.Key(key)
+		intent := d.Dialog.Key(key)
+		switch key {
+		case "\x1b[F", "\x1b[4~", "G", "\x1b[B", "j", "\x1b[6~":
+			d.observeProcessTail()
+		}
+		return intent
 	}
 	switch key {
-	case "\x1b", "q", "\x03":
+	case "\x1b", "q", "\x03", "\x1b[D", "h":
 		return DialogIntent{Action: DialogClose}
 	case "\x1b[A", "k":
 		d.ShowPage(d.Page - 1)
@@ -235,11 +422,18 @@ func (d *ContentDialog) processKey(key string) DialogIntent {
 	case "\r", "\x1b[C":
 		if d.Pages[d.Page].Source != 0 {
 			d.ProcessDetail = true
-			d.top, d.follow = 0, d.Pages[d.Page].Running
+			d.top, d.follow = 0, true
+			d.match, d.missed, d.draft, d.query = -1, false, "", ""
 			d.Invalidate()
 		}
 	}
 	return DialogIntent{}
+}
+
+func (d *ContentDialog) observeProcessTail() {
+	if !d.process.invocation && d.top >= d.bottom() {
+		d.process.seenLines = d.process.outputLines
+	}
 }
 
 func (d *ContentDialog) processMouse(button, x, y int, release bool) DialogIntent {

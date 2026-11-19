@@ -265,11 +265,17 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 			}
 			c.enqueue(sessionapi.NativeOperation{Notice: &sessionapi.NativeNoticeAction{Version: effect.Notice.Version, Feedback: effect.Notice.Feedback, Dismiss: effect.Notice.Dismiss, Text: effect.Notice.Text}}, nil, nil)
 		case effect.Details != nil:
-			kind := sessionapi.NativeErrorDetails
-			if effect.Details.Kind == terminalsession.SkillDetails {
-				kind = sessionapi.NativeSkillDetails
+			request := sessionapi.NativeDetailRequest{
+				Kind: sessionapi.NativeErrorDetails, Agent: effect.Details.View == u.Agents,
+				Caller: effect.Details.Caller,
 			}
-			c.details(effect.Details.Version, sessionapi.NativeDetailRequest{Kind: kind, Agent: effect.Details.View == u.Agents, Caller: effect.Details.Caller})
+			switch effect.Details.Kind {
+			case terminalsession.SkillDetails:
+				request.Kind = sessionapi.NativeSkillDetails
+			case terminalsession.ProcessDetails:
+				request.Kind, request.Displayed = sessionapi.NativeProcessDetails, c.event.Frame.View.Main
+			}
+			c.details(effect.Details.Version, request)
 		case effect.Dialog != nil:
 			c.dialog(*effect.Dialog)
 		case effect.Selection != nil:

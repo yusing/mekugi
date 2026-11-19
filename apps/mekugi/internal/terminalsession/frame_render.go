@@ -102,7 +102,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	out.Source = in.SourceContext()
 	out.Prompt = in.Prompts.Update(view)
 	in.Main.PromptRect, in.Main.ContentPainted = Rect{}, false
-	in.Main.NoticeDetails, in.Main.NoticeDismiss = Rect{}, Rect{}
+	in.Main.NoticeDetails, in.Main.NoticeDismiss, in.Main.ProcessCount = Rect{}, Rect{}, Rect{}
 	width, height := max(1, in.Width), max(1, in.Height)
 	in.Agents.FeedOnly, in.Agents.Focused = true, shell.Focus == 3
 	in.Live.Motion.Enabled, in.Live.Motion.Now = true, in.Now
@@ -122,26 +122,35 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	}
 	plan := shell.Plan(width, height, len(roster))
 	processRect := Rect{}
+	processLimit := 0
 	content := ShellContent{Roster: roster, MainName: "Main"}
 	if view.Info.Caller != "" && view.Info.Caller != "/root" {
 		content.MainName = "Thread"
 	}
 	if plan.Left.W >= 4 && plan.Left.H >= 1 {
 		iw, ih := plan.Layout.Main.W, plan.Layout.Main.H
-		if in.Dialog != nil && in.Dialog.Processes {
-			panelHeight := min(max(0, ih-4), max(in.Dialog.Chrome()+1, ih/2))
-			if !in.Dialog.ProcessDetail {
+		processes := in.Dialog != nil && in.Dialog.Processes
+		if processes {
+			minimum := in.Dialog.Chrome() + 1
+			if in.Dialog.ProcessDetail {
+				minimum = processDetailMinHeight
+			}
+			processLimit = min(ih, max(minimum, ih/2))
+			panelHeight := processLimit
+			if in.Dialog.ProcessDetail {
+				panelHeight = in.Dialog.processDetailHeight(iw, processLimit)
+			} else {
 				panelHeight = min(panelHeight, in.Dialog.Chrome()+len(in.Dialog.Pages)+1)
 			}
 			ih -= panelHeight
 			processRect = Rect{plan.Layout.Main.X, plan.Layout.Main.Y + ih, iw, panelHeight}
 		}
 		dockRows := 0
-		if mainEdit && !in.Main.Keybindings && !in.Main.Menu.Open() {
+		if !processes && mainEdit && !in.Main.Keybindings && !in.Main.Menu.Open() {
 			dockRows = ih
 		}
 		rosterHits := in.Agents.Hits
-		main := in.Main.Render(in.displayedTranscript(), &in.Transcript.Painter, in.Prompts, MainOptions{Now: in.Now, Focused: shell.Focus == 0, Version: in.Version}, iw, ih, dockRows)
+		main := in.Main.Render(in.displayedTranscript(), &in.Transcript.Painter, in.Prompts, MainOptions{Now: in.Now, Focused: shell.Focus == 0, Version: in.Version, HideComposer: processes}, iw, ih, dockRows)
 		in.Agents.Hits = rosterHits
 		if len(main.Demands) != 0 {
 			out.Demands = main.Demands
@@ -209,7 +218,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		in.Dialog.FileLinks = in.FileLinks
 		in.Dialog.FileLinkDemands = nil
 		if in.Dialog.Processes {
-			in.Dialog.PaintProcesses(out.Rows, processRect)
+			in.Dialog.paintProcesses(out.Rows, processRect, processLimit)
 		} else {
 			in.Dialog.Paint(out.Rows[:height-1], width, height-1)
 		}

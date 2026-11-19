@@ -21,5 +21,9 @@ func runningProcessCount(session *sessionpresentation.Attachment) int {
 func (session *nativeSession) showRunningProcesses(attached *attachedPresentation, picker *composerPicker, editor **composer.Editor, clock func() time.Time, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, files *detailFiles) {
 	session.deleteDraftRange(attached, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), 0, len((*editor).Text))
 
+	files.openRunningProcesses(attached)
+}
+
+func (files *detailFiles) openRunningProcesses(attached *attachedPresentation) {
 	files.openDetailSelection(&attached.session, attached.presentation.View().Version, attached.childSource, nil, true)
 }

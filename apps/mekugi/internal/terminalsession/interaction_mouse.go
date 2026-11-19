@@ -110,6 +110,11 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 		}
 		return
 	}
+	if !in.Playback && state.Selection == nil && !shell.Dragging() && main != nil &&
+		main.ProcessCount.Contains(x-shell.Layout.Main.X, y-shell.Layout.Main.Y) && button == 0 && !release {
+		yield(InputEffect{Details: &DetailInput{Version: main.session.Version, View: in.Transcript, Kind: ProcessDetails}})
+		return
+	}
 	if in.selectionMouse(state, pointer, yield) {
 		return
 	}

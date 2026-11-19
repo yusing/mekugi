@@ -29,6 +29,7 @@ type Main struct {
 	Resume                                                 ResumePicker
 	Panel                                                  StatusPanel
 	ComposerRect, PromptRect, NoticeDetails, NoticeDismiss Rect
+	ProcessCount                                           Rect
 	ComposerWidth                                          int
 	ContentPainted                                         bool
 	CursorColumn, PromptColumn                             *int
@@ -41,6 +42,7 @@ type mainInput struct {
 	Draft                                                        composer.Draft
 	Now                                                          time.Time
 	ReadOnly, Focused, Empty, Picker, Secret, Question, TurnIdle bool
+	HideComposer                                                 bool
 	Welcome, ApprovalAgent                                       string
 	Selection                                                    string
 	QuestionLayout                                               *conversationui.QuestionLayout
@@ -67,7 +69,12 @@ type composerDocument struct {
 func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, dock int) (out MainFrame) {
 	presentation, readOnly := in.Session, in.ReadOnly
 	width, height = max(1, width), max(1, height)
-	m.NoticeDetails, m.NoticeDismiss = Rect{}, Rect{}
+	m.NoticeDetails, m.NoticeDismiss, m.ProcessCount = Rect{}, Rect{}, Rect{}
+	if in.HideComposer {
+		m.ComposerRect, m.BTW.Rect = Rect{}, Rect{}
+		m.ContentPainted = height > 1
+		return MainFrame{Rows: make([]string, height), Feed: Rect{W: width, H: height}}
+	}
 	boxed := width >= 12 && height >= 3
 	borderRows, inset := 0, min(2, width-1)
 	if boxed {
@@ -109,6 +116,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 			m.ComposerRect.Y++
 			m.BTW.Rect.Y++
 			m.PromptRect.Y++
+			m.ProcessCount.Y++
 			m.NoticeDetails.Y++
 			m.NoticeDismiss.Y++
 			out.Feed.Y++
@@ -292,9 +300,19 @@ func composerBorder(open, close, left, right string, width int, color string) st
 }
 
 func (m *Main) noticeBorder(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, width, row int, color string) string {
-	label := PaintMainStatus(status, now, colors)
+	label, count := paintMainStatus(status, now, colors, m.session.ReadOnly != sessionpresentation.Replay)
+	hit := func(visible int) {
+		if count.W > 0 && count.X+count.W <= visible {
+			m.ProcessCount = Rect{3 + count.X, row, count.W, 1}
+		}
+	}
 	full := MainStatusDetails(status)
 	if full == "" {
+		visible := width - 6
+		if ansi.StringWidth(label) > visible {
+			visible--
+		}
+		hit(visible)
 		return composerBorder("╭", "╮", label, "", width, color)
 	}
 	// Reserve dismissal before truncating, so a long error cannot hide it.
@@ -303,12 +321,18 @@ func (m *Main) noticeBorder(status sessionpresentation.MainStatus, now time.Time
 	plain := ansi.Strip(label)
 	if before, _, ok := strings.Cut(plain, "✗ "); ok && ansi.StringWidth(before)+4 > room {
 		label = terminalui.Red + "✗ " + activitypresentation.ErrorPreview(full) + terminalui.Reset
+		count = Rect{}
 	}
 	details := activityui.ErrorHasDetails(activityui.Block{Body: full})
 	if details && !strings.HasSuffix(ansi.Strip(label), "…") {
 		label += "…"
 	}
 	clipped := ansi.StringWidth(label) > room
+	visible := room
+	if clipped {
+		visible--
+	}
+	hit(visible)
 	label = ansi.Truncate(label, room, "…")
 	if clipped || details {
 		m.NoticeDetails = Rect{3, row, ansi.StringWidth(label), 1}
