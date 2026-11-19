@@ -95,9 +95,9 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("main", 100000)
-	appServerTestRequest(t, u, "1", "thread/start")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":1,"result":{"model":"model","thread":{"id":"main","path":%q}}}`, path))
+	u.Startup.Thread = "main"
+	appServerTestRequest(t, u, "1", "thread/resume")
+	appServerTestMessage(t, u, `{"id":1,"result":{"model":"model","thread":{"id":"main","contextTokens":100000,"contextWindow":400000}}}`)
 	frame, _ := u.testMainFrame(80, 8, 0)
 	if bottom := ansi.Strip(frame[len(frame)-1]); !strings.Contains(bottom, "model • 100K/400K • 25%") {
 		t.Fatal(bottom)
@@ -117,9 +117,9 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	if !strings.Contains(roster, "20K/400K • 5%") {
 		t.Fatalf("saved child context did not reach roster: %s", roster)
 	}
-	// Metadata must never replace a newer live update with a stale disk snapshot.
+	// Metadata must never replace a newer live update with a stale snapshot.
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "child", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 40000}, "modelContextWindow": 400000}})
-	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", Path: path})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", ContextTokens: new(uint64(20000)), ContextWindow: new(uint64(400000))})
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "40K/400K • 10%" {
 		t.Fatal(got)
 	}

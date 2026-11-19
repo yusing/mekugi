@@ -14,6 +14,10 @@ with the application; raw Responses decoding belongs to the Codex backend. Host
 context counts, transport diagnostics and launch-wide capture aggregates retain
 separate owners. No usage message or Markdown export is added to the conversation.
 
+Native resume, fork and rewind results carry the last observed context token count
+and window, even when no turn history is requested. They describe context occupancy,
+not cumulative billable usage. Unknown measurements stay absent.
+
 ## Behavior
 
 ### Accounting and incomplete evidence
