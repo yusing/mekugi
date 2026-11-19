@@ -129,7 +129,9 @@ selection, and remote executors keep stock catalog behavior.
 `skills.include_instructions` controls automatic
 catalog display for either source, enabled by default. The native runtime records
 explicitly selected skill prompts as compact `<skill name="…"/>` identities
-when the manager resolves the skill, and as full skill instructions otherwise. Recorded
+when the manager resolves the skill. A missing or disabled managed skill keeps its
+explicit native instructions. A managed acquisition error warns and omits the
+selection instead of substituting another skill's instructions. Recorded
 selections carry through subsequent requests without a router rewrite. Ordinary
 user text is not a selected-skill identity.
 
