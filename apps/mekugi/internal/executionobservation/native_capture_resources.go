@@ -140,9 +140,13 @@ func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserve
 		frozen := nativeFrozenSource{Command: commands[i]}
 		query, err := reader.Service.Parse(source.Changes, resource.Workspace)
 		if err == nil {
+			query.OmitOwn = true
 			var capture changes.FrozenRead
 			capture, err = reader.Service.Freeze(ctx, reader.Scope, query)
 			if err == nil {
+				if len(capture.Captures) == 0 && capture.Diagnostic == "" && capture.Fallback == "" {
+					continue
+				}
 				frozen.Capture = &capture
 			}
 		}
@@ -153,6 +157,9 @@ func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserve
 			frozen.Error = err.Error()
 		}
 		resource.Sources = append(resource.Sources, frozen)
+	}
+	if len(resource.Sources) == 0 {
+		return nil, nil
 	}
 	fullText, err := p.renderNativeFinal(ctx, reader.Scope, resource, nil, retained)
 	if err != nil {

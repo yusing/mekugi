@@ -46,6 +46,8 @@ import (
 )
 
 type nativeThreadsProvider struct {
+	reviewSources                           bool
+	authorChange                            string
 	spawnSettings                           *spawnSettingsFixture
 	mu                                      sync.Mutex
 	childDirectory, parent, child, waitTurn string
@@ -78,6 +80,26 @@ type nativeThreadsProvider struct {
 	users                                   int
 	waiting, mailbox                        chan struct{}
 	stop                                    context.CancelFunc
+}
+
+func latestChangeReceipt(items []map[string]jsontext.Value) string {
+	changeID := ""
+	for _, item := range items {
+		if string(item["type"]) == `"function_call_output"` || string(item["type"]) == `"custom_tool_call_output"` {
+			for part, text := range binding.ExecutionOutputTexts(item["output"]) {
+				if part == 0 {
+					continue // Original host output is not a capture receipt.
+				}
+				ids, _, _ := strings.Cut(text, "\n")
+				for _, id := range strings.Fields(ids) {
+					if _, _, err := changes.ParseID(id); err == nil {
+						changeID = id
+					}
+				}
+			}
+		}
+	}
+	return changeID
 }
 
 // Only fixture state and host identities are included. Provider request bodies,
@@ -199,6 +221,10 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 	if metadata.RequestKind == "compaction" {
 		t.Error("summary-free reset requested provider inference")
 		http.Error(w, "unexpected summary inference", 500)
+		return
+	}
+	if p.reviewSources {
+		p.serveReviewSources(t, w, r, metadata.ThreadID, request.Input)
 		return
 	}
 	if p.childReset {
@@ -686,22 +712,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			program += `text((await tools.exec_command({cmd:"mcat managed-child.txt",shell:"/bin/bash",login:false})).output);`
 		}
 	case !parent && step == 2:
-		changeID := ""
-		for _, item := range request.Input {
-			if string(item["type"]) == `"function_call_output"` || string(item["type"]) == `"custom_tool_call_output"` {
-				for part, text := range binding.ExecutionOutputTexts(item["output"]) {
-					if part == 0 {
-						continue // Original host output is not a capture receipt.
-					}
-					ids, _, _ := strings.Cut(text, "\n")
-					for _, id := range strings.Fields(ids) {
-						if _, _, err := changes.ParseID(id); err == nil {
-							changeID = id
-						}
-					}
-				}
-			}
-		}
+		changeID := latestChangeReceipt(request.Input)
 		if changeID == "" {
 			failure = "child shell tool output omitted its retained capture receipt"
 		}
@@ -1165,6 +1176,93 @@ func TestNativeThreadsPreloadServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{preload: true})
 }
 
+func TestNativeReviewerReplySkipsAuthorChangesServerOwnedCodex(t *testing.T) {
+	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{reviewSources: true})
+}
+
+func (p *nativeThreadsProvider) serveReviewSources(t *testing.T, w http.ResponseWriter, r *http.Request, thread string, items []map[string]jsontext.Value) {
+	p.mu.Lock()
+	if p.parent == "" {
+		p.parent = thread
+	}
+	parent := p.parent == thread
+	p.calls[thread]++
+	step := p.calls[thread]
+	if parent && step == 2 {
+		p.authorChange = latestChangeReceipt(items)
+	}
+	own := p.authorChange
+	p.mu.Unlock()
+	var program, answer string
+	switch {
+	case parent && step == 1:
+		program = `text(await tools.exec_command({cmd:"echo AUTHOR_EDIT > author.txt"}));`
+	case parent && step == 2:
+		if own == "" {
+			t.Error("author edit missing receipt")
+		}
+		program = `text(await tools.collaboration__spawn_agent({task_name:"reviewer",fork_turns:"none",message:"Review mchanges:` + own + `"}));`
+	case !parent && step == 1:
+		assertReviewMessage(t, items, "Review mchanges:"+own, []string{"+AUTHOR_EDIT"}, "")
+		program = `text(await tools.exec_command({cmd:"echo REVIEWER_EDIT > reviewer.txt"}));`
+	case !parent && step == 2:
+		foreign := latestChangeReceipt(items)
+		if foreign == "" || foreign == own {
+			t.Error("reviewer edit missing independent receipt")
+		}
+		program = `text(await tools.collaboration__send_message({target:"/root",message:"Review complete mchanges:` + own + `,` + foreign + ` @review-note.txt"}));`
+	case !parent && step == 3:
+		close(p.mailbox) // Source acquisition and queue admission have completed.
+		answer = "REVIEW_FINISHED"
+	case parent && step == 3:
+		select {
+		case <-p.mailbox:
+		case <-r.Context().Done():
+			return
+		}
+		program = `text("Accept queued review");`
+	case parent && step == 4:
+		assertReviewMessage(t, items, "Review complete mchanges:"+own+",", []string{"+REVIEWER_EDIT", "REVIEW_FILE_BYTES"}, "+AUTHOR_EDIT")
+		close(p.waiting)
+		answer = "REVIEW_SOURCES_VERIFIED"
+	default:
+		t.Errorf("unexpected review inference: parent=%t step=%d", parent, step)
+		p.stop()
+		return
+	}
+	writeChildActivityResponse(w, fmt.Sprintf("review-%s-%d", thread, step), program, "", answer)
+}
+
+func assertReviewMessage(t *testing.T, items []map[string]jsontext.Value, marker string, required []string, excluded string) {
+	t.Helper()
+	for _, item := range items {
+		if string(item["type"]) != `"agent_message"` {
+			continue
+		}
+		var parts []struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(item["content"], &parts); err != nil {
+			t.Fatal(err)
+		}
+		for _, part := range parts {
+			if !strings.Contains(part.Text, "Payload:\n"+marker) {
+				continue
+			}
+			for _, body := range required {
+				if !strings.Contains(part.Text, body) {
+					t.Errorf("review delivery missing %q", body)
+				}
+			}
+			if excluded != "" && strings.Contains(part.Text, excluded) {
+				t.Error("reviewer reattached recipient's own diff")
+			}
+			return
+		}
+	}
+	t.Errorf("missing attributed review message %q", marker)
+}
+
 func TestNativeThreadsMessageSourcesServerOwnedCodex(t *testing.T) {
 	testNativeThreadsServerOwnedCodex(t, nativeThreadsScenario{messageSources: true})
 }
@@ -1202,6 +1300,7 @@ func TestNativeThreadsAttachmentResetServerOwnedCodex(t *testing.T) {
 }
 
 type nativeThreadsScenario struct {
+	reviewSources                                                                                                                                                     bool
 	childActivity                                                                                                                                                     bool
 	childReset                                                                                                                                                        bool
 	spawnSettings                                                                                                                                                     string
@@ -1327,6 +1426,11 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 			}
 		}
 	}
+	if scenario.reviewSources {
+		if err := os.WriteFile(filepath.Join(workspace, "review-note.txt"), []byte("REVIEW_FILE_BYTES"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if scenario.messageSources {
 		childDirectory = t.TempDir()
 		for path, body := range map[string]string{
@@ -1343,6 +1447,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}
 	fixture := &nativeThreadsProvider{usageLimit: scenario.usageLimit, limited: make(map[string]bool), attachChanges: scenario.attachChanges, multipleAnswers: scenario.multipleAnswers, recoverFailure: scenario.recoverFailure, preload: scenario.preload, childDirectory: childDirectory, fullHistory: fullHistory, shellWait: shellWait, compactWait: scenario.compactWait, agentCompact: scenario.agentCompact, earlyCompletion: scenario.earlyCompletion, calls: make(map[string]int), waiting: make(chan struct{}), mailbox: make(chan struct{}), stop: cancel}
 	fixture.attachments, fixture.attachmentReload = scenario.attachments, scenario.attachmentReload
+	fixture.reviewSources = scenario.reviewSources
 	fixture.messageSources = scenario.messageSources
 	fixture.deniedMessageSource = scenario.deniedMessageSource
 	fixture.concurrentChildren = scenario.concurrentChildren
@@ -1708,6 +1813,14 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 	}})
 	if err != nil {
 		t.Fatal("root input:", err)
+	}
+	if scenario.reviewSources {
+		select {
+		case <-fixture.waiting:
+		case <-ctx.Done():
+			t.Fatal("reviewer reply did not reach the author's model:", ctx.Err())
+		}
+		return
 	}
 	if fixture.spawnSettings != nil {
 		fixture.spawnSettings.verify(t, ctx, connection, event)

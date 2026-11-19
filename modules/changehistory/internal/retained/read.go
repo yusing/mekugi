@@ -32,6 +32,7 @@ type changeReadOptions struct {
 	unavailable   changeReadFailures
 	yielded       map[string]int
 	overlapLabels map[string]string
+	omitOwn       bool
 	mine          bool
 	view          string
 	resolvedPaths []string
@@ -187,6 +188,9 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 		index, err := s.selectChangeIndex(&options)
 		if err != nil {
 			return err
+		}
+		if options.omitOwn && len(options.ids) == 0 {
+			return nil // No attachment when every selected change belongs to the recipient.
 		}
 		if options.mine && index.discoveryErr != nil {
 			targetErrors = append(targetErrors, fmt.Errorf("caller-owned capture discovery is incomplete: %w", index.discoveryErr))

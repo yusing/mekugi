@@ -76,7 +76,7 @@ func (reader *completionReads) Freeze(ctx context.Context, selected changes.Scop
 
 func TestNativeFinalCaptureUsesRecipientStorageWithoutGoCoordination(t *testing.T) {
 	f := newMChangesSliceFixture(t, "native-final")
-	id := f.reserve(t, f.thread, "edit")
+	id := f.reserve(t, "child", "edit")
 	f.publish(t, id, "edit", "edit-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")}})
 	p := testProxyWithStore(f.store)
 	reader := &completionReads{Service: p.Changes}
@@ -86,8 +86,32 @@ func TestNativeFinalCaptureUsesRecipientStorageWithoutGoCoordination(t *testing.
 	if err != nil || body == nil || body.ResourceRef == "" || !strings.Contains(body.FullText, "+after") || strings.Contains(body.FullText, "private.txt") || reader.reads.Load() != 1 {
 		t.Fatalf("native capture = %v, %v, reads %d", body, err, reader.reads.Load())
 	}
+	own := f.reserve(t, f.thread, "author")
+	f.publish(t, own, "author", "author-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("private.txt", "private.txt", "before\n", "own capture\n")}})
+	next := f.reserve(t, f.thread, "author2")
+	f.publish(t, next, "author2", "author2-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "private2.txt", "", "second own capture\n")}})
+	ownRange := own + ".." + next
+	if out, stderr, status := f.run(t, "mchanges --for-recipient "+ownRange+" "+id); status != 0 || stderr != "" || !strings.Contains(out, "+after") || strings.Contains(out, "own capture") {
+		t.Fatalf("recipient message mixed range: %s, %s, %d", out, stderr, status)
+	}
+	if out, stderr, status := f.run(t, "mchanges "+ownRange); status != 0 || stderr != "" || !strings.Contains(out, "+own capture") || !strings.Contains(out, "+second own capture") {
+		t.Fatalf("explicit own read: %s, %s, %d", out, stderr, status)
+	}
+	input.Sources = []string{"mchanges:" + ownRange}
+	if body, err := p.PrepareNativeFinalCapture(t.Context(), input); err != nil || body != nil {
+		t.Fatalf("reviewer attached the recipient's own change: %+v, %v", body, err)
+	}
+	input.Sources = []string{"mchanges:" + own + "," + id}
+	if body, err := p.PrepareNativeFinalCapture(t.Context(), input); err != nil || body == nil || strings.Contains(body.FullText, "private.txt") || !strings.Contains(body.FullText, "+after") {
+		t.Fatalf("mixed reviewer references: %+v, %v", body, err)
+	}
+	// A fork can inherit calls whose executing thread differs from their stream owner.
+	f.publish(t, own, "author", "inherited-call", mekugiHistory{ExecutingThread: "original-author", ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "inherited.txt", "", "foreign capture\n")}})
+	if out, stderr, status := f.run(t, "mchanges --for-recipient "+own); status != 0 || stderr != "" || !strings.Contains(out, "+foreign capture") || strings.Contains(out, "+own capture") {
+		t.Fatalf("mixed-authorship capture: %s, %s, %d", out, stderr, status)
+	}
 	input.Sources = nil
-	if body, err := p.PrepareNativeFinalCapture(t.Context(), input); err != nil || body != nil || reader.reads.Load() != 1 {
+	if body, err := p.PrepareNativeFinalCapture(t.Context(), input); err != nil || body != nil || reader.reads.Load() != 3 {
 		t.Fatalf("unselected final acquired sources: %v, %v", body, err)
 	}
 	input.Sources = []string{"mchanges:amber1.."}
@@ -96,7 +120,7 @@ func TestNativeFinalCaptureUsesRecipientStorageWithoutGoCoordination(t *testing.
 	}
 	input.Sources = []string{"mchanges:" + id}
 	input.RecipientCwd = nil
-	if body, err := p.PrepareNativeFinalCapture(t.Context(), input); err != nil || body == nil || !strings.Contains(body.FullText, "workspace is unavailable") || reader.reads.Load() != 1 {
+	if body, err := p.PrepareNativeFinalCapture(t.Context(), input); err != nil || body == nil || !strings.Contains(body.FullText, "workspace is unavailable") || reader.reads.Load() != 3 {
 		t.Fatalf("unavailable recipient cwd fell back to another workspace: %v, %v", body, err)
 	}
 	input.RecipientCwd = &f.workspace
@@ -104,7 +128,7 @@ func TestNativeFinalCaptureUsesRecipientStorageWithoutGoCoordination(t *testing.
 		t.Fatalf("missing storage discarded final: %v, %v", body, err)
 	}
 	input.RecipientThreadID = "unadmitted-recipient"
-	if body, err := p.PrepareNativeFinalCapture(t.Context(), input); err != nil || body == nil || !strings.Contains(body.FullText, "scope is not admitted") || reader.reads.Load() != 1 {
+	if body, err := p.PrepareNativeFinalCapture(t.Context(), input); err != nil || body == nil || !strings.Contains(body.FullText, "scope is not admitted") || reader.reads.Load() != 3 {
 		t.Fatalf("unadmitted recipient used another namespace: %v, %v", body, err)
 	}
 	if _, found, err := p.Retained.Store.ReadScope(input.RecipientThreadID); found || err != nil {

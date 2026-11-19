@@ -1,6 +1,7 @@
 package retained
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
@@ -137,6 +138,24 @@ func (s *store) selectChangeIndex(options *changeReadOptions) (changeIndex, erro
 		if err != nil {
 			return index, err
 		}
+	}
+	if options.omitOwn {
+		owners := make(map[string]string, len(index.Streams))
+		for _, stream := range index.Streams {
+			owners[stream.Name] = stream.Thread
+		}
+		options.ids = slices.DeleteFunc(slices.Clone(options.ids), func(id string) bool {
+			change := index.Changes[id]
+			if len(change.Calls) == 0 {
+				return false // No authorship evidence; keep missing/pending diagnostics.
+			}
+			stream, _, _ := changes.ParseID(id)
+			change.Calls = slices.DeleteFunc(change.Calls, func(call trackedCall) bool {
+				return cmp.Or(call.Thread, owners[stream]) == s.session.Thread
+			})
+			index.Changes[id] = change
+			return len(change.Calls) == 0 && change.RetiredCalls == 0
+		})
 	}
 	// Preserve authored-relative output for a single workspace, regardless of cwd.
 	if roots := index.authoredWorkspaces(options.ids); len(roots) == 1 {

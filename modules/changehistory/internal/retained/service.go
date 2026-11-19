@@ -67,7 +67,7 @@ func (o changeReadOptions) query() changes.Query {
 	return changes.Query{Workspace: o.workspace, IDs: o.ids, Paths: o.paths, View: o.view, Mine: o.mine, MaxTokens: o.maxTokens}
 }
 func options(q changes.Query) changeReadOptions {
-	return changeReadOptions{workspace: q.Workspace, cwd: q.Workspace, ids: q.IDs, paths: q.Paths, view: q.View, mine: q.Mine, maxTokens: q.MaxTokens, yielded: q.Yielded}
+	return changeReadOptions{workspace: q.Workspace, cwd: q.Workspace, ids: q.IDs, paths: q.Paths, view: q.View, mine: q.Mine, omitOwn: q.OmitOwn, maxTokens: q.MaxTokens, yielded: q.Yielded}
 }
 
 func (service *service) Execute(ctx context.Context, request command.Request) (command.Output, error) {
@@ -78,10 +78,19 @@ func (service *service) Execute(ctx context.Context, request command.Request) (c
 	if err != nil {
 		return fail(fmt.Errorf("resolve working directory: %w", err))
 	}
-	options, err := parseChangeRead(request.Args, cwd)
+	args := request.Args
+	recipient := len(args) > 0 && args[0] == "--for-recipient"
+	if recipient {
+		args = args[1:]
+	}
+	options, err := parseChangeRead(args, cwd)
 	if err != nil {
 		return fail(err)
 	}
+	if recipient && (options.view != "net" || options.mine || len(options.paths) != 0 || len(options.ids) == 0) {
+		return fail(errors.New("recipient attachments require explicit change IDs"))
+	}
+	options.omitOwn = recipient
 	if request.Scope.Directory == "" {
 		return fail(errors.New("change storage is unavailable"))
 	}

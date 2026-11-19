@@ -93,7 +93,9 @@ file/skill content with original text and attribution so later edits cannot chan
 an assignment. Preserve individual failures and literal escaping; retries do not reread.
 
 Share parsing/acquisition with preload/reload. Composer attachments and preload keep
-their separate meanings. Freezing source content is distinct from selecting already
+their separate meanings. Automatic message and final attachments omit changes authored by the recipient,
+including their part of mixed selections. Explicit reads remain independent.
+Freezing source content is distinct from selecting already
 retained change ranges for progress or final replies; those need no second copy.
 
 ## Prepared children and guidance

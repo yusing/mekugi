@@ -17,7 +17,7 @@ import (
 
 func TestNativeFinalProjectionUsesOnlySelectedRetainedRanges(t *testing.T) {
 	f := newMChangesSliceFixture(t, "native-final-projection")
-	id := f.reserve(t, f.thread, "edit")
+	id := f.reserve(t, "worker", "edit")
 	f.publish(t, id, "edit", "edit-call", mekugiHistory{Caller: "/root/worker", ReviewFiles: []diffmodel.ReviewFile{
 		diffmodel.RenderReviewFile("seen.txt", "seen.txt", "before\n", "seen-content\n"),
 		diffmodel.RenderReviewFile("remaining.txt", "remaining.txt", "before\n", "remaining-content\n"),
@@ -95,7 +95,7 @@ func TestNativeFinalProjectionUsesOnlySelectedRetainedRanges(t *testing.T) {
 
 func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 	f := newMChangesSliceFixture(t, "native-final-recovery")
-	id := f.reserve(t, f.thread, "large")
+	id := f.reserve(t, "worker", "large")
 	content := "visible line of retained evidence\n" +
 		strings.Repeat("oversized line of retained evidence ", 1600) + "frozen-end\n"
 	f.publish(t, id, "large", "large-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "large.txt", "", content)}})
@@ -158,7 +158,7 @@ func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 
 func TestFrozenCaptureProjectionCountsDiagnosticPrefixes(t *testing.T) {
 	f := newMChangesSliceFixture(t, "native-diagnostic-prefix")
-	id := f.reserve(t, f.thread, "edit")
+	id := f.reserve(t, "worker", "edit")
 	diagnostic := diffmodel.RenderReviewFile("git.txt", "git.txt", "before\n", "imported\n")
 	diagnostic.Origin = "git checkout"
 	f.publish(t, id, "edit", "edit-call", mekugiHistory{Caller: "/root/worker", ReviewFiles: []diffmodel.ReviewFile{
@@ -188,7 +188,7 @@ func TestFrozenCaptureProjectionCountsDiagnosticPrefixes(t *testing.T) {
 
 func TestNativeFinalFrozenReadPreservesIndependentCaptureErrors(t *testing.T) {
 	f := newMChangesSliceFixture(t, "native-partial-final")
-	id := f.reserve(t, f.thread, "edit")
+	id := f.reserve(t, "worker", "edit")
 	f.publish(t, id, "edit", "edit-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "before\n", "available-content\n")}})
 	stream, number, err := changes.ParseID(id)
 	if err != nil {
