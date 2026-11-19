@@ -328,7 +328,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	}
 }
 
-func TestMarkdownFileLinkFromDialog(t *testing.T) {
+func TestMarkdownLinksFromDialog(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("package sample\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -338,15 +338,38 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	settleTestPresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, main.settings, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 18
-	u.openBlocks(main.shell.Transcript, []activityui.Block{{Body: "Open sample.go:1 or [remote](https://example.com)."}})
+	u.openBlocks(main.shell.Transcript, []activityui.Block{
+		{Body: "Open sample.go:1, [secure](https://example.com/a?q=1#part), or [remote](http://example.com)."},
+	})
 	awaitMarkdownLinks(t, u)
 	drawOutputDialog(u)
 	before := u.Dialog
+	for _, link := range []struct{ label, destination string }{
+		{"secure", "https://example.com/a?q=1#part"},
+		{"remote", "http://example.com"},
+	} {
+		x, y := outputSelectionPoint(t, u, link.label)
+		u.outputMouse(0, x, y, false)
+		if strings.Contains(strings.Join(outputDialogScreen(u), "\n"), "r reference") {
+			t.Fatalf("pressing %q displayed selection hints before release", link.label)
+		}
+		u.outputMouse(0, x, y, true)
+		want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(link.destination)) + "\x07"
+		if u.Frame.Clipboard != want || u.Dialog != before || u.Dialog.Selection != nil {
+			t.Fatalf("clicking %q did not copy its destination and keep the dialog open", link.label)
+		}
+	}
+	u.Frame.Clipboard = ""
 	x, y := outputSelectionPoint(t, u, "remote")
-	u.outputMouse(0, x, y, false)
-	u.outputMouse(0, x, y, true)
-	if u.Dialog != before || u.Frame.Clipboard != "" {
-		t.Fatal("non-file dialog link behavior changed")
+	outputSelectionDrag(u, x, y, x+5, y)
+	if u.Dialog != before || u.Dialog.Selection == nil || u.Frame.Clipboard != "" {
+		t.Fatal("dragging from a dialog link did not retain a selection without copying")
+	}
+	if got := u.Dialog.Selection.Text(); !strings.Contains(got, "remote") {
+		t.Fatalf("drag selected %q, want the link label", got)
+	}
+	if !strings.Contains(strings.Join(outputDialogScreen(u), "\n"), "r reference") {
+		t.Fatal("released drag did not display selection hints")
 	}
 	x, y = outputSelectionPoint(t, u, "sample.go:1")
 	u.outputMouse(0, x, y, false)

@@ -3,7 +3,6 @@ package launch
 import (
 	"errors"
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -327,9 +326,7 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 					break
 				}
 				if target.Link != "" {
-					if link, err := url.Parse(target.Link); err == nil && (link.Scheme == "http" || link.Scheme == "https") {
-						c.notice, _ = u.Frame.CopyText(target.Link)
-					} else {
+					if !c.copyNonFileLink(target.Link) {
 						c.details(target.Version, sessionapi.NativeDetailRequest{Kind: sessionapi.NativeFileDetails, Path: target.Link, Displayed: sessionpresentation.Thread{ID: target.Thread}})
 					}
 				} else {
@@ -589,6 +586,15 @@ func (c *nativeClient) requestTerminalExit() {
 	c.enqueue(sessionapi.NativeOperation{Command: new("/quit")}, nil, nil)
 }
 
+// copyNonFileLink handles activated destinations that are not local file targets.
+func (c *nativeClient) copyNonFileLink(target string) bool {
+	if _, local := markdownFileTarget(c.event.Frame.View.SourceWorkspace(), target); local {
+		return false
+	}
+	c.notice, _ = c.renderer.terminal.Frame.CopyText(target)
+	return true
+}
+
 func (c *nativeClient) dialog(intent terminalsession.DialogIntent) {
 	u := c.renderer.terminal
 	if u.Dialog == nil {
@@ -612,6 +618,9 @@ func (c *nativeClient) dialog(intent terminalsession.DialogIntent) {
 	case terminalsession.DialogCopy:
 		c.notice, _ = u.Frame.CopyText(intent.Text)
 	case terminalsession.DialogOpenLink:
+		if c.copyNonFileLink(intent.Text) {
+			return
+		}
 		var source sessionpresentation.Thread
 		if details := c.event.Frame.Details; details != nil && details.View.ID == u.Dialog.ID {
 			source = details.Source

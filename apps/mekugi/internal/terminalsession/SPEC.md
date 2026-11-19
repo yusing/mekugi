@@ -388,7 +388,8 @@ errors have one File view. Tabs keep independent navigation and copy original
 bytes. Missing, binary, oversized or unreadable content shows copyable errors.
 The dialog shows loading until the read settles; closing or replacing it retires
 that result. Reopening rereads without monitoring.
-HTTP(S) links copy destinations in transcripts and do nothing on dialog click.
+Clicking a non-file link copies its destination in transcripts and dialogs.
+Dragging from a link selects text instead.
 The application resolves and reads files; rendering receives their content or error.
 
 `/ps` and the running-process count open the same inline process inspector in

@@ -570,7 +570,7 @@ func (d *Dialog) Paint(rows []string, width, height int, painter *terminalui.Pai
 		d.resolveFileLinks(body)
 	}
 	frame := terminalui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.Document, Paused: d.Document.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(w)}
-	if d.Selection != nil {
+	if d.Selection != nil && !d.Selection.Dragging() {
 		frame.Footer = SelectionHints.Render()
 	}
 	if len(d.pages) > 1 {

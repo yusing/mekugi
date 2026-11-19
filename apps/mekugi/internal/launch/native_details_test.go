@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changehistory "github.com/yusing/mekugi/modules/changehistory/presentation"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -125,6 +127,41 @@ func TestNativeDetailsSelectAndCloseIndependently(t *testing.T) {
 	n.retire("first")
 	if nativeDetailFrame(second).Details.Output == nil || firstOutput.View().Released || secondOutput.View().Released || u.attached.session.Scope() == nil {
 		t.Fatal("view disposal released shared execution/output ownership")
+	}
+}
+
+func TestNativeDialogCopiesNonFileLink(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", t.TempDir())
+	_, view, _ := nativeDetailTestViews(t, u)
+	c := nativeClient{
+		event:    sessionapi.NativeEvent{Attachment: "first", Frame: nativeDetailFrame(view)},
+		renderer: *nativeDetailTestRenderer(t, u, view),
+	}
+	terminal := c.renderer.terminal
+	terminal.Width, terminal.Height = 100, 24
+	id := sessionpresentation.DetailID{Attachment: c.event.Frame.View.Version.Attachment, Selection: 1}
+	c.event.Frame.Details = &sessionapi.NativeDetails{View: sessionpresentation.DetailView{ID: id}}
+	dialog := &terminalsession.ContentDialog{ID: id}
+	terminal.Dialog = dialog
+	const target = "mailto:support@example.com"
+	page := terminalui.DialogPage{Title: "Details"}
+	page.Add(terminalui.DialogLine{Text: ansi.SetHyperlink(target, "") + "Contact support" + ansi.ResetHyperlink()})
+	dialog.SetDocument(page, dialog.Prepare(terminal.Width, terminal.Height))
+	rows := make([]string, terminal.Height)
+	dialog.Dialog.Paint(rows, terminal.Width, terminal.Height, &terminalui.Painter{Theme: diffrender.DarkTheme})
+	x, y := dialogFramePoint(t, renderedDialogRows(rows, terminal.Width), "Contact support")
+	for _, suffix := range []string{"M", "m"} {
+		c.dispatch(terminalsession.Input{
+			Kind: terminalsession.MouseInput,
+			Text: fmt.Sprintf("\x1b[<0;%d;%d%s", x+1, y+1, suffix),
+		})
+	}
+	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(target)) + "\x07"
+	if terminal.Frame.Clipboard != want || terminal.Dialog != dialog ||
+		dialog.Selection != nil || len(c.calls) != 0 {
+		t.Fatalf("clipboard=%q, same dialog=%t, selection=%t, calls=%d",
+			terminal.Frame.Clipboard, terminal.Dialog == dialog, dialog.Selection != nil, len(c.calls))
 	}
 }
 

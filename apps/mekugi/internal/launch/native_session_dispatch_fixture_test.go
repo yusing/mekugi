@@ -380,7 +380,9 @@ func (session *nativeSession) outputIntent(attached *attachedPresentation, termi
 		surface.Focus = 0
 		files.closeTerminalOutput(surface)
 	case terminalsession.DialogOpenLink:
-		files.openTerminalMarkdownFile(&attached.session, attached.presentation, attached.cwd, activitySource(attached, terminal, surface.Dialog.View), surface, surface.Dialog.View, intent.Text)
+		if !files.openTerminalMarkdownFile(&attached.session, attached.presentation, attached.cwd, activitySource(attached, terminal, surface.Dialog.View), surface, surface.Dialog.View, intent.Text) {
+			copyText(&attached.feedback, clock, surface, intent.Text)
+		}
 	}
 }
 

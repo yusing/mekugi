@@ -94,7 +94,7 @@ func (d *ContentDialog) paintProcesses(rows []string, rect Rect, limit int) {
 		lines = d.appendProcessDetail(lines, width, limit)
 	}
 	footer := d.footer(rect.W)
-	if d.Selection != nil {
+	if d.Selection != nil && !d.Selection.Dragging() {
 		footer = " " + SelectionHints.Render()
 	} else if d.ProcessDetail && d.process.completion != "" && !d.Typing {
 		notice := terminalui.Dim + d.process.completion + terminalui.Reset

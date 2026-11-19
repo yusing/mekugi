@@ -293,7 +293,10 @@ func (p *uiReplayPlayback) outputIntent(intent terminalsession.DialogIntent) {
 			u.feedback.Set(err.Error(), true, p.At)
 		}
 	case terminalsession.DialogOpenLink:
-		u.detailFiles.openTerminalMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.activitySource(u.shell.Dialog.View), u.shell, u.shell.Dialog.View, intent.Text)
+		if !u.detailFiles.openTerminalMarkdownFile(&u.session, u.presentation, u.presentation.View().SourceWorkspace(), u.activitySource(u.shell.Dialog.View), u.shell, u.shell.Dialog.View, intent.Text) {
+			text, alert := u.shell.Frame.CopyText(intent.Text)
+			u.feedback.Set(text, alert, p.At)
+		}
 	}
 	p.publish()
 }
