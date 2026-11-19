@@ -203,9 +203,32 @@ func References(text string) iter.Seq[string] {
 	}
 }
 
+// In scanned text, reserve shell-style uppercase names without changing explicit selections.
+func isEnvironmentReference(reference string) bool {
+	skill, ok := strings.CutPrefix(reference, "$")
+	if !ok {
+		return false
+	}
+	if at := strings.LastIndex(skill, "#L"); at >= 0 {
+		skill = skill[:at]
+	}
+	name, _, _ := strings.Cut(skill, "/")
+	if name == "" || name[0] != '_' && (name[0] < 'A' || name[0] > 'Z') {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		b := name[i]
+		if b != '_' && (b < 'A' || b > 'Z') && (b < '0' || b > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // ReferenceTokens recognizes references in prose and exact JSON string values.
-// Escaped markers, email addresses, identifier suffixes and diff markers stay
-// literal. Prose excludes terminal .,:!?; quote after @ to retain path punctuation.
+// Escaped markers, email addresses, identifier suffixes, diff markers, and
+// uppercase environment variables stay literal. Prose excludes terminal .,:!?;
+// quote after @ to retain path punctuation.
 func ReferenceTokens(text string) iter.Seq[ReferenceToken] {
 	return func(yield func(ReferenceToken) bool) {
 		for i := 0; i < len(text); i++ {
@@ -226,7 +249,7 @@ func ReferenceTokens(text string) iter.Seq[ReferenceToken] {
 						exactJSON = true
 						if _, err := ParseReference(decoded); err == nil {
 							end := i + size - 2
-							if !yield(ReferenceToken{decoded, i, end}) {
+							if !isEnvironmentReference(decoded) && !yield(ReferenceToken{decoded, i, end}) {
 								return
 							}
 							i = end
@@ -271,7 +294,7 @@ func ReferenceTokens(text string) iter.Seq[ReferenceToken] {
 				}
 				end--
 			}
-			if end > start+1 && !yield(ReferenceToken{text[start:end], start, end}) {
+			if end > start+1 && !isEnvironmentReference(text[start:end]) && !yield(ReferenceToken{text[start:end], start, end}) {
 				return
 			}
 		}

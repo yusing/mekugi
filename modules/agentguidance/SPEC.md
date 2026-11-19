@@ -317,9 +317,12 @@ request separate results.
 Preload/reload retain the JSON envelope `{"sources":[REFERENCE,...]}` with string
 entries only, for example `{"sources":["\u0040file#L2-L4","\u0024skill-name","\u006dchanges:blue1,blue3..7,birch2"]}`.
 There are no source-object alternatives. Bare paths, email addresses and escaped
-markers remain literal. Explicit selections and references in JSON string values
-are exact, including terminal punctuation; prose punctuation rules do not rewrite
-them. Shared model guidance supplies this syntax once; tool
+markers remain literal. In scanned text, including decoded JSON string values,
+`$NAME` and `$NAME/path` stay literal when the name matches
+`[A-Z_][A-Z0-9_]*`. Environment variables are not expanded; use an explicit
+selection to request an all-caps skill. Explicit selections and references in JSON
+string values are exact, including terminal punctuation; prose punctuation rules
+do not rewrite them. Shared model guidance supplies this syntax once; tool
 descriptions keep only operation-specific acquisition and delivery rules.
 
 ## Lifecycle, Codex connection, records, and failure

@@ -133,3 +133,22 @@ func TestReferenceMalformedAndLiteralNeighbors(t *testing.T) {
 		t.Fatalf("literal neighbors: %q", got)
 	}
 }
+
+func TestReferencesLeaveUppercaseEnvironmentVariablesLiteral(t *testing.T) {
+	text := "Read $SESSION_TMP/check.rs. $HOME `$_CACHE2/log` $ROOT#L2 and $preview/references/A.md $Mixed_2 " +
+		`["$SESSION_TMP/check.rs","$PATH","$guide/references/a.md"]`
+	want := []string{"$preview/references/A.md", "$Mixed_2", "$guide/references/a.md"}
+	if got := slices.Collect(ReferenceTokens(text)); len(got) != len(want) {
+		t.Fatalf("got %v, want %q", got, want)
+	} else {
+		for i, token := range got {
+			if token.Text != want[i] || text[token.Start:token.End] != want[i] {
+				t.Fatalf("token %d = %+v, want %q", i, token, want[i])
+			}
+		}
+	}
+	ref, err := ParseReference("$SESSION_TMP/check.rs")
+	if err != nil || ref.Skill != "SESSION_TMP/check.rs" {
+		t.Fatalf("explicit selection: got %+v, %v", ref, err)
+	}
+}
