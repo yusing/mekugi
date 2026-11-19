@@ -229,6 +229,17 @@ func mchangesNestedCodexResponse(turn int, item map[string]any) *http.Response {
 }
 
 func TestMChangesNoOpFormatterOverlapNativeCodexE2E(t *testing.T) {
+	testMChangesCheckOverlap(t, "gofmt -w first_test.go second_test.go && cmp first_test.go first_test.go.expected && cmp second_test.go second_test.go.expected && printf 'runner-ready\\n' && mrun --max-tokens 2000 make test", true)
+}
+
+func TestMChangesYieldedCheckOverlapNativeCodex(t *testing.T) {
+	for _, check := range []string{"make test", "rtk err make check-native"} {
+		t.Run(check, func(t *testing.T) { testMChangesCheckOverlap(t, check, false) })
+	}
+}
+
+func testMChangesCheckOverlap(t *testing.T, command string, formatter bool) {
+	t.Helper()
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv(routerTestWorkerEnvironment, "1")
@@ -263,13 +274,17 @@ func TestMChangesNoOpFormatterOverlapNativeCodexE2E(t *testing.T) {
 		writeTestFile(t, filepath.Join(workspace, name), content)
 		writeTestFile(t, filepath.Join(workspace, name+".expected"), content)
 	}
-	writeTestFile(t, filepath.Join(workspace, "Makefile"), ".PHONY: test\ntest:\n\t@i=0; while ! grep -q 'Value = 2' first_test.go; do i=$$((i+1)); test $$i -lt 400 || exit 1; sleep 0.05; done\n\t@sleep 1; printf 'check-passed\\n'\n")
-	command := "gofmt -w first_test.go second_test.go && cmp first_test.go first_test.go.expected && cmp second_test.go second_test.go.expected && printf 'runner-ready\\n' && mrun --max-tokens 2000 make test"
+	writeTestFile(t, filepath.Join(workspace, "Makefile"), ".PHONY: test check-native\ntest check-native:\n\t@i=0; while ! grep -q 'Value = 2' first_test.go; do i=$$((i+1)); test $$i -lt 400 || exit 1; sleep 0.05; done\n\t@sleep 1; printf 'check-passed\\n'\n")
 	program := "// @exec: {\"yield_time_ms\": 2000}\nconst started = await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + ", yield_time_ms: 1000});\ntext(started.output);\nif (typeof started.session_id !== 'number') throw new Error('check did not yield');\nconst ended = await tools.write_stdin({session_id: started.session_id, chars: '', yield_time_ms: 10000});\ntext(ended.output);\nif (ended.exit_code !== 0) throw new Error('check failed');"
 	patch := "*** Begin Patch\n*** Update File: first_test.go\n@@\n-const Value = 1\n+const Value = 2\n*** End Patch\n"
 	provider := &mchangesNestedCodexProvider{
 		program: program, callID: "formatter-check", finalMessage: "formatter overlap completed", expectPending: true,
 		store: store, workspace: workspace, overlapProgram: "await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + ");",
+	}
+	if !formatter {
+		provider.program = "text(await tools.exec_command({cmd:" + strconv.Quote(command) + ",yield_time_ms:1000}));"
+		provider.expectPending, provider.expectProcess = false, true
+		provider.laterProgram = "const r=await tools.write_stdin({session_id:SESSION,chars:'',yield_time_ms:10000}); if(r.exit_code!==0) throw Error(r.output);"
 	}
 	thread := runMChangesNestedCodexCell(t, codex, registry, store, workspace, provider)
 	ctx, release, err := store.beginSession(t.Context(), thread, "formatter-overlap-read")
@@ -281,9 +296,9 @@ func TestMChangesNoOpFormatterOverlapNativeCodexE2E(t *testing.T) {
 	if err != nil || !found || writer.ExecOutcome == nil {
 		t.Fatalf("formatter terminal capture: found=%t error=%v history=%+v", found, err, writer)
 	}
-	t.Logf("formatter capture: change_id=%q coverage=%q scope_reason=%q files=%d", writer.ChangeID, writer.ExecOutcome.Coverage, writer.ExecOutcome.ScopeReason, len(writer.ReviewFiles))
-	if writer.ChangeID != "" || len(writer.ReviewFiles) != 0 || writer.ExecOutcome.Coverage != changecapture.CoverageExact || writer.ExecOutcome.Exit == nil || *writer.ExecOutcome.Exit != 0 {
-		t.Fatalf("no-op formatter captured overlapping edit or partial effects: %+v", writer)
+	t.Logf("runner capture: change_id=%q coverage=%q scope_reason=%q files=%d", writer.ChangeID, writer.ExecOutcome.Coverage, writer.ExecOutcome.ScopeReason, len(writer.ReviewFiles))
+	if writer.ChangeID != "" || len(writer.ReviewFiles) != 0 || writer.ExecOutcome.Coverage != changecapture.CoverageExact || writer.ExecOutcome.Exit == nil || *writer.ExecOutcome.Exit != 0 || strings.Contains(writer.ExecOutcome.ScopeReason, "rtk is not recognized") {
+		t.Fatalf("runner claimed an edit, lost the check scope or reported incomplete effects: %+v", writer)
 	}
 	edited, found, err := store.scoped(ctx).lookup(ctx, workspace, legacycall.PatchCallID(provider.callID+"-overlap", 0))
 	if err != nil || !found || edited.ChangeID == "" {

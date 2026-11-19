@@ -745,6 +745,23 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 			if !ok {
 				break
 			}
+			if next == "err" {
+				// With direct argv, err runs the child and filters its output.
+				// A single command string can instead be interpreted by sh.
+				child := args[1:]
+				if len(child) < 2 {
+					break
+				}
+				executable, literal := shellsyntax.Literal(child[0])
+				if !literal || strings.HasPrefix(executable, "-") {
+					break
+				}
+				inner := *w
+				inner.functions = nil
+				inner.call(&syntax.CallExpr{Args: child})
+				w.program, w.vcsOrigin = inner.program, inner.vcsOrigin
+				return
+			}
 			if next == "proxy" {
 				if len(args) < 2 {
 					break

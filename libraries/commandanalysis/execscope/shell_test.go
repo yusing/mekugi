@@ -186,6 +186,7 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 		"rtk run -c 'rm target'",
 		"rtk run --command 'rm target'",
 		"rtk run -c 'env -u BASH_ENV rm target'",
+		"rtk err rm target",
 	} {
 		plan := classifyExecShell(command, workdir, "bash")
 		if plan.Class != Declared || !slices.Equal(execPlanScope(plan, workdir), []string{"file:target"}) {
@@ -194,6 +195,9 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 	}
 	for _, command := range []string{
 		`rtk run -c "$COMMAND"`,
+		"rtk err 'cat input; rm target'",
+		"rtk err --shell sh 'rm target'",
+		`rtk err "$EXECUTABLE" target`,
 		`rtk proxy "$EXECUTABLE" rm a`,
 		"rtk proxy ./rm a",
 		"/tmp/rtk proxy rm a",
@@ -209,6 +213,13 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 	if !slices.ContainsFunc(plan.Programs, func(program Program) bool { return program.Label == "go test" }) ||
 		slices.ContainsFunc(plan.Programs, func(program Program) bool { return strings.HasPrefix(program.Label, "rtk") }) {
 		t.Fatalf("wrapped go test program labels = %+v; want go test, not rtk", plan.Programs)
+	}
+	for _, command := range []string{"cat input", "make check-native", "make test"} {
+		want := classifyExecShell(command, workdir, "bash")
+		got := classifyExecShell("rtk err "+command, workdir, "bash")
+		if got.Class != want.Class || got.Reason != want.Reason || !slices.Equal(got.Programs, want.Programs) {
+			t.Errorf("rtk err %s: %+v, want child classification %+v", command, got, want)
+		}
 	}
 }
 
