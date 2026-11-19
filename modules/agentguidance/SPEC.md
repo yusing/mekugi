@@ -167,7 +167,10 @@ for same-workspace inherited context. Fresh contexts, reset windows and changed
 workspaces obtain current facts; ordinary continuations reuse the recorded facts.
 Workspace changes use the native context-update path without rewriting earlier
 conversation or tool/result history. There is no Go contribution or replacement
-prefix freezer. Native cwd, execution shell, date/timezone, child role and permission
+prefix freezer. Only a ready local executor supplies host facts. When its filesystem
+reads are restricted, the runtime still includes the platform, home and kernel;
+it does not probe local OS/Git files or reuse facts from a different read scope.
+Native cwd, execution shell, date/timezone, child role and permission
 context remain authoritative. Prewarm acquires nothing.
 
 Codex process construction establishes the invocation-local `MEKUGI_ENVIRONMENT_FACTS=1`
