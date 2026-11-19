@@ -137,11 +137,11 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 		appServerTestNotify(t, u, "error", map[string]any{"threadId": thread, "turnId": "retry-turn", "willRetry": true,
 			"error": map[string]any{"message": "Retrying in 5m 11s (1/5)", "additionalDetails": "Server overloaded"}})
 	}
-	publishRetry := func() {
+	publishRoster := func() {
 		t.Helper()
 		u.testMainFrame(100, 8, 0)
 		agents := u.attached.childSource.Publication(u.attached.presentation, u.attached.source)
-		if u.Turn != "" {
+		if u.Turn == "retry-turn" {
 			for _, row := range agents.Roster {
 				if row.Agent.Thread == "same-thread" && (!row.Agent.Waiting || row.Agent.Wait == nil) {
 					t.Fatalf("Main retry missing before browser publication: %+v", row.Agent)
@@ -159,7 +159,7 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	publishRetry()
+	publishRoster()
 	for _, width := range []string{"1280", "390"} {
 		run("set", "viewport", width, "900")
 		run("eval", `if (!document.querySelector('#panel-content')) document.querySelector('button[aria-label^="Agents ("]').click()`)
@@ -175,8 +175,36 @@ func TestWebUIBrowserRosterSemantics(t *testing.T) {
 	for _, thread := range []string{"same-thread", "child"} {
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "retry-turn", "status": "interrupted"}})
 	}
-	publishRetry()
+	publishRoster()
 	run("wait", "--fn", `!document.querySelector('#panel-content').textContent.includes('Retrying in 5m 11s')`)
+
+	// Drive the real wait producer through Session API into the browser roster.
+	run("set", "viewport", "1280", "900")
+	run("eval", `if (!document.querySelector('#panel-content')) document.querySelector('button[aria-label^="Agents ("]').click()`)
+	observed = time.Now().Add(-12 * time.Second)
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "same-thread", "turn": map[string]any{"id": "work-turn"}})
+	timer := `document.querySelector('#panel-content [title="Time spent working"]')?.textContent.trim()`
+	waitFrame := func(phase, condition string) {
+		t.Helper()
+		publishRoster()
+		run("wait", "--fn", condition)
+		if artifacts := os.Getenv("MEKUGI_TEST_WEBUI_ARTIFACTS"); artifacts != "" {
+			run("screenshot", filepath.Join(artifacts, "roster-wait-"+phase+".png"))
+		}
+	}
+	waitFrame("before", `/^[1-5]\d[s]$/.test(`+timer+`)`)
+	waitItem := func(method, status string) {
+		appServerTestNotify(t, u, method, map[string]any{"threadId": "same-thread", "turnId": "work-turn", "item": map[string]any{
+			"id": "wait", "type": "collabAgentToolCall", "tool": "wait", "status": status, "receiverThreadIds": []string{"child"},
+		}})
+	}
+	observed = observed.Add(12 * time.Second)
+	waitItem("item/started", "inProgress")
+	waitFrame("during", timer+` === "12s" && document.querySelector('#panel-content').textContent.includes('Waiting for')`)
+	observed = time.Now()
+	waitItem("item/completed", "completed")
+	waitFrame("after", `/^(?:1[3-9]|[2-5]\d)s$/.test(`+timer+`)`)
+	appServerTestTurnEnd(t, u, "work-turn", "completed")
 
 	// Native generation facts reach the server-pushed roster.
 	generationInputs := new(sessioncontrol.Observations)

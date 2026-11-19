@@ -58,7 +58,10 @@ func (a *Attachment) ObserveTurn(models TurnModels, e TurnObservation) TurnUpdat
 			result.Text = models.Transcript.TurnCompleted(e.Thread, e.Turn, e.Status, e.At, result.Current, stores)
 			a.CloseTurn(e.Thread, e.Turn)
 			waits := nativeWaits.Value(stores.Thread)
-			*waits = slices.DeleteFunc(*waits, func(w nativeWaitItem) bool { return w.turn == e.Turn })
+			waits.items = slices.DeleteFunc(waits.items, func(w nativeWaitItem) bool { return w.turn == e.Turn })
+			if waits.turn == e.Turn {
+				waits.timing = WaitTiming{Elapsed: waits.timing.Duration(e.At)}
+			}
 		}
 		if result.Current && !models.Auxiliary {
 			models.Agent.TurnCompleted(e.Status == "completed", e.At)

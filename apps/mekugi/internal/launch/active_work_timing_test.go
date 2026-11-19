@@ -1,12 +1,115 @@
 package launch
 
 import (
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
+
+func TestUISnapshotNativeWaitActiveWork(t *testing.T) {
+	u, _, at := nativeRunningUI(t)
+	u.attached.cwd = "/workspace"
+	u.shell.Agents.Painter.Theme = diffrender.DarkTheme
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
+	wait := func(method, turn, item string) {
+		status := "inProgress"
+		if method == "item/completed" {
+			status = "completed"
+		}
+		appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": turn, "item": map[string]any{
+			"id": item, "type": "collabAgentToolCall", "tool": "wait", "status": status, "receiverThreadIds": []string{"child"},
+		}})
+	}
+	var rows []string
+	capture := func(phase string, work time.Duration, running bool, composer string) {
+		t.Helper()
+		assertAgentWork(t, u, "main", *at, work, running)
+		frame, _ := u.testMainFrame(96, 9, 0)
+		if !strings.Contains(ansi.Strip(strings.Join(frame, "\n")), composer) {
+			t.Fatalf("%s: expected %q in rendered composer:\n%s", phase, composer, strings.Join(frame, "\n"))
+		}
+		nativeDuration := jsonv1.FormatDurationAsNano(true)
+		wire, err := json.Marshal(sessionapi.NativeFrame{View: u.attached.presentation.View()}, nativeDuration)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var detached sessionapi.NativeFrame
+		if err := json.Unmarshal(wire, &detached, nativeDuration); err != nil {
+			t.Fatal(err)
+		}
+		if got := terminalsession.PaintMainStatus(detached.View.Status, *at, u.shell.Transcript.Painter.Colors); !strings.Contains(ansi.Strip(got), composer) {
+			t.Fatalf("%s: detached composer = %q, want %q", phase, ansi.Strip(got), composer)
+		}
+		u.testActivity(u.shell.Agents).publishActivity()
+		rows = append(rows, phase)
+		rows = append(rows, frame...)
+		rows = append(rows, u.shell.Agents.NativeRoster(96, 6, *at, true)...)
+		rows = append(rows, "")
+	}
+	*at = at.Add(12 * time.Second)
+	capture("Before waiting", 12*time.Second, true, "Working 12s")
+	wait("item/started", "first", "one")
+	*at = at.Add(20 * time.Second)
+	wait("item/started", "first", "one") // Repeated starts must not move the anchor.
+	wait("item/started", "first", "two")
+	appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": "main", "status": map[string]any{"type": "active"}})
+	wait("item/completed", "first", "one")
+	*at = at.Add(40 * time.Second)
+	assertAgentWork(t, u, "child", *at, 72*time.Second, true)
+	if !u.Busy(false) || !u.attached.presentation.View().InterruptAvailable {
+		t.Fatal("pausing the clock made the pending native turn idle")
+	}
+	capture("Waiting: 60 seconds later; a second wait is still pending", 12*time.Second, false, "Working 12s")
+	wait("item/completed", "first", "two")
+	*at = at.Add(7 * time.Second)
+	wait("item/completed", "first", "two")
+	appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "main", "turnId": "first", "itemId": "answer", "delta": "Back to work."})
+	capture("After waiting: 7 seconds of resumed work", 19*time.Second, true, "Working 19s")
+	appServerTestTurnEnd(t, u, "first", "completed")
+	*at = at.Add(5 * time.Second)
+	capture("Completed", 19*time.Second, false, "Completed in 19s")
+	assertNativeUISnapshot(t, "native-wait-active-work", rows)
+}
+
+func TestNativeWaitActiveWorkInterruption(t *testing.T) {
+	u, _, at := nativeWaitUI(t, nil)
+	*at = at.Add(time.Minute)
+	appServerTestTurnEnd(t, u, "first", "interrupted")
+	*at = at.Add(time.Minute)
+	nativeWaitItemFixture(t, u, "item/completed", nil)
+	assertAgentWork(t, u, "main", *at, 2*time.Second, false)
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "second"}})
+	nativeWaitItemFixture(t, u, "item/started", nil)
+	*at = at.Add(5 * time.Second)
+	assertAgentWork(t, u, "main", *at, 7*time.Second, true)
+}
+
+func TestNativeDelegateWaitPausesOnlyItsOwnWork(t *testing.T) {
+	u, _, at := nativeRunningUI(t)
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
+	wait := func(method, status string) {
+		appServerTestNotify(t, u, method, map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{
+			"id": "delegate-wait", "type": "collabAgentToolCall", "tool": "wait", "status": status, "receiverThreadIds": []string{"grandchild"},
+		}})
+	}
+	*at = at.Add(3 * time.Second)
+	wait("item/started", "inProgress")
+	*at = at.Add(time.Minute)
+	assertAgentWork(t, u, "child", *at, 3*time.Second, false)
+	assertAgentWork(t, u, "main", *at, 63*time.Second, true)
+	wait("item/completed", "completed")
+	*at = at.Add(4 * time.Second)
+	assertAgentWork(t, u, "child", *at, 7*time.Second, true)
+}
 
 func newActiveWorkTestUI(t *testing.T) (*appServerUI, *time.Time) {
 	t.Helper()

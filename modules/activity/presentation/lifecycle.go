@@ -41,6 +41,9 @@ func (a *AgentLifecycle) ObserveActive(active bool, at time.Time) {
 	}
 }
 
+// PauseWork keeps response state intact while a native wait holds the turn.
+func (a *AgentLifecycle) PauseWork(at time.Time) { a.WorkTimer.update(false, at) }
+
 func (a *AgentLifecycle) TurnStarted(at time.Time) {
 	a.Retry = nil
 	a.Paused = false

@@ -68,7 +68,7 @@ func TestReplayPublicationWithoutControl(t *testing.T) {
 		t.Fatalf("playback published live admission: %+v", v)
 	}
 	in.RecordedTurn = ""
-	m.Status.Complete("completed", nil, now)
+	m.Status.Complete("completed", nil, now, sessionpresentation.WaitTiming{})
 	v = m.Publish(in, sessionpresentation.Caption{})
 	if v.Status.Session.Running || v.Status.Animating || v.InterruptAvailable {
 		t.Fatalf("recorded completion retained live status: %+v", v.Status)
@@ -167,7 +167,7 @@ func TestNonTerminalStatusTimingAndDetachedDetails(t *testing.T) {
 	if s := running.Status.Session; !s.Running || s.Started.IsZero() || c.now.Sub(s.Started) != 7*time.Second || s.Animation != sessionpresentation.Working {
 		t.Fatalf("running timing: %+v", s)
 	}
-	c.model().Status.Complete("completed", nil, c.now)
+	c.model().Status.Complete("completed", nil, c.now, sessionpresentation.WaitTiming{})
 	c.control.Completed(true)
 	c.now = c.now.Add(time.Hour)
 	done := c.publish(sessionpresentation.Caption{})
@@ -175,7 +175,7 @@ func TestNonTerminalStatusTimingAndDetachedDetails(t *testing.T) {
 		t.Fatalf("completion changed after finish: %+v", s)
 	}
 	failure := "provider failed\n" + strings.Repeat("full detail ", 30)
-	c.model().Status.Complete("failed", &failure, c.now)
+	c.model().Status.Complete("failed", &failure, c.now, sessionpresentation.WaitTiming{})
 	c.feedback.Set(failure, true, c.now)
 	failed := c.publish(sessionpresentation.Caption{})
 	if !failed.Status.Session.Alert || failed.Status.Session.Failure != failure || failed.Status.Session.CompletionKnown || failed.Status.Feedback.Text != failure || !failed.Status.Feedback.Alert {

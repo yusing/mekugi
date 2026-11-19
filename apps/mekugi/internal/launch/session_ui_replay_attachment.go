@@ -52,6 +52,7 @@ func (s *replayAttachment) sessionView() sessionpresentation.View {
 		Info:               sessionpresentation.MainInfo{Workspace: s.cwd, Caller: s.presentation.View().Main.Caller, Skills: s.source.ActiveSkills()["Main"]},
 		DisplayedWorkspace: s.workspace(s.presentation.View().Displayed.ID),
 		RecordedTurn:       s.Turn, Conversation: s.conversation, Feedback: &s.feedback, Processes: processes,
+		WaitTiming: s.session.WaitTiming,
 	}, sessionCaption(&s.session, s.presentation, sessionpresentation.Caption{}, nil))
 }
 
@@ -94,7 +95,7 @@ func (s *replayAttachment) apply(o replayOwners, source *playback.Source, at tim
 			case observation.TurnCompleted:
 				if e.TurnID == s.Turn {
 					s.Turn = ""
-					s.presentation.Status.Complete(e.TurnStatus, nil, e.At)
+					s.presentation.Status.Complete(e.TurnStatus, nil, e.At, s.session.WaitTiming(e.ThreadID, e.TurnID))
 					for _, call := range s.conversation.Questions.Calls {
 						if !call.Resolved {
 							sessionpresentation.RecordQuestion(call, "", s.Turn, at, s.source, s.childSource)

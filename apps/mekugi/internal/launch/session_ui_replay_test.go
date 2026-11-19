@@ -17,6 +17,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -276,6 +277,37 @@ func TestUISnapshotSessionUIReplay(t *testing.T) {
 		p.Paused = true
 		uisnapshot.Assert(t, "testdata/snapshots/session-ui-replay-narrow-paused-bar.txt", p.bar(42)+"\n")
 	})
+}
+
+func TestSessionUIReplayExcludesNativeWaitTime(t *testing.T) {
+	path := replayTestWrite(t, t.TempDir(), "rollout-root.jsonl", replayTestMeta("root"),
+		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
+		replayTestItem("root", "turn", replayTestEpoch+5000, replayTestEpoch+15000,
+			map[string]any{"type": "CollabAgentToolCall", "id": "wait", "tool": "wait", "status": "completed", "receiver_thread_ids": []string{"child"}}),
+		replayTestRecord("event_msg", replayTestEpoch+20000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
+	)
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 17)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	t.Cleanup(p.close)
+	for _, step := range []struct {
+		position time.Duration
+		label    string
+	}{
+		{4 * time.Second, "Working 4s"},
+		{12 * time.Second, "Working 5s"},
+		{18 * time.Second, "Working 8s"},
+		{20 * time.Second, "Completed in 10s"},
+	} {
+		if err := p.advance(step.position); err != nil {
+			t.Fatal(err)
+		}
+		if frame := replayPlaybackTestPaint(t, p, 100, 24); !strings.Contains(frame, step.label) {
+			t.Fatalf("at %s, wanted %q in:\n%s", step.position, step.label, frame)
+		}
+	}
 }
 
 func newTestUIReplayPlayback(activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {

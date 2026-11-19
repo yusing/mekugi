@@ -33,10 +33,10 @@ func (s *MainState) Set(text string, alert bool) {
 
 func (s *MainState) SetText(text string) { s.Set(text, s.Alert) }
 
-func (s *MainState) Complete(status string, failure *string, now time.Time) {
+func (s *MainState) Complete(status string, failure *string, now time.Time, wait WaitTiming) {
 	s.Set(strings.ToUpper(status[:min(1, len(status))])+status[min(1, len(status)):], status == "failed" || failure != nil)
 	if status == "completed" && !s.Started.IsZero() {
-		s.completed, s.completionKnown = now.Sub(s.Started), true
+		s.completed, s.completionKnown = max(0, now.Sub(s.Started)-wait.Duration(now)), true
 	}
 	if failure != nil {
 		s.failure, s.failureKnown = *failure, true
@@ -58,6 +58,7 @@ type Label struct {
 	Alert, Running  bool
 	Animation       Animation
 	Started         time.Time
+	Wait            WaitTiming `json:",omitzero"`
 	Completion      time.Duration
 	CompletionKnown bool
 	FailureKnown    bool
@@ -93,6 +94,7 @@ type MainInputs struct {
 	RecordedTurn           string // Playback selection, used only without live control.
 	Retry                  string
 	ToolInput              func(string) string // Borrowed live Activity generation owner.
+	WaitTiming             func(thread, turn string) WaitTiming
 	Feedback               *noticepresentation.Model
 	Conversation           *conversationmodel.Session
 	ClientEditors          bool // Editor contents remain client-owned, outside this view's retained publication.
@@ -190,6 +192,9 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 	base := Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
 		Completion: state.completed, CompletionKnown: state.completionKnown}
 	v.Status.Session = m.sessionLabel(base, turn, pending, archiving, shell)
+	if in.WaitTiming != nil && v.Status.Session.Running && v.Status.Session.Text != "Compacting context" {
+		v.Status.Session.Wait = in.WaitTiming(thread, turn)
+	}
 	if turn != "" && v.Status.Session.Text == "Working" && !base.Alert && in.ToolInput != nil {
 		if text := in.ToolInput(thread); text != "" {
 			v.Status.Session.Text = text
@@ -233,6 +238,9 @@ func (m *Model) Publish(in MainInputs, caption Caption) (v View) {
 		if in.SideRunning {
 			v.Status.Composer.Animation = Pulse
 			v.Status.Composer.Started = side.Started
+			if in.WaitTiming != nil {
+				v.Status.Composer.Wait = in.WaitTiming(in.SideInterrupt.Thread, in.SideInterrupt.Turn)
+			}
 			if side.Status == "Working" && !side.Alert && in.ToolInput != nil {
 				if text := in.ToolInput(v.SideThread.ID); text != "" {
 					v.Status.Composer.Text = text

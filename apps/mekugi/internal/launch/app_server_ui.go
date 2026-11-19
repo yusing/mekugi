@@ -1621,7 +1621,7 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 			if continuing {
 				attached.presentation.Status.Set("Working", false)
 			} else {
-				attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock))
+				attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock), attached.session.WaitTiming(p.ThreadID, p.Turn.ID))
 			}
 			settleInput(attached, &session.Client, picker, &session.questions, &session.approvals, clock, p.Turn.ID, p.Turn.Status == "interrupted")
 			if !continuing && !shellTurn && !compactTurn && p.Turn.Status == "completed" && session.questions.Count(session.Client.Thread) == 0 {

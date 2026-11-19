@@ -432,7 +432,8 @@ elapsed time, using Activity's shared compact duration grammar.
 Native wait items identify their selected agents in
 [Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection).
 The pending call keeps its actual host turn busy and interruptible. Native
-turn/status observations drive the composer and roster; presentation does not
+wait time does not count toward the composer's working or completed duration.
+Native turn/status observations drive the composer and roster; presentation does not
 retain a second work/wait lifecycle after turn completion. Historical wait items
 remain readable without restarting subscriptions or execution.
 

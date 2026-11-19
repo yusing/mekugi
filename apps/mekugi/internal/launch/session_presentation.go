@@ -100,6 +100,7 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 	return m.Publish(sessionpresentation.MainInputs{
 		Paused:        paused,
 		ToolInput:     attached.session.ToolInput,
+		WaitTiming:    attached.session.WaitTiming,
 		Retry:         attached.session.RetryStatus(control.Thread),
 		BTWRunning:    control.BTW != nil && (control.BTW.Busy || control.BTW.Starting),
 		SideInterrupt: side.InterruptTarget(),

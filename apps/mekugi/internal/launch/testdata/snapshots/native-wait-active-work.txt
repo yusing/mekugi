@@ -1,0 +1,56 @@
+Before waiting
+Mekugi dev • codex
+
+
+
+
+
+╭─ ◐ Working 12s ──────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                            │
+╰──────────────────────────────────────────────────────── /workspace • test-model (high) • 0% ─╯
+─ 3 Agents · 2 · 2 working ─────────────────────────────────────────────────────────────────────
+ ◐ main  working                                                                  12s · 12s ago 
+ ◐ └ worker  working                                                          0%  12s · 12s ago
+
+Waiting: 60 seconds later; a second wait is still pending
+↔ Waiting for worker
+
+↔ Waiting for worker
+
+
+
+╭─ ◐ Working 12s ──────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                            │
+╰──────────────────────────────────────────────────────── /workspace • test-model (high) • 0% ─╯
+─ 3 Agents · 2 · 2 working ─────────────────────────────────────────────────────────────────────
+ ◐ main  Waiting for worker                                                     12s · 1m12s ago 
+ ◐ └ worker  working                                                      0%  1m12s · 1m12s ago
+
+After waiting: 7 seconds of resumed work
+
+↔ Waiting for worker
+
+● main                                                                                 20:01:19
+┃ Back to work.
+
+╭─ ◐ Working 19s ──────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                            │
+╰──────────────────────────────────────────────────────── /workspace • test-model (high) • 0% ─╯
+─ 3 Agents · 2 · 2 working ─────────────────────────────────────────────────────────────────────
+ ◐ main  Back to work.                                                          19s · 1m19s ago 
+ ◐ └ worker  working                                                      0%  1m19s · 1m19s ago
+
+Completed
+
+↔ Waiting for worker
+
+● main                                                                                 20:01:19
+┃ Back to work.
+
+╭─ Completed in 19s ───────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                            │
+╰──────────────────────────────────────────────────────── /workspace • test-model (high) • 0% ─╯
+─ 3 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────
+ ✓ main  done                                                                   19s · 5s ago    
+ ◐ └ worker  working                                                      0%  1m24s · 1m24s ago
+

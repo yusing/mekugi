@@ -190,7 +190,11 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 		agent := s.Lifecycle(p.ThreadID)
 		switch p.ThreadStatus {
 		case "active":
-			agent.ObserveActive(true, now)
+			if len(nativeWaits.Value(s.Thread(p.ThreadID)).items) != 0 {
+				agent.ResumeActive()
+			} else {
+				agent.ObserveActive(true, now)
+			}
 		case "idle", "notLoaded", "systemError":
 			agent.ObserveActive(false, now)
 		}
@@ -374,7 +378,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 				if !main {
 					active = s.Agent(agent).Turn
 				}
-				if !model.replay && !in.AuxiliaryTurn && id != "" && (active == "" || active == p.TurnID) && s.Transcript(p.ThreadID, p.TurnID).Turn != nil {
+				if !in.AuxiliaryTurn && id != "" && (active == "" || active == p.TurnID) && s.Transcript(p.ThreadID, p.TurnID).Turn != nil {
 					s.observeWaitItem(entry)
 				}
 			}

@@ -20,17 +20,60 @@ type nativeWaitItem struct {
 	progress   *activitypresentation.Value
 }
 
-var nativeWaits scope.Key[[]nativeWaitItem]
+type nativeWaitState struct {
+	items  []nativeWaitItem
+	turn   string
+	timing WaitTiming
+}
+
+// WaitTiming is the union of observed native wait intervals in one turn.
+type WaitTiming struct {
+	Since   time.Time     `json:",omitzero"`
+	Elapsed time.Duration `json:",omitzero"`
+}
+
+func (w WaitTiming) Duration(at time.Time) time.Duration {
+	if !w.Since.IsZero() {
+		return w.Elapsed + max(0, at.Sub(w.Since))
+	}
+	return w.Elapsed
+}
+
+var nativeWaits scope.Key[nativeWaitState]
+
+func (s *Attachment) WaitTiming(thread, turn string) WaitTiming {
+	if turn != "" {
+		if store := s.FindThread(thread); store != nil {
+			if state := nativeWaits.Value(store); state.turn == turn {
+				return state.timing
+			}
+		}
+	}
+	return WaitTiming{}
+}
 
 func (s *Attachment) observeWaitItem(entry ActivityEntry) {
 	n := entry.Native
 	waits := nativeWaits.Value(s.Thread(n.Thread))
-	index := slices.IndexFunc(*waits, func(w nativeWaitItem) bool { return w.turn == n.Turn && w.item == n.Item })
+	index := slices.IndexFunc(waits.items, func(w nativeWaitItem) bool { return w.turn == n.Turn && w.item == n.Item })
 	switch {
 	case n.Phase == "item/started" && n.Status == "inProgress" && index < 0:
-		*waits = append(*waits, nativeWaitItem{n.Turn, n.Item, n.Wait})
+		if waits.turn != n.Turn {
+			waits.turn, waits.timing = n.Turn, WaitTiming{}
+		}
+		if len(waits.items) == 0 {
+			waits.timing.Since = entry.Observed
+			s.Lifecycle(n.Thread).PauseWork(entry.Observed)
+		}
+		waits.items = append(waits.items, nativeWaitItem{n.Turn, n.Item, n.Wait})
 	case n.Phase == "item/completed" && index >= 0:
-		*waits = slices.Delete(*waits, index, index+1)
+		waits.items = slices.Delete(waits.items, index, index+1)
+		if len(waits.items) == 0 {
+			waits.timing = WaitTiming{Elapsed: waits.timing.Duration(entry.Observed)}
+			if a := s.Lifecycle(n.Thread); a.Responding {
+				a.ObserveActive(true, entry.Observed)
+			}
+		}
 	}
 }
 

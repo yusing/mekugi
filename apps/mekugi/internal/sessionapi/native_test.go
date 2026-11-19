@@ -111,7 +111,7 @@ func TestNativeStatusAnchorDoesNotRepublish(t *testing.T) {
 		if _, ok := source.native.pop(); ok {
 			t.Fatal("unchanged status emitted another semantic publication")
 		}
-		model.Status.Complete("completed", nil, model.Status.Started.Add(time.Minute))
+		model.Status.Complete("completed", nil, model.Status.Started.Add(time.Minute), sessionpresentation.WaitTiming{})
 		control.Completed(true)
 		publish()
 		last, ok := source.native.pop()
