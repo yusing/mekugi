@@ -20,15 +20,14 @@ Own host-operation feeds, roster derivation and retained output
 
 ## [agentguidance](../../modules/agentguidance/SPEC.md)
 
-Assemble agent guidance without changing caller authority
+Capture admitted context sources and retain historical summaries
 
 - Composition: selected; lifetime: `stateless`.
 - Requires: `sessionhistory`, `changehistory`.
 - Contributes: `commands`, `record-kinds`.
-- Hosts: `guidance`.
 - Commands: `mreload`.
 - Records: `compact`.
-- Codex connections: `executable-frontend`, `guidance-projection`.
+- Codex connections: `executable-frontend`.
 
 ## [agentmetrics](../../modules/agentmetrics/SPEC.md)
 
@@ -45,7 +44,7 @@ Bound one foreground command's output
 
 - Composition: selected; lifetime: `host-operation`.
 - Requires: `outputrecovery`.
-- Contributes: `commands`, `guidance`.
+- Contributes: `commands`.
 - Commands: `mrun`.
 - Codex connections: `executable-frontend`.
 
@@ -56,7 +55,7 @@ Capture, retain, review, apply, and revert filesystem change evidence
 - Composition: selected; lifetime: `invocation`.
 - Requires: `sessionhistory`.
 - Resources: private workspace checkpoints and bounded warm-up tasks.
-- Contributes: `commands`, `guidance`, `record-kinds`, `references`, `terminal-auxiliary`.
+- Contributes: `commands`, `record-kinds`, `references`, `terminal-auxiliary`.
 - Commands: `mchanges`.
 - Records: `changes`, `change-stage`, `change-evidence`, `change-file`, `change-text`.
 - References: `changes`.
@@ -188,7 +187,7 @@ Inspect structural declarations and source spans
 
 - Composition: selected; lifetime: `stateless`.
 - Requires: none.
-- Contributes: `commands`, `guidance`.
+- Contributes: `commands`.
 - Commands: `inspect_file`.
 - Codex connections: `executable-frontend`.
 
@@ -206,7 +205,7 @@ Resolve semantic definitions and references
 
 - Composition: selected; lifetime: `host-operation`.
 - Requires: none.
-- Contributes: `commands`, `guidance`.
+- Contributes: `commands`.
 - Commands: `msymbol`.
 - Codex connections: `executable-frontend`.
 
