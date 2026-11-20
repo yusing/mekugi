@@ -44,117 +44,8 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
-	terminalui "github.com/yusing/mekugi/libraries/terminalui"
-
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"golang.org/x/term"
 )
-
-// TestNativeUIPreview plays a session through the actual shell and painters,
-// driven by the notifications Codex app-server sends. It is local and makes
-// no model or network requests; edits land in a temporary workspace.
-func TestNativeUIPreview(t *testing.T) {
-	if os.Getenv("MEKUGI_NATIVE_UI_PREVIEW") != "1" {
-		t.Skip("interactive UI preview")
-	}
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		t.Skipf("no controlling terminal: %v", err)
-	}
-	defer tty.Close()
-	p := newNativePreview(t)
-	defer p.close()
-	p.delay = "0.6"
-	err = terminalui.WithRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
-		tick := time.NewTicker(33 * time.Millisecond)
-		defer tick.Stop()
-		lastWidth, lastHeight := 0, 0
-		lastPaint := time.Time{}
-		lastStep := time.Now()
-		paint := func() error {
-			w, h, err := term.GetSize(int(tty.Fd()))
-			if err != nil {
-				return err
-			}
-			if err := p.ui.testPaint(tty, w, h); err != nil {
-				return err
-			}
-			lastWidth, lastHeight, lastPaint = w, h, time.Now()
-			return nil
-		}
-		if err := paint(); err != nil {
-			return err
-		}
-		for {
-			select {
-			case <-t.Context().Done():
-				return t.Context().Err()
-			case <-tick.C:
-				now := time.Now()
-				if err := p.ui.drainKeys(keys); err != nil || p.ui.quitRequested {
-					return err
-				}
-				p.serve()
-				flashExpired := p.ui.shell.Transcript.ExpireFlash(now)
-				settled := settleActivity(now, p.ui.testActivity(p.ui.shell.Transcript), p.ui.testActivity(p.ui.shell.Agents))
-				settled = p.ui.testActivity(p.ui.shell.Transcript).testPace(now) || settled
-				settled = p.ui.testActivity(p.ui.shell.Agents).testPace(now) || settled
-				settled = p.ui.dirty || settled // Includes keys drained by this tick.
-				p.ui.dirty = false
-				p.ui.flushTestStreamOutput(&p.ui.attached, p.ui.shell, p.ui.clock, p.ui.ctx) // Rolls output bursts, as each real frame does.
-				settled = p.ui.dirty || settled
-				noticeExpired := expireNotice(&p.ui.attached.feedback, now)
-				if p.pump(0) {
-					lastStep = now // The script resumes a pace after the command ends.
-					if err := paint(); err != nil {
-						return err
-					}
-					continue
-				}
-				if p.live == nil && now.Sub(lastStep) >= p.pace() && p.advance() {
-					lastStep = now
-					if err := paint(); err != nil {
-						return err
-					}
-					continue
-				}
-				w, h, err := term.GetSize(int(tty.Fd()))
-				if err != nil {
-					return err
-				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishTestPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, p.ui.settings, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
-					if err := paint(); err != nil {
-						return err
-					}
-				}
-			case result := <-p.ui.picker.scanResults:
-				p.ui.dirty = p.ui.picker.applyScan(p.ui.attached.cwd, p.ui.picker.completionTarget(p.ui.Draft, p.ui.attached.conversation.ShellMode()), result) || p.ui.dirty
-				if err := paint(); err != nil {
-					return err
-				}
-			case key, ok := <-keys:
-				if !ok {
-					return io.EOF
-				}
-				// Keys take the real UI path; the preview answers the resulting
-				// requests the way app-server would.
-				if err := terminalTest(p.ui).key(key); err != nil {
-					return err
-				}
-				p.serve()
-				if p.ui.quitRequested {
-					return nil
-				}
-				if err := paint(); err != nil {
-					return err
-				}
-			}
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	t.Parallel()
@@ -442,7 +333,6 @@ type nativePreview struct {
 	active      map[string]string // Running turn by thread.
 	assignments map[string]string
 	models      map[string]string     // Provider model by thread, when not the default.
-	delay       string                // Seconds each preview command sleeps between outputs.
 	commandGate *os.File              // Optional input gate instead of timed output pacing.
 	live        *nativePreviewProcess // The running command; the script waits for it.
 }
@@ -515,7 +405,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	terminalTest(u).AuxiliaryLabel, terminalTest(u).Auxiliary, u.preparePane = label, attachment.Pane, attachment.Prepare
 	u.review.Projection = sessionreview.Projection{Workspace: workspace, Changes: store.changes, Retained: store.changeScope(), Data: new(presentation.Snapshot), Coverage: "CONNECTING"}
 	u.startSession("main", workspace)
-	p := &nativePreview{t: t, ui: u, proxy: proxy, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{}}
+	p := &nativePreview{t: t, ui: u, proxy: proxy, input: input, store: store, usage: usage, workspace: workspace, active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{}}
 	store.liveDiff = func(updates []changes.Update) {
 		var delivered []sessionreview.Change
 		for _, update := range updates {
@@ -537,14 +427,6 @@ func newNativePreview(t *testing.T) *nativePreview {
 func (p *nativePreview) close() {
 	p.ui.picker.cancelScan()
 	terminalTest(p.ui).Diff.Close()
-}
-
-// pace slows playback while patches stream, so each dock frame is readable.
-func (p *nativePreview) pace() time.Duration {
-	if p.step < len(p.steps) && strings.HasPrefix(p.steps[p.step].name, "stream") {
-		return 260 * time.Millisecond
-	}
-	return 650 * time.Millisecond
 }
 
 // advance runs the next step, or first relays the live command's output.
@@ -680,10 +562,11 @@ func (p *nativePreview) startCommand(thread, id, command string, actions []map[s
 // run starts script as a real shell process. Its output and exit reach the UI
 // through app-server notifications, as a model's command would.
 func (p *nativePreview) run(thread, id, script string) {
+	step := "sleep 0"
 	if p.commandGate != nil {
-		script = strings.ReplaceAll(script, "sleep $DELAY", "read -r resume")
+		step = "read -r resume"
 	}
-	script = strings.ReplaceAll(script, "$DELAY", p.delay)
+	script = strings.ReplaceAll(script, "sleep $DELAY", step)
 	cmd := exec.CommandContext(p.t.Context(), "sh", "-c", script)
 	cmd.Dir = p.workspace
 	if p.commandGate != nil {

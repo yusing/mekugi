@@ -1,0 +1,14 @@
+Mekugi dev • codex
+Preview the terminal UI
+
+The preview runs locally and needs no credentials. Its workspace and session
+data are discarded when it exits.
+
+• Submit demo to start. Use Ctrl+B, 2 to open Saved Diff.
+• Use /quit to exit.
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────
+❯  
+────────────────────────────────────────────────────────────────────────────────────────────────

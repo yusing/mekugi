@@ -75,7 +75,6 @@ worktrees and staged snapshot checks. Set `GO_BUILD_FLAGS=` when absolute source
 paths are needed.
 Use `make test-host` for the focused installed-Codex checks with local mock providers;
 see [host acceptance](../../CONTEXT-AUTOMATED-TESTS.md).
-Built-in frontends are Go. `make preview-native-ui` uses no models.
 `make test-ui-snapshots` checks fixtures; review before updating. See [snapshot procedures](testing-snapshots.md).
 Enable the repository's Git hooks from the main checkout once per clone:
 
@@ -108,6 +107,19 @@ Unstaged fixes cannot hide stale staged fixtures. A mismatch blocks the commit a
 prints its diff. Review and update the affected baselines, then stage them with the
 source change. The existing Linux CI suite also checks all UI snapshots.
 The [release workflow](../../.github/workflows/release.yml) packages Linux/macOS; tags publish assets.
+
+## Preview the terminal UI
+
+Build the native runtime with `make build-native`, then run
+`make preview-native-ui` in a terminal. The preview runs real Mekugi against a
+scripted local provider. It needs no credentials and calls no live model. Its
+workspace and session data are discarded when it exits.
+
+- Submit `demo` to watch a streamed edit and an agent review. Use **Ctrl+B, 2**
+  to open Saved Diff and **Ctrl+B, 3** to inspect the agent.
+- Submit `questions` to try the synchronous and asynchronous question flows.
+  Use **Ctrl+B, Q** to open pending questions.
+- Use `/quit` to exit.
 
 ## Native app-server
 

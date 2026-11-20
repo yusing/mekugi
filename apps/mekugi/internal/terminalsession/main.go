@@ -20,6 +20,9 @@ import (
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
+// Only the preview executable links welcome copy beyond the normal banner.
+var previewWelcome string
+
 // Main retains renderer geometry, overlay navigation and caret navigation. It owns no editor,
 // transcript, backend handles, or prompt records.
 type Main struct {
@@ -119,17 +122,23 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		}
 	}
 	if dock == 0 && in.Empty && height >= 6 && height > min(6, len(draft))+borderRows && !in.Picker {
-		height--
+		welcome := []string{ansi.Truncate(in.Welcome, width, "…")}
+		if previewWelcome != "" {
+			note := painter.Markdown(previewWelcome, min(width, 80), true)
+			room := height - min(6, len(draft)) - borderRows - len(welcome)
+			welcome = append(welcome, note[:min(room, len(note))]...)
+		}
+		height -= len(welcome)
 		defer func() {
-			out.Rows = append([]string{ansi.Truncate(in.Welcome, max(1, width), "…")}, out.Rows...)
-			out.Dock.Y++
-			m.ComposerRect.Y++
-			m.BTW.Rect.Y++
-			m.PromptRect.Y++
-			m.ProcessCount.Y++
-			m.NoticeDetails.Y++
-			m.NoticeDismiss.Y++
-			out.Feed.Y++
+			out.Rows = append(welcome, out.Rows...)
+			out.Dock.Y += len(welcome)
+			m.ComposerRect.Y += len(welcome)
+			m.BTW.Rect.Y += len(welcome)
+			m.PromptRect.Y += len(welcome)
+			m.ProcessCount.Y += len(welcome)
+			m.NoticeDetails.Y += len(welcome)
+			m.NoticeDismiss.Y += len(welcome)
+			out.Feed.Y += len(welcome)
 		}()
 	}
 	visible := min(6, height-borderRows)

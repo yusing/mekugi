@@ -118,11 +118,22 @@ mekugi-pprof:
 	$(GO_OUTPUT) build $(GO_BUILD_FLAGS) -tags pprof -o bin/mekugi-pprof ./apps/mekugi/cmd/mekugi
 	$(GO_OUTPUT) build $(GO_BUILD_FLAGS) -o bin/mekugi-exec ./apps/mekugi/cmd/mekugi-exec
 
-# Interactive native Main fixtures. No Codex process or model requests.
-# Plays a fake session automatically; keys act as in the real UI (Ctrl-C clears,
-# interrupts, then exits).
+# Real terminal preview with an isolated, scripted local Responses provider.
 preview-native-ui:
-	env -u BASH_ENV MEKUGI_NATIVE_UI_PREVIEW=1 $(GO) test $(GO_BUILD_FLAGS) ./apps/mekugi/internal/launch -run '^TestNativeUIPreview$$' -count=1 -timeout 0
+	set -eu; preview_bin=$$(mktemp -d); trap 'rm -rf "$$preview_bin"' EXIT; \
+	preview_welcome=$$(awk '\
+		/^## / { if (preview) exit; preview = ($$0 == "## Preview the terminal UI") } \
+		!preview { next } \
+		/^($$|## |- )/ { if (line != "") print line; line = $$0; if (line == "") print ""; next } \
+		{ sub(/^ +/, ""); line = line (line == "" ? "" : " ") $$0 } \
+		END { if (line != "") print line }' docs/contributing/development.md); \
+	test -n "$$preview_welcome"; \
+	$(GO_OUTPUT) build $(GO_BUILD_FLAGS) \
+		-ldflags="-X \"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession.previewWelcome=$$preview_welcome\"" \
+		-o "$$preview_bin/" ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec; \
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK PATH='$(abspath $(NATIVE_OUTPUT))':"$$PATH" \
+		MEKUGI_PREVIEW_BINARY="$$preview_bin/mekugi" $(GO) test $(GO_BUILD_FLAGS) \
+		./apps/mekugi/internal/launch -run '^TestNativeUIWalkthrough$$' -count=1 -timeout 0
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
