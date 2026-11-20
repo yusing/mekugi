@@ -1551,6 +1551,9 @@ export type Completion_Choice = {
   "Display": string;
   "Enabled": boolean;
   "Preset": boolean;
+  "Current": boolean;
+  "Unavailable": boolean;
+  "Danger": boolean;
 };
 
 export type Snapshot = {
