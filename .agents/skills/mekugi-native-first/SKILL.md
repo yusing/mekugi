@@ -5,43 +5,34 @@ description: Design, implement, refactor, or review Mekugi native-runtime featur
 
 # Native-first feature work
 
-Deliver the requested behavior through existing native owners. Go's implementation,
-and Rust code already ported from it, are evidence of current means, not requirements.
+Deliver requested behavior through existing native owners. Go code (and Rust already ported from
+it) is evidence of current means, not requirements.
 
 ## Establish the native delta
 
-Use the existing task ledger to compare the required behavior with what the native owner
-already provides, what it lacks, and why the gap belongs in the proposed change. Inspect
-plausible native producers and consumers, including differently named facilities, before
-choosing a new mechanism. Do not make former Go schemas the acceptance contract.
+Compare required behavior against what the native owner already provides, what it lacks, and why
+the gap belongs in this change. Inspect plausible native producers/consumers (even under different
+names) before inventing a mechanism; do not make former Go schemas the acceptance contract.
 
-Reusing generic native infrastructure does not establish that the feature owner is missing.
-A new owner is justified by a distinct responsibility, not a different trigger, template, or
-delivery destination. Extend the existing implementation where the responsibility remains
-the same, preserving stock schemas and lifecycles except for required observable changes.
-
-Distinguish stock facilities from fork-added workarounds using the relevant pre-change
-baseline. Go-era registrations, acknowledgements, dispatch states, synthetic continuations,
-polling, stores and callback protocols are candidates for removal, not translation into
-Rust. Ordinary aggregation of outcomes does not itself require a new lifecycle.
-
-Prove composition at its real boundary. A request acknowledgement is not completion;
-check pending and immediately ready results, interruption and retained evidence where
-those affect the promised behavior. Fix an ordering gap at the existing owner rather
-than assuming composition works or rebuilding a coordinator around it.
+- A new owner needs a distinct responsibility, not just a different trigger, template, or delivery
+  destination. Extend existing owners and preserve stock schemas/lifecycles except for required
+  observable changes.
+- Separate stock facilities from fork workarounds using the pre-change baseline. Go-era
+  registrations, acks, synthetic continuations, polling, duplicate stores, and callback protocols are
+  removal candidates, not things to translate into Rust.
+- Prove composition at the real boundary: an acknowledgement is not completion. Check pending and
+  immediately ready results, interruption, and retained evidence; fix ordering gaps at the existing
+  owner rather than wrapping another coordinator around it.
 
 ## Build the smallest complete behavior
 
-Make the smallest real consumer path work before adding supporting machinery. Derive
-checks from required behavior, not old workaround fixtures. Keep each change usable
-through its entry point, implementation, consumers and generated contracts; avoid a
-large speculative foundation followed by commits that only expose its switches.
+Make the smallest real consumer path pass before adding supporting machinery. Derive tests from
+required behavior, not legacy workaround fixtures. Keep entry points, consumers, and generated
+contracts aligned in each step.
 
-When a port is already entangled, compare an in-place refactor with reconstruction
-from a known native baseline. Account for unrelated later fixes, current protocol
-consumers and retained data before recommending either. A safer baseline is not a
-drop-in rollback or authorization to create branches or rewrite history.
+When a port is already entangled, compare in-place refactoring against rebuilding from a clean native
+baseline, accounting for unrelated later fixes, active protocol consumers, and retained data,
+before recommending either (never rewrite history or create branches without authorization).
 
-Report required behavior delivered, native facilities reused, remaining justified
-deltas and concrete validation limits. Source inspection alone does not establish
-runtime composition, compatibility or a reduction in cost.
+Report required behavior delivered, native facilities reused, justified deltas, and validation
+limits. Source inspection alone proves neither runtime composition nor cost reduction.

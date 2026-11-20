@@ -74,7 +74,7 @@ Make builds use `-trimpath` so unchanged packages reuse the Go build cache acros
 worktrees and staged snapshot checks. Set `GO_BUILD_FLAGS=` when absolute source
 paths are needed.
 Use `make test-host` for the focused installed-Codex checks with local mock providers;
-see [host acceptance](../../CONTEXT-AUTOMATED-TESTS.md).
+see [host acceptance](testing-host.md).
 `make test-ui-snapshots` checks fixtures; review before updating. See [snapshot procedures](testing-snapshots.md).
 Enable the repository's Git hooks from the main checkout once per clone:
 
@@ -291,8 +291,7 @@ additional browser/live-provider QA remain unchanged.
 `~/.local/state/mekugi/debug`). **Bundles contain private content and are not
 sanitized.** Inactive bundles expire after 14 days; copy elsewhere to keep one. Exit
 prints a diagnosis command. Codex tracing uses uncapped private temporary storage;
-shutdown removes it, forced kills may leave it. See [debug
-evidence](../../modules/diagnostics/SPEC.md#private-debug-bundles).
+shutdown removes it, forced kills may leave it. See [diagnostics](../../modules/diagnostics/SPEC.md).
 
 Automatically started local servers also retain private stderr and start/exit
 records under `$XDG_STATE_HOME/mekugi/server` (default
@@ -300,7 +299,7 @@ records under `$XDG_STATE_HOME/mekugi/server` (default
 Inspect `process.jsonl` for timestamps, PID, build and exit evidence; read
 `stderr.previous.log` before `stderr.log` for the retained tail. Stderr is bounded
 to 1 MiB per server. These files are unsanitized and expire after 14 inactive days.
-See [server evidence](../../modules/diagnostics/SPEC.md#detached-server-evidence)
+See [diagnostics](../../modules/diagnostics/SPEC.md)
 for collection limits.
 
 ### Inspect a session
@@ -321,7 +320,7 @@ provider output and completion. Missing phases, including unpairable tool-result
 readiness, are unknown rather than zero. First output is observed transport data,
 not a first-token measurement. This bounded window does not establish lifetime
 coverage or attribute every gap to Mekugi; see
-[request timing](../../modules/transportdiagnostics/SPEC.md#retained-request-timing).
+[transport diagnostics](../../modules/transportdiagnostics/SPEC.md).
 
 Inspection runs no recorded operations. Rollout and debug-bundle reports omit private
 text unless `--field` selects it; `--field instructions` selects only retained instruction text.

@@ -1,6 +1,6 @@
 # Browser control transport checks
 
-Run commands from the repository root using the [common test runner](../../CONTEXT-TESTS.md#runner).
+Run commands from the repository root using the [build and test](development.md#build-and-test) runner.
 
 The opt-in browser fixture uses `agent-browser` against the actual connector and
 Unix-socket server with disposable credentials and no Codex/model invocation:

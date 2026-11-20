@@ -1,6 +1,6 @@
 # Live Codex requests
 
-Run commands from the repository root using the [common test runner](../../CONTEXT-TESTS.md#runner).
+Run commands from the repository root using the [build and test](development.md#build-and-test) runner.
 
 The Makefile defines and exports `MEKUGI_E2E_MODEL`, the model for E2E tests making real
 Codex provider requests. Override it through the environment or a Make command-line assignment

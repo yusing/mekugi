@@ -3,8 +3,7 @@
 Terminal appearance changes require actual-renderer `TestUISnapshot` fixtures through
 `testsupport/uisnapshot` in the owner's `testdata/snapshots/`. Fix time, theme, dimensions, and other
 nondeterministic inputs. Run commands from the repository root using the
-[common test runner](../../CONTEXT-TESTS.md#runner). The staged-tree snapshot commit gate is
-documented in [Build and test](development.md#build-and-test).
+[build and test](development.md#build-and-test) runner (which also documents the staged-tree snapshot commit gate).
 
 ```sh
 make test-ui-snapshots SNAPSHOT_PACKAGES=./apps/mekugi/internal/launch SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'

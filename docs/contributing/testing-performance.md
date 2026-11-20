@@ -1,6 +1,6 @@
 # Test performance measurements
 
-Run commands from the repository root using the [common test runner](../../CONTEXT-TESTS.md#runner).
+Run commands from the repository root using the [build and test](development.md#build-and-test) runner.
 Select these recipes for frontend/symbol benchmarks or test CPU/block profiles.
 
 Native-reader latency covers a fresh authenticated worker, 3,000-row read, three-document
