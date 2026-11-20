@@ -119,6 +119,9 @@ func (p *composerPicker) syncPresets() {
 	}
 	p.openMenu(string(f.Stage))
 	p.Choices, p.Problem, p.Loading, p.Query = f.Choices(), f.Problem, f.Pending, f.Query()
+	if f.Stage == presets.Confirm {
+		p.Preferred = completion.ChoiceID{Name: "cancel"} // Start on the safe choice.
+	}
 }
 func (p *composerPicker) pollPresets() {
 	if p.presets != nil && p.presets.Poll() {

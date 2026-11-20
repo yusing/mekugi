@@ -15,4 +15,4 @@
   1 │ page 3 only
 
 
-  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc
+  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc close

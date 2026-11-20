@@ -209,7 +209,7 @@ func (v *nativeSessionView) offerTerminalExit(work []nativeExitWork) {
 	v.picker.openMenu(string(sessionpresentation.MenuExit))
 	v.picker.Choices = []completion.Choice{
 		{ID: exitContinueChoice, Name: "Continue in background"},
-		{ID: exitStopChoice, Name: "Stop"},
+		{ID: exitStopChoice, Name: "Stop", Danger: true},
 	}
 }
 

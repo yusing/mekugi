@@ -1,4 +1,4 @@
-  Resume a previous session
+  ── Resume a previous session ───
   Filter: Cwd All · /workspace
   Type to search
 

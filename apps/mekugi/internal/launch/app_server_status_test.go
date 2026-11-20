@@ -307,28 +307,10 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 					t.Fatalf("overflow %v: %q", size, row)
 				}
 			}
-			if size[0] >= 12 {
-				var edgeWidth int
-				for _, row := range frame {
-					plain := strings.TrimSpace(ansi.Strip(row))
-					if strings.HasPrefix(plain, "│") {
-						if !strings.HasSuffix(plain, "│") {
-							t.Fatalf("missing right edge: %q", plain)
-						}
-						if edgeWidth != 0 && ansi.StringWidth(plain) != edgeWidth {
-							t.Fatalf("misaligned edge: %q", plain)
-						}
-						edgeWidth = ansi.StringWidth(plain)
-					}
-					if strings.HasPrefix(plain, "╰") && !strings.HasSuffix(plain, "╯") {
-						t.Fatalf("missing bottom corner at width %d: %q", size[0], plain)
-					}
-				}
-			}
 			if size[0] == 88 {
 				text := strings.Join(frame, "\n")
 				plain := ansi.Strip(text)
-				if !strings.Contains(plain, "╭") || !strings.Contains(plain, "╯") || !strings.Contains(plain, "━━") || !strings.Contains(plain, "78% left") || !strings.Contains(plain, "17% left") {
+				if !strings.Contains(plain, "── Session status") || !strings.Contains(plain, "[×] ──") || !strings.Contains(plain, "esc close") || !strings.Contains(plain, "━━") || !strings.Contains(plain, "78% left") || !strings.Contains(plain, "17% left") {
 					t.Fatalf("missing panel chrome or gauges:\n%s", plain)
 				}
 				if !strings.Contains(text, "\x1b[1m") || !strings.Contains(text, "\x1b[38;2;") {
@@ -351,7 +333,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 
 	defer terminalTest(u).Diff.Close()
 	rendered := screen.String()
-	for _, want := range []string{"Session status", "gpt-6-sol", "78% left", "17% left", "━━", "Esc close"} {
+	for _, want := range []string{"Session status", "gpt-6-sol", "78% left", "17% left", "━━", "esc close"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("compositor lost %q:\n%s", want, rendered)
 		}
@@ -383,6 +365,36 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	beforeRows, afterRows := strings.Split(before, "\n"), strings.Split(after, "\n")
 	if strings.Join(beforeRows[:10], "\n") != strings.Join(afterRows[:10], "\n") {
 		t.Fatal("off-screen content changed visible layout")
+	}
+}
+
+func TestAppServerStatusCloseClick(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.settings.Model = "gpt-6-sol"
+	appServerTestKeys(t, u, "/status\r")
+	screen := vt.NewEmulator(160, 48)
+	defer screen.Close()
+	if err := u.testPaint(screen, 160, 48); err != nil {
+		t.Fatal(err)
+	}
+	defer terminalTest(u).Diff.Close()
+	x, y := -1, -1
+	for i, row := range strings.Split(screen.String(), "\n") {
+		if before, _, ok := strings.Cut(row, "[×]"); ok {
+			x, y = ansi.StringWidth(before), i
+			break
+		}
+	}
+	if x < 0 {
+		t.Fatal("status close control not painted")
+	}
+	for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM", x+2, y+1)) {
+		if err := terminalTest(u).key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if u.shell.Main.Panel.Open() {
+		t.Fatal("clicking the close control left the status panel open")
 	}
 }
 

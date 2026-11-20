@@ -13,4 +13,4 @@ Ready
 ❯
 ────────────────────────────────────────────────────────────────────────────────
   snapshot-model
-  Main • → diff • ^E view
+  Main • → diff • ctrl+e view

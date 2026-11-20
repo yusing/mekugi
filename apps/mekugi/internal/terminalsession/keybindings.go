@@ -5,16 +5,16 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
-func Keybindings(width, height int) []string {
-	const bold = "\x1b[1m"
-	const blue = "\x1b[38;2;80;155;225m"
-	groups := []struct {
-		title string
-		keys  [][2]string
-	}{
+// Keybindings lists shortcuts in groups, side by side when they fit. A group
+// narrower than its descriptions wraps them under their own column when the
+// frame has room, and otherwise ends them with an ellipsis.
+func Keybindings(theme diffrender.Theme, width, height int) []string {
+	accent := theme.Accent()
+	groups := []keybindingGroup{
 		{"Compose", [][2]string{
 			{"!", "Shell Mode"},
 			{"ctrl+j", "New line"},
@@ -43,8 +43,10 @@ func Keybindings(width, height int) []string {
 			{"ctrl+c", "Clear / interrupt / quit"},
 			{"esc", "Interrupt, keep draft"},
 			{"ctrl+b 1–3", "Main / toggle Diff / Agents"},
-			{"ctrl+b e", "Next live item"},
-			{"ctrl+b q / !", "Questions / error details"},
+			{"ctrl+b e / r", "Pin next live edit / follow live"},
+			{"ctrl+b q", "Approvals, then questions"},
+			{"ctrl+b !", "Error details"},
+			{"ctrl+b p", "Presets"},
 			{"ctrl+b ← / →", "Resize panes"},
 		}},
 		{"Transcript", [][2]string{
@@ -53,6 +55,27 @@ func Keybindings(width, height int) []string {
 			{"esc", "Back to bottom"},
 		}},
 	}
+	// Wrapped descriptions keep whole words; a frame too short for them
+	// truncates descriptions with an ellipsis instead.
+	lines := keybindingLines(groups, accent, width, height, true)
+	if len(lines) > height {
+		lines = keybindingLines(groups, accent, width, height, false)
+	}
+	frame := make([]string, height)
+	start := max(0, height-len(lines))
+	for i := range min(height, len(lines)) {
+		frame[start+i] = ansi.Truncate(lines[i], width, "…")
+	}
+	return frame
+}
+
+type keybindingGroup struct {
+	title string
+	keys  [][2]string
+}
+
+func keybindingLines(groups []keybindingGroup, accent string, width, height int, wrap bool) []string {
+	const bold = "\x1b[1m"
 	lines := []string{"", "  " + bold + "Keyboard shortcuts" + terminalui.Reset, ""}
 	var band []string
 	used := 0
@@ -63,10 +86,20 @@ func Keybindings(width, height int) []string {
 		}
 		column := []string{bold + group.title + terminalui.Reset}
 		columnWidth := ansi.StringWidth(group.title)
+		described := max(12, width-2-keyWidth-2)
 		for _, key := range group.keys {
-			line := blue + key[0] + terminalui.Reset + strings.Repeat(" ", keyWidth-ansi.StringWidth(key[0])+2) + key[1]
-			column = append(column, line)
-			columnWidth = max(columnWidth, ansi.StringWidth(line))
+			parts := []string{key[1]}
+			if wrap {
+				parts = panelWrap(key[1], described)
+			}
+			for i, part := range parts {
+				line := strings.Repeat(" ", keyWidth+2) + part
+				if i == 0 {
+					line = accent + key[0] + terminalui.Reset + strings.Repeat(" ", keyWidth-ansi.StringWidth(key[0])+2) + part
+				}
+				column = append(column, line)
+				columnWidth = max(columnWidth, ansi.StringWidth(line))
+			}
 		}
 		if used > 0 && 2+used+4+columnWidth > width {
 			lines = append(lines, band...)
@@ -92,17 +125,12 @@ func Keybindings(width, height int) []string {
 		used += columnWidth
 	}
 	lines = append(lines, band...)
-	lines = append(lines, "", "  "+blue+"? / esc"+terminalui.Reset+"  Close shortcuts")
+	lines = append(lines, "", "  "+accent+"? / esc"+terminalui.Reset+"  Close shortcuts")
 	// Give controls priority over spacing when an extra binding fills a narrow frame.
 	for i := len(lines) - 2; len(lines) > height && i >= 0; i-- {
 		if strings.TrimSpace(lines[i]) == "" {
 			lines = append(lines[:i], lines[i+1:]...)
 		}
 	}
-	frame := make([]string, height)
-	start := max(0, height-len(lines))
-	for i := range min(height, len(lines)) {
-		frame[start+i] = ansi.Truncate(lines[i], width, "")
-	}
-	return frame
+	return lines
 }

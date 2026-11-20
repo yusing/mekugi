@@ -8,16 +8,17 @@ import (
 	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 // A compact instrument panel: model settings, quota gauges, then account and
-// workspace details. The border and controls stay fixed while the body scrolls.
+// workspace details, in the docked panel style: an accent heading with its
+// close control, an inset body and dim keys. The heading and keys stay fixed
+// while the body scrolls.
 // Source: apps/mekugi/internal/router/app_server_status_render.go@630ce384.
 func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []string {
-	p.Rect = Rect{}
+	p.Rect, p.Close = Rect{}, Rect{}
 	frame := make([]string, height)
 	if width < 1 || height < 1 {
 		return frame
@@ -25,17 +26,14 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 	const reset = "\x1b[0m"
 	const bold = "\x1b[1m"
 	const dim = "\x1b[2m"
-	accent, warning, danger := "\x1b[38;2;104;174;245m", "\x1b[38;2;230;181;94m", "\x1b[38;2;239;117;117m"
-	if painter.Theme == diffrender.LightTheme {
-		accent, warning, danger = "\x1b[38;2;25;94;164m", "\x1b[38;2;134;86;16m", "\x1b[38;2;178;43;43m"
-	}
+	accent, warning, danger := painter.Theme.Accent(), painter.Theme.Warning(), painter.Theme.Danger()
 	panelWidth := min(82, width)
 	if width >= 44 {
 		panelWidth = min(panelWidth, width-4)
 	}
 	x := (width - panelWidth) / 2
 	boxed := panelWidth >= 10 && height >= 5
-	contentWidth := max(1, panelWidth-6)
+	contentWidth := max(1, panelWidth-4)
 	if !boxed {
 		contentWidth = max(1, panelWidth-2)
 	}
@@ -209,13 +207,11 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 		return text + strings.Repeat(" ", max(0, n-ansi.StringWidth(text)))
 	}
 	if boxed {
-		title := ansi.Truncate(" "+cmp.Or(p.Title, "Session status")+" ", panelWidth-2, "")
-		closeHint := " Esc close "
-		if panelWidth < 36 {
-			closeHint = ""
+		heading := terminalui.PanelHeading(accent, cmp.Or(p.Title, "Session status"), "", terminalui.DialogClose, panelWidth-4)
+		put(y, "  "+heading)
+		if strings.Contains(ansi.Strip(heading), terminalui.DialogClose) {
+			p.Close = Rect{x + panelWidth - terminalui.DialogCloseOffset, y, terminalui.DialogCloseWidth, 1}
 		}
-		put(y, dim+"╭"+reset+bold+accent+title+reset+dim+strings.Repeat("─", max(0, panelWidth-2-ansi.StringWidth(title+closeHint)))+reset+closeHint+dim+"╮"+reset)
-		put(y+1, dim+"│"+reset+strings.Repeat(" ", panelWidth-2)+dim+"│"+reset)
 	} else {
 		put(y, bold+accent+cmp.Or(p.Title, "Status")+reset)
 	}
@@ -225,7 +221,7 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 	}
 	p.Rect = Rect{x + 1, start, contentWidth, p.Rows}
 	if boxed {
-		p.Rect.X = x + 3
+		p.Rect.X = x + 2
 	}
 	visible := lines[p.Top:min(len(lines), p.Top+p.Rows)]
 	labelWidth := 0
@@ -247,37 +243,34 @@ func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []s
 			text = prefix + text
 		}
 		if boxed {
-			put(start+i, dim+"│"+reset+"  "+pad(text, contentWidth)+"  "+dim+"│"+reset)
+			put(start+i, "  "+pad(text, contentWidth))
 		} else {
 			put(start+i, " "+text)
 		}
 	}
-	controls := "↑↓ scroll  PgUp/PgDn"
+	controls := "↑↓ scroll · pgup/pgdn page · esc close"
 	if panelWidth >= 70 {
-		controls += "  drag to select"
+		controls = "↑↓ scroll · pgup/pgdn page · drag to select · esc close"
 	}
-	if panelWidth < 40 {
-		controls = "↑↓ scroll  Esc close"
+	if panelWidth < 44 {
+		controls = "↑↓ scroll · esc close"
 	}
 	if p.Controls != "" {
 		controls = p.Controls
 		if panelWidth < 54 {
-			controls = "←→ views  ↑↓ scroll  Esc"
+			controls = "←→ views · ↑↓ scroll · esc close"
 		}
-		if panelWidth < 28 {
-			controls = "←→  ↑↓  Esc"
+		if panelWidth < 36 {
+			controls = "←→ · ↑↓ · esc close"
 		}
 	}
 	if len(lines) > p.Rows && panelWidth >= 54 {
-		controls += fmt.Sprintf("  %d–%d / %d", p.Top+1, p.Top+len(visible), len(lines))
+		controls += fmt.Sprintf(" · %d–%d / %d", p.Top+1, p.Top+len(visible), len(lines))
 	}
 	if boxed {
-		put(y+panelHeight-2, dim+"│"+reset+strings.Repeat(" ", panelWidth-2)+dim+"│"+reset)
-		footer := " " + controls + " "
-		footer = ansi.Truncate(footer, panelWidth-3, "")
-		put(y+panelHeight-1, dim+"╰─"+reset+dim+footer+strings.Repeat("─", max(0, panelWidth-3-ansi.StringWidth(footer)))+"╯"+reset)
+		put(y+panelHeight-1, "  "+dim+ansi.Truncate(controls, panelWidth-4, "…")+reset)
 	} else if panelHeight > 1 {
-		put(y+panelHeight-1, dim+"Esc close"+reset)
+		put(y+panelHeight-1, dim+"esc close"+reset)
 	}
 	return frame
 }

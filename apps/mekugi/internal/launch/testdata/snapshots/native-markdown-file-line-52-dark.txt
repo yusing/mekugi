@@ -15,5 +15,5 @@
 " \x1b[38;2;86;212;221;48;2;62;72;86m 53 \x1b[49m│\x1b[m \x1b[38;2;139;148;158m// selected too\x1b[m                                                         \x1b[38;2;86;212;221m▐\x1b[m"
 "  \x1b[2m54 │\x1b[m \x1b[38;2;139;148;158m// after\x1b[m                                                                \x1b[38;2;86;212;221m▐\x1b[m"
 "  \x1b[2m55 │\x1b[m                                                                         \x1b[38;2;86;212;221m▐\x1b[m"
-"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc\x1b[m                               "
+"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc close\x1b[m                         "
 "plain after file dialog                                                         "

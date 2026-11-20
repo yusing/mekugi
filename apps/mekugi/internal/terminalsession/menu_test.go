@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 )
@@ -84,13 +85,17 @@ func TestRewindDialogInputIsolation(t *testing.T) {
 	if state.Prefix || in.Shell.Focus != 0 {
 		t.Fatal("dialog allowed pane switching")
 	}
+	var painter terminalui.Painter
+	main.Menu.Render(&painter, "", 60, 10)
+	main.Menu.Rect = Rect{5, 4, 60, 10}
 	for _, test := range []struct {
 		x, y int
 		kind sessionpresentation.MenuActionKind
 	}{
-		{8, 10, sessionpresentation.MenuAccept},
+		{8, 4 + main.Menu.RowStart + 1, sessionpresentation.MenuAccept},
 		{0, 0, sessionpresentation.MenuDismiss},
-		{61, 4, sessionpresentation.MenuNoAction}, // The docked heading has no close control.
+		{57, 4, sessionpresentation.MenuDismiss}, // The heading's close control.
+		{56, 4, sessionpresentation.MenuNoAction},
 	} {
 		in.mouse(&state, Mouse{X: test.x, Y: test.y}, func(effect InputEffect) bool {
 			if effect.Menu == nil || effect.Menu.Action.Kind != test.kind || test.kind == sessionpresentation.MenuAccept && effect.Menu.Action.Choice.Name != "second" {
@@ -98,5 +103,36 @@ func TestRewindDialogInputIsolation(t *testing.T) {
 			}
 			return false
 		})
+	}
+}
+
+func TestMenuDestructiveChoiceNeedsConfirmation(t *testing.T) {
+	view := func(id uint64) sessionpresentation.View {
+		return sessionpresentation.View{Menu: &sessionpresentation.MenuView{ID: id, Kind: sessionpresentation.MenuArchive, Title: "Archive this session?",
+			Choices: []completion.Choice{{ID: 1, Name: "No, don't archive"}, {ID: 2, Name: "Yes, archive", Danger: true}}}}
+	}
+	var m Menu
+	var painter terminalui.Painter
+	m.Update(view(1))
+	height := m.Height(60)
+	m.Render(&painter, "", 60, height)
+	m.Rect = Rect{0, 0, 60, height}
+	if m.Selected != 0 {
+		t.Fatal("the destructive choice was preselected")
+	}
+	row := m.RowStart + 1
+	if r := m.Mouse(0, 4, row); !r.Handled || r.Action.Kind != sessionpresentation.MenuNoAction || m.Selected != 1 {
+		t.Fatalf("one click accepted a destructive choice: %+v", r)
+	}
+	if r := m.Mouse(0, 4, row); r.Action.Kind != sessionpresentation.MenuAccept || r.Action.Choice.ID != 2 {
+		t.Fatalf("second click did not confirm: %+v", r)
+	}
+	if r := m.Mouse(0, 4, row-1); r.Action.Kind != sessionpresentation.MenuAccept || r.Action.Choice.ID != 1 {
+		t.Fatalf("one click did not accept the safe choice: %+v", r)
+	}
+	m.Update(view(2))
+	m.Key("\x1b[B")
+	if r := m.Key("\r"); r.Action.Kind != sessionpresentation.MenuAccept || r.Action.Choice.ID != 2 {
+		t.Fatalf("Enter did not confirm the selected destructive choice: %+v", r)
 	}
 }

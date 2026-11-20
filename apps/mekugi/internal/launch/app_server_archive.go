@@ -27,7 +27,7 @@ func (session *nativeSession) showArchivePicker(attached *attachedPresentation, 
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
 	p.Choices = []completion.Choice{
 		{ID: 1, Name: "No, don't archive", Description: "Return to the current session"},
-		{ID: archiveConfirmChoice, Name: "Yes, archive", Description: "Archive this session now"},
+		{ID: archiveConfirmChoice, Name: "Yes, archive", Description: "Archive this session now", Danger: true},
 	}
 }
 

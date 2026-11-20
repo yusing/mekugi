@@ -1,25 +1,25 @@
-    ╭ Session · Exchanges ──────────────────────────────────────────────── Esc close ╮
-    │                                                                                │
-    │  Request         0 bytes                                                       │
-    │  Stream          0 bytes                                                       │
-    │  Usage           unavailable                                                   │
-    │  Service tier    unavailable                                                   │
-    │  Telemetry       unavailable                                                   │
-    │                                                                                │
-    │  Provider attempt 2  ────────────────────────────────────────────────────────  │
-    │  Transport       WebSocket                                                     │
-    │  Status          completed                                                     │
-    │  Duration        1800 ms                                                       │
-    │  HTTP status     101                                                           │
-    │  Complete        true                                                          │
-    │  Request         0 bytes                                                       │
-    │  Stream          0 bytes                                                       │
-    │  Input           120                                                           │
-    │  Cached input    0                                                             │
-    │  Uncached input  120                                                           │
-    │  Output          12                                                            │
-    │  Reasoning       0                                                             │
-    │  Usage evidence  complete                                                      │
-    │  Service tier    priority                                                      │
-    │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  28–48 / 53 ─────────────╯
+      ── Session · Exchanges ──────────────────────────────────────────────── [×] ──
+
+      Request         0 bytes                                                       
+      Stream          0 bytes                                                       
+      Usage           unavailable                                                   
+      Service tier    unavailable                                                   
+      Telemetry       unavailable                                                   
+                                                                                    
+      Provider attempt 2  ──────────────────────────────────────────────────────────
+      Transport       WebSocket                                                     
+      Status          completed                                                     
+      Duration        1800 ms                                                       
+      HTTP status     101                                                           
+      Complete        true                                                          
+      Request         0 bytes                                                       
+      Stream          0 bytes                                                       
+      Input           120                                                           
+      Cached input    0                                                             
+      Uncached input  120                                                           
+      Output          12                                                            
+      Reasoning       0                                                             
+      Usage evidence  complete                                                      
+      Service tier    priority                                                      
+
+      ←→ views · [ older / ] newer · ↑↓ scroll · esc close · 28–48 / 53

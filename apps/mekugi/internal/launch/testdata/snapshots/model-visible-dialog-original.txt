@@ -15,4 +15,4 @@
   1 ┆ original output                                                                     
                                                                                           
                                                                                           
-  ↑↓ PgUp/PgDn g/G scroll · / find · o Model-visible · y copy · esc                       
+  ↑↓ PgUp/PgDn g/G scroll · / find · o Model-visible · y copy · esc close                 

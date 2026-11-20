@@ -21,4 +21,4 @@
 ❯  
 ────────────────────────────────────────────────────────────────────────────────
   
-  Main • /workspace • → diff • ^E view
+  Main • /workspace • → diff • ctrl+e view

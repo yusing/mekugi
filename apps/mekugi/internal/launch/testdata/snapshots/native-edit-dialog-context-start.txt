@@ -33,4 +33,4 @@
   14 │  historical_line_09                                                                          
   15 │  historical_line_10                                                                          
   16 │                                                                                              
-  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc                                                   
+  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc close                                             

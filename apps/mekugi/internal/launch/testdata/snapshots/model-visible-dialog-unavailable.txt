@@ -15,4 +15,4 @@
   1 ┆ original output                                                                     
                                                                                           
                                                                                           
-  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc                                         
+  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc close                                   

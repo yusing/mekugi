@@ -26,6 +26,15 @@ func processStatus(page sessionpresentation.DetailItem) string {
 	}
 }
 
+// styledProcessStatus marks a failed exit with the danger tone.
+func styledProcessStatus(page sessionpresentation.DetailItem, theme diffrender.Theme) string {
+	status := processStatus(page)
+	if page.Exited && page.ExitCode != 0 {
+		return theme.Danger() + status + "\x1b[39m"
+	}
+	return status
+}
+
 // Divider, owner, status, runtime, command, two frame edges, output, footer.
 const processDetailMinHeight = 9
 
@@ -39,6 +48,9 @@ type processPane struct {
 	commandWidth, commandBudget int
 	commandTheme                diffrender.Theme
 	commandRows                 []string
+	// stopArmed is the process a first stop key selected; only the same
+	// process accepts the confirming key.
+	stopArmed *sessionpresentation.Process
 }
 
 // processDetailHeight measures the same wrapped rows the viewport will paint.
@@ -74,7 +86,7 @@ func (d *ContentDialog) paintProcesses(rows []string, rect Rect, limit int) {
 	d.rect, d.theme = rect, d.View.Painter.Theme
 	width := rect.W - 4
 	d.rows, d.bodyOffset, d.bodyInset = rect.H-d.Chrome(), 0, 0
-	lines := []string{processHeading(d.theme.Accent(), "Background", "", width)}
+	lines := []string{terminalui.PanelHeading(d.theme.Accent(), "Background", "", terminalui.DialogClose, width)}
 	if !d.ProcessDetail {
 		padding := d.rows > 1
 		if padding {
@@ -82,10 +94,14 @@ func (d *ContentDialog) paintProcesses(rows []string, rect Rect, limit int) {
 		}
 		d.Layout(width)
 		d.layoutBody()
-		lines[0] = processHeading(d.theme.Accent(), d.Document.Title, d.Document.Detail, width)
-		columns := "  agent · command"
-		columns += strings.Repeat(" ", max(1, width-1-ansi.StringWidth(columns)-len("status"))) + "status"
-		lines = append(lines, "", terminalui.Dim+columns+terminalui.Undim)
+		lines[0] = terminalui.PanelHeading(d.theme.Accent(), d.Document.Title, d.Document.Detail, terminalui.DialogClose, width)
+		columns := ""
+		if d.Pages[d.Page].Source != 0 {
+			columns = "  agent · command"
+			columns += strings.Repeat(" ", max(1, width-1-ansi.StringWidth(columns)-len("status"))) + "status"
+			columns = terminalui.Dim + columns + terminalui.Undim
+		}
+		lines = append(lines, "", columns)
 		lines = append(lines, d.body...)
 		if padding {
 			lines = append(lines, "")
@@ -110,17 +126,6 @@ func (d *ContentDialog) paintProcesses(rows []string, rect Rect, limit int) {
 			rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m  %s\x1b[0m", rect.X+1, ansi.Truncate(line, width, ""))
 		}
 	}
-}
-
-// processHeading matches the sheet heading: an accent rule carrying the
-// title and its dim detail.
-func processHeading(accent, title, detail string, width int) string {
-	label := boldProcessLabel(title)
-	if detail != "" {
-		label += terminalui.Dim + " · " + detail + terminalui.Undim
-	}
-	label = ansi.Truncate(label, max(1, width-4), "…")
-	return accent + "── " + terminalui.Reset + label + " " + accent + strings.Repeat("─", max(0, width-4-ansi.StringWidth(label))) + terminalui.Reset
 }
 
 func boldProcessLabel(text string) string { return "\x1b[1m" + text + "\x1b[22m" }
@@ -158,7 +163,7 @@ func (d *ContentDialog) appendProcessDetail(lines []string, width, limit int) []
 	owner := textsanitize.Safe(pathdisplay.AgentDisplayName(page.Owner), false)
 	lines = append(lines,
 		boldProcessLabel(ansi.Truncate(owner, width, "…")),
-		boldProcessLabel("Status:")+" "+processStatus(page),
+		boldProcessLabel("Status:")+" "+styledProcessStatus(page, d.theme),
 		boldProcessLabel("Runtime:")+" "+d.processRuntime(page),
 	)
 	lines = append(lines, d.processCommandRows(page.Code, width, limit)...)
@@ -240,16 +245,25 @@ func (d *ContentDialog) processCommandRows(code string, width, limit int) []stri
 
 func (d *ContentDialog) layoutProcess(width int) {
 	page := d.Pages[d.Page]
-	d.StopAvailable = page.Process != nil
+	theme := d.View.Painter.Theme
+	// Stopping is destructive: its key comes last before Escape, takes the
+	// danger tone and asks for a second press.
+	stop := " · " + theme.Danger() + "x stop" + "\x1b[39m"
+	if page.Process == nil {
+		stop = ""
+	}
+	if d.process.stopArmed != nil {
+		d.Footer = theme.Danger() + "x again to stop" + "\x1b[39m" + " · esc keep running"
+	}
 	if !d.ProcessDetail {
-		d.Footer = "↑↓ select · Enter view · Esc close"
-		if d.StopAvailable {
-			d.Footer = "↑↓ select · Enter view · x stop · Esc close"
-		}
-		if width < 44 {
-			d.Footer = "↑↓ select · Enter view · Esc"
-			if d.StopAvailable {
-				d.Footer = "↑↓ · Enter view · x stop · Esc"
+		empty := page.Source == 0
+		if d.process.stopArmed == nil {
+			d.Footer = "↑↓ select · enter view" + stop + " · esc close"
+			if width < 44 {
+				d.Footer = "enter view" + stop + " · esc close"
+			}
+			if empty {
+				d.Footer = "esc close"
 			}
 		}
 		document := terminalui.DialogPage{Title: "Background"}
@@ -260,21 +274,29 @@ func (d *ContentDialog) layoutProcess(width int) {
 			}
 		}
 		document.Detail = fmt.Sprintf("%d active shells", active)
+		if active == 1 {
+			document.Detail = "1 active shell"
+		}
 		if len(d.Pages) > 1 {
 			document.Detail += fmt.Sprintf(" · %d / %d", d.Page+1, len(d.Pages))
 		}
-		if page.Source == 0 {
-			document.Add(terminalui.DialogLine{Text: "No running processes"})
+		if empty {
+			document.Add(terminalui.DialogLine{Text: "  " + terminalui.Dim + "No running processes" + terminalui.Undim})
 		} else {
+			accent := theme.Accent()
 			for i, item := range d.Pages {
 				command := strings.Join(strings.Fields(textsanitize.Safe(item.Code, false)), " ")
 				owner := textsanitize.Safe(pathdisplay.AgentDisplayName(item.Owner), false)
 				status := processStatus(item)
-				command = strings.Join(d.View.Painter.Highlight("bash", command), " ")
-				label := ansi.Truncate(owner+" · "+command, max(1, width-len(status)-5), "…")
-				label += strings.Repeat(" ", max(1, width-ansi.StringWidth(label)-len(status)-3)) + status
+				room := max(1, width-len(status)-5)
+				// The selected row's label takes the accent like other menus.
+				label := accent + ansi.Truncate(owner+" · "+command, room, "…") + terminalui.Reset
+				if i != d.Page {
+					label = ansi.Truncate(owner+" · "+strings.Join(d.View.Painter.Highlight("bash", command), " "), room, "…")
+				}
+				label += strings.Repeat(" ", max(1, width-ansi.StringWidth(label)-len(status)-3)) + styledProcessStatus(item, theme)
 				if i == d.Page {
-					label = d.View.Painter.Theme.Accent() + "❯ " + terminalui.Reset + label
+					label = accent + "❯ " + terminalui.Reset + label
 				} else {
 					label = "  " + label
 				}
@@ -289,17 +311,17 @@ func (d *ContentDialog) layoutProcess(width int) {
 		}
 		return
 	}
-	d.Footer = "← back · ↑↓ scroll · / find · v invocation · y copy · Esc"
-	if d.process.invocation {
-		d.Footer = "←/v output · ↑↓ scroll · y copy invocation · Esc"
-	}
-	if d.StopAvailable && !d.process.invocation {
-		d.Footer = "x stop · " + d.Footer
-	}
-	if width-6 < ansi.StringWidth(d.Footer) && !d.process.invocation {
-		d.Footer = "← back · v invocation · Esc"
-		if d.StopAvailable {
-			d.Footer = "x stop · " + d.Footer
+	if d.process.stopArmed == nil {
+		d.Footer = "← back · ↑↓ scroll · / find · v invocation · y copy" + stop + " · esc close"
+		if d.process.invocation {
+			d.Footer = "←/v output · ↑↓ scroll · y copy invocation · esc close"
+		} else {
+			for _, shorter := range []string{"← back · ↑↓ scroll · v invocation", "← back · v invocation", "← back"} {
+				if width-6 >= ansi.StringWidth(d.Footer) {
+					break
+				}
+				d.Footer = shorter + stop + " · esc close"
+			}
 		}
 	}
 	width -= 2 // The two output-frame edges are not selectable text.
@@ -383,10 +405,23 @@ func (d *ContentDialog) processKey(key string) DialogIntent {
 		return d.Dialog.Key(key)
 	}
 	if key == "x" || key == "s" {
-		if process := d.Pages[d.Page].Process; process != nil {
+		process, armed := d.Pages[d.Page].Process, d.process.stopArmed
+		d.process.stopArmed = nil
+		switch {
+		case process == nil:
+		case armed != nil && *armed == *process:
 			return DialogIntent{Action: DialogStopProcess, Process: new(*process)}
+		default:
+			d.process.stopArmed = new(*process)
 		}
 		return DialogIntent{}
+	}
+	if d.process.stopArmed != nil {
+		// Any other key keeps the process; Escape only withdraws the stop.
+		d.process.stopArmed = nil
+		if key == "\x1b" {
+			return DialogIntent{}
+		}
 	}
 	if d.ProcessDetail {
 		switch key {
@@ -451,6 +486,7 @@ func (d *ContentDialog) processMouse(button, x, y int, release bool) DialogInten
 	if release {
 		return DialogIntent{}
 	}
+	d.process.stopArmed = nil
 	switch button &^ 28 {
 	case 64:
 		return d.processKey("\x1b[A")

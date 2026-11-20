@@ -15,9 +15,9 @@ The second names the displayed thread, its working (◐), finished (✓)
 and failed (!) subagent counts, the session title, the working directory, the
 lines below the view after you scroll back (▼ N below), and the
 arrow keys that act on an empty composer: ↓ roster, → diff (or ← main from Diff)
-and `^E` view. Narrow lines shorten the directory and title, then drop the least
+and `ctrl+e` view. Narrow lines shorten the directory and title, then drop the least
 important parts; failed and working counts outlast the title. Click a hint to use it.
-A notice above the composer offers `[details]` when it hides text and `[x]` to dismiss it.
+A notice above the composer offers `[details]` when it hides text and `[×]` to dismiss it.
 
 | Action | Shortcut |
 | --- | --- |
@@ -46,11 +46,12 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   Tab accepts a suggestion for editing; typing dismisses it. Availability depends
   on the OpenAI account, model and remote configuration, and requires Codex
   0.162.0-alpha.20 or newer. Third-party providers are ineligible.
-- `/presets` (or Ctrl+B then P) opens slots 1–9 and 0. Recall fills the composer without sending;
+- `/presets` (or `Ctrl-B`, then `p`) opens slots 1–9 and 0. Recall fills the composer without sending;
   the terminal keeps the previous draft in input history. New and Edit use `$EDITOR`
   in the terminal, like Ctrl+G, then ask for an optional label; Rename changes only
   the label. Without a label, the menu shows the input's first line. New, Edit,
-  Rename and Delete manage slots, with confirmation before replacement or deletion.
+  Rename and Delete manage slots, with confirmation before replacement or deletion;
+  press `y` to confirm.
   Slots use Codex's native `tui.presets` on the execution machine, including its
   active user/profile configuration and labels.
   Existing Mekugi preset files remain untouched and unused. Presets contain text,
@@ -61,7 +62,8 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   but your draft stays intact. Only the output frame scrolls; End resumes
   following live output. Press `v` to open the exact invocation and `y` to
   copy it. Left backs out one level and Esc closes the inspector. Press `x`
-  (or `s`) to stop the selected shell when available. Stopping dismisses the inspector so failures stay visible.
+  (or `s`) twice to stop the selected shell when available; any other key keeps
+  it running. Stopping dismisses the inspector so failures stay visible.
 - `@` attaches files; `@!` includes ignored files. VCS metadata is excluded;
   unreadable/oversized content has omission notices. Directories attach two-level
   trees honoring `.gitignore`, bounded to 256 entries/16 KiB with truncation notices.
@@ -105,7 +107,8 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
 - `/quit` releases an idle session without deleting its history. When work can
   either continue or be stopped, the inline prompt offers **Continue in
   background** or **Stop**.
-  Stop ends work in the selected session and its delegates. Esc keeps the terminal
+  Stop ends work in the selected session and its delegates; click it twice, or
+  select it and press Enter. Esc keeps the terminal
   attached. `/detach` always leaves without prompting or stopping work.
   Use `--resume` to reattach to live work, or to reopen saved history after release.
 

@@ -1,7 +1,7 @@
 AGENTS · waiting for subage… CONNECTING
 
 
-  ── Archive this session? ───────────
+  ── Archive this session? ──── [×] ──
 
     Are you sure? This will archive
     the current session.
@@ -9,4 +9,4 @@ AGENTS · waiting for subage… CONNECTING
   ❯ No, don't archive
     Yes, archive
 
-  ↑/↓ choose · enter select · esc can…
+  enter select · esc cancel

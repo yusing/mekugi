@@ -14,14 +14,24 @@ import (
 // ChoiceListLayout retains only the visible list viewport and pointer hit rows.
 // Its caller owns item meaning, selection, headers, footers and key handling.
 type ChoiceListLayout struct{ Top, RowStart, RowCount int }
-type ChoiceRow struct{ Text, Description string }
+type ChoiceRow struct {
+	Text, Description string
+	// Status repeats a state the description states, such as "current", beside
+	// the label when the description column does not fit.
+	Status string
+	// Danger rows take ChoiceListView.Danger; Muted rows are dim.
+	Danger, Muted bool
+}
 type ChoiceListView struct {
 	Rows                      []ChoiceRow
 	Selected                  int
 	Query, Selection, Problem string
 	// Marker, when set, colors a pointer and the label of the selected row
 	// instead of banding it with Selection, as docked panels mark their choice.
-	Marker  string
+	Marker string
+	// Danger, when set, colors destructive rows and the problem text. A
+	// selected destructive row keeps it, in bold, instead of Marker.
+	Danger  string
 	Loading bool
 }
 
@@ -42,46 +52,81 @@ func (l *ChoiceListLayout) Draw(frame []string, width, first, visible int, v Cho
 	if l.Top+visible < len(v.Rows) {
 		put(first+visible, "↓")
 	}
+	problem := Dim
+	if v.Danger != "" {
+		problem = v.Danger
+	}
 	if len(v.Rows) == 0 {
-		message := "no matches"
+		message, style := "no matches", Dim
 		if v.Loading {
 			message = "loading..."
 		}
 		if v.Problem != "" {
-			message = v.Problem
+			message, style = v.Problem, problem
 		}
-		put(first, "  "+Dim+choiceText(message)+Reset)
+		put(first, "  "+style+choiceText(message)+Reset)
 		return
 	}
 	columns := 0
 	for _, row := range v.Rows[l.Top:min(len(v.Rows), l.Top+visible)] {
 		columns = max(columns, ansi.StringWidth(choiceText(row.Text)))
 	}
+	describe := width-(columns+4) >= 24
 	for row := 0; row < visible && l.Top+row < len(v.Rows); row++ {
 		i := l.Top + row
-		label, description := choiceText(v.Rows[i].Text), choiceText(v.Rows[i].Description)
+		item := v.Rows[i]
+		label, description := choiceText(item.Text), choiceText(item.Description)
+		selected := i == v.Selected
+		style := ""
+		switch {
+		case item.Danger && v.Danger != "":
+			style = v.Danger
+		case item.Muted:
+			style = Dim
+		}
+		marker := v.Marker
+		if marker != "" && item.Danger && v.Danger != "" {
+			marker = v.Danger + "\x1b[1m"
+		}
 		prefix := "  "
 		switch {
-		case i == v.Selected && v.Marker != "":
-			prefix = v.Marker + "❯" + Reset + " "
-		case i == v.Selected:
+		case selected && marker != "":
+			prefix = marker + "❯" + Reset + " "
+		case selected:
 			prefix = "› "
 		}
-		text := prefix + choiceHighlight(label, v.Query)
-		if i == v.Selected && v.Marker != "" {
-			text = prefix + v.Marker + choiceHighlight(label, v.Query) + Reset
+		status := ""
+		if !describe && item.Status != "" {
+			status = Dim + " · " + choiceText(item.Status) + Reset
 		}
-		if description != "" && width-(columns+4) >= 24 {
+		text := choiceHighlight(label, v.Query)
+		if room := width - 2 - ansi.StringWidth(status); status != "" && ansi.StringWidth(label) > room {
+			text = ansi.Truncate(text, max(1, room), "…")
+		}
+		switch {
+		case selected && marker != "":
+			text = prefix + marker + text + Reset
+		case style != "":
+			text = prefix + style + text + Reset
+		default:
+			text = prefix + text
+		}
+		text += status
+		if description != "" && describe {
 			text += strings.Repeat(" ", max(0, columns-ansi.StringWidth(label))+2) + Dim + description + Reset
 		}
 		text = ansi.Truncate(text, width, "…")
-		if i == v.Selected && v.Marker == "" {
+		if selected && marker == "" {
 			text = v.Selection + ansi.Strip(text) + strings.Repeat(" ", max(0, width-ansi.StringWidth(text))) + Reset
 		}
 		put(first+row, text)
 	}
 	if v.Problem != "" {
-		put(len(frame)-2, "  "+choiceText(v.Problem))
+		text := "  " + choiceText(v.Problem)
+		if v.Danger != "" {
+			text = "  " + v.Danger + choiceText(v.Problem) + Reset
+		}
+		put(len(frame)-2, text)
 	}
 }
 

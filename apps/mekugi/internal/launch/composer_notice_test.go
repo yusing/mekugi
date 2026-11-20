@@ -112,7 +112,7 @@ func TestComposerErrorClearsOnSuccessfulModelRequest(t *testing.T) {
 		applyCriticalNotices(&u.attached, &u.Client, &u.picker, &u.Editor, u.clock, preferences.Applied{}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, u.issues)
 		rows, _ := u.testMainFrame(80, 8, 0)
 		if thread == "unrelated" {
-			if !u.attached.feedback.Alert || !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "[x]") {
+			if !u.attached.feedback.Alert || !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "[×]") {
 				t.Fatal("unrelated success cleared feedback")
 			}
 		} else if u.attached.feedback.Alert || u.shell.Main.NoticeDismiss.W != 0 || u.Turn != "still-running" {
@@ -132,7 +132,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			rows, _ := u.testMainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
 			// Dismissal is a neutral control, not a success.
-			if !strings.Contains(rows[u.shell.Main.NoticeDismiss.Y], terminalui.Dim+"[x]") {
+			if !strings.Contains(rows[u.shell.Main.NoticeDismiss.Y], terminalui.Dim+"[×]") {
 				t.Fatal("dismiss control is not dim")
 			}
 		})

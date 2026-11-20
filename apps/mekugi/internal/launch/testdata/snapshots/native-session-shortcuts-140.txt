@@ -11,8 +11,6 @@
 
 
 
-
-
   Keyboard shortcuts
 
   Compose                                              Session
@@ -28,8 +26,10 @@
   ctrl+k                Delete to end of line          ctrl+c                Clear / interrupt / quit
   ctrl+z / ctrl+y       Undo / redo                    esc                   Interrupt, keep draft
   ctrl+v                Paste image                    ctrl+b 1–3            Main / toggle Diff / Agents
-  ctrl+g                External editor                ctrl+b e              Next live item
-                                                       ctrl+b q / !          Questions / error details
+  ctrl+g                External editor                ctrl+b e / r          Pin next live edit / follow live
+                                                       ctrl+b q              Approvals, then questions
+                                                       ctrl+b !              Error details
+                                                       ctrl+b p              Presets
                                                        ctrl+b ← / →          Resize panes
 
   Transcript

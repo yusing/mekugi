@@ -142,12 +142,12 @@ type statSegment struct {
 }
 
 // StatLine paints the second stat line at row y:
-// agent • counts • title • workspace • ↓ roster • ← main | → diff • ^E view.
+// agent • counts • title • workspace • ↓ roster • ← main | → diff • ctrl+e view.
 // While One-off is displayed, a Main tab precedes it.
 // Navigation hints show only while their keys act, with an empty composer.
 // A clickable segment underlines while the pointer is over it.
 // Narrow lines abbreviate the workspace to a sixth of the line and shorten
-// the title, then drop pane keys, ^E view, live batches, net lines, skills,
+// the title, then drop pane keys, ctrl+e view, live batches, net lines, skills,
 // the workspace, the side thread, finished counts, the scroll position, Diff
 // and roster hints, the title, and finally the remaining counts.
 func (s *Shell) StatLine(in ShellStatus, width, y int) string {
@@ -205,7 +205,8 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 		if s.Auxiliary != nil {
 			hints = append(hints, terminalui.Hint{"2", "toggle " + strings.ToLower(s.AuxiliaryLabel), 0})
 		}
-		hints = append(hints, terminalui.Hints{{"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}...)
+		hints = append(hints, terminalui.Hints{{Key: "q", Label: "approvals"}, {Key: "!", Label: "error"}, {Key: "p", Label: "presets"},
+			{Key: "e/r", Label: "pin/follow live"}, {Key: "←→", Label: "resize"}, {Key: "pgup/pgdn", Label: "history"}}...)
 		add(hints.Render(), 0, 1)
 	} else {
 		// The roster sheet shows its own keys.
@@ -225,11 +226,11 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 		}
 		add(in.Summary.Net, 0, 10)
 		if in.LiveCount > 1 {
-			add(hint("^B e", "next live"), 0, 11)
+			add(hint("ctrl+b e", "next live"), 0, 11)
 		}
 		switch s.Focus {
 		case 0:
-			add(hint("^E", "view"), 0, 12)
+			add(hint("ctrl+e", "view"), 0, 12)
 		case 1:
 			add(s.Auxiliary.Hints().Render(), 0, 13)
 		}

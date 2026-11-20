@@ -208,7 +208,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p.until("three agents edit at once")
 	p.ui.testActivity(p.ui.shell.Agents).setDisplayFilter(false, p.ui.shell.Agents.Selected)
 	terminalTest(p.ui).LiveHidden = false
-	frame := render("caller-local live previews", "LIVE ·", "Main • ◐ 3", "^B e next live")
+	frame := render("caller-local live previews", "LIVE ·", "Main • ◐ 3", "ctrl+b e next live")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
 		t.Fatal("the saved diff replaced Activity without being opened")
 	}

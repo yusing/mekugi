@@ -6,7 +6,7 @@ import "github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 type StatusPanel struct {
 	version         sessionpresentation.Version
 	body            *sessionpresentation.PanelView
-	Rect            Rect
+	Rect, Close     Rect // Body and close-control geometry, relative to Main.
 	Top, Rows, Tab  int
 	Sequence        uint64 // Zero follows the newest retained exchange.
 	Title, Controls string

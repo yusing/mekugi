@@ -92,7 +92,7 @@ func (m *Main) Render(transcript *activityui.View, painter *activityui.Painter, 
 		}
 		if !readOnly && m.Keybindings && in.Focused {
 			m.ContentPainted = false
-			rows = Keybindings(width, room)
+			rows = Keybindings(painter.Theme, width, room)
 		}
 		if in.Picker {
 			m.ContentPainted = false

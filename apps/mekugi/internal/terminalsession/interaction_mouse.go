@@ -39,7 +39,7 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 			if button == 0 && !r.Contains(x, y) {
 				result = main.Menu.Key("\x1b")
 			} else if r.Contains(x, y) {
-				result = main.Menu.Mouse(button&^28, y)
+				result = main.Menu.Mouse(button&^28, x, y)
 			}
 			yield(InputEffect{Menu: &result})
 		}
@@ -57,6 +57,12 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 		}
 	}
 	if main != nil && main.session.ReadOnly == sessionpresentation.Editable && main.Panel.Open() && shell.Layout.Main.Contains(x, y) {
+		if button == 0 && !release && main.Panel.Close.Contains(x-shell.Layout.Main.X, y-shell.Layout.Main.Y) {
+			state.Selection = nil
+			action, _ := main.Panel.Key("\x1b")
+			yield(InputEffect{Panel: &action})
+			return
+		}
 		if in.selectionMouse(state, pointer, yield) {
 			return
 		}
@@ -99,7 +105,7 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 		if !release {
 			switch button &^ 28 {
 			case 0, 64, 65:
-				result := main.Menu.Mouse(button&^28, y-shell.Layout.Main.Y)
+				result := main.Menu.Mouse(button&^28, x-shell.Layout.Main.X, y-shell.Layout.Main.Y)
 				if yield(InputEffect{Menu: &result}) {
 					in.send(state, "\r", yield)
 				}

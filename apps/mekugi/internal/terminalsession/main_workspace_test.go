@@ -21,7 +21,7 @@ func TestUISnapshotMainWorkspacePaths(t *testing.T) {
 			s := Shell{RosterLabel: "Agents"}
 			rendered := s.StatLine(ShellStatus{Agent: "Main", Title: "Session title", Workspace: view.SourceWorkspace()}, width, 0)
 			line := ansi.Strip(rendered)
-			if !strings.Contains(line, "project • ") || width < 80 && strings.Contains(line, "/home/dev") {
+			if !strings.Contains(line, "-project") && !strings.Contains(line, "…project") || width < 80 && strings.Contains(line, "/home/dev") {
 				t.Fatalf("workspace suffix displaced by prefix: %q", line)
 			}
 			if strings.Contains(ansi.Strip(captionLine(diffrender.TerminalTheme, view.Caption, captionUsage{}, width)), "-project") {
@@ -46,8 +46,8 @@ func TestStatLineWorkspaceOrderAndDrops(t *testing.T) {
 		width int
 		want  string
 	}{
-		{120, "  Main • ◐ 1 • Fix login • /home/dev/projects/mekugi • skills: go • ↓ roster • ^E view"},
-		{80, "  Main • ◐ 1 • Fix login • …v/projects/mekugi • skills: go • ↓ roster • ^E view"},
+		{120, "  Main • ◐ 1 • Fix login • /home/dev/projects/mekugi • skills: go • ↓ roster • ctrl+e view"},
+		{80, "  Main • ◐ 1 • Fix login • …ojects/mekugi • skills: go • ↓ roster • ctrl+e view"},
 		{56, "  Main • ◐ 1 • Fix login • …s/mekugi • ↓ roster"},
 		{44, "  Main • ◐ 1 • Fix login • ↓ roster"},
 		{30, "  Main • ◐ 1 • Fix login"},
@@ -110,8 +110,8 @@ func TestStatLineCountsOutlastTitle(t *testing.T) {
 // While One-off is displayed, Main's tab precedes it and selects Main.
 func TestStatLineMainTabBesideOneOff(t *testing.T) {
 	s := Shell{}
-	line := ansi.Strip(s.StatLine(ShellStatus{Agent: "One-off", SideLabel: "One-off", SideSelected: true, Workspace: "/workspace"}, 40, 5))
-	if line != "  Main • One-off • /workspace • ^E view" {
+	line := ansi.Strip(s.StatLine(ShellStatus{Agent: "One-off", SideLabel: "One-off", SideSelected: true, Workspace: "/workspace"}, 48, 5))
+	if line != "  Main • One-off • /workspace • ctrl+e view" {
 		t.Fatalf("stat line = %q", line)
 	}
 	if len(s.Targets) != 1 || s.Targets[0].Action != StatMainTab || s.Targets[0].Rect != (Rect{2, 5, 4, 1}) {

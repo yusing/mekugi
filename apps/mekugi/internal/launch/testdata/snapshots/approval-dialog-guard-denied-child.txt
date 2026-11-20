@@ -15,4 +15,4 @@
   Approval: Denied                                                              
   Denied                                                                        
   Command: git push origin main                                                 
-  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc                               
+  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc close                         

@@ -21,4 +21,4 @@
   12 │     }                                                                                       │
   13 │ '''+s[b:]                                                                                   │
   14 │ a=s.index('\tsort.Slice('); b=s.index('\treturn commits, nil',a)                            │
-  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc                                      
+  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc close                                

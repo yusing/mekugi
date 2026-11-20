@@ -2,7 +2,7 @@ AGENTS · waiting for subagent activity                               CONNECTING
 
 
 
-  ── Archive this session? ───────────────────────────────────────────────────
+  ── Archive this session? ──────────────────────────────────────────── [×] ──
 
     Are you sure? This will archive the current session.
 

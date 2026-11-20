@@ -2,7 +2,7 @@ AGENTS · waiting for subagent activity                               CONNECTING
 
 
 
-  ── Archive this session? ───────────────────────────────────────────────────
+  ── Archive this session? ──────────────────────────────────────────── [×] ──
 
     This will stop the current turn and archive the session.
 

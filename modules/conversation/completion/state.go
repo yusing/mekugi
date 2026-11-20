@@ -16,7 +16,13 @@ type Choice struct {
 	Name, Path, Description, Display string
 	Enabled                          bool
 	Preset                           bool
-	HideRemote                       bool `json:"-"` // A dedicated browser control replaces this completion.
+	// Current marks the active value of a setting; Unavailable marks one the
+	// host refuses to select now.
+	Current, Unavailable bool
+	// Danger marks a choice that stops work, discards data or removes a
+	// safeguard. Renderers tone it and require deliberate confirmation.
+	Danger     bool
+	HideRemote bool `json:"-"` // A dedicated browser control replaces this completion.
 }
 
 type ChoiceID struct {

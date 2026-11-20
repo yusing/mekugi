@@ -9,24 +9,24 @@
 
 
 
-  ╭ Session status ─────────────────────────────────────────────── Esc close ╮
-  │                                                                          │
-  │  Usage  ───────────────────────────────────────────────────────────────  │
-  │  Usage primary limit                                           80% left  │
-  │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────────  │
-  │                                                                          │
-  │  Usage limit resets  ──────────────────────────────────────────────────  │
-  │  Available      0                                                        │
-  │                                                                          │
-  │  Account  ─────────────────────────────────────────────────────────────  │
-  │  Sign-in        ChatGPT                                                  │
-  │  Plan           pro                                                      │
-  │  Usage details  https://chatgpt.com/codex/settings/usage                 │
-  │                                                                          │
-  │  Session  ─────────────────────────────────────────────────────────────  │
-  │  Session        main                                                     │
-  │                                                                          │
-  ╰─ ↑↓ scroll  PgUp/PgDn  drag to select ───────────────────────────────────╯
+    ── Session status ─────────────────────────────────────────────── [×] ──
+
+    Usage  ─────────────────────────────────────────────────────────────────
+    Usage primary limit                                             80% left
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────────
+                                                                            
+    Usage limit resets  ────────────────────────────────────────────────────
+    Available      0                                                        
+                                                                            
+    Account  ───────────────────────────────────────────────────────────────
+    Sign-in        ChatGPT                                                  
+    Plan           pro                                                      
+    Usage details  https://chatgpt.com/codex/settings/usage                 
+                                                                            
+    Session  ───────────────────────────────────────────────────────────────
+    Session        main                                                     
+
+    ↑↓ scroll · pgup/pgdn page · drag to select · esc close
 
 
 

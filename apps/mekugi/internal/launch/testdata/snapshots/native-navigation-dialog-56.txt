@@ -15,4 +15,4 @@
   1 │ page 3 only
 
 
-  ←→ command · ↑↓ scroll · y copy · esc
+  ←→ command · ↑↓ scroll · y copy · esc close

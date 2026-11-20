@@ -1,4 +1,4 @@
   ── Run this command? ───────────────────────────────────────────────────────
 approving · turn waiting
 ❯
-  Main • ^E view
+  Main • ctrl+e view

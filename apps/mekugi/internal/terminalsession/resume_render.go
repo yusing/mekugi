@@ -8,7 +8,6 @@ import (
 	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/activity/presentation"
@@ -37,17 +36,14 @@ func (p *ResumePicker) Render(painter *terminalui.Painter, width, height int, se
 		}
 	}
 	bold, dim, reset := "\x1b[1m", terminalui.Dim, terminalui.Reset
-	accent := "\x1b[38;2;104;174;245m"
-	if painter.Theme == diffrender.LightTheme {
-		accent = "\x1b[38;2;25;94;164m"
-	}
+	accent := painter.Theme.Accent()
 	option := func(label string, on bool) string {
 		if on {
 			return bold + accent + label + reset
 		}
 		return dim + label + reset
 	}
-	put(0, "  "+bold+"Resume a previous session"+reset)
+	put(0, "  "+terminalui.PanelHeading(accent, "Resume a previous session", "", "", max(1, width-4)))
 	filter := "  " + dim + "Filter:" + reset + " "
 	if view.Workspace != "" {
 		filter += option("Cwd", !view.All) + " " + option("All", view.All)
@@ -63,7 +59,7 @@ func (p *ResumePicker) Render(painter *terminalui.Painter, width, height int, se
 		search = "  Search: " + panelText(view.Query)
 	}
 	if view.Problem != "" {
-		search = "  \x1b[38;2;239;117;117m" + panelText(view.Problem) + reset
+		search = "  " + painter.Theme.Danger() + panelText(view.Problem) + reset
 	}
 	put(2, search)
 	footer := "  " + bold + "enter" + reset + dim + " resume · " + reset + bold + "esc" + reset + dim

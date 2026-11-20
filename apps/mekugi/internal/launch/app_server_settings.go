@@ -460,7 +460,7 @@ func (p *composerPicker) showSettingsPicker(loading bool, command string, choice
 	for _, value := range choices {
 		choice := completion.Choice{Name: value}
 		if value == current {
-			choice.Description = "Current"
+			choice.Description, choice.Current = "Current", true
 			p.Preferred = choice.Identity()
 		}
 		p.Choices = append(p.Choices, choice)

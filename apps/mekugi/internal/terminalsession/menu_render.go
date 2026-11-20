@@ -11,6 +11,7 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/conversation/completion"
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
@@ -19,13 +20,15 @@ func (m *Menu) Height(width int) int {
 		return 0
 	}
 	p := m.body
+	footer := len(dockFooter(menuKeys(p, width), width)) - 1
 	if strings.HasPrefix(string(p.Kind), "preset") {
-		return len(presetHeader(p, width)) + max(1, len(p.Choices)) + 3
+		// Heading, spacer, context, choices, problem row and keys.
+		return len(presetHeader(p, width-2)) + max(1, len(p.Choices)) + 4 + footer
 	}
 	// Prompt panels: heading, spacer, explanation and its spacer, choices,
 	// spacer and keys.
 	if inlinePrompt(p.Kind) || p.Kind == sessionpresentation.MenuSettings || p.Kind == sessionpresentation.MenuCopy {
-		height := min(8, max(1, len(p.Choices))) + 4
+		height := min(8, max(1, len(p.Choices))) + 4 + footer
 		if inlinePrompt(p.Kind) {
 			if explanation := len(promptExplanation(p, width)); explanation > 0 {
 				height += explanation + 1
@@ -39,8 +42,9 @@ func (m *Menu) Height(width int) int {
 // Source: apps/mekugi/internal/router/app_server_picker_render.go:59:113@932125e0.
 func (m *Menu) Render(painter *terminalui.Painter, selection string, width, height int) []string {
 	p := m.body
+	m.closeShown = false
 	if strings.HasPrefix(string(p.Kind), "preset") {
-		return m.renderPreset(selection, width, height)
+		return m.renderPreset(painter, width, height)
 	}
 	if p.Kind == "" || p.Kind == "menu" || p.Kind == "manage" {
 		band := ""
@@ -52,9 +56,75 @@ func (m *Menu) Render(painter *terminalui.Painter, selection string, width, heig
 	return m.promptBody(painter, width, height)
 }
 
+// menuKeys names the docked menu's controls with the shared key vocabulary.
+func menuKeys(p *sessionpresentation.MenuView, width int) string {
+	if strings.HasPrefix(string(p.Kind), "preset") {
+		return presetKeys(p, width)
+	}
+	keys := "enter select · esc cancel"
+	switch p.Kind {
+	case sessionpresentation.MenuSettings:
+		keys = "enter apply · esc cancel"
+	case sessionpresentation.MenuCopy:
+		keys = "enter copy · esc close"
+	}
+	// The arrow hint yields first when the keys would otherwise wrap.
+	if arrows := "↑/↓ choose · " + keys; ansi.StringWidth(arrows) <= width-4 {
+		return arrows
+	}
+	return keys
+}
+
+// dockFooter wraps dim dock keys rather than truncating them, keeping each
+// key with its verb.
+func dockFooter(keys string, width int) []string {
+	width = max(1, width-4)
+	var lines []string
+	line := ""
+	for _, hint := range strings.Split(keys, " · ") {
+		if line != "" && ansi.StringWidth(line+" · "+hint) <= width {
+			line += " · " + hint
+			continue
+		}
+		if line != "" {
+			lines = append(lines, line)
+		}
+		line = hint
+	}
+	return append(lines, panelWrap(line, width)...)
+}
+
+// dockHeading paints a docked menu's accent heading with its close control.
+func (m *Menu) dockHeading(painter *terminalui.Painter, title string, width int) string {
+	heading := terminalui.PanelHeading(painter.Theme.Accent(), title, "", terminalui.DialogClose, max(1, width-4))
+	m.closeShown = strings.Contains(ansi.Strip(heading), terminalui.DialogClose)
+	return "  " + heading
+}
+
+// menuRows publishes each choice's state and risk to the shared list.
+func menuRows(p *sessionpresentation.MenuView) []terminalui.ChoiceRow {
+	rows := make([]terminalui.ChoiceRow, len(p.Choices))
+	for i, choice := range p.Choices {
+		rows[i] = choiceRow(choice, choice.Label())
+	}
+	return rows
+}
+
+func choiceRow(choice completion.Choice, text string) terminalui.ChoiceRow {
+	var states []string
+	if choice.Current {
+		states = append(states, "current")
+	}
+	if choice.Unavailable {
+		states = append(states, "unavailable")
+	}
+	return terminalui.ChoiceRow{Text: text, Description: choice.Description, Status: strings.Join(states, " · "), Danger: choice.Danger, Muted: choice.Unavailable}
+}
+
 // promptBody docks a prompt as a panel matching the process list: an accent
-// heading, the dim explanation, choices with a pointer on the selected one,
-// and dim keys, inset two cells. Short docks keep the choices first.
+// heading with its close control, the dim explanation, choices with a pointer
+// on the selected one, and dim keys, inset two cells. Short docks keep the
+// choices first.
 func (m *Menu) promptBody(painter *terminalui.Painter, width, height int) []string {
 	p := m.body
 	accent := painter.Theme.Accent()
@@ -64,21 +134,26 @@ func (m *Menu) promptBody(painter *terminalui.Painter, width, height int) []stri
 			frame[y] = ansi.Truncate(text, width, "")
 		}
 	}
-	title, keys := p.Title, "↑/↓ choose · enter select · esc cancel"
-	switch p.Kind {
-	case sessionpresentation.MenuSettings:
-		title, keys = "Choose "+strings.TrimPrefix(p.Setting, "/"), "↑/↓ choose · enter apply · esc cancel"
-	case sessionpresentation.MenuCopy:
-		title, keys = "Copy to clipboard", "↑/↓ choose · enter copy · esc close"
+	title := p.Title
+	if p.Kind == sessionpresentation.MenuSettings {
+		title = "Choose " + strings.TrimPrefix(p.Setting, "/")
+	} else if p.Kind == sessionpresentation.MenuCopy {
+		title = "Copy to clipboard"
 	}
 	first, last := 0, height
 	if height >= 3 {
-		put(0, "  "+terminalui.PanelHeading(accent, title, "", "", max(1, width-4)))
-		put(height-1, "  "+terminalui.Dim+ansi.Truncate(keys, max(1, width-4), "…")+terminalui.Reset)
-		first, last = 1, height-1
+		put(0, m.dockHeading(painter, title, width))
+		footer := dockFooter(menuKeys(p, width), width)
+		footer = footer[:min(len(footer), height-2)]
+		for i, line := range footer {
+			put(height-len(footer)+i, "  "+terminalui.Dim+line+terminalui.Reset)
+		}
+		first, last = 1, height-len(footer)
+		if height-len(footer) >= 4 {
+			first, last = 2, last-1
+		}
 	}
-	if height >= 5 {
-		first, last = 2, height-2
+	if first == 2 {
 		if explanation := promptExplanation(p, width); len(explanation) > 0 {
 			for _, line := range explanation {
 				if first >= last-2 {
@@ -91,12 +166,9 @@ func (m *Menu) promptBody(painter *terminalui.Painter, width, height int) []stri
 		}
 	}
 	visible := min(8, max(0, last-first))
-	rows := make([]terminalui.ChoiceRow, len(p.Choices))
-	for i, choice := range p.Choices {
-		rows[i] = terminalui.ChoiceRow{Text: choice.Label(), Description: choice.Description}
-	}
-	list := make([]string, height)
-	m.ChoiceListLayout.Draw(list, max(1, width-4), first, visible, terminalui.ChoiceListView{Rows: rows, Selected: m.Selected, Marker: accent, Problem: p.Problem, Loading: p.Loading})
+	// The list's problem row is the spacer above the keys.
+	list := make([]string, min(height, last+2))
+	m.ChoiceListLayout.Draw(list, max(1, width-4), first, visible, terminalui.ChoiceListView{Rows: menuRows(p), Selected: m.Selected, Marker: accent, Danger: painter.Theme.Danger(), Problem: p.Problem, Loading: p.Loading})
 	for y, row := range list {
 		if row != "" {
 			put(y, "  "+row)
@@ -156,10 +228,10 @@ const presetListWidth = 64
 // browser's inline editing.
 const presetEditorCopy = "Write a prompt or slash command in your external editor, then save and close it."
 
-// renderPreset paints title, context, keyed choices, a problem row and a
-// footer. Context yields to choices when the terminal is short; a list that
-// still scrolls gains a spacer for its upper marker.
-func (m *Menu) renderPreset(selection string, width, height int) []string {
+// renderPreset paints the dock heading, context, keyed choices, a problem
+// row and keys. Context yields to choices when the terminal is short; a list
+// that still scrolls gains a spacer for its upper marker.
+func (m *Menu) renderPreset(painter *terminalui.Painter, width, height int) []string {
 	p := m.body
 	frame := make([]string, height)
 	put := func(y int, text string) {
@@ -168,34 +240,51 @@ func (m *Menu) renderPreset(selection string, width, height int) []string {
 		}
 	}
 	rows := presetRows(p)
-	listWidth := width
+	listWidth := max(1, width-4)
 	if len(rows) > 0 {
 		widest := 0
 		for _, row := range rows {
 			widest = max(widest, ansi.StringWidth(panelText(row.Text)))
 		}
-		listWidth = min(width, presetListWidth, widest+4) // Pointer prefix and a trailing margin.
+		listWidth = min(listWidth, presetListWidth, widest+4) // Pointer prefix and a trailing margin.
 	}
-	view := terminalui.ChoiceListView{Rows: rows, Selected: m.Selected, Selection: selection, Problem: p.Problem, Loading: p.Loading}
-	if height < 5 {
-		m.ChoiceListLayout.Draw(frame, listWidth, 0, height, view)
+	view := terminalui.ChoiceListView{Rows: rows, Selected: m.Selected, Marker: painter.Theme.Accent(), Danger: painter.Theme.Danger(), Loading: p.Loading}
+	if len(rows) == 0 {
+		view.Problem = p.Problem
+	}
+	draw := func(first, visible, size int) {
+		list := make([]string, size)
+		m.ChoiceListLayout.Draw(list, listWidth, first, visible, view)
+		for y, row := range list {
+			if row != "" {
+				put(y, "  "+row)
+			}
+		}
+	}
+	footer := dockFooter(presetKeys(p, width), width)
+	if height < len(footer)+5 {
+		draw(0, height, height)
 		return frame
 	}
-	put(0, "  \x1b[1m"+p.Title+terminalui.Reset)
-	put(height-1, "  "+presetHints(p, width).Render())
-	list, room := max(1, len(p.Choices)), height-3
-	header := presetHeader(p, width)
+	put(0, m.dockHeading(painter, p.Title, width))
+	for i, line := range footer {
+		put(height-len(footer)+i, "  "+terminalui.Dim+line+terminalui.Reset)
+	}
+	bottom := height - len(footer) - 1 // The problem row.
+	list, room := max(1, len(p.Choices)), bottom-2
+	// Context aligns with the choice labels, inside their pointer column.
+	header := presetHeader(p, width-2)
 	header = header[:min(len(header), max(0, room-list))]
 	for i, line := range header {
-		put(1+i, line)
+		put(2+i, "  "+line)
 	}
-	first := 1 + len(header)
+	first := 2 + len(header)
 	if list > room {
 		first++
 	}
-	m.ChoiceListLayout.Draw(frame, listWidth, first, height-2-first, view)
-	if p.Problem != "" {
-		put(height-2, "  "+panelText(p.Problem)) // Problems may be wider than the list.
+	draw(first, bottom-first, bottom+2)
+	if p.Problem != "" && len(rows) > 0 {
+		put(bottom, "  "+painter.Theme.Danger()+panelText(p.Problem)+terminalui.Reset) // Problems may be wider than the list.
 	}
 	return frame
 }
@@ -292,26 +381,26 @@ func presetRows(p *sessionpresentation.MenuView) []terminalui.ChoiceRow {
 			}
 			label = fmt.Sprintf("%-1s  %s", key, label)
 		}
-		rows[i] = terminalui.ChoiceRow{Text: label, Description: choice.Description}
+		rows[i] = choiceRow(choice, label)
 	}
 	return rows
 }
 
-func presetHints(p *sessionpresentation.MenuView, width int) terminalui.Hints {
-	esc := terminalui.Hint{Key: "esc", Label: "close"}
+// presetKeys names the controls each stage accepts, matching Menu.Key.
+func presetKeys(p *sessionpresentation.MenuView, width int) string {
 	switch {
 	case p.Loading:
-		return terminalui.Hints{esc}
+		return "esc close"
 	case len(p.Choices) == 1 && p.Choices[0].Name == "retry":
-		return terminalui.Hints{{Key: "r", Label: "retry"}, esc}
+		return "r retry · esc close"
 	case p.Kind == "preset-edit":
-		return terminalui.Hints{{Key: "enter", Label: "open editor"}, {Key: "esc", Label: "cancel"}}
+		return "enter open editor · esc cancel"
 	case p.Kind == "preset-label" && len(p.Choices) > 0:
-		return terminalui.Hints{{Key: "enter", Label: strings.ToLower(p.Choices[0].Label())}, {Key: "esc", Label: "cancel"}}
+		return "enter " + strings.ToLower(p.Choices[0].Label()) + " · esc cancel"
 	case p.Kind == "preset-confirm":
-		return terminalui.Hints{{Key: "y", Label: "confirm"}, {Key: "esc", Label: "cancel"}}
+		return "y confirm · esc cancel"
 	case width < 50:
-		return terminalui.Hints{{Key: "enter", Label: "select"}, esc}
+		return "enter select · esc close"
 	}
-	return terminalui.Hints{{Key: "↑/↓", Label: "navigate"}, {Key: "enter", Label: "select"}, esc}
+	return "↑/↓ choose · enter select · esc close"
 }

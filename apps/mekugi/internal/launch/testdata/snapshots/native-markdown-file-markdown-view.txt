@@ -21,5 +21,5 @@
 "  \x1b[2m└──────┴───────┘\x1b[m                                                              "
 "                                                                                "
 "  \x1b[38;2;230;237;243;48;2;32;35;40m \x1b[35mpackage\x1b[38;2;230;237;243m sample                                                             \x1b[m  "
-"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · ←→ view · / find · y copy · esc\x1b[m                     "
+"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · ←→ view · / find · y copy · esc close\x1b[m               "
 "plain after file view                                                           "

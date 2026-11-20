@@ -1,40 +1,40 @@
-╭ Session · Features ─────────────╮
-│                                 │
-│  btw rejected                   │
-│     1            0              │
-│  btw failed                     │
-│     0            1              │
-│                                 │
-│  Waits                          │
-│  Self  Descendants              │
-│  Registered                     │
-│     5            3              │
-│  All mode                       │
-│     1            0              │
-│  Progress enabled               │
-│     4            3              │
-│  Progress delivered             │
-│     2            1              │
-│                                 │
-│  Source-bearing sends           │
-│  Self  Descendants              │
-│  Total                          │
-│     6            3              │
-│  Assignments                    │
-│     3            2              │
-│  Messages                       │
-│     3            1              │
-│                                 │
-│  Output deduplication           │
-│  Self  Descendants              │
-│  Saved bytes                    │
-│  4936          800              │
-│  Saved tokens (est.)            │
-│  1234          200              │
-│  Net model-input savings after  │
-│  reference overhead, summed     │
-│  across requests. Tokens use a  │
-│  local 4-byte estimate, not     │
-│  provider billing savings.      │
-│                                 │
-╰─ ←→ views  ↑↓ scroll  Esc ──────╯
+  ── Session · Features ── [×] ──
+
+  btw rejected                   
+     1            0              
+  btw failed                     
+     0            1              
+                                 
+  Waits                          
+  Self  Descendants              
+  Registered                     
+     5            3              
+  All mode                       
+     1            0              
+  Progress enabled               
+     4            3              
+  Progress delivered             
+     2            1              
+                                 
+  Source-bearing sends           
+  Self  Descendants              
+  Total                          
+     6            3              
+  Assignments                    
+     3            2              
+  Messages                       
+     3            1              
+                                 
+  Output deduplication           
+  Self  Descendants              
+  Saved bytes                    
+  4936          800              
+  Saved tokens (est.)            
+  1234          200              
+  Net model-input savings after  
+  reference overhead, summed     
+  across requests. Tokens use a  
+  local 4-byte estimate, not     
+  provider billing savings.      
+
+  ←→ · ↑↓ · esc close

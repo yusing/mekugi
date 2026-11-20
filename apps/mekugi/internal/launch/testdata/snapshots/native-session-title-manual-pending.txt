@@ -13,4 +13,4 @@ Ready
 ❯
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   snapshot-model
-  Main • My manual session name • → diff • ^E view
+  Main • My manual session name • → diff • ctrl+e view

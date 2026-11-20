@@ -25,4 +25,4 @@ Ready
 ❯
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   snapshot-model (high)
-  Main • /workspace • ↓ roster • → diff • ^E view
+  Main • /workspace • ↓ roster • → diff • ctrl+e view

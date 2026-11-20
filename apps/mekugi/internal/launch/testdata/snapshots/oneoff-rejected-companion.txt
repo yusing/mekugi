@@ -25,4 +25,4 @@
 ❯
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  Main • One-off • ◐ 1 • /workspace • ↓ roster • → diff • ^E view
+  Main • One-off • ◐ 1 • /workspace • ↓ roster • → diff • ctrl+e view

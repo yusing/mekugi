@@ -9,7 +9,7 @@
 "                                                                                                    "
 "                                                                                                    "
 "                                                                                                    "
-"  \x1b[36m── \x1b[39;1mChecking captured edits…\x1b[m \x1b[36m────────────────────────────────────────────────────────────────────\x1b[m  "
+"  \x1b[36m── \x1b[39;1mChecking captured edits…\x1b[m \x1b[36m─────────────────────────────────────────────────────────────\x1b[m [×] \x1b[36m──\x1b[m  "
 "                                                                                                    "
 "    \x1b[2mRewind continues automatically if there are no captured edits to revert.\x1b[m                        "
 "                                                                                                    "

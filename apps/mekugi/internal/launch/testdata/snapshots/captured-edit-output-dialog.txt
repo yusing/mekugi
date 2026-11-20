@@ -9,4 +9,4 @@
   1 ┆ a.go diagnostic                                                                               
                                                                                                     
                                                                                                     
-  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc                                      
+  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc close                                

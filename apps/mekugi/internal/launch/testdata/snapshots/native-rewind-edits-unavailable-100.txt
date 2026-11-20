@@ -9,7 +9,7 @@
 "                                                                                                    "
 "                                                                                                    "
 "                                                                                                    "
-"  \x1b[38;2;86;212;221m── \x1b[39;1mKeep or revert edits?\x1b[m \x1b[38;2;86;212;221m───────────────────────────────────────────────────────────────────────\x1b[m  "
+"  \x1b[38;2;86;212;221m── \x1b[39;1mKeep or revert edits?\x1b[m \x1b[38;2;86;212;221m────────────────────────────────────────────────────────────────\x1b[m [×] \x1b[38;2;86;212;221m──\x1b[m  "
 "                                                                                                    "
 "    \x1b[2mRevert unavailable: saved change evidence is unavailable. Keep edits leaves files unchanged.\x1b[m    "
 "                                                                                                    "

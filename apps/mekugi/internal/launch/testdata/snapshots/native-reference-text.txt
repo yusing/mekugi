@@ -15,4 +15,4 @@ Mekugi test • codex
 ❯ [Selected output]  
 ────────────────────────────────────────────────────────────────────────────────
   
-  Main • ^E view
+  Main • ctrl+e view

@@ -21,4 +21,4 @@
   Per-command output boundaries were not retained for this invocation.                              
                                                                                                     
   1 ┆ build failed                                                                                  
-  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc                                      
+  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc close                                

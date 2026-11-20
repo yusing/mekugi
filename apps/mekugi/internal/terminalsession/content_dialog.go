@@ -108,7 +108,6 @@ func (d *ContentDialog) Layout(width int) {
 	if page.Lang == "diff" {
 		d.Mention = "diff"
 	}
-	d.StopAvailable = d.Processes && page.Process != nil
 	if !d.View.ChildReplySummary {
 		page.ReplyDetails = ""
 	}

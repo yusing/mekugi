@@ -254,6 +254,9 @@ func TestNativeProcessDetailsBorrowExecutionCommands(t *testing.T) {
 	d := c.renderer.terminal.Dialog
 	d.Paint(make([]string, 16), terminalsession.Rect{W: 80, H: 16})
 	d.Key("\x1b[B")
+	if armed := d.Key("x"); armed.Process != nil {
+		t.Fatal("one key stopped a process without confirmation")
+	}
 	stop := d.Key("x")
 	if stop.Process == nil || stop.Process.Item != "second" || stop.Process.ID != "42" {
 		t.Fatal("queued navigation did not stop the selected process")

@@ -6,7 +6,7 @@
 "                                                "
 "                                                "
 "                                                "
-"  \x1b[38;2;86;212;221m── \x1b[39;1mRewind before a user turn\x1b[m \x1b[38;2;86;212;221m───────────────\x1b[m  "
+"  \x1b[38;2;86;212;221m── \x1b[39;1mRewind before a user turn\x1b[m \x1b[38;2;86;212;221m────────\x1b[m [×] \x1b[38;2;86;212;221m──\x1b[m  "
 "                                                "
 "    \x1b[2mRewind removes this turn and later\x1b[m          "
 "    \x1b[2mconversation. Next, choose whether to keep\x1b[m  "

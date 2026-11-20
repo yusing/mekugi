@@ -13,4 +13,4 @@
 "  \x1b[2m  ┆\x1b[m rce long source long source long source long source long source long source long source long \x1b[2m│\x1b[m"
 "  \x1b[2m  ┆\x1b[m  source long source long source long source long source long source long source long source  \x1b[2m│\x1b[m"
 "  \x1b[2m  ┆\x1b[m long source long source long source long source long source long source long source long sou \x1b[2m│\x1b[m"
-"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · o Original · y copy · esc\x1b[m                                      "
+"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · o Original · y copy · esc close\x1b[m                                "

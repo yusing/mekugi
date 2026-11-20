@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -102,7 +103,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 func TestUISnapshotNativeUIKeybindingsColumns(t *testing.T) {
 	for _, width := range []int{40, 100, 140} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			frame := terminalsession.Keybindings(width, 40)
+			frame := terminalsession.Keybindings(diffrender.DarkTheme, width, 40)
 			for _, row := range frame {
 				if ansi.StringWidth(row) > width {
 					t.Fatalf("width %d: overflowing row %q", width, row)

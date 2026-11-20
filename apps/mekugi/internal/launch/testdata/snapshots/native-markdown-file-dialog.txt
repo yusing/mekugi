@@ -15,5 +15,5 @@
 " \x1b[36;48;2;62;72;86m 3 \x1b[49m│\x1b[m \x1b[90m// Copy this source. more source more source more source more source mor\x1b[m  "
 " \x1b[36;48;2;62;72;86m   \x1b[49m│\x1b[m \x1b[90me source more source more source more source \x1b[m                             "
 "  \x1b[2m4 │\x1b[m                                                                           "
-"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc\x1b[m                               "
+"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc close\x1b[m                         "
 "plain after file dialog                                                         "

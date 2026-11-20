@@ -57,7 +57,7 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 			picker.sideTaskDelivery = attached.effects.input()
 			picker.sideTarget = (*side).Key
 			picker.openMenu("side-replace")
-			picker.Choices = []completion.Choice{{ID: 1, Name: "Cancel", Description: "Keep the current One-off conversation"}, {ID: 2, Name: "Replace", Description: "Close One-off and create a fresh snapshot of Main"}}
+			picker.Choices = []completion.Choice{{ID: 1, Name: "Cancel", Description: "Keep the current One-off conversation"}, {ID: 2, Name: "Replace", Description: "Close One-off and create a fresh snapshot of Main", Danger: true}}
 			return nil
 		}
 		draft := preparation.take(*editor)

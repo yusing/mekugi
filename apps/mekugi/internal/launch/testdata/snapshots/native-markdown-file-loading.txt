@@ -15,4 +15,4 @@
 "  \x1b[1msample.go:40\x1b[m                                                                  "
 "                                                                                "
 "  Loading…                                                                      "
-"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc\x1b[m                               "
+"  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc close\x1b[m                         "

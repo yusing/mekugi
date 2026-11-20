@@ -334,7 +334,7 @@ func TestSessionMetricsRemoteSelection(t *testing.T) {
 func TestUISnapshotNativeSessionShortcuts(t *testing.T) {
 	for _, width := range []int{40, 140} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			assertNativeUISnapshot(t, fmt.Sprintf("native-session-shortcuts-%d", width), terminalsession.Keybindings(width, 40))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-session-shortcuts-%d", width), terminalsession.Keybindings(diffrender.DarkTheme, width, 40))
 		})
 	}
 }

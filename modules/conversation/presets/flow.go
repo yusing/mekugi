@@ -132,7 +132,7 @@ func (f *Flow) Choices() []completion.Choice {
 		return []completion.Choice{{Name: "continue", Display: display}}
 	}
 	if f.Stage == Confirm {
-		return []completion.Choice{{Name: "confirm", Display: strings.TrimSuffix(f.Title(), "?")}, {Name: "cancel", Display: "Cancel"}}
+		return []completion.Choice{{Name: "confirm", Display: strings.TrimSuffix(f.Title(), "?"), Danger: true}, {Name: "cancel", Display: "Cancel"}}
 	}
 	choices := []completion.Choice{}
 	for i := range 10 {

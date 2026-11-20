@@ -250,19 +250,25 @@ const DialogCloseWidth = 3
 // right edge: the control, a space, the rule's end and the two-cell inset.
 const DialogCloseOffset = DialogCloseWidth + 5
 
-// panelTitleFloor is the title width a heading keeps before its detail
-// yields room.
+// panelTitleFloor is the title width a heading keeps before its detail or a
+// right label other than the close control yields room.
 const panelTitleFloor = 16
 
 // PanelHeading opens a docked panel with an accent rule width cells wide: the
 // bold title, its dim detail, then an optional right label set into the rule.
-// A long title yields to its detail down to panelTitleFloor cells, then the
-// detail yields. Too narrow for a title, the rule keeps only the right label,
-// which drops in turn when even it does not fit. Callers add the panel's
-// two-cell inset on each side.
+// A long title yields to its whole detail down to panelTitleFloor cells;
+// otherwise the detail shortens and then drops, and a right label other than
+// the close control drops before the title is cut below the floor. Too narrow for a title, the rule keeps only the
+// right label, which drops in turn when even it does not fit. Callers add the
+// panel's two-cell inset on each side.
 func PanelHeading(accent, title, detail, right string, width int) string {
 	if width < 6 {
 		return accent + strings.Repeat("─", max(0, width)) + Reset
+	}
+	titleWidth := ansi.StringWidth(title)
+	if right != "" && !strings.HasSuffix(ansi.Strip(right), DialogClose) &&
+		panelRoom(width, ansi.StringWidth(right)) < min(titleWidth, panelTitleFloor) {
+		right = ""
 	}
 	room := panelRoom(width, ansi.StringWidth(right))
 	if room < 1 && right != "" {
@@ -275,13 +281,13 @@ func PanelHeading(accent, title, detail, right string, width int) string {
 	if right != "" {
 		right, tail = " "+right+Reset+" ", "──"
 	}
+	if keep := room - ansi.StringWidth(detail) - 3; detail != "" && keep < titleWidth && keep >= panelTitleFloor {
+		title, titleWidth = ansi.Truncate(title, keep, "…"), keep
+	}
 	label := "\x1b[1m" + title + Reset
-	if detail != "" {
-		detail = Dim + " · " + detail + Reset
-		if over := ansi.StringWidth(label) + ansi.StringWidth(detail) - room; over > 0 && room-ansi.StringWidth(detail) >= panelTitleFloor {
-			label = ansi.Truncate(label, ansi.StringWidth(label)-over, "…") + Reset
-		}
-		label += detail
+	// A detail needs its separator and at least one cell beside its ellipsis.
+	if rest := room - titleWidth - 3; detail != "" && rest >= 2 {
+		label += Dim + " · " + ansi.Truncate(detail, rest, "…") + Reset
 	}
 	label = ansi.Truncate(label, room, "…") + Reset
 	fill := width - 4 - ansi.StringWidth(label) - ansi.StringWidth(right) - ansi.StringWidth(tail)

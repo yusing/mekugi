@@ -1,4 +1,4 @@
-  Resume a previous session
+  ── Resume a previous session ───────────────────────────────────────────────
   Filter: Cwd All
   Search: 界need
 
@@ -15,4 +15,4 @@
 
   enter resume · esc clear search · tab cwd/all · ctrl+c quit · ↑/↓ browse
 
-  Main • /work • ^E view
+  Main • /work • ctrl+e view

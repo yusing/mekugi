@@ -13,4 +13,4 @@
 "  \x1b[2m  ┆\x1b[m  source long source long source long sourc \x1b[2m│\x1b[m"
 "  \x1b[2m  ┆\x1b[m e long source long source long source long \x1b[2m│\x1b[m"
 "  \x1b[2m  ┆\x1b[m  source long source long source long sourc \x1b[2m│\x1b[m"
-"  \x1b[2m↑↓ scroll · o Original · y copy · esc\x1b[m           "
+"  \x1b[2m↑↓ scroll · o Original · y copy · esc close\x1b[m     "

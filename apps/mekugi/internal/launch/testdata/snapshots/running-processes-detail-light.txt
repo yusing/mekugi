@@ -1,4 +1,4 @@
-"  \x1b[38;2;0;112;120m── \x1b[39;1mBackground\x1b[m \x1b[38;2;0;112;120m──────────────────────────\x1b[m  "
+"  \x1b[38;2;0;112;120m── \x1b[39;1mBackground\x1b[m \x1b[38;2;0;112;120m───────────────────\x1b[m [×] \x1b[38;2;0;112;120m──\x1b[m  "
 "  \x1b[1mworker\x1b[m                                    "
 "  \x1b[1mStatus:\x1b[m running                           "
 "  \x1b[1mRuntime:\x1b[m 12s                              "
@@ -13,5 +13,5 @@
 "  \x1b[38;2;0;112;120m│\x1b[m                                      \x1b[38;2;0;112;120m│\x1b[m  "
 "  \x1b[38;2;0;112;120m│\x1b[m                                      \x1b[38;2;0;112;120m│\x1b[m  "
 "  \x1b[38;2;0;112;120m╰──────────────────────────────────────╯\x1b[m  "
-"  \x1b[2mx stop · ← back · v invocation · Esc\x1b[m      "
+"  \x1b[2m← back · \x1b[38;2;207;34;46mx stop\x1b[39m · esc close\x1b[m               "
 "plain                                       "

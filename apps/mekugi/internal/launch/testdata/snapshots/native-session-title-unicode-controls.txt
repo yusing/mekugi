@@ -13,4 +13,4 @@ Ready
 ❯
 ────────────────────────────────────────────────────────────────────────────────
   snapshot-model
-  Main • 修復 標題 🙂 safely • → diff • ^E view
+  Main • 修復 標題 🙂 safely • → diff • ctrl+e view

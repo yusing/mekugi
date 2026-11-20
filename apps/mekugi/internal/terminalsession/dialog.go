@@ -33,28 +33,27 @@ type dialogPageState struct {
 // Dialog owns terminal navigation and frozen selection over supplied documents.
 // Source: apps/mekugi/internal/router/output_dialog.go:255:312,326:362,511:833@563f0c37.
 type Dialog struct {
-	pages         []DialogTab
-	Page, top     int
-	follow        bool
-	rows          int
-	bodyOffset    int // Additional fixed rows above the scrollable body.
-	bodyInset     int // Additional horizontal chrome around the body.
-	rect          Rect
-	body          []string
-	indents       []int
-	tabs          []dialogTabHit
-	Typing        bool
-	draft, query  string
-	match         int
-	missed        bool
-	Document      terminalui.DialogPage
-	Selection     *Selection
-	Navigation    string
-	HideTabs      bool
-	Footer        string
-	OutputToggle  string
-	Mention       string
-	StopAvailable bool
+	pages        []DialogTab
+	Page, top    int
+	follow       bool
+	rows         int
+	bodyOffset   int // Additional fixed rows above the scrollable body.
+	bodyInset    int // Additional horizontal chrome around the body.
+	rect         Rect
+	body         []string
+	indents      []int
+	tabs         []dialogTabHit
+	Typing       bool
+	draft, query string
+	match        int
+	missed       bool
+	Document     terminalui.DialogPage
+	Selection    *Selection
+	Navigation   string
+	HideTabs     bool
+	Footer       string
+	OutputToggle string
+	Mention      string
 	// FileLinks is detached local-path admission supplied by the application.
 	FileLinks       map[string]bool
 	FileLinkDemands []string
@@ -302,10 +301,7 @@ func (d *Dialog) footer(theme diffrender.Theme, width int) string {
 	if d.OutputToggle != "" {
 		keys = append(keys, "o "+d.OutputToggle)
 	}
-	keys = append(keys, "y copy", "esc")
-	if d.StopAvailable {
-		keys = append([]string{"s stop"}, keys...)
-	}
+	keys = append(keys, "y copy", "esc close")
 	if d.Document.Live && !d.follow {
 		keys = append([]string{"End follows"}, keys...)
 	}
@@ -314,15 +310,12 @@ func (d *Dialog) footer(theme diffrender.Theme, width int) string {
 		footer = theme.Warning() + "no match" + terminalui.Reset + dim + " · " + undim + footer
 	}
 	if ansi.StringWidth(footer) > width-6 {
-		footer = dim + "↑↓ scroll · / find · y copy · esc" + undim
+		footer = dim + "↑↓ scroll · / find · y copy · esc close" + undim
 		if len(d.pages) > 1 {
-			footer = dim + navigation + " · ↑↓ scroll · y copy · esc" + undim
+			footer = dim + navigation + " · ↑↓ scroll · y copy · esc close" + undim
 		}
 		if d.OutputToggle != "" {
-			footer = dim + "↑↓ scroll · o " + d.OutputToggle + " · y copy · esc" + undim
-		}
-		if d.StopAvailable {
-			footer = dim + "←→ process · s stop · esc" + undim
+			footer = dim + "↑↓ scroll · o " + d.OutputToggle + " · y copy · esc close" + undim
 		}
 	}
 	return footer

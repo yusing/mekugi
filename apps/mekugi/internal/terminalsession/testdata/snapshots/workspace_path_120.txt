@@ -1,1 +1,1 @@
-  Main • Session title • /home/dev/projects/workspace/.worktrees/distinctive-project • ^E view
+  Main • Session title • /home/dev/projects/workspace/.worktrees/distinctive-project • ctrl+e view

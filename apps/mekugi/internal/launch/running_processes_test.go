@@ -172,6 +172,7 @@ func TestUISnapshotRunningProcessesTrackedCompletion(t *testing.T) {
 		}
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-active-segment.txt", append(updated, expanded...), width)
+	terminalTest(u).Dialog.Key("x") // The first key asks for confirmation.
 	stop := terminalTest(u).Dialog.Key("x")
 	if stop.Process == nil || stop.Process.ID != "42" || stop.Process.Item != "cmd" {
 		t.Fatal("tracked command lost late Stop identity")
@@ -341,11 +342,21 @@ func TestRunningProcessesDetailNavigation(t *testing.T) {
 	if got := strings.Join(processDialog(u, 100, 24), "\n"); !strings.Contains(ansi.Strip(got), "Runtime: 2m4s") {
 		t.Fatalf("runtime did not advance without output: %s", got)
 	}
-	if d.Key("x").Process != nil {
+	// Both presses of the two-step stop must refuse without host identity.
+	if first, second := d.Key("x"), d.Key("x"); first.Process != nil || second.Process != nil {
 		t.Fatal("process without host identity was stoppable")
 	}
 	appServerTestNotify(t, u, "item/commandExecution/terminalInteraction", map[string]any{"threadId": "main", "turnId": "t", "itemId": "24", "processId": "42"})
 	processDialog(u, 100, 24)
+	if armed := d.Key("x"); armed.Process != nil {
+		t.Fatal("one key stopped a process without confirmation")
+	}
+	if !strings.Contains(ansi.Strip(strings.Join(processDialog(u, 100, 24), "\n")), "x again to stop") {
+		t.Fatal("pending stop was not explained")
+	}
+	if intent := d.Key("\x1b"); intent.Action != 0 || d.Key("x").Process != nil {
+		t.Fatal("Escape did not withdraw the pending stop")
+	}
 	if stop := d.Key("x"); stop.Process == nil || stop.Process.Item != "24" {
 		t.Fatal("late host identity did not enable selected detail stop")
 	}
@@ -432,7 +443,7 @@ func TestUISnapshotRunningProcessesInline(t *testing.T) {
 				panelRow = i
 			}
 		}
-		if terminal.Main.ComposerRect.H != 0 || panelRow < 0 || strings.Contains(text, "[×]") {
+		if terminal.Main.ComposerRect.H != 0 || panelRow < 0 || !strings.Contains(text, "[×]") {
 			t.Fatalf("process surface or hidden composer not rendered as expected: %s", text)
 		}
 		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/running-processes-inline-%t-false.txt", detail), append(rows, "plain"), 100)

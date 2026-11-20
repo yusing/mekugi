@@ -76,6 +76,7 @@ func TestNativeProcessControlPublication(t *testing.T) {
 	c.accept(event)
 	c.calls = nil
 	dialog := c.renderer.terminal.Dialog
+	dialog.Key("s") // The first key asks for confirmation.
 	stop := dialog.Key("s")
 	if stop.Process == nil || stop.Process.Thread != process.Thread || stop.Process.Turn != process.Turn || stop.Process.Item != process.Item || stop.Process.ID != process.ID {
 		t.Fatalf("selected process lost its captured identity: %+v", stop)

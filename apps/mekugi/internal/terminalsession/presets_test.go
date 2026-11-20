@@ -12,7 +12,13 @@ import (
 
 func TestPresetConfirmKeys(t *testing.T) {
 	var menu Menu
-	menu.Update(sessionpresentation.View{Menu: &sessionpresentation.MenuView{ID: 2, Kind: "preset-confirm", Choices: []completion.Choice{{Name: "confirm"}}}})
+	f := presets.Flow{Stage: presets.Confirm, Slot: 0, Mode: "delete", Loaded: true, Slots: presetSlots}
+	view := presetMenu(2, f)
+	menu.Update(sessionpresentation.View{Menu: view})
+	if menu.Selected != 1 {
+		t.Fatal("confirmation did not start on Cancel")
+	}
+	menu.Selected = 0
 	if menu.Key("\r").Action.Kind != sessionpresentation.MenuNoAction {
 		t.Fatal("held Enter confirmed a replacement")
 	}
@@ -33,15 +39,21 @@ var presetSlots = [10]presets.Slot{
 func presetMenu(id uint64, f presets.Flow) *sessionpresentation.MenuView {
 	menu := &sessionpresentation.MenuView{ID: id, Kind: sessionpresentation.MenuKind(f.Stage), Title: f.Title(), Explanation: f.Explanation()}
 	menu.Choices, menu.Problem, menu.Loading, menu.Query = f.Choices(), f.Problem, f.Pending, f.Query()
+	if f.Stage == presets.Confirm {
+		menu.Preferred = completion.ChoiceID{Name: "cancel"}
+	}
 	return menu
 }
 
 // renderPreset renders at the menu's own height unless height is positive,
-// after selecting the choice at selected.
+// after selecting the choice at selected, or the published preference when
+// selected is negative.
 func renderPreset(menu *Menu, view *sessionpresentation.MenuView, selected, width, height int) []string {
 	var painter terminalui.Painter
 	menu.Update(sessionpresentation.View{Menu: view})
-	menu.Selected = selected
+	if selected >= 0 {
+		menu.Selected = selected
+	}
 	if height <= 0 {
 		height = menu.Height(width)
 	}
@@ -85,7 +97,7 @@ func TestUISnapshotPresets(t *testing.T) {
 			var menu Menu
 			var rows []string
 			for _, view := range tc.menus {
-				rows = append(rows, renderPreset(&menu, view, 0, tc.width, 0)...)
+				rows = append(rows, renderPreset(&menu, view, -1, tc.width, 0)...)
 			}
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/"+tc.name+".txt", append(rows, plain), tc.width)
 		})
@@ -96,7 +108,7 @@ func TestUISnapshotPresets(t *testing.T) {
 		var menu Menu
 		rows := renderPreset(&menu, presetMenu(1, presets.Flow{Stage: presets.Quick, Slot: -1, Loaded: true, Slots: presetSlots}), 11, 36, 9)
 		rows = append(rows, renderPreset(&menu, presetMenu(2, presets.Flow{Stage: presets.Edit, Slot: 2, Mode: "edit", Loaded: true, Slots: presetSlots, Input: presetSlots[2].Input}), 0, 36, 0)...)
-		rows = append(rows, renderPreset(&menu, presetMenu(3, replace), 0, 36, 0)...)
+		rows = append(rows, renderPreset(&menu, presetMenu(3, replace), -1, 36, 0)...)
 		// A long label keeps its end and caret in view.
 		rows = append(rows, renderPreset(&menu, presetMenu(4, presets.Flow{Stage: presets.Label, Slot: 1, Mode: "rename", Loaded: true, Slots: presetSlots, Label: "Correctness review with focused regression coverage"}), 0, 36, 0)...)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/presets-narrow.txt", append(rows, plain), 36)

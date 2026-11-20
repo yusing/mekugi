@@ -138,7 +138,7 @@ owns scheduling and semantic playback controls.
 
 The composer shows the turn status above its `❯` prompt, with rules above and
 below the draft when Main has at least eight rows. A notice on that line ends
-with a dim `[x]` dismissal. When the notice hides text, a dim `[details]` control
+with a dim `[×]` dismissal. When the notice hides text, a dim `[details]` control
 precedes the dismissal and, like the notice label, opens the full text; panes too
 narrow to keep a sixteen-cell label beside it mark hidden details with a trailing `…`.
 
@@ -155,12 +155,12 @@ quarter left, the context bar, the cost and the remaining rate limits before
 shortening the model. The full workspace and rate-limit resets remain available
 in `/status`.
 
-The second reads `<thread> • ◐ N • ✓ N • ! N • title • directory • ↓ roster • → diff • ^E view`:
+The second reads `<thread> • ◐ N • ✓ N • ! N • title • directory • ↓ roster • → diff • ctrl+e view`:
 the displayed thread (bold accent), working, finished and failed subagent counts
 (zero counts omitted), the session title on Main, the working directory, and then, in order when present,
 the lines below the viewport once the transcript scrolls back (`▼ N below`, with
 arrivals since), the displayed thread's loaded skills, the interrupt lock, the navigation
-hints, net edited lines, `^B e next live` and `^E view` on Main. While One-off is
+hints, net edited lines, `ctrl+b e next live` and `ctrl+e view` on Main. While One-off is
 open, its tab follows the thread on Main; while it is displayed, a dim Main tab
 precedes it, so both read `Main • One-off`. `↓ roster` shows
 with subagents on Main; `→ diff` on Main and `← main` in Diff show with an unseen
@@ -169,7 +169,7 @@ Main's composer is empty and no prompt, menu, panel or dock takes the arrows.
 Read-only views have no composer, so their arrows always act. In Diff the
 pane's own keys follow; after `Ctrl-B` the prefix keys replace the hints. Neither
 line wraps: the directory abbreviates to a sixth of the line and the title
-shrinks to eight cells first, then Diff's keys, `^E view`, live batches, net
+shrinks to eight cells first, then Diff's keys, `ctrl+e view`, live batches, net
 lines, skills, the directory, the One-off tab, finished counts, the scroll
 position, the Diff hint, the roster hint, the title and the remaining counts leave
 in that order; the Main tab stays. A long title takes room from the directory
@@ -224,7 +224,8 @@ attachment-lifetime contract.
 
 `?` in an empty focused composer opens shortcuts above the composer. `?` or Escape
 closes them; another key dismisses them and retains its usual action. A mouse event
-only dismisses help. Nonempty drafts and pasted question marks remain literal.
+only dismisses help. Descriptions wrap when the whole help fits; otherwise rows
+end with an ellipsis. Nonempty drafts and pasted question marks remain literal.
 At a word boundary, `@` opens file completion and `$` opens skill completion.
 Up/Down or Ctrl-P/N wrap selection; Tab/Enter inserts without submitting; Escape
 closes without removing the token. Paths with spaces are quoted. Paste does not
@@ -240,6 +241,15 @@ from the new publication.
 Rewind turn and edit choices use the prompt dock above the composer.
 Arrows select, Enter confirms, and Escape,
 the close button or an outside click cancels without changing the draft.
+
+Every menu dock, including exit, archive, settings, permission, copy and preset
+menus, has a heading close button and a dim key footer that wraps between hints
+instead of truncating. Settings and permission menus label the current value and
+dim unavailable choices; when descriptions do not fit, that status follows the
+label. Choices that stop work, discard data or remove a safeguard are red. A click
+on such a choice only selects it; a second click or Enter confirms. Preset
+replacement and deletion confirmations start on Cancel and ignore Enter; `y` or a
+second click confirms. Menu and preset problems are red.
 
 An initial `/` opens the local command catalog. Typing filters; arrows select;
 Tab completes only the command token, preserving arguments and attachments;
@@ -289,7 +299,7 @@ Approval docks show the host scope, command/summary, non-root directory, reason
 and choices. Choices whose effect outlasts the request, such as session or turn grants
 and policy changes, stay amber; the selected choice is bold in the accent. Long
 choices wrap rather than truncate. Other dock and menu choices take the accent
-while selected. Digits/arrows select and Enter confirms; Escape only hides. Supported
+while selected, except red destructive choices. Digits/arrows select and Enter confirms; Escape only hides. Supported
 command denials accept typed/pasted reasons; digits select choices while the reason
 is empty. Other approval types ignore text/paste. Answer editors reuse literal
 Unicode, paste, undo, attachments, references and external editing, but disable
@@ -385,6 +395,7 @@ unfilled body with a scroll thumb, and dim footer keys. The transcript above it
 stays visible without fading, and syntax, diff and selection colors are preserved.
 The sheet fits its content up to half of Main's height, keeping at least three
 body rows. Close uses the heading's close button, Esc/q or outside click.
+The `/status` panel uses the same heading, close button and dim footer keys.
 
 Child reply summary links open the exact retained reply’s supporting details,
 without repeating its summary or section headings. Copy keeps the original reply.
@@ -440,6 +451,8 @@ Main, hiding the composer without losing its draft. One running shell opens
 directly in details. With multiple shells, Up/Down selects one and Enter or a
 row click opens its details. Left backs out one level, preserving the selected
 process on return to the list. Escape closes the inspector without stopping work.
+The selected process's name takes the accent, nonzero exit statuses are red, and
+an empty list shows only `No running processes`.
 
 Details pin the owner, status, runtime and command on separate rows above a
 framed output viewport. The inspector starts at its content height and grows
@@ -452,8 +465,10 @@ Left returns to the same output position. Completions from other shells appear
 as a one-line notice without changing the selected process or its viewport.
 
 Completed processes stay in the open list until it closes; reopening lists only
-live processes. New live processes join in start order. `x` (or `s`) requests
-the selected process's stop when the host has supplied a process identity.
+live processes. New live processes join in start order. When the host has
+supplied a process identity, the footer shows a red `x stop`. `x` (or `s`) asks
+for confirmation in the footer, and a second press stops that process; any other
+key withdraws the request and keeps its usual action; Escape only withdraws it.
 Stopping dismisses the inspector so admission or host failures remain visible.
 A completed or replaced process cannot redirect the request to another
 invocation.

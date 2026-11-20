@@ -20,6 +20,9 @@ type Menu struct {
 	label string
 	terminalui.ChoiceListLayout
 	Rect Rect
+	// closeShown records that the last paint put the close control in the
+	// heading row, so a click there dismisses.
+	closeShown bool
 }
 type MenuResult struct {
 	Handled, Submit bool
@@ -219,15 +222,27 @@ func (m *Menu) labelKey(key string) (MenuResult, bool) {
 	}
 	return r, true
 }
-func (m *Menu) Mouse(button, y int) MenuResult {
+
+// Mouse takes Main-relative coordinates. The heading's close control
+// dismisses. A row click accepts, except that a destructive row needs a
+// second click once selected, as it needs Enter after arrows.
+func (m *Menu) Mouse(button, x, y int) MenuResult {
 	if m.body == nil {
 		return MenuResult{}
 	}
 	switch button {
 	case 0:
+		if m.closeHit(x, y) {
+			return MenuResult{Handled: true, Action: m.action(sessionpresentation.MenuDismiss)}
+		}
 		row := y - m.Rect.Y - m.RowStart
 		if row >= 0 && row < m.RowCount && m.Top+row < len(m.body.Choices) {
-			m.Selected = m.Top + row
+			index := m.Top + row
+			if m.body.Choices[index].Danger && index != m.Selected {
+				m.Selected = index
+				return MenuResult{Handled: true}
+			}
+			m.Selected = index
 			return m.accept(true)
 		}
 	case 64:
@@ -236,6 +251,15 @@ func (m *Menu) Mouse(button, y int) MenuResult {
 		return m.Key("\x0e")
 	}
 	return MenuResult{Handled: true}
+}
+
+// closeHit reports whether x, y is on the docked heading's close control.
+func (m *Menu) closeHit(x, y int) bool {
+	if !m.closeShown || y != m.Rect.Y {
+		return false
+	}
+	from := m.Rect.X + m.Rect.W - terminalui.DialogCloseOffset
+	return x >= from && x < from+terminalui.DialogCloseWidth
 }
 
 func (m *Menu) pastePreset(event Input) bool {

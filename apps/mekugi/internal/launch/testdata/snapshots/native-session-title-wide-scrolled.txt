@@ -13,4 +13,4 @@ Ready
 ❯
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   snapshot-model
-  Main • Review the native session title lifecycle • ▼ 81 below · 2 new • → diff • ^E view
+  Main • Review the native session title lifecycle • ▼ 81 below · 2 new • → diff • ctrl+e view

@@ -54,11 +54,13 @@ func (p *composerPicker) permissionsResponse(attached *attachedPresentation, con
 	}
 	p.Loading, p.Choices, p.Problem = false, nil, ""
 	for _, profile := range selection.Profiles {
-		choice := completion.Choice{Name: profile.ID, Description: profile.Description}
+		// Full access drops the sandbox and approvals; see permissionProfileChange.
+		choice := completion.Choice{Name: profile.ID, Description: profile.Description, Danger: profile.ID == ":danger-full-access"}
 		if !profile.Allowed {
-			choice.Description = "Unavailable under current requirements"
+			choice.Description, choice.Unavailable = "Unavailable under current requirements", true
 		}
 		if active := control.Settings.Permissions.Active; active != nil && profile.ID == active.ID {
+			choice.Current = true
 			choice.Description = "Current · " + choice.Description
 			p.Preferred = choice.Identity()
 		}

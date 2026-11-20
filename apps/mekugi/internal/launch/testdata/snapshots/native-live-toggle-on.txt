@@ -25,4 +25,4 @@ Ready · Live pane on for this session
 ❯
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   snapshot-model (high)
-  Main • /workspace • → diff • ^E view
+  Main • /workspace • → diff • ctrl+e view

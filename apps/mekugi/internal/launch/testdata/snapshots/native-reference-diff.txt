@@ -15,4 +15,4 @@ Mekugi test • codex
 ❯ [Selected diff]  
 ────────────────────────────────────────────────────────────────────────────────
   
-  Main • ^E view
+  Main • ctrl+e view

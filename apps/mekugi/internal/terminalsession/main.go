@@ -498,7 +498,7 @@ func (m *Main) statusLine(theme diffrender.Theme, status sessionpresentation.Mai
 		m.NoticeDetails = Rect{0, row, ansi.StringWidth(label), 1}
 	}
 	m.NoticeDismiss = Rect{1 + ansi.StringWidth(label), row, 3, 1}
-	return label + " " + terminalui.Dim + "[x]" + terminalui.Reset
+	return label + " " + terminalui.Dim + "[×]" + terminalui.Reset
 }
 
 // noticeLabelFloor is the narrowest notice label kept beside a details control.

@@ -33,4 +33,4 @@
 ❯ retained draft
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   parent-model (high) · priority
-  Main • ◐ 1 • /workspace • ^E view
+  Main • ◐ 1 • /workspace • ctrl+e view

@@ -243,7 +243,7 @@ func (p *composerPicker) readRewindSource(control *sessioncontrol.Client[appServ
 				commands[index] += " " + commandargs.Quote(change.ID)
 			}
 			result.command = strings.Join(commands, " && ")
-			result.choices = []completion.Choice{{ID: 2, Name: fmt.Sprintf("Revert %d captured changes", len(selected))}}
+			result.choices = []completion.Choice{{ID: 2, Name: fmt.Sprintf("Revert %d captured changes", len(selected)), Danger: true}}
 		}
 		select {
 		case results <- result:

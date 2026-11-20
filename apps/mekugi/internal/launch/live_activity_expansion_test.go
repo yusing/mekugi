@@ -69,7 +69,7 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 		if u.Text != "Keep this draft" || terminalTest(u).Focus != 0 || view.Expansion != (before+1)%3 {
 			t.Fatal("Ctrl+E changed the draft, focus or wrong pane")
 		}
-		if !strings.Contains(ansi.Strip(terminalTest(u).nativeStatus()), "^E view") {
+		if !strings.Contains(ansi.Strip(terminalTest(u).nativeStatus()), "ctrl+e view") {
 			t.Fatal("view hint is missing")
 		}
 	}
