@@ -137,24 +137,32 @@ owns scheduling and semantic playback controls.
 ## Composer controls
 
 The composer shows the turn status above its `❯` prompt, with rules above and
-below the draft when Main has at least eight rows.
+below the draft when Main has at least eight rows. A notice on that line ends
+with a dim `[x]` dismissal. When the notice hides text, a dim `[details]` control
+precedes the dismissal and, like the notice label, opens the full text; panes too
+narrow to keep a sixteen-cell label beside it mark hidden details with a trailing `…`.
 
 Two full-width stat lines end the screen, below Main and Diff, indented to the
 draft text. The first separates, without field labels, the displayed thread's
 model, context-window bar with percentage and tokens, estimated cost (on Main,
 with the session total when subagents add to it), `↑ input ↓ output` tokens,
-Main's throughput, and the account's rate-limit window use (labeled `5h` and
-`Weekly`). Narrow lines drop context tokens, throughput, the total cost,
-input/output tokens, rate limits, the context bar and the cost before shortening
-the model. The full workspace and rate-limit resets remain available in
-`/status`.
+Main's throughput, and the account's rate-limit windows as remaining use
+(`5h 88% left`, `Weekly 79% left`), the unit `/status` uses. A window with a
+quarter or less left is amber and with a tenth or less red, like the `/status`
+usage bars. Unknown context use is omitted. Narrow lines drop context tokens,
+throughput, the total cost, input/output tokens, rate limits with more than a
+quarter left, the context bar, the cost and the remaining rate limits before
+shortening the model. The full workspace and rate-limit resets remain available
+in `/status`.
 
 The second reads `<thread> • ◐ N • ✓ N • ! N • title • directory • ↓ roster • → diff • ^E view`:
 the displayed thread (bold accent), working, finished and failed subagent counts
 (zero counts omitted), the session title on Main, the working directory, and then, in order when present,
-the transcript scroll position, the displayed thread's loaded skills, a One-off
-label while One-off is open but not displayed, the interrupt lock, the navigation
-hints, net edited lines, `^B e next live` and `^E view` on Main. `↓ roster` shows
+the lines below the viewport once the transcript scrolls back (`▼ N below`, with
+arrivals since), the displayed thread's loaded skills, the interrupt lock, the navigation
+hints, net edited lines, `^B e next live` and `^E view` on Main. While One-off is
+open, its tab follows the thread on Main; while it is displayed, a dim Main tab
+precedes it, so both read `Main • One-off`. `↓ roster` shows
 with subagents on Main; `→ diff` on Main and `← main` in Diff show with an unseen
 badge when Diff has new changes. Navigation hints show only while their arrows act:
 Main's composer is empty and no prompt, menu, panel or dock takes the arrows.
@@ -162,11 +170,11 @@ Read-only views have no composer, so their arrows always act. In Diff the
 pane's own keys follow; after `Ctrl-B` the prefix keys replace the hints. Neither
 line wraps: the directory abbreviates to a sixth of the line and the title
 shrinks to eight cells first, then Diff's keys, `^E view`, live batches, net
-lines, skills, the directory, the One-off label, finished counts, the scroll
-position, the Diff hint, the roster hint and the remaining counts leave in that
-order. A long title takes room from the directory before it truncates. Clicking
-roster, Diff, Main, skills or One-off acts like its key, and each underlines
-under the pointer. Ten rows
+lines, skills, the directory, the One-off tab, finished counts, the scroll
+position, the Diff hint, the roster hint, the title and the remaining counts leave
+in that order; the Main tab stays. A long title takes room from the directory
+before it truncates. Clicking roster, Diff, Main, skills or either thread tab acts
+like its key or selects that thread, and each underlines under the pointer. Ten rows
 keep both lines; shorter terminals keep the second. Playback replaces the second
 with its control bar.
 
@@ -290,7 +298,7 @@ Ctrl-C and pane/queued-input shortcuts retain their ordinary behavior.
 
 Pending banners preserve Main's editing; questions warn when a new-turn prompt
 would dismiss older calls. Input labels distinguish answering, option notes,
-waiting turns and parked drafts from approval waiting. Host delivery remains
+typed denial reasons, waiting turns and parked drafts from approval waiting. Host delivery remains
 separate from painted readiness and offline prompt tests.
 
 ## Panes

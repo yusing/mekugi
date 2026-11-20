@@ -37,10 +37,10 @@ func (c *nativeClientRenderer) update(frame sessionapi.NativeFrame, draft conver
 	// editor revisions remain client-local and never arrive through publications.
 	draft.Available, draft.Prediction = view.Draft.Available, view.Draft.Prediction
 	view.Draft = draft
-	view.ProjectComposerStatus(draft.Draft.Text != "")
 	if prompt.Call == view.PromptDraft.Call && prompt.Question == view.PromptDraft.Question && prompt.Request == view.PromptDraft.Request {
 		view.PromptDraft = prompt
 	}
+	view.ProjectComposerStatus(draft.Draft.Text != "")
 	u.Prompts.Update(view)
 	u.Main.Update(view)
 	display := activityui.Display{MainCaller: view.Info.Caller, Caller: view.Displayed.Caller, SideCaller: view.SideThread.Caller, Attachment: view.Version.Attachment, Revision: view.Version.Revision}

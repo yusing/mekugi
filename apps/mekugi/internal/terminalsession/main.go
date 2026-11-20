@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -269,10 +270,10 @@ type captionUsage struct{ Tokens, Cost, Total string }
 
 // captionLine is the first stat line, at the screen bottom: model, context
 // bar, cost, tokens, contributed items such as throughput, then account usage.
-// Narrow panes drop context
-// tokens, then items, the total cost, tokens and usage, shorten the context
-// to its percentage, drop the cost, then shorten the model, and finally drop
-// the context.
+// Narrow panes drop context tokens, then items, the total cost, tokens and
+// limits with more than a quarter left, shorten the context to its
+// percentage, drop the cost and the remaining limits, then shorten the model,
+// and finally drop the context.
 func captionLine(theme diffrender.Theme, c sessionpresentation.Caption, usage captionUsage, width int) string {
 	const indent, sep = "  ", " | "
 	inner := max(0, width-1-len(indent))
@@ -291,13 +292,21 @@ func captionLine(theme diffrender.Theme, c sessionpresentation.Caption, usage ca
 	if model != "" {
 		model = captionModel(theme) + bare + terminalui.Reset
 	}
-	var limits []string
+	// Limits read as remaining use, like /status; a window near exhaustion
+	// takes the warning or danger color and outlasts the cost.
+	type captionLimit struct {
+		text string
+		high bool
+	}
+	var limits []captionLimit
 	for _, limit := range c.Limits {
 		label := textsanitize.Safe(limit.Label, false)
 		if label != "" {
-			label = strings.ToUpper(label[:1]) + label[1:]
+			label = strings.ToUpper(label[:1]) + label[1:] + " "
 		}
-		limits = append(limits, theme.Info()+label+": "+fmt.Sprintf("%.0f%%", limit.Used)+terminalui.Reset)
+		remaining := max(0, min(100, 100-limit.Used))
+		color := remainingColor(theme, remaining, theme.Info())
+		limits = append(limits, captionLimit{color + label + fmt.Sprintf("%.0f%% left", remaining) + terminalui.Reset, remaining <= limitWarning})
 	}
 	var items []string
 	for _, item := range c.Items {
@@ -329,7 +338,11 @@ func captionLine(theme diffrender.Theme, c sessionpresentation.Caption, usage ca
 		// Contributed items such as throughput follow the token figures.
 		parts = append(parts, items...)
 		if len(limits) > 0 {
-			parts = append(parts, strings.Join(limits, " "))
+			var texts []string
+			for _, limit := range limits {
+				texts = append(texts, limit.text)
+			}
+			parts = append(parts, strings.Join(texts, terminalui.Dim+" · "+terminalui.Undim))
 		}
 		line := strings.Join(parts, terminalui.Dim+sep+terminalui.Undim)
 		return line, ansi.StringWidth(line)
@@ -351,8 +364,8 @@ func captionLine(theme diffrender.Theme, c sessionpresentation.Caption, usage ca
 		tokens = ""
 		line, used = paint()
 	}
-	if used > inner {
-		limits = nil
+	if used > inner && len(limits) > 0 {
+		limits = slices.DeleteFunc(limits, func(limit captionLimit) bool { return !limit.high })
 		line, used = paint()
 	}
 	for used > inner && level < len(context)-2 {
@@ -361,6 +374,10 @@ func captionLine(theme diffrender.Theme, c sessionpresentation.Caption, usage ca
 	}
 	if used > inner {
 		cost, total = "", ""
+		line, used = paint()
+	}
+	if used > inner && len(limits) > 0 {
+		limits = nil
 		line, used = paint()
 	}
 	if used > inner && model != "" {
@@ -380,8 +397,12 @@ func captionLine(theme diffrender.Theme, c sessionpresentation.Caption, usage ca
 
 // contextLevels lists the context segment from fullest to empty: the fill bar
 // with percentage and tokens, the bar with percentage, then the percentage.
+// Unknown use is omitted rather than shown as 0%.
 func contextLevels(theme diffrender.Theme, c sessionpresentation.Caption) []string {
-	if !c.ContextKnown || c.ContextWindow == 0 {
+	if !c.ContextKnown {
+		return []string{""}
+	}
+	if c.ContextWindow == 0 {
 		return []string{activityui.ContextWindowLabel(activitypresentation.Agent{
 			ContextKnown: c.ContextKnown, ContextTokens: c.ContextTokens, ContextWindow: c.ContextWindow}), ""}
 	}
@@ -399,6 +420,21 @@ func contextLevels(theme diffrender.Theme, c sessionpresentation.Caption) []stri
 	return []string{bar + terminalui.Dim + " " + tokens + terminalui.Undim, bar, percent, ""}
 }
 
+// Rate-limit tones match the /status usage bars: warning at a quarter left,
+// danger at a tenth.
+const limitWarning, limitDanger = 25, 10
+
+// remainingColor tones a usage window by its remaining percentage.
+func remainingColor(theme diffrender.Theme, remaining float64, neutral string) string {
+	switch {
+	case remaining <= limitDanger:
+		return theme.Danger()
+	case remaining <= limitWarning:
+		return theme.Warning()
+	}
+	return neutral
+}
+
 // contextBar draws window use as a ten-cell rule: a heavy colored fill with a
 // half-cell tip on a dim track.
 func contextBar(used float64, color string) string {
@@ -410,7 +446,8 @@ func contextBar(used float64, color string) string {
 }
 
 // statusLine shows the turn status above the draft, from column 0. Notices
-// keep a dismissal control after their label.
+// keep a dismissal control after their label, preceded by a details control
+// when the label hides text.
 func (m *Main) statusLine(theme diffrender.Theme, status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, width, row int) string {
 	label, count := paintMainStatus(theme, status, now, colors, m.session.ReadOnly != sessionpresentation.Replay, m.ProcessHover)
 	hit := func(visible int) {
@@ -430,14 +467,21 @@ func (m *Main) statusLine(theme diffrender.Theme, status sessionpresentation.Mai
 	}
 	// Reserve dismissal before truncating, so a long error cannot hide it.
 	room := max(1, width-5)
+	// Hidden text gets a labeled control before dismissal when the label
+	// keeps a readable width; narrower panes fall back to a trailing ….
+	const more = "[details]"
+	details := activityui.ErrorHasDetails(activityui.Block{Body: full})
+	control := room-len(more)-1 >= noticeLabelFloor && (details || ansi.StringWidth(label) > room)
+	if control {
+		room -= len(more) + 1
+	}
 	// In compact panes the error takes precedence over the session caption.
 	plain := ansi.Strip(label)
 	if before, _, ok := strings.Cut(plain, "✗ "); ok && ansi.StringWidth(before)+4 > room {
 		label = theme.Danger() + "✗ " + activitypresentation.ErrorPreview(full) + terminalui.Reset
 		count = Rect{}
 	}
-	details := activityui.ErrorHasDetails(activityui.Block{Body: full})
-	if details && !strings.HasSuffix(ansi.Strip(label), "…") {
+	if details && !control && !strings.HasSuffix(ansi.Strip(label), "…") {
 		label += "…"
 	}
 	clipped := ansi.StringWidth(label) > room
@@ -446,10 +490,16 @@ func (m *Main) statusLine(theme diffrender.Theme, status sessionpresentation.Mai
 		visible--
 	}
 	hit(visible)
-	label = ansi.Truncate(label, room, "…")
+	label = ansi.Truncate(label, room, "…") + terminalui.Reset
+	if control {
+		label += " " + terminalui.Dim + more + terminalui.Reset
+	}
 	if clipped || details {
 		m.NoticeDetails = Rect{0, row, ansi.StringWidth(label), 1}
 	}
 	m.NoticeDismiss = Rect{1 + ansi.StringWidth(label), row, 3, 1}
-	return label + terminalui.Reset + " " + terminalui.Dim + "[x]" + terminalui.Reset
+	return label + " " + terminalui.Dim + "[x]" + terminalui.Reset
 }
+
+// noticeLabelFloor is the narrowest notice label kept beside a details control.
+const noticeLabelFloor = 16

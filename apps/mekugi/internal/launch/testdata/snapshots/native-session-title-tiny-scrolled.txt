@@ -12,5 +12,5 @@ Ready
 ────────────────────
 ❯
 ────────────────────
-  snapshot-mo… | 0%
+  snapshot-model
   Main • Review th…

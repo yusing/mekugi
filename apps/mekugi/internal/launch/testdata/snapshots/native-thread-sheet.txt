@@ -32,5 +32,5 @@
   ── Agents · ◐ 1 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    ◐ reader  child result                                                                                                  25K/100K • 25%
   ↑↓ agent · a child · esc close
-  parent-model (high) · priority | 0%
+  parent-model (high) · priority
   Main • ◐ 1 • /workspace

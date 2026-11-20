@@ -2,7 +2,7 @@ Mekugi dev • codex
 
 
 
-Ready · ✗ File contents omitted: setup.sh (attachment budget exceeded).… [x]
+Ready · ✗ File contents omitted: setup.sh (attachment budget exc… [details] [x]
 ────────────────────────────────────────────────────────────────────────────────
 ❯  
 ────────────────────────────────────────────────────────────────────────────────

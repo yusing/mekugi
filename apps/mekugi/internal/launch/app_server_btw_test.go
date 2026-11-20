@@ -573,6 +573,18 @@ func TestUISnapshotSideTabs(t *testing.T) {
 		}
 		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/side-tabs-%d.txt", width), rows, width)
 	}
+	// The displayed One-off keeps a Main tab that returns to Main.
+	selectSideThread(t, u, u.attached.presentation.View().SideThread)
+	u.shell.Focus = 0
+	u.sideFrame(40, 24)
+	if main := terminalTest(u).statTarget(terminalsession.StatMainTab); main.W == 0 {
+		t.Fatal("displayed One-off has no Main tab")
+	} else if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", main.X+1, main.Y+1)); err != nil {
+		t.Fatal(err)
+	}
+	if u.attached.presentation.DisplayingSide() {
+		t.Fatal("Main tab did not display Main")
+	}
 	// Side navigation does not depend on the optional roster contribution.
 	u.shell.RosterLabel = ""
 	selectSideThread(t, u, u.attached.presentation.View().Main)

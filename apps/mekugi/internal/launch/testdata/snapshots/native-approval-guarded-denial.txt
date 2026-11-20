@@ -14,7 +14,7 @@
 "  \x1b[38;2;86;212;221m❯\x1b[m \x1b[38;2;86;212;221;1m3. No, fail this command\x1b[m                                                    "
 "  \x1b[2m1–3 choose · type deny with reason · enter confirm · esc hide\x1b[m                 "
 "                                                                                "
-"approving · turn waiting                                                        "
+"deny reason · turn waiting                                                      "
 "\x1b[2m────────────────────────────────────────────────────────────────────────────────\x1b[m"
 "\x1b[38;2;86;212;221m❯ \x1b[mdo not publish yet\x1b[7m \x1b[m                                                           "
 "\x1b[2m────────────────────────────────────────────────────────────────────────────────\x1b[m"

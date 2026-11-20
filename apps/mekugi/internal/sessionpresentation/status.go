@@ -269,7 +269,16 @@ func (v *View) ProjectComposerStatus(draftKept bool) {
 		return
 	}
 	if v.Approvals.Open {
-		s.Composer = Label{Text: "approving · turn waiting"}
+		// A typed denial reason replaces Main's draft in the composer.
+		text := "approving"
+		if v.Approvals.Reason && v.PromptDraft.Request != "" && v.PromptDraft.Draft.Text != "" {
+			text = "deny reason"
+		}
+		text += " · turn waiting"
+		if draftKept && v.Approvals.Reason {
+			text += " · draft kept"
+		}
+		s.Composer = Label{Text: text}
 		s.ComposerOverride = true
 	} else if call := v.Questions.Call; call != nil {
 		text := "answering"

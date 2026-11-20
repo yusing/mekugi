@@ -10,5 +10,5 @@
    ◐ work-b  working                                                                           0%
      +5 more
   ↑↓ agent · a child · esc close
-  snapshot-model (high) | 0%
+  snapshot-model (high)
   Main • ◐ 5 • ✓ 3

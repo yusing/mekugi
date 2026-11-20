@@ -114,13 +114,13 @@ func TestAppServerComposerObservedModelCaption(t *testing.T) {
 	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"main"},"model":"actual-model","reasoningEffort":"high"}}`)
 	bottom, _ := u.testStatLines(t, 70, 12)
-	if bottom != "  actual-model (high) | 0%" {
+	if bottom != "  actual-model (high)" {
 		t.Fatalf("observed model caption: %q", bottom)
 	}
 	appServerTestRequest(t, u, "2", "thread/start")
 	appServerTestMessage(t, u, `{"id":2,"result":{"thread":{"id":"new"},"reasoningEffort":null}}`)
 	bottom, _ = u.testStatLines(t, 70, 12)
-	if bottom != "  0%" {
+	if strings.TrimSpace(bottom) != "" {
 		t.Fatalf("unknown model retained stale caption: %q", bottom)
 	}
 }

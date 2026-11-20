@@ -61,7 +61,10 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			click(u.shell.Main.NoticeDetails)
+			// The details control ends the clickable label.
+			details := u.shell.Main.NoticeDetails
+			details.X, details.W = details.X+details.W-1, min(1, details.W)
+			click(details)
 			if terminalTest(u).Dialog == nil {
 				t.Fatal("truncated error did not open")
 			}

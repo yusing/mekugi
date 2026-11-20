@@ -188,6 +188,28 @@ func TestNonTerminalStatusTimingAndDetachedDetails(t *testing.T) {
 	}
 }
 
+// A typed denial reason names itself and the parked Main draft, like an
+// answer; without reason support the draft stays in the composer.
+func TestApprovalDenyReasonStatus(t *testing.T) {
+	c := newStatusConsumer()
+	c.conversation.Editor.Text = ""
+	c.conversation.Approvals.Add(&prompt.Approval{ID: "approval", Choices: []prompt.Choice{{ID: 0, Label: "Yes", Approve: true}, {ID: 1, Label: "No", Deny: true}}})
+	if !c.conversation.Approvals.Show() {
+		t.Fatal("approval admission failed")
+	}
+	if got := c.publish(sessionpresentation.Caption{}).Status.Composer.Text; got != "approving · turn waiting · draft kept" {
+		t.Fatalf("empty reason status = %q", got)
+	}
+	c.conversation.Editor.Text = "not yet"
+	if got := c.publish(sessionpresentation.Caption{}).Status.Composer.Text; got != "deny reason · turn waiting · draft kept" {
+		t.Fatalf("typed reason status = %q", got)
+	}
+	c.conversation.Approvals.Pending[0].Choices[1].Deny = false
+	if got := c.publish(sessionpresentation.Caption{}).Status.Composer.Text; got != "approving · turn waiting" {
+		t.Fatalf("reasonless approval status = %q", got)
+	}
+}
+
 func TestNonTerminalStatusPromptsAndDisplayedCaption(t *testing.T) {
 	c := newStatusConsumer()
 	call := &prompt.Call{ID: "question", Thread: "main", Turn: "turn", Sync: true, Questions: []prompt.Question{{ID: "q", Question: "Keep all details?", Note: true}}}

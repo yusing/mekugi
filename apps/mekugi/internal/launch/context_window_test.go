@@ -142,20 +142,20 @@ func TestAppServerRateLimitsReachCaption(t *testing.T) {
 		line, _ := u.testStatLines(t, 160, 12)
 		return line
 	}
-	if strings.Contains(caption(), "5h:") {
+	if strings.Contains(caption(), "5h ") {
 		t.Fatal("usage shown before Codex reported it")
 	}
 	window := func(used float64, minutes int) map[string]any {
 		return map[string]any{"usedPercent": used, "windowDurationMins": minutes}
 	}
 	appServerTestNotify(t, u, "account/rateLimits/updated", map[string]any{"rateLimits": map[string]any{"limitId": "codex", "primary": window(12, 300), "secondary": window(21, 10080)}})
-	if got := caption(); !strings.Contains(got, "5h: 12% Weekly: 21%") {
+	if got := caption(); !strings.Contains(got, "5h 88% left · Weekly 79% left") {
 		t.Fatalf("usage windows missing: %q", got)
 	}
 	// Sparse updates keep absent windows; other limits leave the default alone.
 	appServerTestNotify(t, u, "account/rateLimits/updated", map[string]any{"rateLimits": map[string]any{"primary": window(40, 300)}})
 	appServerTestNotify(t, u, "account/rateLimits/updated", map[string]any{"rateLimits": map[string]any{"limitId": "other", "primary": window(90, 300)}})
-	if got := caption(); !strings.Contains(got, "5h: 40% Weekly: 21%") {
+	if got := caption(); !strings.Contains(got, "5h 60% left · Weekly 79% left") {
 		t.Fatalf("sparse or foreign update misapplied: %q", got)
 	}
 }

@@ -14,5 +14,5 @@
 
 
   enter resume · esc clear search · tab cwd/all · ctrl+c quit · ↑/↓ browse
-  0%
+
   Main • /work • ^E view

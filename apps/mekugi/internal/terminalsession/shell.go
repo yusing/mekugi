@@ -38,6 +38,8 @@ const (
 	StatMain   byte = 'm'
 	StatSkills byte = 's'
 	StatSide   byte = 'b'
+	// StatMainTab displays Main from its tab beside the displayed One-off.
+	StatMainTab byte = 'M'
 )
 
 type ShellPlan struct {
@@ -141,12 +143,13 @@ type statSegment struct {
 
 // StatLine paints the second stat line at row y:
 // agent • counts • title • workspace • ↓ roster • ← main | → diff • ^E view.
+// While One-off is displayed, a Main tab precedes it.
 // Navigation hints show only while their keys act, with an empty composer.
 // A clickable segment underlines while the pointer is over it.
 // Narrow lines abbreviate the workspace to a sixth of the line and shorten
 // the title, then drop pane keys, ^E view, live batches, net lines, skills,
 // the workspace, the side thread, finished counts, the scroll position, Diff
-// and roster hints, and finally the remaining counts.
+// and roster hints, the title, and finally the remaining counts.
 func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	s.Clamp()
 	s.Targets = s.Targets[:0]
@@ -155,7 +158,12 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	}
 	const sep = terminalui.Dim + " • " + terminalui.Undim
 	hint := func(key, label string) string { return key + terminalui.Dim + " " + label + terminalui.Undim }
-	agent := statSegment{text: "\x1b[1m" + s.Theme.Accent() + in.Agent + terminalui.Reset}
+	// The displayed thread leads; a displayed One-off keeps Main's tab
+	// before it, so both tabs stay in place.
+	head := []statSegment{{text: "\x1b[1m" + s.Theme.Accent() + in.Agent + terminalui.Reset}}
+	if in.SideLabel != "" && in.SideSelected {
+		head = slices.Insert(head, 0, statSegment{text: terminalui.Dim + "Main" + terminalui.Undim, action: StatMainTab})
+	}
 	var segments []statSegment
 	add := func(text string, action byte, drop int) {
 		if text != "" {
@@ -230,7 +238,10 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	const indent = "  "
 	room := max(1, width-1-len(indent))
 	measure := func() int {
-		used := ansi.StringWidth(agent.text)
+		used := 3 * (len(head) - 1)
+		for _, segment := range head {
+			used += ansi.StringWidth(segment.text)
+		}
 		for _, segment := range segments {
 			used += 3 + ansi.StringWidth(segment.text)
 		}
@@ -259,11 +270,13 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 				worst = i
 			}
 		}
+		// The title leaves after the roster hint, before working and
+		// failure counts.
+		if titleText != "" && (worst < 0 || segments[worst].drop < titleDrop) {
+			titleText = ""
+			continue
+		}
 		if worst < 0 {
-			if titleText != "" {
-				titleText = ""
-				continue
-			}
 			break
 		}
 		if worst < title {
@@ -291,9 +304,10 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 		segments = slices.Insert(segments, title, statSegment{text: titleText})
 	}
 	var line strings.Builder
-	line.WriteString(agent.text)
-	for _, segment := range segments {
-		line.WriteString(sep)
+	for i, segment := range append(head, segments...) {
+		if i > 0 {
+			line.WriteString(sep)
+		}
 		x := ansi.StringWidth(line.String())
 		if segment.action != 0 && segment.action == s.StatHover {
 			line.WriteString("\x1b[4m" + segment.text + "\x1b[24m")
@@ -326,6 +340,9 @@ func shortenWorkspace(theme diffrender.Theme, segments []statSegment, floor, ove
 	}
 	return false
 }
+
+// titleDrop ranks the title between the roster hint and the remaining counts.
+const titleDrop = 3
 
 // Clamp discards focus and geometry for an absent contribution.
 func (s *Shell) Clamp() {

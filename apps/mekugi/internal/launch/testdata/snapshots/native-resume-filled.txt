@@ -14,5 +14,5 @@
   -        main    Saved conversation 08
   ↓ more
   enter resume · esc start new · tab cwd/all · ctrl+c quit · ↑/↓ browse
-  0%
+
   Main • /work • ^E view

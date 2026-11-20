@@ -10,7 +10,7 @@ Mekugi dev • codex
 
 
 
-Ready · ✗ Could not restore default reasoning: host rejected update · choose /effort VALUE or … [x]
+Ready · ✗ Could not restore default reasoning: host rejected update · choose /effort… [details] [x]
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 ❯ held input 
 ────────────────────────────────────────────────────────────────────────────────────────────────────

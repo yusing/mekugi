@@ -423,9 +423,13 @@ func (in FrameInput) statAction(state *Interaction, action byte, yield func(Inpu
 		state.Selection = nil
 	case StatSkills:
 		yield(InputEffect{Details: &DetailInput{Version: in.Main.session.Version, View: in.Agents, Kind: SkillDetails, Caller: in.skillsCaller()}})
-	case StatSide:
+	case StatSide, StatMainTab:
 		v := in.Main.session
-		if v.SideThread.ID != "" && yield(InputEffect{Display: &sessionpresentation.DisplayIntent{Version: v.Version, Thread: v.SideThread}}) {
+		thread := v.Main
+		if action == StatSide {
+			thread = v.SideThread
+		}
+		if thread.ID != "" && yield(InputEffect{Display: &sessionpresentation.DisplayIntent{Version: v.Version, Thread: thread}}) {
 			shell.Focus = 0
 		}
 	case statParent:

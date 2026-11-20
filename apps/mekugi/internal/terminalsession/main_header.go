@@ -30,19 +30,16 @@ func sessionTitle(title string) string {
 	return strings.Join(strings.Fields(textsanitize.Safe(title, false)), " ")
 }
 
-// scrollLabel shows how much of the feed lies above the viewport and, once
-// the reader scrolls back, how much lies below and what arrived since.
+// scrollLabel shows, once the reader scrolls back, how much of the feed lies
+// below the viewport and what arrived since. A following view shows nothing.
 func scrollLabel(v *activityui.View) string {
 	below := v.FeedLines - v.Offset - v.FeedRows
-	switch {
-	case !v.Following && below > 0:
-		label := fmt.Sprintf("▼ %d", below)
-		if v.Unseen > 0 {
-			label += fmt.Sprintf(" · %d new", v.Unseen)
-		}
-		return v.Painter.Theme.Warning() + label + terminalui.Reset
-	case v.Offset > 0:
-		return terminalui.Dim + fmt.Sprintf("▲ %d", v.Offset) + terminalui.Undim
+	if v.Following || below <= 0 {
+		return ""
 	}
-	return ""
+	label := fmt.Sprintf("▼ %d below", below)
+	if v.Unseen > 0 {
+		label += fmt.Sprintf(" · %d new", v.Unseen)
+	}
+	return v.Painter.Theme.Warning() + label + terminalui.Reset
 }

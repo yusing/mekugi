@@ -58,10 +58,88 @@ func TestStatLineWorkspaceOrderAndDrops(t *testing.T) {
 	}
 }
 
+// A limit near exhaustion takes the warning or danger tone and outlasts the
+// cost and the other limit; a neutral limit drops before the context bar.
+func TestMainComposerCaptionHighLimit(t *testing.T) {
+	caption := sessionpresentation.Caption{Model: "model", ContextKnown: true, ContextTokens: 360000, ContextWindow: 400000,
+		Limits: []sessionpresentation.CaptionLimit{{Label: "5h", Used: 97}, {Label: "weekly", Used: 40}}}
+	usage := captionUsage{Cost: "$0.12"}
+	for _, tc := range []struct {
+		width int
+		want  string
+	}{
+		{80, "  model | ━━━━━━━━━─ 90% 360K/400K | $0.12 | 5h 3% left · Weekly 60% left"},
+		{60, "  model | ━━━━━━━━━─ 90% | $0.12 | 5h 3% left"},
+		{40, "  model | 90% | $0.12 | 5h 3% left"},
+		{30, "  model | 90% | 5h 3% left"},
+		{20, "  model | 90%"},
+	} {
+		if got := ansi.Strip(captionLine(diffrender.TerminalTheme, caption, usage, tc.width)); got != tc.want {
+			t.Errorf("width %d: caption = %q, want %q", tc.width, got, tc.want)
+		}
+	}
+	line := captionLine(diffrender.DarkTheme, caption, usage, 80)
+	if !strings.Contains(line, diffrender.DarkTheme.Danger()+"5h 3% left") || !strings.Contains(line, diffrender.DarkTheme.Info()+"Weekly 60% left") {
+		t.Fatalf("limit tones: %q", line)
+	}
+	caption.Limits[1].Used = 80
+	if line := captionLine(diffrender.DarkTheme, caption, usage, 80); !strings.Contains(line, diffrender.DarkTheme.Warning()+"Weekly 20% left") {
+		t.Fatalf("warning limit tone: %q", line)
+	}
+}
+
+// Failure and working counts outlast the title.
+func TestStatLineCountsOutlastTitle(t *testing.T) {
+	s := Shell{RosterLabel: "Agents"}
+	in := ShellStatus{Agent: "Main", Title: "Fix the flaky login test", Workspace: "/workspace",
+		Summary: activityui.RosterSummary{Counts: []string{"◐ 2", "✓ 3", "! 1"}, Children: true}}
+	for _, tc := range []struct {
+		width int
+		want  string
+	}{
+		{40, "  Main • ◐ 2 • ✓ 3 • ! 1 • Fix the fla…"},
+		{34, "  Main • ◐ 2 • ! 1 • Fix the fla…"},
+		{28, "  Main • ◐ 2 • ! 1"},
+	} {
+		if got := ansi.Strip(s.StatLine(in, tc.width, 0)); got != tc.want {
+			t.Errorf("width %d: stat line = %q, want %q", tc.width, got, tc.want)
+		}
+	}
+}
+
+// While One-off is displayed, Main's tab precedes it and selects Main.
+func TestStatLineMainTabBesideOneOff(t *testing.T) {
+	s := Shell{}
+	line := ansi.Strip(s.StatLine(ShellStatus{Agent: "One-off", SideLabel: "One-off", SideSelected: true, Workspace: "/workspace"}, 40, 5))
+	if line != "  Main • One-off • /workspace • ^E view" {
+		t.Fatalf("stat line = %q", line)
+	}
+	if len(s.Targets) != 1 || s.Targets[0].Action != StatMainTab || s.Targets[0].Rect != (Rect{2, 5, 4, 1}) {
+		t.Fatalf("main tab target = %+v", s.Targets)
+	}
+	s.StatLine(ShellStatus{Agent: "Main", SideLabel: "One-off", Workspace: "/workspace"}, 40, 5)
+	if len(s.Targets) != 1 || s.Targets[0].Action != StatSide {
+		t.Fatalf("Main view lost the One-off tab: %+v", s.Targets)
+	}
+}
+
+// The scroll position names lines below the viewport only once the reader
+// scrolls back.
+func TestScrollLabel(t *testing.T) {
+	v := &activityui.View{FeedLines: 100, FeedRows: 20, Offset: 80, Following: true}
+	if got := scrollLabel(v); got != "" {
+		t.Fatalf("following label = %q", got)
+	}
+	v.Offset, v.Following, v.Unseen = 50, false, 3
+	if got := ansi.Strip(scrollLabel(v)); got != "▼ 30 below · 3 new" {
+		t.Fatalf("scrolled label = %q", got)
+	}
+}
+
 func TestMainComposerTierWithoutModel(t *testing.T) {
 	caption := sessionpresentation.Caption{Tier: "flex"}
-	if line := ansi.Strip(captionLine(diffrender.TerminalTheme, caption, captionUsage{}, 80)); line != "  flex | 0%" {
-		t.Fatalf("tier without model: %q", line)
+	if line := ansi.Strip(captionLine(diffrender.TerminalTheme, caption, captionUsage{}, 80)); line != "  flex" {
+		t.Fatalf("tier without model or known context: %q", line)
 	}
 }
 
@@ -73,9 +151,9 @@ func TestMainComposerCaptionUsage(t *testing.T) {
 		width int
 		want  string
 	}{
-		{160, "  model | ━━╸─────── 25% 100K/400K | $0.12 · total $0.48 | ↑ 12K ↓ 3K | 96.0 tok/s | 5h: 12% Weekly: 21%"},
-		{90, "  model | ━━╸─────── 25% | $0.12 · total $0.48 | ↑ 12K ↓ 3K | 5h: 12% Weekly: 21%"},
-		{60, "  model | ━━╸─────── 25% | $0.12 | 5h: 12% Weekly: 21%"},
+		{160, "  model | ━━╸─────── 25% 100K/400K | $0.12 · total $0.48 | ↑ 12K ↓ 3K | 96.0 tok/s | 5h 88% left · Weekly 79% left"},
+		{100, "  model | ━━╸─────── 25% | $0.12 · total $0.48 | ↑ 12K ↓ 3K | 5h 88% left · Weekly 79% left"},
+		{68, "  model | ━━╸─────── 25% | $0.12 | 5h 88% left · Weekly 79% left"},
 		{40, "  model | ━━╸─────── 25% | $0.12"},
 		{24, "  model | 25% | $0.12"},
 		{16, "  model | 25%"},

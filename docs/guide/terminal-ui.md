@@ -8,12 +8,16 @@ children and One-off retain separate drafts; historical views remain read-only. 
 
 The first stat line shows the displayed thread's model, context-window bar,
 estimated cost (plus the session total on Main), input (↑) and output (↓) tokens,
-Main's throughput, and the account's `5h` and `Weekly` rate-limit use once Codex
-reports it. The second names the displayed thread, its working (◐), finished (✓)
-and failed (!) subagent counts, the session title, the working directory, and the
+Main's throughput, and how much of the account's `5h` and `Weekly` rate limits
+is left once Codex reports it, as in `/status`. A limit turns amber with a quarter
+left and red with a tenth left, and stays on a narrow line after the cost leaves.
+The second names the displayed thread, its working (◐), finished (✓)
+and failed (!) subagent counts, the session title, the working directory, the
+lines below the view after you scroll back (▼ N below), and the
 arrow keys that act on an empty composer: ↓ roster, → diff (or ← main from Diff)
 and `^E` view. Narrow lines shorten the directory and title, then drop the least
-important parts. Click a hint to use it.
+important parts; failed and working counts outlast the title. Click a hint to use it.
+A notice above the composer offers `[details]` when it hides text and `[x]` to dismiss it.
 
 | Action | Shortcut |
 | --- | --- |
@@ -57,8 +61,7 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   but your draft stays intact. Only the output frame scrolls; End resumes
   following live output. Press `v` to open the exact invocation and `y` to
   copy it. Left backs out one level and Esc closes the inspector. Press `x`
-  (or `s`) to stop the selected shell when available. Stopping dismisses the
-  inspector so failures stay visible.
+  (or `s`) to stop the selected shell when available. Stopping dismisses the inspector so failures stay visible.
 - `@` attaches files; `@!` includes ignored files. VCS metadata is excluded;
   unreadable/oversized content has omission notices. Directories attach two-level
   trees honoring `.gitignore`, bounded to 256 entries/16 KiB with truncation notices.
@@ -136,8 +139,8 @@ child; Esc closes the sheet. Click an attachable child to read its full transcri
 In a child, Up on an empty composer returns to its parent.
 Each runtime keeps its own composer draft, prompts and settings. The child stat line
 shows its model, reasoning effort and service tier. Historical views remain
-read-only. The One-off label on the second stat line selects a separate editable
-conversation. In the transcript, Esc resumes following. Sheet rows show active time,
+read-only. While One-off is open, the second stat line shows `Main • One-off`
+tabs; click either to switch between Main and the separate editable conversation. In the transcript, Esc resumes following. Sheet rows show active time,
 round trips, throughput, usage, estimated API cost, and composed captured edits; Main's
 row is omitted because the stat lines carry its facts. Usage/rates survive resume while
 retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
