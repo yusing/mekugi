@@ -55,9 +55,9 @@ TEST_SESSION_ENV := BASH_ENV COLORFGBG CODEX_THREAD_ID CODEX_ROLLOUT_TRACE_ROOT 
 	MEKUGI_SUDO_DIRECTORY MEKUGI_UPDATE_UI_SNAPSHOTS MEKUGI_USER_BASH_ENV \
 	MEKUGI_VCS_GUARD_HOOK MEKUGI_VCS_ITEM
 TEST_ENV = env $(addprefix -u ,$(TEST_SESSION_ENV)) TMPDIR="$$(cd "$${TMPDIR:-/tmp}" && pwd -P)" PATH="$$(case "$${BASH_ENV-}" in \
-	*/frontend-bash-env) printf '%s' "$$PATH" | awk -v RS=: -v ORS=: -v d="$${BASH_ENV%/*}" \
+	(*/frontend-bash-env) printf '%s' "$$PATH" | awk -v RS=: -v ORS=: -v d="$${BASH_ENV%/*}" \
 		'$$0 != d && index($$0, d "/") != 1' | sed 's/:$$//' ;; \
-	*) printf '%s' "$$PATH" ;; esac)"
+	(*) printf '%s' "$$PATH" ;; esac)"
 
 install: workspace-check webui build-native
 	$(GO) install $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
