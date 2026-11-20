@@ -149,7 +149,7 @@ func documentPath(path string) bool {
 
 func excludedDocDirectory(name string) bool {
 	switch name {
-	case ".git", ".worktrees", "node_modules", "vendor", "testdata", "dist", "build":
+	case ".git", ".worktrees", "graphify-out", "node_modules", "vendor", "testdata", "dist", "build":
 		return true
 	}
 	return false

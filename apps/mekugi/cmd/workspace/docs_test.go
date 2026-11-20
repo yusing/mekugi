@@ -37,7 +37,7 @@ func TestDocumentationLinks(t *testing.T) {
 		{"missing image", map[string]string{"README.md": "![image](missing.png)"}, "missing.png"},
 		{"excluded fixtures", map[string]string{
 			"README.md": "# Guide\n", "testdata/bad.md": "[bad](absent)", "node_modules/bad.md": "[bad](absent)",
-			".worktrees/bad.md": "[bad](absent)", "build/bad.md": "[bad](absent)", "vendor/bad.md": "[bad](absent)"}, ""},
+			".worktrees/bad.md": "[bad](absent)", "graphify-out/bad.md": "[bad](absent)", "build/bad.md": "[bad](absent)", "vendor/bad.md": "[bad](absent)"}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
