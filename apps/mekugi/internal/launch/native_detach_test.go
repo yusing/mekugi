@@ -90,6 +90,24 @@ func TestNativeDetachDuringWork(t *testing.T) {
 	}
 }
 
+// Ctrl-C clears a draft before it interrupts work or exits.
+func TestNativeCtrlCClearsDraftFirst(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.startSession("main", "/workspace")
+	c := nativeTestPromptClient(u)
+	c.event.Frame.View.InterruptAvailable = true
+	c.editor("main").InsertText("keep me")
+	c.calls = nil
+	c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x03"})
+	if c.editor("main").Text != "" || len(c.calls) != 0 || c.quit {
+		t.Fatalf("first Ctrl-C: draft=%q calls=%d quit=%v", c.editor("main").Text, len(c.calls), c.quit)
+	}
+	c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x03"})
+	if len(c.calls) != 1 || c.calls[0].operation.Interrupt == nil {
+		t.Fatal("second Ctrl-C did not interrupt the running turn")
+	}
+}
+
 func TestNativeTerminalExitMenuWorksWithReadOnlyAdmission(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/workspace")

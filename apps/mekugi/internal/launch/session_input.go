@@ -146,13 +146,11 @@ func (session *nativeSession) applyComposerCommand(attached *attachedPresentatio
 			return false, nil
 		}
 		if text == "/quit" {
-			if session.Client.Turn == "" && !session.Client.Starting() && !session.Client.InputPending() {
-				(*editor).Text = ""
-				(*editor).Changed()
-				return true, nil
-			}
-			setNotice(&attached.feedback, presentationTime(clock), "Interrupt the active turn before quitting", false)
-			return false, nil
+			// Native clients route /quit through the terminal exit check, which
+			// offers Continue or Stop while work runs; here it only closes the view.
+			(*editor).Text = ""
+			(*editor).Changed()
+			return true, nil
 		}
 		if handled, err := session.settingsCommand(attached, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), text); handled {
 			return false, err
