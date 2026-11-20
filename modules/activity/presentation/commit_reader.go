@@ -84,7 +84,7 @@ func (r *CommitReader) read(key CommitKey) {
 	output, err := gitShow(ctx, key)
 	var rows []ChangeRow
 	if err == nil {
-		rows = slices.DeleteFunc(gitStatRows("numstat", strings.Split(string(output), "\n")), func(row ChangeRow) bool { return row.Footer })
+		rows = slices.DeleteFunc(gitStatRows("numstat", strings.Split(string(output), "\n"), true), func(row ChangeRow) bool { return row.Footer })
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

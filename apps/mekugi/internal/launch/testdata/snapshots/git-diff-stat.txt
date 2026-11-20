@@ -1,0 +1,7 @@
+└ Diff staged · git --stat
+       M  edit.txt               +1 -1 ━━━━━━━━
+          gone.txt               -1    ━━━━━━━━
+          new.txt                +1    ━━━━━━━━
+       R  old.txt → renamed.txt
+          trimmed.txt            -1    ━━━━━━━━
+       5 files +2 -3

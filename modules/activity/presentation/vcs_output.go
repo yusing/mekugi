@@ -41,7 +41,7 @@ func VCSOutputRows(command, cwd, output string) ([]ChangeRow, CommitKey) {
 	case call.kind == vcsStat && call.format == "summarize":
 		return svnSummaryRows(lines), CommitKey{}
 	case call.kind == vcsStat:
-		return gitStatRows(call.format, lines), CommitKey{}
+		return gitStatRows(call.format, lines, false), CommitKey{}
 	case call.kind == vcsStatus && call.tool == "git":
 		return gitStatusRows(lines), CommitKey{}
 	case call.kind == vcsStatus:
@@ -417,8 +417,9 @@ var (
 // --summary lines), --shortstat, --name-status, and --name-only, including
 // git show's commit header before them. A --stat graph scaled to fit its
 // width does not split a file's count exactly, so its rows show only the
-// total; the closing totals are exact either way.
-func gitStatRows(format string, lines []string) []ChangeRow {
+// total; the closing totals are exact either way. completeSummary is only
+// set for our own bounded Git read that returned a full --summary.
+func gitStatRows(format string, lines []string, completeSummary bool) []ChangeRow {
 	var rows []ChangeRow
 	var footer *ChangeRow
 	verbs := make(map[string]ChangeRow)
@@ -442,16 +443,12 @@ func gitStatRows(format string, lines []string) []ChangeRow {
 		switch format {
 		case "numstat":
 			if match := gitNumstatRow.FindStringSubmatch(line); match != nil {
-				from, to := gitRenamePaths(match[3])
-				row := ChangeRow{Code: (diffmodel.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
-				if from != to {
-					row.From = vcsPath(from)
-				}
+				added, _ := strconv.Atoi(match[1])
+				removed, _ := strconv.Atoi(match[2])
+				row := gitStatPathRow(match[3], completeSummary || added > 0 && removed > 0)
+				row.Added, row.Removed = added, removed
 				if match[1] == "-" {
 					row.Note = "binary"
-				} else {
-					row.Added, _ = strconv.Atoi(match[1])
-					row.Removed, _ = strconv.Atoi(match[2])
 				}
 				rows = append(rows, row)
 			}
@@ -460,13 +457,9 @@ func gitStatRows(format string, lines []string) []ChangeRow {
 			if match == nil {
 				continue
 			}
-			from, to := gitRenamePaths(match[1])
-			row := ChangeRow{Code: (diffmodel.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
-			if from != to {
-				row.From = vcsPath(from)
-			}
 			total, _ := strconv.Atoi(match[2])
 			added, removed := strings.Count(match[3], "+"), strings.Count(match[3], "-")
+			row := gitStatPathRow(match[1], added > 0 && removed > 0)
 			switch {
 			case match[4] != "":
 				row.Note = "binary"
@@ -532,6 +525,19 @@ func gitStatRows(format string, lines []string) []ChangeRow {
 		return append(rows, *footer)
 	}
 	return vcsTotals(rows)
+}
+
+// Counts alone cannot distinguish a created or deleted file from a
+// one-sided edit. Omit their status unless a summary supplies it.
+func gitStatPathRow(path string, modified bool) ChangeRow {
+	from, to := gitRenamePaths(path)
+	row := ChangeRow{Label: vcsPath(to)}
+	if from != to {
+		row.Code, row.From = "R", vcsPath(from)
+	} else if modified {
+		row.Code = "M"
+	}
+	return row
 }
 
 func vcsLines(n int) string {

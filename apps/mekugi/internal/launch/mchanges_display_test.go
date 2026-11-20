@@ -156,12 +156,18 @@ func TestMChangesOutputRowsReadStoreOutput(t *testing.T) {
 			t.Fatal(err)
 		}
 		rows := activitypresentation.MChangesOutputRows("mchanges --"+view, &output)
+		if view == "summary" && !strings.Contains(output, "D\t0\t2\tgone\n") {
+			t.Fatalf("model-facing summary lost its deletion: %q", output)
+		}
 		if len(rows) == 0 || len(rows) != strings.Count(output, "\n") {
 			t.Fatalf("%s rows = %#v from %q", view, rows, output)
 		}
 		for _, row := range rows {
 			if row.Label == "" {
 				t.Fatalf("%s left a row unread: %#v from %q", view, row, output)
+			}
+			if row.Label == "gone" && row.Verb != "Deleted" {
+				t.Fatalf("deletion displayed as %+v", row)
 			}
 		}
 	}

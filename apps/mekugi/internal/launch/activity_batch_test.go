@@ -335,7 +335,7 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	setTestAppServerIntegration(u, testProxyWithStore(store))
-	output := "2\t1\ta.go\n"
+	output := "2\t1\ta.go\n0\t1\tgone.go\n"
 	item := binding.ThreadItem{ID: "vcs", Type: "commandExecution", Command: "bash -lc 'echo before; git diff --numstat'", ExitCode: new(0), AggregatedOutput: new("before\n" + output)}
 	entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID}}
 	first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
@@ -348,7 +348,8 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 		t.Fatalf("missing segments: %+v", entry.Native.Segments)
 	}
 	rows := entry.Native.Segments[1].Changes
-	if len(rows) != 1 || rows[0].Label != "a.go" || rows[0].Added != 2 || rows[0].Removed != 1 {
+	if len(rows) != 2 || rows[0].Code != "M" || rows[0].Label != "a.go" || rows[0].Added != 2 || rows[0].Removed != 1 ||
+		rows[1].Code != "" || rows[1].Label != "gone.go" || rows[1].Removed != 1 {
 		t.Fatalf("VCS rows lost on replay: %+v", rows)
 	}
 }

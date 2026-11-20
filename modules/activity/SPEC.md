@@ -175,6 +175,11 @@ of their observed output into neutral change rows. Recognition neither evaluates
 execution or filesystem authority. Change-history reads retain their existing
 evidence owner.
 
+Git stat rows show line counts without a file status when the output cannot
+distinguish a creation or deletion from an edit. Use `git diff --name-status`
+for explicit statuses, or add `--summary` to `--numstat` to identify creations
+and deletions alongside their counts.
+
 Observed Git commit output may request read-only enrichment of the named immutable
 commit in its proven directory. Staging, whitespace checks and Git diff
 stat/numstat/shortstat reads may precede the commit in a single `&&` list or a

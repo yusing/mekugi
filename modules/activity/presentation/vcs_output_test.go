@@ -137,18 +137,18 @@ func TestVCSStatRows(t *testing.T) {
 		{"git diff --stat", " a.go         | 3 ++-\n {old => new}/b.go | 0\n logo.png     | Bin 0 -> 12 bytes\n 3 files changed, 2 insertions(+), 1 deletion(-)\n", []ChangeRow{
 			{Code: "M", Label: "a.go", Added: 2, Removed: 1},
 			{Code: "R", From: "old/b.go", Label: "new/b.go"},
-			{Code: "M", Label: "logo.png", Note: "binary"},
+			{Label: "logo.png", Note: "binary"},
 			{Footer: true, Note: "3 files", Added: 2, Removed: 1},
 		}},
 		// A scaled graph does not split its counts; only the totals are exact.
 		{"git diff --stat", " a.go | 300 ++++++++++-----\n b.go |   4 +\n 2 files changed, 204 insertions(+), 100 deletions(-)\n", []ChangeRow{
 			{Code: "M", Label: "a.go", Note: "300 lines"},
-			{Code: "M", Label: "b.go", Note: "4 lines"},
+			{Label: "b.go", Note: "4 lines"},
 			{Footer: true, Note: "2 files", Added: 204, Removed: 100},
 		}},
 		{"git show --numstat", "commit 0123456789abcdef\nAuthor: T <t@example.com>\n\n    subject\n\n12\t3\ta.go\n-\t-\tlogo.png\n1\t1\tsrc/{a => b}/c.go\n", []ChangeRow{
 			{Code: "M", Label: "a.go", Added: 12, Removed: 3},
-			{Code: "M", Label: "logo.png", Note: "binary"},
+			{Label: "logo.png", Note: "binary"},
 			{Code: "R", From: "src/a/c.go", Label: "src/b/c.go", Added: 1, Removed: 1},
 		}},
 		{"git diff --shortstat", " 1 file changed, 4 insertions(+)\n", []ChangeRow{{Footer: true, Note: "1 file", Added: 4}}},

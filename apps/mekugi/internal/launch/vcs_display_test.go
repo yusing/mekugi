@@ -17,6 +17,7 @@ import (
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 // gitFixture is a repository whose commands ignore the user's git config.
@@ -125,25 +126,33 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	}
 }
 
-func TestVCSStatAndCommitShowSharedFileCodes(t *testing.T) {
+func TestUISnapshotVCSStatAndCommitShowSharedFileCodes(t *testing.T) {
 	g := newGitFixture(t)
 	g.write("edit.txt", "before\n")
 	g.write("gone.txt", "gone\n")
 	g.write("old.txt", "rename\n")
+	g.write("trimmed.txt", "keep\ntrim\n")
 	g.run("add", ".")
 	g.run("commit", "-qm", "base")
 	g.write("edit.txt", "after\n")
 	g.write("new.txt", "new\n")
+	g.write("trimmed.txt", "keep\n")
 	if err := os.Remove(filepath.Join(g.dir, "gone.txt")); err != nil {
 		t.Fatal(err)
 	}
 	g.run("mv", "old.txt", "renamed.txt")
 	g.run("add", "-A")
+	bareStat := g.run("diff", "--cached", "--stat")
+	bareNumstat := g.run("diff", "--cached", "--numstat")
 	stat := g.run("diff", "--cached", "--stat", "--summary")
+	numstat := g.run("diff", "--cached", "--numstat", "--summary")
 	commit := g.run("commit", "-m", "file codes")
-	for _, tc := range []struct{ command, output string }{
-		{"git diff --cached --stat --summary", stat},
-		{"git commit -m 'file codes'", commit},
+	for _, tc := range []struct{ command, output, snapshot string }{
+		{"git diff --cached --stat", bareStat, "git-diff-stat"},
+		{"git diff --cached --numstat", bareNumstat, "git-diff-numstat"},
+		{"git diff --cached --stat --summary", stat, ""},
+		{"git diff --cached --numstat --summary", numstat, ""},
+		{"git commit -m 'file codes'", commit, ""},
 	} {
 		t.Run(tc.command, func(t *testing.T) {
 			u := vcsCommandUI(t, g.dir)
@@ -151,10 +160,17 @@ func TestVCSStatAndCommitShowSharedFileCodes(t *testing.T) {
 				"status": "completed", "exitCode": 0, "aggregatedOutput": tc.output}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 			got := awaitMain(t, u, "M  edit.txt")
+			if tc.snapshot != "" {
+				uisnapshot.Assert(t, "testdata/snapshots/"+tc.snapshot+".txt", got+"\n")
+				return
+			}
 			for _, row := range []string{"M  edit.txt", "A  new.txt", "D  gone.txt", "R  old.txt → renamed.txt"} {
 				if !strings.Contains(got, row) {
 					t.Errorf("missing %q in rendered result:\n%s", row, got)
 				}
+			}
+			if tc.output == commit && !strings.Contains(got, "M  trimmed.txt") {
+				t.Errorf("complete commit summary lost its modification status:\n%s", got)
 			}
 		})
 	}
