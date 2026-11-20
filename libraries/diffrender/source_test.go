@@ -36,3 +36,32 @@ func TestRendererCacheIsolation(t *testing.T) {
 		t.Fatalf("renderer caches leaked: first=%d second=%d", len(first.syntax), len(second.syntax))
 	}
 }
+
+func TestWrapSourceBreaksAtWords(t *testing.T) {
+	for _, test := range []struct {
+		text  string
+		width int
+		want  []string
+	}{
+		{"Keep each result as known", 12, []string{"Keep each ", "result as ", "known"}},
+		{"ab cd ef", 5, []string{"ab ", "cd ef"}},
+		{"identifier", 4, []string{"iden", "tifi", "er"}},
+		{"    indented word", 6, []string{"    in", "dented", " word"}},
+		{"a 界界", 3, []string{"a ", "界", "界"}},
+		{"\x1b[31mred words\x1b[39m here", 5, []string{"red ", "words", " here"}},
+		{"", 4, []string{""}},
+	} {
+		rows := WrapSource(test.text, test.width)
+		plain := make([]string, len(rows))
+		for i, row := range rows {
+			plain[i] = ansi.Strip(row)
+		}
+		if strings.Join(plain, "\x00") != strings.Join(test.want, "\x00") || WrapRows(test.text, test.width) != len(rows) {
+			t.Fatalf("WrapSource(%q, %d) = %q (%d counted), want %q", test.text, test.width, plain, WrapRows(test.text, test.width), test.want)
+		}
+		// Styles carry onto continuation rows; the closing reset does not.
+		if strings.HasPrefix(test.text, "\x1b[31m") && (!strings.HasPrefix(rows[1], "\x1b[") || strings.HasPrefix(rows[2], "\x1b[")) {
+			t.Fatalf("continuation styles = %q", rows)
+		}
+	}
+}

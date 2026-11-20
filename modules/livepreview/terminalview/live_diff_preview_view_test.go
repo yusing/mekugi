@@ -225,7 +225,7 @@ func TestLiveDiffPreviewBirthsCarryAcrossSnapshots(t *testing.T) {
 	rows := func(texts ...string) []previewview.PreviewRow {
 		var out []previewview.PreviewRow
 		for i, text := range texts {
-			out = append(out, previewview.PreviewRow{Number: i + 1, Kind: ' ', Text: text})
+			out = append(out, previewview.PreviewRow{New: i + 1, Kind: ' ', Text: text})
 		}
 		return out
 	}
@@ -250,9 +250,9 @@ func TestLiveDiffPreviewBirthsCarryAcrossSnapshots(t *testing.T) {
 		t.Fatalf("sliding tail: %v from %v", shifted, next)
 	}
 	// Context renumbered under an inserted row keeps its time.
-	renumbered := slices.Insert(slices.Clone(after), 1, previewview.PreviewRow{Number: 2, Kind: '+', Text: "new\n"})
+	renumbered := slices.Insert(slices.Clone(after), 1, previewview.PreviewRow{New: 2, Kind: '+', Text: "new\n"})
 	for i := 2; i < len(renumbered); i++ {
-		renumbered[i].Number++
+		renumbered[i].New++
 	}
 	inserted := previewview.PreviewBirths(after, renumbered, next, later.Add(2*time.Second))
 	if !inserted[0].Equal(next[0]) || !inserted[1].Equal(later.Add(2*time.Second)) || !slices.Equal(inserted[2:], next[1:]) {

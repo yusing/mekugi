@@ -26,6 +26,79 @@ type LineSource struct {
 	Content      int  // Display column where the row's text starts, after gutters.
 }
 
+// Numbers lays out the line-number gutter. Old and New select the old- and
+// new-file columns; a row without a coordinate on a side leaves it blank, so a
+// number never changes meaning between rows.
+type Numbers struct {
+	Digits   int
+	Old, New bool
+}
+
+// NumbersFor selects the sides rows have: an added file shows only new
+// numbers, a deleted file only old ones, and other files both.
+func NumbersFor(rows []diffmodel.ReviewRow, digits int) Numbers {
+	numbers := Numbers{Digits: digits}
+	for _, row := range rows {
+		numbers.Old = numbers.Old || row.Kind != '+'
+		numbers.New = numbers.New || row.Kind != '-'
+	}
+	return numbers
+}
+
+// Union keeps every column and the wider number width.
+func (n Numbers) Union(other Numbers) Numbers {
+	return Numbers{max(n.Digits, other.Digits), n.Old || other.Old, n.New || other.New}
+}
+
+// Fit drops the gutter when it would leave the source fewer than two columns.
+func (n Numbers) Fit(width int) Numbers {
+	if n.Width() == 0 || width-4-n.Width() < 2 {
+		return Numbers{}
+	}
+	return n
+}
+
+// Width includes the separator; zero means no gutter.
+func (n Numbers) Width() int {
+	if n.Digits == 0 || !n.Old && !n.New {
+		return 0
+	}
+	if n.Old && n.New {
+		return 2*n.Digits + 2
+	}
+	return n.Digits + 1
+}
+
+// Format paints one row's coordinates; zero leaves a column blank.
+func (n Numbers) Format(old, new int) string {
+	if n.Width() == 0 {
+		return ""
+	}
+	column := func(number int) string {
+		if number <= 0 {
+			return strings.Repeat(" ", n.Digits)
+		}
+		text := strconv.Itoa(number)
+		return strings.Repeat(" ", max(0, n.Digits-len(text))) + text
+	}
+	text := ""
+	if n.Old {
+		text = column(old)
+	}
+	if n.Old && n.New {
+		text += " "
+	}
+	if n.New {
+		text += column(new)
+	}
+	return Subtle + text + "│" + SubtleReset
+}
+
+// Continuation paints the gutter of a wrapped row or an annotation.
+func (n Numbers) Continuation() string {
+	return n.Format(0, 0)
+}
+
 // Layout keeps terminal geometry and its deferred syntax in one owner.
 type Layout struct {
 	syntaxHunks   []syntaxHunk
@@ -56,16 +129,10 @@ func (render *Layout) AppendLine(ctx context.Context, theme Theme, width int, li
 
 // AppendHunk lays out one supplied hunk; optional deferred syntax paints only
 // intersecting complete hunks later without changing row geometry.
-func (r *Renderer) AppendHunk(ctx context.Context, render *Layout, theme Theme, review diffmodel.ReviewFile, hunk diffmodel.ReviewHunk, width, digits int, highlighted, layoutOnly bool, source LineSource) error {
-	numberWidth := digits + 1
-	if width-3 < digits+4 {
-		numberWidth = 0
-	}
-	sourceWidth := max(1, width-4-numberWidth)
-	continuationNumbers := ""
-	if numberWidth > 0 {
-		continuationNumbers = Subtle + strings.Repeat(" ", digits) + "│" + SubtleReset
-	}
+func (r *Renderer) AppendHunk(ctx context.Context, render *Layout, theme Theme, review diffmodel.ReviewFile, hunk diffmodel.ReviewHunk, width int, numbers Numbers, highlighted, layoutOnly bool, source LineSource) error {
+	numbers = numbers.Fit(width)
+	sourceWidth := max(1, width-4-numbers.Width())
+	continuationNumbers := numbers.Continuation()
 	render.Hunks = append(render.Hunks, len(render.Lines))
 	rows := hunk.Rows
 	if !layoutOnly {
@@ -78,34 +145,21 @@ func (r *Renderer) AppendHunk(ctx context.Context, render *Layout, theme Theme, 
 	}
 	var paint syntaxHunk
 	if layoutOnly {
-		paint = syntaxHunk{renderer: r, theme: theme, review: review, rows: hunk.Rows,
-			start: len(render.Lines), width: width, sourceWidth: sourceWidth, digits: digits,
-			numberWidth: numberWidth, highlighted: highlighted}
+		paint = syntaxHunk{renderer: r, theme: theme, review: review, rows: hunk.Rows, numbers: numbers,
+			before: hunk.BeforeStart + 1, after: hunk.AfterStart + 1,
+			start: len(render.Lines), width: width, sourceWidth: sourceWidth, highlighted: highlighted}
 	}
 	oldLine, newLine := hunk.BeforeStart+1, hunk.AfterStart+1
 	for n, row := range rows {
-		coordinate, text := 0, row.Text
+		text := row.Text
 		if layoutOnly {
 			text = textsanitize.Safe(strings.TrimSuffix(row.Text, "\n"), false)
-			paint.rowStarts = append(paint.rowStarts, len(render.Lines))
 		}
-		if row.Kind != '+' {
-			coordinate = oldLine
-			oldLine++
-		}
-		if row.Kind != '-' {
-			coordinate = newLine
-			newLine++
-		}
-		number := strconv.Itoa(coordinate)
+		coordinate, rowNumbers := rowCoordinates(numbers, row.Kind, &oldLine, &newLine)
 		source.Line, source.Deleted = coordinate, row.Kind == '-'
-		numbers := ""
-		if numberWidth > 0 {
-			numbers = Subtle + strings.Repeat(" ", max(0, digits-len(number))) + number + "│" + SubtleReset
-		}
-		for n, line := range sourceFragments(theme, width, sourceWidth, numbers, continuationNumbers, text, row.Kind) {
-			prefix := numbers
-			if n > 0 && numbers != "" {
+		for n, line := range sourceFragments(theme, width, sourceWidth, rowNumbers, continuationNumbers, text, row.Kind) {
+			prefix := rowNumbers
+			if n > 0 {
 				prefix = continuationNumbers
 			}
 			source.Content = GutterWidth + ansi.StringWidth(prefix)
@@ -127,12 +181,31 @@ func (r *Renderer) AppendHunk(ctx context.Context, render *Layout, theme Theme, 
 	return nil
 }
 
+// rowCoordinates advances both sides past one row. The source coordinate is
+// old for deletions and new otherwise.
+func rowCoordinates(numbers Numbers, kind byte, oldLine, newLine *int) (int, string) {
+	old, next := 0, 0
+	if kind != '+' {
+		old = *oldLine
+		*oldLine++
+	}
+	if kind != '-' {
+		next = *newLine
+		*newLine++
+	}
+	coordinate := next
+	if kind == '-' {
+		coordinate = old
+	}
+	return coordinate, numbers.Format(old, next)
+}
+
 // Source wrapping is shared by layout and decoration, so syntax cannot change geometry.
 func sourceFragments(theme Theme, width, sourceWidth int, numbers, continuationNumbers, text string, kind byte) []string {
 	var lines []string
 	for _, fragment := range WrapSource(text, sourceWidth) {
 		prefix := numbers
-		if len(lines) > 0 && numbers != "" {
+		if len(lines) > 0 {
 			prefix = continuationNumbers
 		}
 		lines = append(lines, SourceLine(theme, width, prefix, fragment, kind))
@@ -141,13 +214,13 @@ func sourceFragments(theme Theme, width, sourceWidth int, numbers, continuationN
 }
 
 type syntaxHunk struct {
-	renderer                                            *Renderer
-	theme                                               Theme
-	review                                              diffmodel.ReviewFile
-	rows                                                []diffmodel.ReviewRow
-	rowStarts                                           []int
-	start, end, width, sourceWidth, digits, numberWidth int
-	highlighted, painted                                bool
+	renderer                                      *Renderer
+	theme                                         Theme
+	review                                        diffmodel.ReviewFile
+	rows                                          []diffmodel.ReviewRow
+	numbers                                       Numbers
+	before, after, start, end, width, sourceWidth int
+	highlighted, painted                          bool
 }
 
 // PaintViewport decorates intersecting complete hunks. Coordinates and source
@@ -166,15 +239,11 @@ func (render *Layout) PaintViewport(ctx context.Context, start, end int) error {
 		var lines []string
 		rows := slices.Clone(h.rows)
 		diffmodel.AlignRows(rows, before, after)
+		oldLine, newLine := h.before, h.after
+		continuation := h.numbers.Continuation()
 		for n, row := range rows {
-			text := row.Text
-			numbers, continuation := "", ""
-			if h.numberWidth > 0 {
-				number := strconv.Itoa(render.Sources[h.rowStarts[n]].Line)
-				numbers = Subtle + strings.Repeat(" ", max(0, h.digits-len(number))) + number + "│" + SubtleReset
-				continuation = Subtle + strings.Repeat(" ", h.digits) + "│" + SubtleReset
-			}
-			lines = append(lines, sourceFragments(h.theme, h.width, h.sourceWidth, numbers, continuation, text, row.Kind)...)
+			_, numbers := rowCoordinates(h.numbers, row.Kind, &oldLine, &newLine)
+			lines = append(lines, sourceFragments(h.theme, h.width, h.sourceWidth, numbers, continuation, row.Text, row.Kind)...)
 			if !strings.HasSuffix(h.rows[n].Text, "\n") {
 				lines = append(lines, Subtle+"\\ No newline at end of file"+SubtleReset)
 			}

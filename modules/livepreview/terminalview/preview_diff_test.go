@@ -35,7 +35,7 @@ func TestUISnapshotDiffTailStyles(t *testing.T) {
 				frame = append(frame, rows...)
 				frame = append(frame, "plain after preview")
 				for _, row := range view.Source {
-					if row.Number != 0 {
+					if row.Old != 0 || row.New != 0 {
 						t.Fatal("tail has fabricated coordinates")
 					}
 				}
@@ -51,7 +51,7 @@ func TestPreviewDiffFlagReplacesPlainRows(t *testing.T) {
 	if _, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5, PreviewMotion{}); err != nil {
 		t.Fatal(err)
 	}
-	if row := view.Source[0]; row.Kind != ' ' || row.Number != 1 || row.Text != "+new\n" {
+	if row := view.Source[0]; row.Kind != ' ' || row.Old != 0 || row.New != 1 || row.Text != "+new\n" {
 		t.Fatalf("plain input parsed as diff: %+v", row)
 	}
 	preview.DiffText = true
@@ -60,7 +60,7 @@ func TestPreviewDiffFlagReplacesPlainRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	row := view.Source[0]
-	if row.Kind != '+' || row.Number != 0 || row.Text != "new\n" {
+	if row.Kind != '+' || row.Old != 0 || row.New != 0 || row.Text != "new\n" {
 		t.Fatalf("stale plain row: %+v", row)
 	}
 }

@@ -35,11 +35,12 @@ func TestLiveDiffNativeRows(t *testing.T) {
 	for _, line := range render.Lines[1:] {
 		rows = append(rows, strings.TrimRight(ansi.Strip(line), " "))
 	}
+	// Old- and new-file numbers keep separate columns.
 	want := []string{
-		"   9│ context",
-		"  10│-old",
-		"  10│+new",
-		"  11│",
+		"   9  9│ context",
+		"  10   │-old",
+		"     10│+new",
+		"  11 11│",
 	}
 	if !slices.Equal(rows, want) {
 		t.Fatalf("inline coordinates or blank source rows changed: %q", rows)

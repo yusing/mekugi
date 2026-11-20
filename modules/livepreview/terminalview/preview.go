@@ -33,6 +33,9 @@ const (
 	// A finished call keeps distinct unit reveals only this long before its
 	// remaining input is shown at once.
 	PreviewFinishDrain = time.Second
+	// While following additions, each deletion run shows this many rows
+	// nearest the tip; a marker row counts the rest.
+	liveDiffPreviewKeptDeletions = 3
 )
 
 // Previews have their own viewport and lifecycle. They never change the captured
@@ -58,7 +61,7 @@ type PreviewMotion struct {
 type PreviewView struct {
 	Current   previewmodel.Preview
 	Complete  bool
-	digits    int // Line-number width only grows, so the source never shifts sideways.
+	numbers   diffrender.Numbers // Line-number columns only grow, so the source never shifts sideways.
 	Rendered  previewmodel.Preview
 	Focus     int
 	Paused    bool
@@ -70,10 +73,12 @@ type PreviewView struct {
 	updated   time.Time   // The latest snapshot or first completion arrival.
 }
 
+// PreviewRow carries its old- and new-file coordinates; zero means the
+// row has none on that side.
 type PreviewRow struct {
-	Number int
-	Kind   byte
-	Text   string
+	Old, New int
+	Kind     byte
+	Text     string
 }
 
 func (p *PreviewPane) Update(preview previewmodel.Preview, now time.Time) {
@@ -140,19 +145,32 @@ func (p *PreviewPane) Callers() []string {
 	return names
 }
 
-func (p *PreviewView) columns(width int) (digits, sourceWidth int) {
-	if len(p.Source) > 0 && p.Source[len(p.Source)-1].Number > 0 {
-		p.digits = max(p.digits, len(strconv.Itoa(p.Source[len(p.Source)-1].Number)))
-		digits = p.digits
+func (p *PreviewView) columns(width int) (diffrender.Numbers, int) {
+	numbers := p.numbers.Fit(width)
+	return numbers, max(1, width-4-numbers.Width())
+}
+
+// previewNumbers selects the coordinate columns: a file's existing sides
+// from the start, so arriving rows cannot shift the source sideways.
+// Unnumbered sources, such as diff tails, have none.
+func previewNumbers(preview previewmodel.Preview, rows []PreviewRow) diffrender.Numbers {
+	var numbers diffrender.Numbers
+	if len(preview.Files) > 0 {
+		numbers.Old, numbers.New = preview.Files[0].BeforePath != "", preview.Files[0].AfterPath != ""
 	}
-	numberWidth := 0
-	if digits > 0 {
-		numberWidth = digits + 1
+	oldDigits, newDigits := 0, 0
+	for _, row := range rows {
+		if row.Old > 0 {
+			numbers.Old, oldDigits = true, max(oldDigits, len(strconv.Itoa(row.Old)))
+		}
+		if row.New > 0 {
+			numbers.New, newDigits = true, max(newDigits, len(strconv.Itoa(row.New)))
+		}
 	}
-	if width-3 < digits+4 {
-		numberWidth = 0
+	if numbers.Digits = max(oldDigits, newDigits); numbers.Digits == 0 {
+		return diffrender.Numbers{}
 	}
-	return digits, max(1, width-4-numberWidth)
+	return numbers
 }
 
 func liveDiffPreviewRows(review diffmodel.ReviewFile, workspace string) ([]PreviewRow, error) {
@@ -168,17 +186,16 @@ func liveDiffPreviewRows(review diffmodel.ReviewFile, workspace string) ([]Previ
 	for _, hunk := range hunks {
 		before, after := hunk.BeforeStart+1, hunk.AfterStart+1
 		for _, row := range hunk.Rows {
-			number := after
-			if row.Kind == '-' {
-				number = before
-			}
-			rows = append(rows, PreviewRow{number, row.Kind, row.Text})
+			next := PreviewRow{Kind: row.Kind, Text: row.Text}
 			if row.Kind != '+' {
+				next.Old = before
 				before++
 			}
 			if row.Kind != '-' {
+				next.New = after
 				after++
 			}
+			rows = append(rows, next)
 		}
 	}
 	return rows, nil
@@ -233,7 +250,7 @@ func (p *PreviewView) prepare(now time.Time) error {
 			}
 		} else {
 			for i, line := range strings.Split(strings.TrimSuffix(current.Input, "\n"), "\n") {
-				source = append(source, PreviewRow{i + 1, ' ', line + "\n"})
+				source = append(source, PreviewRow{New: i + 1, Kind: ' ', Text: line + "\n"})
 			}
 		}
 	}
@@ -256,6 +273,7 @@ func (p *PreviewView) prepare(now time.Time) error {
 		p.ScrollRow = 0 // New source releases the preceding scroll-to-bottom anchor.
 	}
 	p.Source, p.Rendered = source, current
+	p.numbers = p.numbers.Union(previewNumbers(current, source))
 	return nil
 }
 
@@ -346,10 +364,9 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 	if rows == 0 || len(p.Source) == 0 {
 		return finish(lines), nil
 	}
-	digits, sourceWidth := p.columns(width)
+	numbers, sourceWidth := p.columns(width)
 	fragmentsAt := func(i int) int {
-		text := textsanitize.Safe(strings.TrimSuffix(p.Source[i].Text, "\n"), false)
-		return strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
+		return diffrender.WrapRows(textsanitize.Safe(strings.TrimSuffix(p.Source[i].Text, "\n"), false), sourceWidth)
 	}
 	// Keep the tip's last wrapped fragment visible before admitting trailing
 	// context. Fill the region with source rather than empty centering padding.
@@ -360,15 +377,27 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 	p.rows = rows
 	start, skip, count := focus, 0, 0
 	// Following needs only nearby removed source, not a screenful of the
-	// baseline being replaced. Manual scrolling still exposes every row.
-	removed := 0
+	// baseline being replaced: each deletion run keeps the rows nearest the
+	// tip, and one marker row counts the rest. Manual scrolling still exposes
+	// every row.
+	type span struct{ from, to int }
+	var hidden []span
 	compact := !p.Paused && p.Source[focus].Kind == '+'
+	run := 0
 	for i := focus; i >= 0 && count < rows; i-- {
 		if compact && p.Source[i].Kind == '-' {
-			removed++
-			if removed > 3 {
-				break
+			if run++; run > liveDiffPreviewKeptDeletions {
+				from := i
+				for from > 0 && p.Source[from-1].Kind == '-' {
+					from--
+				}
+				hidden = append(hidden, span{from, i + 1})
+				start, skip, i, run = from, 0, from, 0
+				count++
+				continue
 			}
+		} else {
+			run = 0
 		}
 		n := fragmentsAt(i)
 		start = i
@@ -376,23 +405,47 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 		count += n - skip
 	}
 	end := focus + 1
-	removed = 0
+	run = 0
 	for end < len(p.Source) && count < rows {
 		if compact && p.Source[end].Kind == '-' {
-			removed++
-			if removed > 3 {
-				break
+			if run++; run > liveDiffPreviewKeptDeletions {
+				to := end
+				for to < len(p.Source) && p.Source[to].Kind == '-' {
+					to++
+				}
+				hidden = append(hidden, span{end, to})
+				end, run = to, 0
+				count++
+				continue
 			}
+		} else {
+			run = 0
 		}
 		count += fragmentsAt(end)
 		end++
 	}
+	hiddenAt := func(i int) (span, bool) {
+		for _, h := range hidden {
+			if h.from <= i && i < h.to {
+				return h, true
+			}
+		}
+		return span{}, false
+	}
 	// A little leading context improves multiline token state without lexing
 	// a growing whole file on every frame.
 	colorStart := max(0, start-32)
-	source := make([]diffmodel.ReviewRow, 0, end-colorStart)
-	for _, row := range p.Source[colorStart:end] {
-		source = append(source, diffmodel.ReviewRow{Kind: row.Kind, Text: row.Text})
+	visible := make([]int, 0, end-colorStart)
+	for i := colorStart; i < end; i++ {
+		if h, ok := hiddenAt(i); ok {
+			i = h.to - 1
+			continue
+		}
+		visible = append(visible, i)
+	}
+	source := make([]diffmodel.ReviewRow, 0, len(visible))
+	for _, i := range visible {
+		source = append(source, diffmodel.ReviewRow{Kind: p.Source[i].Kind, Text: p.Source[i].Text})
 	}
 	review := diffmodel.ReviewFile{BeforePath: "stream.sh", AfterPath: "stream.sh"}
 	if len(p.Current.Files) > 0 {
@@ -407,7 +460,9 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 		if colorErr != nil {
 			return nil, colorErr
 		}
-		copy(source, colored[colorStart:end])
+		for k, i := range visible {
+			source[k] = colored[i]
+		}
 		for i := range source {
 			source[i].Text = textsanitize.Safe(source[i].Text, true)
 			if source[i].Kind == 0 {
@@ -434,16 +489,28 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 		diffmodel.AlignRows(source, before, after)
 	}
 
+	k := 0
 	for i := colorStart; i < end && len(lines) <= rows; i++ {
+		if h, ok := hiddenAt(i); ok {
+			if i >= start {
+				noun := "lines"
+				if h.to-h.from == 1 {
+					noun = "line"
+				}
+				marker := diffrender.Subtle + fmt.Sprintf("… %d more deleted %s", h.to-h.from, noun) + diffrender.SubtleReset
+				line := diffrender.Gutter(false, theme) + diffrender.SourceLine(theme, width, numbers.Continuation(), marker, ' ')
+				lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
+			}
+			i = h.to - 1
+			continue
+		}
 		row := p.Source[i]
-		text := source[i-colorStart].Text
+		text := source[k].Text
+		k++
 		if i < start {
 			continue
 		}
-		numbers := ""
-		if digits > 0 && width-3 >= digits+4 {
-			numbers = fmt.Sprintf(diffrender.Subtle+"%*d│"+diffrender.SubtleReset, digits, row.Number)
-		}
+		rowNumbers := numbers.Format(row.Old, row.New)
 		for n, fragment := range diffrender.WrapSource(text, sourceWidth) {
 			if i == start && n < skip {
 				continue
@@ -451,9 +518,9 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 			if len(lines) > rows {
 				break
 			}
-			prefix := numbers
-			if n > 0 && numbers != "" {
-				prefix = diffrender.Subtle + strings.Repeat(" ", digits) + "│" + diffrender.SubtleReset
+			prefix := rowNumbers
+			if n > 0 {
+				prefix = numbers.Continuation()
 			}
 			// Only changed text fades in. Context, chrome, and row fills appear
 			// settled. Completion can replace the streaming source with its

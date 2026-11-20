@@ -5,6 +5,8 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
@@ -94,8 +96,10 @@ func (r *Renderer) ColorSource(ctx context.Context, theme Theme, path, source st
 	return lines, nil
 }
 
-// WrapSource keeps both syntax foregrounds and word backgrounds on independently
-// painted continuation rows. SourceLine keeps gutters and padding at the row fill.
+// WrapSource breaks source at word boundaries where one fits, otherwise at the
+// edge, and keeps every byte: separating whitespace ends the earlier row.
+// Syntax foregrounds and word backgrounds carry onto independently painted
+// continuation rows. SourceLine keeps gutters and padding at the row fill.
 func WrapSource(text string, width int) []string {
 	var style uv.Style
 	parser := ansi.GetParser()
@@ -109,7 +113,7 @@ func WrapSource(text string, width int) []string {
 		}
 	}})
 	var lines []string
-	for fragment := range strings.SplitSeq(ansi.Hardwrap(text, max(1, width), true), "\n") {
+	emit := func(fragment string) {
 		carry := ""
 		if !style.IsZero() {
 			carry = style.String()
@@ -117,7 +121,75 @@ func WrapSource(text string, width int) []string {
 		lines = append(lines, carry+fragment)
 		parser.Parse([]byte(fragment))
 	}
+	from := 0
+	wrapSource(text, width, func(end, next int) {
+		emit(text[from:end])
+		from = next
+	})
+	emit(text[from:])
 	return lines
+}
+
+// WrapRows counts WrapSource rows without materializing them.
+func WrapRows(text string, width int) int {
+	rows := 1
+	wrapSource(text, width, func(int, int) { rows++ })
+	return rows
+}
+
+// wrapSource reports each row break as the byte offsets where the earlier row
+// ends and the next begins. A word crossing the edge, or followed by
+// whitespace crossing it, moves to the next row. Rows never exceed the width,
+// so whitespace and words wider than a row otherwise break at the edge.
+func wrapSource(text string, width int, row func(end, next int)) {
+	width = max(1, width)
+	var state byte
+	column, wordStart, wordColumn := 0, -1, 0
+	word, spaced := false, false // The row has a word; whitespace followed it.
+	for i := 0; i < len(text); {
+		cluster, w, n, next := ansi.DecodeSequence(text[i:], state, nil)
+		state = next
+		if n <= 0 {
+			return
+		}
+		switch r, _ := utf8.DecodeRuneInString(cluster); {
+		case cluster == "\n":
+			row(i, i+n)
+			column, wordStart, word, spaced = 0, -1, false, false
+		case w == 0:
+		case unicode.IsSpace(r) && r != '\u00a0':
+			if column > 0 && column+w > width && wordStart >= 0 {
+				// Move the preceding word so the whitespace does not open a row.
+				row(wordStart, wordStart)
+				column -= wordColumn
+				wordStart = -1
+			}
+			if column > 0 && column+w > width {
+				row(i, i)
+				column, word = 0, false
+			}
+			column += w
+			spaced = word
+		default:
+			if spaced {
+				wordStart, wordColumn, spaced = i, column, false
+			}
+			if column+w > width && column > 0 {
+				if wordStart >= 0 {
+					row(wordStart, wordStart)
+					column -= wordColumn
+					wordStart = -1
+				}
+				if column+w > width && column > 0 {
+					row(i, i)
+					column = 0
+				}
+			}
+			column += w
+			word = true
+		}
+		i += n
+	}
 }
 
 func SourceLine(theme Theme, width int, numbers, fragment string, kind byte) string {

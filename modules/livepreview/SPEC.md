@@ -93,8 +93,9 @@ A path that cannot be expressed in a patch header has no projected preview. Clip
 retains a bounded window of the actual diff around added source, or its tail when
 there are no additions, with the source headers needed for syntax highlighting.
 Following prioritizes arriving additions over a still-deleted baseline suffix.
-Large deletion blocks show only nearby rows while following additions; scrolling
-can inspect the remaining published source.
+While following additions, each large deletion block shows only its rows nearest
+the arriving source, and one marker row counts the rows it hides; rows beyond the
+block remain visible. Scrolling can inspect the remaining published source.
 Neither clipping nor following changes retained evidence or transports command text.
 Arrival-paced reveals bound lag and drain completed input within the display's
 settling interval. Projection first received at completion cannot invent an active

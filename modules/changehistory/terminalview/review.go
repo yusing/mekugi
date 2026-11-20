@@ -171,9 +171,10 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []p
 				return Render{}, err
 			}
 		}
-		// Keep one coordinate column aligned across the file. Deletions use
-		// old line numbers; additions and context use new line numbers.
-		digits := 0
+		// Keep the coordinate columns aligned across the file. Old- and
+		// new-file numbers have separate columns, so neither changes meaning.
+		var numbers diffrender.Numbers
+		oldDigits, newDigits := 0, 0
 		fileHunks := make([][]diffmodel.ReviewHunk, len(file.Chunks))
 		for j, chunk := range file.Chunks {
 			hunks, err := chunk.Review.Hunks()
@@ -186,14 +187,20 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []p
 				for _, row := range hunk.Rows {
 					if row.Kind != '+' {
 						oldEnd++
-						digits = max(digits, len(strconv.Itoa(oldEnd)))
 					}
 					if row.Kind != '-' {
 						newEnd++
-						digits = max(digits, len(strconv.Itoa(newEnd)))
 					}
 				}
+				oldDigits, newDigits = max(oldDigits, len(strconv.Itoa(oldEnd))), max(newDigits, len(strconv.Itoa(newEnd)))
+				numbers = numbers.Union(diffrender.NumbersFor(hunk.Rows, 0))
 			}
+		}
+		if numbers.Old {
+			numbers.Digits = oldDigits
+		}
+		if numbers.New {
+			numbers.Digits = max(numbers.Digits, newDigits)
 		}
 		for j, chunk := range file.Chunks {
 			review := chunk.Review
@@ -231,7 +238,7 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []p
 				continue
 			}
 			for _, hunk := range hunks {
-				if err := r.syntax.AppendHunk(ctx, &render.Layout, theme, review, hunk, width, digits, chunk.Highlighted, r.LayoutOnly, source); err != nil {
+				if err := r.syntax.AppendHunk(ctx, &render.Layout, theme, review, hunk, width, numbers, chunk.Highlighted, r.LayoutOnly, source); err != nil {
 					return Render{}, err
 				}
 			}

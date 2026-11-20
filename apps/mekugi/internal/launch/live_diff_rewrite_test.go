@@ -66,6 +66,9 @@ func TestUISnapshotLiveDiffStreamingRewrite(t *testing.T) {
 				frame = append(frame, rows...)
 				frame = append(frame, "plain after preview")
 				if count == 100 {
+					if !strings.Contains(ansi.Strip(text), "… 97 more deleted lines") {
+						t.Fatalf("following hid deletions without a marker:\n%s", ansi.Strip(text))
+					}
 					pane.ScrollBatch("/root", ' ')
 					scrolled, err := pane.RenderBatch(t.Context(), "/root", workspace, diffrender.DarkTheme, 72, 16, 15)
 					if err != nil || !strings.Contains(strings.Join(scrolled, "\n"), "old0010") {

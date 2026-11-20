@@ -140,9 +140,9 @@ func TestUISnapshotLiveDiffRowFills(t *testing.T) {
 				}
 			}
 			if width == 80 {
-				for i, prefix := range []string{"  19│ context", "  10│-return", "  20│+return", "  21│ tail"} {
+				for i, prefix := range []string{"   9 19│ context", "  10   │-return", "     20│+return", "  11 21│ tail"} {
 					if !strings.HasPrefix(ansi.Strip(render.Lines[i+1]), prefix) {
-						t.Fatalf("wrong single-column coordinate: %q", render.Lines[i+1])
+						t.Fatalf("wrong old/new coordinate columns: %q", render.Lines[i+1])
 					}
 				}
 			}

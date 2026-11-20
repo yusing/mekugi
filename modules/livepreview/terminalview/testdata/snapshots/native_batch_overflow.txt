@@ -1,9 +1,9 @@
 LIVE · 3 files · 2–3/3 · ^B e next
   main · ◐ M src/b.go +1 -1
-  1│ package main
-  2│ 
-  3│-const value = 1                                                   
-▎ 3│+const value = 2                                                   
+  1 1│ package main
+  2 2│ 
+  3  │-const value = 1                                                 
+▎   3│+const value = 2                                                 
 
 
 
@@ -15,10 +15,10 @@ LIVE · 3 files · 2–3/3 · ^B e next
 
 
   main · ◐ M src/c.go +1 -1
-  1│ package main
-  2│ 
-  3│-const value = 1                                                   
-▎ 3│+const value = 2                                                   
+  1 1│ package main
+  2 2│ 
+  3  │-const value = 1                                                 
+▎   3│+const value = 2                                                 
 
 
 
