@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func enableFrontendSubreaper() error {
+func prepareFrontendCleanup() error {
 	// This dedicated worker adopts resolver descendants after their immediate
 	// parent exits. The worker itself remains in Codex's command group.
 	_, _, errno := syscall.Syscall6(syscall.SYS_PRCTL, 36 /* PR_SET_CHILD_SUBREAPER */, 1, 0, 0, 0, 0)

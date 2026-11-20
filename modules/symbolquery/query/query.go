@@ -228,7 +228,7 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 	}
 	dedicated := request.ProcessScope == command.DedicatedHostProcess
 	if dedicated {
-		if err := enableFrontendSubreaper(); err != nil {
+		if err := prepareFrontendCleanup(); err != nil {
 			return command.Output{}, fmt.Errorf("prepare frontend process cleanup: %w", err)
 		}
 	}

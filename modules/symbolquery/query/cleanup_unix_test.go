@@ -126,7 +126,7 @@ func TestResolverCleanupProcess(t *testing.T) {
 	}
 	// Adopt killed descendants for reaping, without frontend cleanup masking a
 	// broken owned process group in the direct API cases.
-	if err := enableFrontendSubreaper(); err != nil {
+	if err := prepareFrontendCleanup(); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())

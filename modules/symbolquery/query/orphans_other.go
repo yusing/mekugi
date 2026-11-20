@@ -1,7 +1,7 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package query
 
-func enableFrontendSubreaper() error { return nil }
+func prepareFrontendCleanup() error { return nil }
 
 func cleanupFrontendOrphans() {}
