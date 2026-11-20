@@ -48,13 +48,10 @@ type bundle struct {
 	calls  map[string]*tool
 }
 
-type traceFormatError struct {
-	version       int
-	seq, expected uint64
-}
+type traceFormatError string
 
-func (e *traceFormatError) Error() string {
-	return fmt.Sprintf("Native trace version %d is unsupported or discontinuous (sequence %d, expected %d). Nested tool confirmation may be unavailable.", e.version, e.seq, e.expected)
+func (e traceFormatError) Error() string {
+	return string(e) + " Nested tool confirmation may be unavailable."
 }
 
 // Cell is a detached observation correlated by thread, outer call and source.
@@ -64,6 +61,7 @@ type Cell struct {
 	turn           string
 	source         [32]byte
 	ended          bool
+	incomplete     bool
 	tools          []*tool
 }
 
@@ -80,7 +78,13 @@ type tool struct {
 }
 
 type payloadRef struct {
-	Path string `json:"path"`
+	Path    string `json:"path"`
+	RawID   string `json:"raw_payload_id"`
+	Shard   uint64 `json:"shard"`
+	Capture struct {
+		Status string `json:"status"`
+	} `json:"capture"`
+	Parts []jsontext.Value `json:"parts"`
 }
 type event struct {
 	Version int    `json:"schema_version"`
@@ -119,7 +123,9 @@ func sourceHash(source string) [32]byte {
 	return sha256.Sum256([]byte(strings.TrimSpace(source)))
 }
 
-func readPayload(directory string, ref payloadRef, value any) error {
+const payloadLimit = 8 << 20
+
+func readPayloadFile(directory string, ref payloadRef, value any) error {
 	// Native payload references are relative, single files under payloads/.
 	if filepath.Dir(ref.Path) != "payloads" || filepath.Base(ref.Path) == "." {
 		return errors.New("invalid native trace payload reference")
@@ -133,7 +139,7 @@ func readPayload(directory string, ref payloadRef, value any) error {
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() || info.Size() > 8<<20 {
+	if !info.Mode().IsRegular() || info.Size() > payloadLimit {
 		return errors.New("native trace payload unavailable or too large")
 	}
 	f, err := root.Open(ref.Path)
@@ -141,11 +147,11 @@ func readPayload(directory string, ref payloadRef, value any) error {
 		return err
 	}
 	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, (8<<20)+1))
+	b, err := io.ReadAll(io.LimitReader(f, payloadLimit+1))
 	if err != nil {
 		return err
 	}
-	if len(b) > 8<<20 {
+	if len(b) > payloadLimit {
 		return errors.New("native trace payload too large")
 	}
 	return json.Unmarshal(b, value)
@@ -171,6 +177,7 @@ func (b *bundle) update(directory string) error {
 		return err
 	}
 	r := bufio.NewReader(io.LimitReader(f, readLimit+1))
+	payloads := payloadReader{directory: directory}
 	read := 0
 	for {
 		line, err := r.ReadBytes('\n')
@@ -191,16 +198,17 @@ func (b *bundle) update(directory string) error {
 		if err := json.Unmarshal(line, &envelope); err != nil {
 			return err
 		}
-		// Version 2 adds trace events without changing the cell/tool evidence
-		// consumed here. Keep sequence validation across unconsumed events.
-		if (envelope.Version != 1 && envelope.Version != 2) || envelope.Seq != b.seq+1 {
-			return &traceFormatError{envelope.Version, envelope.Seq, b.seq + 1}
+		if envelope.Version < 1 || envelope.Version > 3 {
+			return traceFormatError(fmt.Sprintf("Native trace version %d is unsupported.", envelope.Version))
+		}
+		if envelope.Seq != b.seq+1 {
+			return traceFormatError(fmt.Sprintf("Native trace sequence is discontinuous (got %d, expected %d).", envelope.Seq, b.seq+1))
 		}
 		var event event
 		if err := json.Unmarshal(line, &event); err != nil {
 			return err
 		}
-		if err := b.event(directory, event); err != nil {
+		if err := b.event(&payloads, event); err != nil {
 			return err
 		}
 		b.offset += int64(len(line))
@@ -208,7 +216,7 @@ func (b *bundle) update(directory string) error {
 	}
 }
 
-func (b *bundle) event(directory string, event event) error {
+func (b *bundle) event(payloads *payloadReader, event event) error {
 	p := event.Payload
 	key := event.Thread + "\x00" + p.Cell
 	switch p.Type {
@@ -241,8 +249,13 @@ func (b *bundle) event(directory string, event event) error {
 				Arguments string `json:"arguments"`
 			} `json:"payload"`
 		}
-		if err := readPayload(directory, p.Invocation, &invocation); err != nil {
-			return err
+		if err := payloads.read(event.Version, p.Invocation, &invocation); err != nil {
+			if !errors.Is(err, errPayloadNotCaptured) {
+				return err
+			}
+			// Without this input, even a known call in the same cell could
+			// be the wrong occurrence. Keep other cells available.
+			cell.incomplete = true
 		}
 		tool := &tool{CallID: p.Tool, cell: p.Requester.Cell, Tool: invocation.Name, input: invocation.Payload.Input}
 		if invocation.Namespace != "" && invocation.Namespace != "functions" {
@@ -288,20 +301,11 @@ func (b *bundle) event(directory string, event event) error {
 		if tool == nil {
 			return nil
 		}
-		tool.Status = p.Status
-		if p.Status == "failed" || p.Status == "cancelled" {
-			tool.terminal = true
-			return nil
-		}
-		if p.Status != "completed" {
-			return nil
-		}
-		if tool.Tool == "apply_patch" {
-			tool.terminal = true
-			return nil
-		}
-		if tool.Tool != "exec_command" && tool.Tool != "write_stdin" {
-			tool.terminal = true
+		if p.Status != "completed" || (tool.Tool != "exec_command" && tool.Tool != "write_stdin") {
+			tool.Status = p.Status
+			if p.Status == "completed" || p.Status == "failed" || p.Status == "cancelled" {
+				tool.terminal = true
+			}
 			return nil
 		}
 		var result struct {
@@ -311,12 +315,16 @@ func (b *bundle) event(directory string, event event) error {
 				Session jsontext.Value `json:"session_id"`
 			} `json:"value"`
 		}
-		if err := readPayload(directory, p.Result, &result); err != nil {
+		if err := payloads.read(event.Version, p.Result, &result); err != nil {
+			if errors.Is(err, errPayloadNotCaptured) {
+				return nil
+			}
 			return err
 		}
 		if result.Type != "code_mode_response" {
 			return errors.New("native trace result kind mismatch")
 		}
+		tool.Status = p.Status
 		if result.Value.Exit != nil {
 			tool.ExitCode = result.Value.Exit
 			tool.terminal = true
@@ -345,7 +353,10 @@ func (b *bundle) event(directory string, event event) error {
 		var result struct {
 			Exit *int `json:"exit_code"`
 		}
-		if err := readPayload(directory, p.Runtime, &result); err != nil {
+		if err := payloads.read(event.Version, p.Runtime, &result); err != nil {
+			if errors.Is(err, errPayloadNotCaptured) {
+				return nil
+			}
 			return err
 		}
 		if result.Exit != nil {
@@ -374,7 +385,7 @@ func (t *Reader) ReadCell(thread, callID, source string) *Cell {
 			if cell.thread != thread || cell.callID != callID || cell.source != sourceHash(source) {
 				continue
 			}
-			if found != nil {
+			if found != nil || cell.incomplete {
 				return nil
 			}
 			copy := *cell
@@ -422,7 +433,7 @@ func (t *Reader) readBundles() []*bundle {
 			t.bundles[entry.Name()] = b
 		}
 		b.err = b.update(filepath.Join(t.directory, entry.Name()))
-		if formatErr, ok := errors.AsType[*traceFormatError](b.err); ok && !t.reported && t.notice != nil {
+		if formatErr, ok := errors.AsType[traceFormatError](b.err); ok && !t.reported && t.notice != nil {
 			t.reported = true
 			t.notice(formatErr.Error())
 		}

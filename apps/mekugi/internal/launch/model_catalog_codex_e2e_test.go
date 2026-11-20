@@ -21,7 +21,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -121,14 +123,46 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	models := inferencegateway.ModelsHandler(client, nil, nil)
 	workspace := t.TempDir()
 	proxy := newManagedMekugiProxy(t)
+	traceRoot := t.TempDir()
+	proxy.nativeTrace = nativetrace.NewWithNotice(traceRoot, func(message string) { t.Error(message) })
+	const patch = "*** Begin Patch\n*** Add File: trace-effect.txt\n+trace effect\n*** End Patch"
+	program := `text(await tools.exec_command({cmd:"printf MODE_OK"})); await tools.apply_patch(` +
+		string(responses.MustMarshalJSON(patch)) + `); text(await tools.web__run({search_query:[{q:"fixture lookup"}]}));`
+	traceConfirmed := false
 	fixture := &toolFrontendCodexProvider{
 		workspace: workspace,
-		program:   `text(await tools.exec_command({cmd:"printf MODE_OK"})); text(await tools.web__run({search_query:[{q:"fixture lookup"}]}));`,
+		program:   program,
 		expected:  []string{"MODE_OK", "MEKUGI_WEB_SEARCH_FIXTURE_RESULT"}, finalText: "catalog host accepted",
-		observeRequest: func(body []byte, _ http.Header) error {
+		observeRequest: func(body []byte, headers http.Header) error {
 			request, err := codexresponses.ParseRequest(body)
 			if err != nil {
 				return err
+			}
+			var input []struct {
+				Type   string `json:"type"`
+				CallID string `json:"call_id"`
+			}
+			if err := json.Unmarshal(request.Fields["input"], &input); err != nil {
+				return err
+			}
+			for _, item := range input {
+				if item.Type != "custom_tool_call_output" || item.CallID != "frontend-call" {
+					continue
+				}
+				thread := headers.Get(codexresponses.ThreadIDHeader)
+				if thread == "" {
+					metadata, _ := codexresponses.DecodeTurnMetadata(headers)
+					thread = metadata.ThreadID
+				}
+				cell := proxy.nativeTrace.ReadCell(thread, "frontend-call", program)
+				commands, ok := cell.Commands([]commandanalysis.Command{{Command: "printf MODE_OK"}}, workspace)
+				if !ok || len(commands) != 1 || commands[0].ExitCode == nil || *commands[0].ExitCode != 0 {
+					return fmt.Errorf("native trace did not confirm nested shell completion: %+v", commands)
+				}
+				if result, ok := cell.Patch(patch, 0); !ok || result.Status != "completed" {
+					return fmt.Errorf("native trace did not confirm nested patch completion: %+v", result)
+				}
+				traceConfirmed = true
 			}
 			const helper = "mchanges --list"
 			base := responses.StringField(request.Fields, "instructions")
@@ -197,6 +231,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	environment = append(environment, "CODEX_ROLLOUT_TRACE_ROOT="+traceRoot)
 	terminal := startAppResumeTerminalWithIntegration(t, func(runCtx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(runCtx, codex, nativeAppServerArgs(args)...)
 		cmd.Env, cmd.Dir = environment, workspace
@@ -211,5 +246,8 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 	if discoveries.Load() < 2 || searches.Load() != 1 || !fixture.resultSeen || fixture.turns != 2 {
 		t.Fatalf("catalog/host execution: discoveries=%d searches=%d result=%t turns=%d",
 			discoveries.Load(), searches.Load(), fixture.resultSeen, fixture.turns)
+	}
+	if !traceConfirmed {
+		t.Fatal("provider continuation did not check live native trace evidence")
 	}
 }

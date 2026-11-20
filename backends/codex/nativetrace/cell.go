@@ -50,7 +50,7 @@ func (t *Reader) ReadTool(thread, turn, item, callID, source string) (Call, bool
 			continue
 		}
 		cell := b.cells[thread+"\x00"+tool.cell]
-		if cell == nil || cell.turn != turn || cell.callID != callID || cell.source != sourceHash(source) || found {
+		if cell == nil || cell.incomplete || cell.turn != turn || cell.callID != callID || cell.source != sourceHash(source) || found {
 			return Call{}, false
 		}
 		result = Call{ID: tool.CallID, Tool: tool.Tool, Input: tool.input, Command: tool.command, LocalEnvironment: commandanalysis.LocalEnvironment(tool.environmentID), Session: tool.session}

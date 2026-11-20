@@ -9,8 +9,8 @@ import (
 
 func TestFormatNoticeOnce(t *testing.T) {
 	for _, tc := range []struct{ name, line, want string }{
-		{"unsupported", `{"schema_version":3,"seq":1,"thread_id":"thread","payload":{"type":"code_cell_started","requester":"changed-in-v3"}}`, "version 3"},
-		{"discontinuous", `{"schema_version":2,"seq":2,"thread_id":"thread","payload":{"type":"code_cell_started","runtime_cell_id":"cell","model_visible_call_id":"call","source_js":"source"}}`, "version 2"},
+		{"unsupported", `{"schema_version":4,"seq":1,"thread_id":"thread","payload":{"type":"code_cell_started","requester":"changed-in-v4"}}`, "Native trace version 4 is unsupported."},
+		{"discontinuous", `{"schema_version":3,"seq":2,"thread_id":"thread","payload":{"type":"code_cell_started","runtime_cell_id":"cell","model_visible_call_id":"call","source_js":"source"}}`, "Native trace sequence is discontinuous (got 2, expected 1)."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -31,7 +31,7 @@ func TestFormatNoticeOnce(t *testing.T) {
 				}
 				reader.CommandTimeout("thread", "call")
 			}
-			if len(notices) != 1 || !strings.Contains(notices[0], tc.want) {
+			if len(notices) != 1 || !strings.HasPrefix(notices[0], tc.want) {
 				t.Fatalf("notices = %q", notices)
 			}
 		})
