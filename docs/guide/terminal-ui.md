@@ -104,9 +104,9 @@ silently skip it. Notifications follow Codex's `tui.notifications`. See
   preserving already-lower efforts and conversation settings.
 - `/lock` prevents Esc/Ctrl-C interruption and Ctrl-C exit; `/unlock` restores them.
   The lock survives resume; explicit commands and steering still work.
-- `/quit` releases an idle session without deleting its history. When work can
-  either continue or be stopped, the inline prompt offers **Continue in
-  background** or **Stop**.
+- `/quit` releases an idle session without deleting its history. When work,
+  including a shell still running after its turn, can either continue or be
+  stopped, the inline prompt offers **Continue in background** or **Stop**.
   Stop ends work in the selected session and its delegates; click it twice, or
   select it and press Enter. Esc keeps the terminal
   attached. `/detach` always leaves without prompting or stopping work.

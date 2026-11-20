@@ -66,6 +66,29 @@ func TestNativeTerminalExitScopeUsesPendingWorkAndExcludesSiblings(t *testing.T)
 	}
 }
 
+// A shell that outlives its turn is work: /quit offers Continue or Stop
+// rather than releasing the session and ending the shell.
+func TestNativeTerminalExitCountsRunningShells(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	main := &u.nativeSession
+	main.Client.Live.Thread = "main"
+	endpoint := &nativeEndpoint{session: main, api: sessionapi.New()}
+	n := &nativeConnection{root: main, endpoints: []*nativeEndpoint{endpoint}}
+	family := &nativeFamily{threads: []binding.ThreadInfo{{ID: "main", AgentStatus: []byte(`"completed"`)}}}
+	if _, _, work, _ := n.terminalExitWork(endpoint, family); len(work) != 0 {
+		t.Fatalf("idle session reported work: %v", work)
+	}
+	processNotify(t, u, "main", "shell", "npm run dev", "inProgress")
+	busy, blocked, work, _ := n.terminalExitWork(endpoint, family)
+	if !busy || blocked || len(work) != 1 || work[0].owner != "main" || work[0].state != "process:shell" {
+		t.Fatalf("running shell was not exit work: busy=%v blocked=%v work=%v", busy, blocked, work)
+	}
+	processNotify(t, u, "main", "shell", "npm run dev", "completed")
+	if _, _, work, _ := n.terminalExitWork(endpoint, family); len(work) != 0 {
+		t.Fatalf("completed shell stayed exit work: %v", work)
+	}
+}
+
 func TestNativeDetachDuringWork(t *testing.T) {
 	for _, command := range []string{"/detach", "/quit"} {
 		t.Run(command, func(t *testing.T) {

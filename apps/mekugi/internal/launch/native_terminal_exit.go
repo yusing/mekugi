@@ -279,6 +279,12 @@ func (c *nativeConnection) terminalExitWork(endpoint *nativeEndpoint, family *na
 				add(nativeExitWork{owner: thread, state: input.Origin, at: int64(input.Delivery)})
 			}
 		}
+		// A shell can outlive its turn; releasing the session would end it.
+		for entry := range session.attached.session.RunningProcesses() {
+			if n := entry.Native; n != nil {
+				add(nativeExitWork{owner: n.Thread, state: "process:" + n.Item})
+			}
+		}
 		for _, side := range session.Client.Requests.OwnedSides() {
 			if side.Busy || side.Starting || side.ForkPending {
 				add(nativeExitWork{owner: thread, target: side.InterruptTarget(), state: side.Key})

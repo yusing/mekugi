@@ -292,7 +292,8 @@ session presentation. Module state stays with its composed owner.
 Before terminal attachment, Ctrl-C cancels the client's startup wait. An already
 admitted server runtime remains independent of that wait. An ordinary attached exit
 releases idle execution without archiving its history. If work can either continue
-or be stopped, `/quit` offers Continue in background and Stop inline. Escape
+or be stopped, `/quit` offers Continue in background and Stop inline; a shell still
+running after its turn counts as such work. Escape
 cancels and keeps the attachment. Stop targets this session and its delegates,
 not unrelated sessions. Continue leaves running work available to `--resume`
 and the WebUI. An
