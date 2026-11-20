@@ -75,8 +75,9 @@ reply generation, including for resumed children.
 
 When the local workspace is explicitly trusted and it or the user has a
 `skills-mgr` selection, the manager's XML catalog replaces the stock catalog in
-model context without a hook. Catalog conditions are evaluated in process
-without a Bash wrapper. A condition can explicitly run external commands with
+model context without a hook. Only managed mode uses concise base guidance
+under `# Using skills`. Catalog conditions run in process without a Bash
+wrapper. A condition can explicitly run external commands with
 app-server permissions, so only the local workspace covered by existing
 project trust can supply this catalog. If the whole managed catalog exceeds the
 skills context budget, the runtime warns and omits it rather than showing a
