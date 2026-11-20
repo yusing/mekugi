@@ -431,6 +431,10 @@ func (in FrameInput) statAction(state *Interaction, action byte, yield func(Inpu
 		}
 		if thread.ID != "" && yield(InputEffect{Display: &sessionpresentation.DisplayIntent{Version: v.Version, Thread: thread}}) {
 			shell.Focus = 0
+			state.Selection = nil
+			if action == StatMainTab && in.Agents != nil {
+				in.Agents.Runs = nil
+			}
 		}
 	case statParent:
 		v := in.Main.session

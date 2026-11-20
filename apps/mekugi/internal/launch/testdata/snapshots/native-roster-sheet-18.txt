@@ -1,18 +1,18 @@
-                                                  ┌ 2 Diff · saved · no captured edits yet ────────┐
-                                                  │  CONNECTING                                    │
-                                                  │                                                │
-                                                  │                                                │
-                                                  │                                                │
-                                                  │                                                │
-                                                  │                                                │
-                                                  │                                                │
-  ── Agents · ◐ 5 · ✓ 3 ────────────────────────  │                                                │
-   ✓ done-parent  done                       0%   │                                                │
-   ◐ └ worker  working                       0%   │                                                │
-   ◐ work-b  working                         0%   │                                                │
-   ◐ work-c  working                         0%   │                                                │
-   ◐ work-d  working                         0%   │                                                │
-     +3 more                                      │                                                │
-  ↑↓ agent · a child · esc close                  └────────────────────────────────────────────────┘
+                                                  │  CONNECTING
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+                                                  │
+  ── Agents · ◐ 5 · ✓ 3 ────────────────────────  │
+   ✓ done-parent  done                       0%   │
+   ◐ └ worker  working                       0%   │
+   ◐ work-b  working                         0%   │
+   ◐ work-c  working                         0%   │
+   ◐ work-d  working                         0%   │
+     +3 more                                      │
+  ↑↓ agent · a child · esc close                  │
   snapshot-model (high)
   Main • ◐ 5 • ✓ 3

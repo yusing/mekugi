@@ -90,8 +90,8 @@ func TestFrameCommitsClipboardAndRowsTogether(t *testing.T) {
 
 func TestPaneGeometryAndDividerIntent(t *testing.T) {
 	panes := Panes{Focus: 1, DiffOpen: true, Split: 67}
-	layout, _, _, framed := panes.Geometry(140, 30, 2)
-	if !framed || layout.Vertical != 67 || layout.Main != (Rect{0, 0, 67, 28}) || layout.Diff.W != 71 {
+	layout, _, _ := panes.Geometry(140, 30, 2)
+	if layout.Vertical != 67 || layout.Main != (Rect{0, 0, 67, 28}) || layout.Diff != (Rect{68, 0, 72, 28}) {
 		t.Fatalf("wide layout: %+v", layout)
 	}
 	if handled, _ := panes.Drag(Mouse{X: 67, Y: 3}, layout, 25); !handled {
@@ -106,11 +106,11 @@ func TestPaneGeometryAndDividerIntent(t *testing.T) {
 		t.Fatal("a stat-line press started a divider drag")
 	}
 	panes.Select(1)
-	layout, _, _, _ = panes.Geometry(140, 30, 2)
+	layout, _, _ = panes.Geometry(140, 30, 2)
 	if panes.Focus != 0 || layout.Main.W != 140 || layout.Diff != (Rect{}) {
 		t.Fatalf("closing Diff: %+v", layout)
 	}
-	layout, _, _, _ = panes.Geometry(1, 1, 0)
+	layout, _, _ = panes.Geometry(1, 1, 0)
 	if layout.Main != (Rect{}) {
 		t.Fatalf("unpaintable geometry became a hit target: %+v", layout)
 	}

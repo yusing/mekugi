@@ -93,9 +93,14 @@ func (in FrameInput) Status() ShellStatus {
 	}
 	v := in.Main.session
 	status := ShellStatus{
-		Agent: in.rosterThreadLabel(), Scroll: scrollLabel(in.displayedTranscript()), Summary: in.Agents.RosterSummary(),
+		Agent: in.rosterThreadLabel(), MainTab: v.Displayed.ID != v.Main.ID, Scroll: scrollLabel(in.displayedTranscript()), Summary: in.Agents.RosterSummary(),
 		DiffUnseen: in.DiffUnseen, Prefix: in.Prefix, LiveCount: in.Live.Live(), Locked: in.Main.InterruptLocked, Empty: in.EmptyComposer(),
 		Workspace: v.SourceWorkspace(),
+	}
+	if in.Shell.DiffOpen && in.Shell.Focus == 1 && in.Shell.Auxiliary != nil {
+		summary, state := in.Shell.Auxiliary.Title()
+		status.DiffSummary = strings.TrimPrefix(summary, "saved · ")
+		status.DiffState = compactDiffState(state)
 	}
 	if v.Displayed.ID == v.Main.ID {
 		status.Title = sessionTitle(v.Info.Title)
@@ -107,6 +112,24 @@ func (in FrameInput) Status() ShellStatus {
 		status.SideLabel, status.SideSelected = side.Label, v.Displayed == v.SideThread
 	}
 	return status
+}
+
+// compactDiffState drops focus and editor labels that the Diff navigator and
+// stat-line hints already show.
+func compactDiffState(state string) string {
+	if state == "" {
+		return ""
+	}
+	const sep = terminalui.Dim + " · " + terminalui.Undim
+	var kept []string
+	for part := range strings.SplitSeq(state, sep) {
+		switch part {
+		case "", "files focus", "diff focus", "e editor":
+			continue
+		}
+		kept = append(kept, part)
+	}
+	return strings.Join(kept, sep)
 }
 
 // skillsCaller names the displayed agent whose loaded skills the stat line shows.
@@ -254,7 +277,6 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		if err != nil {
 			content.Diff = []string{shell.AuxiliaryLabel + " unavailable", textsanitize.Safe(err.Error(), false)}
 		}
-		content.DiffSummary, content.DiffState = shell.Auxiliary.Title()
 		out.DiffPainted, in.DiffUnseen = true, false
 	}
 	if plan.Stats > 0 {
@@ -309,12 +331,21 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		out.Notices.Composer, out.Notices.Content = false, false
 		out.PaintedNoticeEntries = nil
 	}
-	// Overlays use cursor-positioned painting. Resolve their final cells so
-	// covered transcript candidates cannot request filesystem work.
-	if in.Dialog != nil || in.Selection != nil && out.SelectionRetained {
-		for y, row := range out.Rows {
-			if strings.Contains(row, "\x1b]8;") {
-				visible, _ := Screen(width, 1, []string{row}, -1, -1)
+	// Overlays use cursor-positioned painting. Resolve their final cells only on
+	// actually overlapped rows so covered transcript candidates cannot request
+	// filesystem work, without stripping OSC 8 links from visible transcript rows.
+	if in.Selection != nil && out.SelectionRetained {
+		for y := max(0, selected.Y); y < min(len(out.Rows), selected.Y+selected.H); y++ {
+			if strings.Contains(out.Rows[y], "\x1b]8;") {
+				visible, _ := Screen(width, 1, []string{out.Rows[y]}, -1, -1)
+				out.Rows[y] = visible[0]
+			}
+		}
+	} else if in.Dialog != nil && processRect.H == 0 {
+		limit := min(len(out.Rows), max(1, min(height-1, plan.Layout.Main.Y+plan.Layout.Main.H)))
+		for y := range limit {
+			if strings.Contains(out.Rows[y], "\x1b]8;") {
+				visible, _ := Screen(width, 1, []string{out.Rows[y]}, -1, -1)
 				out.Rows[y] = visible[0]
 			}
 		}

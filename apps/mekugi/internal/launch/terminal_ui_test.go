@@ -158,7 +158,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 							end = layout.Roster.Y
 						}
 						if layout.Live.H != 0 || layout.Main.Y != 0 || layout.Main.H != end ||
-							saved && (layout.Diff.Y != 1 || layout.Diff.H != end-2) ||
+							saved && (layout.Diff.Y != 0 || layout.Diff.H != end) ||
 							strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
 							t.Fatalf("empty Live area did not collapse: %+v\n%s", layout, screen.String())
 						}

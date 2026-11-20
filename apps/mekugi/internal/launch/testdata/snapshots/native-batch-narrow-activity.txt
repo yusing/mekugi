@@ -25,4 +25,4 @@ Read-only
 ❯
 ────────────────────────────────────────────────────────────────────────────────
 
-  editor • /workspace • ↓ roster • → diff • ctrl+b e next live • ctrl+e view
+  Main • editor • /workspace • ↓ roster • → diff • ctrl+b e next live

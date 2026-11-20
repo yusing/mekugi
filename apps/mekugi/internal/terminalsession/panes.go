@@ -90,7 +90,7 @@ func (p *Panes) Drag(m Mouse, layout Layout, navigatorWidth int) (handled bool, 
 // Geometry reserves the stat rows, then fits Main and saved Diff above them.
 // It returns pane bounds and content rectangles.
 // Source: apps/mekugi/internal/router/native_shell.go:288:334@70e7ce50 terminalUI.paintNative
-func (p *Panes) Geometry(width, height, statRows int) (layout Layout, left, right Rect, diffFramed bool) {
+func (p *Panes) Geometry(width, height, statRows int) (layout Layout, left, right Rect) {
 	top := max(0, height-statRows)
 	layout = Layout{Vertical: -1}
 	switch {
@@ -99,8 +99,8 @@ func (p *Panes) Geometry(width, height, statRows int) (layout Layout, left, righ
 		if split == 0 {
 			split = width / 2
 		}
-		split = min(max(40, split), width-40)
-		left, right = Rect{0, 0, split, top}, Rect{split, 0, width - split, top}
+		split = min(max(40, split), width-41)
+		left, right = Rect{0, 0, split, top}, Rect{split + 1, 0, width - split - 1, top}
 		layout.Vertical = split
 	case !p.DiffOpen || p.Focus != 1:
 		left = Rect{0, 0, width, top}
@@ -112,10 +112,6 @@ func (p *Panes) Geometry(width, height, statRows int) (layout Layout, left, righ
 	}
 	if right.W >= 4 && right.H > 0 {
 		layout.Diff = right
-		diffFramed = right.H >= 8
-		if diffFramed {
-			layout.Diff = Rect{right.X + 1, right.Y + 1, right.W - 2, right.H - 2}
-		}
 	}
-	return layout, left, right, diffFramed
+	return layout, left, right
 }

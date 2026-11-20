@@ -46,13 +46,11 @@ type ShellPlan struct {
 	Layout
 	Left, Right          Rect
 	Width, Height, Stats int
-	DiffFramed           bool
 }
 
 type ShellContent struct {
-	Main, Diff, Stats      []string
-	DiffSummary, DiffState string
-	Dock                   Rect
+	Main, Diff, Stats []string
+	Dock              Rect
 }
 
 // ShellStatus carries the second stat line's facts: the displayed thread,
@@ -60,8 +58,10 @@ type ShellContent struct {
 type ShellStatus struct {
 	Agent, Title, Scroll, Skills, SideLabel string
 	Workspace                               string
+	DiffSummary, DiffState                  string
 	Summary                                 activityui.RosterSummary
-	SideSelected, Locked, DiffUnseen        bool
+	MainTab, SideSelected                   bool
+	Locked, DiffUnseen                      bool
 	Prefix, Empty                           bool
 	LiveCount                               int
 	Playback                                bool
@@ -83,8 +83,8 @@ func (s *Shell) Plan(width, height int) ShellPlan {
 	s.Clamp()
 	width, height = max(1, width), max(1, height)
 	stats := s.statRows(height)
-	layout, left, right, diffFramed := s.Panes.Geometry(width, height, stats)
-	return ShellPlan{layout, left, right, width, height, stats, diffFramed}
+	layout, left, right := s.Panes.Geometry(width, height, stats)
+	return ShellPlan{layout, left, right, width, height, stats}
 }
 
 // Compose performs no feature lookup or effects; the caller supplies prepared rows.
@@ -106,14 +106,17 @@ func (s *Shell) Compose(plan ShellPlan, in ShellContent) []string {
 		}
 		draw(left, in.Main)
 	}
+	if layout.Vertical >= 0 && plan.Left.H >= 1 {
+		sep := fmt.Sprintf("\x1b[%dG\x1b[0m%s│%s", layout.Vertical+1, terminalui.Dim, terminalui.Reset)
+		for i := range plan.Left.H {
+			if y := plan.Left.Y + i; y >= 0 && y < len(rows) {
+				rows[y] += sep
+			}
+		}
+	}
 	if right := plan.Right; right.W >= 4 && right.H >= 1 {
 		body := append(in.Diff[:min(len(in.Diff), layout.Diff.H)], make([]string, max(0, layout.Diff.H-len(in.Diff)))...)
-		if plan.DiffFramed {
-			title := terminalui.PaneTitle(2, s.AuxiliaryLabel, in.DiffSummary, s.Focus == 1)
-			draw(right, terminalui.PaneBox(right.W, right.H, title, in.DiffState, s.Focus == 1, body, nil))
-		} else {
-			draw(right, body)
-		}
+		draw(right, body)
 	}
 	stats := in.Stats[max(0, len(in.Stats)-plan.Stats):]
 	for i, line := range stats {
@@ -147,9 +150,10 @@ type statSegment struct {
 // Navigation hints show only while their keys act, with an empty composer.
 // A clickable segment underlines while the pointer is over it.
 // Narrow lines abbreviate the workspace to a sixth of the line and shorten
-// the title, then drop pane keys, ctrl+e view, live batches, net lines, skills,
-// the workspace, the side thread, finished counts, the scroll position, Diff
-// and roster hints, the title, and finally the remaining counts.
+// the title, then drop focused Diff info, pane keys, ctrl+e view, live
+// batches, net lines, skills, the workspace, the side thread, finished counts,
+// the scroll position, Diff and roster hints, the title, and finally the
+// remaining counts.
 func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	s.Clamp()
 	s.Targets = s.Targets[:0]
@@ -158,10 +162,10 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	}
 	const sep = terminalui.Dim + " • " + terminalui.Undim
 	hint := func(key, label string) string { return key + terminalui.Dim + " " + label + terminalui.Undim }
-	// The displayed thread leads; a displayed One-off keeps Main's tab
-	// before it, so both tabs stay in place.
+	// The displayed thread leads; a child thread or One-off keeps a clickable
+	// Main tab before it so returning to Main is always one click away.
 	head := []statSegment{{text: "\x1b[1m" + s.Theme.Accent() + in.Agent + terminalui.Reset}}
-	if in.SideLabel != "" && in.SideSelected {
+	if in.MainTab || in.SideLabel != "" && in.SideSelected {
 		head = slices.Insert(head, 0, statSegment{text: terminalui.Dim + "Main" + terminalui.Undim, action: StatMainTab})
 	}
 	var segments []statSegment
@@ -224,7 +228,13 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 				add(hint("→", strings.ToLower(s.AuxiliaryLabel))+badge, StatDiff, 4)
 			}
 		}
-		add(in.Summary.Net, 0, 10)
+		// Focused Diff info replaces net lines but leaves before the pane keys.
+		if s.DiffOpen && s.Focus == 1 {
+			add(in.DiffSummary, 0, 14)
+			add(in.DiffState, 0, 15)
+		} else {
+			add(in.Summary.Net, 0, 10)
+		}
 		if in.LiveCount > 1 {
 			add(hint("ctrl+b e", "next live"), 0, 11)
 		}

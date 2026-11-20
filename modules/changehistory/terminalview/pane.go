@@ -398,6 +398,9 @@ func (c *Pane) Hints() terminalui.Hints {
 		return terminalui.Hints{{"q", "close", 0}}
 	}
 	hints := terminalui.Hints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
+	if c.navigation.Focused && !c.navigation.ChangesTab && !c.navigation.Filtering {
+		hints = append(terminalui.Hints{{"e", "editor", 0}}, hints...)
+	}
 	if c.Back() {
 		hints = append(terminalui.Hints{{"esc", "back", 0}}, hints...)
 	}

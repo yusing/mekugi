@@ -75,10 +75,12 @@ func (u *appServerUI) publishedTitle() string {
 }
 
 // statLineNames reports whether the second stat line, which leads with the
-// displayed thread, names thread.
+// displayed thread (preceded by Main's tab on child/One-off views), names thread.
 func statLineNames(frame, thread string) bool {
 	for row := range strings.Lines(frame) {
-		if row = strings.TrimRight(row, " \n"); row == "  "+thread || strings.HasPrefix(row, "  "+thread+" • ") {
+		row = strings.TrimRight(row, " \n")
+		if row == "  "+thread || strings.HasPrefix(row, "  "+thread+" • ") ||
+			thread != "Main" && (row == "  Main • "+thread || strings.HasPrefix(row, "  Main • "+thread+" • ")) {
 			return true
 		}
 	}

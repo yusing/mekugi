@@ -33,4 +33,4 @@ Read-only
 ❯
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   child-model (low) · flex | ━━╸─────── 25% 25K/100K
-  reader • ◐ 1 • /workspace • ↓ roster • → diff • ctrl+e view
+  Main • reader • ◐ 1 • /workspace • ↓ roster • → diff • ctrl+e view

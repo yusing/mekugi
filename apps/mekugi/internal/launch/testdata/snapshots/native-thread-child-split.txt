@@ -1,36 +1,36 @@
-● reader                                                     12:00:00 ┌ 2 Diff · saved · no captured edits yet ─── diff focus · CONNECTING ┐
-┃ child result                                                        │  CONNECTING                                                        │
-┃                                                                     │                                                                    │
-┃ alpha                                                               │                                                                    │
-┃                                                                     │                                                                    │
-┃ beta                                                                │                                                                    │
-┃                                                                     │                                                                    │
-┃ gamma                                                               │                                                                    │
-┃                                                                     │                                                                    │
-┃ delta                                                               │                                                                    │
-┃                                                                     │                                                                    │
-┃ epsilon                                                             │                                                                    │
-┃                                                                     │                                                                    │
-┃ zeta                                                                │                                                                    │
-┃                                                                     │                                                                    │
-┃ eta                                                                 │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-                                                                      │                                                                    │
-Read-only                                                             │                                                                    │
-──────────────────────────────────────────────────────────────────────│                                                                    │
-❯                                                                     │                                                                    │
-──────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────────────────────────┘
+● reader                                                     12:00:00 │  CONNECTING
+┃ child result                                                        │
+┃                                                                     │
+┃ alpha                                                               │
+┃                                                                     │
+┃ beta                                                                │
+┃                                                                     │
+┃ gamma                                                               │
+┃                                                                     │
+┃ delta                                                               │
+┃                                                                     │
+┃ epsilon                                                             │
+┃                                                                     │
+┃ zeta                                                                │
+┃                                                                     │
+┃ eta                                                                 │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+Read-only                                                             │
+──────────────────────────────────────────────────────────────────────│
+❯                                                                     │
+──────────────────────────────────────────────────────────────────────│
   child-model (low) · flex | ━━╸─────── 25% 25K/100K
-  reader • ◐ 1 • /workspace • ← main • s files · tab changes · [ ] hunks · a caller · ? help
+  Main • reader • ◐ 1 • /workspace • ← main • no captured edits yet • CONNECTING • s files · tab changes · [ ] hunks · a caller · ? help

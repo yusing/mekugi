@@ -123,6 +123,44 @@ func TestStatLineMainTabBesideOneOff(t *testing.T) {
 	}
 }
 
+// While a child thread is displayed, a clickable Main tab precedes it.
+func TestStatLineMainTabOnChildThread(t *testing.T) {
+	s := Shell{}
+	line := ansi.Strip(s.StatLine(ShellStatus{Agent: "reader", MainTab: true, Workspace: "/workspace"}, 48, 5))
+	if line != "  Main • reader • /workspace • ctrl+e view" {
+		t.Fatalf("stat line = %q", line)
+	}
+	if len(s.Targets) != 1 || s.Targets[0].Action != StatMainTab || s.Targets[0].Rect != (Rect{2, 5, 4, 1}) {
+		t.Fatalf("main tab target = %+v", s.Targets)
+	}
+}
+
+// Split Diff uses a single vertical separator without a box frame.
+func TestSplitDiffUsesSeparatorWithoutFrame(t *testing.T) {
+	s := Shell{Panes: Panes{DiffOpen: true, Focus: 1}, AuxiliaryLabel: "Diff"}
+	layout, left, right := s.Panes.Geometry(100, 20, 2)
+	plan := ShellPlan{Layout: layout, Left: left, Right: right, Width: 100, Height: 20, Stats: 2}
+	if plan.Layout.Vertical != 50 || plan.Left.W != 50 || plan.Right.X != 51 || plan.Right.W != 49 || plan.Layout.Diff != plan.Right {
+		t.Fatalf("unexpected split geometry: %+v", plan)
+	}
+	rows := s.Compose(plan, ShellContent{
+		Main:  []string{"main-row"},
+		Diff:  []string{"diff-row"},
+		Stats: []string{"stat1", "stat2"},
+	})
+	rendered, _ := Screen(100, 20, rows, -1, -1)
+	first := ansi.Strip(rendered[0])
+	if strings.ContainsAny(first, "┌┐└┘") {
+		t.Fatalf("diff pane still rendered a box frame: %q", first)
+	}
+	if !strings.Contains(first, "main-row") || !strings.Contains(first, "│diff-row") {
+		t.Fatalf("expected vertical separator between Main and Diff: %q", first)
+	}
+	if got := compactDiffState("files focus" + "\x1b[2m · \x1b[22m" + "e editor" + "\x1b[2m · \x1b[22m" + "LIVE" + "\x1b[2m · \x1b[22m" + "@main" + "\x1b[2m · \x1b[22m" + "1/2"); ansi.Strip(got) != "LIVE · @main · 1/2" {
+		t.Fatalf("compactDiffState = %q", ansi.Strip(got))
+	}
+}
+
 // The scroll position names lines below the viewport only once the reader
 // scrolls back.
 func TestScrollLabel(t *testing.T) {

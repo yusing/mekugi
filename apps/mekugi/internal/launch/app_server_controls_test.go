@@ -149,7 +149,7 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	if err := resumed.testPaint(&frame, 120, 35); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(ansi.Strip(frame.String()), "Diff") || !strings.Contains(ansi.Strip(frame.String()), "Locked") {
+	if terminalTest(resumed).Layout.Diff.W == 0 || !strings.Contains(ansi.Strip(frame.String()), "Locked") {
 		t.Fatal("resumed preferences are not rendered")
 	}
 }

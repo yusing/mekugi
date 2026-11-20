@@ -84,7 +84,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 			if err := restored.testPaint(&frame, 100, 35); err != nil {
 				t.Fatal(err)
 			}
-			if terminalTest(restored).Layout.Vertical != 60 {
+			if terminalTest(restored).Layout.Vertical != 59 {
 				t.Fatal("restored split not clamped to current terminal")
 			}
 		} else if terminalTest(restored).Focus != 0 || terminalTest(restored).DiffOpen || terminalTest(restored).Split != 0 {

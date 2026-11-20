@@ -253,3 +253,28 @@ func TestMarkdownLinksReplay(t *testing.T) {
 		t.Fatalf("replay admission was not delivered: %q", rows)
 	}
 }
+
+func TestMarkdownLinksPreservedWhenBottomSheetOpens(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "types.ts"), []byte("export type X = string;\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	main := newAppServerSessionTestUI(t, workspace)
+	main.testActivity(main.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
+		{Seq: 1, Agent: "Main", Kind: "final", Text: "Candidate choices: types.ts", Observed: time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local)},
+	}})
+	u := terminalTest(main)
+	u.Width, u.Height = 80, 18
+	if err := main.testPaint(io.Discard, u.Width, u.Height); err != nil {
+		t.Fatal(err)
+	}
+	awaitMarkdownLinks(t, u)
+	if !strings.Contains(strings.Join(u.Frame.Rows, "\n"), "]8;;types.ts") {
+		t.Fatal("transcript link missing before opening bottom sheet")
+	}
+	u.openBlocks(main.shell.Transcript, []activityui.Block{{Label: "Read", Body: "export type X = string;"}})
+	awaitMarkdownLinks(t, u)
+	if !strings.Contains(strings.Join(u.Frame.Rows, "\n"), "]8;;types.ts") {
+		t.Fatalf("bottom sheet stripped transcript hyperlink:\n%s", strings.Join(u.Frame.Rows, "\n"))
+	}
+}

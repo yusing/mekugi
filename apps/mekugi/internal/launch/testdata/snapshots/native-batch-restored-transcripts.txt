@@ -45,4 +45,4 @@ Read-only
 ❯
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  editor • /workspace • ↓ roster • → diff • ctrl+e view
+  Main • editor • /workspace • ↓ roster • → diff • ctrl+e view

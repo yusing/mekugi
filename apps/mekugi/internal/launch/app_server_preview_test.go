@@ -156,7 +156,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	render("saved diff", "2 Diff · saved · 5 files", "broker.go", "launch.go", "broker_race_test.go", "Unsubscribe")
+	render("saved diff", "5 files +59 -2", "broker.go", "launch.go", "broker_race_test.go", "Unsubscribe")
 	if !terminalTest(p.ui).DiffOpen || terminalTest(p.ui).DiffUnseen {
 		t.Fatal("opening the saved diff did not clear its badge")
 	}
@@ -165,7 +165,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if err := terminalTest(p.ui).key('\t'); err != nil {
 		t.Fatal(err)
 	}
-	render("saved diff changes", "Unsubscribe", "Changes", "files focus", "─────")
+	render("saved diff changes", "Unsubscribe", "▎Changes", "─────")
 	if source := savedPane(terminalTest(p.ui)).Selection(terminalTest(p.ui).Layout.Diff.W-1, terminalTest(p.ui).Layout.Diff.H-1); source.Y == 0 || len(source.Painted) == 0 {
 		t.Fatal("Tab replaced the stacked list with a full-pane picker")
 	}

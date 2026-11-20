@@ -12,7 +12,7 @@ func BenchmarkShellComposeStyledPanes(b *testing.B) {
 	for i := range body {
 		body[i] = "\x1b[32m+\x1b[0m " + strings.Repeat("const value = 42; ", 4)
 	}
-	in := ShellContent{Main: body, Diff: body, DiffSummary: "+123 -45"}
+	in := ShellContent{Main: body, Diff: body}
 	b.ReportAllocs()
 	for b.Loop() {
 		s.Compose(plan, in)
