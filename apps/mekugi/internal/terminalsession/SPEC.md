@@ -276,7 +276,9 @@ keys otherwise move the caret. Escape closes a note before hiding the dock and
 retaining answers. PgUp/PgDn reaches long question bodies and option lists.
 
 Approval docks show the host scope, command/summary, non-root directory, reason
-and choices. Digits/arrows select and Enter confirms; Escape only hides. Supported
+and choices. Choices are colored by their producer-assigned reach: green approves only
+this request, amber approves beyond it, red declines. Other dock and menu choices
+take the accent while selected. Digits/arrows select and Enter confirms; Escape only hides. Supported
 command denials accept typed/pasted reasons; digits select choices while the reason
 is empty. Other approval types ignore text/paste. Answer editors reuse literal
 Unicode, paste, undo, attachments, references and external editing, but disable

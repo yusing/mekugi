@@ -14,7 +14,9 @@ type ApprovalDecision struct {
 	Label                  string
 	Response               map[string]any
 	Approve, Session, Deny bool
-	Outcome                string
+	// Lasting approvals outlast this request, for the session or in policy.
+	Lasting bool
+	Outcome string
 }
 type ApprovalRequest struct {
 	Kind           string `json:"kind"`
@@ -73,6 +75,7 @@ func CommandApprovalChoice(decision jsontext.Value, network, permissions bool) (
 				choice.Label = "Yes, just this once"
 			}
 		case "acceptForSession":
+			choice.Lasting = true
 			choice.Label, choice.Outcome = "Yes, and don't ask again for this command in this session", "Approved for this session"
 			if network {
 				choice.Label = "Yes, and allow this host for this conversation"
@@ -114,6 +117,7 @@ func CommandApprovalChoice(decision jsontext.Value, network, permissions bool) (
 			if strings.ContainsAny(prefix, "\r\n") {
 				return choice, false
 			}
+			choice.Lasting = true
 			choice.Label = "Yes, and don't ask again for commands that start with `" + prefix + "`"
 			choice.Outcome = "Approved commands starting with " + prefix
 		case name == "applyNetworkPolicyAmendment" && value.Network != nil:
@@ -121,6 +125,7 @@ func CommandApprovalChoice(decision jsontext.Value, network, permissions bool) (
 				choice.Deny = true
 				choice.Label, choice.Outcome = "No, and block this host in the future", "Blocked "+value.Network.Host
 			} else {
+				choice.Lasting = true
 				choice.Label, choice.Outcome = "Yes, and allow this host in the future", "Allowed "+value.Network.Host
 			}
 		default:

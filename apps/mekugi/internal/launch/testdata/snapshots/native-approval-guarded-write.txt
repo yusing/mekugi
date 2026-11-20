@@ -1,20 +1,21 @@
-Mekugi dev • codex
-
-
-
-
-
-
-
-  ── Allow this remote write? ────────────────────────────────────────────────
-    gh pr merge 12 --squash
-    Denying fails only this command with exit status 1.
-  ❯ 1. Yes, run it
-    2. Yes, for this exact command and workdir this session
-    3. No, fail this command
-  1–3 choose · type deny with reason · enter confirm · esc hide
-
-approving · turn waiting
-────────────────────────────────────────────────────────────────────────────────
-❯  
-────────────────────────────────────────────────────────────────────────────────
+"\x1b[1mMekugi dev • codex\x1b[m                                                              "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  \x1b[38;2;86;212;221m── \x1b[39;1mAllow this remote write?\x1b[m \x1b[38;2;86;212;221m────────────────────────────────────────────────\x1b[m  "
+"    gh pr merge 12 --squash                                                     "
+"    \x1b[2mDenying fails only this command with exit status 1.\x1b[m                         "
+"  \x1b[38;2;86;212;221m❯\x1b[m \x1b[38;5;114m1. Yes, run it\x1b[m                                                              "
+"    \x1b[38;5;214m2. Yes, for this exact command and workdir this session\x1b[m                     "
+"    \x1b[38;5;203m3. No, fail this command\x1b[m                                                    "
+"  \x1b[2m1–3 choose · type deny with reason · enter confirm · esc hide\x1b[m                 "
+"                                                                                "
+"approving · turn waiting                                                        "
+"\x1b[2m────────────────────────────────────────────────────────────────────────────────\x1b[m"
+"\x1b[38;2;86;212;221m❯ \x1b[39;7m \x1b[m                                                                             "
+"\x1b[2m────────────────────────────────────────────────────────────────────────────────\x1b[m"
+"plain after dock                                                                "

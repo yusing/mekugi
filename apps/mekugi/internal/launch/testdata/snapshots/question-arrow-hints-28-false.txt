@@ -1,10 +1,11 @@
-  ── Question 1… ─ open ──
-  
-    First?
-  
-  ❯ 1. Customers
-    option 1/3
-  
-  ↑↓ pick · ↵ next · ←→
-  question · ^] skip · esc
-  hide
+"  \x1b[36m── \x1b[39;1mQuestion 1…\x1b[m \x1b[36m─\x1b[m \x1b[2mopen\x1b[m \x1b[36m──\x1b[m  "
+"                            "
+"    First?                  "
+"                            "
+"  \x1b[36m❯\x1b[m \x1b[36m1. Customers\x1b[m            "
+"    \x1b[2moption 1/3\x1b[m              "
+"                            "
+"  \x1b[2m↑↓ pick · ↵ next · ←→\x1b[m     "
+"  \x1b[2mquestion · ^] skip · esc\x1b[m  "
+"  \x1b[2mhide\x1b[m                      "
+"plain after dock            "

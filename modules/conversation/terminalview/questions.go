@@ -107,7 +107,7 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 	}
 	for i := layout.top; i < min(len(options), layout.top+count); i++ {
 		o := options[i]
-		line := choicePointer(accent, i == question.Selected) + fmt.Sprintf("%d. %s", i+1, promptText(o.Label))
+		line := choiceLine(accent, prompt.ToneNeutral, i == question.Selected, i+1, promptText(o.Label))
 		if inner-columns-7 >= 24 {
 			line += strings.Repeat(" ", max(0, columns-ansi.StringWidth(promptText(o.Label)))+2) + dim + promptText(o.Description) + reset
 		}

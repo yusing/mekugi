@@ -7,7 +7,8 @@ Answer Codex approvals and guard remote writes and sudo commands.
 Codex approvals open over an empty composer; otherwise press `Ctrl-B`, then `q`. Arrows
 choose, Enter confirms, Esc hides without answering. Typing/pasting in Mekugi-mode
 command approvals selects denial with an optional reason; feedback reaches the current
-turn. Your draft/attachments return afterward.
+turn. Your draft/attachments return afterward. Choice colors show reach: green approves
+only this request, amber approves beyond it (for the session or in policy), red declines.
 
 At interactive startup or session replacement, Mekugi asks about untrusted hooks
 and hooks whose hash has changed, before accepting work. Review the command, source

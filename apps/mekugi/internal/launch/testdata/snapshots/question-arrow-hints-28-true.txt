@@ -1,10 +1,11 @@
-  ── Question 1… ─ open ──
-  
-    First?
-  
-  ❯ 3. Other
-    option 3/3
-  
-  1–3 choose · type answer
-  · enter next · ←/→ move
-  · ctrl+] skip · esc hide
+"  \x1b[36m── \x1b[39;1mQuestion 1…\x1b[m \x1b[36m─\x1b[m \x1b[2mopen\x1b[m \x1b[36m──\x1b[m  "
+"                            "
+"    First?                  "
+"                            "
+"  \x1b[36m❯\x1b[m \x1b[36m3. Other\x1b[m                "
+"    \x1b[2moption 3/3\x1b[m              "
+"                            "
+"  \x1b[2m1–3 choose · type answer\x1b[m  "
+"  \x1b[2m· enter next · ←/→ move\x1b[m   "
+"  \x1b[2m· ctrl+] skip · esc hide\x1b[m  "
+"plain after dock            "

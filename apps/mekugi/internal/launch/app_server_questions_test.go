@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
@@ -611,7 +613,7 @@ func TestUISnapshotQuestionArrowHints(t *testing.T) {
 				if editing {
 					appServerTestKeys(t, u, "answer")
 				}
-				assertNativeUISnapshot(t, fmt.Sprintf("question-arrow-hints-%d-%t", width, editing), testQuestionRows(u, width, 10))
+				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/question-arrow-hints-%d-%t.txt", width, editing), append(testQuestionRows(u, width, 10), "plain after dock"), width)
 			})
 		}
 	}

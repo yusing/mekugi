@@ -1,20 +1,21 @@
-└ Run git push origin main
-      Pending Approval
-
-
-
-
-  ── Run this command? ───────────
-    git push origin main
-    Reason: Publish the release
-    branch.
-  ❯ 1. Yes, proceed
-    2. No, continue without runni…
-  1–2 choose · type deny with
-  reason · enter confirm · esc
-  hide
-
-approving · turn waiting
-────────────────────────────────────
-❯  
-────────────────────────────────────
+"\x1b[2m└ \x1b[38;5;214;22;1mRun\x1b[m \x1b[38;2;210;168;255mgit\x1b[m push origin main          "
+"\x1b[2m  \x1b[m    \x1b[38;5;214mPending Approval\x1b[m              "
+"                                    "
+"                                    "
+"                                    "
+"                                    "
+"  \x1b[38;2;86;212;221m── \x1b[39;1mRun this command?\x1b[m \x1b[38;2;86;212;221m───────────\x1b[m  "
+"    git push origin main            "
+"    \x1b[2mReason: Publish the release\x1b[m     "
+"    \x1b[2mbranch.\x1b[m                         "
+"  \x1b[38;2;86;212;221m❯\x1b[m \x1b[38;5;114m1. Yes, proceed\x1b[m                 "
+"    \x1b[38;5;203m2. No, continue without runni…\x1b[m  "
+"  \x1b[2m1–2 choose · type deny with\x1b[m       "
+"  \x1b[2mreason · enter confirm · esc\x1b[m      "
+"  \x1b[2mhide\x1b[m                              "
+"                                    "
+"approving · turn waiting            "
+"\x1b[2m────────────────────────────────────\x1b[m"
+"\x1b[38;2;86;212;221m❯ \x1b[39;7m \x1b[m                                 "
+"\x1b[2m────────────────────────────────────\x1b[m"
+"plain after dock                    "

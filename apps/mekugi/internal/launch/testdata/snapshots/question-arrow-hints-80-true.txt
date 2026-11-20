@@ -1,9 +1,10 @@
-  ── Question 1 of 2 ───────────────────────────────────────────────── open ──
-  
-    First?
-  
-    1. Customers  
-    2. Internal   
-  ❯ 3. Other      Type your answer
-  
-  1–3 choose · type answer · enter next · ←/→ move · ctrl+] skip · esc hide
+"  \x1b[36m── \x1b[39;1mQuestion 1 of 2\x1b[m \x1b[36m─────────────────────────────────────────────────\x1b[m \x1b[2mopen\x1b[m \x1b[36m──\x1b[m  "
+"                                                                                "
+"    First?                                                                      "
+"                                                                                "
+"    1. Customers                                                                "
+"    2. Internal                                                                 "
+"  \x1b[36m❯\x1b[m \x1b[36m3. Other\x1b[m      \x1b[2mType your answer\x1b[m                                              "
+"                                                                                "
+"  \x1b[2m1–3 choose · type answer · enter next · ←/→ move · ctrl+] skip · esc hide\x1b[m     "
+"plain after dock                                                                "

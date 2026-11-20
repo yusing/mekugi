@@ -8,10 +8,25 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
+// ChoiceTone is what a choice risks, for renderers to color it apart from its
+// neighbors. It does not affect the decision.
+type ChoiceTone uint8
+
+const (
+	ToneNeutral ChoiceTone = iota
+	// ToneAllow permits only this request.
+	ToneAllow
+	// ToneGrant permits beyond this request, such as for the session or in policy.
+	ToneGrant
+	// ToneRefuse declines the request.
+	ToneRefuse
+)
+
 type Choice struct {
 	ID                     int
 	Label                  string
 	Approve, Session, Deny bool
+	Tone                   ChoiceTone
 	Outcome                string
 }
 type Approval struct {

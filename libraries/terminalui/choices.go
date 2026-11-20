@@ -19,8 +19,8 @@ type ChoiceListView struct {
 	Rows                      []ChoiceRow
 	Selected                  int
 	Query, Selection, Problem string
-	// Marker, when set, colors a pointer before the selected row instead of
-	// banding it with Selection, as docked panels mark their choice.
+	// Marker, when set, colors a pointer and the label of the selected row
+	// instead of banding it with Selection, as docked panels mark their choice.
 	Marker  string
 	Loading bool
 }
@@ -68,6 +68,9 @@ func (l *ChoiceListLayout) Draw(frame []string, width, first, visible int, v Cho
 			prefix = "› "
 		}
 		text := prefix + choiceHighlight(label, v.Query)
+		if i == v.Selected && v.Marker != "" {
+			text = prefix + v.Marker + choiceHighlight(label, v.Query) + Reset
+		}
 		if description != "" && width-(columns+4) >= 24 {
 			text += strings.Repeat(" ", max(0, columns-ansi.StringWidth(label))+2) + Dim + description + Reset
 		}

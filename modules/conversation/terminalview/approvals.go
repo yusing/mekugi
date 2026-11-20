@@ -83,7 +83,7 @@ func Approvals(d prompt.ApprovalDockView, p *terminalui.Painter, layout *Approva
 		rows = append(rows, "")
 	}
 	for i, choice := range v.Choices {
-		rows = append(rows, ansi.Truncate(choicePointer(accent, i == v.Selected)+fmt.Sprintf("%d. %s", i+1, promptText(choice.Label)), inner, "…"))
+		rows = append(rows, ansi.Truncate(choiceLine(accent, choice.Tone, i == v.Selected, i+1, promptText(choice.Label)), inner, "…"))
 	}
 	if spaced {
 		rows = append(rows, "")
@@ -95,12 +95,27 @@ func Approvals(d prompt.ApprovalDockView, p *terminalui.Painter, layout *Approva
 	return rows[:min(len(rows), height)]
 }
 
-// choicePointer marks the selected choice of a docked panel.
-func choicePointer(accent string, selected bool) string {
+// choiceLine numbers a docked panel's choice behind a pointer on the selected
+// one. Toned choices keep their color so risky ones stand apart; a neutral
+// choice takes the accent while selected.
+func choiceLine(accent string, tone prompt.ChoiceTone, selected bool, number int, label string) string {
+	pointer, color := "  ", ""
 	if selected {
-		return accent + "❯" + terminalui.Reset + " "
+		pointer, color = accent+"❯"+terminalui.Reset+" ", accent
 	}
-	return "  "
+	switch tone {
+	case prompt.ToneAllow:
+		color = terminalui.Green
+	case prompt.ToneGrant:
+		color = terminalui.Amber
+	case prompt.ToneRefuse:
+		color = terminalui.Red
+	}
+	line := fmt.Sprintf("%d. %s", number, label)
+	if color != "" {
+		line = color + line + terminalui.Reset
+	}
+	return pointer + line
 }
 
 // panelKeys lists a docked panel's keys as one dim row, wrapping when narrow.

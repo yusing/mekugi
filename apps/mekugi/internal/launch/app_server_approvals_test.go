@@ -645,7 +645,14 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			u.Turn = "turn"
 			tc.setup(t, u)
 			rows, _ := u.testMainFrame(tc.width, 20, 0)
-			assertNativeUISnapshot(t, "native-"+tc.name, rows)
+			if !u.approvals.Open {
+				// The collapsed banner shows no choices, and the running status
+				// it leaves visible shimmers with wall time.
+				assertNativeUISnapshot(t, "native-"+tc.name, rows)
+				return
+			}
+			// Choice colors are only visible to an ANSI capture.
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/native-"+tc.name+".txt", append(rows, "plain after dock"), tc.width)
 		})
 	}
 }

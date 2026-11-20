@@ -12,7 +12,7 @@
 "    \x1b[2mKeep files, or revert captured edits from this turn onward, including descendants. Conflicts\x1b[m    "
 "    \x1b[2mstop the rewind.\x1b[m                                                                                "
 "                                                                                                    "
-"  \x1b[38;2;86;212;221m❯\x1b[m Keep edits                                                                                      "
+"  \x1b[38;2;86;212;221m❯\x1b[m \x1b[38;2;86;212;221mKeep edits\x1b[m                                                                                      "
 "    Revert 2 captured changes                                                                       "
 "                                                                                                    "
 "  \x1b[2m↑/↓ choose · enter select · esc cancel\x1b[m                                                            "

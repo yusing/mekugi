@@ -1,20 +1,21 @@
-└ Run git push origin main · Pending Approval
-
-
-
-
-
-
-  ── Run this command? ───────────────────────────────────────────── 1 of 2 ──
-    git push origin main
-    in app
-    Reason: Publish the release branch.
-  ❯ 1. Yes, proceed
-    2. Yes, and don't ask again for commands that start with `git push`
-    3. No, continue without running it
-  1–3 choose · type deny with reason · enter confirm · esc hide
-
-approving · turn waiting
-────────────────────────────────────────────────────────────────────────────────
-❯  
-────────────────────────────────────────────────────────────────────────────────
+"\x1b[2m└ \x1b[38;5;214;22;1mRun\x1b[m \x1b[38;2;210;168;255mgit\x1b[m push origin main\x1b[2m · \x1b[38;5;214;22mPending Approval\x1b[m                                   "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  \x1b[38;2;86;212;221m── \x1b[39;1mRun this command?\x1b[m \x1b[38;2;86;212;221m─────────────────────────────────────────────\x1b[m \x1b[2m1 of 2\x1b[m \x1b[38;2;86;212;221m──\x1b[m  "
+"    git push origin main                                                        "
+"    \x1b[2min app\x1b[m                                                                      "
+"    \x1b[2mReason: Publish the release branch.\x1b[m                                         "
+"  \x1b[38;2;86;212;221m❯\x1b[m \x1b[38;5;114m1. Yes, proceed\x1b[m                                                             "
+"    \x1b[38;5;214m2. Yes, and don't ask again for commands that start with `git push`\x1b[m         "
+"    \x1b[38;5;203m3. No, continue without running it\x1b[m                                          "
+"  \x1b[2m1–3 choose · type deny with reason · enter confirm · esc hide\x1b[m                 "
+"                                                                                "
+"approving · turn waiting                                                        "
+"\x1b[2m────────────────────────────────────────────────────────────────────────────────\x1b[m"
+"\x1b[38;2;86;212;221m❯ \x1b[39;7m \x1b[m                                                                             "
+"\x1b[2m────────────────────────────────────────────────────────────────────────────────\x1b[m"
+"plain after dock                                                                "

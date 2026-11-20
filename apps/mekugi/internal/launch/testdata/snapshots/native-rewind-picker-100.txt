@@ -12,7 +12,7 @@
 "    \x1b[2mRewind removes this turn and later conversation. Next, choose whether to keep or revert\x1b[m         "
 "    \x1b[2mcaptured edits.\x1b[m                                                                                 "
 "                                                                                                    "
-"  \x1b[38;2;86;212;221m❯\x1b[m Implement the parser     \x1b[2mRewind immediately before this turn\x1b[m                                    "
+"  \x1b[38;2;86;212;221m❯\x1b[m \x1b[38;2;86;212;221mImplement the parser\x1b[m     \x1b[2mRewind immediately before this turn\x1b[m                                    "
 "    Change the error format  \x1b[2mRewind immediately before this turn\x1b[m                                    "
 "                                                                                                    "
 "  \x1b[2m↑/↓ choose · enter select · esc cancel\x1b[m                                                            "

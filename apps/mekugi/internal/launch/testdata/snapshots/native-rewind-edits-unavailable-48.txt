@@ -13,6 +13,6 @@
 "    \x1b[2mis unavailable. Keep edits leaves files\x1b[m     "
 "    \x1b[2munchanged.\x1b[m                                  "
 "                                                "
-"  \x1b[38;2;86;212;221m❯\x1b[m Keep edits                                  "
+"  \x1b[38;2;86;212;221m❯\x1b[m \x1b[38;2;86;212;221mKeep edits\x1b[m                                  "
 "                                                "
 "  \x1b[2m↑/↓ choose · enter select · esc cancel\x1b[m        "
