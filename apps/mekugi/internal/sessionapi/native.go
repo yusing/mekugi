@@ -18,8 +18,6 @@ import (
 // contains no renderer, source store, host connection or execution capability.
 // Draft and prompt-editor contents are removed at the publication boundary.
 type NativeFrame struct {
-	DiffOpen          *NativeDiffOpen               `json:"diff_open,omitempty"`
-	FileOpen          *NativeFileOpen               `json:"file_open,omitempty"`
 	Processes         []sessionpresentation.Process `json:"processes"`
 	CompletionCatalog uint64                        `json:"completionCatalog"`
 	CompletionTarget  conversation.EditorTarget     `json:"completionTarget"`
@@ -99,8 +97,6 @@ func (e NativeEvent) Target() NativeTarget {
 // NativeOperation uses existing semantic intents, not terminal keys. Exactly
 // one operation is admitted by transport; its owner applies ordinary policy.
 type NativeOperation struct {
-	Viewer       *NativeViewerLease                       `json:"viewer,omitzero"`
-	Navigate     *NativeAgentSelection                    `json:"navigate,omitzero"`
 	StopProcess  *sessionpresentation.Process             `json:"stopProcess,omitzero"`
 	SaveDraft    *string                                  `json:"saveDraft,omitzero"`
 	Completion   *NativeEditorInput                       `json:"completion,omitzero"`
@@ -245,7 +241,6 @@ type NativeEffect struct {
 	Presentation *NativePresentationEffect
 	Deliveries   []sessionpresentation.ActivityDelivery
 	Notification *NativeDesktopNotification
-	Navigate     *NativeNavigation
 	Reattach     *string
 }
 
@@ -285,45 +280,7 @@ func (e NativeEffect) RecoveryDraft() *composer.Draft {
 	return e.Restore
 }
 
-type NativeViewerLease struct {
-	Revision        uint64
-	Expires         int64 // Absolute Unix milliseconds; delayed delivery never renews a lease.
-	DiffOpenExpires int64
-	FileOpenExpires int64
-}
-
-// NativeFileOpen is the latest selection, scoped to one native attachment.
-// Paths are literal absolute names; locations are one-based inclusive lines.
-type NativeFileOpen struct {
-	ID    uint64 `json:"id"`
-	Path  string `json:"path"`
-	First int    `json:"first,omitzero"`
-	Last  int    `json:"last,omitzero"`
-}
-
-// NativeDiffOpen retains the exact clicked edit. Source stays in the server;
-// companions acquire bounded lines through native/content.
-type NativeDiffOpen struct {
-	ID     uint64 `json:"id"`
-	Path   string `json:"path"`
-	Title  string `json:"title"`
-	Source string `json:"-"`
-}
-
-type NativeNavigation struct {
-	Activation uint64
-	Displayed  string
-	Thread     sessionpresentation.Thread
-}
-
-type NativeAgentSelection struct {
-	Activation uint64
-	Displayed  string
-	Agent      string
-}
-
 type NativePresentationEffect struct {
-	Viewer                                           *NativeViewerLease
 	LiveHidden, InterruptLocked, PredictionsDisabled bool
 }
 
@@ -405,7 +362,7 @@ func (f NativeFrame) withoutEditors() NativeFrame {
 
 func (o NativeOperation) valid() bool {
 	count := 0
-	for _, present := range []bool{o.Viewer != nil, o.Navigate != nil, o.SaveDraft != nil, o.Completion != nil, o.Preferences != nil, o.Focused != nil, o.Command != nil, o.Composer != nil, o.Menu != nil, o.Resume != nil,
+	for _, present := range []bool{o.SaveDraft != nil, o.Completion != nil, o.Preferences != nil, o.Focused != nil, o.Command != nil, o.Composer != nil, o.Menu != nil, o.Resume != nil,
 		o.Panel != nil, o.Display != nil, o.Interrupt != nil, o.StopProcess != nil,
 		o.Side != nil, o.BTW != nil, o.Answers != nil,
 		o.Approval != nil, o.Output != nil, o.DetailOutput != nil, o.Details != nil,

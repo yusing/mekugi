@@ -274,16 +274,3 @@ func StartNative(ctx context.Context, client *http.Client, base string, start Na
 	}
 	return openNativeSubscription(ctx, client, base, "native/start", RPCParams{Body: data})
 }
-
-// Activate records the completed physical-terminal handoff. Sequence allocation
-// precedes asynchronous dispatch, so reordered handlers cannot undo a newer view.
-func (c *NativeConnection) Activate(ctx context.Context, pid int, sequence uint64) error {
-	body, _ := json.Marshal(&NativeActivation{PID: pid, Sequence: sequence})
-	return c.scope.rpc.Call(ctx, "native/activate", RPCParams{Subscription: c.subscription.ID, Body: body}, nil)
-}
-
-// PublishHeader updates only this connection's completed physical association.
-func (c *NativeConnection) PublishHeader(ctx context.Context, pid int, sequence, revision uint64, header sessionpresentation.FrontendHeader) error {
-	body, _ := json.Marshal(&NativeActivation{PID: pid, Sequence: sequence, HeaderRevision: revision, Header: &header})
-	return c.scope.rpc.Call(ctx, "native/activate", RPCParams{Subscription: c.subscription.ID, Body: body}, nil)
-}

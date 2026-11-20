@@ -176,7 +176,6 @@ type nativeClientCall struct {
 }
 
 type nativeClient struct {
-	frontendActive         bool
 	ctx                    context.Context
 	workers                sync.WaitGroup
 	connection             *sessionapi.NativeConnection
@@ -366,9 +365,6 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 		editors: make(map[[2]string]*composer.Editor), images: make(map[string]bool),
 	}
 	runtime.start(c, stdout)
-	if c.event.Attachment != "" {
-		runtime.activateFrontend(c)
-	}
 	c.renderer.terminal.Frame.Images = new(terminalui.ImageFrame)
 	defer runtime.close()
 	defer runtime.previews.close()
@@ -418,9 +414,6 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 					runtime.decode(key, time.Now())
 				case now := <-tick.C:
 					runtime.drainKeys(keys, now)
-					if c.renderer.terminal.Shell.SetExternalPanes(now.Before(runtime.viewerExpiry)) {
-						c.dirty = true
-					}
 					if c.advancePresentation(now) {
 						c.dirty = true
 					}
@@ -457,7 +450,6 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 							c.links.request(c.ctx, painted.Source, painted.FileLinkDemands)
 							runtime.previews.request(runtime.ctx, source, painted.ImageDemands)
 							c.dirty = false
-							runtime.publishHeader(c)
 							receipt := sessionapi.NativeNoticeReceipt{Claim: c.renderer.frame.Notice, Attachment: painted.Notices.Attachment, Feedback: painted.Notices.Feedback, Composer: painted.Notices.Composer, Content: painted.Notices.Content}
 							c.stageReceipt(&receipt)
 						}

@@ -184,8 +184,6 @@ func TestNativeServerAcceptance(t *testing.T) {
 		}
 	}
 	await("Mekugi", "❯", "Main • ")
-	send("native first input\r")
-	await("offline host response 1")
 	transport := sessionapi.ControlTransport(socket)
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
@@ -194,6 +192,29 @@ func TestNativeServerAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rpc.Close()
+	// Main can paint a draft before the runtime is ready to submit it.
+	events := serverRPCSubscribe(t, rpc, "main")
+	ready, cancelReady := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancelReady()
+	for {
+		event, err := events.Next(ready)
+		if err != nil {
+			t.Fatalf("waiting for Main to accept input: %v", err)
+		}
+		var frame struct {
+			Input *sessionapi.Input `json:"input"`
+		}
+		if err := json.Unmarshal(event.Data, &frame); err != nil {
+			t.Fatal(err)
+		}
+		if frame.Input != nil && frame.Input.Reason == "" {
+			break
+		}
+	}
+	events.Close()
+	cancelReady()
+	send("native first input\r")
+	await("offline host response 1")
 	input := func(text string) {
 		t.Helper()
 		serverRPCCall(t, rpc, "session/input", "main", sessionapi.InputRequest{Text: text})

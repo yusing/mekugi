@@ -413,33 +413,30 @@ func TestUISnapshotRunningProcessesInline(t *testing.T) {
 		if detail {
 			terminalTest(u).outputKey("\r")
 		}
-		for _, external := range []bool{false, true} {
-			u.shell.Shell.SetExternalPanes(external)
-			if err := u.testPaint(io.Discard, 100, 32); err != nil {
-				t.Fatal(err)
-			}
-			terminal := terminalTest(u)
-			frame, err := terminal.Frame.Render(t.Context(), terminal.frameInput())
-			if err != nil || len(frame.Demands) != 0 {
-				t.Fatalf("render: %v, demands: %v", err, frame.Demands)
-			}
-			rows, _ := terminalsession.Screen(100, 32, frame.Rows, -1, -1)
-			text := ansi.Strip(strings.Join(rows, "\n"))
-			title := "Background"
-			if detail {
-				title = "Status: running"
-			}
-			panelRow := -1
-			for i, row := range rows {
-				if strings.Contains(ansi.Strip(row), title) {
-					panelRow = i
-				}
-			}
-			if terminal.Main.ComposerRect.H != 0 || panelRow < 0 || strings.Contains(text, "[×]") {
-				t.Fatalf("process surface or hidden composer not rendered as expected: %s", text)
-			}
-			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/running-processes-inline-%t-%t.txt", detail, external), append(rows, "plain"), 100)
+		if err := u.testPaint(io.Discard, 100, 32); err != nil {
+			t.Fatal(err)
 		}
+		terminal := terminalTest(u)
+		frame, err := terminal.Frame.Render(t.Context(), terminal.frameInput())
+		if err != nil || len(frame.Demands) != 0 {
+			t.Fatalf("render: %v, demands: %v", err, frame.Demands)
+		}
+		rows, _ := terminalsession.Screen(100, 32, frame.Rows, -1, -1)
+		text := ansi.Strip(strings.Join(rows, "\n"))
+		title := "Background"
+		if detail {
+			title = "Status: running"
+		}
+		panelRow := -1
+		for i, row := range rows {
+			if strings.Contains(ansi.Strip(row), title) {
+				panelRow = i
+			}
+		}
+		if terminal.Main.ComposerRect.H != 0 || panelRow < 0 || strings.Contains(text, "[×]") {
+			t.Fatalf("process surface or hidden composer not rendered as expected: %s", text)
+		}
+		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/running-processes-inline-%t-false.txt", detail), append(rows, "plain"), 100)
 	}
 }
 
@@ -518,7 +515,6 @@ func TestRunningProcessesOutputViewport(t *testing.T) {
 
 func TestRunningProcessesInlineHeight(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.shell.Shell.SetExternalPanes(true)
 	processNotify(t, u, "main", "cmd", "sleep 30", "inProgress")
 	appServerTestKeys(t, u, "/ps\r")
 	output := func(delta string) {

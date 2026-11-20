@@ -39,9 +39,6 @@ func ReadPreferences(data jsontext.Value) (Preferences, error) {
 func (s *Shell) Preferences(main *Main) Preferences {
 	s.Clamp()
 	state := Preferences{Focus: s.Focus, Split: s.Split, DiffOpen: s.DiffOpen}
-	if s.ExternalPanes {
-		state.Focus = s.externalFocus
-	}
 	// The roster sheet is transient; Main stands in for it.
 	if state.Focus == 3 {
 		state.Focus = 0
@@ -61,9 +58,6 @@ func (s *Shell) RestorePreferences(state Preferences, main *Main) {
 	s.Focus, s.Split, s.DiffOpen = state.Focus, state.Split, state.DiffOpen
 	if s.Focus == 2 || s.Focus == 3 || s.Focus == 1 && !s.DiffOpen {
 		s.Focus = 0
-	}
-	if s.ExternalPanes {
-		s.externalFocus, s.Focus = s.Focus, 0
 	}
 	if main != nil {
 		main.InterruptLocked = state.InterruptLocked

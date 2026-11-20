@@ -82,9 +82,6 @@ type detailFiles struct {
 	selected     string
 	file         *activitypresentation.DetailFile
 	copyFilePath func(string)
-	externalFile bool
-	openFile     func(string, int, int)
-	openDiff     func(activitypresentation.DetailPage)
 	textOnly     bool // Remote-human links retain the text-only file contract.
 }
 
@@ -134,7 +131,6 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 	results := make(chan markdownFileResult, 2)
 	u.fileReads = results
 	images := !u.textOnly
-	external := u.externalFile
 	go func(slot chan struct{}) {
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
@@ -150,7 +146,7 @@ func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, 
 		var data []byte
 		if err == nil && !info.Mode().IsRegular() {
 			result.copyPath = true
-		} else if err == nil && !external {
+		} else if err == nil {
 			loading := result
 			loading.classified = true
 			results <- loading
@@ -197,12 +193,6 @@ func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment
 		}
 		u.closeOutput()
 		return true, result.path
-	}
-	if u.openFile != nil {
-		open := u.openFile
-		u.closeOutput()
-		open(result.path, result.first, result.last)
-		return true, ""
 	}
 	u.pendingFile = false
 	return u.finishMarkdownFile(session, result), ""
@@ -328,7 +318,6 @@ func (u *detailFiles) stopFileRead() {
 	u.fileReads = nil
 	u.pendingFile = false
 	u.copyFilePath = nil
-	u.openFile = nil
 }
 
 func (u *detailFiles) openTerminalMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, source *sessionpresentation.ActivitySource, terminal *terminalsession.Attachment, view *activityui.View, target string) bool {

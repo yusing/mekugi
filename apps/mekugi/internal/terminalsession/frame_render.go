@@ -103,9 +103,6 @@ func (in FrameInput) Status() ShellStatus {
 	if skills := in.displayedSkills(); len(skills) > 0 {
 		status.Skills = activityui.SkillLabel(skills)
 	}
-	if in.Shell.ExternalPanes {
-		status.LiveCount = 0
-	}
 	if side := v.Side; side != nil && v.SideThread.ID != "" {
 		status.SideLabel, status.SideSelected = side.Label, v.Displayed == v.SideThread
 	}
@@ -156,11 +153,11 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	caller := view.Displayed.Caller
 	transcript := in.displayedTranscript()
 	transcript.ImageDemands, transcript.ImagePlacements = nil, nil
-	mainEdit := !shell.ExternalPanes && !in.LiveHidden && (slices.Contains(in.Live.Callers(), caller) || caller == "/root" && len(in.Live.Callers()) > 0)
+	mainEdit := !in.LiveHidden && (slices.Contains(in.Live.Callers(), caller) || caller == "/root" && len(in.Live.Callers()) > 0)
 	in.Agents.Hits = nil
 	// The roster sheet needs subagents; it closes when the last one leaves.
 	summary := in.Agents.RosterSummary()
-	if shell.Focus == 3 && (!summary.Children || shell.ExternalPanes) {
+	if shell.Focus == 3 && !summary.Children {
 		shell.Focus = 0
 	}
 	plan := shell.Plan(width, height)
@@ -266,15 +263,9 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		if view.Displayed.ID == view.Main.ID && summary.Children && summary.Cost != usage.Cost {
 			usage.Total = summary.Cost
 		}
-		// The workspace shows on the second stat line, which external panes
-		// omit.
-		workspace := ""
-		if shell.ExternalPanes {
-			workspace = view.SourceWorkspace()
-		}
-		content.Stats = []string{captionLine(view.Caption, workspace, usage, width)}
-		if !shell.ExternalPanes {
-			content.Stats = append(content.Stats, shell.StatLine(in.Status(), width, height-1))
+		content.Stats = []string{
+			captionLine(view.Caption, usage, width),
+			shell.StatLine(in.Status(), width, height-1),
 		}
 	}
 	out.Rows = shell.Compose(plan, content)

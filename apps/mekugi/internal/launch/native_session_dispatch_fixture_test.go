@@ -253,7 +253,7 @@ func insertImage(attached *attachedPresentation, terminal *terminalsession.Attac
 	pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, side, attached.hooks.nativeImages)
 }
 
-// Herdr's Codex detector consumes the same OSC 0 activity markers as Codex.
+// The terminal receives Codex-compatible OSC 0 activity markers.
 // Source: codex-rs/tui/src/chatwidget/status_surfaces.rs:28:43@1cc7e236
 // TERMINAL_TITLE_SPINNER_FRAMES and TERMINAL_TITLE_ACTION_REQUIRED_TEXT.
 func (n *nativeNotifications) writeTerminalTitle(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, workspace, main string, questions *prompt.Questions, approvals *prompt.Approvals, busy bool, now time.Time) {

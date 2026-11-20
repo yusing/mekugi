@@ -40,11 +40,6 @@ func runWrap(routerArgs, args []string) int {
 		routerArgs = append(slices.Clone(routerArgs), "custom-provider")
 	}
 	native := interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
-	if native {
-		if err := exposeHerdrCodex(); err != nil {
-			fmt.Fprintln(os.Stderr, "mekugi: Herdr agent hint:", err)
-		}
-	}
 	signals := []os.Signal{syscall.SIGTERM}
 	_, headless := headlessCommand(args)
 	if native || headless {

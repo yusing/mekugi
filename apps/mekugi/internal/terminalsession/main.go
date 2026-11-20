@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -264,16 +262,14 @@ const (
 type captionUsage struct{ Tokens, Cost, Total string }
 
 // captionLine is the first stat line, at the screen bottom: model, context
-// bar, cost, tokens, contributed items such as throughput, an optional
-// workspace, then account usage, as unlabeled separated segments.
-// Narrow panes abbreviate the workspace to a sixth of the pane, drop context
+// bar, cost, tokens, contributed items such as throughput, then account usage.
+// Narrow panes drop context
 // tokens, then items, the total cost, tokens and usage, shorten the context
 // to its percentage, drop the cost, then shorten the model, and finally drop
 // the context.
-func captionLine(c sessionpresentation.Caption, workspace string, usage captionUsage, width int) string {
+func captionLine(c sessionpresentation.Caption, usage captionUsage, width int) string {
 	const indent, sep = "  ", " | "
 	inner := max(0, width-1-len(indent))
-	cwd := strings.ReplaceAll(textsanitize.Safe(workspace, false), "\n", " ")
 	model := c.Model
 	if model != "" && c.Effort != "" {
 		model += " (" + c.Effort + ")"
@@ -326,9 +322,6 @@ func captionLine(c sessionpresentation.Caption, workspace string, usage captionU
 		}
 		// Contributed items such as throughput follow the token figures.
 		parts = append(parts, items...)
-		if cwd != "" {
-			parts = append(parts, captionWorkspace+cwd+terminalui.Reset)
-		}
 		if len(limits) > 0 {
 			parts = append(parts, strings.Join(limits, " "))
 		}
@@ -336,11 +329,6 @@ func captionLine(c sessionpresentation.Caption, workspace string, usage captionU
 		return line, ansi.StringWidth(line)
 	}
 	line, used := paint()
-	full := cwd
-	if used > inner && cwd != "" {
-		cwd = pathterminal.Truncate(full, max(inner-(used-ansi.StringWidth(cwd)), width/6, 8))
-		line, used = paint()
-	}
 	if used > inner && len(context) > 2 {
 		level = 1
 		line, used = paint()
@@ -379,11 +367,6 @@ func captionLine(c sessionpresentation.Caption, workspace string, usage captionU
 	}
 	if used > inner {
 		level = len(context) - 1
-		line, used = paint()
-	}
-	// Later reductions can leave room for more of an abbreviated workspace.
-	if cwd != full && used < inner {
-		cwd = pathterminal.Truncate(full, ansi.StringWidth(cwd)+inner-used)
 		line, _ = paint()
 	}
 	return indent + ansi.Truncate(line, inner, "…") + terminalui.Reset

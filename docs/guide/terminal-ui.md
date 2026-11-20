@@ -141,37 +141,8 @@ conversation. In the transcript, Esc resumes following. Sheet rows show active t
 round trips, throughput, usage, estimated API cost, and composed captured edits; Main's
 row is omitted because the stat lines carry its facts. Usage/rates survive resume while
 retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
-Herdr is optional; redirected sessions keep Codex input/output. See
+Redirected sessions keep Codex input/output. See
 [activity details](../../modules/activity/CONTRACT.md).
-
-## Herdr app panels
-
-A Herdr app layout with Mekugi panels shows the roster across the bottom and
-saved changes and live edits in its right-hand diff pane. The panels follow the
-active Herdr space, including spaces on another machine. Selecting an
-attachable agent switches that space's Mekugi terminal transcript and composer; each thread
-keeps its draft. Herdr's ordinary agents sidebar remains separate.
-
-With capable companion panels, local file links open in the Files sidebar and
-edit details open in the diff pane, including an original-diff fallback when no
-saved entry exists. Otherwise Mekugi keeps its ordinary dialogs.
-
-While the native panels are connected, Mekugi hides its duplicate Agents sheet,
-diff pane, live-edit dock and second stat line. Disconnecting the panels restores the terminal
-layout without changing saved pane preferences or stopping the session.
-
-The companion removes Mekugi's blue terminal frame and its padding, while its
-native status mod retains the pane identity, full session title, loaded skills,
-pending-question count and terminal scroll/new-line indicators. Hover the title
-for its full text; open the skills control for the full loaded-skill list.
-Standalone terminals retain their ordinary framing.
-
-Each execution machine needs matching Mekugi client, shared-server and helper
-builds, and the Herdr layout needs the matching native mods. After a protocol
-upgrade, restart the shared server and reopen its clients. Let active work finish
-first: server shutdown ends running work. The panels read captured Mekugi changes, independently
-of the Git pane's working-tree changes. See the [native panel integration](../../apps/mekugi/internal/herdr/SPEC.md)
-for integration details.
 
 ## Output dialog
 

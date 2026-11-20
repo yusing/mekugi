@@ -27,8 +27,7 @@ import (
 	"github.com/creack/pty"
 )
 
-// Exercise the actual terminal bytes, not only the notification helper. Herdr
-// observes these sequences after Codex has finished its app-server turn.
+// Exercise the actual terminal bytes after Codex finishes its app-server turn.
 func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 	codex, err := exec.LookPath("codex")
 	if err != nil {

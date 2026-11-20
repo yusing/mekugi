@@ -146,9 +146,8 @@ with the session total when subagents add to it), `↑ input ↓ output` tokens,
 Main's throughput, and the account's rate-limit window use (labeled `5h` and
 `Weekly`). Narrow lines drop context tokens, throughput, the total cost,
 input/output tokens, rate limits, the context bar and the cost before shortening
-the model. With external panes, which hide the second line, the first also shows
-the working directory before the rate limits and abbreviates it first. The full
-workspace and rate-limit resets remain available in `/status`.
+the model. The full workspace and rate-limit resets remain available in
+`/status`.
 
 The second reads `<thread> • ◐ N • ✓ N • ! N • title • directory • ↓ roster • → diff • ^E view`:
 the displayed thread (bold accent), working, finished and failed subagent counts
@@ -168,8 +167,8 @@ position, the Diff hint, the roster hint and the remaining counts leave in that
 order. A long title takes room from the directory before it truncates. Clicking
 roster, Diff, Main, skills or One-off acts like its key, and each underlines
 under the pointer. Ten rows
-keep both lines; shorter terminals keep the second; external panes keep only the
-first. Playback replaces the second with its control bar.
+keep both lines; shorter terminals keep the second. Playback replaces the second
+with its control bar.
 
 The terminal adapts these controls to [conversation drafts](../../../../modules/conversation/SPEC.md)
 and [session operations](../sessioncontrol/SPEC.md#interactive-operations):
@@ -290,13 +289,6 @@ waiting turns and parked drafts from approval waiting. Host delivery remains
 separate from painted readiness and offline prompt tests.
 
 ## Panes
-
-Connected [native Herdr panels](../herdr/SPEC.md) temporarily replace the terminal's
-Agents sheet, saved Diff and live-preview surfaces. Their presentation lease leaves saved
-pane preferences intact and hides the outer pane frame, its cell insets and the
-second stat line, returning that space to Main. The actual companion connection,
-not a terminal environment name, selects this presentation. Ordinary framed
-terminal geometry returns when the lease ends.
 
 Main starts at full width. Diff toggles the auxiliary column open and closed.
 The auxiliary view comes from composition. Without a contribution, its selector,
@@ -565,7 +557,7 @@ muted text and agent-color variants without changing semantic or syntax colors.
 Codex-compatible titles mark Main's running work; pending questions, approvals and
 unsupported requests take precedence with `Action Required`, even when hidden.
 Settled Main turns remove the spinner; child completion does not settle Main.
-Herdr owns seen/unseen completion indicators. Exit and external editing clear titles.
+Exit and external editing clear titles.
 
 The active live terminal also reports OSC 7501 lifecycle status with application
 identity `mekugi`: `blocked` when action is required, otherwise `working` while
@@ -581,8 +573,8 @@ Only successful live Main completion and eligible approval, synchronous-input or
 async-question events notify; pending questions take priority and history/duplicates
 do not notify. [Notifications](../../../../modules/notifications/SPEC.md#desktop-eligibility)
 owns eligibility. Focus reports never become composer input. `osc9` emits OSC 9,
-`bel` emits BEL, and `auto` uses OSC 9 in supported terminals/Herdr, otherwise BEL;
-tmux outside Herdr receives passthrough-wrapped OSC 9. Text is generic. Failures
+`bel` emits BEL, and `auto` uses OSC 9 in supported terminals, otherwise BEL;
+tmux receives passthrough-wrapped OSC 9. Text is generic. Failures
 report auxiliary notices; disabling desktop signals leaves lifecycle titles and
 status active.
 

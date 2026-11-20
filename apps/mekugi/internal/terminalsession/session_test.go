@@ -116,56 +116,7 @@ func TestPaneGeometryAndDividerIntent(t *testing.T) {
 	}
 }
 
-func TestShellExternalPanesKeepOnlyCaption(t *testing.T) {
-	for _, size := range []struct{ width, height, stats int }{{1, 1, 0}, {20, 7, 1}, {80, 10, 2}, {120, 24, 2}} {
-		s := Shell{RosterLabel: "Agents"}
-		standalone := s.Plan(size.width, size.height)
-		s.StatLine(ShellStatus{Agent: "Main", SideLabel: "Side"}, size.width, size.height-1)
-		if standalone.Stats != size.stats || standalone.Left.H != size.height-size.stats {
-			t.Fatalf("%+v: standalone plan %+v", size, standalone)
-		}
-		if size.width >= 20 && len(s.Targets) != 1 {
-			t.Fatalf("%+v: standalone side target missing: %+v", size, s.Targets)
-		}
-		s.SetExternalPanes(true)
-		if s.Targets != nil {
-			t.Fatalf("%+v: stale stat targets", size)
-		}
-		active := s.Plan(size.width, size.height)
-		if want := min(1, size.stats); active.Stats != want || active.Left.H != size.height-want {
-			t.Fatalf("%+v: external plan %+v", size, active)
-		}
-		s.SetExternalPanes(false)
-		if restored := s.Plan(size.width, size.height); restored != standalone {
-			t.Fatalf("%+v: standalone stat rows not restored", size)
-		}
-	}
-}
-
-func TestMainUsesFullPaneBoundsWithOrWithoutCompanion(t *testing.T) {
-	for _, size := range []struct{ width, height int }{{1, 1}, {20, 7}, {80, 8}, {120, 24}} {
-		s := Shell{RosterLabel: "Agents"}
-		standalone := s.Plan(size.width, size.height)
-		s.SetExternalPanes(true)
-		plan := s.Plan(size.width, size.height)
-		if plan.DiffFramed {
-			t.Fatalf("%+v: native companion retained frame", size)
-		}
-		if plan.Left.W >= 4 && plan.Left.H > 0 && plan.Main != plan.Left {
-			t.Fatalf("%+v: retained frame inset: main=%+v outer=%+v", size, plan.Main, plan.Left)
-		}
-		if size.width == 1 && plan.Main != (Rect{}) {
-			t.Fatal("unpaintable main became a hit target")
-		}
-		s.SetExternalPanes(false)
-		if restored := s.Plan(size.width, size.height); restored != standalone {
-			t.Fatalf("%+v: standalone frame geometry not restored", size)
-		}
-	}
-}
-
-// The roster sheet is transient: saving, restoring and ending a pane lease
-// all return to Main rather than reopening it.
+// The roster sheet is transient: saving and restoring returns to Main.
 func TestRosterSheetFocusIsNotPersisted(t *testing.T) {
 	s := Shell{RosterLabel: "Agents"}
 	s.Focus = 3
@@ -175,11 +126,5 @@ func TestRosterSheetFocusIsNotPersisted(t *testing.T) {
 	s.RestorePreferences(Preferences{Focus: 3}, nil)
 	if s.Focus != 0 {
 		t.Fatalf("restored focus = %d", s.Focus)
-	}
-	s.Focus = 3
-	s.SetExternalPanes(true)
-	s.SetExternalPanes(false)
-	if s.Focus != 0 {
-		t.Fatalf("focus after lease = %d", s.Focus)
 	}
 }

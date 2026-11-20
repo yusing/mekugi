@@ -185,24 +185,15 @@ func (c *nativeClient) applyEffects() {
 			c.notice = "Preset loaded · edit before sending"
 		}
 		if preferences := effect.Presentation; preferences != nil {
-			if preferences.Viewer != nil {
-				if c.runtime != nil {
-					c.runtime.viewerLease(*preferences.Viewer, time.Now())
-				}
-			} else {
-				c.renderer.terminal.LiveHidden = preferences.LiveHidden
-				c.renderer.terminal.Main.InterruptLocked = preferences.InterruptLocked
-				c.renderer.terminal.Main.PredictionsDisabled = preferences.PredictionsDisabled
-			}
+			c.renderer.terminal.LiveHidden = preferences.LiveHidden
+			c.renderer.terminal.Main.InterruptLocked = preferences.InterruptLocked
+			c.renderer.terminal.Main.PredictionsDisabled = preferences.PredictionsDisabled
 		}
 		if len(effect.Deliveries) > 0 {
 			c.streams.Deliver(effect.Deliveries, c.renderer.terminal.Transcript, c.renderer.terminal.Agents)
 		}
 		if notification := effect.Notification; notification != nil {
 			c.notifications.notify(&c.feedback, nil, notification.Event, notification.Message)
-		}
-		if navigation := effect.Navigate; navigation != nil && c.event.Frame.View.Displayed.ID == navigation.Displayed && (c.runtime == nil || c.runtime.active == c && c.runtime.activation == navigation.Activation) {
-			c.displayThread(navigation.Thread)
 		}
 		if effect.Reattach != nil {
 			c.reattach = *effect.Reattach

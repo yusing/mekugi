@@ -23,7 +23,7 @@ func TestUISnapshotMainWorkspacePaths(t *testing.T) {
 			if !strings.Contains(line, "project • ") || width < 80 && strings.Contains(line, "/home/dev") {
 				t.Fatalf("workspace suffix displaced by prefix: %q", line)
 			}
-			if strings.Contains(ansi.Strip(captionLine(view.Caption, "", captionUsage{}, width)), "-project") {
+			if strings.Contains(ansi.Strip(captionLine(view.Caption, captionUsage{}, width)), "-project") {
 				t.Fatal("workspace stayed on the caption line")
 			}
 			if view.DisplayedWorkspace != workspace {
@@ -57,30 +57,9 @@ func TestStatLineWorkspaceOrderAndDrops(t *testing.T) {
 	}
 }
 
-// External panes omit the second stat line, so the caption keeps the
-// workspace there.
-func TestMainComposerWorkspace(t *testing.T) {
-	for _, workspace := range []string{"/main", "/child", "/work/界/long-project"} {
-		for _, width := range []int{12, 20, 36, 80} {
-			view := sessionpresentation.View{Info: sessionpresentation.MainInfo{Workspace: "/main"}, DisplayedWorkspace: workspace, Caption: sessionpresentation.Caption{Model: "model"}}
-			line := ansi.Strip(captionLine(view.Caption, view.SourceWorkspace(), captionUsage{}, width))
-			// The caption leaves the last column free so it never wraps.
-			if ansi.StringWidth(line) > width-1 {
-				t.Fatalf("workspace %q, width %d: %q", workspace, width, line)
-			}
-			if width == 80 && line != "  model | 0% | "+workspace {
-				t.Fatalf("model, context and workspace order: %q", line)
-			}
-			if width >= 36 && !strings.Contains(line, "model | 0% | ") {
-				t.Fatalf("workspace displaced model or usage: %q", line)
-			}
-		}
-	}
-}
-
 func TestMainComposerTierWithoutModel(t *testing.T) {
-	view := sessionpresentation.View{DisplayedWorkspace: "/workspace", Caption: sessionpresentation.Caption{Tier: "flex"}}
-	if line := ansi.Strip(captionLine(view.Caption, view.SourceWorkspace(), captionUsage{}, 80)); line != "  flex | 0% | /workspace" {
+	caption := sessionpresentation.Caption{Tier: "flex"}
+	if line := ansi.Strip(captionLine(caption, captionUsage{}, 80)); line != "  flex | 0%" {
 		t.Fatalf("tier without model: %q", line)
 	}
 }
@@ -101,7 +80,7 @@ func TestMainComposerCaptionUsage(t *testing.T) {
 		{16, "  model | 25%"},
 	} {
 		usage := captionUsage{Tokens: "↑ 12K ↓ 3K", Cost: "$0.12", Total: "$0.48"}
-		if got := ansi.Strip(captionLine(caption, "", usage, tc.width)); got != tc.want {
+		if got := ansi.Strip(captionLine(caption, usage, tc.width)); got != tc.want {
 			t.Errorf("width %d: caption = %q, want %q", tc.width, got, tc.want)
 		}
 	}

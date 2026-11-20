@@ -58,7 +58,7 @@ func (u *appServerUI) recallInput(backward bool) {
 }
 
 func (u *appServerUI) publishedTitle() string {
-	return u.shell.FrameInput(presentationTime(u.clock), mekugiVersion()).Header().Title
+	return u.shell.FrameInput(presentationTime(u.clock), mekugiVersion()).Status().Title
 }
 
 // statLineNames reports whether the second stat line, which leads with the

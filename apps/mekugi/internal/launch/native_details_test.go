@@ -19,7 +19,6 @@ import (
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	changehistory "github.com/yusing/mekugi/modules/changehistory/presentation"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -388,90 +387,6 @@ func TestNativeOutputDisclosureWithCapturedEdits(t *testing.T) {
 				t.Fatal("stale edit replaced selection")
 			}
 		})
-	}
-}
-
-func TestNativeEditDetailsUseCapableCompanion(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	u.startSession("main", "/workspace")
-	seq := u.attached.source.LastSeq + 1
-	u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
-		{Seq: seq, Agent: "Main", Kind: "tool", Text: "Edit `a.go` +1 -1 · apply_patch\n\nEdit `b.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "edit", EditPages: []activity.Value{
-			{Kind: "op", Verb: "Edit", Path: "a.go", Lang: "diff", Code: "@@ -1 +1 @@\n-wrong\n+other\n"},
-			{Kind: "op", Verb: "Edit", Path: "b.go", Lang: "diff", Code: "@@ -1 +1 @@\n-before\n+exact\n"},
-		}}},
-	}})
-	_, first, second := nativeDetailTestViews(t, u)
-	request := sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: seq, Path: "b.go", Edit: true}
-	first.viewerLease.DiffOpenExpires = time.Now().Add(time.Minute).UnixMilli()
-	for id := uint64(1); id <= 2; id++ {
-		if refusal := first.openDetails(request); refusal != "" {
-			t.Fatal(refusal)
-		}
-		frame := nativeDetailFrame(first)
-		if frame.Details != nil || frame.DiffOpen == nil || frame.DiffOpen.ID != id || frame.DiffOpen.Path != "b.go" || frame.DiffOpen.Source != "@@ -1 +1 @@\n-before\n+exact\n" {
-			t.Fatalf("companion did not receive exact repeated selection: %+v", frame.DiffOpen)
-		}
-	}
-	if second.diffOpen != nil {
-		t.Fatal("selection crossed physical viewers")
-	}
-	first.attached.childSource.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
-		{Seq: seq, Agent: "worker", Kind: "tool", Text: "Edit `b.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "child", Item: "child-edit", EditPages: []activity.Value{
-			{Kind: "op", Verb: "Edit", Path: "b.go", Lang: "diff", Code: "@@ -1 +1 @@\n-before\n+child\n"},
-		}}},
-	}})
-	request.Agent = true
-	if refusal := first.openDetails(request); refusal != "" {
-		t.Fatal(refusal)
-	}
-	if frame := nativeDetailFrame(first); frame.Details != nil || frame.DiffOpen.ID != 3 || !strings.Contains(frame.DiffOpen.Source, "+child") {
-		t.Fatal("child click used the main edit")
-	}
-	request.Agent = false
-	for _, mode := range []string{"standalone", "expired", "remote"} {
-		first.viewerLease.DiffOpenExpires = 0
-		first.remoteHuman = mode == "remote"
-		if mode == "expired" {
-			first.viewerLease.DiffOpenExpires = time.Now().Add(-time.Second).UnixMilli()
-		}
-		if mode == "remote" {
-			first.viewerLease.DiffOpenExpires = time.Now().Add(time.Minute).UnixMilli()
-		}
-		if refusal := first.openDetails(request); refusal != "" {
-			t.Fatal(refusal)
-		}
-		frame := nativeDetailFrame(first)
-		if frame.Details == nil || frame.DiffOpen == nil || frame.DiffOpen.ID != 3 {
-			t.Fatalf("%s did not retain the dialog", mode)
-		}
-	}
-}
-
-func TestNativeMovedEditOpensCanonicalCompanionPath(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	u.startSession("main", "/workspace")
-	seq := u.attached.source.LastSeq + 1
-	const path = "snapshots/updated.txt"
-	const display = "snapshots/{previous.txt.new=>updated.txt}"
-	const code = "diff --git a/snapshots/previous.txt.new b/snapshots/updated.txt\nsimilarity index 100%\nrename from snapshots/previous.txt.new\nrename to snapshots/updated.txt\n"
-	u.attached.source.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
-		{Seq: seq, Agent: "Main", Kind: "tool", Text: "Moved `" + display + "` +0 -0", Native: &sessionpresentation.NativeItem{
-			Thread: "main", Item: "move", CapturedEdit: &changehistory.Receipt{Thread: "main", Calls: []string{"move"}, Pages: []activitydetail.Page{
-				{ID: "move:1", Verb: "Move", Path: path, DisplayPath: display, Language: "diff", Code: code},
-			}},
-		}},
-	}})
-	_, view, _ := nativeDetailTestViews(t, u)
-	view.viewerLease.DiffOpenExpires = time.Now().Add(time.Minute).UnixMilli()
-	for _, selected := range []string{display, path} {
-		if refusal := view.openDetails(sessionapi.NativeDetailRequest{Kind: sessionapi.NativeEntryDetails, Source: seq, Path: selected, Edit: true}); refusal != "" {
-			t.Fatal(refusal)
-		}
-		frame := nativeDetailFrame(view)
-		if frame.Details != nil || frame.DiffOpen == nil || frame.DiffOpen.Path != path || frame.DiffOpen.Source != code {
-			t.Fatalf("move click did not preserve its canonical destination and original source: %+v", frame.DiffOpen)
-		}
 	}
 }
 

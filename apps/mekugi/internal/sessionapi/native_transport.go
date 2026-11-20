@@ -67,11 +67,6 @@ type nativeView struct {
 	target          requestTarget
 	startup         string
 	version         sessionpresentation.Version
-	displayed       sessionpresentation.Thread
-	caller          string
-	diffOpen        *NativeDiffOpen
-	fileOpen        *NativeFileOpen
-	changed         chan struct{}
 	ctx             context.Context
 	cancel          context.CancelCauseFunc
 	queue           *nativePublications
@@ -446,26 +441,6 @@ func (n *Native) Publish(id string, frame NativeFrame) error {
 		v.reviewBytes, v.reviewLimited = reviewBytes, reviewLimited
 		v.main, v.agents, v.family, v.state = main, agents, family, state
 		v.started, v.version = true, frame.View.Version
-		caller := frame.View.Displayed.Caller
-		if caller == "" || frame.View.Displayed.ID == frame.View.Main.ID && frame.View.Info.Caller != "" {
-			caller = frame.View.Info.Caller
-		}
-		fileChanged := (v.fileOpen == nil) != (frame.FileOpen == nil) || v.fileOpen != nil && frame.FileOpen != nil && *v.fileOpen != *frame.FileOpen
-		diffChanged := (v.diffOpen == nil) != (frame.DiffOpen == nil) || v.diffOpen != nil && frame.DiffOpen != nil && v.diffOpen.ID != frame.DiffOpen.ID
-		v.diffOpen = nil
-		if frame.DiffOpen != nil {
-			v.diffOpen = new(*frame.DiffOpen)
-		}
-		metadataChanged := diffChanged || v.displayed != frame.View.Displayed || v.caller != caller || frame.Switch != nil || fileChanged
-		v.fileOpen = nil
-		if frame.FileOpen != nil {
-			v.fileOpen = new(*frame.FileOpen)
-		}
-		v.displayed, v.caller = frame.View.Displayed, caller
-		if v.changed != nil && metadataChanged {
-			close(v.changed)
-			v.changed = make(chan struct{})
-		}
 		if frame.Switch != nil {
 			v.target = requestTarget{thread, frame.View.Info.Workspace}
 			v.startup = ""

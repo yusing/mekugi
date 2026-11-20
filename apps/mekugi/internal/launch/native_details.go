@@ -1,8 +1,6 @@
 package launch
 
 import (
-	"time"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
@@ -53,21 +51,9 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 	if request.Agent {
 		source = v.attached.childSource
 	}
-	v.files.openDiff = nil
-	if !v.remoteHuman && time.Now().UnixMilli() < v.viewerLease.DiffOpenExpires {
-		v.files.openDiff = func(page activity.DetailPage) {
-			id := uint64(1)
-			if v.diffOpen != nil {
-				id = v.diffOpen.ID + 1
-			}
-			v.diffOpen = &sessionapi.NativeDiffOpen{ID: id, Path: page.Path, Title: page.Verb, Source: page.Code}
-			v.files.closeOutput()
-		}
-	}
 	switch request.Kind {
 	case sessionapi.NativeFileDetails:
 		v.files.textOnly = v.remoteHuman
-		v.files.externalFile = !v.remoteHuman && time.Now().UnixMilli() < v.viewerLease.FileOpenExpires
 		copyReservation := v.reserveFileCopy()
 		if copyReservation == nil {
 			return "Clipboard delivery capacity is exhausted."
@@ -84,15 +70,6 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 		v.files.cancelRead = func() { cancel(); copyReservation.release() }
 		v.files.copyFilePath = func(path string) {
 			copyReservation.add(sessionapi.NativeEffect{Thread: v.thread, Clipboard: new(path)})
-		}
-		if v.files.externalFile {
-			v.files.openFile = func(path string, first, last int) {
-				id := uint64(1)
-				if v.fileOpen != nil {
-					id = v.fileOpen.ID + 1
-				}
-				v.fileOpen = &sessionapi.NativeFileOpen{ID: id, Path: path, First: first, Last: last}
-			}
 		}
 	case sessionapi.NativeErrorDetails:
 		v.files.openErrorDetails(&v.attached, source)
@@ -165,10 +142,6 @@ func (v *nativeSessionView) openDetails(request sessionapi.NativeDetailRequest) 
 }
 
 func (v *nativeSessionView) publishDetails(frame *sessionapi.NativeFrame) {
-	defer func() {
-		frame.FileOpen = v.fileOpen
-		frame.DiffOpen = v.diffOpen
-	}()
 	select {
 	case result := <-v.files.fileReads:
 		v.files.loadedMarkdownFile(&v.attached.session, v.attached.presentation, v.attached.cwd, result)

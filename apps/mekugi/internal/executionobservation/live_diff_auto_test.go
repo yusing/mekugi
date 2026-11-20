@@ -9,7 +9,6 @@ import (
 )
 
 func TestSavedReviewScopeEligibility(t *testing.T) {
-	t.Setenv("HERDR_ENV", "")
 	t.Setenv("PATH", t.TempDir())
 
 	for _, test := range []struct {

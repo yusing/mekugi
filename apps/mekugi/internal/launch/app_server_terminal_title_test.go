@@ -153,8 +153,8 @@ func TestNativeTerminalStatusLifecycle(t *testing.T) {
 	c := nativeTestPromptClient(u)
 	out := new(bytes.Buffer)
 	c.notifications.out = out
-	// Lifecycle reporting starts before notification settings and without Herdr
-	// environment detection, and survives disabled desktop notifications.
+	// Lifecycle reporting starts before notification settings and survives
+	// disabled desktop notifications.
 	c.notifications.settings.Events = []byte("false")
 	now := time.Unix(0, 0)
 	write := func(actionRequired, busy bool, want string) {

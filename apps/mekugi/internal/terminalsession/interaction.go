@@ -195,13 +195,9 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 					yield(InputEffect{Details: &DetailInput{Version: in.Main.session.Version, View: in.displayedTranscript(), Kind: ErrorDetails}})
 				}
 			case "e":
-				if !in.Shell.ExternalPanes {
-					in.Live.NextBatch(in.Main.session.Displayed.Caller)
-				}
+				in.Live.NextBatch(in.Main.session.Displayed.Caller)
 			case "r":
-				if !in.Shell.ExternalPanes {
-					in.Live.ScrollBatch(in.Main.session.Displayed.Caller, 'r')
-				}
+				in.Live.ScrollBatch(in.Main.session.Displayed.Caller, 'r')
 			default:
 				in.Resize(key)
 			}
@@ -382,7 +378,7 @@ const statParent byte = 'p'
 
 func (in FrameInput) arrowAction(key string) byte {
 	shell := in.Shell
-	if in.Main == nil || shell.ExternalPanes || in.Playback || !in.EmptyComposer() {
+	if in.Main == nil || in.Playback || !in.EmptyComposer() {
 		return 0
 	}
 	switch key {

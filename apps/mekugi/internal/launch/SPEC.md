@@ -254,9 +254,6 @@ process termination may leave temporary files. The override never changes user
 configuration. [Execution evidence](../../../../backends/codex/SPEC.md#execution-evidence)
 owns receipt interpretation and its independence from this temporary source.
 
-In a Herdr-managed terminal, launch sets invocation-local `HERDR_AGENT=codex`
-before starting session integration. It invokes no Herdr commands or pane APIs.
-
 Interactive reasoning shortcuts `--low`, `--medium`, `--high`, `--xhigh`, `--max`
 and `--ultra` become invocation-local reasoning-effort overrides. They also work
 after `headless`; option operands, non-session subcommands and content after `--`
@@ -303,9 +300,6 @@ idle owner can stay up to let running delegates finish; reattaching to the live
 owner cancels that deferred release. After release, resume opens saved history.
 Explicit `/detach` and a lost connection close only the renderer without prompting
 or stopping execution.
-The [native Herdr adapter](../herdr/SPEC.md) observes the client's active attachment
-through its existing server connection. Native effects route panel selection and
-temporary pane visibility through the same reattachment, draft and renderer owners.
 Automatically started servers retain bounded private stderr and process-exit
 evidence through a detached supervisor, independent of client lifetime. Collection
 failure does not block startup; [process diagnostics](../../../../modules/diagnostics/SPEC.md#detached-server-evidence)

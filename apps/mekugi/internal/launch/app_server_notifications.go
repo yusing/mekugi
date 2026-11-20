@@ -188,14 +188,14 @@ func (n *nativeNotifications) notify(feedback *noticepresentation.Model, clock f
 		case "ghostty", "iterm.app", "kitty", "warpterminal", "wezterm":
 			method = "osc9"
 		}
-		if os.Getenv("TERM") == "xterm-kitty" || os.Getenv("HERDR_ENV") == "1" {
+		if os.Getenv("TERM") == "xterm-kitty" {
 			method = "osc9"
 		}
 	}
 	sequence := "\a"
 	if method == "osc9" {
 		sequence = "\x1b]9;" + message + "\a"
-		if os.Getenv("TMUX") != "" && os.Getenv("HERDR_ENV") != "1" {
+		if os.Getenv("TMUX") != "" {
 			sequence = "\x1bPtmux;" + strings.ReplaceAll(sequence, "\x1b", "\x1b\x1b") + "\x1b\\"
 		}
 	}

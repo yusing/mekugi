@@ -82,11 +82,6 @@ Invocation overrides leave Codex configuration unchanged.
   Missing evidence and provisional previews are labeled. Past sessions can be
   [inspected](docs/contributing/development.md#inspect-a-session) or
   [replayed](docs/contributing/development.md#replay-a-session).
-- **Herdr app panels.** See the agent roster, saved changes and live edits in
-  [native Herdr panels](docs/guide/terminal-ui.md#herdr-app-panels) that follow
-  the active space, select an agent to switch its transcript and composer, and
-  open file links or edit details in capable companion panels.
-
 ### Work from anywhere
 
 - **Server-owned threads.** Threads keep running when the terminal or browser
@@ -178,7 +173,7 @@ imports, and `--oss` remains unsupported. See [launch details](docs/guide/launch
 
 ## Guides
 
-- [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents sheet, output dialogs and optional Herdr app panels.
+- [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents sheet, and output dialogs.
 - [Sessions and recovery](docs/guide/sessions.md): resume, fork, rewind, compaction and replay storage.
 - [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file` and `mchanges`.
 - [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards and secure GPG passphrase entry.

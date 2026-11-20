@@ -23,8 +23,6 @@ type Shell struct {
 	Layout         Layout
 	Targets        []StatTarget
 	StatHover      byte // Action of the stat-line target under the pointer.
-	ExternalPanes  bool
-	externalFocus  int
 }
 
 // StatTarget is a clickable stat-line segment.
@@ -41,25 +39,6 @@ const (
 	StatSkills byte = 's'
 	StatSide   byte = 'b'
 )
-
-// SetExternalPanes leases presentation only, preserving saved preferences.
-func (s *Shell) SetExternalPanes(active bool) bool {
-	if s.ExternalPanes == active {
-		return false
-	}
-	if active {
-		s.externalFocus = s.Focus
-		s.Focus = 0
-		s.StopDrag()
-		s.Targets = nil
-	} else if s.Focus = s.externalFocus; s.Focus == 3 {
-		// The roster sheet is transient and opens only over an empty
-		// composer, so restoring panes returns to Main.
-		s.Focus = 0
-	}
-	s.ExternalPanes = active
-	return true
-}
 
 type ShellPlan struct {
 	Layout
@@ -87,14 +66,9 @@ type ShellStatus struct {
 	PlaybackBar                             string
 }
 
-// statRows keeps both stat lines unless Main would fall below eight rows;
-// external panes keep only the session caption.
+// statRows keeps both stat lines unless Main would fall below eight rows.
 func (s *Shell) statRows(height int) int {
 	switch {
-	case s.ExternalPanes && height >= 3:
-		return 1
-	case s.ExternalPanes:
-		return 0
 	case height >= 10:
 		return 2
 	case height >= 3:
@@ -106,12 +80,8 @@ func (s *Shell) statRows(height int) int {
 func (s *Shell) Plan(width, height int) ShellPlan {
 	s.Clamp()
 	width, height = max(1, width), max(1, height)
-	panes := s.Panes
-	if s.ExternalPanes {
-		panes.Focus, panes.DiffOpen = 0, false
-	}
 	stats := s.statRows(height)
-	layout, left, right, diffFramed := panes.Geometry(width, height, stats)
+	layout, left, right, diffFramed := s.Panes.Geometry(width, height, stats)
 	return ShellPlan{layout, left, right, width, height, stats, diffFramed}
 }
 
@@ -369,9 +339,6 @@ func (s *Shell) Clamp() {
 }
 
 func (s *Shell) Select(pane int) {
-	if s.ExternalPanes && (pane == 1 || pane == 3) {
-		return
-	}
 	if pane == 1 && s.Auxiliary == nil || pane == 3 && s.RosterLabel == "" {
 		return
 	}

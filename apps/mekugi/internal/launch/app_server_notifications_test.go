@@ -14,7 +14,7 @@ import (
 
 func notificationTestOutput(t *testing.T, u *appServerUI) *bytes.Buffer {
 	t.Helper()
-	for _, key := range []string{"TERM_PROGRAM", "TERM", "TMUX", "HERDR_ENV"} {
+	for _, key := range []string{"TERM_PROGRAM", "TERM", "TMUX"} {
 		t.Setenv(key, "")
 	}
 	out := new(bytes.Buffer)
@@ -24,16 +24,14 @@ func notificationTestOutput(t *testing.T, u *appServerUI) *bytes.Buffer {
 }
 
 func TestAppServerNotificationMethods(t *testing.T) {
-	for _, tc := range []struct{ name, method, program, term, tmux, herdr, want string }{
+	for _, tc := range []struct{ name, method, program, term, tmux, want string }{
 		{name: "OSC9", method: "osc9", want: "\x1b]9;Agent turn complete\a"},
 		{name: "BEL", method: "bel", program: "kitty", want: "\a"},
 		{name: "auto fallback", method: "auto", want: "\a"},
 		{name: "default fallback", want: "\a"},
 		{name: "auto terminal", method: "auto", program: "WezTerm", want: "\x1b]9;Agent turn complete\a"},
 		{name: "auto kitty TERM", method: "auto", term: "xterm-kitty", want: "\x1b]9;Agent turn complete\a"},
-		{name: "auto herdr", method: "auto", herdr: "1", want: "\x1b]9;Agent turn complete\a"},
 		{name: "tmux", method: "osc9", tmux: "/tmp/tmux", want: "\x1bPtmux;\x1b\x1b]9;Agent turn complete\a\x1b\\"},
-		{name: "herdr inside tmux", method: "auto", tmux: "/tmp/tmux", herdr: "1", want: "\x1b]9;Agent turn complete\a"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
@@ -42,7 +40,6 @@ func TestAppServerNotificationMethods(t *testing.T) {
 			t.Setenv("TERM_PROGRAM", tc.program)
 			t.Setenv("TERM", tc.term)
 			t.Setenv("TMUX", tc.tmux)
-			t.Setenv("HERDR_ENV", tc.herdr)
 			u.notifications.notify(&u.attached.feedback, u.clock, "agent-turn-complete", "Agent turn complete")
 			if out.String() != tc.want {
 				t.Fatalf("notification = %q, want %q", out.String(), tc.want)

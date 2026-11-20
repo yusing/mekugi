@@ -433,11 +433,11 @@ func TestInheritedFrontendEnvironment(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, previous := range []string{"", "/user/startup"} {
-			environment := []string{"PATH=" + root + "/bin:" + root + "/vcs:" + root + "/sudo:" + root + "-neighbor/bin:/usr/bin", "BASH_ENV=" + startup, userBashEnvEnvironment + "=" + previous, "KEEP=value", "TERM=dumb", "TMUX=outer", "HERDR_ENV=1", "MEKUGI_BASE_URL=outer", "MEKUGI_RUNTIME_DIR=outer"}
+			environment := []string{"PATH=" + root + "/bin:" + root + "/vcs:" + root + "/sudo:" + root + "-neighbor/bin:/usr/bin", "BASH_ENV=" + startup, userBashEnvEnvironment + "=" + previous, "KEEP=value", "TERM=dumb", "TMUX=outer", "MEKUGI_BASE_URL=outer", "MEKUGI_RUNTIME_DIR=outer"}
+			want := slices.Clone(environment)
 			for _, key := range []string{"CODEX_THREAD_ID", shellinstrumentation.Guard, shellinstrumentation.ShTrackerEnvironment, shellapproval.DirectoryEnvironment, shellinstrumentation.ItemEnvironment, shellinstrumentation.RealEnvironment} {
 				environment = append(environment, key+"=outer")
 			}
-			want := slices.Clone(environment[:9])
 			want = slices.Delete(want, 2, 3)
 			if marked {
 				want[0] = "PATH=" + root + "-neighbor/bin:/usr/bin"
@@ -450,7 +450,7 @@ func TestInheritedFrontendEnvironment(t *testing.T) {
 				t.Fatalf("marked=%v previous=%q: scrubbed=%q want=%q", marked, previous, got, want)
 			}
 			serverWant := slices.DeleteFunc(slices.Clone(want), func(entry string) bool {
-				return strings.HasPrefix(entry, "TERM=") || strings.HasPrefix(entry, "TMUX=") || strings.HasPrefix(entry, "HERDR_") || strings.HasPrefix(entry, "MEKUGI_BASE_URL=") || strings.HasPrefix(entry, "MEKUGI_RUNTIME_DIR=")
+				return strings.HasPrefix(entry, "TERM=") || strings.HasPrefix(entry, "TMUX=") || strings.HasPrefix(entry, "MEKUGI_BASE_URL=") || strings.HasPrefix(entry, "MEKUGI_RUNTIME_DIR=")
 			})
 			if got := serverEnvironment(environment); !slices.Equal(got, append(serverWant, "TERM=xterm-256color")) {
 				t.Fatalf("server environment=%q", got)

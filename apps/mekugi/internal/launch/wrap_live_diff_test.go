@@ -301,7 +301,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				}
 			}
 			workspace := t.TempDir()
-			herdrMarker := filepath.Join(dir, "herdr-invoked")
 			rpcMarker := filepath.Join(dir, "app-server-rpc")
 			t.Setenv("MEKUGI_AUTO_WRAP_PROCESS", "1")
 			t.Setenv("MEKUGI_AUTO_WRAP_HOOK_CHOICE", test.hookChoice)
@@ -321,8 +320,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("MEKUGI_AUTO_WRAP_WORKSPACE", workspace)
-			t.Setenv("MEKUGI_TEST_HERDR_MARKER", herdrMarker)
-			t.Setenv("HERDR_ENV", "")
 			t.Setenv("CODEX_HOME", t.TempDir())
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			if test.config != "" {
@@ -330,13 +327,10 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			}
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-			// Keep installed runtime tools such as Node.js available while placing
-			// a failing Herdr sentinel first, so the wrapper can prove it never
-			// invokes the pane manager.
+			// Keep installed runtime tools such as Node.js available.
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			for name, script := range map[string]string{
 				"mekugi-app-server": "#!/bin/sh\nexec '" + strings.ReplaceAll(os.Args[0], "'", "'\\''") + "' -test.run=^TestAutoWrapProcess$ -- codex \"$@\"\n",
-				"herdr":             "#!/bin/sh\nprintf 'invoked\\n' > \"$MEKUGI_TEST_HERDR_MARKER\"\nexit 97\n",
 			} {
 				if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0700); err != nil {
 					t.Fatal(err)
@@ -420,9 +414,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				if _, err := os.Lstat(filepath.Dir(string(data))); !os.IsNotExist(err) {
 					t.Fatalf("guard socket directory survived process exit: %s: %v", data, err)
 				}
-			}
-			if _, err := os.Stat(herdrMarker); !os.IsNotExist(err) {
-				t.Fatalf("wrapper invoked Herdr: %v", err)
 			}
 			if test.terminal {
 				// The second stat line leads with the painted "Main" label.

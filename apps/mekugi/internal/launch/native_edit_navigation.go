@@ -16,10 +16,6 @@ func (files *detailFiles) openActivityEdit(attached *attachedPresentation, sourc
 		if page.ID != selected {
 			continue
 		}
-		if page.Lang == "diff" && files.openDiff != nil {
-			files.openDiff(page)
-			return true
-		}
 		files.openDetailSelection(&attached.session, attached.presentation.View().Version, source, pages, false)
 		files.selected = selected
 		return true

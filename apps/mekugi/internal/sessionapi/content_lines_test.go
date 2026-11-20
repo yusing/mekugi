@@ -1,166 +1,16 @@
 package sessionapi
 
 import (
-	"bytes"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
-	changes "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 )
-
-func TestContentByteOffsetsPreserveLines(t *testing.T) {
-	for _, source := range []string{"", "\n", "one\n\ntwo\n\nthree\n", "日本語\nlast\n"} {
-		offset := uint64(0)
-		for offset < uint64(len(source)) {
-			page, err := linePage(source, offset)
-			if err != nil || !slices.Equal(page.Lines, strings.Split(strings.TrimSuffix(source[offset:], "\n"), "\n")) || page.Next != nil {
-				t.Fatalf("source=%q offset=%d page=%+v err=%v", source, offset, page, err)
-			}
-			offset += uint64(strings.IndexByte(source[offset:], '\n') + 1)
-		}
-		if page, err := linePage(source, offset); err != nil || len(page.Lines) != 0 || page.Next != nil {
-			t.Fatal("end offset changed")
-		}
-		if _, err := linePage(source, offset+1); err == nil {
-			t.Fatal("invalid offset admitted")
-		}
-	}
-	if _, err := linePage("line\n", 1); err == nil {
-		t.Fatal("offset inside a line admitted")
-	}
-	line := strings.Repeat("x", 128<<10)
-	source := line + "\n" + line + "\n"
-	first, err := linePage(source, 0)
-	if err != nil || len(first.Lines) != 1 || first.Next == nil || first.Lines[0] != line {
-		t.Fatalf("large row: %+v %v", first, err)
-	}
-	second, err := linePage(source, *first.Next)
-	if err != nil || len(second.Lines) != 1 || second.Next != nil || second.Lines[0] != line {
-		t.Fatal("large row continuation lost bytes")
-	}
-}
-
-func TestContentContinuationCostAndIndependentFrontends(t *testing.T) {
-	f := newFrontendFixture(t)
-	f.open(t, 401)
-	f.open(t, 402)
-	const rows = 10001
-	var input strings.Builder
-	fmt.Fprintf(&input, "--- a.go\n+++ a.go\n@@ -0,0 +%d @@\n", rows)
-	payload := strings.Repeat("a", 1024)
-	for i := range rows {
-		fmt.Fprintf(&input, "+%08d %s\n", i, payload)
-	}
-	text := input.String()
-	if len(text) <= 7<<20 {
-		t.Fatal("fixture does not exceed panel response budget")
-	}
-	file := changes.File{Path: "a.go", Chunks: []changes.Chunk{{Origin: changes.Origin{Caller: "/root"}, Review: diffmodel.RenderReviewFile("a.go", "a.go", "", "new\n")}}}
-	file.Chunks[0].Review.Diff = text
-	file.Origins = []changes.Origin{{Change: "capture", Caller: "/root", Source: "apply_patch"}}
-	review := &changes.ReviewView{Publication: changes.Publication{Files: []changes.File{file}, Unfiltered: map[string]changes.File{file.Key(): file}}, Revision: 1, Workspace: "/workspace", Coverage: "complete"}
-	if err := f.api.Publish(Frame{Session: Session{Thread: "thread", Workspace: "/workspace"}, Attachment: 1, Review: review}); err != nil {
-		t.Fatal(err)
-	}
-	f.api.mu.Lock()
-	ref := ContentReference{Attachment: f.api.readAttachment, Kind: "review", Revision: 1, Key: reviewIdentity(file.Key())}
-	f.api.mu.Unlock()
-	f.hub.mu.Lock()
-	frontends := map[int]*rpcConnection{}
-	for owner := range f.hub.connections {
-		if owner.frontend.pid != 0 {
-			frontends[owner.frontend.pid] = owner
-		}
-	}
-	f.hub.mu.Unlock()
-	rpc, err := OpenRPC(t.Context(), f.server.Client(), f.server.URL+NativeRPCPath, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rpc.Close()
-	read := func(pid int, offset uint64) Lines {
-		t.Helper()
-		body, _ := json.Marshal(NativeFrontendRequest{PID: pid, Instance: frontends[pid].frontend.instance, Content: &ref, Offset: &offset})
-		var wire jsontext.Value
-		if err := rpc.Call(t.Context(), "native/content", RPCParams{Body: body}, &wire); err != nil {
-			t.Fatal(err)
-		}
-		var result Lines
-		if err := json.Unmarshal(wire, &result); err != nil {
-			t.Fatal(err)
-		}
-		if bytes.Contains(wire, []byte(`"chunks"`)) || len(wire) > pageBytes+1024 {
-			t.Fatal("selected lines transferred full chunks or exceeded the page budget")
-		}
-		if offset == 0 && !slices.Equal(result.Origins, file.Origins) || offset != 0 && len(result.Origins) != 0 {
-			t.Fatal("initial selected lines lost origins or continuation repeated them")
-		}
-		return result
-	}
-	expected := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
-	var retained *selectedContent
-	var offset uint64
-	rowsRead := 0
-	pages := 0
-	for {
-		page := read(401, offset)
-		cached := frontends[401].frontend.selected
-		if cached == nil || cached.source == "" {
-			t.Fatal("large source was not retained")
-		}
-		if retained == nil {
-			retained = cached
-		} else if retained != cached {
-			t.Fatal("continuation recomposed selected source")
-		}
-		if !slices.Equal(page.Lines, expected[rowsRead:rowsRead+len(page.Lines)]) {
-			t.Fatalf("content changed at offset %d", offset)
-		}
-		rowsRead += len(page.Lines)
-		pages++
-		if pages == 2 {
-			other := read(402, 0)
-			if !slices.Equal(other.Lines, expected[:len(other.Lines)]) || frontends[402].frontend.selected == retained {
-				t.Fatal("physical frontends shared mutable selection")
-			}
-		}
-		if page.Next == nil {
-			break
-		}
-		if *page.Next <= offset {
-			t.Fatal("nonadvancing continuation")
-		}
-		offset = *page.Next
-	}
-	if rowsRead != len(expected) {
-		t.Fatal("continuation omitted rows")
-	}
-	// Complete HTTP resources still return the original public projection.
-	body, _ := json.Marshal(RPCParams{Thread: "thread", Body: mustJSON(t, ref)})
-	req, _ := http.NewRequestWithContext(t.Context(), "POST", f.server.URL+ResourcePath+"content", bytes.NewReader(body))
-	req.Header.Set(ProtocolHeader, ProtocolVersion)
-	response, err := f.server.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	var full ContentResult
-	if response.StatusCode != 200 || json.UnmarshalRead(response.Body, &full) != nil || full.Review == nil || full.Review.Chunks[0].Review.Diff != text {
-		t.Fatal("complete resource read changed")
-	}
-	if frontends[401].frontend.selected != retained {
-		t.Fatal("complete resource read evicted selected source")
-	}
-	t.Logf("%d retained bytes, %d rows, %d pages", len(text), rowsRead, pages)
-}
 
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
@@ -169,31 +19,6 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatal(err)
 	}
 	return data
-}
-
-func TestLiveContentReusesSelectedSourceAndRejectsReplacement(t *testing.T) {
-	s := NewLive()
-	frame := Frame{Session: Session{Thread: "thread", Workspace: "/workspace"}, Attachment: 1, Live: []preview.Preview{{ID: "live", Input: "--- live.go\n+++ live.go\n@@ -1 +1 @@\n-old\n+new\n"}}}
-	if err := s.Publish(frame); err != nil {
-		t.Fatal(err)
-	}
-	ref := ContentReference{Attachment: s.readAttachment, Kind: "live", Revision: s.contentVersions["live"], Key: "live"}
-	var cached *selectedContent
-	if _, failure := s.selectedContent(ref, 0, &cached); failure != nil {
-		t.Fatal(failure)
-	}
-	retained := cached
-	if _, failure := s.selectedContent(ref, uint64(strings.IndexByte(cached.source, '\n')+1), &cached); failure != nil || cached != retained {
-		t.Fatal("live source rebuilt")
-	}
-	frame.Live = slices.Clone(frame.Live)
-	frame.Live[0].Input += "+later\n"
-	if err := s.Publish(frame); err != nil {
-		t.Fatal(err)
-	}
-	if _, failure := s.selectedContent(ref, 1, &cached); failure == nil {
-		t.Fatal("stale live continuation admitted")
-	}
 }
 
 func TestLiveMetadataPageAvoidsSourceTransferAndDecoding(t *testing.T) {

@@ -11,10 +11,10 @@ The 32 MiB decoded-upload budget remains a required message constraint.
 Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients
 connect to `/api/native/control` over the private Unix socket; remote human
 clients use `/api/control` through the connector. Both select WebSocket
-subprotocol `mekugi.control.v8`. The socket retains kernel-confirmed same-user
+subprotocol `mekugi.control.v9`. The socket retains kernel-confirmed same-user
 peer admission, private filesystem permissions and listener/startup locks.
 
-The first request is `initialize` with `{"version":"8"}`. Remote clients also
+The first request is `initialize` with `{"version":"9"}`. Remote clients also
 supply `token`, consumed by the connector and never forwarded to the server.
 Initialization succeeds before any session data or operation is available.
 Observation requests may follow initialization on the ordered connection before
@@ -25,7 +25,7 @@ that sample to their local monotonic clock, independently of local wall time.
 The endpoint establishes authority; caller fields cannot select it. Remote
 connections cannot invoke native startup or native-only semantic operations.
 
-`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 8` on
+`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 9` on
 request and response. Missing/incompatible versions receive 409. WebSocket
 upgrades on the private socket also carry this header. Browser clients use the
 subprotocol and initialization version; the connector sets the private header.
@@ -68,13 +68,6 @@ acknowledgements cannot reactivate a retired subscription.
 | `view/attach` | Attach a per-view semantic publication stream |
 | `view/intent` | Existing semantic mutation body, retaining attachment and version |
 | `native/start` | Native invocation body plus its initial subscription; native endpoint only |
-| `native/activate` | Associate the physical frontend with its accepted native subscription |
-| `native/header` | Observe only that physical frontend's header, without a viewer lease |
-| `native/observe` | Observe that frontend's shared panel data and renew a viewer lease |
-| `native/resolve` | Resolve the frontend's current runtime for shared page reads |
-| `native/select` | Select an agent on the originating physical frontend |
-| `native/release` | Release a companion-panel viewer lease |
-| `native/content` | Read a published content reference for that frontend |
 | `subscription/cancel` | Release one subscription, leaving execution running |
 | `request/cancel` | Cancel pending request work; body contains the original `id` |
 | `publication/ack` | Acknowledge the current connection-local delivery ID |
@@ -141,7 +134,7 @@ published content reference and returns the complete content as JSON.
 `POST /api/resources/image` and `POST /api/resources/attachment-image` return
 raster bytes with their image Content-Type. These resource reads use separate
 HTTP requests, outside the control WebSocket. Private socket requests require
-`Mekugi-Protocol: 8`; connector requests also require `Authorization: Bearer TOKEN`
+`Mekugi-Protocol: 9`; connector requests also require `Authorization: Bearer TOKEN`
 and an admitted UI origin. Errors retain the RPC error shape and semantic HTTP
 status. Transfers share a separate aggregate resource budget through response delivery.
 Cancellation retires only the affected read, without ending execution.
@@ -385,80 +378,6 @@ discarding semantic effects. `notification` retains only the latest desktop wake
 Composer `Consumed` identifies a client that already took its submitted draft;
 known rejection restores that source rather than deleting text from a newer editor.
 
-### Native companion panels
-
-The `native/activate`, `native/header`, `native/observe`, `native/resolve`, `native/select`,
-`native/release` and `native/content` methods are native-endpoint-only.
-Activation names a subscription on the physical frontend's connection and supplies
-`{pid, sequence}` after an accepted initial frame or completed handoff. Increasing
-sequences keep a late activation from replacing a newer active attachment.
-
-Header-only companions use `native/header` with `pid` and an optional `after`
-cursor. An optional `instance` rejects a replaced frontend; omitting it discovers
-the current association, including after PID reuse. The response includes the
-physical identities, opaque `cursor` and current `header`, or `{available:false}`
-when that frontend is unavailable. Header absence clears previously shown facts.
-An unchanged read waits at most 18 seconds and returns the current header and cursor.
-This read neither acquires nor renews a viewer lease, creates panel publications,
-selects content, nor changes terminal panels, navigation, or file/Edit clicks.
-
-Panel requests supply `pid` and the observed connection `instance`. Initial
-observation may omit `instance`; absence returns `{available:false}`. Observation
-also supplies a `viewer`, with `after` and `attachment` for subsequent reads.
-It renews a 45-second viewer lease and waits up to 18 seconds for changed panel
-state. Observation follows completed frontend handoffs even when its supplied
-attachment is the preceding one. The response contains the connection instance, runtime `thread` or
-`startup`, native `attachment`, `activation`, `version`, `displayed` and `caller` identities,
-an opaque `cursor`, and `publication` using the shared session, roster, review,
-live and deferred-section shapes. Its separate `live` content reference binds
-selected preview reads. Runtime and displayed-thread identities are distinct.
-An unchanged timeout returns the same cursor and identities without `publication`
-or `live`; the consumer retains its previously acquired panel data.
-
-Observation responses advertise `file_open_supported: true`. Companions first
-observe without new request fields, then send `file_open: true` when support is
-advertised and they can open the custom Files sidebar. Omitted support means
-unsupported, allowing older helpers to retain dialogs without validation retries.
-This capability expires independently with that viewer's lease.
-While active, local file clicks publish optional `file_open: {id, path, first,
-last}` instead of a terminal dialog. `path` is a literal absolute filename;
-optional `first` and `last` are one-based inclusive lines. Resolution prefers an
-existing literal filename before interpreting a numeric colon suffix. The
-consumer opens the bare path on the observed machine, navigates to those lines,
-and owns read errors. Nonregular paths keep their clipboard behavior.
-
-File-open selection is latest-wins, not queued, and repeats in observations until
-replaced. Consumers deduplicate by instance, activation, attachment and selection
-ID. A new activation excludes selections already published by its destination,
-so returning to an attachment cannot reopen an old file. No active capable lease
-means ordinary standalone dialogs; remote-human views never publish this intent.
-
-Diff panes negotiate `diff_open_supported` / `diff_open: true` independently of
-file opening when they can reveal a selected edit, including from a hidden pane. The latest
-`diff_open: {id, path, title}` follows the same activation, deduplication and lease
-rules as file opening. Its path is the selected file's canonical path (the destination
-for moves), never a formatted move label. It represents the exact clicked diff, not cumulative review.
-Source is excluded from observations and terminal frames. `native/content` reads
-it with `{kind: "native-diff", attachment, revision: id, seq: activation}` and a
-byte `offset`, returning ordinary bounded `lines` and `next`. Replacement or stale
-attachment/activation rejects the read. Non-diff details retain the modal.
-
-Selection supplies `attachment`, `activation`, the observed `displayed` ID and
-the canonical `agent` name. Stale connection, activation, attachment or display
-identity fails instead of retargeting navigation. Release supplies the viewer and
-attachment; the viewer remains releasable after a handoff. Lease effects
-carry a revision and absolute expiry; delayed delivery cannot extend their
-lifetime. Expiry or final release restores the terminal's own panels.
-
-Page reads use `session/page` and its existing cursors. `native/content` supplies
-`content` with the published content reference. Omitting `offset` returns the
-ordinary complete content result; a numeric byte offset at a line boundary returns bounded `lines`
-and an optional numeric `next` offset. For saved review, offset zero also returns
-`origins` with the file's edit attribution; subsequent pages omit it.
-Saved-review caller filtering and content
-admission are shared with other Session API consumers. Each physical frontend
-retains its own selected source; helper connections borrow that state.
-
 ### Shared publications
 
 `session/subscribe` publishes `snapshot` and `patch` notifications whose data is:
@@ -532,8 +451,7 @@ selected caller's changes against other callers' captures as baseline. It never
 filters an all-callers diff after composition. Live metadata pages use `kind:live`
 with the published live reference's attachment and revision. They return preview
 identities, status and the first file's paths without raw input or diff bodies; `next` continues
-the page. Selected line reads use the live content reference with `key` set to
-the preview ID. Complete live resources retain their full source shape.
+the page. Complete live resources retain their full source shape.
 Oversized auxiliary sections remain available through explicit content references
 rather than silent truncation.
 

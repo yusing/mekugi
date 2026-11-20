@@ -168,7 +168,7 @@ func serverEnvironment(environment []string) []string {
 		if key == "TERM" {
 			terminal = value
 		}
-		if slices.Contains([]string{"MEKUGI_BASE_URL", "MEKUGI_RUNTIME_DIR", "TMUX", "TMUX_PANE", "TERM"}, key) || strings.HasPrefix(key, "HERDR_") {
+		if slices.Contains([]string{"MEKUGI_BASE_URL", "MEKUGI_RUNTIME_DIR", "TMUX", "TMUX_PANE", "TERM"}, key) {
 			continue
 		}
 		result = append(result, entry)
