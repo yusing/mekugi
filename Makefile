@@ -44,6 +44,17 @@ HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
 	TestAppServerExecTrackNativeCodexSandbox
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= @snapshots
+# Go's test cache keys on environment values tests read. Drop values a Mekugi
+# launch sets per session, including its frontend PATH entries, so each session
+# reuses cached results and tests never write to the live session.
+TEST_SESSION_ENV := BASH_ENV CODEX_THREAD_ID CODEX_ROLLOUT_TRACE_ROOT MEKUGI_AX_OUTPUT \
+	MEKUGI_BASE_URL MEKUGI_CONTROL_SOCKET MEKUGI_EXEC_TRACK MEKUGI_SH_TRACKER \
+	MEKUGI_SUDO_DIRECTORY MEKUGI_UPDATE_UI_SNAPSHOTS MEKUGI_USER_BASH_ENV \
+	MEKUGI_VCS_GUARD_HOOK MEKUGI_VCS_ITEM
+TEST_ENV = env $(addprefix -u ,$(TEST_SESSION_ENV)) PATH="$$(case "$${BASH_ENV-}" in \
+	*/frontend-bash-env) printf '%s' "$$PATH" | awk -v RS=: -v ORS=: -v d="$${BASH_ENV%/*}" \
+		'$$0 != d && index($$0, d "/") != 1' | sed 's/:$$//' ;; \
+	*) printf '%s' "$$PATH" ;; esac)"
 
 install: workspace-check webui build-native
 	$(GO) install $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
@@ -137,7 +148,7 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
-	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(value TEST_FLAGS)
+	$(TEST_ENV) $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(value TEST_FLAGS)
 
 # Focused semantic owners; TEST_RUN and TEST_FLAGS pass through to test.
 test-saved-diff:
@@ -151,7 +162,7 @@ test-host:
 	@codex --version
 	@set -eu; \
 	pattern="^($$(printf '%s' '$(strip $(HOST_ACCEPTANCE_TESTS))' | tr ' ' '|'))$$"; \
-	if ! available="$$(env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) -tags=codex_e2e ./apps/mekugi/internal/launch -list "$$pattern")"; then \
+	if ! available="$$($(TEST_ENV) $(GO) test $(GO_BUILD_FLAGS) -tags=codex_e2e ./apps/mekugi/internal/launch -list "$$pattern")"; then \
 		printf '%s\n' "$$available"; exit 1; \
 	fi; \
 	for name in $(HOST_ACCEPTANCE_TESTS); do \
@@ -169,8 +180,8 @@ lint: workspace-check
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO_TEST_RUN) $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
+	$(TEST_ENV) $(GO_TEST_RUN) $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
 
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:
-	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
+	$(TEST_ENV) MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO_TEST_RUN) $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1

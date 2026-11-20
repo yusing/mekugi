@@ -21,7 +21,7 @@ make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/launc
 
 - `TEST_PACKAGES` defaults to `@workspace` (all `go.work` members); `TEST_RUN` and `TEST_FLAGS` pass through to `go test`. Set `RTK=` for raw Go output.
 - `TEST_PARALLEL` (default 32) overlaps process/PTY waits; keep env/cwd-mutating tests serial.
-- For raw `go test` inside an active Mekugi shell, run `env -u BASH_ENV -u MEKUGI_EXEC_TRACK` so live hooks/frontends do not intercept fixtures (`make test` already clears them).
+- Prefer `make test` inside an active Mekugi shell: it drops per-session variables and frontend `PATH` entries, so live hooks/frontends do not intercept fixtures and Go's test cache survives new sessions. Raw `go test` needs at least `env -u BASH_ENV -u MEKUGI_EXEC_TRACK`.
 - Tests neither generate assets nor install binaries. Interpreter/query fixtures need Node.js and `ripgrep`.
 - CI runs the offline suite on Linux amd64; other platforms run command/version checks.
 - Report wall time for full runs (cold build/race/live separately); do not rerun passing tests to chase the ~30s warm-cache target.
