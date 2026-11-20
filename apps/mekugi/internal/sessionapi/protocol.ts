@@ -1016,6 +1016,7 @@ export type Prompt_Choice = {
   "Approve": boolean;
   "Session": boolean;
   "Deny": boolean;
+  "Lasting": boolean;
   "Outcome": string;
 };
 
