@@ -303,7 +303,8 @@ func (b *bundle) event(payloads *payloadReader, event event) error {
 		}
 		if p.Status != "completed" || (tool.Tool != "exec_command" && tool.Tool != "write_stdin") {
 			tool.Status = p.Status
-			if p.Status == "completed" || p.Status == "failed" || p.Status == "cancelled" {
+			switch p.Status {
+			case "completed", "failed", "cancelled", "aborted":
 				tool.terminal = true
 			}
 			return nil

@@ -74,15 +74,25 @@ func TestV3LiveShardConfirmsNestedCalls(t *testing.T) {
 	}
 	runtimeResult := appendPayload("raw_payload:3", `{"exit_code":3}`)
 	appendEvent(`{"type":"tool_call_runtime_ended","tool_call_id":"shell","status":"failed","runtime_payload":` + runtimeResult + `}`)
-	patch := appendPayload("raw_payload:4", `{"tool_name":"apply_patch","tool_namespace":"functions","payload":{"type":"custom","input":"patch body"}}`)
+	const patchInvocation = `{"tool_name":"apply_patch","tool_namespace":"functions","payload":{"type":"custom","input":"patch body"}}`
+	patch := appendPayload("raw_payload:4", patchInvocation)
 	appendEvent(`{"type":"tool_call_started","tool_call_id":"patch","requester":{"type":"code_cell","runtime_cell_id":"cell"},"invocation_payload":` + patch + `}`)
 	appendEvent(`{"type":"tool_call_ended","tool_call_id":"patch","status":"completed"}`)
+	abortedPatch := appendPayload("raw_payload:5", patchInvocation)
+	appendEvent(`{"type":"tool_call_started","tool_call_id":"aborted-patch","requester":{"type":"code_cell","runtime_cell_id":"cell"},"invocation_payload":` + abortedPatch + `}`)
+	appendEvent(`{"type":"tool_call_ended","tool_call_id":"aborted-patch","status":"aborted"}`)
 	appendEvent(`{"type":"code_cell_ended","runtime_cell_id":"cell"}`)
 
 	// The frame is still open: both observations must work during the session.
 	cell := reader.ReadCell("thread", "call", "source")
+	if !cell.Ended() || cell.Pending() {
+		t.Fatal("aborted patch kept the ended cell pending")
+	}
 	if patch, ok := cell.Patch("patch body", 0); !ok || patch.CallID != "patch" || patch.Status != "completed" {
 		t.Fatalf("nested patch not confirmed: %+v, %t", patch, ok)
+	}
+	if patch, ok := cell.Patch("patch body", 1); !ok || patch.CallID != "aborted-patch" || patch.Status != "aborted" || patch.ExitCode != nil {
+		t.Fatalf("aborted patch status not retained: %+v, %t", patch, ok)
 	}
 	commands, ok := cell.Commands([]commandanalysis.Command{{Command: "exit 3"}}, "/work")
 	if !ok || len(commands) != 1 || commands[0].ExitCode == nil || *commands[0].ExitCode != 3 {
@@ -92,8 +102,8 @@ func TestV3LiveShardConfirmsNestedCalls(t *testing.T) {
 	// An omitted input could be an earlier occurrence of any call in that
 	// cell. Do not guess which occurrence ran, but keep the first cell.
 	appendEvent(`{"type":"code_cell_started","runtime_cell_id":"other","model_visible_call_id":"other-call","source_js":"other source"}`)
-	appendEvent(`{"type":"tool_call_started","tool_call_id":"unknown","requester":{"type":"code_cell","runtime_cell_id":"other"},"invocation_payload":{"raw_payload_id":"raw_payload:5","shard":null,"capture":{"status":"omitted","original_bytes":100}}}`)
-	otherPatch := appendPayload("raw_payload:6", `{"tool_name":"apply_patch","tool_namespace":"functions","payload":{"type":"custom","input":"patch body"}}`)
+	appendEvent(`{"type":"tool_call_started","tool_call_id":"unknown","requester":{"type":"code_cell","runtime_cell_id":"other"},"invocation_payload":{"raw_payload_id":"raw_payload:6","shard":null,"capture":{"status":"omitted","original_bytes":100}}}`)
+	otherPatch := appendPayload("raw_payload:7", patchInvocation)
 	appendEvent(`{"type":"tool_call_started","tool_call_id":"other-patch","requester":{"type":"code_cell","runtime_cell_id":"other"},"invocation_payload":` + otherPatch + `}`)
 	appendEvent(`{"type":"tool_call_ended","tool_call_id":"other-patch","status":"completed"}`)
 	appendEvent(`{"type":"code_cell_ended","runtime_cell_id":"other"}`)

@@ -157,13 +157,15 @@ func TestCodeModeLiteralPatchObservationInOrdinaryJavaScript(t *testing.T) {
 
 func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		yielded bool
-		change  bool
+		name, after string
+		yielded     bool
+		aborted     bool
 	}{
-		{name: "completed with effect", change: true},
+		{name: "completed with effect", after: "new"},
 		{name: "caught nested failure"},
-		{name: "yielded then completed", yielded: true, change: true},
+		{name: "yielded then completed", yielded: true, after: "new"},
+		{name: "aborted without effect", aborted: true},
+		{name: "aborted with partial effect", aborted: true, after: "partial"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -174,9 +176,19 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 				t.Fatal(err)
 			}
 			patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
+			source := "const patch = " + string(responses.MustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));"
 			call := map[string]any{
 				"type": "custom_tool_call", "id": "code-item", "call_id": "code-call",
-				"name": "exec", "input": "const patch = " + string(responses.MustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));", "status": "completed",
+				"name": "exec", "input": source, "status": "completed",
+			}
+			if test.aborted {
+				trace := newNativeTraceFixture(t)
+				thread := transform.shellThreadID
+				trace.start(thread, "runtime", "code-call", source)
+				trace.tool(thread, "runtime", "aborted-patch", applyPatchToolName, patch)
+				trace.event(thread, map[string]any{"type": "tool_call_ended", "tool_call_id": "aborted-patch", "status": "aborted"})
+				trace.end(thread, "runtime")
+				proxy.NativeTrace = nativetrace.NewWithNotice(trace.root, nil)
 			}
 			if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 				"id": "response", "status": "completed", "output": []any{call},
@@ -217,8 +229,8 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			} else {
 				items = append(items, codeOutput("Script completed"))
 			}
-			if test.change {
-				if err := os.WriteFile(target, []byte("new\n"), 0o600); err != nil {
+			if test.after != "" {
+				if err := os.WriteFile(target, []byte(test.after+"\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -230,19 +242,31 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			if err != nil || !found {
 				t.Fatalf("completed patch missing: found=%v err=%v", found, err)
 			}
-			if history.AlreadySatisfied || history.TranslationError != "" ||
-				(len(history.ReviewFiles) != 0) != test.change {
+			if history.AlreadySatisfied || (history.TranslationError != "") != test.aborted ||
+				(len(history.ReviewFiles) != 0) != (test.after != "") {
 				t.Fatalf("completed patch = %+v", history)
+			}
+			if test.aborted {
+				results := history.HostResults
+				if len(results) != 1 || results[0].Status != "aborted" || results[0].ExitCode != nil {
+					t.Fatalf("aborted patch host results = %+v", results)
+				}
 			}
 			listed, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, View: "list"})
 			want := ""
-			if test.change {
+			if test.after != "" {
 				want = history.ChangeID + " +1 -1\n"
 			} else if history.ChangeID != "" {
 				t.Fatalf("unchanged attempt allocated a change ID: %s", history.ChangeID)
 			}
 			if err != nil || listed != want {
 				t.Fatalf("mchanges list = %q, %v; want %q", listed, err, history.ChangeID)
+			}
+			if test.aborted && test.after != "" {
+				net, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "net"})
+				if err != nil || !strings.Contains(net, "-old\n+"+test.after+"\n") || strings.Contains(net, "+new\n") {
+					t.Fatalf("aborted patch net = %q, %v", net, err)
+				}
 			}
 		})
 	}
