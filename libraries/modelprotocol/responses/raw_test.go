@@ -1,7 +1,6 @@
 package responses_test
 
 import (
-	"bytes"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"testing"
@@ -41,7 +40,7 @@ func TestRawItemEditsPreserveProviderFieldsInInput(t *testing.T) {
 	}
 	call.SetInput("retained carrier")
 	input.Items[1] = responses.MustMarshalJSON(call)
-	encoded, err := input.Encode()
+	encoded, err := responses.MarshalJSON(input.Items)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,59 +55,44 @@ func TestRawItemEditsPreserveProviderFieldsInInput(t *testing.T) {
 
 func TestRawInputKnownShapes(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		raw  string
-		want string
-		text bool
+		name, raw string
+		text      *string
+		items     []string
 	}{
-		{"text", ` "hello" `, `"hello"`, true},
-		{"legacy null text", ` null `, `""`, true},
-		{"array", ` [ {"opaque":1.00}, false ] `, `[{"opaque":1.00},false]`, false},
-		{"empty array", ` [] `, `[]`, false},
+		{"text", ` "hello" `, new("hello"), nil},
+		{"legacy null text", ` null `, new(""), nil},
+		{"array", ` [ {"opaque":1.00}, false ] `, nil, []string{`{"opaque":1.00}`, "false"}},
+		{"empty array", ` [] `, nil, []string{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			input, err := responses.DecodeInput([]byte(test.raw))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (input.Text != nil) != test.text {
+			if (input.Text == nil) != (test.text == nil) || input.Text != nil && *input.Text != *test.text {
 				t.Fatalf("text view: %v", input.Text)
 			}
-			encoded, err := input.Encode()
-			if err != nil || string(encoded) != test.want {
-				t.Fatalf("encoded=%s, error=%v; want %s", encoded, err, test.want)
+			if (input.Items == nil) != (test.items == nil) || len(input.Items) != len(test.items) {
+				t.Fatalf("array view: %q, want %q", input.Items, test.items)
 			}
-			if test.text {
-				*input.Text = "edited"
-				encoded, err = input.Encode()
-				if err != nil || string(encoded) != `"edited"` {
-					t.Fatalf("edited text=%s, error=%v", encoded, err)
+			for i, want := range test.items {
+				if got := string(input.Items[i]); got != want {
+					t.Fatalf("item %d: %q, want %q", i, got, want)
 				}
 			}
 		})
 	}
 }
 
-func TestRawInputOpaqueBytes(t *testing.T) {
+func TestDecodeInputOpaqueValues(t *testing.T) {
 	for _, raw := range []string{` { "future" : [1.00, 9007199254740993] } `, ` 1e20 `, ` true `, ` 1e1000000 `, ` {"x":1,"x":2} `, " {\"future\":\"\xff\"} "} {
 		t.Run(raw, func(t *testing.T) {
-			source := []byte(raw)
-			input, err := responses.DecodeInput(source)
+			input, err := responses.DecodeInput([]byte(raw))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if input.Text != nil || input.Items != nil {
 				t.Fatal("opaque input acquired a known shape")
-			}
-			source[0] = '\n'
-			encoded, err := input.Encode()
-			if err != nil || !bytes.Equal(encoded, []byte(raw)) {
-				t.Fatalf("opaque input=%q, error=%v; want %q", encoded, err, raw)
-			}
-			encoded[0] = '\t'
-			again, err := input.Encode()
-			if err != nil || string(again) != raw {
-				t.Fatalf("encoded bytes alias retained input: %q, error=%v", again, err)
 			}
 		})
 	}

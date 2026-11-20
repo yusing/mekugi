@@ -61,14 +61,9 @@ func PaintSessionStatus(label sessionpresentation.Label, now time.Time, colors t
 	return "\x1b[39m" + text + terminalui.Reset
 }
 
-// Source: apps/mekugi/internal/router/composer_notice.go:32:91@1145fbbc.
-func PaintMainStatus(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors) string {
-	label, _ := paintMainStatus(status, now, colors, true, false)
-	return label
-}
-
 // The running-process count is dark amber and underlined only while the
 // pointer is over it.
+// Source: apps/mekugi/internal/router/composer_notice.go:32:91@1145fbbc.
 func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, clickable, hover bool) (string, Rect) {
 	var count Rect
 	label := PaintSessionStatus(status.Composer, now, colors)

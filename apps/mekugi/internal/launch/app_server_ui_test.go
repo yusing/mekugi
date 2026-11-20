@@ -171,7 +171,7 @@ func TestAppServerComposerNoticeKeepsTurnStateAndClearsOnEdit(t *testing.T) {
 func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.attached.presentation.Status.Text = "Ready"
-	if label := u.stateLabel(time.Now()); label != "\x1b[39mReady"+terminalui.Reset {
+	if label := ansi.Strip(u.stateLabel(time.Now())); label != "Ready" {
 		t.Fatalf("idle label = %q", label)
 	}
 }

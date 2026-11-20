@@ -9,14 +9,26 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
 	return terminalsession.PaintSessionStatus(publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Session, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) stateLabel(now time.Time) string {
-	return terminalsession.PaintMainStatus(publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status, now, u.shell.Transcript.Painter.Colors)
+	view := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
+	return paintedComposerStatus(view, &u.shell.Transcript.Painter, now)
+}
+
+func paintedComposerStatus(view sessionpresentation.View, painter *activityui.Painter, now time.Time) string {
+	var main terminalsession.Main
+	main.Update(view)
+	// In a short pane the status is just above the draft, without a rule.
+	frame := main.Render(activityui.NewView(), painter, new(terminalsession.Prompts),
+		terminalsession.MainOptions{Now: now}, 120, 7, 0)
+	return frame.Rows[main.ComposerRect.Y-1]
 }
 func (u *appServerUI) composerErrorText() string {
 	return terminalsession.MainStatusDetails(publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status)

@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
@@ -46,7 +45,7 @@ func TestUISnapshotNativeWaitActiveWork(t *testing.T) {
 		if err := json.Unmarshal(wire, &detached, nativeDuration); err != nil {
 			t.Fatal(err)
 		}
-		if got := terminalsession.PaintMainStatus(detached.View.Status, *at, u.shell.Transcript.Painter.Colors); !strings.Contains(ansi.Strip(got), composer) {
+		if got := paintedComposerStatus(detached.View, &u.shell.Transcript.Painter, *at); !strings.Contains(ansi.Strip(got), composer) {
 			t.Fatalf("%s: detached composer = %q, want %q", phase, ansi.Strip(got), composer)
 		}
 		u.testActivity(u.shell.Agents).publishActivity()

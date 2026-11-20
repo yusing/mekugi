@@ -374,36 +374,3 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	footer := ansi.Truncate(f.Footer, max(0, inner), "…")
 	return append(lines, "  "+footer+Reset+strings.Repeat(" ", max(0, width-2-ansi.StringWidth(footer))))
 }
-
-// Surface paints row on a filled band, restoring ink and fill after any SGR
-// color reset, including combined resets, without overwriting explicit syntax
-// colors, diff fills, or selection styles.
-func Surface(row, ink, fill string) string {
-	var out strings.Builder
-	out.WriteString(Reset + ink + fill)
-	var style uv.Style
-	parser := ansi.GetParser()
-	defer func() { parser.SetHandler(ansi.Handler{}); ansi.PutParser(parser) }()
-	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
-		if cmd == 'm' {
-			uv.ReadStyle(params, &style)
-		}
-	}})
-	var state byte
-	for row != "" {
-		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
-		out.WriteString(seq)
-		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
-			parser.Parse([]byte(seq))
-			if style.Fg == nil {
-				out.WriteString(ink)
-			}
-			if style.Bg == nil {
-				out.WriteString(fill)
-			}
-		}
-		row, state = row[n:], next
-	}
-	out.WriteString(Reset)
-	return out.String()
-}
