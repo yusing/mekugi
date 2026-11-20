@@ -1,148 +1,129 @@
 # mekugi
 
-A mekugi is the small peg that pins a Japanese sword's handle to the blade.
+A *mekugi* is the small peg that pins a Japanese sword's handle to the blade.
 Take it out and the handle comes off. Leave it in and the blade is still the
 blade.
 
-Mekugi keeps stock Codex agents working from current, compact context across
-long sessions, compaction, and delegates, and lets you see what they are doing,
-what they are about to do, and what they have done. Codex keeps editing,
-execution, the sandbox, permissions, command sessions, and patch review.
-Invocation overrides leave Codex configuration unchanged.
+**Mekugi is a fast, source-grounded workspace for Codex.** It keeps long
+sessions and multi-agent workflows lean, observable, and surgically reversible,
+while leaving Codex's editing, execution, sandbox, permissions, and config
+untouched.
 
 [Why Mekugi](#why-mekugi) · [Install](#install) · [Quick start](#quick-start) ·
 [Guides](#guides) · [Documentation](#documentation)
 
 ## Why Mekugi
 
-### Agents work from current, compact context
+### Zero-summary compaction & compact context
 
-- **Compaction that rereads sources.** Codex context resets without generating a
-  handover summary. Agents can [select files, skills and captured changes](modules/agentguidance/SPEC.md#compaction-context)
-  needed for unfinished work; Mekugi reads them before the conversation continues,
-  so work resumes from current source text.
-- **Agent-chosen checkpoints.** Agents can [compact at safe checkpoints](docs/contracts/coordination.md#operations-and-admission)
-  and continue, or compact while waiting for delegates. [Measured usage reminders](modules/agentguidance/SPEC.md#context-usage-notices)
-  arrive from halfway full when usage is measured, with an instruction to compact
-  at 90%. [Requested resets run without a cost veto](docs/guide/sessions.md#compaction-and-recovery).
-- **Delegates start prepared.** [Fresh agents start with selected files, skills and captured changes](docs/contracts/coordination.md#prepared-children-and-guidance)
-  already loaded. Parents wait for any or all current descendants without polling;
-  optional progress yields pair developer summaries with captured changes to help
-  catch mistakes before completion, rather than just checking liveness.
-  Delegates can coordinate their own children and reply with a short summary and details.
-  Assignments and messages can [snapshot referenced files](docs/contracts/coordination.md#file-references-in-assignments-and-messages)
-  under the recipient's permissions, including when coordinating across sessions.
-  Agents can also [ask independent side questions](docs/contracts/coordination.md#independent-side-questions)
-  without steering the recipient's work, and coordinate across active sessions.
-- **Facts up front.** Codex agents receive an [observed OS and Git snapshot](modules/agentguidance/SPEC.md#environment-snapshot),
-  and attached files and skills are marked as reusable, so neither is rediscovered.
-- **Fewer output tokens, recoverable reads.** [Session helpers](docs/guide/agent-tools.md)
-  bound reads, symbol lookups, outlines and command output. Incomplete retained
-  reads name their exact continuation; `mrun` discards output outside its selected window.
-  [Repeated output and supplied source bodies](backends/codex/SPEC.md#output-deduplication) can become references to
-  earlier visible text, and [marked instruction blocks](docs/guide/configuration.md#troubleshooting-and-integrations)
-  can be omitted. Full results stay in evidence and the UI.
+- **Compaction that rereads real sources.** Reset context without lossy LLM
+  handover summaries. Agents select the exact files, skills, and captured
+  changes needed for unfinished work, and Mekugi reloads them fresh before the
+  next turn.
+- **Agent-chosen checkpoints & usage notices.** Measured context-usage notices
+  start at 50% and tell the agent to compact at 90%, so agents reset cleanly at
+  safe checkpoints instead of drifting inside a bloated window.
+- **Built-in token-saving helpers.** Wrapped sessions put `mcat` (batched UTF-8
+  reads), `mrun` (head/tail-bounded commands), `mread` (exact continuation of
+  omitted output), `msymbol` (Go, TypeScript, Python, and Rust semantic
+  definitions/references), and `inspect_file` (structural outlines) on `PATH`.
+  Automatic output deduplication replaces repeated outputs with compact
+  references while keeping full results in history and the UI.
+- **Workspace facts up front.** Sessions start with an observed OS and Git
+  snapshot and mark attached files and skills as reusable, cutting warm-up turns.
 
-### Exact handoffs and undo
+### Multi-agent workflows without the warm-up tax
 
-- **Captured changes by ID.** Every observed edit gets a short ID. Agents pass
-  IDs and ranges to reviewers and across compaction, so a reviewer inspects
-  exactly the delegated work rather than a worktree diff mixed with other agents'
-  and your edits.
-- **Undo exactly what you reject.** When you object to part of the work, the
-  agent can [revert the captured edits behind it](modules/changehistory/SPEC.md#revert-and-apply),
-  optionally limited to specific paths, without `git restore`. Later and unrelated
-  edits, including your uncommitted work, are merged rather than discarded, and
-  the revert can be reapplied. [`/rewind`](docs/guide/sessions.md#resume) can
-  also revert captured edits while removing an earlier turn and later conversation
-  from the same session.
+- **Preloaded delegates.** Fresh subagents start with selected files, skills,
+  and captured changes already loaded under their own permissions, with no wasted
+  first turns rediscovering parent context.
+- **Non-polling waits with progress check-ins.** Parents wait for any or all
+  descendants without polling loops. Optional progress yields pair brief
+  developer status summaries with exact captured changes so coordinators catch
+  wrong turns early.
+- **Side questions & isolated one-offs.** Ask quick read-only questions with
+  `/btw` or spin up an isolated work-capable `/oneoff` branch without polluting
+  Main's transcript, and coordinate across active sessions.
 
-### See what agents are doing, will do, and have done
+### Exact change tracking & surgical undo
 
-- **Live activity with its reasons.** Operations appear under the reasoning that
-  led to them. Delegates appear with their assignment and reply summary in Main,
-  and with progress and metrics in the [Agents sheet](docs/guide/terminal-ui.md#agents).
-  The roster identifies supported tool calls as their input is being generated, so
-  a large call is less likely to look stalled. Open attachable children to read
-  their transcripts and steer them.
-- **Catch mistakes before they land.** [Edits stream into the Diff pane](docs/guide/terminal-ui.md#live-diff-pane)
-  while the agent writes them. Steer or interrupt the turn, [stop one running command](docs/guide/terminal-ui.md#composer),
-  or deny commands before they run.
-- **VCS remote-write and sudo guards.** [Approve or deny supported remote writes](docs/guide/approvals.md)
-  for Git, GitHub, Mercurial, SVN and Jujutsu, plus sudo commands, even with
-  `--yolo`. Guards require interactive, unsandboxed execution and do not cover
-  every way a program can perform a remote write.
-- **Private sudo passwords and GPG passphrases.** Enter secrets in a
-  [dedicated dialog](docs/guide/approvals.md), not the conversation. Passwords and
-  passphrases stay out of model input and retained history, including for Git signing.
-- **Hook trust prompts.** Review and choose whether to trust new or changed
-  [Codex hooks](docs/guide/approvals.md) before interactive work starts.
-- **Review what happened.** Open saved edits by hunk, [searchable per-command output](docs/guide/terminal-ui.md#output-dialog),
-  compaction events, and [usage, throughput and cost](docs/guide/configuration.md#metrics).
-  Missing evidence and provisional previews are labeled. Past sessions can be
-  [inspected](docs/contributing/development.md#inspect-a-session) or
-  [replayed](docs/contributing/development.md#replay-a-session).
-### Work from anywhere
+- **Every edit gets a short ID.** Observed patches and shell writes are
+  captured as durable change IDs (`mchanges`). Hand exact ranges (like
+  `amber1..amber3`) to reviewers or across compaction instead of dumping a noisy
+  worktree diff mixed with your own edits.
+- **Revert only what you reject.** Undo specific captured edits (optionally
+  scoped to individual paths) with three-way merging that preserves your
+  uncommitted edits and other agents' work. Every revert is captured too and
+  can be reapplied anytime. `/rewind` can roll back conversation turns and
+  their captured edits together.
 
-- **Server-owned threads.** Threads keep running when the terminal or browser
-  closes. [Control them from another machine](docs/guide/remote.md), including
-  phones, through an authenticated connector.
-- **Session continuity.** [Resume, fork, or rewind](docs/guide/sessions.md) conversations.
-- **Providers.** Use [custom Responses providers](docs/guide/providers.md).
-- **Composer.** Attach files and skills, ask side questions, run one-off tasks,
-  recall presets, and change model, reasoning, tier and permissions in session.
-  See the [composer](docs/guide/terminal-ui.md#composer).
+### Live visibility, control & safety guards
 
-Savings from bounded output, deduplication and source reloads don't guarantee
-better results on every task. For controlled comparisons, use
-[codex-setup-ab](https://github.com/yusing/codex-setup-ab). The
-[product principles](docs/product.md#product-principles) explain these choices.
+- **Watch edits stream live.** Code changes stream into the
+  [Live Diff pane](docs/guide/terminal-ui.md#live-diff-pane) as the agent
+  writes them. Operations appear under the reasoning that led to them, and the
+  [Agents sheet](docs/guide/terminal-ui.md#agents) lets you inspect subagent
+  transcripts, metrics, and steer them live.
+- **Intervene before mistakes land.** Steer the running turn (`Enter`), queue
+  the next (`Tab`), interrupt (`Esc`), or inspect and stop one running command
+  without killing the turn (`/ps`).
+- **Remote-write & `sudo` guards, even with `--yolo`.** Interactive sessions
+  prompt before supported Git, GitHub, Mercurial, SVN, and Jujutsu remote
+  writes and `sudo` commands (requires unsandboxed execution; see
+  [Approvals and guards](docs/guide/approvals.md)).
+- **Private secrets, never in model context.** Enter `sudo` passwords and GPG
+  passphrases (including Git signing) in a dedicated masked dialog that stays
+  completely out of model input and session history. New or modified Codex
+  hooks ask for trust before work starts.
+
+### Terminal & browser UI, server-owned sessions
+
+- **Detach without killing work.** Sessions are owned by a local background
+  server: close your terminal or browser and agents keep running. Reattach
+  anytime from the terminal or control multiple machines from desktop or phone
+  through the [Web UI and authenticated connector](docs/guide/remote.md).
+- **Full session lifecycle.** [Resume, fork, or rewind](docs/guide/sessions.md)
+  sessions, inspect per-agent usage, throughput, and cost (`/session`), replay
+  past sessions offline, use [reusable prompt presets](docs/guide/terminal-ui.md#composer),
+  and connect [custom OpenAI-compatible Responses providers](docs/guide/providers.md).
 
 ## Install
 
 Requirements:
 
-- The **managed native runtime**, included in full release archives and source
-  installs.
-  Use **Codex CLI** directly for `codex login`; Mekugi does not wrap stock CLI commands.
-- Built-in helpers need neither Node.js nor Bun; semantic lookup uses the language
-  servers listed in [agent tools](docs/guide/agent-tools.md#wrapped-session-helpers).
-- Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
+- The **managed native runtime**, bundled in release archives and source builds.
+  Use **Codex CLI** directly for `codex login`.
+- Built-in helpers need neither Node.js nor Bun. Semantic lookup (`msymbol`)
+  uses language servers on your `PATH`; see
+  [Agent tools](docs/guide/agent-tools.md#wrapped-session-helpers).
 
 ### Release binaries
 
 | Platform | Archive | Minimum OS |
 | --- | --- | --- |
-| Linux x86-64 | `mekugi_linux_amd64.tar.gz` | glibc 2.39, such as Ubuntu 24.04 |
-| Linux ARM64 | `mekugi_linux_arm64.tar.gz` | glibc 2.39, such as Ubuntu 24.04 |
+| Linux x86-64 | `mekugi_linux_amd64.tar.gz` | glibc 2.39 (e.g. Ubuntu 24.04) |
+| Linux ARM64 | `mekugi_linux_arm64.tar.gz` | glibc 2.39 (e.g. Ubuntu 24.04) |
 | macOS Apple Silicon | `mekugi_darwin_arm64.tar.gz` | macOS 15 |
 
-The [installer](install.sh) needs a release that includes the native runtime.
-It selects your platform, verifies the release checksum, and installs `mekugi`,
-`mekugi-exec`, the native server, its execution helpers and model catalog into
-`~/.local/bin`, replacing existing copies:
+Install `mekugi`, `mekugi-exec`, the native server, helpers, and model catalog
+into `~/.local/bin` (checksum-verified):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yusing/mekugi/main/install.sh | sh
 ```
 
-Add `~/.local/bin` to your `PATH` if needed. Archives are also on
-[GitHub Releases](https://github.com/yusing/mekugi/releases/latest); they need
-no Go or C toolchain. Linux releases need glibc and do not run on stock Alpine
-Linux; use a source build for other environments.
-
-If the installer reports an incomplete release, download the artifact for your
-platform from a successful [Build and release run][ci]. Extract its full
-`mekugi_<platform>.tar.gz` into a directory on your `PATH`, keeping the files
-together. The `mekugi-native_*` archive alone does not include the Mekugi CLI.
+Add `~/.local/bin` to your `PATH` if needed. Release archives are also on
+[GitHub Releases](https://github.com/yusing/mekugi/releases/latest) (or from a
+[Build and release run][ci]). Non-glibc Linux environments (such as Alpine)
+require a source build.
 
 [ci]: https://github.com/yusing/mekugi/actions/workflows/release.yml
 
 ### Build from source
 
-Source installs require **Go 1.27+**, CGO enabled, a C/C++ toolchain, **Make**,
-**Bun 1.4.4+**, **Node.js 24.21+** for browser assets, **Python 3.11+** and
-**Rustup**. See [native build dependencies](docs/contributing/development.md#native-app-server)
+Requires **Go 1.27+** (CGO enabled), a C/C++ toolchain, **Make**,
+**Bun 1.4.4+**, **Node.js 24.21+**, **Python 3.11+**, and **Rustup**. See
+[native build dependencies](docs/contributing/development.md#native-app-server)
 for Linux libraries and the pinned Rust toolchain.
 
 ```sh
@@ -152,50 +133,53 @@ git submodule update --init runtime/codex
 make install
 ```
 
-Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`.
-`make uninstall` removes the executables and bundled model catalog. Running sessions keep their
-worker executable, so start a new session to pick up an update.
+Add `$GOBIN` (or `$(go env GOPATH)/bin`) to your `PATH`. Run `make uninstall`
+to remove installed executables and the bundled model catalog. Start a new
+session after updating.
 
 ## Quick start
 
 ```sh
-mekugi codex                   # Native OpenAI, using `codex login`
-mekugi -p work                 # A configured custom Responses profile
+mekugi codex                   # Native OpenAI (uses `codex login`)
+mekugi -p work                 # Custom Responses provider profile
 ```
 
-Mekugi flags go **before** `codex` or Codex arguments. Bare `mekugi` requires a
-[custom provider profile](docs/guide/configuration.md#codex-profile-imports). The launch starts
-a local server when needed and attaches the terminal UI. Closing the UI leaves
-the thread running; exit prints resume and replay commands. Codex's approval and
-sandbox policy applies; the remote-write guard needs unsandboxed execution.
-Mekugi needs Codex's JavaScript `exec`; custom inference endpoints use profile
-imports, and `--oss` remains unsupported. See [launch details](docs/guide/launch.md).
+Put Mekugi flags **before** `codex` or Codex arguments. Bare `mekugi` requires
+a [custom provider profile](docs/guide/configuration.md#codex-profile-imports).
+Closing the UI leaves threads running and prints resume/replay commands. See
+[Launch and automation](docs/guide/launch.md) for headless runs and flags.
 
 | To | Do |
 | --- | --- |
-| Steer the running turn / queue for the next | Enter / Tab |
-| Interrupt | Esc |
+| Steer the running turn / queue next | `Enter` / `Tab` |
+| Interrupt | `Esc` |
 | Show Main / toggle Diff / focus Agents | `Ctrl-B`, then `1` / `2` / `3` |
-| See running commands and stop one | `/ps` |
+| Inspect or stop a running command | `/ps` |
+| Ask a side question / run a one-off task | `/btw`, `/oneoff` |
 | Compact, fork, or rewind | `/compact`, `/fork`, `/rewind` |
-| Show shortcuts | `?` in an empty draft |
+| Show all shortcuts | `?` in an empty draft |
 
 ## Guides
 
 - [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents sheet, and output dialogs.
-- [Sessions and recovery](docs/guide/sessions.md): resume, fork, rewind, compaction and replay storage.
-- [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file` and `mchanges`.
-- [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards and secure GPG passphrase entry.
-- [Server, connector and browser](docs/guide/remote.md): remote control, browser UI and Docker deployment.
-- [Providers](docs/guide/providers.md): custom Responses and retired-provider migration.
-- [Launch and automation](docs/guide/launch.md): launch commands, execution policy and headless runs.
-- [Configuration and metrics](docs/guide/configuration.md): settings file, options, metrics and troubleshooting.
+- [Sessions and recovery](docs/guide/sessions.md): resume, fork, rewind, compaction, and replay storage.
+- [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file`, and `mchanges`.
+- [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards, and GPG passphrase entry.
+- [Server, connector and browser](docs/guide/remote.md): remote control, browser UI, and Docker deployment.
+- [Providers](docs/guide/providers.md): custom Responses providers.
+- [Launch and automation](docs/guide/launch.md): launch options, execution policy, and headless runs.
+- [Configuration and metrics](docs/guide/configuration.md): settings file, flags, metrics, and integrations.
 
 ## Documentation
 
-[Product intent and design](docs/product.md) · [Documentation index](docs/index.md) ·
-[Contributing](CONTRIBUTING.md) · [Comparisons](docs/benchmarks.md) ·
+[Product requirements and design](docs/product.md) ·
+[Documentation index](docs/index.md) ·
+[Contributing](CONTRIBUTING.md) ·
+[Controlled comparisons](docs/benchmarks.md) ·
 [Codex end-to-end checks](docs/codex-router-e2e.md)
+
+For controlled comparisons against stock Codex, see
+[codex-setup-ab](https://github.com/yusing/codex-setup-ab).
 
 ## License
 
