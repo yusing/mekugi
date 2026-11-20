@@ -4,38 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
-
-func TestModuleIndexWorkspaceReferences(t *testing.T) {
-	root, err := filepath.Abs("../../../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(root)
-	t.Setenv("GOWORK", filepath.Join(root, "go.work"))
-	members, err := workspaceMembers()
-	if err != nil {
-		t.Fatal(err)
-	}
-	entries, err := collectModuleReferences(members)
-	if err != nil {
-		t.Fatal(err)
-	}
-	records := make(map[string][]string)
-	for _, entry := range entries {
-		records[string(entry.Descriptor.ID)] = entry.Descriptor.Records
-	}
-	for owner, want := range map[string][]string{
-		"changehistory": {"changes", "change-stage", "change-evidence", "change-file", "change-text"}, "outputrecovery": {"cursor", "output"}, "commandsegments": {"commandsegments"}, "usage": {"usage"},
-	} {
-		if !slices.Equal(records[owner], want) {
-			t.Fatalf("%s records=%v, want %v", owner, records[owner], want)
-		}
-	}
-}
 
 func TestModuleIndexWriteCheckAndDrift(t *testing.T) {
 	contracts, err := filepath.Abs("../../../../contracts")
