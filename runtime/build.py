@@ -114,6 +114,10 @@ def main():
     cargo = ["cargo", "build", *selection]
     for _, binary in binaries:
         cargo.extend(["--bin", binary])
+    if args.action == "test":
+        # The subprocess suite starts a separate WebSocket exec-server fixture.
+        # It belongs to codex-app-server but is not part of the shipped runtime.
+        cargo.extend(["--bin", "exec-server"])
     # Resolve the selected test dependencies alongside the staged runtime.
     cargo.extend(suite_targets)
     run(cargo, env)
@@ -133,6 +137,9 @@ def main():
             f"CARGO_BIN_EXE_{name}": str(output / name)
             for name in ("mekugi-app-server", "codex-code-mode-host")
         }
+        suite_env["CARGO_BIN_EXE_exec-server"] = str(
+            target_dir / profile_dir / "exec-server"
+        )
         run(["cargo", "test", *selection, *suite_targets, *filters], suite_env)
         return
     if args.action == "build":

@@ -130,7 +130,8 @@ access. Checks and tests default to `dev-small`. `make build-native` uses the
 Use `make build-native NATIVE_PROFILE=release` to use the release profile's
 ThinLTO setting. `make package-native` and CI release packaging use that setting
 by default. CI runs native integration tests in `dev-small` and smoke-tests the
-packaged release binary. To cap local compile concurrency, optionally set
+full release archive through the installer on each platform. To cap local
+compile concurrency, optionally set
 `CARGO_BUILD_JOBS=2`; the native runner does not set a jobs limit.
 
 For an affected crate, forward Cargo selectors through `NATIVE_ARGS`:

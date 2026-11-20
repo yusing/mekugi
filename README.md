@@ -102,7 +102,8 @@ better results on every task. For controlled comparisons, use
 
 Requirements:
 
-- The **managed native runtime**, included with Mekugi releases and source installs.
+- The **managed native runtime**, included in full release archives and source
+  installs.
   Use **Codex CLI** directly for `codex login`; Mekugi does not wrap stock CLI commands.
 - Built-in helpers need neither Node.js nor Bun; semantic lookup uses the language
   servers listed in [agent tools](docs/guide/agent-tools.md#wrapped-session-helpers).
@@ -116,9 +117,10 @@ Requirements:
 | Linux ARM64 | `mekugi_linux_arm64.tar.gz` | glibc 2.39, such as Ubuntu 24.04 |
 | macOS Apple Silicon | `mekugi_darwin_arm64.tar.gz` | macOS 15 |
 
-The [installer](install.sh) selects your platform, verifies the release checksum,
-and installs `mekugi`, `mekugi-exec`, the native server, its execution helpers and
-model catalog into `~/.local/bin`, replacing existing copies:
+The [installer](install.sh) needs a release that includes the native runtime.
+It selects your platform, verifies the release checksum, and installs `mekugi`,
+`mekugi-exec`, the native server, its execution helpers and model catalog into
+`~/.local/bin`, replacing existing copies:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yusing/mekugi/main/install.sh | sh
@@ -128,6 +130,13 @@ Add `~/.local/bin` to your `PATH` if needed. Archives are also on
 [GitHub Releases](https://github.com/yusing/mekugi/releases/latest); they need
 no Go or C toolchain. Linux releases need glibc and do not run on stock Alpine
 Linux; use a source build for other environments.
+
+If the installer reports an incomplete release, download the artifact for your
+platform from a successful [Build and release run][ci]. Extract its full
+`mekugi_<platform>.tar.gz` into a directory on your `PATH`, keeping the files
+together. The `mekugi-native_*` archive alone does not include the Mekugi CLI.
+
+[ci]: https://github.com/yusing/mekugi/actions/workflows/release.yml
 
 ### Build from source
 

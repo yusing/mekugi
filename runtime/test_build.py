@@ -170,7 +170,8 @@ class NativeRunnerTests(unittest.TestCase):
                      "-p", "codex-app-server-subprocess-tests"]
         build_cmd, compile_env = calls[0].args
         self.assertEqual(build_cmd, ["cargo", "build", *selection, "--bin", "mekugi-app-server",
-                                     "--bin", "codex-code-mode-host", "--bin", "bwrap", "--test", "subprocess"])
+                                     "--bin", "codex-code-mode-host", "--bin", "bwrap",
+                                     "--bin", "exec-server", "--test", "subprocess"])
         self.assertEqual(calls[1].args[0], ["cargo", "test", *selection, "--bin", "mekugi-app-server"])
         self.assertEqual(copies, 4)
         self.assertEqual(len(calls), 3)
@@ -180,6 +181,9 @@ class NativeRunnerTests(unittest.TestCase):
             key = f"CARGO_BIN_EXE_{name}"
             self.assertNotIn(key, compile_env)
             self.assertEqual(suite_env[key], str(output / name))
+        self.assertNotIn("CARGO_BIN_EXE_exec-server", compile_env)
+        self.assertEqual(Path(suite_env["CARGO_BIN_EXE_exec-server"]),
+                         output.parent / "shared-target/dev-small/exec-server")
 
     def test_filtered_integration_uses_staged_pair_only_during_execution(self):
         test_filter = "websocket"
@@ -214,6 +218,7 @@ class NativeRunnerTests(unittest.TestCase):
                 self.assertEqual(len(calls), 1)
                 command, env = calls[0].args
                 self.assertEqual(command[:5], ["cargo", "build", "--locked", "--profile", "release"])
+                self.assertNotIn("exec-server", command)
                 self.assertEqual(env.get("CARGO_PROFILE_RELEASE_LTO"), expected_lto)
                 self.assertEqual(copies, 4)
 

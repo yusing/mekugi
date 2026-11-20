@@ -6,9 +6,11 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
@@ -160,6 +162,9 @@ func (c *nativeConnection) run() (runErr error) {
 	nativeOn(global, func() <-chan appserver.Message { return host.Messages }, func(message appserver.Message, ok bool) error {
 		if !ok {
 			c.exited = true
+			if err := c.root.ctx.Err(); err != nil {
+				return errors.Join(err, <-host.Done)
+			}
 			return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-host.Done)
 		}
 		if c.threads.headless != nil {
@@ -167,7 +172,16 @@ func (c *nativeConnection) run() (runErr error) {
 				return err
 			}
 		}
-		return c.message(message)
+		err := c.message(message)
+		// Cancellation interrupts the host process. A queued response can
+		// still trigger an RPC write as the host's stdin closes.
+		if cause := c.root.ctx.Err(); cause != nil {
+			if pipe, ok := errors.AsType[*os.PathError](err); ok && pipe.Op == "write" &&
+				(errors.Is(pipe.Err, os.ErrClosed) || errors.Is(pipe.Err, syscall.EPIPE)) {
+				return cause
+			}
+		}
+		return err
 	})
 	nativeOn(global, func() <-chan finalCaptureReply { return c.root.finalCaptures.results }, func(reply finalCaptureReply, _ bool) error { return c.root.finalCaptureReply(reply) })
 	nativeOn(global, func() <-chan nativeAttachRequest { return c.attach }, func(request nativeAttachRequest, _ bool) error {

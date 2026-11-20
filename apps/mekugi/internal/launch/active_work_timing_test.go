@@ -113,7 +113,7 @@ func TestNativeDelegateWaitPausesOnlyItsOwnWork(t *testing.T) {
 func newActiveWorkTestUI(t *testing.T) (*appServerUI, *time.Time) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	at := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, 10, 3, 20, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return at }
 	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
