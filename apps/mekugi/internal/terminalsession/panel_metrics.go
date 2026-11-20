@@ -1,8 +1,9 @@
 package terminalsession
 
 import (
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"slices"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
 // Source: apps/mekugi/internal/router/app_server_session_metrics.go:97:299@630ce384.

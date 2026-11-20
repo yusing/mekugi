@@ -29,6 +29,9 @@ func (theme Theme) Foreground(kind chroma.TokenType) string {
 	if kind == chroma.Error || kind.InCategory(chroma.Text) {
 		return ""
 	}
+	if theme == TerminalTheme {
+		return terminalForeground(kind)
+	}
 	name := "github-dark"
 	if theme == LightTheme {
 		name = "github"
@@ -55,6 +58,27 @@ func (theme Theme) Foreground(kind chroma.TokenType) string {
 	}
 	if color.IsSet() {
 		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", color.Red(), color.Green(), color.Blue())
+	}
+	return ""
+}
+
+// terminalForeground keeps syntax legible on any background by using the
+// terminal's own palette, leaving identifiers and punctuation in its default
+// foreground.
+func terminalForeground(kind chroma.TokenType) string {
+	switch {
+	case kind.InCategory(chroma.Comment):
+		return "\x1b[90m"
+	case kind.InSubCategory(chroma.LiteralString):
+		return "\x1b[32m"
+	case kind.InSubCategory(chroma.LiteralNumber), kind.InSubCategory(chroma.NameBuiltin), kind == chroma.NameConstant:
+		return "\x1b[33m"
+	case kind == chroma.KeywordType, kind == chroma.NameClass, kind == chroma.NameNamespace:
+		return "\x1b[36m"
+	case kind.InCategory(chroma.Keyword), kind == chroma.NameTag:
+		return "\x1b[35m"
+	case kind == chroma.NameFunction, kind == chroma.NameAttribute:
+		return "\x1b[34m"
 	}
 	return ""
 }
@@ -111,6 +135,60 @@ func (theme Theme) Accent() string {
 	default:
 		return "\x1b[36m"
 	}
+}
+
+// Semantic foregrounds. The terminal theme, whose background is unknown,
+// defers to the terminal's own ANSI palette; dark and light use fixed colors
+// legible on their backgrounds.
+func (theme Theme) pick(terminal, dark, light string) string {
+	switch theme {
+	case LightTheme:
+		return light
+	case DarkTheme:
+		return dark
+	default:
+		return terminal
+	}
+}
+
+// Success marks completed changes and passing outcomes.
+func (theme Theme) Success() string {
+	return theme.pick("\x1b[32m", "\x1b[38;5;114m", "\x1b[38;2;26;127;55m")
+}
+
+// Warning marks running, pending and waiting states and lasting grants.
+func (theme Theme) Warning() string {
+	return theme.pick("\x1b[33m", "\x1b[38;5;214m", "\x1b[38;2;154;103;0m")
+}
+
+// Danger marks failures and blocked work.
+func (theme Theme) Danger() string {
+	return theme.pick("\x1b[31m", "\x1b[38;5;203m", "\x1b[38;2;207;34;46m")
+}
+
+// Standing marks background work without the urgency of Warning.
+func (theme Theme) Standing() string {
+	return theme.pick("\x1b[33m", "\x1b[38;5;172m", "\x1b[38;2;134;86;16m")
+}
+
+// Info marks reading and inspection.
+func (theme Theme) Info() string {
+	return theme.pick("\x1b[34m", "\x1b[38;5;75m", "\x1b[38;2;9;105;218m")
+}
+
+// Search marks searching and skills.
+func (theme Theme) Search() string {
+	return theme.pick("\x1b[35m", "\x1b[38;5;141m", "\x1b[38;2;130;80;223m")
+}
+
+// Tool marks external tool calls.
+func (theme Theme) Tool() string {
+	return theme.pick("\x1b[36m", "\x1b[38;5;80m", "\x1b[38;2;0;122;122m")
+}
+
+// Hash marks commit identities and staging.
+func (theme Theme) Hash() string {
+	return theme.pick("\x1b[33m", "\x1b[38;5;179m", "\x1b[38;2;149;56;0m")
 }
 
 // HeadingColor follows Bun's terminal Markdown palette: magenta, cyan,

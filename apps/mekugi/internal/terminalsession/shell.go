@@ -174,14 +174,14 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	}
 	title := len(segments)
 	if cwd := strings.ReplaceAll(textsanitize.Safe(in.Workspace, false), "\n", " "); cwd != "" {
-		segments = append(segments, statSegment{text: statWorkspace(cwd), drop: 8, path: cwd})
+		segments = append(segments, statSegment{text: statWorkspace(s.Theme, cwd), drop: 8, path: cwd})
 	}
 	add(in.Scroll, 0, 5)
 	if in.Skills != "" {
 		add(terminalui.Dim+in.Skills+terminalui.Undim, StatSkills, 9)
 	}
 	if in.Locked {
-		add(terminalui.Amber+"Locked · /unlock"+terminalui.Reset, 0, 0)
+		add(s.Theme.Warning()+"Locked · /unlock"+terminalui.Reset, 0, 0)
 	}
 	if in.Prefix {
 		selector := "1"
@@ -207,7 +207,7 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 		if in.Empty && s.Auxiliary != nil && s.Focus != 3 {
 			badge := ""
 			if in.DiffUnseen {
-				badge = " " + terminalui.Amber + "●" + "\x1b[39m"
+				badge = " " + s.Theme.Warning() + "●" + "\x1b[39m"
 			}
 			if s.Focus == 1 {
 				add(hint("←", "main")+badge, StatMain, 4)
@@ -250,7 +250,7 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 		if used <= room {
 			break
 		}
-		if shortenWorkspace(segments, max(width/6, 8), used-room) {
+		if shortenWorkspace(s.Theme, segments, max(width/6, 8), used-room) {
 			continue
 		}
 		worst := -1
@@ -275,14 +275,14 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	if titleText == "" {
 		for i, segment := range segments {
 			if segment.path != "" {
-				segments[i].text = statWorkspace(pathterminal.Truncate(segment.path, ansi.StringWidth(segment.text)+room-measure()))
+				segments[i].text = statWorkspace(s.Theme, pathterminal.Truncate(segment.path, ansi.StringWidth(segment.text)+room-measure()))
 			}
 		}
 	}
 	if titleText != "" {
 		// The title takes room from the workspace before it truncates.
 		if over := ansi.StringWidth(titleText) - (room - measure() - 3); over > 0 {
-			shortenWorkspace(segments, max(width/6, 8), over)
+			shortenWorkspace(s.Theme, segments, max(width/6, 8), over)
 		}
 		fit := max(1, room-measure()-3)
 		if ansi.StringWidth(titleText) > fit {
@@ -306,11 +306,13 @@ func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	}
 	return indent + ansi.Truncate(line.String(), room, "…") + terminalui.Reset
 }
-func statWorkspace(path string) string { return captionWorkspace + path + terminalui.Reset }
+func statWorkspace(theme diffrender.Theme, path string) string {
+	return theme.Success() + path + terminalui.Reset
+}
 
 // shortenWorkspace abbreviates the workspace segment by over cells, down to
 // floor, and reports whether it shortened.
-func shortenWorkspace(segments []statSegment, floor, over int) bool {
+func shortenWorkspace(theme diffrender.Theme, segments []statSegment, floor, over int) bool {
 	for i, segment := range segments {
 		if segment.path == "" {
 			continue
@@ -319,7 +321,7 @@ func shortenWorkspace(segments []statSegment, floor, over int) bool {
 		if width <= floor {
 			return false
 		}
-		segments[i].text = statWorkspace(pathterminal.Truncate(segment.path, max(floor, width-over)))
+		segments[i].text = statWorkspace(theme, pathterminal.Truncate(segment.path, max(floor, width-over)))
 		return true
 	}
 	return false

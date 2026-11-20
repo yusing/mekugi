@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -14,11 +15,11 @@ import (
 )
 
 // Layout and navigation share the same atomic-span layout as submitted input.
-func DraftLayout(d composer.Draft, width int) ([]string, []activityui.TextPoint) {
+func DraftLayout(theme diffrender.Theme, d composer.Draft, width int) ([]string, []activityui.TextPoint) {
 	if width == 0 {
 		width = 80
 	}
-	rows, points := activityui.LayoutSpans(d.Text, sessionpresentation.DraftSpans(d), width)
+	rows, points := activityui.LayoutSpans(theme, d.Text, sessionpresentation.DraftSpans(d), width)
 	last := points[len(points)-1]
 	if width > 1 && last.Column >= width {
 		rows = append(rows, "")

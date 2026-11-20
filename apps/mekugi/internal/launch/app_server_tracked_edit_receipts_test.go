@@ -13,6 +13,7 @@ import (
 	"github.com/yusing/mekugi/contracts/activitydetail"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
-	"github.com/yusing/mekugi/libraries/terminalui"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
@@ -90,7 +90,7 @@ func assertTrackedReceiptStats(t *testing.T, view *activityAdapter, entry int) {
 		t.Fatalf("captured stats missing from rendered blocks: %+v", blocks)
 	}
 	painted := strings.Join(frame, "\n")
-	if !strings.Contains(ansi.Strip(painted), "+3 -1") || !strings.Contains(ansi.Strip(painted), "+1 -2") || !strings.Contains(painted, terminalui.Green+"━") || !strings.Contains(painted, terminalui.Red+"━") {
+	if !strings.Contains(ansi.Strip(painted), "+3 -1") || !strings.Contains(ansi.Strip(painted), "+1 -2") || !strings.Contains(painted, diffrender.TerminalTheme.Success()+"━") || !strings.Contains(painted, diffrender.TerminalTheme.Danger()+"━") {
 		t.Fatalf("counts not painted with diff colors: %q", painted)
 	}
 	if reparsed := activityui.Values(parseLiveActivity(view.Entries[entry].Source)); !reflect.DeepEqual(reparsed, view.Entries[entry].Values) {

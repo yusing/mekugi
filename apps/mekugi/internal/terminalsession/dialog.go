@@ -278,12 +278,12 @@ func (d *Dialog) highlight(row string, indent int, current bool) string {
 	return out.String() + ansi.Cut(text, cell, ansi.StringWidth(text))
 }
 
-func (d *Dialog) footer(width int) string {
+func (d *Dialog) footer(theme diffrender.Theme, width int) string {
 	dim, undim := terminalui.Dim, terminalui.Undim
 	if d.Footer != "" && !d.Typing {
 		footer := dim + d.Footer + undim
 		if d.missed {
-			footer = terminalui.Amber + "no match" + terminalui.Reset + dim + " · " + undim + footer
+			footer = theme.Warning() + "no match" + terminalui.Reset + dim + " · " + undim + footer
 		}
 		return footer
 	}
@@ -311,7 +311,7 @@ func (d *Dialog) footer(width int) string {
 	}
 	footer := dim + strings.Join(keys, " · ") + undim
 	if d.missed {
-		footer = terminalui.Amber + "no match" + terminalui.Reset + dim + " · " + undim + footer
+		footer = theme.Warning() + "no match" + terminalui.Reset + dim + " · " + undim + footer
 	}
 	if ansi.StringWidth(footer) > width-6 {
 		footer = dim + "↑↓ scroll · / find · y copy · esc" + undim
@@ -571,7 +571,7 @@ func (d *Dialog) Paint(rows []string, area Rect, painter *terminalui.Painter) {
 		}
 		d.resolveFileLinks(body)
 	}
-	frame := terminalui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.Document, Paused: d.Document.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(w)}
+	frame := terminalui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.Document, Paused: d.Document.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(painter.Theme, w)}
 	if d.Selection != nil && !d.Selection.Dragging() {
 		frame.Footer = SelectionHints.Render()
 	}

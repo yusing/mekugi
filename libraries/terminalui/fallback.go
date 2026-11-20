@@ -34,10 +34,22 @@ func FaintFallback(frame string) string {
 			if lowered.Attrs&uv.AttrFaint != 0 {
 				lowered.Attrs &^= uv.AttrFaint
 				lowered.Fg = ansi.IndexedColor(243)
-				if fg, ok := style.Fg.(ansi.IndexedColor); ok {
+				// Faint agent colors keep their hue: bright ones lower to their
+				// mid-tone, and mid-tones and deep light-theme colors stay.
+				switch fg := style.Fg.(type) {
+				case ansi.IndexedColor:
 					for _, pair := range liveAgentPalette {
-						if uint8(fg) == pair.normal {
-							lowered.Fg = ansi.IndexedColor(pair.dim)
+						if uint8(fg) == pair.dark || uint8(fg) == pair.terminal {
+							lowered.Fg = ansi.IndexedColor(pair.terminal)
+							break
+						}
+					}
+				case nil:
+				default:
+					r, g, b, _ := fg.RGBA()
+					for _, pair := range liveAgentPalette {
+						if [3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8)} == pair.light {
+							lowered.Fg = fg
 							break
 						}
 					}

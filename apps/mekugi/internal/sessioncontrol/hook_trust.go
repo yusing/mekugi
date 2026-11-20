@@ -67,8 +67,8 @@ func HookTrustApprovals(data []byte, cwd string) ([]*Approval, error) {
 			approvals = append(approvals, &Approval{Hook: &HookTrust{Key: hook.Key, Hash: hook.CurrentHash}, Approval: &prompt.Approval{
 				Title: "Trust this hook?", Subject: subject, Details: details,
 				Choices: []prompt.Choice{
-					{ID: 0, Label: "Continue without trusting", Tone: prompt.ToneRefuse, Outcome: "Not trusted"},
-					{ID: 1, Label: "Trust this hook", Approve: true, Tone: prompt.ToneGrant, Outcome: "Trusted"},
+					{ID: 0, Label: "Continue without trusting", Outcome: "Not trusted"},
+					{ID: 1, Label: "Trust this hook", Approve: true, Lasting: true, Outcome: "Trusted"},
 				},
 			}})
 		}

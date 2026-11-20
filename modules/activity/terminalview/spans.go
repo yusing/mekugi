@@ -6,20 +6,19 @@ import (
 
 	presentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	"github.com/yusing/mekugi/libraries/terminalui"
-
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 )
 
-func tokenStyle(kind presentation.TokenKind) string {
+func tokenStyle(theme diffrender.Theme, kind presentation.TokenKind) string {
 	switch kind {
 	case presentation.FileToken:
-		return "\x1b[1m" + terminalui.Green
+		return "\x1b[1m" + theme.Success()
 	case presentation.SkillToken:
-		return "\x1b[1m" + terminalui.Amber
+		return "\x1b[1m" + theme.Warning()
 	case presentation.SelectionToken:
 		return "\x1b[1;36m"
 	default:
@@ -31,7 +30,7 @@ type TextPoint struct{ Offset, Row, Column int }
 
 // LayoutSpans keeps tokens together when they fit a row. Oversized tokens wrap
 // at grapheme boundaries without losing text. Composer and transcript share it.
-func LayoutSpans(text string, spans []presentation.TextSpan, width int) ([]string, []TextPoint) {
+func LayoutSpans(theme diffrender.Theme, text string, spans []presentation.TextSpan, width int) ([]string, []TextPoint) {
 	width = max(1, width)
 	spans = slices.Clone(spans)
 	slices.SortFunc(spans, func(a, b presentation.TextSpan) int { return cmp.Compare(a.Start, b.Start) })
@@ -72,7 +71,7 @@ func LayoutSpans(text string, spans []presentation.TextSpan, width int) ([]strin
 	at := 0
 	for _, span := range spans {
 		emit(at, span.Start, "")
-		emit(span.Start, span.End, tokenStyle(span.Kind))
+		emit(span.Start, span.End, tokenStyle(theme, span.Kind))
 		at = span.End
 	}
 	emit(at, len(text), "")

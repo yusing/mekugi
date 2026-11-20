@@ -29,8 +29,8 @@ func DecodeApproval(method string, id jsontext.Value, p binding.ApprovalRequest,
 	}
 	var responses []map[string]any
 	displayCommand := false
-	appendChoice := func(c binding.ApprovalDecision, tone prompt.ChoiceTone) {
-		a.Choices = append(a.Choices, prompt.Choice{ID: len(responses), Label: c.Label, Approve: c.Approve, Session: c.Session, Deny: c.Deny, Tone: tone, Outcome: c.Outcome})
+	appendChoice := func(c binding.ApprovalDecision) {
+		a.Choices = append(a.Choices, prompt.Choice{ID: len(responses), Label: c.Label, Approve: c.Approve, Session: c.Session, Deny: c.Deny, Lasting: c.Lasting, Outcome: c.Outcome})
 		responses = append(responses, c.Response)
 	}
 	switch method {
@@ -64,12 +64,6 @@ func DecodeApproval(method string, id jsontext.Value, p binding.ApprovalRequest,
 		}
 		for _, decision := range decisions {
 			if choice, ok := binding.CommandApprovalChoice(decision, p.NetworkContext != nil, len(p.Additional) > 0 && string(p.Additional) != "null"); ok {
-				tone := prompt.ToneAllow
-				if choice.Deny {
-					tone = prompt.ToneRefuse
-				} else if choice.Lasting {
-					tone = prompt.ToneGrant
-				}
 				if !feedback && choice.Deny {
 					// Proxy-free UI cannot attach feedback to provider requests.
 					// Keep native decisions and omit the reason editor there.
@@ -80,7 +74,7 @@ func DecodeApproval(method string, id jsontext.Value, p binding.ApprovalRequest,
 					}
 				}
 				if !choice.Deny || !slices.ContainsFunc(a.Choices, func(c prompt.Choice) bool { return c.Deny && c.Label == choice.Label }) {
-					appendChoice(choice, tone)
+					appendChoice(choice)
 				}
 			}
 		}
@@ -95,13 +89,13 @@ func DecodeApproval(method string, id jsontext.Value, p binding.ApprovalRequest,
 		}
 		for _, choice := range []struct {
 			Label, decision, Outcome string
-			tone                     prompt.ChoiceTone
+			lasting                  bool
 		}{
-			{"Yes, proceed", "accept", "Approved edits", prompt.ToneAllow},
-			{"Yes, and don't ask again for these files", "acceptForSession", "Approved edits for this session", prompt.ToneGrant},
-			{"No, and tell Codex what to do differently", "cancel", "Declined edits", prompt.ToneRefuse},
+			{"Yes, proceed", "accept", "Approved edits", false},
+			{"Yes, and don't ask again for these files", "acceptForSession", "Approved edits for this session", true},
+			{"No, and tell Codex what to do differently", "cancel", "Declined edits", false},
 		} {
-			appendChoice(binding.ApprovalDecision{Label: choice.Label, Response: map[string]any{"decision": choice.decision}, Outcome: choice.Outcome}, choice.tone)
+			appendChoice(binding.ApprovalDecision{Label: choice.Label, Response: map[string]any{"decision": choice.decision}, Lasting: choice.lasting, Outcome: choice.Outcome})
 		}
 	case "item/permissions/requestApproval":
 		a.Title, a.Subject = "Grant these permissions?", binding.PermissionSummary(p.Permissions)
@@ -112,16 +106,14 @@ func DecodeApproval(method string, id jsontext.Value, p binding.ApprovalRequest,
 		if len(granted) == 0 {
 			granted = jsontext.Value(`{}`)
 		}
-		for _, choice := range []struct {
-			binding.ApprovalDecision
-			tone prompt.ChoiceTone
-		}{
-			{binding.ApprovalDecision{Label: "Yes, grant these permissions for this turn", Response: map[string]any{"permissions": granted, "scope": "turn"}, Outcome: "Granted permissions for this turn"}, prompt.ToneAllow},
-			{binding.ApprovalDecision{Label: "Yes, grant for this turn with strict auto review", Response: map[string]any{"permissions": granted, "scope": "turn", "strictAutoReview": true}, Outcome: "Granted permissions with strict auto review"}, prompt.ToneAllow},
-			{binding.ApprovalDecision{Label: "Yes, grant these permissions for this session", Response: map[string]any{"permissions": granted, "scope": "session"}, Outcome: "Granted permissions for this session"}, prompt.ToneGrant},
-			{binding.ApprovalDecision{Label: "No, continue without permissions", Response: map[string]any{"permissions": map[string]any{}, "scope": "turn"}, Outcome: "Denied permissions"}, prompt.ToneRefuse},
+		// Turn grants outlast this request too: they cover the rest of the turn.
+		for _, choice := range []binding.ApprovalDecision{
+			{Label: "Yes, grant these permissions for this turn", Response: map[string]any{"permissions": granted, "scope": "turn"}, Lasting: true, Outcome: "Granted permissions for this turn"},
+			{Label: "Yes, grant for this turn with strict auto review", Response: map[string]any{"permissions": granted, "scope": "turn", "strictAutoReview": true}, Lasting: true, Outcome: "Granted permissions with strict auto review"},
+			{Label: "Yes, grant these permissions for this session", Response: map[string]any{"permissions": granted, "scope": "session"}, Lasting: true, Outcome: "Granted permissions for this session"},
+			{Label: "No, continue without permissions", Response: map[string]any{"permissions": map[string]any{}, "scope": "turn"}, Outcome: "Denied permissions"},
 		} {
-			appendChoice(choice.ApprovalDecision, choice.tone)
+			appendChoice(choice)
 		}
 	}
 	if p.Reason != "" {

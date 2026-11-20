@@ -53,13 +53,13 @@ func (v *View) RosterSummary() RosterSummary {
 		}
 	}
 	if working > 0 {
-		s.Counts = append(s.Counts, terminalui.Amber+fmt.Sprintf("◐ %d", working)+terminalui.Reset)
+		s.Counts = append(s.Counts, v.Painter.Theme.Warning()+fmt.Sprintf("◐ %d", working)+terminalui.Reset)
 	}
 	if finished > 0 {
 		s.Counts = append(s.Counts, terminalui.Dim+fmt.Sprintf("✓ %d", finished)+terminalui.Undim)
 	}
 	if errors > 0 {
-		s.Counts = append(s.Counts, terminalui.Red+fmt.Sprintf("! %d", errors)+terminalui.Reset)
+		s.Counts = append(s.Counts, v.Painter.Theme.Danger()+fmt.Sprintf("! %d", errors)+terminalui.Reset)
 	}
 	if v.NetCounts != nil {
 		s.Net = strings.TrimSpace(diffrender.CountStats(*v.NetCounts, v.Painter.Theme))
@@ -157,11 +157,11 @@ func (v *View) RosterSheet(width, limit int, now time.Time) []string {
 		tree, _ := RosterTree(visible, index, 0)
 		tree = strings.TrimRight(Middle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
-		color := terminalui.AgentColor(row.Agent.Name)
+		color := terminalui.AgentColor(v.Painter.Theme, row.Agent.Name)
 		if color == "" {
 			color = "\x1b[1m" + v.Painter.Theme.Accent()
 		}
-		name := terminalui.DimAgentColor(row.Agent.Name) + tree[:split] + terminalui.Undim + color + v.hoverName(tree[split:], row.Agent.Name) + terminalui.Reset
+		name := terminalui.DimAgentColor(v.Painter.Theme, row.Agent.Name) + tree[:split] + terminalui.Undim + color + v.hoverName(tree[split:], row.Agent.Name) + terminalui.Reset
 		line := agentLine{row: row, prefix: " " + v.NativeGlyph(row.Agent) + " " + name + "  "}
 		laid = append(laid, line)
 		parts = append(parts, RosterMetricParts(v, row.Agent, now))
@@ -350,10 +350,10 @@ func (v *View) LineCountParts(count diffmodel.Counts) (string, string) {
 	}
 	var added, removed string
 	if count.Added > 0 {
-		added = terminalui.Green + fmt.Sprintf("+%d", count.Added) + "\x1b[39m"
+		added = v.Painter.Theme.Success() + fmt.Sprintf("+%d", count.Added) + "\x1b[39m"
 	}
 	if count.Removed > 0 {
-		removed = terminalui.Red + fmt.Sprintf("-%d", count.Removed) + "\x1b[39m"
+		removed = v.Painter.Theme.Danger() + fmt.Sprintf("-%d", count.Removed) + "\x1b[39m"
 	}
 	return added, removed
 }
@@ -449,7 +449,7 @@ func (v *View) NativeGlyph(agent activitypresentation.Agent) string {
 	if role := Role(agent); role != "" {
 		return v.Glyph(agent)
 	}
-	color := terminalui.AgentColor(agent.Name)
+	color := terminalui.AgentColor(v.Painter.Theme, agent.Name)
 	if color == "" {
 		color = v.Painter.Theme.Accent()
 	}
@@ -457,9 +457,9 @@ func (v *View) NativeGlyph(agent activitypresentation.Agent) string {
 	case '◐':
 		return color + "◐" + terminalui.Reset
 	case '!':
-		return terminalui.Red + "!" + terminalui.Reset
+		return v.Painter.Theme.Danger() + "!" + terminalui.Reset
 	case '✓':
-		return terminalui.Green + "✓" + terminalui.Reset
+		return v.Painter.Theme.Success() + "✓" + terminalui.Reset
 	}
 	return color + "●" + terminalui.Reset
 }
@@ -480,7 +480,7 @@ func (v *View) AgentState(agent activitypresentation.Agent, width int, now time.
 		}
 		return v.Painter.Summary([]Block{wait}, width)
 	case "error":
-		return terminalui.Red + "error" + terminalui.Reset
+		return v.Painter.Theme.Danger() + "error" + terminalui.Reset
 	case "answered":
 		return terminalui.Dim + "done" + terminalui.Undim
 	case "":

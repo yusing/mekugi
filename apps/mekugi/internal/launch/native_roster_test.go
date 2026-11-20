@@ -12,6 +12,7 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -293,9 +294,9 @@ func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 	}{
 		{diffmodel.Counts{}, "", ""},
 		{diffmodel.Counts{Added: -1, Removed: -1}, "", ""},
-		{diffmodel.Counts{Added: 3}, terminalui.Green + "+3\x1b[39m", ""},
-		{diffmodel.Counts{Removed: 2}, "", terminalui.Red + "-2\x1b[39m"},
-		{diffmodel.Counts{Added: 3, Removed: 2}, terminalui.Green + "+3\x1b[39m", terminalui.Red + "-2\x1b[39m"},
+		{diffmodel.Counts{Added: 3}, diffrender.TerminalTheme.Success() + "+3\x1b[39m", ""},
+		{diffmodel.Counts{Removed: 2}, "", diffrender.TerminalTheme.Danger() + "-2\x1b[39m"},
+		{diffmodel.Counts{Added: 3, Removed: 2}, diffrender.TerminalTheme.Success() + "+3\x1b[39m", diffrender.TerminalTheme.Danger() + "-2\x1b[39m"},
 	} {
 		added, removed := v.LineCountParts(tt.count)
 		if added != tt.added || removed != tt.removed {

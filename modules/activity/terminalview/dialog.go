@@ -61,7 +61,7 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 	}
 	switch {
 	case view.Exited && view.Exit != 0:
-		detail = append(detail, terminalui.Red+"exit "+strconv.Itoa(view.Exit)+terminalui.Reset+terminalui.Dim)
+		detail = append(detail, p.Theme.Danger()+"exit "+strconv.Itoa(view.Exit)+terminalui.Reset+terminalui.Dim)
 	case view.Exited && block.Verb == "Run":
 		detail = append(detail, "exit 0")
 	}
@@ -75,7 +75,7 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 	}
 	add := page.Add
 	if block.Approval != "" {
-		label := approvalLabel(block.Approval)
+		label := approvalLabel(p.Theme, block.Approval)
 		if label != "" {
 			add(terminalui.DialogLine{Text: terminalui.Dim + "Approval: " + terminalui.Undim + label})
 		}
@@ -124,7 +124,7 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 		gap()
 		if block.Kind == "error" {
 			for line := range strings.SplitSeq(body, "\n") {
-				add(terminalui.DialogLine{Text: terminalui.Red + line + terminalui.Reset, Wrap: true})
+				add(terminalui.DialogLine{Text: p.Theme.Danger() + line + terminalui.Reset, Wrap: true})
 			}
 		} else {
 			var rows []string
@@ -314,14 +314,14 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 			verb = "Message"
 		}
 	}
-	title := VerbColor(block.Verb) + "\x1b[1m" + verb + terminalui.Reset
+	title := VerbColor(p.Theme, block.Verb) + "\x1b[1m" + verb + terminalui.Reset
 	if block.Hook != nil {
-		title = block.runColor() + "\x1b[1m" + verb + terminalui.Reset
+		title = block.runColor(p.Theme) + "\x1b[1m" + verb + terminalui.Reset
 	}
 	if target := dialogTarget(p, block); target != "" {
 		title += terminalui.Dim + " · " + terminalui.Undim + target
 	}
-	if outcome := approvalLabel(block.Approval); outcome != "" {
+	if outcome := approvalLabel(p.Theme, block.Approval); outcome != "" {
 		title += terminalui.Dim + " · " + terminalui.Undim + outcome
 	}
 	if elapsed := RunElapsed(block, now); elapsed != "" {

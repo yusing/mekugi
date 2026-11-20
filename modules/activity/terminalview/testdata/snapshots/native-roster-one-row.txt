@@ -1,6 +1,6 @@
 "                                                                "
-"\x1b[48;2;62;72;86m \x1b[38;5;75m·\x1b[39m \x1b[38;5;37;1mlast\x1b[39;22m  \x1b[2midle\x1b[22m                                              \x1b[2m  0%\x1b[22m \x1b[m"
+"\x1b[48;2;62;72;86m \x1b[38;5;75m·\x1b[39m \x1b[38;5;222;1mlast\x1b[39;22m  \x1b[2midle\x1b[22m                                              \x1b[2m  0%\x1b[22m \x1b[m"
 "plain after roster                                              "
 "                                                                "
-" \x1b[38;5;75m·\x1b[m \x1b[38;5;39;1mfirst\x1b[m  \x1b[2midle\x1b[m                                             \x1b[2m  0%\x1b[m "
+" \x1b[38;5;75m·\x1b[m \x1b[38;5;209;1mfirst\x1b[m  \x1b[2midle\x1b[m                                             \x1b[2m  0%\x1b[m "
 "plain after roster                                              "

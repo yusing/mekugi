@@ -741,9 +741,10 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			entry := view.Entries[count-1]
 			feed := view.RenderFeed(48, 30)
 			rows := feed.Lines
-			color, label := terminalui.Green, "Approved"
+			theme := u.shell.Transcript.Painter.Theme
+			color, label := theme.Success(), "Approved"
 			if tc.choice != 0 {
-				color, label = terminalui.Red, "Denied"
+				color, label = theme.Danger(), "Denied"
 			}
 			if !strings.Contains(strings.Join(rows, "\n"), color+label+terminalui.Reset) || entry.Source.Agent == "Session" {
 				t.Fatalf("approval rows = %q", rows)

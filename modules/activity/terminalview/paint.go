@@ -34,42 +34,42 @@ func (p *Painter) now() time.Time {
 	return time.Now()
 }
 
-func VerbColor(verb string) string {
+func VerbColor(theme diffrender.Theme, verb string) string {
 	first, _, _ := strings.Cut(verb, " ")
 	switch first {
 	case "Attached":
-		return terminalui.Green
+		return theme.Success()
 	case "Attach":
 		if verb == "Attach failed" {
-			return terminalui.Red
+			return theme.Danger()
 		}
-		return terminalui.Green
+		return theme.Success()
 	case "Read", "Inspect", "View", "Open", "List", "Check", "Diff", "Status":
-		return "\x1b[38;5;75m"
+		return theme.Info()
 	case "Commit", "Committed", "Stage":
-		return Hash
+		return theme.Hash()
 	case "Search", "Web", "Find", "Skill":
-		return "\x1b[38;5;141m"
+		return theme.Search()
 	case "Run", "Running", "Send", "Sleep", "Wait", "Still", "Stop":
-		return terminalui.Amber
+		return theme.Warning()
 	case "Edit", "Edited", "Create", "Delete", "Update", "Write", "Move", "Rename":
-		return terminalui.Green
+		return theme.Success()
 	case "MCP", "Tool", "Browse", "Generate":
-		return "\x1b[38;5;80m"
+		return theme.Tool()
 	}
 	return ""
 }
 
 // liveAgentGutter is the unbolded agent color used for feed gutters.
 func Gutter(name string, theme diffrender.Theme) string {
-	if color := terminalui.AgentColor(name); color != "" {
+	if color := terminalui.AgentColor(theme, name); color != "" {
 		return strings.Replace(color, "1;", "", 1)
 	}
 	return theme.Accent()
 }
 
 func (p *Painter) Agent(name string) string {
-	color := terminalui.AgentColor(name)
+	color := terminalui.AgentColor(p.Theme, name)
 	if color == "" {
 		color = "\x1b[1m" + p.Theme.Accent()
 	}
@@ -104,7 +104,7 @@ func (p *Painter) code(verb, code string) string {
 	case "Read", "Edit", "Create", "Delete", "Update", "Write", "View", "Move", "Rename":
 		return terminalui.StyledPath(code)
 	case "MCP", "Tool":
-		return "\x1b[38;5;80m" + code + "\x1b[39m"
+		return p.Theme.Tool() + code + "\x1b[39m"
 	}
 	return p.Theme.Accent() + code + "\x1b[39m"
 }
@@ -191,9 +191,9 @@ func (p *Painter) Label(verb, label string) string {
 				for end < len(word) && word[end] >= '0' && word[end] <= '9' {
 					end++
 				}
-				color := terminalui.Green
+				color := p.Theme.Success()
 				if word[0] == '-' {
-					color = terminalui.Red
+					color = p.Theme.Danger()
 				}
 				out.WriteString(color + word[:end] + "\x1b[39m")
 				if end < len(word) {
@@ -203,9 +203,9 @@ func (p *Painter) Label(verb, label string) string {
 			}
 			switch {
 			case len(word) > 1 && word[0] == '+':
-				word = terminalui.Green + word + "\x1b[39m"
+				word = p.Theme.Success() + word + "\x1b[39m"
 			case len(word) > 1 && word[0] == '-':
-				word = terminalui.Red + word + "\x1b[39m"
+				word = p.Theme.Danger() + word + "\x1b[39m"
 			case word != "":
 				word = terminalui.Dim + word + terminalui.Undim
 			}
@@ -322,9 +322,9 @@ func (p *Painter) Block(block Block, width int) []string {
 			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), suffix, width)...)
 		}
 	}
-	if outcome := approvalLabel(block.Approval); outcome != "" && len(lines) > 0 {
+	if outcome := approvalLabel(p.Theme, block.Approval); outcome != "" && len(lines) > 0 {
 		if (block.Verb == "Attached" || block.Verb == "Attached skill") && strings.HasPrefix(block.Approval, "Pending Approval") {
-			outcome = terminalui.Amber + "Approving" + terminalui.Reset
+			outcome = p.Theme.Warning() + "Approving" + terminalui.Reset
 		}
 		suffix := terminalui.Dim + " · " + terminalui.Undim + outcome
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
@@ -346,7 +346,7 @@ func (p *Painter) Block(block Block, width int) []string {
 			suffix := terminalui.Dim + " · " + elapsed + terminalui.Undim
 			// Timings align to the right edge, clear of the row's content,
 			// unless a trailer must follow on the same row.
-			if room := width - ansi.StringWidth(lines[0]) - ansi.StringWidth(elapsed); room >= 2 && (len(lines) > 1 || segmentTrailer(block) == "") {
+			if room := width - ansi.StringWidth(lines[0]) - ansi.StringWidth(elapsed); room >= 2 && (len(lines) > 1 || segmentTrailer(p.Theme, block) == "") {
 				lines[0] += strings.Repeat(" ", room) + terminalui.Dim + elapsed + terminalui.Undim
 			} else if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 				lines[0] += suffix
@@ -355,7 +355,7 @@ func (p *Painter) Block(block Block, width int) []string {
 			}
 		}
 	}
-	if trailer := segmentTrailer(block); trailer != "" && len(lines) > 0 {
+	if trailer := segmentTrailer(p.Theme, block); trailer != "" && len(lines) > 0 {
 		if last := len(lines) - 1; ansi.StringWidth(lines[last])+1+ansi.StringWidth(trailer) <= width {
 			lines[last] += " " + trailer
 		} else {
@@ -401,21 +401,21 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 		block.Tail = tail
 	}
-	return outputRows(block, lines, width)
+	return outputRows(p.Theme, block, lines, width)
 }
 
 // approvalLabel keeps the decision separate from whether a command ran or
 // succeeded. Withdrawal and external resolution do not imply a decision.
-func approvalLabel(outcome string) string {
+func approvalLabel(theme diffrender.Theme, outcome string) string {
 	switch {
 	case strings.HasPrefix(outcome, "Pending Approval"):
-		return terminalui.Amber + "Pending Approval" + terminalui.Reset
+		return theme.Warning() + "Pending Approval" + terminalui.Reset
 	case strings.HasPrefix(outcome, "Auto Denied"):
-		return terminalui.Red + "Auto Denied" + terminalui.Reset
+		return theme.Danger() + "Auto Denied" + terminalui.Reset
 	case strings.HasPrefix(outcome, "Approved"), strings.HasPrefix(outcome, "Granted"), strings.HasPrefix(outcome, "Allowed"):
-		return terminalui.Green + "Approved" + terminalui.Reset
+		return theme.Success() + "Approved" + terminalui.Reset
 	case strings.HasPrefix(outcome, "Denied"), strings.HasPrefix(outcome, "Declined"), strings.HasPrefix(outcome, "Blocked"):
-		return terminalui.Red + "Denied" + terminalui.Reset
+		return theme.Danger() + "Denied" + terminalui.Reset
 	}
 	return ""
 }
@@ -429,7 +429,7 @@ func workdirLabel(workdir string) string {
 // segmentTrailer names a tracked segment's outcome where its row would not:
 // a list that never reached it, or the exit of an operation whose row shows
 // no exit, such as a failed read.
-func segmentTrailer(block Block) string {
+func segmentTrailer(theme diffrender.Theme, block Block) string {
 	switch {
 	case block.Skipped && block.RowVerb() != "Skipped" && EditStatus(block) != "skipped":
 		return "· skipped"
@@ -438,7 +438,7 @@ func segmentTrailer(block Block) string {
 	case block.Kind == "op" && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)):
 		return "" // The row already shows the exit.
 	}
-	return terminalui.Dim + "· " + terminalui.Undim + exitText(block.ExitCode)
+	return terminalui.Dim + "· " + terminalui.Undim + exitText(theme, block.ExitCode)
 }
 
 func (p *Painter) blockRows(block Block, width int) []string {
@@ -448,7 +448,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	switch block.Kind {
 	case "progress":
 		style := p.statusStyle(block.Live)
-		text := block.progressText(style)
+		text := block.progressText(p.Theme, style)
 		if block.Label != "" && block.Hovered {
 			text = Underline(text)
 		}
@@ -509,10 +509,10 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return append([]string{terminalui.Dim + "• " + header + terminalui.Undim}, rows...)
 	case "final":
-		return append([]string{terminalui.Green + "✓ Final answer" + terminalui.Reset}, liveActivityIndent(p.Markdown(block.Body, width-2, false), "  ")...)
+		return append([]string{p.Theme.Success() + "✓ Final answer" + terminalui.Reset}, liveActivityIndent(p.Markdown(block.Body, width-2, false), "  ")...)
 	case "reads":
-		color := VerbColor(block.Verb)
-		lead, count := block.lead(color, block.Verb), ResultCount(block.Results, block.Verb)+readLines(block)
+		color := VerbColor(p.Theme, block.Verb)
+		lead, count := block.lead(p.Theme, color, block.Verb), ResultCount(block.Results, block.Verb)+readLines(block)
 		indent := ansi.StringWidth(lead)
 		literal := block.Verb == "Search" || block.Verb == "Web Search" || block.Verb == "Skill"
 		// fit shortens a path that cannot share its row with its ranges, gap
@@ -601,7 +601,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		copyLabel := ""
 		if block.Verb == "Search" && block.Path == "" && block.Code == "" {
 			compact := p.compactSearchTargets(block.Label) + ResultCount(block.Results, block.Verb)
-			if compact != label && ansi.StringWidth(block.lead(VerbColor(block.Verb), block.Verb)+compact) <= width {
+			if compact != label && ansi.StringWidth(block.lead(p.Theme, VerbColor(p.Theme, block.Verb), block.Verb)+compact) <= width {
 				copyLabel = label
 				label = compact
 			}
@@ -627,7 +627,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		exit := ""
 		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
-			exit = terminalui.Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
+			exit = p.Theme.Danger() + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 		}
 		// Keep exec source below its long heading, regardless of source line count.
 		// Other single-line programs or arguments read best on the operation row.
@@ -638,9 +638,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 			label, code = strings.TrimSpace(label+" "+inline), ""
 		}
-		lines := terminalui.Hang(block.lead(VerbColor(block.Verb), block.Verb), label, width)
+		lines := terminalui.Hang(block.lead(p.Theme, VerbColor(p.Theme, block.Verb), block.Verb), label, width)
 		if copyLabel != "" {
-			lines[0] = p.copyPathGroup(lines[0], block.lead(VerbColor(block.Verb), block.Verb)+copyLabel)
+			lines[0] = p.copyPathGroup(lines[0], block.lead(p.Theme, VerbColor(p.Theme, block.Verb), block.Verb)+copyLabel)
 		}
 		if omittedSource > 0 {
 			lines = append(lines, "  "+Elision{Hidden: omittedSource, Hovered: block.Hovered}.String())
@@ -668,7 +668,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		lines := []string{ansi.Truncate(p.Route(block), width, "…")}
 		return append(lines, p.Markdown(block.Body, width, false)...)
 	case "start":
-		head := terminalui.Green + "\x1b[1m▶ Started" + terminalui.Reset
+		head := p.Theme.Success() + "\x1b[1m▶ Started" + terminalui.Reset
 		lines := terminalui.Hang(head+" · ", p.Inline(block.Label), width)
 		if block.Body != "" {
 			lines = append(lines, p.Markdown(block.Body, width, false)...)
@@ -679,13 +679,13 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if block.Hovered {
 			label = Underline(label)
 		}
-		return []string{terminalui.Amber + label + terminalui.Reset}
+		return []string{p.Theme.Warning() + label + terminalui.Reset}
 	case "batch":
 		return p.batchRow(block, width)
 	case "filter":
 		return filterRows(block.Body, width, min(block.cell("Run"), width/2))
 	case "error":
-		return liveActivityIndent(ErrorRows(block, width-2), terminalui.Red+"✗"+terminalui.Reset+" ")
+		return liveActivityIndent(ErrorRows(p.Theme, block, width-2), p.Theme.Danger()+"✗"+terminalui.Reset+" ")
 	}
 	return p.Markdown(block.Body, width, false)
 }
@@ -699,8 +699,8 @@ func filterRows(body string, width, indent int) []string {
 	return rows
 }
 
-func exitText(code int) string {
-	return terminalui.Red + fmt.Sprintf("exit %d", code) + terminalui.Reset
+func exitText(theme diffrender.Theme, code int) string {
+	return theme.Danger() + fmt.Sprintf("exit %d", code) + terminalui.Reset
 }
 
 // editGroupRow lays out one file row of an edit group. Rows share one verb
@@ -716,12 +716,12 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 			Elision{Hidden: block.HiddenEdits, Unit: unit, Hovered: block.Hovered}.String(), width)
 	}
 	verb, status, start := block.EditVerb(), EditStatus(block), block.GroupStart
-	color := terminalui.Green
+	color := p.Theme.Success()
 	switch status {
 	case "failed", "declined":
-		color = terminalui.Red
+		color = p.Theme.Danger()
 	case "requested", "pending":
-		color = terminalui.Amber
+		color = p.Theme.Warning()
 	}
 	cell := max(block.cell("Edit"), block.VerbAlign+1)
 	lead := strings.Repeat(" ", cell)
@@ -745,7 +745,7 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 		}
 	}
 	if block.ExitCode != 0 {
-		trailer = append(trailer, terminalui.Dim+"· "+terminalui.Undim+exitText(block.ExitCode))
+		trailer = append(trailer, terminalui.Dim+"· "+terminalui.Undim+exitText(p.Theme, block.ExitCode))
 	}
 	rows := terminalui.Hang(lead, row, width)
 	// The trailer follows the file when it fits, and otherwise takes its own row.
@@ -785,7 +785,7 @@ func (p *Painter) editRow(block Block, width, lead int) (string, bool) {
 		return "", false
 	}
 	plain := editCounts(added, removed)
-	stats := countText(plain)
+	stats := countText(p.Theme, plain)
 	room := width - lead - ansi.StringWidth(tail)
 	if plain != "" {
 		room -= ansi.StringWidth(plain) + 1
@@ -807,7 +807,7 @@ func (p *Painter) editRow(block Block, width, lead int) (string, bool) {
 			pad = column - ansi.StringWidth(path) + 2
 		}
 		row += strings.Repeat(" ", pad) + stats
-		if bar := statBar(added, removed, block.StatScale); bar != "" {
+		if bar := statBar(p.Theme, added, removed, block.StatScale); bar != "" {
 			if gap := max(1, block.StatAlign-ansi.StringWidth(plain)+1); lead+ansi.StringWidth(row)+gap+statBarCells <= width {
 				row += strings.Repeat(" ", gap) + bar
 			}
@@ -822,7 +822,7 @@ func (p *Painter) editRow(block Block, width, lead int) (string, bool) {
 const statBarCells = 8
 
 // statBar scales a row's changed lines against the largest row in its group.
-func statBar(added, removed, scale int) string {
+func statBar(theme diffrender.Theme, added, removed, scale int) string {
 	total := added + removed
 	if scale <= 0 || total <= 0 {
 		return ""
@@ -835,7 +835,7 @@ func statBar(added, removed, scale int) string {
 	if removed > 0 && filled > 1 {
 		green = min(green, filled-1)
 	}
-	return terminalui.Green + strings.Repeat("━", green) + terminalui.Red + strings.Repeat("━", filled-green) + "\x1b[39m" +
+	return theme.Success() + strings.Repeat("━", green) + theme.Danger() + strings.Repeat("━", filled-green) + "\x1b[39m" +
 		terminalui.Dim + strings.Repeat("━", statBarCells-filled) + terminalui.Undim
 }
 
@@ -891,12 +891,12 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	if block.ShowWorkdir && block.Workdir != "" {
 		label = strings.TrimSpace(label + " " + workdirLabel(pathterminal.Truncate(block.Workdir, width-block.cell(block.RowVerb())-6-ansi.StringWidth(label))))
 	}
-	color, exit := block.runColor(), ""
+	color, exit := block.runColor(p.Theme), ""
 	if block.ExitCode != 0 {
-		color, exit = terminalui.Red, terminalui.Dim+"· "+terminalui.Undim+exitText(block.ExitCode)
+		color, exit = p.Theme.Danger(), terminalui.Dim+"· "+terminalui.Undim+exitText(p.Theme, block.ExitCode)
 	}
 	verb := block.RowVerb()
-	lead, indent := block.lead(color, verb), block.cell(verb)
+	lead, indent := block.lead(p.Theme, color, verb), block.cell(verb)
 	padding := strings.Repeat(" ", indent)
 	// suffix follows the last row when it fits, and otherwise takes its own.
 	suffix := func(lines []string, text string) []string {
@@ -998,12 +998,12 @@ func lineSuffix(n int, hovered bool) string {
 
 // outputRows attaches the invocation's output to its final operation. Open
 // output counts its earlier lines in the verb column of its first row.
-func outputRows(block Block, lines []string, width int) []string {
+func outputRows(theme diffrender.Theme, block Block, lines []string, width int) []string {
 	indent := block.cell(block.RowVerb())
 	padding := strings.Repeat(" ", indent)
 	// A VCS row's changes are its result, not output to collapse.
 	if len(block.Changes) > 0 && (!block.Collapsed || block.VCS()) {
-		return append(lines, changeRows(block.Changes, padding, width-indent)...)
+		return append(lines, changeRows(theme, block.Changes, padding, width-indent)...)
 	}
 	tail, omitted := block.Tail, block.TailOmitted
 	if block.TailRows > 0 && len(tail) > block.TailRows {
@@ -1206,12 +1206,12 @@ func (p *Painter) Event(block Block, width int) []string {
 	label := func(head string, body []string) []string {
 		return append([]string{ansi.Truncate(head, width, "…")}, p.Flash(block, body)...)
 	}
-	done := terminalui.Green + "✓" + terminalui.Reset + terminalui.Dim + " answer" + terminalui.Undim
+	done := p.Theme.Success() + "✓" + terminalui.Reset + terminalui.Dim + " answer" + terminalui.Undim
 	switch block.Kind {
 	case "message":
 		return label(p.Route(block), p.Markdown(block.Body, width, false))
 	case "start":
-		head := terminalui.Green + "▶" + terminalui.Reset + terminalui.Dim + " started"
+		head := p.Theme.Success() + "▶" + terminalui.Reset + terminalui.Dim + " started"
 		if model := strings.TrimSpace(ansi.Strip(p.Inline(block.Label))); model != "" {
 			head += " · " + model
 		}
@@ -1227,7 +1227,7 @@ func (p *Painter) Event(block Block, width int) []string {
 		if width < 12 {
 			return label(title, rows)
 		}
-		return liveActivityCard(title, p.Flash(block, rows), width, block.Flash)
+		return liveActivityCard(p.Theme, title, p.Flash(block, rows), width, block.Flash)
 	case "text":
 		return p.Flash(block, p.Markdown(block.Body, width, false))
 	}
@@ -1248,11 +1248,11 @@ func (p *Painter) Flash(block Block, rows []string) []string {
 	return flashed
 }
 
-func Verb(verb string) string {
+func Verb(theme diffrender.Theme, verb string) string {
 	if verb == "" {
 		return ""
 	}
-	return VerbColor(verb) + "\x1b[1m" + verb + terminalui.Reset + strings.Repeat(" ", max(1, 7-ansi.StringWidth(verb)))
+	return VerbColor(theme, verb) + "\x1b[1m" + verb + terminalui.Reset + strings.Repeat(" ", max(1, 7-ansi.StringWidth(verb)))
 }
 
 // cell is the width of a row's verb column: the column its adjacent
@@ -1264,13 +1264,13 @@ func (b Block) cell(verb string) int {
 	if b.VerbColumn > 0 {
 		return max(b.VerbColumn, ansi.StringWidth(verb)+1)
 	}
-	return ansi.StringWidth(Verb(verb))
+	return ansi.StringWidth(Verb(diffrender.TerminalTheme, verb))
 }
 
 // lead is a row's bold verb in color, padded to its column.
-func (b Block) lead(color, verb string) string {
+func (b Block) lead(theme diffrender.Theme, color, verb string) string {
 	if b.GroupHeader == "Attach" && b.GroupStart {
-		return Verb("Attach")
+		return Verb(theme, "Attach")
 	}
 	if b.GroupHeader != "" && !b.EditOperation() && !b.GroupStart {
 		return strings.Repeat(" ", b.cell(verb))
@@ -1278,8 +1278,8 @@ func (b Block) lead(color, verb string) string {
 	return color + "\x1b[1m" + verb + terminalui.Reset + strings.Repeat(" ", b.cell(verb)-ansi.StringWidth(verb))
 }
 
-func SummaryVerb(verb string) string {
-	return VerbColor(verb) + verb + terminalui.Reset + " "
+func SummaryVerb(theme diffrender.Theme, verb string) string {
+	return VerbColor(theme, verb) + verb + terminalui.Reset + " "
 }
 
 // Summary is the roster's one-line view of an agent's current activity.
@@ -1299,10 +1299,10 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 
 	switch block.Kind {
 	case "attachments":
-		return SummaryVerb("Attach") + block.Label + more
+		return SummaryVerb(p.Theme, "Attach") + block.Label + more
 	case "progress":
 		style := p.statusStyle(block.Live)
-		return style + block.progressText(style) + terminalui.Reset
+		return style + block.progressText(p.Theme, style) + terminalui.Reset
 	case "summary":
 		if block.Label != "" {
 			return p.statusStyle(block.Live) + ansi.Strip(p.Inline(block.Label)) + terminalui.Reset
@@ -1317,11 +1317,11 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		// The roster's status glyph already marks a sent final answer.
 		return text
 	case "reads":
-		verb, detail := SummaryVerb(block.RowVerb()), ansi.Strip(p.Inline(block.ReadSubject()))
+		verb, detail := SummaryVerb(p.Theme, block.RowVerb()), ansi.Strip(p.Inline(block.ReadSubject()))
 		if block.FailedOutcome() {
-			verb = terminalui.Red + block.RowVerb() + terminalui.Reset + " "
+			verb = p.Theme.Danger() + block.RowVerb() + terminalui.Reset + " "
 			if block.ExitCode != 0 {
-				detail += " " + terminalui.Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
+				detail += " " + p.Theme.Danger() + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 			}
 		}
 		return verb + detail + more
@@ -1340,13 +1340,13 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 			detail = strings.TrimSpace(code + " " + detail)
 		}
 		if block.FailedOutcome() && block.ExitCode != 0 {
-			detail += " " + terminalui.Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
+			detail += " " + p.Theme.Danger() + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 		}
 		verb := block.RowVerb()
 		if block.Hook != nil {
-			return block.runColor() + block.RowVerb() + terminalui.Reset + " " + detail + more
+			return block.runColor(p.Theme) + block.RowVerb() + terminalui.Reset + " " + detail + more
 		}
-		return SummaryVerb(verb) + detail + more
+		return SummaryVerb(p.Theme, verb) + detail + more
 	case "message":
 		text := p.MarkdownPreview(block.Body)
 		if text == "" {
@@ -1358,11 +1358,11 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		if block.From != "" || block.To != "" {
 			label = p.Route(block) + " " + label
 		}
-		return terminalui.Green + "▶ Started" + terminalui.Reset + " " + strings.TrimSpace(label)
+		return p.Theme.Success() + "▶ Started" + terminalui.Reset + " " + strings.TrimSpace(label)
 	case "compaction":
-		return terminalui.Amber + "◉ " + block.Label + terminalui.Reset
+		return p.Theme.Warning() + "◉ " + block.Label + terminalui.Reset
 	case "error":
-		return terminalui.Red + "✗ " + presentation.ErrorPreview(block.Body) + terminalui.Reset
+		return p.Theme.Danger() + "✗ " + presentation.ErrorPreview(block.Body) + terminalui.Reset
 	}
 	return p.MarkdownPreview(block.Body)
 }
@@ -1381,16 +1381,16 @@ func (p Painter) Route(block Block) string {
 
 // liveActivityCard frames rows under a titled top edge. A glowing card was
 // just opened from another pane.
-func liveActivityCard(title string, rows []string, width int, glow bool) []string {
-	return Card(title, "", rows, width, glow)
+func liveActivityCard(theme diffrender.Theme, title string, rows []string, width int, glow bool) []string {
+	return Card(theme, title, "", rows, width, glow)
 }
 
 // Card frames a finished answer: a rounded green edge with its title on the
 // top border and optional dim right text, such as a time.
-func Card(title, right string, rows []string, width int, glow bool) []string {
+func Card(theme diffrender.Theme, title, right string, rows []string, width int, glow bool) []string {
 	edge := "\x1b[38;2;80;120;90m"
 	if glow {
-		edge = "\x1b[1m" + terminalui.Green
+		edge = "\x1b[1m" + theme.Success()
 	}
 	inner := width - 4
 	title = ansi.Truncate(title, max(0, width-6), "…")

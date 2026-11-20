@@ -113,10 +113,9 @@ func TestNativeUIFaintOutputPolicy(t *testing.T) {
 				}
 				x := ansi.StringWidth(before)
 				cell := screen.CellAt(x, y)
+				// The terminal theme's mid-tone agent colors stay legible
+				// without faint support, so the fallback keeps them.
 				want := ansi.IndexedColor(133)
-				if faint {
-					want = 170
-				}
 				if cell.Style.Fg != want || (cell.Style.Attrs&uv.AttrFaint != 0) != faint {
 					t.Fatalf("target style=%+v, faint=%v", cell.Style, faint)
 				}

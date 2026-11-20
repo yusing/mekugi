@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/activity/presentation"
@@ -29,14 +30,14 @@ func StatusText(label sessionpresentation.Label) string {
 // PaintSessionStatus consumes only detached values. Semantic precedence is
 // already settled; terminal animation, sanitization and elapsed grammar stay here.
 // Source: apps/mekugi/internal/router/app_server_ui.go:1554:1585@1145fbbc.
-func PaintSessionStatus(label sessionpresentation.Label, now time.Time, colors terminalui.Colors) string {
+func PaintSessionStatus(theme diffrender.Theme, label sessionpresentation.Label, now time.Time, colors terminalui.Colors) string {
 	full := StatusText(label)
 	text := strings.ReplaceAll(textsanitize.Safe(full, false), "\n", " ")
 	if text == "" {
 		return ""
 	}
 	if label.Alert {
-		return terminalui.Red + "✗ " + presentation.ErrorPreview(full) + terminalui.Reset
+		return theme.Danger() + "✗ " + presentation.ErrorPreview(full) + terminalui.Reset
 	}
 	if label.Running {
 		elapsed := time.Duration(0)
@@ -64,14 +65,14 @@ func PaintSessionStatus(label sessionpresentation.Label, now time.Time, colors t
 // The running-process count is dark amber and underlined only while the
 // pointer is over it.
 // Source: apps/mekugi/internal/router/composer_notice.go:32:91@1145fbbc.
-func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, clickable, hover bool) (string, Rect) {
+func paintMainStatus(theme diffrender.Theme, status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, clickable, hover bool) (string, Rect) {
 	var count Rect
-	label := PaintSessionStatus(status.Composer, now, colors)
+	label := PaintSessionStatus(theme, status.Composer, now, colors)
 	if status.ComposerOverride {
 		label = status.Composer.Text
 	}
 	if status.ShellMode {
-		label = terminalui.Red + "Shell Mode" + terminalui.Reset + " · " + label
+		label = theme.Danger() + "Shell Mode" + terminalui.Reset + " · " + label
 	}
 	if status.Processes > 0 {
 		if label != "" {
@@ -84,9 +85,9 @@ func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, color
 				label += "\x1b[4m"
 			}
 		}
-		label += terminalui.DarkAmber + text + terminalui.Reset
+		label += theme.Standing() + text + terminalui.Reset
 	}
-	notice := PaintSessionStatus(status.Feedback, now, colors)
+	notice := PaintSessionStatus(theme, status.Feedback, now, colors)
 	if notice == "" {
 		return label, count
 	}

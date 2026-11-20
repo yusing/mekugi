@@ -85,9 +85,9 @@ func addGuardApproval(attached *attachedPresentation, control *sessioncontrol.Cl
 	details := approvalDirectory(attached.cwd, request.Cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
 	a := &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: request.Thread, Item: request.Item, Title: "Allow this remote write?", Subject: shellCommandString(request.Argv[0], request.Argv[1:]), Details: details, Choices: []prompt.Choice{
-		{ID: 0, Label: "Yes, run it", Approve: true, Tone: prompt.ToneAllow, Outcome: "Approved"},
-		{ID: 1, Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Tone: prompt.ToneGrant, Outcome: "Approved for this session"},
-		{ID: 2, Label: "No, fail this command", Deny: true, Tone: prompt.ToneRefuse, Outcome: "Denied"},
+		{ID: 0, Label: "Yes, run it", Approve: true, Outcome: "Approved"},
+		{ID: 1, Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Lasting: true, Outcome: "Approved for this session"},
+		{ID: 2, Label: "No, fail this command", Deny: true, Outcome: "Denied"},
 	}},
 		Guard: request}
 	if request.Kind == "sudo" {

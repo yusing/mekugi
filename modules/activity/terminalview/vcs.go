@@ -17,15 +17,15 @@ import (
 // vcsRow lays out a VCS operation on one row where it fits: the verb, its
 // heading cut short to leave room for the source, then any exit.
 func (p *Painter) vcsRow(block Block, width int) []string {
-	verb, color := block.RowVerb(), VerbColor(block.Verb)
+	verb, color := block.RowVerb(), VerbColor(p.Theme, block.Verb)
 	if block.ExitCode != 0 {
-		color = terminalui.Red
+		color = p.Theme.Danger()
 	}
-	lead := block.lead(color, verb)
+	lead := block.lead(p.Theme, color, verb)
 	head, source, _ := presentation.VCSSource(block.Label)
 	tail := terminalui.Dim + "· " + source + terminalui.Undim
 	if block.ExitCode != 0 {
-		tail += terminalui.Dim + " · " + terminalui.Undim + exitText(block.ExitCode)
+		tail += terminalui.Dim + " · " + terminalui.Undim + exitText(p.Theme, block.ExitCode)
 	}
 	room := width - ansi.StringWidth(lead) - 1 - ansi.StringWidth(tail)
 	heading, paths := p.vcsHeading(block.Verb, head, max(1, room))
@@ -54,7 +54,7 @@ func (p *Painter) vcsHeading(verb, head string, width int) (string, bool) {
 			case verb == "Commit":
 				for _, marker := range []string{"amend! ", "fixup! ", "squash! "} {
 					if rest, found := strings.CutPrefix(code, marker); found {
-						out.WriteString(terminalui.Amber + strings.TrimSpace(marker) + "\x1b[39m ")
+						out.WriteString(p.Theme.Warning() + strings.TrimSpace(marker) + "\x1b[39m ")
 						code = rest
 						break
 					}
@@ -83,11 +83,11 @@ func (p *Painter) vcsSummary(block Block) string {
 	head, source, _ := presentation.VCSSource(block.Label)
 	detail, _ := p.vcsHeading(block.Verb, head, ansi.StringWidth(head))
 	if counts := editCounts(presentation.ChangeTotals(block.Changes)); counts != "" {
-		detail = strings.TrimSpace(detail + " " + countText(counts))
+		detail = strings.TrimSpace(detail + " " + countText(p.Theme, counts))
 	}
 	detail = strings.TrimSpace(detail + " " + terminalui.Dim + "· " + source + terminalui.Undim)
 	if block.ExitCode != 0 {
-		detail += " " + terminalui.Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
+		detail += " " + p.Theme.Danger() + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 	}
-	return SummaryVerb(block.RowVerb()) + detail
+	return SummaryVerb(p.Theme, block.RowVerb()) + detail
 }

@@ -51,8 +51,8 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 	if _, ok := input[0]["text_elements"]; !ok {
 		t.Fatal("host field absent")
 	}
-	composer, _ := activityui.LayoutSpans(text, sessionpresentation.DraftSpans(draft.Draft), 80)
-	submitted, _ := activityui.LayoutSpans(text, spans, 80)
+	composer, _ := activityui.LayoutSpans(diffrender.TerminalTheme, text, sessionpresentation.DraftSpans(draft.Draft), 80)
+	submitted, _ := activityui.LayoutSpans(diffrender.TerminalTheme, text, spans, 80)
 	if !reflect.DeepEqual(composer, submitted) {
 		t.Fatal("submitted tokens differ from composer styles")
 	}

@@ -12,8 +12,8 @@ import (
 )
 
 func TestErrorDetailsHover(t *testing.T) {
-	plain := ErrorRows(Block{Kind: "error", Body: "failed\nAdditional diagnostics"}, 40)
-	hovered := ErrorRows(Block{Kind: "error", Body: "failed\nAdditional diagnostics", Hovered: true}, 40)
+	plain := ErrorRows(diffrender.TerminalTheme, Block{Kind: "error", Body: "failed\nAdditional diagnostics"}, 40)
+	hovered := ErrorRows(diffrender.TerminalTheme, Block{Kind: "error", Body: "failed\nAdditional diagnostics", Hovered: true}, 40)
 	if strings.Join(plain, "\n") == strings.Join(hovered, "\n") {
 		t.Fatal("hover does not decorate the details target")
 	}

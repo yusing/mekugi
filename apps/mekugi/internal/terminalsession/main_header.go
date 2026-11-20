@@ -40,7 +40,7 @@ func scrollLabel(v *activityui.View) string {
 		if v.Unseen > 0 {
 			label += fmt.Sprintf(" · %d new", v.Unseen)
 		}
-		return terminalui.Amber + label + terminalui.Reset
+		return v.Painter.Theme.Warning() + label + terminalui.Reset
 	case v.Offset > 0:
 		return terminalui.Dim + fmt.Sprintf("▲ %d", v.Offset) + terminalui.Undim
 	}

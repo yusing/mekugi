@@ -35,6 +35,12 @@ Source text uses shared [sanitization](../textsanitize/SPEC.md). Theme detection
 interprets supplied environment values and terminal replies without owning
 terminal I/O.
 
+Themes own the semantic foregrounds (success, warning, danger, standing work,
+information, search, tool and hash) that terminal views share. Dark and light
+themes use colors legible on their backgrounds. The terminal theme, used while
+the background is unknown, defers to the terminal's own ANSI palette and keeps
+syntax identifiers in its default foreground.
+
 ## Acceptance
 
 Source, unified-diff, word-diff, cache, cancellation and theme tests

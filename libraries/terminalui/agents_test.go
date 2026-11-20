@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 func TestFaintFallbackRestoresStyles(t *testing.T) {
 	// Color changes and resets inside a dim region must not strand the muted shade.
-	input := "\x1b[38;5;170mA\x1b[2mB\x1b[38;5;39mC\x1b[22mD\x1b[0mE"
-	expected := "\x1b[38;5;170mA\x1b[38;5;133mB\x1b[38;5;31mC\x1b[38;5;39mD\x1b[0mE"
+	input := "\x1b[38;5;170mA\x1b[2mB\x1b[38;5;209mC\x1b[22mD\x1b[0mE"
+	expected := "\x1b[38;5;170mA\x1b[38;5;133mB\x1b[38;5;166mC\x1b[38;5;209mD\x1b[0mE"
 	got, want := vt.NewEmulator(10, 1), vt.NewEmulator(10, 1)
 	defer got.Close()
 	defer want.Close()
@@ -34,13 +35,13 @@ func TestMutedAgentPalette(t *testing.T) {
 		name        string
 		normal, dim int
 	}{
-		{"/root/agent6", 39, 31}, {"/root/agent1", 170, 133}, {"/root/agent5", 38, 30},
-		{"/root/agent0", 99, 61}, {"/root/agent3", 37, 29}, {"/root/agent7", 133, 96}, {"/root/agent2", 74, 67},
+		{"/root/agent6", 209, 166}, {"/root/agent1", 170, 133}, {"/root/agent5", 111, 68},
+		{"/root/agent0", 150, 107}, {"/root/agent3", 222, 136}, {"/root/agent7", 183, 140}, {"/root/agent2", 174, 131},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			screen := vt.NewEmulator(4, 1)
 			defer screen.Close()
-			fmt.Fprint(screen, terminalui.FaintFallback(terminalui.AgentColor(tc.name)+"N"+terminalui.Reset+terminalui.DimAgentColor(tc.name)+"D"+terminalui.Reset+"X"))
+			fmt.Fprint(screen, terminalui.FaintFallback(terminalui.AgentColor(diffrender.DarkTheme, tc.name)+"N"+terminalui.Reset+terminalui.DimAgentColor(diffrender.DarkTheme, tc.name)+"D"+terminalui.Reset+"X"))
 			expected := vt.NewEmulator(4, 1)
 			defer expected.Close()
 			fmt.Fprintf(expected, "\x1b[1;38;5;%dmN\x1b[0;38;5;%dmD\x1b[0mX", tc.normal, tc.dim)
@@ -56,7 +57,7 @@ func TestMutedAgentPalette(t *testing.T) {
 func TestAgentAddressColors(t *testing.T) {
 	for _, task := range []string{"/root", "/root/worker", "/root/worker/reviewer"} {
 		address := "agent:main" + strings.TrimPrefix(task, "/root")
-		if color, dim := terminalui.AgentColor(address), terminalui.DimAgentColor(address); color != terminalui.AgentColor(task) || dim != terminalui.DimAgentColor(task) {
+		if color, dim := terminalui.AgentColor(diffrender.TerminalTheme, address), terminalui.DimAgentColor(diffrender.TerminalTheme, address); color != terminalui.AgentColor(diffrender.TerminalTheme, task) || dim != terminalui.DimAgentColor(diffrender.TerminalTheme, task) {
 			t.Fatalf("address %q differs from task %q: %q, %q", address, task, color, dim)
 		}
 	}

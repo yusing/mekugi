@@ -3,6 +3,7 @@ package terminalview
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -13,7 +14,7 @@ import (
 // WaitTarget retains canonical identity for both live and restored wait notices.
 type WaitTarget = presentation.WaitTarget
 
-func (b Block) progressText(style string) string {
+func (b Block) progressText(theme diffrender.Theme, style string) string {
 	var text strings.Builder
 	body := b.Body
 	if b.Label != "" {
@@ -28,7 +29,7 @@ func (b Block) progressText(style string) string {
 		}
 		name := textsanitize.Safe(pathdisplay.AgentDisplayName(target.Name), false)
 		if style != "" && target.Name != "all" {
-			name = terminalui.DimAgentColor(target.Name) + name + terminalui.Reset + style
+			name = terminalui.DimAgentColor(theme, target.Name) + name + terminalui.Reset + style
 		}
 		text.WriteString(name)
 		if target.Status != "" {

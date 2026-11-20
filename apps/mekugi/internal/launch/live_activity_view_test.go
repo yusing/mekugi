@@ -35,10 +35,10 @@ func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 		v.testAudience()
 		v.FeedTop, v.FeedLeft, v.FeedRight = 1, 1, 100
 		target := activityui.Snippet{Run: 1, Block: activityui.EditNavigationSnippet}
-		bar := terminalui.Green + "━━━━━━━━" + terminalui.Red + "\x1b[39m" + terminalui.Dim + terminalui.Undim
+		bar := diffrender.TerminalTheme.Success() + "━━━━━━━━" + diffrender.TerminalTheme.Danger() + "\x1b[39m" + terminalui.Dim + terminalui.Undim
 		feed := activityui.Feed{
 			Lines: []string{
-				"│ " + terminalui.Green + "Edited" + terminalui.Reset + "  src/a ━━━━━━━━.go   +15 -1  " + bar,
+				"│ " + diffrender.TerminalTheme.Success() + "Edited" + terminalui.Reset + "  src/a ━━━━━━━━.go   +15 -1  " + bar,
 				"└         ─file.go   +30     " + bar,
 			},
 			Heads: []int{0, 0}, Snippets: []activityui.Snippet{target, target}, Questions: []uint64{0, 0},
@@ -328,7 +328,7 @@ func TestLiveActivityHoverClearsWhenRosterMoves(t *testing.T) {
 func TestLiveActivityPainterColors(t *testing.T) {
 	var painter activityui.Painter
 	run := strings.Join(painter.Block(activityui.Block{Kind: "op", Verb: "Run", Label: "`go test`"}, 60), "\n")
-	if !strings.HasPrefix(run, terminalui.Amber) || !strings.Contains(run, "Ran") {
+	if !strings.HasPrefix(run, diffrender.TerminalTheme.Warning()) || !strings.Contains(run, "Ran") {
 		t.Fatalf("run verb = %q", run)
 	}
 	read := strings.Join(painter.Block(activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "dir/a.go", Ranges: []string{"1:2"}}}}, 60), "\n")
@@ -336,7 +336,7 @@ func TestLiveActivityPainterColors(t *testing.T) {
 		t.Fatalf("read path = %q", read)
 	}
 	failure := strings.Join(painter.Block(activityui.Block{Kind: "error", Body: "boom"}, 60), "\n")
-	if !strings.Contains(failure, terminalui.Red) {
+	if !strings.Contains(failure, diffrender.TerminalTheme.Danger()) {
 		t.Fatalf("error = %q", failure)
 	}
 }
@@ -359,7 +359,7 @@ func TestLiveActivityLinksAndCommandExit(t *testing.T) {
 		{activityui.Block{Kind: "op", Verb: "Run", Code: "false\necho done", Lang: "bash", Fenced: true, ExitCode: 2}, "       · exit 2"},
 	} {
 		rows := painter.Block(tc.block, 80)
-		if !strings.Contains(strings.Join(plainLines(rows), "\n"), tc.want) || !strings.Contains(strings.Join(rows, "\n"), terminalui.Red) {
+		if !strings.Contains(strings.Join(plainLines(rows), "\n"), tc.want) || !strings.Contains(strings.Join(rows, "\n"), painter.Theme.Danger()) {
 			t.Fatalf("run rows = %q", rows)
 		}
 	}
@@ -375,7 +375,7 @@ func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
 	}})
 	view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
 	got := strings.Join(plainLines(view.Render(90, 15, now)), "\n")
-	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.Render(90, 15, now), "\n"), terminalui.Red+"\x1b[1mRan") {
+	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.Render(90, 15, now), "\n"), diffrender.TerminalTheme.Danger()+"\x1b[1mRan") {
 		t.Fatalf("exit rendering = %s", got)
 	}
 }
@@ -450,7 +450,7 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	colored := strings.Join(painter.Block(search, 110), "\n")
 	if !strings.Contains(colored, painter.Theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
 		!strings.Contains(colored, terminalui.StyledPath("plugins/mrun.ts")) ||
-		!strings.Contains(colored, activityui.VerbColor("Search")+"\x1b[1mSearch") {
+		!strings.Contains(colored, activityui.VerbColor(painter.Theme, "Search")+"\x1b[1mSearch") {
 		t.Fatalf("search query/path colors = %q", colored)
 	}
 	search = parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(`rg needle src/a.go 'lib/with space.go'`)})[0]
@@ -509,7 +509,7 @@ func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
 		painter := activityui.Painter{Theme: theme}
 		for _, width := range []int{8, 18, 40, 100} {
 			rows := painter.Block(activityui.Block{Kind: "filter", Body: summary}, width)
-			indent := min(ansi.StringWidth(activityui.Verb("Run")), width/2)
+			indent := min(ansi.StringWidth(activityui.Verb(diffrender.TerminalTheme, "Run")), width/2)
 			for _, row := range rows {
 				if !strings.HasPrefix(ansi.Strip(row), strings.Repeat(" ", indent)) || ansi.StringWidth(row) > width {
 					t.Fatalf("filter alignment width %d: %q", width, row)

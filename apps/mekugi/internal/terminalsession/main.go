@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -90,7 +91,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	}
 	textWidth := width - inset
 	m.ComposerWidth = textWidth
-	draft, points := DraftLayout(in.Draft, m.ComposerWidth)
+	draft, points := DraftLayout(painter.Theme, in.Draft, m.ComposerWidth)
 	if presentation.Status.ShellMode {
 		PaintShellDraft(draft, in.Draft.Text, &painter.Painter)
 	}
@@ -111,7 +112,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		caret.Row, caret.Column = 0, 0
 	}
 	if !readOnly && !in.Picker && !in.Question && !presentation.Approvals.Open && in.Draft.Text == "" && presentation.Draft.Prediction != "" {
-		draft, _ = activityui.LayoutSpans(presentation.Draft.Prediction, nil, m.ComposerWidth)
+		draft, _ = activityui.LayoutSpans(painter.Theme, presentation.Draft.Prediction, nil, m.ComposerWidth)
 		for i := range draft {
 			draft[i] = terminalui.Dim + draft[i] + terminalui.Reset
 		}
@@ -206,17 +207,17 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	focused := !readOnly && in.Focused
 	switch {
 	case !readOnly && presentation.Status.ShellMode:
-		promptColor = terminalui.Red
+		promptColor = painter.Theme.Danger()
 	case !readOnly && (in.Question || presentation.Approvals.Open):
 		promptColor = painter.Theme.Accent()
 	}
 	const inputColor = "\x1b[39m"
 	rule := terminalui.Dim + strings.Repeat("─", width) + terminalui.Reset
 	if !readOnly && presentation.Status.ShellMode {
-		rule = terminalui.Red + strings.Repeat("─", width) + terminalui.Reset
+		rule = painter.Theme.Danger() + strings.Repeat("─", width) + terminalui.Reset
 	}
 	if boxed {
-		frame = append(frame, m.statusLine(presentation.Status, in.Now, painter.Colors, width, len(frame)))
+		frame = append(frame, m.statusLine(painter.Theme, presentation.Status, in.Now, painter.Colors, width, len(frame)))
 	}
 	if ruled {
 		frame = append(frame, rule)
@@ -249,13 +250,18 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	return out
 }
 
-// Caption segment colors, after the stock status line.
-const (
-	captionModel     = "\x1b[38;5;73m"
-	captionWorkspace = terminalui.Green
-	captionLimit     = "\x1b[38;5;110m"
-	captionItem      = "\x1b[38;5;73m"
-)
+// captionModel colors the stat lines' model and figures, after the stock
+// status line; limits use the theme's information color.
+func captionModel(theme diffrender.Theme) string {
+	switch theme {
+	case diffrender.LightTheme:
+		return "\x1b[38;2;24;100;110m"
+	case diffrender.DarkTheme:
+		return "\x1b[38;5;73m"
+	default:
+		return "\x1b[36m"
+	}
+}
 
 // captionUsage is the displayed thread's token and cost use, with the
 // session total on Main.
@@ -267,7 +273,7 @@ type captionUsage struct{ Tokens, Cost, Total string }
 // tokens, then items, the total cost, tokens and usage, shorten the context
 // to its percentage, drop the cost, then shorten the model, and finally drop
 // the context.
-func captionLine(c sessionpresentation.Caption, usage captionUsage, width int) string {
+func captionLine(theme diffrender.Theme, c sessionpresentation.Caption, usage captionUsage, width int) string {
 	const indent, sep = "  ", " | "
 	inner := max(0, width-1-len(indent))
 	model := c.Model
@@ -283,7 +289,7 @@ func captionLine(c sessionpresentation.Caption, usage captionUsage, width int) s
 	model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
 	bare := model
 	if model != "" {
-		model = captionModel + bare + terminalui.Reset
+		model = captionModel(theme) + bare + terminalui.Reset
 	}
 	var limits []string
 	for _, limit := range c.Limits {
@@ -291,15 +297,15 @@ func captionLine(c sessionpresentation.Caption, usage captionUsage, width int) s
 		if label != "" {
 			label = strings.ToUpper(label[:1]) + label[1:]
 		}
-		limits = append(limits, captionLimit+label+": "+fmt.Sprintf("%.0f%%", limit.Used)+terminalui.Reset)
+		limits = append(limits, theme.Info()+label+": "+fmt.Sprintf("%.0f%%", limit.Used)+terminalui.Reset)
 	}
 	var items []string
 	for _, item := range c.Items {
 		if text := strings.ReplaceAll(textsanitize.Safe(item.Text, false), "\n", " "); text != "" {
-			items = append(items, captionItem+text+terminalui.Reset)
+			items = append(items, captionModel(theme)+text+terminalui.Reset)
 		}
 	}
-	context := contextLevels(c)
+	context := contextLevels(theme, c)
 	level := 0
 	cost, total, tokens := usage.Cost, usage.Total, usage.Tokens
 	paint := func() (string, int) {
@@ -307,9 +313,9 @@ func captionLine(c sessionpresentation.Caption, usage captionUsage, width int) s
 		costText := ""
 		switch {
 		case cost != "" && total != "":
-			costText = captionItem + cost + terminalui.Dim + " · total " + total + terminalui.Reset
+			costText = captionModel(theme) + cost + terminalui.Dim + " · total " + total + terminalui.Reset
 		case cost != "" || total != "":
-			costText = captionItem + cmp.Or(cost, total) + terminalui.Reset
+			costText = captionModel(theme) + cmp.Or(cost, total) + terminalui.Reset
 		}
 		tokenText := ""
 		if tokens != "" {
@@ -359,7 +365,7 @@ func captionLine(c sessionpresentation.Caption, usage captionUsage, width int) s
 	}
 	if used > inner && model != "" {
 		if room := ansi.StringWidth(model) - (used - inner); room >= 3 {
-			model = captionModel + ansi.Truncate(bare, room, "…") + terminalui.Reset
+			model = captionModel(theme) + ansi.Truncate(bare, room, "…") + terminalui.Reset
 		} else {
 			model = ""
 		}
@@ -374,18 +380,18 @@ func captionLine(c sessionpresentation.Caption, usage captionUsage, width int) s
 
 // contextLevels lists the context segment from fullest to empty: the fill bar
 // with percentage and tokens, the bar with percentage, then the percentage.
-func contextLevels(c sessionpresentation.Caption) []string {
+func contextLevels(theme diffrender.Theme, c sessionpresentation.Caption) []string {
 	if !c.ContextKnown || c.ContextWindow == 0 {
 		return []string{activityui.ContextWindowLabel(activitypresentation.Agent{
 			ContextKnown: c.ContextKnown, ContextTokens: c.ContextTokens, ContextWindow: c.ContextWindow}), ""}
 	}
 	used := min(1, float64(c.ContextTokens)/float64(c.ContextWindow))
-	color := captionModel
+	color := captionModel(theme)
 	switch {
 	case used >= .85:
-		color = terminalui.Red
+		color = theme.Danger()
 	case used >= .6:
-		color = terminalui.Amber
+		color = theme.Warning()
 	}
 	percent := color + fmt.Sprintf("%.0f%%", 100*used) + terminalui.Reset
 	bar := contextBar(used, color) + " " + percent
@@ -405,8 +411,8 @@ func contextBar(used float64, color string) string {
 
 // statusLine shows the turn status above the draft, from column 0. Notices
 // keep a dismissal control after their label.
-func (m *Main) statusLine(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, width, row int) string {
-	label, count := paintMainStatus(status, now, colors, m.session.ReadOnly != sessionpresentation.Replay, m.ProcessHover)
+func (m *Main) statusLine(theme diffrender.Theme, status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, width, row int) string {
+	label, count := paintMainStatus(theme, status, now, colors, m.session.ReadOnly != sessionpresentation.Replay, m.ProcessHover)
 	hit := func(visible int) {
 		if count.W > 0 && count.X+count.W <= visible {
 			m.ProcessCount = Rect{count.X, row, count.W, 1}
@@ -427,7 +433,7 @@ func (m *Main) statusLine(status sessionpresentation.MainStatus, now time.Time, 
 	// In compact panes the error takes precedence over the session caption.
 	plain := ansi.Strip(label)
 	if before, _, ok := strings.Cut(plain, "✗ "); ok && ansi.StringWidth(before)+4 > room {
-		label = terminalui.Red + "✗ " + activitypresentation.ErrorPreview(full) + terminalui.Reset
+		label = theme.Danger() + "✗ " + activitypresentation.ErrorPreview(full) + terminalui.Reset
 		count = Rect{}
 	}
 	details := activityui.ErrorHasDetails(activityui.Block{Body: full})
@@ -445,5 +451,5 @@ func (m *Main) statusLine(status sessionpresentation.MainStatus, now time.Time, 
 		m.NoticeDetails = Rect{0, row, ansi.StringWidth(label), 1}
 	}
 	m.NoticeDismiss = Rect{1 + ansi.StringWidth(label), row, 3, 1}
-	return label + terminalui.Reset + " " + terminalui.Green + "[x]" + terminalui.Reset
+	return label + terminalui.Reset + " " + terminalui.Dim + "[x]" + terminalui.Reset
 }

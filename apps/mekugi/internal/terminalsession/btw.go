@@ -1,13 +1,14 @@
 package terminalsession
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
-	"time"
 )
 
 // BTWDock retains only terminal interaction state for a published exchange.

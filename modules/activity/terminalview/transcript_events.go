@@ -51,7 +51,7 @@ func (v *View) clipEvent(run *Run, entry activitypresentation.Entry, clip int) {
 		snippet := Snippet{Run: entry.Seq, Block: 0}
 		gutter := Gutter(entry.Agent, v.Painter.Theme) + "│" + terminalui.Reset + " "
 		if v.Conversation && entry.Agent == v.conversationSpeaker() && (entry.Kind == "text" || v.ChildrenOnly && entry.Kind == "final") {
-			gutter = mainGutter(&v.Painter, entry.Agent)
+			gutter = mainGutter(v.Painter.Theme, &v.Painter, entry.Agent)
 		}
 		// Keep the heading outside the body budget. The dialog retains the full entry.
 		run.Lines = append(run.Lines[:clip:clip], gutter+

@@ -1,9 +1,11 @@
 package terminalview
 
 import (
-	"github.com/yusing/mekugi/modules/activity/presentation"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/activity/presentation"
+
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -15,8 +17,8 @@ func ErrorHasDetails(block Block) bool {
 }
 
 // ErrorRows adds a dialog hint only when the preview omits retained content.
-func ErrorRows(block Block, width int) []string {
-	rows := terminalui.Wrap(terminalui.Red+presentation.ErrorPreview(block.Body)+terminalui.Reset, width, false)
+func ErrorRows(theme diffrender.Theme, block Block, width int) []string {
+	rows := terminalui.Wrap(theme.Danger()+presentation.ErrorPreview(block.Body)+terminalui.Reset, width, false)
 	if !ErrorHasDetails(block) {
 		return rows
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -47,7 +48,7 @@ func TestVCSRowsShowTheirResult(t *testing.T) {
 	if got := vcsRows(&p, commit, 80); got != "Commit amend! feat(router): pin latest reply · git" {
 		t.Fatalf("requested commit = %q", got)
 	}
-	if raw := strings.Join(p.Block(commit, 80), ""); !strings.Contains(raw, terminalui.Amber+"amend!") {
+	if raw := strings.Join(p.Block(commit, 80), ""); !strings.Contains(raw, diffrender.TerminalTheme.Warning()+"amend!") {
 		t.Fatalf("autosquash marker is not a marker: %q", raw)
 	}
 	// Without a named commit, output does not make the request a recorded commit.
@@ -77,7 +78,7 @@ func TestVCSRowsShowTheirResult(t *testing.T) {
 	if got := vcsRows(&p, failed, 80); !strings.HasPrefix(got, "Commit fix: x · git · exit 1\n") || failed.RowVerb() != "Commit" {
 		t.Fatalf("failed commit =\n%s", got)
 	}
-	if raw := p.Block(failed, 80)[0]; !strings.HasPrefix(raw, terminalui.Red) {
+	if raw := p.Block(failed, 80)[0]; !strings.HasPrefix(raw, diffrender.TerminalTheme.Danger()) {
 		t.Fatalf("failed commit verb is not red: %q", raw)
 	}
 	diff := Block{Kind: "op", Verb: "Diff", Label: "`HEAD~3..HEAD` in `internal/ui` `doc` · git --stat"}
@@ -123,10 +124,10 @@ func TestVCSStatusRowsUseTwoCellCodes(t *testing.T) {
 	if got := vcsRows(&p, status, 80); got != want {
 		t.Fatalf("status =\n%s\nwant\n%s", got, want)
 	}
-	if got := statusCode("MM"); got != terminalui.Green+"M\x1b[39m"+terminalui.Red+"M\x1b[39m" {
+	if got := statusCode(diffrender.TerminalTheme, "MM"); got != diffrender.TerminalTheme.Success()+"M\x1b[39m"+diffrender.TerminalTheme.Danger()+"M\x1b[39m" {
 		t.Fatalf("staged code colors = %q", got)
 	}
-	if got := statusCode("UU"); strings.Contains(got, terminalui.Green) {
+	if got := statusCode(diffrender.TerminalTheme, "UU"); strings.Contains(got, diffrender.TerminalTheme.Success()) {
 		t.Fatalf("conflict colored as staged: %q", got)
 	}
 	clean := Block{Kind: "op", Verb: "Status", Label: "`working tree` · git", Tail: []string{"x", "y"}, Changes: []ChangeRow{{Footer: true, Label: "main", Note: "clean"}}}
@@ -141,7 +142,7 @@ func TestVCSFooterFollowsElidedRows(t *testing.T) {
 		rows = append(rows, ChangeRow{Code: "M", Label: "a.go", Added: 1})
 	}
 	rows = append(rows, ChangeRow{Footer: true, Note: "14 files", Added: 14})
-	lines := changeRows(rows, "", 60)
+	lines := changeRows(diffrender.TerminalTheme, rows, "", 60)
 	if got := ansi.Strip(strings.Join(lines[len(lines)-2:], "\n")); got != "… +2 more\n14 files +14" {
 		t.Fatalf("closing rows =\n%s", got)
 	}

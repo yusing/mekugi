@@ -11,11 +11,12 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
-	return terminalsession.PaintSessionStatus(publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Session, now, u.shell.Transcript.Painter.Colors)
+	return terminalsession.PaintSessionStatus(diffrender.TerminalTheme, publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Status.Session, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) stateLabel(now time.Time) string {
 	view := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)

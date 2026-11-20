@@ -2,7 +2,7 @@
 "                            "
 "    First?                  "
 "                            "
-"  \x1b[36m❯\x1b[m \x1b[36m1. Customers\x1b[m            "
+"  \x1b[36m❯\x1b[m \x1b[36;1m1. Customers\x1b[m            "
 "    \x1b[2moption 1/3\x1b[m              "
 "                            "
 "  \x1b[2m↑↓ pick · ↵ next · ←→\x1b[m     "

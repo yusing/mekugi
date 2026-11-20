@@ -67,7 +67,7 @@ func Underline(text string) string {
 }
 
 // Match the statBar producer's styled span, not bar-like filename text.
-var editStatBarPattern = regexp.MustCompile(regexp.QuoteMeta(terminalui.Green) + "━*" + regexp.QuoteMeta(terminalui.Red) + "━*" + regexp.QuoteMeta("\x1b[39m"+terminalui.Dim) + "━*" + regexp.QuoteMeta(terminalui.Undim))
+var editStatBarPattern = regexp.MustCompile(`\x1b\[[0-9;]*m━*\x1b\[[0-9;]*m━*` + regexp.QuoteMeta("\x1b[39m"+terminalui.Dim) + "━*" + regexp.QuoteMeta(terminalui.Undim))
 var editGutterPattern = regexp.MustCompile(`^ *(?:[│└├]─? )? *`)
 
 // UnderlineEdit marks text, not the tree gutter, alignment gaps, or stat bar.

@@ -1,8 +1,9 @@
 package terminalsession
 
 import (
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
 const resumePickerNear = 5

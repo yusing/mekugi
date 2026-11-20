@@ -301,11 +301,11 @@ func (v *View) Glyph(agent activitypresentation.Agent) string {
 	}
 	switch v.agentStatus(agent) {
 	case '◐':
-		return terminalui.Amber + "◐" + terminalui.Reset
+		return v.Painter.Theme.Warning() + "◐" + terminalui.Reset
 	case '!':
-		return terminalui.Red + "!" + terminalui.Reset
+		return v.Painter.Theme.Danger() + "!" + terminalui.Reset
 	case '✓':
-		return terminalui.Green + "✓" + terminalui.Reset
+		return v.Painter.Theme.Success() + "✓" + terminalui.Reset
 	}
 	return terminalui.Dim + "·" + terminalui.Undim
 }
@@ -655,7 +655,7 @@ func (v *View) RenderHeader(rows []activitypresentation.AgentRow, width int, ros
 	}
 	right := "FOLLOW"
 	if !v.Following {
-		right = terminalui.Amber + "PAUSED" + terminalui.Reset
+		right = v.Painter.Theme.Warning() + "PAUSED" + terminalui.Reset
 		if v.Unseen > 0 {
 			right += fmt.Sprintf(" · %d new", v.Unseen)
 		}
@@ -685,9 +685,9 @@ func (v *View) activityHeader(width int) string {
 	}
 	right := v.StatusLabel
 	if right == "" && !v.Following {
-		right = terminalui.Amber + "paused" + terminalui.Reset
+		right = v.Painter.Theme.Warning() + "paused" + terminalui.Reset
 		if v.Unseen > 0 {
-			right += terminalui.Amber + fmt.Sprintf(" · %d new", v.Unseen) + terminalui.Reset
+			right += v.Painter.Theme.Warning() + fmt.Sprintf(" · %d new", v.Unseen) + terminalui.Reset
 		}
 		right += terminalui.Dim + " · End follows" + terminalui.Undim
 	}
@@ -991,7 +991,7 @@ func (v *View) renderAgentRows(rows []activitypresentation.AgentRow, width, limi
 		}
 		name = strings.TrimRight(Middle(name, available), " ")
 		split := strings.LastIndexAny(name, " /") + 1
-		styled := terminalui.DimAgentColor(row.Agent.Name) + name[:split] + terminalui.Undim + terminalui.AgentColor(row.Agent.Name) + v.hoverName(name[split:], row.Agent.Name) + terminalui.Reset
+		styled := terminalui.DimAgentColor(v.Painter.Theme, row.Agent.Name) + name[:split] + terminalui.Undim + terminalui.AgentColor(v.Painter.Theme, row.Agent.Name) + v.hoverName(name[split:], row.Agent.Name) + terminalui.Reset
 		prefix := " " + v.Glyph(row.Agent) + " "
 		switch {
 		case cards && !compact:
@@ -1142,7 +1142,7 @@ func (v *View) RenderStrip(rows []activitypresentation.AgentRow, width int) stri
 		if row.Agent.Name == v.Selected || row.Agent.Name == v.Hovered {
 			name = Underline(name)
 		}
-		part := v.Glyph(row.Agent) + " " + terminalui.AgentColor(row.Agent.Name) + name + terminalui.Reset
+		part := v.Glyph(row.Agent) + " " + terminalui.AgentColor(v.Painter.Theme, row.Agent.Name) + name + terminalui.Reset
 		if last := min(width, column+ansi.StringWidth(part)-1); column <= last {
 			v.Hits = append(v.Hits, Hit{Row: 2, First: column, Last: last, Agent: row.Agent.Name})
 		}

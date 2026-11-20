@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -131,7 +130,7 @@ func TestUISnapshotNativeRosterFailedRead(t *testing.T) {
 				t.Fatalf("failed read roster: %s", plain)
 			}
 			summary := v.Painter.Summary([]Block{{Value: values[0]}}, 90)
-			if !strings.HasPrefix(summary, terminalui.Red+"Read") {
+			if !strings.HasPrefix(summary, theme.Danger()+"Read") {
 				t.Fatalf("failed read tone: %q", summary)
 			}
 			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-roster-failed-read-%d.txt", theme), append(rows, "plain after roster"), 90)

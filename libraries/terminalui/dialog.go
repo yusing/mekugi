@@ -313,7 +313,7 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	inner := width - 4
 	right := f.Position
 	if f.Page.Live {
-		live := Green + "● live" + Reset
+		live := p.Theme.Success() + "● live" + Reset
 		if f.Paused {
 			live += Dim + " · paused" + Undim
 		}

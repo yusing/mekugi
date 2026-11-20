@@ -9,12 +9,3 @@ type Colors struct {
 	Foreground, Background       diffrender.RGB
 	HasForeground, HasBackground bool
 }
-
-// Source: internal/ui/activity/paint.go:19:23@[8a494004]
-const (
-	Green = "\x1b[38;5;114m"
-	Red   = "\x1b[38;5;203m"
-	Amber = "\x1b[38;5;214m"
-	// DarkAmber marks standing background work without the urgency of Amber.
-	DarkAmber = "\x1b[38;5;172m"
-)

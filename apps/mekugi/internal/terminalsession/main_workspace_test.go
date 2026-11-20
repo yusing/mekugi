@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/presentation"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -23,7 +24,7 @@ func TestUISnapshotMainWorkspacePaths(t *testing.T) {
 			if !strings.Contains(line, "project • ") || width < 80 && strings.Contains(line, "/home/dev") {
 				t.Fatalf("workspace suffix displaced by prefix: %q", line)
 			}
-			if strings.Contains(ansi.Strip(captionLine(view.Caption, captionUsage{}, width)), "-project") {
+			if strings.Contains(ansi.Strip(captionLine(diffrender.TerminalTheme, view.Caption, captionUsage{}, width)), "-project") {
 				t.Fatal("workspace stayed on the caption line")
 			}
 			if view.DisplayedWorkspace != workspace {
@@ -59,7 +60,7 @@ func TestStatLineWorkspaceOrderAndDrops(t *testing.T) {
 
 func TestMainComposerTierWithoutModel(t *testing.T) {
 	caption := sessionpresentation.Caption{Tier: "flex"}
-	if line := ansi.Strip(captionLine(caption, captionUsage{}, 80)); line != "  flex | 0%" {
+	if line := ansi.Strip(captionLine(diffrender.TerminalTheme, caption, captionUsage{}, 80)); line != "  flex | 0%" {
 		t.Fatalf("tier without model: %q", line)
 	}
 }
@@ -80,7 +81,7 @@ func TestMainComposerCaptionUsage(t *testing.T) {
 		{16, "  model | 25%"},
 	} {
 		usage := captionUsage{Tokens: "↑ 12K ↓ 3K", Cost: "$0.12", Total: "$0.48"}
-		if got := ansi.Strip(captionLine(caption, usage, tc.width)); got != tc.want {
+		if got := ansi.Strip(captionLine(diffrender.TerminalTheme, caption, usage, tc.width)); got != tc.want {
 			t.Errorf("width %d: caption = %q, want %q", tc.width, got, tc.want)
 		}
 	}

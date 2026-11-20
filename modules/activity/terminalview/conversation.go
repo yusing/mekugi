@@ -321,7 +321,7 @@ func (v *View) conversationLead(index int) bool {
 func (v *View) Continuation(index, width int) string {
 	entry, p := v.entries[index], &v.Painter
 	if entry.Kind == "text" {
-		return conversationHeading(p.Theme.Accent()+"●"+terminalui.Reset, "\x1b[1m"+p.Theme.Accent()+"main"+terminalui.Reset, "continued", entry, width)
+		return conversationHeading(v.Painter.Theme.Accent()+"●"+terminalui.Reset, "\x1b[1m"+v.Painter.Theme.Accent()+"main"+terminalui.Reset, "continued", entry, width)
 	}
 	suffix := terminalui.Dim + " · continued" + terminalui.Undim
 	row := p.Block(v.blocks(index)[0], width)[0]
@@ -558,8 +558,8 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 			out.snippets[len(out.snippets)-1] = toggles[i]
 		}
 	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "text" || v.ChildrenOnly && entry.Kind == "final"):
-		out.add(0, mainHeading(p, entry, width))
-		gutter := mainGutter(p, entry.Agent)
+		out.add(0, mainHeading(v.Painter.Theme, p, entry, width))
+		gutter := mainGutter(v.Painter.Theme, p, entry.Agent)
 		if entry.Question != 0 && v.mainReplyQuotes(first, entry.Question) {
 			for _, question := range v.entries[:first] {
 				if question.Seq == entry.Question {
@@ -590,14 +590,14 @@ func conversationHeading(glyph, name, detail string, entry activitypresentation.
 
 // mainHeading and mainGutter mark Main's own replies the way agent traffic
 // is marked, so every transcript item starts with who spoke and when.
-func mainHeading(p *Painter, entry activitypresentation.Entry, width int) string {
+func mainHeading(theme diffrender.Theme, p *Painter, entry activitypresentation.Entry, width int) string {
 	agent, _ := (activitypresentation.Value{From: entry.Agent}).Endpoints(p.MainCaller)
-	return conversationHeading(Gutter(agent, p.Theme)+"●"+terminalui.Reset, p.Agent(agent), "", entry, width)
+	return conversationHeading(Gutter(agent, theme)+"●"+terminalui.Reset, p.Agent(agent), "", entry, width)
 }
 
-func mainGutter(p *Painter, agent string) string {
+func mainGutter(theme diffrender.Theme, p *Painter, agent string) string {
 	agent, _ = (activitypresentation.Value{From: agent}).Endpoints(p.MainCaller)
-	return Gutter(agent, p.Theme) + "┃" + terminalui.Reset + " "
+	return Gutter(agent, theme) + "┃" + terminalui.Reset + " "
 }
 
 func (v *View) userItemContinued(out *conversationLines, entry activitypresentation.Entry, width int, continued bool) {
@@ -605,7 +605,7 @@ func (v *View) userItemContinued(out *conversationLines, entry activitypresentat
 	var rows []string
 	if len(entry.Spans) > 0 {
 		// Bound input stays literal; Markdown must not consume token text.
-		rows, _ = LayoutSpans(entry.Text, entry.Spans, width-2)
+		rows, _ = LayoutSpans(v.Painter.Theme, entry.Text, entry.Spans, width-2)
 	} else {
 		rows = v.paintBlock(len(out.lines), 0, func() []string { return v.Painter.Markdown(entry.Text, width-2, false) })
 	}
@@ -651,18 +651,18 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		detail = traffic.Detail
 		switch traffic.Kind {
 		case "start":
-			glyph = terminalui.Green + "▶" + terminalui.Reset
+			glyph = v.Painter.Theme.Success() + "▶" + terminalui.Reset
 			if block.Label != "" {
 				detail += " · " + ansi.Strip(p.Inline(block.Label))
 			}
 		case "message":
 			glyph = terminalui.Dim + "✉" + terminalui.Undim
 		case "final":
-			glyph = terminalui.Green + "✓" + terminalui.Reset
+			glyph = v.Painter.Theme.Success() + "✓" + terminalui.Reset
 		case "interrupted":
 			glyph = terminalui.Dim + "■" + terminalui.Undim
 		case "error":
-			glyph = terminalui.Red + "✗" + terminalui.Reset
+			glyph = v.Painter.Theme.Danger() + "✗" + terminalui.Reset
 		}
 		// Unjoined error bodies already carry their failure heading.
 		if block.Kind == "error" && !thread.Joined {
@@ -686,9 +686,9 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 	if block.From != "" && block.To != "" {
 		name = p.Route(block)
 	}
-	color := Gutter(agent, p.Theme)
+	color := Gutter(agent, v.Painter.Theme)
 	if external || !v.Conversation && block.Kind == "message" {
-		color = Gutter(block.From, p.Theme)
+		color = Gutter(block.From, v.Painter.Theme)
 	}
 	if thread.Joined {
 		if block.From != "" && block.To != "" {
@@ -737,7 +737,7 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		for _, block := range blocks {
 			if block.Kind == "error" {
 				block.Hovered = v.Snippet == (Snippet{Run: entry.Seq, Block: 0})
-				out.hang(gutter, gutter, ErrorRows(block, body))
+				out.hang(gutter, gutter, ErrorRows(v.Painter.Theme, block, body))
 				continue
 			}
 			if block.Kind == "final" {

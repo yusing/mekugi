@@ -16,7 +16,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-	"github.com/yusing/mekugi/libraries/terminalui"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -572,7 +571,7 @@ func TestRunningProcessCountUnderlinesOnHover(t *testing.T) {
 		return out.String()
 	}
 	// The frame writer merges SGR parameters, as in "\x1b[4;38;5;172m".
-	label := strings.TrimPrefix(terminalui.DarkAmber, "\x1b[") + "1 running processes"
+	label := strings.TrimPrefix(diffrender.TerminalTheme.Standing(), "\x1b[") + "1 running processes"
 	if got := paint(); !strings.Contains(got, label) || strings.Contains(got, "4;"+label) {
 		t.Fatalf("count is not plain dark amber: %q", got)
 	}

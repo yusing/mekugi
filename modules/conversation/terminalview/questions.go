@@ -3,6 +3,7 @@ package terminalview
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -107,7 +108,7 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 	}
 	for i := layout.top; i < min(len(options), layout.top+count); i++ {
 		o := options[i]
-		line := choiceLine(accent, prompt.ToneNeutral, i == question.Selected, i+1, promptText(o.Label))
+		line := choiceLines(p.Theme, false, i == question.Selected, i+1, promptText(o.Label), math.MaxInt)[0]
 		if inner-columns-7 >= 24 {
 			line += strings.Repeat(" ", max(0, columns-ansi.StringWidth(promptText(o.Label)))+2) + dim + promptText(o.Description) + reset
 		}

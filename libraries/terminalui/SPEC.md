@@ -48,7 +48,8 @@ Consumers extract private annotations before delivering rows to a terminal.
 Canonical agent names and colors are shared by activity and Diff presentation.
 The root displays as `main`; children display their path below `/root/` or
 `agent:main/`, without the identity prefix. Colors
-depend only on canonical identity and survive reconnects. Shared path decoration
+depend only on canonical identity and the theme, and survive reconnects. Agent
+hues stay apart from each other and from the accent that marks Main. Shared path decoration
 emphasizes the filename without changing the supplied display path. Callers still
 resolve workspace-relative display and authority before painting.
 Bounded path labels elide leading cells, preserving the distinguishing suffix,

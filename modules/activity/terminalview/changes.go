@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
 	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
 
 	"github.com/charmbracelet/x/ansi"
@@ -17,13 +18,10 @@ import (
 // confirmed edit rows.
 type ChangeRow = presentation.ChangeRow
 
-// Hash is the gold VCS output uses for commit hashes and branches.
-const Hash = "\x1b[38;5;179m"
-
 // changeRows lays out change history as edit rows: a verb column, paths or
 // IDs in one column, counts in the next, and bars scaled against the largest
 // row. A label column too wide for its row narrows so the counts stay in view.
-func changeRows(rows []ChangeRow, padding string, width int) []string {
+func changeRows(theme diffrender.Theme, rows []ChangeRow, padding string, width int) []string {
 	var footers []ChangeRow
 	rows = slices.DeleteFunc(slices.Clone(rows), func(row ChangeRow) bool {
 		if row.Footer {
@@ -59,17 +57,17 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 		}
 		line := ""
 		if verbs > 0 {
-			color := terminalui.Green
+			color := theme.Success()
 			switch row.Verb {
 			case "Conflict":
-				color = terminalui.Red
+				color = theme.Danger()
 			case "?":
-				color = terminalui.Amber
+				color = theme.Warning()
 			}
 			verb, cells := "", ansi.StringWidth(row.Verb)
 			switch {
 			case row.Code != "":
-				verb, cells = statusCode(row.Code), ansi.StringWidth(row.Code)
+				verb, cells = statusCode(theme, row.Code), ansi.StringWidth(row.Code)
 			case row.Verb != "":
 				verb = color + "\x1b[1m" + row.Verb + terminalui.Reset
 			}
@@ -84,8 +82,8 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 		gap := strings.Repeat(" ", max(0, column-ansi.StringWidth(label))+2)
 		switch plain := editCounts(row.Added, row.Removed); {
 		case plain != "":
-			line += gap + countText(plain)
-			if bar := statBar(row.Added, row.Removed, scale); bar != "" {
+			line += gap + countText(theme, plain)
+			if bar := statBar(theme, row.Added, row.Removed, scale); bar != "" {
 				line += strings.Repeat(" ", counts-len(plain)+1) + bar
 			}
 			if row.Note != "" {
@@ -102,13 +100,13 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 	for _, footer := range footers {
 		var parts []string
 		if footer.Label != "" {
-			parts = append(parts, Hash+footer.Label+"\x1b[39m")
+			parts = append(parts, theme.Hash()+footer.Label+"\x1b[39m")
 		}
 		if footer.Note != "" {
 			parts = append(parts, terminalui.Dim+footer.Note+terminalui.Undim)
 		}
 		if plain := editCounts(footer.Added, footer.Removed); plain != "" {
-			parts = append(parts, countText(plain))
+			parts = append(parts, countText(theme, plain))
 		}
 		lines = append(lines, padding+ansi.Truncate(strings.Join(parts, " "), width, "…"))
 	}
@@ -117,7 +115,7 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 
 // statusCode colors a two-cell VCS status as git does: the staged state
 // green, the unstaged state red, and untracked or conflicted paths red.
-func statusCode(code string) string {
+func statusCode(theme diffrender.Theme, code string) string {
 	var out strings.Builder
 	conflict := strings.ContainsAny(code, "U?!C") || code == "AA" || code == "DD"
 	for i, r := range code {
@@ -126,9 +124,9 @@ func statusCode(code string) string {
 			out.WriteByte(' ')
 			continue
 		case i == 0 && !conflict:
-			out.WriteString(terminalui.Green)
+			out.WriteString(theme.Success())
 		default:
-			out.WriteString(terminalui.Red)
+			out.WriteString(theme.Danger())
 		}
 		out.WriteRune(r)
 		out.WriteString("\x1b[39m")
@@ -156,12 +154,12 @@ func changeLabel(r ChangeRow, width int) string {
 }
 
 // countText colors a row's added and removed line counts as edit rows do.
-func countText(plain string) string {
+func countText(theme diffrender.Theme, plain string) string {
 	if plain == "" {
 		return ""
 	}
 	if strings.HasPrefix(plain, "-") {
-		return terminalui.Red + plain + "\x1b[39m"
+		return theme.Danger() + plain + "\x1b[39m"
 	}
-	return strings.NewReplacer("+", terminalui.Green+"+", " -", "\x1b[39m "+terminalui.Red+"-").Replace(plain) + "\x1b[39m"
+	return strings.NewReplacer("+", theme.Success()+"+", " -", "\x1b[39m "+theme.Danger()+"-").Replace(plain) + "\x1b[39m"
 }

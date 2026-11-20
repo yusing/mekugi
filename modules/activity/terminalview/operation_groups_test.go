@@ -6,9 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/terminalui"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -258,7 +257,7 @@ func TestRanRowWrapsAtShellWords(t *testing.T) {
 			t.Fatalf("row exceeds width: %q", ansi.Strip(row))
 		}
 	}
-	if !strings.HasPrefix(plain[0], "Ran    go test") || !strings.Contains(rows[0], terminalui.Red+"\x1b[1mRan") {
+	if !strings.HasPrefix(plain[0], "Ran    go test") || !strings.Contains(rows[0], diffrender.TerminalTheme.Danger()+"\x1b[1mRan") {
 		t.Fatalf("failed command row = %q", plain)
 	}
 	var joined []string

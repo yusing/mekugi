@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -50,6 +51,12 @@ func Approvals(d prompt.ApprovalDockView, p *terminalui.Painter, layout *Approva
 		keys = slices.Insert(keys, 1, [2]string{"type", "deny with reason"})
 	}
 	foot := panelKeys(keys, inner)
+	// Choices wrap rather than truncate: a lasting grant's scope is often at
+	// the end of its label.
+	var choices []string
+	for i, choice := range v.Choices {
+		choices = append(choices, choiceLines(p.Theme, choice.Lasting, i == v.Selected, i+1, promptText(choice.Label), inner)...)
+	}
 	var text []string
 	for line := range strings.SplitSeq(v.Subject, "\n") {
 		text = append(text, promptWrap(textsanitize.Safe(line, false), max(1, inner-2))...)
@@ -61,7 +68,7 @@ func Approvals(d prompt.ApprovalDockView, p *terminalui.Painter, layout *Approva
 	}
 	// The request text takes precedence over spacing; it scrolls only when
 	// even the unspaced dock cannot hold it.
-	fixed := len(rows) + len(v.Choices) + len(foot)
+	fixed := len(rows) + len(choices) + len(foot)
 	spaced := fixed+len(text)+3 <= height
 	textRoom := height - fixed
 	if spaced {
@@ -82,9 +89,7 @@ func Approvals(d prompt.ApprovalDockView, p *terminalui.Painter, layout *Approva
 	if spaced {
 		rows = append(rows, "")
 	}
-	for i, choice := range v.Choices {
-		rows = append(rows, ansi.Truncate(choiceLine(accent, choice.Tone, i == v.Selected, i+1, promptText(choice.Label)), inner, "…"))
-	}
+	rows = append(rows, choices...)
 	if spaced {
 		rows = append(rows, "")
 	}
@@ -95,27 +100,32 @@ func Approvals(d prompt.ApprovalDockView, p *terminalui.Painter, layout *Approva
 	return rows[:min(len(rows), height)]
 }
 
-// choiceLine numbers a docked panel's choice behind a pointer on the selected
-// one. Toned choices keep their color so risky ones stand apart; a neutral
-// choice takes the accent while selected.
-func choiceLine(accent string, tone prompt.ChoiceTone, selected bool, number int, label string) string {
-	pointer, color := "  ", ""
+// choiceLines numbers a docked panel's choice behind a pointer on the
+// selected one, wrapping under its label. The selected choice is bold in the
+// accent; a lasting choice stays amber, selected or not, so its risk shows.
+func choiceLines(theme diffrender.Theme, lasting, selected bool, number int, label string, width int) []string {
+	pointer, style := "  ", ""
 	if selected {
-		pointer, color = accent+"❯"+terminalui.Reset+" ", accent
+		pointer, style = theme.Accent()+"❯"+terminalui.Reset+" ", "\x1b[1m"+theme.Accent()
 	}
-	switch tone {
-	case prompt.ToneAllow:
-		color = terminalui.Green
-	case prompt.ToneGrant:
-		color = terminalui.Amber
-	case prompt.ToneRefuse:
-		color = terminalui.Red
+	if lasting {
+		style += theme.Warning()
 	}
-	line := fmt.Sprintf("%d. %s", number, label)
-	if color != "" {
-		line = color + line + terminalui.Reset
+	prefix := fmt.Sprintf("%d. ", number)
+	rows := promptWrap(label, max(1, width-2-len(prefix)))
+	for i, row := range rows {
+		lead := pointer
+		if i > 0 {
+			lead, prefix = "  ", strings.Repeat(" ", len(prefix))
+		}
+		if style != "" {
+			row = style + prefix + row + terminalui.Reset
+		} else {
+			row = prefix + row
+		}
+		rows[i] = lead + row
 	}
-	return pointer + line
+	return rows
 }
 
 // panelKeys lists a docked panel's keys as one dim row, wrapping when narrow.

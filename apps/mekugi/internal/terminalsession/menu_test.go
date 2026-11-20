@@ -1,10 +1,11 @@
 package terminalsession
 
 import (
+	"testing"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/completion"
-	"testing"
 )
 
 func TestMenuKeysReturnTargetedEffectsWithoutMutatingPublication(t *testing.T) {

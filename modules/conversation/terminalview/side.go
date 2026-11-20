@@ -21,7 +21,7 @@ func Side(view conversationmodel.SideView, painter *terminalui.Painter, status s
 	}
 	color := painter.Theme.Accent()
 	if view.Alert {
-		color = terminalui.Red
+		color = painter.Theme.Danger()
 	}
 	// A docked panel: the heading, answer rows from column 2, then dim keys.
 	rows := []string{"  " + terminalui.PanelHeading(color, "/btw", status, "", max(1, width-4))}
@@ -35,7 +35,7 @@ func Side(view conversationmodel.SideView, painter *terminalui.Painter, status s
 		answer = append(answer, terminalui.Wrap(textsanitize.Safe(question, false), inner, true)...)
 		if notice != "" {
 			for _, row := range terminalui.Wrap(textsanitize.Safe(notice, false), inner, true) {
-				answer = append(answer, terminalui.Red+row+terminalui.Reset)
+				answer = append(answer, painter.Theme.Danger()+row+terminalui.Reset)
 			}
 		}
 		for _, item := range items {
@@ -45,7 +45,7 @@ func Side(view conversationmodel.SideView, painter *terminalui.Painter, status s
 		}
 		if failure != "" {
 			for _, row := range terminalui.Wrap(textsanitize.Safe(failure, false), inner, true) {
-				answer = append(answer, terminalui.Red+row+terminalui.Reset)
+				answer = append(answer, painter.Theme.Danger()+row+terminalui.Reset)
 			}
 		}
 	}

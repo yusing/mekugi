@@ -2,7 +2,7 @@
 "                            "
 "    First?                  "
 "                            "
-"  \x1b[36m❯\x1b[m \x1b[36m3. Other\x1b[m                "
+"  \x1b[36m❯\x1b[m \x1b[36;1m3. Other\x1b[m                "
 "    \x1b[2moption 3/3\x1b[m              "
 "                            "
 "  \x1b[2m1–3 choose · type answer\x1b[m  "

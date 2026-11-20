@@ -14,6 +14,6 @@
 "                                                                                "
 "  \x1b[1msample.go\x1b[m                                                                     "
 "                                                                                "
-"  \x1b[38;5;203mfile is not UTF-8 text\x1b[m                                                        "
+"  \x1b[31mfile is not UTF-8 text\x1b[m                                                        "
 "  \x1b[2m↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc\x1b[m                               "
 "plain after file dialog                                                         "

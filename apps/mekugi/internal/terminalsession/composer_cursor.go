@@ -3,6 +3,7 @@ package terminalsession
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -30,7 +31,7 @@ func (m *Main) moveDraft(d composer.Draft, sequence string) (at, recall int) {
 			at = len(d.Text)
 		}
 	case "\x1b[A", "\x1bOA", "\x1b[B", "\x1bOB":
-		_, points := DraftLayout(d, m.ComposerWidth)
+		_, points := DraftLayout(diffrender.TerminalTheme, d, m.ComposerWidth)
 		current := points[len(points)-1]
 		for _, point := range points {
 			if point.Offset == at {

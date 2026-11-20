@@ -23,7 +23,7 @@ func TestRosterSummaryFormatting(t *testing.T) {
 			blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: source})
 			summary := p.Summary(blocks, 80)
 			verb := blocks[0].RowVerb()
-			command := strings.TrimPrefix(summary, activityui.SummaryVerb(verb))
+			command := strings.TrimPrefix(summary, activityui.SummaryVerb(diffrender.TerminalTheme, verb))
 			if ansi.Strip(summary) != verb+" git status --short" || command == ansi.Strip(command) {
 				t.Fatalf("command lost syntax highlighting: %q", summary)
 			}

@@ -14,7 +14,7 @@ type ApprovalDecision struct {
 	Label                  string
 	Response               map[string]any
 	Approve, Session, Deny bool
-	// Lasting approvals outlast this request, for the session or in policy.
+	// Lasting decisions outlast this request, for the session or in policy.
 	Lasting bool
 	Outcome string
 }
@@ -122,7 +122,7 @@ func CommandApprovalChoice(decision jsontext.Value, network, permissions bool) (
 			choice.Outcome = "Approved commands starting with " + prefix
 		case name == "applyNetworkPolicyAmendment" && value.Network != nil:
 			if value.Network.Action == "deny" {
-				choice.Deny = true
+				choice.Deny, choice.Lasting = true, true
 				choice.Label, choice.Outcome = "No, and block this host in the future", "Blocked "+value.Network.Host
 			} else {
 				choice.Lasting = true

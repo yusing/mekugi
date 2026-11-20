@@ -264,7 +264,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 			usage.Total = summary.Cost
 		}
 		content.Stats = []string{
-			captionLine(view.Caption, usage, width),
+			captionLine(shell.Theme, view.Caption, usage, width),
 			shell.StatLine(in.Status(), width, height-1),
 		}
 	}

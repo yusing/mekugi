@@ -6,6 +6,7 @@ import (
 
 	presentation "github.com/yusing/mekugi/modules/activity/presentation"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/charmbracelet/x/ansi"
@@ -16,7 +17,7 @@ func TestLayoutSpans(t *testing.T) {
 	for _, token := range []string{"[Image 1]", "$review", `@"file name.go"`, "界é"} {
 		for _, width := range []int{4, 16} {
 			text := "prefix " + token + " tail"
-			rows, points := LayoutSpans(text, []presentation.TextSpan{{Start: 7, End: 7 + len(token)}}, width)
+			rows, points := LayoutSpans(diffrender.TerminalTheme, text, []presentation.TextSpan{{Start: 7, End: 7 + len(token)}}, width)
 			var plain []string
 			for _, row := range rows {
 				plain = append(plain, ansi.Strip(row))
@@ -40,7 +41,7 @@ func TestLayoutSpans(t *testing.T) {
 }
 
 func TestLayoutSpanLookalikeIsLiteral(t *testing.T) {
-	rows, _ := LayoutSpans("prefix [Image 1]", nil, 12)
+	rows, _ := LayoutSpans(diffrender.TerminalTheme, "prefix [Image 1]", nil, 12)
 	if strings.Contains(strings.Join(rows, "\n"), "[Image 1]") || strings.Contains(strings.Join(rows, ""), "\x1b[") {
 		t.Fatalf("literal lookalike became a token: %q", rows)
 	}
@@ -53,7 +54,7 @@ func TestUISnapshotTokenKinds(t *testing.T) {
 		kind presentation.TokenKind
 	}{{"[Image 1]", presentation.ImageToken}, {"path.go", presentation.FileToken}, {"$review", presentation.SkillToken}} {
 		text := "before " + tc.text + " after"
-		rendered, _ := LayoutSpans(text, []presentation.TextSpan{{Start: 7, End: 7 + len(tc.text), Kind: tc.kind}}, 30)
+		rendered, _ := LayoutSpans(diffrender.TerminalTheme, text, []presentation.TextSpan{{Start: 7, End: 7 + len(tc.text), Kind: tc.kind}}, 30)
 		rows = append(rows, rendered...)
 	}
 	rows = append(rows, "plain after tokens")
@@ -70,7 +71,7 @@ func TestAttachmentPathUsesSharedFormatting(t *testing.T) {
 }
 
 func TestLayoutSpansExplicitNewlineAtWidth(t *testing.T) {
-	rows, _ := LayoutSpans("abcdefghijklmn\n[Image 1]", []presentation.TextSpan{{Start: 15, End: 24}}, 14)
+	rows, _ := LayoutSpans(diffrender.TerminalTheme, "abcdefghijklmn\n[Image 1]", []presentation.TextSpan{{Start: 15, End: 24}}, 14)
 	if len(rows) != 2 || ansi.Strip(rows[1]) != "[Image 1]" {
 		t.Fatalf("extra row at explicit newline: %q", rows)
 	}

@@ -111,7 +111,7 @@ func TestUISnapshotConversationOwnAuthor(t *testing.T) {
 					v.RenderFeed(100, 100)
 					v.Update(publication, tc.display)
 					rows := v.RenderFeed(100, 100).Lines
-					color := strings.Replace(terminalui.AgentColor(tc.author), "1;", "", 1)
+					color := strings.Replace(terminalui.AgentColor(theme, tc.author), "1;", "", 1)
 					if color == "" {
 						color = theme.Accent()
 					}

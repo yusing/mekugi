@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
-
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -129,8 +128,9 @@ func TestUISnapshotComposerError(t *testing.T) {
 			setNotice(&u.attached.feedback, presentationTime(u.clock), "File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.testMainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
-			if !strings.Contains(rows[u.shell.Main.NoticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.shell.Main.NoticeDismiss.Y]), "[x]") {
-				t.Fatal("dismiss check is missing its shared success color")
+			// Dismissal is a neutral control, not a success.
+			if !strings.Contains(rows[u.shell.Main.NoticeDismiss.Y], terminalui.Dim+"[x]") {
+				t.Fatal("dismiss control is not dim")
 			}
 		})
 	}

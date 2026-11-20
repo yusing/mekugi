@@ -110,7 +110,7 @@ func (p *Painter) batchRow(block Block, width int) []string {
 			}
 			verb, rest = name.past, fmt.Sprintf(" %d %s", count, noun)
 		}
-		parts = append(parts, VerbColor(t.verb)+"\x1b[1m"+verb+terminalui.Reset+rest)
+		parts = append(parts, VerbColor(p.Theme, t.verb)+"\x1b[1m"+verb+terminalui.Reset+rest)
 	}
 	failed := 0
 	seen := make(map[uint64]bool)
@@ -125,7 +125,7 @@ func (p *Painter) batchRow(block Block, width int) []string {
 		if failed == 1 {
 			noun = "command"
 		}
-		parts = append(parts, terminalui.Red+fmt.Sprintf("%d failed %s", failed, noun)+terminalui.Reset)
+		parts = append(parts, p.Theme.Danger()+fmt.Sprintf("%d failed %s", failed, noun)+terminalui.Reset)
 	}
 	row := strings.Join(parts, terminalui.Dim+" • "+terminalui.Undim)
 	if block.Hovered {

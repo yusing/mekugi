@@ -478,13 +478,13 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 // title follows the agents roster: a state glyph, then what the card shows.
 // Edits use the file navigator's status letter and live line counts.
 func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int) string {
-	glyph := terminalui.Amber + "◐" + terminalui.Reset
+	glyph := theme.Warning() + "◐" + terminalui.Reset
 	var label, filePath, fileStats string
 	var fileStatus diffmodel.Status
 	reason, unavailable := strings.CutPrefix(p.Current.Status, previewmodel.PreviewUnavailable)
 	switch {
 	case unavailable:
-		glyph, label = terminalui.Red+"!"+terminalui.Reset, textsanitize.Safe(reason, false)
+		glyph, label = theme.Danger()+"!"+terminalui.Reset, textsanitize.Safe(reason, false)
 	case len(p.Current.Files) > 0:
 		file := p.Current.Files[0]
 		path := file.AfterPath
@@ -535,7 +535,7 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 		room := width - ansi.StringWidth(caller) - 3 - 2 - ansi.StringWidth(fileStats+suffix)
 		label = glyph + " " + diffrender.FileLabel(fileStatus, filePath, workspace, theme, room) + fileStats + suffix
 	}
-	if color := terminalui.AgentColor(p.Current.Caller); color != "" {
+	if color := terminalui.AgentColor(theme, p.Current.Caller); color != "" {
 		caller = color + caller + "\x1b[0m"
 	}
 	return theme.Accent() + caller + "\x1b[0m" + theme.Accent() + " · \x1b[0m" + label + "\x1b[0m"

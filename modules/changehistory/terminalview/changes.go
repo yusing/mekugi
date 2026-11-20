@@ -107,7 +107,7 @@ func CallerStyle(theme diffrender.Theme) func(string) (string, string) {
 		if caller == "" || caller == presentation.UnknownCaller {
 			return "unknown", diffrender.Subtle
 		}
-		if color := terminalui.AgentColor(caller); color != "" {
+		if color := terminalui.AgentColor(theme, caller); color != "" {
 			return pathdisplay.AgentDisplayName(caller), color
 		}
 		return pathdisplay.AgentDisplayName(caller), theme.Accent()
