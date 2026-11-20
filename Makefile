@@ -45,9 +45,10 @@ HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= @snapshots
 # Go's test cache keys on environment values tests read. Drop values a Mekugi
-# launch sets per session, including its frontend PATH entries, so each session
-# reuses cached results and tests never write to the live session.
-TEST_SESSION_ENV := BASH_ENV CODEX_THREAD_ID CODEX_ROLLOUT_TRACE_ROOT MEKUGI_AX_OUTPUT \
+# launch sets per session, including its frontend PATH entries, and the
+# terminal's COLORFGBG, so sessions and terminals reuse cached results, tests
+# render one theme, and tests never write to the live session.
+TEST_SESSION_ENV := BASH_ENV COLORFGBG CODEX_THREAD_ID CODEX_ROLLOUT_TRACE_ROOT MEKUGI_AX_OUTPUT \
 	MEKUGI_BASE_URL MEKUGI_CONTROL_SOCKET MEKUGI_EXEC_TRACK MEKUGI_SH_TRACKER \
 	MEKUGI_SUDO_DIRECTORY MEKUGI_UPDATE_UI_SNAPSHOTS MEKUGI_USER_BASH_ENV \
 	MEKUGI_VCS_GUARD_HOOK MEKUGI_VCS_ITEM
