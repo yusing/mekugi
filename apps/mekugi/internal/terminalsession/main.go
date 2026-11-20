@@ -149,7 +149,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		room -= len(approvalRows)
 	}
 	if !readOnly {
-		questionRows = conversationui.Questions(presentation.Questions, &painter.Painter, in.QuestionLayout, in.TurnIdle && in.Draft.Text != "", width, min(height/2, room))
+		questionRows = conversationui.Questions(presentation.Questions, &painter.Painter, in.QuestionLayout, presentation.Info.Caller, in.TurnIdle && in.Draft.Text != "", width, min(height/2, room))
 	}
 	if len(questionRows) > 0 {
 		dock = 0

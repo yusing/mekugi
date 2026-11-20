@@ -26,7 +26,7 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	if u.questions.Count(u.Thread) != 1 || u.questions.calls()[0].Resolved || !u.questions.calls()[0].Sent {
 		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questions.Count(u.Thread), u.questions.calls()[0])
 	}
-	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") || strings.Contains(rows, "main asks 2 questions") {
+	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 question") || strings.Contains(rows, "main asks 2 questions") {
 		t.Fatalf("question dock counted the sent answer: %q", rows)
 	}
 	preview := strings.Join(conversationui.Pending(publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side).Pending, 80), "\n")
@@ -68,7 +68,7 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 		t.Fatal("rejected answer did not become actionable again")
 	}
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.Editor, u.Thread)
-	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") {
+	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 question") {
 		t.Fatalf("reopened question missing from dock: %q", rows)
 	}
 	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)

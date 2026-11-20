@@ -2,12 +2,14 @@
 package terminalview
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -22,15 +24,20 @@ type QuestionLayout struct {
 // Questions docks the open question as a panel: an accent heading with its
 // position, the question, numbered options with a pointer on the selected
 // one, and dim keys. Hidden questions collapse to one reminder row.
-func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *QuestionLayout, superseding bool, width, height int) []string {
+// caller names the displayed thread's agent; empty means Main.
+func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *QuestionLayout, caller string, superseding bool, width, height int) []string {
 	if d.Count == 0 || height < 1 {
 		return nil
 	}
 	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
 	if d.Call == nil {
-		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", d.Count) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
+		questions := fmt.Sprintf("%d question", d.Count)
+		if d.Count != 1 {
+			questions += "s"
+		}
+		label := accent + "? " + reset + pathdisplay.AgentDisplayName(cmp.Or(caller, "/root")) + " asks " + questions + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
 		if superseding {
-			label = dim + fmt.Sprintf("enter starts a new turn · dismisses %d questions", d.Count) + reset
+			label = dim + "enter starts a new turn · dismisses " + questions + reset
 		}
 		padding := min(2, max(0, (width-20)/2))
 		return []string{strings.Repeat(" ", padding) + ansi.Truncate(label, width-padding, "…")}

@@ -45,9 +45,27 @@ func TestQuestionKeyViewAndDraftIsolation(t *testing.T) {
 	if call.Questions[0].Choices[0].Label != "Yes" || len(view.Call.Questions[1].Answer) != 0 {
 		t.Fatal("dock view aliases choices or exposes secrets")
 	}
-	rows := terminalview.Questions(view, &terminalui.Painter{}, &layout, false, 50, 12)
+	rows := terminalview.Questions(view, &terminalui.Painter{}, &layout, "", false, 50, 12)
 	if strings.Contains(strings.Join(rows, "\n"), "secret bytes") || len(rows) > 12 {
 		t.Fatal("rendered secret or exceeded dock bounds")
+	}
+}
+
+func TestQuestionDockCountsOtherCallsAndNamesAsker(t *testing.T) {
+	var questions prompt.Questions
+	first := &prompt.Call{ID: "first", Thread: "child", Questions: []prompt.Question{{Question: "First?"}, {Question: "Second?"}}}
+	questions.Add(first, false)
+	questions.Add(&prompt.Call{ID: "later", Thread: "child", Questions: []prompt.Question{{Question: "Later?"}}}, false)
+	questions.Add(&prompt.Call{ID: "other", Thread: "main", Questions: []prompt.Question{{Question: "Elsewhere?"}}}, false)
+	var layout terminalview.QuestionLayout
+	if got := strings.Join(terminalview.Questions(questions.View("child"), &terminalui.Painter{}, &layout, "/root/worker", false, 60, 12), "\n"); !strings.Contains(got, "worker asks 3 questions") {
+		t.Fatalf("hidden banner = %q", got)
+	}
+	questions.Open(first)
+	questions.Current().Outcome = "answered"
+	questions.Move(1)
+	if got := strings.Join(terminalview.Questions(questions.View("child"), &terminalui.Painter{}, &layout, "", false, 60, 12), "\n"); !strings.Contains(got, "Question 2 of 3") {
+		t.Fatalf("dock heading = %q", got)
 	}
 }
 

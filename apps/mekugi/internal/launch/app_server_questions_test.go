@@ -351,7 +351,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.Text = "new prompt"
 		questionTestAsync(t, u, "pending", "Who receives it?")
-		if got := strings.Join(testQuestionRows(u, 80, 10), " "); !strings.Contains(got, "dismisses 1 questions") {
+		if got := strings.Join(testQuestionRows(u, 80, 10), " "); !strings.Contains(got, "dismisses 1 question") {
 			t.Fatalf("missing supersede warning: %q", got)
 		}
 		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
@@ -620,5 +620,5 @@ func TestUISnapshotQuestionArrowHints(t *testing.T) {
 }
 
 func testQuestionRows(u *appServerUI, width, height int) []string {
-	return conversationui.Questions(u.questions.View(u.Thread), &u.shell.Transcript.Painter.Painter, u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)), u.Turn == "" && u.Text != "", width, height)
+	return conversationui.Questions(u.questions.View(u.Thread), &u.shell.Transcript.Painter.Painter, u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)), "", u.Turn == "" && u.Text != "", width, height)
 }

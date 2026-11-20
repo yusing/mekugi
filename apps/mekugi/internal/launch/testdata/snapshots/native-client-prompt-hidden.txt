@@ -10,7 +10,7 @@
 
 
 
-  ? main asks 1 questions · ctrl+b q answer
+  ? main asks 1 question · ctrl+b q answer
 
 
 ────────────────────────────────────────────────────────────────────────────────

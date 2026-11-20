@@ -59,18 +59,14 @@ func (m *Questions) recordInputTurn(turn string) {
 	m.inputTurns[turn] = true
 }
 func (m *Questions) Count(thread string) int {
-	n := 0
-	for _, c := range m.Calls {
-		if c.Thread != thread && !c.Local || c.Resolved || c.Sent {
-			continue
-		}
-		for _, q := range c.Questions {
-			if q.Outcome == "" {
-				n++
-			}
-		}
-	}
-	return n
+	var v QuestionDockView
+	m.position(&v, threadPending(thread))
+	return v.Count
+}
+
+// threadPending keeps the thread's unanswered calls, plus local ones.
+func threadPending(thread string) func(*Call) bool {
+	return func(c *Call) bool { return (c.Thread == thread || c.Local) && !c.Resolved && !c.Sent }
 }
 func (m *Questions) Waiting(thread string) bool {
 	return slices.ContainsFunc(m.Calls, func(c *Call) bool { return c.Thread == thread && (c.Sync || c.Local) && !c.Resolved })
@@ -251,13 +247,39 @@ type QuestionDockView struct {
 	Call               *CallView
 }
 
+// View positions the active question among the thread's calls, so the dock
+// counts questions waiting in other calls too.
 func (m *Questions) View(thread string) QuestionDockView {
-	v := QuestionDockView{Count: m.Count(thread), Index: m.Index, Confirm: m.Confirm}
+	v := QuestionDockView{Index: m.Index, Confirm: m.Confirm}
 	if m.Active != nil {
 		call := m.Active.View()
 		v.Call, v.Gaps = &call, m.Active.Gaps()
 	}
+	m.position(&v, threadPending(thread))
 	return v
+}
+
+// position walks the kept calls: every question of the active call, so answered
+// ones keep their place, and the pending questions of the others. Count is the
+// number still pending.
+func (m *Questions) position(v *QuestionDockView, keep func(*Call) bool) {
+	v.Position, v.Total, v.Count = 0, 0, 0
+	for _, call := range m.Calls {
+		if !keep(call) {
+			continue
+		}
+		for index, question := range call.Questions {
+			if question.Outcome == "" {
+				v.Count++
+			} else if call != m.Active {
+				continue
+			}
+			if call == m.Active && index == m.Index {
+				v.Position = v.Total
+			}
+			v.Total++
+		}
+	}
 }
 
 func (c *Call) View() CallView {
@@ -342,20 +364,6 @@ func (m *Questions) MoveChannel(step int) {
 // ChannelView adds the shared question position while retaining the active call.
 func (m *Questions) ChannelView(thread string) QuestionDockView {
 	view := m.View(thread)
-	for _, call := range m.Calls {
-		if call.Sent || call.Resolved {
-			continue
-		}
-		for index, question := range call.Questions {
-			if question.Outcome != "" {
-				continue
-			}
-			if call == m.Active && index == m.Index {
-				view.Position = view.Total
-			}
-			view.Total++
-		}
-	}
-	view.Count = view.Total
+	m.position(&view, func(c *Call) bool { return !c.Sent && !c.Resolved })
 	return view
 }

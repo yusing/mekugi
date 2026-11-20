@@ -266,9 +266,11 @@ Prompt docks, including menus and the `/btw` answer, use the
 the terminal has no space for them.
 Their requests remain pending until they can be shown and answered.
 
-Questions show their position, full scrollable text, options/descriptions and
-Other. Only visible options set column widths; narrow layouts omit descriptions
-before answer text. Up/Down or Ctrl-P/N wrap; digits choose; other text edits Other.
+Questions show their position, counting questions waiting in the thread's other
+calls, full scrollable text, options/descriptions and Other. A hidden question
+banner names the displayed agent. Only visible options set column widths; narrow
+layouts omit descriptions before answer text. Up/Down or Ctrl-P/N wrap; digits
+choose; other text edits Other.
 Tab adds a synchronous option note. Enter records and advances, submitting at the
 last question; Ctrl-] skips. Gaps require `Submit with N unanswered?` confirmation.
 Left/Right navigate questions only outside text editing; ordinary and word-motion
