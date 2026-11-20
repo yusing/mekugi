@@ -351,8 +351,11 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	if err := u.testPaint(screen, 160, 48); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(screen.String(), "Session status") || strings.Contains(screen.String(), "78% left") {
+	if strings.Contains(screen.String(), "Session status") || strings.Contains(screen.String(), "yusing@example.com") {
 		t.Fatal("closed panel left painted residue")
+	}
+	if !strings.Contains(screen.String(), "5h 78% left") {
+		t.Fatal("closed status panel did not retain rate limits in stat line")
 	}
 	u.statusPanel = newStatusReport(u.attached.presentation, u.replayDebugDirectory)
 	u.statusPanel.Fields = saved.Fields

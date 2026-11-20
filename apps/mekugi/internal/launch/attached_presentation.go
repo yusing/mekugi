@@ -34,6 +34,7 @@ type executionPresentation struct {
 
 	// Progress notice rows belong to the shared Main transcript, not to a view.
 	noticeProgress noticepresentation.Progress
+	rateLimits     [2]*sessionpresentation.CaptionLimit // Latest default primary and secondary windows.
 }
 
 // executionHooks are bound once before the owner loop starts and survive presentation replacement.
@@ -70,7 +71,6 @@ type attachedPresentation struct {
 	interruptLocked     bool
 	predictionsDisabled bool
 	liveHidden          bool
-	rateLimits          [2]*sessionpresentation.CaptionLimit // Latest default primary and secondary windows.
 }
 
 func newAttachedPresentation(ctx context.Context, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, hooks *executionHooks) attachedPresentation {

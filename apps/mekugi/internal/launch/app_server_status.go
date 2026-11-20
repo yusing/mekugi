@@ -114,7 +114,7 @@ func requestStatus(requests *sessioncontrol.Requests[appServerRequest], method s
 }
 
 // Source: codex-rs/app-server-protocol/src/protocol/v2/account.rs.
-func statusMessage(requests *sessioncontrol.Requests[appServerRequest], panel *appServerStatusReport, method string, m appserver.Message, report *appServerStatusReport) (bool, error) {
+func statusMessage(requests *sessioncontrol.Requests[appServerRequest], panel *appServerStatusReport, rateLimits *[2]*sessionpresentation.CaptionLimit, method string, m appserver.Message, report *appServerStatusReport) (bool, error) {
 	if report == nil {
 		return false, nil
 	}
@@ -178,9 +178,15 @@ func statusMessage(requests *sessioncontrol.Requests[appServerRequest], panel *a
 	var rows []sessionpresentation.StatusField
 	if len(result.ByID) == 0 {
 		rows = result.Limits.rows("Usage")
+		observeRateLimitSnapshot(rateLimits, result.Limits)
 	} else {
 		for _, id := range slices.Sorted(maps.Keys(result.ByID)) {
 			rows = append(rows, result.ByID[id].rows(id)...)
+		}
+		if codex, ok := result.ByID["codex"]; ok {
+			observeRateLimitSnapshot(rateLimits, codex)
+		} else {
+			observeRateLimitSnapshot(rateLimits, result.Limits)
 		}
 	}
 	rows = append(rows, result.Resets.rows()...)
@@ -270,12 +276,19 @@ func observeRateLimits(windows *[2]*sessionpresentation.CaptionLimit, params []b
 	if id := update.Limits.ID; id != nil && *id != "" && *id != "codex" {
 		return nil
 	}
-	for i, window := range []*appServerStatusWindow{update.Limits.Primary, update.Limits.Secondary} {
+	observeRateLimitSnapshot(windows, update.Limits.appServerStatusLimit)
+	return nil
+}
+
+func observeRateLimitSnapshot(windows *[2]*sessionpresentation.CaptionLimit, limit appServerStatusLimit) {
+	if windows == nil {
+		return
+	}
+	for i, window := range []*appServerStatusWindow{limit.Primary, limit.Secondary} {
 		if window != nil {
 			windows[i] = &sessionpresentation.CaptionLimit{Label: window.label(i), Used: max(0, min(100, window.Used))}
 		}
 	}
-	return nil
 }
 
 // captionLimits lists the known windows in display order.

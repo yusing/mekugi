@@ -35,7 +35,7 @@ func (session *nativeSession) dispatchViewResponse(attached *attachedPresentatio
 	if method == resumePickerList {
 		return true, session.resumePickerResponse(clock, resumePicker, m)
 	}
-	if handled, err := statusMessage(session.Client.Requests, (*panel), method, m, response.Owner.status); handled {
+	if handled, err := statusMessage(session.Client.Requests, (*panel), &attached.rateLimits, method, m, response.Owner.status); handled {
 		return true, err
 	}
 	if picker.pickerMessage(attached, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment, &session.managedSkills, method, m) {

@@ -158,4 +158,9 @@ func TestAppServerRateLimitsReachCaption(t *testing.T) {
 	if got := caption(); !strings.Contains(got, "5h 60% left · Weekly 79% left") {
 		t.Fatalf("sparse or foreign update misapplied: %q", got)
 	}
+	// Attached views share executionPresentation and observe the same rate limits.
+	viewAttached := attachedPresentation{executionPresentation: u.attached.executionPresentation}
+	if got := captionLimits(viewAttached.rateLimits); len(got) != 2 || got[0].Used != 40 || got[1].Used != 21 {
+		t.Fatalf("attached view did not share rate limits: %+v", got)
+	}
 }

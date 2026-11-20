@@ -1306,11 +1306,12 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				sideInputs := attached.sideInputs
 				attached.session.Retire()
 				workspace := attached.cwd
-				inputHistory, hooks := attached.inputHistory, attached.hooks
+				inputHistory, hooks, rateLimits := attached.inputHistory, attached.hooks, attached.rateLimits
 				(*attached) = newAttachedPresentation(parent, session.presentationState, session.conversationState, session.observations, hooks)
 				attached.sideInputs = sideInputs
 				attached.cwd = workspace
 				attached.inputHistory = inputHistory
+				attached.rateLimits = rateLimits
 				attached.conversation.CarryInput(waiting)
 				if method == "thread/revert" {
 					attached.conversation.Side, attached.conversation.BTW = waiting.Side, waiting.BTW
