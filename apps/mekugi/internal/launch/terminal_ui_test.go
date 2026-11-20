@@ -2,6 +2,7 @@ package launch
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"io"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
@@ -151,7 +153,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 						t.Helper()
 						paint()
 						layout := terminalTest(u).Layout
-						end := 39 // The last row is the status line.
+						end := 38 // The last two rows are the stat lines.
 						if layout.Roster.H > 0 {
 							end = layout.Roster.Y
 						}
@@ -299,5 +301,16 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 }
 
 func (u *terminalUI) nativeStatus() string {
-	return u.Shell.Status(u.frameInput().Status(), u.Width, u.Height)
+	width, height := cmp.Or(u.Width, 160), cmp.Or(u.Height, 24)
+	return u.Shell.StatLine(u.frameInput().Status(), width, height-1)
+}
+
+// statTarget returns the painted stat-line target for action, if any.
+func (u *terminalUI) statTarget(action byte) terminalsession.Rect {
+	for _, target := range u.Targets {
+		if target.Action == action {
+			return target.Rect
+		}
+	}
+	return terminalsession.Rect{}
 }

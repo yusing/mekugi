@@ -3,22 +3,22 @@
 
 
 
-╭─ Ran · combined output ──────────────────────────────────────────────────── 5 / 5 [×] ─╮
-│ 1 line · exit 2                                                                        │
-│  3 Run make build            4 Run make test             5 Run                         │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ Edit   go.mod via python3 · requested                                                  │
-│        README.md                                                                       │
-│        api.go                                                                          │
-│        git.go                                                                          │
-│        sync.go                                                                         │
-│                                                                                        │
-│ Per-command output boundaries were not retained for this invocation.                   │
-│                                                                                        │
-│ 1 ┆ build failed                                                                       │
-╰─ ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc ─────────────────────────╯
 
 
 
 
 
+
+  ── Ran · combined output · 1 line · exit 2 ──────────────────────────────────────── 5 / 5 [×] ──  
+   2 Run gofmt -w main.go… 3 Run make build        4 Run make test         5 Run                    
+                                                                                                    
+  Edit   go.mod via python3 · requested                                                             
+         README.md                                                                                  
+         api.go                                                                                     
+         git.go                                                                                     
+         sync.go                                                                                    
+                                                                                                    
+  Per-command output boundaries were not retained for this invocation.                              
+                                                                                                    
+  1 ┆ build failed                                                                                  
+  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc                                      

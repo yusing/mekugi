@@ -11,7 +11,6 @@ import (
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -34,8 +33,6 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": thread + " result\n\n" + strings.Join([]string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta"}, "\n\n")}})
 	}
-	// Exercise clicking a compact row without focusing Agents: the child is
-	// working again, so it is visible while Main or Diff has focus.
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
 	screen := vt.NewEmulator(140, 36)
 	defer screen.Close()
@@ -57,7 +54,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		}
 	}
 	paint("native-thread-main-full")
-	if terminalTest(u).Layout.Main.W != 140 || terminalTest(u).Layout.Vertical != -1 {
+	if terminalTest(u).Layout.Main.W != 140 || terminalTest(u).Layout.Vertical != -1 || terminalTest(u).Layout.Roster.H != 0 {
 		t.Fatalf("initial geometry: %+v", terminalTest(u).Layout)
 	}
 	click := func(agent string) {
@@ -75,23 +72,31 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		}
 		t.Fatalf("missing roster target %q", agent)
 	}
-	rosterHeight := terminalTest(u).Layout.Roster.H
+	// The draft blocks the arrow keys, so ^B 3 opens the roster sheet.
+	keys("\x023")
+	paint("native-thread-sheet")
+	if terminalTest(u).Focus != 3 || terminalTest(u).Layout.Roster.H == 0 {
+		t.Fatal("^B 3 did not open the roster sheet")
+	}
 	click("/root/reader")
-	if terminalTest(u).Focus != 0 {
-		t.Fatal("clicking an agent focused the roster")
+	if terminalTest(u).Focus != 3 || !u.attached.presentation.DisplayingChild() {
+		t.Fatal("clicking an agent closed the sheet or kept Main")
 	}
+	escape := func() {
+		t.Helper()
+		if err := terminalTest(u).send("\x1b"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	escape()
 	frame := paint("native-thread-child-full")
-	heading := strings.Split(frame, "\n")[terminalTest(u).Layout.Roster.Y]
-	if !rosterHeadingNames(heading, "reader") {
-		t.Fatalf("displayed child is missing from the roster heading: %q", heading)
-	}
-	if terminalTest(u).Layout.Roster.H != rosterHeight {
-		t.Fatal("clicking an agent expanded the roster")
+	if terminalTest(u).Focus != 0 || terminalTest(u).Layout.Roster.H != 0 || !statLineNames(frame, "reader") {
+		t.Fatalf("closing the sheet lost the displayed child: %+v", terminalTest(u).Layout)
 	}
 	if !strings.Contains(frame, "child result") || !strings.Contains(frame, "eta") || strings.Contains(frame, "main result") || !strings.Contains(frame, "Read-only") || u.Thread != "main" {
 		t.Fatalf("child view or input identity: %s", frame)
 	}
-	if !strings.Contains(frame, "child-model (low) • flex") || !strings.Contains(frame, "25K/100K • 25%") || strings.Contains(frame, "parent-model") || strings.Contains(frame, u.Text) {
+	if !strings.Contains(frame, "child-model (low) · flex") || !strings.Contains(frame, "25% 25K/100K") || strings.Contains(frame, "parent-model") || strings.Contains(frame, u.Text) {
 		t.Fatalf("child composer: %s", frame)
 	}
 	keys("\x022")
@@ -99,14 +104,17 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	if terminalTest(u).Layout.Diff.W == 0 || !u.testActivity(u.shell.Agents).displayingChild() {
 		t.Fatal("opening Diff lost the displayed child")
 	}
-	click("/root")
+	// From the sheet, a toggles between Main and the remembered child.
+	keys("\x023a")
+	escape()
 	paint("native-thread-roster-from-diff")
-	if terminalTest(u).Focus != 1 || !terminalTest(u).DiffOpen || u.attached.presentation.DisplayingChild() || u.Text != "retained draft" {
-		t.Fatal("roster click lost Diff focus, visibility or Main's draft")
+	if !terminalTest(u).DiffOpen || u.attached.presentation.DisplayingChild() || u.Text != "retained draft" {
+		t.Fatal("switching to Main lost Diff visibility or Main's draft")
 	}
-	click("/root/reader")
-	if terminalTest(u).Focus != 1 || !terminalTest(u).DiffOpen || !u.attached.presentation.DisplayingChild() {
-		t.Fatal("child selection changed Diff focus or visibility")
+	keys("\x023a")
+	escape()
+	if !terminalTest(u).DiffOpen || !u.attached.presentation.DisplayingChild() {
+		t.Fatal("child selection changed Diff visibility")
 	}
 	keys("\x022")
 	paint("native-thread-child-unsplit")
@@ -130,13 +138,16 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	if err := u.testPaint(screen, 140, 36); err != nil {
 		t.Fatal(err)
 	}
-	click("/root")
+	// Up in a read-only child view returns to its parent.
+	if err := terminalTest(u).send("\x1b[A"); err != nil {
+		t.Fatal(err)
+	}
 	frame = paint("native-thread-return-main")
 	if u.testActivity(u.shell.Agents).displayingChild() || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
 		t.Fatal("returning to Main lost its transcript or draft")
 	}
 	if terminalTest(u).Focus != 0 {
-		t.Fatal("clicking Main focused the roster")
+		t.Fatal("returning to Main opened the roster")
 	}
 	keys("\x023")
 	if terminalTest(u).Focus != 3 {
@@ -171,8 +182,8 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 
 	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/reader")
 	caption := func() string {
-		rows, _ := u.testMainFrame(120, 20, 0)
-		return ansi.Strip(rows[len(rows)-1])
+		line, _ := u.testStatLines(t, 120, 20)
+		return line
 	}
 	if got := caption(); strings.Contains(got, "parent-model") || strings.Contains(got, "priority") {
 		t.Fatalf("unknown child borrowed parent settings: %s", got)
@@ -181,24 +192,24 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	info.AgentNickname = "reader"
 	info.AgentRole = "reviewer"
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": info})
-	if got := caption(); !strings.Contains(got, "reviewer • saved-model (medium) • flex") {
+	if got := caption(); !strings.Contains(got, "saved-model (medium) · flex") || strings.Contains(got, "reviewer") {
 		t.Fatalf("child metadata did not restore settings: %s", got)
 	}
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": info.ID, "threadSettings": map[string]any{"model": "live-model", "effort": "low", "serviceTier": nil}})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": info})
-	if got := caption(); !strings.Contains(got, "live-model (low) • default") || strings.Contains(got, "saved-model") {
+	if got := caption(); !strings.Contains(got, "live-model (low) · default") || strings.Contains(got, "saved-model") {
 		t.Fatalf("late metadata replaced live child settings: %s", got)
 	}
 	u.serviceTiers = inferencegateway.NewTiers(map[string]string{"live-model": "priority"})
-	if got := caption(); !strings.Contains(got, "live-model (low) • priority") {
+	if got := caption(); !strings.Contains(got, "live-model (low) · priority") {
 		t.Fatalf("child tier ignored model routing: %s", got)
 	}
 	u.serviceTiers.Confirm("live-model", info.ID, "flex")
 	publication := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
-	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Caption.Role != "reviewer" || publication.Status.Composer.Text != "Read-only" {
+	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Status.Composer.Text != "Read-only" {
 		t.Fatalf("detached child caption lost confirmed thread settings: %+v", publication)
 	}
-	if got := caption(); !strings.Contains(got, "live-model (low) • flex") {
+	if got := caption(); !strings.Contains(got, "live-model (low) · flex") {
 		t.Fatalf("child caption ignored its confirmed thread tier: %s", got)
 	}
 	u.attached.session.RegisterThread(observation.Thread{ID: "spawned", Path: "/root/spawned"})
@@ -230,7 +241,7 @@ func TestUISnapshotNativeChildComposerSettings(t *testing.T) {
 		frame, _ := u.testMainFrame(100, 8, 0)
 		assertNativeUISnapshot(t, "native-child-composer-"+state, frame)
 		view := u.attached.presentation.View()
-		if view.Caption.Role != "reviewer" || view.Caption.Model == "parent-model" || view.Status.Composer.Text != "Read-only" || u.Text != "retained parent draft" {
+		if view.Caption.Model == "parent-model" || view.Status.Composer.Text != "Read-only" || u.Text != "retained parent draft" {
 			t.Fatalf("child caption changed input authority or used parent facts: %+v", view)
 		}
 	}

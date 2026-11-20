@@ -1,8 +1,8 @@
-  Choose permissions
-› :read-only                            
-  :workspace
-  :danger-full-access
+  ── Choose permissions ──────────────
+
+  ❯ :read-only
+    :workspace
+    :danger-full-access
 
 
-
-  ↑/↓ navigate · enter apply · esc cance
+  ↑/↓ choose · enter apply · esc canc…

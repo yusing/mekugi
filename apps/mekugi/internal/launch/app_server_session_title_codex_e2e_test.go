@@ -271,7 +271,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool, customAu
 	}
 	send("Explain native session naming\r")
 	await("primary completion while naming gated", func(frame string) bool {
-		return strings.Contains(frame, "Recovered after a retry.") && strings.Contains(frame, "╭─ Completed")
+		return strings.Contains(frame, "Recovered after a retry.") && composerStatusShows(frame, "Completed")
 	})
 	if !manual {
 		select {
@@ -309,7 +309,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool, customAu
 	if manual {
 		sendResume("Continue after manual rename\r")
 		awaitResume("resumed completion", func(frame string) bool {
-			return strings.Count(frame, "Recovered after a retry.") == 2 && strings.Contains(frame, "╭─ Completed")
+			return strings.Count(frame, "Recovered after a retry.") == 2 && composerStatusShows(frame, "Completed")
 		})
 	}
 	quitResume()

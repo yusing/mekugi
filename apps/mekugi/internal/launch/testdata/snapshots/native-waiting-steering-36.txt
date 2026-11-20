@@ -4,13 +4,13 @@ Mekugi dev • codex
 
 
 
-
 • Steering pending · esc sends now …
   ↳ Diagnose the broken pipe issue.
     Add replay key tests.
     Preserve pending attachments.
     …
 
-╭─ ◐ Sending… ─────────────────────╮
-│ ❯                                │
-╰───────────────────────────── 0% ─╯
+◐ Sending…
+────────────────────────────────────
+❯  
+────────────────────────────────────

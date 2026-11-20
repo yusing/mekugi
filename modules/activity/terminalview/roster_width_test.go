@@ -34,9 +34,9 @@ func TestRosterVisibleNamesDetermineWidth(t *testing.T) {
 				var lines []string
 				switch mode {
 				case "native":
-					lines = v.NativeRoster(width, 3, now, true)
+					lines = v.RosterSheet(width, 3, now)
 				case "unfocused":
-					lines = v.NativeRoster(width, 3, now, false)
+					lines = v.RosterSheet(width, 3, now)
 				case "rows":
 					lines = v.RenderRoster(v.Roster(), width, 3, now)
 				case "cards":
@@ -68,26 +68,5 @@ func TestRosterVisibleNamesDetermineWidth(t *testing.T) {
 				t.Fatalf("visible long name lost its available width: %q", got)
 			}
 		})
-	}
-}
-
-func TestRosterFocusPreservesColumnAlignment(t *testing.T) {
-	v := NewView()
-	publication := &presentation.Publication{}
-	for _, name := range []string{"/root", "/root/long-reviewer", "/root/b"} {
-		publication.Roster = append(publication.Roster, presentation.AgentRow{Agent: presentation.Agent{Name: name, Responding: true, Status: "responding"}})
-	}
-	v.Update(publication, Display{Caller: "/root", SideCaller: "/oneoff"})
-	var previous string
-	for _, focused := range []bool{false, true} {
-		rows := v.NativeRoster(80, 4, time.Unix(100, 0), focused)
-		for i, row := range rows {
-			rows[i] = strings.TrimRight(ansi.Strip(row), " ")
-		}
-		plain := ansi.Strip(strings.Join(rows, "\n"))
-		if previous != "" && previous != plain {
-			t.Fatalf("focus moved roster columns:\n%s\n%s", previous, plain)
-		}
-		previous = plain
 	}
 }

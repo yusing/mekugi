@@ -58,7 +58,7 @@ func TestUISnapshotCompactionOverridesRosterWait(t *testing.T) {
 				}
 				view.Update(publication, terminalview.Display{})
 				if outcome == "completed" {
-					frames = append(frames, view.NativeRoster(80, 4, at, false)...)
+					frames = append(frames, view.RosterSheet(80, 4, at)...)
 				}
 				if outcome == "turn-ended" {
 					reduce(observation.TurnCompleted, observation.Item{})

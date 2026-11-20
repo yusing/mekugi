@@ -3,4 +3,4 @@ Running make test \
 Diff   amber1 · mchanges --net
 Running make test \
           TEST_PACKAGES=./internal/router;
-        mchanges amber1 --net · 3m11s
+        mchanges amber1 --net              3m11s

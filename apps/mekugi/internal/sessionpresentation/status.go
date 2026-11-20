@@ -107,10 +107,17 @@ type MainInputs struct {
 }
 
 type Caption struct {
-	Model, Effort, Tier, Role    string
+	Model, Effort, Tier          string
 	ContextTokens, ContextWindow uint64
 	ContextKnown                 bool
 	Items                        []presentation.Item
+	Limits                       []CaptionLimit // Account rate-limit windows, shortest first.
+}
+
+// CaptionLimit is one account rate-limit window's use, such as "5h" at 12%.
+type CaptionLimit struct {
+	Label string
+	Used  float64
 }
 
 // FrontendHeader retains pane information when a native companion supplies the

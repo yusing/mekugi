@@ -129,7 +129,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	first.send("/reasoning high\r")
 	first.await("gpt-6-sol (high)")
 	first.send("/tier flex\r")
-	first.await("gpt-6-sol (high) • flex")
+	first.await("gpt-6-sol (high) · flex")
 	first.send("First resume question\r")
 	first.await("Recovered after a retry.")
 	first.await("completed")
@@ -317,10 +317,16 @@ func (s *appResumeTerminal) await(needle string) {
 	s.t.Helper()
 	s.awaitMatch(needle, func(content string) bool {
 		if needle == "completed" {
-			return strings.Contains(content, "╭─ Completed")
+			return composerStatusShows(content, "Completed")
 		}
 		return strings.Contains(content, needle)
 	})
+}
+
+// awaitStatus waits for the composer's status row to start with status.
+func (s *appResumeTerminal) awaitStatus(status string) {
+	s.t.Helper()
+	s.awaitMatch("status "+status, func(content string) bool { return composerStatusShows(content, status) })
 }
 
 func (s *appResumeTerminal) awaitMatch(label string, visible func(string) bool) {

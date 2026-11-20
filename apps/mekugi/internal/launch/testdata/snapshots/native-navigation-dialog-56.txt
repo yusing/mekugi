@@ -1,18 +1,18 @@
-╭─ Read ─────────────────────────────────── 3 / 5 [×] ─╮
-│ 1 line                                               │
-│  2 Read …ctivity/paint.go  3 Read …l/路径/日本語.go  │
-├──────────────────────────────────────────────────────┤
-│ 1 │ page 3 only                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-│                                                      │
-╰─ ←→ command · ↑↓ scroll · y copy · esc ──────────────╯
+
+
+
+
+
+
+
+
+
+
+
+  ── Read · 1 line ────────────────────── 3 / 5 [×] ──
+   2 Read …ctivity/paint.go  3 Read …l/路径/日本語.go
+
+  1 │ page 3 only
+
+
+  ←→ command · ↑↓ scroll · y copy · esc

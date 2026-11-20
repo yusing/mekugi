@@ -82,7 +82,12 @@ func TestNativeRosterFocusAndWheel(t *testing.T) {
 				roster.Roster = append(roster.Roster, activity.AgentRow{Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: caller, Thread: caller}}})
 			}
 			c.event.Frame = sessionapi.NativeFrame{View: u.attached.presentation.View(), Agents: roster}
-			c.editor("main").InsertText("retained draft")
+			// The ↓ roster stat target shows only with an empty composer.
+			draft := "retained draft"
+			if selector == "pointer" {
+				draft = ""
+			}
+			c.editor("main").InsertText(draft)
 			c.refreshView(time.Unix(100, 0))
 			paint := func() {
 				t.Helper()
@@ -95,12 +100,12 @@ func TestNativeRosterFocusAndWheel(t *testing.T) {
 				c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x02"})
 				c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "3"})
 			} else {
-				x := strings.Index(ansi.Strip(terminal.Frame.Rows[23]), "3 Agents")
+				x := ansi.StringWidth(strings.SplitN(ansi.Strip(terminal.Frame.Rows[23]), "↓ roster", 2)[0])
 				c.dispatch(terminalsession.Input{Kind: terminalsession.MouseInput, Text: fmt.Sprintf("\x1b[<0;%d;24M", x+1)})
 			}
 			paint()
 			c.dispatch(terminalsession.Input{Kind: terminalsession.KeyInput, Text: "\x1b[B"})
-			if terminal.Focus != 3 || len(c.calls) != 1 || c.calls[0].operation.Display == nil || c.calls[0].operation.Display.Thread.Caller != "/root/agent-01" || c.editor("main").Text != "retained draft" {
+			if terminal.Focus != 3 || len(c.calls) != 1 || c.calls[0].operation.Display == nil || c.calls[0].operation.Display.Thread.Caller != "/root/agent-01" || c.editor("main").Text != draft {
 				t.Fatalf("roster key did not retain focus and navigate: focus=%d calls=%+v", terminal.Focus, c.calls)
 			}
 			before := terminal.Agents.Hits[0].Agent

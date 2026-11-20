@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/observation"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
@@ -106,23 +107,23 @@ func TestUISnapshotFamilyRosterResumedDelegates(t *testing.T) {
 	family, _ := h.Family("root")
 	v := terminalview.NewView()
 	v.Update(family.Agents, terminalview.Display{Caller: "/root"})
-	rows := v.NativeRoster(80, 40, time.Unix(100, 0), false)
-	if len(v.Hits) != 4 || !strings.Contains(rows[0], "27 finished") || !strings.Contains(rows[0], "4 working") || !strings.Contains(strings.Join(rows, "\n"), "+27 more") {
-		t.Fatalf("finished delegates expanded on resume: %q", rows)
+	rows := v.RosterSheet(80, 8, time.Unix(100, 0))
+	if counts := ansi.Strip(strings.Join(v.RosterSummary().Counts, " ")); counts != "◐ 3 ✓ 27" {
+		t.Fatalf("resumed delegate counts = %q", counts)
+	}
+	if len(v.Hits) != 7 || !strings.Contains(rows[len(rows)-1], "+23 more") {
+		t.Fatalf("resumed sheet did not page delegates: %q", rows)
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/family-roster-resumed.txt", rows, 80)
 	selected := frame.Members[len(frame.Members)-1].Task
 	v.Update(family.Agents, terminalview.Display{Caller: selected})
-	v.NativeRoster(80, 20, time.Unix(100, 0), false)
+	v.RosterSheet(80, 8, time.Unix(100, 0))
 	found := false
 	for _, hit := range v.Hits {
 		found = found || hit.Agent == selected
 	}
 	if !found {
-		t.Fatalf("selected completed delegate %s disappeared", selected)
-	}
-	if focused := v.NativeRoster(80, 20, time.Unix(100, 0), true); len(focused) <= len(rows) {
-		t.Fatal("focusing Agents did not retain the larger roster allocation")
+		t.Fatalf("selected completed delegate %s scrolled out of the sheet", selected)
 	}
 }
 

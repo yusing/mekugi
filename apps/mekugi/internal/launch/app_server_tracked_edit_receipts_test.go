@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/contracts/activitydetail"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -191,7 +193,7 @@ func TestUISnapshotTrackedEditReceiptActionAndEffects(t *testing.T) {
 	}
 	rows := make([]string, 12)
 	u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
-	terminalTest(u).Dialog.Paint(rows, 100, len(rows))
+	terminalTest(u).Dialog.Paint(rows, terminalsession.Rect{W: 100, H: len(rows)})
 	assertNativeUISnapshot(t, "captured-edit-output-dialog", rows)
 }
 

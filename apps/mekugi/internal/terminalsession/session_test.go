@@ -90,8 +90,8 @@ func TestFrameCommitsClipboardAndRowsTogether(t *testing.T) {
 
 func TestPaneGeometryAndDividerIntent(t *testing.T) {
 	panes := Panes{Focus: 1, DiffOpen: true, Split: 67}
-	layout, _, _, framed, roster := panes.Geometry(140, 30, 4)
-	if !framed || roster != 4 || layout.Vertical != 67 || layout.Main != (Rect{0, 0, 67, 24}) || layout.Diff.W != 71 {
+	layout, _, _, framed := panes.Geometry(140, 30, 2)
+	if !framed || layout.Vertical != 67 || layout.Main != (Rect{0, 0, 67, 28}) || layout.Diff.W != 71 {
 		t.Fatalf("wide layout: %+v", layout)
 	}
 	if handled, _ := panes.Drag(Mouse{X: 67, Y: 3}, layout, 25); !handled {
@@ -102,54 +102,42 @@ func TestPaneGeometryAndDividerIntent(t *testing.T) {
 	if panes.Split != 72 || panes.Dragging() {
 		t.Fatal("divider drag did not settle")
 	}
+	if handled, _ := panes.Drag(Mouse{X: 72, Y: 28}, layout, 25); handled {
+		t.Fatal("a stat-line press started a divider drag")
+	}
 	panes.Select(1)
-	layout, _, _, _, _ = panes.Geometry(140, 30, 4)
+	layout, _, _, _ = panes.Geometry(140, 30, 2)
 	if panes.Focus != 0 || layout.Main.W != 140 || layout.Diff != (Rect{}) {
 		t.Fatalf("closing Diff: %+v", layout)
 	}
-	layout, _, _, _, _ = panes.Geometry(1, 1, 0)
+	layout, _, _, _ = panes.Geometry(1, 1, 0)
 	if layout.Main != (Rect{}) {
 		t.Fatalf("unpaintable geometry became a hit target: %+v", layout)
 	}
 }
 
-func TestRosterBudgetPreservesOpenSplit(t *testing.T) {
-	for _, focus := range []int{0, 1, 3} {
-		panes := Panes{Focus: focus, DiffOpen: true}
-		for _, height := range []int{18, 30} {
-			layout, _, _, _, _ := panes.Geometry(120, height, panes.RosterLimit(120, height)+1)
-			if layout.Main.W == 0 || layout.Diff.W == 0 {
-				t.Fatalf("focus %d height %d lost split: %+v", focus, height, layout)
-			}
-		}
-	}
-}
-
-func TestShellExternalPanesReclaimStatusRow(t *testing.T) {
-	for _, size := range []struct{ width, height int }{{1, 1}, {20, 7}, {80, 8}, {120, 24}} {
+func TestShellExternalPanesKeepOnlyCaption(t *testing.T) {
+	for _, size := range []struct{ width, height, stats int }{{1, 1, 0}, {20, 7, 1}, {80, 10, 2}, {120, 24, 2}} {
 		s := Shell{RosterLabel: "Agents"}
-		standalone := s.Plan(size.width, size.height, 0)
-		s.Compose(standalone, ShellContent{Status: ShellStatus{SideLabel: "Side"}})
-		if s.Tabs[0].H != 1 || s.SideTab.H != 1 {
-			t.Fatalf("%+v: standalone status targets missing", size)
+		standalone := s.Plan(size.width, size.height)
+		s.StatLine(ShellStatus{Agent: "Main", SideLabel: "Side"}, size.width, size.height-1)
+		if standalone.Stats != size.stats || standalone.Left.H != size.height-size.stats {
+			t.Fatalf("%+v: standalone plan %+v", size, standalone)
+		}
+		if size.width >= 20 && len(s.Targets) != 1 {
+			t.Fatalf("%+v: standalone side target missing: %+v", size, s.Targets)
 		}
 		s.SetExternalPanes(true)
-		if s.Tabs != [4]Rect{} || s.SideTab != (Rect{}) {
-			t.Fatalf("%+v: stale status targets", size)
+		if s.Targets != nil {
+			t.Fatalf("%+v: stale stat targets", size)
 		}
-		active := s.Plan(size.width, size.height, 0)
-		if active.Left.H != size.height || standalone.Left.H != size.height-1 {
-			t.Fatalf("%+v: standalone height=%d, active height=%d", size, standalone.Left.H, active.Left.H)
-		}
-		s.Compose(active, ShellContent{})
-		if s.Tabs != [4]Rect{} || s.SideTab != (Rect{}) {
-			t.Fatalf("%+v: active status targets", size)
+		active := s.Plan(size.width, size.height)
+		if want := min(1, size.stats); active.Stats != want || active.Left.H != size.height-want {
+			t.Fatalf("%+v: external plan %+v", size, active)
 		}
 		s.SetExternalPanes(false)
-		restored := s.Plan(size.width, size.height, 0)
-		s.Compose(restored, ShellContent{Status: ShellStatus{SideLabel: "Side"}})
-		if restored.Left.H != standalone.Left.H || s.Tabs[0].H != 1 || s.SideTab.H != 1 {
-			t.Fatalf("%+v: standalone status not restored", size)
+		if restored := s.Plan(size.width, size.height); restored != standalone {
+			t.Fatalf("%+v: standalone stat rows not restored", size)
 		}
 	}
 }
@@ -157,9 +145,9 @@ func TestShellExternalPanesReclaimStatusRow(t *testing.T) {
 func TestMainUsesFullPaneBoundsWithOrWithoutCompanion(t *testing.T) {
 	for _, size := range []struct{ width, height int }{{1, 1}, {20, 7}, {80, 8}, {120, 24}} {
 		s := Shell{RosterLabel: "Agents"}
-		standalone := s.Plan(size.width, size.height, 0)
+		standalone := s.Plan(size.width, size.height)
 		s.SetExternalPanes(true)
-		plan := s.Plan(size.width, size.height, 0)
+		plan := s.Plan(size.width, size.height)
 		if plan.DiffFramed {
 			t.Fatalf("%+v: native companion retained frame", size)
 		}
@@ -170,8 +158,28 @@ func TestMainUsesFullPaneBoundsWithOrWithoutCompanion(t *testing.T) {
 			t.Fatal("unpaintable main became a hit target")
 		}
 		s.SetExternalPanes(false)
-		if restored := s.Plan(size.width, size.height, 0); restored != standalone {
+		if restored := s.Plan(size.width, size.height); restored != standalone {
 			t.Fatalf("%+v: standalone frame geometry not restored", size)
 		}
+	}
+}
+
+// The roster sheet is transient: saving, restoring and ending a pane lease
+// all return to Main rather than reopening it.
+func TestRosterSheetFocusIsNotPersisted(t *testing.T) {
+	s := Shell{RosterLabel: "Agents"}
+	s.Focus = 3
+	if got := s.Preferences(nil).Focus; got != 0 {
+		t.Fatalf("saved focus = %d", got)
+	}
+	s.RestorePreferences(Preferences{Focus: 3}, nil)
+	if s.Focus != 0 {
+		t.Fatalf("restored focus = %d", s.Focus)
+	}
+	s.Focus = 3
+	s.SetExternalPanes(true)
+	s.SetExternalPanes(false)
+	if s.Focus != 0 {
+		t.Fatalf("focus after lease = %d", s.Focus)
 	}
 }

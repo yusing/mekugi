@@ -1,5 +1,7 @@
 LIVE · 1 file
   editor · ◐ A child.txt +40 -0
+  22│+child_line_22
+  23│+child_line_23
   24│+child_line_24
   25│+child_line_25
   26│+child_line_26
@@ -18,11 +20,9 @@ LIVE · 1 file
   39│+child_line_39
 ▎ 40│+child_line_40
 
-╭─ Read-only ──────────────────────────────────────────────────────────────────╮
-│ ❯                                                                            │
-╰──────────────────────────────────────────────────────────── /workspace • 0% ─╯
-─ 3 Agents · 2 · editor ────────────────────────────────────────────────────────
- ● editor  idle                                                              0%
-   +1 more · ^B 3 to browse
-
- 1 Main  2 Diff  3 Agents   ^B e next live · ^B 1-3 views · ^E expand events
+Read-only
+────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────
+  0%
+  editor • /workspace • ↓ roster • → diff • ^B e next live • ^E view

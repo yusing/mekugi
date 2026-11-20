@@ -2,7 +2,7 @@ Mekugi dev • codex v0.158.0
 
 
 
-
-╭─ Ready ──────────────────────────╮
-│ ❯ Explain this repository.       │
-╰── …rkspace • snapshot-mod… • 0% ─╯
+Ready
+────────────────────────────────────
+❯ Explain this repository. 
+────────────────────────────────────

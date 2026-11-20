@@ -9,10 +9,10 @@ LIVE · 4 files · enlarge for diff
 
 
 
-╭─ Ready ──────────────────────────────────────────────────────────────────────╮
-│ ❯                                                                            │
-╰──────────────────────────────────── /workspace • snapshot-model (high) • 0% ─╯
-─ 3 Agents · 2 · Main ──────────────────────────────────────────────────────────
-   +2 more · ^B 3 to browse
 
- 1 Main  2 Diff  3 Agents   ^B e next live · ^B 1-3 views · ^E expand events
+Ready
+────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────
+  snapshot-model (high) | 0%
+  Main • /workspace • ↓ roster • → diff • ^B e next live • ^E view

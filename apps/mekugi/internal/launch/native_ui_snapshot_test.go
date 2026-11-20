@@ -51,8 +51,9 @@ func TestComposerWorkspaceStatus(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	workspace := "/workspace/" + strings.Repeat("long-directory/", 6) + "project"
 	u.attached.cwd = workspace
-	rows, _ := u.testMainFrame(36, 8, 0)
-	if line := ansi.Strip(rows[len(rows)-1]); !strings.Contains(line, "…project") || strings.Contains(line, workspace) {
+	// The workspace shows on the second stat line.
+	_, line := u.testStatLines(t, 36, 12)
+	if line := ansi.Strip(line); !strings.Contains(line, "…") || !strings.Contains(line, "/project •") || strings.Contains(line, workspace) {
 		t.Fatalf("long workspace was not abbreviated: %q", line)
 	}
 	appServerTestKeys(t, u, "/status\r")
@@ -188,7 +189,7 @@ func TestUISnapshotNativeAgentsRoster(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := snapshotActivityView(now)
-			assertNativeUISnapshot(t, tc.name, v.NativeRoster(tc.width, 6, now, tc.focused))
+			assertNativeUISnapshot(t, tc.name, v.RosterSheet(tc.width, 6, now))
 		})
 	}
 }
@@ -207,9 +208,9 @@ func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
 		"/root/cleanup": {Removed: 2},
 	}
 	v.Model.NetCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
-	assertNativeUISnapshot(t, "native-roster-edit-counts", v.NativeRoster(100, 6, now, true))
-	assertNativeUISnapshot(t, "native-roster-edit-counts-unfocused", v.NativeRoster(100, 6, now, false))
-	assertNativeUISnapshot(t, "native-roster-edit-counts-narrow", v.NativeRoster(48, 6, now, false))
+	assertNativeUISnapshot(t, "native-roster-edit-counts", v.RosterSheet(100, 6, now))
+	assertNativeUISnapshot(t, "native-roster-edit-counts-unfocused", v.RosterSheet(100, 6, now))
+	assertNativeUISnapshot(t, "native-roster-edit-counts-narrow", v.RosterSheet(48, 6, now))
 }
 
 func TestUISnapshotNativeRosterContext(t *testing.T) {
@@ -223,7 +224,7 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 				{Name: "/root", ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000},
 				{Name: "/root/child", ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000},
 			}})
-			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-context-%d", width), v.NativeRoster(width, 6, now, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-context-%d", width), v.RosterSheet(width, 6, now))
 		})
 	}
 }

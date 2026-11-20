@@ -264,7 +264,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				rows, _ := u.testMainFrame(80, 10, 0)
 				if prior {
 					assertNativeUISnapshot(t, "output-throughput-live-composer", rows)
-					assertNativeUISnapshot(t, "output-throughput-live-roster", u.testActivity(u.shell.Agents).NativeRoster(80, 4, time.Now(), true))
+					assertNativeUISnapshot(t, "output-throughput-live-roster", u.testActivity(u.shell.Agents).RosterSheet(80, 4, time.Now()))
 				} else if strings.Contains(strings.Join(rows, "\n"), "tok/s") {
 					t.Fatal("first response displayed TPS before provider usage")
 				}
@@ -307,7 +307,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 				{Name: "/root/zero", OutputThroughput: inference.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}},
 				{Name: "/root/absent"},
 			}})
-			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.testActivity(u.shell.Agents).NativeRoster(width, 6, now, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.testActivity(u.shell.Agents).RosterSheet(width, 6, now))
 		})
 	}
 }
@@ -337,7 +337,7 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 		u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: u.attached.session.Roster()})
 		u.shell.Agents.Painter.Theme = diffrender.DarkTheme
 		u.shell.Agents.Selected = u.attached.session.KnownCaller("child")
-		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.testActivity(u.shell.Agents).NativeRoster(120, 8, time.Now(), true))
+		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.testActivity(u.shell.Agents).RosterSheet(120, 8, time.Now()))
 	})
 }
 
@@ -358,8 +358,8 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 			u.attached.session.Agent("/root").OutputThroughput = rate
 			before := publishTestPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.settings, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side)
-			frame, _ := u.testMainFrame(120, 12, 0)
-			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
+			caption, _ := u.testStatLines(t, 120, 12)
+			if text := ansi.Strip(caption); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)
 			}
 			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "child"})
@@ -367,13 +367,13 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			rate.OutputTokens = 80
 			child.OutputThroughput = rate
 			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: u.attached.session.Roster()})
-			roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 8, presentationTime(u.clock), true), "\n"))
+			roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RosterSheet(140, 8, presentationTime(u.clock)), "\n"))
 			if strings.Contains(roster, "80.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("roster contribution: %s", roster)
 			}
 			u.testActivity(u.shell.Agents).displayThread("/root/child")
-			frame, _ = u.testMainFrame(120, 12, 0)
-			if text := ansi.Strip(strings.Join(frame, "\n")); strings.Contains(text, "40.0 tok/s") || strings.Contains(text, "80.0 tok/s") != (mode != "without usage") {
+			caption, _ = u.testStatLines(t, 120, 12)
+			if text := ansi.Strip(caption); strings.Contains(text, "40.0 tok/s") || strings.Contains(text, "80.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("child contribution: %s", text)
 			}
 			if mode != "without usage" && (len(before.Caption.Items) != 1 || before.Caption.Items[0].Thread != "main" || before.Caption.Items[0].Text != "40.0 tok/s") {

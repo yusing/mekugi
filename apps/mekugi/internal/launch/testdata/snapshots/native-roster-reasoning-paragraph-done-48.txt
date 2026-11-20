@@ -1,4 +1,2 @@
-─ 3 Agents · 2 · 2 working ─────────────────────
- ◐ main  Thought                                
- ◐ └ worker  Thought                         0%
- Roles: ● worker
+
+ ◐ worker  Thought                           0%

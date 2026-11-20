@@ -55,7 +55,7 @@ func TestAppServerSideSettingsNativeCodex(t *testing.T) {
 		t.Fatal(terminal.ctx.Err())
 	}
 	terminal.awaitMatch("One-off idle", func(frame string) bool {
-		return rosterHeadingNames(frame, "One-off") && strings.Contains(frame, "completed")
+		return statLineNames(frame, "One-off") && strings.Contains(frame, "completed")
 	})
 	terminal.send("\x1b[1;2B")
 	terminal.await("Settings saved for next turn")
@@ -74,10 +74,10 @@ func TestAppServerSideSettingsNativeCodex(t *testing.T) {
 	case <-terminal.ctx.Done():
 		t.Fatal(terminal.ctx.Err())
 	}
-	terminal.awaitMatch("side completed", func(frame string) bool { return strings.Contains(frame, "╭─ completed") })
+	terminal.awaitMatch("side completed", func(frame string) bool { return composerStatusShows(frame, "completed") })
 	terminal.send("\x021") // Select Main without closing Side.
 	terminal.awaitMatch("Main selected", func(frame string) bool {
-		return rosterHeadingNames(frame, "Main") && strings.Contains(frame, "gpt-6-astra (high)")
+		return statLineNames(frame, "Main") && strings.Contains(frame, "gpt-6-astra (high)")
 	})
 	terminal.send("Main settings request\r")
 	select {
@@ -164,7 +164,7 @@ func TestAppServerLiveSettingsNativeCodex(t *testing.T) {
 	terminal.send("/model gpt-6-astra --reasoning=high --speed=fast\r")
 	terminal.await("gpt-6-astra (high)")
 	terminal.await("live update published")
-	terminal.await("gpt-6-astra (high) • priority")
+	terminal.await("gpt-6-astra (high) · priority")
 	terminal.send("/permissions\r")
 	terminal.await(":read-only")
 	terminal.send("\x1b")

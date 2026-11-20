@@ -58,7 +58,7 @@ func TestAppServerCompactEnterInterruptsNativeCodex(t *testing.T) {
 			default:
 			}
 			terminal.await("Context reset")
-			terminal.await("╭─ Completed")
+			terminal.awaitStatus("Completed")
 			terminal.quit()
 			select {
 			case body := <-provider.requests:

@@ -219,7 +219,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 					if _, err := io.WriteString(outer, "\x1b"); err != nil {
 						t.Fatal(err)
 					}
-					awaitFrame(func(frame string) bool { return !strings.Contains(frame, "╭─ Hook Blocked") })
+					awaitFrame(func(frame string) bool { return !strings.Contains(frame, "── Hook Blocked") })
 				}
 				for i, answer := range tc.answers {
 					// Each request shows once the previous one has ended.

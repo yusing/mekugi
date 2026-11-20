@@ -13,6 +13,19 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 	if in.Agents != nil && (in.Dialog != nil || !shell.Layout.Roster.Contains(x, y)) {
 		in.Agents.SkillsHover = ""
 	}
+	// Pointer motion outside dialogs and playback drives hover underlines.
+	if shell != nil {
+		motion := in.Dialog == nil && !in.Playback && button&^28 == 35
+		if main != nil {
+			main.ProcessHover = motion && main.ProcessCount.Contains(x-shell.Layout.Main.X, y-shell.Layout.Main.Y)
+		}
+		shell.StatHover = 0
+		for _, target := range shell.Targets {
+			if motion && target.Contains(x, y) {
+				shell.StatHover = target.Action
+			}
+		}
+	}
 	if in.Dialog != nil {
 		intent := in.Dialog.Mouse(button, x, y, release)
 		yield(InputEffect{Dialog: &intent})
@@ -23,8 +36,7 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 			x, y := x-shell.Layout.Main.X, y-shell.Layout.Main.Y
 			r := main.Menu.Rect
 			result := MenuResult{Handled: true}
-			closeDialog := main.Menu.Dialog() && y == r.Y && x >= r.X+r.W-terminalui.DialogCloseWidth-3
-			if button == 0 && (!r.Contains(x, y) || closeDialog) {
+			if button == 0 && !r.Contains(x, y) {
 				result = main.Menu.Key("\x1b")
 			} else if r.Contains(x, y) {
 				result = main.Menu.Mouse(button&^28, y)
@@ -34,20 +46,11 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 		return
 	}
 	if state.Selection == nil && !shell.Dragging() {
-		if main != nil && shell.SideTab.Contains(x, y) {
-			if button == 0 && !release && main.session.SideThread.ID != "" {
-				state.Prefix = false
-				if yield(InputEffect{Display: &sessionpresentation.DisplayIntent{Version: main.session.Version, Thread: main.session.SideThread}}) {
-					shell.Focus = 0
-				}
-			}
-			return
-		}
-		for pane, rect := range shell.Tabs {
-			if rect.Contains(x, y) {
+		for _, target := range shell.Targets {
+			if target.Contains(x, y) {
 				if button == 0 && !release {
 					state.Prefix = false
-					in.selectPane(state, pane, yield)
+					in.statAction(state, target.Action, yield)
 				}
 				return
 			}
@@ -149,12 +152,12 @@ func (in FrameInput) mouse(state *Interaction, pointer Mouse, yield func(InputEf
 	pane := -1
 	var r Rect
 	switch {
+	case shell.Layout.Roster.Contains(x, y):
+		pane, r = 3, shell.Layout.Roster
 	case shell.Layout.Main.Contains(x, y):
 		pane, r = 0, shell.Layout.Main
 	case shell.Layout.Diff.Contains(x, y):
 		pane, r = 1, shell.Layout.Diff
-	case shell.Layout.Roster.Contains(x, y):
-		pane, r = 3, shell.Layout.Roster
 	}
 	if pane < 0 {
 		return

@@ -16,6 +16,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -38,7 +39,7 @@ func processNotify(t *testing.T, u *appServerUI, thread, id, command, status str
 func processDialog(u *appServerUI, width, height int) []string {
 	rows := make([]string, height)
 	u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
-	terminalTest(u).Dialog.Paint(rows, width, height)
+	terminalTest(u).Dialog.Paint(rows, terminalsession.Rect{W: width, H: height})
 	return rows
 }
 
@@ -553,9 +554,43 @@ func TestRunningProcessesInlineHeight(t *testing.T) {
 	for i := range 25 {
 		output(fmt.Sprintf("log %02d\n", i))
 	}
-	check(16, "log 24")
+	check(15, "log 24")
 	terminalTest(u).Dialog.Key("v")
 	check(9, "Invocation")
 	terminalTest(u).Dialog.Key("\x1b[D")
-	check(16, "log 24")
+	check(15, "log 24")
+}
+
+// The running-process count is dark amber and underlined only under the
+// pointer.
+func TestRunningProcessCountUnderlinesOnHover(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	processNotify(t, u, "main", "cmd", "make test", "inProgress")
+	paint := func() string {
+		t.Helper()
+		terminalTest(u).Frame.Rows = nil
+		var out strings.Builder
+		if err := u.testPaint(&out, 100, 24); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	// The frame writer merges SGR parameters, as in "\x1b[4;38;5;172m".
+	label := strings.TrimPrefix(terminalui.DarkAmber, "\x1b[") + "1 running processes"
+	if got := paint(); !strings.Contains(got, label) || strings.Contains(got, "4;"+label) {
+		t.Fatalf("count is not plain dark amber: %q", got)
+	}
+	r, main := terminalTest(u).Main.ProcessCount, terminalTest(u).Layout.Main
+	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<35;%d;%dM", main.X+r.X+1, main.Y+r.Y+1)); err != nil {
+		t.Fatal(err)
+	}
+	if got := paint(); !strings.Contains(got, "4;"+label) {
+		t.Fatalf("hovered count is not underlined: %q", got)
+	}
+	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<35;%d;%dM", main.X+1, main.Y+1)); err != nil {
+		t.Fatal(err)
+	}
+	if got := paint(); !strings.Contains(got, label) || strings.Contains(got, "4;"+label) {
+		t.Fatal("count stayed underlined after the pointer left")
+	}
 }

@@ -75,10 +75,10 @@ func TestSideCacheEligibilityLiveOpenAI(t *testing.T) {
 				terminal.await("Ready")
 				terminal.send("Without using tools, join these parts with no spaces and reply with only the result: MAIN, _, READY.\r")
 				terminal.await("MAIN_READY")
-				terminal.await("╭─ Completed")
+				terminal.awaitStatus("Completed")
 				terminal.send("Without using tools, join these parts with no spaces and reply with only the result: MAIN, _, WARM.\r")
 				terminal.await("MAIN_WARM")
-				terminal.await("╭─ Completed")
+				terminal.awaitStatus("Completed")
 				seed, _, _ := transport.snapshot()
 				for i, usage := range seed {
 					t.Logf("Main request %d: input=%d cached=%d", i+1, usage.InputTokens, usage.InputTokens-usage.UncachedInputTokens)
@@ -92,7 +92,7 @@ func TestSideCacheEligibilityLiveOpenAI(t *testing.T) {
 				if command == "/btw" {
 					terminal.await("/btw · completed")
 				} else {
-					terminal.await("╭─ completed")
+					terminal.awaitStatus("completed")
 				}
 				usages, _, _ := transport.snapshot()
 				if len(usages) <= len(seed) {
@@ -127,7 +127,7 @@ func TestSideCacheEligibilityLiveOpenAI(t *testing.T) {
 						}
 						terminal.send(selectView)
 						terminal.awaitMatch(label+" selected", func(frame string) bool {
-							return rosterHeadingNames(frame, label)
+							return statLineNames(frame, label)
 						})
 					}
 					prompt := "Without using tools, join these parts with no spaces and reply with only the result: " + parts + "."
@@ -138,11 +138,11 @@ func TestSideCacheEligibilityLiveOpenAI(t *testing.T) {
 					terminal.send(prompt + "\r")
 					terminal.await(marker)
 					if branch == "main" {
-						terminal.await("╭─ Completed")
+						terminal.awaitStatus("Completed")
 					} else if command == "/btw" {
 						terminal.await("/btw · completed")
 					} else {
-						terminal.await("╭─ completed")
+						terminal.awaitStatus("completed")
 					}
 					var headers []http.Header
 					usages, _, headers = transport.snapshot()

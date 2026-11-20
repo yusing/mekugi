@@ -94,24 +94,19 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 				t.Fatal(err)
 			}
 			awaitFrame(func(frame string) bool { return strings.Contains(frame, "y copy") })
-			// Read only the dialog, excluding the faded Activity underneath.
+			// Read only the docked sheet's body, between its heading rule and
+			// its controls, excluding the Activity above it.
 			var body []string
 			inside := false
 			for _, line := range strings.Split(screen.String(), "\n") {
-				chars := []rune(line)
-				if len(chars) < 95 {
+				if !inside {
+					inside = strings.HasPrefix(strings.TrimLeft(line, " "), "── ")
 					continue
 				}
-				modal := string(chars[5:95])
-				if strings.HasPrefix(modal, "╭") {
-					inside = true
-				}
-				if inside {
-					body = append(body, strings.TrimSpace(strings.Trim(modal, "│ ")))
-				}
-				if inside && strings.HasPrefix(modal, "╰") {
+				if strings.Contains(line, "y copy") {
 					break
 				}
+				body = append(body, strings.TrimSpace(strings.Trim(line, "│▐ ")))
 			}
 			found := false
 			for _, line := range body {

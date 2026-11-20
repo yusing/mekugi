@@ -259,7 +259,8 @@ func TestSideQuestionRosterActivity(t *testing.T) {
 		if len(publication.MainSummary) != 1 || publication.MainSummary[0].StatusAnimating() != (status == "inProgress") {
 			t.Fatalf("%s: lost Main summary animation: %+v", status, publication.MainSummary)
 		}
-		roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 6, presentationTime(u.clock), true), "\n"))
+		// Main's summary state, which the roster sheet no longer lists.
+		roster := ansi.Strip(u.shell.Agents.AgentState(u.testActivity(u.shell.Agents).testAgent(*u.attached.session.Agent("/root")), 140, presentationTime(u.clock)))
 		if !strings.Contains(roster, "Side question") || !strings.Contains(roster, state) || strings.Contains(roster, "→") || strings.Contains(roster, "parser tests") {
 			t.Fatalf("%s: roster showed the exchange instead of its status:\n%s", status, roster)
 		}

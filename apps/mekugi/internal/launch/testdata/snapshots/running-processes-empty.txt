@@ -1,6 +1,6 @@
-  ────────────────────────────────────────────────────────
-  Background  0 active shells
+  ── Background · 0 active shells ────────────────────────
   
+    agent · command                                status
   No running processes
   
   

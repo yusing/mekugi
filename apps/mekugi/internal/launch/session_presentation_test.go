@@ -112,7 +112,7 @@ func TestNativeRosterReturnToMain(t *testing.T) {
 		{"Main selector", "worker11", "\x021"},
 		{"toggle", "worker11", "\x023a"},
 		{"previous", "worker00", "\x023p"},
-		{"Main row", "worker00", ""},
+		{"parent", "worker00", "\x1b[A"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
@@ -135,26 +135,12 @@ func TestNativeRosterReturnToMain(t *testing.T) {
 			if err := u.testPaint(io.Discard, 100, 30); err != nil {
 				t.Fatal(err)
 			}
-			if tc.keys != "" {
-				keys(tc.keys)
+			if tc.keys == "\x1b[A" {
+				if err := terminalTest(u).send(tc.keys); err != nil {
+					t.Fatal(err)
+				}
 			} else {
-				clicked := false
-				for _, hit := range v.Hits {
-					if hit.Agent != "/root" || hit.Skills {
-						continue
-					}
-					r := terminalTest(u).Layout.Roster
-					for _, suffix := range []string{"M", "m"} {
-						if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.X+hit.First, r.Y+hit.Row, suffix)); err != nil {
-							t.Fatal(err)
-						}
-					}
-					clicked = true
-					break
-				}
-				if !clicked {
-					t.Fatal("Main has no roster target")
-				}
+				keys(tc.keys)
 			}
 			if err := u.testPaint(io.Discard, 100, 30); err != nil {
 				t.Fatal(err)
@@ -170,7 +156,7 @@ func TestNativeRosterReturnToMain(t *testing.T) {
 				t.Fatalf("Main remains offscreen or remembered child lost: offset=%d selected=%s", v.RosterOffset, v.Selected)
 			}
 			for _, focused := range []bool{true, false} {
-				rows := v.NativeRoster(100, 4, time.Unix(100, 0), focused)
+				rows := v.RosterSheet(100, 4, time.Unix(100, 0))
 				for _, hit := range v.Hits {
 					if strings.Contains(rows[hit.Row-1], v.Painter.Theme.SelectionBackground()) != (focused && hit.Agent == "/root") {
 						t.Fatalf("stale roster highlight: %q", rows[hit.Row-1])
@@ -236,7 +222,8 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	outer := strings.Join(terminalTest(u).Frame.Rows, "\n")
-	heading := terminalTest(u).Frame.Rows[terminalTest(u).Layout.Roster.Y]
+	// The title shows on the last stat line.
+	heading := terminalTest(u).Frame.Rows[len(terminalTest(u).Frame.Rows)-1]
 	if !strings.Contains(heading, "Published title") || !strings.Contains(outer, "codex v1.2.3") || strings.Contains(outer, "Unpublished") {
 		t.Fatalf("outer frame consulted unpublished owners: %s", outer)
 	}

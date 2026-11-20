@@ -76,7 +76,7 @@ func TestRewindCacheEligibilityLiveOpenAI(t *testing.T) {
 	for _, parts := range []string{"KEEP, _, READY", "KEEP, _, WARM", "DROP, _, ANSWER"} {
 		terminal.send(parts + ". Without using tools, join those parts with no spaces and reply with only the result.\r")
 		terminal.await(strings.ReplaceAll(parts, ", ", ""))
-		terminal.await("╭─ Completed")
+		terminal.awaitStatus("Completed")
 	}
 	seed, _, headers := transport.snapshot()
 	if len(seed) != 3 {
@@ -91,7 +91,7 @@ func TestRewindCacheEligibilityLiveOpenAI(t *testing.T) {
 	thread := codexresponses.ThreadID(headers[1])
 	terminal.send("/rewind\r")
 	terminal.awaitMatch("loaded rewind choices", func(frame string) bool {
-		return strings.Contains(frame, "Rewind before a user turn") && strings.Contains(frame, "› KEEP, _, READY.")
+		return strings.Contains(frame, "Rewind before a user turn") && strings.Contains(frame, "❯ KEEP, _, READY.")
 	})
 	// The picker lists oldest first. Drop only the latest user turn.
 	terminal.send("\x1b[B\x1b[B\r")
@@ -101,7 +101,7 @@ func TestRewindCacheEligibilityLiveOpenAI(t *testing.T) {
 	})
 	terminal.send("Without using tools, join these parts with no spaces and reply with only the result: AFTER, _, REWIND.\r")
 	terminal.await("AFTER_REWIND")
-	terminal.await("╭─ Completed")
+	terminal.awaitStatus("Completed")
 	usages, _, headers := transport.snapshot()
 	bodies := transport.requestBodies()
 	if len(usages) != 4 || len(bodies) != 4 {

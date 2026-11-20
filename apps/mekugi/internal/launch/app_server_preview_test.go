@@ -182,7 +182,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		return frame
 	}
 	p.until("main streams its patch")
-	render("main replacement", "LIVE ·", "M internal/broker/broker.go", "1 Main", "3 Agents")
+	render("main replacement", "LIVE ·", "M internal/broker/broker.go", "  Main • ")
 	terminalTest(p.ui).LiveHidden = true // Subsequent assertions inspect transcripts, not their temporary replacements.
 	// Native reasoning streams through response delivery into Activity.
 	p.until("children start")
@@ -208,7 +208,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p.until("three agents edit at once")
 	p.ui.testActivity(p.ui.shell.Agents).setDisplayFilter(false, p.ui.shell.Agents.Selected)
 	terminalTest(p.ui).LiveHidden = false
-	frame := render("caller-local live previews", "LIVE ·", "3 Agents", "2 Diff ●")
+	frame := render("caller-local live previews", "LIVE ·", "Main • ◐ 3", "^B e next live")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
 		t.Fatal("the saved diff replaced Activity without being opened")
 	}
@@ -293,7 +293,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	render("focused roster", "3 Agents")
+	render("focused roster", "── Agents")
 	if !terminalTest(p.ui).DiffOpen {
 		t.Fatal("focusing the roster closed the saved diff")
 	}
@@ -309,7 +309,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	frame = render("roster pick", "tester")
-	if !rosterHeadingNames(frame, "tester") || !shell.DiffOpen || !shell.main.attached.presentation.DisplayingChild() || shell.Agents.Selected != "/root/tester" {
+	if !statLineNames(frame, "tester") || !shell.DiffOpen || !shell.main.attached.presentation.DisplayingChild() || shell.Agents.Selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }

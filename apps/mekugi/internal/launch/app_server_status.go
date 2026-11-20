@@ -240,6 +240,55 @@ type appServerStatusWindow struct {
 	Resets  *int64  `json:"resetsAt"`
 }
 
+// label names the window by its duration, or by its position when unknown.
+func (window appServerStatusWindow) label(position int) string {
+	if window.Minutes == nil {
+		return []string{"primary", "secondary"}[position]
+	}
+	switch minutes := *window.Minutes; {
+	case minutes == 10080:
+		return "weekly"
+	case minutes > 0 && minutes%60 == 0:
+		return fmt.Sprintf("%dh", minutes/60)
+	default:
+		return fmt.Sprintf("%dm", minutes)
+	}
+}
+
+// observeRateLimits merges a sparse account rate-limit update for the default
+// limit into the caption's windows; an absent window keeps its last value.
+func observeRateLimits(windows *[2]*sessionpresentation.CaptionLimit, params []byte) error {
+	var update struct {
+		Limits struct {
+			ID                   *string `json:"limitId"`
+			appServerStatusLimit `json:",inline"`
+		} `json:"rateLimits"`
+	}
+	if err := json.Unmarshal(params, &update); err != nil {
+		return err
+	}
+	if id := update.Limits.ID; id != nil && *id != "" && *id != "codex" {
+		return nil
+	}
+	for i, window := range []*appServerStatusWindow{update.Limits.Primary, update.Limits.Secondary} {
+		if window != nil {
+			windows[i] = &sessionpresentation.CaptionLimit{Label: window.label(i), Used: max(0, min(100, window.Used))}
+		}
+	}
+	return nil
+}
+
+// captionLimits lists the known windows in display order.
+func captionLimits(windows [2]*sessionpresentation.CaptionLimit) []sessionpresentation.CaptionLimit {
+	var limits []sessionpresentation.CaptionLimit
+	for _, window := range windows {
+		if window != nil {
+			limits = append(limits, *window)
+		}
+	}
+	return limits
+}
+
 func (limit appServerStatusLimit) rows(id string) []sessionpresentation.StatusField {
 	var rows []sessionpresentation.StatusField
 	name := cmp.Or(limit.Name, id)
@@ -247,18 +296,7 @@ func (limit appServerStatusLimit) rows(id string) []sessionpresentation.StatusFi
 		if window == nil {
 			continue
 		}
-		label := []string{"primary", "secondary"}[i]
-		if window.Minutes != nil {
-			minutes := *window.Minutes
-			switch {
-			case minutes == 10080:
-				label = "weekly"
-			case minutes > 0 && minutes%60 == 0:
-				label = fmt.Sprintf("%dh", minutes/60)
-			default:
-				label = fmt.Sprintf("%dm", minutes)
-			}
-		}
+		label := window.label(i)
 		remaining := max(0, min(100, 100-window.Used))
 		row := sessionpresentation.StatusField{Group: "Usage", Label: name + " " + label + " limit", Value: fmt.Sprintf("%.0f%% left", remaining), Remaining: new(remaining)}
 		if window.Resets != nil {

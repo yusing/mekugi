@@ -10,7 +10,6 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	ansiparser "github.com/charmbracelet/x/ansi/parser"
-	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 // Source: modules/activity/terminalview/dialog.go:23:44,296:539@563f0c37.
@@ -240,38 +239,77 @@ type DialogFrame struct {
 	Footer       string   // Styled controls.
 }
 
-// Backdrop fades a screen row the dialog is drawn over: its colors and
-// attributes give way to faint text, and cursor moves stay in place.
-func Backdrop(row string) string {
-	var out strings.Builder
-	out.WriteString(Dim)
-	var state byte
-	for row != "" {
-		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
-		if !strings.HasPrefix(seq, "\x1b[") || !strings.HasSuffix(seq, "m") {
-			out.WriteString(seq)
-		}
-		row, state = row[n:], next
-	}
-	return out.String()
-}
-
-// DialogChrome is the rows a dialog frame takes beyond its body: the top
-// edge, the detail row, its rule and the bottom edge.
-const DialogChrome = 4
+// DialogChrome is the rows a sheet takes beyond its body: the heading rule,
+// the spacer above the body and the controls row. A tab row adds one more.
+const DialogChrome = 3
 
 const DialogClose = "[×]"
 const DialogCloseWidth = 3
 
-// Dialog boxes a frame width by height: the title and page position on the
-// top edge, the detail row and a rule, the body with a scroll thumb on its
-// right edge, and controls on the bottom edge.
+// DialogCloseOffset is the close control's first column from the sheet's
+// right edge: the control, a space, the rule's end and the two-cell inset.
+const DialogCloseOffset = DialogCloseWidth + 5
+
+// panelTitleFloor is the title width a heading keeps before its detail
+// yields room.
+const panelTitleFloor = 16
+
+// PanelHeading opens a docked panel with an accent rule width cells wide: the
+// bold title, its dim detail, then an optional right label set into the rule.
+// A long title yields to its detail down to panelTitleFloor cells, then the
+// detail yields. Too narrow for a title, the rule keeps only the right label,
+// which drops in turn when even it does not fit. Callers add the panel's
+// two-cell inset on each side.
+func PanelHeading(accent, title, detail, right string, width int) string {
+	if width < 6 {
+		return accent + strings.Repeat("─", max(0, width)) + Reset
+	}
+	room := panelRoom(width, ansi.StringWidth(right))
+	if room < 1 && right != "" {
+		if fill := width - ansi.StringWidth(right) - 4; fill >= 1 {
+			return accent + strings.Repeat("─", fill) + Reset + " " + right + Reset + " " + accent + "──" + Reset
+		}
+		right, room = "", panelRoom(width, 0)
+	}
+	tail := ""
+	if right != "" {
+		right, tail = " "+right+Reset+" ", "──"
+	}
+	label := "\x1b[1m" + title + Reset
+	if detail != "" {
+		detail = Dim + " · " + detail + Reset
+		if over := ansi.StringWidth(label) + ansi.StringWidth(detail) - room; over > 0 && room-ansi.StringWidth(detail) >= panelTitleFloor {
+			label = ansi.Truncate(label, ansi.StringWidth(label)-over, "…") + Reset
+		}
+		label += detail
+	}
+	label = ansi.Truncate(label, room, "…") + Reset
+	fill := width - 4 - ansi.StringWidth(label) - ansi.StringWidth(right) - ansi.StringWidth(tail)
+	return accent + "── " + Reset + label + " " + accent + strings.Repeat("─", fill) + Reset + right + accent + tail + Reset
+}
+
+// panelRoom is the title width a PanelHeading width cells wide leaves: the
+// lead rule and space, a space and at least one rule cell after the title,
+// and, for a right label right cells wide, its padding and closing rule.
+func panelRoom(width, right int) int {
+	if right > 0 {
+		right += 4
+	}
+	return width - 5 - right
+}
+
+// Dialog paints a docked sheet width by height in the panel style shared with
+// the process list: an accent heading carrying the title, detail and page
+// position, an optional tab row, a spacer, the body with a scroll thumb in its
+// right margin, and dim controls on the last row, all inset two cells.
 func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
-	if width < 12 || height < DialogChrome+1 {
+	chrome := DialogChrome
+	if f.Tabs != "" {
+		chrome++
+	}
+	if width < 12 || height < chrome+1 {
 		return nil
 	}
-	// Accent edges and an opaque surface separate the modal from the panes.
-	edge := func(s string) string { return p.Theme.Accent() + s + Reset }
 	inner := width - 4
 	right := f.Position
 	if f.Page.Live {
@@ -285,37 +323,32 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 		right += " "
 	}
 	right += DialogClose
-	right = " " + right + " "
-	room := width - 6 - ansi.StringWidth(right)
-	if room < 1 {
-		right, room = " "+DialogClose+" ", width-8-DialogCloseWidth
+	if panelRoom(inner, ansi.StringWidth(right)) < 8 {
+		right = DialogClose
 	}
 	title := f.Page.Title
 	if target := f.Page.TitlePath; target != "" {
+		room := panelRoom(inner, ansi.StringWidth(right))
+		if detail := ansi.StringWidth(f.Page.Detail) + 3; f.Page.Detail != "" && room-detail >= panelTitleFloor {
+			room -= detail
+		}
 		if before, after, ok := strings.Cut(title, target); ok {
-			title = before + pathterminal.Truncate(target, room-ansi.StringWidth(before+after)) + after
+			title = before + pathterminal.Truncate(target, max(1, room-ansi.StringWidth(before+after))) + after
 		}
 	}
-	title = ansi.Truncate(title, room, "…") + Reset
-	fill := max(0, width-6-ansi.StringWidth(title)-ansi.StringWidth(right))
-	lines := []string{edge("╭─ ") + title + " " + edge(strings.Repeat("─", fill)) + right + edge("─╮")}
-	row := func(text string, thumb bool, gutterStyle string) string {
+	lines := []string{"  " + PanelHeading(p.Theme.Accent(), title, f.Page.Detail, right, inner) + "  "}
+	row := func(text, closing, gutterStyle string) string {
 		text = ansi.Truncate(text, inner, "…")
-		closing := edge("│")
-		if thumb {
-			closing = p.Theme.Accent() + "▌" + Reset
-		}
-		return edge("│") + gutterStyle + " " + Reset + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
+		return " " + gutterStyle + " " + Reset + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
 	}
-	lines = append(lines, row(f.Page.Detail, false, ""))
-	body := height - DialogChrome
+	body := height - chrome
 	if f.Tabs != "" {
-		lines = append(lines, row(f.Tabs, false, ""))
-		body--
+		lines = append(lines, row(f.Tabs, " ", ""))
 	}
-	lines = append(lines, edge("├"+strings.Repeat("─", width-2)+"┤"))
+	lines = append(lines, strings.Repeat(" ", width))
+	scrolls := f.Total > body
 	thumbFrom, thumbTo := 0, -1
-	if f.Total > body && body > 0 {
+	if scrolls && body > 0 {
 		size := max(1, body*body/f.Total)
 		thumbFrom = (body - size) * f.Top / max(1, f.Total-body)
 		thumbTo = thumbFrom + size - 1
@@ -329,26 +362,23 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 		if i < len(f.GutterStyles) {
 			gutterStyle = f.GutterStyles[i]
 		}
-		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo, gutterStyle))
+		closing := " "
+		switch {
+		case i >= thumbFrom && i <= thumbTo:
+			closing = p.Theme.Accent() + "▐" + Reset
+		case scrolls:
+			closing = Dim + "│" + Undim
+		}
+		lines = append(lines, row(text, closing, gutterStyle))
 	}
-	footer := ansi.Truncate(f.Footer, max(0, width-6), "…")
-	lines = append(lines, edge("╰─ ")+footer+Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
-	background, ink := p.CodeBackground(), "\x1b[38;2;230;237;243m"
-	if background == "" {
-		background = "\x1b[48;2;32;35;40m"
-	}
-	if p.Theme == diffrender.LightTheme {
-		ink = "\x1b[38;2;31;41;55m"
-	}
-	for i, line := range lines {
-		lines[i] = dialogSurface(line, ink, background)
-	}
-	return lines
+	footer := ansi.Truncate(f.Footer, max(0, inner), "…")
+	return append(lines, "  "+footer+Reset+strings.Repeat(" ", max(0, width-2-ansi.StringWidth(footer))))
 }
 
-// Restore the surface after any SGR color reset, including combined resets,
-// without overwriting explicit syntax colors, diff fills, or selection styles.
-func dialogSurface(row, ink, fill string) string {
+// Surface paints row on a filled band, restoring ink and fill after any SGR
+// color reset, including combined resets, without overwriting explicit syntax
+// colors, diff fills, or selection styles.
+func Surface(row, ink, fill string) string {
 	var out strings.Builder
 	out.WriteString(Reset + ink + fill)
 	var style uv.Style

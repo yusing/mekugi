@@ -59,17 +59,16 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	} {
 		t.Run(tc.model+"-"+tc.requested, func(t *testing.T) {
 			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": tc.model, "effort": "high", "serviceTier": tc.requested}})
-			rows, _ := u.testMainFrame(100, 10, 0)
-			if frame := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(frame, tc.model+" (high) • "+tc.want) {
+			caption, _ := u.testStatLines(t, 100, 12)
+			if frame := ansi.Strip(caption); !strings.Contains(frame, tc.model+" (high) · "+tc.want) {
 				t.Fatalf("composer does not reflect routed tier: %s", frame)
 			}
 			if tc.model == "gpt-6.1-sol" {
-				assertNativeUISnapshot(t, "native-main-configured-tier", rows)
+				assertNativeUISnapshot(t, "native-main-configured-tier", []string{caption})
 			}
 			// Passthrough routes tiers too, but has no observation proxy.
 			setTestAppServerIntegration(u, nil)
-			passthrough, _ := u.testMainFrame(100, 10, 0)
-			if strings.Join(rows, "\n") != strings.Join(passthrough, "\n") {
+			if passthrough, _ := u.testStatLines(t, 100, 12); passthrough != caption {
 				t.Fatal("passthrough composer lost configured tier")
 			}
 			appServerTestKeys(t, u, "/status\r")

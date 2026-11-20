@@ -104,7 +104,7 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 					if replay.ui.shell.Dialog == nil {
 						t.Fatal("replay click did not open the shared dialog")
 					}
-					replay.ui.shell.Dialog.Paint(make([]string, 20), 80, 20)
+					replay.ui.shell.Dialog.Paint(make([]string, 20), terminalsession.Rect{W: 80, H: 20})
 					if got := replay.ui.shell.Dialog.Document.Text; got != summary {
 						t.Fatalf("replay summary=%q", got)
 					}
@@ -129,7 +129,7 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 				}
 				renderer.updateNativeDetailTest(view)
 				rows := make([]string, 20)
-				renderer.terminal.Dialog.Paint(rows, 80, 20)
+				renderer.terminal.Dialog.Paint(rows, terminalsession.Rect{W: 80, H: 20})
 				if got := renderer.terminal.Dialog.Document.Text; got != summary {
 					t.Fatalf("%s summary=%q", mode, got)
 				}
@@ -139,7 +139,7 @@ func TestUISnapshotCompactionSummaryDialog(t *testing.T) {
 				// An open dialog keeps its selected summary after feed aging.
 				view.attached.source.Entries = nil
 				renderer.updateNativeDetailTest(view)
-				renderer.terminal.Dialog.Paint(make([]string, 20), 80, 20)
+				renderer.terminal.Dialog.Paint(make([]string, 20), terminalsession.Rect{W: 80, H: 20})
 				if renderer.terminal.Dialog.Document.Text != summary {
 					t.Fatal("feed aging changed the open summary")
 				}
@@ -252,7 +252,7 @@ func TestCompactionSummaryReadLeavesInputResponsiveAndRejectsStaleResult(t *test
 		t.Fatal("late summary replaced another dialog")
 	}
 	renderer := nativeDetailTestRenderer(t, u, view)
-	renderer.terminal.Dialog.Paint(make([]string, 20), 80, 20)
+	renderer.terminal.Dialog.Paint(make([]string, 20), terminalsession.Rect{W: 80, H: 20})
 	if renderer.terminal.Dialog.Document.Text != "replacement dialog" {
 		t.Fatal("replacement dialog changed")
 	}

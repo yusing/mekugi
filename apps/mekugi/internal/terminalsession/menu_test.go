@@ -89,7 +89,7 @@ func TestRewindDialogInputIsolation(t *testing.T) {
 	}{
 		{8, 10, sessionpresentation.MenuAccept},
 		{0, 0, sessionpresentation.MenuDismiss},
-		{61, 4, sessionpresentation.MenuDismiss},
+		{61, 4, sessionpresentation.MenuNoAction}, // The docked heading has no close control.
 	} {
 		in.mouse(&state, Mouse{X: test.x, Y: test.y}, func(effect InputEffect) bool {
 			if effect.Menu == nil || effect.Menu.Action.Kind != test.kind || test.kind == sessionpresentation.MenuAccept && effect.Menu.Action.Choice.Name != "second" {

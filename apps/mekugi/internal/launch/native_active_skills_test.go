@@ -19,7 +19,7 @@ import (
 
 func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 	const thread = "main"
-	u := newAppServerSessionTestUI(t, t.TempDir())
+	u := newAppServerSessionTestUI(t, "/workspace")
 	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(moduletest.SkillFrames("council", "/work/council/SKILL.md", "# Council\n"))}})
 	info := binding.ThreadInfo{ID: thread, Cwd: u.attached.cwd, AgentNickname: "worker", AgentRole: "worker", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{
 		{ID: "old", Type: "commandExecution", Command: "skills-mgr get old", ExitCode: new(0)},
@@ -36,15 +36,14 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 	for range liveActivityFeedLimit {
 		view.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: owner, Kind: "text", Text: "note"}}})
 	}
-	terminalTest(u).Focus = 3
 	screen := vt.NewEmulator(120, 28)
 	defer screen.Close()
 	if err := u.testPaint(screen, 120, 28); err != nil {
 		t.Fatal(err)
 	}
+	// Main's loaded skills show on the second stat line.
 	rows := strings.Split(screen.String(), "\n")
-	roster := terminalTest(u).Layout.Roster
-	assertNativeUISnapshot(t, "native-roster-main-active-skills", rows[roster.Y:roster.Y+roster.H])
+	assertNativeUISnapshot(t, "native-stat-main-active-skills", rows[27:28])
 	if strings.Count(screen.String(), label) != 1 {
 		t.Fatal("the loaded skill count must appear once")
 	}
@@ -54,7 +53,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 			x, y = ansi.StringWidth(before), row
 		}
 	}
-	if x < 0 || y <= roster.Y || y >= roster.Y+roster.H {
+	if x < 0 || y != 27 {
 		t.Fatalf("confirmed skill count missing after restore and trim: %v", view.ActiveSkills()[owner])
 	}
 

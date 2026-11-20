@@ -84,5 +84,5 @@ func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u.shell.Agents.Painter.Theme = diffrender.DarkTheme
 	u.shell.Agents.Selected = u.attached.session.KnownCaller("child")
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	assertNativeUISnapshot(t, "native-roster-restored-usage", u.testActivity(u.shell.Agents).NativeRoster(140, 8, now, true))
+	assertNativeUISnapshot(t, "native-roster-restored-usage", u.testActivity(u.shell.Agents).RosterSheet(140, 8, now))
 }

@@ -1,1 +1,1 @@
-└ Ran timeout 10 sleep 1 · 500ms (timeout 10s)
+└ Ran timeout 10 sleep 1 (timeout 10s)                           500ms

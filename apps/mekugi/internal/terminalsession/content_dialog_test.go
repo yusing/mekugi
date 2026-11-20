@@ -37,7 +37,7 @@ func TestUISnapshotModelVisibleControlOutput(t *testing.T) {
 					for i := range rows {
 						rows[i] = strings.Repeat("x", width)
 					}
-					d.Paint(rows, width, height)
+					d.Paint(rows, Rect{W: width, H: height})
 					if err := frame.Write(screen, RenderedFrame{Rows: rows}, width, true); err != nil {
 						t.Fatal(err)
 					}
@@ -69,7 +69,7 @@ func TestContentDialogQueuedNavigation(t *testing.T) {
 					ID: name, Kind: "op", Verb: "Read", Code: strings.Repeat(name+"\n", 40+i*10)})
 			}
 			d.Update(sessionpresentation.DetailView{Pages: d.Pages})
-			d.Paint(make([]string, 24), 100, 24)
+			d.Paint(make([]string, 24), Rect{W: 100, H: 24})
 			var state Interaction
 			in := FrameInput{Dialog: &d, Now: time.Unix(1, 0)}
 			var copied string
@@ -88,7 +88,7 @@ func TestContentDialogQueuedNavigation(t *testing.T) {
 				View: activitymodel.OutputView{Lines: []string{"ALPHA retained output"}, Done: true},
 			}
 			if pointer {
-				feed(fmt.Sprintf("\x1b[<0;%d;%dM", d.rect.X+3+d.tabs[1].from, d.rect.Y+3))
+				feed(fmt.Sprintf("\x1b[<0;%d;%dM", d.rect.X+3+d.tabs[1].from, d.rect.Y+2))
 				x, y := d.rect.X+3+d.Document.Indent(0), d.rect.Y+d.Chrome()
 				feed(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<32;%d;%dM\x1b[<0;%d;%dm", x, y, x+4, y, x+4, y))
 				feed("y")
@@ -118,14 +118,14 @@ func TestContentDialogQueuedNavigationThenHydration(t *testing.T) {
 			ID: name, Kind: "op", Verb: "Run", Code: "source " + name})
 	}
 	d.Update(sessionpresentation.DetailView{Pages: d.Pages})
-	d.Paint(make([]string, 24), 100, 24)
+	d.Paint(make([]string, 24), Rect{W: 100, H: 24})
 	d.Key("\x1b[C")
 	d.Key("/") // Prepare the selected page before its output arrives.
 	d.Output = &sessionpresentation.DetailOutput{
 		Page: "BRAVO", Version: 1,
 		View: activitymodel.OutputView{Lines: []string{"output BRAVO"}, Done: true},
 	}
-	d.Paint(make([]string, 24), 100, 24)
+	d.Paint(make([]string, 24), Rect{W: 100, H: 24})
 	d.Key("\x1b")
 	if d.Document.Text != "output BRAVO" || d.Key("y").Text != "output BRAVO" {
 		t.Fatal("hydration left selected-page display and copy on source fallback")

@@ -54,31 +54,33 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.attached.presentation.Status.Text = "Ready"
 			terminalTest(u).DiffUnseen = true
+			// The roster hint appears only while a subagent exists.
+			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
 			screen := navigationBatchPaint(t, u, width, 24)
 			footer := strings.Split(screen.String(), "\n")[23]
-			// Locate selectors in the rendered terminal, not their own hit rectangles.
+			// Locate hints in the rendered terminal, not their own hit rectangles.
 			for _, target := range []struct {
-				prefix string
-				pane   int
-			}{{" 1 Main", 0}, {" 2 Diff", 1}, {" 3 Agents", 3}} {
-				marker := target.prefix
-				// A narrow footer may show only the beginning of a selector.
-				start := strings.Index(footer, marker[:3])
+				hint string
+				pane int
+			}{{"→ diff", 1}, {"↓ roster", 3}} {
+				start := strings.Index(footer, target.hint)
 				if start < 0 {
+					// Narrow stat lines drop hints before the agent name.
+					if width >= 120 {
+						t.Fatalf("hint %q missing: %q", target.hint, footer)
+					}
 					continue
 				}
 				left := ansi.StringWidth(footer[:start])
-				right := min(width, left+ansi.StringWidth(marker))
-				for x := left; x < right; x++ {
-					terminalTest(u).Focus = (target.pane + 1) % 4
+				for x := left; x < left+ansi.StringWidth(target.hint); x++ {
+					terminalTest(u).Focus = 0
 					terminalTest(u).DiffOpen = false
-					terminalTest(u).Prefix = true
 					navigationBatchMouse(t, terminalTest(u), 0, x, 23, false)
-					if terminalTest(u).Focus != target.pane || terminalTest(u).Prefix {
-						t.Fatalf("selector %q at cell %d: focus=%d prefix=%v, footer=%q", target.prefix, x, terminalTest(u).Focus, terminalTest(u).Prefix, footer)
+					if terminalTest(u).Focus != target.pane {
+						t.Fatalf("hint %q at cell %d: focus=%d, footer=%q", target.hint, x, terminalTest(u).Focus, footer)
 					}
-					if target.pane == 1 && !terminalTest(u).DiffOpen || target.pane == 2 && terminalTest(u).DiffOpen {
-						t.Fatalf("selector %q did not open its pane", target.prefix)
+					if target.pane == 1 && !terminalTest(u).DiffOpen {
+						t.Fatalf("hint %q did not open Diff", target.hint)
 					}
 				}
 			}
@@ -101,11 +103,11 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
 	screen := navigationBatchPaint(t, u, 120, 24)
 	footer := strings.Split(screen.String(), "\n")[23]
-	before, _, ok := strings.Cut(footer, "2 Diff ●")
+	before, _, ok := strings.Cut(footer, "→ diff ●")
 	if !ok {
 		t.Fatalf("diff badge must follow its label with a space: %q", footer)
 	}
-	dot := ansi.StringWidth(before + "2 Diff ")
+	dot := ansi.StringWidth(before + "→ diff ")
 	if screen.CellAt(dot-1, 23).Content != " " || screen.CellAt(dot, 23).Content != "●" || screen.CellAt(dot+1, 23).Content != " " {
 		t.Fatal("diff badge does not occupy its own cell between spaces")
 	}
@@ -122,19 +124,22 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	if terminalTest(u).Focus != 1 {
 		t.Fatal("clicking the diff indicator did not open Diff")
 	}
-	before0, _, ok0 := strings.Cut(footer, "3 Agents¹")
+	terminalTest(u).Focus = 0
+	screen = navigationBatchPaint(t, u, 120, 24)
+	before0, _, ok0 := strings.Cut(strings.Split(screen.String(), "\n")[23], "↓ roster")
 	if !ok0 {
-		t.Fatalf("responding count is not attached to Agents: %q", footer)
+		t.Fatalf("roster hint is missing: %q", footer)
 	}
-	count := ansi.StringWidth(before0 + "3 Agents")
-	navigationBatchMouse(t, terminalTest(u), 0, count, 23, false)
+	navigationBatchMouse(t, terminalTest(u), 0, ansi.StringWidth(before0), 23, false)
 	if terminalTest(u).Focus != 3 {
-		t.Fatal("clicking the responding count did not focus Agents")
+		t.Fatal("clicking the roster hint did not open the roster")
 	}
 }
 
 func TestNativeNavigationBatchModalPrecedence(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
+	// The roster sheet stays open only while a subagent exists.
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	terminalTest(u).Focus = 3
 	terminalTest(u).openBlocks(u.shell.Transcript, []activityui.Block{{Kind: "op", Verb: "Read", Path: "file.go", Body: "dialog body"}})
 	navigationBatchPaint(t, u, 120, 24)
@@ -185,9 +190,9 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 				}
 				wantHint := "a child"
 				if wantOnly {
-					wantHint = "a Main"
+					wantHint = "a main"
 				}
-				status := ansi.Strip(terminalTest(u).nativeStatus())
+				status := ansi.Strip(navigationBatchPaint(t, u, 140, 24).String())
 				if !strings.Contains(status, wantHint) || strings.Contains(status, "o only") {
 					t.Fatalf("filter hint does not describe the next action: %q", status)
 				}
@@ -233,7 +238,7 @@ func navigationBatchDialogFrame(t *testing.T, u *terminalUI, width int) string {
 	t.Helper()
 	rows := make([]string, 18)
 	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-	u.Dialog.Paint(rows, width, len(rows))
+	u.Dialog.Paint(rows, terminalsession.Rect{W: width, H: len(rows)})
 	screen := vt.NewEmulator(width, len(rows))
 	defer screen.Close()
 	if _, err := screen.Write([]byte("\x1b[H" + strings.Join(rows, "\r\n"))); err != nil {
@@ -249,7 +254,7 @@ func TestNativeNavigationBatchDialogPathTabs(t *testing.T) {
 			frame := navigationBatchDialogFrame(t, u, width)
 			rows := strings.Split(frame, "\n")
 			rect := dialogFrameRect(t, rows)
-			row := rows[rect.Y+2]
+			row := rows[rect.Y+1]
 			visible := 0
 			for page, block := range u.Dialog.Pages {
 				prefix := fmt.Sprintf(" %d Read", page+1)
@@ -266,7 +271,7 @@ func TestNativeNavigationBatchDialogPathTabs(t *testing.T) {
 					t.Fatalf("page %d lost its filename: %q", page, row)
 				}
 				x := ansi.StringWidth(before) + ansi.StringWidth(prefix)
-				navigationBatchMouse(t, u, 0, x, rect.Y+2, false)
+				navigationBatchMouse(t, u, 0, x, rect.Y+1, false)
 				if u.Dialog.Page != page {
 					t.Fatalf("rendered tab selected page %d, want %d", u.Dialog.Page, page)
 				}
@@ -286,7 +291,7 @@ func TestUISnapshotNativeNavigationBatchStatus(t *testing.T) {
 	for _, width := range []int{16, 30, 52, 120} {
 		for _, only := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/only%v", width, only), func(t *testing.T) {
-				u := newAppServerSessionTestUI(t, t.TempDir())
+				u := newAppServerSessionTestUI(t, "/workspace")
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 				u.attached.presentation.Status.Text = "Ready"
 				terminalTest(u).DiffUnseen = true

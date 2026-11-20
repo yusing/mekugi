@@ -30,15 +30,10 @@ func outputSelectionFixture(text string, live bool) (*terminalUI, *activitymodel
 func outputSelectionPoint(t *testing.T, u *terminalUI, text string) (int, int) {
 	t.Helper()
 	rows := outputDialogScreen(u)
-	_, bottom := dialogFramePoint(t, rows, "╰")
-	for y, row := range rows {
-		if strings.Contains(row, "├") {
-			x, bodyY := dialogFramePoint(t, rows[y+1:bottom], text)
-			return x, bodyY + y + 1
-		}
-	}
-	t.Fatalf("text %q absent from dialog body", text)
-	return 0, 0
+	rect := dialogFrameRect(t, rows)
+	// The body lies between the heading and the controls row.
+	x, y := dialogFramePoint(t, rows[rect.Y+1:rect.Y+rect.H-1], text)
+	return x, y + rect.Y + 1
 }
 
 func outputDialogScreen(u *terminalUI) []string {
@@ -51,7 +46,7 @@ func outputDialogScreen(u *terminalUI) []string {
 	}
 	rows := make([]string, h)
 	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-	u.Dialog.Paint(rows, w, h)
+	u.Dialog.Paint(rows, terminalsession.Rect{W: w, H: h})
 	return renderedDialogRows(rows, w)
 }
 
@@ -75,12 +70,19 @@ func dialogFramePoint(t *testing.T, rows []string, text string) (int, int) {
 	return 0, 0
 }
 
+// dialogFrameRect locates a docked sheet in trimmed screen rows: its heading
+// rule, inset two cells on each side, spans the sheet, which runs to the
+// bottom of the screen.
 func dialogFrameRect(t *testing.T, rows []string) terminalsession.Rect {
 	t.Helper()
-	x, y := dialogFramePoint(t, rows, "╭")
-	right, _ := dialogFramePoint(t, rows[y:y+1], "╮")
-	_, bottom := dialogFramePoint(t, rows, "╰")
-	return terminalsession.Rect{X: x, Y: y, W: right - x + 1, H: bottom - y + 1}
+	for y, row := range rows {
+		if rule := strings.TrimLeft(row, " "); strings.HasPrefix(rule, "──") {
+			x := ansi.StringWidth(row) - ansi.StringWidth(rule)
+			return terminalsession.Rect{X: x - 2, Y: y, W: ansi.StringWidth(row) - x + 4, H: len(rows) - y}
+		}
+	}
+	t.Fatalf("no sheet heading in rendered rows: %q", rows)
+	return terminalsession.Rect{}
 }
 
 func outputSelectionDrag(u *terminalUI, x1, y1, x2, y2 int) {
@@ -204,10 +206,10 @@ func TestOutputDialogMouseSelectionClearedByNavigation(t *testing.T) {
 				u.outputMouse(64, x, y, false)
 			case "width":
 				u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-				u.Dialog.Paint(make([]string, 18), 50, 18)
+				u.Dialog.Paint(make([]string, 18), terminalsession.Rect{W: 50, H: 18})
 			case "height":
 				u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-				u.Dialog.Paint(make([]string, 8), 80, 8)
+				u.Dialog.Paint(make([]string, 8), terminalsession.Rect{W: 80, H: 8})
 			}
 			if u.Dialog == nil || u.Dialog.Selection != nil {
 				t.Fatal("navigation retained stale selection or closed dialog")
@@ -261,7 +263,7 @@ func TestUISnapshotOutputDialogSharedSelectionActions(t *testing.T) {
 	outputSelectionDrag(u, x, y, x+4, y)
 	rows := make([]string, 18)
 	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-	u.Dialog.Paint(rows, 80, len(rows))
+	u.Dialog.Paint(rows, terminalsession.Rect{W: 80, H: len(rows)})
 	screen := vt.NewEmulator(80, len(rows))
 	defer screen.Close()
 	for y, row := range rows {
@@ -280,27 +282,27 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 		width, at int
 		action    byte
 	}{
-		{17, 10, 0}, // Reference ends under the ellipsis.
-		{18, 10, 'r'},
-		{30, 23, 0}, // Copy is not fully visible.
-		{31, 24, 0}, // Copy ends under the ellipsis.
-		{32, 24, 'c'},
-		{42, 35, 0},  // Clear ends under the ellipsis.
-		{43, 36, 27}, // The complete footer fits without an ellipsis.
+		{15, 10, 0}, // Reference ends under the ellipsis.
+		{16, 10, 'r'},
+		{28, 23, 0}, // Copy is not fully visible.
+		{29, 24, 0}, // Copy ends under the ellipsis.
+		{30, 24, 'c'},
+		{40, 35, 0},  // Clear ends under the ellipsis.
+		{41, 36, 27}, // The complete footer fits without an ellipsis.
 	} {
 		t.Run(fmt.Sprintf("width=%d", tt.width), func(t *testing.T) {
 			u, _ := outputSelectionFixture("alpha\nbeta\n", false)
 			rows := make([]string, 18)
 			u.Width, u.Height = tt.width, len(rows)
 			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-			u.Dialog.Paint(rows, tt.width, len(rows))
+			u.Dialog.Paint(rows, terminalsession.Rect{W: tt.width, H: len(rows)})
 			x, y := outputSelectionPoint(t, u, "alpha")
 			outputSelectionDrag(u, x, y, x+4, y)
 			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-			u.Dialog.Paint(rows, tt.width, len(rows))
+			u.Dialog.Paint(rows, terminalsession.Rect{W: tt.width, H: len(rows)})
 			selection := u.Dialog.Selection
 			rect := dialogFrameRect(t, renderedDialogRows(rows, tt.width))
-			u.outputMouse(0, rect.X+3+tt.at, rect.Y+rect.H-1, false)
+			u.outputMouse(0, rect.X+2+tt.at, rect.Y+rect.H-1, false)
 			switch tt.action {
 			case 0:
 				if u.Dialog == nil || u.Dialog.Selection != selection || u.Frame.Clipboard != "" || u.main.Text != "" {

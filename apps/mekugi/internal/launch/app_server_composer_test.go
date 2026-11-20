@@ -17,15 +17,51 @@ func appServerComposerScreenText(t *testing.T, frame []byte, width, height int) 
 	if _, err := screen.Write(frame); err != nil {
 		t.Fatal(err)
 	}
-	var text strings.Builder
-	for row := range strings.SplitSeq(screen.String(), "\n") {
-		if !strings.HasPrefix(row, "│ ") {
-			continue
+	// The draft runs from the last prompt row, below the transcript, to the
+	// dim rule or caption.
+	rows := strings.Split(screen.String(), "\n")
+	start := -1
+	for y, row := range rows {
+		if strings.HasPrefix(row, "❯ ") {
+			start = y
 		}
-		// Exclude the border and prompt columns, preserving whitespace across wraps.
-		text.WriteString(ansi.Cut(row, 4, width-1))
+	}
+	var text strings.Builder
+	for y := start; start >= 0 && y < len(rows); y++ {
+		if y > start && composerCaptionRow(screen, y, width, screen.CellAt(2, start).Style) {
+			break
+		}
+		// Exclude the prompt column and right padding, preserving whitespace across wraps.
+		text.WriteString(ansi.Cut(rows[y], 2, width-1))
 	}
 	return strings.TrimRight(text.String(), " ")
+}
+
+// composerStatusShows reports whether a screen's composer status row, above
+// its prompt and any rule between them, starts with status.
+func composerStatusShows(screen, status string) bool {
+	rows := strings.Split(screen, "\n")
+	for i := 0; i+1 < len(rows); i++ {
+		next := i + 1
+		if strings.HasPrefix(rows[next], "─") && next+1 < len(rows) {
+			next++
+		}
+		if strings.HasPrefix(rows[i], status) && strings.HasPrefix(rows[next], "❯") {
+			return true
+		}
+	}
+	return false
+}
+
+// composerCaptionRow reports a row whose first visible cell leaves the plain
+// draft style, as the dim composer caption does.
+func composerCaptionRow(screen *vt.Emulator, y, width int, draft uv.Style) bool {
+	for x := range width {
+		if cell := screen.CellAt(x, y); cell != nil && strings.TrimSpace(cell.Content) != "" {
+			return cell.Style != draft
+		}
+	}
+	return false
 }
 
 func TestAppServerComposerFrame(t *testing.T) {
@@ -35,11 +71,14 @@ func TestAppServerComposerFrame(t *testing.T) {
 	for i := range frame {
 		frame[i] = ansi.Strip(frame[i])
 	}
+	// A blank status row, then the draft between rules; the caption is a
+	// stat line below Main.
 	want := []string{
-		"╭──────────────╮",
-		"│ ❯ first      │",
-		"│   你好       │",
-		"╰───────── 0% ─╯",
+		"",
+		"────────────────",
+		"❯ first",
+		"  你好 ",
+		"────────────────",
 	}
 	if len(frame) != 8 || !slices.Equal(frame[len(frame)-len(want):], want) {
 		t.Fatalf("composer frame = %q, want final rows %q in 8-row frame", frame, want)
@@ -74,16 +113,14 @@ func TestAppServerComposerObservedModelCaption(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"main"},"model":"actual-model","reasoningEffort":"high"}}`)
-	frame, _ := u.testMainFrame(70, 8, 0)
-	bottom := ansi.Strip(frame[len(frame)-1])
-	if !strings.HasPrefix(bottom, "╰───") || !strings.HasSuffix(bottom, " actual-model (high) • 0% ─╯") || ansi.StringWidth(bottom) != 70 {
+	bottom, _ := u.testStatLines(t, 70, 12)
+	if bottom != "  actual-model (high) | 0%" {
 		t.Fatalf("observed model caption: %q", bottom)
 	}
 	appServerTestRequest(t, u, "2", "thread/start")
 	appServerTestMessage(t, u, `{"id":2,"result":{"thread":{"id":"new"},"reasoningEffort":null}}`)
-	frame, _ = u.testMainFrame(70, 8, 0)
-	bottom = ansi.Strip(frame[len(frame)-1])
-	if strings.Contains(bottom, "actual-model") || !strings.HasSuffix(bottom, " 0% ─╯") || ansi.StringWidth(bottom) != 70 {
+	bottom, _ = u.testStatLines(t, 70, 12)
+	if bottom != "  0%" {
 		t.Fatalf("unknown model retained stale caption: %q", bottom)
 	}
 }
@@ -92,7 +129,7 @@ func TestAppServerComposerCaretFollowsFocusAndWrap(t *testing.T) {
 	for _, focus := range []int{0, 1} {
 		u, _ := newAppServerTestUI()
 		u.shell.Focus = focus
-		u.Text = "12345678901" // Fills the 11-column input, placing its caret on the next row.
+		u.Text = "1234567890123" // Fills the 13-column input, placing its caret on the next row.
 		screen := vt.NewEmulator(16, 8)
 		t.Cleanup(func() { screen.Close() })
 		if _, err := screen.Write([]byte(strings.Join(first(u.testMainFrame(16, 8, 0)), "\r\n"))); err != nil {
@@ -104,7 +141,7 @@ func TestAppServerComposerCaretFollowsFocusAndWrap(t *testing.T) {
 				if cell == nil {
 					t.Fatalf("missing composer cell at (%d, %d)", x, y)
 				}
-				wantCaret := focus == 0 && x == 4 && y == 6
+				wantCaret := focus == 0 && x == 2 && y == 6
 				if cell.Style.Bg != nil {
 					t.Fatalf("cell (%d, %d) must inherit terminal background, got %v", x, y, cell.Style.Bg)
 				}

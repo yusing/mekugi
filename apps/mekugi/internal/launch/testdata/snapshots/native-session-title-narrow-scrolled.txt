@@ -8,9 +8,9 @@
 ┃ Earlier message 03
       ↓ Back to bottom · esc
 
-╭─ Ready ──────────────────────────╮
-│ ❯                                │
-╰──────────── snapshot-model • 0% ─╯
-─ 3 Agents · Main · Review the n… ──
-
- 1 Main  2 Diff  3 Agents   ^B 1-3 v
+Ready
+────────────────────────────────────
+❯
+────────────────────────────────────
+  snapshot-model | 0%
+  Main • Review the nativ… • → diff

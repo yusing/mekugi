@@ -48,7 +48,7 @@ func TestUISnapshotModelVisibleDialog(t *testing.T) {
 				t.Fatal("altered content did not default to original")
 			}
 			rows := make([]string, 18)
-			u.Dialog.Paint(rows, 90, len(rows))
+			u.Dialog.Paint(rows, terminalsession.Rect{W: 90, H: len(rows)})
 			assertNativeUISnapshot(t, "model-visible-dialog-original", rows)
 			frozen := terminalsession.NewSelection(terminalsession.Surface{Rows: []string{"original output"}}, 0, 0)
 			u.Dialog.Selection = frozen
@@ -74,7 +74,7 @@ func TestUISnapshotModelVisibleDialog(t *testing.T) {
 			t.Fatalf("%s: %q", state, text)
 		}
 		rows := make([]string, 18)
-		u.Dialog.Paint(rows, 90, len(rows))
+		u.Dialog.Paint(rows, terminalsession.Rect{W: 90, H: len(rows)})
 		if state == "unavailable" || state == "prepared" {
 			assertNativeUISnapshot(t, "model-visible-dialog-"+state, rows)
 		}

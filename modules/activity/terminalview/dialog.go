@@ -65,8 +65,9 @@ func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 	case view.Exited && block.Verb == "Run":
 		detail = append(detail, "exit 0")
 	}
-	page.Detail = terminalui.Dim + strings.Join(detail, " · ") + terminalui.Undim
-	if len(detail) == 0 && block.DetailLines > 0 {
+	if len(detail) > 0 {
+		page.Detail = terminalui.Dim + strings.Join(detail, " · ") + terminalui.Undim
+	} else if block.DetailLines > 0 {
 		page.Detail = terminalui.Dim + lineCount(block.DetailLines) + terminalui.Undim
 	}
 	if block.Skipped {
@@ -279,6 +280,8 @@ func dialogTarget(p *Painter, block Block) string {
 		return terminalui.StyledPath(textsanitize.Safe(block.Path, false))
 	case block.Code != "":
 		first, _, _ := strings.Cut(textsanitize.Safe(block.Code, false), "\n")
+		// A title is one line; runs of indentation would push the command off it.
+		first = strings.Join(strings.Fields(first), " ")
 		if len(first) <= dialogHighlightBytes {
 			first = strings.Join(p.dialogHighlight(block, first), " ")
 		}

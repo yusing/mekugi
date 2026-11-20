@@ -1,3 +1,2 @@
-─ 3 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────────
- ◐ main  Reconnecting... 2/5 · Server overloaded                                                    
- ● └ worker  idle                                                                                0%
+
+ ● worker  idle                                                                                  0%

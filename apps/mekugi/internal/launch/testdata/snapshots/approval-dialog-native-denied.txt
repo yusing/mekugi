@@ -3,16 +3,16 @@
 
 
 
-╭─ Ran · git push origin main · Denied ────────────────────────── [×] ─╮
-│                                                                      │
-├──────────────────────────────────────────────────────────────────────┤
-│ Approval: Denied                                                     │
-│ Declined                                                             │
-│                                                                      │
-╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
 
 
 
 
 
 
+
+  ── Ran · git push origin main · Denied ────────────────────────────── [×] ──  
+                                                                                
+  Approval: Denied                                                              
+  Declined                                                                      
+                                                                                
+  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc                               

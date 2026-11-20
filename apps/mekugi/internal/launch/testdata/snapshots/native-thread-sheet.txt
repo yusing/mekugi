@@ -1,0 +1,36 @@
+● main                                                                                                                             12:00:00
+┃ main result
+┃
+┃ alpha
+┃
+┃ beta
+┃
+┃ gamma
+┃
+┃ delta
+┃
+┃ epsilon
+┃
+┃ zeta
+┃
+┃ eta
+
+✓ reader finished                                                                                                                  12:00:00
+│ child result
+│ alpha
+│ beta
+│ gamma…
+╰─↩ Open reply · +4 lines
+
+
+
+
+
+
+
+
+  ── Agents · ◐ 1 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   ◐ reader  child result                                                                                                  25K/100K • 25%
+  ↑↓ agent · a child · esc close
+  parent-model (high) · priority | 0%
+  Main • ◐ 1 • /workspace

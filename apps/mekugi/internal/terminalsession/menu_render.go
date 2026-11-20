@@ -22,8 +22,16 @@ func (m *Menu) Height(width int) int {
 	if strings.HasPrefix(string(p.Kind), "preset") {
 		return len(presetHeader(p, width)) + max(1, len(p.Choices)) + 3
 	}
-	if p.Kind == "archive" || p.Kind == "rewind" || p.Kind == "side-replace" || p.Kind == sessionpresentation.MenuExit {
-		return min(8, max(1, len(p.Choices))) + 3 + len(panelWrap(p.Explanation, max(1, width-4)))
+	// Prompt panels: heading, spacer, explanation and its spacer, choices,
+	// spacer and keys.
+	if inlinePrompt(p.Kind) || p.Kind == sessionpresentation.MenuSettings || p.Kind == sessionpresentation.MenuCopy {
+		height := min(8, max(1, len(p.Choices))) + 4
+		if inlinePrompt(p.Kind) {
+			if explanation := len(promptExplanation(p, width)); explanation > 0 {
+				height += explanation + 1
+			}
+		}
+		return height
 	}
 	return conversationui.PickerHeight(len(p.Choices), conversationui.PickerOptions{SkillsMenu: p.Kind == "menu", Manage: p.Kind == "manage"}, width)
 }
@@ -41,51 +49,78 @@ func (m *Menu) Render(painter *terminalui.Painter, selection string, width, heig
 		}
 		return conversationui.Picker(p.View, &m.ChoiceListLayout, conversationui.PickerOptions{Selected: m.Selected, SkillsMenu: p.Kind == "menu", Manage: p.Kind == "manage", Saving: p.Saving, QueueCompact: p.QueueCompact, Selection: selection, Band: band}, width, height)
 	}
+	return m.promptBody(painter, width, height)
+}
+
+// promptBody docks a prompt as a panel matching the process list: an accent
+// heading, the dim explanation, choices with a pointer on the selected one,
+// and dim keys, inset two cells. Short docks keep the choices first.
+func (m *Menu) promptBody(painter *terminalui.Painter, width, height int) []string {
+	p := m.body
+	accent := painter.Theme.Accent()
 	frame := make([]string, height)
 	put := func(y int, text string) {
 		if y >= 0 && y < height {
 			frame[y] = ansi.Truncate(text, width, "")
 		}
 	}
-	bold, dim, reset := "\x1b[1m", terminalui.Dim, terminalui.Reset
+	title, keys := p.Title, "↑/↓ choose · enter select · esc cancel"
+	switch p.Kind {
+	case sessionpresentation.MenuSettings:
+		title, keys = "Choose "+strings.TrimPrefix(p.Setting, "/"), "↑/↓ choose · enter apply · esc cancel"
+	case sessionpresentation.MenuCopy:
+		title, keys = "Copy to clipboard", "↑/↓ choose · enter copy · esc close"
+	}
 	first, last := 0, height
 	if height >= 3 {
-		first, last = 1, height-2
+		put(0, "  "+terminalui.PanelHeading(accent, title, "", "", max(1, width-4)))
+		put(height-1, "  "+terminalui.Dim+ansi.Truncate(keys, max(1, width-4), "…")+terminalui.Reset)
+		first, last = 1, height-1
 	}
-	if height > 1 {
-		footer := ""
-		switch p.Kind {
-		case "archive", "rewind", "side-replace", sessionpresentation.MenuExit:
-			put(0, "  "+bold+p.Title+reset)
-			if height >= 5 {
-				for _, line := range panelWrap(p.Explanation, max(1, width-4)) {
-					if first >= height-3 {
-						break
-					}
-					put(first, "  "+dim+line+reset)
-					first++
+	if height >= 5 {
+		first, last = 2, height-2
+		if explanation := promptExplanation(p, width); len(explanation) > 0 {
+			for _, line := range explanation {
+				if first >= last-2 {
+					break
 				}
+				put(first, "    "+terminalui.Dim+line+terminalui.Reset)
+				first++
 			}
-			footer = "  ↑/↓ navigate · enter select · esc cancel"
-		case "settings":
-			put(0, "  "+bold+"Choose "+strings.TrimPrefix(p.Setting, "/")+reset)
-			footer = "  ↑/↓ navigate · enter apply · esc cancel"
-		case "copy":
-			put(0, "  "+bold+"Copy to clipboard"+reset)
-			footer = "  " + bold + "↑/↓" + reset + dim + " navigate · " + reset + bold + "enter" + reset + dim + " copy · " + reset + bold + "esc" + reset + dim + " close" + reset
+			first++
 		}
-		put(height-1, footer)
 	}
 	visible := min(8, max(0, last-first))
-	if height < 3 {
-		visible, first = height, 0
-	}
 	rows := make([]terminalui.ChoiceRow, len(p.Choices))
 	for i, choice := range p.Choices {
 		rows[i] = terminalui.ChoiceRow{Text: choice.Label(), Description: choice.Description}
 	}
-	m.ChoiceListLayout.Draw(frame, width, first, visible, terminalui.ChoiceListView{Rows: rows, Selected: m.Selected, Selection: selection, Problem: p.Problem, Loading: p.Loading})
+	list := make([]string, height)
+	m.ChoiceListLayout.Draw(list, max(1, width-4), first, visible, terminalui.ChoiceListView{Rows: rows, Selected: m.Selected, Marker: accent, Problem: p.Problem, Loading: p.Loading})
+	for y, row := range list {
+		if row != "" {
+			put(y, "  "+row)
+		}
+	}
 	return frame
+}
+
+// promptExplanation wraps an inline prompt's explanation for its panel.
+func promptExplanation(p *sessionpresentation.MenuView, width int) []string {
+	if !inlinePrompt(p.Kind) || strings.TrimSpace(p.Explanation) == "" {
+		return nil
+	}
+	return panelWrap(p.Explanation, max(1, width-6))
+}
+
+// inlinePrompt reports menus that ask one titled question above the composer.
+func inlinePrompt(kind sessionpresentation.MenuKind) bool {
+	switch kind {
+	case sessionpresentation.MenuArchive, sessionpresentation.MenuRewind, sessionpresentation.MenuRewindEdits,
+		sessionpresentation.MenuSideReplace, sessionpresentation.MenuExit:
+		return true
+	}
+	return false
 }
 
 // SelectionStyle shares the stock choice treatment across menus and prompt docks.
@@ -103,9 +138,6 @@ func SelectionStyle(painter *terminalui.Painter) string {
 // ModalFrame combines terminal transcript rows with the menu surface. It owns
 // no source feed, acquisition or backend effect.
 func (m *Menu) ModalFrame(view *activityui.View, now time.Time, width, height int) []string {
-	if m.Dialog() {
-		return m.dialogFrame(view, now, width, height)
-	}
 	ph := min(height, m.Height(width))
 	frame := make([]string, height)
 	if height > ph {
@@ -113,47 +145,6 @@ func (m *Menu) ModalFrame(view *activityui.View, now time.Time, width, height in
 	}
 	copy(frame[height-ph:], m.Render(&view.Painter.Painter, SelectionStyle(&view.Painter.Painter), width, ph))
 	m.Rect = Rect{0, height - ph, width, ph}
-	return frame
-}
-
-func (m *Menu) Dialog() bool {
-	// Older detached servers still publish a dialog hint for the quit prompt.
-	return m.body != nil && m.body.Dialog && m.body.Kind != sessionpresentation.MenuExit
-}
-
-func (m *Menu) dialogFrame(view *activityui.View, now time.Time, width, height int) []string {
-	frame := view.Render(width, height, now)
-	w, h := dialogSize(width, height)
-	if w < 12 || h < terminalui.DialogChrome+1 {
-		m.Rect = Rect{0, 0, width, height}
-		return m.Render(&view.Painter.Painter, SelectionStyle(&view.Painter.Painter), width, height)
-	}
-	p := m.body
-	explanation := panelWrap(p.Explanation, w-4)
-	h = min(h, terminalui.DialogChrome+len(explanation)+1+min(8, max(1, len(p.Choices))))
-	body := make([]string, h-terminalui.DialogChrome)
-	first := min(len(explanation), max(0, len(body)-2))
-	copy(body, explanation[:first])
-	if first > 0 {
-		first++
-	}
-	rows := make([]terminalui.ChoiceRow, len(p.Choices))
-	for i, choice := range p.Choices {
-		rows[i] = terminalui.ChoiceRow{Text: choice.Label()}
-	}
-	m.ChoiceListLayout.Draw(body, w-4, first, len(body)-first, terminalui.ChoiceListView{Rows: rows, Selected: m.Selected, Selection: SelectionStyle(&view.Painter.Painter), Problem: p.Problem, Loading: p.Loading})
-	m.Rect = Rect{(width - w) / 2, (height - h) / 2, w, h}
-	m.RowStart += 3 // Title, detail and separator precede the body.
-	dialog := terminalui.DialogFrame{Page: terminalui.DialogPage{Title: p.Title}, Rows: body, Footer: "↑/↓ choose · enter select · esc cancel"}
-	for i := range frame {
-		frame[i] = terminalui.Backdrop(frame[i])
-	}
-	for i, row := range view.Painter.Dialog(dialog, w, h) {
-		y := m.Rect.Y + i
-		left := ansi.Cut(frame[y], 0, m.Rect.X)
-		left += strings.Repeat(" ", max(0, m.Rect.X-ansi.StringWidth(left)))
-		frame[y] = left + terminalui.Reset + row + terminalui.Reset + ansi.Cut(frame[y], m.Rect.X+w, width) + terminalui.Reset
-	}
 	return frame
 }
 

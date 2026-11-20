@@ -86,7 +86,7 @@ func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
 		t.Fatalf("open=%v choices=%q", u.approvals.Open, approvalTestChoices(u))
 	}
 	paint := ansi.Strip(questionTestPaint(t, u, 80))
-	for _, want := range []string{"Run this command?", "git push origin main", "Reason: needs the remote", "› 1. Yes, proceed", "enter confirm"} {
+	for _, want := range []string{"Run this command?", "git push origin main", "Reason: needs the remote", "❯ 1. Yes, proceed", "enter confirm"} {
 		if !strings.Contains(paint, want) {
 			t.Fatalf("dock lacks %q:\n%s", want, paint)
 		}
@@ -683,7 +683,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				notify("item/started")
 				terminalTest(u).openEntry(view.View, view.Entries[len(view.Entries)-1].Source.Seq)
 				u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
-				terminalTest(u).Dialog.Paint(make([]string, 18), 80, 18)
+				terminalTest(u).Dialog.Paint(make([]string, 18), terminalsession.Rect{W: 80, H: 18})
 			}
 			if tc.guard {
 				addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Thread: thread, Item: "cmd", Argv: []string{"git", "push", "origin", "main"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
@@ -751,7 +751,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			}
 			rows = make([]string, 18)
 			u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
-			terminalTest(u).Dialog.Paint(rows, 80, len(rows))
+			terminalTest(u).Dialog.Paint(rows, terminalsession.Rect{W: 80, H: len(rows)})
 			if !strings.Contains(terminalTest(u).Dialog.Document.Title, color+label+terminalui.Reset) {
 				t.Fatalf("dialog lost the decision: %q", rows)
 			}

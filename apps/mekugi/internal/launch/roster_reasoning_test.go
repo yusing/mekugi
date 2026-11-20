@@ -66,15 +66,15 @@ func TestUISnapshotNativeRosterReasoningTitles(t *testing.T) {
 				body := "**Checking " + thread + "**\n\n" + strings.Repeat("Long reasoning body should stay in transcript. ", 20)
 				reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
 			}
-			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-%d", width), u.testActivity(u.shell.Agents).NativeRoster(width, 6, at, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-%d", width), u.testActivity(u.shell.Agents).RosterSheet(width, 6, at))
 			for _, thread := range []string{"main", "child"} {
 				reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "plain", "delta": strings.Repeat("Checking the implementation. ", 100)})
 			}
-			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-paragraph-live-%d", width), u.testActivity(u.shell.Agents).NativeRoster(width, 6, at, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-paragraph-live-%d", width), u.testActivity(u.shell.Agents).RosterSheet(width, 6, at))
 			for _, thread := range []string{"main", "child"} {
 				reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "plain", "type": "reasoning"}})
 			}
-			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-paragraph-done-%d", width), u.testActivity(u.shell.Agents).NativeRoster(width, 6, at, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-paragraph-done-%d", width), u.testActivity(u.shell.Agents).RosterSheet(width, 6, at))
 		})
 	}
 }

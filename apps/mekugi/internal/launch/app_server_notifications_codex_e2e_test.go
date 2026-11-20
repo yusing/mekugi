@@ -100,7 +100,7 @@ func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 	}
 	const completion = "\x1b]9;Agent turn complete\a"
 	await("completion and desktop notification", func() bool {
-		return strings.Contains(screen.String(), "Recovered after a retry.") && strings.Contains(screen.String(), "╭─ Completed") && bytes.Contains(raw.Bytes(), []byte(completion))
+		return strings.Contains(screen.String(), "Recovered after a retry.") && composerStatusShows(screen.String(), "Completed") && bytes.Contains(raw.Bytes(), []byte(completion))
 	})
 	if got := bytes.Count(raw.Bytes(), []byte(completion)); got != 1 {
 		t.Fatalf("desktop notifications = %d, want one", got)

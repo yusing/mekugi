@@ -440,11 +440,11 @@ func TestUISnapshotNativeClientDialogReferenceKeepsSourceLabel(t *testing.T) {
 			d.Pages = []sessionpresentation.DetailItem{{ID: "source", Kind: "op", Verb: "Read", Lang: lang, Path: "source.txt", Code: "+selected"}}
 			d.Update(sessionpresentation.DetailView{Pages: d.Pages})
 			rows := make([]string, 18)
-			d.Paint(rows, 80, 18)
+			d.Paint(rows, terminalsession.Rect{W: 80, H: 18})
 			x, y := -1, -1
 			for row, painted := range rows {
-				if column := strings.Index(ansi.Strip(painted), "+selected"); column >= 0 {
-					x, y = column, row
+				if before, _, ok := strings.Cut(ansi.Strip(painted), "+selected"); ok {
+					x, y = ansi.StringWidth(before), row
 					break
 				}
 			}
@@ -492,7 +492,7 @@ func TestNativeClientProcessDetailsReferenceKeepsOutputLabel(t *testing.T) {
 	d.Pages = []sessionpresentation.DetailItem{{ID: "process:1", Source: 1, Kind: "op", Verb: "Run", Code: "printf selected", Tail: []string{"selected output"}, Exited: true}}
 	d.Update(sessionpresentation.DetailView{Pages: d.Pages, Processes: true})
 	rows := make([]string, 18)
-	d.Paint(rows, 80, 18)
+	d.Paint(rows, terminalsession.Rect{W: 80, H: 18})
 	x, y := dialogFramePoint(t, renderedDialogRows(rows, 80), "selected output")
 	d.Mouse(0, x, y, false)
 	d.Mouse(32, x+len("selected output")-1, y, false)

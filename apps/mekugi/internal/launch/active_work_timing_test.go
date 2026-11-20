@@ -52,7 +52,7 @@ func TestUISnapshotNativeWaitActiveWork(t *testing.T) {
 		u.testActivity(u.shell.Agents).publishActivity()
 		rows = append(rows, phase)
 		rows = append(rows, frame...)
-		rows = append(rows, u.shell.Agents.NativeRoster(96, 6, *at, true)...)
+		rows = append(rows, u.shell.Agents.RosterSheet(96, 6, *at)...)
 		rows = append(rows, "")
 	}
 	*at = at.Add(12 * time.Second)
@@ -242,18 +242,18 @@ func TestUISnapshotNativeRosterActiveWork(t *testing.T) {
 	}
 	*at = at.Add(20 * time.Second)
 	rows := []string{"Active: 20 seconds of work"}
-	rows = append(rows, u.testActivity(u.shell.Agents).NativeRoster(100, 6, *at, true)...)
+	rows = append(rows, u.testActivity(u.shell.Agents).RosterSheet(100, 6, *at)...)
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": thread, "status": map[string]any{"type": "idle"}})
 	}
 	*at = at.Add(10 * time.Minute)
 	rows = append(rows, "", "Paused: same work after 10 idle minutes")
-	rows = append(rows, u.testActivity(u.shell.Agents).NativeRoster(100, 6, *at, true)...)
+	rows = append(rows, u.testActivity(u.shell.Agents).RosterSheet(100, 6, *at)...)
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": thread, "status": map[string]any{"type": "active"}})
 	}
 	*at = at.Add(7 * time.Second)
 	rows = append(rows, "", "Resumed: 27 seconds of work")
-	rows = append(rows, u.testActivity(u.shell.Agents).NativeRoster(100, 6, *at, true)...)
+	rows = append(rows, u.testActivity(u.shell.Agents).RosterSheet(100, 6, *at)...)
 	assertNativeUISnapshot(t, "native-roster-active-work", rows)
 }

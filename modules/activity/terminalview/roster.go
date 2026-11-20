@@ -18,185 +18,126 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
-// NativeRoster fits separate agent rows within limit, under a rule carrying
-// status counts and session totals. Rows show state, then timer, edited lines,
-// tokens, cost and turns; turns drop first when narrow.
-func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []string {
-	lines, heading := v.NativeRosterPanel(width, limit, now, focused)
-	if len(lines) > 0 {
-		lines[0] = heading.Render("", "", "")
-	}
-	return lines
+// RosterSummary carries the subagent facts the session stat lines show in
+// place of Main's roster row: glyph counts, net edited lines and cost.
+type RosterSummary struct {
+	Counts   []string // Painted working, finished and error counts; zero counts are omitted.
+	Net      string
+	Cost     string // Session total, including Main.
+	Children bool
 }
 
-// RosterHeading paints a roster rule after the surrounding layout has measured
-// the active transcript. The rule always occupies the first roster row.
-type RosterHeading struct {
-	width    int
-	focused  bool
-	detail   string
-	right    string
-	overflow string
-}
-
-func (h RosterHeading) Render(active, title, scroll string) string {
-	const sep = terminalui.Dim + " · " + terminalui.Undim
-	detail := h.detail
-	if h.overflow != "" {
-		detail = h.overflow + " · " + detail
-	}
-	left := terminalui.PaneTitle(3, "Agents", detail, h.focused)
-	if active != "" {
-		if ansi.StringWidth(left+sep+active)+5 > h.width {
-			left = terminalui.PaneTitle(3, "Agents", "", h.focused)
-		}
-		left += sep + active
-		if title != "" && h.width-ansi.StringWidth(left)-ansi.StringWidth(sep)-5 < 2 {
-			left = terminalui.PaneTitle(3, active, "", h.focused)
-		}
-	} else if h.overflow != "" && ansi.StringWidth(terminalui.PaneTitle(3, "Agents", h.overflow, h.focused))+4 > h.width {
-		left = terminalui.PaneTitle(3, h.overflow, "", h.focused)
-	}
-	right := h.right
-	if scroll != "" {
-		if right != "" {
-			right = scroll + sep + right
-		} else {
-			right = scroll
-		}
-	}
-	if title != "" {
-		room := h.width - ansi.StringWidth(left) - ansi.StringWidth(sep) - 5
-		if right != "" && room > ansi.StringWidth(right)+4 {
-			room -= ansi.StringWidth(right) + 2
-		}
-		if room > 0 {
-			left += sep + ansi.Truncate(title, room, "…")
-		}
-	}
-	return terminalui.PaneRule("─", "─", "─", left, right, h.width, terminalui.PaneBorder(h.focused))
-}
-
-// NativeRosterPanel reserves the first row for the heading and paints agent
-// rows and their hit targets. The caller supplies the heading's session label.
-func (v *View) NativeRosterPanel(width, limit int, now time.Time, focused bool) ([]string, RosterHeading) {
-	rows := v.Roster()
-	v.Hits = v.Hits[:0]
-	heading := RosterHeading{width: width, focused: focused}
-	if len(rows) == 0 || width < 20 || limit < 1 {
-		return nil, heading
-	}
-	// The remembered child is only a toggle target, not the displayed selection.
-	selectedCaller := cmp.Or(v.displayedCaller(), "/root")
-	v.paceRosterMetrics(rows, now)
-	finished := 0
-	for _, row := range rows {
-		if row.Agent.Name != "/root" && v.agentStatus(row.Agent) == '✓' {
-			finished++
-		}
-	}
-	responding, errors := v.StatusCounts(rows)
-	var input, output uint64
+func (v *View) RosterSummary() RosterSummary {
+	var s RosterSummary
+	var working, finished, errors int
 	var cost float64
 	costKnown, partial := false, false
-	tokensPartial := false
-	for _, row := range rows {
-		input += row.Agent.InputTokens
-		output += row.Agent.OutputTokens
-		tokensPartial = tokensPartial || row.Agent.UsagePartial || row.Agent.Turns > 0 && !row.Agent.TokensKnown && row.Agent.InputTokens == 0 && row.Agent.OutputTokens == 0
+	for _, row := range v.Roster() {
 		if row.Agent.CostKnown {
 			cost, costKnown = cost+row.Agent.Cost, true
 			partial = partial || row.Agent.CostPartial
 		} else if row.Agent.Turns > 0 {
 			partial = true
 		}
+		if row.Agent.Name == "/root" {
+			continue
+		}
+		s.Children = true
+		switch v.agentStatus(row.Agent) {
+		case '◐':
+			working++
+		case '✓':
+			finished++
+		case '!':
+			errors++
+		}
 	}
-	detail := terminalui.Dim + fmt.Sprintf("%d", len(rows)) + terminalui.Undim
-	if responding > 0 {
-		detail += terminalui.Dim + " · " + terminalui.Undim + terminalui.Amber + fmt.Sprintf("%d working", responding) + terminalui.Reset
+	if working > 0 {
+		s.Counts = append(s.Counts, terminalui.Amber+fmt.Sprintf("◐ %d", working)+terminalui.Reset)
 	}
 	if finished > 0 {
-		detail += terminalui.Dim + fmt.Sprintf(" · %d finished", finished) + terminalui.Undim
+		s.Counts = append(s.Counts, terminalui.Dim+fmt.Sprintf("✓ %d", finished)+terminalui.Undim)
 	}
 	if errors > 0 {
-		detail += terminalui.Dim + " · " + terminalui.Undim + terminalui.Red + fmt.Sprintf("%d error", errors) + terminalui.Reset
+		s.Counts = append(s.Counts, terminalui.Red+fmt.Sprintf("! %d", errors)+terminalui.Reset)
 	}
-	var totals []string
 	if v.NetCounts != nil {
-		totals = append(totals, strings.TrimSpace(diffrender.CountStats(*v.NetCounts, v.Painter.Theme)))
-	}
-	if input+output > 0 {
-		in, out := tokenParts(activitypresentation.Agent{InputTokens: input, OutputTokens: output, UsagePartial: tokensPartial})
-		totals = append(totals, "↑"+in+" ↓"+out)
+		s.Net = strings.TrimSpace(diffrender.CountStats(*v.NetCounts, v.Painter.Theme))
 	}
 	if costKnown {
 		prefix := "$"
 		if partial {
 			prefix = "≥$"
 		}
-		totals = append(totals, prefix+fmt.Sprintf("%.2f", cost))
+		s.Cost = prefix + fmt.Sprintf("%.2f", cost)
 	}
-	right := ""
-	if len(totals) > 0 {
-		right = terminalui.Dim + strings.Join(totals, " · ") + terminalui.Undim
-	}
-	heading.detail, heading.right = detail, right
-	lines := []string{""}
+	return s
+}
 
-	legend := ""
-	if focused && limit > 1 {
-		var roles []string
-		for _, row := range rows {
-			if role := Role(row.Agent); role != "" && !slices.Contains(roles, role) {
-				roles = append(roles, role)
-			}
+// AgentUsage formats caller's input/output tokens and estimated cost; unknown
+// values are empty.
+// AgentUsage is caller's painted input and output tokens and its cost.
+func (v *View) AgentUsage(caller string) (tokens, cost string) {
+	for _, row := range v.roster {
+		if row.Agent.Name != caller {
+			continue
 		}
-		if len(roles) > 0 {
-			var labels []string
-			for _, role := range roles {
-				labels = append(labels, v.RoleColor(role)+"●"+terminalui.Reset+" "+role)
-			}
-			// Keep the selected role discoverable when the full legend cannot fit.
-			if ansi.StringWidth(" Roles: "+strings.Join(labels, "  ")) > width {
-				for _, row := range rows {
-					if row.Agent.Name == selectedCaller {
-						if index := slices.Index(roles, Role(row.Agent)); index > 0 {
-							labels[0], labels[index] = labels[index], labels[0]
-						}
-						break
-					}
-				}
-			}
-			legend = ansi.Truncate(" Roles: "+strings.Join(labels, "  "), width, "…")
-			limit--
+		if agent := row.Agent; agent.InputTokens+agent.OutputTokens > 0 {
+			in, out := tokenParts(agent)
+			tokens = "↑ " + in + " ↓ " + out
+		}
+		return tokens, Cost(row.Agent)
+	}
+	return "", ""
+}
+
+// ParentCaller names the nearest roster ancestor of caller, or Main.
+func (v *View) ParentCaller(caller string) string {
+	index := slices.IndexFunc(v.roster, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == caller })
+	for i := index - 1; i >= 0; i-- {
+		if v.roster[i].Depth < v.roster[index].Depth {
+			return v.roster[i].Agent.Name
 		}
 	}
+	return "/root"
+}
+
+// ShowParent displays the displayed child's roster parent.
+func (v *View) ShowParent() {
+	if v.displayingChild() {
+		v.requestDisplay(v.ParentCaller(v.displayedCaller()))
+		v.Follow()
+	}
+}
+
+// RosterSheet paints subagent rows and their hit targets below a heading row
+// the caller paints at index 0; hits count that row. Main is omitted because
+// the session stat lines carry its facts. At most limit rows follow the
+// heading, scrolled to keep the displayed agent.
+func (v *View) RosterSheet(width, limit int, now time.Time) []string {
+	rows := slices.DeleteFunc(v.Roster(), func(row activitypresentation.AgentRow) bool { return row.Agent.Name == "/root" })
+	v.Hits = v.Hits[:0]
+	if len(rows) == 0 || width < 20 || limit < 1 {
+		return nil
+	}
+	selectedCaller := cmp.Or(v.displayedCaller(), "/root")
+	v.paceRosterMetrics(rows, now)
+	lines := []string{""}
 	selected := max(0, slices.IndexFunc(rows, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == selectedCaller }))
 	count := min(len(rows), limit)
 	if len(rows) > limit && limit > 1 {
 		count-- // Room for every hidden row, including those above selection.
 	}
-	var compact []activitypresentation.AgentRow
-	if !focused {
-		compact = v.collapsedRoster(rows, limit, selectedCaller)
-		count = len(compact)
-	}
 	start := max(0, min(selected-count+1, len(rows)-count))
 	if v.RosterSelected != selectedCaller {
 		v.RosterManual = false
 	}
-	if focused && v.RosterManual {
+	if v.RosterManual {
 		start = min(v.RosterOffset, len(rows)-count)
 	}
 	end := start + count
 	visible := rows[start:end]
-	if !focused {
-		visible = compact
-	}
 	hidden := len(rows) - len(visible)
-	if hidden > 0 && limit == 1 {
-		heading.overflow = fmt.Sprintf("+%d more", hidden)
-	}
 	nameWidth := 4
 	for index := range visible {
 		name, _ := RosterTree(visible, index, 0)
@@ -260,68 +201,46 @@ func (v *View) NativeRosterPanel(width, limit int, now time.Time, focused bool) 
 		}
 		next++
 		line = ansi.Truncate(line, width, "…")
-		if item.row.Agent.Name == selectedCaller && (focused || v.displayingChild()) {
+		if item.row.Agent.Name == selectedCaller {
 			line = v.selectRow(line, width)
 		}
 		lines = append(lines, line)
 		v.Hits = append(v.Hits, Hit{Row: len(lines), First: 1, Last: width, Agent: item.row.Agent.Name})
 	}
 	if hidden > 0 && limit > 1 {
-		lines = append(lines, ansi.Truncate(terminalui.Dim+fmt.Sprintf("   +%d more · ^B 3 to browse", hidden)+terminalui.Undim, width, "…"))
-	}
-	if legend != "" {
-		lines = append(lines, legend)
+		lines = append(lines, ansi.Truncate(terminalui.Dim+fmt.Sprintf("   +%d more", hidden)+terminalui.Undim, width, "…"))
 	}
 	v.RosterOffset, v.rosterEnd, v.RosterSelected = start, end, selectedCaller
-	return lines, heading
+	return lines
 }
 
-// collapsedRoster admits the displayed row and Main before other active rows,
-// folding unselected idle children into overflow even when space is available.
-// Keep canonical order and ancestry within the subset.
-func (v *View) collapsedRoster(rows []activitypresentation.AgentRow, limit int, selected string) []activitypresentation.AgentRow {
-	priority := func(row activitypresentation.AgentRow) int {
-		switch {
-		case row.Agent.Name == selected:
-			return 0
-		case row.Agent.Name == "/root":
-			return 1
-		case v.agentStatus(row.Agent) == '◐':
-			return 2
-		case v.agentStatus(row.Agent) != '✓' && v.agentStatus(row.Agent) != '!':
-			return 3
-		case v.agentStatus(row.Agent) == '!':
-			return 4
-		default:
-			return 5
-		}
-	}
-	indices := make([]int, 0, len(rows))
-	preferred := 0
-	for i, row := range rows {
-		if row.Agent.Status == "" && row.Agent.Name != selected && row.Agent.Name != "/root" {
+// RoleLegend pairs each observed subagent role with its glyph color, within
+// width. When the full legend cannot fit, the displayed agent's role leads.
+func (v *View) RoleLegend(width int) string {
+	var roles []string
+	selected := ""
+	for _, row := range v.Roster() {
+		role := Role(row.Agent)
+		if row.Agent.Name == "/root" || role == "" {
 			continue
 		}
-		indices = append(indices, i)
-		if priority(row) < 4 {
-			preferred++
+		if row.Agent.Name == v.displayedCaller() {
+			selected = role
+		}
+		if !slices.Contains(roles, role) {
+			roles = append(roles, role)
 		}
 	}
-	if preferred < len(rows) {
-		preferred++ // Reserve room for overflow when some rows are not preferred.
+	var labels []string
+	for _, role := range roles {
+		labels = append(labels, v.RoleColor(role)+"●"+terminalui.Reset+" "+role)
 	}
-	limit = min(limit, max(4, preferred))
-	if len(rows) > limit && limit > 1 {
-		limit--
+	if ansi.StringWidth(strings.Join(labels, "  ")) > width {
+		if index := slices.Index(roles, selected); index > 0 {
+			labels[0], labels[index] = labels[index], labels[0]
+		}
 	}
-	slices.SortStableFunc(indices, func(a, b int) int { return cmp.Compare(priority(rows[a]), priority(rows[b])) })
-	indices = indices[:min(len(indices), limit)]
-	slices.Sort(indices)
-	visible := make([]activitypresentation.AgentRow, 0, len(indices))
-	for _, i := range indices {
-		visible = append(visible, rows[i])
-	}
-	return visible
+	return ansi.Truncate(strings.Join(labels, "  "), width, "…")
 }
 
 // Metric parts, in column order: context used and percent, elapsed and last

@@ -77,15 +77,13 @@ func publishSessionView(attached *attachedPresentation, control *sessioncontrol.
 		caption = sessionpresentation.Caption{Model: side.Model, Effort: side.Effort, Tier: tiers.Effective(side.Model, side.Tier, side.Thread)}
 	}
 	caption = sessionCaption(&attached.session, m, caption, tiers)
+	caption.Limits = captionLimits(attached.rateLimits)
 	info := sessionpresentation.MainInfo{Workspace: attached.cwd, Title: cmp.Or(control.Names.Pending(control.Thread), title), BackendVersion: backend, Skills: attached.source.ActiveSkills()["Main"]}
 	if view.Main.Caller != "/root" {
 		info.Caller = view.Main.Caller
 	}
 	if logical := attached.threadInput; logical != nil && logical.admitted {
 		info.Caller = logical.caller
-		if view.Displayed.ID == view.Main.ID {
-			caption.Role = logical.role
-		}
 	}
 	if approval := attached.conversation.Approvals.View(); approval.Count > 0 {
 		if caller := attached.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
@@ -142,7 +140,6 @@ func sessionCaption(session *sessionpresentation.Attachment, m *sessionpresentat
 	if agent := session.Agent(view.Displayed.Caller); agent != nil {
 		if view.Displayed.ID != view.Main.ID {
 			caption.Model, caption.Effort = agent.Settings.Model, agent.Settings.Effort
-			caption.Role = agent.Role
 			if agent.Settings.TierKnown {
 				caption.Tier = cmp.Or(agent.Settings.Tier, "default")
 			}

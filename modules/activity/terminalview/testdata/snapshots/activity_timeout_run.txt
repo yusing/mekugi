@@ -1,1 +1,1 @@
-Ran    unknown arg · 500ms (timeout 12s)
+Ran    unknown arg (timeout 12s)       500ms

@@ -8,10 +8,11 @@ func (r Rect) Contains(x, y int) bool {
 }
 
 // Layout is the geometry of the last composed frame. The content painter
-// fills Live once it knows where the dock fits inside Main.
+// fills Live once it knows where the dock fits inside Main, and Roster with
+// the roster sheet docked at Main's bottom.
 type Layout struct {
-	Main, Diff, Roster, Live   Rect
-	Vertical, RosterHorizontal int
+	Main, Diff, Roster, Live Rect
+	Vertical                 int
 }
 
 // Panes retains local focus and the user's column width, independently of any
@@ -57,8 +58,7 @@ func (p *Panes) Resize(key string, width int) {
 }
 
 // Drag consumes divider gestures and returns the requested navigator width, if
-// that divider moved. Roster separators retain their existing pointer capture;
-// roster height is determined by its visible rows rather than a stored height.
+// that divider moved.
 func (p *Panes) Drag(m Mouse, layout Layout, navigatorWidth int) (handled bool, columns int) {
 	if m.Release && p.drag != 0 {
 		p.drag = 0
@@ -75,10 +75,8 @@ func (p *Panes) Drag(m Mouse, layout Layout, navigatorWidth int) (handled bool, 
 	}
 	if m.Button&^28 == 0 && !m.Release {
 		switch {
-		case m.X == layout.Vertical && layout.Vertical >= 0 && (layout.RosterHorizontal < 0 || m.Y < layout.RosterHorizontal):
+		case m.X == layout.Vertical && layout.Vertical >= 0 && m.Y < layout.Main.Y+layout.Main.H:
 			p.drag = 1
-		case m.Y == layout.RosterHorizontal && layout.RosterHorizontal >= 0:
-			p.drag = 4
 		case layout.Diff.Contains(m.X, m.Y) && navigatorWidth > 0 && m.X-layout.Diff.X == navigatorWidth:
 			p.drag = 3
 		default:
@@ -89,38 +87,12 @@ func (p *Panes) Drag(m Mouse, layout Layout, navigatorWidth int) (handled bool, 
 	return false, 0
 }
 
-func (p *Panes) RosterLimit(width, height int) int {
-	// Reserve Main, the status row and the roster heading before painting.
-	// An open wide Diff needs twelve content-frame rows plus roster padding
-	// to retain both columns rather than switching to the focused pane.
-	mainRows := 8
-	if p.DiffOpen && width >= 100 {
-		mainRows = 13
-	}
-	available := max(0, height-mainRows-2)
-	if p.Focus == 3 {
-		return min(available, max(4, int(float64(height)*0.4)))
-	}
-	return available
-}
-
-// Geometry reserves the status row and roster, then fits Main and saved Diff.
-// It returns pane bounds, content rectangles and the retained roster row count.
+// Geometry reserves the stat rows, then fits Main and saved Diff above them.
+// It returns pane bounds and content rectangles.
 // Source: apps/mekugi/internal/router/native_shell.go:288:334@70e7ce50 terminalUI.paintNative
-func (p *Panes) Geometry(width, height, rosterRows int) (layout Layout, left, right Rect, diffFramed bool, keptRoster int) {
-	if height-1-rosterRows < 8 {
-		rosterRows = 0
-	}
-	padding := 0
-	if rosterRows > 0 && height-1-rosterRows-1 >= 8 {
-		padding = 1
-	}
-	top := max(0, height-1-rosterRows-padding)
-	layout = Layout{Vertical: -1, RosterHorizontal: -1}
-	if rosterRows > 0 {
-		layout.RosterHorizontal = top
-		layout.Roster = Rect{0, top, width, rosterRows}
-	}
+func (p *Panes) Geometry(width, height, statRows int) (layout Layout, left, right Rect, diffFramed bool) {
+	top := max(0, height-statRows)
+	layout = Layout{Vertical: -1}
 	switch {
 	case p.DiffOpen && width >= 100 && top >= 12:
 		split := p.Split
@@ -145,5 +117,5 @@ func (p *Panes) Geometry(width, height, rosterRows int) (layout Layout, left, ri
 			layout.Diff = Rect{right.X + 1, right.Y + 1, right.W - 2, right.H - 2}
 		}
 	}
-	return layout, left, right, diffFramed, rosterRows
+	return layout, left, right, diffFramed
 }

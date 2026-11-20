@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -68,27 +69,69 @@ func (in FrameInput) displayedTranscript() *activityui.View {
 	return in.Transcript
 }
 
-// Status derives terminal labels from the same detached publication as the frame.
+// EmptyComposer reports whether arrow keys reach the stat-line navigation:
+// Main holds no draft and no prompt, menu or overlay takes the arrows.
+// Read-only views have no composer, so their arrows are always free.
+func (in FrameInput) EmptyComposer() bool {
+	m := in.Main
+	if m == nil {
+		return false
+	}
+	v := m.session
+	if v.ReadOnly != sessionpresentation.Editable {
+		return true
+	}
+	return v.Draft.Draft.Text == "" && v.Questions.Call == nil && !v.Approvals.Open && v.Panel == nil && v.Resume == nil &&
+		!m.Menu.Open() && !m.Panel.Open() && !m.Resume.Open() && !m.BTW.Open() && !m.Keybindings
+}
+
+// Status derives the second stat line from the same detached publication as the frame.
 // Source: apps/mekugi/internal/router/native_shell.go:156:174@9fbf51e1.
 func (in FrameInput) Status() ShellStatus {
 	if in.Playback {
 		return ShellStatus{Playback: true, PlaybackBar: in.PlaybackBar}
 	}
-	responding, _ := in.Agents.StatusCounts(in.Agents.Roster())
+	v := in.Main.session
 	status := ShellStatus{
-		Child: in.Main.session.Displayed.ID != in.Main.session.Main.ID || in.Main.session.Info.Caller != "" && in.Main.session.Info.Caller != "/root", Responding: responding,
-		DiffUnseen: in.DiffUnseen, Prefix: in.Prefix, LiveCount: in.Live.Live(), Locked: in.Main.InterruptLocked,
+		Agent: in.rosterThreadLabel(), Scroll: scrollLabel(in.displayedTranscript()), Summary: in.Agents.RosterSummary(),
+		DiffUnseen: in.DiffUnseen, Prefix: in.Prefix, LiveCount: in.Live.Live(), Locked: in.Main.InterruptLocked, Empty: in.EmptyComposer(),
+		Workspace: v.SourceWorkspace(),
+	}
+	if v.Displayed.ID == v.Main.ID {
+		status.Title = sessionTitle(v.Info.Title)
+	}
+	if skills := in.displayedSkills(); len(skills) > 0 {
+		status.Skills = activityui.SkillLabel(skills)
 	}
 	if in.Shell.ExternalPanes {
 		status.LiveCount = 0
 	}
-	if side := in.Main.session.Side; side != nil && in.Main.session.SideThread.ID != "" {
-		status.SideLabel, status.SideSelected = side.Label, in.Main.session.Displayed == in.Main.session.SideThread
-	}
-	if in.Shell.Focus == 0 && !in.Prefix {
-		status.Expansion = in.displayedTranscript().Expansion
+	if side := v.Side; side != nil && v.SideThread.ID != "" {
+		status.SideLabel, status.SideSelected = side.Label, v.Displayed == v.SideThread
 	}
 	return status
+}
+
+// skillsCaller names the displayed agent whose loaded skills the stat line shows.
+func (in FrameInput) skillsCaller() string {
+	v := in.Main.session
+	if v.Displayed.ID != v.Main.ID {
+		return v.Displayed.Caller
+	}
+	return cmp.Or(v.Info.Caller, "/root")
+}
+
+func (in FrameInput) displayedSkills() []string {
+	v := in.Main.session
+	if caller := in.skillsCaller(); v.Displayed.ID != v.Main.ID || caller != "/root" {
+		for _, row := range in.Agents.Roster() {
+			if row.Agent.Name == caller {
+				return row.Agent.Skills
+			}
+		}
+		return nil
+	}
+	return v.Info.Skills
 }
 
 // Render composes terminal-owned surfaces. Output demands must be hydrated and
@@ -114,50 +157,69 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	transcript := in.displayedTranscript()
 	transcript.ImageDemands, transcript.ImagePlacements = nil, nil
 	mainEdit := !shell.ExternalPanes && !in.LiveHidden && (slices.Contains(in.Live.Callers(), caller) || caller == "/root" && len(in.Live.Callers()) > 0)
+	in.Agents.Hits = nil
+	// The roster sheet needs subagents; it closes when the last one leaves.
+	summary := in.Agents.RosterSummary()
+	if shell.Focus == 3 && (!summary.Children || shell.ExternalPanes) {
+		shell.Focus = 0
+	}
+	plan := shell.Plan(width, height)
+	processRect, rosterRect := Rect{}, Rect{}
 	var roster []string
-	var heading activityui.RosterHeading
-	var title string
-	if view.Displayed.ID == view.Main.ID {
-		title = sessionTitle(view.Info.Title)
-	}
-	if shell.RosterLabel != "" && !shell.ExternalPanes {
-		limit := shell.Panes.RosterLimit(width, height)
-		roster, heading = in.Agents.NativeRosterPanel(width, limit, in.Now, shell.Focus == 3)
-		// A title can be published before the first agent row arrives.
-		if len(roster) == 0 && title != "" && width >= 20 && limit > 0 {
-			roster = []string{""}
-		}
-	} else {
-		in.Agents.Hits = nil
-	}
-	plan := shell.Plan(width, height, len(roster))
-	processRect := Rect{}
 	processLimit := 0
-	content := ShellContent{Roster: roster}
+	content := ShellContent{}
 	if plan.Left.W >= 4 && plan.Left.H >= 1 {
 		iw, ih := plan.Layout.Main.W, plan.Layout.Main.H
-		processes := in.Dialog != nil && in.Dialog.Processes
-		if processes {
+		// The process list, content sheets and the roster dock as one panel
+		// kind: Main gives up the rows under its transcript, which keeps its
+		// latest rows.
+		panel := in.Dialog != nil
+		if panel {
 			minimum := in.Dialog.Chrome() + 1
-			if in.Dialog.ProcessDetail {
+			switch {
+			case in.Dialog.ProcessDetail:
 				minimum = processDetailMinHeight
+			case !in.Dialog.Processes:
+				// A content sheet keeps the three body rows it is fitted to.
+				minimum = in.Dialog.Chrome() + 3
 			}
 			processLimit = min(ih, max(minimum, ih/2))
 			panelHeight := processLimit
-			if in.Dialog.ProcessDetail {
+			switch {
+			case !in.Dialog.Processes:
+				panelHeight = in.Dialog.SheetHeight(iw, processLimit)
+			case in.Dialog.ProcessDetail:
 				panelHeight = in.Dialog.processDetailHeight(iw, processLimit)
-			} else {
+			default:
 				panelHeight = min(panelHeight, in.Dialog.Chrome()+len(in.Dialog.Pages)+1)
 			}
 			ih -= panelHeight
 			processRect = Rect{plan.Layout.Main.X, plan.Layout.Main.Y + ih, iw, panelHeight}
+		} else if shell.Focus == 3 && iw >= 24 {
+			// A blank row above the heading rule; heading and footer frame
+			// the agent rows. The heading carries the role legend.
+			roster = in.Agents.RosterSheet(iw-4, min(ih-1, max(5, ih/2))-2, in.Now)
+			if len(roster) > 0 {
+				// The a key names the view it switches to.
+				next := "a child"
+				if caller := in.Agents.Display.Caller; caller != "" && caller != "/root" {
+					next = "a main"
+				}
+				roster = append(roster, terminalui.Dim+"↑↓ agent · "+next+" · esc close"+terminalui.Undim)
+				counts := strings.Join(summary.Counts, terminalui.Dim+" · "+terminalui.Undim)
+				legend := in.Agents.RoleLegend(max(0, iw-4-ansi.StringWidth(shell.RosterLabel+" · "+counts)-10))
+				roster[0] = terminalui.PanelHeading(shell.Theme.Accent(), shell.RosterLabel, counts, legend, iw-4)
+				ih -= len(roster) + 1
+				rosterRect = Rect{plan.Layout.Main.X + 2, plan.Layout.Main.Y + ih + 1, iw - 4, len(roster)}
+				panel = true
+			}
 		}
 		dockRows := 0
-		if !processes && mainEdit && !in.Main.Keybindings && !in.Main.Menu.Open() {
+		if !panel && mainEdit && !in.Main.Keybindings && !in.Main.Menu.Open() {
 			dockRows = ih
 		}
 		rosterHits := in.Agents.Hits
-		main := in.Main.Render(in.displayedTranscript(), &in.Transcript.Painter, in.Prompts, MainOptions{Now: in.Now, Focused: shell.Focus == 0, Version: in.Version, HideComposer: processes}, iw, ih, dockRows)
+		main := in.Main.Render(in.displayedTranscript(), &in.Transcript.Painter, in.Prompts, MainOptions{Now: in.Now, Focused: shell.Focus == 0, Version: in.Version, HideComposer: panel}, iw, ih, dockRows)
 		in.Agents.Hits = rosterHits
 		if len(main.Demands) != 0 {
 			out.Demands = main.Demands
@@ -190,13 +252,6 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 			}
 		}
 	}
-	if plan.Roster > 0 {
-		active := in.rosterThreadLabel()
-		if shell.Focus == 0 {
-			active = "\x1b[1m" + active + "\x1b[22m"
-		}
-		roster[0] = heading.Render(active, title, scrollLabel(transcript))
-	}
 	if plan.Right.W >= 4 && plan.Right.H >= 1 {
 		content.Diff, err = in.Diff.Paint(ctx, shell.Auxiliary, plan.Layout.Diff.W, plan.Layout.Diff.H)
 		if err != nil {
@@ -205,15 +260,42 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		content.DiffSummary, content.DiffState = shell.Auxiliary.Title()
 		out.DiffPainted, in.DiffUnseen = true, false
 	}
-	content.Status = in.Status()
+	if plan.Stats > 0 {
+		var usage captionUsage
+		usage.Tokens, usage.Cost = in.Agents.AgentUsage(in.skillsCaller())
+		if view.Displayed.ID == view.Main.ID && summary.Children && summary.Cost != usage.Cost {
+			usage.Total = summary.Cost
+		}
+		// The workspace shows on the second stat line, which external panes
+		// omit.
+		workspace := ""
+		if shell.ExternalPanes {
+			workspace = view.SourceWorkspace()
+		}
+		content.Stats = []string{captionLine(view.Caption, workspace, usage, width)}
+		if !shell.ExternalPanes {
+			content.Stats = append(content.Stats, shell.StatLine(in.Status(), width, height-1))
+		}
+	}
 	out.Rows = shell.Compose(plan, content)
+	shell.Layout.Roster = rosterRect
+	for i, line := range roster {
+		if y := rosterRect.Y + i; y >= 0 && y < len(out.Rows) {
+			out.Rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", rosterRect.X+1, ansi.Truncate(line, rosterRect.W, ""))
+		}
+	}
 	if in.Dialog != nil {
 		in.Dialog.FileLinks = in.FileLinks
 		in.Dialog.FileLinkDemands = nil
-		if in.Dialog.Processes {
+		switch {
+		case in.Dialog.Processes:
 			in.Dialog.paintProcesses(out.Rows, processRect, processLimit)
-		} else {
-			in.Dialog.Paint(out.Rows[:height-1], width, height-1)
+		case processRect.H > 0:
+			in.Dialog.Paint(out.Rows, processRect)
+		default:
+			// Without a Main pane the sheet spans the screen above the
+			// roster and status rows.
+			in.Dialog.Paint(out.Rows, Rect{0, 0, width, max(1, min(height-1, plan.Layout.Main.Y+plan.Layout.Main.H))})
 		}
 		out.FileLinkDemands = append(out.FileLinkDemands, in.Dialog.FileLinkDemands...)
 	}

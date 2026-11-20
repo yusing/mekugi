@@ -1,6 +1,9 @@
 package terminalsession
 
 import (
+	"cmp"
+	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -30,6 +33,7 @@ type Main struct {
 	Panel                                                  StatusPanel
 	ComposerRect, PromptRect, NoticeDetails, NoticeDismiss Rect
 	ProcessCount                                           Rect
+	ProcessHover                                           bool // The pointer is over ProcessCount.
 	ComposerWidth                                          int
 	ContentPainted                                         bool
 	CursorColumn, PromptColumn                             *int
@@ -76,9 +80,15 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		return MainFrame{Rows: make([]string, height), Feed: Rect{W: width, H: height}}
 	}
 	boxed := width >= 12 && height >= 3
+	// Rules frame the draft only when the transcript keeps rows beside all
+	// three chrome rows.
+	ruled := boxed && height >= 8
 	borderRows, inset := 0, min(2, width-1)
 	if boxed {
-		borderRows, inset = 2, 5
+		borderRows, inset = 1, 3
+	}
+	if ruled {
+		borderRows = 3
 	}
 	textWidth := width - inset
 	m.ComposerWidth = textWidth
@@ -132,7 +142,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	var approvalRows, questionRows, btwRows []string
 	if !readOnly {
 		if d := presentation.Approvals; d.Count > 0 {
-			approvalRows = conversationui.Approvals(d, &painter.Painter, in.ApprovalLayout, in.Selection, in.ApprovalAgent, width, min(height/2, room))
+			approvalRows = conversationui.Approvals(d, &painter.Painter, in.ApprovalLayout, in.ApprovalAgent, width, min(height/2, room))
 		}
 	}
 	if len(approvalRows) > 0 {
@@ -140,7 +150,7 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 		room -= len(approvalRows)
 	}
 	if !readOnly {
-		questionRows = conversationui.Questions(presentation.Questions, &painter.Painter, in.QuestionLayout, in.Selection, in.TurnIdle && in.Draft.Text != "", width, min(height/2, room))
+		questionRows = conversationui.Questions(presentation.Questions, &painter.Painter, in.QuestionLayout, in.TurnIdle && in.Draft.Text != "", width, min(height/2, room))
 	}
 	if len(questionRows) > 0 {
 		dock = 0
@@ -190,26 +200,35 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	m.BTW.Rect = Rect{0, len(frame), width, len(btwRows)}
 	frame = append(frame, btwRows...)
 	frame = append(frame, make([]string, gap)...)
-	border := "\x1b[38;2;52;48;72m"
-	if !readOnly && (in.Question || presentation.Approvals.Open) {
-		border = painter.Theme.Accent()
-	} else if !readOnly && presentation.Status.ShellMode {
-		border = terminalui.Red
+	// The draft sits between two rules, under a plain status line; the
+	// session caption is the shell's first stat line. Its prompt glyph carries the input state: accent
+	// while a prompt above takes the input, red in shell mode, which also
+	// colors the rules.
+	promptColor := activityui.PromptColor
+	focused := !readOnly && in.Focused
+	switch {
+	case !readOnly && presentation.Status.ShellMode:
+		promptColor = terminalui.Red
+	case !readOnly && (in.Question || presentation.Approvals.Open):
+		promptColor = painter.Theme.Accent()
 	}
 	const inputColor = "\x1b[39m"
-	focused := !readOnly && in.Focused
+	rule := terminalui.Dim + strings.Repeat("─", width) + terminalui.Reset
+	if !readOnly && presentation.Status.ShellMode {
+		rule = terminalui.Red + strings.Repeat("─", width) + terminalui.Reset
+	}
 	if boxed {
-		frame = append(frame, m.noticeBorder(presentation.Status, in.Now, painter.Colors, width, len(frame), border))
+		frame = append(frame, m.statusLine(presentation.Status, in.Now, painter.Colors, width, len(frame)))
+	}
+	if ruled {
+		frame = append(frame, rule)
 	}
 	textX := min(2, inset)
-	if boxed {
-		textX += 2
-	}
 	m.ComposerRect = Rect{textX, len(frame), textWidth, len(draft)}
 	for i, line := range draft {
 		prefix := strings.Repeat(" ", min(2, inset))
 		if i == 0 && inset >= 2 {
-			prefix = activityui.PromptColor + "❯ " + inputColor
+			prefix = promptColor + "❯ " + inputColor
 		}
 		line = ansi.Truncate(line, textWidth, "")
 		if focused && textWidth > 1 && i+firstRow == caret.Row {
@@ -223,100 +242,205 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 			rest := ansi.Cut(line, caret.Column+cellWidth, textWidth)
 			line = before + "\x1b[7m" + cell + "\x1b[27m" + rest
 		}
-		if boxed {
-			frame = append(frame, border+"│"+inputColor+" "+prefix+line+strings.Repeat(" ", textWidth-ansi.StringWidth(line))+border+"│"+terminalui.Reset)
-		} else {
-			frame = append(frame, inputColor+prefix+line+terminalui.Reset)
-		}
+		frame = append(frame, inputColor+prefix+line+terminalui.Reset)
 	}
-	if boxed {
-		cwd := strings.ReplaceAll(textsanitize.Safe(presentation.SourceWorkspace(), false), "\n", " ")
-		cwd = pathterminal.Truncate(cwd, max(1, (width-10)/3))
-		captionWidth := max(0, width-7)
-		if cwd != "" {
-			captionWidth = max(0, width-10-ansi.StringWidth(cwd))
-		}
-		model := presentation.Caption.Model
-		if model != "" && presentation.Caption.Effort != "" {
-			model += " (" + presentation.Caption.Effort + ")"
-		}
-		if presentation.Caption.Tier != "" {
-			if model != "" {
-				model += " • "
-			}
-			model += presentation.Caption.Tier
-		}
-		if role := presentation.Caption.Role; role != "" {
-			if model != "" {
-				model = role + " • " + model
-			} else {
-				model = role
-			}
-		}
-		model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
-		var context strings.Builder
-		context.WriteString(activityui.ContextWindowLabel(activitypresentation.Agent{
-			ContextKnown: presentation.Caption.ContextKnown, ContextTokens: presentation.Caption.ContextTokens, ContextWindow: presentation.Caption.ContextWindow}))
-		for _, item := range presentation.Caption.Items {
-			context.WriteString(" • " + textsanitize.Safe(item.Text, false))
-		}
-		caption := context.String()
-		if room := captionWidth - ansi.StringWidth(context.String()) - 3; model != "" && room > 0 {
-			caption = ansi.Truncate(model, room, "…") + " • " + context.String()
-		}
-		caption = ansi.Truncate(caption, captionWidth, "…")
-		if cwd != "" {
-			caption = cwd + " • " + caption
-		}
-		caption = terminalui.Dim + caption + terminalui.Reset
-		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
+	if ruled {
+		frame = append(frame, rule)
 	}
 	out.Rows, out.Dock = frame, Rect{0, dockAt, width, dock}
 	return out
 }
 
-// composerBorder embeds optional left and right labels in a box edge. The
-// right label yields first when the edge is too narrow for both.
-func composerBorder(open, close, left, right string, width int, color string) string {
-	segment := func(label string) string {
-		if label == "" {
-			return ""
+// Caption segment colors, after the stock status line.
+const (
+	captionModel     = "\x1b[38;5;73m"
+	captionWorkspace = terminalui.Green
+	captionLimit     = "\x1b[38;5;110m"
+	captionItem      = "\x1b[38;5;73m"
+)
+
+// captionUsage is the displayed thread's token and cost use, with the
+// session total on Main.
+type captionUsage struct{ Tokens, Cost, Total string }
+
+// captionLine is the first stat line, at the screen bottom: model, context
+// bar, cost, tokens, contributed items such as throughput, an optional
+// workspace, then account usage, as unlabeled separated segments.
+// Narrow panes abbreviate the workspace to a sixth of the pane, drop context
+// tokens, then items, the total cost, tokens and usage, shorten the context
+// to its percentage, drop the cost, then shorten the model, and finally drop
+// the context.
+func captionLine(c sessionpresentation.Caption, workspace string, usage captionUsage, width int) string {
+	const indent, sep = "  ", " | "
+	inner := max(0, width-1-len(indent))
+	cwd := strings.ReplaceAll(textsanitize.Safe(workspace, false), "\n", " ")
+	model := c.Model
+	if model != "" && c.Effort != "" {
+		model += " (" + c.Effort + ")"
+	}
+	if c.Tier != "" {
+		if model != "" {
+			model += " · "
 		}
-		return " \x1b[39m" + label + color + " "
+		model += c.Tier
 	}
-	inner := width - 2
-	l, r := segment(left), segment(right)
-	if inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2 < 0 {
-		r = ""
+	model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
+	bare := model
+	if model != "" {
+		model = captionModel + bare + terminalui.Reset
 	}
-	if room := inner - ansi.StringWidth(r) - 2; ansi.StringWidth(l) > room {
-		l = ""
-		if room > 4 {
-			l = ansi.Truncate(segment(left), room-1, "…") + color + " "
+	var limits []string
+	for _, limit := range c.Limits {
+		label := textsanitize.Safe(limit.Label, false)
+		if label != "" {
+			label = strings.ToUpper(label[:1]) + label[1:]
+		}
+		limits = append(limits, captionLimit+label+": "+fmt.Sprintf("%.0f%%", limit.Used)+terminalui.Reset)
+	}
+	var items []string
+	for _, item := range c.Items {
+		if text := strings.ReplaceAll(textsanitize.Safe(item.Text, false), "\n", " "); text != "" {
+			items = append(items, captionItem+text+terminalui.Reset)
 		}
 	}
-	fill := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2)
-	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + terminalui.Reset
+	context := contextLevels(c)
+	level := 0
+	cost, total, tokens := usage.Cost, usage.Total, usage.Tokens
+	paint := func() (string, int) {
+		var parts []string
+		costText := ""
+		switch {
+		case cost != "" && total != "":
+			costText = captionItem + cost + terminalui.Dim + " · total " + total + terminalui.Reset
+		case cost != "" || total != "":
+			costText = captionItem + cmp.Or(cost, total) + terminalui.Reset
+		}
+		tokenText := ""
+		if tokens != "" {
+			tokenText = terminalui.Dim + tokens + terminalui.Undim
+		}
+		for _, part := range []string{model, context[level], costText, tokenText} {
+			if part != "" {
+				parts = append(parts, part)
+			}
+		}
+		// Contributed items such as throughput follow the token figures.
+		parts = append(parts, items...)
+		if cwd != "" {
+			parts = append(parts, captionWorkspace+cwd+terminalui.Reset)
+		}
+		if len(limits) > 0 {
+			parts = append(parts, strings.Join(limits, " "))
+		}
+		line := strings.Join(parts, terminalui.Dim+sep+terminalui.Undim)
+		return line, ansi.StringWidth(line)
+	}
+	line, used := paint()
+	full := cwd
+	if used > inner && cwd != "" {
+		cwd = pathterminal.Truncate(full, max(inner-(used-ansi.StringWidth(cwd)), width/6, 8))
+		line, used = paint()
+	}
+	if used > inner && len(context) > 2 {
+		level = 1
+		line, used = paint()
+	}
+	if used > inner {
+		items = nil
+		line, used = paint()
+	}
+	if used > inner && cost != "" && total != "" {
+		total = ""
+		line, used = paint()
+	}
+	if used > inner {
+		tokens = ""
+		line, used = paint()
+	}
+	if used > inner {
+		limits = nil
+		line, used = paint()
+	}
+	for used > inner && level < len(context)-2 {
+		level++
+		line, used = paint()
+	}
+	if used > inner {
+		cost, total = "", ""
+		line, used = paint()
+	}
+	if used > inner && model != "" {
+		if room := ansi.StringWidth(model) - (used - inner); room >= 3 {
+			model = captionModel + ansi.Truncate(bare, room, "…") + terminalui.Reset
+		} else {
+			model = ""
+		}
+		line, used = paint()
+	}
+	if used > inner {
+		level = len(context) - 1
+		line, used = paint()
+	}
+	// Later reductions can leave room for more of an abbreviated workspace.
+	if cwd != full && used < inner {
+		cwd = pathterminal.Truncate(full, ansi.StringWidth(cwd)+inner-used)
+		line, _ = paint()
+	}
+	return indent + ansi.Truncate(line, inner, "…") + terminalui.Reset
 }
 
-func (m *Main) noticeBorder(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, width, row int, color string) string {
-	label, count := paintMainStatus(status, now, colors, m.session.ReadOnly != sessionpresentation.Replay)
+// contextLevels lists the context segment from fullest to empty: the fill bar
+// with percentage and tokens, the bar with percentage, then the percentage.
+func contextLevels(c sessionpresentation.Caption) []string {
+	if !c.ContextKnown || c.ContextWindow == 0 {
+		return []string{activityui.ContextWindowLabel(activitypresentation.Agent{
+			ContextKnown: c.ContextKnown, ContextTokens: c.ContextTokens, ContextWindow: c.ContextWindow}), ""}
+	}
+	used := min(1, float64(c.ContextTokens)/float64(c.ContextWindow))
+	color := captionModel
+	switch {
+	case used >= .85:
+		color = terminalui.Red
+	case used >= .6:
+		color = terminalui.Amber
+	}
+	percent := color + fmt.Sprintf("%.0f%%", 100*used) + terminalui.Reset
+	bar := contextBar(used, color) + " " + percent
+	tokens := activityui.FormatUsageTokens(c.ContextTokens) + "/" + activityui.FormatUsageTokens(c.ContextWindow)
+	return []string{bar + terminalui.Dim + " " + tokens + terminalui.Undim, bar, percent, ""}
+}
+
+// contextBar draws window use as a ten-cell rule: a heavy colored fill with a
+// half-cell tip on a dim track.
+func contextBar(used float64, color string) string {
+	const cells = 10
+	halves := int(math.Round(used * cells * 2))
+	full, half := halves/2, halves%2
+	return color + strings.Repeat("━", full) + strings.Repeat("╸", half) + terminalui.Reset +
+		terminalui.Dim + strings.Repeat("─", cells-full-half) + terminalui.Undim
+}
+
+// statusLine shows the turn status above the draft, from column 0. Notices
+// keep a dismissal control after their label.
+func (m *Main) statusLine(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, width, row int) string {
+	label, count := paintMainStatus(status, now, colors, m.session.ReadOnly != sessionpresentation.Replay, m.ProcessHover)
 	hit := func(visible int) {
 		if count.W > 0 && count.X+count.W <= visible {
-			m.ProcessCount = Rect{3 + count.X, row, count.W, 1}
+			m.ProcessCount = Rect{count.X, row, count.W, 1}
 		}
 	}
 	full := MainStatusDetails(status)
 	if full == "" {
-		visible := width - 6
-		if ansi.StringWidth(label) > visible {
+		room := max(1, width-1)
+		visible := room
+		if ansi.StringWidth(label) > room {
 			visible--
 		}
 		hit(visible)
-		return composerBorder("╭", "╮", label, "", width, color)
+		return ansi.Truncate(label, room, "…") + terminalui.Reset
 	}
 	// Reserve dismissal before truncating, so a long error cannot hide it.
-	room := max(1, width-13)
+	room := max(1, width-5)
 	// In compact panes the error takes precedence over the session caption.
 	plain := ansi.Strip(label)
 	if before, _, ok := strings.Cut(plain, "✗ "); ok && ansi.StringWidth(before)+4 > room {
@@ -335,8 +459,8 @@ func (m *Main) noticeBorder(status sessionpresentation.MainStatus, now time.Time
 	hit(visible)
 	label = ansi.Truncate(label, room, "…")
 	if clipped || details {
-		m.NoticeDetails = Rect{3, row, ansi.StringWidth(label), 1}
+		m.NoticeDetails = Rect{0, row, ansi.StringWidth(label), 1}
 	}
-	m.NoticeDismiss = Rect{4 + ansi.StringWidth(label), row, 3, 1}
-	return composerBorder("╭", "╮", label+" "+terminalui.Green+"[x]"+terminalui.Reset, "", width, color)
+	m.NoticeDismiss = Rect{1 + ansi.StringWidth(label), row, 3, 1}
+	return label + terminalui.Reset + " " + terminalui.Green + "[x]" + terminalui.Reset
 }

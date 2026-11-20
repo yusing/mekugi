@@ -115,13 +115,20 @@ func TestNativeMessageBeforeReasoningCodexE2E(t *testing.T) {
 	var pending synchronizedFrameBuffer
 	awaitFrame := func(needle string) string {
 		t.Helper()
-		if visible := terminal.screen.String(); strings.Contains(visible, needle) {
+		// "completed" waits for the composer status, as appResumeTerminal.await does.
+		found := func(visible string) bool {
+			if needle == "completed" {
+				return composerStatusShows(visible, "Completed")
+			}
+			return strings.Contains(visible, needle)
+		}
+		if visible := terminal.screen.String(); found(visible) {
 			return visible
 		}
 		for {
 			if frame, ok := pending.Next(); ok {
 				terminal.screen.Write(frame)
-				if visible := terminal.screen.String(); strings.Contains(visible, needle) {
+				if visible := terminal.screen.String(); found(visible) {
 					return visible
 				}
 				continue
@@ -164,7 +171,7 @@ func TestNativeMessageBeforeReasoningCodexE2E(t *testing.T) {
 		}
 	}
 	close(p.stages[2])
-	awaitFrame("╭─ Completed")
+	awaitFrame("completed")
 	// Confirm exact bytes through the next actual provider request, after the
 	// native recipient consumed the message at its inference boundary.
 	terminal.send("Confirm retained delivery.\r")
@@ -177,6 +184,6 @@ func TestNativeMessageBeforeReasoningCodexE2E(t *testing.T) {
 		t.Fatal(terminal.ctx.Err())
 	}
 	awaitFrame("Retained delivery confirmed.")
-	awaitFrame("╭─ Completed")
+	awaitFrame("completed")
 	terminal.quit()
 }

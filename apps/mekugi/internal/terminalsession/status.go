@@ -63,11 +63,13 @@ func PaintSessionStatus(label sessionpresentation.Label, now time.Time, colors t
 
 // Source: apps/mekugi/internal/router/composer_notice.go:32:91@1145fbbc.
 func PaintMainStatus(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors) string {
-	label, _ := paintMainStatus(status, now, colors, true)
+	label, _ := paintMainStatus(status, now, colors, true, false)
 	return label
 }
 
-func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, clickable bool) (string, Rect) {
+// The running-process count is dark amber and underlined only while the
+// pointer is over it.
+func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors, clickable, hover bool) (string, Rect) {
 	var count Rect
 	label := PaintSessionStatus(status.Composer, now, colors)
 	if status.ComposerOverride {
@@ -83,9 +85,11 @@ func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, color
 		text := fmt.Sprintf("%d running processes", status.Processes)
 		if clickable {
 			count = Rect{X: ansi.StringWidth(label), W: len(text), H: 1}
-			label += "\x1b[4m"
+			if hover {
+				label += "\x1b[4m"
+			}
 		}
-		label += activityui.StatusPulse(text, now, colors) + terminalui.Reset
+		label += terminalui.DarkAmber + text + terminalui.Reset
 	}
 	notice := PaintSessionStatus(status.Feedback, now, colors)
 	if notice == "" {

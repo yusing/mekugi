@@ -61,7 +61,7 @@ Invocation overrides leave Codex configuration unchanged.
 
 - **Live activity with its reasons.** Operations appear under the reasoning that
   led to them. Delegates appear with their assignment and reply summary in Main,
-  and with progress and metrics in the [Agents pane](docs/guide/terminal-ui.md#agents-pane).
+  and with progress and metrics in the [Agents sheet](docs/guide/terminal-ui.md#agents).
   The roster identifies supported tool calls as their input is being generated, so
   a large call is less likely to look stalled. Open attachable children to read
   their transcripts and steer them.
@@ -178,7 +178,7 @@ imports, and `--oss` remains unsupported. See [launch details](docs/guide/launch
 
 ## Guides
 
-- [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents pane, output dialogs and optional Herdr app panels.
+- [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents sheet, output dialogs and optional Herdr app panels.
 - [Sessions and recovery](docs/guide/sessions.md): resume, fork, rewind, compaction and replay storage.
 - [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file` and `mchanges`.
 - [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards and secure GPG passphrase entry.

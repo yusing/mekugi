@@ -57,16 +57,16 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 			return ""
 		}
 	}
-	if frame := paint(); !strings.Contains(frame, "1 Main") {
+	if frame := paint(); !strings.Contains(frame, "\n  Main") {
 		t.Fatalf("initial frame lacks Main:\n%s", frame)
 	}
 	u.attached.session.RegisterThread(observation.Thread{ID: "child", Path: "/root/worker"})
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
-	if frame := paint(); !strings.Contains(frame, "1 Main") {
+	if frame := paint(); !strings.Contains(frame, "\n  Main") {
 		t.Fatalf("spawn hid Main:\n%s", frame)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn", "status": "failed"}})
-	if frame := paint(); !strings.Contains(frame, "1 Main") {
+	if frame := paint(); !strings.Contains(frame, "\n  Main") {
 		t.Fatalf("failed child hid Main:\n%s", frame)
 	}
 	appServerTestKeys(t, u, "/lock\r")

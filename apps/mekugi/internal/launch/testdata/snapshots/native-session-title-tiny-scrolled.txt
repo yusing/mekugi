@@ -8,9 +8,9 @@
 
 ↓ Back to bottom ·
 
-╭─ Ready ──────────╮
-│ ❯                │
-╰── snapsho… • 0% ─╯
-─ 3 Main · Revie… ──
-
- 1 Main  2 Diff  3 A
+Ready
+────────────────────
+❯
+────────────────────
+  snapshot-mo… | 0%
+  Main • Review th…

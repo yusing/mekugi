@@ -9,8 +9,8 @@
 
 
 
-╭─ Ready ──────────────────────────╮
-│ ❯ Add narrow-screen coverage.    │
-│   Keep the interaction assertions│
-│   .                              │
-╰── …project • snapshot-mod… • 0% ─╯
+Ready
+────────────────────────────────────
+❯ Add narrow-screen coverage.
+  Keep the interaction assertions. 
+────────────────────────────────────

@@ -1,9 +1,9 @@
 ● child
-│ ├ Ran    cat > a.go · 1s
+│ ├ Ran    cat > a.go                                                                             1s
 │ │        ┆ a.go diagnostic
-│ ├ Ran    go vet ./... · 2s
+│ ├ Ran    go vet ./...                                                                           2s
 │ │        ┆ ./... diagnostic
-│ ├ Ran    cat > b.go · 3s
+│ ├ Ran    cat > b.go                                                                             3s
 │ │        ┆ b.go diagnostic
 │ └ Edited a.go  +3 -1 ━━━━━━━━ via cat
 │          b.go  +1 -2 ━━━━━━━━

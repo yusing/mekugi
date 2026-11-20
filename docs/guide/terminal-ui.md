@@ -2,15 +2,26 @@
 
 Panes, composer controls and dialogs of the native terminal UI.
 
-In a standalone terminal, Main starts at full width, with Agents below. Toggle Diff to split the view;
-close it to restore full width. Click a child to switch the displayed transcript.
-Live subagents use their own composer, prompts and settings. Main, children and
-One-off retain separate drafts; historical views remain read-only. Narrow terminals show one pane.
+In a standalone terminal, Main starts at full width above two stat lines. Toggle Diff to split the view;
+close it to restore full width. Live subagents use their own composer, prompts and settings. Main,
+children and One-off retain separate drafts; historical views remain read-only. Narrow terminals show one pane.
+
+The first stat line shows the displayed thread's model, context-window bar,
+estimated cost (plus the session total on Main), input (↑) and output (↓) tokens,
+Main's throughput, and the account's `5h` and `Weekly` rate-limit use once Codex
+reports it. The second names the displayed thread, its working (◐), finished (✓)
+and failed (!) subagent counts, the session title, the working directory, and the
+arrow keys that act on an empty composer: ↓ roster, → diff (or ← main from Diff)
+and `^E` view. Narrow lines shorten the directory and title, then drop the least
+important parts. Click a hint to use it.
 
 | Action | Shortcut |
 | --- | --- |
+| Open the Agents sheet (with subagents) | Down on an empty composer |
+| Return from a child to its parent | Up on an empty composer |
+| Open Diff / return to Main | Right / Left on an empty composer |
 | Show Main / toggle Diff / focus Agents | `Ctrl-B`, then `1` / `2` / `3` |
-| Resize Main/Diff split | Drag its divider, or `Ctrl-B`, then Left/Right; repeat arrows within 500 ms without another prefix. Agents height fits its content |
+| Resize Main/Diff split | Drag its divider, or `Ctrl-B`, then Left/Right; repeat arrows within 500 ms without another prefix |
 | Resize Diff navigator | `Ctrl-B`, then `[` / `]` |
 | Browse displayed transcript | `Ctrl-B`, then PageUp / PageDown |
 
@@ -115,18 +126,23 @@ for its hunk; `Ctrl-B e` pins files, `Ctrl-B r` resumes following.
 See [saved-review controls](../../modules/changehistory/SPEC.md#terminal-review) and
 [live-view controls](../../modules/livepreview/SPEC.md#terminal-live-views).
 
-## Agents pane
+## Agents
 
-Click an attachable child to read its full transcript; click Main to return.
-Each runtime keeps its own composer draft, prompts and settings. The child composer
-shows its role, model, reasoning effort and service tier. Historical views remain
-read-only. The One-off tab selects a separate editable conversation.
-In Agents, arrows navigate threads and `a` returns to Main. In the transcript,
-Esc resumes following. The roster shows active time, round trips,
-throughput, usage, estimated API cost, and composed captured edits. Usage/rates survive
-resume while retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
-Main's throughput appears beside composer context. Herdr is optional; redirected
-sessions keep Codex input/output. See [activity details](../../modules/activity/CONTRACT.md).
+Down on an empty composer opens the Agents sheet at the bottom of Main when the
+session has subagents. Its heading shows the subagent counts and a color legend
+for their roles. Up/Down switch the displayed thread live; Up above the first
+subagent returns to Main and closes the sheet; `a` toggles between Main and the last
+child; Esc closes the sheet. Click an attachable child to read its full transcript.
+In a child, Up on an empty composer returns to its parent.
+Each runtime keeps its own composer draft, prompts and settings. The child stat line
+shows its model, reasoning effort and service tier. Historical views remain
+read-only. The One-off label on the second stat line selects a separate editable
+conversation. In the transcript, Esc resumes following. Sheet rows show active time,
+round trips, throughput, usage, estimated API cost, and composed captured edits; Main's
+row is omitted because the stat lines carry its facts. Usage/rates survive resume while
+retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
+Herdr is optional; redirected sessions keep Codex input/output. See
+[activity details](../../modules/activity/CONTRACT.md).
 
 ## Herdr app panels
 
@@ -140,8 +156,8 @@ With capable companion panels, local file links open in the Files sidebar and
 edit details open in the diff pane, including an original-diff fallback when no
 saved entry exists. Otherwise Mekugi keeps its ordinary dialogs.
 
-While the native panels are connected, Mekugi hides its duplicate terminal roster,
-diff pane, live-edit dock and bottom navigation bar. Disconnecting the panels restores the terminal
+While the native panels are connected, Mekugi hides its duplicate Agents sheet,
+diff pane, live-edit dock and second stat line. Disconnecting the panels restores the terminal
 layout without changing saved pane preferences or stopping the session.
 
 The companion removes Mekugi's blue terminal frame and its padding, while its

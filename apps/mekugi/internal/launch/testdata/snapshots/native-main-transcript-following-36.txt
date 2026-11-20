@@ -1,4 +1,3 @@
-      echo activity-09
       echo activity-10
       echo activity-11
       echo activity-12
@@ -11,6 +10,7 @@
       echo activity-19
       echo activity-20
 
-╭─ ◐ Working ──────────────────────╮
-│ ❯                                │
-╰──────────── snapshot-model • 0% ─╯
+◐ Working
+────────────────────────────────────
+❯  
+────────────────────────────────────

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -34,7 +36,7 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 			awaitMarkdownFileLoading(t, u)
 			rows := make([]string, u.Height)
 			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-			u.Dialog.Paint(rows, u.Width, u.Height)
+			u.Dialog.Paint(rows, terminalsession.Rect{W: u.Width, H: u.Height})
 			if extension == "go" {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/native-markdown-file-loading.txt", rows, u.Width)
 			}

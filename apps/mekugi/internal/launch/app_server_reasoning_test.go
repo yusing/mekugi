@@ -211,7 +211,7 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
 	for _, dock := range []int{0, 3} {
 		frame, dockRect := u.testMainFrame(70, 12, dock)
-		border := u.shell.Main.ComposerRect.Y - 1
+		border := u.shell.Main.ComposerRect.Y - 2 // The status row, above the rule.
 		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Working") || strings.Contains(ansi.Strip(frame[border]), "Checking layout") || dockRect.Y+dockRect.H != border-1 || frame[border-1] != "" {
 			t.Fatalf("reasoning replaced Working: dock=%d frame=%q", dock, frame)
 		}
@@ -276,7 +276,8 @@ func TestAppServerWorkingSurvivesDockComposition(t *testing.T) {
 	}
 	rows := strings.Split(screen.String(), "\n")
 	for i, row := range rows {
-		if strings.Contains(row, "╭─") && strings.Contains(row, "Working") {
+		// The composer's status row sits above its rule and prompt.
+		if strings.Contains(row, "Working") && i+2 < len(rows) && strings.HasPrefix(rows[i+2], "❯") {
 			if i == 0 || strings.Contains(row, "Active summary") {
 				t.Fatalf("dock hid Working:\n%s", screen.String())
 			}

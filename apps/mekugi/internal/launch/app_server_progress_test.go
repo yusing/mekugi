@@ -22,7 +22,7 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	label := func(want string) {
 		t.Helper()
 		frame, _ := u.testMainFrame(80, 18, 0)
-		if got := ansi.Strip(frame[u.shell.Main.ComposerRect.Y-1]); !strings.Contains(got, want) {
+		if got := ansi.Strip(frame[u.shell.Main.ComposerRect.Y-2]); !strings.Contains(got, want) {
 			t.Fatalf("composer = %q, want %q", got, want)
 		}
 	}
@@ -87,7 +87,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	label := func(want string) {
 		t.Helper()
 		frame, _ := u.testMainFrame(60, 12, 0)
-		if got := ansi.Strip(frame[u.shell.Main.ComposerRect.Y-1]); !strings.Contains(got, want) {
+		if got := ansi.Strip(frame[u.shell.Main.ComposerRect.Y-2]); !strings.Contains(got, want) {
 			t.Fatalf("composer = %q, want %q", got, want)
 		}
 	}

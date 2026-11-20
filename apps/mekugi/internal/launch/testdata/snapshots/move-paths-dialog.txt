@@ -3,16 +3,16 @@
 
 
 
-╭─ Move · internal/router/old.txt ─────────────────────────────── [×] ─╮
-│                                                                      │
-├──────────────────────────────────────────────────────────────────────┤
-│ 1 │ move "internal/router/old.txt.new" -> "internal/router/old.txt"  │
-│ 2 │                                                                  │
-│                                                                      │
-╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
 
 
 
 
 
 
+
+  ── Move · internal/router/old.txt ─────────────────────────────────── [×] ──  
+                                                                                
+  1 │ move "internal/router/old.txt.new" -> "internal/router/old.txt"           
+  2 │                                                                           
+                                                                                
+  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc                               

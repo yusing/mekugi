@@ -42,6 +42,10 @@ func (s *Shell) Preferences(main *Main) Preferences {
 	if s.ExternalPanes {
 		state.Focus = s.externalFocus
 	}
+	// The roster sheet is transient; Main stands in for it.
+	if state.Focus == 3 {
+		state.Focus = 0
+	}
 	if navigator, ok := s.Auxiliary.(terminalui.PaneNavigator); ok {
 		state.NavigatorColumns = navigator.NavigatorColumns()
 	}
@@ -55,7 +59,7 @@ func (s *Shell) Preferences(main *Main) Preferences {
 // Source: apps/mekugi/internal/router/app_server_panes.go:66:72@b74f44de.
 func (s *Shell) RestorePreferences(state Preferences, main *Main) {
 	s.Focus, s.Split, s.DiffOpen = state.Focus, state.Split, state.DiffOpen
-	if s.Focus == 2 || s.Focus == 1 && !s.DiffOpen {
+	if s.Focus == 2 || s.Focus == 3 || s.Focus == 1 && !s.DiffOpen {
 		s.Focus = 0
 	}
 	if s.ExternalPanes {

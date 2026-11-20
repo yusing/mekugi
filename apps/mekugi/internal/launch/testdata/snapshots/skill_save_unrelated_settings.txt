@@ -1,5 +1,5 @@
-  Choose model
-› one                                                                   
-  two
+  ── Choose model ────────────────────────────────────────────────────
 
-  ↑/↓ navigate · enter apply · esc cancel
+  ❯ one
+  ↓
+  ↑/↓ choose · enter apply · esc cancel

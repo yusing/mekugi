@@ -149,7 +149,7 @@ func TestNativeDialogCopiesNonFileLink(t *testing.T) {
 	page.Add(terminalui.DialogLine{Text: ansi.SetHyperlink(target, "") + "Contact support" + ansi.ResetHyperlink()})
 	dialog.SetDocument(page, dialog.Prepare(terminal.Width, terminal.Height))
 	rows := make([]string, terminal.Height)
-	dialog.Dialog.Paint(rows, terminal.Width, terminal.Height, &terminalui.Painter{Theme: diffrender.DarkTheme})
+	dialog.Dialog.Paint(rows, terminalsession.Rect{W: terminal.Width, H: terminal.Height}, &terminalui.Painter{Theme: diffrender.DarkTheme})
 	x, y := dialogFramePoint(t, renderedDialogRows(rows, terminal.Width), "Contact support")
 	for _, suffix := range []string{"M", "m"} {
 		c.dispatch(terminalsession.Input{
@@ -253,7 +253,7 @@ func TestNativeProcessDetailsBorrowExecutionCommands(t *testing.T) {
 	c := nativeTestPromptClient(u)
 	c.accept(sessionapi.NativeEvent{Attachment: "first", Frame: frame})
 	d := c.renderer.terminal.Dialog
-	d.Paint(make([]string, 16), 80, 16)
+	d.Paint(make([]string, 16), terminalsession.Rect{W: 80, H: 16})
 	d.Key("\x1b[B")
 	stop := d.Key("x")
 	if stop.Process == nil || stop.Process.Item != "second" || stop.Process.ID != "42" {

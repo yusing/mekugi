@@ -133,11 +133,15 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if strings.Contains(frame, "VISIBLE_EDIT") || terminalTest(u).Layout.Live.H != 0 || len(terminalTest(u).Live.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
 			}
+			// The open roster sheet sits on the stat lines with a blank row above.
+			terminalTest(u).Focus = 3
+			frame = paint()
 			lines := strings.Split(frame, "\n")
 			r := terminalTest(u).Layout.Roster
-			if r.H == 0 || !strings.HasPrefix(lines[r.Y-1], "╰") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
-				t.Fatalf("roster must follow the composer with padding only below:\n%s", frame)
+			if r.H == 0 || strings.TrimSpace(lines[r.Y-1]) != "" || r.Y+r.H != 40-2 {
+				t.Fatalf("roster sheet must sit on the stat lines below a blank row:\n%s", frame)
 			}
+			terminalTest(u).Focus = 0
 			u.testActivity(u.shell.Agents).setDisplayFilter(false, u.shell.Agents.Selected)
 			appServerTestKeys(t, u, "/live\r")
 			u.testActivity(u.shell.Agents).setDisplayFilter(caller != "/root", u.shell.Agents.Selected)
@@ -161,7 +165,7 @@ func TestNativeUIComposerGap(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Text = "draft"
 	rows, _ := u.testMainFrame(80, 24, 0)
-	border := u.shell.Main.ComposerRect.Y - 1
+	border := u.shell.Main.ComposerRect.Y - 2 // The status row, above the rule.
 	if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {
 		t.Fatalf("composer not separated: %q", rows)
 	}

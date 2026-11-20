@@ -1,3 +1,2 @@
-─ 3 Agents · 2 ─────────────────────────────────
- ● main  idle                                   
- ● └ child  idle                               
+
+ ● child  idle                                 

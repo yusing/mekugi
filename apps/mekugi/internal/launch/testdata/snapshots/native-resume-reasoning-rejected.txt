@@ -10,7 +10,7 @@ Mekugi dev • codex
 
 
 
-
-╭─ Ready · ✗ Could not restore default reasoning: host rejected update · choose /effort V… [x] ────╮
-│ ❯ held input                                                                                     │
-╰──────────────────────────────────────────────────────────────────────── saved-model (high) • 0% ─╯
+Ready · ✗ Could not restore default reasoning: host rejected update · choose /effort VALUE or … [x]
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ held input 
+────────────────────────────────────────────────────────────────────────────────────────────────────

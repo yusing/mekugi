@@ -3,16 +3,16 @@
 
 
 
-╭─ Ran · git push origin main · Approved ──────────────────────── [×] ─╮
-│ exit 1                                                               │
-├──────────────────────────────────────────────────────────────────────┤
-│ Approval: Approved                                                   │
-│                                                                      │
-│                                                                      │
-╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
 
 
 
 
 
 
+
+  ── Ran · git push origin main · Approved · exit 1 ─────────────────── [×] ──  
+                                                                                
+  Approval: Approved                                                            
+                                                                                
+                                                                                
+  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc                               

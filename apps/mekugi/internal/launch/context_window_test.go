@@ -43,16 +43,16 @@ func TestAppServerContextWindow(t *testing.T) {
 				t.Fatalf("composer overflow at %d: %q", width, line)
 			}
 		}
-		if width >= 32 && !strings.Contains(ansi.Strip(strings.Join(frame, "\n")), "100K/400K • 25%") {
+		caption, _ := u.testStatLines(t, width, 12)
+		if width >= 32 && !strings.Contains(caption, "25%") || width >= 160 && !strings.Contains(caption, " 25% 100K/400K") {
 			t.Fatalf("missing main context at %d: %v", width, frame)
 		}
 	}
-	frame, _ := u.testMainFrame(80, 12, 0)
-	if bottom := ansi.Strip(frame[len(frame)-1]); !strings.HasSuffix(bottom, " actual-model (high) • 100K/400K • 25% ─╯") {
-		t.Fatalf("context must follow model in composer: %q", bottom)
+	if bottom, _ := u.testStatLines(t, 160, 12); !strings.HasPrefix(bottom, "  actual-model (high) | ") || !strings.Contains(bottom, " 25% 100K/400K") {
+		t.Fatalf("composer caption must show the model, then context use: %q", bottom)
 	}
 	for _, width := range []int{40, 80, 160} {
-		lines := u.testActivity(u.shell.Agents).NativeRoster(width, 6, time.Now(), true)
+		lines := u.testActivity(u.shell.Agents).RosterSheet(width, 6, time.Now())
 		for _, line := range lines {
 			if ansi.StringWidth(line) > width {
 				t.Fatalf("roster overflow at %d: %q", width, line)
@@ -98,8 +98,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	u.Startup.Thread = "main"
 	appServerTestRequest(t, u, "1", "thread/resume")
 	appServerTestMessage(t, u, `{"id":1,"result":{"model":"model","thread":{"id":"main","contextTokens":100000,"contextWindow":400000}}}`)
-	frame, _ := u.testMainFrame(80, 8, 0)
-	if bottom := ansi.Strip(frame[len(frame)-1]); !strings.Contains(bottom, "model • 100K/400K • 25%") {
+	if bottom, _ := u.testStatLines(t, 80, 12); !strings.HasPrefix(bottom, "  model | ") || !strings.Contains(bottom, " 25% 100K/400K") {
 		t.Fatal(bottom)
 	}
 	write("child", 20000)
@@ -113,7 +112,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "20K/400K • 5%" {
 		t.Fatal(got)
 	}
-	roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(160, 6, time.Now(), true), "\n"))
+	roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RosterSheet(160, 6, time.Now()), "\n"))
 	if !strings.Contains(roster, "20K/400K • 5%") {
 		t.Fatalf("saved child context did not reach roster: %s", roster)
 	}
@@ -134,5 +133,29 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	restoreContextUsage(&other, binding.ThreadInfo{ID: "child", Path: path})
 	if other.ContextKnown {
 		t.Fatal("malformed history became usage")
+	}
+}
+
+func TestAppServerRateLimitsReachCaption(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	caption := func() string {
+		line, _ := u.testStatLines(t, 160, 12)
+		return line
+	}
+	if strings.Contains(caption(), "5h:") {
+		t.Fatal("usage shown before Codex reported it")
+	}
+	window := func(used float64, minutes int) map[string]any {
+		return map[string]any{"usedPercent": used, "windowDurationMins": minutes}
+	}
+	appServerTestNotify(t, u, "account/rateLimits/updated", map[string]any{"rateLimits": map[string]any{"limitId": "codex", "primary": window(12, 300), "secondary": window(21, 10080)}})
+	if got := caption(); !strings.Contains(got, "5h: 12% Weekly: 21%") {
+		t.Fatalf("usage windows missing: %q", got)
+	}
+	// Sparse updates keep absent windows; other limits leave the default alone.
+	appServerTestNotify(t, u, "account/rateLimits/updated", map[string]any{"rateLimits": map[string]any{"primary": window(40, 300)}})
+	appServerTestNotify(t, u, "account/rateLimits/updated", map[string]any{"rateLimits": map[string]any{"limitId": "other", "primary": window(90, 300)}})
+	if got := caption(); !strings.Contains(got, "5h: 40% Weekly: 21%") {
+		t.Fatalf("sparse or foreign update misapplied: %q", got)
 	}
 }

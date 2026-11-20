@@ -3,16 +3,16 @@
 
 
 
-╭─ Hook Blocked · preToolUse · Applying shell guard · builtin ·…  [×] ─╮
-│ mcpTool · 1 line                                                     │
-├──────────────────────────────────────────────────────────────────────┤
-│ 1 ┆ feedback: mekugi: VCS guard instrumentation failed: VCS guard: c │
-│   ┆ annot parse command: 1:10: reached EOF without closing quote `'` │
-│                                                                      │
-╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
 
 
 
 
 
 
+
+  ── Hook Blocked · preToolUse · Applying shell g… · mcpTool · 1 line ─ [×] ──  
+                                                                                
+  1 ┆ feedback: mekugi: VCS guard instrumentation failed: VCS guard: cannot pa  
+    ┆ rse command: 1:10: reached EOF without closing quote `'`                  
+                                                                                
+  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc                               

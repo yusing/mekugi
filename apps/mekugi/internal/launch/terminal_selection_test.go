@@ -90,7 +90,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 					if dialog {
 						rows = make([]string, u.Height)
 						u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-						u.Dialog.Paint(rows, u.Width, u.Height)
+						u.Dialog.Paint(rows, terminalsession.Rect{W: u.Width, H: u.Height})
 					} else {
 						u.paintSelection(rows)
 					}

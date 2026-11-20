@@ -23,9 +23,9 @@ func Side(view conversationmodel.SideView, painter *terminalui.Painter, status s
 	if view.Alert {
 		color = terminalui.Red
 	}
-	label := " /btw · " + status
-	rows := []string{ansi.Truncate(color+"╭─"+label+terminalui.Reset, width, "…")}
-	inner := max(1, width-2)
+	// A docked panel: the heading, answer rows from column 2, then dim keys.
+	rows := []string{"  " + terminalui.PanelHeading(color, "/btw", status, "", max(1, width-4))}
+	inner := max(1, width-4)
 	var answer []string
 	var scope uint64
 	exchange := func(question, notice, failure string, items []conversationmodel.Answer) {
@@ -58,19 +58,19 @@ func Side(view conversationmodel.SideView, painter *terminalui.Painter, status s
 	frame.Scroll = min(frame.Scroll, max(0, len(answer)-frame.AnswerRows))
 	end := len(answer) - frame.Scroll
 	for _, row := range answer[max(0, end-frame.AnswerRows):end] {
-		rows = append(rows, ansi.Truncate(color+"│ "+terminalui.Reset+row, width, ""))
+		rows = append(rows, ansi.Truncate("  "+row, width, ""))
 	}
-	hint := "╰─ /btw follow-up · Esc close"
+	hint := "/btw follow-up · Esc close"
 	if view.Status == conversationmodel.SideCompactionRequired {
-		hint = "╰─ Esc close · /compact Main, then retry /btw"
+		hint = "Esc close · /compact Main, then retry /btw"
 	}
 	if len(answer) > frame.AnswerRows {
 		hint += " · PgUp/PgDn scroll"
 	}
 	if view.Truncated {
-		hint = "╰─ Display truncated · Esc close"
+		hint = "Display truncated · Esc close"
 	}
-	rows = append(rows, ansi.Truncate(terminalui.Dim+hint+terminalui.Reset, width, "…"))
+	rows = append(rows, ansi.Truncate("  "+terminalui.Dim+hint+terminalui.Reset, width, "…"))
 	frame.Rows = rows[:min(len(rows), height)]
 	return frame
 }

@@ -1,5 +1,4 @@
-─ 3 Agents · 4 ─────────────────────
- ✓ main  done                       
- ● ├ fast  idle                    
- ● ├ zero  idle                    
- ● └ absent  idle                  
+
+ ● fast  idle                      
+ ● zero  idle                      
+ ● absent  idle                    

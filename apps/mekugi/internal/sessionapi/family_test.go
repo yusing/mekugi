@@ -233,9 +233,9 @@ func TestFamilyLogicalLifecycleReachesRosterConsumers(t *testing.T) {
 				t.Errorf("lost runtime identity or usage: %+v", rows[index])
 			}
 			view.UpdateRoster(family.Agents)
-			painted := ansi.Strip(strings.Join(view.NativeRoster(160, 10, time.Unix(100, 0), true), "\n"))
+			painted := ansi.Strip(strings.Join(view.RosterSheet(160, 10, time.Unix(100, 0)), "\n"))
 			for line := range strings.SplitSeq(painted, "\n") {
-				if strings.Contains(line, "└ child  "+tc.text) {
+				if strings.Contains(line, " child  "+tc.text) {
 					return
 				}
 			}

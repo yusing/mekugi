@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -151,7 +153,7 @@ func TestUISnapshotNativeEditDialogSurroundingContext(t *testing.T) {
 			u, _ := openRegressionEditDialog(t, editDialogRegressionCase{kind: "update", before: before, after: after}, true)
 			rows := make([]string, 36)
 			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-			u.Dialog.Paint(rows, 100, len(rows))
+			u.Dialog.Paint(rows, terminalsession.Rect{W: 100, H: len(rows)})
 			uisnapshot.Assert(t, "testdata/snapshots/native-edit-dialog-context-"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 		})
 	}

@@ -1,1 +1,1 @@
-Read   source.go L1–3 · 20ms
+Read   source.go L1–3                                                       20ms

@@ -183,7 +183,7 @@ func TestNativeServerAcceptance(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	await("Mekugi", "main  idle")
+	await("Mekugi", "❯", "Main • ")
 	send("native first input\r")
 	await("offline host response 1")
 	transport := sessionapi.ControlTransport(socket)

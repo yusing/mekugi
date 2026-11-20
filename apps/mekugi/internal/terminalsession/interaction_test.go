@@ -214,7 +214,7 @@ func TestMalformedMouseCannotChangePane(t *testing.T) {
 		t.Run(string(final), func(t *testing.T) {
 			var state Interaction
 			shell := &Shell{RosterLabel: "Agents"}
-			shell.Tabs[3] = Rect{X: 0, Y: 0, W: 10, H: 1}
+			shell.Targets = []StatTarget{{Rect{X: 0, Y: 0, W: 10, H: 1}, StatRoster}}
 			in := FrameInput{Shell: shell, Now: time.Unix(1, 0)}
 			for _, b := range append([]byte("\x1b[<0;1;1"), final) {
 				for range in.Dispatch(&state, state.Decoder.Feed(b, in.Now)) {

@@ -132,7 +132,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	if err != nil || !os.SameFile(before, after) {
 		t.Fatal("unchanged state rewritten")
 	}
-	terminalTest(u).Focus = 3
+	terminalTest(u).DiffOpen, terminalTest(u).Focus = true, 1
 	if err := savePaneLayout(p, terminalTest(u).Shell.Preferences(u.shell.Main), now.Add(time.Second), true); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	if err := testPanePreferences().openTerminal(&terminalTest(restored).Shell, restored.shell.Main, "/workspace", "thread", true); err != nil {
 		t.Fatal(err)
 	}
-	if terminalTest(restored).Focus != 3 || terminalTest(restored).Split != 63 {
+	if terminalTest(restored).Focus != 1 || terminalTest(restored).Split != 63 {
 		t.Fatal("exit did not flush final state")
 	}
 }

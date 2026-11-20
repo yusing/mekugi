@@ -80,7 +80,7 @@ func TestUISnapshotNativeStatusBreathing(t *testing.T) {
 		rows = append(rows, state)
 		for _, phase := range []time.Duration{0, time.Second} {
 			now = time.Unix(0, 0).Add(phase)
-			rows = append(rows, u.testActivity(u.shell.Agents).NativeRoster(120, 6, now, true)...)
+			rows = append(rows, u.testActivity(u.shell.Agents).RosterSheet(120, 6, now)...)
 			rows = append(rows, "plain after roster")
 		}
 	}

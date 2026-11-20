@@ -34,7 +34,7 @@
   -        main    Saved conversation 28
   -        main    Saved conversation 29
   -        main    Saved conversation 30
-  -        main    Saved conversation 31
   ↓ more
   enter resume · esc start new · tab cwd/all · ctrl+c quit · ↑/↓ browse
- 1 Main  2 Diff  3 Agents   ^B 1-3 views · ^E expand events
+  0%
+  Main • /work • ^E view

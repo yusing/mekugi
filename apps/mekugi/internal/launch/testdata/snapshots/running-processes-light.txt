@@ -1,6 +1,6 @@
-"  \x1b[38;2;0;112;120m────────────────────────────────────────\x1b[m  "
-"  \x1b[1mBackground\x1b[m  2 active shells · 1 / 2       "
+"  \x1b[38;2;0;112;120m── \x1b[39;1mBackground\x1b[22;2m · 2 active shells · 1 / 2\x1b[m   "
 "                                            "
+"  \x1b[2m  agent · command                status\x1b[m   "
 "  \x1b[38;2;0;112;120m❯ \x1b[mmain · \x1b[38;2;102;57;186mgo\x1b[m \x1b[38;2;135;80;0mtest\x1b[m ./...          running   "
 "    worker · \x1b[38;2;135;80;0mcd\x1b[m ~/projects/exam…  running   "
 "                                            "

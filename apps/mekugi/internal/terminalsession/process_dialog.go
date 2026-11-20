@@ -74,7 +74,7 @@ func (d *ContentDialog) paintProcesses(rows []string, rect Rect, limit int) {
 	d.rect, d.theme = rect, d.View.Painter.Theme
 	width := rect.W - 4
 	d.rows, d.bodyOffset, d.bodyInset = rect.H-d.Chrome(), 0, 0
-	lines := []string{d.theme.Accent() + strings.Repeat("─", width) + terminalui.Reset}
+	lines := []string{processHeading(d.theme.Accent(), "Background", "", width)}
 	if !d.ProcessDetail {
 		padding := d.rows > 1
 		if padding {
@@ -82,10 +82,10 @@ func (d *ContentDialog) paintProcesses(rows []string, rect Rect, limit int) {
 		}
 		d.Layout(width)
 		d.layoutBody()
-		lines = append(lines,
-			boldProcessLabel(d.Document.Title)+"  "+d.Document.Detail,
-			"",
-		)
+		lines[0] = processHeading(d.theme.Accent(), d.Document.Title, d.Document.Detail, width)
+		columns := "  agent · command"
+		columns += strings.Repeat(" ", max(1, width-1-ansi.StringWidth(columns)-len("status"))) + "status"
+		lines = append(lines, "", terminalui.Dim+columns+terminalui.Undim)
 		lines = append(lines, d.body...)
 		if padding {
 			lines = append(lines, "")
@@ -110,6 +110,17 @@ func (d *ContentDialog) paintProcesses(rows []string, rect Rect, limit int) {
 			rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m  %s\x1b[0m", rect.X+1, ansi.Truncate(line, width, ""))
 		}
 	}
+}
+
+// processHeading matches the sheet heading: an accent rule carrying the
+// title and its dim detail.
+func processHeading(accent, title, detail string, width int) string {
+	label := boldProcessLabel(title)
+	if detail != "" {
+		label += terminalui.Dim + " · " + detail + terminalui.Undim
+	}
+	label = ansi.Truncate(label, max(1, width-4), "…")
+	return accent + "── " + terminalui.Reset + label + " " + accent + strings.Repeat("─", max(0, width-4-ansi.StringWidth(label))) + terminalui.Reset
 }
 
 func boldProcessLabel(text string) string { return "\x1b[1m" + text + "\x1b[22m" }

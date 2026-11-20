@@ -16,7 +16,7 @@ func paintDialogTest(t *testing.T, d *Dialog, page terminalui.DialogPage, width,
 	t.Helper()
 	d.SetDocument(page, d.Prepare(width, height))
 	rows := make([]string, height)
-	d.Paint(rows, width, height, new(terminalui.Painter))
+	d.Paint(rows, Rect{W: width, H: height}, new(terminalui.Painter))
 	screen := vt.NewEmulator(width, height)
 	defer screen.Close()
 	for y, row := range rows {
@@ -123,27 +123,30 @@ func TestDialogFollowPauseAndResumeOnDocumentUpdate(t *testing.T) {
 	}
 }
 
-func TestDialogPaintGeometryWideAndNarrow(t *testing.T) {
+func TestDialogPaintDocksFittedSheet(t *testing.T) {
 	for _, width := range []int{50, 100} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			var d Dialog
 			d.SetPages([]DialogTab{{ID: "document"}})
 			const height = 20
 			frame := paintDialogTest(t, &d, dialogTestDocument(false, 1), width, height)
-			if !strings.Contains(frame, "line 00") {
-				t.Fatal("document was absent from the rendered frame")
+			// A one-line document keeps the minimum three body rows.
+			if want := (Rect{0, height - d.Chrome() - 3, width, d.Chrome() + 3}); d.rect != want {
+				t.Fatalf("sheet rect %+v, want %+v docked at the bottom", d.rect, want)
 			}
-			if width < 60 {
-				if d.rect != (Rect{0, 0, width, height}) {
-					t.Fatalf("narrow dialog did not fill the terminal: %+v", d.rect)
-				}
-			} else if d.rect.W != 90 || d.rect.X != 5 || d.rect.Y <= 0 || d.rect.H >= height {
-				t.Fatalf("wide dialog did not center a compact surface: %+v", d.rect)
+			rows := strings.Split(frame, "\n")
+			if !strings.HasPrefix(rows[d.rect.Y], "  ── ") || !strings.HasSuffix(strings.TrimRight(rows[d.rect.Y], " "), "[×] ──") {
+				t.Fatalf("heading row %q is not a panel rule", rows[d.rect.Y])
 			}
-			if got := strings.Index(strings.Split(frame, "\n")[d.rect.Y], "╭"); got != d.rect.X {
-				t.Fatalf("rendered border starts at %d, want %d", got, d.rect.X)
+			if !strings.HasPrefix(rows[d.bodyRect().Y], "  ") || !strings.Contains(rows[d.bodyRect().Y], "line 00") {
+				t.Fatalf("body row %q is not inset at the body rect", rows[d.bodyRect().Y])
 			}
 		})
+	}
+	var d Dialog
+	d.SetPages([]DialogTab{{ID: "document"}})
+	if paintDialogTest(t, &d, dialogTestDocument(false, 40), 80, 20); d.rect != (Rect{0, 0, 80, 20}) {
+		t.Fatalf("long document did not take the whole area: %+v", d.rect)
 	}
 }
 
@@ -154,8 +157,8 @@ func TestDialogFiveTabsSub16CellPathBudget(t *testing.T) {
 		tabs = append(tabs, DialogTab{ID: fmt.Sprint(i), Name: "Read", Path: fmt.Sprintf("/workspace/long/directory/source%d.go", i)})
 	}
 	d.SetPages(tabs)
-	frame := paintDialogTest(t, &d, dialogTestDocument(false, 1), 138, 20)
-	row := ansi.Cut(strings.Split(frame, "\n")[d.rect.Y+2], d.rect.X+2, d.rect.X+122)
+	frame := paintDialogTest(t, &d, dialogTestDocument(false, 1), 124, 20)
+	row := ansi.Cut(strings.Split(frame, "\n")[d.rect.Y+1], d.rect.X+2, d.rect.X+122)
 	if len(d.tabs) != 5 {
 		t.Fatalf("120-column tabs: got %d visible pages, want 5", len(d.tabs))
 	}
@@ -181,7 +184,7 @@ func TestDialogPaintLongLineAllocationBound(t *testing.T) {
 		rows := make([]string, 24)
 		paint := func() {
 			clear(rows)
-			d.Paint(rows, 100, 24, new(terminalui.Painter))
+			d.Paint(rows, Rect{W: 100, H: 24}, new(terminalui.Painter))
 		}
 		allocations = append(allocations, testing.AllocsPerRun(3, paint))
 		d.Key("G")
@@ -207,7 +210,7 @@ func TestDialogSelectionResolvesOffscreenFileLinks(t *testing.T) {
 	d.FileLinks = map[string]bool{"sample.go": true}
 	d.SetDocument(page, d.Prepare(100, 24))
 	rows := make([]string, 24)
-	d.Paint(rows, 100, 24, &painter)
+	d.Paint(rows, Rect{W: 100, H: 24}, &painter)
 	x, y := d.rect.X+2, d.rect.Y+d.Chrome()-1
 	d.Mouse(0, x, y, false)
 	d.Mouse(32, x+2, y, false)
@@ -219,7 +222,7 @@ func TestDialogSelectionResolvesOffscreenFileLinks(t *testing.T) {
 	if d.Selection == nil || d.Selection.Top() == 0 {
 		t.Fatal("selection did not scroll beyond its original viewport")
 	}
-	d.Paint(rows, 100, 24, &painter)
+	d.Paint(rows, Rect{W: 100, H: 24}, &painter)
 	for _, row := range d.body {
 		if strings.Contains(row, "mekugi-file-candidate:") {
 			t.Fatal("offscreen selection emitted a private file-link destination")

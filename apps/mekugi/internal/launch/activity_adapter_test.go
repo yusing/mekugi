@@ -27,9 +27,9 @@ func (v *activityAdapter) RenderFeed(width, rows int) activityui.Feed {
 	return renderActivityFeed(v.ActivitySource, v.View, width, rows)
 }
 
-func (v *activityAdapter) NativeRoster(width, limit int, now time.Time, focused bool) []string {
+func (v *activityAdapter) RosterSheet(width, limit int, now time.Time) []string {
 	v.publishActivity()
-	return v.View.NativeRoster(width, limit, now, focused)
+	return v.View.RosterSheet(width, limit, now)
 }
 
 func (v *activityAdapter) takeDisplayIntent() *sessionpresentation.DisplayIntent {

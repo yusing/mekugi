@@ -1,0 +1,14 @@
+
+
+
+
+
+
+  ── Agents · ◐ 5 · ✓ 3 ──────────────────────────────────────────────────────────────────────────
+   ✓ done-parent  done                                                                         0%
+   ◐ └ worker  working                                                                         0%
+   ◐ work-b  working                                                                           0%
+     +5 more
+  ↑↓ agent · a child · esc close
+  snapshot-model (high) | 0%
+  Main • ◐ 5 • ✓ 3

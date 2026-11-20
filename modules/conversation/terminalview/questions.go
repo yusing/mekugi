@@ -18,7 +18,10 @@ type QuestionLayout struct {
 	top, textTop int
 }
 
-func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *QuestionLayout, selection string, superseding bool, width, height int) []string {
+// Questions docks the open question as a panel: an accent heading with its
+// position, the question, numbered options with a pointer on the selected
+// one, and dim keys. Hidden questions collapse to one reminder row.
+func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *QuestionLayout, superseding bool, width, height int) []string {
 	if d.Count == 0 || height < 1 {
 		return nil
 	}
@@ -28,7 +31,8 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 		if superseding {
 			label = dim + fmt.Sprintf("enter starts a new turn · dismisses %d questions", d.Count) + reset
 		}
-		return []string{ansi.Truncate(label, width, "…")}
+		padding := min(2, max(0, (width-20)/2))
+		return []string{strings.Repeat(" ", padding) + ansi.Truncate(label, width-padding, "…")}
 	}
 	view := d.Call
 	question := view.Questions[d.Index]
@@ -42,16 +46,12 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 	if d.Total > 0 {
 		position, total = d.Position, d.Total
 	}
-	head := fmt.Sprintf("? %d of %d", position+1, total)
-	if question.Header != question.Text && ansi.StringWidth(head)+ansi.StringWidth(question.Header)+len(state)+6 <= inner {
-		head += " · " + promptText(question.Header)
+	title := fmt.Sprintf("Question %d of %d", position+1, total)
+	detail := ""
+	if question.Header != question.Text {
+		detail = promptText(question.Header)
 	}
-	gap := inner - ansi.StringWidth(head) - len(state)
-	header := accent + "\x1b[1m" + head + reset
-	if gap >= 2 {
-		header += strings.Repeat(" ", gap) + accent + state + reset
-	}
-	rows := []string{ansi.Truncate(header, inner, "")}
+	rows := []string{terminalui.PanelHeading(accent, title, detail, dim+state+reset, inner)}
 	if height >= 10 {
 		rows = append(rows, "")
 	}
@@ -70,13 +70,7 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", arrows})
 	}
 	keys = append(keys, [2]string{"ctrl+]", "skip"}, [2]string{"esc", "hide"})
-	hints := func(pairs [][2]string) []string {
-		var parts []string
-		for _, pair := range pairs {
-			parts = append(parts, accent+pair[0]+reset+dim+" "+pair[1]+reset)
-		}
-		return promptWrap(strings.Join(parts, dim+" · "+reset), inner)
-	}
+	hints := func(pairs [][2]string) []string { return panelKeys(pairs, inner) }
 	foot := hints(keys)
 	if len(foot) > max(2, height/3) {
 		compact := [][2]string{{"↑↓", "pick"}}
@@ -86,15 +80,17 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 		foot = hints(append(compact, [2]string{"^]", "skip"}, [2]string{"esc", "hide"}))
 	}
 	if d.Confirm {
-		gaps := d.Gaps
-		foot = promptWrap(accent+fmt.Sprintf("Submit with %d unanswered?", gaps)+reset+" · "+accent+"enter"+reset+dim+" submit · "+reset+accent+"esc"+reset+dim+" back"+reset, inner)
+		foot = promptWrap(accent+fmt.Sprintf("Submit with %d unanswered?", d.Gaps)+reset+dim+" · enter submit · esc back"+reset, inner)
 	}
-	text := promptWrap(textsanitize.Safe(question.Text, false), inner)
+	text := promptWrap(textsanitize.Safe(question.Text, false), max(1, inner-2))
+	for i, line := range text {
+		text[i] = "  " + line
+	}
 	textRoom := max(1, height-len(rows)-len(foot)-5)
 	layout.textTop = min(layout.textTop, max(0, len(text)-textRoom))
 	rows = append(rows, text[layout.textTop:min(len(text), layout.textTop+textRoom)]...)
 	if len(text) > textRoom {
-		rows = append(rows, dim+ansi.Truncate("pgup/pgdn question text", inner, "")+reset)
+		rows = append(rows, "  "+dim+ansi.Truncate("pgup/pgdn question text", inner-2, "")+reset)
 	}
 	if height >= 10 {
 		rows = append(rows, "")
@@ -111,22 +107,14 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 	}
 	for i := layout.top; i < min(len(options), layout.top+count); i++ {
 		o := options[i]
-		prefix := "  "
-		if i == question.Selected {
-			prefix = "› "
-		}
-		line := fmt.Sprintf("%s%d. %s", prefix, i+1, promptText(o.Label))
+		line := choicePointer(accent, i == question.Selected) + fmt.Sprintf("%d. %s", i+1, promptText(o.Label))
 		if inner-columns-7 >= 24 {
 			line += strings.Repeat(" ", max(0, columns-ansi.StringWidth(promptText(o.Label)))+2) + dim + promptText(o.Description) + reset
 		}
-		line = ansi.Truncate(line, inner, "…")
-		if i == question.Selected {
-			line = selection + ansi.Strip(line) + strings.Repeat(" ", max(0, inner-ansi.StringWidth(line))) + reset
-		}
-		rows = append(rows, line)
+		rows = append(rows, ansi.Truncate(line, inner, "…"))
 	}
 	if count < len(options) {
-		rows = append(rows, dim+ansi.Truncate(fmt.Sprintf("option %d/%d", question.Selected+1, len(options)), inner, "")+reset)
+		rows = append(rows, "  "+dim+ansi.Truncate(fmt.Sprintf("option %d/%d", question.Selected+1, len(options)), inner-2, "")+reset)
 	}
 	if len(rows)+len(foot) < height {
 		rows = append(rows, "")

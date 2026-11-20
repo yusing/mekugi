@@ -38,7 +38,8 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 			if err := u.testPaint(screen, 80, 20); err != nil {
 				t.Fatal(err)
 			}
-			if frame := screen.String(); !strings.Contains(frame, "Content dialog") || strings.Contains(frame, title) || strings.Contains(frame, choice) {
+			// The transcript may summarize the prompt; its docked choices stay hidden.
+			if frame := screen.String(); !strings.Contains(frame, "Content dialog") || strings.Contains(frame, "1. "+choice) {
 				t.Fatalf("dialog did not obscure the prompt:\n%s", frame)
 			}
 			// A close and answer can be drained before the next frame tick.

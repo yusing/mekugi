@@ -1,7 +1,7 @@
-  Choose tier
-  default
-› priority  Current                                                                                 
-  flex
+  ── Choose tier ─────────────────────────────────────────────────────────────────────────────────
 
+    default
+  ❯ priority  Current
+    flex
 
-  ↑/↓ navigate · enter apply · esc cancel
+  ↑/↓ choose · enter apply · esc cancel

@@ -172,7 +172,8 @@ func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 func TestErrorDetailsSearchAcrossVisualWraps(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	query := strings.Repeat("q", 80) + " forced cleanup"
-	full := strings.Repeat("prefix ", 160) + query + strings.Repeat(" tail", 80) + "\n" + query
+	// The tail keeps the next match beyond the first match's viewport.
+	full := strings.Repeat("prefix ", 160) + query + strings.Repeat(" tail", 240) + "\n" + query
 	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Text: full}}})
 	if !terminalTest(u).openEntry(u.shell.Transcript, 1) {
 		t.Fatal("could not open error")

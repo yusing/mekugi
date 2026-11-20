@@ -45,7 +45,7 @@ func TestQuestionKeyViewAndDraftIsolation(t *testing.T) {
 	if call.Questions[0].Choices[0].Label != "Yes" || len(view.Call.Questions[1].Answer) != 0 {
 		t.Fatal("dock view aliases choices or exposes secrets")
 	}
-	rows := terminalview.Questions(view, &terminalui.Painter{}, &layout, "", false, 50, 12)
+	rows := terminalview.Questions(view, &terminalui.Painter{}, &layout, false, 50, 12)
 	if strings.Contains(strings.Join(rows, "\n"), "secret bytes") || len(rows) > 12 {
 		t.Fatal("rendered secret or exceeded dock bounds")
 	}

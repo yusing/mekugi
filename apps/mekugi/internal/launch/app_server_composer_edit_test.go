@@ -54,7 +54,7 @@ func TestAppServerComposerVerticalEditing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, tt.draft)
-			u.testMainFrame(16, 10, 0) // Eleven display cells remain after borders and prompt.
+			u.testMainFrame(14, 10, 0) // Eleven display cells remain after the prompt and right padding.
 			appServerTestKeys(t, u, tt.keys)
 			if u.Text != tt.want {
 				t.Fatalf("draft = %q, want %q", u.Text, tt.want)
@@ -180,8 +180,8 @@ func TestAppServerComposerMovedCaretVisible(t *testing.T) {
 			cell := screen.CellAt(x, y)
 			if cell != nil && cell.Style.Attrs&uv.AttrReverse != 0 {
 				carets++
-				if x != 5 || y != 6 {
-					t.Fatalf("caret at (%d,%d), want (5,6)", x, y)
+				if x != 3 || y != 6 {
+					t.Fatalf("caret at (%d,%d), want (3,6)", x, y)
 				}
 			}
 		}

@@ -104,7 +104,7 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 	terminal.await("Ready")
 	terminal.send("Read guide.txt and SKILL.md using exec. SKILL.md contains the active native skill named reload-check. Treat the file and skill as reusable instructions for future turns. This task is then complete; there is no pending implementation work. Reply exactly INITIAL_DONE.\r")
 	terminal.await("INITIAL_DONE")
-	terminal.await("╭─ Completed")
+	terminal.awaitStatus("Completed")
 	terminal.send("/compact\r")
 	terminal.await("Context reset")
 	write(source, "Reusable project guidance. Current file token: FILE_AFTER_7391.\n")

@@ -14,7 +14,7 @@ import (
 func TestDialogFitsOnlyPathFromLeft(t *testing.T) {
 	path := StyledPath("/home/dev/projects/very-long-directory/distinctive.go")
 	page := DialogPage{Title: "Read · " + path + " · 2s", TitlePath: path}
-	rows := new(Painter).Dialog(DialogFrame{Page: page}, 40, 8)
+	rows := new(Painter).Dialog(DialogFrame{Page: page}, 48, 8)
 	if line := ansi.Strip(rows[0]); !strings.Contains(line, "Read · …") || !strings.Contains(line, "distinctive.go · 2s") || strings.Contains(line, "/home/") {
 		t.Fatalf("path title did not retain suffix and nonpath facts: %q", line)
 	}
@@ -23,7 +23,7 @@ func TestDialogFitsOnlyPathFromLeft(t *testing.T) {
 	}
 	page.TitlePath = ""
 	page.Title = "An ordinary long title whose ending should be hidden"
-	rows = new(Painter).Dialog(DialogFrame{Page: page}, 40, 8)
+	rows = new(Painter).Dialog(DialogFrame{Page: page}, 48, 8)
 	if line := ansi.Strip(rows[0]); !strings.Contains(line, "An ordinary long title") || strings.Contains(line, "hidden") {
 		t.Fatalf("nonpath title truncation changed: %q", line)
 	}
@@ -127,14 +127,7 @@ func TestDialogFrameDimensions(t *testing.T) {
 			}
 		}
 	}
-	if p.Dialog(DialogFrame{}, 11, 10) != nil || p.Dialog(DialogFrame{}, 80, 4) != nil {
+	if p.Dialog(DialogFrame{}, 11, 10) != nil || p.Dialog(DialogFrame{}, 80, DialogChrome) != nil {
 		t.Fatal("undersized frame rendered")
-	}
-}
-
-func TestBackdropFadesColorsAndKeepsCursorMoves(t *testing.T) {
-	row := "\x1b[1G\x1b[0m\x1b[38;2;1;2;3mSearch\x1b[0m\x1b[12G\x1b[48;2;22;42;29m+ added\x1b[0m"
-	if got, want := Backdrop(row), Dim+"\x1b[1GSearch\x1b[12G+ added"; got != want {
-		t.Fatalf("Backdrop = %q, want %q", got, want)
 	}
 }

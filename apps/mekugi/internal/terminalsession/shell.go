@@ -2,14 +2,18 @@ package terminalsession
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-// Shell owns outer layout and status targets around prepared feature content.
+// Shell owns outer layout and stat-line targets around prepared feature content.
 type Shell struct {
 	Panes
 	Auxiliary      terminalui.Pane
@@ -17,11 +21,26 @@ type Shell struct {
 	RosterLabel    string
 	Theme          diffrender.Theme
 	Layout         Layout
-	Tabs           [4]Rect
-	SideTab        Rect
+	Targets        []StatTarget
+	StatHover      byte // Action of the stat-line target under the pointer.
 	ExternalPanes  bool
 	externalFocus  int
 }
+
+// StatTarget is a clickable stat-line segment.
+type StatTarget struct {
+	Rect
+	Action byte
+}
+
+// Stat-line actions.
+const (
+	StatRoster byte = 'r'
+	StatDiff   byte = 'd'
+	StatMain   byte = 'm'
+	StatSkills byte = 's'
+	StatSide   byte = 'b'
+)
 
 // SetExternalPanes leases presentation only, preserving saved preferences.
 func (s *Shell) SetExternalPanes(active bool) bool {
@@ -32,10 +51,11 @@ func (s *Shell) SetExternalPanes(active bool) bool {
 		s.externalFocus = s.Focus
 		s.Focus = 0
 		s.StopDrag()
-		s.Tabs = [4]Rect{}
-		s.SideTab = Rect{}
-	} else {
-		s.Focus = s.externalFocus
+		s.Targets = nil
+	} else if s.Focus = s.externalFocus; s.Focus == 3 {
+		// The roster sheet is transient and opens only over an empty
+		// composer, so restoring panes returns to Main.
+		s.Focus = 0
 	}
 	s.ExternalPanes = active
 	return true
@@ -43,45 +63,56 @@ func (s *Shell) SetExternalPanes(active bool) bool {
 
 type ShellPlan struct {
 	Layout
-	Left, Right           Rect
-	Width, Height, Roster int
-	DiffFramed            bool
+	Left, Right          Rect
+	Width, Height, Stats int
+	DiffFramed           bool
 }
 
 type ShellContent struct {
-	Main, Diff, Roster     []string
+	Main, Diff, Stats      []string
 	DiffSummary, DiffState string
 	Dock                   Rect
-	Status                 ShellStatus
 }
 
+// ShellStatus carries the second stat line's facts: the displayed thread,
+// subagent counts, title and the navigation available to an empty composer.
 type ShellStatus struct {
-	SideLabel                         string
-	SideSelected                      bool
-	Child, Locked, DiffUnseen, Prefix bool
-	Responding, LiveCount             int
-	Expansion                         uint8
-	Playback                          bool
-	PlaybackBar                       string
+	Agent, Title, Scroll, Skills, SideLabel string
+	Workspace                               string
+	Summary                                 activityui.RosterSummary
+	SideSelected, Locked, DiffUnseen        bool
+	Prefix, Empty                           bool
+	LiveCount                               int
+	Playback                                bool
+	PlaybackBar                             string
 }
 
-func (s *Shell) Plan(width, height, roster int) ShellPlan {
+// statRows keeps both stat lines unless Main would fall below eight rows;
+// external panes keep only the session caption.
+func (s *Shell) statRows(height int) int {
+	switch {
+	case s.ExternalPanes && height >= 3:
+		return 1
+	case s.ExternalPanes:
+		return 0
+	case height >= 10:
+		return 2
+	case height >= 3:
+		return 1
+	}
+	return 0
+}
+
+func (s *Shell) Plan(width, height int) ShellPlan {
 	s.Clamp()
 	width, height = max(1, width), max(1, height)
-	if s.RosterLabel == "" || s.ExternalPanes {
-		roster = 0
-	}
 	panes := s.Panes
 	if s.ExternalPanes {
 		panes.Focus, panes.DiffOpen = 0, false
 	}
-	geometryHeight := height
-	if s.ExternalPanes {
-		// Geometry normally reserves a status row, which external panes hide.
-		geometryHeight++
-	}
-	layout, left, right, diffFramed, kept := panes.Geometry(width, geometryHeight, roster)
-	return ShellPlan{layout, left, right, width, height, kept, diffFramed}
+	stats := s.statRows(height)
+	layout, left, right, diffFramed := panes.Geometry(width, height, stats)
+	return ShellPlan{layout, left, right, width, height, stats, diffFramed}
 }
 
 // Compose performs no feature lookup or effects; the caller supplies prepared rows.
@@ -112,9 +143,9 @@ func (s *Shell) Compose(plan ShellPlan, in ShellContent) []string {
 			draw(right, body)
 		}
 	}
-	draw(layout.Roster, in.Roster[:min(len(in.Roster), plan.Roster)])
-	if !s.ExternalPanes {
-		rows[plan.Height-1] += "\x1b[1G\x1b[0m" + ansi.Truncate(s.Status(in.Status, plan.Width, plan.Height), plan.Width, "")
+	stats := in.Stats[max(0, len(in.Stats)-plan.Stats):]
+	for i, line := range stats {
+		rows[plan.Height-len(stats)+i] += "\x1b[1G\x1b[0m" + line
 	}
 	s.Layout = layout
 	return rows
@@ -129,115 +160,199 @@ func (s *Shell) PromptVisible(prompt Rect, dialog bool, selection Rect) bool {
 		(selection.W <= 0 || selection.H <= 0 || prompt.X+prompt.W <= selection.X || selection.X+selection.W <= prompt.X || prompt.Y+prompt.H <= selection.Y || selection.Y+selection.H <= prompt.Y)
 }
 
-// Status shows selectors and only the focused pane's keys.
-// Source: apps/mekugi/internal/router/native_shell.go:417:482@921795f4 nativeStatus
-func (s *Shell) Status(in ShellStatus, width, height int) string {
+// statSegment is one stat-line part. Segments with a higher drop rank leave
+// first when the line is too narrow; rank zero is kept.
+type statSegment struct {
+	text   string
+	action byte
+	drop   int
+	path   string // A workspace shortened before any segment drops.
+}
+
+// StatLine paints the second stat line at row y:
+// agent • counts • title • workspace • ↓ roster • ← main | → diff • ^E view.
+// Navigation hints show only while their keys act, with an empty composer.
+// A clickable segment underlines while the pointer is over it.
+// Narrow lines abbreviate the workspace to a sixth of the line and shorten
+// the title, then drop pane keys, ^E view, live batches, net lines, skills,
+// the workspace, the side thread, finished counts, the scroll position, Diff
+// and roster hints, and finally the remaining counts.
+func (s *Shell) StatLine(in ShellStatus, width, y int) string {
 	s.Clamp()
-	s.Tabs = [4]Rect{}
-	s.SideTab = Rect{}
-	if s.ExternalPanes {
-		return ""
-	}
+	s.Targets = s.Targets[:0]
 	if in.Playback {
 		return in.PlaybackBar
 	}
-	var tabs strings.Builder
-	tab := func(digit int, name, badge string, shown bool) {
-		text := fmt.Sprintf(" %d %s", digit, name)
-		selected := (s.Focus == digit-1 && digit != 3 || digit == 3 && s.Focus == 3) && (digit != 1 || !in.Child)
-		if digit == 0 {
-			text = " " + name
-			selected = s.Focus == 0 && in.SideSelected
+	const sep = terminalui.Dim + " • " + terminalui.Undim
+	hint := func(key, label string) string { return key + terminalui.Dim + " " + label + terminalui.Undim }
+	agent := statSegment{text: "\x1b[1m" + s.Theme.Accent() + in.Agent + terminalui.Reset}
+	var segments []statSegment
+	add := func(text string, action byte, drop int) {
+		if text != "" {
+			segments = append(segments, statSegment{text: text, action: action, drop: drop})
 		}
-		switch {
-		case selected:
-			text = "\x1b[7;1m" + text + badge + " \x1b[27;22m"
-		case shown:
-			text += badge + " "
-		default:
-			text = terminalui.Dim + text + terminalui.Undim + badge + " "
+	}
+	if in.SideLabel != "" && !in.SideSelected {
+		add(terminalui.Dim+in.SideLabel+terminalui.Undim, StatSide, 7)
+	}
+	for _, count := range in.Summary.Counts {
+		drop := 2
+		if strings.Contains(count, "✓") {
+			drop = 6
 		}
-		left := ansi.StringWidth(tabs.String())
-		pane := digit - 1
-		if digit == 3 {
-			pane = 3
-		}
-		rect := Rect{left, height - 1, max(0, min(ansi.StringWidth(text), width-left)), 1}
-		if digit == 0 {
-			s.SideTab = rect
-		} else {
-			s.Tabs[pane] = rect
-		}
-		tabs.WriteString(text)
+		add(count, 0, drop)
 	}
-	diffBadge := ""
-	if in.DiffUnseen {
-		diffBadge = terminalui.Amber + " ●" + "\x1b[39m"
+	title := len(segments)
+	if cwd := strings.ReplaceAll(textsanitize.Safe(in.Workspace, false), "\n", " "); cwd != "" {
+		segments = append(segments, statSegment{text: statWorkspace(cwd), drop: 8, path: cwd})
 	}
-	agentsBadge := ""
-	if in.Responding > 0 {
-		agentsBadge = terminalui.Amber + superscript(in.Responding) + "\x1b[39m"
-	}
-	tab(1, "Main", "", !in.Child)
-	if in.SideLabel != "" {
-		tab(0, in.SideLabel, "", in.SideSelected)
-	}
-	if s.Auxiliary != nil && !s.ExternalPanes {
-		tab(2, s.AuxiliaryLabel, diffBadge, s.DiffOpen)
-	}
-	if s.RosterLabel != "" && !s.ExternalPanes {
-		tab(3, s.RosterLabel, agentsBadge, true)
+	add(in.Scroll, 0, 5)
+	if in.Skills != "" {
+		add(terminalui.Dim+in.Skills+terminalui.Undim, StatSkills, 9)
 	}
 	if in.Locked {
-		tabs.WriteString("  " + terminalui.Amber + "Locked · /unlock" + terminalui.Reset)
+		add(terminalui.Amber+"Locked · /unlock"+terminalui.Reset, 0, 0)
 	}
-	filter := "child"
-	if in.Child {
-		filter = "Main"
-	}
-	selector := "1"
-	switch {
-	case !s.ExternalPanes && s.Auxiliary != nil && s.RosterLabel != "":
-		selector = "1-3"
-	case !s.ExternalPanes && s.Auxiliary != nil:
-		selector = "1-2"
-	case !s.ExternalPanes && s.RosterLabel != "":
-		selector = "1,3"
-	}
-	var hints terminalui.Hints
-	switch {
-	case in.Prefix:
-		hints = terminalui.Hints{{"ctrl+b " + selector, "select", 0}}
-		if s.Auxiliary != nil && !s.ExternalPanes {
+	if in.Prefix {
+		selector := "1"
+		switch {
+		case s.Auxiliary != nil && s.RosterLabel != "":
+			selector = "1-3"
+		case s.Auxiliary != nil:
+			selector = "1-2"
+		case s.RosterLabel != "":
+			selector = "1,3"
+		}
+		hints := terminalui.Hints{{"ctrl+b " + selector, "select", 0}}
+		if s.Auxiliary != nil {
 			hints = append(hints, terminalui.Hint{"2", "toggle " + strings.ToLower(s.AuxiliaryLabel), 0})
 		}
-		if !s.ExternalPanes {
-			hints = append(hints, terminalui.Hints{{"e", "next live", 0}, {"←→", "resize", 0}}...)
+		hints = append(hints, terminalui.Hints{{"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}...)
+		add(hints.Render(), 0, 1)
+	} else {
+		// The roster sheet shows its own keys.
+		if in.Empty && in.Summary.Children && s.RosterLabel != "" && s.Focus == 0 {
+			add(hint("↓", "roster"), StatRoster, 3)
 		}
-		hints = append(hints, terminalui.Hint{"PgUp/PgDn", "history", 0})
-		return tabs.String() + "  " + hints.Render()
-	case s.Focus == 1:
-		hints = s.Auxiliary.Hints()
-	case s.Focus == 3:
-		hints = terminalui.Hints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
+		if in.Empty && s.Auxiliary != nil && s.Focus != 3 {
+			badge := ""
+			if in.DiffUnseen {
+				badge = " " + terminalui.Amber + "●" + "\x1b[39m"
+			}
+			if s.Focus == 1 {
+				add(hint("←", "main")+badge, StatMain, 4)
+			} else {
+				add(hint("→", strings.ToLower(s.AuxiliaryLabel))+badge, StatDiff, 4)
+			}
+		}
+		add(in.Summary.Net, 0, 10)
+		if in.LiveCount > 1 {
+			add(hint("^B e", "next live"), 0, 11)
+		}
+		switch s.Focus {
+		case 0:
+			add(hint("^E", "view"), 0, 12)
+		case 1:
+			add(s.Auxiliary.Hints().Render(), 0, 13)
+		}
 	}
-	if in.LiveCount > 1 {
-		hints = append(hints, terminalui.Hint{"^B e", "next live", 0})
+	// Aligned with the caption above.
+	const indent = "  "
+	room := max(1, width-1-len(indent))
+	measure := func() int {
+		used := ansi.StringWidth(agent.text)
+		for _, segment := range segments {
+			used += 3 + ansi.StringWidth(segment.text)
+		}
+		return used
 	}
-	hints = append(hints, terminalui.Hint{"^B " + selector, "views", 0})
-	if s.Focus == 0 {
-		hints = append(hints, terminalui.Hint{"^E", [3]string{"expand events", "expand all", "default"}[in.Expansion], 0})
+	// The title takes what the other segments leave, down to eight cells.
+	const titleFloor = 8
+	titleText := ""
+	if in.Title != "" {
+		titleText = in.Title
 	}
-	return tabs.String() + "  " + hints.Render()
+	for {
+		used := measure()
+		if titleText != "" {
+			used += 3 + min(titleFloor, ansi.StringWidth(titleText))
+		}
+		if used <= room {
+			break
+		}
+		if shortenWorkspace(segments, max(width/6, 8), used-room) {
+			continue
+		}
+		worst := -1
+		for i, segment := range segments {
+			if segment.drop > 0 && (worst < 0 || segment.drop > segments[worst].drop) {
+				worst = i
+			}
+		}
+		if worst < 0 {
+			if titleText != "" {
+				titleText = ""
+				continue
+			}
+			break
+		}
+		if worst < title {
+			title--
+		}
+		segments = slices.Delete(segments, worst, worst+1)
+	}
+	// Later drops can leave room for more of an abbreviated workspace.
+	if titleText == "" {
+		for i, segment := range segments {
+			if segment.path != "" {
+				segments[i].text = statWorkspace(pathterminal.Truncate(segment.path, ansi.StringWidth(segment.text)+room-measure()))
+			}
+		}
+	}
+	if titleText != "" {
+		// The title takes room from the workspace before it truncates.
+		if over := ansi.StringWidth(titleText) - (room - measure() - 3); over > 0 {
+			shortenWorkspace(segments, max(width/6, 8), over)
+		}
+		fit := max(1, room-measure()-3)
+		if ansi.StringWidth(titleText) > fit {
+			titleText = strings.TrimRight(ansi.Truncate(titleText, fit-1, ""), " ") + "…"
+		}
+		segments = slices.Insert(segments, title, statSegment{text: titleText})
+	}
+	var line strings.Builder
+	line.WriteString(agent.text)
+	for _, segment := range segments {
+		line.WriteString(sep)
+		x := ansi.StringWidth(line.String())
+		if segment.action != 0 && segment.action == s.StatHover {
+			line.WriteString("\x1b[4m" + segment.text + "\x1b[24m")
+		} else {
+			line.WriteString(segment.text)
+		}
+		if segment.action != 0 && x < room {
+			s.Targets = append(s.Targets, StatTarget{Rect{len(indent) + x, y, min(ansi.StringWidth(segment.text), room-x), 1}, segment.action})
+		}
+	}
+	return indent + ansi.Truncate(line.String(), room, "…") + terminalui.Reset
 }
+func statWorkspace(path string) string { return captionWorkspace + path + terminalui.Reset }
 
-func superscript(n int) string {
-	digits := []rune("⁰¹²³⁴⁵⁶⁷⁸⁹")
-	var b strings.Builder
-	for _, r := range fmt.Sprint(n) {
-		b.WriteRune(digits[r-'0'])
+// shortenWorkspace abbreviates the workspace segment by over cells, down to
+// floor, and reports whether it shortened.
+func shortenWorkspace(segments []statSegment, floor, over int) bool {
+	for i, segment := range segments {
+		if segment.path == "" {
+			continue
+		}
+		width := ansi.StringWidth(segment.text)
+		if width <= floor {
+			return false
+		}
+		segments[i].text = statWorkspace(pathterminal.Truncate(segment.path, max(floor, width-over)))
+		return true
 	}
-	return b.String()
+	return false
 }
 
 // Clamp discards focus and geometry for an absent contribution.

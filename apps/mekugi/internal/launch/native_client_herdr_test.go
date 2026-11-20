@@ -74,7 +74,7 @@ func TestUISnapshotNativeHerdrLease(t *testing.T) {
 	renderer := nativeClientRenderer{terminal: terminal, views: views}
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	renderer.update(frame, conversation.DraftView{Draft: composer.Draft{Text: "Keep this draft."}}, conversation.PromptDraftView{}, now)
-	terminal.Focus, terminal.DiffOpen, terminal.Split = 3, true, 62
+	terminal.Focus, terminal.DiffOpen, terminal.Split = 1, true, 62
 	before := terminal.Shell.Preferences(terminal.Main)
 	terminal.SetExternalPanes(true)
 	// Neither keyboard selector can reopen a duplicate while the native lease owns it.
@@ -101,8 +101,8 @@ func TestUISnapshotNativeHerdrLease(t *testing.T) {
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/native-herdr-"+phase+".txt", append(painted.Rows, "plain after native bridge"), 120)
 		})
 	}
-	if terminal.Layout.Diff.W == 0 || terminal.Layout.Roster.H == 0 || terminal.Layout.Live.H == 0 || terminal.Focus != 3 {
-		t.Fatalf("expiry did not restore panes: %+v", terminal.Layout)
+	if terminal.Layout.Diff.W == 0 || terminal.Layout.Live.H == 0 || terminal.Focus != 1 {
+		t.Fatalf("expiry did not restore panes: focus=%d %+v", terminal.Focus, terminal.Layout)
 	}
 }
 
@@ -125,7 +125,8 @@ func TestUISnapshotNativeHerdrCompanionSizes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if terminal.Layout.Main != (terminalsession.Rect{W: test.width, H: test.height}) {
+			// Main takes everything above the caption line.
+			if terminal.Layout.Main != (terminalsession.Rect{W: test.width, H: test.height - 1}) {
 				t.Fatalf("companion did not reclaim terminal area: %+v", terminal.Layout.Main)
 			}
 			screen := vt.NewEmulator(test.width, test.height)
@@ -373,7 +374,7 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 		}
 	}
 	await(func(s string) bool {
-		return strings.Contains(s, "2 Diff") && strings.Contains(s, "new live") && rosterHeadingNames(s, "Main")
+		return strings.Contains(s, "2 Diff") && strings.Contains(s, "new live") && statLineNames(s, "Main")
 	})
 	if _, err = master.WriteString("parent draft"); err != nil {
 		t.Fatal(err)
@@ -447,7 +448,7 @@ func TestNativeHerdrSharedHelperPTYDraftsAndRelease(t *testing.T) {
 		t.Fatal("release failed")
 	}
 	await(func(s string) bool {
-		return strings.Contains(s, "2 Diff") && rosterHeadingNames(s, "Main") && strings.Contains(s, "parent draft") && strings.Contains(s, "new live")
+		return strings.Contains(s, "2 Diff") && statLineNames(s, "Main") && strings.Contains(s, "parent draft") && strings.Contains(s, "new live")
 	})
 	if ready := os.Getenv("MEKUGI_TEST_HERDR_FIXTURE_READY"); ready != "" {
 		data, _ := json.Marshal(struct {

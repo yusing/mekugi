@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
@@ -620,5 +618,5 @@ func TestUISnapshotQuestionArrowHints(t *testing.T) {
 }
 
 func testQuestionRows(u *appServerUI, width, height int) []string {
-	return conversationui.Questions(u.questions.View(u.Thread), &u.shell.Transcript.Painter.Painter, u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)), terminalsession.SelectionStyle(&u.shell.Transcript.Painter.Painter), u.Turn == "" && u.Text != "", width, height)
+	return conversationui.Questions(u.questions.View(u.Thread), &u.shell.Transcript.Painter.Painter, u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)), u.Turn == "" && u.Text != "", width, height)
 }

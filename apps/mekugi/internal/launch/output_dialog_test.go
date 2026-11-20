@@ -53,7 +53,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 		}
 		rows := make([]string, 24)
 		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-		u.Dialog.Paint(rows, 100, len(rows))
+		u.Dialog.Paint(rows, terminalsession.Rect{W: 100, H: len(rows)})
 		var source []string
 		for _, line := range u.Dialog.Document.Lines {
 			if line.Gutter == "│" {
@@ -67,7 +67,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 		u.Dialog.ShowPage(len(u.Dialog.Pages) - 1)
 		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 		rows = make([]string, 24)
-		u.Dialog.Paint(rows, 100, len(rows))
+		u.Dialog.Paint(rows, terminalsession.Rect{W: 100, H: len(rows)})
 		if u.Dialog.Document.Text != "build failed" || !u.Dialog.Pages[u.Dialog.Page].BatchExit {
 			t.Fatalf("combined output lost host ownership: %q", u.Dialog.Document.Text)
 		}
@@ -160,7 +160,7 @@ func (u *terminalUI) layoutOutput(width int) {
 func drawOutputDialog(u *terminalUI) string {
 	rows := make([]string, 18)
 	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-	u.Dialog.Paint(rows, 80, len(rows))
+	u.Dialog.Paint(rows, terminalsession.Rect{W: 80, H: len(rows)})
 	return ansi.Strip(strings.Join(rows, "\n"))
 }
 
@@ -207,6 +207,9 @@ func TestOutputDialogWheelAndOutsideClickIsolation(t *testing.T) {
 	if u.main.shell.Transcript.Offset != feedOffset {
 		t.Fatal("wheel moved feed behind dialog")
 	}
+	// In a taller area the fitted sheet docks below free rows.
+	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
+	u.Dialog.Paint(make([]string, 40), terminalsession.Rect{W: 80, H: 40})
 	u.outputMouse(0, 0, 0, false)
 	if u.Dialog != nil {
 		t.Fatal("outside click did not close output dialog")
@@ -401,7 +404,7 @@ func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 				rows[i] = "background"
 			}
 			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-			u.Dialog.Paint(rows, width, height)
+			u.Dialog.Paint(rows, terminalsession.Rect{W: width, H: height})
 			// paintOutput overlays with cursor addressing, so snapshot its final VT rows.
 			screen := vt.NewEmulator(width, height)
 			defer screen.Close()
@@ -669,7 +672,7 @@ func TestSharedDialogCloseButton(t *testing.T) {
 		u.main.detailFiles.replaceTerminalDetails(&u.main.attached.session, u.Attachment, []activitypresentation.DetailPage{page})
 		rows := make([]string, 20)
 		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-		u.Dialog.Paint(rows, width, len(rows))
+		u.Dialog.Paint(rows, terminalsession.Rect{W: width, H: len(rows)})
 		frame := ansi.Strip(strings.Join(rows, "\n"))
 		if !strings.Contains(frame, terminalui.DialogClose) {
 			t.Fatalf("width %d: no close button: %s", width, frame)

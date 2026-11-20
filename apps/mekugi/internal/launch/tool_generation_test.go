@@ -26,7 +26,8 @@ func TestUISnapshotToolGenerationComposer(t *testing.T) {
 		if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, want) {
 			t.Fatalf("composer missing %q: %s", want, text)
 		}
-		return ansi.Strip(strings.Join(u.shell.Agents.NativeRoster(120, 8, time.Now(), false), "\n"))
+		// Main's activity state, which the roster sheet no longer lists.
+		return ansi.Strip(u.shell.Agents.AgentState(u.testActivity(u.shell.Agents).testAgent(*u.attached.session.Agent("/root")), 120, time.Now()))
 	}
 	if rows := refresh("Spawning subagent"); !strings.Contains(rows, "Spawning subagent") {
 		t.Fatalf("generation not delivered by normal observation refresh: %q", rows)
@@ -38,7 +39,8 @@ func TestUISnapshotToolGenerationComposer(t *testing.T) {
 	rows, _ := u.testMainFrame(100, 8, 0)
 	assertNativeUISnapshot(t, "composer-tool-generation", rows)
 	// Refine another nested operation through the same producer, detached
-	// presentation and both terminal consumers, without adding a tool row.
+	// presentation, the composer status and Main's activity state, without
+	// adding a tool row.
 	u.controlObservations.IdentifyToolInput(&generation, sessioncontrol.GenerationItem{ID: "item"}, "", false, `null}); await tools.collaboration__inspect_agent({target:"review`)
 	if rows := refresh("Inspecting agent"); !strings.Contains(rows, "Inspecting agent") || strings.Contains(rows, "worker") {
 		t.Fatalf("next tool inherited the old name: %q", rows)

@@ -90,7 +90,7 @@ func (d *ContentDialog) Update(view sessionpresentation.DetailView) {
 	if d.File != nil {
 		d.Navigation = "view"
 	}
-	d.HideTabs = d.Processes
+	d.HideTabs, d.listHeader = d.Processes, d.Processes
 	d.SetPages(tabs)
 	if d.Output != nil && (len(d.Pages) == 0 || d.Output.Page != d.Pages[d.Page].ID || d.Output.Version != d.Pages[d.Page].OutputVersion) {
 		d.Output = nil
@@ -181,19 +181,33 @@ func (d *ContentDialog) ImageSource() terminalui.ImageSource {
 	return terminalui.ImageSource{Path: d.File.ImagePath, Dialog: d.ID.Selection}
 }
 
-func (d *ContentDialog) Paint(rows []string, width, height int) {
+// Paint docks content as a sheet in area, or the process view in its panel.
+func (d *ContentDialog) Paint(rows []string, area Rect) {
 	if d.Processes {
-		d.paintProcesses(rows, Rect{W: width, H: height}, height)
+		d.paintProcesses(rows, area, area.H)
 		return
 	}
-	bodyWidth := d.Prepare(width, height)
+	bodyWidth := d.Prepare(area.W, area.H)
 	if bodyWidth == 0 {
 		return
 	}
 	if d.Selection == nil {
 		d.Layout(bodyWidth)
 	}
-	d.Dialog.Paint(rows, width, height, &d.View.Painter.Painter)
+	d.Dialog.Paint(rows, area, &d.View.Painter.Painter)
+}
+
+// SheetHeight lays out the current page for a panel width cells wide and
+// returns the rows its sheet needs, at most limit.
+func (d *ContentDialog) SheetHeight(width, limit int) int {
+	bodyWidth := d.Prepare(width, limit)
+	if bodyWidth == 0 {
+		return limit
+	}
+	if d.Selection == nil {
+		d.Layout(bodyWidth)
+	}
+	return min(limit, d.fit())
 }
 
 // Images places the acquired pixels only inside the current dialog body.

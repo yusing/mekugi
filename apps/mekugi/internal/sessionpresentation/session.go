@@ -238,6 +238,7 @@ func cloneView(v View) View {
 		v.Side = &side
 	}
 	v.Caption.Items = slices.Clone(v.Caption.Items)
+	v.Caption.Limits = slices.Clone(v.Caption.Limits)
 	if v.BTW != nil {
 		body := *v.BTW
 		body.Answer = slices.Clone(body.Answer)

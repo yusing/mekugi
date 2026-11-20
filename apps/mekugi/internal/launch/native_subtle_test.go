@@ -46,14 +46,11 @@ func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 
 func TestNativeUISubtleForeground(t *testing.T) {
 	p := activityui.Painter{}
-	u := appServerTestFeatures(&appServerUI{shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, nativeSession: nativeSession{activity: new(activitymodel.Service), settings: preferences.Applied{Model: "x"}}})
-	frame, _ := u.testMainFrame(40, 3, 0)
 	v := newActivityAdapter()
 	metrics := activityui.RosterColumns([][activityui.MetricParts]string{activityui.RosterMetricParts(v.View, testActivityAgent(sessionpresentation.ActivityAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}), time.Now())}, 200)[0]
 	for name, row := range map[string]string{
 		"roster context": strings.Replace(metrics, "1K/", "x/", 1),
 		"roster tokens":  strings.Replace(metrics, "↑2K", "↑x", 1),
-		"composer":       strings.Join(frame, ""),
 		"metadata":       p.Label("Edit", "`file` · x"),
 		"path":           terminalui.StyledPath("x/file"),
 		"reasoning":      strings.Join(p.Block(activityui.Block{Kind: "summary", Body: "x"}, 80), ""),

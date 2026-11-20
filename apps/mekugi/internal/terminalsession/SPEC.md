@@ -51,11 +51,12 @@ output demands for application hydration before delivery. Painting has no backen
 or storage capability. Live sessions and playback use the same frame. Shortcut
 visibility and the keyboard-interruption lock stay with terminal state.
 The outer frame consumes the attached terminal views and detached session facts.
-It composes Main, preview, roster, saved pane, dialog and frozen selection, then
-returns output demands or delivery-ready rows with prompt visibility. The
-transcript is unframed; the roster heading names the displayed thread and shows
-its title when available. Loaded skills appear on their agent's roster row.
-The terminal owns status-tab targets and final pane geometry. Prompt visibility
+It composes Main, preview, the Agents sheet, saved pane, dialog, frozen selection
+and the stat lines, then returns output demands or delivery-ready rows with prompt
+visibility. The transcript is unframed; the second stat line names the displayed
+thread and shows its title when available. Loaded skills appear on the second stat
+line for the displayed thread and on their agent's sheet row.
+The terminal owns stat-line targets and final pane geometry. Prompt visibility
 is calculated against that geometry and active overlays; only successful terminal
 delivery makes a visible prompt ready for input. Notice receipts name the painted
 attachment and feedback revision and distinguish the composer from Main transcript
@@ -135,9 +136,40 @@ owns scheduling and semantic playback controls.
 
 ## Composer controls
 
-The composer's bottom border groups the displayed thread's working directory,
-model and usage on the right, with the directory immediately before the model.
-Narrow panes abbreviate the directory; the full workspace remains available in `/status`.
+The composer shows the turn status above its `❯` prompt, with rules above and
+below the draft when Main has at least eight rows.
+
+Two full-width stat lines end the screen, below Main and Diff, indented to the
+draft text. The first separates, without field labels, the displayed thread's
+model, context-window bar with percentage and tokens, estimated cost (on Main,
+with the session total when subagents add to it), `↑ input ↓ output` tokens,
+Main's throughput, and the account's rate-limit window use (labeled `5h` and
+`Weekly`). Narrow lines drop context tokens, throughput, the total cost,
+input/output tokens, rate limits, the context bar and the cost before shortening
+the model. With external panes, which hide the second line, the first also shows
+the working directory before the rate limits and abbreviates it first. The full
+workspace and rate-limit resets remain available in `/status`.
+
+The second reads `<thread> • ◐ N • ✓ N • ! N • title • directory • ↓ roster • → diff • ^E view`:
+the displayed thread (bold accent), working, finished and failed subagent counts
+(zero counts omitted), the session title on Main, the working directory, and then, in order when present,
+the transcript scroll position, the displayed thread's loaded skills, a One-off
+label while One-off is open but not displayed, the interrupt lock, the navigation
+hints, net edited lines, `^B e next live` and `^E view` on Main. `↓ roster` shows
+with subagents on Main; `→ diff` on Main and `← main` in Diff show with an unseen
+badge when Diff has new changes. Navigation hints show only while their arrows act:
+Main's composer is empty and no prompt, menu, panel or dock takes the arrows.
+Read-only views have no composer, so their arrows always act. In Diff the
+pane's own keys follow; after `Ctrl-B` the prefix keys replace the hints. Neither
+line wraps: the directory abbreviates to a sixth of the line and the title
+shrinks to eight cells first, then Diff's keys, `^E view`, live batches, net
+lines, skills, the directory, the One-off label, finished counts, the scroll
+position, the Diff hint, the roster hint and the remaining counts leave in that
+order. A long title takes room from the directory before it truncates. Clicking
+roster, Diff, Main, skills or One-off acts like its key, and each underlines
+under the pointer. Ten rows
+keep both lines; shorter terminals keep the second; external panes keep only the
+first. Playback replaces the second with its control bar.
 
 The terminal adapts these controls to [conversation drafts](../../../../modules/conversation/SPEC.md)
 and [session operations](../sessioncontrol/SPEC.md#interactive-operations):
@@ -148,7 +180,7 @@ and [session operations](../sessioncontrol/SPEC.md#interactive-operations):
 | Alt-Up / Shift-Left | Restore locally waiting input ahead of the draft |
 | Escape | Dismiss selection, picker or help, or resume transcript following first; otherwise interrupt, expediting uncommitted steers when eligible |
 | Ctrl-C | Clear the draft, then interrupt, then quit when idle with no waiting input |
-| Arrows | Move by grapheme/display row; at the first/last row, browse input history |
+| Arrows | Move by grapheme/display row; at the first/last row, browse input history. On an empty composer, Down opens the Agents sheet when subagents exist, Up in a child returns to its parent, Right opens Diff, and Left in Diff returns to Main |
 | Ctrl/Alt-Left/Right, Meta-b/f | Move to the previous word start or next word end |
 | Ctrl-Up/Down | Move to logical line boundaries |
 | Alt-Backspace/Delete, Ctrl-W | Delete the previous/next word; Ctrl-W deletes the previous word |
@@ -198,7 +230,7 @@ actions. Application integration retains acquisition and host effects. A slash
 completion followed by submission settles its edit before deriving the submission
 from the new publication.
 
-Rewind turn and edit choices use the shared dialog frame centered over Main.
+Rewind turn and edit choices use the prompt dock above the composer.
 Arrows select, Enter confirms, and Escape,
 the close button or an outside click cancels without changing the draft.
 
@@ -206,7 +238,7 @@ An initial `/` opens the local command catalog. Typing filters; arrows select;
 Tab completes only the command token, preserving arguments and attachments;
 Enter executes; Escape closes unchanged. Arguments and paste close or bypass
 completion. Local commands never become model prompts; unknown commands report
-feedback. Shell Mode, selected by an initial `!`, has a red frame and Bash syntax
+feedback. Shell Mode, selected by an initial `!`, has a red prompt and Bash syntax
 highlighting and disables attachment completion.
 
 `/predictions on|off` controls next-message suggestions, enabled by default when
@@ -230,7 +262,9 @@ Rendering an unseen dock beneath a content dialog or frozen selection does not
 make it ready. Other pane focus retains Main's pending count. Hidden prompts leave
 normal interrupt behavior intact.
 
-Prompt docks yield to the composer when the terminal has no space for them.
+Prompt docks, including menus and the `/btw` answer, use the
+[content-dialog](#content-dialogs) panel style. They yield to the composer when
+the terminal has no space for them.
 Their requests remain pending until they can be shown and answered.
 
 Questions show their position, full scrollable text, options/descriptions and
@@ -258,9 +292,9 @@ separate from painted readiness and offline prompt tests.
 ## Panes
 
 Connected [native Herdr panels](../herdr/SPEC.md) temporarily replace the terminal's
-roster, saved Diff and live-preview surfaces. Their presentation lease leaves saved
+Agents sheet, saved Diff and live-preview surfaces. Their presentation lease leaves saved
 pane preferences intact and hides the outer pane frame, its cell insets and the
-bottom status bar, returning that space to Main. The actual companion connection,
+second stat line, returning that space to Main. The actual companion connection,
 not a terminal environment name, selects this presentation. Ordinary framed
 terminal geometry returns when the lease ends.
 
@@ -269,29 +303,28 @@ The auxiliary view comes from composition. Without a contribution, its selector,
 geometry and input targets are absent, and restored auxiliary focus returns to
 Main. Live previews retain their own attachment theme and remain independent.
 Pane preferences retain visibility and focus; transient selection and expansion remain local to the active frontend.
-The bottom pane selectors are clickable and perform the same selection as
-`Ctrl-B` followed by the pane digit. Only visible selector cells are active;
-open dialogs and selection actions retain pointer precedence. The unread Diff
-indicator is separated from its label and retains the selected tab highlight.
+Only visible stat-line targets are active; open dialogs and selection actions
+retain pointer precedence.
 
-Standalone geometry reserves the status row and a content-fitted roster before allocating
-Main and Diff. Wide terminals show both columns; narrower terminals show the
-focused content pane. A short terminal retains Main rows before roster or pane
-frames. The unfocused roster grows beyond four rows to retain active agents,
-hiding finished children first while keeping the displayed transcript selectable.
-Terminal height bounds growth and retains an accurate overflow count. The focused
-roster uses up to 40% of the height. Its separator captures pointer gestures
-without storing a preferred roster height. Growth retains both columns when an
-open Diff fits beside Main. Column-divider dragging and prefix Left/Right resizing
+Standalone geometry reserves the stat lines before allocating Main and Diff. Wide
+terminals show both columns; narrower terminals show the focused content pane.
+The Agents sheet lists subagents only, without Main. It docks at the bottom of Main
+like the process sheet, hiding the composer, below a blank row. Its accent
+heading carries the subagent counts and a legend of subagent role colors, leading
+with the displayed agent's role when it truncates. A key footer names Up/Down
+selection, `a` (to the last child, or to Main from a child) and Esc. The sheet
+uses up to half of Main's rows with an accurate overflow count. Up/Down display the adjacent subagent; Up above the first
+subagent closes the sheet on Main; Esc, `q` or a click elsewhere in Main closes it.
+The sheet closes when the last subagent leaves. Column-divider dragging and prefix Left/Right resizing
 share the retained split; saved Diff owns its file-navigator width.
 After Ctrl-B then Left/Right, further Left/Right presses resize without another
 prefix for 500 milliseconds after each resize. Other keys immediately resume
 their normal action. Paste, pointer input, dialogs and terminal focus loss end
 the repeat window; paging and other prefix commands remain single-shot.
 
-Ctrl-B then 1 selects Main, 2 toggles Diff, and 3 focuses Agents. Ctrl-B PgUp/PgDn
+Ctrl-B then 1 selects Main, 2 toggles Diff, and 3 opens the Agents sheet. Ctrl-B PgUp/PgDn
 scrolls the displayed transcript or its active live source; the wheel targets the
-pane under the pointer. Pane titles and status hints expose focus, scroll and
+pane under the pointer. Pane titles and the second stat line expose focus, scroll and
 unread state. Main's title uses the sanitized host name, truncated to available
 width without an unnamed placeholder. Live admitted child selection preserves
 Main's draft and attaches the child's own composer, settings and prompt owners.
@@ -300,8 +333,7 @@ returns to the retained Main view. Selecting an admitted cold child can resume
 its prepared runtime without starting work. Historical and replay-only child
 views stay read-only, with navigation and copying available; their Reference
 action returns to Main before insertion. Live child references target the child's own editor.
-Clicking an agent name preserves pane focus and leaves an open Diff intact;
-the Agents selector or Ctrl-B then 3 explicitly focuses the roster.
+Clicking an agent name preserves pane focus and leaves an open Diff intact.
 Changing the displayed agent selects that caller's saved changes in Diff,
 including an empty result when that agent has no captures. Diff's own caller
 navigation remains available until the displayed agent changes again.
@@ -341,10 +373,13 @@ their own running state after the edit dock retires.
 Links targeting another live runtime select its ordinary session attachment before
 opening the detail. Each attachment retains its own detail selection and source.
 
-A dialog captures input above both panes without changing transcript follow. It
-uses at most 90% of each dimension, or available width below 60 columns, over faint
-uncolored panes. Its theme-aware fill and accent frame preserve syntax, diff and
-selection colors. Close uses the top-right button, Esc/q or outside click.
+A dialog is a sheet docked at the bottom of Main that captures input without
+changing transcript follow. It shares the process inspector's panel style: an
+accent heading rule with title, detail and a close button, optional tabs, an
+unfilled body with a scroll thumb, and dim footer keys. The transcript above it
+stays visible without fading, and syntax, diff and selection colors are preserved.
+The sheet fits its content up to half of Main's height, keeping at least three
+body rows. Close uses the heading's close button, Esc/q or outside click.
 
 Child reply summary links open the exact retained reply’s supporting details,
 without repeating its summary or section headings. Copy keeps the original reply.
@@ -394,7 +429,8 @@ Clicking a non-file link copies its destination in transcripts and dialogs.
 Dragging from a link selects text instead.
 The application resolves and reads files; rendering receives their content or error.
 
-`/ps` and the running-process count open the same inline process inspector in
+The running-process count is dark amber and underlines only under the pointer.
+`/ps` and the count open the same inline process inspector in
 Main, hiding the composer without losing its draft. One running shell opens
 directly in details. With multiple shells, Up/Down selects one and Enter or a
 row click opens its details. Left backs out one level, preserving the selected
@@ -421,12 +457,12 @@ invocation.
 
 Dragging across text in the displayed transcript, the composer, the
 saved Diff, or a shared content dialog selects the visible text and offers
-Reference (r/R), Copy (Ctrl+C, also c/C), and Clear (Escape) in the status bar or
+Reference (r/R), Copy (Ctrl+C, also c/C), and Clear (Escape) on the last screen row or
 dialog footer. Selection actions and the existing pane shortcut bar share bold key
 labels and bullet separators. Only complete, visible action hints accept clicks.
 Text selection uses an opaque, theme-aware background and preserves syntax
 foreground colors.
-Composer selection excludes its prompt and borders;
+Composer selection excludes its prompt, status and caption;
 Diff selection covers only the source column, excluding the file navigator, gutters,
 and line numbers, and keeps each row's `+`, `-`, or space marker. Dialog selections
 copy visible text without gutters, line numbers or frame padding. Other Markdown selections use
@@ -512,7 +548,8 @@ Successful resume restores the Main/right-column split, Diff visibility, keyboar
 focus, interrupt-key lock, prediction preference and diff navigator width from
 [session preferences](../../../../modules/sessionpreferences/SPEC.md). Geometry is clamped
 by the current terminal layout. Roster height remains automatically fitted. Scroll
-positions, filters, selections, drafts and transient live docks are not persisted.
+positions, filters, selections, drafts, transient live docks and Agents sheet focus
+are not persisted; resume opens with the sheet closed.
 The terminal adapter owns these fields; the preference module owns identity,
 publication, debounce, flush and failure behavior.
 The terminal snapshots and restores the complete layout, including absent-pane

@@ -1,6 +1,6 @@
-╭─ Ready ──────────────────────────╮
-│ ❯ second                         │
-│   third                          │
-│   fourth                         │
-│   fifth                          │
-╰── …rkspace • snapshot-mod… • 0% ─╯
+Ready
+❯ first
+  second
+  third
+  fourth
+  fifth 

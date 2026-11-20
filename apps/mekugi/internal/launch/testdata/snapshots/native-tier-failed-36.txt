@@ -1,7 +1,7 @@
-  Choose tier
-  Model choices unavailable · Esc to
+  ── Choose tier ─────────────────
+
+    Model choices unavailable · Es
 
 
 
-
-  ↑/↓ navigate · enter apply · esc c
+  ↑/↓ choose · enter apply · esc …

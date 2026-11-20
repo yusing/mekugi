@@ -64,10 +64,10 @@ func BenchmarkNativeRosterRetainedSource(b *testing.B) {
 	v := NewView()
 	agent, now := rosterCostAgent(), time.Unix(110, 0)
 	v.Update(&presentation.Publication{Roster: []presentation.AgentRow{{Agent: agent}}}, Display{Caller: "/root"})
-	v.NativeRoster(120, 4, now, false)
+	v.RosterSheet(120, 4, now)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		v.NativeRoster(120, 4, now, false)
+		v.RosterSheet(120, 4, now)
 	}
 }

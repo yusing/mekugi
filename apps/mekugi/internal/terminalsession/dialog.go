@@ -67,6 +67,7 @@ type Dialog struct {
 	theme       diffrender.Theme
 	pendingLine int
 	link        string
+	listHeader  bool // A column header row sits above the body.
 }
 
 type DialogAction uint8
@@ -88,10 +89,14 @@ type DialogIntent struct {
 
 func (d *Dialog) tabbed() bool { return !d.HideTabs && len(d.pages) > 1 }
 func (d *Dialog) Chrome() int {
+	chrome := terminalui.DialogChrome
 	if d.tabbed() {
-		return terminalui.DialogChrome + 1
+		chrome++
 	}
-	return terminalui.DialogChrome
+	if d.listHeader {
+		chrome++
+	}
+	return chrome
 }
 
 // SetPages keeps active content selected by identity through membership changes.
@@ -130,16 +135,10 @@ func (d *Dialog) ShowPage(page int) {
 	d.top, d.match, d.follow, d.Typing, d.missed, d.draft, d.query = state.top, state.match, state.follow, state.typing, state.missed, state.draft, state.query
 }
 
-func dialogSize(width, height int) (int, int) {
-	if width >= 60 {
-		return int(float64(width) * .9), int(float64(height) * .9)
-	}
-	return width, height
-}
-
-// Prepare returns the content width and dismisses selections invalidated by resize.
+// Prepare returns the content width of a sheet docked in a width by height
+// area and dismisses selections invalidated by resize.
 func (d *Dialog) Prepare(width, height int) int {
-	w, h := dialogSize(width, height)
+	w, h := width, height
 	if w < 12 || h < d.Chrome()+1 {
 		d.rect = Rect{}
 		d.Selection = nil
@@ -183,7 +182,7 @@ func (d *Dialog) tabRow(width int) string {
 		if page.Path != "" {
 			label += " " + terminalui.StyledPath(pathterminal.Truncate(page.Path, cell-ansi.StringWidth(label)-2))
 		} else if page.Code != "" {
-			label += " " + strings.SplitN(page.Code, "\n", 2)[0]
+			label += " " + strings.Join(strings.Fields(strings.SplitN(page.Code, "\n", 2)[0]), " ")
 		}
 		label += " "
 		if page.Exact {
@@ -192,7 +191,7 @@ func (d *Dialog) tabRow(width int) string {
 		label = ansi.Truncate(label, cell, "…")
 		label += strings.Repeat(" ", max(0, cell-ansi.StringWidth(label)))
 		if i == d.Page {
-			label = d.theme.Accent() + "\x1b[7m" + label + terminalui.Reset
+			label = "\x1b[1m" + d.theme.Accent() + label + terminalui.Reset
 		} else {
 			label = terminalui.Dim + label + terminalui.Undim
 		}
@@ -210,6 +209,10 @@ func (d *Dialog) total() int {
 }
 
 func (d *Dialog) bottom() int { return max(0, d.total()-d.rows) }
+
+// fit is the height that shows the laid-out document without scrolling, and
+// at least three body rows.
+func (d *Dialog) fit() int { return d.Chrome() + max(3, d.total()) }
 
 func (d *Dialog) scroll(rows int) {
 	d.top = max(0, min(d.top+rows, d.bottom()))
@@ -421,7 +424,7 @@ func (d *Dialog) Mouse(button, x, y int, release bool) DialogIntent {
 	case 65:
 		d.scroll(3)
 	case 0:
-		if d.tabbed() && y == d.rect.Y+2 {
+		if d.tabbed() && y == d.rect.Y+1 {
 			for _, tab := range d.tabs {
 				if x-d.rect.X-2 >= tab.from && x-d.rect.X-2 < tab.to {
 					d.ShowPage(tab.page)
@@ -429,7 +432,7 @@ func (d *Dialog) Mouse(button, x, y int, release bool) DialogIntent {
 				}
 			}
 		}
-		if !d.rect.Contains(x, y) || y == d.rect.Y && x >= d.rect.X+d.rect.W-terminalui.DialogCloseWidth-3 && x < d.rect.X+d.rect.W-3 {
+		if !d.rect.Contains(x, y) || y == d.rect.Y && x >= d.rect.X+d.rect.W-terminalui.DialogCloseOffset && x < d.rect.X+d.rect.W-terminalui.DialogCloseOffset+terminalui.DialogCloseWidth {
 			return DialogIntent{Action: DialogClose}
 		}
 	}
@@ -460,11 +463,11 @@ func (d *Dialog) selectionMouse(button, x, y int, release bool) (DialogIntent, b
 		}
 		footer := Rect{d.rect.X, d.rect.Y + d.rect.H - 1, d.rect.W, 1}
 		if !s.Dragging() && button == 0 && !release && footer.Contains(x, y) {
-			capacity := d.rect.W - 6
+			capacity := d.rect.W - 4
 			if ansi.StringWidth(SelectionHints.Render()) > capacity {
 				capacity--
 			}
-			return d.selectionAction(SelectionIntent(SelectionHints.ActionAt(x-d.rect.X-3, capacity))), true
+			return d.selectionAction(SelectionIntent(SelectionHints.ActionAt(x-d.rect.X-2, capacity))), true
 		}
 		pressed := button &^ 28
 		if !release && (pressed == 0 || pressed == 64 || pressed == 65) {
@@ -545,18 +548,17 @@ func (d *Dialog) resolveFileLinks(rows []string) {
 	}
 }
 
-// Paint overlays the prepared document and its frozen selection on supplied rows.
-func (d *Dialog) Paint(rows []string, width, height int, painter *terminalui.Painter) {
-	w, h := dialogSize(width, height)
+// Paint docks the prepared document and its frozen selection as a sheet at
+// the bottom of area, fitted to its content.
+func (d *Dialog) Paint(rows []string, area Rect, painter *terminalui.Painter) {
+	w, h := area.W, area.H
 	if w < 12 || h < d.Chrome()+1 {
 		d.rect, d.Selection = Rect{}, nil
 		return
 	}
 	d.theme = painter.Theme
-	if width >= 60 {
-		h = min(h, max(d.Chrome()+3, d.Chrome()+d.total()))
-	}
-	rect := Rect{(width - w) / 2, (height - h) / 2, w, h}
+	h = min(h, d.fit())
+	rect := Rect{area.X, area.Y + area.H - h, w, h}
 	if d.Selection != nil && d.rect != rect {
 		d.Selection = nil
 	}
@@ -577,9 +579,6 @@ func (d *Dialog) Paint(rows []string, width, height int, painter *terminalui.Pai
 		frame.Position = fmt.Sprintf("%d / %d", d.Page+1, len(d.pages))
 	}
 	d.rect = rect
-	for i := range rows {
-		rows[i] = terminalui.Backdrop(rows[i])
-	}
 	for i, line := range painter.Dialog(frame, w, h) {
 		if rect.Y+i < len(rows) {
 			rows[rect.Y+i] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", rect.X+1, line)

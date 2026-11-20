@@ -2407,7 +2407,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		assertNativeTaskTraffic(t, reopened.Frame.Main, "/root/worker", true)
 		return
 	}
-	if coldChild.Frame.View.Main.ID != child || coldChild.Frame.View.Caption.Model != "gpt-6-sol" || coldChild.Frame.View.Caption.Effort != "low" || coldChild.Frame.View.Caption.Role != "" {
+	if coldChild.Frame.View.Main.ID != child || coldChild.Frame.View.Caption.Model != "gpt-6-sol" || coldChild.Frame.View.Caption.Effort != "low" {
 		t.Fatalf("cold child identity=%q settings=%+v", coldChild.Frame.View.Main.ID, coldChild.Frame.View.Caption)
 	}
 	fixture.mu.Lock()

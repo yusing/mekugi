@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/contracts/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -16,35 +17,61 @@ func TestUISnapshotMainWorkspacePaths(t *testing.T) {
 	for _, width := range []int{40, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			view := sessionpresentation.View{DisplayedWorkspace: workspace, Caption: sessionpresentation.Caption{Model: "model"}}
-			var main Main
-			frame := main.layout(mainInput{Session: view}, new(activityui.Painter), width, 3, 0)
-			line := ansi.Strip(frame.Rows[len(frame.Rows)-1])
-			if !strings.Contains(line, "e-project • model") || strings.Contains(line, "/home/dev") {
+			s := Shell{RosterLabel: "Agents"}
+			rendered := s.StatLine(ShellStatus{Agent: "Main", Title: "Session title", Workspace: view.SourceWorkspace()}, width, 0)
+			line := ansi.Strip(rendered)
+			if !strings.Contains(line, "project • ") || width < 80 && strings.Contains(line, "/home/dev") {
 				t.Fatalf("workspace suffix displaced by prefix: %q", line)
+			}
+			if strings.Contains(ansi.Strip(captionLine(view.Caption, "", captionUsage{}, width)), "-project") {
+				t.Fatal("workspace stayed on the caption line")
 			}
 			if view.DisplayedWorkspace != workspace {
 				t.Fatal("painting changed the operational workspace")
 			}
-			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/workspace_path_%d.txt", width), strings.Join(frame.Rows, "\n"))
-			t.Logf("Rendered %d-column composer:\n%s", width, strings.Join(frame.Rows, "\n"))
+			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/workspace_path_%d.txt", width), rendered)
 		})
 	}
 }
 
+// The workspace follows the title, gives it room, and abbreviates to a sixth
+// of the line before hints drop; it drops after skills, before the roster
+// hint.
+func TestStatLineWorkspaceOrderAndDrops(t *testing.T) {
+	s := Shell{RosterLabel: "Agents"}
+	in := ShellStatus{Agent: "Main", Title: "Fix login", Workspace: "/home/dev/projects/mekugi", Empty: true, Skills: "skills: go",
+		Summary: activityui.RosterSummary{Counts: []string{"◐ 1"}, Children: true}}
+	for _, tc := range []struct {
+		width int
+		want  string
+	}{
+		{120, "  Main • ◐ 1 • Fix login • /home/dev/projects/mekugi • skills: go • ↓ roster • ^E view"},
+		{80, "  Main • ◐ 1 • Fix login • …v/projects/mekugi • skills: go • ↓ roster • ^E view"},
+		{56, "  Main • ◐ 1 • Fix login • …s/mekugi • ↓ roster"},
+		{44, "  Main • ◐ 1 • Fix login • ↓ roster"},
+		{30, "  Main • ◐ 1 • Fix login"},
+	} {
+		if got := ansi.Strip(s.StatLine(in, tc.width, 0)); got != tc.want {
+			t.Errorf("width %d: stat line = %q, want %q", tc.width, got, tc.want)
+		}
+	}
+}
+
+// External panes omit the second stat line, so the caption keeps the
+// workspace there.
 func TestMainComposerWorkspace(t *testing.T) {
 	for _, workspace := range []string{"/main", "/child", "/work/界/long-project"} {
 		for _, width := range []int{12, 20, 36, 80} {
 			view := sessionpresentation.View{Info: sessionpresentation.MainInfo{Workspace: "/main"}, DisplayedWorkspace: workspace, Caption: sessionpresentation.Caption{Model: "model"}}
-			var main Main
-			frame := main.layout(mainInput{Session: view}, new(activityui.Painter), width, 3, 0)
-			line := ansi.Strip(frame.Rows[len(frame.Rows)-1])
-			if ansi.StringWidth(line) != width || !strings.HasPrefix(line, "╰──") {
+			line := ansi.Strip(captionLine(view.Caption, view.SourceWorkspace(), captionUsage{}, width))
+			// The caption leaves the last column free so it never wraps.
+			if ansi.StringWidth(line) > width-1 {
 				t.Fatalf("workspace %q, width %d: %q", workspace, width, line)
 			}
-			if width == 80 && !strings.HasSuffix(line, workspace+" • model • 0% ─╯") {
-				t.Fatalf("workspace and model alignment: %q", line)
+			if width == 80 && line != "  model | 0% | "+workspace {
+				t.Fatalf("model, context and workspace order: %q", line)
 			}
-			if width >= 20 && (!strings.Contains(line, " • m") || !strings.HasSuffix(line, " • 0% ─╯")) {
+			if width >= 36 && !strings.Contains(line, "model | 0% | ") {
 				t.Fatalf("workspace displaced model or usage: %q", line)
 			}
 		}
@@ -53,10 +80,29 @@ func TestMainComposerWorkspace(t *testing.T) {
 
 func TestMainComposerTierWithoutModel(t *testing.T) {
 	view := sessionpresentation.View{DisplayedWorkspace: "/workspace", Caption: sessionpresentation.Caption{Tier: "flex"}}
-	var main Main
-	frame := main.layout(mainInput{Session: view}, new(activityui.Painter), 80, 3, 0)
-	line := ansi.Strip(frame.Rows[len(frame.Rows)-1])
-	if !strings.HasSuffix(line, "/workspace • flex • 0% ─╯") {
+	if line := ansi.Strip(captionLine(view.Caption, view.SourceWorkspace(), captionUsage{}, 80)); line != "  flex | 0% | /workspace" {
 		t.Fatalf("tier without model: %q", line)
+	}
+}
+
+func TestMainComposerCaptionUsage(t *testing.T) {
+	caption := sessionpresentation.Caption{Model: "model", ContextKnown: true, ContextTokens: 100000, ContextWindow: 400000,
+		Limits: []sessionpresentation.CaptionLimit{{Label: "5h", Used: 12}, {Label: "weekly", Used: 21}},
+		Items:  []presentation.Item{{Text: "96.0 tok/s"}}}
+	for _, tc := range []struct {
+		width int
+		want  string
+	}{
+		{160, "  model | ━━╸─────── 25% 100K/400K | $0.12 · total $0.48 | ↑ 12K ↓ 3K | 96.0 tok/s | 5h: 12% Weekly: 21%"},
+		{90, "  model | ━━╸─────── 25% | $0.12 · total $0.48 | ↑ 12K ↓ 3K | 5h: 12% Weekly: 21%"},
+		{60, "  model | ━━╸─────── 25% | $0.12 | 5h: 12% Weekly: 21%"},
+		{40, "  model | ━━╸─────── 25% | $0.12"},
+		{24, "  model | 25% | $0.12"},
+		{16, "  model | 25%"},
+	} {
+		usage := captionUsage{Tokens: "↑ 12K ↓ 3K", Cost: "$0.12", Total: "$0.48"}
+		if got := ansi.Strip(captionLine(caption, "", usage, tc.width)); got != tc.want {
+			t.Errorf("width %d: caption = %q, want %q", tc.width, got, tc.want)
+		}
 	}
 }

@@ -320,7 +320,8 @@ func TestRunElapsedSuffix(t *testing.T) {
 			}
 			if !live {
 				row := ansi.Strip(strings.Join(p.Block(b, 100), "\n"))
-				if tc.want != "" && !strings.Contains(row, " · "+tc.want) {
+				// The timing ends the row, set against its right edge.
+				if tc.want != "" && !strings.HasSuffix(strings.TrimRight(row, " "), " "+tc.want) {
 					t.Fatalf("row %q", row)
 				}
 			}

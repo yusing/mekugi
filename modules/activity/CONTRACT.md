@@ -680,40 +680,35 @@ Changed token/cost/context/edit metrics ease from displayed values over half a
 second; first observations appear immediately. Usage totals follow eased rows;
 composed net edits update immediately, and unknown counts never interpolate.
 Visible metric values determine column widths; separator halves align across
-visible rows, all metrics stay dim, edit colors included. Focus changes preserve
-name and activity column alignment. Narrow rows omit metrics
+visible rows, all metrics stay dim, edit colors included. Narrow rows omit metrics
 before losing usable activity. No model label is added. Observed roles color the
-existing status glyph; unknown/conflicting roles retain ordinary colors.
+existing status glyph; unknown/conflicting roles retain ordinary colors. The
+terminal sheet heading lists observed subagent roles with their colors, leading
+with the displayed agent's role when it truncates.
 
-Roster placement and resize belong to native layout. Rows compact before hiding
-agents; visible rows alone determine widths. Edge counts distinguish hidden,
-responding and error agents, with overall header counts. The header includes the
-number of finished children and known aggregate token usage. Finished means an
-observed final answer without a newer open response or error, not verified task
-completion. Finished children retain separate selectable rows and their captured
-edit and usage metrics when visible; names never collapse into a comma-joined
-summary. The unfocused roster grows to show active agents within terminal bounds.
-Idle children fold into overflow unless their transcript is displayed. The
-displayed child and Main take priority as capacity permits. Errors remain
-in counts and ordinary browsing without keeping the unfocused roster open;
-finished children are hidden first. Manual browsing applies only while the roster
-is focused; leaving it restores these compact priorities. Overflow counts include
-every omitted row, including rows before selection. In focused browsing, selection
-moves the viewport only when it leaves the visible rows.
-Hover emphasizes the name; selection shades the row. Returning to Main brings
-its roster row into view and clears the previous child highlight. Remembering a
-child for toggling does not present it as the displayed transcript.
-Clicking an admitted subagent attaches its native runtime without focusing the
-roster. Main and each child retain their own drafts, prompts and settings; explicit
-cold selection can resume the prepared runtime without starting work. Historical
-and replay-only views remain read-only. [Terminal pane controls](../../apps/mekugi/internal/terminalsession/SPEC.md#panes)
-own explicit roster focus.
+Roster placement belongs to native layout. The terminal roster is a sheet of
+subagent rows without Main, whose facts the session stat lines carry: counts of
+working, finished and error children, net captured edits, aggregate estimated cost
+and Main's loaded skills. Rows compact before hiding agents; visible rows alone
+determine widths. Finished means an observed final answer without a newer open
+response or error, not verified task completion. Finished children retain separate
+selectable rows and their captured edit and usage metrics when visible; names never
+collapse into a comma-joined summary. Overflow counts include every omitted row,
+including rows before selection. Selection moves the viewport only when it leaves
+the visible rows.
+Hover emphasizes the name; selection shades the displayed child's row. Remembering
+a child for toggling does not present it as the displayed transcript.
+Clicking an admitted subagent attaches its native runtime. Main and each child
+retain their own drafts, prompts and settings; explicit cold selection can resume
+the prepared runtime without starting work. Historical and replay-only views remain
+read-only. [Terminal pane controls](../../apps/mekugi/internal/terminalsession/SPEC.md#panes)
+own opening and closing the sheet and returning from a child to its parent.
 The invocation-local Side destination remains available through thread navigation;
-its tab lives beside Main in the shared tab bar, outside the roster counts.
+its label lives on the session stat line, outside the roster counts.
 Its editable destination follows
 [Conversation’s side contract](../conversation/SPEC.md#side-questions).
-Arrows/k/j stop at either end; n/Tab/p also navigate, a toggles Main/current child.
-Focused roster wheel scrolling changes neither selection nor transcript follow. Transcript
+Arrows/k/j stop at the last child; n/Tab/p also navigate, a toggles Main/current child.
+Roster wheel scrolling changes neither selection nor transcript follow. Transcript
 page/wheel scrolling pauses follow and Esc resumes it; frozen selections retain
 their own navigation. Running headers scroll normally; the composer process count
 and `/ps` dialog follow [running processes](#running-processes).

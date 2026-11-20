@@ -69,7 +69,7 @@ func TestSideForkDuringMainCompactionNativeCodex(t *testing.T) {
 	if !strings.Contains(next("one-off while compacting"), "Independent task") {
 		t.Fatal("one-off request lost its task")
 	}
-	terminal.await("╭─ completed")
+	terminal.awaitStatus("completed")
 	terminal.send("\x1b")
 	terminal.awaitMatch("Main remains compacting", func(frame string) bool {
 		return strings.Contains(frame, "Compacting context") && !strings.Contains(frame, "One-off")

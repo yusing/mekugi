@@ -170,7 +170,9 @@ func TestComposerPickersNativeCodexE2E(t *testing.T) {
 	terminal.send("\x022")
 	terminal.await("2 Diff")
 	terminal.send("\x021")
-	terminal.await("1 Main")
+	terminal.awaitMatch("Main focused beside Diff", func(screen string) bool {
+		return strings.Contains(screen, "Main • ") && strings.Contains(screen, "→ diff")
+	})
 	if got := provider.snapshot(); len(got) != 0 {
 		t.Fatalf("picker invoked provider without submission: %q", got)
 	}

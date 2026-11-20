@@ -370,7 +370,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 							sent = append(sent, test.hookChoice+"\r")
 							_, _ = tty.Write([]byte(test.hookChoice + "\r"))
 							answeredHook = true
-						} else if !test.failure && !quit && (test.hookChoice == "" || answeredHook) && !promptOpen && strings.Contains(visible, "╭─ Ready") {
+						} else if !test.failure && !quit && (test.hookChoice == "" || answeredHook) && !promptOpen && composerStatusShows(visible, "Ready") {
 							sent = append(sent, "/quit\r")
 							_, _ = tty.Write([]byte("/quit\r"))
 							quit = true
@@ -425,7 +425,8 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				t.Fatalf("wrapper invoked Herdr: %v", err)
 			}
 			if test.terminal {
-				if !bytes.Contains(output, []byte("\x1b[?1049h")) || !bytes.Contains(output, []byte("1 Main")) {
+				// The second stat line leads with the painted "Main" label.
+				if !bytes.Contains(output, []byte("\x1b[?1049h")) || !bytes.Contains(output, []byte("mMain\x1b")) {
 					t.Fatalf("terminal wrapper did not render native Main: %q", output)
 				}
 				calls, readErr := os.ReadFile(rpcMarker)
@@ -442,7 +443,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				if test.hookChoice != "" && (!bytes.Contains(output, []byte("Trust: modified")) || !bytes.Contains(output, []byte("bash scripts/startup.sh"))) {
 					t.Fatal("rendered startup hook review omitted changed trust status or command")
 				}
-			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte("1 Main")) {
+			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte("Main • ")) {
 				t.Fatalf("redirected wrapper unexpectedly rendered the integrated UI: %q", output)
 			} else if _, statErr := os.Stat(rpcMarker); !os.IsNotExist(statErr) {
 				t.Fatalf("redirected wrapper unexpectedly started app-server: %v", statErr)

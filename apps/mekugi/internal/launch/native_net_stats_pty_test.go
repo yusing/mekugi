@@ -123,16 +123,22 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 		if !strings.Contains(frame, "+3 -1") || strings.Contains(frame, "+7 -5") {
 			t.Fatalf("%d-column frame misreports composed outcome:\n%s", width, frame)
 		}
-		if width == 160 && (!strings.Contains(frame, "+4 -1") || !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "1 finished") || !strings.Contains(frame, "↑3K ↓300")) {
+		// The stat lines carry Main's tokens and the finished count.
+		if width == 160 && (!strings.Contains(frame, "✓ 1") || !strings.Contains(frame, "↑ 2K ↓ 100")) {
 			t.Fatalf("cumulative agent counts are missing:\n%s", frame)
 		}
+	}
+	// The roster sheet carries the child's own counts.
+	terminalTest(u).Focus = 3
+	if frame := paint(160); !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "↑1K ↓200") {
+		t.Fatalf("child agent counts are missing:\n%s", frame)
 	}
 
 	// Completion keeps the child's own row and counts; a follow-up changes
 	// status without changing captured attribution or retained token totals.
 	u.attached.childSource.Agents[1].Responding = true
 	terminalTest(u).Focus = 3
-	if frame := paint(160); strings.Contains(frame, "1 finished") || !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "↑3K ↓300") {
+	if frame := paint(160); strings.Contains(frame, "✓ 1") || !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "↑1K ↓200") {
 		t.Fatalf("follow-up lost child metrics or kept finished status:\n%s", frame)
 	}
 	u.attached.childSource.Agents[1].Responding = false
@@ -147,9 +153,11 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	savedPane(terminalTest(u)).Key("a")
 	savedPane(terminalTest(u)).Key("a")
 	refresh()
-	if frame := paint(160); !strings.Contains(frame, "+3 -1") || !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "1 finished") {
+	terminalTest(u).Focus = 3
+	if frame := paint(160); !strings.Contains(frame, "+3 -1") || !strings.Contains(frame, "+3 -4") || !strings.Contains(frame, "✓ 1") {
 		t.Fatalf("replay or caller filter changed overall outcome:\n%s", frame)
 	}
+	terminalTest(u).Focus = 1
 	u.review.Projection.Reset()
 	savedPane(terminalTest(u)).Reset()
 	scope.Workspaces[workspace] = map[string]bool{"new-thread": true}

@@ -1,4 +1,4 @@
 == 999ms ==
 └ Running pwd
 == 1s ==
-└ Running pwd · 1s
+└ Running pwd     1s

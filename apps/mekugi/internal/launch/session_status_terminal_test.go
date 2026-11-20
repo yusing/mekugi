@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
+
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 )
 
@@ -59,10 +61,12 @@ func (u *appServerUI) publishedTitle() string {
 	return u.shell.FrameInput(presentationTime(u.clock), mekugiVersion()).Header().Title
 }
 
-func rosterHeadingNames(frame, thread string) bool {
+// statLineNames reports whether the second stat line, which leads with the
+// displayed thread, names thread.
+func statLineNames(frame, thread string) bool {
 	for row := range strings.Lines(frame) {
-		if strings.HasPrefix(row, "─ 3 Agents ") {
-			return strings.Contains(row, " · "+thread+" ")
+		if row = strings.TrimRight(row, " \n"); row == "  "+thread || strings.HasPrefix(row, "  "+thread+" • ") {
+			return true
 		}
 	}
 	return false
@@ -133,4 +137,18 @@ func paintSession(attached *attachedPresentation, terminal *terminalsession.Atta
 	}
 	view := transcriptView(attached.presentation, terminal)
 	return paintNative(files, terminal, terminal.FrameInput(at, mekugiVersion()), view, activitySource(attached, terminal, view), ctx, out)
+}
+
+// testStatLines paints a full frame and returns its two stat lines, plain and
+// without trailing blanks.
+func (u *appServerUI) testStatLines(t *testing.T, width, height int) (caption, status string) {
+	t.Helper()
+	screen := vt.NewEmulator(width, height)
+	defer screen.Close()
+	terminalTest(u).Frame.Rows = nil // A fresh screen needs every row.
+	if err := u.testPaint(screen, width, height); err != nil {
+		t.Fatal(err)
+	}
+	rows := strings.Split(screen.String(), "\n")
+	return strings.TrimRight(rows[height-2], " "), strings.TrimRight(rows[height-1], " ")
 }

@@ -151,9 +151,9 @@ func TestChildFamilyRosterPreservesEditCounts(t *testing.T) {
 	c.event.Frame = sessionapi.NativeFrame{Family: family, View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: &activity.Publication{LineCounts: map[string]diffmodel.Counts{"/root": {Added: 3}}, NetCounts: new(diffmodel.Counts{Added: 3})}}
 	c.event.Frame.View.Info.Caller = "/root/worker"
 	c.refreshView(time.Now())
-	rows := ansi.Strip(strings.Join(terminal.Agents.NativeRoster(120, 10, time.Now(), false), "\n"))
-	if !strings.Contains(rows, "+100") || !strings.Contains(rows, "+103") {
-		t.Fatalf("selected child changed family roster edit ownership:\n%s", rows)
+	rows := ansi.Strip(strings.Join(terminal.Agents.RosterSheet(120, 10, time.Now()), "\n"))
+	if net := ansi.Strip(terminal.Agents.RosterSummary().Net); !strings.Contains(rows, "+3") || net != "+103 -0" {
+		t.Fatalf("selected child changed family roster edit ownership: net %q\n%s", net, rows)
 	}
 }
 

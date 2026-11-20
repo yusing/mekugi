@@ -300,6 +300,8 @@ func (p *Painter) Block(block Block, width int) []string {
 		return liveActivityIndent(p.Block(block, width-2), "  ")
 	}
 	lines := p.blockRows(block, width)
+	// A single Ran row leaves its timing to follow the notes below.
+	ranSingle := block.Verb == "Run" && len(lines) == 1
 	if block.AutoReload && block.Exited && block.ExitCode == 0 && !block.Running && len(lines) > 0 {
 		suffix := terminalui.Dim + " (auto reloaded)" + terminalui.Undim
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
@@ -339,10 +341,14 @@ func (p *Painter) Block(block Block, width int) []string {
 			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), workdirLabel(pathterminal.Truncate(block.Workdir, width-block.cell(block.RowVerb())-5)), width)...)
 		}
 	}
-	if block.Verb != "Run" && !block.Skipped && len(lines) > 0 {
+	if (block.Verb != "Run" && !block.Skipped || ranSingle) && len(lines) > 0 {
 		if elapsed := RunElapsed(block, p.now()); elapsed != "" {
 			suffix := terminalui.Dim + " · " + elapsed + terminalui.Undim
-			if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
+			// Timings align to the right edge, clear of the row's content,
+			// unless a trailer must follow on the same row.
+			if room := width - ansi.StringWidth(lines[0]) - ansi.StringWidth(elapsed); room >= 2 && (len(lines) > 1 || segmentTrailer(block) == "") {
+				lines[0] += strings.Repeat(" ", room) + terminalui.Dim + elapsed + terminalui.Undim
+			} else if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 				lines[0] += suffix
 			} else {
 				lines = append(lines, strings.Repeat(" ", block.cell(block.RowVerb()))+terminalui.Dim+"· "+elapsed+terminalui.Undim)
@@ -935,10 +941,17 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	case exit != "":
 		lines = suffix(lines, exit)
 	}
-	if elapsed := RunElapsed(block, p.now()); elapsed != "" {
-		if sourceLast {
-			lines = append(lines, padding+terminalui.Dim+"· "+elapsed+terminalui.Undim)
-		} else {
+	// A single row leaves its timing to Block, which sets it after the row's
+	// notes, such as timeouts.
+	if elapsed := RunElapsed(block, p.now()); elapsed != "" && (sourceLast || len(lines) > 1) {
+		// Timings align to the right edge; after a program they take their own row.
+		last := len(lines) - 1
+		switch room := width - ansi.StringWidth(lines[last]) - ansi.StringWidth(elapsed); {
+		case sourceLast:
+			lines = append(lines, strings.Repeat(" ", max(ansi.StringWidth(padding), width-ansi.StringWidth(elapsed)))+terminalui.Dim+elapsed+terminalui.Undim)
+		case room >= 2:
+			lines[last] += strings.Repeat(" ", room) + terminalui.Dim + elapsed + terminalui.Undim
+		default:
 			lines = suffix(lines, terminalui.Dim+"· "+elapsed+terminalui.Undim)
 		}
 	}

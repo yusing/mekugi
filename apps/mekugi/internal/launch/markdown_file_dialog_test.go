@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -239,7 +241,7 @@ func TestMarkdownFileDialogSanitizesDisplayKeepsSourceCopy(t *testing.T) {
 		awaitMarkdownFile(t, u)
 		rows := make([]string, u.Height)
 		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-		u.Dialog.Paint(rows, u.Width, u.Height)
+		u.Dialog.Paint(rows, terminalsession.Rect{W: u.Width, H: u.Height})
 		if strings.Contains(strings.Join(rows, "\n"), control) {
 			t.Fatal("file emitted a clipboard control in the rendered frame")
 		}
@@ -264,7 +266,9 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	main.attached.cwd = workspace
 	settleTestPresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, main.settings, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
 	u := terminalTest(main)
-	u.Width, u.Height = 80, 18
+	// Tall enough that the native frame's docked sheet shows the linked row,
+	// so its link is checked.
+	u.Width, u.Height = 80, 30
 	u.main.detailFiles.openTerminalMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, activitySource(&u.main.attached, u.main.shell, main.shell.Transcript), u.Attachment, main.shell.Transcript, path+":30-31")
 	awaitMarkdownFile(t, u)
 	drawOutputDialog(u)
@@ -278,7 +282,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	u.outputKey("bold")
 	u.outputKey("\r")
 	markdownFrame := drawOutputDialog(u)
-	tabX, tabY := dialogFramePoint(t, outputDialogScreen(u), " File ")
+	tabX, tabY := dialogFramePoint(t, outputDialogScreen(u), " File")
 	u.outputMouse(0, tabX, tabY, false)
 	fileFrame := drawOutputDialog(u)
 	if u.Dialog.Page != 1 || !strings.Contains(fileFrame, "source target") || strings.Contains(fileFrame, "**bold**") || strings.Contains(fileFrame, "/ n N find") {
@@ -322,7 +326,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	for _, view := range []string{"markdown", "file"} {
 		rows := make([]string, u.Height)
 		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-		u.Dialog.Paint(rows, u.Width, u.Height)
+		u.Dialog.Paint(rows, terminalsession.Rect{W: u.Width, H: u.Height})
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/native-markdown-file-"+view+"-view.txt", append(rows, "plain after file view"), u.Width)
 		u.outputKey("\x1b[C")
 	}
@@ -464,7 +468,7 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 			awaitMarkdownFile(t, u)
 			rows := make([]string, u.Height)
 			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
-			u.Dialog.Paint(rows, u.Width, u.Height)
+			u.Dialog.Paint(rows, terminalsession.Rect{W: u.Width, H: u.Height})
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/"+test.name+".txt", append(rows, "plain after file dialog"), u.Width)
 			if failure {
 				if ansi.Strip(u.Dialog.Document.Lines[2].Text) != "file is not UTF-8 text" {

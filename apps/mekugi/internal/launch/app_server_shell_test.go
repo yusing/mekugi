@@ -193,7 +193,7 @@ func TestAppServerShellComposer(t *testing.T) {
 	if strings.Join(redraw, "\n") != text {
 		t.Fatal("redrawing the shell composer changed its text or cursor")
 	}
-	if !strings.Contains(ansi.Strip(text), "Shell Mode") || !strings.Contains(text, terminalui.Red+"╭") || !strings.Contains(text, terminalui.Red+"│") {
+	if !strings.Contains(ansi.Strip(text), "Shell Mode") || !strings.Contains(text, terminalui.Red+"❯ ") {
 		t.Fatalf("shell notice/frame missing: %q", text)
 	}
 	u.nativeSession.deleteDraftRange(&u.attached, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, 0, 1)

@@ -239,11 +239,8 @@ func TestSessionUIReplayBatchElapsedUsesRecordedClock(t *testing.T) {
 		frame := replayPlaybackTestPaint(t, p, 120, 28)
 		_, tail, found := strings.Cut(frame, "Running sleep 1; printf 'captured output'")
 		row, _, _ := strings.Cut(tail, "\n")
-		want := ""
-		if tc.elapsed != "" {
-			want = " · " + tc.elapsed
-		}
-		if !found || !strings.HasPrefix(row, want) || tc.elapsed == "" && strings.HasPrefix(row, " · ") {
+		// The elapsed time alone follows the command, set against the right edge.
+		if !found || strings.TrimSpace(row) != tc.elapsed {
 			t.Fatalf("replayed elapsed time at %v is not %s:\n%s", tc.position, tc.elapsed, frame)
 		}
 	}

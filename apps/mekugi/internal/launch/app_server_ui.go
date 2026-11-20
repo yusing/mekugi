@@ -1545,6 +1545,12 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 	if handled, err := session.settingsMessage(attached, picker, editor, (*side), clock, session.overlayOpen(*panel, *resumePicker), "", m); handled || err != nil {
 		return err
 	}
+	if m.Method == "account/rateLimits/updated" {
+		if err := observeRateLimits(&attached.rateLimits, m.Params); err != nil {
+			return fmt.Errorf("%s: %w", m.Method, err)
+		}
+		return nil
+	}
 	switch m.Method {
 	case "error", "thread/started", "thread/status/changed", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
 		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta", "item/commandExecution/terminalInteraction",

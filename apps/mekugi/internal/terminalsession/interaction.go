@@ -124,6 +124,10 @@ func (in FrameInput) Dispatch(state *Interaction, event Input) iter.Seq[InputEff
 				if in.Agents != nil {
 					in.Agents.SkillsHover = ""
 				}
+				if in.Main != nil {
+					in.Main.ProcessHover = false
+				}
+				in.Shell.StatHover = 0
 			}
 			yield(InputEffect{Focused: &focused})
 			return
@@ -242,6 +246,10 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 		return
 	}
 	main, shell := in.Main, in.Shell
+	if action := in.arrowAction(key); action != 0 {
+		in.statAction(state, action, yield)
+		return
+	}
 	if main != nil && shell.Focus == 0 && main.session.ReadOnly != sessionpresentation.Editable {
 		transcript := in.displayedTranscript()
 		switch key {
@@ -353,6 +361,11 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 		}
 	default:
 		child, selected := main.session.Displayed.ID != main.session.Main.ID, in.Agents.Selected
+		// Up from Main, above the first subagent, closes the sheet.
+		if (key == "\x1b[A" || key == "\x1bOA" || key == "k") && !child {
+			shell.Focus = 0
+			return
+		}
 		quit := in.Agents.HandleRosterKey(key)
 		if !in.rosterPick(state, child, selected, yield) {
 			return
@@ -360,6 +373,74 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 		if quit {
 			shell.Focus = 0
 		}
+	}
+}
+
+// Stat-line actions taken by arrows on an empty composer, matching the hints
+// the second stat line shows.
+const statParent byte = 'p'
+
+func (in FrameInput) arrowAction(key string) byte {
+	shell := in.Shell
+	if in.Main == nil || shell.ExternalPanes || in.Playback || !in.EmptyComposer() {
+		return 0
+	}
+	switch key {
+	case "\x1b[A", "\x1bOA":
+		if v := in.Main.session; shell.Focus == 0 && v.Displayed.ID != v.Main.ID {
+			return statParent
+		}
+	case "\x1b[B", "\x1bOB":
+		if shell.Focus == 0 && shell.RosterLabel != "" && in.Agents.RosterSummary().Children {
+			return StatRoster
+		}
+	case "\x1b[C", "\x1bOC":
+		if shell.Focus == 0 && shell.Auxiliary != nil {
+			return StatDiff
+		}
+	case "\x1b[D", "\x1bOD":
+		if shell.Focus == 1 {
+			return StatMain
+		}
+	}
+	return 0
+}
+
+// statAction performs a stat-line action for its key or pointer target.
+func (in FrameInput) statAction(state *Interaction, action byte, yield func(InputEffect) bool) {
+	shell := in.Shell
+	if in.Main == nil && action != StatRoster && action != StatDiff && action != StatMain {
+		return
+	}
+	switch action {
+	case StatRoster:
+		shell.Select(3)
+	case StatDiff:
+		if !shell.DiffOpen {
+			shell.Select(1)
+		} else {
+			shell.Focus = 1
+		}
+		state.Selection = nil
+	case StatMain:
+		shell.DiffOpen, shell.Focus = false, 0
+		state.Selection = nil
+	case StatSkills:
+		yield(InputEffect{Details: &DetailInput{Version: in.Main.session.Version, View: in.Agents, Kind: SkillDetails, Caller: in.skillsCaller()}})
+	case StatSide:
+		v := in.Main.session
+		if v.SideThread.ID != "" && yield(InputEffect{Display: &sessionpresentation.DisplayIntent{Version: v.Version, Thread: v.SideThread}}) {
+			shell.Focus = 0
+		}
+	case statParent:
+		v := in.Main.session
+		if v.Displayed == v.SideThread || in.Agents.ParentCaller(v.Displayed.Caller) == "/root" {
+			in.selectPane(state, 0, yield)
+			return
+		}
+		child, selected := true, in.Agents.Selected
+		in.Agents.ShowParent()
+		in.rosterPick(state, child, selected, yield)
 	}
 }
 

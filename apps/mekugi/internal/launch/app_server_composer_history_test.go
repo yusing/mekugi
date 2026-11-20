@@ -149,7 +149,7 @@ func TestAppServerComposerImageTokenStyledAndCaretVisible(t *testing.T) {
 	if _, err := screen.Write([]byte(strings.Join(first(u.testMainFrame(24, 8, 0)), "\r\n"))); err != nil {
 		t.Fatal(err)
 	}
-	left, image, right := screen.CellAt(4, 6), screen.CellAt(5, 6), screen.CellAt(14, 6)
+	left, image, right := screen.CellAt(2, 6), screen.CellAt(3, 6), screen.CellAt(12, 6)
 	if left == nil || image == nil || right == nil {
 		t.Fatal("missing composer cells")
 	}

@@ -28,7 +28,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	shell := terminalTest(u)
-	if shell.Auxiliary != nil || shell.Focus != 0 || shell.DiffOpen || shell.Layout.Diff.W != 0 || shell.Tabs[1].W != 0 {
+	if shell.Auxiliary != nil || shell.Focus != 0 || shell.DiffOpen || shell.Layout.Diff.W != 0 || shell.statTarget(terminalsession.StatDiff).W != 0 {
 		t.Fatalf("absent contribution retained interaction: %+v", shell.Shell)
 	}
 	if strings.Contains(shell.nativeStatus(), "Diff") {
@@ -90,7 +90,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 		if !strings.Contains(frame, text) {
 			t.Fatalf("Conversation missing: %s", frame)
 		}
-		if terminalTest(u).Layout.Roster.H != 0 || terminalTest(u).Tabs[3].W != 0 || len(u.shell.Agents.Hits) != 0 || strings.Contains(terminalTest(u).nativeStatus(), "Agents") {
+		if terminalTest(u).Layout.Roster.H != 0 || terminalTest(u).statTarget(terminalsession.StatRoster).W != 0 || len(u.shell.Agents.Hits) != 0 || strings.Contains(terminalTest(u).nativeStatus(), "Agents") {
 			t.Fatal("absent roster retained rows or input targets")
 		}
 		assertNativeUISnapshot(t, name, strings.Split(frame, "\n"))
@@ -151,10 +151,21 @@ func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
 	if len(created) != 2 || u.shell.Agents != created[1] || terminalTest(u).Agents != created[1] {
 		t.Fatal("replacement bypassed descriptor")
 	}
+	// The roster sheet offers itself once a subagent exists.
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "child"}})
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	if terminalTest(u).Layout.Roster.H == 0 || terminalTest(u).Tabs[3].W == 0 {
+	if terminalTest(u).statTarget(terminalsession.StatRoster).W == 0 {
+		t.Fatal("declared roster did not reach the stat line")
+	}
+	if err := terminalTest(u).send("\x1b[B"); err != nil {
+		t.Fatal(err)
+	}
+	if err := u.testPaint(io.Discard, 100, 24); err != nil {
+		t.Fatal(err)
+	}
+	if terminalTest(u).Layout.Roster.H == 0 {
 		t.Fatal("declared roster did not reach painting")
 	}
 	p := newUIReplayPlayback(runtime.Terminal, replayOwners{u.presentationState, u.conversationState, u.observations, u.activity}, t.Context(), replayPlaybackTestSource(), 1)

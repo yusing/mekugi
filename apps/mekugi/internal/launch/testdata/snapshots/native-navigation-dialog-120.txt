@@ -3,16 +3,16 @@
 
 
 
-      ╭─ Read ─────────────────────────────────────────────────────────────────────────────────────── 3 / 5 [×] ─╮
-      │ 1 line                                                                                                   │
-      │  1 Read …er/navigation.go  2 Read …ctivity/paint.go  3 Read …l/路径/日本語.go  4 Read …iffview/frame.go  │
-      ├──────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-      │ 1 │ page 3 only                                                                                          │
-      │                                                                                                          │
-      │                                                                                                          │
-      ╰─ ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc ───────────────────────────────────────────╯
 
 
 
 
 
+
+  ── Read · 1 line ────────────────────────────────────────────────────────────────────────────────────── 3 / 5 [×] ──
+   1 Read …outer/navigation.go  2 Read …i/activity/paint.go  3 Read …rnal/路径/日本語.go  4 Read …i/diffview/frame.go
+
+  1 │ page 3 only
+
+
+  ↑↓ PgUp/PgDn g/G scroll · ←→ command · / find · y copy · esc

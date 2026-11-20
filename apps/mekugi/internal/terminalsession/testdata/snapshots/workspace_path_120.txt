@@ -1,3 +1,1 @@
-╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ❯                                                                                                                    │
-╰────────────────────────────────────────────────────────────────── …pace/.worktrees/distinctive-project • model • 0% ─╯
+  Main • Session title • /home/dev/projects/workspace/.worktrees/distinctive-project • ^E view

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 
 	"github.com/charmbracelet/x/ansi"
@@ -518,10 +519,10 @@ func TestSideTabClickAndAcquiredInputIsolation(t *testing.T) {
 		t.Fatal("acquisition lost its original Side target or changed Main selection")
 	}
 	frame := strings.Join(u.sideFrame(80, 24), "\n")
-	if !strings.Contains(frame, "1 Main  One-off") || strings.Contains(frame, "Agents · One-off") {
-		t.Fatalf("side tab misplaced: %s", frame)
+	if !strings.Contains(frame, "Main • One-off") {
+		t.Fatalf("side label misplaced: %s", frame)
 	}
-	tab := terminalTest(u).SideTab
+	tab := terminalTest(u).statTarget(terminalsession.StatSide)
 	for _, hit := range u.shell.Agents.Hits {
 		if hit.Agent == "/oneoff" {
 			t.Fatal("Side retained a roster header target")
@@ -566,7 +567,7 @@ func TestUISnapshotSideTabs(t *testing.T) {
 				u.shell.Focus = focus
 				u.sideFrame(width, 24)
 				rows = append(rows, ansi.Truncate(terminalTest(u).nativeStatus(), width, ""))
-				rows = append(rows, u.shell.Agents.NativeRoster(width, 4, now, focus == 3)...)
+				rows = append(rows, u.shell.Agents.RosterSheet(width, 4, now)...)
 				rows = append(rows, "plain after tabs")
 			}
 		}
@@ -576,7 +577,7 @@ func TestUISnapshotSideTabs(t *testing.T) {
 	u.shell.RosterLabel = ""
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	u.sideFrame(40, 24)
-	tab := terminalTest(u).SideTab
+	tab := terminalTest(u).statTarget(terminalsession.StatSide)
 	if tab.W == 0 {
 		t.Fatal("removing the roster hid Side")
 	}
@@ -588,7 +589,7 @@ func TestUISnapshotSideTabs(t *testing.T) {
 	}
 	composerShellEscape(t, u)
 	u.sideFrame(40, 24)
-	if terminalTest(u).SideTab.W != 0 {
+	if terminalTest(u).statTarget(terminalsession.StatSide).W != 0 {
 		t.Fatal("closed Side retained a tab target")
 	}
 }

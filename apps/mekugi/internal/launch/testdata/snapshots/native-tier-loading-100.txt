@@ -1,7 +1,7 @@
-  Choose tier
-  loading...
+  ── Choose tier ─────────────────────────────────────────────────────────────────────────────────
+
+    loading...
 
 
 
-
-  ↑/↓ navigate · enter apply · esc cancel
+  ↑/↓ choose · enter apply · esc cancel

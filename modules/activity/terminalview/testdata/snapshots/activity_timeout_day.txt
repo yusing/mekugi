@@ -1,1 +1,1 @@
-Ran    backup · 500ms (timeout 24h)
+Ran    backup (timeout 24h)            500ms

@@ -48,7 +48,7 @@ func TestUISnapshotNativeRetryProgress(t *testing.T) {
 						assertNativeUISnapshot(t, "native-retry-status", rows)
 					}
 					u.testActivity(u.shell.Agents).publishActivity()
-					assertNativeUISnapshot(t, "native-retry-roster-"+thread, u.shell.Agents.NativeRoster(100, 6, *at, true))
+					assertNativeUISnapshot(t, "native-retry-roster-"+thread, u.shell.Agents.RosterSheet(100, 6, *at))
 				}
 			}
 			notify("old", "stale retry", true)

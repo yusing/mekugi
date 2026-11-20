@@ -2,17 +2,17 @@
 
 
 
-╭─ Ran · combined output ──────────────────────────────────────── [×] ─╮
-│ 1 line · exit 1                                                      │
-├──────────────────────────────────────────────────────────────────────┤
-│ 1 │ git status --porcelain; sudo journalctl -k --no-pager            │
-│                                                                      │
-│ Per-command output boundaries were not retained for this invocation. │
-│                                                                      │
-│ 1 ┆ -- No entries --                                                 │
-╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
 
 
 
 
 
+
+  ── Ran · combined output · 1 line · exit 1 ────────────────────────── [×] ──  
+                                                                                
+  1 │ git status --porcelain; sudo journalctl -k --no-pager                     
+                                                                                
+  Per-command output boundaries were not retained for this invocation.          
+                                                                                
+  1 ┆ -- No entries --                                                          
+  ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc                               

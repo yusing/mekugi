@@ -94,7 +94,7 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	terminal.await("Queued for the next turn")
 	terminal.send("\x03")
 	terminal.awaitMatch("interrupted input restored", func(screen string) bool {
-		return strings.Contains(screen, "╭─ Interrupted") && strings.Contains(screen, "steer interrupts") && strings.Contains(screen, "queued afterwards") && !strings.Contains(screen, "↳")
+		return composerStatusShows(screen, "Interrupted") && strings.Contains(screen, "steer interrupts") && strings.Contains(screen, "queued afterwards") && !strings.Contains(screen, "↳")
 	})
 	select {
 	case body := <-p.requests:
@@ -122,12 +122,12 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	terminal.awaitMatch("pending input cleared", func(screen string) bool {
 		// Reply references also quote committed input; exact submission count is
 		// checked in the provider request above, not across painted quotations.
-		return strings.Contains(screen, "╭─ Completed") && !strings.Contains(screen, "↳")
+		return composerStatusShows(screen, "Completed") && !strings.Contains(screen, "↳")
 	})
 	terminal.send("/compact\r")
 	next("manual compaction")
 	terminal.await("Context compacted")
-	terminal.await("╭─ Completed")
+	terminal.awaitStatus("Completed")
 	terminal.send("/clear\r")
 	terminal.awaitMatch("fresh session", func(screen string) bool {
 		return strings.Contains(screen, "Ready") && !strings.Contains(screen, "steer interrupts") && !strings.Contains(screen, "queued later")
@@ -137,6 +137,6 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	if !strings.Contains(fresh, "Fresh session prompt") || strings.Contains(fresh, "steer interrupts") {
 		t.Fatalf("clear retained prior context: %s", fresh)
 	}
-	terminal.await("╭─ Completed")
+	terminal.awaitStatus("Completed")
 	terminal.quit()
 }

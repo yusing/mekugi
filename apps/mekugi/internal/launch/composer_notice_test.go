@@ -29,7 +29,8 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 		kind  string
 		width int
 	}{
-		{"command", 12}, {"command", 13}, {"command", 60}, {"attachment", 60}, {"host", 60},
+		// The attachment notice opens only when clipped, as it is at 40 columns.
+		{"command", 12}, {"command", 13}, {"command", 60}, {"attachment", 40}, {"host", 60},
 	} {
 		t.Run(fmt.Sprintf("%s/%d", tc.kind, tc.width), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
