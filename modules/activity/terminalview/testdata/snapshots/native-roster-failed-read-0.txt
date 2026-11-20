@@ -1,3 +1,3 @@
 "                                                                                          "
-" \x1b[38;5;140;1m◐\x1b[m \x1b[38;5;140;1mreader\x1b[m  \x1b[31mRead\x1b[m missing.txt \x1b[31m(exit 3)\x1b[m                                                 \x1b[2m  0%\x1b[m "
+" \x1b[38;5;140;1m◐\x1b[m \x1b[38;5;140;1mreader\x1b[m  \x1b[31mRead\x1b[m missing.txt \x1b[2m· \x1b[31;22mexit 3\x1b[m                                                 \x1b[2m  0%\x1b[m "
 "plain after roster                                                                        "

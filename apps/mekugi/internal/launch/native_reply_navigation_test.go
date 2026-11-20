@@ -158,11 +158,15 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 				if kind == "agent excerpt" {
 					entry.ActivitySeq = 5
 				}
-				v.Entries = []sessionpresentation.ActivityRecord{
-					{Source: question, Values: activityui.Values(nil)},
-					{Source: entry, Values: activityui.Values([]activityui.Block{block})},
+				v.Entries = []sessionpresentation.ActivityRecord{{Source: question, Values: activityui.Values(nil)}}
+				if kind == "main raw" {
+					// Main quotes its message only when another message sits between them.
+					entry.Seq = 3
+					v.Entries = append(v.Entries, sessionpresentation.ActivityRecord{Source: sessionpresentation.ActivityEntry{Seq: 2, Agent: "Session", Kind: "text", Text: "Blocked on a request", Observed: question.Observed}, Values: activityui.Values(nil)})
 				}
-				run := v.testConversationItem(1, 1, width, activityui.ConversationThread{})
+				v.Entries = append(v.Entries, sessionpresentation.ActivityRecord{Source: entry, Values: activityui.Values([]activityui.Block{block})})
+				index := len(v.Entries) - 1
+				run := v.testConversationItem(index, index, width, activityui.ConversationThread{})
 				if len(run.Lines) < 5 {
 					t.Fatalf("missing reply rows: %q", run.Lines)
 				}

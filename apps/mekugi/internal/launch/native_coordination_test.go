@@ -153,26 +153,26 @@ func TestNativeInterruptJoinsExactWorkInEitherOrder(t *testing.T) {
 					emit(requested)
 				} else {
 					emit(requested)
-					if got := text(u); got != "Interrupt requested for /root/worker" {
+					if got := text(u); got != "Interrupt requested for worker" {
 						t.Fatalf("ack became terminal: %q", got)
 					}
 					stale := target
 					stale.WorkID = "prior-work"
 					emit(appserver.CoordinationProjection{Deliveries: []appserver.CoordinationTerminalDelivery{{DeliveryID: "stale", Source: stale, Disposition: "interrupted", Recipient: "/root"}}})
-					if got := text(u); got != "Interrupt requested for /root/worker" {
+					if got := text(u); got != "Interrupt requested for worker" {
 						t.Fatalf("stale target work settled request: %q", got)
 					}
 					emit(terminal)
 				}
 				emit(requested) // Repeated receipt cannot revive the settled progress row.
-				if got := text(u); got != "Interrupted /root/worker" {
+				if got := text(u); got != "Interrupted worker" {
 					t.Fatalf("exact terminal did not settle: %q", got)
 				}
 				restored := newAppServerSessionTestUI(t, u.attached.cwd)
 				if err := restored.restoreContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd, Path: writeTestRollout(t, "main", records...)}); err != nil {
 					t.Fatal(err)
 				}
-				if got := text(restored); got != "Interrupted /root/worker" {
+				if got := text(restored); got != "Interrupted worker" {
 					t.Fatalf("restore changed exact interrupt settlement: %q", got)
 				}
 			})
@@ -293,7 +293,7 @@ func TestPausedWaitOutcomeDoesNotConfirmInterruption(t *testing.T) {
 	appServerTestNotify(t, u, "agent/coordination", appserver.AgentCoordination{ThreadID: "main", TurnID: "first", Projection: appserver.CoordinationProjection{Interrupt: &appserver.CoordinationInterruptRequest{OperationID: "request", Target: target}}})
 	nativeWaitSettlementFixture(t, u, appserver.CoordinationWaitResult{Kind: "released", Wake: "events"}, []appserver.CoordinationWaitOutcome{{Target: target, Disposition: "paused"}}, nil)
 	entries := u.attached.source.Entries
-	if len(entries) != 2 || entries[0].Source.Text != "Interrupt requested for /root/worker" || entries[1].Source.Kind != "progress" {
+	if len(entries) != 2 || entries[0].Source.Text != "Interrupt requested for worker" || entries[1].Source.Kind != "progress" {
 		t.Fatalf("paused reserved work became terminal: %+v", entries)
 	}
 }

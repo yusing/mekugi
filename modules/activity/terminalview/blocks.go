@@ -29,6 +29,7 @@ type Block struct {
 type Annotation struct {
 	VerbAlign, VerbColumn, PathAlign, StatAlign, StatScale int
 	TailRows, SourceRows, HiddenEdits                      int
+	BodyRows                                               int // Bounds a framed answer, frame included.
 	Flash, Collapsed, Hovered, Expanded                    bool
 }
 
@@ -54,7 +55,8 @@ func (b Block) Collapsible() bool {
 		return !b.Live
 	case "op", "reads":
 		lines := len(b.Tail) + b.TailOmitted
-		return !b.Running && !b.Skipped && !b.Pending && b.ExitCode == 0 && lines > 1
+		// Failed and unknown outcomes keep their output open.
+		return !b.Running && !b.Skipped && !b.Pending && !b.FailedOutcome() && !b.ExitUnknown() && lines > 1
 	}
 	return false
 }
@@ -110,7 +112,7 @@ func AlignVerbs(blocks []Block) []Block {
 	for start := 0; start < len(blocks); {
 		end, column := start, 0
 		for ; end < len(blocks) && slices.Contains([]string{"op", "reads", "filter"}, blocks[end].Kind); end++ {
-			if w := ansi.StringWidth(blocks[end].RowVerb()); blocks[end].Kind != "filter" && w <= widestAlignedVerb {
+			if w := verbCells(blocks[end].RowVerb()); blocks[end].Kind != "filter" && w <= widestAlignedVerb {
 				column = max(column, w+1)
 			}
 		}

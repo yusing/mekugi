@@ -43,7 +43,11 @@ disclosure and pacing state. Unchanged publications retain cached runs and discl
 ## Operation rows
 
 Operations use flat, colored verb rows. Adjacent verbs share the widest visible
-column, except verbs wider than seven cells do not widen their neighbors.
+column, except verbs wider than seven cells do not widen their neighbors. A verb
+reserves its lifecycle's widest form, so settling `Running` as `Ran` never moves
+the command. Amber marks running, pending and waiting work only: settled Ran,
+Wait and Sleep rows use the default foreground, compaction markers stay muted,
+and blocked or stopped hooks use the failure color.
 Reasoning heads a tree of following operations, with branch connectors and a
 continuation rail beneath its bullet. Operations without reasoning use the same
 tree. Main separates successive trees with one blank row. Tools continuing a
@@ -116,7 +120,8 @@ align with command text and stay muted in either theme.
 Consecutive same-action operations by one agent share a verb cell and branch
 within and across calls. Each operation retains its source, output, timing and
 outcome. Running, skipped, requested, unknown and approval states remain distinct
-groups; failures keep their own exit status. Aggregate batch outcomes stay separate.
+groups; a failed operation starts its own group with its own exit status.
+Aggregate batch outcomes stay separate.
 Tracked segments retain individual verb rows through their lifecycle.
 Different command directories start separate groups. Consecutive settled target-only
 operations also merge targets. Read ranges join by file, with comma-separated spans
@@ -188,15 +193,22 @@ history restoration. They never join counted operation batches or share their
 verb with agent commands. Source classification does not replace their command
 preview; captured edits remain available alongside it. Agent commands retain
 their ordinary classification and disclosure.
-Known nonzero exits make the verb red and append `exit N`, moving the suffix to
-its own row when needed; roster summaries retain the failure. Unknown exit is
-distinct from success and does not suppress observed aggregate output.
+Every operation kind reports failure the same way: a known nonzero exit or a
+failed tool call makes the verb red and appends `· exit N` or `· failed`, moving
+the suffix to its own row when needed; roster summaries retain the failure. A
+running tool call appends `· running`. A Search that exits 1 with a known zero
+result count found nothing and is not a failure. A command observed running that
+settles without an exit status appends a muted `· exit unknown`; it is distinct
+from success and does not suppress observed aggregate output.
 
 Command previews preserve source while wrapping top-level `;`, `&&` and `||`
 statements, then unquoted blanks or pipes with an indented shell continuation.
+Separators inside compound commands, such as `for … do … done`, braces and
+subshells, are not top-level.
 Oversized words break without an invented continuation. Multiline programs use
 a code gutter. Main limits
-wrapped previews to five rows with a hidden-line count. Tabs expand to four spaces.
+wrapped previews to five rows with a hidden-line count; when collapsed output
+follows, hidden source and output counts share that row. Tabs expand to four spaces.
 Opening source uses the dialog, not transcript expansion. Interpreter previews
 use their own language colors.
 
@@ -430,7 +442,10 @@ the original detail content even when the preview occupies only one line.
 
 Main and children share parsing, grouping and viewport behavior. User messages
 have a distinct band; assistant text, operations and final-answer cards retain
-their identities rather than becoming a second transcript. Image-view tools show
+their identities rather than becoming a second transcript. Activity previews
+bound a final-answer card inside its frame, counting only hidden content. A
+finished turn's marker stays neutral, since finishing is no verdict on the reply.
+Image-view tools show
 View with their workspace path; attached user images claim no tool inspection. User publications retain their bound
 image sources for authenticated image reads; sources stay out of public wire values.
 Completed attributable searches and listings show `(N results)`, and structural
@@ -489,8 +504,8 @@ Replies link to their own retained assignment or user input. A receiving runtime
 cannot infer that link from its latest assignment: a delivered completion may
 answer input sent directly to the child. An answer to the
 latest adjacent assignment omits a redundant link; older assignments keep theirs.
-Repeated replies quote input again only after another message intervenes, not
-after tools/reasoning/progress. Question replies link to the Asked record as
+Replies quote their input only after another message intervenes, not after
+tools/reasoning/progress; a reply directly below its input's band omits the quote. Question replies link to the Asked record as
 `re: your answer`, without a duplicate user band. Missing target identity leaves
 plain text, never fabricated navigation. Hover/click identifies and highlights
 the exact destination. Live, restored and replayed child turns preserve explicit
@@ -521,7 +536,8 @@ summaries start folded.
 Dialogs retain each section's full body and source as pages. Observed durations
 appear only from one second onward, on the final section rather than per section.
 Completed timed headings and short summaries lead with `Thought for Ns`, followed
-by ` • ` and their title or short text when present. No duration is invented when
+by ` • ` and their title or short text when present; when the text wraps
+to its own row, the separator is dropped rather than ending the heading row. No duration is invented when
 timing is absent.
 
 For providers streaming untitled reasoning, an observed request start supplies
@@ -639,7 +655,11 @@ Agent progress uses a shared compact row with an agent-traffic marker,
 distinct from reasoning and generic tool cards. Waits publish their supplied
 targets and distinguish waiting, completion, timeout and cancellation. Aggregate
 completion reasons already stated by every target are omitted from display;
-mixed target outcomes keep their independent aggregate reason. All-target
+mixed target outcomes keep their independent aggregate reason. Target outcomes
+follow a colon and the wait's own reason follows ` · `. Inside the muted row,
+failed, errored and undelivered outcomes use the failure color, and timeout,
+cancellation and interruption the warning color. Wrapped progress rows hang under
+their text, not their marker. All-target
 selection displays `all`. Named lists show
 two targets followed by `N more`; the existing disclosure opens the complete
 selection. A waiting roster row uses the transcript's wait text,
@@ -650,7 +670,8 @@ wait or working state; historical compaction does not revive live progress.
 Live provider retries use the same progress surface with supplied attempt/cause
 details. Response activity or the current turn's end clears this transient status.
 Interrupt acknowledgement reports the request, not task
-completion. Its settled interruption event remains visible; an interrupted result
+completion. Request and interruption rows name the target by display name in its
+agent color. Its settled interruption event remains visible; an interrupted result
 does not replay the agent's earlier message as a new reply.
 Agent listing reports its observed count alongside the existing roster.
 Raw arguments and outcomes remain in details rather than the transcript.

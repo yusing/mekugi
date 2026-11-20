@@ -20,14 +20,14 @@
   Public reasoning detail.
   
   Public reasoning detail.
-└ Ran printf
-      │ echo retained-source
-      │ echo retained-source
-      │ echo retained-source
-      │ echo retained-source
-      │ echo retained-source
-      │ echo retained-source
-      │ echo retained-source
-      │ echo retained-source
-      ┆ first output
-      ┆ last output
+└ Ran     printf
+          │ echo retained-source
+          │ echo retained-source
+          │ echo retained-source
+          │ echo retained-source
+          │ echo retained-source
+          │ echo retained-source
+          │ echo retained-source
+          │ echo retained-source
+          ┆ first output
+          ┆ last output

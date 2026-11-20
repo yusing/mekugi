@@ -4,23 +4,23 @@ ACTIVITY · all                                   CONNECTING
 │ Inspect source 11 before continuing.
 
 ● source11                                         12:00:00
-▎ Ran source preview
-▎     │ package source11
-▎     │ 
-▎     │ func value11() int {
-▎     │     return 11
-▎     │ }
+▎ Ran     source preview
+▎         │ package source11
+▎         │ 
+▎         │ func value11() int {
+▎         │     return 11
+▎         │ }
 ALL · n/p · a · j/k · End
 == early scroll ==
 ACTIVITY · all                                   CONNECTING
 
 ● source0                                          12:00:00
-▎ Ran source preview
-▎     │ package source0
-▎     │ 
-▎     │ func value0() int {
-▎     │     return 0
-▎     │ }
+▎ Ran     source preview
+▎         │ package source0
+▎         │ 
+▎         │ func value0() int {
+▎         │     return 0
+▎         │ }
 
                   ↓ Back to bottom · esc
 ALL · n/p · a · j/k · End
@@ -28,12 +28,12 @@ ALL · n/p · a · j/k · End
 ACTIVITY · all                                   CONNECTING
 
 ● source0                                          12:00:00
-▎ Ran source preview
-▎     │ package source0
-▎     │ 
-▎     │ func value0() int {
-▎     │     return 0
-▎     │ }
+▎ Ran     source preview
+▎         │ package source0
+▎         │ 
+▎         │ func value0() int {
+▎         │     return 0
+▎         │ }
 
                   ↓ Back to bottom · esc
 ALL · n/p · a · j/k · End

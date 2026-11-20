@@ -1,7 +1,9 @@
 ❯ Show me how the new transcript
   search instruction looks like 
 
-● main                  11:50:12
+❯ Keep it short         11:50:12
+
+● main                  11:50:18
 ┃ ↩ re: your message 11:50:06
 ┃ ▎ Show me how the new
 ┃ ▎ transcript search…

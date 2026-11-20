@@ -121,7 +121,7 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 	}
 	const width, rows = 60, 6
 	feed := v.RenderFeed(width, rows)
-	if got := ansi.Strip(strings.Join(feed.Lines, "\n")); !strings.Contains(got, "Search zzz · bbb") || !strings.Contains(got, "Read   bar") {
+	if got := ansi.Strip(strings.Join(feed.Lines, "\n")); !strings.Contains(got, "Search  zzz · bbb") || !strings.Contains(got, "Read    bar") {
 		t.Fatalf("batch in view was collapsed:\n%s", got)
 	}
 	v.Following, v.Offset = false, feed.Spans[0].End+12

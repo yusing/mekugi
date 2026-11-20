@@ -72,7 +72,7 @@ func CompactRoster(entries []Entry, caller string) []Value {
 					}
 					compact.Label = strings.TrimSpace(head + " · " + source)
 				}
-				if v.ExitCode != 0 {
+				if v.ExitFailed() {
 					compact.Label += fmt.Sprintf(" (exit %d)", v.ExitCode)
 				}
 			case v.Kind == "error":

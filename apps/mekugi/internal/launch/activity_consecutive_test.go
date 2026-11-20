@@ -40,7 +40,8 @@ func TestUISnapshotActivityConsecutiveOperations(t *testing.T) {
 			feed := v.RenderFeed(100, 80)
 			rows := strings.Join(v.Viewport(feed, 80)[:len(feed.Lines)], "\n")
 			plain := ansi.Strip(rows)
-			if strings.Count(plain, "Inspect") != 1 || strings.Count(plain, "Search") != 1 || !strings.Contains(plain, "exit 2") {
+			// A failed search leads its own group; the searches after it share one verb.
+			if strings.Count(plain, "Inspect") != 1 || strings.Count(plain, "Search") != 2 || !strings.Contains(plain, "Search  needle in missing · exit 2") {
 				t.Fatalf("consecutive verbs or failure not preserved:\n%s", plain)
 			}
 			for _, output := range outputs {

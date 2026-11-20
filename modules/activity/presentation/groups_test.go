@@ -78,8 +78,9 @@ func TestOperationGroupsPreserveOutcomesAndAnnotations(t *testing.T) {
 	values := []Value{
 		{Kind: "op", Verb: "Search", Source: 1, Exited: true, ExitCode: 2, Code: "rg needle missing", Tail: []string{"missing path"}},
 		{Kind: "filter", Source: 1, Label: "output not returned to the model"},
-		{Kind: "op", Verb: "Search", Source: 2, Exited: true, Code: "rg needle src", Tail: []string{"src/a.go:needle"}},
-		{Kind: "op", Verb: "Search", Source: 3}, // Unknown exit remains distinct.
+		{Kind: "op", Verb: "Search", Source: 2, Exited: true, ExitCode: 1, Code: "rg needle src", Tail: []string{"src/a.go:needle"}},
+		{Kind: "op", Verb: "Search", Source: 3},                                       // Unknown exit remains distinct.
+		{Kind: "op", Verb: "Search", Source: 7, Exited: true, Code: "rg needle docs"}, // Success never joins failures.
 		{Kind: "op", Verb: "Search", Source: 4, Running: true},
 		{Kind: "op", Verb: "Search", Source: 5, Skipped: true},
 		{Kind: "op", Verb: "Search", Source: 6, Workdir: "/other"},

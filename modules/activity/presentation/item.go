@@ -304,6 +304,14 @@ func (entry ItemContent) Values() (blocks []Value) {
 		if entry.Details != nil && len(blocks) > 0 {
 			blocks[len(blocks)-1].Output = entry.Details.Output
 		}
+		if n := entry.Details; n != nil && n.Status == "failed" {
+			// A failed tool call states its outcome as a failure, not a label.
+			for i := range blocks {
+				if blocks[i].Verb == "MCP" {
+					blocks[i].Failed, blocks[i].Label = true, strings.TrimSuffix(blocks[i].Label, " · failed")
+				}
+			}
+		}
 		if entry.Details != nil && (entry.Command.Running || len(entry.Command.Tail) > 0) {
 			// The host provides one stream for the whole invocation. Place it
 			// after the final displayed operation, not an earlier Run row.

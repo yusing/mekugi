@@ -126,7 +126,7 @@ func TestUISnapshotNativeRosterFailedRead(t *testing.T) {
 			v.Update(&presentation.Publication{Roster: []presentation.AgentRow{{Agent: agent}}}, Display{Caller: "/root"})
 			rows := v.RosterSheet(90, 4, time.Unix(100, 0))
 			plain := ansi.Strip(strings.Join(rows, "\n"))
-			if !strings.Contains(plain, "Read missing.txt (exit 3)") {
+			if !strings.Contains(plain, "Read missing.txt · exit 3") {
 				t.Fatalf("failed read roster: %s", plain)
 			}
 			summary := v.Painter.Summary([]Block{{Value: values[0]}}, 90)

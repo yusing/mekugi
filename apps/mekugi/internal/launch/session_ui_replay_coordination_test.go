@@ -128,11 +128,11 @@ func TestSessionUIReplayNativeFactsMatchLivePresentation(t *testing.T) {
 					t.Fatalf("replay semantic row %s differs: got=%+v live=%+v", id, got, want)
 				}
 			}
-			if actual["native:interrupt:interrupt"].Text != "Interrupted /root/worker" || actual["native:delivery:final"].Text != body || actual["native:delivery:final"].Native.Status != "completed" || actual["native:delivery:foreign"].Message.From != "/remote/observer" || actual["native:reset:reset"].Text != "Compaction not performed: Reset unavailable" {
+			if actual["native:interrupt:interrupt"].Text != "Interrupted worker" || actual["native:delivery:final"].Text != body || actual["native:delivery:final"].Native.Status != "completed" || actual["native:delivery:foreign"].Message.From != "/remote/observer" || actual["native:reset:reset"].Text != "Compaction not performed: Reset unavailable" {
 				t.Fatalf("native authority/body/reset semantics changed: %+v", actual)
 			}
 			paint := ansi.Strip(replayPlaybackTestPaint(t, p, 120, 44))
-			if !strings.Contains(paint, "Interrupted /root/worker") || !strings.Contains(paint, "Reset unavailable") || strings.Contains(paint, "Earlier progress must not replay") {
+			if !strings.Contains(paint, "Interrupted worker") || !strings.Contains(paint, "Reset unavailable") || strings.Contains(paint, "Earlier progress must not replay") {
 				t.Fatalf("replay renderer lost terminal/reset semantics: %s", paint)
 			}
 			if wire := live.Host.Input.(*appServerTestInput); wire.Len() != 0 {
@@ -141,7 +141,7 @@ func TestSessionUIReplayNativeFactsMatchLivePresentation(t *testing.T) {
 			if err := p.advance(0); err != nil {
 				t.Fatal(err)
 			}
-			if entries := p.ui.source.Entries; len(entries) != 1 || entries[0].Source.Text != "Interrupt requested for /root/worker" {
+			if entries := p.ui.source.Entries; len(entries) != 1 || entries[0].Source.Text != "Interrupt requested for worker" {
 				t.Fatal("backward replay retained a future terminal fact")
 			}
 		})

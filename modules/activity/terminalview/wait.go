@@ -33,7 +33,7 @@ func (b Block) progressText(theme diffrender.Theme, style string) string {
 		}
 		text.WriteString(name)
 		if target.Status != "" {
-			text.WriteString(": " + textsanitize.Safe(target.Status, false))
+			text.WriteString(": " + waitTone(theme, style, textsanitize.Safe(target.Status, false)))
 		}
 	}
 	if len(b.WaitTargets) > 2 {
@@ -43,7 +43,26 @@ func (b Block) progressText(theme diffrender.Theme, style string) string {
 		text.WriteString(terminalui.Dim + " (timeout " + textsanitize.Safe(b.WaitTimeout, false) + ")" + terminalui.Reset + style)
 	}
 	if reason := b.ProgressReason(); reason != "" {
-		text.WriteString(": " + textsanitize.Safe(reason, false))
+		// Target outcomes follow a colon; the wait's own reason does not. The
+		// no-break space keeps the separator with its reason.
+		text.WriteString(" ·\u00a0" + waitTone(theme, style, textsanitize.Safe(reason, false)))
 	}
 	return text.String()
+}
+
+// waitTone keeps unsuccessful wait and target outcomes distinct from completion
+// inside a muted progress row: failures in the failure color, and ends without
+// an answer in Warning. Unpainted text stays plain.
+func waitTone(theme diffrender.Theme, style, outcome string) string {
+	color := ""
+	switch outcome {
+	case "failed", "errored", "delivery failed":
+		color = theme.Danger()
+	case "timeout", "canceled", "interrupted":
+		color = theme.Warning()
+	}
+	if style == "" || color == "" {
+		return outcome
+	}
+	return terminalui.Reset + color + outcome + terminalui.Reset + style
 }

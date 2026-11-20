@@ -1,7 +1,6 @@
 package terminalview
 
 import (
-	"fmt"
 	"strings"
 
 	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
@@ -17,15 +16,12 @@ import (
 // vcsRow lays out a VCS operation on one row where it fits: the verb, its
 // heading cut short to leave room for the source, then any exit.
 func (p *Painter) vcsRow(block Block, width int) []string {
-	verb, color := block.RowVerb(), VerbColor(p.Theme, block.Verb)
-	if block.ExitCode != 0 {
-		color = p.Theme.Danger()
-	}
+	verb, color := block.RowVerb(), block.verbColor(p.Theme)
 	lead := block.lead(p.Theme, color, verb)
 	head, source, _ := presentation.VCSSource(block.Label)
 	tail := terminalui.Dim + "· " + source + terminalui.Undim
-	if block.ExitCode != 0 {
-		tail += terminalui.Dim + " · " + terminalui.Undim + exitText(p.Theme, block.ExitCode)
+	if outcome := outcomeSuffix(p.Theme, block); outcome != "" {
+		tail += " " + outcome
 	}
 	room := width - ansi.StringWidth(lead) - 1 - ansi.StringWidth(tail)
 	heading, paths := p.vcsHeading(block.Verb, head, max(1, room))
@@ -86,8 +82,8 @@ func (p *Painter) vcsSummary(block Block) string {
 		detail = strings.TrimSpace(detail + " " + countText(p.Theme, counts))
 	}
 	detail = strings.TrimSpace(detail + " " + terminalui.Dim + "· " + source + terminalui.Undim)
-	if block.ExitCode != 0 {
-		detail += " " + p.Theme.Danger() + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
+	if outcome := outcomeSuffix(p.Theme, block); outcome != "" {
+		detail += " " + outcome
 	}
-	return SummaryVerb(p.Theme, block.RowVerb()) + detail
+	return block.verbColor(p.Theme) + block.RowVerb() + terminalui.Reset + " " + detail
 }

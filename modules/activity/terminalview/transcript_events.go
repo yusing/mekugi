@@ -10,6 +10,9 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
+// eventPreviewRows bounds an Activity event body, including an answer's frame.
+const eventPreviewRows = 5
+
 // sharedEvent keeps event framing in the transcript renderer. Operations and
 // reasoning retain Activity's invocation grouping and branch navigation.
 func (v *View) sharedEvent(index int) bool {
@@ -34,7 +37,7 @@ func (v *View) activityEventItem(index, width, clip int, flash uint64) Run {
 			}
 		}
 	}
-	if clip > 0 && len(run.Lines) > clip+1 {
+	if clip > 0 && (len(run.Lines) > clip+1 || slices.Contains(run.Snippets, Snippet{Run: entry.Seq, Block: 0})) {
 		run.Blocks = v.blocks(index)
 	}
 	v.clipEvent(&run, entry, clip)

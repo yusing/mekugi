@@ -332,6 +332,8 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "You", Kind: "text", Text: strings.Repeat("Long original prompt\n", 30)},
 		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt", Native: &sessionpresentation.NativeItem{Thread: "root", Turn: "turn", Item: "steer"}},
+		// A reply directly below its prompt needs no link; another message between them does.
+		{Seq: 3, Agent: "Session", Kind: "text", Text: "Blocked on a request"},
 	}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "Live answer", binding.ThreadItem{})
 	v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})

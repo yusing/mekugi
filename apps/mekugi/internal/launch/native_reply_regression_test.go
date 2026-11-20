@@ -24,6 +24,9 @@ func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Show me how the new transcript search instruction looks like"}}}})
+	// A later message between the prompt and its answer makes the answer quote it.
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "later",
+		"item": map[string]any{"id": "later", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Keep it short"}}}})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "answer", "type": "agentMessage", "text": "> Read retained output before searching the transcript for exact historical details."}})
 	for i := range u.attached.source.Entries {
@@ -103,6 +106,8 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 	}
 	user("old", "old-turn", "Earlier question")
 	user("current", "current-turn", "Current question")
+	// Another message between the prompt and its answer makes the answer link back.
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
 	appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "main", "turnId": "current-turn", "itemId": "answer", "delta": "First "})
 	user("later", "later-turn", "Later question")
 	appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "main", "turnId": "current-turn", "itemId": "answer", "delta": "part"})
@@ -161,14 +166,15 @@ func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "make build"}})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "make build", "status": "completed", "exitCode": 0}})
 	reply("second", "The build passes now.")
-	if got := quotes(); got != 1 {
-		t.Fatalf("replies separated only by Main's own tools quoted the message %d times", got)
+	// The prompt band sits directly above; Main's own tools do not separate it.
+	if got := quotes(); got != 0 {
+		t.Fatalf("replies adjacent to their message quoted it %d times", got)
 	}
-	// Another message between replies makes the next one quote it again.
+	// Another message between replies makes the next one quote it.
 	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
 	reply("third", "Continuing.")
-	if got := quotes(); got != 2 {
-		t.Fatalf("reply after another message quoted %d times; want 2\n%s", got, ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n")))
+	if got := quotes(); got != 1 {
+		t.Fatalf("reply after another message quoted %d times; want 1\n%s", got, ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n")))
 	}
 }
 

@@ -1,13 +1,13 @@
 Hook Running PreToolUse · hooks.toml ·
              async                  1s
-Hook Ran PreToolUse · hooks.toml ·
-         async                   120ms
-         ┆ context: #!/bin/bash
-         ┆ echo ready
-Hook Failed PreToolUse · hooks.toml ·
-            async                120ms
-            ┆ error: executable not f…
-            ┆ warning: check hook con…
+Hook Ran     PreToolUse · hooks.toml ·
+             async               120ms
+             ┆ context: #!/bin/bash
+             ┆ echo ready
+Hook Failed  PreToolUse · hooks.toml ·
+             async               120ms
+             ┆ error: executable not …
+             ┆ warning: check hook co…
   ── Hook Failed · PreTool… ─ [×] ──  
                                       
   1 ┆ error: executable not found     
@@ -23,5 +23,5 @@ Hook Blocked PreToolUse · hooks.toml ·
              ┆ feedback: operation re…
 Hook Stopped PreToolUse · hooks.toml ·
              async               120ms
-Hook Run PreToolUse · hooks.toml ·
-         async · outcome unknown
+Hook Run     PreToolUse · hooks.toml ·
+             async · outcome unknown

@@ -10,6 +10,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -92,7 +93,7 @@ func TestUISnapshotInterruptedTraffic(t *testing.T) {
 			settleActivity(u.clock().Add(time.Second), view)
 			rows := view.testRenderConversation(90).Lines
 			text := ansi.Strip(strings.Join(rows, "\n"))
-			if strings.Contains(text, "Interrupt requested") || !strings.Contains(text, "Interrupted /root/worker") || strings.Contains(text, "Earlier progress") || strings.Contains(text, "interrupted") || !strings.Contains(text, "failed") || !strings.Contains(text, "finished") {
+			if strings.Contains(text, "Interrupt requested") || !strings.Contains(text, "Interrupted worker") || strings.Contains(text, "Earlier progress") || strings.Contains(text, "interrupted") || !strings.Contains(text, "failed") || !strings.Contains(text, "finished") {
 				t.Fatalf("terminal outcomes did not settle: %s", text)
 			}
 			// The native function tool has no Go MCP wrapper. Its retained
@@ -128,7 +129,7 @@ func TestInterruptedTrafficSettlementOrdering(t *testing.T) {
 			view := f.ui.testActivity(f.ui.shell.Transcript)
 			settleActivity(f.ui.clock().Add(time.Second), view)
 			text := ansi.Strip(strings.Join(view.testRenderConversation(90).Lines, "\n"))
-			if strings.Contains(text, "Interrupt requested") || !strings.Contains(text, "Interrupted "+f.target) {
+			if strings.Contains(text, "Interrupt requested") || !strings.Contains(text, "Interrupted "+pathdisplay.AgentDisplayName(f.target)) {
 				t.Fatalf("%s did not settle: %s", mode, text)
 			}
 		})
@@ -152,11 +153,11 @@ func TestInterruptedTrafficIgnoresPriorGenerationOutcome(t *testing.T) {
 		}
 		return ""
 	}
-	if got := text(); got != "Interrupt requested for "+f.target {
+	if got := text(); got != "Interrupt requested for "+pathdisplay.AgentDisplayName(f.target) {
 		t.Fatalf("old result settled new request: %s", got)
 	}
 	f.complete(t)
-	if got := text(); got != "Interrupted "+f.target {
+	if got := text(); got != "Interrupted "+pathdisplay.AgentDisplayName(f.target) {
 		t.Fatalf("current result did not settle new request: %s", got)
 	}
 }

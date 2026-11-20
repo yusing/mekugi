@@ -316,7 +316,7 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 	}
 	title := VerbColor(p.Theme, block.Verb) + "\x1b[1m" + verb + terminalui.Reset
 	if block.Hook != nil {
-		title = block.runColor(p.Theme) + "\x1b[1m" + verb + terminalui.Reset
+		title = block.verbColor(p.Theme) + "\x1b[1m" + verb + terminalui.Reset
 	}
 	if target := dialogTarget(p, block); target != "" {
 		title += terminalui.Dim + " · " + terminalui.Undim + target

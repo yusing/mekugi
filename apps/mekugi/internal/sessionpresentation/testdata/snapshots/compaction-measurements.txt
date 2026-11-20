@@ -1,2 +1,2 @@
-"\x1b[38;5;214m◉ Context compacted at 171300 tokens (60%) • 1m5s\x1b[m                                                   "
+"\x1b[2m◉\x1b[m Context compacted at 171300 tokens (60%) • 1m5s                                                   "
 "plain after compaction                                                                              "

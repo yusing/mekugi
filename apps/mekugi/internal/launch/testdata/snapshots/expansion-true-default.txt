@@ -9,10 +9,9 @@
 ┃ An event with retained details.
 
 • Inspecting
-└ Ran printf
-      │ echo retained-source
-      │ echo retained-source
-      │ echo retained-source
-      │ echo retained-source
-      │ … +4 lines
-      ┆ … +2 lines
+└ Ran     printf
+          │ echo retained-source
+          │ echo retained-source
+          │ echo retained-source
+          │ echo retained-source
+          │ … +4 lines ┆ +2 lines

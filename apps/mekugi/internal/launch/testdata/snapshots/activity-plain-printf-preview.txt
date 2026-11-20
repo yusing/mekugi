@@ -2,10 +2,10 @@ AGENTS  1 agents · 0 responding                                                
  ✓ probe  Ran printf '%s\n' 'count=42' · +3 more                                                   
 ───────────────────────────────────────────────────────────────────────────────────────────────────
 ● probe                                                                                    12:00:00
-▎ List .codex/sessions/2026/09/30
-▎ Ran  printf 'Alice Smith\n'
-▎      printf 'Evidence-location metadata\n'
-▎      printf '%s\n' 'count=42'
+▎ List    .codex/sessions/2026/09/30
+▎ Ran     printf 'Alice Smith\n'
+▎         printf 'Evidence-location metadata\n'
+▎         printf '%s\n' 'count=42'
 
 
 

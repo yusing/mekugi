@@ -54,7 +54,12 @@ func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
 	} else {
 		label = p.Inline(label)
 	}
-	return ansi.Truncate(label, max(1, width), "…"), ansi.StringWidth(label) > max(1, width)
+	header := ansi.Truncate(label, max(1, width), "…")
+	if plain := ansi.Strip(header); strings.HasSuffix(plain, " •…") || strings.HasSuffix(plain, " • …") {
+		// A separator with nothing after it reads as a stray bullet.
+		header = ansi.Truncate(label, ansi.StringWidth(strings.TrimRight(strings.TrimSuffix(strings.TrimSuffix(plain, "…"), " "), " •")), "")
+	}
+	return header, ansi.StringWidth(label) > max(1, width)
 }
 
 // Lead with elapsed time and strip the visible trailing period, preserving

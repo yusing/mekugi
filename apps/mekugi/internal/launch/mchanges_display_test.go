@@ -76,11 +76,11 @@ func TestMChangesListShowsEditRows(t *testing.T) {
 	t.Parallel()
 	u := mchangesDisplay(t, "mchanges --list --max-tokens 400", "amber1..amber3 +12 -4\namber4 pending\namber5 +3 -1 ? managed:2\namber6 history:partial +1 -0 ?\n")
 	want := strings.Join([]string{
-		"└ Ran mchanges --list --max-tokens 400",
-		"      amber1..amber3  +12 -4 ━━━━━━━━",
-		"      amber4          pending",
-		"      amber5          +3 -1  ━━━━━━━━ ? · managed:2",
-		"      amber6          +1     ━━━━━━━━ history:partial · ?",
+		"└ Ran     mchanges --list --max-tokens 400",
+		"          amber1..amber3  +12 -4 ━━━━━━━━",
+		"          amber4          pending",
+		"          amber5          +3 -1  ━━━━━━━━ ? · managed:2",
+		"          amber6          +1     ━━━━━━━━ history:partial · ?",
 	}, "\n")
 	if got := mainFeed(u, 100); !strings.Contains(got, want) {
 		t.Fatalf("list rows =\n%s\nwant\n%s", got, want)

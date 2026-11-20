@@ -85,7 +85,7 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 		if from == "/root" {
 			from = "Main"
 		}
-		entry.Kind, entry.Text = "progress", "Side question "+q.Target+" · answered"
+		entry.Kind, entry.Text = "progress", "Side question "+pathdisplay.AgentDisplayName(q.Target)+" · answered"
 		entry.SideQuestion = &activitypresentation.SideQuestion{From: from, To: q.Target, Question: q.Question, Answer: q.Answer, Answered: true}
 		return entry
 	}
@@ -171,6 +171,7 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 		if from == "/root" {
 			from = "Main"
 		}
+		entry.Text = c.Action + " " + pathdisplay.AgentDisplayName(target) + " · " + c.State
 		entry.SideQuestion = &activitypresentation.SideQuestion{From: from, To: target, Question: c.Message, Answer: c.Answer, Answered: c.Confirmed}
 	}
 	if c.Action == "Spawn" && c.State == "pending" {
@@ -190,7 +191,8 @@ func (s *Attachment) CoordinationEntry(entry ActivityEntry, item observation.Ite
 			wait.From = entry.Agent
 			entry.Text, entry.Native.Wait = wait.ProgressText(), wait
 		case "Interrupt":
-			entry.Text = "Interrupt requested for " + target
+			requested := interruptValue(entry.Agent, target, "")
+			entry.Text, entry.Native.Wait = requested.ProgressText(), requested
 			entry.Native.InterruptTarget, entry.Native.InterruptID = target, c.ID
 		case "List agents":
 			entry.Text = listed(c.Count, "agent")

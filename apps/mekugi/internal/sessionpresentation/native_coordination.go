@@ -38,8 +38,8 @@ func NativeCoordinationEntries(thread, turn string, item sessioncontrol.NativeMe
 	}
 	if facts != nil && facts.Interrupt != nil {
 		interrupt := facts.Interrupt
-		text := "Interrupt requested for " + interrupt.Target.TaskName
-		entries = append(entries, ActivityEntry{Agent: "/root", Kind: "progress", Text: text, Observed: at, Completed: at, Native: &NativeItem{Thread: thread, Turn: turn, Item: "native:interrupt:" + interrupt.OperationID, Phase: "supplement", InterruptTarget: interrupt.Target.TaskName, InterruptID: interrupt.OperationID, NativeWork: &interrupt.Target, Wait: &activity.Value{Kind: "progress", From: "/root", Body: text}}})
+		value := interruptValue("/root", interrupt.Target.TaskName, "")
+		entries = append(entries, ActivityEntry{Agent: "/root", Kind: "progress", Text: value.ProgressText(), Observed: at, Completed: at, Native: &NativeItem{Thread: thread, Turn: turn, Item: "native:interrupt:" + interrupt.OperationID, Phase: "supplement", InterruptTarget: interrupt.Target.TaskName, InterruptID: interrupt.OperationID, NativeWork: &interrupt.Target, Wait: value}})
 	}
 	if delivery, ok := item.Delivery(); ok && (facts == nil || len(facts.Deliveries) == 0 && (facts.Wait == nil || len(facts.Wait.Messages) == 0)) {
 		delivery.Thread = thread
@@ -178,6 +178,16 @@ func NativeContextResetEntry(reset sessioncontrol.ContextReset, at time.Time) (A
 	return ActivityEntry{Agent: "/root", Kind: kind, Text: text, Observed: at, Completed: at, Native: &NativeItem{Thread: reset.Thread, Turn: reset.Turn, Item: "native:reset:" + id, Phase: "item/completed", Status: reset.Status}}, true
 }
 
+// interruptValue names the target as an agent, so renderers show its display
+// name in its own color rather than its task path.
+func interruptValue(from, target, status string) *activity.Value {
+	value := &activity.Value{Kind: "progress", From: from, Body: "Interrupt requested for", WaitTargets: []activity.WaitTarget{{Name: target}}, WaitReason: status}
+	if status == "interrupted" {
+		value.Body, value.WaitReason = "Interrupted", ""
+	}
+	return value
+}
+
 // settleNativeInterrupt joins frozen facts already in this bounded Activity feed.
 // It neither observes mutable work nor treats an acknowledgement as completion.
 func (v *ActivitySource) settleNativeInterrupt(entry *ActivityEntry) {
@@ -205,13 +215,8 @@ func (v *ActivitySource) settleNativeInterrupt(entry *ActivityEntry) {
 		}
 		native := *request.Native
 		request.Native = &native
-		name := target.TaskName
-		text := "Interrupt requested for " + name + ": " + status
-		if status == "interrupted" {
-			text = "Interrupted " + name
-		}
-		request.Text = text
-		request.Native.Wait = &activity.Value{Kind: "progress", From: request.Agent, Body: text}
+		value := interruptValue(request.Agent, target.TaskName, status)
+		request.Text, request.Native.Wait = value.ProgressText(), value
 	}
 	if n.InterruptID != "" {
 		for _, previous := range v.Entries {

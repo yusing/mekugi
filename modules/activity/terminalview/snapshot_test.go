@@ -69,7 +69,7 @@ func TestUISnapshotInterpreterRun(t *testing.T) {
 		}
 	}
 	source := "python3 - <<'PY'\nfrom pathlib import Path\nPath('file').write_text('new')\nprint('saved')\nPY\n"
-	command := presentation.Command{Source: 7, Script: source, Display: source, Captured: true, CaptureText: "Edit `file` · +1 −1 · python3", Duration: time.Second, Tail: []string{"saved"}}
+	command := presentation.Command{Source: 7, Script: source, Display: source, Captured: true, CaptureText: "Edit `file` · +1 −1 · python3", Exited: true, Duration: time.Second, Tail: []string{"saved"}}
 	item := presentation.ItemContent{Seq: 7, Kind: "tool", Text: presentation.ShellSource(source, ""), Command: command, Details: &presentation.ItemDetails{CommandText: source}}
 	for _, value := range item.Values() {
 		rows = append(rows, p.Block(Block{Value: value}, 60)...)

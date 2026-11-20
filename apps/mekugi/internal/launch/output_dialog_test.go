@@ -301,7 +301,7 @@ func TestOutputDialogRestoredCommandUsesRetainedAggregate(t *testing.T) {
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 60)
 	index := -1
 	for i, line := range feed.Lines {
-		if strings.Contains(ansi.Strip(line), "Ran go test ./...") {
+		if strings.Contains(ansi.Strip(line), "Ran     go test ./...") {
 			index = i
 			break
 		}
@@ -343,7 +343,7 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 60)
 	index := -1
 	for i, line := range feed.Lines {
-		if strings.Contains(ansi.Strip(line), "Ran go test ./...") {
+		if strings.Contains(ansi.Strip(line), "Ran     go test ./...") {
 			index = i
 			break
 		}

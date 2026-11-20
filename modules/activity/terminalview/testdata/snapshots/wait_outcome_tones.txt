@@ -1,0 +1,8 @@
+"\x1b[2m↔ Finished waiting for \x1b[38;5;222mworker\x1b[39m: completed\x1b[m                                "
+"\x1b[2m↔ Finished waiting for \x1b[38;5;222mworker\x1b[39m: \x1b[38;5;203;22merrored\x1b[m                                  "
+"\x1b[2m↔ Finished waiting for \x1b[38;5;222mworker\x1b[39m ·\u00a0\x1b[38;5;214;22mtimeout\x1b[m                                 "
+"\x1b[2m↔ Finished waiting for \x1b[38;5;222mworker\x1b[39m ·\u00a0\x1b[38;5;203;22mdelivery failed\x1b[m                         "
+"\x1b[2m↔ Finished waiting for \x1b[38;5;222mworker\x1b[39m: working ·\u00a0message received\x1b[m               "
+"\x1b[2m↔ Finished waiting for\x1b[m                                                  "
+"  \x1b[38;5;222;2mworker\x1b[39m: \x1b[38;5;203;22mfailed\x1b[m                                                        "
+"plain after waits                                                       "

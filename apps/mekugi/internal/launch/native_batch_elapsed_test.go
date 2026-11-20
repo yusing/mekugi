@@ -97,7 +97,7 @@ func TestUISnapshotNativeBatchElapsed(t *testing.T) {
 					entry := sessionpresentation.ActivityEntry{Seq: 1, Kind: "tool", Text: "Run `make test TEST_PACKAGES=./internal/router`\n\nDiff `amber1` · mchanges --net", Observed: start,
 						Native: &sessionpresentation.NativeItem{Command: "make test TEST_PACKAGES=./internal/router; mchanges amber1 --net", Running: running, CommandStarted: start}}
 					if !running {
-						entry.Native.Duration, entry.Native.CommandEnded = elapsed, time.Now()
+						entry.Native.Duration, entry.Native.CommandEnded, entry.Native.Exit = elapsed, time.Now(), new(0)
 					}
 					blocks := parseLiveActivity(entry)
 					if len(blocks) != 3 || !blocks[2].BatchExit || blocks[2].Started != start {

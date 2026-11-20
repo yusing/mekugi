@@ -71,7 +71,7 @@ func sameAction(a, b Value) bool {
 	return (a.Kind == "op" || a.Kind == "reads") && (b.Kind == "op" || b.Kind == "reads") &&
 		a.Verb != "" && a.Verb == b.Verb && a.Workdir == b.Workdir && a.Owner == b.Owner &&
 		a.Running == b.Running && a.Skipped == b.Skipped && a.Pending == b.Pending && a.Effect == b.Effect && a.Exited == b.Exited && a.BatchExit == b.BatchExit &&
-		a.Requested == b.Requested && a.Approval == b.Approval
+		a.Requested == b.Requested && a.Approval == b.Approval && a.FailedOutcome() == b.FailedOutcome()
 }
 
 // Source: modules/activity/terminalview/blocks.go:369:407@[3e523196].

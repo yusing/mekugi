@@ -43,7 +43,8 @@ func (b Value) ProgressText() string {
 		text.WriteString(" (timeout " + b.WaitTimeout + ")")
 	}
 	if reason := b.ProgressReason(); reason != "" {
-		text.WriteString(": " + textsanitize.Safe(reason, false))
+		// Target outcomes follow a colon; the wait's own reason does not.
+		text.WriteString(" · " + textsanitize.Safe(reason, false))
 	}
 	return text.String()
 }

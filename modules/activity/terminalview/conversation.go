@@ -658,7 +658,8 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 		case "message":
 			glyph = terminalui.Dim + "✉" + terminalui.Undim
 		case "final":
-			glyph = v.Painter.Theme.Success() + "✓" + terminalui.Reset
+			// Finishing a turn is not a verdict on what the reply reports.
+			glyph = terminalui.Dim + "✓" + terminalui.Undim
 		case "interrupted":
 			glyph = terminalui.Dim + "■" + terminalui.Undim
 		case "error":
@@ -714,7 +715,22 @@ func (v *View) agentItem(out *conversationLines, entry activitypresentation.Entr
 	switch {
 	case !v.Conversation && block.Kind == "final" && v.Expansion == 0:
 		block.Flash = v.FlashQuestion == entry.Seq && v.Now().Before(v.FlashUntil)
-		out.hang(gutter, gutter, v.paintBlock(len(out.lines), 5, func() []string { return p.Event(block, body) }))
+		// The Activity preview bounds the answer inside its frame; the hidden
+		// count opens the full entry.
+		snippet := Snippet{Run: entry.Seq, Block: 0}
+		block.BodyRows, block.Hovered = eventPreviewRows, v.Snippet == snippet
+		hidden := 0
+		start := len(out.lines)
+		out.hang(gutter, gutter, v.paintBlock(len(out.lines), 0, func() []string {
+			rows, clipped := p.finalCard(block, body)
+			hidden = clipped
+			return rows
+		}))
+		if hidden > 0 {
+			for row := start; row < len(out.snippets); row++ {
+				out.snippets[row] = snippet
+			}
+		}
 	case block.Kind == "start" || block.Kind == "message":
 		switch {
 		case entry.Kind == "progress":
@@ -780,12 +796,14 @@ func threadHeading(lead, detail string, entry, previous activitypresentation.Ent
 }
 
 // mainReplyQuotes reports whether Main's reply at index quotes its message:
-// the first reply to it does, and a later one only when another message sits
-// between them. Main's own tools, reasoning and progress are not messages.
+// only when another message sits between them. A reply adjacent to the
+// message band above it, or to Main's earlier reply to it, needs no quote.
+// An answer to a question has no band, so its first reply keeps the link.
+// Main's own tools, reasoning and progress are not messages.
 func (v *View) mainReplyQuotes(index int, question uint64) bool {
 	for _, previous := range slices.Backward(v.entries[:index]) {
 		if previous.Seq == question {
-			return true
+			return previous.Kind == "question_reply"
 		}
 		if !v.Visible(previous) || previous.Agent == v.conversationSpeaker() && previous.Kind != "text" && previous.Kind != "final" {
 			continue

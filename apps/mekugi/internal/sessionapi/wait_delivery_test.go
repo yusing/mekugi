@@ -36,7 +36,7 @@ func TestUISnapshotWaitProgressOnlyAwaitedAgent(t *testing.T) {
 			}
 			rendered = append(rendered, "Following plain row")
 			text := ansi.Strip(strings.Join(rendered, "\n"))
-			if !strings.Contains(text, "Finished waiting for worker: yielded") || strings.Contains(text, "+4 more") || strings.Contains(text, "settled-") {
+			if !strings.Contains(text, "Finished waiting for worker ·\u00a0yielded") || strings.Contains(text, "+4 more") || strings.Contains(text, "settled-") {
 				t.Fatalf("renderer expanded native selected targets: %s", text)
 			}
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/wait-progress-only-awaited.txt", rendered, 100)

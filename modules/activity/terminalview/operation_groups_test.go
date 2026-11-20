@@ -35,7 +35,7 @@ func TestGroupOperationsGroupsOnlyEdits(t *testing.T) {
 	for _, block := range got {
 		rows = append(rows, p.Block(block, 100)...)
 	}
-	want := []string{"Read   a.go", "Search needle (3 results)", "List   internal", "Inspect a.go", "Ran    go test ./...", "Read   b.go"}
+	want := []string{"Read   a.go", "Search needle (3 results)", "List   internal", "Inspect a.go", "Ran     go test ./...", "Read   b.go"}
 	if got := plainLines(rows); !reflect.DeepEqual(got, want) {
 		t.Fatalf("operation rows = %q, want %q", got, want)
 	}
@@ -257,12 +257,12 @@ func TestRanRowWrapsAtShellWords(t *testing.T) {
 			t.Fatalf("row exceeds width: %q", ansi.Strip(row))
 		}
 	}
-	if !strings.HasPrefix(plain[0], "Ran    go test") || !strings.Contains(rows[0], diffrender.TerminalTheme.Danger()+"\x1b[1mRan") {
+	if !strings.HasPrefix(plain[0], "Ran     go test") || !strings.Contains(rows[0], diffrender.TerminalTheme.Danger()+"\x1b[1mRan") {
 		t.Fatalf("failed command row = %q", plain)
 	}
 	var joined []string
 	for _, row := range plain {
-		if strings.Contains(row, "┆") || strings.HasPrefix(row, "       · exit") {
+		if strings.Contains(row, "┆") || strings.HasPrefix(row, "        · exit") {
 			continue
 		}
 		row = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(row, "Ran"), " \\"))
@@ -279,7 +279,7 @@ func TestRanRowWrapsAtShellWords(t *testing.T) {
 	}
 	tail := strings.Join(plain, "\n")
 	// Earlier lines are counted in the verb column of the first output row.
-	for _, want := range []string{"       · exit 1\n+3     ┆ --- FAIL: TestX\n       ┆ FAIL"} {
+	for _, want := range []string{"        · exit 1\n+3      ┆ --- FAIL: TestX\n        ┆ FAIL"} {
 		if !strings.Contains(tail, want) {
 			t.Fatalf("missing %q:\n%s", want, tail)
 		}
@@ -290,12 +290,12 @@ func TestRanRowPutsStatementsOnRows(t *testing.T) {
 	p := activityui.Painter{}
 	command := `git status --short; git show --format=fuller 20ba742c && cat "a b.md" || true; find . -exec rm {} \; ; echo $(a; b)`
 	want := []string{
-		"Ran    git status --short;",
-		"       git show --format=fuller 20ba742c &&",
-		`       cat "a b.md" ||`,
-		"       true;",
-		`       find . -exec rm {} \; ;`,
-		"       echo $(a; b)",
+		"Ran     git status --short;",
+		"        git show --format=fuller 20ba742c &&",
+		`        cat "a b.md" ||`,
+		"        true;",
+		`        find . -exec rm {} \; ;`,
+		"        echo $(a; b)",
 	}
 	if plain := plainLines(p.Block(activityui.Block{Kind: "op", Verb: "Run", Code: command, Lang: "bash", Fenced: true}, 60)); !reflect.DeepEqual(plain, want) {
 		t.Fatalf("statement rows = %q", plain)
@@ -342,11 +342,11 @@ func TestOperationRowsNameTheirOutcome(t *testing.T) {
 		want   []string
 	}{
 		{"ran", []activityui.Block{{Kind: "op", Verb: "Run", Code: "git diff --cc", Lang: "bash", Fenced: true},
-			{Kind: "filter", Body: "output not returned to the model"}}, []string{"Ran    git diff --cc", "       output not returned to the model"}},
+			{Kind: "filter", Body: "output not returned to the model"}}, []string{"Ran     git diff --cc", "        output not returned to the model"}},
 		{"failed", []activityui.Block{{Kind: "op", Verb: "Run", Code: "false", Lang: "bash", Fenced: true, ExitCode: 1, Tail: []string{"boom"}}},
-			[]string{"Ran    false · exit 1", "       ┆ boom"}},
+			[]string{"Ran     false · exit 1", "        ┆ boom"}},
 		{"failed program", []activityui.Block{{Kind: "op", Verb: "Run", Code: "print(1)\nprint(2)", Lang: "python", Fenced: true, ExitCode: 3}},
-			[]string{"Ran    │ print(1)", "       │ print(2)", "       · exit 3"}},
+			[]string{"Ran     │ print(1)", "        │ print(2)", "        · exit 3"}},
 		{"search", []activityui.Block{{Kind: "op", Verb: "Search", Label: "`^test` in `Makefile`"}}, []string{"Search ^test in Makefile"}},
 		{"edited", []activityui.Block{{Kind: "op", Verb: "Edit", Label: "`a.go` +4 -2 · python3", EditSource: "python3", EditHeader: true}},
 			[]string{"Edited a.go +4 -2 via python3"}},
@@ -378,7 +378,7 @@ func TestFailedRanRowKeepsExitAfterWrappedCommand(t *testing.T) {
 	p := activityui.Painter{}
 	block := activityui.Block{Kind: "op", Verb: "Run", Code: "go test ./internal/router -count=1", Lang: "bash", Fenced: true, ExitCode: 2}
 	got := plainLines(p.Block(block, 30))
-	if got[len(got)-1] != "         -count=1 · exit 2" {
+	if got[len(got)-1] != "          -count=1 · exit 2" {
 		t.Fatalf("wrapped failure = %q", got)
 	}
 	for _, row := range p.Block(block, 30) {
@@ -403,7 +403,8 @@ func TestAlignVerbsPadsOnlyToAdjacentVerbs(t *testing.T) {
 		rows = append(rows, p.Block(block, 80)...)
 	}
 	// A verb wider than the default column does not widen its neighbors'.
-	want := []string{"Ran git status", "    output not returned to the model", "Run JavaScript x()", "• Checking", "Read   a.go", "Search needle"}
+	// Ran keeps the column Running takes, so settling never moves its command.
+	want := []string{"Ran     git status", "        output not returned to the model", "Run JavaScript x()", "• Checking", "Read   a.go", "Search needle"}
 	if got := plainLines(rows); !reflect.DeepEqual(got, want) {
 		t.Fatalf("rows = %q, want %q", got, want)
 	}
@@ -419,8 +420,8 @@ func TestRanRowBoundsSourceRows(t *testing.T) {
 		block activityui.Block
 		hint  string
 	}{
-		{"one line", activityui.Block{Kind: "op", Verb: "Run", Code: oneLine, Lang: "bash", Fenced: true, ExitCode: 1, Tail: []string{"SyntaxError"}}, "       … +"},
-		{"program", activityui.Block{Kind: "op", Verb: "Run", Code: program, Lang: "python", Fenced: true}, "       │ … +"},
+		{"one line", activityui.Block{Kind: "op", Verb: "Run", Code: oneLine, Lang: "bash", Fenced: true, ExitCode: 1, Tail: []string{"SyntaxError"}}, "        … +"},
+		{"program", activityui.Block{Kind: "op", Verb: "Run", Code: program, Lang: "python", Fenced: true}, "        │ … +"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			whole := plainLines(p.Block(tc.block, 60))

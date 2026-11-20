@@ -165,13 +165,13 @@ func TestWebUIBrowserDisclosures(t *testing.T) {
 	// history. Read from the top through the same paging path as a reader.
 	run("wait", "--fn", `!!document.querySelector('[data-entry="22"]')`)
 	run("eval", `(() => { const scroller = document.querySelector('[aria-label="Transcript"] .overflow-y-auto'); scroller.dispatchEvent(new WheelEvent('wheel', {bubbles:true})); scroller.scrollTop = 0; })()`)
-	run("wait", "--text", "Interrupt requested for /root/worker")
+	run("wait", "--text", "Interrupt requested for worker")
 	for _, width := range []string{"1280", "768", "390"} {
 		run("set", "viewport", width, "900")
 		for _, theme := range []string{"light", "dark"} {
 			run("eval", fmt.Sprintf("document.documentElement.dataset.theme = %q", theme))
 			run("eval", `document.querySelector('[data-entry="1"]').closest('.overflow-y-auto').scrollTop = 0`)
-			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [1,2,5].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"], summary, button[aria-expanded]')) && row(1).innerText.includes('Interrupt requested for /root/worker') && row(2).innerText.includes('complete') && row(5).innerText.includes('Complete short reply.') && row(3).querySelector('button[aria-label="Output: 2 lines"]') && row(4).querySelector('button[aria-label="Script: 2 lines"]') && row(6).querySelector('button[aria-expanded]') && row(7).querySelector('button[aria-label="Details"]'); })()`)
+			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [1,2,5].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"], summary, button[aria-expanded]')) && row(1).innerText.includes('Interrupt requested for worker') && row(2).innerText.includes('complete') && row(5).innerText.includes('Complete short reply.') && row(3).querySelector('button[aria-label="Output: 2 lines"]') && row(4).querySelector('button[aria-label="Script: 2 lines"]') && row(6).querySelector('button[aria-expanded]') && row(7).querySelector('button[aria-label="Details"]'); })()`)
 			run("wait", "--fn", `(() => { const row = n => document.querySelector('[data-entry="'+n+'"]'); return [8,9,11].every(n => row(n) && !row(n).querySelector('button[aria-label="Details"]')) && row(8).innerText.includes('Complete short failure.') && row(11).innerText.includes('Visible hook failure') && [10,12].every(n => row(n)?.querySelector('button[aria-label="Details"]')); })()`)
 			// Tool rows sit on the page without a card frame, whether or not
 			// output shows beneath them; output keeps its raised well.

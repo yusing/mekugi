@@ -58,7 +58,7 @@ func TestAppServerFailedCommandShowsOutputTailInMain(t *testing.T) {
 		"id": "read", "type": "commandExecution", "command": "cat a.go", "status": "completed", "exitCode": 0,
 		"commandActions": []map[string]any{{"type": "read", "path": "a.go", "command": "cat a.go"}}}})
 	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
-	want := "├ Ran  go test ./... · exit 1\n│      ┆ ok\n│      ┆ --- FAIL: TestX\n│      ┆ FAIL\n└ Read a.go"
+	want := "├ Ran     go test ./... · exit 1\n│         ┆ ok\n│         ┆ --- FAIL: TestX\n│         ┆ FAIL\n└ Read    a.go"
 	if !strings.Contains(main, want) {
 		t.Fatalf("Main lacks failure tail on its branch %q:\n%s", want, main)
 	}
@@ -146,8 +146,8 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "late\n"})
 	rollCommandOutput(u)
 	// The host's output stays readable until Main's next event, then collapses.
-	open := "      ┆ ok 1\n      ┆ ok 2\n      ┆ PASS"
-	if got := main(); !strings.Contains(got, "└ Ran go test ./...") || !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
+	open := "          ┆ ok 1\n          ┆ ok 2\n          ┆ PASS"
+	if got := main(); !strings.Contains(got, "└ Ran     go test ./...") || !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
 		t.Fatalf("completed command lacks its settled output %q:\n%s", open, got)
 	}
 	if settleActivity(time.Now().Add(time.Hour), u.testActivity(u.shell.Transcript)) {
@@ -162,7 +162,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	}
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 60)
 	got := ansi.Strip(strings.Join(feed.Lines, "\n"))
-	if collapsed := "└ Ran go test ./...\n      ┆ … +3 lines"; !strings.Contains(got, collapsed) || strings.Contains(got, "ok 1") {
+	if collapsed := "└ Ran     go test ./...\n          ┆ … +3 lines"; !strings.Contains(got, collapsed) || strings.Contains(got, "ok 1") {
 		t.Fatalf("settled output is not collapsed to %q:\n%s", collapsed, got)
 	}
 	// Either row of the command opens its full retained output in the dialog.
@@ -254,7 +254,7 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 				return
 			}
 			// A read's output starts collapsed, without waiting for a later event.
-			check("Read  a.go (2 lines)")
+			check("Read    a.go (2 lines)")
 			feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 60)
 			index := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "(2 lines)") })
 			snippet := feed.Snippets[index]
@@ -540,10 +540,10 @@ func TestAppServerShortPaneShowsCompactTail(t *testing.T) {
 	render := func(height int) string {
 		return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).Render(90, height, time.Now()), "\n"))
 	}
-	if got, want := render(40), "└ Ran go test ./...\n  +1  ┆ 2\n      ┆ 3\n      ┆ 4\n      ┆ 5\n      ┆ 6"; !strings.Contains(got, want) {
+	if got, want := render(40), "└ Ran     go test ./...\n  +1      ┆ 2\n          ┆ 3\n          ┆ 4\n          ┆ 5\n          ┆ 6"; !strings.Contains(got, want) {
 		t.Fatalf("tall pane lacks the whole tail %q:\n%s", want, got)
 	}
-	if got, want := render(39), "└ Ran go test ./...\n  +3  ┆ 4\n      ┆ 5\n      ┆ 6"; !strings.Contains(got, want) {
+	if got, want := render(39), "└ Ran     go test ./...\n  +3      ┆ 4\n          ┆ 5\n          ┆ 6"; !strings.Contains(got, want) {
 		t.Fatalf("short pane lacks the compact tail %q:\n%s", want, got)
 	}
 }

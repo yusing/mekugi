@@ -1,1 +1,1 @@
-Ran    sleep 6 · exit 124 (timeout 5s)                                                  5s
+Ran     sleep 6 · exit 124 (timeout 5s)                                                 5s

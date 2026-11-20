@@ -186,7 +186,12 @@ func TestUISnapshotLogicalWaitAllOutcome(t *testing.T) {
 			nativeWaitSettlementFixture(t, u, result, outcomes, nil, "all")
 			nativeTreeFixture(t, threads)
 			rows, _ := u.testMainFrame(80, 10, 0)
-			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "Finished waiting for worker: "+reason) || strings.Contains(text, reason+": completed") {
+			// A paused target states its own outcome; delivery failure belongs to the wait.
+			want := "Finished waiting for worker: " + reason
+			if outcomes == nil {
+				want = "Finished waiting for worker ·\u00a0" + reason
+			}
+			if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, want) || strings.Contains(text, reason+": completed") {
 				t.Fatalf("aggregate wake invisible: %s", text)
 			}
 			name := "logical-wait-all-outcome"

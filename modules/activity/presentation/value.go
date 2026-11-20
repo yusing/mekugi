@@ -83,8 +83,30 @@ type Value struct {
 
 // FailedOutcome shares operation failure semantics across full and compact rows.
 func (b Value) FailedOutcome() bool {
-	return b.Failed || b.Verb == "Attach failed" || b.ExitCode != 0 || b.Hook != nil &&
+	return b.Failed || b.Verb == "Attach failed" || b.ExitFailed() || b.Hook != nil &&
 		(b.Hook.Failed() || slices.Contains([]string{"blocked", "stopped"}, b.Hook.Status))
+}
+
+// NoMatch reports a search whose exit 1 only states that its complete output
+// established zero results, as grep and ripgrep report no match.
+func (b Value) NoMatch() bool {
+	return b.ExitCode == 1 && b.Verb == "Search" && b.Results != nil && *b.Results == 0
+}
+
+// ExitFailed reports a known nonzero exit that means failure.
+func (b Value) ExitFailed() bool { return b.ExitCode != 0 && !b.NoMatch() }
+
+// ExitUnknown reports a settled command whose host facts carry no exit status.
+// NotificationTiming marks values that received their invocation's host facts;
+// pending, declined, requested and skipped commands never ran to an exit, and
+// one without timing was never observed running, such as an approved command
+// that has not started.
+func (b Value) ExitUnknown() bool {
+	if b.Kind != "op" || b.Verb != "Run" || !b.NotificationTiming || b.Hook != nil || b.Exited || b.Running || b.Pending || b.Skipped || b.Requested || b.Segment ||
+		b.Started.IsZero() && b.Ended.IsZero() && b.Duration == 0 {
+		return false
+	}
+	return b.Approval == "" || strings.HasPrefix(b.Approval, "Approved") || strings.HasPrefix(b.Approval, "Granted") || strings.HasPrefix(b.Approval, "Allowed")
 }
 
 // ReadSubject preserves literal queries and skill identities, shortening file paths.

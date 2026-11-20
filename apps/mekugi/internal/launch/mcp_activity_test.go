@@ -513,7 +513,7 @@ func TestThreadControlEmptyWaitLiveRestoredReplay(t *testing.T) {
 	for _, tt := range []struct{ name, result, want string }{
 		{"registered", `{"content":[]}`, "Waiting for all"},
 		{"completed", `{"content":[{"type":"text","text":"{\"state\":\"completed\",\"event\":{\"task\":\"/root/worker\",\"status\":\"completed\"}}"}]}`, "Finished waiting for worker: completed"},
-		{"timeout", `{"content":[{"type":"text","text":"{\"state\":\"timeout\",\"targets\":[\"/root/worker\"]}"}]}`, "Finished waiting for worker: timeout"},
+		{"timeout", `{"content":[{"type":"text","text":"{\"state\":\"timeout\",\"targets\":[\"/root/worker\"]}"}]}`, "Finished waiting for worker ·\u00a0timeout"},
 		{"interrupted", `{"content":[{"type":"text","text":"{\"state\":\"completed\",\"event\":{\"task\":\"/root/worker\",\"status\":\"interrupted\"}}"}]}`, "worker: interrupted"},
 		{"failed", `{"isError":true,"content":[{"type":"text","text":"wait rejected"}]}`, "Wait failed: wait rejected"},
 		{"unconfirmed", `{"content":[{"type":"text","text":"{}"}]}`, "Wait · unconfirmed"},
@@ -556,13 +556,13 @@ func TestThreadControlRetainedWaitOutcome(t *testing.T) {
 	// Same separate-output shape as the reported session; ids are fixture-local.
 	for _, tt := range []struct{ name, fields, want string }{
 		{"completed", `"state":"completed","wait_mode":"any","event":{"task":"/root/worker","kind":"completed","status":"completed"},"targets":["/root/worker","/root/reader"]`, "Finished waiting for worker: completed"},
-		{"message", `"state":"completed","event":{"task":"/root/worker","kind":"message","status":"working"}`, "Finished waiting for worker: working: message received"},
-		{"timeout", `"state":"timeout","targets":["/root/worker"]`, "Finished waiting for worker: timeout"},
-		{"canceled", `"state":"canceled","targets":["/root/worker"]`, "Finished waiting for worker: canceled"},
-		{"paused", `"state":"paused","targets":["/root/worker"]`, "Finished waiting for worker: paused"},
-		{"yielded", `"state":"yielded","targets":["/root/worker"]`, "Finished waiting for worker: yielded"},
+		{"message", `"state":"completed","event":{"task":"/root/worker","kind":"message","status":"working"}`, "Finished waiting for worker: working ·\u00a0message received"},
+		{"timeout", `"state":"timeout","targets":["/root/worker"]`, "Finished waiting for worker ·\u00a0timeout"},
+		{"canceled", `"state":"canceled","targets":["/root/worker"]`, "Finished waiting for worker ·\u00a0canceled"},
+		{"paused", `"state":"paused","targets":["/root/worker"]`, "Finished waiting for worker ·\u00a0paused"},
+		{"yielded", `"state":"yielded","targets":["/root/worker"]`, "Finished waiting for worker ·\u00a0yielded"},
 		{"mixed", `"state":"completed","events":[{"task":"/root/worker","status":"failed"},{"task":"/root/reader","status":"interrupted"}]`, "Finished waiting for worker: failed, reader: interrupted"},
-		{"failed", `"state":"failed","targets":["/root/worker"]`, "Finished waiting for worker: failed"},
+		{"failed", `"state":"failed","targets":["/root/worker"]`, "Finished waiting for worker ·\u00a0failed"},
 		{"unknown", `"state":"unknown"`, ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
