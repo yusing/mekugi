@@ -8,14 +8,26 @@ import (
 	"testing"
 )
 
+// repositoryHooks returns the repository's hook directory through a testdata
+// symlink. Go's test cache tracks only files inside this module, so listing the
+// directory through the link keys cached results on the hook scripts.
+func repositoryHooks(t *testing.T) string {
+	t.Helper()
+	hooks, err := filepath.Abs("testdata/githooks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadDir(hooks); err != nil {
+		t.Fatal(err)
+	}
+	return hooks
+}
+
 func TestSnapshotCommitHookChecksStagedTree(t *testing.T) {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	workspace := gitTestWorkspace(t)
-	hooks, err := filepath.Abs("../../../../.githooks")
-	if err != nil {
-		t.Fatal(err)
-	}
+	hooks := repositoryHooks(t)
 	bin := t.TempDir()
 	makePath := filepath.Join(bin, "make")
 	// An older recipe/runner accepts @snapshots and ignores the optional input.
@@ -82,10 +94,7 @@ func TestDocumentationCommitHookChecksStagedDocsOnly(t *testing.T) {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	workspace := gitTestWorkspace(t)
-	hooks, err := filepath.Abs("../../../../.githooks")
-	if err != nil {
-		t.Fatal(err)
-	}
+	hooks := repositoryHooks(t)
 	bin := t.TempDir()
 	makePath := filepath.Join(bin, "make")
 	writeTestFile(t, makePath, `#!/bin/sh

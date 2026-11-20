@@ -43,6 +43,7 @@ make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/launc
 
 ## Fixture gotchas
 
+- Go's test cache tracks only files inside the test's own module. Read other repository files (Makefile, `.githooks`) through a `testdata` symlink so edits invalidate cached results; never `t.Chdir` into the repository root.
 - Isolate mutable thread/workspace/process state; reuse immutable registries. Disposable Git fixtures must isolate global/system config to avoid personal hooks/signing.
 - Resolve fixture shells via `execTrackShellExecutable` (`apps/mekugi/internal/launch/exec_track_test.go`): `exec.Command` resolves executables before `Cmd.Env`, so env isolation alone can hit the live approval guard.
 - Use controlled time for lifetimes/locks; keep subtests and parallel scheduling outside `synctest` bubbles (create/clean up workers inside).

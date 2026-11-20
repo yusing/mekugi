@@ -13,14 +13,12 @@ type integrationFixture struct{ root, source, commit, events string }
 
 func newIntegrationFixture(t *testing.T) integrationFixture {
 	t.Helper()
-	ignoreFiles := make(map[string]string)
-	for _, path := range []string{".gitignore"} {
-		data, err := os.ReadFile(filepath.Join("../../../..", path))
-		if err != nil {
-			t.Fatal(err)
-		}
-		ignoreFiles[path] = string(data)
+	// Read through a testdata symlink so Go's test cache keys on it.
+	gitignore, err := os.ReadFile("testdata/gitignore")
+	if err != nil {
+		t.Fatal(err)
 	}
+	ignoreFiles := map[string]string{".gitignore": string(gitignore)}
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
 		if strings.HasPrefix(name, "GIT_") {
@@ -537,10 +535,7 @@ func TestIntegrationRefusalsAndFailurePropagation(t *testing.T) {
 }
 
 func TestIntegrationMakeRecipe(t *testing.T) {
-	makefile, err := os.ReadFile("../../../../Makefile")
-	if err != nil {
-		t.Fatal(err)
-	}
+	makefile := repositoryMakefile(t)
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

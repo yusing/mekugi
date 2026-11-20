@@ -9,11 +9,20 @@ import (
 	"testing"
 )
 
-func TestMakefileValidationOutput(t *testing.T) {
-	makefile, err := os.ReadFile("../../../../Makefile")
+// repositoryMakefile reads the repository Makefile through a testdata symlink.
+// Go's test cache tracks only files inside this module, so reading the link
+// keys cached results on the Makefile, including recipes make runs from it.
+func repositoryMakefile(t *testing.T) []byte {
+	t.Helper()
+	makefile, err := os.ReadFile("testdata/Makefile")
 	if err != nil {
 		t.Fatal(err)
 	}
+	return makefile
+}
+
+func TestMakefileValidationOutput(t *testing.T) {
+	makefile := repositoryMakefile(t)
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -90,6 +99,7 @@ func TestFailure(t *testing.T) {
 }
 
 func TestMakefileFocusedOwnerRecipes(t *testing.T) {
+	repositoryMakefile(t)
 	for _, tc := range []struct {
 		target, packages string
 	}{
@@ -116,6 +126,7 @@ func TestMakefileFocusedOwnerRecipes(t *testing.T) {
 }
 
 func TestMakefileTestFlagsArguments(t *testing.T) {
+	repositoryMakefile(t)
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	if err := os.WriteFile(workspace, []byte("#!/bin/sh\n[ \"$1\" = check ] && exit 0\nprintf '<%s>\\n' \"$@\"\n"), 0700); err != nil {
 		t.Fatal(err)
