@@ -47,12 +47,14 @@ SNAPSHOT_PACKAGES ?= @snapshots
 # Go's test cache keys on environment values tests read. Drop values a Mekugi
 # launch sets per session, including its frontend PATH entries, and the
 # terminal's COLORFGBG, so sessions and terminals reuse cached results, tests
-# render one theme, and tests never write to the live session.
+# render one theme, and tests never write to the live session. TMPDIR is
+# canonical because macOS temporary paths start with /var -> /private/var, and
+# state directories reject symlinked ancestors.
 TEST_SESSION_ENV := BASH_ENV COLORFGBG CODEX_THREAD_ID CODEX_ROLLOUT_TRACE_ROOT MEKUGI_AX_OUTPUT \
 	MEKUGI_BASE_URL MEKUGI_CONTROL_SOCKET MEKUGI_EXEC_TRACK MEKUGI_SH_TRACKER \
 	MEKUGI_SUDO_DIRECTORY MEKUGI_UPDATE_UI_SNAPSHOTS MEKUGI_USER_BASH_ENV \
 	MEKUGI_VCS_GUARD_HOOK MEKUGI_VCS_ITEM
-TEST_ENV = env $(addprefix -u ,$(TEST_SESSION_ENV)) PATH="$$(case "$${BASH_ENV-}" in \
+TEST_ENV = env $(addprefix -u ,$(TEST_SESSION_ENV)) TMPDIR="$$(cd "$${TMPDIR:-/tmp}" && pwd -P)" PATH="$$(case "$${BASH_ENV-}" in \
 	*/frontend-bash-env) printf '%s' "$$PATH" | awk -v RS=: -v ORS=: -v d="$${BASH_ENV%/*}" \
 		'$$0 != d && index($$0, d "/") != 1' | sed 's/:$$//' ;; \
 	*) printf '%s' "$$PATH" ;; esac)"
