@@ -25,19 +25,25 @@ import (
 )
 
 func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
-	// Keep the production capture deadline from competing with the package's parallel fixtures.
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("Python is required for this shell execution fixture")
 	}
 	workspace := t.TempDir()
-	writeTestFile(t, filepath.Join(workspace, "source.go"), strings.Repeat("context\n", 20)+"before\n"+strings.Repeat("context\n", 20))
+	path := filepath.Join(workspace, "source.go")
+	writeTestFile(t, path, strings.Repeat("context\n", 20)+"before\n"+strings.Repeat("context\n", 20))
 	// The second process is an actual read-only test. It signals that the
 	// edit landed, then waits for us to inspect the UI before it can exit.
 	command := "python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('before', 'after')\nopen(p,'w').write(s)\nPY\n" +
 		`python3 -c 'import sys; assert open("source.go").read() == "context\n"*20 + "after\n" + "context\n"*20; print("test running", flush=True); assert sys.stdin.readline().strip() == "continue"'`
-	observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspace})
-	if !ok || observation == nil {
-		t.Fatal("missing edit observation")
+	// The target is fixed by the fixture. Read its pre-edit baseline without
+	// the command-discovery deadline; this test exercises preview completion.
+	before := changecapture.ReadFile(path, nil)
+	if before.Kind != changecapture.Text || before.Error != "" {
+		t.Fatalf("could not read pre-edit baseline: kind=%v, error=%q", before.Kind, before.Error)
+	}
+	observation := changecapture.Observation{
+		Commands: []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}},
+		Files:    []changecapture.File{before},
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
@@ -70,7 +76,7 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		runExecScopePreview(ctx, broker, *observation, previewmodel.Preview{ID: "fast-edit", Workspace: workspace, Thread: "thread", Caller: "/root"}, nil, nil)
+		runExecScopePreview(ctx, broker, observation, previewmodel.Preview{ID: "fast-edit", Workspace: workspace, Thread: "thread", Caller: "/root"}, nil, nil)
 	}()
 	select {
 	case <-finished:
