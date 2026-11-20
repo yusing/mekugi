@@ -158,6 +158,7 @@ func (w *execShellWalker) addProducerWriter(input execProviderInput, writer []st
 		return
 	}
 	w.plan.raise(Scoped, "")
+	w.fallbackDirectory()
 	w.plan.label(writer[0])
 	for _, path := range paths {
 		if time.Now().After(input.deadline) {
@@ -176,6 +177,8 @@ func (w *execShellWalker) addProducerWriter(input execProviderInput, writer []st
 		}
 		plan := classifyExecShellSource(strings.Join(words, " "), input.cwd, "bash", input.deadline, input.depth+1, input.changes, input.authoredOnly)
 		w.plan.Scope = append(w.plan.Scope, plan.Scope...)
+		w.plan.FallbackDirs = append(w.plan.FallbackDirs, plan.FallbackDirs...)
+		w.plan.Unresolved = w.plan.Unresolved || plan.Unresolved
 		w.plan.Programs = append(w.plan.Programs, plan.Programs...)
 		if plan.Class == Opaque {
 			w.opaque(plan.Reason)

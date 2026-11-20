@@ -129,10 +129,7 @@ func TestCaptureExecutionDirectoriesReuseCoveredScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	outside := t.TempDir()
-	commands := []commandanalysis.Command{
-		{Workdir: child}, {Workdir: nested}, {Workdir: nested}, {Workdir: outside}, {Workdir: "/read-only"},
-	}
-	got := checkpointDirectories(workspace, commands, []string{"opaque", "opaque", "opaque", "opaque", "neutral"})
+	got := checkpointDirectories(workspace, []string{child, nested, nested, outside})
 	if !slices.Equal(got, []string{workspace, nested, outside}) {
 		t.Fatalf("checkpoint scope duplicated a covered directory or omitted a repository: %q", got)
 	}

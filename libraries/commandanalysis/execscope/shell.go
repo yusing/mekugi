@@ -90,7 +90,9 @@ type Result struct {
 	Labels []string
 	Scope  []Entry
 	Reason string
-	// Unresolved marks interpreter effects outside the derived named scope.
+	// FallbackDirs are known working directories of writers with unnamed effects.
+	FallbackDirs []string
+	// Unresolved marks effects without a provable named or fallback scope.
 	Unresolved bool
 	// Programs are the statements whose effects are not derived, in order.
 	Programs []Program
@@ -151,16 +153,29 @@ func classifyExecShellSource(command, workdir, shell string, deadline time.Time,
 	}
 	// A substitution anywhere, including heredoc bodies and test clauses,
 	// runs a command whose effect is not inspected.
-	substitution := false
+	substitution, changesDirectory := false, false
 	syntax.Walk(program, func(node syntax.Node) bool {
-		switch node.(type) {
+		switch node := node.(type) {
 		case *syntax.CmdSubst, *syntax.ProcSubst:
 			substitution = true
+		case *syntax.CallExpr:
+			for _, arg := range node.Args {
+				name, _ := shellsyntax.Literal(arg)
+				switch name {
+				case "builtin", "command", "exec":
+					continue
+				case "cd", "pushd", "popd", "eval", "source", ".":
+					changesDirectory = true
+				}
+				break
+			}
 		}
-		return !substitution
+		return !(substitution && changesDirectory)
 	})
 	if substitution {
 		plan.raise(Opaque, "command substitution")
+		// Skipped shell analysis cannot prove which directory had a writer.
+		plan.Unresolved = changesDirectory
 		return plan
 	}
 	walker := execShellWalker{source: command, authoredOnly: authoredOnly, cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
@@ -205,6 +220,7 @@ type execShellWalker struct {
 // opaque marks the current statement as undeclared. Walking continues, so
 // later statements still contribute their declared scope and labels.
 func (w *execShellWalker) opaque(reason string) {
+	w.fallbackDirectory()
 	w.plan.raise(Opaque, reason)
 	program := w.program
 	if program.Label == "" {
@@ -212,6 +228,15 @@ func (w *execShellWalker) opaque(reason string) {
 	}
 	if !slices.Contains(w.plan.Programs, program) {
 		w.plan.Programs = append(w.plan.Programs, program)
+	}
+}
+
+func (w *execShellWalker) fallbackDirectory() {
+	if w.cwd == "" {
+		w.plan.Unresolved = true
+		w.plan.raise(w.plan.Class, "writer working directory is unknown")
+	} else if !slices.Contains(w.plan.FallbackDirs, w.cwd) {
+		w.plan.FallbackDirs = append(w.plan.FallbackDirs, w.cwd)
 	}
 }
 
@@ -792,6 +817,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 				if literal && (option == "-c" || option == "--command") {
 					plan := classifyExecShellSource(source, w.cwd, "sh", w.deadline, w.depth+1, w.changes, w.authoredOnly)
 					w.plan.Scope = append(w.plan.Scope, plan.Scope...)
+					w.plan.FallbackDirs = append(w.plan.FallbackDirs, plan.FallbackDirs...)
 					w.plan.Programs = append(w.plan.Programs, plan.Programs...)
 					w.plan.Unresolved = w.plan.Unresolved || plan.Unresolved
 					for _, label := range plan.Labels {

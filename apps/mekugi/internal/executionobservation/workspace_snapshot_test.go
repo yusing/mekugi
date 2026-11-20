@@ -3,6 +3,7 @@ package executionobservation
 import (
 	"bytes"
 	"context"
+	jsonv1 "encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/activitydetail"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -22,6 +25,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
@@ -453,6 +457,122 @@ func TestWorkspaceSnapshotRecoversFromAnUnmergedSeedIndex(t *testing.T) {
 	})
 	if paths := strings.Join(reviewPaths(history), "\n"); len(history.ReviewFiles) != 1 || !strings.Contains(paths, filepath.Join("sub", "x.go")) {
 		t.Fatalf("unmerged seed record:\n%s", paths)
+	}
+}
+
+func TestStockExecCapturesSubmoduleWriterDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		name, prefix, missing string
+		explicit, dynamic     bool
+	}{
+		{name: "guarded-cd", prefix: "cd sub && "},
+		{name: "unguarded-cd", prefix: "cd sub\n"},
+		{name: "explicit-workdir", explicit: true},
+		{name: "dynamic-shell-input", prefix: "cd sub && ", dynamic: true},
+		{name: "unknown-writer-directory", prefix: `cd "$NESTED" && `,
+			missing: "writer working directory is unknown"},
+		{name: "substituted-writer-directory", prefix: `cd "$(printf sub)" && `,
+			missing: "command substitution"},
+		{name: "missed-native-boundary", prefix: "cd sub && ", dynamic: true,
+			missing: "native working directory checkpoint unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolateSnapshotGit(t)
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+			trace := newNativeTraceFixture(t)
+			trace.turn = "test-turn"
+			transform.sessionShell, transform.shellTurnID = "bash", trace.turn
+			thread := transform.shellThreadID
+			proxy.NativeTrace = nativetrace.NewWithNotice(trace.root, nil)
+
+			upstream := gitTestWorkspace(t)
+			writeTestFile(t, filepath.Join(upstream, "file.txt"), "before\n")
+			gitTestCommit(t, upstream)
+			gitTestRun(t, workspace, "init", "--quiet")
+			gitTestRun(t, workspace, "config", "user.email", "test@example.com")
+			gitTestRun(t, workspace, "config", "user.name", "test")
+			gitTestRun(t, workspace, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", upstream, "sub")
+			gitTestCommit(t, workspace)
+			nested := filepath.Join(workspace, "sub")
+			workdir := workspace
+			if tc.explicit {
+				workdir = nested
+			}
+
+			command := `cat >"$SESSION_TMP/edit.py" <<'PY'
+from pathlib import Path
+import subprocess
+target = subprocess.check_output(["git", "ls-files"], text=True).strip()
+Path(target).write_text("after\n")
+subprocess.run(["git", "add", "--", target], check=True)
+PY
+` + tc.prefix + `python3 "$SESSION_TMP/edit.py"`
+			args := string(responses.MustMarshalJSON(map[string]string{"cmd": command, "workdir": workdir}))
+			source := "await tools.exec_command(" + args + ");"
+			if tc.dynamic {
+				source = "const args = () => (" + args + "); await tools.exec_command(args());"
+			}
+			call := map[string]any{
+				"type": "custom_tool_call", "id": "submodule-item", "call_id": "submodule",
+				"name": "exec", "input": source, "status": "completed",
+			}
+			if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
+				"id": "response", "status": "completed", "output": []any{call},
+			})); err != nil {
+				t.Fatal(err)
+			}
+			trace.start(thread, "cell", "submodule", source)
+			trace.tool(thread, "cell", "shell", nativeExecCommandToolName, args)
+			if tc.name != "missed-native-boundary" {
+				ctx, cancel := context.WithTimeout(transform.ctx, segmenttransport.BoundaryHold)
+				deadline, _ := ctx.Deadline()
+				proxy.ObserveNativeBoundary(ctx, segmenttransport.Boundary{
+					Thread: thread, Turn: trace.turn, Item: "shell", Tool: "Bash",
+					CWD: workdir, Input: command, Deadline: deadline,
+				})
+				cancel()
+			}
+
+			host := exec.Command("bash", "-c", command)
+			host.Dir = workdir
+			host.Env = append(os.Environ(), "SESSION_TMP="+t.TempDir(), "NESTED="+nested,
+				"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+			if output, err := host.CombinedOutput(); err != nil {
+				t.Fatalf("shell command: %v: %s", err, output)
+			}
+			trace.result(thread, "shell", "completed", map[string]any{"exit_code": 0})
+			trace.end(thread, "cell")
+			request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{
+				"input": mustTestJSON(t, []any{call, map[string]any{
+					"type": "custom_tool_call_output", "call_id": "submodule",
+					"output": "Script completed\nWall time 0.1 seconds\nOutput:\n",
+				}}),
+			}}
+			if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
+				t.Fatal(err)
+			}
+			record, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "submodule:effects")
+			if err != nil || !found || record.ExecOutcome == nil ||
+				record.ExecOutcome.Status != changecapture.StatusCompleted {
+				t.Fatalf("missing completed effect: outcome=%+v found=%v err=%v", record.ExecOutcome, found, err)
+			}
+			if tc.missing != "" {
+				if record.ExecOutcome.Coverage != changecapture.CoveragePartial ||
+					!strings.Contains(record.ExecOutcome.ScopeReason, tc.missing) ||
+					len(record.ReviewFiles) != 0 {
+					t.Fatalf("unknown baseline: %+v; review paths=%q", record.ExecOutcome, reviewPaths(record))
+				}
+				return
+			}
+			target := filepath.Join(nested, "file.txt")
+			if record.ExecOutcome.Coverage != changecapture.CoverageExact || record.ChangeID == "" ||
+				len(record.ReviewFiles) != 1 || record.ReviewFiles[0].AfterPath != target ||
+				!strings.Contains(record.ReviewFiles[0].Diff, "-before\n+after\n") {
+				t.Fatalf("submodule edit: %+v; review paths=%q", record.ExecOutcome, reviewPaths(record))
+			}
+		})
 	}
 }
 

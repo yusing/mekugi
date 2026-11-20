@@ -115,13 +115,15 @@ history do not create captures. Recovery never repeats a mutation.
 
 Commands not recognized as read-only also receive a bounded selected-workspace
 checkpoint before forwarding, compared with a fresh checkpoint at completion.
-Explicit command working directories outside that scope, including nested Git
-worktrees or repositories with independent ignore authority, receive their own
-bounded checkpoints under the original capture identity. Working directories
+Writer directories outside that scope, including nested Git worktrees or
+repositories with independent ignore authority, receive their own bounded
+checkpoints under the original capture identity. This includes directories
+resolved from in-shell `cd` before a writer with unnamed effects. If such a
+writer's directory cannot be resolved, coverage is partial. Working directories
 reached through symlinks outside the enclosing physical scope also receive a
 checkpoint. Covered subdirectories reuse their enclosing checkpoint, and
-overlapping scopes share claims by physical path. This acquisition does not
-evaluate interpreter source or depend on its syntax.
+overlapping scopes share claims by physical path. Checkpoint acquisition never
+executes the command or its interpreter source.
 Previously unnamed differences join the command's evidence with its program as
 their source. Private snapshot
 Git state never modifies the user's repository, runs its hooks or filters, or
@@ -132,8 +134,8 @@ to locate global excludes.
   Tracked files remain eligible even when ignored. Ignored untracked paths need
   explicit named scope; an older checkpoint cannot turn a newly ignored path
   into a deletion. Only admitted checkpoint directories below their repository root are
-  compared. VCS metadata and the replay store are excluded; submodules are not
-  compared.
+  compared. VCS metadata and the replay store are excluded. A parent checkpoint
+  does not cover files inside a submodule.
 - Without Git ignore authority, workspaces over 20,000 files take no snapshot.
   Later checkpoints admit new files only from directories gaining at most 256
   files, whether those directories are new or existing.

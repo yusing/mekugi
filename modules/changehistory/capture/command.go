@@ -99,7 +99,7 @@ type Observation struct {
 	// Tree is the private workspace snapshot taken before a writer call. Its
 	// comparison covers effects outside the source-named scope.
 	Tree string `json:",omitempty"`
-	// Checkpoints cover explicit command directories outside the workspace's
+	// Checkpoints cover writer directories outside the workspace's
 	// comparison, including nested repositories. Workspace remains the identity.
 	Checkpoints map[string]string `json:",omitempty"`
 	// CheckpointOmissions holds complete pre-writer inventories of physical
@@ -332,8 +332,7 @@ type Options struct {
 func Capture(ctx context.Context, commands []commandanalysis.Command, dynamic, codeMode bool, env Options) (*Observation, bool) {
 	observation, observed := observeCommands(commands, dynamic, codeMode, env)
 	if !env.PreviewOnly && observation != nil && observation.Class != execscope.Neutral.String() && env.Workspaces != nil {
-		// All fallback scopes share the existing acquisition bound. Actual
-		// execution directories, not interpreter syntax, establish these scopes.
+		// All fallback scopes share the existing acquisition bound.
 		ctx, cancel := context.WithTimeout(ctx, workspaceSnapshotWait)
 		defer cancel()
 		var directories []string
@@ -380,24 +379,25 @@ func (o *Observation) captureCheckpoint(ctx context.Context, workspaces *Workspa
 	return inventoryBudget
 }
 
-// CaptureDirectory acquires only the independent cwd, using the metadata
-// budget remaining after the cell's original observation.
-func (o *Observation) CaptureDirectory(ctx context.Context, workspaces *Workspaces, workspace, directory string) *Observation {
-	extra := new(Observation)
-	extra.captureCheckpoint(ctx, workspaces, workspace, directory, maxExecObservationBytes-len(responses.MustMarshalJSON(o)))
-	return extra
+// AddDirectoryCheckpoints acquires any independent directories already listed
+// in the boundary witness, using the original observation's remaining budget.
+func (o *Observation) AddDirectoryCheckpoints(ctx context.Context, workspaces *Workspaces, original *Observation, workspace string) {
+	budget := maxExecObservationBytes - len(responses.MustMarshalJSON(original))
+	for _, directory := range slices.Sorted(maps.Keys(o.Checkpoints)) {
+		budget = o.captureCheckpoint(ctx, workspaces, workspace, directory, budget)
+	}
 }
 
 // A nested repository has its own ignore/index authority and is not covered by
 // its parent's checkpoint. Ordinary subdirectories reuse the enclosing scope.
-func checkpointDirectories(workspace string, commands []commandanalysis.Command, classes []string) []string {
+func checkpointDirectories(workspace string, candidates []string) []string {
 	var directories []string
 	if filepath.IsAbs(workspace) {
 		directories = append(directories, filepath.Clean(workspace))
 	}
-	for i, command := range commands {
-		directory := filepath.Clean(command.Workdir)
-		if !filepath.IsAbs(directory) || slices.Contains(directories, directory) || i < len(classes) && classes[i] == execscope.Neutral.String() {
+	for _, candidate := range candidates {
+		directory := filepath.Clean(candidate)
+		if !filepath.IsAbs(directory) || slices.Contains(directories, directory) {
 			continue
 		}
 		covered := slices.ContainsFunc(directories, func(root string) bool { return checkpointCovers(root, directory) })
@@ -494,10 +494,15 @@ func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, c
 	observation := &Observation{Commands: commands, CodeMode: codeMode}
 	class := execscope.Neutral
 	var scope []execscope.Entry
+	var writerDirectories []string
 	for _, command := range commands {
 		plan := execscope.Classify(execscope.Input{Command: command.Command, Directory: command.Workdir, Shell: command.Shell, Deadline: started.Add(execscope.Budget), Changes: env.Changes, AuthoredOnly: !env.PreviewOnly})
 		observation.CommandClasses = append(observation.CommandClasses, plan.Class.String())
 		observation.Unresolved = observation.Unresolved || plan.Unresolved
+		if !env.PreviewOnly && env.Workspaces != nil && plan.Class != execscope.Neutral {
+			writerDirectories = append(writerDirectories, command.Workdir)
+			writerDirectories = append(writerDirectories, plan.FallbackDirs...)
+		}
 		if plan.Class > class {
 			class = plan.Class
 		}
@@ -533,7 +538,7 @@ func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, c
 	if !env.PreviewOnly && env.Workspaces != nil && class != execscope.Neutral {
 		// Directory metadata reads share the bounded acquisition worker; a slow
 		// mount cannot hold host forwarding outside that worker's deadline.
-		for _, directory := range checkpointDirectories(env.Directory, commands, observation.CommandClasses) {
+		for _, directory := range checkpointDirectories(env.Directory, writerDirectories) {
 			if physical, err := filepath.EvalSymlinks(directory); err == nil {
 				observation.Roots = AddRoot(observation.Roots, physical)
 			}

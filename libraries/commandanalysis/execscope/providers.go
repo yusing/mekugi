@@ -33,11 +33,12 @@ type execProviderInput struct {
 }
 
 type execProviderResult struct {
-	programs   []Program
-	unhandled  bool
-	scope      []Entry
-	open       bool
-	unresolved bool
+	programs     []Program
+	unhandled    bool
+	scope        []Entry
+	fallbackDirs []string
+	open         bool
+	unresolved   bool
 	// opaque preserves named scope while admitting additional unknown effects.
 	opaque bool
 	reason string
@@ -71,7 +72,7 @@ func execInlineShellScope(input execProviderInput) execProviderResult {
 	for i, arg := range input.args {
 		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, "c") && i+1 < len(input.args) {
 			plan := classifyExecShellSource(input.args[i+1], input.cwd, input.identity, input.deadline, input.depth+1, input.changes, input.authoredOnly)
-			return execProviderResult{scope: plan.Scope, open: plan.Class == Opaque, unresolved: plan.Unresolved, reason: plan.Reason, programs: plan.Programs}
+			return execProviderResult{scope: plan.Scope, fallbackDirs: plan.FallbackDirs, open: plan.Class == Opaque, unresolved: plan.Unresolved, reason: plan.Reason, programs: plan.Programs}
 		}
 	}
 	return execProviderResult{open: true, reason: "shell source is not literal"}
@@ -129,6 +130,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 		return false
 	}
 	w.plan.Unresolved = w.plan.Unresolved || result.unresolved
+	w.plan.FallbackDirs = append(w.plan.FallbackDirs, result.fallbackDirs...)
 	if time.Now().After(w.deadline) {
 		w.opaque("scope provider deadline")
 		return true
@@ -140,6 +142,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 	w.plan.Scope = append(w.plan.Scope, result.scope...)
 	w.plan.Programs = append(w.plan.Programs, result.programs...)
 	w.plan.label(w.program.Label)
+	w.fallbackDirectory()
 	w.plan.raise(Scoped, result.reason)
 	if result.opaque {
 		w.opaque(result.reason)

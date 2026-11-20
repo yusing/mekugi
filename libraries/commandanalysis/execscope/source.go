@@ -740,6 +740,7 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 	}
 	plan := classifyExecShellSource(command, s.input.cwd, "bash", s.input.deadline, s.input.depth+1, s.input.changes, s.input.authoredOnly)
 	s.result.scope = append(s.result.scope, plan.Scope...)
+	s.result.fallbackDirs = append(s.result.fallbackDirs, plan.FallbackDirs...)
 	s.result.programs = append(s.result.programs, plan.Programs...)
 	s.result.unresolved = s.result.unresolved || plan.Unresolved
 	s.result.open = s.result.open || plan.Class == Opaque || plan.Reason != ""
