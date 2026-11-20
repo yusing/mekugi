@@ -1,54 +1,29 @@
 # Web UI contract
 
-The asset, connection and storage interface below is current replaceable design
-for the [required browser capabilities](SPEC.md#required-capabilities-and-constraints).
-Interface revisions preserve those capabilities and update their consumers together.
+Asset-host, connection, security, and browser-storage contract for
+[Web UI requirements](SPEC.md#requirements). Transport/storage mechanics below are replaceable
+across coordinated updates while preserving those requirements.
 
-The UI host exposes only GET/HEAD page and embedded asset requests. Machine APIs,
-authentication and recorded playback belong to the execution machine's connector
-and [Session API](../sessionapi/CONTRACT.md), never to the UI host.
+## Boundary contract
 
-Without built assets, page requests receive 503 naming `make webui`. The index and
-install manifest are revalidated; hashed assets may be cached indefinitely.
-Responses forbid framing, plugins and base-URL changes, allow the bundled install
-manifest, restrict scripts/styles to bundled assets (plus inline styles), and
-allow connections to explicitly selected WS(S) connectors. Markdown
-images remain links rather than loading untrusted remote resources. Bound user
-images load through the authenticated Session API and display as browser-owned
-blob URLs.
-
-Browser control uses the shared JSON-RPC WebSocket protocol and generated remote
-intent types. Control credentials are sent in initialization on the selected connector.
-Each machine retains one control connection and lazily opens one reusable,
-separately authenticated submission connection for attachment-bearing mutations.
-Complete content and images use concurrent HTTP resource requests authenticated
-with bearer headers on that connector. Image responses become browser-owned blob
-URLs. Large resources never share a WebSocket writer; originating view, target and
-version stay captured. Canceling a resource read leaves other reads available.
-A lost submission connection is replaced on the next request, without replaying
-failed mutations.
-Connection identities, not just logical thread IDs, scope state and routing.
-The browser retains machine identities, labels, connector URLs and credentials in
-origin-scoped local storage. Reload restores connections with those identities;
-token replacement and machine removal update only the affected saved record, so
-changes in another open page do not overwrite unrelated machines or credentials. Runtime requests,
-subscriptions and session snapshots are acquired afresh, never restored from storage.
-Unreadable or invalid saved data produces a visible warning; valid records still
-restore. Failed writes leave current-page connections usable and report that saved
-machines or tokens may be stale, including inside machine settings. A successful
-write for another machine does not clear an outstanding failure. Credentials are
-cleared on connection removal. Removal closes both connections and cancels active
-resource reads; replacing a token retires both, cancels active resource reads and
-authenticates subsequent requests with the new credential.
-
-Publications and semantic view types mirror the shared API. Successful mutation
-responses acknowledge admission; subsequent events provide execution outcomes.
-Transport loss after dispatch leaves an unknown outcome and is never retried
-automatically. Reconnected subscriptions acquire new snapshots and view identities.
-
-Server-directed reattachment acquires a destination snapshot before changing the
-selected route. It adopts that subscription only after source requests, input
-preparation, effect receipts and retained recovery settle. Failed acquisition
-releases only the candidate; explicit navigation releases both views. An
-in-place server thread switch keeps its existing control subscription and updates
-the request destination without attaching again.
+- **Assets-only host**: `mekugi web` serves only `GET`/`HEAD` page and embedded static assets
+  (503 naming `make webui` when unbuilt). It never proxies machine APIs, holds credentials, or runs
+  sessions. Index and manifest revalidate; hashed assets cache indefinitely.
+- **CSP & untrusted content**: responses forbid framing, plugins, and base-URL changes, restrict
+  scripts/styles to bundled assets (+ inline styles), and permit connections only to explicitly
+  selected WS(S) connectors. Markdown raw HTML and unsafe schemes stay inert; remote Markdown
+  images stay links rather than auto-loading. Bound user/tool images load via authenticated
+  `/api/resources/*` HTTP requests as browser-owned blob URLs.
+- **Direct authenticated connections**: each machine uses one JSON-RPC WebSocket control connection
+  (first-message bearer auth), one lazy separately authenticated WS connection for
+  attachment-bearing submissions, and concurrent bearer-authenticated HTTP requests for large
+  content and images. Credentials never enter URLs, cookies, or UI-host requests.
+- **Origin-scoped machine storage**: machine identities, labels, connector URLs, and tokens save in
+  origin-scoped browser storage (scoped per machine record so concurrent tabs do not clobber
+  unrelated machines). Removing a machine deletes its token and closes/cancels its connections;
+  rotating a token retires active connections and cancels in-flight resource reads. Unreadable or
+  failed storage shows a persistent warning while keeping current-page connections usable.
+- **Delivery & navigation**: session state/snapshots always load fresh from the server (never
+  restored from browser storage). Transport loss leaves unresolved mutations `unknown` with no
+  automatic retry. Server-directed reattachment acquires the destination snapshot and settles
+  originating-view effects before switching routes.

@@ -1,296 +1,87 @@
 # Mekugi product
 
-## Intent and design authority
+## Intent and authority
 
-Required outcomes, explicit feature specifications and scope constraints remain
-fixed when the design changes. Unless explicitly required by those specifications,
-architecture, algorithms, interfaces, defaults, bounds and UX are replaceable
-means. Visible behavior can be a design choice too; being implemented or documented
-does not make a choice a fixed requirement.
+This document separates **binding user requirements** from **replaceable design approaches**:
 
-| Contract | Meaning |
-| --- | --- |
-| Required outcome | Faster delivery, lower cost, fewer model round trips, and better quality than stock Codex, within the explicit scope constraints below. Speed or cost improvements alone do not establish success. |
-| Replaceable design | The current principles, architecture and implementation choices. They can change while the required outcome and specifications remain. |
-| Unresolved constraint | A proposed or unconfirmed restriction, distinct from a fixed requirement. |
+- **User requirements**: outcomes, capabilities, and explicit scope constraints imposed by the
+  user. Redesigns must preserve them unless the user changes them.
+- **Current approach (replaceable)**: architecture, protocols, algorithms, defaults, bounds, and
+  UI mechanics chosen by agents to satisfy those requirements. Being implemented or documented does
+  not make a choice a requirement; redesigns may replace any of them while updating affected
+  contracts and consumers together.
 
-Owner specifications and shared contracts distinguish required capabilities from
-current behavior and design. A redesign updates affected documents and consumers
-together; it does not have to retain a mechanism merely because an existing
-contract describes it. The journeys and supported scope below describe the current
-product.
+Owner specifications (`SPEC.md`) and boundary contracts (`CONTRACT.md`, `docs/contracts/`) follow
+the same split.
 
-## Problem
+## User requirements
 
-Long agent sessions degrade through their context. Repeated reads and large
-outputs crowd the window, compaction summaries drift from the sources they
-describe, and fresh delegates spend their first turns rediscovering what their
-parent already knew. Meanwhile users cannot see what agents are doing or why
-until after the turn. Each of these raises model cost and makes work harder to
-follow, correct, and recover.
+### Required outcome
 
-## Required outcome
+Deliver faster, cheaper agent work with fewer model round trips and higher quality than stock Codex,
+within the explicit constraints below. Speed or cost gains alone do not establish success; claims
+require controlled measurement (see [codex-setup-ab](https://github.com/yusing/codex-setup-ab)).
 
-Mekugi should deliver faster, cheaper agent work with fewer model round trips
-and better quality than stock Codex.
+Rank tradeoffs within a change, while preserving correctness:
 
-Rank tradeoffs within a change in this order, while preserving correctness:
+1. **Stock Codex cost**: reduce unnecessary round trips and payload size.
+2. **AX / UX**: make agent and user workflows clearer, observable, and recoverable.
+3. **Agent performance**: improve task effectiveness without weakening correctness or host authority.
 
-1. Reduce model cost, including unnecessary round trips and payload size.
-2. Make agent and user workflows clearer and more recoverable.
-3. Improve agent performance without weakening correctness or host authority.
+### Explicit scope constraints
 
-## Explicit scope constraints
+- **Codex remains the root execution authority.** Keep stock editing (`apply_patch`), command
+  execution (`exec_command` via JavaScript `exec`), sandbox, permissions, process control, and
+  batch/parallel semantics. Do not replace stock tools with custom editing languages or transports.
+- **One interactive UI and one stock JavaScript execution interface.** Internal identifiers do not
+  introduce extra user-facing modes. Direct execution mode is unsupported.
+- **Product-local session resume.** Mekugi resumes Mekugi sessions; stock Codex resumes stock Codex
+  sessions. Cross-product resume is unsupported in either direction.
+- **Auxiliary features stay non-invasive.** Presentation, previews, metrics, and diagnostics do not
+  alter execution outcomes or add display-only text to model context.
 
-Codex remains the root execution authority. Mekugi has one interactive UI and
-one stock JavaScript execution interface; host/internal identifiers do not add
-user-facing modes. Direct execution is unsupported.
+### Core user capabilities
 
-Session resume is product-local: Mekugi resumes Mekugi sessions, and stock Codex
-resumes stock Codex sessions. Neither direction of cross-product resume is supported.
+- **Source-grounded continuity**: summary-free context resets that reload selected current sources,
+  measured context-usage notices, and preloaded context for fresh delegates.
+- **Bounded, recoverable context**: batchable bounded source reads, semantic/structural navigation,
+  bounded command output with exact continuation, and lossless reference deduplication.
+- **Exact change tracking and undo**: passive capture of stock patches and shell writes by short ID,
+  focused cross-agent review, and surgical revert/reapply (including via `/rewind`) that preserves
+  unrelated edits.
+- **Observable, controllable sessions**: live edit previews, reasoning-grouped activity, interactive
+  remote-write and `sudo` guards (even with `--yolo`), private secret dialogs (`sudo`/GPG) kept out
+  of model context, and hook trust prompts.
+- **Server-owned multi-client sessions**: terminal and browser UIs sharing a reusable Session API
+  over an authenticated connector, surviving client disconnect, plus headless automation, custom
+  Responses providers, offline inspection, and replay.
 
-## Product principles
+## Current approach (replaceable)
 
-These are current design choices and behavioral commitments, subject to the
-outcomes, scope constraints, and provenance distinction above.
-Mekugi currently manages what enters the model's context, keeps work observable
-and recoverable, and measures actual traffic without replaying effects.
+The current product implements these requirements through:
 
-### Execution authority
+- **Native runtime (`runtime/codex`)** owning execution, V2 collaboration/waits, summary-free reset
+  (`new_context`), source/skill acquisition, OS/Git environment facts, context-usage notices, and
+  model-input output deduplication.
+- **Go server and clients (`apps/mekugi`, `modules/`)** owning server-managed thread lifetimes,
+  terminal and Svelte browser UIs, authenticated session helpers (`mcat`, `mrun`, `mread`,
+  `msymbol`, `inspect_file`, `mchanges`), passive capture and 3-way merge revert/apply, shell
+  guards, custom Responses routing, retained session history, and offline inspection/replay.
+- **Single-generation model structure**: compaction selections and child reply summaries ride
+  existing replies rather than adding separate summarization calls (except opt-in wait progress
+  summaries for changed developers).
+- **Minimal model-facing text**: guidance, tool descriptions, and results omit decoration.
 
-- **Codex remains in charge of Codex execution.** Stock execution and editing tools keep their
-  names, schemas, results, and authority. Mekugi adds executable helpers that run
-  through stock command execution instead of custom editing tools, edit
-  languages, or rewritten transports. A replacement interface has to be taught,
-  guarded, and repaired in every request; the stock interface already is. Native V2 collaboration owns agent
-  coordination for root and descendant Codex execution.
-- **Auxiliary features stay non-invasive.** Progress, metrics, and diagnostics
-  do not decide whether an edit, command, or provider response succeeds.
-- **One component owns each meaning.** Features share observed facts instead of
-  independently approximating execution outcomes.
+User operation is documented in the [guides](../README.md#guides); contributor workflows live in
+[Development](contributing/development.md); specs and contracts are listed in the
+[documentation index](index.md).
 
-### Context management
+## Non-goals
 
-- **Context comes from current sources.** When context is rebuilt, after
-  compaction or for a fresh delegate, the sources the work needs are read again.
-  Codex resets without a generated summary or earlier messages, including the
-  user's messages. For repeated resets, Codex guidance directs agents to maintain
-  one temporary task-state file and select it for reload, preserving user requests,
-  corrections and approvals verbatim separately from agent choices. The file
-  supports focused recovery; it and generated digests do not stand in for source text.
-  Selected attachment, reload and preload text can name required files with
-  explicit `@path` references, acquired through depth 3 including the selected
-  root. Bare paths remain literal; acquisition failures stay visible.
-- **Reduce retained output by reference.** Incomplete retained reads have an exact
-  continuation, and repeated output or supplied source bodies are replaced only
-  by a reference to text still visible to the model. Output is not filtered by
-  guessed relevance. Explicit `mrun` windows instead discard output outside the
-  requested head or tail.
-  These projections change model input only; host results, retained evidence,
-  and the UI keep the complete text. Instruction text is removed only where its
-  author marked it or it duplicates or conflicts with supplied guidance.
-- **Capture context at handoff.** Explicit file references in assignments and
-  agent messages are read under the recipient's permissions and frozen at send
-  time. Failed reads remain visible; retries use the captured result instead of
-  silently substituting later file contents. For eligible Codex inputs, repeated
-  supplied source bodies can refer to earlier text in the same request. Legacy
-  unframed snapshots are not covered.
-- **Supply known facts before they are requested.** Codex agents receive
-  workspace and Git state and measured context usage, and attached files and
-  skills are labeled as reusable, so agents do not spend turns rediscovering them.
-- **Hand off exact handles, not paraphrase.** Read references and captured-change
-  IDs or ranges address the same evidence across agents, compaction, resume, and
-  forks. A reviewer handed a change range inspects that work, not a worktree diff
-  that mixes in other agents' and the user's edits.
-- **Corrections act on exactly what was done.** A rejected change is undone by
-  reverting the captured edits that made it, not by restoring files from version
-  control, so unrelated work, including the user's uncommitted edits, survives
-  and the correction itself stays reversible.
-- **Ride existing generations.** Compaction selections, child reply summaries,
-  and similar structure are authored within a reply the model already makes, with
-  no separate summarization, selection, or repair request. Opt-in wait progress
-  is different: it requests nonterminal summaries from changed developers to
-  expose implementation direction before their final replies.
-- **Agents choose their checkpoints.** Agents compact at points they judge safe,
-  informed by measured usage; the 90% notice directs them to compact now.
-  Codex native token-budget reset also handles full
-  windows using host-owned thresholds.
-- **Model-facing text stays minimal.** Guidance, tool descriptions, and results
-  preserve meaning in the fewest tokens, without decoration.
+**Binding exclusions** (from scope constraints above):
+- Replacing Codex's sandbox, permission flow, stock editing/execution tools, or root agent runtime.
+- Direct execution mode or cross-product session resume with stock Codex.
 
-### Observability
-
-- **Show what the agent is doing, will do, and has done.** Running commands,
-  child activity, and edits streaming into the Diff pane show current work.
-  Reasoning, delegate assignments, pending approvals, and queued input show what
-  comes next. Saved changes, retained output, transcripts, metrics, and replay
-  show what happened.
-- **Catch problems while they can still be stopped.** Edits are previewed
-  while they stream, command output is visible per command, and sensitive
-  commands wait for approval, so the user can steer, interrupt, stop one
-  process, or deny a command instead of discovering the result after the turn.
-- **Keep the why beside the what.** Operations are grouped under the reasoning
-  that preceded them, agent start rows carry their assignments, child replies
-  keep supporting details behind their summary, historical compaction summaries
-  stay readable, and incomplete edit captures keep their reasons.
-- **Expose direction before completion.** Optional wait progress gives a
-  coordinator a developer's account of changed behavior, rationale, uncertainty
-  and observed validation alongside exact captured changes. It is for catching
-  mistakes early, not a liveness poll or independent review. Only agents with new
-  captures are asked; a summary does not finish or restart their work.
-- **Label uncertainty.** Provisional previews, unknown counts, missing evidence,
-  and lower bounds are marked as such rather than shown as confirmed results.
-- **Watching costs the model nothing.** Display-only activity, previews, and UI
-  metrics are not added to model context.
-
-### Evidence
-
-Controlled comparisons live in [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
-Provider usage and complete captured results take precedence over local estimates
-or model prose.
-
-- **Evidence must be usable.** Readers retain omitted output, and observed
-  edits support focused review only after their result and workspace outcome
-  are known.
-- **Durability precedes dependent reads.** Resumes and branches recover
-  completed visible history from durable records, not one live process.
-- **Savings claims require measurement.** Local estimates guide projection
-  decisions; only controlled comparisons establish lower cost or better results.
-
-Feature specifications own detailed current behavior and acceptance. The
-[documentation index](index.md) links their owners and the shared contracts.
-
-## User journeys
-
-### Keep a long session grounded
-
-An agent works through a long task while measured usage notices report how full
-its context is. At a safe checkpoint, or when the window fills, Codex resets its
-context without a summary-generation request. An agent can select files, skills
-and captured changes with its checkpoint, or recover needed facts through ordinary
-reads after reset. For repeated resets, the agent keeps a focused temporary JSON
-task record and selects it for reload; source files remain separately selectable.
-Mekugi supplies selected sources before continuation. The latest compaction
-selection remains in effect for later manual or automatic resets until replaced
-or explicitly cleared. Native `functions.new_context` owns checkpoints separately
-from agent waiting. Requested resets have no
-cost-estimate veto or duplicate source preflight.
-
-### Delegate with prepared context
-
-A parent starts a fresh delegate with selected sources read under the
-delegate's permissions and supplied before its first inference. The delegate
-begins work without rereading them, replies
-with a concise summary and supporting details, and its edits carry
-captured-change IDs. The parent hands those exact ranges to reviewers or reloads
-them, instead of describing the change in prose. Delegates can coordinate
-their own children and message their parent while working.
-Assignments and messages can snapshot explicitly referenced files under the
-recipient's permissions. Parents wait for any or all current local descendants;
-registration snapshots unsettled work and unread outcomes, not named targets.
-An addressed message wakes either wait. Optional progress checks, at intervals
-of at least five minutes, ask changed agents for summaries from existing evidence
-and return one combined yield with captured-change selections. No new captures
-means no progress wake. The original work and its continuation handles remain
-intact; a further wait is needed after a yield. See the
-[wait contract](contracts/coordination.md#logical-waits-and-ordered-delivery).
-
-### Undo what the user rejects
-
-The user objects to part of an agent's work, such as an unwanted dependency
-switch or a compatibility path. The agent reverts the captured edits behind that
-part, scoped to the affected paths, while the rest of the task, other agents'
-edits, and the user's own changes stay in place. Overlapping edits are merged,
-conflicts are marked rather than guessed, and the revert can be reapplied.
-`/rewind` offers the same
-captured-edit reversal when removing conversation from an earlier turn.
-
-### Edit and review without replacing Codex
-
-An agent reads only the source needed for a decision, calls stock
-`apply_patch`, and sees a provisional live preview while the call streams.
-After the host result and workspace outcome are known, a compact change ID
-supports focused review and handoff. Failed or partial outcomes are not called
-successful edits.
-
-### Execute and resume work through Codex
-
-An agent uses stock `tools.exec_command` through JavaScript `exec` and
-can batch independent calls. Session IDs returned by Codex continue through
-`write_stdin`; Mekugi does not create a competing process handle.
-
-### Follow long-running work
-
-Users see host progress, child activity, command outcomes, and
-provider-authoritative usage without adding that display text to later model
-context. Terminal and browser clients attach to the same server-owned threads.
-
-### Automate and inspect without an interactive session
-
-The headless client streams host messages and frontend events as JSONL. Offline
-inspection and replay use retained evidence without executing recorded effects.
-
-### Evaluate optimizations with real evidence
-
-Operators compare isolated control and treatment runs using hidden correctness
-graders and captured provider traffic. Task correctness is judged separately from
-transport-only byte changes.
-
-## Currently supported scope
-
-Codex owns root and descendant execution. Configured Responses providers supply
-model access without selecting a different execution runtime. User credentials,
-configuration, histories and already-priced totals are not removed. Headless
-execution and offline replay retain their own command entrypoints.
-
-Mekugi includes:
-
-- compaction that reloads selected sources, agent-chosen compaction checkpoints,
-  measured context usage notices, and workspace facts in base instructions;
-- fresh delegates with preloaded sources, message source snapshots, coordinated
-  waits with optional progress summaries, and structured child replies;
-- bounded UTF-8 source reads, symbol lookup, structural inspection, bounded
-  command output, and retained output continuation through authenticated
-  executable frontends;
-- duplicate-output and supplied-source references in model input and explicit
-  instruction omission;
-- observation of stock edits, change review, exact revert and reapply of
-  captured edits, and provisional live previews;
-- server-owned threads with terminal and browser clients;
-- durable replay, session inspection, retained host facts, diagnostics, and
-  provider-authoritative usage reporting;
-- native OpenAI and explicitly configured custom Responses provider routing; and
-- content-safe captured metrics for evaluating real traffic.
-
-Installation and a quick start belong in the [README](../README.md);
-configuration and commands belong in the [user guides](../README.md#guides)
-under `docs/guide/`.
-
-## Current non-goals
-
-These exclusions describe the supported product. They do not establish that every
-alternative was rejected by the user. Explicit scope constraints above remain
-binding. Dedicated session-family recall and cross-session memory remain outside
-the current implementation.
-
-Mekugi does not:
-
-- replace Codex's sandbox, permission flow, patch UI, native agent execution,
-  or process control, or replace stock tools with custom editing or transport
-  protocols;
-- provide direct execution, runtime plugin loading, or a root agent backend
-  other than Codex;
-- filter tool output by inferred relevance, or replace source reads with
-  generated summaries;
-- add its own cross-session memory, or share resumable sessions with stock
-  Codex in either direction;
-- provide an interactive editor, a hosted benchmark service, or a second
-  conversation store;
-- make binary or non-UTF-8 content editable through source readers;
-- promise crash-atomic multi-file filesystem updates;
-- infer missing evidence, equate local token estimates with provider billing,
-  or judge correctness from a model's final prose;
-- make activity presentation, diagnostics, or metrics part of task execution
-  semantics; or
-- promise that an optimization lowers latency, cost, or error rates without a
-  matching controlled measurement.
+**Current implementation exclusions** (not necessarily permanent):
+- Relevance-filtered tool output, cross-session memory, interactive code editing, hosted
+  benchmarking, binary file editing through source readers, or crash-atomic multi-file writes.

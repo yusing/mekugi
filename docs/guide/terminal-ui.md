@@ -34,8 +34,9 @@ and terminal Mermaid flowcharts; unsupported diagrams remain source. `/title TIT
 saves a manual title and skips automatic naming. Otherwise a new session may make a
 separate GPT-6 Luna medium-reasoning title request; unavailable credentials or Luna
 silently skip it. Notifications follow Codex's `tui.notifications`. See
-[terminal controls](../../apps/mekugi/internal/terminalsession/SPEC.md) and
-[session behavior](../../apps/mekugi/internal/sessionpresentation/SPEC.md).
+[terminal controls](../../apps/mekugi/internal/terminalsession/SPEC.md),
+[session naming](../../modules/sessionnaming/SPEC.md), and
+[notifications](../../modules/notifications/SPEC.md).
 
 ## Composer
 
@@ -117,7 +118,7 @@ uncommitted steers; committed input is never resent and Tab-queued input stays q
 Without steers, Esc interrupts without resending. Ctrl-C clears the draft first, then
 interrupts/restores input. Picker/help/selection dismissal takes precedence. Copying
 needs OSC 52; Linux image paste needs `wl-paste` or `xclip`. See [input
-details](../../apps/mekugi/internal/terminalsession/SPEC.md#composer-controls).
+details](../../apps/mekugi/internal/terminalsession/SPEC.md#layout-composer-and-dialogs).
 
 ## Live diff pane
 
@@ -129,8 +130,8 @@ family with source attribution; a selected child shows only its own edits.
 new launches enable them again. In saved Diff, `s` opens the navigator, `/` filters,
 `n`/`p` changes files, `[`/`]` jumps hunks. Tab opens Changes by caller. Click an Edit
 for its hunk; `Ctrl-B e` pins files, `Ctrl-B r` resumes following.
-See [saved-review controls](../../modules/changehistory/SPEC.md#terminal-review) and
-[live-view controls](../../modules/livepreview/SPEC.md#terminal-live-views).
+See [saved-review controls](../../modules/changehistory/SPEC.md#saved-review-presentation) and
+[live previews](../../modules/livepreview/SPEC.md).
 
 ## Agents
 
@@ -148,7 +149,7 @@ round trips, throughput, usage, estimated API cost, and composed captured edits;
 row is omitted because the stat lines carry its facts. Usage/rates survive resume while
 retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
 Redirected sessions keep Codex input/output. See
-[activity details](../../modules/activity/CONTRACT.md).
+[activity](../../modules/activity/SPEC.md).
 
 ## Output dialog
 
@@ -159,7 +160,7 @@ combined. Supported single commands and pipelines, including Bash timed commands
 show measured command time excluding startup and matching. Host-omitted text cannot be recovered. Left/Right switches tabs;
 `/` searches, `n`/`N` moves matches, `y` copies, Esc/`q` closes. Select text to copy portions.
 Local links read current UTF-8 files up to 8 MiB; relative paths use the workspace,
-`:line` scrolls, reopening rereads. See [dialog controls](../../modules/activity/CONTRACT.md)
+`:line` scrolls, reopening rereads. See [activity](../../modules/activity/SPEC.md)
 and [command tracking](../../modules/commandsegments/SPEC.md).
 
 ## Image previews

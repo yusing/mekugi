@@ -1,161 +1,38 @@
 # Authenticated executable frontends
 
-## Purpose
+## Requirements
 
-Own invocation-private executable exposure and authenticated worker dispatch for
-`mcat`, `inspect_file`, `msymbol`, `mread`, `mrun`, `mchanges`, and the compaction
-acquisition helper `mreload`. Command modules
-own reader parsing, output budgeting, resolver orchestration, and command semantics.
-Codex owns stock execution and its process lifecycle. Each admitted native thread
-uses the authenticated catalog with its retained thread scope.
+- Keep bounded source reads, symbol/outline lookup, bounded command execution, output recovery, and
+  change review/undo batchable through stock Codex execution (`exec_command` / JS `exec`),
+  preserving stock parallel/batch control, permissions, sandbox, and continuation semantics.
+- Require neither Node.js nor Bun for built-in helpers (semantic resolvers retain their own
+  language-server prerequisites).
 
-## Required capabilities
+## Current approach (replaceable)
 
-Keep bounded source reads batchable through stock execution, and preserve stock
-parallel/batch control for independent commands. Retain captured-change review
-and correction without replacing Codex's editing or execution interfaces.
+### Catalog, pinning, and isolation
 
-## Current frontend contract and replaceable design
+- Exposes compiled Go helpers (`mcat`, `inspect_file`, `msymbol`, `mread`, `mrun`, `mchanges`, and
+  internal `mreload`) on an invocation-private `PATH` entry (restored across Bash login startup
+  without modifying user config). Legacy JS plugin loading is removed; existing plugin files stay
+  untouched.
+- Launch validates the descriptor-contributed catalog once and pins an immutable worker executable
+  image per invocation (shared across server invocations) so installed-binary updates cannot alter
+  running workers.
+- Each worker authenticates against its invocation snapshot before running; altered, expired, or
+  mismatched snapshots fail closed. Workers stay in Codex's process group for cancellation and
+  receive unchanged argv, stdin, cwd, and environment.
+- Cross-backend delegates share the parent's retained namespace while keeping caller-scoped
+  implicit selections (`CODEX_THREAD_ID`).
 
-The REQ/CTR sections below describe the current interface and its catalog, worker,
-PATH and recovery mechanisms. Those mechanisms can change while preserving the
-required capabilities and updating their consumers together.
+### Output budgets and recovery delivery
 
-### REQ-PLUGIN-001: Stock execution and isolation
-
-Cross-backend delegates share their admitted parent's retained namespace, not its
-caller identity. Explicit change IDs/ranges remain readable across that namespace;
-implicit selections remain caller-scoped. The frontend's legacy `CODEX_THREAD_ID`
-environment key carries the admitted caller identity for either backend. Catalog,
-lease, recovery publication and worker cleanup rules apply equally to both.
-
-Frontends run through stock `exec_command`, including JavaScript `exec` calls.
-They receive unchanged argv and caller stdin, and deliver stdout, stderr, and exit
-status once. Codex retains cwd, environment, permissions, sandbox, terminal,
-signals, cancellation, and yielded continuation. Observation never replays effects.
-
-Before exposing commands, the host validates the complete compiled catalog and
-pins its worker executable for the invocation. Server invocations share one
-immutable executable image while retaining private catalogs and command paths.
-Each frontend authenticates against
-that catalog and executable. Missing, expired, altered, incompatible-version, or
-mismatched snapshots fail rather than selecting another implementation.
-
-An installed binary update cannot change active workers. Each invocation has a
-private PATH entry; Bash login startup restores that entry without changing
-Codex's login-shell setting. Global commands and persistent user configuration
-remain untouched. Inherited command directories missing after Bash startup are
-retained as PATH fallbacks, after the login-profile entries and private frontends.
-Cleanup removes only invocation-created frontends, snapshot
-files, and leased worker resources, preserving concurrent invocations.
-The server releases its shared image after all invocation owners have stopped.
-
-Display-source normalization uses the same authenticated invocation registry.
-Only recognized instrumentation is removed; Activity and execution observation
-consume that source without acquiring registry or execution authority.
-
-Configured JavaScript plugin declarations are not loaded or executed. Existing
-files in the user configuration's `mekugi/plugins` directory remain untouched.
-Frontends require neither Node.js nor Bun; semantic resolvers retain their own
-prerequisites. There is no JavaScript or WASM plugin runtime.
-
-### CTR-PLUGIN-001: Catalog and composition boundary
-
-Application composition selects the compiled catalog. The Codex binding collects
-executable registrations from descriptor command contributions when the module declares
-its executable-frontend connection. Before construction, this frontend owner validates
-the complete catalog once for names and implementation availability. It
-authenticates and publishes invocation snapshots, pins workers, and exposes PATH.
-Contributions pair a portable executable leaf name with its compiled
-implementation and read-observation policy. Duplicate names are rejected.
-
-Launch recognizes frontend executable identity before application composition and
-before launcher operand dispatch. The recognized worker receives the composed
-catalog before authenticating its snapshot and selected command. Frontend operands
-never select launcher commands: a filename such as `mcp-bridge` remains an operand.
-Descriptors declare commands before construction; execution starts only after
-successful activation. Stateful commands receive their constructed module service
-through typed composition and an explicit authenticated per-call scope.
-
-The invocation authenticates the selected command names before exposing its
-commands. The [guidance owner](../../../../modules/agentguidance/SPEC.md)
-describes available helpers in native shell tool context independently of
-dispatch.
-
-Read observation uses the caller-supplied AX output path authenticated in the
-invocation snapshot. When that path is empty, it falls back to
-`MEKUGI_AX_READ_OUTPUT`. Observation failure cannot prevent execution or change
-command outcome. Sanitized measurements belong to
-[transport diagnostics](../../../../modules/transportdiagnostics/SPEC.md).
-
-### Output and recovery
-
-All frontends accepting `--max-tokens N` also accept `--max-tokens=N` before
-their operand terminator or command boundary. Canonical positive budgets above
-15500 are capped at 15500. Missing, malformed, nonpositive, and repeated token
-budgets use the same diagnostic:
-`--max-tokens requires one integer from 1 to 15500 and cannot repeat`.
-Continuation commands use `next_call: COMMAND`.
-
-Shared output admission respects both GPT tokens and the stock executor's
-four-byte token estimate. A requested ceiling is a maximum, so compressible text
-may deliver fewer GPT tokens. Command-owned frames use the same accounting;
-callers still reserve outer delivery space for diagnostics, host framing, and
-the combined output of separately budgeted commands.
-
-Commands run and format output in the host-started worker. They return omitted
-payloads or a pure delivery plan over already captured output or a frozen
-retained-evidence selection. For coordinated results, the host reserves reference
-identities before command-owned final framing and admission. Plans receive
-identities, never a store or execution callback. A pure zero-reference failure plan
-is prepared before storage attachment or reference reservation and preserves the
-original admitted output under the same recovery-failure policy.
-
-Worker recovery uses the public attachment, namespace, lease, and catalog APIs of
-[session history](../../../../modules/sessionhistory/SPEC.md). That module owns
-retained coordination, publication, and retention; this owner supplies the worker's
-authenticated scope and coordinates delivery. The worker holds its session lease
-through stdout/stderr delivery and releases it on delivery failure as well as
-success. No publication transaction spans command execution or stream delivery.
-Command modules do not open private history stores to publish omitted output.
-
-The worker publishes recoverable output before exposing any dependent `mread`
-reference. Publication failure preserves admitted stdout and existing stderr,
-adds an explicit recovery-unavailable diagnostic, and exposes no recovery reference.
-An existing nonzero status is preserved; zero becomes nonzero. A command that has
-already changed the workspace may instead supply a pure recovery-failure result
-preserving its full mutation report and original mutation status. Cancellation
-still suppresses delivery. Neither failure nor cancellation reruns the command.
-
-### Lifecycle and replay
-
-Frontend children stay in the native command's process group so backend cancellation
-can terminate them. Execution scope distinguishes ordinary callers, the host
-process group, and a dedicated authenticated worker. Only the dedicated worker
-permits process-wide descendant cleanup. A dedicated Linux worker can reap
-resolver orphans after an explicit cleanup result; on other platforms descendants
-remain in the stock group until command completion. Resolver lifecycle policy
-remains with [symbol query](../../../../modules/symbolquery/SPEC.md).
-
-Completed evidence remains readable after restart under session-history retention.
-Replay validates retained facts without starting old workers, rerunning effects,
-or restoring processes, live grants, or continuation handles.
-[Host execution](../../../../backends/codex/SPEC.md#execution-authority) and
-[change evidence](../../../../docs/contracts/change-evidence.md) retain separate owners.
-
-## Acceptance
-
-1. All contributed commands dispatch through the authenticated pinned executable;
-   altered identities and incompatible snapshots fail closed.
-2. Installed-binary replacement and concurrent invocation cleanup cannot replace
-   or remove an active invocation's workers.
-3. Stock argv, stdin, streams, status, cwd, environment, permissions, terminal,
-   cancellation, and yielded continuation retain their host behavior.
-4. Executable recognition precedes composition and operand dispatch; typed
-   constructed commands activate before execution.
-5. References become visible only after worker recovery publication succeeds;
-   failure preserves output and mutation reports according to their delivery policy.
-6. Optional guidance, metrics, and failed read observation do not disable dispatch;
-   AX output uses the explicitly supplied path.
-7. Restart reads retained facts without reviving processes. Native reading and
-   formatting work without Node.js or Bun, and configured plugin files are preserved.
+- Shared `--max-tokens N` (cap 15,500) enforces both GPT-token and stock 4-byte-estimate ceilings;
+  continuations emit `next_call: COMMAND`.
+- Workers publish omitted payloads or frozen evidence selections through
+  [Session history](../../../../modules/sessionhistory/SPEC.md) under a session lease *before*
+  exposing any `mread` reference. Publication failure preserves admitted stdout/stderr (or full
+  mutation reports), emits an explicit diagnostic without a broken reference, and never reruns the
+  command.
+- Optional AX read observation writes to the authenticated read-log path without affecting command
+  outcomes.

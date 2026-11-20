@@ -1,120 +1,23 @@
 # Sudo approval
 
-## Current capability
+## Requirements
 
-Retain sudo approval and authentication support alongside stock command execution.
-Provide GPG passphrase entry through the same private secret-answer channel.
+- Guard interactive `sudo` invocations with UI approval (even with cached credentials or
+  passwordless `sudo`, independently of `--yolo`), with an explicit opt-out.
+- Collect `sudo` passwords and GPG passphrases (including Git signing) through a dedicated private
+  secret dialog so secrets never enter model input, command arguments, environment variables, input
+  history, or retained replay/session logs.
 
-Hook instrumentation, classification, session grants, secret-editor presentation and
-timeout policy below are current design.
+## Current approach (replaceable)
 
-## Scope
-
-The composed interactive shell guard participates in the shared native hook.
-Removing this module removes its instrumentation, accepted request kinds, and
-session grants. The other approval module and command tracking remain independent.
-No module registration exposes an agent-facing tool.
-
-## Behavior
-
-Interactive Mekugi command execution asks approval before running each applicable
-sudo invocation, including with cached credentials or passwordless policy.
-The approval dock offers approval once, approval for the exact expanded argument
-list, workdir and resolved executable for the current UI session, or denial.
-Session grants release queued duplicates and expire with the UI, as for the
-[remote-write approval](../remotewriteapproval/SPEC.md). Denial fails only that
-command with exit status 1. Listing privileges (`sudo -l` or `--list`), help,
-version and timestamp removal remain outside command approval.
-Explicit noninteractive mode bypasses command approval and retains sudo's native
-policy and result. Stdin-password and caller-provided askpass modes still ask
-command approval and retain their native input policy. Remote-write approval remains
-independent.
-
-Approval and password entry are separate. After approval, sudo's native policy
-decides whether authentication is needed. Its askpass request opens only the
-shared secret answer editor; a rejected password requests another answer without
-another command approval. Cached credentials and passwordless commands need no
-password dialog. Session command grants never answer password requests. Skipping
-the password fails authentication. Large argument lists are explicitly abbreviated
-in the password dialog; execution and command approval keep the original arguments.
-Passwords travel only through the private local approval channel
-and askpass pipe. They never enter host tool arguments, model input, input history,
-activity answer records or retained replay. Hiding the dialog keeps its draft;
-command cancellation, UI shutdown and the approval timeout withdraw it.
-
-The shared `--shell-guard` toggle controls this support and remote-write approval.
-Codex's approval policy remains independent. It does
-not grant sandbox permissions or change sudo policy. It requires the interactive
-UI, the installed `mekugi-exec` helper and access to its local approval channel;
-headless and noninteractive commands retain their existing behavior. Direct sudo
-names and executable paths through supported command wrappers are instrumented
-by the native command hook. Shell functions keep their existing lookup.
-Supported nested shell command strings retain sudo guarding through environment-
-clearing wrappers, including absolute sudo paths.
-Inside script files, inherited PATH guards cover bare sudo names. Bash startup
-also covers direct known absolute sudo paths when shell guarding is enabled.
-Scripts keep their original bytes, interpreter, arguments and exit status;
-absolute paths invoked through wrappers inside script files retain the same
-limits as the VCS guard's Bash path functions.
-
-## GPG passphrases
-
-With shell guarding enabled, supported `gpg` and `gpg2` invocations, including
-Git signing through PATH, use the secret editor when GPG requests a passphrase.
-GPG owns authentication, command results and its native agent cache. Cached keys
-need no dialog. Wrong answers fail the native command without automatic replay,
-another attempt, or an unsigned fallback. Skipping denies authentication; command
-or owning-thread cancellation withdraws the question and discards its draft.
-
-This uses per-command loopback inquiries, not global GPG or agent configuration.
-The agent must allow loopback pinentry. Explicit caller pinentry, passphrase,
-command-input or status-file options, and explicit options files, keep their native
-behavior instead. A caller status descriptor, including Git's signing status,
-continues to receive GPG's status stream. Other inherited descriptors and command
-stdin/stdout remain available. Non-passphrase inquiries, such as interactive key
-editing or trust confirmations, fail with an explanation; use caller-owned
-`--command-fd` for those workflows. Smartcard and external pinentry interaction
-remain native concerns, not an emulated authentication policy.
-
-Passphrases traverse only the private approval socket and GPG command pipe, never
-command arguments, environment, retained history, replay or model input. This does
-not add a command approval or reuse sudo command grants. GPG input framing is
-separate from sudo policy. Headless execution and disabled shell guarding remain
-unchanged. Executable-path coverage has the same shell-hook and script limits as
-sudo above.
-
-## Lifecycle
-
-Session Control owns exact-command grants per registered guard kind for each attached UI lifetime.
-Grants belong to the answering UI attachment and are discarded on detach; changing the displayed thread
-does not create another set. Fresh resume creates a new set. The application owns
-the shared local decision channel and joins it independently of segment reporting.
-
-## Codex connection
-
-The binding registers this guard's kind.
-The application composes only registered resources into the backend's native hook.
-The helper evaluates the module policy against expanded arguments at execution;
-Authentication remains sudo-owned; the module validates secret answers before delivery.
-Host hook-shell launch and timeout policy remain Codex-owned. The helper does not
-compose the application or duplicate host execution.
-
-## Records
-
-None. Grants and secret answers are never persisted.
-
-## Failure
-
-An unavailable decision channel cannot authorize a command. Requests for an absent
-module are rejected before UI presentation. The remaining guard keeps its own
-resources, including nested-shell instrumentation when only sudo is present.
-
-## Acceptance
-Native helper and UI acceptance covers command approval, independent password requests, exact grants, cancellation, secret-only delivery, and unchanged execution.
-Real-GPG acceptance covers signing, decryption, Git signing, cached keys, wrong
-answers, skip, cancellation, caller-owned input, and non-passphrase inquiry failure.
-
-Module acceptance exercises policy and guard registration through the
-scripted binder. Application acceptance covers isolated grant lifetimes, leave-one-out resources, request
-admission, exact queued grants, secret entry, and native execution. Installed-host
-checks remain distinct from offline fixtures.
+- Shares the synchronous native `PreToolUse` command hook, `mekugi-exec` wrapper instrumentation,
+  session-scoped exact-command grants, and script/wrapper coverage limits of
+  [Remote-write approval](../remotewriteapproval/SPEC.md) (headless runs and `--shell-guard=false`
+  bypass it). `sudo -l`/help/version/timestamp-reset and explicit noninteractive mode stay native.
+- **Sudo authentication**: approval and password entry are separate; `sudo`'s askpass invokes the
+  private secret dialog over the local approval socket/pipe only when `sudo` actually needs a
+  password (session command grants never answer passwords).
+- **GPG passphrases**: wraps supported `gpg`/`gpg2` invocations with per-command loopback inquiries
+  (never editing global GPG config; respecting caller-owned pinentry/passphrase/`--command-fd`
+  flags and cached `gpg-agent` keys). Wrong answers or skips fail natively without silent retry or
+  unsigned fallback; non-passphrase inquiries fail with an explanation.

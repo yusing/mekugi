@@ -1,733 +1,106 @@
 # Session API contract
 
-This is the current wire design for the
-[required Session API capabilities](SPEC.md#required-capabilities-and-constraints).
-Endpoints, protocol versions, field names, encodings and queue limits are
-replaceable; revisions preserve those capabilities and update consumers together.
-The 32 MiB decoded-upload budget remains a required message constraint.
+Wire contract for [Session API requirements](SPEC.md#requirements). Endpoint paths, protocol
+version, field names, and queue bounds below are replaceable across coordinated consumer updates;
+the 32 MiB decoded-upload budget is a required message constraint.
 
-## Version and authority
+Generated TypeScript wire types (`protocol.ts`) are authoritative for exact payload schemas; run
+`go run ./apps/mekugi/cmd/sessionapi-schema` to regenerate and `make check-generated` to verify.
+TypeScript types do not grant endpoint authority.
 
-Control uses JSON-RPC 2.0 text messages over WebSocket. Local native clients
-connect to `/api/native/control` over the private Unix socket; remote human
-clients use `/api/control` through the connector. Both select WebSocket
-subprotocol `mekugi.control.v9`. The socket retains kernel-confirmed same-user
-peer admission, private filesystem permissions and listener/startup locks.
+## Transport, version, and authority
 
-The first request is `initialize` with `{"version":"9"}`. Remote clients also
-supply `token`, consumed by the connector and never forwarded to the server.
-Initialization succeeds before any session data or operation is available.
-Observation requests may follow initialization on the ordered connection before
-its reply returns. Token and version admission still precede their execution;
-the initialization response precedes all observation replies and publications.
-Its response includes `serverTime` in Unix milliseconds. Browser timers anchor
-that sample to their local monotonic clock, independently of local wall time.
-The endpoint establishes authority; caller fields cannot select it. Remote
-connections cannot invoke native startup or native-only semantic operations.
+- **Protocol**: JSON-RPC 2.0 text messages (one object per message; no batches or client
+  notifications) over WebSocket subprotocol `mekugi.control.v9`.
+- **Endpoints**:
+  - Local native: `/api/native/control` over private Unix socket with kernel-confirmed same-user
+    peer admission.
+  - Remote human: `/api/control` via [Connector](../connector/SPEC.md).
+  - Readiness: `GET /api/version` requiring `Mekugi-Protocol: 9` on request and response (409 on
+    mismatch; never spawns a competing server).
+- **Initialization**: first WS message must be `initialize` with `{"version":"9"}` (plus `token` on
+  remote connections, stripped by the connector before forwarding). Response includes `serverTime`
+  (Unix ms).
+- **Authority**: the endpoint determines authority; caller fields never elevate access. Remote
+  connections cannot invoke native-only methods (`native/start`, `source/skills`, `session/redraw`),
+  use native attachment IDs, or answer secret questions (secret content is redacted in all remote
+  projections).
 
-`GET /api/version` remains the readiness probe, with `Mekugi-Protocol: 9` on
-request and response. Missing/incompatible versions receive 409. WebSocket
-upgrades on the private socket also carry this header. Browser clients use the
-subprotocol and initialization version; the connector sets the private header.
-Version mismatch never authorizes a competing server or an automatic restart.
+## Methods
 
-## Requests, subscriptions and logical identities
+Request params accept optional `thread`, `startup`, `subscription`, and `body`. IDs name confirmed
+logical threads, never PIDs.
 
-Requests have `jsonrpc: "2.0"`, a unique connection-local string or integer `id`,
-`method`, and object `params`. This protocol accepts one object per text message;
-batches and client notifications are refused without executing their contents.
-Responses echo the request ID with `result` or `error`. Request IDs provide
-correlation, not deduplication or permission to repeat effects.
-
-After initialization, params contain optional `thread`, `startup`, `subscription`
-and `body`. Body is the operation-specific input described below. The client
-selects a nonempty subscription ID before requesting a stream. It is unique
-among that connection's active subscriptions. An acknowledgement containing
-`subscription` precedes the first notification.
-Admission remains cancelable until that acknowledgement has been delivered.
-A failed or timed-out observer releases its subscription explicitly; late
-acknowledgements cannot reactivate a retired subscription.
-
-| Method | Purpose / body |
+| Method | Scope / purpose |
 | --- | --- |
-| `session/options` | Execution-machine workspaces and offered models |
-| `source/skills` | Selected running thread's native skill identity metadata; native endpoint only |
-| `session/list` | Current session-list value |
-| `session/read` | One confirmed thread's list entry |
-| `session/page` | A bounded retained-feed, roster, saved-review or live-preview metadata page |
-| `session/start` | Create/resume using the creation body |
-| `session/end` | End the selected owned runtime |
-| `session/subscribe` | Session-list updates without `thread`; shared publications with `thread` |
-| `session/input` | Submit input |
-| `session/shell` | Submit shell input |
-| `session/answer` | Answer questions |
-| `session/decide` | Decide an approval |
-| `session/interrupt` | Interrupt work |
-| `session/control` | Recorded replay control |
-| `session/redraw` | Request a live redraw; native endpoint only |
-| `view/attach` | Attach a per-view semantic publication stream |
-| `view/intent` | Existing semantic mutation body, retaining attachment and version |
-| `native/start` | Native invocation body plus its initial subscription; native endpoint only |
-| `subscription/cancel` | Release one subscription, leaving execution running |
-| `request/cancel` | Cancel pending request work; body contains the original `id` |
-| `publication/ack` | Acknowledge the current connection-local delivery ID |
+| `session/options` | Execution-machine recent workspaces and offered models |
+| `session/list`, `session/read` | Top-level session list / single confirmed thread entry (includes `parentThread` for children) |
+| `session/start`, `session/end` | Create live, resume saved, or start read-only `replay`; end/join owned runtime |
+| `session/subscribe` | Stream session list (no `thread`) or shared thread publications (`snapshot`/`patch`/`exit`) |
+| `session/page` | Revision-bound retained feed, roster, saved-review, or live-preview metadata page |
+| `session/input`, `session/shell` | Submit prompt + attachments, or run host shell command |
+| `session/answer`, `session/decide` | Answer pending non-secret questions / decide pending approvals (approve-once or deny) |
+| `session/interrupt`, `session/control` | Interrupt active work / control recorded replay (`toggle-pause`, `faster`, `slower`, `back`, `forward`, `restart`, `seek`) |
+| `view/attach`, `view/intent` | Attach per-client semantic view stream and dispatch versioned semantic controls/dialogs/recovery |
+| `native/start`, `source/skills`, `session/redraw` | Native endpoint only: atomic start+subscribe, native skill metadata, redraw |
+| `subscription/cancel`, `request/cancel`, `publication/ack` | Cancel stream or pending request; acknowledge in-flight `delivery` ID |
 
-The public `session/input`, `session/shell`, `session/answer`, `session/list`
-and `session/read` methods support external local automation clients as well as
-in-repository consumers. They remain available alongside semantic control views
-and subscriptions, under the same initialization and endpoint authority rules.
+## HTTP resource endpoints
 
-Notifications use `subscription/event` with `{subscription, kind, data}` and an
-optional `delivery` receipt ID for shared publications.
-Kind is `sessions`, `snapshot`, `patch` or `exit`; data preserves the corresponding
-publication shape. `subscription/closed` terminates a subscription and may carry
-an error. Explicit runtime exit carries the joined outcome. EOF without that
-outcome is transport loss. Subscription cancellation is separate from ending a
-runtime or canceling a logical coordination wait.
+Large payloads and images stay outside the control WebSocket via separate HTTP requests (same-user
+Unix socket with `Mekugi-Protocol: 9`, or connector with `Authorization: Bearer` + admitted Origin):
 
-IDs name confirmed logical threads, never processes. Unknown/ended targets fail;
-stale target/workspace/attachment admission never retargets a mutation.
-Semantic owners recheck the operation's captured destination and current gates;
-unrelated publication revisions do not invalidate submission, queueing, resume, interruption
-or identity-addressed overlay actions. Detail requests can capture the displayed
-thread with their source, path or caller. Progress and display navigation do not
-invalidate that captured source. Workspace and attachment admission remain mandatory.
-Requests without an independent destination identity bind to the uninterrupted
-displayed/input destination of their observed publication. Raw commands and
-unqualified detail requests survive progress within that destination, while an
-intervening destination replacement prevents their admission.
-An error's `data.status` retains the semantic HTTP status classification used by
-native feedback; `data.outcome` is `not_admitted` or `unknown`. Success acknowledges
-admission/dispatch where applicable; execution outcomes arrive in publications.
-After transport loss, unresolved mutations remain unknown and are never retried
-automatically. Reconnect creates fresh subscriptions and snapshots only.
+- `POST /api/resources/content`: fetch complete deferred publication/detail content by published
+  reference.
+- `POST /api/resources/image`: fetch raster bytes for a published entry's bound image identity.
+- `POST /api/resources/attachment-image`: fetch raster bytes for a workspace-resolved host path
+  preview (returns 415 for non-raster files; never fetches URLs).
 
-Each subscription and connection has bounded queues. A server-to-client message,
-envelope included, is at most 64 MiB, and relays admit that limit. Writes fail
-when a peer stops accepting data for the write timeout, not when a slow link takes
-longer. Replaceable progress catches up to complete state without retiring the
-interaction. Native frames preserve
-unacknowledged semantic effects and ordered attachment switches. Reacquirable
-output windows have a separate backlog budget; `reacquireOutput` identifies
-catch-up frames that discarded older windows. The requester retains unresolved
-source identities and reacquires those reads individually without repeating mutations.
-Irreducible cross-attachment deliveries remain bounded; a failed physical connection
-still closes its subscriptions. Neither stalls other clients or server-owned execution. Attachment acquisition
-and method execution do not block the reader. Attachment-bearing submissions
-use a separate authenticated connection with the same methods and originating
-view/target/version; its lifetime does not replace the view's lifetime. Limits
-apply to each submission and aggregate concurrent preparation within one admitted
-session family. Descendants share that family's capacity; unrelated root sessions
-prepare independently.
+## Delivery, errors, and budgets
 
-Selected-thread shared publications and page replies have a 32 KiB envelope
-budget and at most 50 entries per page. These are transport windows, not retained
-history limits. One such delivery may be in flight on a connection. Its optional
-`delivery` ID, on the event envelope or page result, is acknowledged after
-application or intentional stale discard;
-only the current ID releases the next delivery. Canceling an observation removes
-unsent work but does not acknowledge already-sent bytes. Other control replies,
-semantic effects, discovery and local native frames retain their delivery rules.
-Resource transfers follow the [Web UI contract](../webui/CONTRACT.md).
-`POST /api/resources/content` accepts the same `{thread, body}` destination and
-published content reference and returns the complete content as JSON.
-`POST /api/resources/image` and `POST /api/resources/attachment-image` return
-raster bytes with their image Content-Type. These resource reads use separate
-HTTP requests, outside the control WebSocket. Private socket requests require
-`Mekugi-Protocol: 9`; connector requests also require `Authorization: Bearer TOKEN`
-and an admitted UI origin. Errors retain the RPC error shape and semantic HTTP
-status. Transfers share a separate aggregate resource budget through response delivery.
-Cancellation retires only the affected read, without ending execution.
-
-Session-list data is `{"sessions":[...]}`. Entries expose `id`, `thread`,
-`workspace`, title/start/status and waiting facts when known. The latest list replaces its predecessor.
-The list contains top-level sessions only. Prepared children remain addressable
-by confirmed thread ID; `session/read` exposes their `parentThread` identity.
-This is the parent thread at admission, unchanged by runtime thread switching.
-The shared family publication supplies navigation independently of parent views.
-
-## Creation, resume and end
-
-Start options include recent absolute `workspaces`, offered `models` grouped by
-label, `defaultModel`, and an optional catalog-availability `note`. Each model
-has `id`, `label`, `efforts` and `defaultEffort`. Recent workspaces are suggestions,
-not an allowlist. Model IDs retain provider/default selection semantics.
-
-Creation accepts `workspace`, `model`, optional `effort`, and optional `resume`
-naming a saved thread. The workspace must be an existing absolute
-directory; model/effort must be offered. Clients submit input separately after
-creation returns readiness, using `session/input` or an attached control view.
-An already running or pending resume receives 409.
-
-Creation is server-owned once admitted. Client cancellation after admission does
-not cancel execution. A successful result is `{"id":ID}` after readiness.
-Startup failure receives 502; losing that response is still an ambiguous outcome
-to the client.
-
-End returns a successful null result after joining the selected runtime. A native
-child uses targeted native end/join; ending it never closes the shared root
-connection or archives history. Native refusal remains an error, including when
-the native endpoint is unavailable. Server shutdown cancels
-and joins every runtime it owns. Disconnecting a stream or connector leaves
-execution running. Saved history remains with Session History; startup never
-implicitly resumes saved work or resubmits earlier requests.
-
-### Recorded playback creation
-
-Creation may instead carry `replay: {session, speed, seed, childReplySummary}`.
-`session` selects retained history on the execution machine through existing replay
-admission; other fields are optional playback settings. Replay is mutually exclusive
-with live creation, resume and input. Its workspace and logical thread identity come
-from admitted history, not the browser or UI host.
-
-The server owns playback until End or server shutdown. A live or replay owner already
-using the same logical thread, including a pending start, causes 409. Replay cannot
-be attached as a native live thread. Shared events and playback controls remain
-available; input, shell, answers, approvals and live semantic views are refused.
-Replay starts no backend/provider and opens no writable history store.
-
-## Internal agent coordination
-
-Native [thread coordination](../../../../docs/contracts/coordination.md) admits
-Codex children independently of renderer subscriptions. The owning connection
-supplies authoritative membership and passive observations; the server registers
-their presentation/control endpoints beneath the existing invocation, not as
-additional processes. Confirmed creation, logical admission, assignment retention
-and execution remain distinct acknowledgements. Ordinary human input uses native
-child admission: an idle child acquires tracked work and a running child receives
-a steer, preserving human role and parent delivery. Queueing alone does not wake
-a logical wait. Prompt answers and approval decisions keep their original native
-request identity and thread authority.
-
-Agent calls carry authenticated host-call identity through the invocation’s MCP
-connection. Native/remote JSON-RPC authority cannot impersonate that identity.
-Existing runtime registration, cancellation, joined shutdown and detached publication
-also apply to children. A lost response never authorizes repeated creation or input.
-
-## Publications
-
-### Remote-human control views
-
-The confirmed-thread `view/attach` and `view/intent` methods bind the existing
-per-view projection and semantic dispatcher. They share the request/event types
-with native attachments, including commands, menus, ordinary prompts, approvals,
-resume/status and detail/output controls. They add no command registry
-or execution owner. The simpler shared publication/input methods remain available.
-
-Frames publish `processes` with each live command's captured thread, turn, item
-and host process identity. `stopProcess` carries that captured value; admission
-refuses missing, replaced or completed identities before host dispatch. A successful
-request acknowledges dispatch; ordinary command completion removes the process.
-Host refusal or termination failure appears as view feedback.
-
-The handler establishes the view's remote-human authority; neither JSON nor
-headers can supply it. Subsequent intents must use the same endpoint authority as
-their attachment. Remote connections cannot act through a native attachment ID or
-answer a secret question, including with an empty or skipped answer. Native
-preference/history persistence and local editor/acquisition operations stay
-native-only. Remote publications omit native integration facts and redact secret
-question content throughout prompts, Activity and details, using the shared
-public projection policy. They also omit terminal renderer state that remote
-clients read through `session/subscribe`: review, agent feeds, live previews,
-output windows and pacing. While a side conversation is displayed, `conversation`
-carries that caller's complete entries using the ordinary browser entry schema,
-including read targets, grouped attachment parameters and detail affordances.
-Main and other callers remain excluded. A raw command sent without editor metadata leaves every draft
-unchanged. Attachment submissions retain the ordered descriptors, limits and
-preparation ownership defined below.
-
-The browser renders prompts from its control frame. `questions` is the family
-inventory, including sent calls retained for reconciliation; actionable calls
-exclude `Sent` and `Resolved`, and show only `Pending` questions. Optional
-`agent` identifies a prompt's originating agent independently of browser roster
-paging. `approvals` belongs to the selected runtime. Display text is sanitized
-and secret questions remain redacted. Approval intents use offered choice IDs;
-only denial accepts a reason. Interrupt intents capture the observed work target
-and view version.
-
-A remote composer Submit/Queue operation carries `input` with the same `text`
-and ordered `attachments` as ordinary input. Raw native `Draft` content is refused;
-native composer operations instead use `Draft` and cannot mix the two forms.
-Remote completion/editor metadata contains text and caret only, without source
-bindings or prepared snapshots. A completion request may set `Explicit: true`
-to reopen a dismissed target; passive draft updates retain the dismissal.
-Remote question answers use text/choice/skip and optional ordered attachment
-descriptors, including the secret-question exclusion.
-Remote `operation.answers` therefore uses the public `Answer` shape from the
-answer method; native answers retain their final-batch payload. Conversion
-resolves choices through the actual pending question owner at admission.
-
-Unsent submissions remain intact with their originating live view. Remote effects
-publish a bounded recovery preview instead of attachment snapshots. The
-`recovery` operation takes `{effect, action}`, where action is `retry`, `edit` or `discard`. Edit exposes ordinary text
-segments separated by immutable attachment labels. Retry may supply replacement
-text segments after Edit; retained bindings and attachment snapshots remain unchanged.
-Retry uses the retained snapshot through ordinary admission for its original
-destination and delivery mode. Queued recovery publishes `queued: true` and
-returns to the next-turn queue; only an explicit Steer action promotes it.
-An explicit waiting-input edit transfers restoration to the requesting view;
-automatic failure recovery stays with the originating view. Refusal keeps the
-retained input available. Discard releases it.
-Missing or consumed effects refuse, and ambiguous responses never trigger retries.
-Delivery receipts preserve remote recoveries until this explicit resolution.
-Detaching the originating view releases its unsent recovery, as it releases its
-other undelivered editor state; execution and retained history remain independent.
-
-### Native attachments
-
-The private socket also provides native renderer attachments. This endpoint is
-excluded from the connector. `native/start` accepts `workspace`,
-`routerArgs` and `args`, and atomically establishes its initial subscription.
-Profile-selected native starts additionally carry the caller's private `environment`
-array, including Codex home, PATH and authentication-command dependencies. It is
-frozen with family setup, never published or admitted through remote startup.
-`view/attach` optionally accepts a native-only body with profile `name` and `home`;
-a supplied identity must match the running invocation or attachment fails with 409.
-The first snapshot identifies the admitted startup operation until the execution
-owner confirms a logical thread. Startup never invents a thread ID. Subsequent intents carry `startup` until an explicit originating-view switch
-confirms `thread`. Reattachment uses `view/attach` with the selected identity.
-
-A detail request's `Displayed` identity captures content within its attachment;
-it does not route to another live runtime. Clients first attach that runtime,
-then request its details using the destination's published version and workspace.
-
-Resuming a thread already owned by this server attaches the requesting native
-renderer to that owner rather than executing another host resume. The source
-view remains alive until the destination supplies a valid initial snapshot and
-its own pending input and editor consequences have settled. A
-failed attachment keeps the source view usable and never falls back to starting
-another runtime. A new native attachment cancels deferred idle release unless
-release has already committed. In that case attachment waits for the old owner
-to join before reporting that there is no live root to attach. Saved-thread
-resume retains the existing startup path.
-
-Native streams finish with an `exit` event containing `code` and optional
-`message` after runtime cleanup. An accepted local terminal exit that leaves
-execution running sends a successful `exit` only to that renderer.
-Initialization failure can produce an exit event before the first snapshot.
-EOF without an exit event is a transport failure,
-not evidence that work ended. Disconnecting at either stage leaves admitted work
-running. Clients never repeat startup automatically after an ambiguous response.
-
-Native composer submissions preserve their detached editor bindings. The server
-snapshots missing file contents and copies client image sources before admission,
-without deleting those sources. Existing text snapshots are reused. Only the
-server's new image copies transfer to queued-input ownership; canceled, refused
-or stale submissions clean up those copies. Native operation admission rechecks
-the originating view, thread, workspace and attachment after acquisition. Prepared
-composer and answer snapshots remain admissible across newer revisions of that
-same attachment; the execution owner still rechecks operation and prompt state.
-
-Native snapshots contain complete frames. Local native patches carry a `retained`
-bitmask: 1 retains `main`, 2 retains `agents`, 4 retains `review`, and 8 retains
-`family` from the preceding publication instead of repeating those fields.
-All other frame fields remain complete replacements. A clear owner is an explicit
-`null` with its bit unset. Retained owners never cross an attachment reset or thread switch, and
-reconnection starts with a complete snapshot. Queues fold retained owners into
-newer pending updates without dropping the initial snapshot or switch boundary.
-Changed Main and Agents owners may carry an `entryDeltas` mask (1 for Main,
-2 for Agents). Their `Entries` arrays retain complete membership and order;
-each element is either a complete replacement entry or an integer referencing
-the same sequence in the preceding reconstructed owner. Other publication fields
-remain complete replacements. References stay within that owner and attachment;
-missing references, duplicate membership and unknown flags fail decoding.
-Snapshots and switches use complete entries. Queues compose raw replacements and
-references against the delivered baseline, preserving exact integers and initial
-snapshots. Capacity admission still measures the reconstructed complete frame,
-so a small delta cannot admit state that cannot be sent on reconnect.
-Remote human frames remain complete projections. The current protocol version is required;
-older clients must reconnect with a matching version rather than applying deltas.
-
-Native image file details carry an admitted local source tied to the detail
-selection. The physical frontend acquires bounded preview pixels using its own
-terminal capabilities; pixels stay outside serialized frames. Closing or replacing
-the selection retires its acquisition and graphics.
-
-Large remote detail pages and retained output may instead carry a content
-reference. Selection, output identity and semantic effects remain owned by the
-admitted view; the read returns that same public, redacted projection. Closing or
-replacing the view, detail selection or referenced revision makes the read stale.
-Local native detail and effect publications retain their existing shape.
-
-Native frames repeat an ordered, size-bounded prefix of unacknowledged semantic
-`effects` with immutable IDs. Receipts advance delivery to the retained suffix;
-activity and notification watermarks never skip a withheld semantic effect. Clients
-apply each once and acknowledge the completed delivery watermark independently of
-output hydration. `pendingEffects` covers withheld consequences and admitted inputs whose later host
-settlement may require restoration. Navigation retains the source view until those
-reservations and its deliveries settle; input acknowledgement alone is insufficient.
-A held notice claim publishes `notice`; `noticeFeedback`, the feedback revision
-showing its errors; and `noticeEntries`, the Main transcript rows showing its
-progress events. Native frames carry those rows in `main`; remote clients receive
-them through `session/subscribe`. The client sends one receipt once either surface
-is visibly painted or its feedback revision is replaced, reporting only painted
-surfaces; the host retries the rest under a new claim.
-Admission reserves retained consequence capacity before consuming input or
-dispatching work. Native restored inputs remain individually deliverable, in their
-original editor order. Remote recovery retains its joined submission behind the
-bounded preview. Native saved review carries the saved pane's projection; complete
-retained evidence remains with its detail and edit-total owners. If saved review
-cannot fit alongside state, semantic delivery and selected output, Diff reports its capacity failure
-and directs narrower reads through `mchanges`; the attachment remains interactive.
-Diff recovers when publication capacity returns, preserving its selected file.
-A remaining complete state or single consequence that exceeds the transport's
-publication limit is an explicit resource failure, distinct from observation backlog.
-The `activity` window is reconstructible pacing state: a newer `Reset` watermark
-clears transient reveal state against the complete Main/Agents publication without
-discarding semantic effects. `notification` retains only the latest desktop wake-up.
-Composer `Consumed` identifies a client that already took its submitted draft;
-known rejection restores that source rather than deleting text from a newer editor.
-
-### Shared publications
-
-`session/subscribe` publishes `snapshot` and `patch` notifications whose data is:
-
-| Field | Snapshot | Patch |
-| --- | --- | --- |
-| `session` | Always | When it changed |
-| `playback` | Always during replay | When it changed |
-| `input` | Always for a live session | When it changed |
-| `prompts` | Always for a live session | The whole value when it changed |
-| `status` | Always | When it changed |
-| `main`, `agents` | The latest bounded feed window | Changes to that window |
-| `roster` | A bounded roster page | The latest roster page when it changed |
-| `review` | Saved-review identity, coverage, failure and counts | Updated metadata when its revision changes |
-| `live` | Current previews for a live session | The whole list when it changes, including `[]` to clear it |
-| `deferred` | References for oversized auxiliary sections | The current reference set |
-
-Main’s `live` list includes the current admitted family’s previews with original
-source attribution. Selecting a child keeps its own live list. Attachment
-replacement and scope withdrawal retire the corresponding previews independently
-of saved review and host execution.
-
-A feed is an object with `entries`, `order`, a history revision and an optional
-earlier-page cursor. Snapshots and explicit pages contain complete entries for
-their returned windows, with sequence IDs in display order. Ordinary feed patches
-carry the complete latest-window order and metadata, but include entry replacements
-only for changed entries and entries newly entering that window. Omitted entries
-retain their previous values subject to the latest order and explicitly loaded
-earlier pages. Attachment or history-revision replacement carries the complete new
-window. Backlog snapshots remain complete and authoritative.
-An entry's `position` preserves display order independently of sequence identity;
-its optional `turn` is the user-turn ordinal across the retained feed.
-
-A connection receives a snapshot as soon as anything has been published, then
-patches. Every viewer receives a new snapshot when the attachment or the
-session's thread changes, as seeking backward, restarting and switching a live
-session's thread do; a snapshot replaces patches still queued for a viewer. A
-snapshot replaces attachment-scoped client state when the attachment changes,
-because a new attachment may reuse entry sequence numbers. A catch-up snapshot
-with unchanged attachment and history revision preserves acquired earlier pages
-and the reader's position.
-
-A client applies a feed patch by replacing each listed entry whole, keyed by
-`seq` and entry revision within that feed, and by adopting the latest window's
-listed `order`. Explicitly loaded earlier pages survive ordinary latest updates.
-Attachment replacement or historical mutation invalidates their cursors and
-loaded history. A revised entry leaving the latest window also advances history
-identity, so a catch-up snapshot cannot preserve an outdated loaded copy after
-discarding its queued replacement. An oversized entry preserves its compact semantic presentation
-and carries a typed reference to its complete published content. Inline content
-is acquired automatically; content behind existing disclosures is acquired when
-opened. This transport deferral is distinct from
-Activity's source/output omission facts. Fields a patch omits keep their previous
-value. Each viewer has a bounded queue; pressure replaces pending deltas with an
-authoritative snapshot of the same owner. A session's stream ends when the
-session leaves, and stopping the server closes every stream.
-
-Page cursors bind attachment, feed or metadata category, revision, caller filter
-and boundary. Stale cursors fail rather than mixing attachments or compositions.
-Read-source attachment or revision replacement uses JSON-RPC code `-32002`
-(`RPCReadSuperseded`) with status 409. The browser waits for a changed reference
-without retrying the rejected identity or showing failure chrome. Unknown kinds,
-missing entries/files, invalid boundaries in the current revision and unavailable
-views remain ordinary failures. A status 409 alone does not mean supersession;
-protocol incompatibility and mutation conflicts retain their separate semantics.
-Saved-review file metadata loads when Changes opens and includes the composed
-file's short status (`M`, `D`, `R`, `RM`, `A`, `UU`, or `?` for incomplete evidence)
-when captured regions are present. Full file content is read by
-the exact caller, revision and file identity. Caller filtering composes the
-selected caller's changes against other callers' captures as baseline. It never
-filters an all-callers diff after composition. Live metadata pages use `kind:live`
-with the published live reference's attachment and revision. They return preview
-identities, status and the first file's paths without raw input or diff bodies; `next` continues
-the page. Complete live resources retain their full source shape.
-Oversized auxiliary sections remain available through explicit content references
-rather than silent truncation.
-
-## Messages
-
-Times are Unix milliseconds. Durations are milliseconds, and `playback.position`
-and `playback.until` are recorded milliseconds from the session start. An omitted
-field is zero, false or empty, except facts that may be unknown: a step's
-`exitCode`; an agent's `work`, `cost`, `inputTokens`, `outputTokens`, `context`,
-`added` and `removed`; an entry's `outcome`; and the status's `completed` are
-omitted when unknown.
-
-- `session`: `thread` is the Main thread ID; `title`, `workspace` and `started`
-  describe the session.
-- `playback`: `position`, `until`, `speed`, `paused` and `simulated`, which marks
-  synthesized streaming.
-- `input`: a live session's input state. `reason`, when present, says why Main
-  cannot take input now; `stoppable` means Main has work to interrupt; `waiting`
-  counts the questions and approvals Main waits on. All
-  describe Main, whichever thread the terminal displays.
-- `prompts`: `questions` holds pending calls from the admitted session family (`id`, optional `agent`, and
-  `questions`). Calls contain only unanswered questions, with IDs stable when
-  another client answers part of a call. Each question has `id`, `header`, `text`, and `options` with
-  `label` and `description`; a secret question carries only `id` and `secret`.
-  `approvals` holds pending approvals in order, each with `id`, optional `agent`,
-  `title`, `subject`, `details`, and `choices` (`id`, `label`, `deny`).
-- `status`: Main's [session status](../sessionpresentation/SPEC.md) as `text`,
-  with `failure`, `alert`, `running` and `completed`, the turn's duration.
-- `review`: `revision`, `workspace`, `coverage`, optional `failure`, `fileCount`,
-  `counts` and a metadata `page` cursor. `callers` lists each caller with captures,
-  Main first, as `caller` (canonical path, or `?` when unknown) and file `count`.
-  Review counts contain `Net` (null without project evidence) and `Callers`.
-  Metadata pages return files with `key`, `path`, `status`, `counts` and a `content`
-  reference. The complete file adds composed `chunks` and `origins`, retaining
-  Change History's wire shapes and provenance. File counts use `Added` and
-  `Removed`; negative counts mean unavailable. Metadata may abbreviate long paths;
-  complete reads retain them. Compositions include admitted runtime descendants
-  and share the terminal Diff pane's temporary-only exclusion and caller policy.
-  Loading and failure remain explicit. An unavailable review clears the previous
-  value with `null`; attachment replacement resets it.
-- `live`: the ordered current Live Preview snapshots, with `ID`, `Caller`,
-  `Status`, `Files` (including `Diff` text), `Truncated` and `Complete`, plus the
-  preview owner's remaining metadata. Live sessions sample these at the shared
-  frame interval. They are provisional, separate from saved review, and absent
-  from recorded playback.
-- `main`: Main's transcript, including other agents' answers and failures as
-  Main received them. `agents`: every other agent's own activity, including the
-  tasks and messages it received. Entries the terminal does not show as rows are
-  not sent.
-- An entry's `seq` identifies it within its feed and one attachment. `agent` is
-  the canonical caller path of the agent it belongs to. `identities` supplies
-  each referenced agent's canonical `name`, display `label` and observed address
-  `aliases`, independently of roster paging. The local `Main` alias names the
-  session's caller. Renderers use these facts for labels and roster lookup.
-  `kind` names the item, `text` is its Markdown summary,
-  `observed` is its time and `running` marks unfinished work. A task sets
-  `assignment`, with its recipient's caller path in `assignmentTo` and its
-  Markdown in `assignmentText`. `values` holds the entry's presentation values.
-  Optional `traffic` publishes Activity's shared agent-exchange interpretation:
-  semantic `kind` (`start`, `message`, `final`, `interrupted` or `error`), known
-  canonical `from`/`to` endpoints, outcome `detail`, and `incoming` reply
-  disclosure eligibility. Own final answers remain ordinary prose without
-  `traffic`. Renderers paint these facts rather than reclassifying outcomes or
-  resolving runtime-local endpoints.
-  For delivered agent results, optional `outcome` is the authoritative terminal
-  outcome: `completed`, `failed` or `interrupted`. It is independent of authored
-  text. Omission means no outcome is available, including historical messages
-  without retained outcome metadata; clients must not infer it from the payload.
-- `roster`: a page of `agents` in tree order, `total`, optional `next` cursor,
-  and the session's net changed lines as
-  `added` and `removed` when known. Each agent has its caller path as `name`,
-  its display name as `label`, address `aliases`, `role` (absent for Main), tree `depth` and a
-  `state` of `working`, `waiting`, `paused`, `idle`, `done` or `error`. A waiting agent
-  may publish `wait`, using the same presentation-value shape as transcript
-  progress, including its target names and effective timeout. Each settled target
-  retains its own status; the wait's aggregate reason remains independent of target
-  order and status. Optional `activity`
-  carries its owning runtime's latest shared roster summary as entry-shaped
-  `kind`, `observed` and compact `values`. These reuse the shared presentation
-  value shape with resolved outcome-aware `verb`, `label` and bounded `code`,
-  canonical `from`/`to` endpoints, `failed` tone and structured progress facts.
-  Renderers select and lay out these values without deriving outcomes or subjects.
-  It is display-only: it supplies labels, read
-  paths, progress, short reasoning and a bounded code preview, without retained
-  output, full authored bodies or a navigable source identity. `turns` and `roundtrips`
-  count its work. `work` is its accumulated work time; while it works,
-  `workSince` is when the current work started, so the current total is `work`
-  plus the time since. `lastResponse` is when it last replied.
-  `cost` and the `inputTokens`/`outputTokens` pair are its usage, with
-  `costPartial` and `usagePartial` marking lower bounds; `context` is the tokens
-  in its context window of `window`. `added` and `removed` are the lines it
-  changed, `skills` its active skills and `items` its status items.
-
-Presentation values carry [Activity's](../../../../modules/activity/CONTRACT.md)
-renderer-neutral facts: `kind`, `verb`, `label`, `code` and its language `lang`
-(`fenced` marks a code block), `body`, `reads` with their `path` and `ranges`,
-`path` for an attachment source, `autoReload` for compaction reload provenance,
-`approval` for its current approval outcome, `subsumed` steps, `duration`, `thought` time, `workdir`, a message's `from` and
-`to` caller paths, `questions` with their `answer`, `waits` with each target's
-`name` and `status`, `waitReason` for the wait's aggregate completion reason,
-`waitTimeout` for a waiting subscription's effective duration, `exitCode`,
-`editOutcome`, `running` and `live` state, the
-output `tail` with `tailOmitted` earlier lines, `changes` with their counts and
-`footer`, and `hook` status. A child's reply that carries its own summary has
-it in `summary`, alongside the whole reply in `body`, while the invocation's
-`child_reply_summary` feature is on. `details` carries the supporting sections;
-without a valid section boundary it instead carries the nonblank headingless
-body for the ordinary bounded excerpt, with no `summary`. The original `body`
-remains the copy source and the child's own transcript content. Compacted replies
-retain a bounded headingless preview while full content loads.
-Labels, bodies and `text` are display-sanitized
-Markdown; `code` is literal text in the language `lang` names.
-`detailCode` preserves original JSON tool evidence for a semantic operation's
-content dialog, separately from its compact transcript presentation.
-`codePreview`, when present, supplies the command's headline without shell
-error-option setup; `code` retains the complete source.
-`detailsAvailable` is Activity's omission fact: an object whose optional canonical
-`owner` limits it to that agent's transcript. Without `owner`, it applies to every
-transcript. Renderers add only their measured clipping to this fact. Transport
-deferral preserves it independently of removed inline bytes.
-`batchExit` marks a compound command's combined result; it carries the command that ran as `code`
-only when its entry has no other value, and otherwise no label.
+- **Events**: `subscription/event` carries `{subscription, kind, data}` (`sessions`, `snapshot`,
+  `patch`, `exit`) plus optional `delivery` ID; `subscription/closed` terminates a stream.
+  Explicit `exit` carries the joined outcome; EOF without `exit` is transport loss.
+- **Error semantics**: `error.data.status` carries HTTP-style status (`400` malformed/invalid,
+  `403` native-only method/field on remote, `404` missing thread or resource, `405` disallowed on
+  replay, `409` admission conflict or version mismatch, `413` body/upload limit, `415` non-raster
+  on `attachment-image`, `500` internal failure, `502` startup failure, `503` unavailable);
+  `error.data.outcome` is `not_admitted` or `unknown`.
+  - Stale page/resource reads return JSON-RPC code `-32002` (`RPCReadSuperseded`, status 409):
+    clients discard silently and wait for the next publication rather than showing an error.
+  - **No automatic mutation retry**: after transport loss, unresolved mutations have `unknown`
+    outcome and are never retried automatically; reconnect opens fresh subscriptions/snapshots.
+- **Transport budgets**:
+  - Max WS server-to-client message: 64 MiB.
+  - Shared publication / page window: 32 KiB envelope, ≤50 entries/page, one acknowledged
+    `delivery` in flight at a time (oversized entries/sections carry content references for
+    `/api/resources/content`).
+  - Request body caps: 1 KiB default; 64 KiB for `session/decide` and
+    `POST /api/resources/attachment-image`; 1 MiB for `native/start` and `session/shell`; 32 MiB
+    decoded uploads (base64-expanded) + 1 MiB text/metadata for inputs, answers, and semantic
+    intents.
 
 ## Attachment input
 
-Input and answers accept ordered attachment descriptors:
-`{"source":"path","path":PATH}` or
-`{"source":"upload","name":LABEL,"data":BASE64}`. Upload names are display labels,
-never filesystem destinations; content bytes, not a browser MIME declaration,
-determine supported image/text semantics. Paths resolve on the execution machine
-against the selected thread's absolute workspace. User files are borrowed.
+Ordered attachment descriptors on inputs, intents, and written question answers:
+- `{"source":"path","path":PATH}`: resolves against the selected thread's execution-machine
+  workspace.
+- `{"source":"upload","name":LABEL,"data":BASE64}`: content bytes determine image/text handling;
+  `name` is a display label, never a filesystem path.
+- `{"source":"selection","name":DESCRIPTION,"data":BASE64,"path":SOURCE,"inline":BOOL}`: quoted
+  UTF-8 screen selection (optional `path` is provenance only, never read as a file; `inline:true`
+  binds an exact `[Selected DESCRIPTION]` marker in `text`).
 
-Selected screen text uses `{"source":"selection","name":DESCRIPTION,"data":BASE64,"path":SOURCE}`.
-Its data is UTF-8 text; optional `path` is quoted provenance and is never read as a file.
-Preparation uses Conversation's selection-label and quoted-content framing, including its
-mention-size limit. These references remain separate from ordinary input text and retain
-their source through history and continuation. Selection bytes share the decoded upload budget.
-With `"inline":true`, the descriptor binds the single exact `[Selected DESCRIPTION]`
-marker already in `text`, retaining its position instead of appending another marker.
-Missing, duplicate or overlapping markers are refused. Without `inline`, preparation
-appends a uniquely named selection as usual. Other attachment sources reject `inline`.
+Combined decoded uploads and selections are bounded to **32 MiB** per message; unreadable or
+oversized snapshots emit explicit omission notices rather than silent truncation.
 
-Combined decoded uploads are limited to 32 MiB per message. Existing composer
-text/directory framing and text-envelope limits remain in force. Oversized or
-unreadable snapshot content retains explicit omission frames and a `notice` in
-the successful acknowledgement; it is not silently truncated.
-Input acceptance may return that optional notice.
+## Current approach (replaceable)
 
-Acquisition runs outside the session event loop. Admission rechecks captured
-thread/workspace and operation state, then transfers newly acquired image files
-to existing queued-input ownership. Cancellation, refusal or stale completion
-reclaims only files acquired by that request; admitted image retention supports
-continuation. Uploaded text snapshots use bytes directly, not temporary files or
-invented host paths.
-
-Malformed/unsupported content has error status 400; size violations have status
-413. Status codes below refer to `error.data.status`, not HTTP responses.
-Only an explicit admission refusal permits retry; transport failure after dispatch
-leaves the outcome unknown and never triggers automatic resubmission.
-
-## Session requests
-
-Operation bodies are JSON of at most 1 KiB, with these exceptions:
-
-- Input and all native or remote semantic-intent bodies allow base64
-  expansion of 32 MiB plus 1 MiB for text and metadata, including intents without
-  attachment input.
-- Native startup and shell bodies allow at most 1 MiB.
-- Answer bodies use the attachment input envelope, with at most 1 MiB combined
-  text/metadata and 32 MiB combined decoded uploads across the questions.
-  Decide bodies allow at most 64 KiB.
-
-A larger body has error status 413.
-
-`session/input` takes `{"text": TEXT, "attachments": [...]}`, sent as Main's input as
-Enter sends it. Success means the session accepted it; 409 means it cannot take
-input now; 400 means no usable input or malformed/permanently invalid content.
-`session/interrupt` ignores its body; success means the interruption was issued,
-and 409 means there is nothing to interrupt. Reasons use `error.message`. A live session that does not answer within a few seconds, such as
-while its owner is unavailable, receives 503.
-
-`session/shell` takes `{"command": TEXT}`. Text is the shell
-command itself, without the terminal's Shell Mode prefix. An initial `!` retains
-its shell meaning. Success acknowledges dispatch to Main's host shell path; execution
-results arrive through the ordinary activity stream. 409 carries an admission
-refusal, 400 rejects empty/malformed commands, and replay returns 405. The request
-can run during Main's work. Submission and host rejection leave the terminal's
-current draft in place; rejected remote commands remain in input history.
-
-`session/answer` takes `{"call": ID, "answers": [...]}`. Every
-remaining question needs an answer with `question` (its ID), `choice` (zero-based option
-index), `text`, and `skip`. An absent choice or the index after the last option
-selects a written answer. `skip: true` explicitly leaves a question unanswered.
-Written answers may include `attachments` using the ordinary input descriptors and
-limits. Preparation snapshots each question separately, then transfers the batch's
-acquired images together at admission. Images follow the existing host answer
-delivery, with numbered image markers in the corresponding answer. Offered choices
-reject attachments; skipped answers do not acquire them. Preparation or admission
-failure releases unadmitted uploads without changing authoritative answer drafts.
-Secret questions cannot be answered through this endpoint. Family question replies
-resolve the call's current originating runtime, including attachment preparation
-in that runtime's workspace. Selecting another family view does not retarget a
-reply or wake ancestor or unrelated logical waits. An async reply may resume its
-asking child through that child's authenticated ordinary input ledger.
-
-`session/decide` takes `{"approval": ID, "choice": CHOICE_ID,
-"reason": TEXT}`. The choice must be offered by that approval; only a denial
-accepts a reason. For Mekugi shell guards, this endpoint supports approve-once and deny.
-Reusable exact-command grants
-require attachment-bound `view/intent`; requesting one here returns 409 with that
-direction. A reusable grant belongs to the answering view, survives displayed-thread
-switching within it, and expires when that attachment retires. Another live view
-retains its own grants independently. Both methods return success when accepted, error status 409
-when refused (including already answered prompts), and 400 for malformed requests.
-
-`session/control` takes `{"action": ACTION, "position": MILLISECONDS}`.
-`position` applies only to `seek`. Success means the request was queued; its effect
-arrives on the event stream. 400 means the body was malformed or named an
-unknown action. Refused requests leave playback unchanged.
-
-| Action | Effect |
-| --- | --- |
-| `toggle-pause` | Pause or resume |
-| `faster`, `slower` | Step to the next speed preset |
-| `back`, `forward` | Seek ten recorded seconds |
-| `restart` | Resume from the start |
-| `seek` | Move to `position`, clamped to the recording |
-
-## Browser types and validation
-
-`protocol.ts` is generated from the Go wire types and the admitted RPC method
-catalog. Run `go run ./apps/mekugi/cmd/sessionapi-schema` to refresh these types and `make check-generated`
-to check drift. Native-only fields remain subject to endpoint and operation
-admission; TypeScript types do not establish authority.
-
-
-### Published images
-
-User entries carry bound token spans and opaque image identities; View and
-Generated entries carry their bound image identities, including live, restored
-and resumed history. Generated entries use the host's saved artifact path.
-`POST /api/resources/image`
-takes `{seq, agent, index, image}` in its body on the selected thread. It resolves
-only an image in that current published entry, never a caller-supplied path or URL,
-and returns raster bytes. Reads use the admitted source
-and selected workspace, run outside publication locks, and share attachment-transfer
-capacity. Missing, oversized or non-raster sources fail explicitly. Local
-files and inline image data are supported up to the upload limit; remote URLs are
-not fetched. Browser image transfers use independent authenticated HTTP requests.
-
-`POST /api/resources/attachment-image` takes `{path}` on a selected live thread, or
-`{path, workspace}` without a thread before creation. The initial workspace must
-be an existing absolute directory on a machine that supports thread creation;
-live requests use the selected thread's workspace and reject workspace overrides.
-The read-only request uses the same authentication, transfer capacity,
-regular-file bounds and raster validation as published images, and returns
-raster bytes. It never fetches URLs or retains server-side drafts. Relative paths
-resolve in the selected workspace. Non-raster paths return 415 and remain ordinary
-file chips; unreadable paths show a preview failure. Previewing does not change
-which source is acquired when the draft is eventually submitted.
-
-Live `view/attach` selects a confirmed `thread` identity. The server resolves
-admitted cold membership and preparation without client-supplied parent context;
-selection resumes execution ownership without submitting input or restarting work.
-Unadmitted historical identities remain observational.
-
-Every ordinary view includes `family`: its `root` thread, admitted `threads`,
-navigation `agents` and root `status`. Navigation contains roster summaries and
-aggregate change counts, not another thread's transcript. Each selected thread
-retains its own feed, workspace, settings, approvals and effects; questions share
-the admitted family channel. The server derives
-family values from ordinary runtime publications and retained membership,
-independently of connected viewers. Shared publication rosters use that same
-family value. Admitted logical membership owns each agent's lifecycle status;
-runtime activity and usage enrich the row without replacing that status.
-Saved review composes captures once for the selected workspace.
-Retained members without a live runtime keep their logical lifecycle status in
-the roster, including completed delegates on resume. Finished rows remain subject
-to the terminal's ordinary compact-roster policy.
+- Local native frames use a `retained` owner bitmask (`main`, `agents`, `review`, `family`) and
+  `entryDeltas` sequence references folded across bounded server/client queues; remote human frames
+  use full detached projections and redact secrets.
+- Server-owned family views derive navigation and aggregate review once per workspace independently
+  of connected viewers; disconnected clients never stop execution, and reattaching cancels deferred
+  idle release.
+- Remote unsent submissions stay with the originating live view (`recovery`: `retry`, `edit`,
+  `discard`) and clean up on view detach.

@@ -78,7 +78,7 @@ Stock `apply_patch` and `exec_command` remain Codex-owned. The router uses
 selected workspace metadata only for bounded observation and durable review
 scope, not to authorize or execute a patch. See the
 [retained authority](../docs/contracts/record-publication.md) and
-[stock execution](../backends/codex/SPEC.md#execution-authority) contracts.
+[stock execution](../backends/codex/SPEC.md#execution-authority-and-process-transport) contracts.
 
 ### Interpret end-to-end evidence
 
@@ -90,12 +90,12 @@ workspace state are known. The router serves `GET /v1/models`; a model-refresh
 
 ### Reproduction shape
 
-Launch the router and probe together from this repository:
+Build local binaries and run a headless probe in a disposable directory:
 
 ```sh
-go run ./apps/mekugi/cmd/mekugi codex --model gpt-5.6-luna \
-  --sandbox workspace-write --ask-for-approval never \
-  exec --ephemeral -C /absolute/path/to/disposable/fixture "PROMPT"
+make build-binaries
+(cd /absolute/path/to/disposable/fixture && \
+  /path/to/mekugi/bin/mekugi codex headless --yolo --model gpt-5.6-luna <<< "PROMPT")
 ```
 
 Use a disposable temporary directory outside the repository for probes and

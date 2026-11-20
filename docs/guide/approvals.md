@@ -46,4 +46,4 @@ answer fails the command without retrying or falling back to an unsigned result.
 Skipping denies authentication. Cancellation discards the pending secret draft.
 No global GPG configuration is changed. Explicit caller-owned authentication/input
 modes stay native; non-passphrase inquiries require caller-owned `--command-fd`.
-See [GPG support and limits](../../modules/sudoapproval/SPEC.md#gpg-passphrases).
+See [GPG support and limits](../../modules/sudoapproval/SPEC.md).

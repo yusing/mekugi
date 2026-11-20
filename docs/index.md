@@ -1,61 +1,54 @@
 # Documentation
 
-[Product intent, design, scope and journeys](product.md) distinguish required
-outcomes and explicit constraints from replaceable approaches and current design.
-Owner specifications and contracts separate required capabilities from current
-implementation choices. [Intent and design authority](product.md#intent-and-design-authority)
-explains what a redesign must preserve.
-The [README](../README.md) covers installation and a quick start; the
-[user guides](../README.md#guides) under `guide/` cover operation, from the
-[terminal UI](guide/terminal-ui.md) to [configuration](guide/configuration.md);
-[Development](contributing/development.md) covers builds, tests and diagnostics.
-Guides describe current use; contributor documents describe current procedures.
-Generated inventories record declarations, and dated reports record observations.
+- [README](../README.md): user overview, installation, and quick start.
+- [Product requirements and design](product.md): binding outcomes, scope constraints, and
+  [authority rules](product.md#intent-and-authority).
+- [User guides](../README.md#guides) (`docs/guide/`): day-to-day operation.
+- [Contributing](../CONTRIBUTING.md) and [Development](contributing/development.md): builds,
+  tests, diagnostics, and profiling.
 
-## Features
+All `SPEC.md` and `CONTRACT.md` files separate binding **Requirements** (or **Boundary contract**)
+from **Current approach (replaceable)**. Internal helper libraries and app-wiring packages are
+documented by their code and tests rather than standalone specs.
 
-The [generated module reference](reference/modules.md) links each feature's
-specification, dependencies, lifetime, records and backend connections. Detailed
-contracts stay with their owning modules.
+## Shared boundary contracts
 
-## Shared contracts
+- [Native agent coordination](contracts/coordination.md): delegation, preloads, waits, progress,
+  side questions, and cross-session delivery.
+- [Workspace composition](contracts/composition.md): Go workspace layout, descriptors, lifetimes,
+  and import boundaries.
+- [Change evidence](contracts/change-evidence.md): passive capture authority, scope, and delivery.
+- [Record publication](contracts/record-publication.md): durability, retention, and cross-owner
+  publication ordering.
+- [Responses transport](contracts/responses-transport.md): HTTP/WebSocket admission, projection,
+  and failure delivery.
+- [Provider routing](contracts/provider-routing.md): native OpenAI and custom profile Responses
+  routing.
 
-- [Native agent coordination](contracts/coordination.md): preparation, work, waits, cross-backend delivery and recovery.
+## External and user-facing specs
 
-- [Composition](contracts/composition.md): workspace membership, contributions and import boundaries.
-- [Record publication](contracts/record-publication.md): filesystem authority, durability, retention and continuity.
-- [Change evidence](contracts/change-evidence.md): observed effects, capture coverage and delivery.
-- [Responses transport](contracts/responses-transport.md): model-path admission, catalogs and auxiliary integration.
-- [Provider routing](contracts/provider-routing.md): provider selection, native-agent continuity and isolation.
+- [Launch](../apps/mekugi/internal/launch/SPEC.md): CLI invocation, profiles, server lifecycle,
+  and host wiring.
+- [Executable frontends](../apps/mekugi/internal/frontends/SPEC.md): authenticated session helpers
+  and recovery delivery.
+- [Headless client](../apps/mekugi/internal/headless/SPEC.md): noninteractive automation and JSONL
+  output.
+- [Session API](../apps/mekugi/internal/sessionapi/SPEC.md) and
+  [wire contract](../apps/mekugi/internal/sessionapi/CONTRACT.md): server-owned runtime control,
+  JSON-RPC/WebSocket protocol, and HTTP resources.
+- [Connector](../apps/mekugi/internal/connector/SPEC.md): authenticated remote forwarding.
+- [Terminal session](../apps/mekugi/internal/terminalsession/SPEC.md): interactive terminal UI.
+- [Web UI](../apps/mekugi/internal/webui/SPEC.md) and
+  [contract](../apps/mekugi/internal/webui/CONTRACT.md): browser client and asset host.
+- [Codex backend](../backends/codex/SPEC.md): host execution authority, RPC transport, shell
+  hooks, output deduplication, and rollout decoding.
 
-## Application
+## Feature modules
 
-- [Launch](../apps/mekugi/internal/launch/SPEC.md)
-- [Executable frontends](../apps/mekugi/internal/frontends/SPEC.md)
-- [Headless client](../apps/mekugi/internal/headless/SPEC.md)
-- [Request execution](../apps/mekugi/internal/requestexecution/SPEC.md)
-- [Execution observation](../apps/mekugi/internal/executionobservation/SPEC.md)
-- [Session control](../apps/mekugi/internal/sessioncontrol/SPEC.md)
-- [Session presentation](../apps/mekugi/internal/sessionpresentation/SPEC.md)
-- [Session API](../apps/mekugi/internal/sessionapi/SPEC.md)
-- [Browser UI](../apps/mekugi/internal/webui/SPEC.md)
-- [Connector](../apps/mekugi/internal/connector/SPEC.md)
-- [Session review](../apps/mekugi/internal/sessionreview/SPEC.md)
-- [Terminal session](../apps/mekugi/internal/terminalsession/SPEC.md)
-
-## Backend and providers
-
-- [Codex](../backends/codex/SPEC.md): host execution, protocols and evidence decoding.
-- [Responses adapter](../backends/codex/responses/SPEC.md): request shaping and stream normalization.
-- Providers: [OpenAI](../providers/openai/SPEC.md) and [custom Responses routing](contracts/provider-routing.md).
-
-## Shared implementations
-
-- [Shell instrumentation](../libraries/shellinstrumentation/SPEC.md)
-- [HTTP transport](../libraries/httptransport/SPEC.md)
-- [Invocation-local MCP transport](../libraries/mcptransport/SPEC.md)
+The [generated module reference](reference/modules.md) indexes every feature module's `SPEC.md`,
+dependencies, lifetime, records, and Codex connections.
 
 ## Measurement and host evidence
 
-[Comparisons](benchmarks.md) and [dated Codex checks](codex-router-e2e.md)
-describe measured behavior and verification limits.
+- [Controlled comparisons](benchmarks.md): pointer to `codex-setup-ab`.
+- [Dated Codex checks](codex-router-e2e.md): dated host observations and verification limits.

@@ -1,168 +1,40 @@
 # Responses transport integration
 
-## Required execution interface
+## Requirements
 
-Codex remains the root execution authority. Mekugi exposes one stock JavaScript
-execution interface and preserves native execution, batching, existing features,
-bounded and batched reads, stock-patch and shell-write live diffs, and captured
-review. Direct execution is unsupported. Transport optimization must improve the
-[product outcome](../product.md#required-outcome) without losing those capabilities.
+- Codex remains root execution authority with one stock JavaScript execution interface (`exec` with
+  nested stock tools). Top-level `apply_patch`/`exec_command` catalogs and direct execution mode are
+  unsupported.
+- Preserve stock WebSocket/HTTP fallback, prewarm, streaming, steering, interruption, batching, and
+  existing features while improving [product outcomes](../product.md#user-requirements).
 
-## Replaceable transport design
+## Boundary contract
 
-Endpoints, framing, connection reuse, projection and limits below are the current
-transport contract. These choices can change with their consumers while preserving
-the execution interface and required capabilities.
+- **Endpoints & admission**: accepts Codex Responses WebSockets (`GET /v1/responses`), HTTP
+  SSE/JSON (`POST /v1/responses`), catalog forwarding (`GET /v1/models`), and authenticated
+  auxiliary routes (standalone search, native image edit/gen, history notes). Rejects multi-lane
+  `stream_id`, unsupported/malformed tool catalogs, and unsupported local context references with
+  actionable HTTP/WS 400 errors (never retryable 502s).
+- **Prewarm & execution-free turns**: `request_kind="prewarm"` with `generate=false` admits
+  non-generating handshakes without creating replay/agent state; execution-free turns pass through
+  without tool/guidance rewriting.
+- **Projection boundary**: projection never mutates original tool arguments, host history, or
+  retained evidence. Native [output deduplication](../../backends/codex/SPEC.md#output-deduplication)
+  runs before transport; growing input preserves projected prefixes.
+- **Connection & failure semantics**: dedicated WebSocket connections forward concurrent steering
+  and `response.interrupt` unchanged; no request or steer is silently replayed after send failure or
+  disconnect. Downstream disconnects are recorded as cancellation, not translation faults. A
+  deterministic translation fault after `response.created` emits `response.failed` (`invalid_prompt`)
+  with a diagnostic reference; pre-stream provider errors stay retryable by Codex.
 
-## REQ-TRANSPORT-001
+## Current approach (replaceable)
 
-The application accepts Codex Responses WebSockets at `GET /v1/responses` and
-HTTP streaming SSE or terminal JSON at `POST /v1/responses`. Invocation-local
-launch settings retain stock WebSocket and prewarm support. Codex chooses HTTP
-fallback and owns native steering, interruption, tools and continuations.
-Model discovery uses HTTP. Custom Responses providers use their configured HTTP
-or WebSocket transport without dedicated provider translation.
-
-The [backend adapter](../../backends/codex/responses/SPEC.md) owns envelopes,
-native identities, connection-local history and response framing. The
-[OpenAI provider](../../providers/openai/SPEC.md) owns credentials, upstream
-connections and single-attempt HTTP inference. Application
-inference gateway owns HTTP admission, catalog forwarding, auxiliary routes and
-dedicated socket lifetime. The shared request executor owns accounting and
-delivery diagnostics; transport passes each admitted exchange to that executor.
-
-## Catalog and auxiliary exchanges
-
-`/v1/models` forwards every authenticated request to the provider. Codex owns
-catalog caching and refresh; the gateway bounds complete responses to 8 MiB.
-Successful catalogs set every model's `tool_mode` to `code_mode_only` before
-delivery, preserving other metadata and the upstream ETag. Malformed projected
-catalogs fail explicitly.
-Catalog refresh failures retain upstream status and private diagnostic details,
-without becoming inference failures or queuing a terminal notice.
-
-OpenAI standalone search, native image generation/editing and history-note
-operations use authenticated forwarding without projection or automatic retry.
-Their request bodies, response status, forwarded headers, output, streaming and
-encoding are preserved. Custom routes forward eligible auxiliary requests only
-to their selected endpoint, retaining unsupported-operation errors without fallback.
-The local base URL does not establish Codex backend-route eligibility;
-backend-specific workspace routing and experimental context activation remain
-unavailable until they can preserve session interception.
-
-## Admission and projection
-
-Compressed HTTP Responses bodies are decoded before projection, applying the
-request budget to both encoded and decoded input. Auxiliary bodies stay encoded.
-
-One connection carries one unnamed response lane. A non-null `stream_id` fails;
-independent sessions require separate connections.
-
-Metadata with `request_kind="prewarm"` and explicit `generate=false` admits a
-non-generating handshake without workspace or execution-catalog requirements.
-When a supported execution catalog is supplied, the same instruction and tool
-projections as a generating turn preserve prefix reuse. Otherwise
-the handshake stays native. Prewarm initializes no retained replay or agent
-lifecycle state and cannot bypass generating-turn validation. Unsupported local
-context references fail before forwarding rather than restoring retired context.
-
-Execution-free turns require valid turn metadata, session and thread identity,
-but receive no Mekugi instruction or tool rewriting regardless of output schema.
-An empty catalog, native helpers, JavaScript `exec` with optional `wait`, and
-nested clock or lookup declarations can qualify. Flat and namespaced forms retain
-their meaning. Admission follows advertised declarations, not request purpose or
-preamble wording. Malformed or duplicate tools, wrong-kind wrappers and partial
-execution catalogs fail admission.
-Nested editing/process tools retain their validated stock catalog; top-level
-`apply_patch` or `exec_command` are unsupported interfaces.
-Invalid native catalogs and forced incompatible tool choices return actionable
-HTTP 400 errors, not retryable upstream 502 errors.
-
-ChatGPT requests select `access_programs.cyber="standard"` for prewarming and
-continuations over either transport, overriding client Daybreak selection while
-preserving the model and other access programs. Custom providers receive no
-ChatGPT-only policy.
-This body selection cannot prevent an upstream eligibility-service failure
-during WebSocket upgrade before the body is sent.
-
-Projection never changes original tool arguments, host history or retained
-evidence. Native [output deduplication](../../backends/codex/SPEC.md#output-deduplication)
-projects history into model input before the transport boundary. Growing original input preserves earlier projected items;
-changed options, instructions or tool catalogs can require the backend to rebase
-an explicit continuation. HTTP-only custom routes send full history rather than
-using a dedicated connection's confirmed prefix. Reconciliation diagnostics
-measure serialized input and reuse, not provider cache hits or billed tokens.
-Debug logs emit `provider_history_reconciliation` with a fixed reason, reused-item
-count and duration. Instruction dumps expose `projected_input_bytes` and
-`wire_input_bytes`; provider usage and request timing remain the evidence for
-cache effectiveness and latency.
-
-## Dedicated connection lifetime
-
-Each Codex WebSocket session retains its owning ChatGPT connection across terminal
-events, incremental requests and `generate=false` prewarming. Steering is sent
-while the target response is still being read. Acceptance, pending and failure
-events reach Codex, and reading continues after completion or a steered incomplete
-terminal for an automatic successor. Backend history owns the distinction between
-accepted input and successor commitment, including pending tool-result continuations.
-
-`response.interrupt`, including `discard_partial_items`, is forwarded unchanged
-on the owning socket. Its acknowledgement and item-interrupted events are
-preserved. An interrupted terminal drains that response without claiming model
-success; Codex supplies the next request. No request, tool or steering input is
-silently replayed after failed sends or disconnection. Shutdown and downstream
-disconnect release the owned connection.
-
-Only a nonempty provider `x-codex-turn-state` upgrade header is bridged, as a
-`response.metadata` event before response events. Codex owns its later replay
-and reset. The application neither injects stale handshake state into later
-requests nor invents usage for metadata.
-
-Application-generated WebSocket errors carry numeric HTTP-style `status`: 400
-for incompatible requests or malformed client messages, 502 for other execution
-failures. Provider upgrade rejections retain their original status and body.
-
-Client messages are bounded to 32 MiB and provider messages to 64 MiB. The
-backend's request and cumulative history budgets fail overflow rather than
-discarding facts needed for translation. Answers stream immediately. A successful
-terminal snapshot completes an already-started final answer whose item-done
-event is missing, without repeating completed items or creating an application
-answer. Answer delivery and LiveDiff completion do not depend on provider usage.
-
-`--timeout` covers preparation, connection setup, writing and the first
-non-control, non-ancillary event; steering acknowledgements do not satisfy it.
-`--stream-idle-timeout` bounds gaps during an active response, not quiet intervals
-after completion or while waiting for tool results. Idle completed connections
-remain available for queued steering. No transparent reconnect migrates their state.
-
-## Failure delivery
-
-Provider HTTP errors and WebSocket upgrade rejection bodies may be limited to
-8 KiB; a body-limit failure reports the bound rather than claiming complete
-evidence. Streaming projection and replay-persistence errors retain their safe
-operation or conflict class instead of a generic translation error. Complete
-private errors remain separate from sanitized metrics and capture.
-
-After a delivered `response.created`, a deterministic translation fault emits
-`response.failed` with `invalid_prompt` unless a terminal was already delivered
-or downstream is unwritable. Its message includes a safe cause and diagnostic
-reference, advising a model switch or a `--debug` relaunch and report,
-not retrying unchanged input. Pre-stream retryable provider failures retain their
-retry behavior. Protocol delivery does not acknowledge a user-visible
-[notice](../../modules/notifications/SPEC.md).
-
-A recognized downstream HTTP or WebSocket disconnect is cancellation, including
-write/flush failure before context cancellation and EOF wrapped by cancellation.
-Both transports preserve the original error and partial-write count. Unfinished
-tool input cannot replace that cause with a translation fault. Disconnects queue
-no critical restart notice and never replay the interrupted request; other write
-failures remain failures. Stream observations follow
-[transport diagnostics](../../modules/transportdiagnostics/SPEC.md#provider-and-stream-evidence).
-
-## Acceptance
-
-Actual transport consumers cover invocation-local launch, concurrent steering,
-successor commitment, pending tool continuations, prewarming, incremental history,
-terminal restoration, HTTP delivery, same-socket instant interruption, cancellation
-and failed-send/disconnection behavior. HTTP fallback remains HTTP upstream; retries
-remain host-owned. Offline protocol checks do not establish installed Codex behavior.
+- `inferencegateway` owns admission, catalog/auxiliary forwarding, and WebSocket lifetimes;
+  `backends/codex/responses` owns envelopes and connection-local history; `providers/openai` owns
+  native OpenAI credentials/transport; `requestexecution` owns shared attempt execution, accounting,
+  and diagnostics.
+- `/v1/models` bounds responses to 8 MiB and preserves upstream ETags; WebSocket frames cap at 32
+  MiB client / 64 MiB provider; provider error bodies cap at 8 KiB.
+- ChatGPT requests force `access_programs.cyber="standard"` (not applied to custom providers).
+- `--timeout` bounds first non-control event; `--stream-idle-timeout` bounds active-response gaps.
+- `x-codex-turn-state` upgrade headers bridge once as `response.metadata`.

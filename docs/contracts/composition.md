@@ -1,146 +1,42 @@
 # Workspace composition
 
-## Required outcomes
+## Requirements
 
-Workspace changes preserve the [product outcomes and explicit scope](../product.md#required-outcome),
-existing features, stock execution and batching, bounded and batched reads, live
-diffs, and captured-change review. Structural consistency alone does not establish
-lower cost, fewer round trips, faster work or better quality.
+Preserve [product outcomes and scope constraints](../product.md#user-requirements), stock execution,
+bounded/batched reads, live diffs, and captured-change review. Structural rules are replaceable
+means, not proof of better cost or quality.
 
-## Replaceable composition design
+## Boundary contract
 
-The modular workspace uses the descriptor, contribution, package and lifecycle
-rules below. These mechanisms can be replaced while preserving the required
-outcomes and updating affected contracts and consumers together.
+- **Single workspace**: `go.work` is the membership authority. Every Go package belongs to an
+  explicit `apps`, `backends`, `contracts`, `libraries`, `modules`, `providers`, or `testsupport`
+  member; the root has no Go module. Members ship together (`GOWORK=off` builds are unsupported).
+- **Import boundaries** (enforced by `make workspace-check`):
+  - `contracts` imports no local implementation.
+  - `libraries` imports no application, feature, backend, or provider.
+  - `backends` and `providers` stay mutually independent; production code never imports
+    `testsupport`.
+  - Feature domain/presentation imports only `contracts`, allowed `libraries`, and declared
+    `Requires` module APIs, never another module's root, bindings, views, or internals. Only a
+    feature's `codexbinding` imports `backends/codex/binding`.
+  - Application `sessioncontrol`, `sessionpresentation`, `sessionapi`, `webui`, and `headless`
+    never import terminal libraries, feature terminal views, or `terminalsession`. `sessionapi`
+    never depends on `webui`; `frontends` never depends on `launch` or `composition`.
+- **Single-source declarations**: each feature module declares `Module`, literal `Requires`
+  (matching actual production imports), typed `Deps`, commands, record kinds, slots, and Codex
+  connections once. Composition validates all descriptors before construction; startup acquires
+  invocation resources in dependency order and drains in reverse order on shutdown or failure.
+- **Generated module reference**: `docs/reference/modules.md` is derived from `go.work`,
+  descriptors, and `apps/mekugi/internal/composition/modules.go` without invoking constructors or
+  callbacks (`make check-generated` checks drift; `go run ./apps/mekugi/cmd/workspace index-write`
+  regenerates).
 
-## CTR-WORKSPACE-001
+## Current approach (replaceable)
 
-`go.work` is the workspace membership authority. Build, test, lint, generation,
-snapshot and release recipes enumerate its members explicitly. Members resolve
-through that workspace and ship as one product; independent releases and
-standalone `GOWORK=off` builds are unsupported.
-
-Every Go package belongs to an explicit application, backend, contract, library,
-module, provider or test-support member. The repository root owns workspace
-coordination and has no Go module or shared implementation package.
-
-The application builds both executables and composes the selected feature
-descriptors, with one implementation and retained store for each responsibility. Executable
-commands come from descriptor contributions; the application authenticates,
-pins and dispatches that catalog under the [frontend contract](../../apps/mekugi/internal/frontends/SPEC.md).
-
-## Construction and lifetime
-
-Descriptors declare typed dependencies, executable commands, record kinds and
-resource lifetimes. Composition validates the whole list before construction:
-unique identities, dependency presence and order, and lifecycle consistency.
-The frontend owner validates command names and compiled implementations once
-before construction.
-
-Codex bindings declare their supported connection families. The backend registers
-those declarations at activation; missing or invalid required connections fail
-registration or activation. The executable-frontend connection exposes
-the descriptor's complete command contributions, without a second command list in
-the binding. A missing connection or a connection without commands fails activation.
-
-MCP bindings contribute their complete typed tool catalogs through the same descriptor
-registry. Invocation transports receive those registrations; neither transports
-nor application routing define another tool list.
-
-Typed dependency closures resolve earlier handles. Constructors assemble state
-without acquiring resources. Startup acquires invocation resources after
-construction and binding succeed; shutdown and failed startup drain in reverse
-order, including the partially started owner.
-
-The application frontend host receives all collected command contributions,
-including later entries, and accepts an empty catalog. Reader contributions declare read observation so
-the host can retain AX evidence without a command-name switch.
-
-Activity edit navigation receives the change-history service directly and resolves
-already-published memory only. Without a matching provider result, it uses captured
-receipts or completed host edit pages. Removing the provider does not remove retained
-records. [Activity](../../modules/activity/SPEC.md#edit-evidence) owns detail selection
-and absence behavior. Replay receives an optional timing reader directly and remains
-usable without it. Single-provider relationships use typed dependencies; contribution
-slots serve shared extension families.
-
-Session presentation hosts descriptor-owned status contributions in composition
-order. Each declares a unique nonempty identity, an existing placement and a pure
-projection of admitted thread facts. Composer captions and agent metrics consume
-detached identity/text values; terminal layout, styling and separators remain with
-the renderer. Empty contributions or unavailable facts add no item. Publication
-does not read storage, query a provider or establish a second accounting cache.
-
-Native socket clients derive their renderer set from the same application
-composition declarations without constructing or starting execution services.
-Pane construction is source-independent; source preparation receives the actual
-selected service only in an execution-side attachment. Renderer-only composition
-removes preparation callbacks, so clients cannot open execution stores through a
-painter. Descriptor selection remains authoritative for both consumers.
-
-Descriptors select terminal views through typed definitions. Auxiliary-pane and
-agent-roster placements each accept zero or one contribution, with a nonempty
-name, label and constructor. Roster constructors supply terminal views; the
-application delivers detached Activity publications to them. A typed attachment bridge publishes the owning module's admitted
-in-memory snapshot before rendering; the pane receives values and retains only
-terminal interaction state. Construction and publication callbacks belong to
-application wiring, never to published view values. Removing the contribution
-removes its pane and input targets while retaining independent source consumers.
-
-Session history receives record-kind recognition, dependency enumeration,
-retention budgets and semantic retirement policy. Record meaning stays with its
-feature owner. Native request-receipt codecs stay with Session Control and are
-supplied as typed history dependencies by composition. Composition supplies the constructed history service to live
-sessions, frontend workers and offline readers; backend-neutral descriptors need
-no Codex binding.
-
-The application owns memory stores for each attachment, thread and turn. Modules
-use private typed keys, initialize entries on first use and cannot read another
-module's entries. The attachment owner serializes access and retires stores at
-their scope boundaries; late observations cannot recreate a closed turn's state.
-Stores and keys are not copied after use. Attached-session modules acquire
-no invocation resources and have no Start/Stop lifecycle of their own.
-
-## Import boundaries
-
-Contracts depend on no local implementation. Libraries have explicit allowed
-library dependencies. Backends and providers remain separate. Production code
-cannot import test harnesses.
-
-A feature's domain cannot import terminal views or backend APIs; only its
-`codexbinding` imports the public Codex binding package. Its descriptor declares
-`Module`, literal `Requires` identities and typed runtime APIs in `Deps`. Pure module
-functions need no injected service. The import check requires `Requires` to match
-production module imports and every injected module API to be declared,
-including platform-tagged files.
-
-Application session control, session presentation, session API, web UI and headless code cannot
-import terminal libraries, feature terminal views or the terminal adapter.
-Session presentation reaches the backend through session control; headless is
-independent of session presentation. The session API cannot depend on the web UI.
-Frontend hosting cannot depend on launch
-or composition.
-
-## Generated reference
-
-The [feature module index](../reference/modules.md) derives identity, dependencies,
-lifetime, records, source and terminal contribution slots, and Codex connections from the declarations.
-Workspace membership comes from `go.work`; selection comes from the application's
-shared `frontendDeclarations` composition list. Both execution and renderer-only
-construction consume that list. An unselected module appears without being activated.
-
-Collection uses ordinary Go package initialization but never invokes module
-constructors, lifecycle functions, contribution callbacks or binding factories.
-The reference describes declarations, not installed-host capability availability
-or successful runtime activation. `go run ./apps/mekugi/cmd/workspace index-write` updates it; `make check-generated`
-detects drift without modifying files.
-
-## Acceptance
-
-`testsupport/moduletest` constructs descriptors with real supplied dependencies,
-temporary storage and a scripted binder. Executable registration has shared
-scripted and production-binder conformance cases. Import fixtures exercise both
-allowed and forbidden dependencies through the workspace checker. Host
-execution, permissions, publication and cancellation require their actual
-application and installed-Codex acceptance; registration checks alone do not
-establish those guarantees.
+- Single-provider relationships use direct typed dependencies; shared extension families (status
+  items, terminal views, inspection collectors, record kinds, reference resolvers) use typed slots
+  whose hosts accept zero contributions.
+- Both live execution and renderer-only socket clients consume the same `frontendDeclarations` list,
+  with renderer-only clients stripping execution/store callbacks.
+- Application-owned attachment, thread, and turn stores isolate module state via private typed keys
+  and retire at scope boundaries.

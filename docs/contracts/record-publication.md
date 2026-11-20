@@ -1,78 +1,35 @@
 # Retained authority and publication
 
-## Required continuity
+## Requirements
 
-Optimization preserves durable session evidence and dependency-safe retention.
-Saved Mekugi sessions remain resumable after execution stops; resume restores
-retained facts, not live processes or grants. Stock Codex and Mekugi resume their
-own sessions, without cross-product compatibility.
+- Optimizations preserve durable session evidence and dependency-safe retention.
+- Saved Mekugi sessions remain resumable after execution stops; resume restores retained facts,
+  never live processes, grants, or execution authority.
+- Resume is product-local (Mekugi and stock Codex resume only their own sessions).
 
-## Replaceable publication design
+## Boundary contract
 
-The namespaces, transaction boundaries, leases and owner split below are the
-current means of preserving continuity and preventing references to unavailable
-evidence. Their implementation may change while preserving those guarantees.
+- **Authority & provenance**: filesystem operands resolve from admitted request workspace metadata,
+  never application cwd. Evidence reads keep caller authority; cross-thread inputs preserve
+  authenticated source provenance (agent text never becomes human input).
+- **Ordered publication**: dependencies are written and validated before referencing records or
+  handles become usable. Cross-owner operations (`recordtransactions`) borrow one non-nested
+  transaction scoped to evidence publication, input adoption, or fork initialization, never
+  spanning terminal or network I/O. Failed writes may leave conservative retention but never expose
+  missing evidence. This guarantees ordered reader visibility across restarts, not crash-atomic
+  multi-file or power-loss durability.
+- **Lease safety**: snapshot leases bridge validation to publication locks without deadlock; session
+  leases protect retained evidence until consumer delivery completes. Compaction removes ancestry
+  from one request view without retiring records needed by another branch.
+- **Owner boundaries**: [Session history](../../modules/sessionhistory/SPEC.md) owns namespaces,
+  catalogs, leases, and retention; feature modules own their record codecs and retirement policies;
+  [Change evidence](change-evidence.md) owns capture reconciliation;
+  [Executable frontends](../../apps/mekugi/internal/frontends/SPEC.md) owns worker delivery;
+  [Diagnostics](../../modules/diagnostics/SPEC.md) owns private debug bundles separately.
 
-## Authority and continuity
+## Current approach (replaceable)
 
-[Stock execution](../../backends/codex/SPEC.md#execution-authority) remains Codex-owned.
-Observation resolves filesystem operands from selected request metadata, never
-the application's cwd. Relative operands require that selected directory.
-Workspace selection does not establish read authorization: evidence reads and
-copies retain the originating caller's authority. Cross-thread input retains its
-authenticated source provenance; a user-role carrier cannot make agent text
-human input.
-
-Durable namespace, thread and workspace identity remain separate from routing
-and the currently displayed view. Forks and resume restore authorized retained
-facts, never processes, grants or continuation handles. Compaction can remove
-ancestry from one request view without retiring evidence needed by another
-branch. Unsupported local context references fail before provider forwarding.
-[Change evidence](change-evidence.md) owns capture scope and reconciliation of
-completed results, including results first visible during compaction.
-
-## Cross-owner publication
-
-The application's `recordtransactions` boundary owns two ordered operations:
-
-- Evidence publication writes validated host observations before their change
-  membership. Attribution uses host thread and call identity.
-- Validated-input adoption gathers feature-owned dependencies within one retained
-  view. Fork initialization retains inherited records before publishing cloned
-  indexes, then publishes the new namespace last. Interrupted setup is retryable.
-
-Participants borrow one operation-scoped session transaction. Handles cannot
-escape the operation, and participants cannot open nested transactions. Record
-encoding and validation stay with their owners; single-owner operations remain
-there. No transaction spans terminal or network delivery.
-
-Dependencies precede referencing records, and references become usable only
-after successful publication. Completed writes may survive a later failure and
-leave conservative retention; failure cannot claim missing evidence is available.
-This provides ordered reader visibility, not crash-atomic multi-file or
-power-loss durability.
-
-A snapshot lease protects validation until the publication lock bridges it to
-ownership. That lease is released under the lock before ownership publication;
-retention cannot wait for a reader lease while holding the transaction the
-reader needs. A separate session lease protects retained-evidence delivery until
-the consumer confirms it.
-
-## Semantic owners
-
-[Session history](../../modules/sessionhistory/SPEC.md) owns namespaces, catalogs,
-allocation, leases, retention and retained host-fact registration, using contributed
-record dependencies and retirement policy. [Activity](../../modules/activity/SPEC.md#records-and-codex-connection)
-owns retention of historical wait-target snapshots. [Change history](../../modules/changehistory/SPEC.md),
-[output recovery](../../modules/outputrecovery/SPEC.md) and
-[command segments](../../modules/commandsegments/SPEC.md) own their records and
-recovery meanings. The frozen [historical codec](../../libraries/legacycall)
-validates entire mixed envelopes and bounded regular-file dependencies before
-any feature projection is used. Inspection never manufactures a replacement
-record or grants execution authority.
-
-[Frontend delivery](../../apps/mekugi/internal/frontends/SPEC.md) owns authenticated
-execution and output delivery. [Live preview](../../modules/livepreview/SPEC.md)
-owns provisional state, and [diagnostics](../../modules/diagnostics/SPEC.md) owns
-private bundles and their independent retention. These consumers neither replace
-host results nor create another retained-session store.
+- Historical mixed-call records use the frozen `libraries/legacycall` codec validated whole before
+  feature projection; new features publish owner-typed records with neutral dependency graphs.
+- Fork initialization retains inherited records before cloning indexes and publishes the new
+  namespace last so interrupted setup is retryable.

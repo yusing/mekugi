@@ -1,418 +1,53 @@
 # Codex backend
 
-## Purpose and ownership
-
-Own Codex process transport, native-trace observations and rollout decoding. Codex remains the
-execution, permission, process, and host-session authority. The application chooses an
-invocation, interprets lifecycle facts, and owns session presentation and intent.
-The [Responses adapter](responses/SPEC.md) owns model-path adaptation; executable
-frontend registrations use the binding package.
-
-## Required capabilities and constraints
-
-Keep Codex as root authority and preserve stock JavaScript execution, shell execution
-and editing, including native batching and parallelism. Support bounded and batched
-reads, captured-change review, live diff and retained capture of shell writes. Do not
-replace stock shell execution or editing with custom tools or edit languages,
-including hashline editing.
-
-Process transport, interface details, trace readers, rollout representations and
-visible behaviors below are replaceable design unless required by those capabilities
-or the explicit product scope. Update affected contracts and consumers together. See
-[intent and design authority](../../docs/product.md#intent-and-design-authority).
-
-## Execution authority
-
-This boundary governs root and descendant Codex runtimes. Custom Responses model
-access does not select a different execution backend.
-
-Codex owns stock `apply_patch`, `exec_command`, JavaScript `exec`, permissions,
-sandboxing, processes, yielded sessions and `write_stdin` continuation. Mekugi
-preserves nested tool names, schemas, arguments and host results. Observation,
-presentation and replay never execute a call again, serialize independent
-`Promise.allSettled` calls, or impose a minimum wait duration.
-
-[Native coordination](../../docs/contracts/coordination.md) owns admitted trees,
-preparation, history forks, work, waits and delivery. Codex children share the
-invocation process and request ledger through thread-scoped endpoints. The native
-registry, scheduler, message delivery and history retain native identity and facts; Go supplies
-actual host resources, external execution and presentation, not another coordinator.
-Native V2 tools and role/mode owners supply the effective coordination interface.
-
-The application admits the JavaScript execution interface before inference;
-catalogs exposing top-level `apply_patch` or `exec_command` instead are unsupported.
-The managed runtime owns the fixed JavaScript-only mode directly, independently
-of model-catalog tool-mode metadata. The gateway forwards catalog bytes unchanged;
-static catalogs are passed to the native runtime without private rewritten copies.
-The binding discovers the stock execution owner across native tool catalogs and
-refreshes only its composed guidance. Unsupported interfaces remain distinct from
-malformed catalogs; the application supplies their compatibility diagnostic.
-[Launch](../../apps/mekugi/internal/launch/SPEC.md#host-integration) owns the
-invocation-local settings. The native shell hook is the narrow exception to
-unchanged command text: composed guard and sh-tracking instrumentation can return
-`PreToolUse.updatedInput`, preserving tool identity, other arguments, selected
-shell, host results and process authority. Bash tracking uses shell startup.
-[Shell instrumentation](../../libraries/shellinstrumentation/SPEC.md) owns the
-shared rewrite and recognition rules.
-
-[Output deduplication](#output-deduplication) changes only
-eligible model-input text after original-output consumers finish. Separate
-[change notices](../../docs/contracts/change-evidence.md#delivery-and-presentation)
-require retained evidence. Neither replaces host output or grants execution authority.
-[Executable frontends](../../apps/mekugi/internal/frontends/SPEC.md) and
-[bounded commands](../../modules/boundedcommand/SPEC.md) run under the same host.
-
-Native command approvals preserve the host's offered session, command-prefix and
-permission scopes. The UI uses native decline for command denial, leaving the
-original tool rejection intact and allowing the turn to continue. Optional denial
-feedback joins only the matching thread, turn and tool's provider continuation;
-it adds no synthetic exit code, steering or new turn. File-change and permission
-choices remain unchanged. [Conversation](../../modules/conversation/SPEC.md#questions-and-approvals) owns
-prompt lifecycle and draft preservation; the
-[terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md#questions-and-approvals) owns dock
-interaction. Module guard denials remain separate shell-command failures.
-
-## Process transport and lifetime
-
-The app-server client launches the managed `mekugi-app-server` command supplied by
-Launch and owns its stdio connection
-and child-process cleanup. RPC frames are newline-delimited. A complete final
-JSON frame without a newline is accepted; malformed or truncated JSON fails the
-transport. Frames can contain a full resumed history and have no fixed byte-size
-ceiling. A bounded pending-message queue applies backpressure while preserving
-order, rather than dropping bursts or terminating a slow consumer.
-
-Bounded observation callbacks run before presentation queuing. They observe the
-original decoded message without mutating it or executing effects. Diagnostic
-stderr remains separate from RPC and terminal painting. Its bounded in-memory
-tail combines repeated lines with occurrence counts, retaining a final partial
-line. Native clients retain the latest delivered diagnostics for exit reporting;
-this is not a durable crash log. RPC replies preserve the
-original server request ID; acknowledgement does not establish operation completion.
-
-Native waits retain their original pending tool call and subscriptions. An ordinary
-outcome, addressed message or interruption settles the call; optional changed-agent
-progress can return a combined yield. The
-[wait contract](../../docs/contracts/coordination.md#logical-waits-and-ordered-delivery)
-owns delivery. Standalone reset remains separate; special reset/wait composition
-is deferred. Go neither schedules wait resumption nor synthesizes a provider response.
-
-Explicit close releases a reader waiting on a paused consumer. Normal shutdown
-closes input. Cancellation instead signals Codex once to interrupt its active
-execution, allowing the host's process-group cleanup before transport closure.
-Both paths allow three seconds to drain before forced termination. The caller
-joins this bounded shutdown and receives shutdown and process errors. A process and live RPC handle
-are never restored from retained evidence.
-
-## Feature-use reporting
-
-The root launch's native runtime owns per-thread feature-use counters independently
-of optional analytics and telemetry export. Native lifecycle owners supply reset and
-tool facts at accepted coordination boundaries. Those facts retain the actor's
-identity rather than using a message recipient's
-identity or native collaboration ancestry.
-
-Native semantic facts feed the launch-local FeatureUse owner directly, independently of whether a Codex thread is loaded. Counting does not depend on event
-delivery to the host. `featureUse/read` exposes the current launch's snapshots without
-starting turns, inference or idle runtimes. Child runtime replacement and UI reconnect
-do not restart the root launch's counts. A new root launch does not restore them from history.
-Mekugi aggregates admitted-family membership and presents availability; it does not
-increment a parallel set of counters. The [FeatureUse contract](../../docs/contracts/coordination.md#feature-use)
-owns counting boundaries and retained outcomes. Native model-input projection reports
-output-deduplication savings through the same owner. Provider usage and transport
-measurements remain separate.
-
-Snapshot retrieval is demand-driven. The Features page reads when selected or
-explicitly refreshed; other pages and periodic UI updates do not retrieve counters.
-Failed or incomplete snapshot reads are unavailable, not measured zeroes.
-
-## Transcript observations
-
-The observation binding projects message and public-summary lifecycle facts into
-backend-neutral values that distinguish item completion, text deltas and
-summary-part boundaries. Values retain thread, turn and item identities and
-the supplied observation time, without an RPC handle or execution authority.
-Private reasoning is excluded. Original messages remain available unchanged for
-control correlation, question/approval handling and diagnostics.
-
-Live notifications, retained items and simulated playback share these values.
-The consuming owner decides historical admission and presentation; projection does
-not settle input, notify the desktop or issue host requests.
-
-Native notification envelopes and command normalization belong to the binding.
-Opaque content remains opaque.
-The caller supplies observation time and retains the original RPC message for
-control correlation and prompt handling. Decoding performs no effects or dispatch.
-
-Item projection also retains observed command classifications, optional outcomes,
-web-search facts and file changes. Native field aliases
-normalize at this boundary. Presentation consumes these decoded facts directly;
-playback does not reconstruct a native notification to reach the same consumer.
-
-## History observations
-
-The history binding decodes a runtime’s thread, turns and items while preserving
-host identity, status, failure and timing. Returned thread identities must match
-the requested scope. Payload fields do not acquire presentation state or filesystem
-authority. [Session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md#history)
-owns placement and restoration completion; session control owns request correlation
-and retirement. Decoding neither resumes a thread nor restores a live operation.
-
-## Composer history
-
-The message-history adapter shares Codex’s `history.jsonl` under the launched
-process’s Codex home. It uses the stock record schema, file locking, private
-permissions and configured history retention. The effective `history.persistence`
-and `history.max_bytes` values come from the host’s configuration response;
-Mekugi does not change them. Reads retain available complete text entries and
-report malformed or unavailable history. This store is independent of thread
-rollouts and never replays input or execution.
-
-## Native shell hooks
-
-The backend owns the native PreToolUse schema, command-hook registration and
-trust identity, supported-tool matching, and effective-hook validation. The
-helper replaces event-supplied resource paths with trusted invocation bindings
-before instrumentation.
-Instrumentation returns updated command text without executing it; approval is
-requested only when the selected shell reaches a guarded command.
-
-The command adapter translates helper launch or process failure into a blocking
-native hook result. Host hook-shell launch, timeout and delivery failures retain
-Codex's external-hook policy. The application checks effective workspace hooks
-before admitting each new user turn and preserves drafts on failure. Feature
-approval policy and session grants remain separate from this protocol owner.
-Hook matchers outside the verified shared regex syntax block guarded admission
-with an explanation; an unverified matcher is never treated as nonmatching.
-
-Guarded startup uses a bounded discovery process with the same invocation
-configuration and absolute workspace. Host-resolved session-layer hook groups and
-state are preserved, including empty groups and original handler indices. The
-backend appends its guard and disables exact incompatible ordinary hook keys only
-through invocation overrides. Managed conflicts remain unavailable. Discovery
-starts no thread or inference, closes its process before final launch, and leaves
-persistent settings unchanged. Per-turn validation checks the actual selected
-thread workspace; later conflicts block admission rather than being rewritten.
-
-## Shell approval registrations
-
-Bindings declare remote-write or sudo participation and a module-owned grant
-factory. Duplicate kinds and incomplete factories fail composition. Launch installs
-only registered helper resources and the local decision server rejects unregistered
-request kinds before presentation. With no guards, independent tracking remains
-available and caller hooks are preserved. Native hook availability is still checked
-against the selected host at launch and turn admission.
-
-The backend owns the private command/askpass wire types and resource names.
-Secrets travel only to the askpass pipe; they are absent from grant identities.
-The application owns shared socket lifetime and UI delivery, while modules own
-policy and exact grants. Removing a module does not change another module's grants.
-
-## Output deduplication
-
-Native history-to-model-input projection replaces repeated text tool outputs,
-supplied source bodies and exact line-aligned runs with references. User text,
-assistant prose and images remain unchanged. Stored history, UI, inspection and
-replay retain originals; evidence consumers use those originals before projection.
-
-Each request starts a fresh forward pass: keep the first literal copy, reference
-only literal text still visible earlier in that request, and never rewrite an
-earlier projected item. Appending input preserves the projected prefix. Removing
-the earlier copy, including on reset, makes the remaining copy literal again.
-An exact line run can also reference earlier literal lines in the same tool
-output.
-Reusable tool outputs have an upfront `[call cN]` line. Whole references use
-`[identical to call cN above]`; runs use
-`[identical to call cN#L40-L112 above]`. Sources use their own reference without
-call labels, and file-line ranges use original file numbers.
-
-Matching preserves exact bytes and line endings. Runs reuse at least 192 bytes;
-every replacement saves at least 128 bytes after reference and label overhead.
-The literal search window is 256 KiB. Highly similar bodies may instead use a
-line-range reference plus a diff against one of the four newest whole literal
-bodies, reusing at least 192 bytes and saving at least 128 bytes. A diff must be
-strictly smaller than partial references; ties keep the partial representation.
-
-Native FeatureUse reports net saved bytes and estimated tokens, summed across
-model requests. Tokens use a local four-byte estimate. These launch-local figures
-are not provider billing savings and are not restored on a fresh launch. Missing
-native measurements remain unavailable. There is no launch switch or transcript
-repetition label.
-
-## Execution evidence
-
-The observation binding decodes command starts, output and terminal outcomes,
-preserving host identities, exact shell arguments and unknown exit status.
-Application consumers share that decoding before presentation and during UI
-delivery. [Command segments](../../modules/commandsegments/SPEC.md#live-correlation)
-owns report matching; decoding neither correlates reports nor settles capture.
-
-The binding recognizes supported transparent JavaScript tool invocations for
-preview, continuation correlation and offline inspection. It preserves literal
-tool names and arguments without executing source. Unknown syntax, dynamic
-arguments, shadowed runtime bindings and additional effects remain opaque.
-Literal bindings and supported Promise batches can supply preview candidates;
-continuation correlation additionally requires the original result metadata.
-Output-only projections are therefore insufficient for that correlation.
-
-Completed literal patch arguments also supply pre-execution capture candidates,
-including immutable top-level bindings and ordinary JavaScript sequencing. Capture
-and preview share this recognition; unfinished string fragments are display-only
-and remain with the preview module.
-
-These candidates establish neither execution nor success. Host observations and
-retained filesystem evidence remain authoritative; UI labels and corpus findings
-belong to their consumers. Recognition never rewrites the submitted program or
-serializes parallel calls.
-
-The binding decodes terminal or yielded execution results, preserving outer
-success, known exit status, exact text and pending handles. Outer JavaScript success
-cannot establish nested command success. These facts support live continuation,
-capture, restored evidence and offline queries.
-Retained carrier facts can inform classification after the consumer has validated
-their identity; classification itself authenticates neither a record nor a result.
-Opaque source and printed lookalikes cannot supply native-result provenance.
-
-Codex supplies continuation handles and guidance. Request preparation preserves
-those host results without adding next-call suggestions or choosing wait durations.
-Historical annotation recognition remains available to offline inspection; it
-establishes no process lifetime or execution authority.
-
-The backend's bounded, incremental native-trace reader observes only the private
-directory selected for the invocation. It correlates executing thread, outer call
-and source, `exec` cell, and individual native tool results. Consumers receive
-decoded call and completion facts, including original command timeout metadata;
-private trace schemas and incremental state stay in the backend. Printed results
-cannot substitute for this provenance. Missing, ambiguous, unsupported or corrupt
-trace evidence cannot confirm success. Shell success requires terminal exit zero;
-completed dispatch and a yielded process remain unfinished. Application consumers
-retain capture, pending-call and Activity policy. The
-[change-evidence contract](../../docs/contracts/change-evidence.md) owns durable
-receipts and the treatment of historical observation-only captures.
-
-## Guidance projection
-
-One composed guidance registration provides omission filtering before preparation
-and guidance updates at execution preparation. It receives
-only instruction/input bytes, returns changed-field flags, and can reject malformed
-owned carriers. The application applies changed input through its catalog-indexing
-boundary; provider-prefix reconciliation remains later in the request pipeline.
-The native runtime constructs selected-skill identities directly.
-The same registration assembles selected frontend descriptions and refreshes or
-removes its marked tool-description section. Duplicate or incomplete registrations
-fail activation. No registration means these effects are absent.
-
-## Logical-thread naming observations
-
-A composed naming factory supplies one typed policy callback bundle per accepted
-Main thread scope. Application-owned scopes survive view switches until invocation
-shutdown. The callbacks receive metadata, name changes, original model input, and
-successful upstream-exchange completion. Atomic admission returns an operation;
-the application runs it with the triggering exchange's bound inference adapter
-and delivers its candidate with its original thread identity. Candidate policy is
-rechecked before host persistence. No registration means no automatic naming.
-Manual name-save control and host-title presentation remain application-owned.
-
-## Retained rollout evidence
-
-### Host-selected context and settings
-
-The host-selected reader accepts an absolute path supplied for an identified host
-thread. Only a regular file whose initial session metadata names that thread is
-evidence. Named pipes are rejected without waiting for a writer. Metadata reads
-are bounded to 64 KiB. Invalid, missing, or mismatched evidence remains unavailable.
-
-Inactive-agent inspection reads native thread facts without starting execution.
-Applied settings and context usage remain unknown when absent. Completed-compaction
-counts come from native retained metadata, not rollout scans; older threads without
-that metadata retain an unknown count.
-
-Context-usage and resume-settings readers examine complete records in the last
-8 MiB, ignoring a cut boundary fragment and an unfinished final record. Context
-usage distinguishes absent evidence from a known zero. Resume settings select
-the newest value for each supported field, preserve explicit nullable defaults,
-and may exclude records at or before an application-supplied timestamp.
-
-Rollout readers accept the host's
-Zstandard-compressed rollout, either selected directly or retained beside a
-missing plain rollout. An existing plain file takes precedence. Compressed reads
-validate the decompressed identity without materializing or changing host files.
-Resume settings select complete records from the decompressed tail. Unavailable or corrupt
-compressed evidence supplies no observations.
-
-The application chooses whether restored facts may replace live state, applies
-invocation/preference precedence, and gates resumed input on host confirmation.
-It projects restored Activity with its own 64 MiB reading policy over the same
-identity-validated opener. Rollout reads cannot resume a thread or replay effects.
-
-### Prepared child evidence
-
-An active fork freezes the exact invoking thread, turn and execution item, not
-an earlier completed turn. The bounded reader materializes copied and referenced
-history through validated byte and ordinal boundaries, including compaction
-replacement history. The private import is self-contained; source rollouts and
-host databases remain unchanged. Missing or conflicting evidence fails preparation.
-
-Runtime settings and retained injection/continuation checks use the same
-identity-validated file opener. They establish retained facts, never permission
-to redispatch an uncertain operation. Native instruction content kinds bind
-projection to the original host envelope rather than matching arbitrary prose.
-
-### Supplied offline rollouts
-
-The offline-rollout binding attaches the bounded decoder to its consumer during
-composition. It acquires no live backend resources. A scripted binder supplies
-the same decoded-source interface for module acceptance.
-
-Logical inspection reads the caller-selected regular UTF-8 JSONL file without
-starting Codex, scanning other sessions or writing state. Files are at most
-64 MiB, lines below 32 MiB and logical calls limited to 10,000. Malformed,
-conflicting or oversized input fails before a complete source is returned.
-Historical JSON decoding semantics remain compatible with retained rollouts.
-
-Calls and output-only identities retain first-observed order, original line and
-time, the last output's time, preceding workspace/model, tool identity and every recorded output.
-Identical repeated calls coalesce; conflicting inputs, call workspaces or thread
-identities fail. Missing call IDs are invalid. Unknown record kinds are ignored.
-Workspace canonicalization, retained-record matching and query results belong to
-the inspection consumer.
-
-Discovery can read only a supplied file's first metadata record using the same
-file and line bounds. This identifies a candidate; it does not validate the
-remaining rollout or certify that discovery found every matching source.
-Thread discovery walks `sessions` and `archived_sessions` under `$CODEX_HOME`
-(default `~/.codex`), at most 100,000 entries, for filenames ending in
-`-<thread>.jsonl`, and keeps a candidate only when its metadata names that exact
-thread. Single-source consumers treat no match or several matches as failures.
-
-The replay consumer receives decoded item and turn observations separately from
-logical-call inspection. Replay files are regular JSONL at most 64 MiB, with
-records below 16 MiB. Known items require identity, turn and valid epoch-millisecond
-start/completion endpoints; malformed records report their source and line.
-Unknown variants remain coverage counts. Copied ancestor metadata, item ownership
-and thread-settings boundaries determine inherited turn ownership. Private/raw
-reasoning is omitted; public summaries and opaque user-content blocks retain their
-meaning. Decoding supplies no synthetic events, wall clock or rendering policy.
-
-An optional inspection observer receives decoded command and task/turn events. Without it,
-event-specific payloads are not interpreted. Persisted execution endpoints take
-precedence over envelope recording time; absent or null endpoints remain unknown.
-The consumer owns metric identity validation, pairing and completeness. Observer
-failure or cancellation stops the read without claiming a complete source,
-including an empty source or cancellation while observing its final record.
-
-## Acceptance
-
-Process tests cover large and partial frames, original RPC IDs, ordered bursts,
-observation-before-queue delivery, paused-consumer close, EOF shutdown, and forced
-cleanup. Rollout tests cover identity, complete-record and byte bounds, newest
-settings, nullable defaults, and context evidence. Supplied-rollout acceptance
-covers logical call ordering, original metadata, conflicting identities, command
-endpoints, optional event observation and source bounds. Query consumers cover
-retained-record matching and whole-rollout AX reporting. Static-source tests cover
-literal argument preservation, transparent result projection and rejection of
-opaque or effectful wrappers; preview and continuation consumers retain their
-separate acceptance. Native session tests cover live
-usage precedence, resume settings, restored Activity, headless consumption, and
-command-tracking correlation. Installed-host checks remain distinct from offline
-process fixtures and retained-record decoding.
+## Requirements
+
+- Keep Codex as root execution authority and preserve stock JavaScript execution (`exec`),
+  `exec_command`, `apply_patch`, permissions, sandboxing, processes, continuations, and
+  batch/parallel execution.
+- Support bounded/batched reads, captured-change review, live diffs, and retained capture of shell
+  writes without replacing stock tools with custom edit languages (e.g. hashline) or transports.
+
+## Current approach (replaceable)
+
+### Execution authority and process transport
+
+- `backends/codex/appserver` launches `mekugi-app-server`, owns newline-delimited JSON-RPC stdio
+  framing (bounded backpressure queue, no fixed frame-size ceiling, bounded deduplicated stderr
+  tail), and joins a bounded 3s shutdown/interrupt sequence on close.
+- `backends/codex/binding` decodes native notifications, items, transcripts, history, static
+  transparent JS tool invocations, execution outcomes, and native-trace receipts into neutral
+  values without executing effects or substituting printed output for host provenance.
+- `backends/codex/responses` owns Responses envelopes, connection-local history, and stream framing
+  under [Responses transport](../../docs/contracts/responses-transport.md).
+- `backends/codex/messagehistory` shares Codex's `history.jsonl` with stock locking/retention.
+- Native runtime enforces JavaScript-only mode (`code_mode_only`), owns V2 collaboration/waits
+  ([coordination contract](../../docs/contracts/coordination.md)), and owns demand-read
+  launch-local `featureUse/read` counters.
+
+### Native shell hooks and approvals
+
+- `backends/codex/shellhook` and `backends/codex/shellapproval` own the PreToolUse command-hook
+  schema, discovery/validation of workspace hooks, and private command/askpass wire types for
+  composed [remote-write](../../modules/remotewriteapproval/SPEC.md) and
+  [sudo/GPG](../../modules/sudoapproval/SPEC.md) guards.
+- Hook instrumentation is the narrow exception to unchanged command text (`PreToolUse.updatedInput`
+  only), preserving tool identity, shell selection, and host results. Conflicting/unverifiable
+  matchers fail closed at guarded turn admission.
+
+### Output deduplication
+
+- Native history-to-model-input projection replaces repeated text tool outputs, supplied source
+  bodies, and exact line runs (≥192 bytes, saving ≥128 bytes within a 256 KiB window, or strictly
+  smaller line-range diffs against the 4 newest bodies) with forward references (`[call cN]`,
+  `[identical to call cN#L...]`).
+- User text, assistant prose, images, stored history, UI, and evidence consumers retain originals.
+  Appending input preserves projected prefixes; reset/removal restores literals. Net saved
+  bytes/estimated tokens report via native FeatureUse.
+
+### Retained rollout evidence
+
+- `backends/codex/rollout` reads plain and Zstandard-compressed rollouts with regular-file/identity
+  validation (no named-pipe blocking, 64 KiB metadata bound, 8 MiB tail for context/resume
+  settings, 64 MiB limit for offline inspection/replay, 100k-entry thread discovery cap under
+  `$CODEX_HOME/{sessions,archived_sessions}`). Reads never resume threads or replay effects.

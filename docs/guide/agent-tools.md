@@ -54,7 +54,7 @@ Queries themselves are offline and install nothing. Build scripts, procedural ma
 and checks stay disabled. Results apply to the selected target and default features;
 incomplete coverage is nonzero even when useful source rows are returned. Large cold
 queries can exceed the shared 30-second deadline. See the
-[semantic-query contract](../../modules/symbolquery/SPEC.md#rust-cargo-analysis).
+[semantic-query contract](../../modules/symbolquery/SPEC.md).
 
 ## Captured changes
 

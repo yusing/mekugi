@@ -1,49 +1,18 @@
 # Headless application client
 
-## Required execution constraint
+## Requirements
 
-Keep Codex as the root execution authority and preserve its stock editing,
-execution and JavaScript interfaces, including independent batch/parallel control.
+- Provide noninteractive single-prompt automation (`mekugi codex headless --yolo`) keeping Codex as
+  root execution authority and preserving stock editing, execution, JS batching, preloads, and
+  native collaboration.
 
-## Current automation interface and replaceable design
+## Current approach (replaceable)
 
-The command spelling, JSONL shape, prompt limit and completion plumbing below
-describe the current adapter rather than fixed execution requirements.
-
-`mekugi codex headless --yolo` runs one stdin prompt in a new thread for automation
-and offline comparisons. [Launch](../launch/SPEC.md) owns argument and authorization
-admission, invocation-local routing, and diagnostics on stderr. This adapter uses
-the same server-owned runtime and native coordination as the interactive client, with
-a task-owned session family and no renderer. It owns the JSONL session stream and
-exits after Main completes through its native runtime. Codex retains execution, compaction,
-continuation, permissions, and process authority.
-
-The prompt must contain non-whitespace text and fit within 16 MiB. Its original
-text is submitted once through the ordinary session input interface. Host messages
-from the family are emitted as JSONL objects before their interpretation,
-preserving their identities and payloads. A final `mekugi/headless/completed`
-event identifies Main after native completion and joined family shutdown. Main
-uses native waits for required descendant outcomes; pending waits do not finish
-its turn. Compaction remains an auxiliary operation.
-Unknown or duplicate responses cannot issue another operation or settle a pending
-request.
-
-Runtime-owned native callbacks are serviced normally. Unhandled host requests and
-asynchronous Main questions fail with instructions to continue interactively.
-Failed or interrupted Main turns, lost connections,
-output failure, and cancellation fail the invocation. Turn outcomes also reconcile
-the invocation's [notices](../../../../modules/notifications/SPEC.md), including
-outcomes outside Main. Host diagnostics stay out of stdout. Completion and failure
-join the task-owned family's shutdown before returning; no observation replays
-backend effects.
-
-The adapter consumes admitted session lifecycle and raw host observations.
-[Session control](../sessioncontrol/SPEC.md) owns requests and their correlation;
-the Codex backend owns stdio and child-process cleanup. Terminal presentation and
-router request adaptation are separate consumers.
-
-Acceptance covers prompt admission, exact one-shot request correlation, unchanged
-prompt submission, thread/turn filtering, questions and approval rejection,
-notice reconciliation, JSONL ordering, startup diagnostics, cancellation, output
-failure, family shutdown, preload delivery, logical waits, and the redirected
-launcher entrypoint.
+- Accepts one non-whitespace stdin prompt up to 16 MiB and requires explicit `--yolo` (since
+  interactive approvals and questions cannot be answered; unhandled requests fail with instructions
+  to continue interactively). Resume and positional prompts are rejected.
+- Runs on the same server-owned runtime and native coordination as the interactive client with a
+  task-owned family and no renderer.
+- Streams host messages as JSONL on stdout followed by a final `mekugi/headless/completed` event
+  after Main finishes and family shutdown joins. Diagnostics go to stderr; turn failure,
+  interruption, cancellation, or shutdown failure exits nonzero.

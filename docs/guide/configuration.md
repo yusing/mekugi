@@ -50,7 +50,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 
 Use `mekugi codex -p work` or `--profile work` to import
 `work.config.toml` from `$CODEX_HOME` (default `$HOME/.codex`). The same import
-works with standalone launches, headless and wrapped exec/resume/fork. Names
+works with standalone launches, headless runs, and resume. Names
 contain only ASCII letters, digits, underscores and hyphens. Missing, malformed
 or non-regular files fail before inference without printing their contents.
 
@@ -72,9 +72,9 @@ supports_websockets = true
 Set the provider's credentials in your environment, then run:
 
 ```sh
+mekugi -p work
 mekugi codex -p work
 mekugi headless --yolo -p work < prompt.txt
-mekugi codex -p work exec "Explain this repository"
 ```
 
 Imported values become initial invocation-local `-c` overrides. Explicit CLI
@@ -109,7 +109,7 @@ catalog overrides are unsupported. Stock execution integration remains required.
 `mekugi codex` without a profile retains stock tools, including web search, on
 the normal Codex route.
 See the
-[routing contract](../contracts/provider-routing.md#profile-defined-responses-routing).
+[routing contract](../contracts/provider-routing.md).
 
 ## Options
 

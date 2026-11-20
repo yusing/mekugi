@@ -1,331 +1,55 @@
 # Agent guidance
 
-## Required outcomes
+## Requirements
 
-Continuity uses selected current sources rather than summaries as source substitutes.
-Retain context-usage notices and known-source preload for delegates. Codex resets
-context without a generated summary.
+- Keep long sessions and fresh delegates grounded in selected current sources rather than lossy
+  LLM handover summaries: Codex resets context without a summary-generation request, and delegates
+  can preload selected sources before their first inference.
+- Deliver measured context-usage notices (directing agents to compact near window exhaustion) and
+  up-front OS/Git workspace facts without overriding user/caller instruction authority.
+- Keep model-facing guidance minimal in tokens while preserving meaning.
 
-Prompt projection, source-selection syntax, reload orchestration, snapshot fields and
-exact notice thresholds/reset rules below are current design.
+## Current approach (replaceable)
 
-## Purpose and scope
+### Model, tool, and skill guidance
 
-Present native tool and collaboration guidance without changing caller authority.
+- Native runtime owns bundled model templates (`models-manager`), local shell helper descriptions
+  on `tools.exec_command` (`core/src/mekugi_guidance`, derived from shell `PATH`), and the
+  `child_reply_summary` (`## Summary`) rule. Caller base instructions, resumed history, and
+  explicit catalogs stay intact; uninstalled plugins are not advertised proactively.
+- In explicitly trusted local workspaces with a `skills-mgr` selection, native context assembly
+  replaces Codex's stock skill catalog with the manager's XML catalog (controlled by
+  `skills.include_instructions`) and records resolved skill prompts as compact `<skill name="…"/>`
+  identities. Failed managed reads warn without substituting stale native instructions.
 
-## Behavior
+### Environment snapshot and context usage notices
 
-Mekugi preserves caller instructions. Native model and role owners assemble
-coordination guidance and admitted identity. Custom instructions and effective
-mode text retain their native authority.
+- Native `ENVIRONMENT_CONTEXT` includes platform/OS version, kernel, user home, a snapshot-reuse
+  hint, and a read-only Git snapshot (branch/HEAD, default branch, `core.hooksPath`, bounded
+  status, 5 recent commits, unpushed count; excludes account identity/URLs). Reused across
+  continuations and refreshed on reset or workspace change. `MEKUGI_ENVIRONMENT_FACTS=1` signals
+  availability to app-server hooks (stripped from tool shells).
+- Native `token_budget.rs` emits developer-role usage notices at 50/60/70/80/90% (90% adds
+  `You must compact now.`) plus a user-visible transcript row; milestones reset after compaction.
 
-Default model instructions belong to the native runtime's bundled model catalog.
-The default catalog uses its complete model-message set even when cached or remote discovery
-supplies capability metadata. Existing model matching selects the bundled template; unknown models
-use the native generic prompt. Explicit provider/static catalogs and explicit base instructions,
-including empty instructions, remain authoritative. Personality configuration still applies.
-Native templates omit forced commentary cadence, mandatory skill announcements and assumptions
-that compaction supplies a summary. Wait guidance uses completion notifications or interruptible
-waits. These policies are source text, not request-time phrase substitutions.
+### Compaction context
 
-Inherited base instructions on resume and full-history forks retain their original text;
-they are not silently rewritten to match the native templates. Native context assembly
-does not advertise uninstalled plugins.
-When a user explicitly requests a missing plugin, the existing discovery tool lists eligible
-candidates before installation is requested. Endpoint candidates retain their original ID
-validation, metadata hydration and install-source attribution. Historical advertisement
-markers remain recognized as context, not user authorization. Caller-authored plugin policy
-is preserved without request-time matching.
-Planning guidance and the stock plan tool remain host-owned. Native configuration omits
-collaboration-mode instructions.
-
-The native tool builder describes available Mekugi shell helpers in the stock
-`tools.exec_command` entry. It uses the selected local shell's PATH, without a
-guidance handoff from the launcher. Unavailable helpers contribute no text.
-Requests without command execution do not advertise helpers. These are shell
-commands, not new tools or an alternative execution interface.
-
-Capability descriptions include support for ordinary shell pipes.
-Only macOS hosts include execution guidance to select Bash explicitly unless
-the task requires another shell. This leaves Codex's account-shell detection and
-user shell commands unchanged.
-CLI help includes concrete invocation examples and consequential option interactions, including
-inclusive file ranges and line limits within those ranges. A smaller window is incomplete
-evidence, not coverage of the full requested range.
-Default token budgets are 6000 for file reads (`mcat`), 8000 for retained-output continuation
-(`mread`), and 4000 for symbol queries and structural outlines. Explicit token limits override
-these defaults up to 15500; `mcat -n` retains its default token ceiling.
-It preserves context reuse and batching of ready related edits without replacing the stock editor.
-Short commands stay inline. Substantial scripts or text, including one-off content, go once
-to a file in SESSION_TMP; later calls edit and reuse the file instead of resending its content.
-Packing a substantial body into a one-liner does not exempt it. Creating or editing a script
-before execution shares the execution call; unchanged scripts can be invoked directly.
-Text is written directly to its destination or uses file references, preload or file-backed
-input supported by its consumer, without an executable wrapper.
-Review handoffs include the requested scope and explicit IDs or same-agent inclusive ranges;
-the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence
-does not assert the current workspace state.
-
-When `child_reply_summary` is enabled, native children start substantial
-messages to their parent and final replies with `## Summary`. The summary gives
-the outcome or blocker and material uncertainty, followed by supporting detail.
-Short replies may stay plain. Higher-priority exact-output requirements and
-ordinary root answers are unchanged. The policy is applied to the existing
-reply generation, including for resumed children.
-
-When the local workspace is explicitly trusted and it or the user has a
-`skills-mgr` selection, the manager's XML catalog replaces the stock catalog in
-model context without a hook. Only managed mode uses concise base guidance
-under `# Using skills`. Catalog conditions run in process without a Bash
-wrapper. A condition can explicitly run external commands with
-app-server permissions, so only the local workspace covered by existing
-project trust can supply this catalog. If the whole managed catalog exceeds the
-skills context budget, the runtime warns and omits it rather than showing a
-partial catalog.
-The current workspace supplies the host catalog; unchanged catalogs are not
-appended on continuation. A failed acquisition reports a warning without
-substituting the stock host catalog. Untrusted workspaces, workspaces without a
-selection, and remote executors keep stock catalog behavior.
-`skills.include_instructions` controls automatic
-catalog display for either source, enabled by default. The native runtime records
-explicitly selected skill prompts as compact `<skill name="…"/>` identities
-when the manager resolves the skill. A missing or disabled managed skill keeps its
-explicit native instructions. A managed acquisition error warns and omits the
-selection instead of substituting another skill's instructions. Recorded
-selections carry through subsequent requests without a router rewrite. Ordinary
-user text is not a selected-skill identity.
-
-Native source outputs identify their bodies as reusable read context. Accepted
-user references use the same native reader as preload and reload, separately from
-user-authored text. Matching textual skill references use that reader rather than
-also loading a stock skill prompt; failures retain explicit source diagnostics.
-Managed metadata placeholders resolve through `skills-mgr`, including user-invoked
-skills omitted from its model catalog. Go does not read file or skill bodies during
-submission or provider forwarding.
-
-## Environment snapshot
-
-The native runtime includes in its existing environment context a snapshot-reuse hint,
-platform and OS identity/version, kernel release, the current user's home directory, and an explicitly observed
-Git snapshot. The home directory comes from the platform's user-home environment and remains
-explicitly unavailable when it cannot be resolved; it does not depend on workspace or Git discovery.
-Compact labeled text omits duplicate native workspace paths and empty collection diagnostics.
-Git repository membership is yes, no, or unavailable. Plain and SVN-only directories report no;
-missing Git, corrupt metadata and inspection failures remain unavailable with diagnostics.
-SVN facts remain owned by the existing project hook.
-Linux identifies its distribution from the host OS release metadata; macOS includes its product
-version. Unavailable OS identity remains explicit. Repository/worktree membership,
-branch and HEAD (including detached and unborn states), locally known symbolic default branch,
-bounded HEAD containment in local remote-tracking branches, effective `core.hooksPath`,
-bounded status, five recent abbreviated commit IDs/subjects and, when local remote-tracking
-branches exist, the count of further unpushed commits are included. Hooks configuration and the
-status excludes file use the applicable Git configuration scopes; other facts remain
-configuration-isolated. Git account identity, email and remote URLs are excluded. Unavailable facts and truncation are explicit; acquisition neither
-fetches nor mutates a repository and optional failures do not block inference.
-The facts render inside the existing native `ENVIRONMENT_CONTEXT`, using its normal
-initial placement and context-update path. They never split tool/result history.
-Existing native history and world-state persistence retain the observation
-for same-workspace inherited context. Fresh contexts, reset windows and changed
-workspaces obtain current facts; ordinary continuations reuse the recorded facts.
-Workspace changes use the native context-update path without rewriting earlier
-conversation or tool/result history. There is no Go contribution or replacement
-prefix freezer. Only a ready local executor supplies host facts. When its filesystem
-reads are restricted, the runtime still includes the platform, home and kernel;
-it does not probe local OS/Git files or reuse facts from a different read scope.
-Native cwd, execution shell, date/timezone, child role and permission
-context remain authoritative. Prewarm acquires nothing.
-
-Codex process construction establishes the invocation-local `MEKUGI_ENVIRONMENT_FACTS=1`
-capability only when the native environment owner is installed, discarding inherited values. Native
-hooks observe the app-server environment; native tool-process construction removes this capability
-after caller overrides without changing unrelated shell policy. Each Mekugi child establishes
-its own capability. Standalone Codex launched from a tool shell keeps its original hook context.
-The capability conveys information, never execution authorization.
-
-## Context usage notices
-
-Measured notices at 50/60/70/80/90% reset after compaction and are isolated by native session/thread.
-The 90% milestone includes “You must compact now.” alongside measured usage, including when
-usage skips past 90%. It also uses the native near-exhaustion reminder template to report remaining
-tokens, without promising an automatic reset or persistent notes. This instruction does not trigger
-automatic compaction. Notices are plain developer messages without a legacy XML-style wrapper.
-Each fresh model-facing milestone also emits a user-only progress event, shown as a
-terminal and browser transcript row rather than error feedback. Replaying an annotation emits no event.
-Native token-budget handling records typed developer context after fresh tool results or user input in its
-ordinary sampling loop. Notices remain in native history across requests and resume, preserving
-native content, identities, base instructions and provider prefixes. Go only renders native notices.
-Prewarm, approval, compaction, already-started successors and unknown usage add no notices.
-
-## Compaction context
-
-Codex uses its native token-budget reset for manual and automatic compaction.
-Reset makes no summary-generation request and does not inject a compaction prompt,
-handover, notes, or recovery artifact. Native thresholds remain host-owned. Mekugi
-owns the fixed token-budget policy in native feature/configuration resolution: history/notes
-is disabled, guidance and fallback prompts are absent, and remaining-token reminders are
-neutral. Model activation and model switches do not replace that policy. Native context assembly makes no automatic `notes.thread_hint` request; caller-configured
-MCP tools and hooks remain unchanged. It
-excludes client tool outputs from cross-reset retention. Codex self-directed checkpoints
-use native `functions.new_context`; there is no second Codex reset tool.
-
-An agent can select optional reload sources in native `new_context`, using
-`reload:{sources:[...]}`. `wait_agent` has no reset or reload fields. A supplied selection replaces the
-thread's retained selection, omission reuses it, and `sources:[]` clears it. Structural
-selection errors reject without replacing prior state; individual source errors remain
-visible alongside successfully read sources. The native rollout and compaction checkpoint
-retain the selection through resume, fork and rollback at their corresponding boundaries.
-Explicit, manual and automatic resets use the same acquisition lifecycle and await it
-before post-reset inference. Requested resets have no cost-estimate veto or duplicate
-preflight read. Other context is recovered through ordinary model-directed reads.
-Missing recovery state requires no bootstrap or completion gate.
-
-An optional temporary JSON artifact can hold reusable task state. It is a source
-selected by the agent, never an automatic whole-artifact reload. Select only fields
-needed for the next operation, using focused line ranges or ordinary JSON extraction;
-remove obsolete facts instead of accumulating task history.
-
-Selections use the [source-reference syntax](#source-reference-syntax) below.
-Native skill identity comes from the selected runtime's native catalog, not a
-caller-supplied skill path. Catalog resolution supplies metadata only; source
-bytes still use the receiving reader's permissions. Ambiguous or unavailable
-native identities retain explicit diagnostics. Historical source records remain
-readable without admitting the former object syntax for new selections.
-Captured-change references read the admitted caller namespace. Unavailable IDs and
-incomplete chains retain available output and explicit diagnostics. Selection never
-performs an automatic inventory. An empty selection is valid. There is no fixed
-source-count limit; oversized captures fail explicitly and require smaller selections.
-These storage bounds do not establish a complete-request token-fit guarantee.
-
-Fresh delegate [context preload](../../docs/contracts/coordination.md#prepared-children-and-guidance)
-uses the same selection and retained-result delivery. Reads use the continuing
-thread's or selected child's workspace, permissions and approvals. Codex supplies
-`AGENTS.md`; automatic acquisition excludes it at every directory level, including
-explicit selections and previously captured results. Select needed implementations,
-callers, tests, fixtures and guidance for the next unfinished operation.
-
-Native Codex reset, preload and message acquisition read selected files through
-the receiving runtime's filesystem; skill names resolve through its managed or
-native catalog. A manager-advertised name takes precedence over a native copy,
-and a marked placeholder supports explicit acquisition even when unlisted.
-Host-owned acquisition uses its admitted readers. Native filesystem
-limits and admitted reader bounds apply. An incomplete read reports its failure;
-omitted rows are not acquired context. A failed managed read does not substitute
-stale native instructions. Captured-change selections keep their admitted reader.
-
-Only selected files ending in .md, .json or .txt resolve nested references,
-including those in JSON strings. The same extension rule applies to skill files.
-Relative references resolve beside a native source, or in the admitted workspace
-for managed skills. Only selected rows are scanned, never omitted rows or captured
-diffs. The root counts as depth 1; references beyond depth 3 retain visible errors.
-Host-owned `AGENTS.md` stays excluded at every depth. Nested results remain inside
-the root's retained result with command identities and failure status, using the
-same native access and acquisition bounds.
-
-Source acquisition uses the receiving native permissions. A denied or failed
-source does not prevent the others from completing. Native reset retains completed
-source bodies and diagnostics as tool data in replacement history, without a Go
-reload command, synthetic provider calls or provider-side expansion. Delegate preload,
-accepted user input retain bodies and diagnostics, not instructions
-to reread their paths. A later accepted input acquires its named sources again;
-continuation and resume do not. Final-answer acquisition selects captured changes,
-not another file or skill read. One introduction identifies the bodies as
-reusable read context.
-Inference waits for terminal acquisition and never receives accumulated partial
-results. Publication failures remain explicit. Source rows participate in ordinary
-output deduplication.
-
-Completed reads survive resume and fork without reacquisition; the next actual
-reset reads the then-current selected sources. Acquisition precedes replacement
-publication: a fork before publication inherits the intact prior context and
-retained selection, not a half-acquired replacement. Cancellation and approvals
-remain Codex-owned. No interrupted reader is silently replayed.
-Historical Mekugi summary records remain readable for saved
-sessions and summary dialogs, with their original authorization and source results;
-new resets do not create them. Missing, corrupt or unauthorized historical references
-fail before provider access.
-
-Mekugi no longer discovers, loads or injects compaction prompts. Stock Codex may
-still read a caller-configured `experimental_compact_prompt_file` during its own
-startup, even though native reset does not use it.
+- Manual `/compact`, automatic token-budget reset, and agent checkpoints (`functions.new_context`)
+  all perform summary-free reset with no cost-estimate veto. `reload:{sources:[...]}` replaces the
+  retained selection, omission reuses it, and `sources:[]` clears it (persisted across resume/fork).
+- Nested references inside selected `.md`, `.json`, and `.txt` sources (and skill files) expand up
+  to depth 3 (root = depth 1); reads execute under the receiving thread's permissions, keeping
+  individual failures visible without blocking other sources.
+- Go `modules/agentguidance` retains shared preload-selection helpers and read-only support for
+  historical saved compaction summaries. Stock Codex startup may still read a caller-configured
+  `experimental_compact_prompt_file` even though native reset does not use it.
 
 ### Source-reference syntax
 
-Preload, reload, attachments and selected nested text share one reference language.
-Each consumer retains its supported source kinds and acquisition policy.
-Examples below escape markers so selecting this document does not acquire its
-placeholders. Omit the leading backslash in actual references; the JSON example
-uses standard Unicode escapes and can be copied unchanged.
+Preload, reload, and user attachments share one reference syntax (markers escaped here so selecting
+this file does not trigger expansion): files (`\@path`, `\@path#L2-L4`), skills (`\$skill`,
+`\$skill/references/file.md`), and composed captured changes (`\mchanges:blue1,blue3..7`). Quoted
+paths preserve spaces and trailing punctuation; `AGENTS.md` is always excluded (Codex supplies it).
 
-| Source | Reference |
-| --- | --- |
-| File | `\@path/to/file` |
-| Selected file lines | `\@path/to/file#L2-L4,L8-L10` |
-| Skill | `\$skill-name` |
-| Skill reference | `\$skill-name/references/file.md` |
-| Composed captured changes | `\mchanges:blue1,blue3..blue7,blue10,birch2..5` |
-
-Line ranges are inclusive and may also follow skill references. Quote paths
-containing spaces after the marker, for example `\@"path with spaces"#L2-L4`.
-In prose, terminal periods, commas, colons, exclamation marks and question marks
-are punctuation, not part of bare references or line-range suffixes. Quote a file
-path to retain its punctuation, for example `\@"file.md."`. Interior punctuation
-is unchanged. Two dots in captured changes remain a range operator, including
-an incomplete range that must report a failure.
-Captured changes mix individual IDs and inclusive ranges, separated by commas
-without spaces. A range may abbreviate a same-chain endpoint (`birch2..5`).
-Keep IDs/ranges in one reference to request one composed diff; separate references
-request separate results.
-
-Preload/reload retain the JSON envelope `{"sources":[REFERENCE,...]}` with string
-entries only, for example `{"sources":["\u0040file#L2-L4","\u0024skill-name","\u006dchanges:blue1,blue3..7,birch2"]}`.
-There are no source-object alternatives. Bare paths, email addresses and escaped
-markers remain literal. In scanned text, including decoded JSON string values,
-`$NAME` and `$NAME/path` stay literal when the name matches
-`[A-Z_][A-Z0-9_]*`. Environment variables are not expanded; use an explicit
-selection to request an all-caps skill. Explicit selections and references in JSON
-string values are exact, including terminal punctuation; prose punctuation rules
-do not rewrite them. Shared model guidance supplies this syntax once; tool
-descriptions keep only operation-specific acquisition and delivery rules.
-
-## Lifecycle, Codex connection, records, and failure
-
-The module has no background resources. Historical summaries retain their contributed
-record kind in the shared retained-session store; captured sources use output
-recovery records. Its binding
-registers early omission filtering, frontend assembly, and marked-description and base-workflow replacement.
-Omissions run before preparation, including compaction and execution-free requests.
-Projection errors stop forwarding. With zero guidance contributions, the module
-still handles its instruction policies and descriptions of selected commands.
-Removing the module removes its reload helper, projections and assembly; other
-command execution remains available. Provider compatibility prose belongs to its backend consumers.
-
-## Acceptance
-
-1. Stock, custom, missing, null, top-level, and developer-carried base instructions are forwarded
-   unchanged except for complete explicit omission blocks and the marked base-workflow section.
-   Fenced examples and non-instruction content are not rewritten.
-2. When `exec` exposes command execution, its authoritative description receives one
-   registry-derived capability section, while base instructions receive the workflow section.
-   Workflow rules do not remain in tool descriptions. Refresh is idempotent; malformed markers reject
-   before forwarding. Unrelated descriptions, sibling tools, and stock execution
-   contracts remain unchanged.
-3. Ordinary, fork, side-thread, subagent, model-switch, compaction-continuation, and resume
-   requests derive frontend guidance from their authenticated catalog. Guidance does
-   not depend on a live parent or earlier prompt rewrite. Supported prewarm catalogs
-   receive the same frontend section as generating requests.
-4. Each helper has one description owner. The invocation guide includes the selected
-   descriptions exactly once and excludes absent command supplements. Changed valid
-   descriptions render directly; the snapshot and projected bytes match.
-5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.
-6. In a trusted local workspace with a `skills-mgr` selection and no catalog hook,
-   generating requests see the
-   managed catalog instead of the stock catalog, without appending a second
-   copy on continuation. Selected native skill prompts appear as
-   `<skill name="…"/>` without a Go rewrite. Without the manager, the stock
-   catalog and full selected-skill content remain available. A textual skill
-   reference attaches its source once and does not also emit a selection prompt.
-7. Codex manual and automatic resets make no summary inference. Optional selected
-   sources reach the first continuation without unrelated artifact contents or
-   selection metadata; tool schemas and cache identity remain stable. Completed
-   reads survive fresh resume and fork. Denied reads stay denied; failed publication
-   exposes no reference. Historical summary recovery rejects missing or foreign records.
+Preload and reload take `{"sources":[...]}` with string entries only, for example
+`{"sources":["\u0040file#L2-L4","\u0024skill-name","\u006dchanges:blue1,blue3..7,birch2"]}`.

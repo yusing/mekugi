@@ -1,255 +1,45 @@
 # Change evidence
 
-## REQ-CHANGES-001
+## Requirements
 
-This contract connects host observation, passive capture and retained
-[change history](../../modules/changehistory/SPEC.md), and
-[live preview](../../modules/livepreview/SPEC.md). Captured evidence describes
-observed file differences and its coverage, rather than the live Git diff or
-proof that unobserved effects did not occur.
+- Retain live diffs and durable captured-change review for stock `apply_patch` and shell writes
+  without replacing native execution, batching, tool arguments, or host results.
+- Preserve durable evidence and retention across optimizations; missing or incomplete evidence must
+  be labeled explicitly, never presented as complete or as a no-op.
 
-## Required stock-tool and review behavior
+## Boundary contract
 
-Stock patch and shell-write execution must retain live diffs and captured-change
-review without replacing native execution, batching, tool arguments or host
-results. Bounded and batched reads remain available. Optimizations preserve
-durable evidence and retention; missing evidence cannot be presented as complete.
+- **Observation only**: Codex owns editing, execution, permissions, and continuations. Capture never
+  replays effects, alters tool arguments/results, or completes a yielded call before its terminal
+  continuation. Failed commands keep any bytes they actually wrote.
+- **Publication before reference**: immutable per-file evidence is persisted before change IDs or
+  completed receipts become usable. Storage failure never advertises durable evidence; missing or
+  corrupt records fail explicitly rather than becoming empty diffs.
+- **Coverage honesty**: captured evidence describes observed file differences within witnessed
+  windows, not a live Git diff or proof that unobserved effects did not occur. Concurrent external
+  writers cannot be separated without host per-write facts; missing baselines, expired reads, or
+  unavailable checkpoints retain explicit incomplete/partial coverage.
+- **Provenance separation**: VCS operations that import, discard, or write repository state are
+  diagnostic history (`mchanges --history`), excluded from authored edit counts, saved Diff, rewind,
+  and child handoffs. Named interpreter writes in mixed windows remain authored.
+- **Delivery**: change IDs are appended only after persistence without modifying original host text;
+  output deduplication runs only after observation/retention consume originals. Provisional live
+  previews never establish durable evidence.
 
-## Replaceable capture design
+## Current approach (replaceable)
 
-The observation windows, target analysis, workspace checkpoints, attribution and
-publication mechanisms below implement those requirements. Their concrete bounds
-and storage layout can change with their consumers; they are not the outcome.
-
-## Authority and publication
-
-The admitted backend owns editing, execution, permissions and continuations. Observation never
-repeats an effect or substitutes tool arguments or host results. A yielded call
-remains unfinished until its terminal continuation. Submission acknowledgement,
-segment completion, file effects and terminal host completion are separate facts.
-A later command or test failure does not undo bytes already written or exclude
-those differences from review, composition or rename tracking.
-
-Evidence is retained before change membership, references or completed receipts
-become usable. Storage failure cannot advertise durable evidence. Completed
-results first visible in a compaction request are reconciled before forwarding
-can discard them, without injecting replay carriers or edit notices into that
-payload. Observation failure reports missing evidence without blocking provider
-compaction. Missing workspace metadata permits only the thread's unique retained
-workspace; ambiguity cannot establish scope.
-An admitted workspace remains the capture identity after its directory is removed.
-Commands with an explicit surviving working directory can still capture named
-edits under that identity; change IDs resolve the original workspace for retained reads.
-
-New records retain bounded per-file evidence with chunked text owned by change
-history. Larger batches do not lose eligible files merely because their combined
-text exceeds an inline envelope. Per-file size, acquisition deadlines, metadata
-and storage admission remain bounded, with explicit incomplete evidence on
-acquisition failure. Private workspace checkpoints are comparison state, not
-record evidence. Historical inline and snapshot-backed records remain readable
-and retain their dependencies until their last owner expires; missing or corrupt
-evidence is unavailable, never an empty diff. Cold selections load selected file
-text without reconstructing an aggregate capture envelope.
-
-## Capture scope
-
-Pre-tool observation captures command or explicit named-target baselines before
-execution; terminal success, failure or interruption reconciles observed effects.
-Authenticated native working directories resolve operands without changing the
-admitted workspace's retained identity.
-PowerShell uses the bounded workspace fallback; its command operands do not
-establish named capture for external or ignored paths.
-Native hooks append receipts only after publication, keeping original tool results
-unchanged. Background acknowledgements do not complete a capture window.
-
-Complete stock patches and literal command operands establish pre-edit targets
-without executing source. Supported commands include text redirection and
-`cat`/`printf`/`echo`/`tee`, file operations including `mv` and `rm`, in-place
-`sed`/`perl`, individually named formatter targets (including literal Bash brace
-alternatives and ranges), source-derived Python and
-JavaScript writes, local VCS operands, and `mchanges apply`/`revert`. Recognized
-RTK wrappers and inline shells preserve the underlying source boundary.
-
-Commands use their explicit shell or the session shell. Relative targets require
-a known absolute working directory or bounded directory alternatives. Earlier
-statements that create, remove or fill a destination remain part of its scope.
-An unguarded literal `cd` can retain both its success and failure directories,
-up to four alternatives, without asserting which executed. Different candidate
-targets retain ambiguous scope. Exceeding that limit, or encountering dynamic
-or complex directory changes, leaves later relative targets unknown while
-preserving acquired evidence and independently resolvable absolute targets.
-
-Named targets remain eligible despite ignore rules, file suffixes, directory
-names or generated-file banners. An input script is not itself an edit target;
-literal heredoc script creation followed by interpreter execution can establish
-its write targets before either command runs. Other newly created scripts retain
-the selected-workspace fallback, without learning before-state after execution.
-Recursive operations may name trees. Tracked Bash/sh commands report paths
-created by `mktemp`; capture compares only those paths and their contents, never
-the temporary parent. Large temporary directory trees retain a bounded coverage
-gap instead of their contents; independently named writes remain eligible.
-Dry-run, help, version and failed invocations establish no
-creation. Recorded creation followed by deletion cancels in the net view.
-
-Patches within one JavaScript `exec` cell share a pre-cell/post-cell window.
-Literal complete inputs establish baselines before execution. A synchronous native
-pre-tool hook can also acquire actual variable-built patch arguments and their
-baselines, correlated to the admitted thread, turn, cell and tool identity.
-Host tracing distinguishes repeated calls without evaluating JavaScript or learning
-a before-state afterward. Known actual patch targets without a witnessed baseline
-retain incomplete evidence. Overlapping move endpoints remain separate endpoint
-differences rather than invented intermediate renames. Completed patches finalize
-independently of sibling commands still running.
-
-An `exec` cell with nonliteral command input receives workspace snapshots;
-that fallback does not establish pre-edit baselines for dynamic patches.
-An authenticated command can add a separately scoped working directory at
-its native pre-tool boundary before a writer has run in the cell. A missing
-required checkpoint leaves partial coverage, not a reconstructed baseline.
-
-Native Shell Mode uses the same recorder, including for apply/revert. Only its
-matching terminal host item completes capture; acknowledgements and replayed
-history do not create captures. Recovery never repeats a mutation.
-
-## Workspace fallback
-
-Commands not recognized as read-only also receive a bounded selected-workspace
-checkpoint before forwarding, compared with a fresh checkpoint at completion.
-Writer directories outside that scope, including nested Git worktrees or
-repositories with independent ignore authority, receive their own bounded
-checkpoints under the original capture identity. This includes directories
-resolved from in-shell `cd` before a writer with unnamed effects. If such a
-writer's directory cannot be resolved, coverage is partial. Working directories
-reached through symlinks outside the enclosing physical scope also receive a
-checkpoint. Covered subdirectories reuse their enclosing checkpoint, and
-overlapping scopes share claims by physical path. Checkpoint acquisition never
-executes the command or its interpreter source.
-Previously unnamed differences join the command's evidence with its program as
-their source. Private snapshot
-Git state never modifies the user's repository, runs its hooks or filters, or
-applies attributes that transform on-disk bytes. User configuration is read only
-to locate global excludes.
-
-- In Git workspaces, repository, `info/exclude` and global ignore rules apply.
-  Tracked files remain eligible even when ignored. Ignored untracked paths need
-  explicit named scope; an older checkpoint cannot turn a newly ignored path
-  into a deletion. Only admitted checkpoint directories below their repository root are
-  compared. VCS metadata and the replay store are excluded. A parent checkpoint
-  does not cover files inside a submodule.
-- Without Git ignore authority, workspaces over 20,000 files take no snapshot.
-  Later checkpoints admit new files only from directories gaining at most 256
-  files, whether those directories are new or existing.
-- Checkpoint acquisition and comparison each share one second across all admitted
-  directories. A checkpoint not ready in time is skipped for that call. A slow
-  first checkpoint can serve later calls; failures retry after 30 seconds.
-  Unavailable comparisons leave named evidence and explicit partial coverage.
-- Private objects over 512 MiB restart their snapshot store. Workspaces unused
-  by any router process for 30 days lose private snapshot state. A call whose
-  checkpoint is lost keeps only named evidence.
-
-Calls without a witnessed before-window, including completion after restart,
-take no snapshot comparison. A call still running when a later turn begins also
-loses snapshot comparison because its window spans unrelated work.
-
-## Evidence and attribution
-
-Reads and capture holds are bounded. Unreadable targets retain incomplete
-evidence. Expired pre-execution reads remain unavailable and cannot later become
-before-state; forwarding never waits beyond its capture bound. Binary content
-retains sizes and hashes; symlinks retain link targets.
-Review reads a link's target name, while a write through it can read the pointed-to
-file. Identical nonempty additions/deletions may form moves; copies may retain
-their source. Text captures include up to ten unchanged rows on each side, shared
-by nearby changes and limited by file boundaries. Older records use only retained
-rows, never current workspace contents. Net composition and mutation grouping
-remain compact so wider review context cannot join independent replayable edits.
-
-Before/after evidence cannot separate concurrent user, hook or process writes
-without host per-write facts. Admitted parent and descendant runtimes share
-capture coordination across backends: each overlapping call's named targets are
-excluded from the others' workspace fallback. Overlapping calls attribute unnamed
-snapshot differences to the first finisher; remaining calls compare only later differences, so an
-effect is recorded once. Siblings can share a record with overlap diagnostics.
-When a later named command or native patch supplies an observed boundary inside an
-open named or checkpoint-backed writer, capture retains separate writer-before-edit, edit, and
-writer-after-edit intervals. Each interval keeps its originating operation. Writer intervals remain
-pending until that writer's terminal result; the intervening edit can complete independently.
-Checkpoint-backed intervals read only the later operation's selected paths from
-the witnessed checkpoint, without refreshing it or broadening authored scope.
-Paths outside a checkpoint are absent only when a bounded pre-writer filesystem
-inventory also excludes them. Omitted roots, unavailable inventories and historical
-checkpoints without that evidence remain unknown; a later absent boundary cannot
-prove the earlier writer had no effect. Inventories share checkpoint acquisition
-and metadata bounds and do not expand content admission.
-Unavailable boundaries or checkpoints retain incomplete evidence rather than an invented chain.
-A synchronous native pre-tool boundary can close a terminated overlapping writer
-before the next named writer starts. This preserves both operations even when the
-later writer restores earlier bytes. Acquisition shares one 500 ms deadline from
-helper entry through input decoding, transport, correlation and reads. Host/helper
-process startup is excluded from this bound. Capture retains an aggregate 8 MiB
-inline-text budget, spilling eligible per-file text to chunked retained evidence.
-It reads only shared named writer paths
-and actual patch targets. Missing or exhausted acquisition remains partial and
-never rejects command execution or replaces approval decisions.
-Known text endpoints remain recoverable with `mchanges ID --history PATH` even
-when their preceding boundary is unavailable; those rows establish neither
-authored changes nor complete counts, composition, apply or revert evidence.
-Writes restored before return without a witnessed boundary have no recoverable intermediate diff; repeated-write
-uncertainty remains diagnostic. Observation neither instruments nor reruns the
-process to reconstruct those bytes.
-
-Changed or incomplete named evidence receives a durable change ID. Complete
-no-effect attempts and scope-only diagnostics remain in call history without an
-ID; unknown scope alone allocates none.
-Missing outcomes invent no exit status. Historical observation-only and
-tool-managed records remain explicitly inspectable with `--history`. They stay
-excluded from authored counts, ordinary diffs, saved review, rewind and child
-handoffs. Diagnostic Git effects may also supply a compact Activity stat receipt
-and exact-operation details; other diagnostic records supply no edit receipts.
-
-VCS operations that import, discard or write repository content are diagnostic
-history, not agent-authored changes, including redirected or piped repository
-output. In mixed VCS-writer/interpreter windows, named interpreter targets stay
-authored; inseparable unnamed effects stay diagnostic. Read-only VCS siblings do
-not exclude unnamed interpreter changes. Admission follows retained provenance,
-never file classification; new policy does not rewrite historical provenance.
-
-[Session history](../../modules/sessionhistory/SPEC.md) owns durable namespaces,
-allocation and retention. Root/child ownership, isolated forks and resume use
-retained identity, not a live parent. Replay does not execute edits, revive
-processes or reuse another workspace's allocation.
-
-## Delivery and presentation
-
-Completed changes can publish a bounded user-visible Create/Edit summary from
-the same retained files and hunks as `mchanges`, including effects of failed
-commands and both endpoints of moves. After persistence, a separate text part
-adds only the capture IDs to the agent-visible result; original host content
-remains intact. Incomplete or failed capture emits an explicit capture warning,
-independent of command exit status. The warning identifies known incomplete
-paths; truncated warnings point to the retained history. Details remain available through `mchanges`
-and interactive receipts. Receipts retain the last witnessed writer's host and
-segment boundary independently of later commands, so live and restored
-Activity place the combined effect after its source commands. That boundary does
-not assign individual files to segments. Partial edits expose only retained evidence.
-Complete no-effect or unfinished calls produce neither summary nor change notice;
-continuations receive theirs when the edit finishes.
-
-[Duplicate-output projection](../../backends/codex/SPEC.md#output-deduplication) can
-reference eligible repeated model-input text only after observation and retention
-consume its original content; it preserves the change notice. Provisional values
-never establish durable evidence. Omitting live preview leaves saved review and
-captured Activity receipts available. The module contracts own preview and saved
-review behavior; [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns
-layout, navigation, source copying and input.
-
-## Acceptance
-
-Consuming checks preserve exact nested tool arguments/results, one host effect,
-streaming before completion, and finalization only on terminal continuation.
-They distinguish successful, failed, no-effect, partial and unreadable captures;
-cover overlap, moves, copies, binaries, symlinks, named ignored targets and
-snapshot limits; and prove publication-before-reference. Fresh-process resume
-and replay use durable identity without rereading current files, allocating
-duplicate IDs or repeating effects. Command reads, recovery and mutation have
-their acceptance at the change-history and authenticated frontend owners.
+- **Named pre-execution capture** reads bounded baselines for stock patches (literal or via
+  synchronous native pre-tool hooks for dynamic patches in `exec` cells) and statically recognized
+  shell writers (`cat`/`tee`/redirections, `mv`/`rm`, `sed -i`/`perl`, named formatters, literal
+  Python/JS writes, `mchanges apply`/`revert`, plus tracked `mktemp` paths), including named ignored
+  files.
+- **Bounded workspace fallback** snapshots non-read-only commands using private Git state (never
+  touching user Git config/hooks/filters) with ignore rules, per-directory checkpoints for
+  `cd`/worktrees/symlinks, a 1s acquisition/comparison budget, 20k-file cap without Git ignore, and
+  512 MiB private object reset.
+- **Overlap & interval tracking**: parent/child runtimes share claim tables so an unnamed diff is
+  claimed once; intervening named edits split open writers into ordered intervals under one change
+  ID. Per-file chunked evidence spills past an 8 MiB inline-text budget; synchronous pre-tool
+  acquisition shares a 500 ms deadline.
+- See [Change history](../../modules/changehistory/SPEC.md) for `mchanges` and saved review, and
+  [Live preview](../../modules/livepreview/SPEC.md) for provisional streaming diffs.

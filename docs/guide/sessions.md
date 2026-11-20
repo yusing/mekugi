@@ -11,7 +11,7 @@ workspace picker. Type to search, Tab for all workspaces, Enter to resume. Insid
 idle session, `/resume` opens the picker or `/resume THREAD_ID` switches directly. Saved
 model/effort/tier, layout, roster, child history, and retained Diff return; explicit
 `-m`/`-c` overrides named settings. Drafts, selections, filters, and scroll positions do
-not return. See [resume details](../../apps/mekugi/internal/sessionpresentation/SPEC.md#resume-and-switching).
+not return. See [session preferences](../../modules/sessionpreferences/SPEC.md).
 
 While idle, `/fork` takes no arguments and creates a saved branch of the completed
 conversation, then switches to it with current settings and pending input. The
@@ -64,8 +64,9 @@ without rereading merely because the thread resumes; the next reset reads curren
 sources. Earlier saved sessions retain their compaction summaries, available
 from **Context compacted** in the transcript. Captured changes and output remain
 readable while their [storage](#replay-storage) is retained. See the
-[compaction contract](../../modules/agentguidance/SPEC.md#compaction-context), including
-the native caller-prompt-file startup limitation.
+[compaction contract](../../modules/agentguidance/SPEC.md#compaction-context) (note that stock
+Codex startup still reads a caller-configured `experimental_compact_prompt_file` even though native
+reset ignores it).
 
 ## Replay storage
 
