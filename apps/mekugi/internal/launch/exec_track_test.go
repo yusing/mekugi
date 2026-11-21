@@ -246,6 +246,13 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 				}
 				return got, history, ctx
 			}
+			utility, err := exec.LookPath("mktemp")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if directory := mktempImplicitDirectory(t, utility); directory != "" {
+				parent = directory
+			}
 			created, creation, _ := run("create", `root=$(mktemp`+flag+"); cat > \""+target+"\" <<'EOF'\nentry\nEOF\nprintf '%s' \"$root\"")
 			if filepath.Dir(created.stdout) != parent {
 				t.Fatalf("mktemp result: %+v", created)
@@ -315,6 +322,7 @@ func TestExecTrackMktempKeepsUtilityResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	implicitDirectory := mktempImplicitDirectory(t, utility)
 	for _, name := range []string{"bash", "sh"} {
 		for _, tc := range []struct {
 			name, script string
@@ -339,7 +347,8 @@ c.XXXXXX"`, created: 1, reported: true},
 			{name: "absolute", script: quoteShellWord(utility) + ` -d`, created: 1, bash: true},
 			{name: "command-absolute", script: `(command ` + quoteShellWord(utility) + `)`, created: 1, bash: true},
 			{name: "dry-run", script: `mktemp -u`},
-			{name: "help", script: `mktemp --help >/dev/null && echo help`},
+			// GNU prints help; BSD rejects the option. Neither names a file.
+			{name: "help", script: `mktemp --help >/dev/null 2>&1; echo help`},
 			{name: "failure", script: `mktemp "$TMPDIR/missing/XXXXXX"`, code: 1},
 		} {
 			t.Run(name+"/"+tc.name, func(t *testing.T) {
@@ -352,6 +361,7 @@ c.XXXXXX"`, created: 1, reported: true},
 				command := tc.script
 				interpreter := name
 				if name == "sh" {
+					requireDashTracking(t)
 					interpreter = "dash"
 					command = shellinstrumentation.ShScript(shTracker, tc.script)
 				}
@@ -361,15 +371,35 @@ c.XXXXXX"`, created: 1, reported: true},
 				if view := shell.awaitView(t, key); !view.complete && tc.code == 0 {
 					t.Fatalf("report: %+v", view)
 				}
-				entries, err := os.ReadDir(parent)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if got.code != tc.code || len(entries) != tc.created || (tc.code != 0) != (got.stderr != "") {
-					t.Fatalf("command: %+v; entries: %v", got, entries)
+				if got.code != tc.code || (tc.code != 0) != (got.stderr != "") {
+					t.Fatalf("command: %+v", got)
 				}
 				if tc.code == 0 && !strings.HasSuffix(got.stdout, "\n") {
 					t.Fatalf("output lost its newline: %q", got.stdout)
+				}
+				var want string
+				var tree bool
+				if implicitDirectory != "" && tc.created != 0 && !strings.Contains(tc.script, "$TMPDIR") {
+					// The shared directory cannot be listed reliably; check
+					// the named result instead.
+					want, _, _ = strings.Cut(got.stdout, "\n")
+					info, err := os.Lstat(want)
+					if filepath.Dir(want) != implicitDirectory || err != nil {
+						t.Fatalf("command: %+v; result: %v", got, err)
+					}
+					t.Cleanup(func() { os.Remove(want) })
+					tree = info.IsDir()
+				} else {
+					entries, err := os.ReadDir(parent)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(entries) != tc.created {
+						t.Fatalf("command: %+v; entries: %v", got, entries)
+					}
+					if tc.created != 0 {
+						want, tree = filepath.Join(parent, entries[0].Name()), entries[0].IsDir()
+					}
 				}
 				report, _ := shell.hub.Read(key)
 				created := report.Created
@@ -379,13 +409,29 @@ c.XXXXXX"`, created: 1, reported: true},
 					}
 					return
 				}
-				want := filepath.Join(parent, entries[0].Name())
-				if len(created) != 1 || created[0].Data != want || created[0].Tree != entries[0].IsDir() || !strings.Contains(got.stdout, want+"\n") {
+				if len(created) != 1 || created[0].Data != want || created[0].Tree != tree || !strings.Contains(got.stdout, want+"\n") {
 					t.Fatalf("reported %+v for %q; output %q", created, want, got.stdout)
 				}
 			})
 		}
 	}
+}
+
+// mktempImplicitDirectory returns where mktemp places implicit templates
+// when it ignores TMPDIR, as macOS mktemp does, or "" when it honors TMPDIR.
+func mktempImplicitDirectory(t *testing.T, utility string) string {
+	t.Helper()
+	root := t.TempDir()
+	cmd := exec.Command(utility, "-u")
+	cmd.Env = []string{"TMPDIR=" + root}
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if directory := filepath.Dir(strings.TrimSuffix(string(output), "\n")); directory != root {
+		return directory
+	}
+	return ""
 }
 
 func TestExecTrackMktempKeepsExistingFunctions(t *testing.T) {
@@ -1362,6 +1408,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			command := script
 			interpreter := name
 			if name == "sh" {
+				requireDashTracking(t)
 				interpreter = "dash"
 				command = shellinstrumentation.ShScript(trackerPath, script)
 			}

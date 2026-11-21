@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -53,7 +54,18 @@ func TestExecTrackDashMissingHelperRunsOriginal(t *testing.T) {
 	}
 }
 
+// requireDashTracking skips where dash-backed sh tracking is not part of the
+// product contract: mekugi-exec reads the dash parent through /proc on Linux
+// only and declines tracking elsewhere.
+func requireDashTracking(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("dash-backed sh tracking is supported on Linux only")
+	}
+}
+
 func TestExecTrackDashSegments(t *testing.T) {
+	requireDashTracking(t)
 	t.Parallel()
 	shell := newExecTrackShell(t)
 	helper, err := execTrackTestHelper()
