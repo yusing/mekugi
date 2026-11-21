@@ -105,7 +105,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	if err != nil || !strings.Contains(notice, first.ChangeID) {
 		t.Fatalf("completed patch has no immediate edit notice: notice=%q err=%v", notice, err)
 	}
-	firstDiff, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}, MaxTokens: 4000})
+	firstDiff, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}})
 	if err != nil || !strings.Contains(firstDiff, "-old") || !strings.Contains(firstDiff, "+middle") || strings.Contains(firstDiff, "+final") {
 		t.Fatalf("first capture before next edit = %q, %v", firstDiff, err)
 	}
@@ -144,7 +144,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	if !found || firstAgain.ChangeID != first.ChangeID {
 		t.Fatalf("first patch changed after second edit: found=%v evidence=%+v", found, firstAgain)
 	}
-	firstDiffAgain, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}, MaxTokens: 4000})
+	firstDiffAgain, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}})
 	if err != nil || firstDiffAgain != firstDiff {
 		t.Fatalf("first patch snapshot drifted: before=%q after=%q err=%v", firstDiff, firstDiffAgain, err)
 	}
@@ -152,7 +152,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	assertNet := func() {
 		t.Helper()
 		net, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{
-			Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000,
+			Workspace: workspace, IDs: ids, View: "net",
 		})
 		if err != nil || !strings.Contains(net, "-old") || !strings.Contains(net, "+final") || strings.Contains(net, "+middle") || strings.Contains(net, "-middle") {
 			t.Fatalf("selected captures did not compose: net=%q err=%v", net, err)
@@ -185,7 +185,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	if !found || firstLast.ChangeID != first.ChangeID {
 		t.Fatalf("first patch changed after command exit: found=%v evidence=%+v", found, firstLast)
 	}
-	firstDiffLast, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}, MaxTokens: 4000})
+	firstDiffLast, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}})
 	if err != nil || firstDiffLast != firstDiff {
 		t.Fatalf("late command completion rewrote first patch: before=%q after=%q err=%v", firstDiff, firstDiffLast, err)
 	}

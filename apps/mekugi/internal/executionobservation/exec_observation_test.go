@@ -396,21 +396,8 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			if history.ExecOutcome == nil {
 				t.Fatal("missing host outcome")
 			}
-			if strings.HasPrefix(test.name, "failed") {
-				if history.ExecOutcome.OutputRef == "" {
-					t.Fatal("failed host result has no durable mread reference")
-				}
-				store, err := openMekugiReplayStore(testProxyStore(proxy).directory)
-				if err != nil {
-					t.Fatal(err)
-				}
-				output, err := store.recoverOutput(next.ctx, history.ExecOutcome.OutputRef)
-				if err != nil || output.ExitCode != 0 || output.Stdout != history.Report {
-					t.Fatalf("failed output reference is not readable after restart: %+v, %v", output, err)
-				}
-			}
 			changes, err := testProxyStore(proxy).changes.Read(next.ctx, testProxyStore(proxy).scoped(next.ctx).changeScope(), changes.Query{
-				Workspace: workspace, IDs: []string{history.ChangeID}, View: "history", MaxTokens: 4000,
+				Workspace: workspace, IDs: []string{history.ChangeID}, View: "history",
 			})
 			if err != nil || !strings.Contains(changes, "-gone") || !strings.Contains(changes, "exec_command input:\nrm a.txt") ||
 				!strings.Contains(changes, "observed scope: a.txt") || !strings.Contains(changes, test.wantOutcome) {
@@ -421,9 +408,6 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			again, _, _ := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1")
 			if again.ChangeID != history.ChangeID {
 				t.Fatalf("replay reallocated change %s -> %s", history.ChangeID, again.ChangeID)
-			}
-			if again.ExecOutcome.OutputRef != history.ExecOutcome.OutputRef {
-				t.Fatal("replay reallocated failed-output evidence")
 			}
 		})
 	}

@@ -9,12 +9,11 @@ instructions. Ask for one by name when you want a specific read or review:
 
 | Command | Purpose | Requirements |
 | --- | --- | --- |
-| `mread` | Continue retained output without rerunning | Replay directory access |
-| `mrun` | Bound foreground output, keeping the ending by default; `--head` keeps the beginning | The wrapped command |
+| `mrun` | Bound foreground output, keeping the ending by default; `--head` keeps the beginning; spills omitted output to a read-only file for `mcat` | The wrapped command |
 | `mchanges` | Review/compose/revert/reapply captured edits by ID | Replay directory access |
-| `mcat` | Batched UTF-8 reads, ranges, tails | None |
+| `mcat` | Batched UTF-8 reads, ranges, tails, and frozen output files | None |
 | `msymbol` | Batched definitions/references | Go: `gopls`; JS/TS/JSON: TypeScript 7 `tsc`; Python: `pyright-langserver`; Rust: see below |
-| `inspect_file` | Structural outlines | None |
+| `mfinspect` | Structural outlines | None |
 
 Shell commands receive `SESSION_TMP`, a prepared private scratch directory
 appended to `PATH` and listed in the model's environment facts
@@ -29,7 +28,7 @@ agents work concurrently.
 mchanges amber1..amber3 --summary
 mchanges revert amber2
 mcat --number source.ts 10-20 40:60
-mread REF
+mfinspect source.ts
 ```
 
 ### Rust semantic queries
@@ -55,8 +54,7 @@ RUSTC_BOOTSTRAP=1 cargo fetch --locked --manifest-path "$(rustc --print sysroot)
 Queries themselves are offline and install nothing. Build scripts, procedural macros
 and checks stay disabled. Results apply to the selected target and default features;
 incomplete coverage is nonzero even when useful source rows are returned. Large cold
-queries can exceed the shared 30-second deadline. See the
-[semantic-query contract](../../modules/symbolquery/SPEC.md).
+queries can exceed the shared 30-second deadline.
 
 ## Captured changes
 
@@ -64,4 +62,4 @@ Captured edits are not a live Git diff. Named ignored files are included; unknow
 commands capture observed effects, possibly from other writers. Previews are
 provisional; missing evidence is labeled. Ignored untracked files require explicit named
 targets to be retained and reverted/reapplied. Revert merges later edits, may create conflicts, and
-is captured too. See [changes](../../modules/changehistory/SPEC.md), [capture coverage](../contracts/change-evidence.md), and [retained reads](../../modules/outputrecovery/SPEC.md).
+is captured too. See [changes](../../modules/changehistory/SPEC.md), [capture coverage](../contracts/change-evidence.md), and [retained session history](../../modules/sessionhistory/SPEC.md).

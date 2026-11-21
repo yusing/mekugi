@@ -1053,7 +1053,7 @@ var execNeutralCommands = map[string]bool{
 	"export": true, "set": true, "unset": true, "local": true,
 	"declare": true, "readonly": true, "exit": true, "return": true, ":": true, "kill": true,
 	"rmdir": true, "tput": true, "clear": true, "nproc": true, "getconf": true, "locale": true,
-	"mread": true, "mcat": true, "msymbol": true, "inspect_file": true, "mchanges": true,
+	"mcat": true, "msymbol": true, "mfinspect": true, "mchanges": true, "mreload": true,
 }
 
 // execNeutralWriters lists options of otherwise neutral commands that write

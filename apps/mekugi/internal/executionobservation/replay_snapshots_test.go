@@ -21,7 +21,6 @@ import (
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -263,36 +262,24 @@ func TestReplaySnapshotsForkDependenciesSurviveCleanup(t *testing.T) {
 	}
 }
 
-func TestReplaySnapshotsRetainedChangeOutputAfterRestart(t *testing.T) {
+func TestReplaySnapshotsRetainedFrozenFileAfterRestart(t *testing.T) {
 	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	parent, release := retentionTestSession(t, store, "parent", 0)
-	id, err := store.changes.Reserve(parent, store.scoped(parent).changeScope(), "/w", "parent", "edit")
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := snapshotTestHistory()
-	h.ChangeID, h.CorrelationID, h.Attempt = id, "edit", 1
-	snapshotTestPut(t, store, parent, "edit-call", h)
-	query := changes.Query{Workspace: "/w", IDs: []string{id}}
-	text, err := store.changes.Read(parent, store.scoped(parent).changeScope(), query)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(text, "-old\n+new") {
-		t.Fatalf("missing actual persisted edit: %q", text)
-	}
-	reference, err := putHistoricalChangeRead(store, parent, query, text, 1)
+	parentScope := store.scoped(parent).changeScope()
+	const content = "retained frozen evidence\n"
+	path, _, err := store.publication.WriteReadOnlyFile(parent, parentScope.Thread, parentScope.Limits, parentScope.Writes, "output", ".txt", []byte(content))
 	if err != nil {
 		t.Fatal(err)
 	}
 	release()
 	child, _ := retentionTestSession(t, store, "reader", 0)
 	child = bindTestHandleScope(t, store, child, "", "parent")
-	if _, err := store.recoverOutput(child, reference); err != nil {
+	raw := responses.MustMarshalJSON([]map[string]string{{"type": "message", "content": "Read with mcat " + path}})
+	if err := store.retainInput(child, "/w", raw, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	retentionTestAge(t, store, "parent", 15*24*time.Hour)
@@ -303,9 +290,9 @@ func TestReplaySnapshotsRetainedChangeOutputAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := reopened.recoverOutput(child, reference)
-	if err != nil || output.Stdout != text[1:] {
-		t.Fatalf("retained change output differs after expiry/restart: %q err=%v", output.Stdout, err)
+	data, err := reopened.publication.ReadReadOnlyFile(path, history.MaxRecordBytes)
+	if err != nil || string(data) != content {
+		t.Fatalf("retained frozen file differs after expiry/restart: %q err=%v", data, err)
 	}
 }
 

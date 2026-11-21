@@ -9,13 +9,14 @@ contracts, and `graphify` or source search for file-level lookup. Native Rust ru
 
 - **Native (`runtime/codex`)**: root/child execution, coordination (`thread_manager`, `agent_host`),
   model templates (`models-manager`), helper/child-reply guidance (`core/src/mekugi_guidance`),
-  context usage milestones (`token_budget.rs`), source acquisition & reload (`context_sources*.rs`,
-  `compact_token_budget.rs`, `ext/skills`), OS/Git environment facts (`environment_facts.rs`),
-  `SESSION_TMP` (`exec_env.rs`), and model-input output deduplication (`output_deduplication.rs`).
+  native helper tools (`mcat`, `mfinspect`, `msymbol`, `mrun`), context usage milestones
+  (`token_budget.rs`), source acquisition & reload (`context_sources*.rs`, `compact_token_budget.rs`,
+  `ext/skills`), OS/Git environment facts (`environment_facts.rs`), `SESSION_TMP` (`exec_env.rs`),
+  and model-input output deduplication (`output_deduplication.rs`).
 - **Go (`apps/mekugi/internal/` & `modules/`)**: server/session lifetime, terminal & browser UIs,
   inference gateway & custom Responses routing, passive edit capture & `mchanges`, authenticated
-  frontends (`mcat`/`mrun`/`mread`/`msymbol`/`inspect_file`/`mchanges`), shell guards & private
-  secret dialogs, retained session history, inspection, replay, usage/diagnostics.
+  Go frontends (`mchanges`, internal `mreload`), shell guards & private secret dialogs, retained
+  session history, inspection, replay, usage/diagnostics.
 
 ## Application owners (`apps/mekugi/internal/`)
 
@@ -23,7 +24,7 @@ contracts, and `graphify` or source search for file-level lookup. Native Rust ru
 | --- | --- |
 | `composition` | Selected descriptors/bindings; `contracts` holds shared interfaces; `testsupport/moduletest` holds harness |
 | `launch` | CLI dispatch, profile imports, invocation/server/connector startup, native attachment & host wiring |
-| `frontends` | Authenticated executable catalog/PATH, worker pinning, leases, and recovery delivery |
+| `frontends` | Authenticated executable catalog/PATH, worker pinning, and leases |
 | `headless` | Noninteractive automation client and JSONL host evidence |
 | `inferencegateway` | Responses HTTP/WS admission, pinned custom routing, catalog/auxiliary forwarding, service tier |
 | `requestexecution` | Shared inference attempt, delivery, cancellation, failure handling, and instruction retention |

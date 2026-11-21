@@ -4,20 +4,18 @@ import (
 	"errors"
 
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
-func (p *Preparer) completionReader(thread string) (compact.ChangeReader, *recovery.Session, error) {
-	if p.Retained.Store == nil || p.Recovery == nil {
-		return compact.ChangeReader{}, nil, errors.New("completion attachment storage is unavailable")
+func (p *Preparer) completionReader(thread string) (compact.ChangeReader, error) {
+	if p.Retained.Store == nil {
+		return compact.ChangeReader{}, errors.New("completion attachment storage is unavailable")
 	}
 	selected := p.Retained
 	selected.Thread = thread
 	admitted, err := selected.Store.ReadAdmittedScope(thread)
 	if err != nil {
-		return compact.ChangeReader{}, nil, err
+		return compact.ChangeReader{}, err
 	}
 	selected.Namespace = admitted.Namespace
-	store, err := p.Recovery.AttachStore(selected.Store, selected.Namespace, thread, recovery.DefaultLimits(), selected.Writes)
-	return compact.ChangeReader{Service: p.Changes, Scope: selected}, store, err
+	return compact.ChangeReader{Service: p.Changes, Scope: selected}, nil
 }

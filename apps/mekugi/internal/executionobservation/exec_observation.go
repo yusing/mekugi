@@ -12,12 +12,10 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
 const maxExecReportBytes = 8 << 10
@@ -84,7 +82,7 @@ func execDerivedUpstreamItem(derivedCallID, arguments string) map[string]json.Ra
 // first; the others keep a record naming it. An empty effect is retained
 // without a change ID, so replay neither reads the workspace again nor
 // allocates an ID for read-only work.
-func finalizeExecObservations(selected changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publish func([]changes.Update), windows *Windows, activity *sessioncontrol.Audience, notice func(string, string, string, string), ctx context.Context, workspace string, members []execCompletion) error {
+func finalizeExecObservations(selected changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, publish func([]changes.Update), windows *Windows, activity *sessioncontrol.Audience, notice func(string, string, string, string), ctx context.Context, workspace string, members []execCompletion) error {
 	selected = observationScope(ctx, selected)
 	var pending []execCompletion
 	for _, member := range members {
@@ -148,7 +146,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 			// An independently witnessed edit boundary separates this writer
 			// from siblings that otherwise share one coarse response window.
 			for _, single := range members {
-				if err := finalizeExecObservations(selected, source, snapshots, recovered, publish, windows, activity, notice, ctx, workspace, []execCompletion{single}); err != nil {
+				if err := finalizeExecObservations(selected, source, snapshots, publish, windows, activity, notice, ctx, workspace, []execCompletion{single}); err != nil {
 					return err
 				}
 			}
@@ -202,7 +200,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	reviews, complete := result.Files, result.Complete
 	outcome := &result.Outcome
 	outcome.Overlaps, outcome.Background = view.overlaps, background
-	var reports, failureReports []string
+	var reports []string
 	var hostResults []binding.ToolResult
 	completions := make([]changecapture.Completion, 0, len(members))
 	for index, member := range members {
@@ -224,11 +222,7 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 			reports = append(reports, fmt.Sprintf("# call %d\n%s", index+1, execTruncateReport(member.result.Text, maxExecReportBytes/len(members))))
 		}
 	}
-	for index, failed := range outcome.ApplyCompletions(completions) {
-		if failed && !members[index].unknown {
-			failureReports = append(failureReports, execTruncateReport(members[index].result.Text, maxExecReportBytes))
-		}
-	}
+	outcome.ApplyCompletions(completions)
 	if len(members) == 1 && first.unknown {
 		outcome.Status, outcome.Exit = "", nil
 		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; native tool outcome unavailable after joined runtime cleanup", "; ")
@@ -277,29 +271,6 @@ func finalizeExecObservations(selected changes.Scope, source changes.Service, sn
 	}
 	if !complete && record.Report != "" {
 		record.Report += "\nMekugi could not capture complete file evidence."
-	}
-	if selected.Store != nil && outcome.Status == changecapture.StatusFailed && len(failureReports) != 0 {
-		// Retain the bounded host evidence, not an invented reconstruction of
-		// output the host omitted. This never changes the host's tool result.
-		output := command.OmittedOutput{Stdout: strings.Join(failureReports, "\n")}
-		// The read record's status only marks the output failed; the observed
-		// exit, including an unknown or out-of-range one, stays on the outcome.
-		exit := 1
-		if outcome.Exit != nil && *outcome.Exit > 0 && *outcome.Exit <= 255 {
-			exit = *outcome.Exit
-		}
-		session, err := recovered.AttachStore(selected.Store, selected.Namespace, selected.Thread, selected.Limits, selected.Writes)
-		var ref string
-		if err == nil {
-			ref, err = session.Publish(ctx, output, exit)
-		}
-		if err != nil {
-			if notice != nil {
-				notice("", thread, "failure_output_storage", "Failed-command output could not be retained. The command outcome remains available without its output.")
-			}
-		} else {
-			outcome.OutputRef = ref
-		}
 	}
 	records := map[string]mekugiHistory{derivedCallID: record}
 	if record.ChangeID != "" {

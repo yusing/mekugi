@@ -36,7 +36,7 @@ func sourceReadCommand(script string, call *syntax.CallExpr, cwd string) (string
 	}
 	command = shellsyntax.CommandName(command)
 	patterns := command == "rg" || command == "grep" || command == "ls" ||
-		command == "cat" || command == "mcat" || command == "sed" || command == "nl" || command == "inspect_file" ||
+		command == "cat" || command == "mcat" || command == "sed" || command == "nl" || command == "inspect_file" || command == "mfinspect" ||
 		command == "head" || command == "tail"
 	var argv []string
 	for i, arg := range call.Args {
@@ -122,7 +122,7 @@ func sourceReadCommand(script string, call *syntax.CallExpr, cwd string) (string
 			return "", false
 		}
 		add("Read", pathdisplay.ForWorkspace(cwd, argv[3])+" "+strings.Join(spans, " "))
-	case "inspect_file":
+	case "inspect_file", "mfinspect":
 		options := true
 		seen := make(map[string]bool)
 		for i := 1; i < len(argv); i++ {
@@ -140,7 +140,7 @@ func sourceReadCommand(script string, call *syntax.CallExpr, cwd string) (string
 				if name == "--json" && !inline {
 					continue
 				}
-				if name != "--max-tokens" {
+				if argv[0] == "mfinspect" || name != "--max-tokens" {
 					return "", false
 				}
 				if !inline {

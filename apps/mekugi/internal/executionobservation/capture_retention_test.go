@@ -89,7 +89,7 @@ func TestLargeNamedCaptureRetainsEveryFileAcrossRestart(t *testing.T) {
 	p := testProxyWithStore(f.store)
 	members := []execCompletion{{callID: "large", history: original, result: binding.DecodeExecutionResult(nativeExecCommandToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}
 	for range 2 {
-		if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges, p.Windows, p.Audience, p.Notice, f.ctx, f.workspace, members); err != nil {
+		if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.PublishChanges, p.Windows, p.Audience, p.Notice, f.ctx, f.workspace, members); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -227,7 +227,7 @@ func testPatchPythonFormatterDelayedCompletion(t *testing.T) {
 		t.Fatalf("Python/formatter host: %s, %v", output, err)
 	}
 	time.Sleep(time.Hour)
-	if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges, p.Windows, p.Audience, p.Notice, f.ctx, f.workspace, []execCompletion{{callID: "format", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
+	if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.PublishChanges, p.Windows, p.Audience, p.Notice, f.ctx, f.workspace, []execCompletion{{callID: "format", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
 		t.Fatal(err)
 	}
 	completed, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("format", false))

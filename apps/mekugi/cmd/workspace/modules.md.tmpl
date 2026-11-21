@@ -19,6 +19,5 @@ availability. Each module's specification owns its behavior and acceptance.
 {{end}}{{if .Descriptor.Hosts}}- Hosts: {{range $i, $v := .Descriptor.Hosts}}{{if $i}}, {{end}}`{{$v}}`{{end}}.
 {{end}}{{if .Descriptor.Commands}}- Commands: {{range $i, $v := .Descriptor.Commands}}{{if $i}}, {{end}}`{{$v}}`{{end}}.
 {{end}}{{if .Descriptor.Records}}- Records: {{range $i, $v := .Descriptor.Records}}{{if $i}}, {{end}}`{{$v}}`{{end}}.
-{{end}}{{if .Descriptor.References}}- References: {{range $i, $v := .Descriptor.References}}{{if $i}}, {{end}}`{{$v}}`{{end}}.
 {{end}}- Codex connections: {{range $i, $v := .Binding.Mechanisms}}{{if $i}}, {{end}}`{{$v}}`{{else}}none{{end}}.
 {{end}}

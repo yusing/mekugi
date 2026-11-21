@@ -6,9 +6,9 @@
   denials with atomic file, skill, selection, and image attachments (including image previews for
   host paths, uploads, and paste) and undo/redo/external-editor support.
 - Queued composer input must not cancel an active logical agent wait.
-- Support optional `mread` recall of prior selections, skills, files, and submitted-image
-  references after context resets/compactions without replaying image pixels or re-reading
-  unselected file bodies; deduplicate identical supplied source content.
+- Support optional `mcat` recall of prior selections, skills, files, and submitted-image
+  references via retained read-only files after context resets/compactions without replaying image
+  pixels or re-reading unselected file bodies; deduplicate identical supplied source content.
 - Support isolated `/oneoff` work-capable forks and read-only `/btw` side questions without
   polluting Main's transcript.
 

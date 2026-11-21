@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
 // threadExecution joins the supplied runtime registry and feature owner. It owns
@@ -27,7 +26,6 @@ type threadExecution struct {
 	catalog      *inferencegateway.ReasoningCatalog
 	features     *sessioncontrol.NativeFeatureUse
 	retained     changes.Scope
-	recovery     *recovery.Service
 	windows      *executionobservation.Windows
 	tools        []binding.MCPServer
 	setup        *threadSetup

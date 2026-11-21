@@ -241,7 +241,6 @@ func retainedObservation(v changecapture.Observation) legacycall.Observation {
 func legacyOutcome(v legacycall.Outcome) changecapture.Outcome {
 	return changecapture.Outcome{
 		DeletedDirectories: v.DeletedDirectories,
-		OutputRef:          v.OutputRef,
 		Status:             v.Status,
 		Exit:               v.Exit,
 		Class:              v.Class,
@@ -259,7 +258,6 @@ func legacyOutcome(v legacycall.Outcome) changecapture.Outcome {
 func retainedOutcome(v changecapture.Outcome) legacycall.Outcome {
 	return legacycall.Outcome{
 		DeletedDirectories: v.DeletedDirectories,
-		OutputRef:          v.OutputRef,
 		Status:             v.Status,
 		Exit:               v.Exit,
 		Class:              v.Class,

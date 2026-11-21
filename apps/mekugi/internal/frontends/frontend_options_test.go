@@ -11,7 +11,7 @@ func TestFrontendInlineBudgets(t *testing.T) {
 	workspace := t.TempDir()
 	parsers := map[string]func([]string) (int, error){
 		"mcat": func(args []string) (int, error) {
-			_, options, err := commandargs.ParseReadBundle(append(args, "file.go"))
+			_, options, err := commandargs.ParseReadBundleSource(append(args, "file.go"))
 			return options.Budget, err
 		},
 		"mrun": func(args []string) (int, error) {
@@ -21,10 +21,6 @@ func TestFrontendInlineBudgets(t *testing.T) {
 		"msymbol": func(args []string) (int, error) {
 			options, err := commandargs.ParseSymbolQueries(append(args, "def", "file.go", "Value"))
 			return options.Budget, err
-		},
-		"mchanges": func(args []string) (int, error) {
-			options, err := testChanges().Parse(append(args, "amber1"), workspace)
-			return options.MaxTokens, err
 		},
 	}
 	for name, parse := range parsers {
@@ -46,14 +42,17 @@ func TestFrontendInlineBudgets(t *testing.T) {
 			}
 		})
 	}
+	if _, err := testChanges().Parse([]string{"amber1", "--max-tokens=99"}, workspace); err == nil {
+		t.Fatal("mchanges accepted removed --max-tokens option")
+	}
 	options, err := testChanges().Parse([]string{"amber1", "--", "--max-tokens=99"}, workspace)
-	if err != nil || options.MaxTokens != 0 || !reflect.DeepEqual(options.Paths, []string{"--max-tokens=99"}) {
+	if err != nil || !reflect.DeepEqual(options.Paths, []string{"--max-tokens=99"}) {
 		t.Fatalf("path boundary: %+v %v", options, err)
 	}
 }
 
 func TestFrontendDistinctOperandPolicies(t *testing.T) {
-	if _, _, err := commandargs.ParseReadBundle([]string{"source", "1:9007199254740992"}); err == nil {
+	if _, _, err := commandargs.ParseReadBundleSource([]string{"source", "1:9007199254740992"}); err == nil {
 		t.Fatal("mcat accepted a range above the safe-integer ceiling")
 	}
 

@@ -47,7 +47,7 @@ func TestFrontendRequestPreservesInputAndSelectedHistoryScope(t *testing.T) {
 	calls := 0
 	wantScope := scope.Retained{Directory: manifest.ReplayDirectory, Namespace: parent, Thread: thread}
 	for i := range commands {
-		if commands[i].Name == "mrun" {
+		if commands[i].Name == "mchanges" {
 			commands[i].Run = func(_ context.Context, request command.Request) (command.Output, error) {
 				calls++
 				if !slices.Equal(request.Args, args) || request.Stdin != stdin || request.Scope != wantScope {
@@ -62,7 +62,7 @@ func TestFrontendRequestPreservesInputAndSelectedHistoryScope(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	handled, status := runToolPluginWorkerInHostProcess(service, testRecovery(), commands, t.Context(), filepath.Join(registry.FrontendDirectory, "mrun"), args, stdin, &stdout, &stderr)
+	handled, status := runToolPluginWorkerInHostProcess(service, commands, t.Context(), filepath.Join(registry.FrontendDirectory, "mchanges"), args, stdin, &stdout, &stderr)
 	if !handled || status != 7 || calls != 1 || stdout.String() != "forwarded\n" || stderr.String() != "diagnostic\n" {
 		t.Fatalf("handled=%t status=%d calls=%d stdout=%q stderr=%q", handled, status, calls, stdout.String(), stderr.String())
 	}

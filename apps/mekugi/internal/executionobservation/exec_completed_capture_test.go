@@ -240,7 +240,7 @@ func TestExecReceiptWriterBoundaryLiveAndRetained(t *testing.T) {
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 2, Code: new(7)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(7)}, segmenttransport.Message{Type: segmenttransport.Closed})
 	hub.await(t, [3]string{f.thread, "turn", "writer"}, func(r segments.Report) bool { return r.Complete() })
 	h := mekugiHistory{ToolName: nativeExecCommandToolName, Root: f.workspace, ExecutingThread: f.thread, Script: script, ExecObservation: observed}
-	err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: h, result: binding.ExecutionResult{Terminal: true, ExitCode: new(7)}, host: &binding.ToolResult{CallID: "writer", Tool: "exec_command", Status: "completed", ExitCode: new(7)}}})
+	err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: h, result: binding.ExecutionResult{Terminal: true, ExitCode: new(7)}, host: &binding.ToolResult{CallID: "writer", Tool: "exec_command", Status: "completed", ExitCode: new(7)}}})
 	if err != nil {
 		t.Fatal(err)
 	}

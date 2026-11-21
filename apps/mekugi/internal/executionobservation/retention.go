@@ -16,7 +16,6 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -54,7 +53,7 @@ func beginRetainedSession(ctx context.Context, store *history.Store, writes *per
 	return context.WithValue(ctx, storageSessionKey{}, identity), release, nil
 }
 
-var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])mread(?:[ \t]|\\t)+([a-z]+[0-9]*\b(?:(?:[ \t]|\\t)+[a-z]+[0-9]*\b)*)`)
+var retainedFrozenFile = regexp.MustCompile(`\bfrozen-[a-z0-9][a-z0-9-]{0,31}-[0-9a-f]{64}\.(?:txt|json)\b`)
 
 func observationRetentionInput(workspace string, raw json.RawMessage, items []map[string]json.RawMessage, releaseSnapshot func()) recordtransactions.Input {
 	input := recordtransactions.Input{Workspace: workspace, ReleaseSnapshot: releaseSnapshot}
@@ -67,8 +66,10 @@ func observationRetentionInput(workspace string, raw json.RawMessage, items []ma
 			input.OptionalFiles = append(input.OptionalFiles, legacycall.Name(workspace, responses.StringField(item, "id"), true))
 		}
 	}
-	for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
-		input.References = append(input.References, strings.Fields(strings.ReplaceAll(match[1], `\t`, " "))...)
+	for _, name := range retainedFrozenFile.FindAllString(string(raw), -1) {
+		if history.FrozenFileName(name) {
+			input.OptionalFiles = append(input.OptionalFiles, name)
+		}
 	}
 	return input
 }
@@ -76,7 +77,7 @@ func observationRetentionInput(workspace string, raw json.RawMessage, items []ma
 // Retain the complete visible history in one locked catalog update. A fork
 // shares immutable records with its source; removing either chat keeps facts
 // referenced by the other. Invalid input never establishes an ownership claim.
-func retainObservationInput(ctx context.Context, selected changes.Scope, source changes.Service, recovered *recovery.Service, input recordtransactions.Input, histories map[string]mekugiHistory) error {
+func retainObservationInput(ctx context.Context, selected changes.Scope, source changes.Service, input recordtransactions.Input, histories map[string]mekugiHistory) error {
 	if selected.Store == nil {
 		return nil
 	}
@@ -100,7 +101,7 @@ func retainObservationInput(ctx context.Context, selected changes.Scope, source 
 	if identity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity); identity.Initialize {
 		input.Initialize = &history.Scope{Thread: identity.Thread, Namespace: identity.Namespace, Parent: identity.Parent, Fork: identity.Fork}
 	}
-	err := recordtransactions.RetainInput(ctx, selected, source, recovered, input)
+	err := recordtransactions.RetainInput(ctx, selected, source, input)
 	if retention, ok := errors.AsType[*recordtransactions.RetentionError](err); ok {
 		return requestexecution.StoragePublicationError(retention.Err)
 	}

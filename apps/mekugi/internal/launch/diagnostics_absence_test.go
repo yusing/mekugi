@@ -98,7 +98,7 @@ func runDiagnosticsAbsentSession(t *testing.T, ctx context.Context, args []strin
 		t.Fatal(err)
 	}
 	defer usage.Close()
-	return runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), usage,
+	return runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), history, testPreferences(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), usage,
 		new(evidence.Service), new(transportcapture.Service), nil, ctx,
 		testCommands(), testNaming(), nil, testGuards(), options, testCriticalErrors(), ready,
 		func(paths []string) { t.Errorf("absent diagnostics published artifacts: %v", paths) })

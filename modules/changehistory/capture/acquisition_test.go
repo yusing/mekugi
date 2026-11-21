@@ -95,7 +95,7 @@ func TestReconcileAssessesCapturedOutcome(t *testing.T) {
 	if !slices.Equal(result.DeletedDirectories, []string{directory}) || !slices.Equal(result.Scope, observation.ScopePaths()) || result.Class != observation.Class || !slices.Equal(result.Labels, observation.Labels) || !result.CodeMode {
 		t.Fatalf("capture assessment = %+v", result.Outcome)
 	}
-	if !strings.Contains(result.ScopeReason, "intermediate writes unobserved (call-window comparison only)") || result.Status != "" || result.Exit != nil || result.OutputRef != "" {
+	if !strings.Contains(result.ScopeReason, "intermediate writes unobserved (call-window comparison only)") || result.Status != "" || result.Exit != nil {
 		t.Fatalf("capture assessment changed host or publication facts: %+v", result.Outcome)
 	}
 }

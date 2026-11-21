@@ -19,7 +19,6 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/evidence"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -147,16 +146,10 @@ func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), er
 	return s.publication.SnapshotLease(ctx)
 }
 
-func (s *mekugiReplayStore) recoverySession(ctx context.Context) (*recovery.Session, error) {
-	s = s.scoped(ctx)
-	return s.recovery.AttachStore(s.publication, s.session.Namespace, s.session.Thread, s.retentionLimits(), s.writes)
-}
-
 // Retained-evidence fixture configuration. Production borrows the actual owners.
 type mekugiReplayStore struct {
 	changes            changes.Service
 	captured           *changecapture.Service
-	recovery           *recovery.Service
 	writes             *persistence.Counter
 	directory          string
 	maxBytes           int64
@@ -267,12 +260,12 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 		input.Files = append(input.Files, legacycall.Name(workspace, id, false))
 		input.Changes = append(input.Changes, h.ChangeID)
 	}
-	return recordtransactions.RetainInput(ctx, s.changeScope(), s.changes, s.recovery, input)
+	return recordtransactions.RetainInput(ctx, s.changeScope(), s.changes, input)
 }
 
 // Fixture composition supplies production owners before preparing an operation.
 func setTestProxyStore(p *observationFixture, store *mekugiReplayStore) {
-	p.retained, p.changeSource, p.snapshots, p.recovered, p.publishChanges = store.changeScope(), store.changes, store.snapshots, store.recovery, store.liveDiff
+	p.retained, p.changeSource, p.snapshots, p.publishChanges = store.changeScope(), store.changes, store.snapshots, store.liveDiff
 }
 func testProxyWithStore(store *mekugiReplayStore, windows ...*executionobservation.Windows) *observationFixture {
 	p := new(observationFixture)
@@ -283,20 +276,20 @@ func testProxyWithStore(store *mekugiReplayStore, windows ...*executionobservati
 	return p
 }
 func setTestUIStore(u *appServerUI, store *mekugiReplayStore) {
-	u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges = store.changeScope(), store.changes, store.snapshots, store.recovery, store.liveDiff
+	u.retained, u.changeSource, u.snapshots, u.publishChanges = store.changeScope(), store.changes, store.snapshots, store.liveDiff
 }
-func observationTestStore(selected changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publish func([]changes.Update)) *mekugiReplayStore {
+func observationTestStore(selected changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, publish func([]changes.Update)) *mekugiReplayStore {
 	if selected.Store == nil {
 		return nil
 	}
-	return &mekugiReplayStore{publication: selected.Store, directory: selected.Store.Directory(), writes: selected.Writes, maxBytes: selected.Limits.Total, maxCommentaryBytes: selected.Limits.Kinds["commentary"], session: storageSessionIdentity{Thread: selected.Thread, Namespace: selected.Namespace}, changes: source, snapshots: snapshots, recovery: recovered, liveDiff: publish}
+	return &mekugiReplayStore{publication: selected.Store, directory: selected.Store.Directory(), writes: selected.Writes, maxBytes: selected.Limits.Total, maxCommentaryBytes: selected.Limits.Kinds["commentary"], session: storageSessionIdentity{Thread: selected.Thread, Namespace: selected.Namespace}, changes: source, snapshots: snapshots, liveDiff: publish}
 }
 func testProxyStore(p *observationFixture) *mekugiReplayStore {
-	return observationTestStore(p.retained, p.changeSource, p.snapshots, p.recovered, p.publishChanges)
+	return observationTestStore(p.retained, p.changeSource, p.snapshots, p.publishChanges)
 }
 
 func testUIStore(u *appServerUI) *mekugiReplayStore {
-	return observationTestStore(u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges)
+	return observationTestStore(u.retained, u.changeSource, u.snapshots, u.publishChanges)
 }
 
 const maxReplayRecordBytes = history.MaxRecordBytes

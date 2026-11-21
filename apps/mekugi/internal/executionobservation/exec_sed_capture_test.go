@@ -51,7 +51,7 @@ func TestNativeExecSedInPlaceCapturesEdit(t *testing.T) {
 		t.Fatalf("persisted sed edit = %+v, found = %v, err = %v", history, found, err)
 	}
 	changes, err := testProxyStore(proxy).changes.Read(next.ctx, testProxyStore(proxy).scoped(next.ctx).changeScope(), changes.Query{
-		Workspace: workspace, IDs: []string{history.ChangeID}, View: "history", MaxTokens: 4000,
+		Workspace: workspace, IDs: []string{history.ChangeID}, View: "history",
 	})
 	if err != nil {
 		t.Fatal(err)

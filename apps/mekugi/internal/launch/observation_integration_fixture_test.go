@@ -21,7 +21,6 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -43,7 +42,6 @@ type observationFixture struct {
 	retained       changes.Scope
 	changeSource   changes.Service
 	snapshots      *changecapture.Workspaces
-	recovered      *recovery.Service
 	publishChanges func([]changes.Update)
 	noticeSink     func(string, string, string, string)
 }
@@ -88,7 +86,6 @@ func (p *observationFixture) preparer() *executionobservation.Preparer {
 		Retained:       p.retained,
 		Changes:        p.changeSource,
 		Checkpoints:    p.snapshots,
-		Recovery:       p.recovered,
 		PublishChanges: p.publishChanges,
 		Notice:         p.noticeSink,
 	})

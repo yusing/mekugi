@@ -42,7 +42,7 @@ func TestChildReplySummaryGuidanceInvocation(t *testing.T) {
 			defer cancel()
 			ready, done := make(chan invocationFixture, 1), make(chan error, 1)
 			go func() {
-				done <- testRunSession(testHistory(), testRecovery(), ctx, testCommands(), tc.args, nil,
+				done <- testRunSession(testHistory(), ctx, testCommands(), tc.args, nil,
 					func(session invocationFixture) { ready <- session }, nil)
 			}()
 			var session invocationFixture

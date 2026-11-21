@@ -19,20 +19,15 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/agentmetrics"
-	"github.com/yusing/mekugi/modules/boundedcommand"
 	"github.com/yusing/mekugi/modules/changehistory"
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments"
-	"github.com/yusing/mekugi/modules/fileread"
-	"github.com/yusing/mekugi/modules/outputrecovery"
 	"github.com/yusing/mekugi/modules/remotewriteapproval"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 	"github.com/yusing/mekugi/modules/sessioninspection"
 	"github.com/yusing/mekugi/modules/sessionnaming"
 	"github.com/yusing/mekugi/modules/sessionreplay"
-	"github.com/yusing/mekugi/modules/sourceoutline"
 	"github.com/yusing/mekugi/modules/sudoapproval"
-	"github.com/yusing/mekugi/modules/symbolquery"
 	"github.com/yusing/mekugi/modules/transportdiagnostics"
 	"github.com/yusing/mekugi/modules/usage"
 )
@@ -82,11 +77,6 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 
 	live := c.Add(livepreview.Module, func() livepreview.Deps { return livepreview.Deps{ReadEndpoint: capture.ReadFile} })
 	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value(), Live: liveReports} })
-	recovery := c.Add(outputrecovery.Module, func() outputrecovery.Deps { return outputrecovery.Deps{History: history.Value()} })
-	c.Add(boundedcommand.Module, func() boundedcommand.Deps { return boundedcommand.Deps{} })
-	c.Add(sourceoutline.Module, func() sourceoutline.Deps { return sourceoutline.Deps{} })
-	c.Add(fileread.Module, func() fileread.Deps { return fileread.Deps{} })
-	c.Add(symbolquery.Module, func() symbolquery.Deps { return symbolquery.Deps{} })
 	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
 	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
 	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })
@@ -109,7 +99,6 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 		runtime.Activity = activity.Value()
 		runtime.Conversation = conversation.Value()
 		runtime.LivePreview = live.Value()
-		runtime.Recovery = recovery.Value()
 		runtime.Segments = segments.Value()
 	}
 }

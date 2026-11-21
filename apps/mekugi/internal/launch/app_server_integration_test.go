@@ -6,7 +6,7 @@ func testAppServerIntegration(p *observationFixture) appServerIntegration {
 	if p == nil {
 		return appServerIntegration{}
 	}
-	integration := appServerIntegration{controlObservations: p.control, usage: p.usage, audience: p.activity, review: p.review, execWindows: p.execWindows, nativeTrace: p.nativeTrace, retained: p.retained, changeSource: p.changeSource, snapshots: p.snapshots, recovered: p.recovered, publishChanges: p.publishChanges, captureNotice: p.noticeSink}
+	integration := appServerIntegration{controlObservations: p.control, usage: p.usage, audience: p.activity, review: p.review, execWindows: p.execWindows, nativeTrace: p.nativeTrace, retained: p.retained, changeSource: p.changeSource, snapshots: p.snapshots, publishChanges: p.publishChanges, captureNotice: p.noticeSink}
 	integration.preparer = p.preparer()
 	integration.bindForks = func(server *sessionapi.Server) { p.forks.Store(server) }
 	if p.execWindows != nil {
@@ -28,7 +28,6 @@ func setTestAppServerIntegration(u *appServerUI, p *observationFixture) {
 	u.retained = integration.retained
 	u.changeSource = integration.changeSource
 	u.snapshots = integration.snapshots
-	u.recovered = integration.recovered
 	u.publishChanges = integration.publishChanges
 	u.captureNotice = integration.captureNotice
 	u.review = attachReview(u.ctx, u.review, u.retained, u.changeSource)

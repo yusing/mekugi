@@ -26,7 +26,6 @@ import (
 	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -47,7 +46,6 @@ type appServerIntegration struct {
 	retained            changes.Scope
 	changeSource        changes.Service
 	snapshots           *changecapture.Workspaces
-	recovered           *recovery.Service
 	publishChanges      func([]changes.Update)
 	captureNotice       func(string, string, string, string)
 	guard               *sessioncontrol.ShellApprovals
@@ -90,7 +88,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		defer listener.Close()
 		serverContext, stopServer := context.WithCancel(ctx)
 		launcher := nativeFixtureLauncher{run: func(runtimeContext context.Context, api *sessionapi.Server, threads *threadExecution) error {
-			wait, err := (&nativeSession{preparer: integration.preparer, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments, ctx: runtimeContext, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: generator, observations: observations, approvalMode: approvals}).start(prefs, cmd, integration.guard, integration.guards, integration.skillsManager, resumeThread, nil, api, false, threads)
+			wait, err := (&nativeSession{preparer: integration.preparer, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments, ctx: runtimeContext, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: generator, observations: observations, approvalMode: approvals}).start(prefs, cmd, integration.guard, integration.guards, integration.skillsManager, resumeThread, nil, api, false, threads)
 			if err != nil {
 				return err
 			}

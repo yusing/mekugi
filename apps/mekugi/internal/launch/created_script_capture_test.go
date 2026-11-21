@@ -119,7 +119,7 @@ func TestUISnapshotCreatedScriptCapture(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer release()
-			text, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{changeID}, View: "net", MaxTokens: 4000})
+			text, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{changeID}, View: "net"})
 			if err != nil || !strings.Contains(text, "+after") || !strings.Contains(text, "target.txt") {
 				t.Fatalf("retained script target: %q, %v", text, err)
 			}

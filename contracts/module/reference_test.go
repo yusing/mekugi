@@ -12,15 +12,13 @@ import (
 	"github.com/yusing/mekugi/contracts/diagnosticsection"
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/contracts/reference"
-	"github.com/yusing/mekugi/contracts/scope"
 )
 
 func TestDescriptorReference(t *testing.T) {
 	descriptor := Descriptor[struct{}, struct{}, NoBindings, NoViews]{
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
-		HostsRecords: true, HostsReferences: true,
+		HostsRecords: true,
 		HostsInspection: true, HostsDiagnosticSections: true,
 		New:   func(struct{}, Slots) (struct{}, error) { panic("New executed") },
 		Start: func(context.Context, struct{}) error { panic("Start executed") },
@@ -40,14 +38,6 @@ func TestDescriptorReference(t *testing.T) {
 					}},
 				{ID: "cursor"}, {ID: "output"},
 			},
-			References: []reference.Resolver{{
-				Field:        "changes",
-				Canonicalize: func([]byte, bool) ([]byte, error) { panic("Canonicalize executed") },
-				Resolve: func(context.Context, reference.View, []byte) (command.OmittedOutput, error) {
-					panic("Resolve executed")
-				},
-				Dependencies: func(scope.Retained, []byte) ([]string, error) { panic("reference Dependencies executed") },
-			}},
 			Inspection: []inspection.Definition[struct{}]{{
 				NewAX: func(struct{}) inspection.AXCollector { panic("NewAX executed") },
 				ProviderUsage: func(struct{}, context.Context, string, inspection.UsageFilter) (map[string]inspection.Usage, error) {
@@ -69,16 +59,16 @@ func TestDescriptorReference(t *testing.T) {
 	want := Reference{
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
-		Contributes: []string{"commands", "record-kinds", "references", "inspection", "diagnostic-sections", "presentation"},
-		Hosts:       []string{"record-kinds", "references", "inspection", "diagnostic-sections"},
-		Commands:    []string{"reader", "writer"}, Records: []string{"changes", "cursor", "output"}, References: []string{"changes"},
+		Contributes: []string{"commands", "record-kinds", "inspection", "diagnostic-sections", "presentation"},
+		Hosts:       []string{"record-kinds", "inspection", "diagnostic-sections"},
+		Commands:    []string{"reader", "writer"}, Records: []string{"changes", "cursor", "output"},
 	}
 	got := descriptor.Reference()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Reference() = %+v, want %+v", got, want)
 	}
 	got.Requires[0] = "changed"
-	for _, values := range [][]string{got.Resources, got.Contributes, got.Hosts, got.Commands, got.Records, got.References} {
+	for _, values := range [][]string{got.Resources, got.Contributes, got.Hosts, got.Commands, got.Records} {
 		values[0] = "changed"
 	}
 	if next := descriptor.Reference(); !reflect.DeepEqual(next, want) {
@@ -90,7 +80,6 @@ func TestDescriptorReference(t *testing.T) {
 	descriptor.Resources[0] = "different"
 	descriptor.Contributes.Commands[0].Name = "different"
 	descriptor.Contributes.RecordKinds[0].ID = "different"
-	descriptor.Contributes.References[0].Field = "different"
 	if !reflect.DeepEqual(snapshot, want) {
 		t.Fatalf("declaration mutation changed existing snapshot: %+v", snapshot)
 	}
@@ -99,9 +88,9 @@ func TestDescriptorReference(t *testing.T) {
 func TestDescriptorReferenceSlotsAreIndependent(t *testing.T) {
 	descriptor := Descriptor[struct{}, struct{}, NoBindings, NoViews]{
 		HostsRecords: true,
-		Contributes:  Contributions[struct{}]{References: []reference.Resolver{{Field: "source"}}},
+		Contributes:  Contributions[struct{}]{Commands: []command.Definition[struct{}]{{Name: "source"}}},
 	}
-	want := Reference{Contributes: []string{"references"}, Hosts: []string{"record-kinds"}, References: []string{"source"}}
+	want := Reference{Contributes: []string{"commands"}, Hosts: []string{"record-kinds"}, Commands: []string{"source"}}
 	if got := descriptor.Reference(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Reference() = %+v, want %+v", got, want)
 	}

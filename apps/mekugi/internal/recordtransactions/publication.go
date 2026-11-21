@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -45,7 +44,6 @@ type Input struct {
 	Files           []string
 	OptionalFiles   []string
 	Changes         []string
-	References      []string
 	Initialize      *history.Scope
 	ReleaseSnapshot func()
 }
@@ -61,7 +59,7 @@ func (e *RetentionError) Unwrap() error { return e.Err }
 // Completed writes survive failure, so retry uses the same durable identities.
 // Source: apps/mekugi/internal/router/storage_retention.go:151:207@9da47278 retainInput;
 // apps/mekugi/internal/router/handle_scope.go:45:92@9da47278 initializeHandleScope and cloneHandleData.
-func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Service, outputs *recovery.Service, input Input) error {
+func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Service, input Input) error {
 	release := func() {}
 	if input.ReleaseSnapshot != nil {
 		release = sync.OnceFunc(input.ReleaseSnapshot)
@@ -135,19 +133,6 @@ func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Serv
 			return err
 		}
 		names := append(files, dependencies...)
-		if len(input.References) > 0 {
-			session, err := outputs.AttachStore(selected.Store, selected.Namespace, selected.Thread, selected.Limits, selected.Writes)
-			if err != nil {
-				return err
-			}
-			for _, id := range input.References {
-				dependencies, err := session.Dependencies(id)
-				if err != nil {
-					return err
-				}
-				names = append(names, dependencies...)
-			}
-		}
 		release()
 		return retain(names)
 	})

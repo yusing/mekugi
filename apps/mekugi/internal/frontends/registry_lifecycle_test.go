@@ -58,14 +58,10 @@ func TestFrontendRegistryCleanupPreservesPeerInvocation(t *testing.T) {
 	if _, err := os.Stat(first.SnapshotDir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("closed snapshot remains: %v", err)
 	}
-	path := filepath.Join(directory, "source.txt")
-	if err := os.WriteFile(path, []byte("peer survives\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	t.Setenv("CODEX_THREAD_ID", uniqueTestThread("peer"))
 	var stdout, stderr bytes.Buffer
-	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), filepath.Join(peer.FrontendDirectory, "mcat"), []string{path}, nil, &stdout, &stderr)
-	if !handled || status != 0 || stdout.String() != "peer survives\n" || stderr.Len() != 0 {
+	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testCommands(), t.Context(), filepath.Join(peer.FrontendDirectory, "mchanges"), []string{"--list"}, nil, &stdout, &stderr)
+	if !handled || status != 0 || stdout.Len() != 0 || stderr.Len() != 0 {
 		t.Fatalf("peer after cleanup: handled=%t status=%d stdout=%q stderr=%q", handled, status, &stdout, &stderr)
 	}
 }

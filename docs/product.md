@@ -61,12 +61,13 @@ Rank tradeoffs within a change, while preserving correctness:
 The current product implements these requirements through:
 
 - **Native runtime (`runtime/codex`)** owning execution, V2 collaboration/waits, summary-free reset
-  (`new_context`), source/skill acquisition, OS/Git environment facts, context-usage notices, and
-  model-input output deduplication.
+  (`new_context`), source/skill acquisition, OS/Git environment facts, context-usage notices,
+  model-input output deduplication, and native helper commands (`mcat`, `mrun`, `msymbol`,
+  `mfinspect`).
 - **Go server and clients (`apps/mekugi`, `modules/`)** owning server-managed thread lifetimes,
-  terminal and Svelte browser UIs, authenticated session helpers (`mcat`, `mrun`, `mread`,
-  `msymbol`, `inspect_file`, `mchanges`), passive capture and 3-way merge revert/apply, shell
-  guards, custom Responses routing, retained session history, and offline inspection/replay.
+  terminal and Svelte browser UIs, authenticated session helpers (`mchanges`, internal `mreload`),
+  passive capture and 3-way merge revert/apply, shell guards, custom Responses routing, retained
+  session history, and offline inspection/replay.
 - **Single-generation model structure**: compaction selections and child reply summaries ride
   existing replies rather than adding separate summarization calls (except opt-in wait progress
   summaries for changed developers).

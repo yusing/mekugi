@@ -114,7 +114,7 @@ func TestGeneralPythonWorkingDirectoryEvidence(t *testing.T) {
 			}
 		}
 		h := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: &captured}
-		if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, workspace,
+		if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, workspace,
 			[]execCompletion{{callID: call, history: h, result: binding.DecodeExecutionResult(h.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": exit}))}}); err != nil {
 			t.Fatal(err)
 		}
@@ -149,7 +149,7 @@ func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
 	}
 	proxy := testProxyWithStore(f.store)
 	history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: "generator-agent", ExecObservation: observation}
-	if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "generate", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
+	if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "generate", history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(map[string]any{"exit_code": 0}))}}); err != nil {
 		t.Fatal(err)
 	}
 	record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("generate", false))
@@ -200,7 +200,7 @@ func TestPythonTemporaryWriteAndRestoreRetainsIncompleteHistory(t *testing.T) {
 	proxy := testProxyWithStore(f.store)
 	history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
 	output := responses.MustMarshalJSON("Wall time: 0.01 seconds\nProcess exited with code 0\nFinal output:\n")
-	if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "temporary", history: history, result: binding.DecodeExecutionResult(history.ToolName, output)}}); err != nil {
+	if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "temporary", history: history, result: binding.DecodeExecutionResult(history.ToolName, output)}}); err != nil {
 		t.Fatal(err)
 	}
 	record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("temporary", false))
@@ -317,7 +317,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 			if err := proxy.finalizeNativePatches(f.ctx, f.workspace, f.thread, "repeated-cell", history, binding.DecodeExecutionResult(history.ToolName, output)); err != nil {
 				t.Fatal(err)
 			}
-			if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "repeated-cell", history: history, result: binding.DecodeExecutionResult(history.ToolName, output)}}); err != nil {
+			if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, f.ctx, f.workspace, []execCompletion{{callID: "repeated-cell", history: history, result: binding.DecodeExecutionResult(history.ToolName, output)}}); err != nil {
 				t.Fatal(err)
 			}
 			for index, want := range []string{"patch-first", "patch-second"} {

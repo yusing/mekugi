@@ -20,7 +20,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-const SnapshotPrefix = "Reload snapshot: mread "
+const SnapshotPrefix = "Reload snapshot: "
 
 // CaptureCommand uses the authenticated worker's existing retained-output
 // delivery. Source bytes never pass through stock tool output windows. Internal
@@ -169,7 +169,22 @@ func (r Readers) Capture(ctx context.Context, request command.Request) (command.
 	if len(data) > history.MaxRecordBytes {
 		return command.Output{}, errors.New("reload selection exceeds retained record capacity; select smaller ranges")
 	}
-	return command.Output{Delivery: capturedDelivery{string(data)}}, nil
+	store := r.Changes.Scope.Store
+	if store == nil {
+		return command.Output{Stderr: "CONTENT NOT ATTACHED: reload snapshot publication failed\n", ExitCode: 1}, nil
+	}
+	limits := r.Changes.Scope.Limits
+	if limits.Total <= 0 {
+		limits.Total = history.DefaultStorageBytes
+	}
+	path, _, err := store.WriteReadOnlyFile(ctx, request.Scope.Thread, limits, r.Changes.Scope.Writes, "reload", ".json", data)
+	if err != nil {
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return command.Output{}, err
+		}
+		return command.Output{Stderr: fmt.Sprintf("CONTENT NOT ATTACHED: reload snapshot publication failed: %v\n", err), ExitCode: 1}, nil
+	}
+	return command.Output{Stdout: SnapshotPrefix + path + "\n"}, nil
 }
 
 func (r Readers) Read(ctx context.Context, selection, directory string, environment []string) (Snapshot, error) {
@@ -496,19 +511,4 @@ func (r ChangeReader) read(ctx context.Context, source SourceIdentity, directory
 		return fail(err)
 	}
 	return result
-}
-
-type capturedDelivery struct{ data string }
-
-func (capturedDelivery) ReferenceCount() int { return 1 }
-
-func (d capturedDelivery) Prepare(refs []string) (command.PreparedDelivery, error) {
-	if len(refs) != 1 {
-		return command.PreparedDelivery{}, errors.New("reload snapshot requires one reference")
-	}
-	return command.PreparedDelivery{
-		Referenced:   command.Output{Stdout: SnapshotPrefix + refs[0] + "\n"},
-		Unreferenced: command.Output{Stderr: "CONTENT NOT ATTACHED: reload snapshot publication failed\n", ExitCode: 1},
-		Recovery:     []command.RecoveryOutput{{Stdout: d.data}},
-	}, nil
 }

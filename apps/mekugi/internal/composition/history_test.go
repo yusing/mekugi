@@ -229,8 +229,9 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 		{reports.Name("/workspace", reports.ID("turn", "item")), "commandsegments"},
 		{"compact-" + strings.Repeat("a", 64) + ".json", "compact"},
 		{history.HookObservationsName("/workspace", "thread"), "hooks"},
-		{"cursor-" + strings.Repeat("a", 64) + ".json", "cursor"},
-		{"output-" + strings.Repeat("a", 64) + ".json", "output"},
+		{"frozen-reload-" + strings.Repeat("a", 64) + ".json", "frozen-file"},
+		{"frozen-output-" + strings.Repeat("b", 64) + ".txt", "frozen-file"},
+		{"resource-" + strings.Repeat("c", 64) + ".json", "frozen-resource"},
 	} {
 		kind, found, err := runtime.History.Kind(tc.name)
 		if err != nil || !found || kind.ID != tc.id {
@@ -253,22 +254,17 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 		suffix := ".json"
 		if strings.HasSuffix(tc.name, ".json.gz") {
 			suffix = ".json.gz"
+		} else if strings.HasSuffix(tc.name, ".txt") {
+			suffix = ".txt"
 		}
 		prefix := tc.name[:len(tc.name)-len(suffix)-64]
-		for _, invalid := range []string{"../" + tc.name, prefix + strings.Repeat("A", 64) + suffix, prefix + strings.Repeat("g", 64) + suffix, strings.Replace(tc.name, "-", "-a", 1), tc.name + ".tmp"} {
+		for _, invalid := range []string{"../" + tc.name, prefix + strings.Repeat("A", 64) + suffix, prefix + strings.Repeat("g", 64) + suffix, tc.name + ".tmp"} {
 			if kind.Match(invalid) {
 				t.Fatalf("invalid record %q recognized as %s", invalid, kind.ID)
 			}
 		}
 	}
-	for _, id := range []string{history.ShortHandle(0), history.ShortHandle(65)} {
-		name := "output-" + id + ".json"
-		kind, found, err := runtime.History.Kind(name)
-		if err != nil || !found || kind.ID != "output" {
-			t.Fatalf("output ID %q: kind=%+v found=%v err=%v", name, kind, found, err)
-		}
-	}
-	for _, name := range []string{"output-amber0.json", "output-AMBER.json", "cursor-amber.json", "../output-amber.json"} {
+	for _, name := range []string{"frozen--aaaa.txt", "frozen-BAD-" + strings.Repeat("a", 64) + ".txt", "frozen-reload-" + strings.Repeat("a", 64) + ".bin", "../frozen-reload-" + strings.Repeat("a", 64) + ".json"} {
 		if kind, found, err := runtime.History.Kind(name); err == nil && found {
 			t.Fatalf("invalid ID %q recognized as %s", name, kind.ID)
 		}

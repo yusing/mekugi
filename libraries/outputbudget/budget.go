@@ -1,8 +1,6 @@
 package outputbudget
 
 import (
-	"context"
-	"errors"
 	"strings"
 	"unicode/utf8"
 
@@ -34,27 +32,6 @@ func (b *Budget) Fits(s string, limit int) (bool, error) {
 	}
 	n, e := b.Count(s)
 	return n <= limit, e
-}
-
-func (b *Budget) SelectRows(value string, limit int, tail bool) (string, error) {
-	if len(value) <= limit {
-		return value, nil
-	}
-	if _, err := b.Count(""); err != nil {
-		return "", err
-	}
-	if limit > 0 && len(value) > limit*4 && strings.HasSuffix(value, "\n") {
-		if tail {
-			start := len(value) - limit*4
-			if start > 0 && value[start-1] != '\n' {
-				start += strings.IndexByte(value[start:], '\n') + 1
-			}
-			value = value[start:]
-		} else {
-			value = value[:strings.LastIndexByte(value[:limit*4], '\n')+1]
-		}
-	}
-	return b.codec.SelectRows(value, limit, tail)
 }
 
 type Text struct {
@@ -113,36 +90,4 @@ func (b *Budget) SelectText(value string, budget int, tail bool) (Text, error) {
 		keep -= max(1, n-budget)
 	}
 	return Text{}, nil
-}
-
-type Selection struct{ Stdout, Stderr string }
-
-// Select admits one shared token budget, reserving at most half for stderr
-// when stdout is present. Rows mode keeps only complete leading rows.
-func Select(ctx context.Context, budget int, mode, stdout, stderr string) (Selection, error) {
-	if err := ctx.Err(); err != nil {
-		return Selection{}, err
-	}
-	if budget < 1 || (mode != "head" && mode != "tail" && mode != "rows") {
-		return Selection{}, errors.New("invalid output selection")
-	}
-	counter := Budget{}
-	selectValue := func(value string, limit int) (Text, error) {
-		s, e := counter.SelectText(value, limit, mode == "tail")
-		if e == nil && mode == "rows" && len(s.Text) < len(value) {
-			s.Text = s.Text[:strings.LastIndexByte(s.Text, '\n')+1]
-			s.Tokens, e = counter.Count(s.Text)
-		}
-		return s, e
-	}
-	errorBudget := budget
-	if stdout != "" {
-		errorBudget = budget / 2
-	}
-	errorText, err := selectValue(stderr, errorBudget)
-	if err != nil {
-		return Selection{}, err
-	}
-	output, err := selectValue(stdout, budget-errorText.Tokens)
-	return Selection{Stdout: output.Text, Stderr: errorText.Text}, err
 }

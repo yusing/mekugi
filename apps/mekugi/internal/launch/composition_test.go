@@ -49,7 +49,7 @@ func TestCompositionFrontendCatalog(t *testing.T) {
 		names = append(names, entry.Name())
 	}
 	slices.Sort(names)
-	if !slices.Equal(names, []string{"inspect_file", "mcat", "mchanges", "mread", "mreload", "mrun", "msymbol"}) {
+	if !slices.Equal(names, []string{"mchanges", "mreload"}) {
 		t.Fatalf("composed frontend catalog: %v", names)
 	}
 }

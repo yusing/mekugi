@@ -261,82 +261,6 @@ func TestMChangesSlicesSummaryKeepsMixedStates(t *testing.T) {
 	}
 }
 
-func TestMChangesSlicesPageKeepsOriginalPendingAndAttemptSnapshot(t *testing.T) {
-	t.Parallel()
-	f := newMChangesSliceFixture(t, "slice-page-snapshot")
-	correlation := "large-completed"
-	completed := f.reserve(t, f.thread, correlation)
-	var input strings.Builder
-	for row := range 180 {
-		fmt.Fprintf(&input, "original-row-%03d\n", row)
-	}
-	f.publish(t, completed, correlation, "large-completed-call", mekugiHistory{
-		Script: input.String(),
-	})
-	pendingCorrelation := "pending-finalizes"
-	pending := f.reserve(t, f.thread, pendingCorrelation)
-	options := changes.Query{Workspace: f.workspace, IDs: []string{completed, pending}, View: "history"}
-	expected, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(expected, pending+" pending") || strings.Contains(expected, "finalized-after-page") {
-		t.Fatalf("bad pre-page fixture: %q", expected[len(expected)-min(len(expected), 200):])
-	}
-	stdout, stderr, status := f.run(t, "mchanges --mine --history --max-tokens 400")
-	if status == 0 || stdout == "" || !strings.HasPrefix(stderr, "read: incomplete; next_call: mread ") ||
-		!strings.HasSuffix(stdout, "\n") {
-		t.Fatalf("first page: %q, %q, %d", stdout, stderr, status)
-	}
-	stitched := stdout
-	cursor := strings.Fields(strings.TrimPrefix(stderr, "read: incomplete; next_call: mread "))[0]
-
-	// Finalize a previously pending selected change and append another attempt
-	// to the selected completed change while the original read is being paged.
-	f.publish(t, completed, correlation, "completed-appended-attempt", mekugiHistory{
-		Attempt: 2,
-		Script:  "appended-after-page\n",
-	})
-	f.publish(t, pending, pendingCorrelation, "pending-finalized-call", mekugiHistory{
-		Script: "finalized-after-page\n",
-	})
-	updated, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated == expected || !strings.Contains(updated, "finalized-after-page") ||
-		!strings.Contains(updated, "appended-after-page") {
-		t.Fatal("fixture mutations did not change the selected review state")
-	}
-	pages := 1
-	for page := range 100 {
-		stdout, stderr, status = f.run(t, "mread "+cursor+" --stdout --max-tokens 400")
-		if stdout != "" && !strings.HasSuffix(stdout, "\n") {
-			t.Fatalf("page %d ends within a row: %q", page+2, stdout)
-		}
-		stitched += stdout
-		pages = page + 2
-		if status == 0 {
-			if stderr != "" {
-				t.Fatalf("final page diagnostic: %q", stderr)
-			}
-			break
-		}
-		const marker = "read: incomplete; next_call: mread "
-		if !strings.HasPrefix(stderr, marker) || stdout == "" || page == 99 {
-			t.Fatalf("continuation page %d: %q, %q, %d", page+2, stdout, stderr, status)
-		}
-		cursor = strings.Fields(strings.TrimPrefix(stderr, marker))[0]
-	}
-	if pages < 3 {
-		t.Fatalf("snapshot read used %d pages; want continuation beyond the mutation page", pages)
-	}
-	if stitched != expected || !strings.Contains(stitched, pending+" pending") ||
-		strings.Contains(stitched, "finalized-after-page") || strings.Contains(stitched, "appended-after-page") {
-		t.Fatalf("continuation did not preserve the original snapshot: got %q, want %q", stitched, expected)
-	}
-}
-
 func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "slice-root")
@@ -597,33 +521,11 @@ func TestMChangesFrozenOverlapLabelSurvivesUnselectedRetirement(t *testing.T) {
 	f.publish(t, selected, "selected", "selected-call", mekugiHistory{
 		Script: "captured input\n", ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Overlaps: []string{"overlap-call"}},
 	})
-	text, diag, status := f.run(t, "mchanges "+selected+" --history --max-tokens 15500")
+	text, diag, status := f.run(t, "mchanges "+selected+" --history")
 	ids := []string{other, second}
 	slices.Sort(ids)
 	if status != 0 || diag != "" || !strings.Contains(text, "observed alongside "+strings.Join(ids, ", ")+"\n") {
 		t.Fatalf("overlap read: %q %q %d", text, diag, status)
-	}
-	shown, diag, status := f.run(t, "mchanges "+selected+" --history --max-tokens 12")
-	const marker = "read: incomplete; next_call: mread "
-	if status != 1 || shown == "" || !strings.HasPrefix(diag, marker) {
-		t.Fatalf("bounded read: %q %q %d", shown, diag, status)
-	}
-	reference := strings.TrimSpace(strings.TrimPrefix(diag, marker))
-	offset := len(shown)
-	f.retire(t, other)
-	f.retire(t, second)
-	resumed, err := openMekugiReplayStore(f.store.directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, release, err := resumed.beginSession(t.Context(), f.thread, "new-router")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer release()
-	output, err := resumed.recoverOutput(ctx, reference)
-	if err != nil || output.Stdout != text[offset:] {
-		t.Fatalf("frozen overlap recovery: %+v, %v", output, err)
 	}
 }
 

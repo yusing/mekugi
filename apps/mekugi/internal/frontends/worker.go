@@ -17,8 +17,6 @@ import (
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -81,7 +79,7 @@ func Recognize(argv0 string) (*Invocation, error) {
 
 // Run authenticates and dispatches the selected command under the caller's
 // process ownership. Only a dedicated host worker may claim DedicatedHostProcess.
-func (invocation *Invocation) Run(service *history.Service, recovered *recovery.Service, agentMetrics *evidence.Service, commands []command.Contribution, processScope command.ProcessScope,
+func (invocation *Invocation) Run(service *history.Service, agentMetrics *evidence.Service, commands []command.Contribution, processScope command.ProcessScope,
 	ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer,
 ) int {
 	directory, name := invocation.directory, invocation.name
@@ -122,31 +120,7 @@ func (invocation *Invocation) Run(service *history.Service, recovered *recovery.
 	}
 	defer release()
 	run := func(ctx context.Context, request command.Request) (command.Output, error) {
-		execution, err := compiled.Run(ctx, request)
-		if err != nil {
-			return execution, err
-		}
-		plan := execution.Delivery
-		execution, err = retainExecutionOutput(ctx, recovered, selected, execution)
-		if ctx.Err() != nil {
-			return command.Output{}, ctx.Err()
-		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return command.Output{}, err
-		}
-		if err != nil {
-			if fallback, ok := plan.(command.RecoveryFailure); ok {
-				return fallback.RecoveryFailed(err), nil
-			}
-			if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
-				execution.Stderr += "\n"
-			}
-			execution.Stderr += fmt.Sprintf("%s: recovery unavailable: %v\n", name, err)
-			if execution.ExitCode == 0 {
-				execution.ExitCode = 1
-			}
-		}
-		return execution, nil
+		return compiled.Run(ctx, request)
 	}
 	request := command.Request{Args: args, Stdin: stdin, ProcessScope: processScope,
 		Scope: selected}

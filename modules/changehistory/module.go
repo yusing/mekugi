@@ -26,7 +26,7 @@ var Module = module.Descriptor[Deps, *capture.Service, codexbinding.Bindings, te
 	Resources: []string{"private workspace checkpoints and bounded warm-up tasks"},
 	Contributes: module.Contributions[*capture.Service]{
 		Commands:    []command.Definition[*capture.Service]{{Spec: changes.Command.Spec, Run: (*capture.Service).Execute}},
-		RecordKinds: append(retained.RecordKinds(), evidence.RecordKinds()...), References: retained.ChangeReferences(),
+		RecordKinds: append(retained.RecordKinds(), evidence.RecordKinds()...),
 	},
 	Views: terminalview.Views,
 	New:   newService, Bindings: codexbinding.Codex,

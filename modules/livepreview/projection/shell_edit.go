@@ -31,7 +31,7 @@ func ShellNeutral(stmt *syntax.Stmt) bool {
 		return false
 	}
 	switch name {
-	case "mkdir", "mread", "mcat", "msymbol", "inspect_file", "mchanges", "set", "echo", "true":
+	case "mkdir", "mcat", "msymbol", "mfinspect", "mchanges", "mreload", "set", "echo", "true":
 	default:
 		return false
 	}

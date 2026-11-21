@@ -1,7 +1,7 @@
 # Module reference
 
 Generated from feature descriptors, Codex binding declarations and application
-composition. 23 of 23 feature modules are selected.
+composition. 18 of 18 feature modules are selected.
 Regenerate with `make generate`; verify with `make check-generated`.
 
 The [composition contract](../contracts/composition.md) defines ownership and
@@ -38,16 +38,6 @@ Measure reader invocations, observed edits and recorded host completion
 - Contributes: `inspection`, `diagnostic-sections`.
 - Codex connections: none.
 
-## [boundedcommand](../../modules/boundedcommand/SPEC.md)
-
-Bound one foreground command's output
-
-- Composition: selected; lifetime: `host-operation`.
-- Requires: `outputrecovery`.
-- Contributes: `commands`.
-- Commands: `mrun`.
-- Codex connections: `executable-frontend`.
-
 ## [changehistory](../../modules/changehistory/SPEC.md)
 
 Capture, retain, review, apply, and revert filesystem change evidence
@@ -55,10 +45,9 @@ Capture, retain, review, apply, and revert filesystem change evidence
 - Composition: selected; lifetime: `invocation`.
 - Requires: `sessionhistory`.
 - Resources: private workspace checkpoints and bounded warm-up tasks.
-- Contributes: `commands`, `record-kinds`, `references`, `terminal-auxiliary`.
+- Contributes: `commands`, `record-kinds`, `terminal-auxiliary`.
 - Commands: `mchanges`.
 - Records: `changes`, `change-stage`, `change-evidence`, `change-file`, `change-text`.
-- References: `changes`.
 - Codex connections: `executable-frontend`.
 
 ## [commandsegments](../../modules/commandsegments/SPEC.md)
@@ -91,16 +80,6 @@ Retain and inspect private diagnostic evidence
 - Records: `failure`, `instructions`, `instruction-revision`, `instruction-content`.
 - Codex connections: none.
 
-## [fileread](../../modules/fileread/SPEC.md)
-
-Read bounded logical source rows
-
-- Composition: selected; lifetime: `stateless`.
-- Requires: none.
-- Contributes: `commands`.
-- Commands: `mcat`.
-- Codex connections: `executable-frontend`.
-
 ## [livepreview](../../modules/livepreview/SPEC.md)
 
 Project provisional source changes and publish bounded live view state
@@ -116,18 +95,6 @@ Deliver bounded notices, failure details and recovery summaries
 - Composition: selected; lifetime: `invocation`.
 - Requires: none.
 - Codex connections: none.
-
-## [outputrecovery](../../modules/outputrecovery/SPEC.md)
-
-Publish and page retained output
-
-- Composition: selected; lifetime: `stateless`.
-- Requires: `sessionhistory`.
-- Contributes: `commands`, `record-kinds`.
-- Hosts: `references`.
-- Commands: `mread`.
-- Records: `cursor`, `output`.
-- Codex connections: `executable-frontend`.
 
 ## [remotewriteapproval](../../modules/remotewriteapproval/SPEC.md)
 
@@ -145,7 +112,7 @@ Own retained session publication, namespaces, allocation, leases, and retention
 - Requires: none.
 - Contributes: `record-kinds`.
 - Hosts: `record-kinds`.
-- Records: `hooks`, `compaction`, `call`, `snapshot`, `commentary`.
+- Records: `hooks`, `compaction`, `frozen-file`, `frozen-resource`, `call`, `snapshot`, `commentary`.
 - Codex connections: none.
 
 ## [sessioninspection](../../modules/sessioninspection/SPEC.md)
@@ -181,16 +148,6 @@ Schedule retained observations with synthetic streaming and read-only playback c
 - Requires: `activity`, `agentguidance`, `sessionhistory`.
 - Codex connections: `rollout`.
 
-## [sourceoutline](../../modules/sourceoutline/SPEC.md)
-
-Inspect structural declarations and source spans
-
-- Composition: selected; lifetime: `stateless`.
-- Requires: none.
-- Contributes: `commands`.
-- Commands: `inspect_file`.
-- Codex connections: `executable-frontend`.
-
 ## [sudoapproval](../../modules/sudoapproval/SPEC.md)
 
 Own sudo approval policy and exact session grants
@@ -198,16 +155,6 @@ Own sudo approval policy and exact session grants
 - Composition: selected; lifetime: `invocation`.
 - Requires: none.
 - Codex connections: `shell-approval`.
-
-## [symbolquery](../../modules/symbolquery/SPEC.md)
-
-Resolve semantic definitions and references
-
-- Composition: selected; lifetime: `host-operation`.
-- Requires: none.
-- Contributes: `commands`.
-- Commands: `msymbol`.
-- Codex connections: `executable-frontend`.
 
 ## [transportdiagnostics](../../modules/transportdiagnostics/SPEC.md)
 

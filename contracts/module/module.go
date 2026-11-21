@@ -9,7 +9,6 @@ import (
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/contracts/reference"
 )
 
 type ID string
@@ -34,7 +33,6 @@ type Slots struct {
 	DiagnosticSections []diagnosticsection.Contribution
 	Inspection         []inspection.Contribution
 	RecordKinds        []recordkind.Spec
-	References         []reference.Resolver
 }
 
 // Contributions declares typed contributions before construction. Slots holds
@@ -45,7 +43,6 @@ type Contributions[S any] struct {
 	Inspection         []inspection.Definition[S]
 	Commands           []command.Definition[S]
 	RecordKinds        []recordkind.Spec
-	References         []reference.Resolver
 }
 
 // Descriptor keeps typed construction separate from backend-specific bindings.
@@ -59,7 +56,6 @@ type Descriptor[D, S, B, V any] struct {
 	Resources               []string
 	Contributes             Contributions[S]
 	HostsRecords            bool
-	HostsReferences         bool
 	HostsInspection         bool
 	HostsDiagnosticSections bool
 	New                     func(D, Slots) (S, error)

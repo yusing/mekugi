@@ -9,7 +9,6 @@ import (
 	"time"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -54,7 +53,7 @@ func TestRecordTransactionsEvidenceFailureKeepsMembershipUnpublished(t *testing.
 	if err != nil || !found || retried.CaptureOrder != retained.CaptureOrder || len(delivered) != 1 {
 		t.Fatalf("retry changed capture identity or delivery: %+v %+v %v", retried, delivered, err)
 	}
-	text, err := store.changes.Read(ctx, selected, changes.Query{Workspace: "/w", IDs: []string{id}, View: "summary", MaxTokens: 8000})
+	text, err := store.changes.Read(ctx, selected, changes.Query{Workspace: "/w", IDs: []string{id}, View: "summary"})
 	if err != nil || !strings.Contains(text, "missing before") {
 		t.Fatalf("published partial capture lost its evidence: %q %v", text, err)
 	}
@@ -135,7 +134,8 @@ func TestRecordTransactionsInterruptedForkRetriesBeforeScopePublication(t *testi
 	if err := store.put(parent, "/w", map[string]mekugiHistory{"evidence": evidence}); err != nil {
 		t.Fatal(err)
 	}
-	ref, err := store.publishOutput(parent, command.OmittedOutput{Stdout: "inherited output"}, 0)
+	parentScope := store.scoped(parent).changeScope()
+	frozenPath, _, err := store.publication.WriteReadOnlyFile(parent, parentScope.Thread, parentScope.Limits, parentScope.Writes, "output", ".txt", []byte("inherited output"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,11 +178,11 @@ func TestRecordTransactionsInterruptedForkRetriesBeforeScopePublication(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := reopened.recoverOutput(fork, ref)
-	if err != nil || output.Stdout != "inherited output" {
-		t.Fatalf("fork lost inherited recovery: %+v %v", output, err)
+	output, err := reopened.publication.ReadReadOnlyFile(frozenPath, history.MaxRecordBytes)
+	if err != nil || string(output) != "inherited output" {
+		t.Fatalf("fork lost inherited frozen file: %q %v", output, err)
 	}
-	text, err := reopened.changes.Read(fork, reopened.scoped(fork).changeScope(), changes.Query{Workspace: "/w", IDs: []string{id}, View: "summary", MaxTokens: 8000})
+	text, err := reopened.changes.Read(fork, reopened.scoped(fork).changeScope(), changes.Query{Workspace: "/w", IDs: []string{id}, View: "summary"})
 	if err != nil || !strings.Contains(text, "missing before") {
 		t.Fatalf("fork lost inherited partial capture: %q %v", text, err)
 	}

@@ -12,11 +12,10 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
 
@@ -32,25 +31,27 @@ func attachmentTestContext(values []composer.ContextAttachment) func(context.Con
 	}
 }
 
-func attachmentTestReadHints(t *testing.T, p *Preparer, thread string, input []byte) string {
+func attachmentTestReadHints(t *testing.T, p *Preparer, input []byte) string {
 	t.Helper()
-	matches := regexp.MustCompile(`mread ([a-z]+[0-9]*(?: [a-z]+[0-9]*)*)`).FindAllStringSubmatch(attachmentTestHint(t, input), -1)
-	namespace, err := p.Retained.Store.NamespaceForThread(thread)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var args []string
-	for _, match := range matches {
-		args = append(args, strings.Fields(match[1])...)
-	}
-	if len(args) == 0 {
+	hint := attachmentTestHint(t, input)
+	rest, ok := strings.CutPrefix(hint, "Optional attachment recall (read with mcat): ")
+	if !ok || rest == "" {
 		return ""
 	}
-	out, err := p.Recovery.Execute(t.Context(), command.Request{Args: args, Scope: scope.Retained{Directory: p.Retained.Store.Directory(), Namespace: namespace, Thread: thread}})
-	if err != nil || out.ExitCode != 0 {
-		t.Fatalf("mread: %+v, %v", out, err)
+	var out strings.Builder
+	for group := range strings.SplitSeq(rest, "; ") {
+		_, path, found := strings.Cut(group, ": ")
+		if !found {
+			t.Fatalf("unexpected attachment group %q in %q", group, hint)
+		}
+		data, err := p.Retained.Store.ReadReadOnlyFile(path, history.MaxRecordBytes)
+		if err != nil {
+			t.Fatalf("read attachment file %q: %v", path, err)
+		}
+		out.Write(data)
+		out.WriteByte('\n')
 	}
-	return out.Stdout
+	return out.String()
 }
 
 func TestPlainInputAttachmentRecallThroughNativeHistory(t *testing.T) {
@@ -92,7 +93,7 @@ func TestPlainInputAttachmentRecallThroughNativeHistory(t *testing.T) {
 			if bytes.Contains(request.Fields["input"], []byte("original quote")) || bytes.Contains(request.Fields["input"], []byte("supplied upload")) {
 				t.Fatal("optional recall replayed supplied text automatically")
 			}
-			recalled := attachmentTestReadHints(t, p, "root", request.Fields["input"])
+			recalled := attachmentTestReadHints(t, p, request.Fields["input"])
 			for _, want := range []string{"User selections:", "message: original quote 日本語", "Uploaded notes.txt: supplied upload"} {
 				if !strings.Contains(recalled, want) {
 					t.Fatalf("missing %q in recalled input: %q", want, recalled)
@@ -149,14 +150,14 @@ func TestAttachmentContextPreservesSubmittedImagePath(t *testing.T) {
 				if len(transform.CompactReload()) != 0 || bytes.Contains(request.Fields["input"], []byte(imagePath)) || bytes.Contains(request.Fields["input"], []byte("ORIGINAL_SELECTION")) {
 					t.Fatalf("attachment content forced into provider input: %s", request.Fields["input"])
 				}
-				pattern := `^Optional attachment recall: images: mread [a-z]+[0-9]*$`
+				pattern := `^Optional attachment recall \(read with mcat\): images: .*/frozen-images-[0-9a-f]{64}\.txt$`
 				if mixed {
-					pattern = `^Optional attachment recall: selections: mread [a-z]+[0-9]*; images: mread [a-z]+[0-9]*$`
+					pattern = `^Optional attachment recall \(read with mcat\): selections: .*/frozen-selections-[0-9a-f]{64}\.txt; images: .*/frozen-images-[0-9a-f]{64}\.txt$`
 				}
 				if hint := attachmentTestHint(t, request.Fields["input"]); !regexp.MustCompile(pattern).MatchString(hint) {
 					t.Fatalf("unexpected attachment hint: %q", hint)
 				}
-				recalled := attachmentTestReadHints(t, p, "root", request.Fields["input"])
+				recalled := attachmentTestReadHints(t, p, request.Fields["input"])
 				if !strings.Contains(recalled, imagePath) || !strings.Contains(recalled, "[Image 1]") || mixed && !strings.Contains(recalled, strings.Join(values[0].Selection.Frames, "\n")) {
 					t.Fatalf("reset dropped submitted evidence: %s", recalled)
 				}
@@ -199,7 +200,7 @@ func attachmentTestHint(t *testing.T, input []byte) string {
 			continue
 		}
 		for _, part := range item.Content {
-			if strings.HasPrefix(part.Text, "Optional attachment recall:") {
+			if strings.HasPrefix(part.Text, "Optional attachment recall") {
 				return part.Text
 			}
 		}

@@ -24,11 +24,10 @@ untouched.
   start at 50% and tell the agent to compact at 90%, so agents reset cleanly at
   safe checkpoints instead of drifting inside a bloated window.
 - **Built-in token-saving helpers.** Wrapped sessions put `mcat` (batched UTF-8
-  reads), `mrun` (head/tail-bounded commands), `mread` (exact continuation of
-  omitted output), `msymbol` (Go, TypeScript, Python, and Rust semantic
-  definitions/references), and `inspect_file` (structural outlines) on `PATH`.
-  Automatic output deduplication replaces repeated outputs with compact
-  references while keeping full results in history and the UI.
+  reads), `mrun` (head/tail-bounded commands with read-only spill files), `msymbol`
+  (Go, TypeScript, Python, and Rust semantic definitions/references), and `mfinspect`
+  (structural outlines) on `PATH`. Automatic output deduplication replaces repeated
+  outputs with compact references while keeping full results in history and the UI.
 - **Workspace facts up front.** Sessions start with an observed OS and Git
   snapshot and mark attached files and skills as reusable, cutting warm-up turns.
 
@@ -163,7 +162,7 @@ Closing the UI leaves threads running and prints resume/replay commands. See
 
 - [Terminal UI](docs/guide/terminal-ui.md): panes, composer, live diffs, Agents sheet, and output dialogs.
 - [Sessions and recovery](docs/guide/sessions.md): resume, fork, rewind, compaction, and replay storage.
-- [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `mread`, `msymbol`, `inspect_file`, and `mchanges`.
+- [Agent tools and change review](docs/guide/agent-tools.md): `mcat`, `mrun`, `msymbol`, `mfinspect`, and `mchanges`.
 - [Approvals and guards](docs/guide/approvals.md): Codex approvals, remote-write/sudo guards, and GPG passphrase entry.
 - [Server, connector and browser](docs/guide/remote.md): remote control, browser UI, and Docker deployment.
 - [Providers](docs/guide/providers.md): custom Responses providers.

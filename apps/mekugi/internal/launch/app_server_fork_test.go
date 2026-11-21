@@ -93,7 +93,9 @@ func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
 	parent, releaseParent := retentionTestSession(t, store, "main", 0)
 	parent = bindTestHandleScope(t, store, parent, "", "")
 	store = store.scoped(parent)
-	output, err := store.putShellOutput(parent, strings.Repeat("retained output\n", 100), "", 0)
+	parentScope := store.changeScope()
+	frozenContent := strings.Repeat("retained output\n", 100)
+	frozenPath, _, err := store.publication.WriteReadOnlyFile(parent, parentScope.Thread, parentScope.Limits, parentScope.Writes, "output", ".txt", []byte(frozenContent))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,8 +175,8 @@ func TestAppServerForkRetainsEvidenceBeforeSwitch(t *testing.T) {
 	if err := fresh.cleanupSessions(branch); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fresh.recoverOutput(branch, output); err != nil {
-		t.Fatalf("fresh fork lost inherited output: %v", err)
+	if data, err := fresh.publication.ReadReadOnlyFile(frozenPath, maxReplayRecordBytes); err != nil || string(data) != frozenContent {
+		t.Fatalf("fresh fork lost inherited frozen file: %q, %v", data, err)
 	}
 }
 

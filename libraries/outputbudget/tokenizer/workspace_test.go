@@ -45,12 +45,6 @@ func TestMergeWorkspaceGrowingAndShrinking(t *testing.T) {
 			if !slices.EqualFunc(got, want, func(a, b part) bool { return a.offset == b.offset }) {
 				t.Fatalf("reused merge differs: atom=%q n=%d", atom, n)
 			}
-			value := piece + "\n/\nhello\n"
-			count, err := c.countWithWorkspace(value, &workspace)
-			full, fullErr := c.Count(value)
-			if err != nil || fullErr != nil || count != full {
-				t.Fatalf("reused lexer differs: %d != %d: %v %v", count, full, err, fullErr)
-			}
 		}
 	}
 }

@@ -68,7 +68,6 @@ import (
 	"github.com/yusing/mekugi/providers/openai"
 
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 
 	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
 
@@ -83,7 +82,7 @@ const (
 
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func runInvocation(views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
+func runInvocation(views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
 	if api == nil || threads == nil {
 		return 1, errors.New("native invocation requires control API and thread execution owners")
 	}
@@ -249,7 +248,6 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 		issues.AddThreadNotice("", thread, "request_timing_storage", "Request timing could not be retained: "+err.Error())
 	})
 	threads.retained = retained
-	threads.recovery = recovered
 	calls = service.Calls()
 	audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
 	windows = &executionobservation.Windows{}
@@ -282,7 +280,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 		}
 		return reader.ContextAttachments(ctx, thread, window)
 	}
-	mekugiCalls = executionobservation.New(executionobservation.Config{ProgressSnapshot: threads.hub.ProgressSnapshot, Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
+	mekugiCalls = executionobservation.New(executionobservation.Config{ProgressSnapshot: threads.hub.ProgressSnapshot, Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 	mekugiCalls.ContextAttachments = contextAttachments
 	if segments.Live != nil {
 		if err := segments.Live.RegisterBoundary(mekugiCalls.ObserveNativeBoundary); err != nil {
@@ -506,7 +504,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 		if debug != nil {
 			debugDirectory = filepath.Dir(debug.Paths()[0])
 		}
-		waitCodex, err = (&nativeSession{preparer: mekugiCalls, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, profile: options.Profile, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals}).start(prefs, cmd, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
+		waitCodex, err = (&nativeSession{preparer: mekugiCalls, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, profile: options.Profile, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals}).start(prefs, cmd, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
 
 	}
 	if err != nil {

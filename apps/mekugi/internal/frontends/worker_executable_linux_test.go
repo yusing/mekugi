@@ -1,11 +1,15 @@
 package frontends
 
 import (
+	"context"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
+
+	"github.com/yusing/mekugi/contracts/command"
 )
 
 func TestToolWorkerSurvivesExecutableReplacement(t *testing.T) {
@@ -45,7 +49,15 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 		return
 	}
 	if stage == "worker" {
-		handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), os.Args[0], []string{"--max-tokens", "100", "--", "printf", "pinned"}, os.Stdin, os.Stdout, os.Stderr)
+		commands := slices.Clone(testCommands())
+		for i := range commands {
+			if commands[i].Name == "mchanges" {
+				commands[i].Run = func(context.Context, command.Request) (command.Output, error) {
+					return command.Output{Stdout: "pinned"}, nil
+				}
+			}
+		}
+		handled, status := runToolPluginWorkerInHostProcess(testHistory(), commands, t.Context(), os.Args[0], nil, os.Stdin, os.Stdout, os.Stderr)
 		if !handled {
 			os.Exit(99)
 		}
@@ -101,7 +113,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	if err := registry.Close(); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.CommandContext(t.Context(), filepath.Join(peer.FrontendDirectory, "mrun"), "-test.run=^TestPinnedToolWorkerProcess$")
+	command := exec.CommandContext(t.Context(), filepath.Join(peer.FrontendDirectory, "mchanges"), "-test.run=^TestPinnedToolWorkerProcess$")
 	command.Env = append(os.Environ(), "MEKUGI_PIN_WORKER_TEST=worker")
 	output, err := command.CombinedOutput()
 	if err != nil || string(output) != "pinned" {

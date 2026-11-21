@@ -103,7 +103,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 				t.Fatalf("real patch evidence missing: %+v", patchHistory)
 			}
 			diff, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{
-				Workspace: workspace, IDs: []string{patchHistory.ChangeID}, MaxTokens: 4000,
+				Workspace: workspace, IDs: []string{patchHistory.ChangeID},
 			})
 			if err != nil || !strings.Contains(diff, "-before") || !strings.Contains(diff, "+after") {
 				t.Fatalf("patch evidence = %q, %v", diff, err)

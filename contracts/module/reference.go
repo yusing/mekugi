@@ -15,7 +15,6 @@ type Reference struct {
 	Hosts       []string
 	Commands    []string
 	Records     []string
-	References  []string
 }
 
 // BindingReference describes declared connections, not installed-host availability.
@@ -39,7 +38,6 @@ func (d Descriptor[D, S, B, V]) Reference() Reference {
 	}{
 		{"commands", len(d.Contributes.Commands), false},
 		{"record-kinds", len(d.Contributes.RecordKinds), d.HostsRecords},
-		{"references", len(d.Contributes.References), d.HostsReferences},
 		{"inspection", len(d.Contributes.Inspection), d.HostsInspection},
 		{"diagnostic-sections", len(d.Contributes.DiagnosticSections), d.HostsDiagnosticSections},
 		{"presentation", len(d.Contributes.Presentation), false},
@@ -59,9 +57,6 @@ func (d Descriptor[D, S, B, V]) Reference() Reference {
 	}
 	for _, definition := range d.Contributes.RecordKinds {
 		r.Records = append(r.Records, definition.ID)
-	}
-	for _, definition := range d.Contributes.References {
-		r.References = append(r.References, definition.Field)
 	}
 	return r
 }

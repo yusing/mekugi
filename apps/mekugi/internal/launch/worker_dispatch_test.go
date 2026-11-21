@@ -19,7 +19,7 @@ func TestWorkerArgumentsCannotSelectMCPBridge(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(directory, "bin"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	frontend := filepath.Join(directory, "bin", "mcat")
+	frontend := filepath.Join(directory, "bin", "mchanges")
 	if err := os.Symlink(executable, frontend); err != nil {
 		t.Fatal(err)
 	}

@@ -247,14 +247,6 @@ func TestMChangesCorruptLaterAttemptKeepsSiblingAndRecoveryStrict(t *testing.T) 
 				})
 			}
 			options := changes.Query{Workspace: f.workspace, IDs: []string{broken, valid}, View: view}
-			text, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), options)
-			if err != nil {
-				t.Fatal(err)
-			}
-			reference, err := putHistoricalChangeRead(f.store, f.ctx, options, text, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
 			if err := os.WriteFile(filepath.Join(f.store.directory, legacycall.Name(f.workspace, "later", false)), []byte("{"), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -269,9 +261,6 @@ func TestMChangesCorruptLaterAttemptKeepsSiblingAndRecoveryStrict(t *testing.T) 
 			}
 			if !strings.Contains(output, marker) {
 				t.Fatalf("valid sibling missing: %q", output)
-			}
-			if _, err := f.store.recoverOutput(f.ctx, reference); err == nil {
-				t.Fatal("frozen recovery skipped corrupt evidence")
 			}
 		})
 	}

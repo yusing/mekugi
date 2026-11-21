@@ -24,10 +24,7 @@ func TestMain(m *testing.M) {
 		runInvocationFixtureChild()
 	}
 	if os.Getenv(routerTestWorkerEnvironment) == "1" {
-		if filepath.Base(os.Args[0]) == "mread" && os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
-			_ = os.Unsetenv("CODEX_THREAD_ID")
-		}
-		if handled, code := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(),
+		if handled, code := runToolPluginWorkerInHostProcess(testHistory(), testCommands(),
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
 			os.Exit(code)

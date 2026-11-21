@@ -25,7 +25,6 @@ import (
 	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -85,7 +84,6 @@ type nativeSession struct {
 	retained              changes.Scope
 	changeSource          changes.Service
 	snapshots             *changecapture.Workspaces
-	recovered             *recovery.Service
 	publishChanges        func([]changes.Update)
 	captureNotice         func(string, string, string, string)
 	execTrack             *commandsegments.Observer

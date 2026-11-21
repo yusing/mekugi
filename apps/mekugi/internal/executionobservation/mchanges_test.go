@@ -14,7 +14,6 @@ import (
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
@@ -79,40 +78,13 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	codec, err := tokenizer.New()
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, interpreter := range []string{"bash", "sh"} {
 		t.Run(interpreter, func(t *testing.T) {
 			t.Parallel()
-			var all strings.Builder
-			cursor := ""
-			for page := range 100 {
-				command := "mchanges --max-tokens 32 " + id + " -- 'old name.txt' file.txt 'new name.txt' ./file.txt"
-				if cursor != "" {
-					command = "mread " + cursor + " --stdout --max-tokens 32"
-				}
-				stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
-				count, err := codec.Count(stdout)
-				if err != nil || count > 32 {
-					t.Fatalf("page tokens = %d, %v", count, err)
-				}
-				all.WriteString(stdout)
-				if status == 0 {
-					if page < 2 {
-						t.Fatal("fixture must exercise initial, intermediate, and final pages")
-					}
-					if stderr != "" || all.String() != want {
-						t.Fatalf("pages differ: got %q stderr %q; want %q", all.String(), stderr, want)
-					}
-					break
-				}
-				const notice = "read: incomplete; next_call: mread "
-				if !strings.HasPrefix(stderr, notice) || stdout == "" || page == 99 {
-					t.Fatalf("read failed: %q, %q, %d", stdout, stderr, status)
-				}
-				cursor = strings.Fields(strings.TrimPrefix(stderr, notice))[0]
+			command := "mchanges " + id + " -- 'old name.txt' file.txt 'new name.txt' ./file.txt"
+			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
+			if status != 0 || stderr != "" || stdout != want {
+				t.Fatalf("complete output differs: status=%d got %q stderr %q; want %q", status, stdout, stderr, want)
 			}
 		})
 	}
@@ -170,7 +142,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		t.Fatalf("unmatched path: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, registry, "sh", nil,
-		"mchanges "+id+" --history --max-tokens 15500 -- file.txt", nil, invocation)
+		"mchanges "+id+" --history -- file.txt", nil, invocation)
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "input:") ||
 		strings.Count(stdout, "--- /dev/null") != 1 || strings.Contains(stdout, `add "" ->`) {
 		t.Fatalf("history: %q, %q, %d", stdout, stderr, status)
@@ -180,7 +152,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	if status != 0 || stderr != "" || stdout != "add \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
 		t.Fatalf("literal flag and ID paths: %q, %q, %d", stdout, stderr, status)
 	}
-	for _, arguments := range []string{id + " --path file.txt", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
+	for _, arguments := range []string{id + " --path file.txt", "amber1..apple2", "--max-tokens 32 amber1", "--history --summary amber1"} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+arguments, nil, invocation)
 		if status == 0 || stdout != "" || stderr == "" {
 			t.Fatalf("%q did not reject: %q, %q, %d", arguments, stdout, stderr, status)
@@ -264,11 +236,8 @@ func TestParseChangeRead(t *testing.T) {
 			t.Fatalf("unfiltered read: %+v, %v", options, err)
 		}
 	}
-	if options, err := testChanges().Parse([]string{"--list", "--max-tokens", "32"}, workspace); err != nil || options.View != "list" || len(options.IDs) != 0 {
+	if options, err := testChanges().Parse([]string{"--list"}, workspace); err != nil || options.View != "list" || len(options.IDs) != 0 {
 		t.Fatalf("list options: %+v, %v", options, err)
-	}
-	if options, err := testChanges().Parse([]string{"--max-tokens", "15501", "amber1"}, workspace); err != nil || options.MaxTokens != commandargs.MaxOutputTokens {
-		t.Fatalf("capped budget: %+v, %v", options, err)
 	}
 	options, err := testChanges().Parse([]string{"amber1..amber2", "--summary", "apple1", "--", "file"}, workspace)
 	if err != nil || strings.Join(options.IDs, ",") != "amber1,amber2,apple1" {
@@ -276,7 +245,7 @@ func TestParseChangeRead(t *testing.T) {
 	}
 	for _, arguments := range [][]string{
 		{"amber1", "--path", "file"}, {"amber1", "--", ""},
-		{"--summary", "--summary", "amber1"}, {"--max-tokens", "01", "amber1"},
+		{"--summary", "--summary", "amber1"}, {"--max-tokens", "32", "amber1"},
 		{"--workspace", workspace, "amber1"},
 		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
 		{"--list", "--", "file"}, {"--list", "--summary"},

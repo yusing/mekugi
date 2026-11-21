@@ -18,8 +18,8 @@
   logical waits), and detail membership; `terminalview` owns layout, disclosure, pacing, and
   painting.
 - **Source & edit presentation**: groups operations under the reasoning that preceded them;
-  hides internal `mreload` and literal `mread` invocations without dropping inseparable ordinary
-  command output; classifies common shell reads/searches/listings/edits (`Read`, `Search`, `List`, `Inspect`,
+  hides internal `mreload` invocations without dropping inseparable ordinary command output;
+  classifies common shell reads/searches/listings/edits (`Read`, `Search`, `List`, `Inspect`,
   `Skill`, `Run`) without executing source or reading the filesystem; separates user shell commands
   (`You running`/`You ran`) from agent batches; replaces edit intent with confirmed captured counts
   and links to [Change history](../changehistory/SPEC.md) for exact-operation diff details (with

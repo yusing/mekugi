@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/contracts/command"
 )
 
 const nativeProgressBytes = 12 << 10
@@ -24,7 +23,7 @@ type nativeProgressResource struct {
 // native-selected actors. It neither selects work nor advances capture cursors.
 func (p *Preparer) FreezeNativeProgress(ctx context.Context, input appserver.ProgressFreezeRequest) (appserver.ProgressFreezeResponse, error) {
 	var result appserver.ProgressFreezeResponse
-	reader, retained, err := p.nativeCaptureScope(input.RootThreadID, input.CallerThreadID)
+	reader, err := p.nativeCaptureScope(input.RootThreadID, input.CallerThreadID)
 	if err != nil {
 		return result, err
 	}
@@ -91,7 +90,7 @@ func (p *Preparer) FreezeNativeProgress(ctx context.Context, input appserver.Pro
 	}
 	resource := nativeProgressResource{Version: 2, Root: input.RootThreadID, Caller: input.CallerThreadID, Operation: input.OperationID,
 		Context: input.RecipientContextID, Frozen: result}
-	result.SelectionRef, err = publishNativeResource(ctx, retained, &resource)
+	result.SelectionRef, err = publishNativeResource(ctx, reader.Scope, &resource)
 	return result, err
 }
 
@@ -104,11 +103,11 @@ func sameCaptureInterval(a, b appserver.CaptureInterval) bool {
 // bounding combined text. Recovery-only output acknowledges no capture evidence.
 func (p *Preparer) PrepareNativeProgressOutput(ctx context.Context, input appserver.ProgressOutputRequest) (appserver.ProgressOutputResponse, error) {
 	var result appserver.ProgressOutputResponse
-	_, retained, err := p.nativeCaptureScope(input.RootThreadID, input.CallerThreadID)
+	reader, err := p.nativeCaptureScope(input.RootThreadID, input.CallerThreadID)
 	if err != nil {
 		return result, err
 	}
-	data, version, err := readNativeResource(retained, input.SelectionRef)
+	data, version, err := readNativeResource(reader.Scope, input.SelectionRef)
 	if err != nil {
 		return result, err
 	}
@@ -209,9 +208,9 @@ func (p *Preparer) PrepareNativeProgressOutput(ctx context.Context, input appser
 	if len(result.Text) <= nativeProgressBytes {
 		return result, nil
 	}
-	ref, err := retained.Publish(ctx, command.OmittedOutput{Stdout: result.Text}, 0)
+	path, _, err := reader.Scope.Store.WriteReadOnlyFile(ctx, reader.Scope.Thread, reader.Scope.Limits, reader.Scope.Writes, "progress", ".txt", []byte(result.Text))
 	if err != nil {
 		return appserver.ProgressOutputResponse{}, err
 	}
-	return appserver.ProgressOutputResponse{Text: "Progress output exceeds 12 KiB. Read the complete frozen summaries and intervals with mread " + ref + ".", RecoveryRef: &ref}, nil
+	return appserver.ProgressOutputResponse{Text: "Progress output exceeds 12 KiB. Read the complete frozen summaries and intervals with mcat " + path + ".", RecoveryRef: &path}, nil
 }

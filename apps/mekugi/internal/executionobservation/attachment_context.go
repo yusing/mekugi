@@ -4,21 +4,20 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
 type attachmentPreparation struct{ snapshot composer.AttachmentSnapshot }
 
 func attachmentRecallHint(groups []string) string {
-	return "Optional attachment recall: " + strings.Join(groups, "; ")
+	return "Optional attachment recall (read with mcat): " + strings.Join(groups, "; ")
 }
 
 // Publish optional retained selection, source-placeholder and image recall.
@@ -51,9 +50,8 @@ func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexres
 			return "", nil
 		}
 		selected := observationScope(ctx, p.Retained)
-		store, err := p.Recovery.AttachStore(selected.Store, selected.Namespace, selected.Thread, recovery.DefaultLimits(), selected.Writes)
-		if err != nil {
-			return "", err
+		if selected.Store == nil {
+			return "", errors.New("attachment recall storage is unavailable")
 		}
 		var hints []string
 		for _, group := range []struct {
@@ -63,11 +61,11 @@ func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexres
 			if len(group.values) == 0 {
 				continue
 			}
-			ref, err := store.Publish(ctx, command.OmittedOutput{Stdout: strings.Join(group.values, "\n")}, 0)
+			path, _, err := selected.Store.WriteReadOnlyFile(ctx, selected.Thread, selected.Limits, selected.Writes, group.kind, ".txt", []byte(strings.Join(group.values, "\n")))
 			if err != nil {
 				return "", err
 			}
-			hints = append(hints, group.kind+": mread "+ref)
+			hints = append(hints, group.kind+": "+path)
 		}
 		return attachmentRecallHint(hints), nil
 	})

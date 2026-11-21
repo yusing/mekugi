@@ -43,7 +43,7 @@ func (session *nativeSession) captureShellEdit(attached *attachedPresentation, p
 		setNotice(&attached.feedback, time.Now(), "Shell change capture failed: "+err.Error(), true)
 		return nil
 	}
-	edit := executionobservation.PrepareShell(ctx, session.retained, session.changeSource, session.snapshots, session.recovered, session.publishChanges, session.execWindows, session.audience, session.captureNotice, executionobservation.ShellInput{
+	edit := executionobservation.PrepareShell(ctx, session.retained, session.changeSource, session.snapshots, session.publishChanges, session.execWindows, session.audience, session.captureNotice, executionobservation.ShellInput{
 		Thread: session.Client.Thread, Turn: session.Client.Turn, Namespace: namespace,
 		Workspace: attached.cwd, Caller: attached.session.Caller(session.Client.Thread), Command: command, Shell: session.shellEdits.shell,
 	})

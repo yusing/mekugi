@@ -137,6 +137,15 @@ func (tx *Transaction) advanceRevision() error {
 // Write publishes one prepared record. Equal bytes preserve the current revision.
 // Source: internal/router/mekugi_store.go:360:407@efcbf71f writeFile.
 func (tx *Transaction) Write(name, pattern string, data []byte) error {
+	return tx.writeFile(name, pattern, data, false)
+}
+
+// WriteReadOnly publishes one immutable read-only (0o444) managed record.
+func (tx *Transaction) WriteReadOnly(name, pattern string, data []byte) error {
+	return tx.writeFile(name, pattern, data, true)
+}
+
+func (tx *Transaction) writeFile(name, pattern string, data []byte, readOnly bool) error {
 	if err := tx.check(); err != nil {
 		return err
 	}
@@ -159,7 +168,7 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 		if !info.Mode().IsRegular() {
 			return errors.New("managed record is not a regular file")
 		}
-		if info.Size() == int64(len(data)) {
+		if info.Size() == int64(len(data)) && (!readOnly || info.Mode().Perm() == 0o444) {
 			file, err := os.Open(path)
 			if err != nil {
 				return err
@@ -193,7 +202,11 @@ func (tx *Transaction) Write(name, pattern string, data []byte) error {
 	if err := tx.advanceRevision(); err != nil {
 		return err
 	}
-	if err := persistence.AtomicFile(path, pattern, data, tx.writes); err != nil {
+	writeFn := persistence.AtomicFile
+	if readOnly {
+		writeFn = persistence.AtomicReadOnlyFile
+	}
+	if err := writeFn(path, pattern, data, tx.writes); err != nil {
 		tx.accounting = nil
 		return err
 	}

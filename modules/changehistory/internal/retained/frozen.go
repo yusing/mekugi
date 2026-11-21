@@ -16,7 +16,7 @@ func (*service) Freeze(ctx context.Context, selected changes.Scope, query change
 	}
 	options := options(query)
 	options.freeze = &frozen
-	text, _, err := selectedStore(selected).readChangeView(ctx, options)
+	text, err := selectedStore(selected).readChangeView(ctx, options)
 	if err != nil {
 		if _, partial := errors.AsType[*partialChangeReadError](err); !partial {
 			return changes.FrozenRead{}, err

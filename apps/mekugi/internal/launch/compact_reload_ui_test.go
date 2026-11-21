@@ -17,10 +17,10 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -30,6 +30,11 @@ import (
 func compactReloadUI(t *testing.T, sources []compact.SourceIdentity, child bool) (*appServerUI, string, func()) {
 	t.Helper()
 	usePreloadTestFrontend(t)
+	shimDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(shimDir, "mcat"), []byte("#!/bin/sh\nif [ \"$1\" = \"--\" ]; then shift; fi\ncat \"$@\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	workspace := t.TempDir()
 	for i := range sources {
 		if sources[i].Changes != nil {
@@ -102,41 +107,30 @@ func compactReloadUI(t *testing.T, sources []compact.SourceIdentity, child bool)
 	}
 	complete := func() {
 		t.Helper()
-		readers := compact.Readers{Skills: func(context.Context) (map[string][]string, error) {
-			paths := make(map[string][]string)
-			for _, source := range sources {
-				if source.Skill != "" {
-					paths[source.Skill] = append(paths[source.Skill], source.Path)
-				}
-			}
-			return paths, nil
-		}}
-		captured, err := readers.Capture(t.Context(), command.Request{Args: []string{selection}})
-		if err != nil {
-			t.Fatal(err)
-		}
 		ns, err := p.retained.Store.NamespaceForThread("main")
 		if err != nil {
 			t.Fatal(err)
 		}
-		store, err := p.recovered.AttachStore(p.retained.Store, ns, "main", recovery.DefaultLimits(), nil)
+		readers := compact.Readers{
+			Changes: compact.ChangeReader{Scope: p.retained},
+			Skills: func(context.Context) (map[string][]string, error) {
+				paths := make(map[string][]string)
+				for _, source := range sources {
+					if source.Skill != "" {
+						paths[source.Skill] = append(paths[source.Skill], source.Path)
+					}
+				}
+				return paths, nil
+			},
+		}
+		captured, err := readers.Capture(t.Context(), command.Request{
+			Args:  []string{selection},
+			Scope: scope.Retained{Directory: p.retained.Store.Directory(), Namespace: ns, Thread: "main"},
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		refs, err := store.Reserve(t.Context(), captured.Delivery.ReferenceCount())
-		if err != nil {
-			t.Fatal(err)
-		}
-		delivery, err := captured.Delivery.Prepare(refs)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, output := range delivery.Recovery {
-			if _, err := store.PublishAt(t.Context(), refs[output.ReferenceIndex], output.OmittedOutput, output.ExitCode); err != nil {
-				t.Fatal(err)
-			}
-		}
-		input = append(input, call, map[string]any{"type": "custom_tool_call_output", "call_id": call["call_id"], "output": "Script completed\nWall time 0.1 seconds\nOutput:\n" + delivery.Referenced.Stdout})
+		input = append(input, call, map[string]any{"type": "custom_tool_call_output", "call_id": call["call_id"], "output": "Script completed\nWall time 0.1 seconds\nOutput:\n" + captured.Stdout})
 		if len(prepare()) != 0 {
 			t.Fatal("completed capture was scheduled again")
 		}
@@ -168,7 +162,7 @@ func TestUISnapshotChildReloadAttachments(t *testing.T) {
 	if got := approvalTestTranscript(t, u); !strings.Contains(got, "Attached guide.txt") || strings.Contains(got, "mreload") {
 		t.Fatalf("initial child acquisition: %s", got)
 	}
-	item.Status, item.ExitCode, item.AggregatedOutput = "completed", new(0), new("Reload snapshot: mread amber\n")
+	item.Status, item.ExitCode, item.AggregatedOutput = "completed", new(0), new("Reload snapshot: /tmp/frozen-reload-amber.txt\n")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	complete()
 	finishPacing(u.testActivity(u.shell.Transcript))

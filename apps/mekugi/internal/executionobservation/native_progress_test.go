@@ -109,13 +109,16 @@ func TestNativeProgressBoundingRetainsExactOutputWithoutAcknowledgingRecovery(t 
 	if err != nil || bounded.RecoveryRef == nil || len(bounded.Text) > nativeProgressBytes || len(bounded.DeliveredIntervals) != 0 {
 		t.Fatalf("bounded output acknowledged omitted evidence: %+v err=%v", bounded, err)
 	}
-	_, retained, err := p.nativeCaptureScope("root", "root")
+	if !strings.Contains(bounded.Text, "mcat "+*bounded.RecoveryRef) {
+		t.Fatalf("bounded progress missing mcat path hint: %q", bounded.Text)
+	}
+	reader, err := p.nativeCaptureScope("root", "root")
 	if err != nil {
 		t.Fatal(err)
 	}
-	recovered, err := retained.Snapshot(*bounded.RecoveryRef)
-	if err != nil || !strings.Contains(recovered.Stdout, summary) || !strings.Contains(recovered.Stdout, "amber3 record=3 chunks=1..1") || !strings.Contains(recovered.Stdout, "One capture is unavailable") {
-		t.Fatalf("full output recovery lost summary/selection/coverage: %+v err=%v", recovered, err)
+	recovered, err := reader.Scope.Store.ReadReadOnlyFile(*bounded.RecoveryRef, history.MaxRecordBytes)
+	if err != nil || !strings.Contains(string(recovered), summary) || !strings.Contains(string(recovered), "amber3 record=3 chunks=1..1") || !strings.Contains(string(recovered), "One capture is unavailable") {
+		t.Fatalf("full output recovery lost summary/selection/coverage: %q err=%v", recovered, err)
 	}
 	request.Agents[0].Summary = appserver.SummaryResult{Status: "unavailable", Reason: "Target completed before auxiliary sampling"}
 	missing, err := p.PrepareNativeProgressOutput(t.Context(), request)
@@ -162,7 +165,7 @@ func TestNativeProgressDiagnosticOnlyRetainsExplicitCoverage(t *testing.T) {
 
 func TestNativeProgressRetainedVersionOneUsesOnlySelectionAndRecipientContext(t *testing.T) {
 	p, input := nativeProgressTestPreparer(t)
-	_, retained, err := p.nativeCaptureScope(input.RootThreadID, input.CallerThreadID)
+	reader, err := p.nativeCaptureScope(input.RootThreadID, input.CallerThreadID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +177,7 @@ func TestNativeProgressRetainedVersionOneUsesOnlySelectionAndRecipientContext(t 
 			"agents": []map[string]any{{"actor": map[string]any{"threadId": "worker", "taskName": "/root/worker", "workId": "retired-worker-work"},
 				"intervals": []appserver.CaptureInterval{interval}}}},
 	}
-	ref, err := publishNativeResource(t.Context(), retained, &legacy)
+	ref, err := publishNativeResource(t.Context(), reader.Scope, &legacy)
 	if err != nil {
 		t.Fatal(err)
 	}

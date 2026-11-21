@@ -393,7 +393,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 					t.Fatalf("receipt lost native patch identity: %+v", receipt)
 				}
 			}
-			net, err := testProxyStore(proxy).changes.Read(t.Context(), testProxyStore(proxy).scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000})
+			net, err := testProxyStore(proxy).changes.Read(t.Context(), testProxyStore(proxy).scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net"})
 			if err != nil || strings.Count(net, "-old\n") != 1 || strings.Count(net, "+final\n") != 1 || strings.Contains(net, "middle") {
 				t.Fatalf("cell-window net = %q, %v", net, err)
 			}

@@ -18,7 +18,7 @@ import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	activity "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // Native reviewers borrow only immutable compaction context. They do not publish
@@ -347,17 +347,8 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 	if err := json.Unmarshal(input, &items); err != nil {
 		return nil, err
 	}
-	namespace, err := p.Retained.Store.NamespaceForThread(thread)
-	if err != nil {
-		return nil, err
-	}
-	if _, exists, err := p.Retained.Store.ReadScope(thread); err != nil {
-		return nil, err
-	} else if !exists && metadata.ForkedFromThreadID != "" {
-		namespace, err = p.Retained.Store.NamespaceForThread(metadata.ForkedFromThreadID)
-		if err != nil {
-			return nil, err
-		}
+	if p.Retained.Store == nil {
+		return nil, errors.New("compaction snapshot storage is unavailable")
 	}
 	release, err := p.Retained.Store.SnapshotLease(ctx)
 	if err != nil {
@@ -386,19 +377,12 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 		if reference == "" {
 			continue
 		} // Denial, cancellation, or failed publication.
-		if p.Recovery == nil {
-			return nil, errors.New("compaction snapshot recovery is unavailable")
-		}
-		store, err := p.Recovery.AttachStore(p.Retained.Store, namespace, thread, recovery.DefaultLimits(), nil)
-		if err != nil {
-			return nil, err
-		}
-		snapshot, err := store.Snapshot(reference)
+		data, err := p.Retained.Store.ReadReadOnlyFile(reference, history.MaxRecordBytes)
 		if err != nil {
 			return nil, err
 		}
 		var captured compact.Snapshot
-		if err := json.Unmarshal([]byte(snapshot.Stdout), &captured); err != nil {
+		if err := json.Unmarshal(data, &captured); err != nil {
 			return nil, err
 		}
 		selected, err := captured.SelectedSources()

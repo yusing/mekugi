@@ -375,7 +375,7 @@ func TestPrivateArtifactWriterDoesNotClaimIsolatedWorktree(t *testing.T) {
 				workspace, call string
 				history         mekugiHistory
 			}{{sibling, "child", child}, {f.workspace, "writer", original}} {
-				if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges, p.Windows, p.Audience, p.Notice, f.ctx, completion.workspace, []execCompletion{{callID: completion.call, history: completion.history, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
+				if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.PublishChanges, p.Windows, p.Audience, p.Notice, f.ctx, completion.workspace, []execCompletion{{callID: completion.call, history: completion.history, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -503,7 +503,7 @@ func TestCheckpointIntervalsKeepAuthoredWorkspace(t *testing.T) {
 			}
 			trace.event(f.thread, map[string]any{"type": "tool_call_runtime_ended", "tool_call_id": "writer-command", "status": "completed", "runtime_payload": trace.ref(map[string]any{"exit_code": 0})})
 			original.nativeCell = edit.NativeTrace.ReadCell(f.thread, "writer", writerSource)
-			if err := finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.Recovery, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
+			if err := finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}}); err != nil {
 				t.Fatal(err)
 			}
 			terminal, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("writer", true))
@@ -961,7 +961,7 @@ func TestUnrelatedPatchKeepsWriterCoverageTruthful(t *testing.T) {
 			}
 			writeTestFile(t, other, "other after\n")
 			finishWriter := func() error {
-				return finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.Recovery, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}})
+				return finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}})
 			}
 			if writerFirst {
 				if err := finishWriter(); err != nil {
@@ -1067,7 +1067,7 @@ func TestCheckpointWriterOverlappingCreation(t *testing.T) {
 				{callID: "format", history: formatHistory, result: binding.ExecutionResult{Terminal: true, Succeeded: true}},
 				{callID: "writer", history: original, result: binding.ExecutionResult{Terminal: true, Succeeded: false}},
 			} {
-				if err := finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.Recovery, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{completion}); err != nil {
+				if err := finalizeExecObservations(writer.Retained, writer.Changes, writer.Checkpoints, writer.PublishChanges, writer.Windows, writer.Audience, writer.Notice, f.ctx, f.workspace, []execCompletion{completion}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -1170,7 +1170,7 @@ func TestConcurrentNamedExecIntervalPublication(t *testing.T) {
 					proxy.PublishChanges = publish
 					return proxy.finalizeNativePatches(ctx, f.workspace, f.thread, ref, h, binding.ExecutionResult{Terminal: true, Succeeded: true})
 				}
-				return finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, publish, proxy.Windows, proxy.Audience, proxy.Notice, ctx, f.workspace,
+				return finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, publish, proxy.Windows, proxy.Audience, proxy.Notice, ctx, f.workspace,
 					[]execCompletion{{callID: ref, history: h, result: binding.ExecutionResult{Terminal: true, Succeeded: true}}})
 			}
 			if writerFirst {

@@ -26,9 +26,7 @@ func TestAuthenticatedCompiledFrontendProcessScope(t *testing.T) {
 			calls := 0
 			var scope command.ProcessScope
 			for i := range commands {
-				if commands[i].Name == "msymbol" {
-					// Exercise authenticated compiled dispatch without enabling real
-					// process-wide resolver cleanup in the test runner.
+				if commands[i].Name == "mchanges" {
 					commands[i].Run = func(_ context.Context, request command.Request) (command.Output, error) {
 						calls++
 						scope = request.ProcessScope
@@ -41,7 +39,7 @@ func TestAuthenticatedCompiledFrontendProcessScope(t *testing.T) {
 			if tc.owned {
 				run = runOwnedToolPluginWorker
 			}
-			handled, status := run(testHistory(), testRecovery(), commands, t.Context(), filepath.Join(registry.FrontendDirectory, "msymbol"), nil, nil, &stdout, &stderr)
+			handled, status := run(testHistory(), commands, t.Context(), filepath.Join(registry.FrontendDirectory, "mchanges"), nil, nil, &stdout, &stderr)
 			if !handled || status != 0 || calls != 1 || scope != tc.want || stdout.String() != "scope observed\n" || stderr.Len() != 0 {
 				t.Fatalf("handled=%t status=%d calls=%d scope=%v want=%v stdout=%q stderr=%q", handled, status, calls, scope, tc.want, stdout.String(), stderr.String())
 			}

@@ -20,16 +20,12 @@ import (
 
 	"github.com/dlclark/regexp2/v2"
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-	"github.com/yusing/mekugi/modules/boundedcommand/run"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/fileread/read"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/changehistory"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/sourceoutline/outline"
-	"github.com/yusing/mekugi/modules/symbolquery/query"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
 
@@ -67,21 +63,6 @@ func sharedProxyTestRegistry(t *testing.T) *frontends.Registry {
 	t.Helper()
 	return proxyTestFixture.get(t)
 }
-func buildToolRegistryForTest(
-	t *testing.T,
-	ctx context.Context,
-) (*frontends.Registry, error) {
-	t.Helper()
-	directory := t.TempDir()
-	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
-		return nil, err
-	}
-	var axReadOutput string
-	if debug, _ := requestexecution.DebugRequest(ctx); debug != nil {
-		axReadOutput = debug.ReadLogPath()
-	}
-	return frontends.New(ctx, frontends.Config{Commands: testCommands(), ReplayDirectory: filepath.Join(directory, "replay"), AXReadOutput: axReadOutput})
-}
 
 func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
 	t.Helper()
@@ -114,10 +95,7 @@ func newManagedMekugiProxy(t *testing.T) *Preparer {
 
 func TestMain(m *testing.M) {
 	if os.Getenv(routerTestWorkerEnvironment) == "1" {
-		if filepath.Base(os.Args[0]) == "mread" && os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
-			_ = os.Unsetenv("CODEX_THREAD_ID")
-		}
-		if handled, code := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(),
+		if handled, code := runToolPluginWorkerInHostProcess(testHistory(), testCommands(),
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
 			os.Exit(code)
@@ -176,15 +154,26 @@ func TestMain(m *testing.M) {
 }
 
 func testCommands() []command.Contribution {
-	commands := []command.Contribution{moduletest.BindCommand(changes.Command, testChanges())}
-	return append(commands, moduletest.BindCommand(recovery.Command, testRecovery()), moduletest.BindCommand(run.Command, run.Service{}), moduletest.BindCommand(outline.Command, outline.Service{}), moduletest.BindCommand(read.Command, read.Service{}), moduletest.BindCommand(query.Command, query.Service{}))
+	hist := testHistory()
+	chg, err := changehistory.Module.New(changehistory.Deps{History: hist}, module.Slots{})
+	if err != nil {
+		panic(err)
+	}
+	guidance, err := agentguidance.Module.New(agentguidance.Deps{Changes: chg, History: hist}, module.Slots{})
+	if err != nil {
+		panic(err)
+	}
+	return []command.Contribution{
+		moduletest.BindCommand(changehistory.Module.Contributes.Commands[0], chg),
+		moduletest.BindCommand(agentguidance.Module.Contributes.Commands[0], guidance),
+	}
 }
 
-func runToolPluginWorkerInHostProcess(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	return runToolPluginWorker(service, recovered, commands, command.HostProcessGroup, ctx, argv0, args, stdin, stdout, stderr)
+func runToolPluginWorkerInHostProcess(service *history.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	return runToolPluginWorker(service, commands, command.HostProcessGroup, ctx, argv0, args, stdin, stdout, stderr)
 }
 
-func runToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+func runToolPluginWorker(service *history.Service, commands []command.Contribution, processScope command.ProcessScope, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
 	invocation, err := frontends.Recognize(argv0)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -193,7 +182,7 @@ func runToolPluginWorker(service *history.Service, recovered *recovery.Service, 
 	if invocation == nil {
 		return false, 0
 	}
-	return true, invocation.Run(service, recovered, new(evidence.Service), commands, processScope, ctx, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, new(evidence.Service), commands, processScope, ctx, args, stdin, stdout, stderr)
 }
 
 // Close releases the actual owners created by request fixtures.

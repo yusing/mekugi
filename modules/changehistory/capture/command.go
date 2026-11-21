@@ -273,7 +273,6 @@ func classRank(class string) int {
 // Outcome is the finalized status of an observed exec record.
 type Outcome struct {
 	DeletedDirectories []string `json:",omitempty"` // Captured directory roots absent after the call.
-	OutputRef          string   `json:",omitempty"` // Router-retained failed host result, readable with mread.
 	Status             string
 	Exit               *int `json:",omitempty"`
 	Class              string

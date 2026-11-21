@@ -194,7 +194,7 @@ func OperationResultCount(source string, output *string, exit int) *int {
 			}
 		}
 		return new(len(rows))
-	case "inspect_file":
+	case "inspect_file", "mfinspect":
 		if exit != 0 || output == nil {
 			return nil
 		}

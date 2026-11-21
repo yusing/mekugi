@@ -242,7 +242,7 @@ func (c *nativeConnection) attachEndpoint(parent, thread string, explicit bool) 
 	session := &nativeSession{connection: c, nativeAgent: agent, nativeReadOnly: !agent.IsLoaded(), preparer: r.preparer, reviewSource: r.reviewSource,
 		presentationState: r.presentationState, conversationState: r.conversationState, activity: r.activity, history: r.history, segments: r.segments,
 		ctx: r.ctx, clock: r.clock, controlObservations: r.controlObservations, usage: r.usage, audience: r.audience, review: r.review.NewEndpoint(r.ctx),
-		execWindows: r.execWindows, nativeTrace: r.nativeTrace, retained: r.retained, changeSource: r.changeSource, snapshots: r.snapshots, recovered: r.recovered,
+		execWindows: r.execWindows, nativeTrace: r.nativeTrace, retained: r.retained, changeSource: r.changeSource, snapshots: r.snapshots,
 		publishChanges: r.publishChanges, captureNotice: r.captureNotice, execTrack: r.execTrack, issues: r.issues, serviceTiers: r.serviceTiers,
 		sessionCapture: r.sessionCapture, replayDebugDirectory: r.replayDebugDirectory, observations: r.observations, approvalMode: r.approvalMode,
 		backendVersion: r.backendVersion}

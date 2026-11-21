@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,12 +19,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
+	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/mcptransport"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
+
+func newShellWorkerTestInvocation(directory string, environment ...string) shellWorkerTestInvocation {
+	base := append(os.Environ(), "CODEX_THREAD_ID=")
+	return shellWorkerTestInvocation{directory: directory, environment: append(base, environment...)}
+}
+
+func runOwnedToolPluginWorker(service *history.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	invocation, err := frontends.Recognize(argv0)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return true, 1
+	}
+	if invocation == nil {
+		return false, 0
+	}
+	return true, invocation.Run(service, new(evidence.Service), commands, command.DedicatedHostProcess, ctx, args, stdin, stdout, stderr)
+}
 
 const toolFrontendCodexWorkerEnvironment = "MEKUGI_TOOL_FRONTEND_CODEX_WORKER"
 
@@ -48,7 +68,7 @@ func init() {
 		os.Exit(0)
 	}
 	if os.Getenv(toolFrontendCodexWorkerEnvironment) == "1" {
-		if handled, code := runOwnedToolPluginWorker(testHistory(), testRecovery(), testCommands(),
+		if handled, code := runOwnedToolPluginWorker(testHistory(), testCommands(),
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
 			os.Exit(code)

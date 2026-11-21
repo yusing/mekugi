@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -43,7 +42,7 @@ func beginSession(ctx context.Context, service *history.Service, directory, thre
 		return selected, nil, fmt.Errorf("acquire session storage lease: %w", err)
 	}
 	if err := store.Transaction(ctx, nil, func(tx *history.Transaction) error {
-		return tx.Retain(thread, recovery.DefaultLimits())
+		return tx.Retain(thread, history.Limits{Total: history.DefaultStorageBytes})
 	}); err != nil {
 		release()
 		return selected, nil, err

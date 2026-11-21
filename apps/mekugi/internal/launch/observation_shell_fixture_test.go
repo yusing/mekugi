@@ -17,7 +17,7 @@ func startShellObservationTest(t *testing.T, p *observationFixture, workspace, t
 	ctx, _ := retentionTestSession(t, store, thread, 0)
 	ctx = bindTestHandleScope(t, store, ctx, "", "")
 	selected := store.scoped(ctx)
-	operation := executionobservation.PrepareShell(ctx, selected.changeScope(), p.changeSource, p.snapshots, p.recovered, p.publishChanges, p.execWindows, p.activity, p.noticeSink, executionobservation.ShellInput{Thread: thread, Turn: turn, Namespace: selected.session.Namespace, Workspace: workspace, Caller: "/root", Command: script, Shell: "bash"})
+	operation := executionobservation.PrepareShell(ctx, selected.changeScope(), p.changeSource, p.snapshots, p.publishChanges, p.execWindows, p.activity, p.noticeSink, executionobservation.ShellInput{Thread: thread, Turn: turn, Namespace: selected.session.Namespace, Workspace: workspace, Caller: "/root", Command: script, Shell: "bash"})
 	if operation == nil {
 		t.Fatal("missing shell observation")
 	}

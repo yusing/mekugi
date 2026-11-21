@@ -229,35 +229,6 @@ func TestStorageRetentionForkOwnershipSurvivesRestart(t *testing.T) {
 	}
 }
 
-func TestStorageRetentionPreservesReadSourceAndExpiresSessionOutputs(t *testing.T) {
-	t.Parallel()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent, releaseParent := retentionTestSession(t, store, "parent", 0)
-	id, err := store.putShellOutput(parent, strings.Repeat("a\nb\n", 20), "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cursor := recoveryCursor(t, store, parent, id)
-	releaseParent()
-	child, releaseChild := retentionTestSession(t, store, "child", 0)
-	child = bindTestHandleScope(t, store, child, "", "parent")
-	if _, err := store.recoverOutput(child, cursor); err != nil {
-		t.Fatal(err)
-	}
-	releaseChild()
-	retentionTestAge(t, store, "parent", 30*24*time.Hour)
-	current, _ := retentionTestSession(t, store, "current", 0)
-	if err := store.cleanupSessions(current); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.recoverOutput(child, id); err != nil {
-		t.Fatalf("shared source lost: %v", err)
-	}
-}
-
 func TestStorageRetentionDoesNotFollowSymlinksOrRemoveUnknownFiles(t *testing.T) {
 	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -314,51 +285,6 @@ func TestStorageCleanupRetiresChangesWithoutReusingIDs(t *testing.T) {
 	if err != nil || next != "amber2" {
 		t.Fatalf("next change = %s, %v", next, err)
 	}
-}
-
-func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T) {
-	t.Parallel()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent, release := retentionTestSession(t, store, "parent", 0)
-	id, err := store.changes.Reserve(parent, store.scoped(parent).changeScope(), "/w", "parent", "edit")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.put(parent, "/w", map[string]legacycall.History{"edit-call": {
-		ToolName: applyPatchToolName, ChangeID: id, CorrelationID: "edit", Attempt: 1, Script: "original",
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	options := changes.Query{Workspace: "/w", IDs: []string{id}, View: "history"}
-	text, err := store.changes.Read(parent, store.scoped(parent).changeScope(), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reference, err := putHistoricalChangeRead(store, parent, options, text, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	release()
-	child, _ := retentionTestSession(t, store, "child", 0)
-	child = bindTestHandleScope(t, store, child, "", "parent")
-	// This is the inherited mread path, without a preceding mchanges in child.
-	_, err = store.recoverOutput(child, reference)
-	if err != nil {
-		t.Fatal(err)
-	}
-	retentionTestAge(t, store, "parent", 30*24*time.Hour)
-	current, _ := retentionTestSession(t, store, "current", 0)
-	if err := store.cleanupSessions(current); err != nil {
-		t.Fatal(err)
-	}
-	replayed, err := store.recoverOutput(child, reference)
-	if err != nil || replayed.Stdout != text[1:] {
-		t.Fatalf("inherited change read: %q, %v", replayed.Stdout, err)
-	}
-	retentionTestExists(t, store, "/w", "edit-call", true)
 }
 
 func TestStorageCatalogGrowthCountsAgainstQuota(t *testing.T) {
@@ -565,34 +491,6 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	retentionTestExists(t, store, "/w", "current-call", true)
 }
 
-func TestStorageDuplicateCursorAdoptsDependencies(t *testing.T) {
-	t.Parallel()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	parent, releaseParent := retentionTestSession(t, store, "parent", 0)
-	id, err := store.putShellOutput(parent, strings.Repeat("a\nb\n", 20), "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cursor := recoveryCursor(t, store, parent, id)
-	child, _ := retentionTestSession(t, store, "child", 0)
-	child = bindTestHandleScope(t, store, child, "", "parent")
-	duplicate := recoveryCursor(t, store, child, id)
-	if duplicate != cursor {
-		t.Fatalf("duplicate cursor: %s %v", duplicate, err)
-	}
-	releaseParent()
-	retentionTestAge(t, store, "parent", 30*24*time.Hour)
-	if err := store.cleanupSessions(child); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.recoverOutput(child, cursor); err != nil {
-		t.Fatalf("published cursor lost: %v", err)
-	}
-}
-
 func TestStoragePreparationProtectsLeaseFromPreviousTerminal(t *testing.T) {
 	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -672,10 +570,11 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 	if err != nil || id != "amber1" {
 		t.Fatalf("new index allocation = %q, %v", id, err)
 	}
-	if _, err := store.putShellOutput(current, "new output", "", 0); err != nil {
+	currentScope := store.scoped(current).changeScope()
+	if _, _, err := store.publication.WriteReadOnlyFile(current, currentScope.Thread, currentScope.Limits, currentScope.Writes, "output", ".txt", []byte("new output")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.recoverOutput(current, "r_AAAAAAAAAAAAAAAAAAAAAA"); err == nil {
+	if _, err := store.publication.ReadReadOnlyFile(filepath.Join(store.directory, oldOutput), maxReplayRecordBytes); err == nil {
 		t.Fatal("obsolete read reference became usable")
 	}
 	var files map[string]int64

@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/outputbudget"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 // CompletionTokens bounds one automatic attachment, including source labels,
@@ -54,7 +53,7 @@ func completionText(result compact.CapturedSource, sources []completionSource) s
 	return attachments.SourceRanges(result.Text(), bodies)
 }
 
-func boundCompletion(ctx context.Context, result compact.CapturedSource, sources []completionSource, retained *recovery.Session) (string, error) {
+func boundCompletion(ctx context.Context, result compact.CapturedSource, sources []completionSource, selected changes.Scope) (string, error) {
 	budget := outputbudget.Budget{}
 	// Avoid copying a full retained diff just to reject it on the byte limit.
 	if len(result.Stdout) <= 4*CompletionTokens {
@@ -63,19 +62,19 @@ func boundCompletion(ctx context.Context, result compact.CapturedSource, sources
 			return text, err
 		}
 	}
-	if retained == nil {
-		return "", errors.New("completion output recovery is unavailable")
+	if selected.Store == nil {
+		return "", errors.New("completion retained storage is unavailable")
 	}
-	refs, err := retained.Reserve(ctx, 1)
+	full := result.Stdout
+	path, _, err := selected.Store.WriteReadOnlyFile(ctx, selected.Thread, selected.Limits, selected.Writes, "completion", ".txt", []byte(full))
 	if err != nil {
 		return "", err
 	}
-	result.Stderr = recovery.NextCall(refs[0], CompletionTokens)
+	result.Stderr = "Completion output exceeds budget. Read the complete output with mcat " + path + ".\n"
 	trailerTokens, err := budget.Count("\n" + result.Stderr)
 	if err != nil {
 		return "", err
 	}
-	full := result.Stdout
 	remaining := CompletionTokens - trailerTokens
 	var text string
 	for {
@@ -97,6 +96,5 @@ func boundCompletion(ctx context.Context, result compact.CapturedSource, sources
 			return "", errors.New("completion continuation exceeds output budget")
 		}
 	}
-	_, err = retained.PublishAt(ctx, refs[0], command.OmittedOutput{Stdout: full[len(result.Stdout):]}, result.ExitCode)
-	return text, err
+	return text, nil
 }

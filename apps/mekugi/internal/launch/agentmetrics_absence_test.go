@@ -51,7 +51,7 @@ func TestAgentMetricsAbsentDebugSession(t *testing.T) {
 	defer usage.Close()
 	var paths []string
 	ready := false
-	err = runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), usage, nil, new(transportcapture.Service), testDiagnostics(nil, new(transportcapture.Service)), ctx, testCommands(), testNaming(), nil, testGuards(), options, nil, func(session invocationFixture) {
+	err = runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), history, testPreferences(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), usage, nil, new(transportcapture.Service), testDiagnostics(nil, new(transportcapture.Service)), ctx, testCommands(), testNaming(), nil, testGuards(), options, nil, func(session invocationFixture) {
 		ready = true
 		if session.AXReadOutput != "" {
 			t.Errorf("absent metrics enabled AX output: %q", session.AXReadOutput)

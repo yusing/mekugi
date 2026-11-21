@@ -36,12 +36,10 @@ import (
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/contracts/reference"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
@@ -75,7 +73,6 @@ type entry struct {
 	resources    []string
 	commands     []command.Contribution
 	records      []recordkind.Spec
-	references   []reference.Resolver
 	frontends    bool
 	validFactory bool
 	construct    func(module.Slots, binding.Registrar) error
@@ -104,7 +101,6 @@ func (c *Composition) Add[D, S any, B interface {
 		id:           descriptor.ID, requires: slices.Clone(descriptor.Requires),
 		lifetime: descriptor.Lifetime, resources: slices.Clone(descriptor.Resources),
 		records:      slices.Clone(descriptor.Contributes.RecordKinds),
-		references:   slices.Clone(descriptor.Contributes.References),
 		frontends:    backend.Frontends,
 		validFactory: descriptor.New != nil && deps != nil,
 	}
@@ -177,9 +173,6 @@ func (c *Composition) Add[D, S any, B interface {
 		if !descriptor.HostsRecords {
 			slots.RecordKinds = nil
 		}
-		if !descriptor.HostsReferences {
-			slots.References = nil
-		}
 		service, err := descriptor.New(deps(), slots)
 		if err != nil {
 			return err
@@ -218,7 +211,6 @@ type Runtime struct {
 
 	Changes  *changecapture.Service
 	Segments *segments.Service
-	Recovery *recovery.Service
 	History  *history.Service
 	Commands []command.Contribution
 	started  []entry
@@ -250,7 +242,6 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 	var records []recordkind.Spec
 	var inspections []inspection.Contribution
 	var diagnostics []diagnosticsection.Contribution
-	var references []reference.Resolver
 	positions := make(map[module.ID]int)
 	var failures []error
 	for i, node := range c.entries {
@@ -266,7 +257,6 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		roster = append(roster, node.roster...)
 		status = append(status, node.presentation...)
 		records = append(records, node.records...)
-		references = append(references, node.references...)
 		inspections = append(inspections, node.inspection...)
 		diagnostics = append(diagnostics, node.diagnostics...)
 	}
@@ -312,7 +302,7 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), RecordKinds: slices.Clone(records), References: slices.Clone(references)}, binder); err != nil {
+		if err := node.construct(module.Slots{DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), RecordKinds: slices.Clone(records)}, binder); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}

@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
 type ShellInput struct {
@@ -30,14 +29,13 @@ type ShellOperation struct {
 	retained                      changes.Scope
 	changeSource                  changes.Service
 	snapshots                     *changecapture.Workspaces
-	recovered                     *recovery.Service
 	publishChanges                func([]changes.Update)
 	windows                       *Windows
 	audience                      *sessioncontrol.Audience
 	notice                        func(string, string, string, string)
 }
 
-func PrepareShell(ctx context.Context, retained changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publish func([]changes.Update), windows *Windows, audience *sessioncontrol.Audience, notice func(string, string, string, string), input ShellInput) *ShellOperation {
+func PrepareShell(ctx context.Context, retained changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, publish func([]changes.Update), windows *Windows, audience *sessioncontrol.Audience, notice func(string, string, string, string), input ShellInput) *ShellOperation {
 	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: input.Thread, Namespace: input.Namespace})
 	options := executionCaptureEnvironment(ctx, input.Workspace, retained, source, snapshots, nil)
 	command := commandanalysis.Command{Command: input.Command, Workdir: input.Workspace, Shell: input.Shell}
@@ -47,7 +45,7 @@ func PrepareShell(ctx context.Context, retained changes.Scope, source changes.Se
 	}
 	return &ShellOperation{ctx: ctx, call: "shell:" + rand.Text(), workspace: input.Workspace, thread: input.Thread, turn: input.Turn,
 		history: mekugiHistory{ToolName: nativeExecCommandToolName, ExecObservation: observation, ExecutingThread: input.Thread, Caller: input.Caller},
-		options: options, retained: retained, changeSource: source, snapshots: snapshots, recovered: recovered, publishChanges: publish, windows: windows, audience: audience, notice: notice,
+		options: options, retained: retained, changeSource: source, snapshots: snapshots, publishChanges: publish, windows: windows, audience: audience, notice: notice,
 	}
 }
 
@@ -70,7 +68,7 @@ func (o *ShellOperation) Discard() {
 }
 
 func (o *ShellOperation) Complete(host binding.ToolResult, output string) error {
-	err := finalizeExecObservations(o.retained, o.changeSource, o.snapshots, o.recovered, o.publishChanges, o.windows, o.audience, o.notice, context.WithoutCancel(o.ctx), o.workspace,
+	err := finalizeExecObservations(o.retained, o.changeSource, o.snapshots, o.publishChanges, o.windows, o.audience, o.notice, context.WithoutCancel(o.ctx), o.workspace,
 		[]execCompletion{{callID: o.call, history: o.history, result: binding.ExecutionResult{Terminal: true, Succeeded: host.Status == "completed" && host.ExitCode != nil && *host.ExitCode == 0, ExitCode: host.ExitCode, Text: output}, host: &host}})
 	if err != nil {
 		o.Discard()

@@ -15,7 +15,6 @@ import (
 	"github.com/yusing/mekugi/libraries/persistence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -96,16 +95,10 @@ func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), er
 	return s.publication.SnapshotLease(ctx)
 }
 
-func (s *mekugiReplayStore) recoverySession(ctx context.Context) (*recovery.Session, error) {
-	s = s.scoped(ctx)
-	return s.recovery.AttachStore(s.publication, s.session.Namespace, s.session.Thread, s.retentionLimits(), s.writes)
-}
-
 // Retained-evidence fixture configuration. Production borrows the actual owners.
 type mekugiReplayStore struct {
 	changes            changes.Service
 	captured           *changecapture.Service
-	recovery           *recovery.Service
 	writes             *persistence.Counter
 	directory          string
 	maxBytes           int64
@@ -188,7 +181,7 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 	}
 	var items []map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &items)
-	return retainObservationInput(ctx, s.changeScope(), s.changes, s.recovery, observationRetentionInput(workspace, raw, items, release), histories)
+	return retainObservationInput(ctx, s.changeScope(), s.changes, observationRetentionInput(workspace, raw, items, release), histories)
 }
 func (s *mekugiReplayStore) putAfterMaintenance(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
 	if s == nil {
@@ -202,7 +195,7 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 
 // Fixture composition supplies production owners before preparing an operation.
 func setTestProxyStore(p *Preparer, store *mekugiReplayStore) {
-	p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges = store.changeScope(), store.changes, store.snapshots, store.recovery, store.liveDiff
+	p.Retained, p.Changes, p.Checkpoints, p.PublishChanges = store.changeScope(), store.changes, store.snapshots, store.liveDiff
 }
 func testProxyWithStore(store *mekugiReplayStore, windows ...*Windows) *Preparer {
 	p := new(Preparer)
@@ -213,17 +206,17 @@ func testProxyWithStore(store *mekugiReplayStore, windows ...*Windows) *Preparer
 	return p
 }
 
-func observationTestStore(selected changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publish func([]changes.Update)) *mekugiReplayStore {
+func observationTestStore(selected changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, publish func([]changes.Update)) *mekugiReplayStore {
 	if selected.Store == nil {
 		return nil
 	}
-	return &mekugiReplayStore{publication: selected.Store, directory: selected.Store.Directory(), writes: selected.Writes, maxBytes: selected.Limits.Total, maxCommentaryBytes: selected.Limits.Kinds["commentary"], session: storageSessionIdentity{Thread: selected.Thread, Namespace: selected.Namespace}, changes: source, snapshots: snapshots, recovery: recovered, liveDiff: publish}
+	return &mekugiReplayStore{publication: selected.Store, directory: selected.Store.Directory(), writes: selected.Writes, maxBytes: selected.Limits.Total, maxCommentaryBytes: selected.Limits.Kinds["commentary"], session: storageSessionIdentity{Thread: selected.Thread, Namespace: selected.Namespace}, changes: source, snapshots: snapshots, liveDiff: publish}
 }
 func testProxyStore(p *Preparer) *mekugiReplayStore {
-	return observationTestStore(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges)
+	return observationTestStore(p.Retained, p.Changes, p.Checkpoints, p.PublishChanges)
 }
 func testResponseStore(t *mekugiResponseTransform) *mekugiReplayStore {
-	return observationTestStore(t.owners.Retained, t.owners.Changes, t.owners.Checkpoints, t.owners.Recovery, t.owners.PublishChanges)
+	return observationTestStore(t.owners.Retained, t.owners.Changes, t.owners.Checkpoints, t.owners.PublishChanges)
 }
 
 const maxReplayRecordBytes = history.MaxRecordBytes

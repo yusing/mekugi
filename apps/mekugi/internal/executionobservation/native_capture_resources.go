@@ -9,10 +9,8 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
 type nativeFrozenSource struct {
@@ -29,43 +27,42 @@ type nativeFinalResource struct {
 }
 
 // nativeCaptureScope borrows existing resource owners, never a logical tree.
-func (p *Preparer) nativeCaptureScope(root, recipient string) (compact.ChangeReader, *recovery.Session, error) {
-	if p == nil || p.Retained.Store == nil || p.Recovery == nil {
-		return compact.ChangeReader{}, nil, errors.New("native capture storage is unavailable")
+func (p *Preparer) nativeCaptureScope(root, recipient string) (compact.ChangeReader, error) {
+	if p == nil || p.Retained.Store == nil {
+		return compact.ChangeReader{}, errors.New("native capture storage is unavailable")
 	}
-	reader, retained, err := p.completionReader(recipient)
+	reader, err := p.completionReader(recipient)
 	if err != nil {
-		return reader, nil, err
+		return reader, err
 	}
 	admitted, err := reader.Scope.Store.ReadAdmittedScope(root)
 	if err != nil {
-		return reader, nil, err
+		return reader, err
 	}
 	if admitted.Namespace != reader.Scope.Namespace {
-		return reader, nil, errors.New("capture recipient is outside the admitted root namespace")
+		return reader, errors.New("capture recipient is outside the admitted root namespace")
 	}
-	return reader, retained, nil
+	return reader, nil
 }
 
-func publishNativeResource(ctx context.Context, retained *recovery.Session, resource any) (string, error) {
-	data, err := json.Marshal(resource)
-	if err != nil {
-		return "", err
+func publishNativeResource(ctx context.Context, selected changes.Scope, resource any) (string, error) {
+	if selected.Store == nil {
+		return "", errors.New("native capture storage is unavailable")
 	}
-	return retained.Publish(ctx, command.OmittedOutput{Stdout: string(data)}, 0)
+	return selected.Store.WriteJSONResource(ctx, selected.Thread, selected.Limits, selected.Writes, resource)
 }
 
 // readNativeResource borrows retained bytes once. Version-specific readers keep
 // historical formats separate from the metadata-only writer.
-func readNativeResource(retained *recovery.Session, ref string) (jsontext.Value, int, error) {
-	output, err := retained.Snapshot(ref)
+func readNativeResource(selected changes.Scope, ref string) (jsontext.Value, int, error) {
+	if selected.Store == nil {
+		return nil, 0, errors.New("native capture storage is unavailable")
+	}
+	raw, err := selected.Store.ReadJSONResource(ref)
 	if err != nil {
 		return nil, 0, err
 	}
-	if output.ExitCode != 0 || output.Stderr != "" {
-		return nil, 0, errors.New("invalid native capture resource")
-	}
-	data := jsontext.Value(output.Stdout)
+	data := jsontext.Value(raw)
 	var header struct{ Version int }
 	if err := json.Unmarshal(data, &header); err != nil {
 		return nil, 0, err
@@ -108,7 +105,7 @@ func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserve
 		}
 		return &appserver.FrozenFinalCapture{FullText: fmt.Sprintf("CONTENT NOT ATTACHED: %v\n", err)}, nil
 	}
-	reader, retained, err := p.nativeCaptureScope(input.RootThreadID, input.RecipientThreadID)
+	reader, err := p.nativeCaptureScope(input.RootThreadID, input.RecipientThreadID)
 	if err != nil {
 		return fail(err)
 	}
@@ -161,11 +158,11 @@ func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserve
 	if len(resource.Sources) == 0 {
 		return nil, nil
 	}
-	fullText, err := p.renderNativeFinal(ctx, reader.Scope, resource, nil, retained)
+	fullText, err := p.renderNativeFinal(ctx, reader.Scope, resource, nil)
 	if err != nil {
 		return fail(err)
 	}
-	ref, err := publishNativeResource(ctx, retained, &resource)
+	ref, err := publishNativeResource(ctx, reader.Scope, &resource)
 	if err != nil {
 		return fail(err)
 	}
@@ -174,11 +171,11 @@ func (p *Preparer) PrepareNativeFinalCapture(ctx context.Context, input appserve
 
 func (p *Preparer) ProjectNativeFinalCapture(ctx context.Context, input appserver.FinalCaptureProjectRequest) (appserver.FinalCaptureProjectResponse, error) {
 	var result appserver.FinalCaptureProjectResponse
-	reader, retained, err := p.nativeCaptureScope(input.RootThreadID, input.RecipientThreadID)
+	reader, err := p.nativeCaptureScope(input.RootThreadID, input.RecipientThreadID)
 	if err != nil {
 		return result, err
 	}
-	data, version, err := readNativeResource(retained, input.ResourceRef)
+	data, version, err := readNativeResource(reader.Scope, input.ResourceRef)
 	if err != nil {
 		return result, err
 	}
@@ -220,11 +217,11 @@ func (p *Preparer) ProjectNativeFinalCapture(ctx context.Context, input appserve
 		result.Text = legacyText
 		return result, nil
 	}
-	result.Text, err = p.renderNativeFinal(ctx, reader.Scope, resource, seen, retained)
+	result.Text, err = p.renderNativeFinal(ctx, reader.Scope, resource, seen)
 	return result, err
 }
 
-func (p *Preparer) renderNativeFinal(ctx context.Context, selected changes.Scope, resource nativeFinalResource, seen map[string]uint64, retained *recovery.Session) (string, error) {
+func (p *Preparer) renderNativeFinal(ctx context.Context, selected changes.Scope, resource nativeFinalResource, seen map[string]uint64) (string, error) {
 	var body strings.Builder
 	if len(seen) != 0 {
 		body.WriteString("Captures already reported by yield summaries omitted; explicit mchanges reads retain full diffs.\n")
@@ -260,5 +257,5 @@ func (p *Preparer) renderNativeFinal(ctx context.Context, selected changes.Scope
 		result.ExitCode = max(result.ExitCode, output.ExitCode)
 	}
 	result.Stdout = body.String()
-	return boundCompletion(ctx, result, sources, retained)
+	return boundCompletion(ctx, result, sources, selected)
 }

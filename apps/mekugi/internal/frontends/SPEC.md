@@ -12,10 +12,10 @@
 
 ### Catalog, pinning, and isolation
 
-- Exposes compiled Go helpers (`mcat`, `inspect_file`, `msymbol`, `mread`, `mrun`, `mchanges`, and
-  internal `mreload`) on an invocation-private `PATH` entry (restored across Bash login startup
-  without modifying user config). Legacy JS plugin loading is removed; existing plugin files stay
-  untouched.
+- Exposes compiled Go helpers (`mchanges` and internal `mreload`) on an invocation-private `PATH`
+  entry (restored across Bash login startup without modifying user config). Native runtime helpers
+  (`mcat`, `mfinspect`, `msymbol`, `mrun`) are served by `mekugi-app-server` via `codex-arg0`.
+  Legacy JS plugin loading is removed; existing plugin files stay untouched.
 - Launch validates the descriptor-contributed catalog once and pins an immutable worker executable
   image per invocation (shared across server invocations) so installed-binary updates cannot alter
   running workers.
@@ -25,14 +25,11 @@
 - Cross-backend delegates share the parent's retained namespace while keeping caller-scoped
   implicit selections (`CODEX_THREAD_ID`).
 
-### Output budgets and recovery delivery
+### Session storage and observation
 
-- Shared `--max-tokens N` (cap 15,500) enforces both GPT-token and stock 4-byte-estimate ceilings;
-  continuations emit `next_call: COMMAND`.
-- Workers publish omitted payloads or frozen evidence selections through
-  [Session history](../../../../modules/sessionhistory/SPEC.md) under a session lease *before*
-  exposing any `mread` reference. Publication failure preserves admitted stdout/stderr (or full
-  mutation reports), emits an explicit diagnostic without a broken reference, and never reruns the
-  command.
+- Go workers publish retained snapshots and frozen files through
+  [Session history](../../../../modules/sessionhistory/SPEC.md) under a session lease before
+  returning references. Publication failure preserves admitted stdout/stderr (or full mutation
+  reports), emits an explicit diagnostic without a broken reference, and never reruns the command.
 - Optional AX read observation writes to the authenticated read-log path without affecting command
   outcomes.

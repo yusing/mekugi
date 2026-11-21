@@ -676,6 +676,8 @@ func TestSubagentSymbolicReadPaths(t *testing.T) {
 		{`sed -n '1,260p' "$file"`, "Read `\"$file\" 1:260`"},
 		{`nl -ba "$file" | sed -n '1,2p'`, "Read `\"$file\" 1:2`"},
 		{`inspect_file "$ROOT/a.go"`, "Inspect `\"$ROOT/a.go\"`"},
+		{`mfinspect "$ROOT/a.go"`, "Inspect `\"$ROOT/a.go\"`"},
+		{`mfinspect --json a.go b.go`, "Inspect `a.go`\n\nInspect `b.go`"},
 		{`rg needle "$ROOT"`, "Search `needle` in `\"$ROOT\"`"},
 	} {
 		if got := shellSource(tc.source); got != tc.want {
@@ -692,6 +694,7 @@ func TestSubagentSymbolicReadPaths(t *testing.T) {
 		`mcat "${HOME:=/tmp}/a"`,
 		`mcat "${paths[index++]}/a"`,
 		`mcat <(cat a)`,
+		`mfinspect --max-tokens 100 a.go`,
 		`"$READER" a.go`,
 	} {
 		if got := shellSource(source); got != "Run\n"+markdownsyntax.SourceFence("bash", source) {
@@ -810,6 +813,19 @@ func TestShellOptionsRetainPureRunAndExternalFailures(t *testing.T) {
 		}
 		if !failed {
 			t.Errorf("external failure erased: %q = %+v", source, values)
+		}
+	}
+}
+
+func TestOperationResultCountMfinspect(t *testing.T) {
+	compact := "1-12 fn main\n14-20 type Config\n"
+	jsonOut := `{"ok":true,"truncated":false,"data":{"outline":[{"kind":"fn"},{"kind":"type"}]}}` + "\n"
+	for _, cmd := range []string{"mfinspect a.go", "inspect_file a.go"} {
+		if got := OperationResultCount(cmd, &compact, 0); got == nil || *got != 2 {
+			t.Errorf("%s compact count = %v, want 2", cmd, got)
+		}
+		if got := OperationResultCount(cmd+" --json", &jsonOut, 0); got == nil || *got != 2 {
+			t.Errorf("%s json count = %v, want 2", cmd, got)
 		}
 	}
 }

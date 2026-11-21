@@ -51,6 +51,17 @@ func (w countedWriter) Write(p []byte) (int, error) {
 // AtomicFile closes a private same-directory temporary file before rename.
 // A failed publication still accounts bytes successfully written to its temp file.
 func AtomicFile(path, pattern string, data []byte, counter *Counter) error {
+	return atomicFileMode(path, pattern, data, counter, 0)
+}
+
+// AtomicReadOnlyFile atomically publishes an immutable read-only (0o444) file
+// by writing to a same-directory temporary file, setting mode 0o444, closing,
+// and renaming into place.
+func AtomicReadOnlyFile(path, pattern string, data []byte, counter *Counter) error {
+	return atomicFileMode(path, pattern, data, counter, 0o444)
+}
+
+func atomicFileMode(path, pattern string, data []byte, counter *Counter, mode os.FileMode) error {
 	f, err := os.CreateTemp(filepath.Dir(path), pattern)
 	if err != nil {
 		return err
@@ -62,6 +73,11 @@ func AtomicFile(path, pattern string, data []byte, counter *Counter) error {
 	}
 	if n != len(data) {
 		return io.ErrShortWrite
+	}
+	if mode != 0 {
+		if err := f.Chmod(mode); err != nil {
+			return err
+		}
 	}
 	if err := f.Close(); err != nil {
 		return err

@@ -33,7 +33,6 @@ import (
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -48,7 +47,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	ready := make(chan invocationFixture, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- testRunSession(testHistory(), testRecovery(), ctx, testCommands(), nil, nil, func(session invocationFixture) {
+		done <- testRunSession(testHistory(), ctx, testCommands(), nil, nil, func(session invocationFixture) {
 			ready <- session
 		}, nil)
 	}()
@@ -88,7 +87,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 
 func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
 	for _, args := range [][]string{{"--unknown-flag"}, {"--stream-idle-timeout", "0"}, {"--listen", "127.0.0.1:0"}, {"--provider-base-url", "https://example.com"}} {
-		if err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), args, nil, func(invocationFixture) { t.Error("ready called despite startup failure") }, nil); err == nil {
+		if err := testRunSession(testHistory(), t.Context(), testCommands(), args, nil, func(invocationFixture) { t.Error("ready called despite startup failure") }, nil); err == nil {
 			t.Fatalf("accepted %q", args)
 		}
 	}
@@ -97,7 +96,7 @@ func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
 func TestRunSessionServesMetricsWithoutLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), nil, testCriticalErrors(), func(session invocationFixture) {
+	err := testRunSession(testHistory(), ctx, testCommands(), nil, testCriticalErrors(), func(session invocationFixture) {
 		response, err := http.Get(strings.TrimSuffix(session.BaseURL, "/v1") + "/api/metrics")
 		if err != nil {
 			t.Error(err)
@@ -122,7 +121,7 @@ func TestRunSessionRejectsAXCaptureAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(evidence.AXReadOutputEnvironment, capture)
-	err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), []string{"--capture-output", capture}, nil, func(invocationFixture) { t.Error("aliased exports reached readiness") }, nil)
+	err := testRunSession(testHistory(), t.Context(), testCommands(), []string{"--capture-output", capture}, nil, func(invocationFixture) { t.Error("aliased exports reached readiness") }, nil)
 	if err == nil {
 		t.Fatal("aliased outputs accepted")
 	}
@@ -141,14 +140,14 @@ func TestRunSessionRejectsUnusableReplayStorageBeforeReady(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(state, "mekugi"), []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), nil, nil, func(invocationFixture) { t.Error("unusable replay storage reached readiness") }, nil)
+	err := testRunSession(testHistory(), t.Context(), testCommands(), nil, nil, func(invocationFixture) { t.Error("unusable replay storage reached readiness") }, nil)
 	if err == nil || !strings.Contains(err.Error(), "initialize replay storage") {
 		t.Fatalf("startup error = %v", err)
 	}
 }
 
 // Existing router fixtures select raw arguments; production passes parsed values.
-func testRunSession(service *history.Service, recovered *recovery.Service, ctx context.Context, commands []command.Contribution, args []string, issues *requestexecution.Failures, ready func(invocationFixture), artifacts func([]string)) error {
+func testRunSession(service *history.Service, ctx context.Context, commands []command.Contribution, args []string, issues *requestexecution.Failures, ready func(invocationFixture), artifacts func([]string)) error {
 	options, err := launchoptions.Parse(args)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
@@ -167,5 +166,5 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 		return err
 	}
 	defer captured.Stop(context.Background())
-	return runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), service, testPreferences(), recovered, &segmentservice.Service{Reports: testReports()}, captured, usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testNaming(), nil, testGuards(), options, issues, ready, artifacts)
+	return runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), service, testPreferences(), &segmentservice.Service{Reports: testReports()}, captured, usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testNaming(), nil, testGuards(), options, issues, ready, artifacts)
 }

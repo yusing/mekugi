@@ -19,13 +19,11 @@ import (
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi/libraries/commandargs"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
-const changesReadUsage = "mchanges --list [ID[..ID] ...] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history] [--max-tokens N] [PATH ...] | mchanges revert|apply ID[..ID] ... [--max-tokens N] [PATH ...]"
+const changesReadUsage = "mchanges --list [ID[..ID] ...] | mchanges [--mine | ID[..ID] ...] [--summary|--history] [PATH ...] | mchanges revert|apply ID[..ID] ... [PATH ...]"
 
 type changeReadOptions struct {
 	// Only initial reads collect unavailable targets; frozen recovery stays strict.
@@ -39,7 +37,6 @@ type changeReadOptions struct {
 	paths         []string
 	workspace     string
 	cwd           string
-	maxTokens     int
 	ids           []string
 	freeze        *changes.FrozenRead
 }
@@ -74,7 +71,6 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		options.view, arguments = arguments[0], arguments[1:]
 	}
 	for len(arguments) > 0 {
-		arguments = commandargs.ExpandMaxTokensOption(arguments)
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if flag == "" {
@@ -97,9 +93,6 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			continue
 		}
 		if seen[flag] {
-			if flag == "--max-tokens" {
-				return options, errors.New(commandargs.MaxTokensArgumentError)
-			}
 			return options, fmt.Errorf("duplicate option %s", flag)
 		}
 		seen[flag] = true
@@ -117,16 +110,6 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 				return options, errors.New("choose only one review view")
 			}
 			options.view = strings.TrimPrefix(flag, "--")
-		case "--max-tokens":
-			if len(arguments) == 0 {
-				return options, errors.New(commandargs.MaxTokensArgumentError)
-			}
-			number, err := commandargs.ParseMaxTokens(arguments[0])
-			if err != nil {
-				return options, err
-			}
-			arguments = arguments[1:]
-			options.maxTokens = number
 		default:
 			return options, fmt.Errorf("unknown option %s; %s", flag, changesReadUsage)
 		}
@@ -159,30 +142,27 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 }
 
 func (s *store) readChanges(ctx context.Context, options changeReadOptions) (string, error) {
-	text, _, err := s.readChangeView(ctx, options)
-	return text, err
+	return s.readChangeView(ctx, options)
 }
 
 // partialChangeReadError accompanies usable output from independent change reads.
 type partialChangeReadError struct{ error }
 
-func (s *store) readChangeView(ctx context.Context, options changeReadOptions) (string, *changeReadSnapshot, error) {
+func (s *store) readChangeView(ctx context.Context, options changeReadOptions) (string, error) {
 	var text string
-	var snapshot *changeReadSnapshot
 	err := s.locked(ctx, func(store *store) error {
 		var err error
-		text, snapshot, err = store.readChangeViewLocked(ctx, options, store.retainFiles)
+		text, err = store.readChangeViewLocked(ctx, options, store.retainFiles)
 		return err
 	})
-	return text, snapshot, err
+	return text, err
 }
 
-func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOptions, retain func(...string) error) (string, *changeReadSnapshot, error) {
+func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOptions, retain func(...string) error) (string, error) {
 	if options.view == "list" && len(options.ids) == 0 {
 		options.mine = true
 	}
 	var output string
-	var snapshot *changeReadSnapshot
 	var targetErrors []error
 	err := func() error {
 		index, err := s.selectChangeIndex(&options)
@@ -195,9 +175,8 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 		if options.mine && index.discoveryErr != nil {
 			targetErrors = append(targetErrors, fmt.Errorf("caller-owned capture discovery is incomplete: %w", index.discoveryErr))
 		}
-		snapshot = &changeReadSnapshot{Workspace: options.workspace, IDs: options.ids, Paths: options.paths, View: options.view, Frozen: true,
-			Selected: make(map[string]trackedChange), Mine: options.mine, OverlapLabels: make(map[string]string)}
-		options.overlapLabels = snapshot.OverlapLabels
+		selectedChanges := make(map[string]trackedChange)
+		options.overlapLabels = make(map[string]string)
 		names := index.indexNames(options.ids)
 		var readable []string
 		missingStreams := make(map[string]bool)
@@ -240,41 +219,30 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 				continue
 			}
 			readable = append(readable, id)
-			snapshot.Selected[id] = change
+			selectedChanges[id] = change
 		}
 		options.ids = readable
 		options.unavailable = make(changeReadFailures)
 		if err := s.resolveChangePaths(&options, index); err != nil {
 			return err
 		}
-		snapshot.ResolvedPaths = options.resolvedPaths
 		output, err = s.renderChanges(ctx, options, index)
 		for _, id := range readable {
 			if failure := options.unavailable[id]; failure != nil {
 				targetErrors = append(targetErrors, failure)
-				delete(snapshot.Selected, id)
+				delete(selectedChanges, id)
 			}
 		}
-		snapshot.IDs = slices.DeleteFunc(readable, func(id string) bool { return options.unavailable[id] != nil })
-		selectedStreams := make(map[string]bool)
-		for _, id := range snapshot.IDs {
-			stream, _, _ := changes.ParseID(id)
-			selectedStreams[stream] = true
-			for _, call := range snapshot.Selected[id].Calls {
+		selectedIDs := slices.DeleteFunc(readable, func(id string) bool { return options.unavailable[id] != nil })
+		for _, id := range selectedIDs {
+			for _, call := range selectedChanges[id].Calls {
 				names = append(names, legacycall.Name(index.workspaceFor(id), call.ID, false))
-			}
-		}
-		snapshot.Workspaces = make(map[string]string)
-		for _, stream := range index.Streams {
-			if selectedStreams[stream.Name] {
-				snapshot.Streams = append(snapshot.Streams, stream)
-				snapshot.Workspaces[stream.Name] = index.workspaces[stream.Name]
 			}
 		}
 		if retainErr := retain(names...); retainErr != nil {
 			return retainErr
 		}
-		if len(snapshot.IDs) == 0 && len(targetErrors) > 0 && err == nil {
+		if len(selectedIDs) == 0 && len(targetErrors) > 0 && err == nil {
 			output = availableChangeRanges(index, missingStreams)
 		}
 		if partial, ok := errors.AsType[*partialChangeReadError](err); ok {
@@ -286,7 +254,7 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 	if err == nil && len(targetErrors) > 0 {
 		err = &partialChangeReadError{errors.Join(targetErrors...)}
 	}
-	return output, snapshot, err
+	return output, err
 }
 
 func threadChangeIDs(index changeIndex, thread string) ([]string, error) {

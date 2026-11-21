@@ -22,24 +22,19 @@ use (
 	./modules/activity
 	./modules/agentguidance
 	./modules/agentmetrics
-	./modules/boundedcommand
 	./modules/changehistory
 	./modules/commandsegments
 	./modules/conversation
 	./modules/diagnostics
-	./modules/fileread
 	./modules/livepreview
 	./modules/notifications
-	./modules/outputrecovery
 	./modules/remotewriteapproval
 	./modules/sessionhistory
 	./modules/sessioninspection
 	./modules/sessionnaming
 	./modules/sessionreplay
 	./modules/sessionpreferences
-	./modules/sourceoutline
 	./modules/sudoapproval
-	./modules/symbolquery
 	./modules/transportdiagnostics
 	./modules/usage
 	./providers/openai

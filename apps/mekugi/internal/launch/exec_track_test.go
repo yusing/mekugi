@@ -275,12 +275,12 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			t.Cleanup(resumed.snapshots.Close)
 			ids := []string{creation.ChangeID, deletion.ChangeID}
 			for i, id := range ids {
-				history, err := resumed.changes.Read(next, resumed.scoped(next).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "net", MaxTokens: 4000})
+				history, err := resumed.changes.Read(next, resumed.scoped(next).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "net"})
 				if err != nil || !strings.Contains(history, []string{"+entry", "-entry"}[i]) || strings.Contains(history, "unrelated") {
 					t.Fatalf("retained %s: %q, %v", id, history, err)
 				}
 			}
-			net, err := resumed.changes.Read(next, resumed.scoped(next).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000})
+			net, err := resumed.changes.Read(next, resumed.scoped(next).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net"})
 			if err != nil || strings.Contains(net, "entry") {
 				t.Fatalf("creation and deletion do not cancel: %q, %v", net, err)
 			}

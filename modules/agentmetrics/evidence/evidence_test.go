@@ -126,14 +126,14 @@ func TestAXRuntimeReadLog(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	pending, err := new(Service).StartRead(path, "thread", "inspect_file", AXReadContext{})
+	pending, err := new(Service).StartRead(path, "thread", "mfinspect", AXReadContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	pending.file.Close() // Model an interrupted worker that never publishes finish.
 	result, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err != nil || result.Started != 3 || result.Completed != 2 || result.Succeeded != 1 ||
-		result.Failed != 1 || result.Incomplete != 1 || result.ByTool["mcat"] != 2 || result.State != "observed" {
+		result.Failed != 1 || result.Incomplete != 1 || result.ByTool["mcat"] != 2 || result.ByTool["mfinspect"] != 1 || result.State != "observed" {
 		t.Fatalf("read metrics = %+v, %v", result, err)
 	}
 	if got, err := new(Service).ReadReads(t.Context(), "", "thread"); err != nil || got.State != "unavailable" {

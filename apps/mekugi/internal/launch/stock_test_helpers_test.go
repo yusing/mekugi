@@ -146,11 +146,6 @@ type shellWorkerTestInvocation struct {
 	environment []string
 }
 
-func newShellWorkerTestInvocation(directory string, environment ...string) shellWorkerTestInvocation {
-	base := append(os.Environ(), "CODEX_THREAD_ID=")
-	return shellWorkerTestInvocation{directory: directory, environment: append(base, environment...)}
-}
-
 func runShellWorkerTest(
 	t *testing.T,
 	registry *frontends.Registry,
@@ -219,7 +214,7 @@ func bindTestHandleScope(t *testing.T, store *mekugiReplayStore, ctx context.Con
 		}
 	}
 	selected.session.Namespace = namespace
-	if err := recordtransactions.RetainInput(ctx, selected.changeScope(), selected.changes, selected.recovery, recordtransactions.Input{Workspace: "/w", Initialize: &history.Scope{Thread: thread, Namespace: namespace, Parent: parent, Fork: fork}}); err != nil {
+	if err := recordtransactions.RetainInput(ctx, selected.changeScope(), selected.changes, recordtransactions.Input{Workspace: "/w", Initialize: &history.Scope{Thread: thread, Namespace: namespace, Parent: parent, Fork: fork}}); err != nil {
 		t.Fatal(err)
 	}
 	ctx = context.WithValue(ctx, storageSessionKey{}, selected.session)

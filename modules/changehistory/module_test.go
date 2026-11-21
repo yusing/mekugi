@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/contracts/reference"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -105,19 +103,19 @@ func review(path, before, after string) legacycall.ReviewFile {
 	return legacycall.ReviewFile{BeforePath: path, AfterPath: path, Diff: fmt.Sprintf("@@ -1 +1 @@\n-%s\n+%s\n", before, after)}
 }
 
-func TestModulePatchExportHasNoImplicitTokenLimit(t *testing.T) {
+func TestModulePatchExportPrintsCompleteOutputWhole(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	id := f.reserve(t, "owner", "large")
 	after := strings.Repeat(" new", 20000)
 	f.publish(t, id, "large", "large-call", "owner", []legacycall.ReviewFile{review(filepath.Join(f.workspace, "file.txt"), "old", after)})
 	full := f.execute(t, "owner", id)
-	if full.ExitCode != 0 || full.Stderr != "" || full.Delivery != nil || full.OmittedOutput != nil || !strings.Contains(full.Stdout, "\n+"+after+"\n") {
+	if full.ExitCode != 0 || full.Stderr != "" || !strings.Contains(full.Stdout, "\n+"+after+"\n") {
 		t.Fatalf("incomplete default export: status=%d stderr=%q bytes=%d", full.ExitCode, full.Stderr, len(full.Stdout))
 	}
-	bounded := f.execute(t, "owner", id, "--max-tokens", "4000")
-	if bounded.ExitCode != 1 || bounded.Delivery == nil || len(bounded.Stdout) >= len(full.Stdout) {
-		t.Fatalf("explicit budget ignored: status=%d stderr=%q bytes=%d", bounded.ExitCode, bounded.Stderr, len(bounded.Stdout))
+	rejected := f.execute(t, "owner", id, "--max-tokens", "4000")
+	if rejected.ExitCode != 1 || rejected.Stderr == "" {
+		t.Fatalf("removed --max-tokens flag accepted: status=%d stderr=%q", rejected.ExitCode, rejected.Stderr)
 	}
 }
 
@@ -207,7 +205,7 @@ func TestModuleRepeatedRevertCaptureComposesRetainedHandoff(t *testing.T) {
 	}
 }
 
-func TestComposedBinaryDiagnosticsAndRecovery(t *testing.T) {
+func TestComposedBinaryDiagnostics(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	id := f.reserve(t, "owner", "mixed")
@@ -225,20 +223,9 @@ func TestComposedBinaryDiagnosticsAndRecovery(t *testing.T) {
 	if scoped.ExitCode != 0 || !strings.Contains(scoped.Stdout, "text.txt") {
 		t.Fatalf("scoped text read: %+v", scoped)
 	}
-	paged := f.execute(t, "owner", id, "--max-tokens", "10")
-	if paged.ExitCode != 1 || paged.OmittedOutput == nil {
-		t.Fatalf("missing partial read recovery: %+v", paged)
-	}
-	if paged.Stdout+paged.OmittedOutput.Stdout != full.Stdout || strings.Count(paged.Stderr+paged.OmittedOutput.Stderr, "binary files that cannot be composed") != 1 {
-		t.Fatalf("recovered read: %+v, omitted: %+v", paged, paged.OmittedOutput)
-	}
-	tiny := f.execute(t, "owner", id, "--max-tokens", "1")
-	if tiny.ExitCode != 1 || !strings.Contains(tiny.Stderr, "mchanges "+id+" --history") || !strings.Contains(tiny.Stderr, "token budget") {
-		t.Fatalf("page admission diagnostics: %+v", tiny)
-	}
 }
 
-func TestModulePublicationScopedReadAndFrozenRecovery(t *testing.T) {
+func TestModulePublicationAndScopedRead(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	first := f.reserve(t, "owner", "first")
@@ -270,89 +257,13 @@ func TestModulePublicationScopedReadAndFrozenRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paged := f.execute(t, "owner", "--mine", "--history", "--max-tokens", "10")
-	if paged.Delivery == nil || paged.Delivery.ReferenceCount() != 1 {
-		t.Fatalf("missing frozen read plan: %+v", paged)
-	}
-	prepared, err := paged.Delivery.Prepare([]string{"reserved-read"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(prepared.Recovery) != 1 || len(prepared.Recovery[0].ChangeSelection) == 0 || !strings.Contains(prepared.Referenced.Stderr, "mread reserved-read") {
-		t.Fatalf("prepared read: %+v", prepared)
-	}
-	resolver := changehistory.Module.Contributes.References[0]
-	selection, err := resolver.Canonicalize(prepared.Recovery[0].ChangeSelection, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	retainedScope := scope.Retained{Directory: f.selected.Store.Directory(), Namespace: "owner", Thread: "owner"}
-	names, err := resolver.Dependencies(retainedScope, selection)
-	if err != nil || !slices.Equal(names, []string{legacycall.Name(f.workspace, "first-call", false)}) {
-		t.Fatalf("frozen dependencies: %v, %v", names, err)
-	}
-	// A completed pending change and a newly allocated change cannot alter this receipt.
-	f.publish(t, pending, "pending", "pending-call", "owner", []legacycall.ReviewFile{review(filepath.Join(f.workspace, "later.txt"), "a", "b")})
-	f.reserve(t, "owner", "new-pending")
-	reopened := f.history.Attach(f.selected.Store.Directory())
-	var omitted command.OmittedOutput
-	err = reopened.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
-		if err := tx.Retain("owner", history.Limits{}, names...); err != nil {
-			return err
-		}
-		var err error
-		omitted, err = resolver.Resolve(t.Context(), reference.View{Scope: retainedScope, Read: f.selected.Store.ReadRetained, Retain: func(names ...string) error { return tx.Retain("owner", history.Limits{}, names...) }}, selection)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := prepared.Referenced.Stdout + omitted.Stdout; got != original || omitted.StdoutKind != "rows" {
-		t.Fatalf("frozen recovery changed:\n%s\nwant:\n%s", got, original)
+	full := f.execute(t, "owner", "--mine", "--history")
+	if full.ExitCode != 0 || full.Stdout != original {
+		t.Fatalf("history read:\n%s\nwant:\n%s", full.Stdout, original)
 	}
 }
 
-func TestModuleLegacyEmptyViewRecovery(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t)
-	id := f.reserve(t, "owner", "legacy")
-	f.publish(t, id, "legacy", "legacy-call", "owner", []legacycall.ReviewFile{review(filepath.Join(f.workspace, "file.txt"), "old", "new")})
-	legacy := id + "\n@@ -1 +1 @@\n-old\n+new\n"
-	paged := f.execute(t, "owner", id, "--max-tokens", "10")
-	if paged.Delivery == nil {
-		t.Fatalf("missing composed read delivery: %+v", paged)
-	}
-	prepared, err := paged.Delivery.Prepare([]string{"legacy-read"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var selection map[string]any
-	if err := json.Unmarshal(prepared.Recovery[0].ChangeSelection, &selection); err != nil {
-		t.Fatal(err)
-	}
-	if selection["view"] != "net" {
-		t.Fatalf("new default selection view = %v", selection["view"])
-	}
-	selection["view"], selection["offset"], selection["digest"] = "", 1, fmt.Sprintf("%x", sha256.Sum256([]byte(legacy)))
-	resolver := changehistory.Module.Contributes.References[0]
-	for _, frozen := range []bool{false, true} {
-		selection["frozen"] = frozen
-		data, err := json.Marshal(selection)
-		if err != nil {
-			t.Fatal(err)
-		}
-		data, err = resolver.Canonicalize(data, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		omitted, err := resolver.Resolve(t.Context(), reference.View{Scope: scope.Retained{Directory: f.selected.Store.Directory(), Namespace: "owner", Thread: "owner"}, Read: f.selected.Store.ReadRetained, Retain: func(...string) error { return nil }}, data)
-		if err != nil || omitted.Stdout != legacy[1:] {
-			t.Fatalf("legacy frozen=%v recovery: %+v, %v", frozen, omitted, err)
-		}
-	}
-}
-
-func TestModuleMutationScopeAndPureReportRecovery(t *testing.T) {
+func TestModuleMutationScopeAndReport(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	id := f.reserve(t, "owner", "edit")
@@ -375,33 +286,10 @@ func TestModuleMutationScopeAndPureReportRecovery(t *testing.T) {
 	if err != nil || string(data) != "new\n" || failed.ExitCode != 1 {
 		t.Fatalf("failed dependency mutated file: %q, %+v, %v", data, failed, err)
 	}
-	output := f.execute(t, "owner", "revert", id, "--max-tokens", "10")
+	output := f.execute(t, "owner", "revert", id)
 	data, err = os.ReadFile(path)
-	if err != nil || string(data) != "old\n" || output.Delivery == nil {
+	if err != nil || string(data) != "old\n" || output.ExitCode != 0 || !strings.Contains(output.Stdout, "undo: mchanges apply "+id) {
 		t.Fatalf("revert/report: %q, %+v, %v", data, output, err)
-	}
-	// Recovery plans carry only captured report output, never another mutation.
-	prepared, err := output.Delivery.Prepare([]string{"report"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(prepared.Recovery) != 1 || len(prepared.Recovery[0].ChangeSelection) != 0 || !strings.Contains(prepared.Referenced.Stdout+prepared.Recovery[0].Stdout, "undo: mchanges apply "+id) {
-		t.Fatalf("report recovery: %+v", prepared)
-	}
-	if err := os.WriteFile(path, []byte("unobserved\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := output.Delivery.Prepare([]string{"other-report"}); err != nil {
-		t.Fatal(err)
-	}
-	fallback, ok := output.Delivery.(command.RecoveryFailure)
-	if !ok {
-		t.Fatal("mutation report has no publication-failure fallback")
-	}
-	full := fallback.RecoveryFailed(errors.New("fixture retention failure"))
-	data, err = os.ReadFile(path)
-	if err != nil || string(data) != "unobserved\n" || full.ExitCode != 0 || full.Delivery != nil || full.Stdout != prepared.Referenced.Stdout+prepared.Recovery[0].Stdout || !strings.Contains(full.Stderr, "fixture retention failure") {
-		t.Fatalf("report recovery repeated effect or lost report: %q, %+v, %v", data, full, err)
 	}
 }
 
@@ -629,36 +517,9 @@ func TestModuleWorkspaceIndependentSelectionAndMutation(t *testing.T) {
 	if err != nil || !strings.Contains(text, first+".."+second) || !strings.Contains(text, other) || strings.Contains(text, sibling) || strings.Contains(text, ambiguous) {
 		t.Fatalf("retained caller workspaces: %q, %v", text, err)
 	}
-	// Frozen continuation retains each authored workspace and resolved filter.
 	full := f.execute(t, "owner", first, other, "--history", "baz1")
-	paged := f.execute(t, "owner", first, other, "--history", "--max-tokens", "10", "baz1")
-	if full.ExitCode != 0 || paged.Delivery == nil {
-		t.Fatalf("mixed-workspace paging: full=%+v, paged=%+v", full, paged)
-	}
-	prepared, err := paged.Delivery.Prepare([]string{"mixed-read"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolver := changehistory.Module.Contributes.References[0]
-	selection, err := resolver.Canonicalize(prepared.Recovery[0].ChangeSelection, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var frozen struct {
-		Streams    []changes.Stream  `json:"streams"`
-		Workspaces map[string]string `json:"workspaces"`
-	}
-	if err := json.Unmarshal(selection, &frozen); err != nil || len(frozen.Streams) != 2 || len(frozen.Workspaces) != 2 {
-		t.Fatalf("frozen selection retained unrelated streams: %+v, %v", frozen, err)
-	}
-	retainedScope := scope.Retained{Directory: reopened.Directory(), Namespace: "owner", Thread: "owner"}
-	names, err := resolver.Dependencies(retainedScope, selection)
-	if err != nil || !slices.Contains(names, legacycall.Name(filepath.Join(root, "bar"), "first-call", false)) || !slices.Contains(names, legacycall.Name(root, "first-call", false)) {
-		t.Fatalf("mixed-workspace frozen dependencies: %v, %v", names, err)
-	}
-	omitted, err := resolver.Resolve(t.Context(), reference.View{Scope: retainedScope, Read: f.selected.Store.ReadRetained}, selection)
-	if err != nil || prepared.Referenced.Stdout+omitted.Stdout != full.Stdout {
-		t.Fatalf("mixed-workspace frozen continuation: %+v, %v", omitted, err)
+	if full.ExitCode != 0 || !strings.Contains(full.Stdout, "+new") || !strings.Contains(full.Stdout, "+changed") {
+		t.Fatalf("mixed-workspace history: full=%+v", full)
 	}
 	for path, content := range map[string]string{firstPath: "new\n", secondPath: "after\n", filepath.Join(root, "baz1"): "changed\n"} {
 		if err := os.WriteFile(path, []byte(content), 0600); err != nil {

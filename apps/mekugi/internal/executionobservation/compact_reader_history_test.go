@@ -12,10 +12,9 @@ import (
 	"github.com/yusing/mekugi/testsupport/moduletest"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestCompactReloadProviderInputHidesOrchestration(t *testing.T) {
@@ -140,23 +139,15 @@ func TestCompactReloadIntroducesMultipleOutputsOnce(t *testing.T) {
 
 func compactTestSnapshot(t *testing.T, p *Preparer, snapshot compact.Snapshot) string {
 	t.Helper()
-	ns, err := p.Retained.Store.NamespaceForThread("root")
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := p.Recovery.AttachStore(p.Retained.Store, ns, "root", recovery.DefaultLimits(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 	data, err := json.Marshal(snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := store.Publish(t.Context(), command.OmittedOutput{Stdout: string(data)}, 0)
+	path, _, err := p.Retained.Store.WriteReadOnlyFile(t.Context(), "root", history.Limits{}, nil, "reload", ".json", data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return "Script completed\nWall time 0.1 seconds\nOutput:\n" + compact.SnapshotPrefix + ref + "\n"
+	return "Script completed\nWall time 0.1 seconds\nOutput:\n" + compact.SnapshotPrefix + path + "\n"
 }
 
 func TestCompactReloadWaitsWithoutPartialProviderContext(t *testing.T) {

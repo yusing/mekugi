@@ -373,7 +373,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 		}
 		changed = true
 	}
-	if err := retainObservationInput(ctx, p.Retained, p.Changes, p.Recovery, retentionInput, visible); err != nil {
+	if err := retainObservationInput(ctx, p.Retained, p.Changes, retentionInput, visible); err != nil {
 		return nil, err
 	}
 	releaseSnapshot()
@@ -421,7 +421,7 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 			key = completed.callID
 		}
 		if members := execGroups[key]; len(members) != 0 {
-			if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.Recovery, p.PublishChanges, p.Windows, p.Audience, p.Notice, ctx, workspace, members); err != nil {
+			if err := finalizeExecObservations(p.Retained, p.Changes, p.Checkpoints, p.PublishChanges, p.Windows, p.Audience, p.Notice, ctx, workspace, members); err != nil {
 				return nil, err
 			}
 			delete(execGroups, key)

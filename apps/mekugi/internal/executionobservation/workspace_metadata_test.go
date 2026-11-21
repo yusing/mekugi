@@ -67,7 +67,7 @@ for path, text in prepared.items():
 		if output, err := host.CombinedOutput(); err != nil {
 			t.Fatalf("host execution: %v: %s", err, output)
 		}
-		if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, transform.ctx, transform.directory, []execCompletion{{
+		if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, transform.ctx, transform.directory, []execCompletion{{
 			callID: callID, history: transform.local[callID], result: binding.DecodeExecutionResult(nativeExecCommandToolName, mustTestJSON(t, map[string]any{"exit_code": 0})),
 		}}); err != nil {
 			t.Fatal(err)
@@ -153,7 +153,7 @@ func TestCaptureAfterAdmittedWorkspaceRemoval(t *testing.T) {
 	}
 	writeTestFile(t, target, "after\n")
 	history := transform.local["edit"]
-	if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.Recovery, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, transform.ctx, transform.directory, []execCompletion{{
+	if err := finalizeExecObservations(proxy.Retained, proxy.Changes, proxy.Checkpoints, proxy.PublishChanges, proxy.Windows, proxy.Audience, proxy.Notice, transform.ctx, transform.directory, []execCompletion{{
 		callID: "edit", history: history, result: binding.DecodeExecutionResult(nativeExecCommandToolName, mustTestJSON(t, map[string]any{"exit_code": 0})),
 	}}); err != nil {
 		t.Fatal(err)

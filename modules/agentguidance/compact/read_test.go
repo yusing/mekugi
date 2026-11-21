@@ -1,7 +1,6 @@
 package compact
 
 import (
-	"context"
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -11,22 +10,105 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/modules/fileread/read"
+	"github.com/yusing/mekugi/contracts/recordkind"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestMain(m *testing.M) {
 	if os.Getenv("MEKUGI_TEST_MCAT") == "1" {
-		result, err := (read.Service{}).Execute(context.Background(), command.Request{Args: os.Args[1:]})
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		fmt.Fprint(os.Stdout, result.Stdout)
-		fmt.Fprint(os.Stderr, result.Stderr)
-		os.Exit(result.ExitCode)
+		os.Exit(runTestMcat(os.Args[1:]))
 	}
 	os.Exit(m.Run())
+}
+
+func runTestMcat(args []string) int {
+	specs, _, err := commandargs.ParseReadBundleSource(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	const maxBytes = 24 * 1024
+	exitCode := 0
+	written := 0
+	for _, spec := range specs {
+		info, err := os.Stat(spec.Path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			exitCode = 1
+			continue
+		}
+		if info.Size() > history.MaxRecordBytes {
+			fmt.Fprintln(os.Stderr, "file exceeds retained record limit")
+			exitCode = 1
+			continue
+		}
+		data, err := os.ReadFile(spec.Path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			exitCode = 1
+			continue
+		}
+		text := string(data)
+		if spec.Range != "" {
+			lines := strings.SplitAfter(text, "\n")
+			if len(lines) > 0 && lines[len(lines)-1] == "" {
+				lines = lines[:len(lines)-1]
+			}
+			var selected strings.Builder
+			for i, line := range lines {
+				row := i + 1
+				if row >= spec.Start && row <= spec.End {
+					selected.WriteString(line)
+				}
+			}
+			text = selected.String()
+		}
+		if written+len(text) > maxBytes {
+			remain := max(0, maxBytes-written)
+			fmt.Fprint(os.Stdout, text[:remain])
+			fmt.Fprintln(os.Stderr, "output truncated at token budget")
+			return 1
+		}
+		fmt.Fprint(os.Stdout, text)
+		written += len(text)
+	}
+	return exitCode
+}
+
+func newReloadStore(t *testing.T) *history.Store {
+	t.Helper()
+	svc, err := history.NewService([]recordkind.Spec{history.FrozenFileRecord, history.FrozenResourceRecord})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := svc.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+func readReloadSnapshot(t *testing.T, store *history.Store, output command.Output) Snapshot {
+	t.Helper()
+	if output.ExitCode != 0 || output.Stderr != "" {
+		t.Fatalf("unexpected capture output: %+v", output)
+	}
+	path, ok := strings.CutPrefix(strings.TrimSuffix(output.Stdout, "\n"), SnapshotPrefix)
+	if !ok || path == "" {
+		t.Fatalf("missing snapshot path: %q", output.Stdout)
+	}
+	data, err := store.ReadReadOnlyFile(path, history.MaxRecordBytes)
+	if err != nil {
+		t.Fatalf("read snapshot %q: %v", path, err)
+	}
+	var snapshot Snapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
 }
 
 func testMcat(t *testing.T) {
@@ -45,6 +127,7 @@ func testMcat(t *testing.T) {
 
 func TestReloadRejectsOversizedCapture(t *testing.T) {
 	testMcat(t)
+	store := newReloadStore(t)
 	path := filepath.Join(t.TempDir(), "oversized.json")
 	file, err := os.Create(path)
 	if err != nil {
@@ -60,18 +143,12 @@ func TestReloadRejectsOversizedCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
+	readers := Readers{Changes: ChangeReader{Scope: changes.Scope{Store: store, Namespace: "owner", Thread: "owner"}}}
+	output, err := readers.Capture(t.Context(), command.Request{Args: []string{string(selection)}, Scope: scope.Retained{Directory: store.Directory(), Namespace: "owner", Thread: "owner"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := output.Delivery.Prepare([]string{"amber"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var captured Snapshot
-	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &captured); err != nil {
-		t.Fatal(err)
-	}
+	captured := readReloadSnapshot(t, store, output)
 	if captured.Sources[0].ExitCode == 0 || captured.Sources[0].Stderr == "" {
 		t.Fatal("oversized source did not report incomplete capture")
 	}
@@ -99,38 +176,38 @@ func TestReloadSelectionHasNoSourceCountLimit(t *testing.T) {
 
 func TestReloadReportsIncompleteSelectedContent(t *testing.T) {
 	testMcat(t)
+	store := newReloadStore(t)
 	path := filepath.Join(t.TempDir(), "full.txt")
 	body := strings.Repeat("full source content beyond the former reader token budget\n", 3000)
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
 	selection, _ := json.Marshal(map[string]any{"sources": []string{"@" + path, "@" + path + ".missing"}})
-	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
+	readers := Readers{Changes: ChangeReader{Scope: changes.Scope{Store: store, Namespace: "owner", Thread: "owner"}}}
+	output, err := readers.Capture(t.Context(), command.Request{Args: []string{string(selection)}, Scope: scope.Retained{Directory: store.Directory(), Namespace: "owner", Thread: "owner"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := output.Delivery.Prepare([]string{"amber"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Referenced.Stdout != SnapshotPrefix+"amber\n" || strings.Contains(prepared.Referenced.Stdout, body) {
+	if !strings.HasPrefix(output.Stdout, SnapshotPrefix) || strings.Contains(output.Stdout, body) {
 		t.Fatal("source body entered capped tool output")
 	}
-	var captured Snapshot
-	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &captured); err != nil {
-		t.Fatal(err)
-	}
+	captured := readReloadSnapshot(t, store, output)
 	sources := captured.Sources
 	if len(sources) != 2 || sources[0].Stdout == body || sources[0].ExitCode == 0 || sources[1].ExitCode == 0 || sources[1].Stderr == "" {
 		t.Fatal("capture did not report incomplete source or independent failure")
 	}
-	if prepared.Unreferenced.ExitCode == 0 || strings.Contains(prepared.Unreferenced.Stdout, SnapshotPrefix) {
+	unattached, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unattached.ExitCode == 0 || strings.Contains(unattached.Stdout, SnapshotPrefix) {
 		t.Fatal("failed publication exposed a reference")
 	}
 }
 
 func TestReloadExcludesHostInstructionsAndPreservesSourceOrder(t *testing.T) {
 	testMcat(t)
+	store := newReloadStore(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "selected.txt")
 	if err := os.WriteFile(path, []byte("selected body\n"), 0600); err != nil {
@@ -141,18 +218,12 @@ func TestReloadExcludesHostInstructionsAndPreservesSourceOrder(t *testing.T) {
 		"@" + filepath.Join(dir, "AGENTS.md") + "#L1-L10",
 		"@" + path + ".missing", "@nested/../nested/AGENTS.md",
 	}})
-	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
+	readers := Readers{Changes: ChangeReader{Scope: changes.Scope{Store: store, Namespace: "owner", Thread: "owner"}}}
+	output, err := readers.Capture(t.Context(), command.Request{Args: []string{string(selection)}, Scope: scope.Retained{Directory: store.Directory(), Namespace: "owner", Thread: "owner"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := output.Delivery.Prepare([]string{"amber"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var snapshot Snapshot
-	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &snapshot); err != nil {
-		t.Fatal(err)
-	}
+	snapshot := readReloadSnapshot(t, store, output)
 	selected, err := Sources(snapshot.Selection)
 	if err != nil || len(selected) != 5 || len(snapshot.Sources) != 5 || snapshot.Selection != string(selection) {
 		t.Fatalf("selection/results correlation: %+v, %v", snapshot, err)
@@ -364,18 +435,13 @@ func TestReloadDocumentationExamplesRemainLiteral(t *testing.T) {
 	first := strings.Count(string(body[:start]), "\n") + 1
 	last := strings.Count(string(body[:end]), "\n")
 	selection := Selection([]SourceIdentity{{Path: path, Ranges: [][2]int{{first, last}}}})
-	output, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{selection}})
+	store := newReloadStore(t)
+	readers := Readers{Changes: ChangeReader{Scope: changes.Scope{Store: store, Namespace: "owner", Thread: "owner"}}}
+	output, err := readers.Capture(t.Context(), command.Request{Args: []string{selection}, Scope: scope.Retained{Directory: store.Directory(), Namespace: "owner", Thread: "owner"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := output.Delivery.Prepare([]string{"test1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var snapshot Snapshot
-	if err := json.Unmarshal([]byte(prepared.Recovery[0].Stdout), &snapshot); err != nil {
-		t.Fatal(err)
-	}
+	snapshot := readReloadSnapshot(t, store, output)
 	if len(snapshot.Sources) != 1 || snapshot.Sources[0].ExitCode != 0 || snapshot.Sources[0].Stderr != "" || snapshot.Sources[0].Stdout != expected {
 		t.Fatalf("documentation acquired illustrative references: %+v", snapshot.Sources)
 	}

@@ -24,13 +24,8 @@ import (
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-	"github.com/yusing/mekugi/modules/boundedcommand/run"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"github.com/yusing/mekugi/modules/fileread/read"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/changehistory"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/sourceoutline/outline"
-	"github.com/yusing/mekugi/modules/symbolquery/query"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
 
@@ -114,22 +109,27 @@ func newProxyWithSharedTestRegistry(t *testing.T, registry *frontends.Registry) 
 }
 
 func testCommands() []command.Contribution {
-	commands := []command.Contribution{moduletest.BindCommand(changes.Command, testChanges())}
-	guidance, err := agentguidance.Module.New(agentguidance.Deps{History: testHistory(), Changes: testChanges()}, module.Slots{})
+	hist := testHistory()
+	chg, err := changehistory.Module.New(changehistory.Deps{History: hist}, module.Slots{})
+	if err != nil {
+		panic(err)
+	}
+	commands := []command.Contribution{moduletest.BindCommand(changehistory.Module.Contributes.Commands[0], chg)}
+	guidance, err := agentguidance.Module.New(agentguidance.Deps{History: hist, Changes: chg}, module.Slots{})
 	if err != nil {
 		panic(err)
 	}
 	for _, definition := range agentguidance.Module.Contributes.Commands {
 		commands = append(commands, moduletest.BindCommand(definition, guidance))
 	}
-	return append(commands, moduletest.BindCommand(recovery.Command, testRecovery()), moduletest.BindCommand(run.Command, run.Service{}), moduletest.BindCommand(outline.Command, outline.Service{}), moduletest.BindCommand(read.Command, read.Service{}), moduletest.BindCommand(query.Command, query.Service{}))
+	return commands
 }
 
-func runToolPluginWorkerInHostProcess(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	return runToolPluginWorker(service, recovered, commands, command.HostProcessGroup, ctx, argv0, args, stdin, stdout, stderr)
+func runToolPluginWorkerInHostProcess(service *history.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	return runToolPluginWorker(service, commands, command.HostProcessGroup, ctx, argv0, args, stdin, stdout, stderr)
 }
 
-func runToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+func runToolPluginWorker(service *history.Service, commands []command.Contribution, processScope command.ProcessScope, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
 	invocation, err := frontends.Recognize(argv0)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -138,19 +138,7 @@ func runToolPluginWorker(service *history.Service, recovered *recovery.Service, 
 	if invocation == nil {
 		return false, 0
 	}
-	return true, invocation.Run(service, recovered, new(evidence.Service), commands, processScope, ctx, args, stdin, stdout, stderr)
-}
-
-func runOwnedToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	invocation, err := frontends.Recognize(argv0)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return true, 1
-	}
-	if invocation == nil {
-		return false, 0
-	}
-	return true, invocation.Run(service, recovered, new(evidence.Service), commands, command.DedicatedHostProcess, ctx, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, new(evidence.Service), commands, processScope, ctx, args, stdin, stdout, stderr)
 }
 
 // Close releases the actual owners created by request fixtures.

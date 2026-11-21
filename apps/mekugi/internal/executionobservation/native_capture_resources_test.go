@@ -35,13 +35,13 @@ func TestNativeFinalProjectionUsesOnlySelectedRetainedRanges(t *testing.T) {
 	if status != 0 || source != explicit {
 		t.Fatalf("attached source and explicit diff do not match: status=%d, source=%q, explicit=%q", status, source, explicit)
 	}
-	_, retained, err := p.nativeCaptureScope(f.thread, f.thread)
+	readerScope, err := p.nativeCaptureScope(f.thread, f.thread)
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata, err := retained.Snapshot(frozen.ResourceRef)
-	if err != nil || strings.Contains(metadata.Stdout, "seen-content") || strings.Contains(metadata.Stdout, "remaining-content") || strings.Contains(metadata.Stdout, "FullText") {
-		t.Fatalf("selection duplicated captured evidence: %q, %v", metadata.Stdout, err)
+	metadata, err := readerScope.Scope.Store.ReadJSONResource(frozen.ResourceRef)
+	if err != nil || strings.Contains(string(metadata), "seen-content") || strings.Contains(string(metadata), "remaining-content") || strings.Contains(string(metadata), "FullText") {
+		t.Fatalf("selection duplicated captured evidence: %q, %v", metadata, err)
 	}
 	record, found, err := f.store.read(f.workspace, "edit-call", false)
 	if err != nil || !found {
@@ -107,29 +107,27 @@ func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 	if err != nil || frozen == nil || frozen.ResourceRef == "" {
 		t.Fatalf("freeze=%+v err=%v", frozen, err)
 	}
-	_, continuation, found := strings.Cut(frozen.FullText, "next_call: mread ")
+	_, continuation, found := strings.Cut(frozen.FullText, "Read the complete output with mcat ")
 	if !found || len(strings.Fields(continuation)) == 0 {
 		t.Fatalf("large full capture has no exact recovery: %q", frozen.FullText)
 	}
-	ref := strings.Fields(continuation)[0]
-	_, retained, err := p.nativeCaptureScope(f.thread, f.thread)
+	path := strings.TrimSuffix(strings.Fields(continuation)[0], ".")
+	readerScope, err := p.nativeCaptureScope(f.thread, f.thread)
 	if err != nil {
 		t.Fatal(err)
 	}
-	recovered, err := retained.Snapshot(ref)
-	if err != nil || !strings.Contains(recovered.Stdout, "frozen-end") {
+	recovered, err := readerScope.Scope.Store.ReadReadOnlyFile(path, history.MaxRecordBytes)
+	if err != nil || !strings.Contains(string(recovered), "frozen-end") {
 		t.Fatalf("full fallback lost omitted suffix: %v", err)
 	}
 	command := "'mchanges' '" + id + "'"
 	source, payload := finalCaptureSource(t, frozen.FullText, command)
-	withoutRecovery, _, _ := strings.Cut(payload, "\nread: incomplete;")
-	rawPrefix := strings.Replace(withoutRecovery, fmt.Sprintf("Source %q:\n", command), "", 1)
 	header := command + ": exit_code=0\n"
 	want := header + diffmodel.RenderReviewFile("", "large.txt", "", content).UnifiedDiff() + "\n"
-	if got := rawPrefix + recovered.Stdout; got != want {
-		t.Fatalf("prefix and continuation changed original bytes: got %d bytes, want %d", len(got), len(want))
+	if string(recovered) != want {
+		t.Fatalf("frozen completion file changed original bytes: got %d bytes, want %d", len(recovered), len(want))
 	}
-	if !strings.HasSuffix(source, "+visible line of retained evidence\n") || !strings.Contains(rawPrefix, "+oversized line") || strings.Contains(source, "oversized line") {
+	if !strings.HasSuffix(source, "+visible line of retained evidence\n") || !strings.Contains(payload, "+oversized line") || strings.Contains(source, "oversized line") {
 		t.Fatal("a partially visible row was marked as a deduplication source")
 	}
 	if tokens, err := new(outputbudget.Budget).Count(frozen.FullText); err != nil || tokens > CompletionTokens {
@@ -142,16 +140,17 @@ func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 	if err != nil || strings.Contains(projected.Text, "late-content") || reader.reads.Load() != 1 {
 		t.Fatalf("projection reselected mutable IDs: %v reads=%d", err, reader.reads.Load())
 	}
-	_, projectedContinuation, ok := strings.Cut(projected.Text, "next_call: mread ")
+	_, projectedContinuation, ok := strings.Cut(projected.Text, "Read the complete output with mcat ")
 	if !ok || len(strings.Fields(projectedContinuation)) == 0 {
 		t.Fatal("projected selection lost bounded recovery")
 	}
-	projectedSuffix, err := retained.Snapshot(strings.Fields(projectedContinuation)[0])
-	if err != nil || projectedSuffix.Stdout != recovered.Stdout {
+	projectedPath := strings.TrimSuffix(strings.Fields(projectedContinuation)[0], ".")
+	projectedFull, err := readerScope.Scope.Store.ReadReadOnlyFile(projectedPath, history.MaxRecordBytes)
+	if err != nil || string(projectedFull) != string(recovered) {
 		t.Fatalf("rematerialized range changed recovery content: %v", err)
 	}
-	again, err := retained.Snapshot(ref)
-	if err != nil || again.Stdout != recovered.Stdout || strings.Contains(again.Stdout, "late-content") {
+	again, err := readerScope.Scope.Store.ReadReadOnlyFile(path, history.MaxRecordBytes)
+	if err != nil || string(again) != string(recovered) || strings.Contains(string(again), "late-content") {
 		t.Fatalf("retained recovery changed after late writer: %v", err)
 	}
 }
@@ -218,7 +217,7 @@ func TestFrozenFinalRangesEnforceBothChunkBoundsWithoutCopyingEvidence(t *testin
 		diffmodel.RenderReviewFile("", "upper.txt", "", "upper-content\n"),
 	}})
 	p := testProxyWithStore(f.store)
-	reader, _, err := p.nativeCaptureScope(f.thread, f.thread)
+	reader, err := p.nativeCaptureScope(f.thread, f.thread)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +278,7 @@ func TestNativeFinalRetainedVersionOneProjectsWithoutRestoringCoordinator(t *tes
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, retained, err := p.nativeCaptureScope(f.thread, f.thread)
+	reader, err := p.nativeCaptureScope(f.thread, f.thread)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +295,7 @@ func TestNativeFinalRetainedVersionOneProjectsWithoutRestoringCoordinator(t *tes
 				}}},
 		}}},
 	}
-	ref, err := publishNativeResource(t.Context(), retained, &legacy)
+	ref, err := publishNativeResource(t.Context(), reader.Scope, &legacy)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,6 @@ type Query struct {
 	View       string
 	Mine       bool
 	OmitOwn    bool // Automatic recipient attachments omit that thread's authored changes.
-	MaxTokens  int
 	// Yielded omits acknowledged capture prefixes from automatic completion reads.
 	// Explicit mchanges, preload and reload queries leave this nil.
 	Yielded map[string]int

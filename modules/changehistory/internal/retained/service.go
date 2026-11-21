@@ -64,10 +64,10 @@ func (*service) MutationPaths(ctx context.Context, selected changes.Scope, q cha
 	return selectedStore(selected).changeMutationPaths(ctx, options(q))
 }
 func (o changeReadOptions) query() changes.Query {
-	return changes.Query{Workspace: o.workspace, IDs: o.ids, Paths: o.paths, View: o.view, Mine: o.mine, MaxTokens: o.maxTokens}
+	return changes.Query{Workspace: o.workspace, IDs: o.ids, Paths: o.paths, View: o.view, Mine: o.mine}
 }
 func options(q changes.Query) changeReadOptions {
-	return changeReadOptions{workspace: q.Workspace, cwd: q.Workspace, ids: q.IDs, paths: q.Paths, view: q.View, mine: q.Mine, omitOwn: q.OmitOwn, maxTokens: q.MaxTokens, yielded: q.Yielded}
+	return changeReadOptions{workspace: q.Workspace, cwd: q.Workspace, ids: q.IDs, paths: q.Paths, view: q.View, mine: q.Mine, omitOwn: q.OmitOwn, yielded: q.Yielded}
 }
 
 func (service *service) Execute(ctx context.Context, request command.Request) (command.Output, error) {
@@ -103,18 +103,9 @@ func (service *service) Execute(ctx context.Context, request command.Request) (c
 		if err != nil {
 			return fail(err)
 		}
-		selected, err := selectReadPage(ctx, text, options.maxTokens)
-		if err != nil {
-			return command.Output{Stdout: text, Stderr: "mchanges: report not paged: " + err.Error() + "\n", ExitCode: status}, nil
-		}
-		execution := command.Output{Stdout: selected, ExitCode: status}
-		if len(selected) < len(text) {
-			execution.Delivery = &changeMutationDelivery{report: text, selected: selected, status: status}
-			execution.ExitCode = 1
-		}
-		return execution, nil
+		return command.Output{Stdout: text, ExitCode: status}, nil
 	}
-	text, snapshot, err := store.readChangeView(ctx, options)
+	text, err := store.readChangeView(ctx, options)
 	diagnostics := ""
 	if err != nil {
 		if _, partial := errors.AsType[*partialChangeReadError](err); !partial {
@@ -122,21 +113,9 @@ func (service *service) Execute(ctx context.Context, request command.Request) (c
 		}
 		diagnostics = fmt.Sprintf("mchanges: %v\n", err)
 	}
-	selected, err := selectReadPage(ctx, text, options.maxTokens)
-	if err != nil {
-		output, _ := fail(err)
-		output.Stderr = diagnostics + output.Stderr
-		return output, nil
-	}
-	execution := command.Output{Stdout: selected, Stderr: diagnostics}
+	execution := command.Output{Stdout: text, Stderr: diagnostics}
 	if diagnostics != "" {
 		execution.ExitCode = 1
-		if len(selected) < len(text) {
-			execution.OmittedOutput = &command.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
-		}
-	} else if len(selected) < len(text) {
-		execution.ExitCode = 1
-		execution.Delivery = &changeReadDelivery{snapshot: *snapshot, text: text, selected: selected}
 	}
 	return execution, nil
 }

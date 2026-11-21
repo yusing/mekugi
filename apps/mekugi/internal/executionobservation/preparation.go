@@ -26,7 +26,6 @@ import (
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -49,7 +48,6 @@ type Config struct {
 	Retained       changes.Scope
 	Changes        changes.Service
 	Checkpoints    *changecapture.Workspaces
-	Recovery       *recovery.Service
 	PublishChanges func([]changes.Update)
 	Notice         func(string, string, string, string)
 }

@@ -268,7 +268,7 @@ func (s *Startup) RetainFork(ctx context.Context, selected changes.Scope, source
 	done := make(chan error, 1)
 	s.ForkRetention = &ForkRetention{Message: message, Done: done}
 	go func() {
-		done <- recordtransactions.RetainInput(ctx, selected, source, nil, recordtransactions.Input{
+		done <- recordtransactions.RetainInput(ctx, selected, source, recordtransactions.Input{
 			Workspace:  accepted.Thread.Cwd,
 			Initialize: &history.Scope{Thread: accepted.Thread.ID, Namespace: selected.Namespace, Fork: original},
 		})

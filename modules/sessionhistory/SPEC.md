@@ -19,6 +19,10 @@
   sessions under pressure via a background maintenance worker (never evicting leased/active work).
   Durable per-kind byte totals avoid scanning the store on admission; unrecognized record kinds
   keep dependencies conservatively intact.
+- **Frozen files & JSON resources**: publishes immutable content-addressed read-only files
+  (`frozen-<kind>-<sha256>.(txt|json)`, mode `0o444`, read back through `mcat`) and internal
+  Go-to-Go JSON resources (`resource-<sha256>.json`), tracked in session catalogs and retired when
+  their owning sessions expire.
 - **Namespaces & forks**: subagents share the root namespace; ordinary forks freeze inherited
   ranges and clone indexes safely; allocation high-water marks outlive reclaimed payloads so
   handles never collide.

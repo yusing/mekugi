@@ -35,9 +35,6 @@ make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/launc
   - `make check-generated`: verifies `docs/reference/modules.md` and browser Session API types (`go run ./apps/mekugi/cmd/workspace index-write` / `go run ./apps/mekugi/cmd/sessionapi-schema` regenerate individually).
   - `make preview-native-ui`: runs real Mekugi against a scripted local provider (see [Preview the terminal UI](docs/contributing/development.md#preview-the-terminal-ui)).
 - **Opt-in focused checks** (never install missing tools):
-  - Real `gopls`: `env MEKUGI_TEST_REAL_GOPLS=1 make test TEST_PACKAGES=./modules/symbolquery/query TEST_RUN='^TestNativeSymbolRealGoplsReferences$'`
-  - Real `rust-analyzer`: `env MEKUGI_TEST_REAL_RUST_ANALYZER=1 make test TEST_PACKAGES='./modules/symbolquery/query ./apps/mekugi/internal/launch' TEST_RUN='Rust'`
-  - Native Rust checkout cross-crate query: `env MEKUGI_TEST_RUST_RUNTIME=1 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestMSymbolRustRuntimeCheckout$' TEST_FLAGS=-v`
   - Helper guidance (native + wrapped launcher): `make test-native NATIVE_ARGS='-p codex-core --lib -- mekugi_guidance::tests'` and `make test TEST_PACKAGES='./apps/mekugi/internal/frontends ./apps/mekugi/internal/launch' TEST_RUN='Guidance|ComposedFrontendCatalog|ToolFrontend'`
 - After API changes, compile tagged host/live fixtures (`TEST_RUN='^$'` with `-tags=codex_e2e` / `-tags=codex_e2e,e2e`).
 

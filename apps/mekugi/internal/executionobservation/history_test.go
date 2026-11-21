@@ -2,13 +2,11 @@ package executionobservation
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"testing"
 
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity"
@@ -17,7 +15,6 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -36,7 +33,7 @@ func testHistory() *history.Service {
 		diagnostic.RecordKinds(),
 		accounting.RecordKinds(),
 		changehistory.Module.Contributes.RecordKinds,
-		recovery.RecordKinds(), reports.RecordKinds(),
+		reports.RecordKinds(),
 	))
 	if err != nil {
 		panic(err)
@@ -53,33 +50,7 @@ func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
 	if err != nil {
 		_ = captured.Stop(context.Background())
 	}
-	if store != nil {
-		store.recovery = testRecovery()
-	}
 	return store, err
-}
-
-func testRecovery() *recovery.Service {
-	service, err := recovery.New(testHistory(), changehistory.Module.Contributes.References)
-	if err != nil {
-		panic(err)
-	}
-	return service
-}
-
-func (s *mekugiReplayStore) publishOutput(ctx context.Context, output command.OmittedOutput, exit int) (string, error) {
-	session, err := s.recoverySession(ctx)
-	if err != nil {
-		return "", err
-	}
-	return session.Publish(ctx, output, exit)
-}
-func (s *mekugiReplayStore) recoverOutput(ctx context.Context, id string) (command.Output, error) {
-	output, err := s.recovery.Execute(ctx, command.Request{Args: []string{id, "--max-tokens", "15500"}, Scope: retainedScope(ctx, s.directory)})
-	if err == nil && output.ExitCode != 0 {
-		err = fmt.Errorf("recovery failed: %s", output.Stderr)
-	}
-	return output, err
 }
 
 func testReports() *reports.Service {

@@ -22,17 +22,17 @@
 ### `mchanges` command
 
 ```text
-mchanges --list [ID[..ID] ...] [--max-tokens N]
-mchanges [--mine | ID[..ID] ...] [--summary|--history] [--max-tokens N] [PATH ...]
-mchanges revert|apply ID[..ID] ... [--max-tokens N] [PATH ...]
+mchanges --list [ID[..ID] ...]
+mchanges [--mine | ID[..ID] ...] [--summary|--history] [PATH ...]
+mchanges revert|apply ID[..ID] ... [PATH ...]
 ```
 
 - Bare `mchanges` / `--mine` selects the calling thread's IDs; explicit IDs/ranges (including
   abbreviated `amber1..3`) read across agents in the shared namespace without reading the live
   workspace. Default view outputs one composed patch; `--summary` outputs composed status/counts;
   `--history` outputs per-attempt inputs, host outcomes, and diagnostics. Incomplete, pending, or
-  retired IDs remain explicit (never silently empty diffs), and `--max-tokens` freezes a
-  continuation for `mread`.
+  retired IDs remain explicit (never silently empty diffs), and `mchanges` returns complete output
+  without `--max-tokens` pagination.
 - `revert` (latest-first) and `apply` (capture-order) require explicit IDs and all dependencies,
   locate hunks via anchored context, three-way merge drifted regions (emitting git-style conflict
   markers rather than guessing), write in-memory results cleanly, and are themselves captured as new

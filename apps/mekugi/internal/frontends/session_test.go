@@ -2,12 +2,15 @@ package frontends
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -24,9 +27,17 @@ func TestFrontendSessionLeaseCoversDeliveryAndWriteFailure(t *testing.T) {
 			service := testHistory()
 			store := service.Attach(registry.ReplayDirectory)
 			leaseName := strings.TrimSuffix(history.SessionName(thread), ".json") + ".lock"
-			path := filepath.Join(t.TempDir(), "source.txt")
-			if err := os.WriteFile(path, []byte("delivered\n"), 0600); err != nil {
-				t.Fatal(err)
+			commands := slices.Clone(testCommands())
+			for i := range commands {
+				if commands[i].Name == "mchanges" {
+					commands[i].Run = func(context.Context, command.Request) (command.Output, error) {
+						out := command.Output{Stdout: "delivered\n"}
+						if failure == "stderr" {
+							out.Stderr = "diagnostic\n"
+						}
+						return out, nil
+					}
+				}
 			}
 			writeError := errors.New("delivery stopped")
 			var stdout, stderr bytes.Buffer
@@ -51,7 +62,7 @@ func TestFrontendSessionLeaseCoversDeliveryAndWriteFailure(t *testing.T) {
 					return buffer.Write(p)
 				}
 			}
-			handled, status := runToolPluginWorkerInHostProcess(service, testRecovery(), testCommands(), t.Context(), filepath.Join(registry.FrontendDirectory, "mcat"), []string{path}, nil, writer("stdout", &stdout), writer("stderr", &stderr))
+			handled, status := runToolPluginWorkerInHostProcess(service, commands, t.Context(), filepath.Join(registry.FrontendDirectory, "mchanges"), nil, nil, writer("stdout", &stdout), writer("stderr", &stderr))
 			if !handled || writes == 0 {
 				t.Fatalf("handled=%t delivery writes=%d", handled, writes)
 			}
@@ -99,7 +110,7 @@ func TestFrontendRejectsMissingOrInvalidStoreWithoutCreatingStorage(t *testing.T
 			})
 			t.Setenv("CODEX_THREAD_ID", uniqueTestThread("invalid-store"))
 			var stdout, stderr bytes.Buffer
-			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), filepath.Join(registry.FrontendDirectory, "mcat"), []string{filepath.Join(directory, "not-read")}, nil, &stdout, &stderr)
+			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testCommands(), t.Context(), filepath.Join(registry.FrontendDirectory, "mchanges"), []string{"--list"}, nil, &stdout, &stderr)
 			if !handled || status == 0 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "storage is missing or invalid") {
 				t.Fatalf("handled=%t status=%d stdout=%q stderr=%q", handled, status, &stdout, &stderr)
 			}

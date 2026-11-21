@@ -2,122 +2,20 @@ package launch
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
-	"github.com/yusing/mekugi/backends/codex/rollout"
-
 	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
-	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
-
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
-
-func TestAgentMetricsReaderEvidenceFailurePreservesExecution(t *testing.T) {
-	registry := sharedProxyTestRegistry(t)
-	for _, phase := range []string{"start", "finish"} {
-		for _, missing := range []bool{false, true} {
-			name := phase + "/success"
-			if missing {
-				name = phase + "/failure"
-			}
-			t.Run(name, func(t *testing.T) {
-				directory := t.TempDir()
-				path := filepath.Join(directory, "sample.go")
-				if !missing {
-					writeDebugInspectionFixture(t, path, "package p\nfunc Item() {}\n")
-				}
-				log := filepath.Join(directory, "reads.jsonl")
-				if phase == "start" {
-					log = directory // A directory cannot accept an evidence append.
-				}
-				t.Setenv(evidence.AXReadOutputEnvironment, log)
-				t.Setenv("CODEX_THREAD_ID", "reader-failure")
-				commands := slices.Clone(testCommands())
-				var original command.Output
-				calls := 0
-				for i := range commands {
-					if commands[i].Name != "inspect_file" {
-						continue
-					}
-					run := commands[i].Run
-					commands[i].Run = func(ctx context.Context, request command.Request) (command.Output, error) {
-						calls++
-						out, err := run(ctx, request)
-						original = out
-						if phase == "finish" {
-							// Grow the already-open log sparsely after the real reader runs.
-							if err := os.Truncate(log, 64<<20); err != nil {
-								t.Fatal(err)
-							}
-						}
-						return out, err
-					}
-				}
-				var stdout, stderr bytes.Buffer
-				handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), filepath.Join(registry.FrontendDirectory, "inspect_file"), []string{path}, nil, &stdout, &stderr)
-				if !handled || calls != 1 || status != original.ExitCode || stdout.String() != original.Stdout {
-					t.Fatalf("handled=%t calls=%d status=%d original=%+v stdout=%q stderr=%q", handled, calls, status, original, stdout.String(), stderr.String())
-				}
-				if missing && (status == 0 || original.Stderr == "") || !missing && (status != 0 || stdout.Len() == 0) {
-					t.Fatalf("reader did not exercise expected outcome: %+v", original)
-				}
-				diagnostic := "inspect_file: AX read evidence unavailable: "
-				if phase == "finish" {
-					diagnostic = "inspect_file: AX read evidence incomplete: "
-				}
-				notice, retained, found := strings.Cut(stderr.String(), "\n")
-				if !found || !strings.HasPrefix(notice, diagnostic) || retained != original.Stderr {
-					t.Fatalf("instrumentation changed original diagnostic: original=%q stderr=%q", original.Stderr, stderr.String())
-				}
-			})
-		}
-	}
-}
-
-func TestAgentMetricsReaderAuthenticatedDestinationPrecedesEnvironment(t *testing.T) {
-	t.Parallel()
-	directory := t.TempDir()
-	log, conflicting := filepath.Join(directory, "manifest.jsonl"), filepath.Join(directory, "environment.jsonl")
-	bundle, err := testDiagnostics(new(evidence.Service), nil).OpenBundle(diagnostic.BundleOptions{Root: filepath.Join(directory, "bundles"), ReadLogPath: log, Discover: rollout.Discover})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = bundle.Close() })
-	ctx := requestexecution.WithDebug(t.Context(), &requestexecution.Debug{bundle})
-	registry, err := buildToolRegistryForTest(t, ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = registry.Close() })
-	writeDebugInspectionFixture(t, filepath.Join(directory, "sample.go"), "package p\nfunc Item() {}\n")
-	const thread = "authenticated-metrics-destination"
-	invocation := newShellWorkerTestInvocation(directory, "CODEX_THREAD_ID="+thread, evidence.AXReadOutputEnvironment+"="+conflicting)
-	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil, "inspect_file sample.go", nil, invocation)
-	if stdout != "2-2 function Item\n" || stderr != "" || status != 0 {
-		t.Fatalf("stdout=%q stderr=%q status=%d", stdout, stderr, status)
-	}
-	reads, err := new(evidence.Service).ReadReads(t.Context(), log, thread)
-	if err != nil || reads.Started != 1 || reads.Completed != 1 || reads.Succeeded != 1 {
-		t.Fatalf("authenticated evidence=%+v err=%v", reads, err)
-	}
-	if _, err := os.Stat(conflicting); !os.IsNotExist(err) {
-		t.Fatalf("conflicting environment destination used: %v", err)
-	}
-}
 
 func TestAgentMetricsSessionInspectionWholeRolloutAndDefectEvidence(t *testing.T) {
 	t.Parallel()

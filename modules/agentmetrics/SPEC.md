@@ -8,9 +8,10 @@ outcomes or mixing judgments with provider billing.
 
 ## Current approach (replaceable)
 
-- Authenticated `mcat`, `msymbol`, and `inspect_file` frontends append content-free `mekugi.ax.read.v2`
-  JSONL read events when `MEKUGI_AX_OUTPUT` or `--debug` is active (private regular file, 64 MiB
-  cap, cross-process locked; no paths, scripts, or content).
+- Native `mcat`, `msymbol`, and `mfinspect` helpers append content-free `mekugi.ax.read.v2` JSONL
+  read events when `MEKUGI_AX_OUTPUT` or `--debug` is active (private regular file, 64 MiB cap,
+  cross-process locked; no paths, scripts, or content). Offline readers retain historical
+  `inspect_file` compatibility.
 - Contributes `--ax`, `--read-log`, and `--defects` reporting to `mekugi inspect-session`, pairing
   read logs, stock-patch re-emission counts, rollout command/completion timings, retained
   [request timing](../transportdiagnostics/SPEC.md), and optional artifact-backed defect verdicts
