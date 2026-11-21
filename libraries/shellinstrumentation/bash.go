@@ -82,11 +82,7 @@ unset -v __mekugi_y __mekugi_z
 case $__mekugi_m in
 observe|relay|status)
   unset -v __mekugi_o __mekugi_x __mekugi_m
-` + mktempHook(helper, `"$__mekugi_t/$__mekugi_c"`, `
-    # Subshells and pipelines close coprocess descriptors, and a duplicate
-    # does not reach children. $$ names the shell that keeps the pipe open.
-    __mekugi_t=/proc/$$/fd
-    [ -d "$__mekugi_t" ] || __mekugi_t=/dev/fd`, true) + `
+` + mktempHook(helper, `<>"$__mekugi_d/control"`, true) + `
   printf 'o\n' >&"$__mekugi_c"
   __mekugi_b() { local __mekugi_s=$? __mekugi_r; printf 'b %s\n' "$1" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
   __mekugi_e() { local __mekugi_s=$? __mekugi_r; printf 'e %s %s\n' "$1" "$__mekugi_s" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
@@ -119,7 +115,12 @@ esac
 // moves the line number in its diagnostics into the wrapper, so it is wrapped
 // only when the script names both. Dash rejects such names and cannot see the
 // script, so it reports bare mktemp only.
-func mktempHook(helper, control, setup string, bash bool) string {
+//
+// control redirects descriptor 3 to the helper's report channel. Bash
+// subshells and pipelines close coprocess descriptors, and a duplicate does
+// not reach children, so Bash opens the router-created control FIFO by path.
+// Opening it for reading and writing never blocks, even after the helper exits.
+func mktempHook(helper, control string, bash bool) string {
 	run, extra := "command", ""
 	if bash {
 		run = "builtin command"
@@ -145,7 +146,7 @@ func mktempHook(helper, control, setup string, bash bool) string {
       ;;
     esac`
 	}
-	return `  if [ "$(command -v mktemp)" != mktemp ]; then` + setup + `
+	return `  if [ "$(command -v mktemp)" != mktemp ]; then
     __mekugi_mktemp() {
       local __mekugi_result __mekugi_status
       if __mekugi_result=$(` + run + ` "$@"; __mekugi_status=$?; printf .; exit "$__mekugi_status"); then
@@ -155,7 +156,7 @@ func mktempHook(helper, control, setup string, bash bool) string {
       fi
       __mekugi_result=${__mekugi_result%.}
       if [ "$__mekugi_status" -eq 0 ]; then
-        ` + commandargs.Quote(helper) + ` --created-path "$__mekugi_result" 2>/dev/null 3>` + control + ` || :
+        ` + commandargs.Quote(helper) + ` --created-path "$__mekugi_result" 2>/dev/null 3` + control + ` || :
       fi
       printf '%s' "$__mekugi_result"
       return "$__mekugi_status"

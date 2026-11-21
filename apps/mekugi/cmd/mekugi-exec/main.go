@@ -205,7 +205,19 @@ func run(args []string) int {
 	if err := conn.SetWriteDeadline(time.Time{}); err != nil {
 		return 0
 	}
-	r := &relay{ack: 1, sinks: [2]int{3, 4}, readers: [2]int{-1, -1}, report: newReporter(conn)}
+	r := &relay{ack: 1, sinks: [2]int{3, 4}, readers: [2]int{-1, -1}, created: -1, report: newReporter(conn)}
+	if prepared == "" {
+		// Bash's coprocess pipe is unreachable from subshells and children
+		// on Darwin, so its mktemp reports use the router-created control
+		// FIFO. Holding both ends keeps late writers from blocking and the
+		// idle FIFO from reporting hangup.
+		fd, err := unix.Open(filepath.Join(work, "control"), unix.O_RDWR|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
+		if err != nil {
+			return 0
+		}
+		defer unix.Close(fd)
+		r.created = fd
+	}
 	mode := "status"
 	if len(segments) == 1 {
 		mode = "observe"
@@ -228,6 +240,7 @@ func run(args []string) int {
 		return 0
 	}
 	r.run()
+	r.readCreated()
 	// FIFO EOF readiness can be missed on Darwin. This final record follows
 	// every output record, including output after the shell's EXIT boundary.
 	r.report.send(segmenttransport.Message{Type: segmenttransport.Closed})
@@ -241,6 +254,8 @@ type relay struct {
 	ack     int
 	sinks   [2]int // Original stdout and stderr.
 	readers [2]int // FIFO read ends, or -1.
+	created int    // Bash's mktemp report FIFO, or -1.
+	pending []byte // Its incomplete line.
 	opened  bool
 	control []byte
 	current int
@@ -316,13 +331,13 @@ func (r *relay) readControl() bool {
 		if len(fields) == 0 {
 			continue
 		}
+		if fields[0] != segmenttransport.Created {
+			// Reports written before this boundary belong to the current segment.
+			r.readCreated()
+		}
 		switch fields[0] {
 		case segmenttransport.Created:
-			var message segmenttransport.Message
-			if json.Unmarshal([]byte(strings.TrimPrefix(line, "c ")), &message) == nil && message.Type == segmenttransport.Created {
-				message.Index = r.current
-				r.report.send(message)
-			}
+			r.sendCreated(line)
 		case "o":
 			r.opened = true
 		case "b":
@@ -362,6 +377,46 @@ func (r *relay) readControl() bool {
 			if _, err := unix.Write(r.ack, []byte("\n")); err != nil {
 				return false
 			}
+		}
+	}
+}
+
+func (r *relay) sendCreated(line string) {
+	var message segmenttransport.Message
+	if json.Unmarshal([]byte(strings.TrimPrefix(line, "c ")), &message) == nil && message.Type == segmenttransport.Created {
+		message.Index = r.current
+		r.report.send(message)
+	}
+}
+
+// readCreated forwards the complete mktemp reports already in Bash's report
+// FIFO. Their writers finished before the shell wrote its next boundary.
+func (r *relay) readCreated() {
+	if r.created < 0 {
+		return
+	}
+	buffer := make([]byte, 512)
+	for {
+		n, err := unix.Read(r.created, buffer)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if n <= 0 {
+			break
+		}
+		r.pending = append(r.pending, buffer[:n]...)
+	}
+	for {
+		line, rest, ok := bytes.Cut(r.pending, []byte("\n"))
+		if !ok {
+			if len(r.pending) > 2*readSize {
+				r.pending = nil // Not a report line.
+			}
+			return
+		}
+		r.pending = rest
+		if text := string(line); strings.HasPrefix(text, segmenttransport.Created+" ") {
+			r.sendCreated(text)
 		}
 	}
 }
