@@ -276,12 +276,7 @@ func TestNativeBTWControlSocket(t *testing.T) {
 			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 			hub := newTestServerHub(t.Context())
 			defer hub.Close()
-			dir, err := os.MkdirTemp("", "mekugi-parity-")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.RemoveAll(dir)
-			socket := filepath.Join(dir, "s")
+			socket := filepath.Join(shortTempDir(t), "s")
 			listener, err := sessionapi.ListenControl(socket)
 			if err != nil {
 				t.Fatal(err)

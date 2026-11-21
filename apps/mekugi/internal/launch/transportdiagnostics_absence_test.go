@@ -32,7 +32,7 @@ import (
 )
 
 func TestTransportDiagnosticsAbsentDebugSession(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMPDIR", shortTempDir(t))
 	t.Setenv(evidence.AXReadOutputEnvironment, "")
 	options, err := launchoptions.Parse([]string{"--debug"})
 	if err != nil {

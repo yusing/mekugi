@@ -33,7 +33,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 					guards = append(guards, guard)
 				}
 			}
-			path := filepath.Join(t.TempDir(), "approval.sock")
+			path := filepath.Join(shortTempDir(t), "approval.sock")
 			server, err := sessioncontrol.ListenShellApprovals(t.Context(), path, 5*time.Second, guards)
 			if err != nil {
 				t.Fatal(err)

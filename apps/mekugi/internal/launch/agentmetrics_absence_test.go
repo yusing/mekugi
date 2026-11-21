@@ -32,7 +32,7 @@ import (
 )
 
 func TestAgentMetricsAbsentDebugSession(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMPDIR", shortTempDir(t))
 	axPath := filepath.Join(t.TempDir(), "configured-reads.jsonl")
 	const existing = "retained AX evidence\n"
 	writeDebugInspectionFixture(t, axPath, existing)

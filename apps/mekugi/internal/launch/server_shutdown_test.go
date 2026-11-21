@@ -37,7 +37,7 @@ func (l *shutdownLauncher) Run(ctx context.Context, start sessionapi.Start, api 
 func TestServerKeepsSocketOwnershipUntilRuntimeJoins(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	directory := t.TempDir()
+	directory := shortTempDir(t)
 	if err := os.Chmod(directory, 0700); err != nil {
 		t.Fatal(err)
 	}

@@ -34,7 +34,7 @@ import (
 )
 
 func TestDiagnosticsAbsentNormalSession(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMPDIR", shortTempDir(t))
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv(evidence.AXReadOutputEnvironment, "")
 	ctx, cancel := context.WithCancel(t.Context())
@@ -68,7 +68,7 @@ func TestDiagnosticsAbsentNormalSession(t *testing.T) {
 }
 
 func TestDiagnosticsAbsentRejectsDebugBeforeBundleCreation(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMPDIR", shortTempDir(t))
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv(evidence.AXReadOutputEnvironment, "")
 	root, err := debugStorageDirectory()

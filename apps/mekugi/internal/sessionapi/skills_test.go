@@ -54,7 +54,7 @@ func TestNativeSkillCatalogRPCAdmissionAndWorkerSocket(t *testing.T) {
 		}
 	}
 	// Exercise the actual worker client on a nondefault private Unix socket.
-	path := filepath.Join(t.TempDir(), "control.sock")
+	path := filepath.Join(shortTempDir(t), "control.sock")
 	if err := os.Chmod(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}

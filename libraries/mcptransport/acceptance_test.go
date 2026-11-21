@@ -93,7 +93,7 @@ func TestMCPBridgeBytesAndHalfClose(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	socket := filepath.Join(t.TempDir(), "mcp.sock")
+	socket := filepath.Join(shortTempDir(t), "mcp.sock")
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
 	if err != nil {
 		t.Fatal(err)

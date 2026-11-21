@@ -60,7 +60,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("MEKUGI_TEST_REWIND_SOURCES", string(encoded))
-			directory := t.TempDir()
+			directory := shortTempDir(t)
 			if err := os.Chmod(directory, 0700); err != nil {
 				t.Fatal(err)
 			}

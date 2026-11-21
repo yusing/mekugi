@@ -102,7 +102,7 @@ func TestMCPServiceStop(t *testing.T) {
 
 func TestMCPBridgeCancellation(t *testing.T) {
 	t.Parallel()
-	socket := filepath.Join(t.TempDir(), "mcp.sock")
+	socket := filepath.Join(shortTempDir(t), "mcp.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		t.Fatal(err)

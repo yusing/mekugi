@@ -23,7 +23,7 @@ import (
 )
 
 func TestDebugSessionArtifacts(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMPDIR", shortTempDir(t))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var paths []string
@@ -63,7 +63,7 @@ func TestDebugSessionArtifacts(t *testing.T) {
 }
 
 func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMPDIR", shortTempDir(t))
 	custom := filepath.Join(t.TempDir(), "custom capture.jsonl")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -101,7 +101,7 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 }
 
 func TestDebugStartupFailureReportsArtifacts(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMPDIR", shortTempDir(t))
 	missing := filepath.Join(t.TempDir(), "missing", "capture.jsonl")
 	var paths []string
 	err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), []string{"--debug", "--capture-output", missing}, nil, func(invocationFixture) {
@@ -113,7 +113,7 @@ func TestDebugStartupFailureReportsArtifacts(t *testing.T) {
 }
 
 func TestDebugCanceledStartupReportsArtifacts(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMPDIR", shortTempDir(t))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var paths []string
