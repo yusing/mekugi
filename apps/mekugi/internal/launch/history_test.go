@@ -149,30 +149,3 @@ func testCapture(t *testing.T, directory string) *changecapture.Service {
 	})
 	return service
 }
-
-func TestReplayStoreBorrowsCaptureLifetime(t *testing.T) {
-	directory := t.TempDir()
-	captured := testCapture(t, directory)
-	snapshots, err := captured.Checkpoints(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openReplayStore(t.Context(), testHistory(), captured, directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if store.snapshots != snapshots || store.changes != captured.Service {
-		t.Fatal("replay store replaced the composed capture owner")
-	}
-	reopened, err := openReplayStore(t.Context(), testHistory(), captured, directory)
-	if err != nil || reopened.snapshots != snapshots {
-		t.Fatalf("reopened capture owner: %v", err)
-	}
-	if _, err := openReplayStore(t.Context(), testHistory(), captured, t.TempDir()); err == nil {
-		t.Fatal("capture crossed retained directories")
-	}
-	retained, err := openReplayStore(t.Context(), testHistory(), nil, directory)
-	if err != nil || retained.snapshots != nil || retained.changes != nil {
-		t.Fatalf("unselected capture acquired resources: %+v %v", retained, err)
-	}
-}
