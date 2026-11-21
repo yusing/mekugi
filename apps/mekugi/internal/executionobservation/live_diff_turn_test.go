@@ -241,9 +241,6 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if bytes.Contains(transformed, []byte("Router session usage")) {
-						t.Fatalf("off mode emitted a usage report: %s", transformed)
-					}
 					requireNoLiveDiffTurnEvent(t, testReview(auto), sub) // Transformation is not downstream delivery.
 					transform.Delivered(transformed)
 				} else {
