@@ -37,7 +37,6 @@ func (p *Panes) Select(pane int) {
 }
 
 func (p *Panes) Dragging() bool { return p.drag != 0 }
-func (p *Panes) StopDrag()      { p.drag = 0 }
 
 // Resize adjusts the column divider; file navigation retains its own width.
 // Source: apps/mekugi/internal/router/terminal_ui.go:237:305@70e7ce50 terminalUI.resize

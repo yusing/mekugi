@@ -100,10 +100,8 @@ func (v View) EditorTarget() conversationmodel.EditorTarget {
 
 // PasteIntent names a completed paste destination, never its payload.
 type PasteIntent struct {
-	Thread  string
 	Version Version
 	Target  conversationmodel.EditorTarget
-	Menu    uint64
 }
 
 type ReferenceIntent struct {
