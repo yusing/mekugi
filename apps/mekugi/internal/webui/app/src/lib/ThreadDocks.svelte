@@ -33,7 +33,7 @@
       semantic.error
     ),
   );
-  const card = "rounded-float px-3.5 pt-2.5 pb-3";
+  const card = "rounded-float border border-border px-3.5 pt-2.5 pb-3";
   const heading = "flex min-h-7 items-center justify-between gap-2";
 
   const feedbackPainted = (event: NativeEvent | undefined) =>
@@ -48,7 +48,10 @@
   {#if hasDocks}
     <div class="grid min-h-0 gap-2 overflow-y-auto overscroll-contain">
       {#if processes.length}
-        <section class="rounded-float bg-raised px-3.5 py-2.5" aria-label="Active processes">
+        <section
+          class="rounded-float border border-border bg-raised px-3.5 py-2.5"
+          aria-label="Active processes"
+        >
           <h2 class="mb-1 text-small font-semibold text-muted">Active processes</h2>
           <ul class="grid gap-1">
             {#each processes as process (JSON.stringify( [process.Thread, process.Turn, process.Item] ))}
@@ -121,7 +124,10 @@
 
       {#each recoveries as effect (effect.ID)}
         {@const recovery = effect.Recovery!}
-        <section class="{card} bg-warning-tint" aria-label="Unsent submission">
+        <section
+          class="rounded-float border border-warning-edge bg-warning-tint px-3.5 pt-2.5 pb-3"
+          aria-label="Unsent submission"
+        >
           <header class={heading}>
             <h2 class="text-small font-semibold text-warning-ink">
               {recovery.shell ? "Unsent shell command" : "Unsent submission"}
@@ -169,7 +175,7 @@
 
       {#if waiting.length}
         <Collapsible.Root
-          class="flex items-start gap-2 rounded-float bg-raised pr-1"
+          class="flex items-start gap-2 rounded-float border border-border bg-raised pr-1"
           role="group"
           aria-label="Waiting messages"
         >
