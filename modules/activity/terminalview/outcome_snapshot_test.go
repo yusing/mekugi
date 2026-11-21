@@ -192,7 +192,7 @@ func TestUISnapshotClippedAnswerCard(t *testing.T) {
 	v := NewView()
 	v.ChildrenOnly = true
 	v.Painter.Theme = diffrender.DarkTheme
-	item := presentation.ItemContent{Seq: 1, Agent: "/root/worker", Kind: "final", Text: "one\n\ntwo\n\nthree\n\nfour\n\nfive", Observed: time.Unix(100, 0)}
+	item := presentation.ItemContent{Seq: 1, Agent: "/root/worker", Kind: "final", Text: "one\n\ntwo\n\nthree\n\nfour\n\nfive", Observed: time.Date(1970, 1, 1, 8, 1, 40, 0, time.Local)}
 	v.Update(&presentation.Publication{Entries: []presentation.Entry{{Facts: item.Facts, Values: item.Values()}}}, Display{Caller: "/root"})
 	feed := v.LayoutFeed(40)
 	plain := ansi.Strip(strings.Join(feed.Lines, "\n"))
