@@ -18,12 +18,12 @@ instructions. Ask for one by name when you want a specific read or review:
 
 Shell commands receive `SESSION_TMP`, a prepared private scratch directory
 appended to `PATH` and listed in the model's environment facts
-(`<session_tmp_on_path>true</session_tmp_on_path>`). Use `"$SESSION_TMP/name"`
-instead of creating a directory or repeating its absolute path; executable
-scripts placed there can also be invoked by name. Descendants share the root
-session's directory, and resume reuses it. Files remain until the OS or user
-cleans temporary storage; keep durable deliverables elsewhere. Use distinct names
-when agents work concurrently.
+(`on_path="true"` on `<session_tmp>`). Use `"$SESSION_TMP/name"` instead of
+creating a directory or repeating its absolute path; executable scripts placed
+there can also be invoked by name. Descendants share the root session's
+directory, and resume reuses it. Files remain until the OS or user cleans
+temporary storage; keep durable deliverables elsewhere. Use distinct names when
+agents work concurrently.
 
 ```sh
 mchanges amber1..amber3 --summary
