@@ -100,9 +100,6 @@ func (a *AgentLifecycle) RestoreActiveSince(start time.Time) {
 	a.WorkTimer.update(true, start)
 }
 
-// Source: apps/mekugi/internal/router/app_server_restore_content.go:362@1bcbdd5a.
-func (a *AgentLifecycle) RestoreFinal(completed bool) { a.Final = completed }
-
 // RestorePage extends known history; the caller excludes pages superseded by
 // live observations. Missing final evidence does not clear an existing outcome.
 // Source: apps/mekugi/internal/router/app_server_history_pages.go:372:376@1bcbdd5a.

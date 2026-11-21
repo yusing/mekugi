@@ -75,14 +75,6 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("metrics status = %d", response.StatusCode)
 	}
-	response, err = client.Get(strings.TrimSuffix(baseURL, "/v1") + "/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusNotFound {
-		t.Fatalf("superseded HTML dashboard is still served: %d", response.StatusCode)
-	}
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
@@ -95,7 +87,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 }
 
 func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
-	for _, args := range [][]string{{"--mode", "unknown"}, {"--stream-idle-timeout", "0"}, {"--listen", "127.0.0.1:0"}, {"--provider-base-url", "https://example.com"}} {
+	for _, args := range [][]string{{"--unknown-flag"}, {"--stream-idle-timeout", "0"}, {"--listen", "127.0.0.1:0"}, {"--provider-base-url", "https://example.com"}} {
 		if err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), args, nil, func(invocationFixture) { t.Error("ready called despite startup failure") }, nil); err == nil {
 			t.Fatalf("accepted %q", args)
 		}

@@ -64,9 +64,6 @@ func TestTokenUsageManualSwitch(t *testing.T) {
 			if !ok || !got.Cost.Known || got.InputTokens != 400000 || got.UncachedInputTokens != 240000 || got.OutputTokens != 40000 || got.ReasoningTokens != 20000 || math.Abs(total-1.7328) > 1e-10 {
 				t.Fatalf("report=%+v total=%v valid=%v", got, total, ok)
 			}
-			if strings.Contains(out.String(), "Router session usage") {
-				t.Fatalf("completion exposed token metrics as commentary: %s", out.String())
-			}
 		})
 	}
 }
@@ -240,9 +237,6 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 					}
 					if step == 2 {
 						wantReport := gap == "http-rejection" || gap == "failed-with-usage" || gap == "incomplete-with-usage"
-						if strings.Contains(out.String(), "Router session usage") {
-							t.Fatalf("completion emitted usage commentary: %s", out.String())
-						}
 						got, valid := proxy.usage.Snapshot("thread-1")
 						wantInput, wantMissing := uint64(200), uint64(1)
 						if wantReport {

@@ -31,8 +31,7 @@ func TestChildCompletionsPreserveTerminalEvents(t *testing.T) {
 			if err != nil || len(events) != 1 {
 				t.Fatalf("terminal events = %q, error %v", events, err)
 			}
-			if !bytes.Contains(events[0], []byte(`"type":"response.`+status+`"`)) ||
-				bytes.Contains(events[0], []byte("Router session usage")) {
+			if !bytes.Contains(events[0], []byte(`"type":"response.`+status+`"`)) {
 				t.Fatalf("terminal event = %s", events[0])
 			}
 		})

@@ -24,14 +24,3 @@ func (r FinishReason) ResponseStatus() string {
 		return ""
 	}
 }
-
-func (r FinishReason) IncompleteReason() string {
-	switch r {
-	case Length:
-		return "max_output_tokens"
-	case ContentFilter:
-		return "content_filter"
-	default:
-		return ""
-	}
-}

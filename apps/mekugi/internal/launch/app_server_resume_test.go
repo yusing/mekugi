@@ -52,9 +52,10 @@ func TestAppServerResumeStartup(t *testing.T) {
 	if w.Len() != 0 || u.Text != "next prompt" {
 		t.Fatal("input submitted before resume succeeded")
 	}
+	priorContext := u.controlObservations.ContextIdentity("saved")
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, `{"id":2,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"saved","cwd":"/workspace","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`)
-	if u.controlObservations.ContextRevision("saved") != 1 {
+	if u.controlObservations.ContextMatches("saved", priorContext, "") {
 		t.Fatal("accepted resume did not refresh context")
 	}
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "saved", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 120000}, "modelContextWindow": 400000}})

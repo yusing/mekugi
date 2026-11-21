@@ -143,8 +143,9 @@ func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 	if req.Method != "thread/start" || req.Params.SessionStartSource != "clear" || req.Params.Model != "chosen" || req.Params.ServiceTier != "priority" || req.Params.Config.Effort != "high" || !u.Replacement.Pending() || len(u.attached.source.Entries) == 0 {
 		t.Fatalf("clear request/state: %+v clearing=%v entries=%+v", req, u.Replacement.Pending(), u.attached.source.Entries)
 	}
+	priorContext := u.controlObservations.ContextIdentity("fresh")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/tmp"},"model":"chosen","reasoningEffort":"high","serviceTier":"priority"}}`, req.ID))
-	if u.controlObservations.ContextRevision("fresh") != 1 {
+	if u.controlObservations.ContextMatches("fresh", priorContext, "") {
 		t.Fatal("accepted clear did not refresh context")
 	}
 	requests := appServerTurnRequests(t, w)

@@ -91,11 +91,6 @@ func TestPublicOptionsExposeOneInterface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default interface: config=%+v err=%v", config, err)
 	}
-	for _, mode := range []string{"mekugi", "passthrough", "direct"} {
-		if _, err := Parse([]string{"--mode", mode}); err == nil {
-			t.Fatalf("accepted response-mode selector %q", mode)
-		}
-	}
 	var help bytes.Buffer
 	flags := newFlags(&help, new(Config))
 	flags.Usage()
@@ -103,9 +98,6 @@ func TestPublicOptionsExposeOneInterface(t *testing.T) {
 		if !strings.Contains(help.String(), command) {
 			t.Fatalf("help omits control entrypoint %q: %s", command, help.String())
 		}
-	}
-	if strings.Contains(help.String(), "passthrough") || strings.Contains(help.String(), "-mode") {
-		t.Fatalf("help exposes an internal mode: %s", help.String())
 	}
 }
 

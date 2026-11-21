@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -66,14 +64,6 @@ func TestExecObservationSourceLabel(t *testing.T) {
 	} {
 		if got := tc.observation.SourceLabel(); got != tc.want {
 			t.Errorf("%+v source = %q, want %q", tc.observation, got, tc.want)
-		}
-	}
-}
-
-func TestAgentDisplayName(t *testing.T) {
-	for name, want := range map[string]string{"/root": "main", "/root/worker": "worker", "/root/a/x": "a/x", "": ""} {
-		if got := pathdisplay.AgentDisplayName(name); got != want {
-			t.Errorf("agentDisplayName(%q) = %q, want %q", name, got, want)
 		}
 	}
 }

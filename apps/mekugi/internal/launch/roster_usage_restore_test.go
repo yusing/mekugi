@@ -32,7 +32,7 @@ func restoredUsageRosterFixture(t *testing.T) *appServerUI {
 		restoreUsage(u.usage, info)
 		observeCost(u.usage, thread, u.attached.session.Agent(u.attached.session.KnownCaller(thread)))
 		u.attached.session.Lifecycle(thread).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
-		u.attached.session.Lifecycle(thread).RestoreFinal(true)
+		u.attached.session.Lifecycle(thread).Final = true
 	}
 	return u
 }

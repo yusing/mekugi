@@ -98,15 +98,6 @@ func (o *Observations) ContextIdentity(thread string) string {
 	return o.contextIdentity + ":" + thread + ":" + strconv.FormatUint(o.contextRevision[thread], 10)
 }
 
-func (o *Observations) ContextRevision(thread string) uint64 {
-	if o == nil {
-		return 0
-	}
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	return o.contextRevision[thread]
-}
-
 // ContextMatches checks the incoming native window before instruction projection
 // observes it. This does not advance or replace the existing context revision.
 func (o *Observations) ContextMatches(thread, identity, reference string) bool {
