@@ -25,11 +25,15 @@ func (files *detailFiles) openActivityReply(attached *attachedPresentation, seq 
 	return false
 }
 
-func paintNative(files *detailFiles, u *terminalsession.Attachment, in terminalsession.FrameInput, transcript *activityui.View, source *sessionpresentation.ActivitySource, ctx context.Context, out io.Writer) error {
-	scope := in.SourceContext()
-	if in.Selection != nil && in.Dialog == nil && in.SelectionPane == u.Shell.Layout.Main {
-		scope = in.SelectionSource
+func fileLinkScope(in terminalsession.FrameInput) terminalsession.SourceContext {
+	if in.Selection != nil && in.Dialog == nil && in.SelectionPane == in.Shell.Layout.Main {
+		return in.SelectionSource
 	}
+	return in.SourceContext()
+}
+
+func paintNative(files *detailFiles, u *terminalsession.Attachment, in terminalsession.FrameInput, transcript *activityui.View, source *sessionpresentation.ActivitySource, ctx context.Context, out io.Writer) error {
+	scope := fileLinkScope(in)
 	files.links.selectAttachment(scope.Attachment)
 	in.FileLinks = files.links.known(scope)
 	for {

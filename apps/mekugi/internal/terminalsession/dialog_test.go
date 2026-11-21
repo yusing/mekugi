@@ -1,15 +1,22 @@
 package terminalsession
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	pathterminal "github.com/yusing/mekugi/libraries/pathdisplay/terminal"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
 func paintDialogTest(t *testing.T, d *Dialog, page terminalui.DialogPage, width, height int) string {
@@ -227,5 +234,48 @@ func TestDialogSelectionResolvesOffscreenFileLinks(t *testing.T) {
 		if strings.Contains(row, "mekugi-file-candidate:") {
 			t.Fatal("offscreen selection emitted a private file-link destination")
 		}
+	}
+}
+
+func TestFrameRenderKeepsTranscriptLinksWhenSelectionHiddenByDialog(t *testing.T) {
+	var main Main
+	var prompts Prompts
+	thread := sessionpresentation.Thread{ID: "main", Caller: "/root"}
+	main.Update(sessionpresentation.View{Main: thread, Displayed: thread, Version: sessionpresentation.Version{Attachment: 1}})
+	transcript := activityui.NewView()
+	transcript.Painter.DeferFileLinks = true
+	transcript.Painter.FileLink = func(string) bool { return true }
+	transcript.Update(&activitypresentation.Publication{Entries: []activitypresentation.Entry{{
+		Facts:  activitypresentation.Facts{Seq: 1, Agent: "Main", Kind: "final", Text: "Candidate choices: types.ts"},
+		Values: []activitypresentation.Value{{Content: activitymodel.Content{Kind: "text", Body: "Candidate choices: types.ts"}, Source: 1}},
+	}}}, activityui.Display{Caller: "/root"})
+	agents := activityui.NewView()
+	dialog := &ContentDialog{View: transcript}
+	dialog.Update(sessionpresentation.DetailView{Pages: []sessionpresentation.DetailItem{{
+		DetailPage: activitypresentation.DetailPage{ID: "read", Verb: "Read", Body: "export type X = string;"},
+	}}})
+	var shell Shell
+	var live previewview.PreviewPane
+	frame := Frame{Width: 80}
+	sel := NewSelection(Surface{Rect: Rect{0, 0, 80, 10}, Rows: make([]string, 18)}, 1, 1)
+	rendered, err := frame.Render(context.Background(), FrameInput{
+		Main:       &main,
+		Prompts:    &prompts,
+		Transcript: transcript,
+		Agents:     agents,
+		Shell:      &shell,
+		Dialog:     dialog,
+		Live:       &live,
+		Selection:  sel,
+		Width:      80,
+		Height:     18,
+		Now:        time.Unix(100, 0),
+		FileLinks:  map[string]bool{"types.ts": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(rendered.Rows, "\n"), "]8;;types.ts") {
+		t.Fatalf("hidden selection under dialog stripped transcript hyperlink:\n%s", strings.Join(rendered.Rows, "\n"))
 	}
 }

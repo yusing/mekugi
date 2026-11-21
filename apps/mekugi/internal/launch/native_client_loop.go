@@ -430,10 +430,12 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 						c.renderer.terminal.Width, c.renderer.terminal.Height, c.dirty = width, height, true
 					}
 					if c.event.Attachment != "" && (c.dirty || c.renderer.terminal.Live.Tick(now)) {
-						source := c.renderer.terminal.FrameInput(now, mekugiVersion()).SourceContext()
-						c.links.selectAttachment(source.Attachment)
+						in := c.renderer.terminal.FrameInput(now, mekugiVersion())
+						source := in.SourceContext()
+						linkScope := fileLinkScope(in)
+						c.links.selectAttachment(linkScope.Attachment)
 						runtime.previews.prepare(stdout, c.renderer.terminal, source)
-						c.renderer.frame.FileLinks = c.links.known(source)
+						c.renderer.frame.FileLinks = c.links.known(linkScope)
 						c.hydrateDetails()
 						painted, err := c.renderer.render(ctx, stdout, now, mekugiVersion())
 						if err != nil {
@@ -447,9 +449,14 @@ func (c *nativeClient) run(ctx context.Context, stdin, stdout *os.File) (*native
 								c.resumePaging = true
 								c.enqueue(sessionapi.NativeOperation{Resume: &demand}, nil, func(error) { c.resumePaging = false })
 							}
-							c.links.request(c.ctx, painted.Source, painted.FileLinkDemands)
+							if !painted.SelectionRetained && linkScope != source {
+								linkScope = source
+								c.dirty = true
+							} else {
+								c.dirty = false
+							}
+							c.links.request(c.ctx, linkScope, painted.FileLinkDemands)
 							runtime.previews.request(runtime.ctx, source, painted.ImageDemands)
-							c.dirty = false
 							receipt := sessionapi.NativeNoticeReceipt{Claim: c.renderer.frame.Notice, Attachment: painted.Notices.Attachment, Feedback: painted.Notices.Feedback, Composer: painted.Notices.Composer, Content: painted.Notices.Content}
 							c.stageReceipt(&receipt)
 						}

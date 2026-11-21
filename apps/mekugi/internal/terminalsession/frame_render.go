@@ -317,8 +317,9 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		out.Rows[y], out.Copy[y] = terminalui.ExtractCopy(out.Rows[y])
 	}
 	out.SelectionRetained = f.PaintSelection(in, out.Rows)
+	selectionPainted := in.Selection != nil && in.Dialog == nil && out.SelectionRetained
 	selected := Rect{}
-	if in.Selection != nil && out.SelectionRetained {
+	if selectionPainted {
 		selected = in.Selection.Rect
 		if in.SelectionPane == shell.Layout.Main {
 			out.Source = in.SelectionSource
@@ -327,14 +328,14 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	if in.Dialog != nil {
 		out.Source = SourceContext{}
 	}
-	if in.Dialog != nil || in.Selection != nil && out.SelectionRetained {
+	if in.Dialog != nil || selectionPainted {
 		out.Notices.Composer, out.Notices.Content = false, false
 		out.PaintedNoticeEntries = nil
 	}
 	// Overlays use cursor-positioned painting. Resolve their final cells only on
 	// actually overlapped rows so covered transcript candidates cannot request
 	// filesystem work, without stripping OSC 8 links from visible transcript rows.
-	if in.Selection != nil && out.SelectionRetained {
+	if selectionPainted {
 		for y := max(0, selected.Y); y < min(len(out.Rows), selected.Y+selected.H); y++ {
 			if strings.Contains(out.Rows[y], "\x1b]8;") {
 				visible, _ := Screen(width, 1, []string{out.Rows[y]}, -1, -1)

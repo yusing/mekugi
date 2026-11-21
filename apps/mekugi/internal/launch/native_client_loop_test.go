@@ -511,3 +511,213 @@ func TestNativeClientProcessDetailsReferenceKeepsOutputLabel(t *testing.T) {
 		t.Fatalf("process reference = %q, %+v", editor.Text, reference)
 	}
 }
+
+func TestNativeClientLoopKeepsTranscriptLinksWhenBottomSheetOpens(t *testing.T) {
+	workspace := t.TempDir()
+	for _, name := range []string{"types.ts", "usage.ts"} {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte("export type X = string;\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u := newAppServerSessionTestUI(t, workspace)
+	u.attached.presentation.Status.Text = "Ready"
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{
+		Seq: 1, Agent: "Main", Kind: "final",
+		Text:     "Candidate choices: types.ts",
+		Observed: time.Now().Add(-time.Minute),
+	}}})
+	u.testMainFrame(80, 24, 0)
+	frame := sessionapi.NativeFrame{
+		View:   u.attached.presentation.View(),
+		Main:   u.attached.source.Publication(u.attached.presentation, nil),
+		Agents: u.attached.childSource.Publication(u.attached.presentation, u.attached.source),
+	}
+	openSheet := make(chan struct{})
+	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+		if err := api.SetSummary(sessionapi.Summary{Thread: start.Resume, Workspace: workspace, Ready: true}); err != nil {
+			return err
+		}
+		var attachment string
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-openSheet:
+				openSheet = nil
+				detailID := sessionpresentation.DetailID{Attachment: frame.View.Version.Attachment, Selection: 1}
+				pages := activity.DetailPages([]activity.Value{
+					{Verb: "Read", Body: "export type X = string;"},
+					{Verb: "Search", Body: "Pricing: usage.ts"},
+				})
+				items := make([]sessionpresentation.DetailItem, len(pages))
+				for i, page := range pages {
+					items[i] = sessionpresentation.DetailItem{DetailPage: page}
+				}
+				frame.Details = &sessionapi.NativeDetails{
+					Source: frame.View.Displayed,
+					View:   sessionpresentation.DetailView{ID: detailID, Revision: 1, Pages: items},
+				}
+				if err := api.Native().Publish(attachment, frame); err != nil {
+					t.Error(err)
+				}
+			case request := <-api.Native().Requests():
+				if request.Attach {
+					attachment = request.Attachment
+				} else if request.Operation.CloseDetails != nil {
+					frame.Details = nil
+				}
+				if err := api.Native().Publish(request.Attachment, frame); err != nil {
+					request.Reply <- err.Error()
+				} else {
+					request.Reply <- ""
+				}
+			}
+		}
+	}}
+	hub := sessionapi.NewHub(t.Context(), launcher)
+	defer hub.Close()
+	dir, err := os.MkdirTemp("", "mekugi-links-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	listener, err := sessionapi.ListenControl(filepath.Join(dir, "control.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: sessionapi.Versioned(hub.Handler())}
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Close()
+		if err := <-served; !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("serve: %v", err)
+		}
+	})
+	transport := sessionapi.ControlTransport(filepath.Join(dir, "control.sock"))
+	defer transport.CloseIdleConnections()
+	rpc, err := sessionapi.OpenRPC(t.Context(), &http.Client{Transport: transport}, "http://mekugi"+sessionapi.RPCPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rpc.Close()
+	serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "fixture", Resume: "main"})
+	connection, err := sessionapi.OpenNative(t.Context(), &http.Client{Transport: transport}, "http://mekugi", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	if err := pty.Setsize(master, &pty.Winsize{Cols: 80, Rows: 24}); err != nil {
+		t.Fatal(err)
+	}
+	frames := make(chan []byte, 64)
+	go func() {
+		defer close(frames)
+		var pending synchronizedFrameBuffer
+		buffer := make([]byte, 8192)
+		for {
+			n, err := master.Read(buffer)
+			pending.Append(buffer[:n])
+			for {
+				frame, ok := pending.Next()
+				if !ok {
+					break
+				}
+				select {
+				case frames <- frame:
+				case <-t.Context().Done():
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	runCtx, cancelRun := context.WithCancel(t.Context())
+	terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)
+	c := nativeClient{connection: connection, renderer: nativeClientRenderer{terminal: terminal, views: u.terminalViews}}
+	done := make(chan error, 1)
+	go func() { _, err := c.run(runCtx, slave, slave); done <- err }()
+	defer func() {
+		cancelRun()
+		<-done
+	}()
+	screen := vt.NewEmulator(80, 24)
+	repliesDone := make(chan struct{})
+	go func() { defer close(repliesDone); _, _ = io.Copy(master, screen) }()
+	defer func() {
+		_ = screen.InputPipe().(io.Closer).Close()
+		<-repliesDone
+		_ = screen.Close()
+	}()
+	linkAt := func(needle string) string {
+		lines := strings.Split(screen.String(), "\n")
+		for y, line := range lines {
+			if before, _, ok := strings.Cut(line, needle); ok {
+				if cell := screen.CellAt(ansi.StringWidth(before), y); cell != nil {
+					return cell.Link.URL
+				}
+			}
+		}
+		return ""
+	}
+	await := func(desc string, ready func() bool) {
+		t.Helper()
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		for !ready() {
+			select {
+			case frame, ok := <-frames:
+				if !ok {
+					t.Fatalf("terminal closed while waiting for %s", desc)
+				}
+				if _, err := screen.Write(frame); err != nil {
+					t.Fatal(err)
+				}
+			case err := <-done:
+				t.Fatalf("client exited early while waiting for %s: %v", desc, err)
+			case <-timer.C:
+				t.Fatalf("timed out waiting for %s:\n%s", desc, screen.String())
+			}
+		}
+	}
+	await("initial transcript link", func() bool { return linkAt("types.ts") == "types.ts" })
+	close(openSheet)
+	await("bottom sheet open", func() bool { return strings.Contains(screen.String(), "export type X = string;") })
+	if _, err := master.WriteString("\x1b[C"); err != nil {
+		t.Fatal(err)
+	}
+	await("sheet tab switch and dialog link", func() bool {
+		return strings.Contains(screen.String(), "Pricing: usage.ts") && linkAt("usage.ts") == "usage.ts"
+	})
+	if got := linkAt("types.ts"); got != "types.ts" {
+		t.Fatalf("transcript link after bottom sheet repaint = %q, want %q:\n%s", got, "types.ts", screen.String())
+	}
+	if _, err := master.WriteString("\x1b"); err != nil {
+		t.Fatal(err)
+	}
+	await("bottom sheet closed", func() bool { return !strings.Contains(screen.String(), "Pricing: usage.ts") })
+	if got := linkAt("types.ts"); got != "types.ts" {
+		t.Fatalf("transcript link after closing bottom sheet = %q, want %q:\n%s", got, "types.ts", screen.String())
+	}
+	if _, err := master.WriteString("\x03/detach\r"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+		done = make(chan error, 1)
+		close(done)
+	case <-time.After(5 * time.Second):
+		t.Fatal("client did not detach")
+	}
+}
