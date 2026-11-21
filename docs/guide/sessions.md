@@ -18,12 +18,13 @@ conversation, then switches to it with current settings and pending input. The
 original stays resumable and workspace files remain unchanged. A failed fork
 keeps the original session usable.
 
-`/rewind` opens a user-turn dialog while idle, after the first user turn. Select
-a turn to remove it and all later conversation from the same session, keeping
-current settings and pending input. It requires paginated Codex history; legacy
-sessions are refused before edits change.
+`/rewind` opens a restore-point dialog while idle, after the first user turn,
+listing both turn starts and mid-turn steered messages. Select a point to remove
+it and all later conversation from the same session, keeping current settings
+and pending input. It requires paginated Codex history; legacy sessions are
+refused before edits change.
 
-Choose Keep edits (the default) or Revert captured edits from that turn onward,
+Choose Keep edits (the default) or Revert captured edits from that point onward,
 including descendant agents. Without such captures, rewind skips this choice.
 Revert uses `mchanges` and preserves unrelated edits through its normal merge
 behavior. Missing evidence disables Revert; conflicts stop the rewind. Keep

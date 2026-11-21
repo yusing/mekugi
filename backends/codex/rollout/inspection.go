@@ -72,10 +72,10 @@ type Call struct {
 // InspectionEvent contains recorded host facts. The consumer validates metric
 // identities and pairs events; persisted endpoints may explicitly be unknown.
 type InspectionEvent struct {
-	Kind, TurnID, ItemID, CallID string
-	At, Started, Completed       time.Time
-	PersistedTimes               bool
-	ExitCode                     *int
+	Kind, TurnID, ItemID, ItemType, CallID string
+	At, Started, Completed                 time.Time
+	PersistedTimes                         bool
+	ExitCode                               *int
 }
 
 // Inspect reads only the selected source. A nil observer skips event-specific
@@ -176,7 +176,7 @@ func Inspect(ctx context.Context, path string, observe func(InspectionEvent) err
 			decoded := InspectionEvent{Kind: event.Type, TurnID: event.TurnID}
 			decoded.At, _ = time.Parse(time.RFC3339Nano, envelope.Timestamp)
 			if (event.Type == "item_started" || event.Type == "item_completed") && event.Item != nil && event.Item.Type == "CommandExecution" {
-				decoded.ItemID, decoded.CallID, decoded.ExitCode = event.Item.ID, commandCallID(event.Item.Command), event.Item.ExitCode
+				decoded.ItemID, decoded.ItemType, decoded.CallID, decoded.ExitCode = event.Item.ID, event.Item.Type, commandCallID(event.Item.Command), event.Item.ExitCode
 				decoded.PersistedTimes = event.StartedAtMS != nil || event.CompletedAtMS != nil
 				if event.Type == "item_started" && decoded.PersistedTimes {
 					decoded.At, err = commandTime(event.StartedAtMS)
@@ -193,6 +193,12 @@ func Inspect(ctx context.Context, path string, observe func(InspectionEvent) err
 						return Inspection{}, fmt.Errorf("session line %d: invalid command timestamp: %w", line, errors.Join(startErr, endErr))
 					}
 				}
+				if err := observe(decoded); err != nil {
+					return Inspection{}, err
+				}
+			}
+			if event.Type == "item_completed" && event.Item != nil && event.Item.Type == "UserMessage" {
+				decoded.ItemID, decoded.ItemType = event.Item.ID, event.Item.Type
 				if err := observe(decoded); err != nil {
 					return Inspection{}, err
 				}

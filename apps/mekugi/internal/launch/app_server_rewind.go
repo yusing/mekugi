@@ -82,6 +82,7 @@ func rewindPageResponse(control *sessioncontrol.Client[appServerRequest], picker
 		if turn.ID == "" || turn.Status == "inProgress" {
 			continue
 		}
+		turnUserCount := 0
 		for _, item := range turn.Items {
 			if item.Type != "userMessage" {
 				continue
@@ -91,8 +92,21 @@ func rewindPageResponse(control *sessioncontrol.Client[appServerRequest], picker
 				text = answer
 			}
 			text = strings.Join(strings.Fields(text), " ")
-			picker.Choices = append(picker.Choices, completion.Choice{Name: turn.ID, Display: cmp.Or(text, "User turn (no text)"), Description: "Rewind immediately before this turn"})
-			break
+			if turnUserCount == 0 {
+				picker.Choices = append(picker.Choices, completion.Choice{Name: turn.ID, Display: cmp.Or(text, "User turn (no text)"), Description: "Rewind immediately before this turn"})
+				turnUserCount++
+				continue
+			}
+			if item.ID == "" {
+				continue
+			}
+			choice := completion.Choice{ID: uint64(turnUserCount), Name: turn.ID, Display: cmp.Or(text, "User message (no text)"), Description: "Rewind immediately before this message"}
+			if picker.rewind.items == nil {
+				picker.rewind.items = make(map[completion.ChoiceID]string)
+			}
+			picker.rewind.items[choice.Identity()] = item.ID
+			picker.Choices = append(picker.Choices, choice)
+			turnUserCount++
 		}
 	}
 	if page.NextCursor != "" {
@@ -122,6 +136,7 @@ func chooseRewind(attached *attachedPresentation, control *sessioncontrol.Client
 	}
 	if picker.Kind == "rewind" {
 		picker.rewind.turn = choice.Name
+		picker.rewind.item = picker.rewind.items[choice.Identity()]
 		if picker.rewind.problem == "" {
 			hasChanges := false
 			for attempt := range picker.rewind.snapshot.Attempts() {
@@ -157,7 +172,7 @@ func chooseRewind(attached *attachedPresentation, control *sessioncontrol.Client
 	}
 	if choice.ID == 2 && picker.rewind.command != "" {
 		picker.cancelScan()
-		control.Rewind = &sessioncontrol.RewindOperation{Thread: control.Thread, BeforeTurn: picker.rewind.turn, Command: picker.rewind.command}
+		control.Rewind = &sessioncontrol.RewindOperation{Thread: control.Thread, BeforeTurn: picker.rewind.turn, BeforeItem: picker.rewind.item, Command: picker.rewind.command}
 		picker.Kind, picker.Open, picker.Choices = "", false, nil
 		return
 	}
@@ -167,7 +182,7 @@ func chooseRewind(attached *attachedPresentation, control *sessioncontrol.Client
 func revertChosenRewind(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, clock func() time.Time) {
 	picker.Kind, picker.Open, picker.Choices = "", false, nil
 	picker.cancelScan()
-	if err := requestRewind(control, picker.rewind.turn); err != nil {
+	if err := requestRewind(control, picker.rewind.turn, picker.rewind.item); err != nil {
 		setNotice(&attached.feedback, presentationTime(clock), "Could not rewind session: "+err.Error(), true)
 		return
 	}
@@ -175,8 +190,12 @@ func revertChosenRewind(attached *attachedPresentation, control *sessioncontrol.
 	attached.presentation.Status.SetText("Rewinding before selected turn…")
 }
 
-func requestRewind(control *sessioncontrol.Client[appServerRequest], before string) error {
-	if _, err := control.Requests.Send("thread/revert", map[string]any{"threadId": control.Thread, "beforeTurnId": before}, "main", appServerRequest{}); err != nil {
+func requestRewind(control *sessioncontrol.Client[appServerRequest], beforeTurn, beforeItem string) error {
+	params := map[string]any{"threadId": control.Thread, "beforeTurnId": beforeTurn}
+	if beforeItem != "" {
+		params["beforeItemId"] = beforeItem
+	}
+	if _, err := control.Requests.Send("thread/revert", params, "main", appServerRequest{}); err != nil {
 		return err
 	}
 	control.Replacement.Rewind()
@@ -190,12 +209,13 @@ func continueRewind(attached *attachedPresentation, control *sessioncontrol.Clie
 }
 
 type rewindSelection struct {
-	cursors                map[string]bool
-	snapshot               *changepresentation.Snapshot
-	scope                  previewmodel.Scope
-	sources                []binding.ThreadInfo
-	pending                []string
-	turn, command, problem string
+	cursors                      map[string]bool
+	items                        map[completion.ChoiceID]string
+	snapshot                     *changepresentation.Snapshot
+	scope                        previewmodel.Scope
+	sources                      []binding.ThreadInfo
+	pending                      []string
+	turn, item, command, problem string
 }
 
 func (p *composerPicker) readRewindSource(control *sessioncontrol.Client[appServerRequest], parent context.Context) {
@@ -226,7 +246,7 @@ func (p *composerPicker) readRewindSource(control *sessioncontrol.Client[appServ
 	id, results, selection, root, slots := p.scanID, p.scanResults, *p.rewind, p.rewindThread, p.rewindSlots
 	go func() {
 		defer func() { <-slots }()
-		selected, err := sessionreview.RewindChanges(ctx, selection.snapshot, root, selection.turn, selection.sources)
+		selected, err := sessionreview.RewindChanges(ctx, selection.snapshot, root, selection.turn, selection.item, selection.sources)
 		result := pickerScanResult{id: id, rewind: true}
 		if err != nil {
 			result.problem = err.Error()
@@ -282,7 +302,7 @@ func finishRewindRevert(attached *attachedPresentation, control *sessioncontrol.
 		setNotice(&attached.feedback, presentationTime(clock), "Revert incomplete; still in the original session. Inspect the shell output for conflicts and recovery instructions.", true)
 		return
 	}
-	if err := requestRewind(control, r.BeforeTurn); err != nil {
+	if err := requestRewind(control, r.BeforeTurn, r.BeforeItem); err != nil {
 		setNotice(&attached.feedback, presentationTime(clock), "Edits reverted, but the conversation could not be rewound: "+err.Error(), true)
 		return
 	}

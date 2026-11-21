@@ -22,7 +22,7 @@ type RewindChange struct {
 
 // RewindChanges only reads supplied host sources and the admitted snapshot.
 // The caller owns cancellation, publication and any subsequent host execution.
-func RewindChanges(ctx context.Context, snapshot *presentation.Snapshot, root, turn string, sources []binding.ThreadInfo) ([]RewindChange, error) {
+func RewindChanges(ctx context.Context, snapshot *presentation.Snapshot, root, turn, item string, sources []binding.ThreadInfo) ([]RewindChange, error) {
 	var boundary time.Time
 	times := make(map[[2]string]time.Time)
 	ends := make(map[[2]string]time.Time)
@@ -31,10 +31,14 @@ func RewindChanges(ctx context.Context, snapshot *presentation.Snapshot, root, t
 			return nil, fmt.Errorf("thread %s has no absolute history path", source.ID)
 		}
 		inspection, err := rollout.Inspect(ctx, source.Path, func(event rollout.InspectionEvent) error {
-			if source.ID == root && event.TurnID == turn && (event.Kind == "task_started" || event.Kind == "turn_started") {
-				boundary = event.At
+			if source.ID == root && event.TurnID == turn {
+				if item == "" && (event.Kind == "task_started" || event.Kind == "turn_started") {
+					boundary = event.At
+				} else if item != "" && event.Kind == "item_completed" && event.ItemType == "UserMessage" && event.ItemID == item {
+					boundary = event.At
+				}
 			}
-			if event.ItemID != "" {
+			if event.ItemID != "" && event.ItemType == "CommandExecution" {
 				key := [2]string{source.ID, event.ItemID}
 				if event.Kind == "item_started" {
 					times[key] = event.At
@@ -61,6 +65,9 @@ func RewindChanges(ctx context.Context, snapshot *presentation.Snapshot, root, t
 		}
 	}
 	if boundary.IsZero() {
+		if item != "" {
+			return nil, errors.New("selected message has no recorded time")
+		}
 		return nil, errors.New("selected turn has no recorded start time")
 	}
 	sides := make(map[[2]string]bool)

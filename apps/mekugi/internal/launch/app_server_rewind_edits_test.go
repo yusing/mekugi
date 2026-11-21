@@ -346,3 +346,65 @@ func TestRewindIgnoresDiagnosticOnlyChildren(t *testing.T) {
 		})
 	}
 }
+
+func TestRewindMidTurnSteerRevertsOnlyLaterEdits(t *testing.T) {
+	u, w := newResumeSessionTestUI(t)
+	u.clock = func() time.Time { return time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local) }
+	workspace := t.TempDir()
+	u.startSession("main", workspace)
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(t.TempDir(), "main.jsonl")
+	mainRollout := strings.Join([]string{
+		fmt.Sprintf(`{"type":"session_meta","payload":{"id":"main","cwd":%q}}`, workspace),
+		`{"timestamp":"2026-10-21T01:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}`,
+		`{"timestamp":"2026-10-21T01:00:01Z","type":"response_item","payload":{"type":"function_call","call_id":"before-steer","name":"exec_command","arguments":"{}"}}`,
+		`{"timestamp":"2026-10-21T01:00:02Z","type":"response_item","payload":{"type":"function_call_output","call_id":"before-steer","output":"ok"}}`,
+		`{"timestamp":"2026-10-21T01:00:05Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-1","item":{"type":"UserMessage","id":"steer-1"}}}`,
+		`{"timestamp":"2026-10-21T01:00:06Z","type":"response_item","payload":{"type":"function_call","call_id":"after-steer","name":"exec_command","arguments":"{}"}}`,
+		`{"timestamp":"2026-10-21T01:00:07Z","type":"response_item","payload":{"type":"function_call_output","call_id":"after-steer","output":"ok"}}`,
+	}, "\n") + "\n"
+	writeTestFile(t, mainPath, mainRollout)
+	liveDiffScopeCapture(t, store, workspace, "main", "before-steer", filepath.Join(workspace, "before.txt"), "a", "b")
+	liveDiffScopeCapture(t, store, workspace, "main", "after-steer", filepath.Join(workspace, "after.txt"), "c", "d")
+	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}}
+	snapshot, err := store.liveDiffSnapshot(t.Context(), scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.review.Projection = sessionreview.Projection{Changes: store.changes, Retained: store.changeScope(), Data: snapshot, Scope: u.review.Scope()}
+	rewindTestUser(t, u)
+	appServerTestKeys(t, u, "/rewind\r")
+	read := resumeTestOne(t, w, "thread/read")
+	rewindTestHistory(t, u, w, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","path":%q,"turns":[{"id":"turn-1","status":"completed","items":[
+		{"type":"userMessage","id":"u1","content":[{"type":"text","text":"Initial prompt"}]},
+		{"type":"userMessage","id":"steer-1","content":[{"type":"text","text":"Eliminate it then"}]}
+	]}]}}}`, read.ID, mainPath))
+	appServerTestKeys(t, u, "\x1b[B\r")
+	select {
+	case result := <-u.picker.scanResults:
+		if !u.picker.applyScan(u.attached.cwd, u.picker.Target, result) {
+			t.Fatal("plan result not admitted")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("rewind plan did not finish")
+	}
+	if len(u.picker.Choices) != 2 || u.picker.Choices[1].Name != "Revert 1 captured changes" {
+		t.Fatalf("expected 1 captured change after steer-1, got %+v (problem=%q)", u.picker.Choices, u.picker.rewind.problem)
+	}
+	// Select "Revert 1 captured changes" and confirm danger prompt.
+	appServerTestKeys(t, u, "\x1b[B\r\r")
+	u.dispatchRewind(&u.attached, &u.picker, u.clock, t.Context())
+	shell := resumeTestOne(t, w, "thread/shellCommand")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, shell.ID))
+	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"shell-turn"}}}`)
+	appServerTestMessage(t, u, `{"method":"item/started","params":{"threadId":"main","turnId":"shell-turn","item":{"type":"commandExecution","id":"shell-item","source":"userShell","status":"inProgress"}}}`)
+	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"shell-turn","item":{"type":"commandExecution","id":"shell-item","source":"userShell","status":"completed","exitCode":0}}}`)
+	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"shell-turn","status":"completed"}}}`)
+	revert := resumeTestOne(t, w, "thread/revert")
+	if revert.Params.BeforeTurnID != "turn-1" || revert.Params.BeforeItemID != "steer-1" {
+		t.Fatalf("mid-turn revert after edits = %+v", revert.Params)
+	}
+}

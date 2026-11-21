@@ -97,7 +97,7 @@ func TestRewindChangesIncludesDescendantsAndRejectsGaps(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			changes, err := RewindChanges(t.Context(), build(mode), "main", turn, selectedSources)
+			changes, err := RewindChanges(t.Context(), build(mode), "main", turn, "", selectedSources)
 			if mode != "complete" && mode != "grouped-same" {
 				if err == nil || len(changes) != 0 {
 					t.Fatalf("gap yielded changes: %+v, %v", changes, err)
@@ -108,5 +108,86 @@ func TestRewindChangesIncludesDescendantsAndRejectsGaps(t *testing.T) {
 				t.Fatalf("selection: %+v, %v", changes, err)
 			}
 		})
+	}
+}
+
+func TestRewindChangesMidTurnUserMessageBoundary(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.jsonl")
+	childPath := filepath.Join(dir, "child.jsonl")
+	mainRollout := strings.Join([]string{
+		fmt.Sprintf(`{"type":"session_meta","payload":{"id":"main","cwd":%q}}`, dir),
+		`{"timestamp":"2026-10-21T01:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}`,
+		`{"timestamp":"2026-10-21T01:00:01Z","type":"response_item","payload":{"type":"function_call","call_id":"before-steer","name":"exec_command","arguments":"{}"}}`,
+		`{"timestamp":"2026-10-21T01:00:02Z","type":"response_item","payload":{"type":"function_call_output","call_id":"before-steer","output":"ok"}}`,
+		`{"timestamp":"2026-10-21T01:00:05Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"t1","item":{"type":"UserMessage","id":"steer-1"}}}`,
+		`{"timestamp":"2026-10-21T01:00:06Z","type":"response_item","payload":{"type":"function_call","call_id":"after-steer","name":"exec_command","arguments":"{}"}}`,
+		`{"timestamp":"2026-10-21T01:00:07Z","type":"response_item","payload":{"type":"function_call_output","call_id":"after-steer","output":"ok"}}`,
+	}, "\n") + "\n"
+	childRollout := strings.Join([]string{
+		fmt.Sprintf(`{"type":"session_meta","payload":{"id":"child","cwd":%q}}`, dir),
+		`{"timestamp":"2026-10-21T01:00:06Z","type":"response_item","payload":{"type":"function_call","call_id":"child-after-steer","name":"exec_command","arguments":"{}"}}`,
+		`{"timestamp":"2026-10-21T01:00:07Z","type":"response_item","payload":{"type":"function_call_output","call_id":"child-after-steer","output":"ok"}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(mainPath, []byte(mainRollout), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(childPath, []byte(childRollout), 0600); err != nil {
+		t.Fatal(err)
+	}
+	b := presentation.NewBuilder(nil)
+	for i, spec := range []struct{ thread, call, id string }{
+		{"main", "before-steer", "amber1"},
+		{"main", "after-steer", "amber2"},
+		{"child", "child-after-steer", "amber3"},
+	} {
+		a := presentation.Attempt{
+			Key:       presentation.AttemptKey{Workspace: dir, Call: spec.call},
+			Change:    spec.id,
+			Operation: activitydetail.Operation{Thread: spec.thread, Item: spec.call},
+			Chunks:    []presentation.Chunk{{CaptureOrder: uint64(i + 1), Review: diffmodel.ReviewFile{AfterPath: filepath.Join(dir, spec.call)}}},
+		}
+		if err := b.Add(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot := b.Finish()
+	sources := []binding.ThreadInfo{{ID: "main", Path: mainPath}, {ID: "child", Path: childPath}}
+
+	changes, err := RewindChanges(t.Context(), snapshot, "main", "t1", "steer-1", sources)
+	if err != nil {
+		t.Fatalf("mid-turn rewind changes: %v", err)
+	}
+	if len(changes) != 2 || changes[0].ID != "amber2" || changes[1].ID != "amber3" {
+		t.Fatalf("expected only changes after steer-1, got %+v", changes)
+	}
+
+	if _, err := RewindChanges(t.Context(), snapshot, "main", "t1", "missing-steer", sources); err == nil {
+		t.Fatal("expected error for missing mid-turn user message")
+	}
+
+	// A command already running when the mid-turn steer arrives straddles the boundary and is refused.
+	straddlingPath := filepath.Join(dir, "main-straddling.jsonl")
+	straddlingRollout := strings.Join([]string{
+		fmt.Sprintf(`{"type":"session_meta","payload":{"id":"main","cwd":%q}}`, dir),
+		`{"timestamp":"2026-10-21T01:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}`,
+		`{"timestamp":"2026-10-21T01:00:04Z","type":"response_item","payload":{"type":"function_call","call_id":"in-flight","name":"exec_command","arguments":"{}"}}`,
+		`{"timestamp":"2026-10-21T01:00:05Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"t1","item":{"type":"UserMessage","id":"steer-1"}}}`,
+		`{"timestamp":"2026-10-21T01:00:06Z","type":"response_item","payload":{"type":"function_call_output","call_id":"in-flight","output":"ok"}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(straddlingPath, []byte(straddlingRollout), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sb := presentation.NewBuilder(nil)
+	if err := sb.Add(presentation.Attempt{
+		Key:       presentation.AttemptKey{Workspace: dir, Call: "in-flight"},
+		Change:    "amber9",
+		Operation: activitydetail.Operation{Thread: "main", Item: "in-flight"},
+		Chunks:    []presentation.Chunk{{CaptureOrder: 1, Review: diffmodel.ReviewFile{AfterPath: filepath.Join(dir, "in-flight")}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RewindChanges(t.Context(), sb.Finish(), "main", "t1", "steer-1", []binding.ThreadInfo{{ID: "main", Path: straddlingPath}}); err == nil || !strings.Contains(err.Error(), "uncertain execution boundary") {
+		t.Fatalf("expected uncertain execution boundary refusal for in-flight command, got %v", err)
 	}
 }

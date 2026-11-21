@@ -308,3 +308,85 @@ func TestAppServerRewindQuestionAnswer(t *testing.T) {
 		t.Fatalf("answer fork = %+v", fork)
 	}
 }
+
+func TestAppServerRewindSteeredMessages(t *testing.T) {
+	openSteered := func(t *testing.T) (*appServerUI, *appServerTestInput) {
+		t.Helper()
+		u, w := newResumeSessionTestUI(t)
+		rewindTestUser(t, u)
+		appServerTestKeys(t, u, "/rewind\r")
+		read := resumeTestOne(t, w, "thread/read")
+		rewindTestHistory(t, u, w, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","turns":[
+			{"id":"turn-1","status":"completed","items":[
+				{"type":"userMessage","id":"u1","content":[{"type":"text","text":"Manage your own work"}]},
+				{"type":"agentMessage","id":"a1","text":"Working"},
+				{"type":"userMessage","id":"u2","content":[{"type":"text","text":"Eliminate it then"}]},
+				{"type":"agentMessage","id":"a2","text":"Creating worktree"},
+				{"type":"userMessage","id":"u3","content":[{"type":"text","text":"No need for a worktree"}]}
+			]},
+			{"id":"turn-2","status":"completed","items":[
+				{"type":"userMessage","id":"u4","content":[{"type":"text","text":"Next task"}]}
+			]}
+		]}}}`, read.ID))
+		return u, w
+	}
+
+	u, w := openSteered(t)
+	if len(u.picker.Choices) != 4 {
+		t.Fatalf("expected 4 rewind restore points, got %+v", u.picker.Choices)
+	}
+	wantDisplays := []string{"Manage your own work", "Eliminate it then", "No need for a worktree", "Next task"}
+	for i, want := range wantDisplays {
+		if u.picker.Choices[i].Display != want {
+			t.Fatalf("choice %d = %q, want %q", i, u.picker.Choices[i].Display, want)
+		}
+	}
+	// Selecting the initial prompt of turn-1 omits beforeItemId.
+	appServerTestKeys(t, u, "\r\r")
+	first := resumeTestOne(t, w, "thread/revert")
+	if first.Params.BeforeTurnID != "turn-1" || first.Params.BeforeItemID != "" {
+		t.Fatalf("initial prompt revert = %+v", first.Params)
+	}
+
+	// Selecting the first steered prompt inside turn-1 sends both beforeTurnId and beforeItemId.
+	u, w = openSteered(t)
+	appServerTestKeys(t, u, "\x1b[B\r\r")
+	steer := resumeTestOne(t, w, "thread/revert")
+	if steer.Params.BeforeTurnID != "turn-1" || steer.Params.BeforeItemID != "u2" {
+		t.Fatalf("first steer revert = %+v", steer.Params)
+	}
+
+	// Selecting the second steered prompt inside turn-1 targets u3.
+	u, w = openSteered(t)
+	appServerTestKeys(t, u, "\x1b[B\x1b[B\r\r")
+	steer2 := resumeTestOne(t, w, "thread/revert")
+	if steer2.Params.BeforeTurnID != "turn-1" || steer2.Params.BeforeItemID != "u3" {
+		t.Fatalf("second steer revert = %+v", steer2.Params)
+	}
+
+	// Paginated turns preserve steered choices across pages and skip steered items without an id.
+	u, w = newResumeSessionTestUI(t)
+	rewindTestUser(t, u)
+	appServerTestKeys(t, u, "/rewind\r")
+	read := resumeTestOne(t, w, "thread/read")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","historyMode":"paginated"}}}`, read.ID))
+	page1 := resumeTestOne(t, w, "thread/turns/list")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"t1","status":"completed","items":[
+		{"type":"userMessage","id":"u1","content":[{"type":"text","text":"First"}]},
+		{"type":"userMessage","content":[{"type":"text","text":"No ID steer"}]},
+		{"type":"userMessage","id":"u2","content":[{"type":"text","text":"First steer"}]}
+	]}],"nextCursor":"c2"}}`, page1.ID))
+	page2 := resumeTestOne(t, w, "thread/turns/list")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"t2","status":"completed","items":[
+		{"type":"userMessage","id":"u3","content":[{"type":"text","text":"Second"}]},
+		{"type":"userMessage","id":"u4","content":[{"type":"text","text":"Second steer"}]}
+	]}]}}`, page2.ID))
+	if len(u.picker.Choices) != 4 || u.picker.Choices[1].Display != "First steer" || u.picker.Choices[3].Display != "Second steer" {
+		t.Fatalf("paginated steered choices = %+v", u.picker.Choices)
+	}
+	appServerTestKeys(t, u, "\x1b[B\x1b[B\x1b[B\r\r")
+	pagedSteer := resumeTestOne(t, w, "thread/revert")
+	if pagedSteer.Params.BeforeTurnID != "t2" || pagedSteer.Params.BeforeItemID != "u4" {
+		t.Fatalf("paged steer revert = %+v", pagedSteer.Params)
+	}
+}

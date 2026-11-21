@@ -26,7 +26,22 @@ func bindRollout(service *query.Service, source binding.RolloutSource) error {
 	return service.BindSource(func(ctx context.Context, path string, observe func(inspection.Event) error) (query.Rollout, error) {
 		var observer func(binding.RolloutEvent) error
 		if observe != nil {
-			observer = func(event binding.RolloutEvent) error { return observe(inspection.Event(event)) }
+			observer = func(event binding.RolloutEvent) error {
+				if event.ItemType == "UserMessage" {
+					return nil
+				}
+				return observe(inspection.Event{
+					Kind:           event.Kind,
+					TurnID:         event.TurnID,
+					ItemID:         event.ItemID,
+					CallID:         event.CallID,
+					At:             event.At,
+					Started:        event.Started,
+					Completed:      event.Completed,
+					PersistedTimes: event.PersistedTimes,
+					ExitCode:       event.ExitCode,
+				})
+			}
 		}
 		decoded, err := read(ctx, path, observer)
 		if err != nil {
