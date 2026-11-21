@@ -339,6 +339,12 @@
     r: "restart",
   };
   function onkeydown(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === ".") {
+      event.preventDefault();
+      if (panel) closePanel();
+      else panelOpen = true;
+      return;
+    }
     if (event.key === "Escape" && panel && !wide.matches && !event.defaultPrevented) {
       const target = event.target as HTMLElement;
       if (
@@ -432,7 +438,9 @@
 <div
   class="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[calc(var(--topbar)+env(safe-area-inset-top,0px))_minmax(0,1fr)]"
 >
-  <header class="flex min-w-0 items-center gap-2 pt-safe pr-2 pl-4 max-sm:gap-1 max-sm:px-1">
+  <header
+    class="flex min-w-0 items-center gap-2 border-b border-rule pt-safe pr-2.5 pl-4 max-sm:gap-1 max-sm:px-1.5"
+  >
     {#if !sidebar}<Button
         variant="quiet"
         icon="sidebar"
@@ -750,7 +758,9 @@
             <PlaybackBar {playback} {start} entries={main} />
           </div>
         {:else if live && !ended}
-          <div class="flex-none pt-1">
+          <div
+            class="relative flex-none pt-1 before:pointer-events-none before:absolute before:inset-x-0 before:-top-5 before:h-5 before:bg-gradient-to-t before:from-surface before:to-transparent"
+          >
             {#if recorded}
               <p class="{column} py-3 text-small text-muted">
                 This agent's retained activity is read-only.
@@ -829,13 +839,13 @@
         aria-label="Thread panel"
       >
         <!-- Text tabs; the selected one is underlined. -->
-        <div class="flex min-h-12 flex-none items-center gap-2 pr-1.5 pl-1.5">
+        <div class="flex min-h-12 flex-none items-center gap-2 border-b border-rule pr-1.5 pl-1.5">
           <div class="flex min-w-0 self-stretch" role="tablist" aria-label="Panel">
             {#snippet tabButton(target: Tab, label: string)}
               <button
                 type="button"
                 role="tab"
-                class="relative min-w-0 truncate px-2.5 font-medium text-muted after:absolute after:inset-x-2.5 after:-bottom-px after:h-0.5 after:rounded-full hover:text-ink aria-selected:text-ink aria-selected:after:bg-accent"
+                class="relative min-w-0 truncate px-3 text-small font-medium text-muted transition-colors after:absolute after:inset-x-2.5 after:-bottom-px after:h-0.5 after:rounded-full hover:text-ink aria-selected:text-ink aria-selected:after:bg-accent"
                 aria-selected={panel === target}
                 aria-controls="panel-content"
                 onclick={() => (chosen = target)}>{label}</button

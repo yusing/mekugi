@@ -148,7 +148,9 @@
   {/if}
 </div>
 {#if whole.Added || whole.Removed || totals.input || totals.cost}
-  <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-small tabular-nums">
+  <div
+    class="mt-2 flex flex-wrap gap-x-3 gap-y-1 rounded-control border border-rule bg-raised/60 px-2.5 py-1.5 text-small tabular-nums"
+  >
     {#if whole.Added || whole.Removed}{@render changed(
         whole.Added,
         whole.Removed,
@@ -189,9 +191,11 @@
         <button
           type="button"
           class={[
-            "group/card relative grid w-full min-w-0 gap-1 rounded-card px-2.5 py-2 text-left pointer-coarse:py-[11px]",
+            "group/card relative grid w-full min-w-0 gap-1 rounded-card px-2.5 py-2 text-left transition-colors pointer-coarse:py-[11px]",
             agent.context != null && agent.window && "pb-3 pointer-coarse:pb-[13px]",
-            agent.name === selected ? "bg-accent-tint" : !agent.nonAttachable && "hover:bg-raised",
+            agent.name === selected
+              ? "bg-accent-tint ring-1 ring-accent/25 ring-inset"
+              : !agent.nonAttachable && "hover:bg-raised",
           ]}
           disabled={agent.nonAttachable}
           title={agent.nonAttachable ? "Interactive view unavailable" : undefined}

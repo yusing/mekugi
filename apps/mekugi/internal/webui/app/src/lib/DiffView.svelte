@@ -71,7 +71,7 @@
   {#if rows.length}
     <div
       class={[
-        "rounded-card bg-raised font-mono text-code",
+        "rounded-card border border-rule bg-raised font-mono text-code",
         !wrap && "overflow-x-auto overscroll-x-contain",
       ]}
     >
@@ -85,7 +85,9 @@
           {:else}
             <div class="flex {tints[row.kind] ?? ''}" class:bg-add={row.kind === "add"}>
               <span class={number} style:width="{digits + 2}ch">{row.old ?? ""}</span>
-              <span class={number} style:width="{digits + 2}ch">{row.new ?? ""}</span>
+              <span class="{number} border-r border-rule/80" style:width="{digits + 2}ch"
+                >{row.new ?? ""}</span
+              >
               <span class="w-[2ch] flex-none text-center select-none {signs[row.kind] ?? ''}"
                 >{row.kind === "add" ? "+" : row.kind === "remove" ? "−" : ""}</span
               >
