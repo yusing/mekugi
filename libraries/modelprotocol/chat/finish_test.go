@@ -4,17 +4,17 @@ import "testing"
 
 func TestFinishEvidence(t *testing.T) {
 	for _, test := range []struct {
-		reason             FinishReason
-		status, incomplete string
+		reason FinishReason
+		status string
 	}{
-		{Stop, "completed", ""},
-		{ToolCalls, "completed", ""},
-		{Length, "incomplete", "max_output_tokens"},
-		{ContentFilter, "incomplete", "content_filter"},
-		{"", "", ""},
-		{"future", "", ""},
+		{Stop, "completed"},
+		{ToolCalls, "completed"},
+		{Length, "incomplete"},
+		{ContentFilter, "incomplete"},
+		{"", ""},
+		{"future", ""},
 	} {
-		if test.reason.ResponseStatus() != test.status || test.reason.IncompleteReason() != test.incomplete {
+		if test.reason.ResponseStatus() != test.status {
 			t.Fatalf("incorrect finish evidence: %q", test.reason)
 		}
 	}

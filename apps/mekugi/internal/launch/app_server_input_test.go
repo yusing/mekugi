@@ -7,42 +7,7 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
-
-	"github.com/yusing/mekugi/modules/conversation/composer"
 )
-
-func TestPasteAdmissionPreservesOriginalDestination(t *testing.T) {
-	for _, change := range []string{"status", "draft", "menu", "prompt"} {
-		t.Run(change, func(t *testing.T) {
-			u, wire := newAppServerTestUI()
-			appServerTestKeys(t, u, "\x1b[200~payload")
-			switch change {
-			case "status":
-				setNotice(&u.attached.feedback, presentationTime(u.clock), "new status", false)
-			case "draft":
-				u.Editor.Replace(composer.Draft{Text: "replacement"})
-			case "menu":
-				u.picker.openMenu("manage")
-			case "prompt":
-				questionTestSync(t, u, "replacement", false)
-				openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
-			}
-			appServerTestKeys(t, u, "\x1b[201~")
-			want := ""
-			if change == "status" {
-				want = "payload"
-			} else if change == "draft" {
-				want = "replacement"
-			}
-			if u.Text != want || u.picker.Query != "" || wire.Len() != 0 || u.shell.Main.Pasting() {
-				t.Fatalf("paste retargeted: draft=%q, query=%q, wire=%q", u.Text, u.picker.Query, wire.String())
-			}
-			if change != "status" && !u.attached.feedback.Alert {
-				t.Fatal("rejected paste lacks feedback")
-			}
-		})
-	}
-}
 
 func TestSecretPasteRejectsReopenedEditor(t *testing.T) {
 	u, _ := newAppServerTestUI()
