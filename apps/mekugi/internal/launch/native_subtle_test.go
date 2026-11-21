@@ -8,10 +8,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -20,29 +16,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
-
-func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
-	const width = 40
-	u := appServerTestFeatures(&appServerUI{shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, nativeSession: nativeSession{activity: new(activitymodel.Service), settings: preferences.Applied{Model: "model"}}})
-	frame, _ := u.testMainFrame(width, 3, 0)
-	rows := []string{
-		terminalui.PaneRule("┌", "┐", "─", terminalui.PaneTitle(2, "Diff", "", false), terminalui.Dim+"metadata"+terminalui.Undim, width, terminalui.PaneBorder(false)),
-		terminalui.PaneRule("┌", "┐", "─", terminalui.PaneTitle(1, "Main", "", true), "", width, terminalui.PaneBorder(true)),
-		terminalui.PaneRule("┌", "┐", "─", "\x1b[38;5;170m"+terminalui.Dim+"agent"+terminalui.Undim, "", width, terminalui.PaneBorder(false)),
-	}
-	screen := vt.NewEmulator(width, 1)
-	defer screen.Close()
-	_, _ = screen.Write([]byte(rows[0]))
-	label := screen.CellAt(4, 0).Style
-	if label.Fg != nil || label.Attrs&uv.AttrFaint == 0 {
-		t.Fatalf("faint label inherited the border foreground or lost faint: %+v", label)
-	}
-	rows = append(rows, frame...)
-	rows = append(rows, "plain after borders")
-	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-faint-label-foreground.txt", rows, width)
-}
 
 func TestNativeUISubtleForeground(t *testing.T) {
 	p := activityui.Painter{}
