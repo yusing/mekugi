@@ -85,8 +85,8 @@ func codeModeReturnedNothing(raw json.RawMessage) bool {
 	if strings.HasSuffix(header, "\nOutput:") {
 		header += "\n"
 	}
-	status, _, body := binding.CodeModeExecutionHeader(header)
-	if parts[0].Type != "input_text" || status != "Script completed" && status != "Script failed" || strings.TrimSpace(body) != "" {
+	status, cell, body := binding.CodeModeExecutionHeader(header)
+	if parts[0].Type != "input_text" || cell != "" || status != "Script completed" && status != "Script failed" || strings.TrimSpace(body) != "" {
 		return false
 	}
 	for i, part := range parts[1:] {

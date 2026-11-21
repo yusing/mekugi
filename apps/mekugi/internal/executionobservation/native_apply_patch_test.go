@@ -159,9 +159,11 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 	for _, test := range []struct {
 		name, after string
 		yielded     bool
+		paged       bool
 		aborted     bool
 	}{
 		{name: "completed with effect", after: "new"},
+		{name: "completed with unread pages", paged: true, after: "new"},
 		{name: "caught nested failure"},
 		{name: "yielded then completed", yielded: true, after: "new"},
 		{name: "aborted without effect", aborted: true},
@@ -226,6 +228,8 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 				if result := binding.DecodeExecutionResult("exec", mustTestJSON(t, items[len(items)-1].(map[string]any)["output"])); !result.Terminal {
 					t.Fatalf("wait state = %+v", result)
 				}
+			} else if test.paged {
+				items = append(items, codeOutput("Script completed (more output: wait with cell ID cell-7)"))
 			} else {
 				items = append(items, codeOutput("Script completed"))
 			}
@@ -266,6 +270,16 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 				net, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "net"})
 				if err != nil || !strings.Contains(net, "-old\n+"+test.after+"\n") || strings.Contains(net, "+new\n") {
 					t.Fatalf("aborted patch net = %q, %v", net, err)
+				}
+			}
+			if test.paged {
+				reconcile(append(items,
+					map[string]any{"type": "function_call", "call_id": "wait-call", "name": "wait", "arguments": `{"cell_id":"cell-7"}`},
+					map[string]any{"type": "function_call_output", "call_id": "wait-call", "output": "Script completed\nWall time 0.1 seconds\nOutput:\nlast page"},
+				))
+				after, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, View: "list"})
+				if err != nil || after != listed {
+					t.Fatalf("continuation changed capture history: %q, %v; want %q", after, err, listed)
 				}
 			}
 		})

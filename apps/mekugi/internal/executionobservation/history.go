@@ -99,8 +99,8 @@ func (h mekugiHistory) confirmsReport(raw json.RawMessage) bool {
 	// exec prepends its metadata as a separate content block before
 	// text(report). Native exec_command instead returns one combined block.
 	if len(texts) == 2 && h.CarrierName != nativeExecCommandToolName {
-		state, _, body := binding.CodeModeExecutionHeader(texts[0])
-		return state == "Script completed" && body == "" && texts[1] == h.Report
+		state, cell, body := binding.CodeModeExecutionHeader(texts[0])
+		return state == "Script completed" && cell == "" && body == "" && texts[1] == h.Report
 	}
 	if len(texts) != 1 {
 		return false
@@ -113,8 +113,8 @@ func (h mekugiHistory) confirmsReport(raw json.RawMessage) bool {
 		state, body := binding.NativeExecutionHeader(text)
 		return state == "Process exited with code 0" && body == h.Report
 	}
-	state, _, body := binding.CodeModeExecutionHeader(text)
-	return state == "Script completed" && body == h.Report
+	state, cell, body := binding.CodeModeExecutionHeader(text)
+	return state == "Script completed" && cell == "" && body == h.Report
 }
 
 func orderedCalls(histories map[string]mekugiHistory) []history.Call {
@@ -315,6 +315,8 @@ func (p *Preparer) reconcileVisibleInput(ctx context.Context, request *codexresp
 			if len(history.NativePatches) != 0 || history.ExecObservation != nil || history.ResolvedBaseline != nil || history.ReplayCarrier && history.CarrierPayload != "" {
 				completed := execCompletion{callID: callID, history: history, result: binding.DecodeExecutionResult(history.ToolName, item["output"])}
 				if completed.result.Terminal {
+					// An unread output page is not a pending capture. Only a
+					// running cell is completed by a later wait.
 					completedCalls = append(completedCalls, completed)
 					editOutputs[callID] = item
 				} else if pending := completed.result.ResumeHandle; pending != "" {

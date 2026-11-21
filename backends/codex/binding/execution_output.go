@@ -43,9 +43,10 @@ func DecodeExecutionResult(toolName string, raw jsonv1.RawMessage) ExecutionResu
 	}
 	if toolName != "exec_command" && toolName != "write_stdin" {
 		state, cell, _ := CodeModeExecutionHeader(result.Text)
-		switch state {
-		case "running":
+		if cell != "" {
 			result.ResumeHandle = "cell:" + cell
+		}
+		switch state {
 		case "Script completed":
 			result.Terminal, result.Succeeded = true, true
 		case "Script failed", "Script terminated":
@@ -90,16 +91,24 @@ func CodeModeExecutionHeader(text string) (status, cell string, body string) {
 	if !ok {
 		return "", "", ""
 	}
-	switch {
-	case strings.HasPrefix(first, "Script running with cell ID "):
-		cell = strings.TrimPrefix(first, "Script running with cell ID ")
-		if cell == "" || strings.ContainsAny(cell, " \t\r\n") {
+	if runningCell, running := strings.CutPrefix(first, "Script running with cell ID "); running {
+		status, cell = "running", runningCell
+	} else {
+		base, suffix, more := strings.Cut(first, " (more output: wait with cell ID ")
+		switch base {
+		case "Script completed", "Script failed", "Script terminated":
+			status = base
+		default:
 			return "", "", ""
 		}
-		status = "running"
-	case first == "Script completed" || first == "Script failed" || first == "Script terminated":
-		status = first
-	default:
+		if more {
+			cell, ok = strings.CutSuffix(suffix, ")")
+			if !ok || cell == "" || strings.ContainsAny(cell, "()") {
+				return "", "", ""
+			}
+		}
+	}
+	if status == "running" && cell == "" || strings.ContainsAny(cell, " \t\r\n") {
 		return "", "", ""
 	}
 	wall, rest, ok := strings.Cut(rest, "\n")

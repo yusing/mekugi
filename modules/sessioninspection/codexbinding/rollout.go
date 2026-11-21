@@ -195,8 +195,8 @@ func (e callEvidence) EmptyPoll(history *legacycall.History) bool {
 	if classified.Native {
 		session = binding.NativeExecutionSession(texts[0])
 	} else if classified.CodeMode {
-		state, _, body := binding.CodeModeExecutionHeader(texts[0])
-		if state == "" || state == "running" || state == "Script terminated" {
+		state, cell, body := binding.CodeModeExecutionHeader(texts[0])
+		if state == "" || state == "running" || state == "Script terminated" || cell != "" {
 			return false
 		}
 		texts[0] = body

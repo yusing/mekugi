@@ -23,6 +23,7 @@ func TestCodeModeReturnedNothing(t *testing.T) {
 		`[{"type":"input_text","text":"Script failed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nTypeError"}]`:  true,
 		`[{"type":"input_text","text":"Script completed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nprinted"}]`: false,
 		string(responses.MustMarshalJSON("Script running with cell ID 7\nWall time 10.0 seconds\nOutput:\n")):                                       false,
+		string(responses.MustMarshalJSON("Script completed (more output: wait with cell ID 7)\nWall time 0.1 seconds\nOutput:\n")):                  false,
 	} {
 		if got := codeModeReturnedNothing(json.RawMessage(raw)); got != want {
 			t.Errorf("codeModeReturnedNothing(%s) = %v, want %v", raw, got, want)

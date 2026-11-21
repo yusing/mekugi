@@ -24,6 +24,10 @@ func TestDecodeExecutionResult(t *testing.T) {
 		{"cell completed", "exec", cell("Script completed"), ExecutionResult{Terminal: true, Succeeded: true}},
 		{"cell failed", "exec", cell("Script failed"), ExecutionResult{Terminal: true}},
 		{"cell terminated", "exec", cell("Script terminated"), ExecutionResult{Terminal: true}},
+		{"completed with pages", "exec", cell("Script completed (more output: wait with cell ID g1:7)"), ExecutionResult{Terminal: true, Succeeded: true, ResumeHandle: "cell:g1:7"}},
+		{"failed with pages", "exec", "[call c53]\n" + cell("Script failed (more output: wait with cell ID 7)"), ExecutionResult{Terminal: true, ResumeHandle: "cell:7"}},
+		{"terminated with pages", "wait", cell("Script terminated (more output: wait with cell ID 7)"), ExecutionResult{Terminal: true, ResumeHandle: "cell:7"}},
+		{"invalid continuation", "exec", cell("Script completed (more output: wait with cell ID 7) printed"), ExecutionResult{}},
 		{"cell running", "exec", cell("Script running with cell ID cell-7"), ExecutionResult{ResumeHandle: "cell:cell-7"}},
 		{"labeled running cell", "exec", "[call c53]\n" + cell("Script running with cell ID cell-7"), ExecutionResult{ResumeHandle: "cell:cell-7"}},
 		{"labeled failed cell", "exec", "[call c1]\n" + cell("Script failed"), ExecutionResult{Terminal: true}},
@@ -42,6 +46,16 @@ func TestDecodeExecutionResult(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCodeModeFailureTextRecognizesPagedFailure(t *testing.T) {
+	header := "Script failed (more output: wait with cell ID 7)\nWall time 0.1 seconds\nOutput:\n"
+	if text, ok := CodeModeFailureText([]string{header, "partial output"}); !ok || text != "exec script failed" {
+		t.Fatalf("failure annotation = %q, %v", text, ok)
+	}
+	if text, ok := CodeModeFailureText([]string{header, "partial output", "Script error:\nTypeError"}); !ok || text != "exec script failed: TypeError" {
+		t.Fatalf("failure annotation = %q, %v", text, ok)
 	}
 }
 
