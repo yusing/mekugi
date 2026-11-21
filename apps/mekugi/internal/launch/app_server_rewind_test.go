@@ -125,9 +125,9 @@ func TestAppServerRewindFailure(t *testing.T) {
 			appServerTestKeys(t, u, "\r\r")
 			rewind := resumeTestOne(t, w, "thread/revert")
 			appServerTestKeys(t, u, "waiting")
-			revision := u.controlObservations.ContextRevision("main")
+			priorContext := u.controlObservations.ContextIdentity("main")
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, rewind.ID, response))
-			if u.controlObservations.ContextRevision("main") != revision {
+			if !u.controlObservations.ContextMatches("main", priorContext, "") {
 				t.Fatal("rejected rewind refreshed context")
 			}
 			if u.Thread != "main" || u.Text != "waiting" || u.Replacement.Pending() || u.picker.Kind != "" || w.Len() != 0 {
