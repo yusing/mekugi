@@ -20,11 +20,17 @@ func TestChildReplySummaryGuidanceInvocation(t *testing.T) {
 		{name: "enabled via CLI", settings: "false", args: []string{"--child-reply-summary=true"}, expected: []string{"true"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			config := t.TempDir()
-			t.Setenv("XDG_CONFIG_HOME", config)
+			// darwin's os.UserConfigDir ignores XDG_CONFIG_HOME and derives from HOME.
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", home)
 			if tc.settings != "" {
+				config, err := os.UserConfigDir()
+				if err != nil {
+					t.Fatal(err)
+				}
 				directory := filepath.Join(config, "mekugi")
-				if err := os.Mkdir(directory, 0o700); err != nil {
+				if err := os.MkdirAll(directory, 0o700); err != nil {
 					t.Fatal(err)
 				}
 				body := "[features]\nchild_reply_summary = " + tc.settings + "\n"

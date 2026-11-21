@@ -172,7 +172,7 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-				"set -o pipefail\n"+command+" | head -n 0 >/dev/null\nprintf 'AFTER:%s' \"$?\"", nil)
+				"set -o pipefail\n"+command+" | true\nprintf 'AFTER:%s' \"$?\"", nil)
 			if stdout != "AFTER:141" || status != 0 || strings.Contains(stderr, "broken pipe") {
 				t.Fatalf("%s: %q %q status=%d", command, stdout, stderr, status)
 			}

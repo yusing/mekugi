@@ -361,9 +361,10 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 				if len(blocks) == 0 || blocks[0].Workdir != tc.workdir {
 					t.Fatalf("blocks = %+v; want workdir %q", blocks, tc.workdir)
 				}
-				row := ansi.Strip((&activityui.Painter{Theme: diffrender.DarkTheme}).Block(blocks[0], 200)[0])
-				if want := "· in " + tc.workdir; (tc.workdir != "") != strings.Contains(row, want) || tc.workdir == "" && strings.Contains(row, "· in ") {
-					t.Fatalf("row = %q; want workdir %q", row, tc.workdir)
+				// A long workdir moves to its own row, so check the whole block.
+				rows := ansi.Strip(strings.Join((&activityui.Painter{Theme: diffrender.DarkTheme}).Block(blocks[0], 200), "\n"))
+				if want := "· in " + tc.workdir; (tc.workdir != "") != strings.Contains(rows, want) || tc.workdir == "" && strings.Contains(rows, "· in ") {
+					t.Fatalf("rows = %q; want workdir %q", rows, tc.workdir)
 				}
 			}
 			u := newAppServerSessionTestUI(t, workspace)

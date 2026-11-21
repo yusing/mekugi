@@ -228,10 +228,8 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 			}
 		})
 	}()
-	// A deadline also prevents a failed handoff from hanging the acceptance test.
-	if err := master.SetReadDeadline(time.Now().Add(8 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
+	// expect waits on ctx, so a failed handoff cannot hang the test; darwin
+	// ptys do not support read deadlines.
 	reader := bufio.NewReader(master)
 	expect := func(marker string) {
 		t.Helper()

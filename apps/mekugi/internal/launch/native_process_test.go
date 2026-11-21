@@ -20,6 +20,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
 
@@ -116,8 +117,11 @@ func runNativeServerFixture() {
 		}()
 	}
 	receipt := nativeServerFixture{PID: os.Getpid(), Terminal: term.IsTerminal(int(os.Stdin.Fd())) || term.IsTerminal(int(os.Stdout.Fd())), ThreadEnv: os.Getenv("CODEX_THREAD_ID") != "", RuntimeEnv: os.Getenv("MEKUGI_RUNTIME_DIR") != ""}
+	// The status pipe reaches the supervisor as a write-only end. darwin's
+	// kqueue, which Go's runtime may open at fd 3, also stats as a FIFO.
 	var status syscall.Stat_t
-	receipt.StatusPipe = syscall.Fstat(3, &status) == nil && status.Mode&syscall.S_IFMT == syscall.S_IFIFO
+	flags, err := unix.FcntlInt(3, unix.F_GETFL, 0)
+	receipt.StatusPipe = err == nil && flags&unix.O_ACCMODE == unix.O_WRONLY && syscall.Fstat(3, &status) == nil && status.Mode&syscall.S_IFMT == syscall.S_IFIFO
 	data, err := json.Marshal(receipt)
 	if err != nil {
 		os.Exit(91)
