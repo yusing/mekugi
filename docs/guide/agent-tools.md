@@ -16,12 +16,14 @@ instructions. Ask for one by name when you want a specific read or review:
 | `msymbol` | Batched definitions/references | Go: `gopls`; JS/TS/JSON: TypeScript 7 `tsc`; Python: `pyright-langserver`; Rust: see below |
 | `inspect_file` | Structural outlines | None |
 
-Shell commands receive `SESSION_TMP`, a prepared private scratch directory also
-listed in the model's environment facts. Use `"$SESSION_TMP/name"` instead of
-creating a directory or repeating its absolute path. Descendants share the root
-session's directory, and resume reuses it. Files remain until the OS or user
-cleans temporary storage; keep durable deliverables elsewhere. Use distinct names
-when agents work concurrently.
+Shell commands receive `SESSION_TMP`, a prepared private scratch directory
+appended to `PATH` and listed in the model's environment facts
+(`on_path="true"` on `<session_tmp>`). Use `"$SESSION_TMP/name"` instead of
+creating a directory or repeating its absolute path; executable scripts placed
+there can also be invoked by name. Descendants share the root session's
+directory, and resume reuses it. Files remain until the OS or user cleans
+temporary storage; keep durable deliverables elsewhere. Use distinct names when
+agents work concurrently.
 
 ```sh
 mchanges amber1..amber3 --summary
