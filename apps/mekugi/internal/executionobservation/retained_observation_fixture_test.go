@@ -65,7 +65,13 @@ func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id str
 	if s == nil {
 		return false, nil
 	}
-	return s.publication.HasCommentary(ctx, workspace, id)
+	var found bool
+	err := s.publication.Transaction(ctx, nil, func(*history.Transaction) error {
+		_, exists, readErr := s.publication.ReadHostCall(workspace, id, true)
+		found = exists
+		return readErr
+	})
+	return found, err
 }
 func (s *mekugiReplayStore) write(r replayRecord) error {
 	if r.Version == 3 {

@@ -51,17 +51,6 @@ func (s *Store) LookupHostCall(ctx context.Context, workspace, callID string) (v
 	})
 	return
 }
-func (s *Store) HasCommentary(ctx context.Context, workspace, id string) (found bool, err error) {
-	if s == nil {
-		return
-	}
-	err = s.Transaction(ctx, nil, func(*Transaction) error {
-		_, exists, readErr := s.ReadHostCall(workspace, id, true)
-		found = exists
-		return readErr
-	})
-	return
-}
 
 // normalizeHostHistory removes representation differences already omitted by the
 // frozen codec. Live watch/process facts cannot enter this neutral representation.

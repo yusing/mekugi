@@ -95,7 +95,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 }
 
 func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
-	for _, args := range [][]string{{"--mode", "unknown"}, {"--stream-idle-timeout", "0"}, {"--listen", "127.0.0.1:0"}, {"--provider-base-url", "https://example.com"}} {
+	for _, args := range [][]string{{"--unknown-flag"}, {"--stream-idle-timeout", "0"}, {"--listen", "127.0.0.1:0"}, {"--provider-base-url", "https://example.com"}} {
 		if err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), args, nil, func(invocationFixture) { t.Error("ready called despite startup failure") }, nil); err == nil {
 			t.Fatalf("accepted %q", args)
 		}

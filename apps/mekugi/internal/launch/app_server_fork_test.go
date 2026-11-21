@@ -22,6 +22,7 @@ import (
 func TestUISnapshotNativeFork(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	u.controlObservations = new(sessioncontrol.Observations)
+	priorContext := u.controlObservations.ContextIdentity("branch")
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local) }
 	u.settings.Model, u.settings.Effort, u.settings.Tier = "model", "high", "priority"
@@ -35,7 +36,7 @@ func TestUISnapshotNativeFork(t *testing.T) {
 	assertNativeUISnapshot(t, "native-fork-pending", rows)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","reasoningEffort":"high","serviceTier":"priority","thread":{"id":"branch","cwd":"/work","turns":[{"id":"done","status":"completed","items":[{"type":"agentMessage","id":"answer","text":"Inherited answer"}]}]}}}`, fork.ID))
 	methods := resumeTestSettle(t, u, w)
-	if u.controlObservations.ContextRevision("branch") != 1 {
+	if u.controlObservations.ContextMatches("branch", priorContext, "") {
 		t.Fatal("accepted fork did not refresh context")
 	}
 	if u.Thread != "branch" || u.Text != "next draft" || u.Replacement.Pending() || u.settings.Model != "model" || u.settings.Effort != "high" || u.settings.Tier != "priority" {
