@@ -46,7 +46,15 @@ func TestExecRunningPreviewOmitsOversizedFile(t *testing.T) {
 
 func TestLiveDiffSocketAndNewRegularFile(t *testing.T) {
 	t.Parallel()
-	root := t.TempDir()
+	// macOS t.TempDir paths can exceed the 104-byte unix socket path limit.
+	root, err := os.MkdirTemp("/tmp", "mekugi-socket-")
+	if err == nil {
+		t.Cleanup(func() { _ = os.RemoveAll(root) })
+		root, err = filepath.EvalSymlinks(root)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(root, "socket")
 	before := changecapture.ReadFile(path, nil)
 	regular := filepath.Join(root, "file")
