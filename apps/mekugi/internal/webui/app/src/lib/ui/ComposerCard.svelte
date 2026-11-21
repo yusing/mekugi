@@ -45,12 +45,12 @@
 >
   <InputGroup.Root
     class={[
-      "h-auto flex-col items-stretch rounded-composer",
+      "h-auto flex-col items-stretch rounded-composer border-border bg-surface shadow-composer transition-[border-color,box-shadow] duration-150",
       dragging
-        ? "border-dashed border-accent bg-accent-tint"
+        ? "border-dashed border-accent bg-accent-tint shadow-composer-focus"
         : invalid
           ? "border-negative"
-          : "focus-within:border-muted",
+          : "hover:border-control focus-within:border-control focus-within:shadow-composer-focus",
     ]}
   >
     {@render children()}

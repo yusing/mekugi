@@ -8,9 +8,13 @@ Visual and interaction rules for the browser UI (`apps/mekugi/internal/webui/app
 - Build from the locally owned shadcn-svelte primitives (`app/src/lib/ui/`) and Mekugi/AI Elements
   compositions; Session API publications and semantic controls remain the source of data and
   actions.
-- Keep Nova shapes, neutral fills, quiet hovers, and 44px phone touch targets. Use spacing,
-  typography, and surface tones for hierarchy instead of nested card frames; reserve borders for
-  text inputs, floating overlays, and structural pane dividers.
+- Keep Nova shapes, quiet neutral surfaces, whisper-thin structural hairlines, elevated inset sheet
+  and floating composer framing, and 44px phone touch targets. Use spacing, typography, and surface
+  tones for hierarchy instead of nested card frames; reserve borders for text inputs, floating
+  overlays, code/diff wells, workbench docks, and structural pane dividers.
+- Support keyboard-first desktop navigation: `Cmd/Ctrl+K` opens the Quick Switcher across machines,
+  threads, and actions; `Cmd/Ctrl+\` toggles the sidebar; `Cmd/Ctrl+.` toggles the right workbench
+  panel.
 - Reuse shared recipes in `ui/styles.ts`: callers add layout only and never override recipe
   properties. Add a recipe when two places share a new look.
 - Use semantic tokens in `app/src/app.css` for both light and dark palettes; never hardcode hex
