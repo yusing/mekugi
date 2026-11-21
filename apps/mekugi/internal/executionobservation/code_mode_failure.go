@@ -30,16 +30,9 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 		trailing--
 	}
 	calls := make(map[string]map[string]json.RawMessage)
-	for _, item := range items[:trailing] {
-		if responses.StringField(item, "type") == "custom_tool_call" {
-			calls[responses.StringField(item, "call_id")] = item
-		}
-	}
-	for _, item := range items[trailing:] {
-		callID := responses.StringField(item, "call_id")
-		if callID == "" || responses.StringField(item, "type") != "custom_tool_call_output" {
-			continue
-		}
+	waitCells := make(map[string]string)
+	cellExecCalls := make(map[string]string)
+	codeModeCall := func(callID string) (map[string]json.RawMessage, bool) {
 		call, found := calls[callID]
 		if !found {
 			if history, ok := visible[callID]; ok {
@@ -48,18 +41,84 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 		}
 		if !found || responses.StringField(call, "type") != "custom_tool_call" || responses.StringField(call, "name") != codeModeToolName ||
 			responses.StringField(call, "namespace") != "" && responses.StringField(call, "namespace") != "functions" {
+			return nil, false
+		}
+		return call, true
+	}
+	for _, item := range items[:trailing] {
+		callID := responses.StringField(item, "call_id")
+		switch responses.StringField(item, "type") {
+		case "custom_tool_call":
+			calls[callID] = item
+		case "function_call":
+			if strings.TrimPrefix(responses.StringField(item, "name"), "functions.") == "wait" &&
+				(responses.StringField(item, "namespace") == "" || responses.StringField(item, "namespace") == "functions") {
+				var args struct {
+					CellID string `json:"cell_id"`
+				}
+				if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) == nil && args.CellID != "" {
+					waitCells[callID] = args.CellID
+				}
+			}
+		case "custom_tool_call_output":
+			if _, ok := codeModeCall(callID); !ok {
+				continue
+			}
+			if texts := binding.ExecutionOutputTexts(item["output"]); len(texts) > 0 {
+				if status, cell, _ := binding.CodeModeExecutionHeader(texts[0]); cell != "" && (status == "running" || status == "Script failed") {
+					cellExecCalls[cell] = callID
+				}
+			}
+		case "function_call_output":
+			if cellID := waitCells[callID]; cellID != "" {
+				if texts := binding.ExecutionOutputTexts(item["output"]); len(texts) > 0 {
+					if status, nextCell, _ := binding.CodeModeExecutionHeader(texts[0]); nextCell == "" || status != "running" && status != "Script failed" {
+						delete(cellExecCalls, cellID)
+					}
+				}
+			}
+		}
+	}
+	for _, item := range items[trailing:] {
+		callID := responses.StringField(item, "call_id")
+		if callID == "" {
 			continue
 		}
-		if text, failed := binding.CodeModeFailureText(binding.ExecutionOutputTexts(item["output"])); failed {
-			p.Audience.Collect(activitypresentation.Supplement{Thread: thread, Source: "code-mode-failure\x00" + callID, Kind: "error", CallID: callID, Text: text})
-		}
-		if codeModeReturnedNothing(item["output"]) {
-			source := responses.StringField(call, "input")
-			if history, ok := visible[callID]; ok {
-				// The host ran the translated carrier, not the model's script.
-				source = cmp.Or(history.CarrierPayload, history.Script)
+		switch responses.StringField(item, "type") {
+		case "custom_tool_call_output":
+			call, ok := codeModeCall(callID)
+			if !ok {
+				continue
 			}
-			p.Audience.NoteUnreturned(thread, p.NativeTrace.ReadCell(thread, callID, source).ExecCommands())
+			texts := binding.ExecutionOutputTexts(item["output"])
+			if text, failed := binding.CodeModeFailureText(texts); failed {
+				_, cell, _ := binding.CodeModeExecutionHeader(texts[0])
+				// Wait for the final paged wait output when Script error: has not arrived yet.
+				if cell == "" || text != "exec script failed" {
+					p.Audience.Collect(activitypresentation.Supplement{Thread: thread, Source: "code-mode-failure\x00" + callID, Kind: "error", CallID: callID, Text: text})
+				}
+			}
+			if codeModeReturnedNothing(item["output"]) {
+				source := responses.StringField(call, "input")
+				if history, ok := visible[callID]; ok {
+					// The host ran the translated carrier, not the model's script.
+					source = cmp.Or(history.CarrierPayload, history.Script)
+				}
+				p.Audience.NoteUnreturned(thread, p.NativeTrace.ReadCell(thread, callID, source).ExecCommands())
+			}
+		case "function_call_output":
+			cellID := waitCells[callID]
+			execCallID := cellExecCalls[cellID]
+			if cellID == "" || execCallID == "" {
+				continue
+			}
+			texts := binding.ExecutionOutputTexts(item["output"])
+			if text, failed := binding.CodeModeFailureText(texts); failed {
+				_, nextCell, _ := binding.CodeModeExecutionHeader(texts[0])
+				if nextCell == "" || text != "exec script failed" {
+					p.Audience.Collect(activitypresentation.Supplement{Thread: thread, Source: "code-mode-failure\x00" + execCallID, Kind: "error", CallID: execCallID, Text: text})
+				}
+			}
 		}
 	}
 }
