@@ -25,11 +25,25 @@ const (
 	SourceAcquisitionObserved Kind = "thread/sourceAcquisition"
 )
 
-// ResponseProgress identifies response activity; callers retain turn admission.
-func (k Kind) ResponseProgress() bool {
-	switch k {
-	case ItemStarted, ItemCompleted, AgentDelta, ReasoningDelta, ReasoningPartAdded:
+// ResponseProgress identifies provider response activity; callers retain turn admission.
+// Background tool completions and non-model items do not prove a retrying request recovered.
+func (e Event) ResponseProgress() bool {
+	switch e.Kind {
+	case AgentDelta, ReasoningDelta, ReasoningPartAdded:
 		return true
+	case ItemStarted:
+		switch e.Item.Type {
+		case "agentMessage", "reasoning", "webSearch", "fileChange", "imageView", "imageGeneration",
+			"mcpToolCall", "collabAgentToolCall", "dynamicToolCall":
+			return true
+		case "commandExecution":
+			return !e.Item.UserShell
+		}
+	case ItemCompleted:
+		switch e.Item.Type {
+		case "agentMessage", "reasoning":
+			return true
+		}
 	}
 	return false
 }

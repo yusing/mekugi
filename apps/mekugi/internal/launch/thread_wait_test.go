@@ -56,6 +56,12 @@ func TestUISnapshotNativeRetryProgress(t *testing.T) {
 			if !strings.Contains(u.attached.session.RetryStatus(thread), "2/5") {
 				t.Fatal("stale turn changed current retry")
 			}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "first", "item": map[string]any{"id": "bg-exec", "type": "commandExecution", "command": "bun test", "status": "failed", "exitCode": 1}})
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "first", "item": map[string]any{"id": "shell-cmd", "type": "commandExecution", "source": "userShell", "command": "pwd"}})
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "first", "item": map[string]any{"id": "steer-1", "type": "userMessage"}})
+			if !strings.Contains(u.attached.session.RetryStatus(thread), "2/5") {
+				t.Fatalf("non-response item cleared retry: %q", u.attached.session.RetryStatus(thread))
+			}
 			appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": thread, "turnId": "first", "itemId": "answer", "delta": "Recovered"})
 			if u.attached.session.RetryStatus(thread) != "" {
 				t.Fatal("response did not clear retry")

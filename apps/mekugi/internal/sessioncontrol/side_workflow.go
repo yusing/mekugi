@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/contracts/observation"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -503,7 +502,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 		s.Status, s.Alert = "Side answer blocked on "+m.Method+" · Esc closes", true
 		return update, nil
 	}
-	if observation.Kind(m.Method).ResponseProgress() && p.TurnID == s.Turn && s.Turn != "" && !s.Closed && !s.Alert {
+	if p.Observation(m.Method, time.Time{}).ResponseProgress() && p.TurnID == s.Turn && s.Turn != "" && !s.Closed && !s.Alert {
 		s.Status = "Answering"
 		if s.OneOff {
 			s.Status = "Working"

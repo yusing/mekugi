@@ -122,6 +122,11 @@ func TestSideNativeRetryIsProgress(t *testing.T) {
 			if !strings.Contains(side.Status, "2/5") {
 				t.Fatal("stale retry replaced current progress")
 			}
+			notify("item/completed", `{"threadId":"side","turnId":"turn","item":{"id":"bg","type":"commandExecution","status":"failed","exitCode":1}}`)
+			notify("item/completed", `{"threadId":"side","turnId":"turn","item":{"id":"steer","type":"userMessage"}}`)
+			if !strings.Contains(side.Status, "2/5") {
+				t.Fatalf("non-response item cleared side retry: %+v", side)
+			}
 			notify(recovery, `{"threadId":"side","turnId":"turn","itemId":"answer","delta":"Recovered","item":{"id":"tool","type":"commandExecution"}}`)
 			if side.Alert || strings.Contains(side.Status, "Reconnecting") {
 				t.Fatalf("retry did not clear: %+v", side)

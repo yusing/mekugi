@@ -82,7 +82,7 @@ func ReduceObservation(s *Attachment, model *Model, mainSource, childSource *Act
 	model.ObserveActivityProgress(p, in.Main, in.Selected, mainSource)
 	main := p.ThreadID == in.Main
 	currentError := false
-	if p.Kind == "error" || p.Kind.ResponseProgress() {
+	if p.Kind == "error" || p.ResponseProgress() {
 		active := in.Selected
 		if !main {
 			active = ""
