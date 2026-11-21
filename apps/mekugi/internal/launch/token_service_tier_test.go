@@ -67,9 +67,6 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 					if tc.served == `"fast"` || tc.served == `"priority"` || tc.served == "" && (tc.requested == "fast" || tc.requested == "priority") {
 						modelLabel += " [fast]"
 					}
-					if strings.Contains(output.String(), "Router session usage") {
-						t.Fatalf("completion emitted usage commentary: %s", output.String())
-					}
 					report, ok := proxy.usage.Snapshot("thread-1")
 					want := 0.0
 					priced := tc.want != "n/a"

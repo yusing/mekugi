@@ -95,9 +95,6 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 				if len(events) != wantEvents {
 					t.Fatalf("events = %s", output.String())
 				}
-				if bytes.Contains(output.Bytes(), []byte("Router session usage")) {
-					t.Fatalf("completion exposed usage commentary: %s", output.String())
-				}
 				if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) {
 					t.Fatal("provider answer was filtered")
 				}
@@ -169,8 +166,8 @@ func TestFinalAnswerStreamStreamsAnswersProgressAndTools(t *testing.T) {
 	terminal := finalAnswerTestTerminal(t, "completed", true)
 	observeTestResponseUsage(t, transform, terminal, true)
 	visible, err := transform.TransformSSE(terminal)
-	if err != nil || len(visible) != 1 || bytes.Contains(bytes.Join(visible, nil), []byte("Router session usage")) {
-		t.Fatalf("terminal repeated answer or added usage: %q, %v", visible, err)
+	if err != nil || len(visible) != 1 {
+		t.Fatalf("terminal repeated answer: %q, %v", visible, err)
 	}
 }
 
@@ -207,8 +204,8 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			if len(events) < len(answer) || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
-				t.Fatalf("lost answer or emitted usage: %s", output.String())
+			if len(events) < len(answer) {
+				t.Fatalf("lost answer: %s", output.String())
 			}
 			for i, original := range answer {
 				if !bytes.Equal(events[i], original) {

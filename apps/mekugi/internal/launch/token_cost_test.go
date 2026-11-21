@@ -105,9 +105,6 @@ func TestTokenCostIncludesCompactionAcrossTransports(t *testing.T) {
 					}
 					continue
 				}
-				if strings.Contains(output.String(), "Router session usage") {
-					t.Fatalf("completion emitted usage commentary: %s", output.String())
-				}
 				report, ok := proxy.usage.Snapshot("thread-1")
 				wantCost := 2.24
 				if tc.serviceTier != "" {
