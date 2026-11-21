@@ -136,20 +136,22 @@ func TestResolverCleanupProcess(t *testing.T) {
 		processScope = command.DedicatedHostProcess
 	}
 	outcome, kind := os.Getenv("FIXTURE_OUTCOME"), os.Getenv("FIXTURE_KIND")
-	if outcome == "deadline" {
-		var deadlineCancel context.CancelFunc
-		ctx, deadlineCancel = context.WithTimeout(ctx, 500*time.Millisecond)
-		defer deadlineCancel()
-	}
-	if outcome == "cancellation" {
+	if outcome == "cancellation" || outcome == "deadline" {
+		// Interrupt once the request is pending: a fixed timeout can expire
+		// before a loaded host has started the resolver.
+		parent, interrupt := ctx, cancel
+		if outcome == "deadline" {
+			deadline := &readyDeadline{Context: ctx, done: make(chan struct{})}
+			ctx, interrupt = deadline, func() { close(deadline.done) }
+		}
 		go func() {
 			for {
 				if _, err := os.Stat(filepath.Join(directory, "ready")); err == nil {
-					cancel()
+					interrupt()
 					return
 				}
 				select {
-				case <-ctx.Done():
+				case <-parent.Done():
 					return
 				case <-time.After(5 * time.Millisecond):
 				}
@@ -212,6 +214,23 @@ func TestResolverCleanupProcess(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("resolver descendant %d survived cleanup", pid)
+}
+
+// readyDeadline reports a deadline expiry when done closes.
+type readyDeadline struct {
+	context.Context
+	done chan struct{}
+}
+
+func (c *readyDeadline) Done() <-chan struct{} { return c.done }
+
+func (c *readyDeadline) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
 }
 
 func runCleanupResolver(t *testing.T, directory string) {
