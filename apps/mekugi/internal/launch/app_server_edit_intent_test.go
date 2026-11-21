@@ -3,6 +3,7 @@ package launch
 import (
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -20,6 +21,15 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
+// sedInPlace spells an in-place sed edit without a backup for the sed on
+// PATH: BSD sed takes an explicit empty suffix.
+func sedInPlace() string {
+	if exec.Command("sed", "--version").Run() != nil {
+		return "sed -i ''"
+	}
+	return "sed -i"
+}
+
 // Shell edit intent is only a requested operation. It is not a captured edit
 // receipt and must never acquire applied line counts from command text.
 func TestShellEditIntentClassification(t *testing.T) {
@@ -32,15 +42,15 @@ func TestShellEditIntentClassification(t *testing.T) {
 		wantLanguage  string
 	}{
 		{
-			name: "sed in-place", command: `sed -i 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`,
+			name: "sed in-place", command: sedInPlace() + ` 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`,
 			wantVerbs: []string{"Edit"}, wantPaths: []string{"internal/router/live_activity_view_test.go"}, wantProgram: "sed", secret: "Answers",
 		},
 		{
-			name: "setup and in-place edit", command: "export ROOT=/tmp\nsed -i 's/PRIVATE_SED_SOURCE/new/' a.go",
+			name: "setup and in-place edit", command: "export ROOT=/tmp\n" + sedInPlace() + " 's/PRIVATE_SED_SOURCE/new/' a.go",
 			wantVerbs: []string{"Run", "Edit"}, wantPaths: []string{"a.go"}, wantProgram: "sed", secret: "PRIVATE_SED_SOURCE",
 		},
 		{
-			name: "sed backup and tests", command: `/usr/bin/sed --in-place=.bak -e 's/PRIVATE_SED_SOURCE/new/' 'a file.go' b.go; go test ./...`,
+			name: "sed backup and tests", command: `/usr/bin/sed -i.bak -e 's/PRIVATE_SED_SOURCE/new/' 'a file.go' b.go; go test ./...`,
 			wantVerbs: []string{"Edit", "Edit", "Edit", "Edit", "Run"}, wantPaths: []string{"a file.go", "b.go", "a file.go.bak", "b.go.bak"}, wantProgram: "sed", secret: "PRIVATE_SED_SOURCE",
 		},
 		{
@@ -189,7 +199,7 @@ func TestShellEditIntentDoesNotInventWrites(t *testing.T) {
 }
 
 func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
-	const command = `sed -i 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`
+	command := sedInPlace() + ` 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())

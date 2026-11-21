@@ -35,7 +35,7 @@ func TestAuthoredChangesUnknownCommandsStayQuiet(t *testing.T) {
 }
 
 func TestAuthoredChangesKnownEditsIgnoreIncidentalEffectsAndGitIgnore(t *testing.T) {
-	for _, command := range []string{"cat > FIXME.md <<'EOF'\nauthored\nEOF", "sed -i 's/before/authored/' FIXME.md", "printf ignored | sed -i 's/before/authored/' FIXME.md", "python3 -c 'from pathlib import Path; Path(\"FIXME.md\").write_text(\"authored\\n\")'", "mv FIXME.md renamed.md", "rm FIXME.md"} {
+	for _, command := range []string{"cat > FIXME.md <<'EOF'\nauthored\nEOF", sedInPlace() + " 's/before/authored/' FIXME.md", "printf ignored | " + sedInPlace() + " 's/before/authored/' FIXME.md", "python3 -c 'from pathlib import Path; Path(\"FIXME.md\").write_text(\"authored\\n\")'", "mv FIXME.md renamed.md", "rm FIXME.md"} {
 		t.Run(command, func(t *testing.T) {
 			f := newMChangesSliceFixture(t, "known-source")
 			writeTestFile(t, filepath.Join(f.workspace, ".gitignore"), "FIXME.md\n")
@@ -85,7 +85,7 @@ func TestAuthoredChangesPipelinesKeepIndependentSourceEdits(t *testing.T) {
 	path := filepath.Join(workspace, "FIXME.md")
 	writeTestFile(t, path, "before\n")
 	for _, command := range []string{
-		"custom-generator | sed -i 's/before/authored/' FIXME.md",
+		"custom-generator | " + sedInPlace() + " 's/before/authored/' FIXME.md",
 		"printf authored > FIXME.md | custom-process",
 		"custom-generator | printf authored > FIXME.md",
 		"custom-generator | cat > FIXME.md <<'EOF'\nauthored\nEOF",

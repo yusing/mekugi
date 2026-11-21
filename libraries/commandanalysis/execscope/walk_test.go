@@ -106,6 +106,14 @@ func TestAuxiliaryGlobsPreserveOperandsAndBackups(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "a"), filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
 	}
+	// GNU sed replaces * in a backup suffix with the file name; BSD sed appends
+	// the suffix literally.
+	starBackups := func(prefix string) []string {
+		if bsdSedAt("sed") {
+			return []string{"link/x.txtbackup/*", "link/z.txtbackup/*"}
+		}
+		return []string{"backup" + prefix + "link/x.txt", "backup" + prefix + "link/z.txt"}
+	}
 	for _, test := range []struct {
 		command string
 		class   Class
@@ -116,8 +124,8 @@ func TestAuxiliaryGlobsPreserveOperandsAndBackups(t *testing.T) {
 		{"hg revert --no-backup 'link/*.txt'", Scoped, []string{"link/x.txt", "link/z.txt"}},
 		{"sed -i.bak 's/before/after/' link/*.txt b/*.txt", Declared, []string{"link/x.txt.bak", "link/z.txt.bak", "b/y.txt.bak"}},
 		{"perl -pi.bak -e 's/before/after/' link/*.txt b/*.txt", Declared, []string{"link/x.txt.bak", "link/z.txt.bak", "b/y.txt.bak"}},
-		{"sed -i'backup/*' 's/before/after/' link/*.txt", Declared, []string{"backup/link/x.txt", "backup/link/z.txt"}},
-		{"sed -i'backup/*' 's/before/after/' " + root + "/link/*.txt", Declared, []string{"backup" + root + "/link/x.txt", "backup" + root + "/link/z.txt"}},
+		{"sed -i'backup/*' 's/before/after/' link/*.txt", Declared, starBackups("/")},
+		{"sed -i'backup/*' 's/before/after/' " + root + "/link/*.txt", Declared, starBackups(root + "/")},
 		{"sed -i.bak 's/before/after/' missing/*.txt", Declared, nil},
 	} {
 		t.Run(test.command, func(t *testing.T) {

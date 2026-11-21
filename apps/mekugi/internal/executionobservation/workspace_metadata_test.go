@@ -47,7 +47,7 @@ for path, text in prepared.items():
 	var scopeStore *mekugiReplayStore
 	for step, command := range []string{
 		pythonName + " <<'PY'\n" + script + "PY",
-		"sed -i s/after/final/ one.txt two.txt three.txt four.txt five.txt",
+		sedInPlace() + " s/after/final/ one.txt two.txt three.txt four.txt five.txt",
 	} {
 		transform := prepareNativeStockTransform(t, proxy, workspace, fmt.Sprintf("prepared-%d", step))
 		callID := fmt.Sprintf("edit-%d", step)

@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,15 +13,20 @@ import (
 )
 
 func TestBunFormatterOutsideWorkspaceContinuesCapturedChain(t *testing.T) {
+	// BSD sed takes an explicit empty suffix for an in-place edit.
+	sedInPlace := "sed -i"
+	if exec.Command("sed", "--version").Run() != nil {
+		sedInPlace = "sed -i ''"
+	}
 	workspace, external := t.TempDir(), t.TempDir()
 	workdir := filepath.Join(external, "app")
 	path := filepath.Join(workdir, "component.ts")
 	writeTestFile(t, path, "const value='before';\n")
 	var composition diffmodel.ReviewComposition
 	for _, step := range []struct{ command, directory, after string }{
-		{"sed -i 's/before/after/' component.ts", workdir, "const value='after';\n"},
+		{sedInPlace + " 's/before/after/' component.ts", workdir, "const value='after';\n"},
 		{"cd '" + external + "' && grep fmt Makefile | head; cd app && bun fmt component.ts 2>&1 | tail -5", workspace, "const value = \"after\";\n"},
-		{"sed -i 's/after/done/' component.ts", workdir, "const value = \"done\";\n"},
+		{sedInPlace + " 's/after/done/' component.ts", workdir, "const value = \"done\";\n"},
 	} {
 		observation, _ := Capture(t.Context(), []commandanalysis.Command{{Command: step.command, Workdir: step.directory, Shell: "bash"}}, false, false, Options{Directory: workspace})
 		if observation == nil || len(observation.Files) != 1 || observation.Files[0].Path != path {

@@ -124,8 +124,8 @@ func TestUISnapshotCapturedSetupKeepsObservedAction(t *testing.T) {
 		name, script, output string
 		exit                 int
 	}{
-		{"success", "set -e; sed -i s/old/kept/ file; cat file", "kept\n", 0},
-		{"failure", "set -e; sed -i s/old/kept/ file; cat missing", "cat: missing: No such file or directory\n", 1},
+		{"success", "set -e; sed -i.orig s/old/kept/ file; cat file", "kept\n", 0},
+		{"failure", "set -e; sed -i.orig s/old/kept/ file; cat missing", "cat: missing: No such file or directory\n", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			parts, ok := shellinstrumentation.Split(tc.script)

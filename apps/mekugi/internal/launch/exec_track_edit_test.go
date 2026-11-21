@@ -284,7 +284,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 func TestAppServerTrackedEditCommandOutcomeBeforeHostExit(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
-	script := "sed -i 's/absent/after/' source.go; go test ./..."
+	script := sedInPlace() + " 's/absent/after/' source.go; go test ./..."
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
@@ -310,7 +310,7 @@ func TestAppServerTrackedEditCommandOutcomeBeforeHostExit(t *testing.T) {
 func TestAppServerTrackedEditFailureAndSkip(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
-	script := "sed -i 's/a/b/' missing && sed -i 's/b/c/' skipped"
+	script := sedInPlace() + " 's/a/b/' missing && " + sedInPlace() + " 's/b/c/' skipped"
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
@@ -327,7 +327,7 @@ func TestAppServerTrackedEditFailureAndSkip(t *testing.T) {
 func TestAppServerTrackedSkippedEditBeforeHostExit(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
-	script := "false && sed -i 's/a/b/' skipped; go test ./..."
+	script := "false && " + sedInPlace() + " 's/a/b/' skipped; go test ./..."
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)

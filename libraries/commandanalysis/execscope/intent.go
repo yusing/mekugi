@@ -31,7 +31,7 @@ func StatementIntent(statement *syntax.Stmt) Result {
 	case "mv":
 		walker.copyLike(name, call.Args[1:], true)
 	case "sed":
-		walker.sed(call.Args[1:])
+		walker.sed(command, call.Args[1:])
 	}
 	return plan
 }

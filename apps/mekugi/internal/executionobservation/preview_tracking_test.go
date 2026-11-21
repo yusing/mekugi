@@ -12,7 +12,7 @@ import (
 
 func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 	t.Parallel()
-	const script = "sed -i 's/a/b/' a; go test ./...; sed -i 's/b/c/' a"
+	script := sedInPlace() + " 's/a/b/' a; go test ./...; " + sedInPlace() + " 's/b/c/' a"
 	for _, tc := range []struct {
 		name                                                                 string
 		thread, turn                                                         string
@@ -63,7 +63,7 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 
 func TestSkippedEditSettlesBeforeUnrelatedCommand(t *testing.T) {
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
-	script := "false && sed -i 's/a/b/' skipped; go test ./..."
+	script := "false && " + sedInPlace() + " 's/a/b/' skipped; go test ./..."
 	tracking := newExecPreviewTrack(hub.Observer, "main", "turn", []commandanalysis.Command{{Command: script}})
 	defer tracking.Close()
 	report := hub.begin(t, [3]string{"main", "turn", "edit"}, script)

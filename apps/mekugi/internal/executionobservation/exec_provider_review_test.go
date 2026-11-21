@@ -45,12 +45,12 @@ func TestExecRGHostnameCommandIsNeverRunDuringScoping(t *testing.T) {
 	marker := execProviderReviewMarker(t)
 	rg := execProducerCommand(t, "rg")
 	xargs := execProducerCommand(t, "xargs")
-	sed := execProducerCommand(t, "sed")
+	execProducerCommand(t, "sed")
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "PAT"), "program PAT\n")
 	writeTestFile(t, filepath.Join(root, "FILE"), "program FILE\n")
 	command := rg + " --hostname-bin=marker program --hyperlink-format='file://{host}{path}' --color=always -l PAT FILE | " +
-		xargs + " " + sed + " -i 's/program/replaced/g'"
+		xargs + " " + sedInPlace() + " 's/program/replaced/g'"
 	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: root, Shell: "bash"}}, false, false, changecapture.Options{Directory: root})
 	if observed || observation != nil && len(observation.Files) != 0 {
 		t.Fatal("unsupported producer acquired change evidence")
@@ -68,10 +68,10 @@ func TestExecFDExecBundleIsNeverRunDuringScoping(t *testing.T) {
 	marker := execProviderReviewMarker(t)
 	fd := execProducerCommand(t, "fd")
 	xargs := execProducerCommand(t, "xargs")
-	sed := execProducerCommand(t, "sed")
+	execProducerCommand(t, "sed")
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "src", "PAT.txt"), "old bytes\n")
-	command := fd + " PAT src -Hx marker program | " + xargs + " " + sed + " -i 's/old/new/g'"
+	command := fd + " PAT src -Hx marker program | " + xargs + " " + sedInPlace() + " 's/old/new/g'"
 	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: root, Shell: "bash"}}, false, false, changecapture.Options{Directory: root})
 	if observed || observation != nil && len(observation.Files) != 0 {
 		t.Fatal("unsupported producer acquired change evidence")
@@ -84,11 +84,11 @@ func TestExecFDExecBundleIsNeverRunDuringScoping(t *testing.T) {
 
 func TestExecFindPathProducerCapturesBaseline(t *testing.T) {
 	find := execProducerCommand(t, "find")
-	sed := execProducerCommand(t, "sed")
+	execProducerCommand(t, "sed")
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "src", "one.txt"), "old baseline\n")
 	writeTestFile(t, filepath.Join(root, "src", "nested", "two.txt"), "old nested\n")
-	command := find + " . -path './src/*.txt' -exec " + sed + " -i 's/old/new/g' {} \\;"
+	command := find + " . -path './src/*.txt' -exec " + sedInPlace() + " 's/old/new/g' {} \\;"
 	observation := execProducerCapture(t, root, command)
 	execProducerAssertCaptured(t, observation, root, map[string]string{"src/one.txt": "old baseline\n"})
 	if data, err := os.ReadFile(filepath.Join(root, "src", "one.txt")); err != nil || string(data) != "old baseline\n" {

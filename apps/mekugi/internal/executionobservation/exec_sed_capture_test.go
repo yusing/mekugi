@@ -21,7 +21,7 @@ func TestNativeExecSedInPlaceCapturesEdit(t *testing.T) {
 	const relativePath = "internal/router/live_activity_view_test.go"
 	const before = "package router\n\nvar answer = response.Answers[0].Id\n"
 	const after = "package router\n\nvar answer = response.Answers[0].ID\n"
-	const command = `sed -i 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`
+	command := sedInPlace() + ` 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`
 	target := filepath.Join(workspace, relativePath)
 	writeTestFile(t, target, before)
 	transform := prepareNativeStockTransform(t, proxy, workspace, "sed-session")

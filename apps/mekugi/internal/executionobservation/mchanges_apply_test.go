@@ -215,7 +215,7 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 		}
 		return history
 	}
-	edit := run("edit-call", "sed -i s/two/TWO/ a.txt", func(context.Context) {
+	edit := run("edit-call", sedInPlace()+" s/two/TWO/ a.txt", func(context.Context) {
 		writeTestFile(t, target, "one\nTWO\nthree\n")
 	})
 	var output string

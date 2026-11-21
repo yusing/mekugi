@@ -5,7 +5,67 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"mvdan.cc/sh/v3/syntax"
 )
+
+// sedInPlace spells an in-place sed edit without a backup for the dialect of
+// the sed on PATH; BSD sed takes an explicit empty suffix.
+func sedInPlace() string {
+	if bsdSedAt("sed") {
+		return "sed -i ''"
+	}
+	return "sed -i"
+}
+
+func TestSedDialectArguments(t *testing.T) {
+	for _, test := range []struct {
+		command        string
+		bsd            bool
+		scripts, files []string
+		inPlace        bool
+		suffix, reason string
+	}{
+		{command: "sed -i 's/a/b/' f", scripts: []string{"s/a/b/"}, files: []string{"f"}, inPlace: true},
+		{command: "sed 's/a/b/' -i.bak f", scripts: []string{"s/a/b/"}, files: []string{"f"}, inPlace: true, suffix: ".bak"},
+		{command: "sed -i -- 's/a/b/' f", scripts: []string{"s/a/b/"}, files: []string{"f"}, inPlace: true},
+		{command: "sed -i -e 's/a/b/' -- -f", scripts: []string{"s/a/b/"}, files: []string{"-f"}, inPlace: true},
+		{command: "sed -i -- \"$script\" f", reason: "dynamic sed script"},
+		{command: "sed --in-place=.bak -e 's/a/b/' f", scripts: []string{"s/a/b/"}, files: []string{"f"}, inPlace: true, suffix: ".bak"},
+		{command: "sed -i 's/a/b/' f", bsd: true, scripts: []string{"f"}, inPlace: true, suffix: "s/a/b/"},
+		{command: "sed -i '' 's/a/b/' f", bsd: true, scripts: []string{"s/a/b/"}, files: []string{"f"}, inPlace: true},
+		{command: "sed -Eni '' 's/a/b/p' f", bsd: true, scripts: []string{"s/a/b/p"}, files: []string{"f"}, inPlace: true},
+		{command: "sed -i.bak -e 's/a/b/' f g", bsd: true, scripts: []string{"s/a/b/"}, files: []string{"f", "g"}, inPlace: true, suffix: ".bak"},
+		{command: "sed -i -n p f", bsd: true, scripts: []string{"p"}, files: []string{"f"}, inPlace: true, suffix: "-n"},
+		{command: "sed -I .orig 's/a/b/' f", bsd: true, scripts: []string{"s/a/b/"}, files: []string{"f"}, inPlace: true, suffix: ".orig"},
+		{command: "sed 's/a/b/' -i '' f", bsd: true, scripts: []string{"s/a/b/"}, files: []string{"-i", "", "f"}},
+		{command: "sed -n -- p -i", bsd: true, scripts: []string{"p"}, files: []string{"-i"}},
+		{command: "sed --in-place 's/a/b/' f", bsd: true, reason: "sed options are not parsed"},
+		{command: "sed -f script f", bsd: true, reason: "sed script file is not inspected"},
+		{command: "sed -i", bsd: true, reason: "sed option without a value"},
+	} {
+		file, err := syntax.NewParser().Parse(strings.NewReader(test.command), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		parse := gnuSedArguments
+		if test.bsd {
+			parse = bsdSedArguments
+		}
+		parsed, reason := parse(file.Stmts[0].Cmd.(*syntax.CallExpr).Args[1:])
+		var files []string
+		for _, word := range parsed.files {
+			text, _ := shellsyntax.Literal(word)
+			files = append(files, text)
+		}
+		if reason != test.reason || reason == "" && (!slices.Equal(parsed.scripts, test.scripts) || !slices.Equal(files, test.files) ||
+			parsed.inPlace != test.inPlace || parsed.suffix != test.suffix) {
+			t.Errorf("%q bsd=%t: scripts=%q files=%q in-place=%t suffix=%q reason=%q", test.command, test.bsd,
+				parsed.scripts, files, parsed.inPlace, parsed.suffix, reason)
+		}
+	}
+}
 
 func classifyExecShell(command, workdir, shell string) Result {
 	return Classify(Input{Command: command, Directory: workdir, Shell: shell, Deadline: time.Now().Add(Budget)})
@@ -57,7 +117,7 @@ func TestClassifyExecShellDeclaredOperations(t *testing.T) {
 		{"cd sub && rm z", []string{"rm"}, []string{"file:sub/z"}},
 		{"printf 'x\\n' > out.txt", []string{"printf"}, []string{"file:out.txt"}},
 		{"cat <<'EOF' >> log.txt\nline\nEOF", []string{"cat"}, []string{"file:log.txt"}},
-		{"sed -i 's/a/b/' f.go", []string{"sed"}, []string{"file:f.go"}},
+		{sedInPlace() + " 's/a/b/' f.go", []string{"sed"}, []string{"file:f.go"}},
 		{"ln -s target link", []string{"ln"}, []string{"into:target->link"}},
 		{"git mv a b", []string{"git mv"}, nil},
 		{"echo hi > /dev/null", nil, nil},

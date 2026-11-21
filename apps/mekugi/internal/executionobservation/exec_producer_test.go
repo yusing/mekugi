@@ -14,6 +14,15 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
+// sedInPlace spells an in-place sed edit without a backup for the sed on
+// PATH: BSD sed takes an explicit empty suffix.
+func sedInPlace() string {
+	if exec.Command("sed", "--version").Run() != nil {
+		return "sed -i ''"
+	}
+	return "sed -i"
+}
+
 func execProducerCommand(t *testing.T, name string) string {
 	t.Helper()
 	if _, err := exec.LookPath(name); err != nil {
@@ -95,13 +104,13 @@ func execProducerAssertExactDirect(t *testing.T, root string, observation *chang
 
 func TestExecFindExecProducerCapturesBeforeContent(t *testing.T) {
 	find := execProducerCommand(t, "find")
-	sed := execProducerCommand(t, "sed")
+	execProducerCommand(t, "sed")
 	bash := execProducerCommand(t, "bash")
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "src", "a.txt"), "old old\n")
 	writeTestFile(t, filepath.Join(root, "src", "nested", "b.txt"), "still old\n")
 	writeTestFile(t, filepath.Join(root, "src", "skip.md"), "old\n")
-	command := find + " src -name '*.txt' -exec " + sed + " -i 's/old/new/g' {} \\;"
+	command := find + " src -name '*.txt' -exec " + sedInPlace() + " 's/old/new/g' {} \\;"
 	observation := execProducerCapture(t, root, command)
 	execProducerAssertCaptured(t, observation, root, map[string]string{
 		"src/a.txt":        "old old\n",
@@ -123,13 +132,13 @@ func TestExecFindExecProducerCapturesBeforeContent(t *testing.T) {
 func TestExecRGXargsProducerCapturesBeforeContent(t *testing.T) {
 	rg := execProducerCommand(t, "rg")
 	xargs := execProducerCommand(t, "xargs")
-	sed := execProducerCommand(t, "sed")
+	execProducerCommand(t, "sed")
 	bash := execProducerCommand(t, "bash")
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "src", "a.txt"), "old old\n")
 	writeTestFile(t, filepath.Join(root, "src", "nested", "b.txt"), "still old\n")
 	writeTestFile(t, filepath.Join(root, "src", "unchanged.txt"), "nothing here\n")
-	command := rg + " -l old src | " + xargs + " " + sed + " -i 's/old/new/g'"
+	command := rg + " -l old src | " + xargs + " " + sedInPlace() + " 's/old/new/g'"
 	observation := execProducerCapture(t, root, command)
 	execProducerAssertCaptured(t, observation, root, map[string]string{
 		"src/a.txt":        "old old\n",
@@ -147,7 +156,7 @@ func TestExecRGXargsProducerCapturesBeforeContent(t *testing.T) {
 
 func TestExecRGPreProducerIsOpaqueWithoutExecutingHook(t *testing.T) {
 	rg := execProducerCommand(t, "rg")
-	sed := execProducerCommand(t, "sed")
+	execProducerCommand(t, "sed")
 	root := t.TempDir()
 	marker := filepath.Join(root, "hook-ran")
 	writeTestFile(t, filepath.Join(root, "src", "hit.txt"), "old\n")
@@ -156,7 +165,7 @@ func TestExecRGPreProducerIsOpaqueWithoutExecutingHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("MARKER", marker)
-	command := rg + " --pre ./hook -l old src | xargs " + sed + " -i 's/old/new/g'"
+	command := rg + " --pre ./hook -l old src | xargs " + sedInPlace() + " 's/old/new/g'"
 	plan := execscope.Classify(execscope.Input{Command: command, Directory: root, Shell: "bash", Deadline: time.Now().Add(execscope.Budget)})
 	if plan.Class != execscope.Opaque {
 		t.Fatalf("hostile producer class = %v (%s), want opaque", plan.Class, plan.Reason)

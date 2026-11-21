@@ -1,11 +1,14 @@
 package execscope
 
 import (
+	"context"
 	"errors"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -993,7 +996,7 @@ func (w *execShellWalker) command(identity, name string, args []*syntax.Word) {
 			}
 		}
 	case "sed":
-		w.sed(args)
+		w.sed(name, args)
 	case "perl":
 		w.perl(args)
 	case "sort":
@@ -1692,93 +1695,193 @@ func execFindReadPath(word *syntax.Word) bool {
 	return path && scalar
 }
 
-// sed -i is declared when its script cannot write other files or run commands.
-func (w *execShellWalker) sed(args []*syntax.Word) {
-	var scripts []string
-	var files []*syntax.Word
-	inPlace, suffix := false, ""
-	sandbox := false
+// sedArguments are one sed invocation's scripts, file operands, and in-place mode.
+type sedArguments struct {
+	scripts []string
+	files   []*syntax.Word
+	inPlace bool
+	suffix  string
+	sandbox bool
+}
+
+// sedDialects caches, per resolved sed binary, whether it follows BSD rules.
+var sedDialects sync.Map
+
+// bsdSedAt reports whether the sed that name runs follows BSD argument rules.
+// GNU sed and BusyBox accept --version; BSD sed rejects it as an unknown
+// option. A missing sed writes nothing, so its dialect does not matter.
+func bsdSedAt(name string) bool {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return false
+	}
+	if bsd, ok := sedDialects.Load(path); ok {
+		return bsd.(bool)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	var exit *exec.ExitError
+	bsd := errors.As(exec.CommandContext(ctx, path, "--version").Run(), &exit)
+	sedDialects.Store(path, bsd)
+	return bsd
+}
+
+// gnuSedArguments parses GNU sed arguments. A non-empty reason leaves the
+// invocation undeclared.
+func gnuSedArguments(args []*syntax.Word) (sedArguments, string) {
+	var parsed sedArguments
 	for index := 0; index < len(args); index++ {
 		text, literal := shellsyntax.Literal(args[index])
 		if !literal {
-			if len(scripts) == 0 {
-				w.opaque("dynamic sed script")
-				return
+			if len(parsed.scripts) == 0 {
+				return parsed, "dynamic sed script"
 			}
-			files = append(files, args[index])
+			parsed.files = append(parsed.files, args[index])
 			continue
 		}
 		switch {
 		case text == "--":
-			files = append(files, args[index+1:]...)
+			files := args[index+1:]
+			if len(parsed.scripts) == 0 && len(files) != 0 {
+				script, ok := shellsyntax.Literal(files[0])
+				if !ok {
+					return parsed, "dynamic sed script"
+				}
+				parsed.scripts, files = append(parsed.scripts, script), files[1:]
+			}
+			parsed.files = append(parsed.files, files...)
 			index = len(args)
 		case text == "-e" || text == "--expression" || text == "-f" || text == "--file" || text == "-l" || text == "--line-length":
 			if index+1 >= len(args) {
-				w.opaque("sed option without a value")
-				return
+				return parsed, "sed option without a value"
 			}
 			value, ok := shellsyntax.Literal(args[index+1])
 			if !ok {
-				w.opaque("dynamic sed script")
-				return
+				return parsed, "dynamic sed script"
 			}
 			index++
 			switch text {
 			case "-e", "--expression":
-				scripts = append(scripts, value)
+				parsed.scripts = append(parsed.scripts, value)
 			case "-f", "--file":
-				w.opaque("sed script file is not inspected")
-				return
+				return parsed, "sed script file is not inspected"
 			}
 		case strings.HasPrefix(text, "--expression="):
-			scripts = append(scripts, strings.TrimPrefix(text, "--expression="))
+			parsed.scripts = append(parsed.scripts, strings.TrimPrefix(text, "--expression="))
 		case strings.HasPrefix(text, "--file="):
-			w.opaque("sed script file is not inspected")
-			return
+			return parsed, "sed script file is not inspected"
 		case text == "--in-place" || strings.HasPrefix(text, "--in-place="):
-			inPlace, suffix = true, strings.TrimPrefix(strings.TrimPrefix(text, "--in-place"), "=")
+			parsed.inPlace, parsed.suffix = true, strings.TrimPrefix(strings.TrimPrefix(text, "--in-place"), "=")
 		case text == "--sandbox":
-			sandbox = true
+			parsed.sandbox = true
 		case text == "--follow-symlinks":
-			w.opaque("sed --follow-symlinks writes through links")
-			return
+			return parsed, "sed --follow-symlinks writes through links"
 		case slices.Contains([]string{"-n", "--quiet", "--silent", "-E", "-r", "--regexp-extended", "-s", "--separate", "-u", "--unbuffered", "-z", "--null-data", "--posix", "--debug"}, text):
 		case strings.HasPrefix(text, "--"):
-			w.opaque("sed option " + text + " is not modeled")
-			return
+			return parsed, "sed option " + text + " is not modeled"
 		case strings.HasPrefix(text, "-") && len(text) > 1 && !strings.HasPrefix(text, "--"):
 			// Bundled short flags; -i consumes the rest as its suffix.
 			for offset := 1; offset < len(text); offset++ {
 				switch text[offset] {
 				case 'n', 'E', 'r', 's', 'u', 'z':
 				case 'i':
-					inPlace, suffix = true, text[offset+1:]
+					parsed.inPlace, parsed.suffix = true, text[offset+1:]
 					offset = len(text)
 				case 'e':
 					if offset+1 != len(text) || index+1 >= len(args) {
-						w.opaque("sed -e without a literal script")
-						return
+						return parsed, "sed -e without a literal script"
 					}
 					value, ok := shellsyntax.Literal(args[index+1])
 					if !ok {
-						w.opaque("dynamic sed script")
-						return
+						return parsed, "dynamic sed script"
 					}
-					scripts = append(scripts, value)
+					parsed.scripts = append(parsed.scripts, value)
 					index++
 				default:
-					w.opaque("sed options are not parsed")
-					return
+					return parsed, "sed options are not parsed"
 				}
 			}
 		default:
-			if len(scripts) == 0 {
-				scripts = append(scripts, text)
+			if len(parsed.scripts) == 0 {
+				parsed.scripts = append(parsed.scripts, text)
 			} else {
-				files = append(files, args[index])
+				parsed.files = append(parsed.files, args[index])
 			}
 		}
 	}
+	return parsed, ""
+}
+
+// bsdSedArguments follows BSD sed's getopt("EI:ae:f:i:lnru"): -i and -I always
+// take a suffix, attached or as the next word, and options end at the first
+// operand. BSD sed has no long options.
+func bsdSedArguments(args []*syntax.Word) (sedArguments, string) {
+	var parsed sedArguments
+	index := 0
+	for ; index < len(args); index++ {
+		text, literal := shellsyntax.Literal(args[index])
+		if !literal || text == "-" || !strings.HasPrefix(text, "-") {
+			break
+		}
+		if text == "--" {
+			index++
+			break
+		}
+		for offset := 1; offset < len(text); offset++ {
+			switch flag := text[offset]; flag {
+			case 'E', 'a', 'l', 'n', 'r', 'u':
+			case 'I', 'i', 'e', 'f':
+				value := text[offset+1:]
+				if value == "" {
+					index++
+					if index >= len(args) {
+						return parsed, "sed option without a value"
+					}
+					var ok bool
+					if value, ok = shellsyntax.Literal(args[index]); !ok {
+						return parsed, "dynamic sed script"
+					}
+				}
+				offset = len(text)
+				switch flag {
+				case 'I', 'i':
+					parsed.inPlace, parsed.suffix = true, value
+				case 'e':
+					parsed.scripts = append(parsed.scripts, value)
+				case 'f':
+					return parsed, "sed script file is not inspected"
+				}
+			default:
+				return parsed, "sed options are not parsed"
+			}
+		}
+	}
+	files := args[index:]
+	if len(parsed.scripts) == 0 && len(files) != 0 {
+		script, ok := shellsyntax.Literal(files[0])
+		if !ok {
+			return parsed, "dynamic sed script"
+		}
+		parsed.scripts, files = []string{script}, files[1:]
+	}
+	parsed.files = files
+	return parsed, ""
+}
+
+// sed -i is declared when its script cannot write other files or run
+// commands. Arguments follow the dialect of the sed binary that name runs.
+func (w *execShellWalker) sed(name string, args []*syntax.Word) {
+	bsd := bsdSedAt(name)
+	parse := gnuSedArguments
+	if bsd {
+		parse = bsdSedArguments
+	}
+	parsed, reason := parse(args)
+	if reason != "" {
+		w.opaque(reason)
+		return
+	}
+	scripts, files, inPlace, suffix, sandbox := parsed.scripts, parsed.files, parsed.inPlace, parsed.suffix, parsed.sandbox
 	writes := false
 	for _, script := range scripts {
 		scriptWrites, known := sedScriptWrites(script)
@@ -1808,13 +1911,14 @@ func (w *execShellWalker) sed(args []*syntax.Word) {
 	w.plan.label("sed")
 	w.plan.add(Entry{Kind: File, Operands: operands})
 	if suffix != "" {
-		w.addBackups(operands, suffix)
+		// BSD sed appends the suffix literally; GNU sed expands *.
+		w.addBackups(operands, suffix, !bsd)
 	}
 }
 
-// addBackups records in-place backup names. A suffix with * replaces the
-// original file operand, as in GNU sed and perl.
-func (w *execShellWalker) addBackups(operands []Operand, suffix string) {
+// addBackups records in-place backup names. With star, a * in the suffix is
+// replaced by the original file operand, as in GNU sed and perl.
+func (w *execShellWalker) addBackups(operands []Operand, suffix string, star bool) {
 	if w.deadline.IsZero() {
 		w.deadline = time.Now().Add(Budget)
 	}
@@ -1833,7 +1937,7 @@ func (w *execShellWalker) addBackups(operands []Operand, suffix string) {
 		}
 		for _, path := range matches {
 			name := path + suffix
-			if strings.Contains(suffix, "*") {
+			if star && strings.Contains(suffix, "*") {
 				spelling := path
 				if !operand.AbsoluteInput {
 					var err error
@@ -2062,7 +2166,7 @@ func (w *execShellWalker) perl(args []*syntax.Word) {
 	w.plan.label("perl")
 	w.plan.add(Entry{Kind: File, Operands: files})
 	if suffix != "" {
-		w.addBackups(files, suffix)
+		w.addBackups(files, suffix, true)
 	}
 }
 

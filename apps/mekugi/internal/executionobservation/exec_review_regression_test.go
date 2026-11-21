@@ -2,6 +2,7 @@ package executionobservation
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +14,9 @@ import (
 )
 
 func TestExecBackupStarRetainsOperandDirectories(t *testing.T) {
+	if exec.Command("sed", "--version").Run() != nil {
+		t.Skip("BSD sed appends a backup suffix literally, without * expansion")
+	}
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "src/a.txt"), "old\n")
 	if err := os.MkdirAll(filepath.Join(root, "backup/src"), 0700); err != nil {

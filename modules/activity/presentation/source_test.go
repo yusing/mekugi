@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -394,9 +395,14 @@ func TestToolActivityShellSetupStaysTogether(t *testing.T) {
 }
 
 func TestSubagentSedReadDisplay(t *testing.T) {
+	// BSD sed takes -n as the -i backup suffix.
+	inPlaceRead := "Edit `source.go` · sed (requested)"
+	if exec.Command("sed", "--version").Run() != nil {
+		inPlaceRead += "\n\nEdit `source.go-n` · sed (requested)"
+	}
 	for _, tc := range []struct{ source, want string }{
 		{"sed -n '1,260p' source.go", "Read `source.go 1:260`"},
-		{"sed -i -n '1,260p' source.go", "Edit `source.go` · sed (requested)"},
+		{"sed -i -n '1,260p' source.go", inPlaceRead},
 		{"sed -n '1,260p' source.go && echo done", "Read `source.go 1:260`\n\nRun `echo done`"},
 		{"sed -n '261,520p' 'source file.go'", "Read `source file.go 261:520`"},
 	} {

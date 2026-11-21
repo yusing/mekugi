@@ -75,7 +75,7 @@ func TestLargeNamedCaptureRetainsEveryFileAcrossRestart(t *testing.T) {
 	if len(observation.Files) != len(paths) || len(observation.Omitted) != 0 || resident > changecapture.MaxContentBytes {
 		t.Fatalf("bounded acquisition lost files: files=%d omissions=%v resident=%d", len(observation.Files), observation.Omitted, resident)
 	}
-	script := "printf 'run\\n' >> executions; sed -i '1s/before/after/' -- file-*.txt"
+	script := "printf 'run\\n' >> executions; " + sedInPlace() + " -e '1s/before/after/' -- file-*.txt"
 	observation.Commands = []commandanalysis.Command{{Command: script, Workdir: f.workspace, Shell: "bash"}}
 	original := mekugiHistory{ToolName: nativeExecCommandToolName, Script: script, ExecutingThread: f.thread, ExecObservation: observation, CarrierPayload: `{"cmd":"original native input"}`}
 	if err := f.store.put(f.ctx, f.workspace, map[string]mekugiHistory{"large": original}); err != nil {
