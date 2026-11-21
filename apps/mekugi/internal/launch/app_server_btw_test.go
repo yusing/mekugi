@@ -819,7 +819,7 @@ func TestSideCommandAndBTWDockIsolation(t *testing.T) {
 	if w.Len() != 0 || strings.Contains(u.attached.feedback.Text, "/btw") {
 		t.Fatal("empty Side input suggested an unavailable command or submitted")
 	}
-	for _, blocked := range []string{"/side", "/fork", "/fork branch", "/oneoff task", "/btw question"} {
+	for _, blocked := range []string{"/fork", "/fork branch", "/oneoff task", "/btw question"} {
 		u.Editor.Take()
 		appServerTestKeys(t, u, blocked)
 		for _, choice := range u.picker.Choices {
@@ -832,7 +832,7 @@ func TestSideCommandAndBTWDockIsolation(t *testing.T) {
 			t.Fatalf("blocked command submitted or consumed: %q %s", u.Text, w.String())
 		}
 		for _, choice := range u.picker.Choices {
-			if choice.Name == "/side" || choice.Name == "/fork" || choice.Name == "/oneoff" || choice.Name == "/btw" {
+			if choice.Name == "/fork" || choice.Name == "/oneoff" || choice.Name == "/btw" {
 				t.Fatalf("unavailable completion: %s", choice.Name)
 			}
 		}

@@ -106,30 +106,6 @@ type PasteIntent struct {
 	Menu    uint64
 }
 
-func (m *Model) AdmitPaste(in PasteIntent, conversation *conversationmodel.Session) error {
-	if in.Thread != "" && in.Thread != m.view.Input.ID || in.Thread == "" && m.DisplayingSide() {
-		return ErrStaleIntent
-	}
-	conversation = m.InputConversation(conversation)
-	if !in.Version.SameAttachment(m.view.Version) {
-		return ErrStaleIntent
-	}
-	if m.editorUnavailable(in.Target) {
-		return ErrInputUnavailable
-	}
-	if in.Target != conversation.EditorTarget() {
-		return conversationmodel.ErrDraftChanged
-	}
-	menu := uint64(0)
-	if m.view.Menu != nil {
-		menu = m.view.Menu.ID
-	}
-	if in.Menu != menu {
-		return ErrStaleIntent
-	}
-	return nil
-}
-
 type ReferenceIntent struct {
 	Version                   Version
 	Thread                    string `json:",omitzero"`

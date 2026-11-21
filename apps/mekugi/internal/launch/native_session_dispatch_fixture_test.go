@@ -208,8 +208,7 @@ func finishPaste(attached *attachedPresentation, terminal *terminalsession.Attac
 }
 
 func applyPaste(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, environment []string, parent context.Context, paste terminalsession.PasteResult) {
-	if err := attached.presentation.AdmitPaste(paste.Intent, attached.conversation); err != nil {
-		setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
+	if paste.Intent.Target != attached.presentation.InputConversation(attached.conversation).EditorTarget() {
 		return
 	}
 	text := paste.Text

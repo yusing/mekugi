@@ -94,9 +94,6 @@ func TestPreparedChildAllowsPromptEditing(t *testing.T) {
 	c.conversation.Questions.Open(call)
 	v := c.publish(sessionpresentation.Caption{})
 	target := v.EditorTarget()
-	if err := c.model().AdmitPaste(sessionpresentation.PasteIntent{Version: v.Version, Target: target}, &c.conversation); err != nil {
-		t.Fatal(err)
-	}
 	if err := c.model().AdmitClientComposer(sessionpresentation.ComposerIntent{Version: v.Version, Target: target, Operation: sessionpresentation.SubmitComposer}); err != nil {
 		t.Fatal(err)
 	}
