@@ -13,7 +13,7 @@ func TestPasteFramingRetainsDestination(t *testing.T) {
 	var main Main
 	var prompts Prompts
 	var decoder Decoder
-	view := sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 3, Revision: 7}, Draft: conversationmodel.DraftView{Revision: 4, Available: true}, Menu: &sessionpresentation.MenuView{ID: 8}}
+	view := sessionpresentation.View{Version: sessionpresentation.Version{Attachment: 3, Revision: 7}, Draft: conversationmodel.DraftView{Revision: 4, Available: true}}
 	main.Update(view)
 	prompts.Update(view)
 	feed := func(bytes string) *PasteResult {
@@ -38,7 +38,7 @@ func TestPasteFramingRetainsDestination(t *testing.T) {
 	main.Update(view)
 	prompts.Update(view)
 	result := feed("1~")
-	if result == nil || result.Text != "one\ntwo\n你好red" || result.Intent.Version != captured || result.Intent.Target.Revision != 4 || result.Intent.Menu != 8 || main.Pasting() {
+	if result == nil || result.Text != "one\ntwo\n你好red" || result.Intent.Version != captured || result.Intent.Target.Revision != 4 || main.Pasting() {
 		t.Fatalf("completed paste = %+v", result)
 	}
 	feed("\x1b[200~ordinary draft")

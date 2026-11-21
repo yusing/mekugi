@@ -32,10 +32,7 @@ func (m *Main) PasteInput(event Input, prompts *Prompts) (*PasteResult, error) {
 			return nil, nil
 		}
 		m.Keybindings = false
-		p := &pasteBuffer{intent: sessionpresentation.PasteIntent{Thread: m.session.Input.ID, Version: m.session.Version, Target: m.session.EditorTarget()}, prompt: prompts.receipt}
-		if menu := m.session.Menu; menu != nil {
-			p.intent.Menu = menu.ID
-		}
+		p := &pasteBuffer{intent: sessionpresentation.PasteIntent{Version: m.session.Version, Target: m.session.EditorTarget()}, prompt: prompts.receipt}
 		if q := m.session.Questions; q.Call != nil && q.Call.Questions[q.Index].Secret {
 			p.secret, p.secretRevision = true, prompts.Secret.Revision()
 		}
