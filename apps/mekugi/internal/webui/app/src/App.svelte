@@ -7,6 +7,7 @@
   import Mark from "./lib/Mark.svelte";
   import MachineSettings from "./lib/MachineSettings.svelte";
   import NewThread from "./lib/NewThread.svelte";
+  import QuickSwitcher from "./lib/QuickSwitcher.svelte";
   import Sidebar from "./lib/Sidebar.svelte";
   import ThreadView from "./lib/ThreadView.svelte";
   import Button from "./lib/ui/Button.svelte";
@@ -28,6 +29,7 @@
   });
 
   let settings = $state<{ focus?: Machine }>();
+  let switcher = $state(false);
   let endTarget = $state<{
     machine: Machine;
     id: string;
@@ -71,25 +73,37 @@
       document.querySelector<HTMLElement>('button[aria-label="Show sidebar"]')?.focus(),
     );
   }
-</script>
-
-<svelte:window
-  onkeydown={(event) => {
+  function onkeydown(event: KeyboardEvent) {
     if (modal && event.key === "Escape" && !event.defaultPrevented) {
       event.preventDefault();
       closeDrawer();
+      return;
     }
-  }}
-/>
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+      if (event.key.toLowerCase() === "k" && !settings && !endTarget) {
+        event.preventDefault();
+        switcher = !switcher;
+        return;
+      }
+      if (event.key === "\\" && !settings && !endTarget && !switcher) {
+        event.preventDefault();
+        if (modal) closeDrawer();
+        else sidebar = !sidebar;
+      }
+    }
+  }
+</script>
+
+<svelte:window {onkeydown} />
 
 <Tooltip.Provider delayDuration={300}>
-  <div class="relative flex h-dvh">
+  <div class="relative flex h-dvh bg-ground">
     {#if sidebar}
       <div
         bind:this={drawer}
         class={wide
           ? "min-h-0 w-sidebar flex-none bg-ground"
-          : "fixed inset-y-0 left-0 z-30 w-[min(var(--container-sidebar),86vw)] border-r bg-surface shadow-float"}
+          : "fixed inset-y-0 left-0 z-30 w-[min(var(--container-sidebar),86vw)] border-r border-border bg-ground shadow-float"}
       >
         <Sidebar
           onhide={() => (modal ? closeDrawer() : (sidebar = false))}
@@ -97,20 +111,24 @@
             hide();
             settings = { focus };
           }}
+          onswitcher={() => {
+            hide();
+            switcher = true;
+          }}
           onnavigate={hide}
         />
       </div>
       {#if !wide}
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (the sidebar's own button also hides it) -->
-        <div class="fixed inset-0 z-29 bg-scrim" onclick={closeDrawer}></div>
+        <div class="fixed inset-0 z-29 bg-scrim backdrop-blur-[2px]" onclick={closeDrawer}></div>
       {/if}
     {/if}
 
-    <!-- The main area is a sheet beside the sidebar, inset by the frame. On a
-         phone the frame disappears and the sheet becomes the screen. -->
+    <!-- The main area is a crisp inset sheet beside the sidebar. On a phone
+         the frame disappears and the sheet becomes the screen. -->
     <div
       class={[
-        "relative my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-sheet bg-surface max-sm:m-0 max-sm:rounded-none",
+        "relative my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-sheet bg-surface shadow-sheet max-sm:m-0 max-sm:rounded-none max-sm:shadow-none",
         sidebar && wide ? "ml-0" : "ml-2",
       ]}
       inert={modal}
@@ -133,11 +151,12 @@
           />
         {/key}
       {:else}
-        <header class="flex h-bar flex-none items-center px-2 pt-safe">
+        <header class="flex h-bar flex-none items-center gap-1 px-2 pt-safe">
           {#if !sidebar}<Button
               variant="quiet"
               icon="sidebar"
               label="Show sidebar"
+              tooltip
               onclick={() => (sidebar = true)}
             />{/if}
         </header>
@@ -156,14 +175,21 @@
           />
         {:else}
           <section
-            class="grid min-h-0 flex-1 items-start justify-items-center overflow-y-auto px-4 pt-[10dvh] pb-6"
+            class="grid min-h-0 flex-1 items-start justify-items-center overflow-y-auto px-4 pt-[11dvh] pb-8"
             aria-labelledby="welcome-heading"
           >
             <div class="grid w-[min(100%,440px)] gap-6">
-              <header class="grid gap-2">
-                <div class="mb-2"><Mark size={28} /></div>
-                <h1 id="welcome-heading" class="text-lg font-semibold">Connect a machine</h1>
-                <p class="text-muted">
+              <header class="grid gap-2.5">
+                <div class="mb-1 flex items-center gap-2.5">
+                  <Mark size={28} />
+                  <span class="text-small font-medium tracking-wide text-muted uppercase"
+                    >Mekugi</span
+                  >
+                </div>
+                <h1 id="welcome-heading" class="text-heading font-semibold tracking-[-0.02em]">
+                  Connect a machine
+                </h1>
+                <p class="leading-[22px] text-muted">
                   Threads run on your execution machines. Connect one through its connector to start
                   a thread or follow work already running there.
                 </p>
@@ -191,6 +217,13 @@
   </div>
 </Tooltip.Provider>
 
+{#if switcher}
+  <QuickSwitcher
+    onclose={() => (switcher = false)}
+    onmachines={() => (settings = {})}
+    ontogglesidebar={() => (sidebar = !sidebar)}
+  />
+{/if}
 {#if settings}
   <MachineSettings focus={settings.focus} onclose={() => (settings = undefined)} />
 {/if}
