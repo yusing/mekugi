@@ -97,7 +97,9 @@
     class="@container absolute inset-0 z-5 flex flex-col overflow-hidden bg-surface"
     aria-label="Live edits"
   >
-    <div class="mx-auto flex w-[calc(100%-32px)] flex-none items-center gap-2 pt-3 pb-2">
+    <div
+      class="mx-auto flex w-[calc(100%-32px)] flex-none items-center gap-2 border-b border-rule pt-3 pb-2.5"
+    >
       <h2 class="flex items-center gap-2 font-semibold">
         <Dot tone={writing ? "running" : "done"} size={6} />Live
       </h2>
@@ -155,7 +157,7 @@
                     />
                   {:else}
                     <pre
-                      class="mt-1.5 rounded-card bg-raised py-1 font-mono text-code">{#each lines(preview.Input) as line, i (i)}<span
+                      class="mt-1.5 rounded-card border border-rule bg-raised py-1 font-mono text-code">{#each lines(preview.Input) as line, i (i)}<span
                         class="flex"
                         ><span class="w-[5ch] flex-none pr-2 text-right text-muted select-none"
                           >{i + 1}</span
