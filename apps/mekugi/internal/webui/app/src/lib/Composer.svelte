@@ -21,7 +21,7 @@
   import * as InputGroup from "./ui/input-group";
   import Menu from "./ui/Menu.svelte";
   import MenuItem from "./ui/MenuItem.svelte";
-  import { composerText, composerTools, floating } from "./ui/styles";
+  import { composerText, composerTools, floating, kbd } from "./ui/styles";
   import Tag from "./ui/Tag.svelte";
   import ThreadSettings from "./ThreadSettings.svelte";
 
@@ -402,7 +402,7 @@
               role="option"
               aria-selected={i === active}
               aria-disabled={!semantic.liveCompletion || completion.Loading}
-              class="flex min-h-[34px] cursor-pointer items-baseline gap-3 rounded-control px-2.5 py-[7px] aria-selected:bg-active max-sm:min-h-11 max-sm:items-center"
+              class="flex min-h-[34px] cursor-pointer items-baseline gap-3 rounded-control px-2.5 py-[7px] transition-colors hover:bg-raised aria-selected:bg-active max-sm:min-h-11 max-sm:items-center"
               onpointerdown={(event) => event.preventDefault()}
               onclick={() => choose(2, { ID: choice.ID, Name: choice.Name, Path: choice.Path })}
               onkeydown={() => {}}
@@ -420,6 +420,15 @@
             </li>
           {/each}
         </ul>
+        <div
+          class="mt-1 flex items-center justify-between border-t border-rule px-2.5 pt-1.5 pb-1 text-tiny text-muted max-sm:hidden"
+        >
+          <span class="inline-flex items-center gap-1.5">
+            <kbd class={kbd}>↑↓</kbd> navigate
+            <kbd class={kbd}>↵</kbd> select
+          </span>
+          <span class="inline-flex items-center gap-1"><kbd class={kbd}>Esc</kbd> close</span>
+        </div>
       {/if}
     </div>
   {/if}

@@ -5,9 +5,11 @@
   import { prepareAttachments, type InitialInput, type PendingAttachment } from "./attachments";
   import { basename } from "./format";
   import { hub, type Machine } from "./hub.svelte";
+  import Mark from "./Mark.svelte";
   import type { Start, StartOptions } from "./protocol";
   import Button from "./ui/Button.svelte";
   import ComposerCard from "./ui/ComposerCard.svelte";
+  import Dot from "./ui/Dot.svelte";
   import * as InputGroup from "./ui/input-group";
   import Icon from "./ui/Icon.svelte";
   import Menu from "./ui/Menu.svelte";
@@ -168,21 +170,34 @@
 </script>
 
 <section
-  class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-center overflow-y-auto px-4 pt-6 pb-[12dvh] max-sm:content-end max-sm:px-2 max-sm:pt-4 max-sm:pb-safe-2"
+  class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-center overflow-y-auto px-4 pt-6 pb-[14dvh] max-sm:content-end max-sm:px-2 max-sm:pt-4 max-sm:pb-safe-2"
   aria-labelledby="new-heading"
 >
   <div class="mx-auto w-full max-w-column">
-    <h1
-      id="new-heading"
-      class="mb-5 text-center text-heading font-semibold focus:outline-none max-sm:mb-auto max-sm:pb-6"
-      tabindex="-1"
-    >
-      {mode === "replay"
-        ? "Replay a saved thread"
-        : mode === "resume"
-          ? "Resume a saved thread"
-          : "What should main work on?"}
-    </h1>
+    <div class="mb-6 flex flex-col items-center gap-2 text-center max-sm:mb-auto max-sm:pb-6">
+      <div class="mb-1 flex items-center justify-center">
+        <Mark size={28} />
+      </div>
+      <h1
+        id="new-heading"
+        class="text-heading font-semibold tracking-[-0.02em] focus:outline-none"
+        tabindex="-1"
+      >
+        {mode === "replay"
+          ? "Replay a saved thread"
+          : mode === "resume"
+            ? "Resume a saved thread"
+            : "What should main work on?"}
+      </h1>
+      <p class="inline-flex items-center gap-1.5 text-small text-muted">
+        <Dot tone={machine.state.tone || "idle"} size={6} />
+        <span>{machine.label}</span>
+        {#if workspace && mode !== "replay"}
+          <span aria-hidden="true">·</span>
+          <span class="font-mono text-tiny">{basename(workspace)}</span>
+        {/if}
+      </p>
+    </div>
     <ComposerCard
       accepts={mode !== "replay" && !busy}
       onfiles={(files) => tray?.add(files)}
@@ -240,7 +255,7 @@
         <textarea
           id="new-text"
           data-slot="input-group-control"
-          class="{composerText} min-h-18 pt-3.5 pb-1"
+          class="{composerText} min-h-20 pt-3.5 pb-1.5"
           bind:value={text}
           {onkeydown}
           onpaste={(event) => {
@@ -255,7 +270,7 @@
             ? "Message to continue with (optional)"
             : `Message main on ${machine.label}`}></textarea>
       {:else}
-        <p class="px-3.5 pt-2.5 pb-1 text-small text-muted">
+        <p class="px-4 pt-3 pb-1.5 text-small text-muted">
           Replays use {machine.label}'s saved history. The live thread must have ended; model text
           is simulated and no tools run.
         </p>
@@ -393,7 +408,7 @@
         />
       </InputGroup.Addon>
     </ComposerCard>
-    <div class="min-h-8 px-1 pt-2 text-small" aria-live="polite">
+    <div class="min-h-8 px-1 pt-2.5 text-small" aria-live="polite">
       {#if error}<Alert>{error}</Alert>
       {:else if progress}<p class="text-muted">{progress}</p>
       {:else if !connected}<p

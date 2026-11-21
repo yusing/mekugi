@@ -73,7 +73,7 @@
 </script>
 
 <section class="flex h-full min-h-0 flex-col" aria-labelledby="details-heading">
-  <header class="flex min-h-12 items-center gap-2 pr-2 pl-4">
+  <header class="flex min-h-12 items-center gap-2 border-b border-rule pr-2 pl-4">
     <h2
       id="details-heading"
       class="min-w-0 flex-1 truncate font-semibold focus:outline-none"

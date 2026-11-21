@@ -241,7 +241,7 @@
   {#if user}
     <Message.Root align="end">
       <Message.Content
-        class="w-auto max-w-[min(680px,85%)] gap-0 rounded-[14px_14px_4px_14px] bg-accent-tint px-4 pt-2.5 pb-3 max-sm:max-w-[90%]"
+        class="w-auto max-w-[min(680px,85%)] gap-0 rounded-[16px_16px_4px_16px] border border-border/80 bg-accent-tint px-4 pt-2.5 pb-3 max-sm:max-w-[90%]"
       >
         <Message.Header
           class="mb-1 items-baseline gap-2.5 px-0 text-small font-semibold text-accent"

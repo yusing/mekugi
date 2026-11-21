@@ -453,7 +453,7 @@
 </div>
 {#if !following && below}
   <button
-    class="absolute bottom-4 left-1/2 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border bg-surface px-3.5 shadow-float hover:border-control max-sm:h-10"
+    class="absolute bottom-4 left-1/2 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-surface/95 px-3.5 text-small font-medium text-ink shadow-float backdrop-blur-sm transition-colors hover:border-control hover:bg-raised max-sm:h-10"
     onclick={latest}><Icon name="down" size={14} /> Latest</button
   >
 {/if}

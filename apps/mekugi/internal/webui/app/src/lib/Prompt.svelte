@@ -173,7 +173,11 @@
   const answerBox = `${input} resize-y`;
 </script>
 
-<article class="rounded-card bg-raised p-4 wrap-anywhere max-sm:p-3" data-prompt bind:this={card}>
+<article
+  class="rounded-float border border-border bg-raised p-4 shadow-xs wrap-anywhere max-sm:p-3"
+  data-prompt
+  bind:this={card}
+>
   {#if item.agent}<p class="mb-2 text-small text-muted">{stream.label(item.agent)}</p>{/if}
   {#if approval}
     <div class="flex items-baseline gap-3">
@@ -181,7 +185,7 @@
       {#if count > 1}<span class="ml-auto whitespace-nowrap text-muted">1 of {count}</span>{/if}
     </div>
     {#if approval.subject}<pre
-        class="my-3 rounded-control bg-surface p-2.5 text-code whitespace-pre-wrap wrap-anywhere"><code
+        class="my-3 rounded-control border border-rule bg-surface p-2.5 text-code whitespace-pre-wrap wrap-anywhere"><code
           >{approval.subject}</code
         ></pre>{/if}
     {#each approval.details as detail}<p class={text}>{detail}</p>{/each}

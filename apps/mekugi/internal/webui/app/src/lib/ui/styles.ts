@@ -25,38 +25,43 @@ export function button(variant: Variant = "default", shape: Shape = "text", size
 }
 
 export const input =
-  "min-h-9 w-full min-w-0 rounded-control border border-control bg-surface px-2.5 py-[7px] text-ink aria-invalid:border-negative max-sm:min-h-11 max-sm:text-base";
+  "min-h-9 w-full min-w-0 rounded-control border border-control bg-surface px-2.5 py-[7px] text-ink transition-colors focus-visible:border-accent aria-invalid:border-negative max-sm:min-h-11 max-sm:text-base";
 
 // What floats over the page: menus, popovers, suggestions and toasts.
 export const floating = "rounded-float border border-border bg-surface text-ink shadow-float";
 
 // A toolbar picker's pill. It shows what is chosen; its popover changes it.
 export const chip =
-  "inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-control bg-raised px-2.5 text-small text-muted hover:enabled:bg-active hover:enabled:text-ink aria-expanded:bg-active aria-expanded:text-ink disabled:opacity-45 max-sm:h-10 max-sm:text-body";
+  "inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-control bg-raised px-2.5 text-small text-muted transition-colors hover:enabled:bg-active hover:enabled:text-ink aria-expanded:bg-active aria-expanded:text-ink disabled:opacity-45 max-sm:h-10 max-sm:text-body";
 
 export const menuRule = "mx-1.5 my-1 h-px bg-rule";
 
 // A segmented track whose selected segment is a raised pill; callers choose
 // whether the track fills its row.
-export const segments = "gap-1 rounded-card bg-raised p-0.5";
+export const segments = "gap-0.5 rounded-card border border-rule bg-raised p-0.5";
 export const segment =
-  "min-h-[30px] min-w-0 truncate rounded-control px-3 font-medium text-muted disabled:cursor-default aria-pressed:bg-surface aria-pressed:text-ink aria-selected:bg-surface aria-selected:text-ink max-sm:min-h-11";
+  "min-h-[30px] min-w-0 truncate rounded-control px-3 font-medium text-muted transition-colors hover:text-ink disabled:cursor-default aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-xs aria-selected:bg-surface aria-selected:text-ink aria-selected:shadow-xs max-sm:min-h-11";
 
 // A transcript row's action in the gutter to its right; callers place it and
 // choose when it shows, usually with revealed.
 export const rowAction =
-  "flex size-7 items-center justify-center rounded-control hover:bg-active hover:text-ink max-sm:size-9";
+  "flex size-7 items-center justify-center rounded-control transition-colors hover:bg-active hover:text-ink max-sm:size-9";
 export const revealed =
-  "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 touch:opacity-100";
+  "opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 touch:opacity-100";
 
 // Empty sections use quiet spacing rather than another frame.
 export const emptyBox = "px-3.5 py-2.5 text-muted";
 
 // Code, output and file text on a raised well; callers pad it.
-export const codeBlock = "overflow-auto rounded-card bg-raised text-small leading-[18px]";
+export const codeBlock =
+  "overflow-auto rounded-card border border-rule bg-raised text-small leading-[19px]";
+
+// Keyboard shortcut badge used in quick-switcher and menu footers.
+export const kbd =
+  "inline-flex h-5 min-w-5 items-center justify-center rounded-chip border border-border bg-raised px-1 font-mono text-tiny text-muted";
 
 // A flat placeholder at the size of what is loading.
-export const skeleton = "rounded-chip bg-active";
+export const skeleton = "animate-pulse-subtle rounded-chip bg-active";
 
 // A disclosure's triangle, pointing right while closed. Summaries rotate it
 // inside an open group/disclosure; buttons as their aria-expanded says.
@@ -67,5 +72,5 @@ export const caretButton = `${triangle} before:rotate-90 aria-expanded:before:-r
 
 // Composers share one frame; their text grows with its content.
 export const composerText =
-  "block max-h-[40dvh] w-full resize-none border-0 bg-transparent px-3.5 leading-[22px] text-ink field-sizing-content focus-visible:outline-none max-sm:text-base";
-export const composerTools = "flex items-center px-2 pt-1 pb-2";
+  "block max-h-[40dvh] w-full resize-none border-0 bg-transparent px-4 leading-[22px] text-ink field-sizing-content focus-visible:outline-none max-sm:px-3.5 max-sm:text-base";
+export const composerTools = "flex items-center px-2.5 pt-1 pb-2 max-sm:px-2";

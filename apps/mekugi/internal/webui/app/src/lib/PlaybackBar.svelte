@@ -90,7 +90,7 @@
   // Full-height touch targets on phones, narrowed so the hour-wide clock and
   // the speed controls share one row at 390px.
   const control =
-    "grid h-8 w-8 place-items-center rounded-control text-muted hover:bg-active hover:text-ink max-sm:h-11";
+    "grid h-8 w-8 place-items-center rounded-control text-muted transition-colors hover:bg-active hover:text-ink max-sm:h-11";
   const marked: Record<string, string> = {
     work: "h-1.5 w-px bg-control",
     hook: "h-[3px] w-px bg-control",
@@ -102,7 +102,7 @@
 </script>
 
 <div
-  class="flex items-center gap-4 border-t px-4 pt-2.5 pb-safe-2.5 max-sm:flex-wrap max-sm:gap-x-1 max-sm:gap-y-0 max-sm:px-3 max-sm:pt-1 max-sm:pb-safe-2"
+  class="flex items-center gap-4 border-t border-rule bg-raised/40 px-4 pt-2.5 pb-safe-2.5 max-sm:flex-wrap max-sm:gap-x-1 max-sm:gap-y-0 max-sm:px-3 max-sm:pt-1 max-sm:pb-safe-2"
 >
   <div class="flex flex-none items-center gap-0.5 max-sm:flex-1">
     <!-- Play is the screen's one primary action. -->

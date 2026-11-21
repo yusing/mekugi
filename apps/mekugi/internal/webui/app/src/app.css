@@ -3,41 +3,32 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* One tinted ground holds the sidebar; the thread sits on a
-   flat sheet with soft corners. Colour goes on the data: tool
-   kinds, diff counts, failures and the recorded clock. The palettes below are
-   the only colours; the theme maps them to utilities.
-
-   The page wears the terminal it continues: IBM Plex Sans for interface text,
-   JetBrains Mono without ligatures for code, and in the dark the terminal's
-   own palette. The theme owner sets data-theme on the root to the effective
-   appearance, which the palette and code highlighting follow. The thread's
-   sheet is the terminal background (#15141b), the frame one step darker,
-   dividers the split colour, the accent the cursor violet and muted text the
-   foreground at the terminal's 65% faint opacity. The light palette keeps the
-   same hues at readable depths. */
+/* Desktop-grade workbench palette inspired by Codex Desktop, Claude Desktop, and T3 Code,
+   grounded in Mekugi's terminal heritage: IBM Plex Sans for interface text, JetBrains Mono
+   without ligatures for code, quiet neutral surfaces with whisper-thin hairlines, and colour
+   reserved for data (tool kinds, diff counts, agent roles, failures, and live pulse). */
 :root {
   color-scheme: light;
-  --ground: #f4f3f7;
+  --ground: #f5f4f7;
   --surface: #ffffff;
-  --raised: #f5f4f8;
-  --active: #ebe9f1;
-  --border: #e4e2ea;
-  --rule: #efeef3;
-  --control: #cdcad6;
-  --text: #15141b;
-  --muted: #5e5c66;
-  --primary: #15141b;
+  --raised: #f4f3f7;
+  --active: #eae8f0;
+  --border: #e3e1ea;
+  --rule: #eeedf4;
+  --control: #cdc9d8;
+  --text: #14131a;
+  --muted: #5d5b68;
+  --primary: #14131a;
   --on-primary: #ffffff;
-  --accent: #6a46b8;
-  --accent-tint: #f1edfa;
-  --accent-ink: #6a46b8;
+  --accent: #6842c2;
+  --accent-tint: #f2eefb;
+  --accent-ink: #5a35b5;
   --selection: #d9cdf5;
-  --kind-run: #6a46b8;
-  --kind-read: #2a68ae;
+  --kind-run: #6842c2;
+  --kind-read: #2563a8;
   --kind-write: #8a5a06;
-  --marker-image: #a23c97;
-  --positive: #1e7b4f;
+  --marker-image: #9e3994;
+  --positive: #18794e;
   --negative: #c4242a;
   --destructive: #831c1e;
   --pill-negative-bg: #ffedea;
@@ -45,12 +36,16 @@
   --pill-warning-bg: #fffbeb;
   --pill-warning-ink: #92400e;
   --pill-warning-edge: #fde68a;
-  --pill-neutral-bg: #ebe9f1;
+  --pill-neutral-bg: #eae8f0;
   --pill-neutral-ink: #35333d;
   /* Role colours are the terminal's; on light grounds they keep their hue at
      a depth that reads on white. */
   --role-depth: 56%;
-  --float-shadow: 0 8px 28px rgba(21, 20, 27, 0.12), 0 1px 3px rgba(21, 20, 27, 0.08);
+  --float-shadow: 0 12px 32px -4px rgba(20, 19, 26, 0.14), 0 2px 6px rgba(20, 19, 26, 0.06);
+  --sheet-shadow: 0 1px 3px rgba(20, 19, 26, 0.05), 0 0 0 1px rgba(20, 19, 26, 0.05);
+  --composer-shadow: 0 2px 10px -2px rgba(20, 19, 26, 0.06), 0 1px 2px rgba(20, 19, 26, 0.04);
+  --composer-shadow-focus:
+    0 6px 22px -6px rgba(104, 66, 194, 0.16), 0 1px 3px rgba(20, 19, 26, 0.06);
   --topbar: 48px;
   /* shadcn-svelte reads the same palette as the application compositions. */
   --background: var(--surface);
@@ -64,44 +59,48 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     color-scheme: dark;
-    --ground: #100f15;
+    --ground: #0c0b10;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #100f15;
-  --surface: #15141b;
-  --raised: #1c1a24;
-  --active: #29263c;
-  --border: #29263c;
-  --rule: #201e2a;
-  --control: #3e3a55;
-  --text: #d5d4d6;
-  --muted: #929195;
-  --primary: #d5d4d6;
-  --on-primary: #15141b;
-  --accent: #8e6ad9;
-  --accent-tint: #282239;
+  --ground: #0c0b10;
+  --surface: #131219;
+  --raised: #1a1922;
+  --active: #252333;
+  --border: #262435;
+  --rule: #1e1c29;
+  --control: #3a374f;
+  --text: #e2e1e6;
+  --muted: #9391a0;
+  --primary: #ecebf0;
+  --on-primary: #131219;
+  --accent: #9472e8;
+  --accent-tint: #231d36;
   /* The cursor violet, lifted to read on its tint. */
-  --accent-ink: #a588e2;
-  --selection: #584384;
-  --kind-run: #8e6ad9;
-  --kind-read: #68afda;
-  --kind-write: #daae76;
-  --marker-image: #d98bd0;
-  --positive: #58d8ad;
-  --negative: #d85d5d;
+  --accent-ink: #b69ef5;
+  --selection: #523d80;
+  --kind-run: #9b7bf0;
+  --kind-read: #6eb5e0;
+  --kind-write: #deb37c;
+  --marker-image: #dc8fd3;
+  --positive: #56d8ad;
+  --negative: #e06363;
   --destructive: #fca5a5;
-  --pill-negative-bg: #2e1a1f;
-  --pill-negative-ink: #e07a7a;
-  --pill-warning-bg: #2a2219;
-  --pill-warning-ink: #daae76;
+  --pill-negative-bg: #2d181e;
+  --pill-negative-ink: #e88282;
+  --pill-warning-bg: #292117;
+  --pill-warning-ink: #deb37c;
   --pill-warning-edge: #4a3b27;
-  --pill-neutral-bg: #29263c;
-  --pill-neutral-ink: #c4c3c8;
+  --pill-neutral-bg: #252333;
+  --pill-neutral-ink: #c8c7cf;
   --role-depth: 100%;
-  --float-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px #29263c;
+  --float-shadow: 0 16px 40px -4px rgba(0, 0, 0, 0.65), 0 0 0 1px #2c293d;
+  --sheet-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.045);
+  --composer-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --composer-shadow-focus:
+    0 8px 28px -6px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(148, 114, 232, 0.35);
 }
 
 @theme {
@@ -133,24 +132,35 @@
   /* Titles, and text inputs on phones, which zoom on anything smaller. */
   --text-base: 16px;
   --text-base--line-height: 22px;
-  --text-heading: 22px;
-  --text-heading--line-height: 28px;
+  --text-heading: 24px;
+  --text-heading--line-height: 30px;
 
-  --radius-chip: 4px;
-  --radius-control: 6px;
-  --radius-card: 8px;
+  --radius-chip: 5px;
+  --radius-control: 7px;
+  --radius-card: 10px;
   --radius-float: 12px;
-  --radius-composer: 14px;
-  --radius-sheet: 16px;
+  --radius-composer: 16px;
+  --radius-sheet: 14px;
 
   --container-column: 760px;
-  --container-sidebar: 272px;
-  --container-side: 320px;
+  --container-sidebar: 276px;
+  --container-side: 328px;
 
-  --animate-blink: blink 1.2s ease-in-out infinite;
+  --animate-blink: blink 1.3s ease-in-out infinite;
   @keyframes blink {
     50% {
-      opacity: 0.25;
+      opacity: 0.28;
+    }
+  }
+
+  --animate-pulse-subtle: pulse-subtle 2s ease-in-out infinite;
+  @keyframes pulse-subtle {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
     }
   }
 }
@@ -184,7 +194,7 @@
   --color-warning-edge: var(--pill-warning-edge);
   --color-neutral-tint: var(--pill-neutral-bg);
   --color-neutral-ink: var(--pill-neutral-ink);
-  --color-scrim: rgb(0 0 0 / 38%);
+  --color-scrim: rgb(0 0 0 / 42%);
   --color-background: var(--surface);
   --color-foreground: var(--text);
   --color-card: var(--surface);
@@ -205,6 +215,9 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --shadow-float: var(--float-shadow);
+  --shadow-sheet: var(--sheet-shadow);
+  --shadow-composer: var(--composer-shadow);
+  --shadow-composer-focus: var(--composer-shadow-focus);
 }
 
 /* An agent role's colour, set as --role on the element or an ancestor. */
@@ -241,6 +254,14 @@
   ::file-selector-button {
     border-color: var(--border);
   }
+  /* Quiet, desktop-native thin scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover {
+    scrollbar-color: var(--control) transparent;
+  }
   /* The root keeps the browser's font size, so spacing and breakpoints in rem
      follow the reader's setting; the body sets the interface's own size. */
   html,
@@ -254,6 +275,7 @@
     color: var(--text);
     font: 400 14px / 20px var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     font-variant-ligatures: none;
     font-feature-settings:
       "calt" 0,
@@ -324,7 +346,7 @@
      declares. */
   .prose {
     overflow-wrap: break-word;
-    line-height: 22px;
+    line-height: 23px;
     & > :first-child {
       margin-top: 0;
     }
@@ -335,10 +357,10 @@
       margin: 0 0 12px;
     }
     & :is(h1, h2, h3, h4) {
-      @apply mt-5 mb-2 text-body font-semibold;
+      @apply mt-5 mb-2 text-body font-semibold tracking-[-0.01em];
     }
     & :is(h1, h2) {
-      font-size: 15px;
+      font-size: 15.5px;
     }
     & ul {
       @apply list-disc pl-5;
@@ -347,13 +369,13 @@
       @apply list-decimal pl-5;
     }
     & li + li {
-      @apply mt-1;
+      @apply mt-1.5;
     }
     & strong {
       @apply font-semibold;
     }
     & code {
-      @apply rounded-chip bg-raised px-1 py-px text-code;
+      @apply rounded-chip border border-rule bg-raised px-1.5 py-px text-code;
       box-decoration-break: clone;
     }
     /* Machine-local targets use the shared file details action. */
@@ -361,25 +383,25 @@
       @apply font-mono text-code;
     }
     & pre {
-      @apply overflow-x-auto rounded-card bg-raised px-3.5 py-3 text-code leading-[19px];
+      @apply overflow-x-auto rounded-card border border-rule bg-raised px-3.5 py-3 text-code leading-[20px];
     }
     & pre code {
       @apply border-0 bg-transparent p-0;
     }
     & a {
-      @apply text-accent underline decoration-accent/40 underline-offset-3;
+      @apply text-accent underline decoration-accent/40 underline-offset-3 transition-colors hover:decoration-accent;
     }
     & blockquote {
-      @apply border-l-2 border-control pl-3 text-muted;
+      @apply border-l-2 border-control pl-3.5 text-muted;
     }
     & table {
       @apply block overflow-x-auto border-collapse;
     }
     & :is(th, td) {
-      @apply border-b border-rule py-1.5 pr-3 text-left;
+      @apply border-b border-rule py-1.5 pr-4 text-left;
     }
     & th {
-      @apply font-normal text-muted;
+      @apply font-medium text-muted;
     }
   }
 }
@@ -424,5 +446,5 @@
 .tool-operand {
   border-radius: var(--radius-chip);
   background: var(--raised);
-  padding: 1px 4px;
+  padding: 1px 5px;
 }
