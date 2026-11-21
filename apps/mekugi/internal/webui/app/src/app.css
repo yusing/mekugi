@@ -99,8 +99,7 @@
   --float-shadow: 0 16px 40px -4px rgba(0, 0, 0, 0.65), 0 0 0 1px #2c293d;
   --sheet-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.045);
   --composer-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --composer-shadow-focus:
-    0 8px 28px -6px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(148, 114, 232, 0.35);
+  --composer-shadow-focus: 0 8px 28px -6px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(148, 114, 232, 0.35);
 }
 
 @theme {
