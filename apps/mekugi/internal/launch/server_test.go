@@ -1723,6 +1723,9 @@ func serveServerCLIHost(t *testing.T) {
 		case "config/read":
 			result["layers"] = []any{}
 		case "thread/start":
+			if gate := os.Getenv("MEKUGI_TEST_SERVER_CLI_START_GATE"); gate != "" {
+				serverCLIAwait(t, func() bool { _, err := os.Stat(gate); return err == nil })
+			}
 			workspace, err := os.Getwd()
 			if err != nil {
 				t.Fatal(err)

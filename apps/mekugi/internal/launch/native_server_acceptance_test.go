@@ -32,6 +32,8 @@ func TestNativeServerAcceptance(t *testing.T) {
 	t.Chdir(workspace)
 	logPath := filepath.Join(t.TempDir(), "host.jsonl")
 	t.Setenv("MEKUGI_TEST_SERVER_CLI_LOG", logPath)
+	startupGate := filepath.Join(t.TempDir(), "start")
+	t.Setenv("MEKUGI_TEST_SERVER_CLI_START_GATE", startupGate)
 	bin := t.TempDir()
 	const hostDiagnostic = "synthetic host stderr warning"
 	script := "#!/bin/sh\nif [ \"$1\" = debug ]; then exit 1; fi\nprintf '%s\\n' '" + hostDiagnostic + "' '" + hostDiagnostic + "' '" + hostDiagnostic + "' >&2\nMEKUGI_TEST_SERVER_CLI_HOST=1; export MEKUGI_TEST_SERVER_CLI_HOST\nexec " + commandargs.Quote(os.Args[0]) + " -test.run=^TestRunServerLifecycle$ -- \"$@\"\n"
@@ -192,10 +194,41 @@ func TestNativeServerAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rpc.Close()
-	// Main can paint a draft before the runtime is ready to submit it.
-	events := serverRPCSubscribe(t, rpc, "main")
 	ready, cancelReady := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancelReady()
+	sessions := serverRPCSubscribe(t, rpc, "")
+	first, err := sessions.Next(ready)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(first.Data), `"thread":"main"`) {
+		t.Fatal("Main registered before the host confirmed startup")
+	}
+	writeTestFile(t, startupGate, "start")
+	for {
+		event, err := sessions.Next(ready)
+		if err != nil {
+			t.Fatalf("waiting for Main to register: %v", err)
+		}
+		var list struct {
+			Sessions []struct {
+				Thread string `json:"thread"`
+			} `json:"sessions"`
+		}
+		if err := json.Unmarshal(event.Data, &list); err != nil {
+			t.Fatal(err)
+		}
+		registered := false
+		for _, session := range list.Sessions {
+			registered = registered || session.Thread == "main"
+		}
+		if registered {
+			break
+		}
+	}
+	sessions.Close()
+	// Main can paint a draft before the runtime is ready to submit it.
+	events := serverRPCSubscribe(t, rpc, "main")
 	for {
 		event, err := events.Next(ready)
 		if err != nil {
