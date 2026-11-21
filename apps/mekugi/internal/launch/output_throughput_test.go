@@ -298,7 +298,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			root := u.attached.session.Agent("/root")
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
-			u.attached.session.Lifecycle(u.Thread).RestoreFinal(true)
+			u.attached.session.Lifecycle(u.Thread).Final = true
 			u.attached.presentation.Status.Text, u.settings.Model = "Ready", "gpt-6-sol"
 			rows, _ := u.testMainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
@@ -332,7 +332,7 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 			restoreUsage(u.usage, info)
 			observeCost(u.usage, thread, u.attached.session.Agent(u.attached.session.KnownCaller(thread)))
 			u.attached.session.Lifecycle(thread).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
-			u.attached.session.Lifecycle(thread).RestoreFinal(true)
+			u.attached.session.Lifecycle(thread).Final = true
 		}
 		u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Agents: u.attached.session.Roster()})
 		u.shell.Agents.Painter.Theme = diffrender.DarkTheme
