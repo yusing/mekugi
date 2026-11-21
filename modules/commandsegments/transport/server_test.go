@@ -168,6 +168,40 @@ func TestServerAcceptsOrderedReport(t *testing.T) {
 	}
 }
 
+// A helper can end without Closed. Its stream still ends, and a line written
+// across a pause arrives whole.
+func TestServerEndsReportWhenWriterCloses(t *testing.T) {
+	s := listen(t)
+	probe := newReportProbe()
+	register(t, s, func(context.Context, transport.Message) transport.Report { return probe })
+	p := connect(t, s)
+	p.send(t, hello())
+	if !p.accepted(t) {
+		t.Fatal("valid source sequence declined")
+	}
+	begin := transport.Message{Type: transport.Begin, Index: 0}
+	output := transport.Message{Type: transport.Output, Index: 0, Data: "first\n"}
+	p.send(t, begin)
+	line, err := json.Marshal(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.report.Write(line[:len(line)/2]); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(250 * time.Millisecond)
+	if _, err := p.report.Write(append(line[len(line)/2:], '\n')); err != nil {
+		t.Fatal(err)
+	}
+	p.report.Close()
+	receive(t, probe.ended)
+	for _, want := range []transport.Message{begin, output} {
+		if got := receive(t, probe.messages); !reflect.DeepEqual(got, want) {
+			t.Fatalf("message = %#v, want %#v", got, want)
+		}
+	}
+}
+
 func TestServerRejectsUnverifiedSourcesBeforeClaim(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

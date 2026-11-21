@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,9 @@ type Server struct {
 	claim     Claim
 	boundary  func(context.Context, Boundary)
 }
+
+// eofPoll bounds how long Darwin can miss the end of a report stream.
+const eofPoll = 100 * time.Millisecond
 
 var errBoundaryRegistered = errors.New("capture boundary consumer already registered")
 
@@ -245,8 +249,24 @@ func serve(ctx context.Context, report, reply *os.File, work string, claim Claim
 	if err := report.SetReadDeadline(time.Time{}); err != nil {
 		return
 	}
+	var partial []byte
 	for {
+		if runtime.GOOS == "darwin" {
+			// Darwin's kqueue does not report a FIFO's last writer closing,
+			// so a helper that ends without Closed would hold the report
+			// open. A bounded wait retries the read, which returns EOF.
+			if err := report.SetReadDeadline(time.Now().Add(eofPoll)); err != nil {
+				return
+			}
+		}
 		line, err := reader.ReadBytes('\n')
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			partial = append(partial, line...)
+			continue
+		}
+		if len(partial) > 0 {
+			line, partial = append(partial, line...), nil
+		}
 		if len(line) > 0 {
 			var message Message
 			if json.Unmarshal(line, &message) != nil {
