@@ -15,8 +15,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -24,6 +22,8 @@ import (
 
 // Invocation identifies a pinned frontend executable, before its selected
 // command is authenticated against the composed catalog.
+const codexThreadIDEnvironment = "CODEX_THREAD_ID"
+
 type Invocation struct{ directory, name string }
 
 // Recognize distinguishes private frontend invocations from ordinary
@@ -79,7 +79,7 @@ func Recognize(argv0 string) (*Invocation, error) {
 
 // Run authenticates and dispatches the selected command under the caller's
 // process ownership. Only a dedicated host worker may claim DedicatedHostProcess.
-func (invocation *Invocation) Run(service *history.Service, agentMetrics *evidence.Service, commands []command.Contribution, processScope command.ProcessScope,
+func (invocation *Invocation) Run(service *history.Service, commands []command.Contribution, processScope command.ProcessScope,
 	ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer,
 ) int {
 	directory, name := invocation.directory, invocation.name
@@ -114,22 +114,14 @@ func (invocation *Invocation) Run(service *history.Service, agentMetrics *eviden
 	}
 	compiled := commands[index]
 
-	selected, release, err := beginSession(ctx, service, manifest.ReplayDirectory, os.Getenv("CODEX_THREAD_ID"))
+	selected, release, err := beginSession(ctx, service, manifest.ReplayDirectory, os.Getenv(codexThreadIDEnvironment))
 	if err != nil {
 		return fail(err)
 	}
 	defer release()
-	run := func(ctx context.Context, request command.Request) (command.Output, error) {
-		return compiled.Run(ctx, request)
-	}
 	request := command.Request{Args: args, Stdin: stdin, ProcessScope: processScope,
 		Scope: selected}
-	var execution command.Output
-	if compiled.ObserveRead && agentMetrics != nil {
-		execution, err = executeFrontendReader(ctx, agentMetrics, manifest.AXReadOutput, name, request, run)
-	} else {
-		execution, err = run(ctx, request)
-	}
+	execution, err := compiled.Run(ctx, request)
 	if err != nil {
 		return fail(fmt.Errorf("execute tool: %w", err))
 	}

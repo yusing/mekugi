@@ -124,7 +124,7 @@ func (c *Composition) Add[D, S any, B interface {
 	}
 	commands := slices.Clone(descriptor.Contributes.Commands)
 	for _, definition := range commands {
-		contribution := command.Contribution{Spec: definition.Spec, ObserveRead: definition.ObserveRead}
+		contribution := command.Contribution{Spec: definition.Spec}
 		if definition.Run != nil {
 			contribution.Run = func(ctx context.Context, request command.Request) (command.Output, error) {
 				return definition.Run(handle.Value(), ctx, request)

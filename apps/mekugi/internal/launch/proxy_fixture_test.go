@@ -19,11 +19,9 @@ import (
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/modules/agentguidance"
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/changehistory"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/testsupport/moduletest"
@@ -72,11 +70,7 @@ func buildToolRegistryForTest(
 	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
 		return nil, err
 	}
-	var axReadOutput string
-	if debug, _ := requestexecution.DebugRequest(ctx); debug != nil {
-		axReadOutput = debug.ReadLogPath()
-	}
-	return frontends.New(ctx, frontends.Config{Commands: testCommands(), ReplayDirectory: filepath.Join(directory, "replay"), AXReadOutput: axReadOutput})
+	return frontends.New(ctx, frontends.Config{Commands: testCommands(), ReplayDirectory: filepath.Join(directory, "replay")})
 }
 
 func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
@@ -138,7 +132,7 @@ func runToolPluginWorker(service *history.Service, commands []command.Contributi
 	if invocation == nil {
 		return false, 0
 	}
-	return true, invocation.Run(service, new(evidence.Service), commands, processScope, ctx, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, commands, processScope, ctx, args, stdin, stdout, stderr)
 }
 
 // Close releases the actual owners created by request fixtures.
@@ -146,9 +140,9 @@ func (p *observationFixture) Close() error {
 	if p == nil {
 		return nil
 	}
-	p.calls.StopAdmission()
-	p.calls.Close()
-	p.activity.Close()
+	p.Calls.StopAdmission()
+	p.Calls.Close()
+	p.Audience.Close()
 	return nil
 }
 

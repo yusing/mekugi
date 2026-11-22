@@ -77,7 +77,7 @@ func Run() (exitCode int) {
 			}
 		}()
 		if worker != nil {
-			return worker.Run(runtime.History, runtime.AgentMetrics, runtime.Commands, command.DedicatedHostProcess, ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+			return worker.Run(runtime.History, runtime.Commands, command.DedicatedHostProcess, ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 		}
 		switch operation {
 		case "inspect-sessions":
