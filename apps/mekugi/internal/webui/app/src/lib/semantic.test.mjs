@@ -33,7 +33,8 @@ registerHooks({
 globalThis.location = { hash: "" };
 globalThis.addEventListener = () => {};
 globalThis.history = { replaceState() {}, pushState() {} };
-const { semantic, textDraft } = await import("./semantic.svelte.ts");
+const { semantic, textDraft, questionDraft, questionAnswers } =
+  await import("./semantic.svelte.ts");
 const { Stream, stream } = await import("./stream.svelte.ts");
 const { doing } = await import("./agents.ts");
 
@@ -2407,7 +2408,7 @@ test("prompt cards derive from actionable semantic inventory and retain child at
     ID: "pending",
     Pending: true,
     Text: "Choose",
-    Choices: [{ Label: "Yes", Description: "Proceed" }],
+    Choices: [{ Label: "Yes", Description: "Proceed", Preview: "Preview text", Recommended: true }],
   };
   owner.views[0].snapshot(2, [], {
     questions: [
@@ -2444,7 +2445,9 @@ test("prompt cards derive from actionable semantic inventory and retain child at
           secret: undefined,
           header: undefined,
           text: "Choose",
-          options: [{ label: "Yes", description: "Proceed" }],
+          options: [
+            { label: "Yes", description: "Proceed", preview: "Preview text", recommended: true },
+          ],
         },
       ],
     },
@@ -2452,8 +2455,93 @@ test("prompt cards derive from actionable semantic inventory and retain child at
   assert.equal(semantic.prompts.approvals[0].agent, "/root/approval-child");
   assert.deepEqual(semantic.prompts.approvals[0].choices, [{ id: 20, label: "Deny", deny: true }]);
   assert.equal(semantic.frame.questions.length, 3, "reconciliation retains sent calls");
+  owner.views[0].snapshot(3, [], {
+    questions: [{ ID: "blocking", Sync: true, Questions: [question] }],
+  });
+  assert.equal(semantic.prompts.questions[0].blocking, true);
   owner.views[0].state("lost", { status: 503, message: "Unavailable" });
   assert.equal(semantic.prompts.questions.length, 0);
+});
+
+test("question recommendations select without submitting and option notes stay compact", () => {
+  const call = {
+    id: "call",
+    blocking: false,
+    questions: [
+      {
+        id: "q1",
+        options: [
+          { label: "First" },
+          { label: "Second", recommended: true, preview: "<b>literal</b>" },
+        ],
+      },
+      { id: "q2", options: [] },
+    ],
+  };
+  const drafts = Object.fromEntries(call.questions.map((q) => [q.id, questionDraft(q)]));
+  assert.equal(drafts.q1.choice, 1);
+  assert.equal(drafts.q1.sending, false);
+  assert.equal(drafts.q1.accepted, false);
+  assert.equal(questionDraft({ id: "plain", options: [{ label: "Unmarked" }] }).choice, undefined);
+  drafts.q1.note = "Prefer staged rollout";
+  drafts.q2.text = "Keep my sibling draft";
+  assert.deepEqual(questionAnswers(call, drafts, "q1"), [
+    { question: "q1", choice: 1, text: "", note: "Prefer staged rollout", skip: false },
+  ]);
+  assert.equal(drafts.q2.text, "Keep my sibling draft");
+  assert.equal(drafts.q2.sending, false);
+  drafts.q1.choice = "skip";
+  assert.deepEqual(questionAnswers(call, drafts, "q1"), [
+    { question: "q1", choice: undefined, text: "", note: "", skip: true },
+  ]);
+  assert.throws(() => questionAnswers(call, drafts), /Choose a question/);
+  drafts.q2.text = "";
+  assert.throws(() => questionAnswers(call, drafts, "q2"), /Choose an option/);
+  assert.throws(
+    () => questionAnswers({ ...call, blocking: true }, drafts, "q1"),
+    /Answer every question/,
+  );
+  drafts.q2.text = "Other answer";
+  assert.equal(questionAnswers({ ...call, blocking: true }, drafts, "q1").length, 2);
+});
+
+test("async question admission retains editable sibling drafts through partial publications", () => {
+  const owner = machine();
+  const call = {
+    ...nativeQuestion("partial"),
+    Questions: [
+      { ID: "q1", Pending: true, Choices: [{ Label: "Yes", Recommended: true }] },
+      { ID: "q2", Pending: true, Choices: [] },
+    ],
+  };
+  owner.views[0].snapshot(2, [], { questions: [call] });
+  const pending = semantic.prompt("partial");
+  const projected = semantic.prompts.questions[0];
+  pending.drafts = Object.fromEntries(projected.questions.map((q) => [q.id, questionDraft(q)]));
+  pending.drafts.q1.sending = true;
+  pending.drafts.q2.text = "Sibling draft survives";
+  const sibling = pending.drafts.q2;
+  owner.views[0].snapshot(3, [], {
+    questions: [
+      {
+        ...call,
+        Questions: [{ ...call.Questions[0], Pending: false, State: "sending" }, call.Questions[1]],
+      },
+    ],
+  });
+  assert.deepEqual(
+    semantic.prompts.questions[0].questions.map((q) => q.id),
+    ["q2"],
+  );
+  assert.equal(semantic.prompt("partial").drafts.q2, sibling);
+  assert.equal(sibling.text, "Sibling draft survives");
+  assert.equal(sibling.sending, false);
+  assert.deepEqual(
+    questionAnswers(semantic.prompts.questions[0], pending.drafts, "q2").map(
+      (answer) => answer.question,
+    ),
+    ["q2"],
+  );
 });
 
 test("current history conflicts and incompatible protocols remain actionable", async () => {
