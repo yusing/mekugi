@@ -35,7 +35,7 @@ var legacyOutputHashed = recordkind.HashedName("output-", ".json")
 var LegacyCursorName = recordkind.HashedName("cursor-", ".json")
 
 // LegacyOutputName recognizes pre-switch output-<64-hex>.json and short-handle
-// output-<id>.json records.
+// output-<handle>.json records using the retired owner's exact handle rule.
 func LegacyOutputName(name string) bool {
 	if legacyOutputHashed(name) {
 		return true
@@ -45,16 +45,11 @@ func LegacyOutputName(name string) bool {
 		return false
 	}
 	id, ok = strings.CutSuffix(id, ".json")
-	if !ok || len(id) == 0 || len(id) > 64 {
+	if !ok {
 		return false
 	}
-	for i := range len(id) {
-		c := id[i]
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
-			return false
-		}
-	}
-	return true
+	_, ok = ParseHandle(id)
+	return ok
 }
 
 // LegacyRecoveryName reports whether name is a retired pre-switch

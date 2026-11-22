@@ -205,4 +205,10 @@ func TestFrozenPublicationRequiresThreadAndSweepsLegacyRecovery(t *testing.T) {
 			t.Fatalf("expired legacy record %s survived cleanup: %v", name, err)
 		}
 	}
+	if !history.LegacyOutputName("output-amber.json") || !history.LegacyOutputName("output-amber2.json") {
+		t.Fatal("expected retired short-handle names to match")
+	}
+	if history.LegacyOutputName("output-not_a_handle.json") {
+		t.Fatal("unexpectedly matched non-handle output filename")
+	}
 }

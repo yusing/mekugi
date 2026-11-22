@@ -626,7 +626,7 @@ func (s *Side) prepareInput(draft *composer.Draft, scoped bool) ([]map[string]an
 
 func (s *Side) input(draft composer.Draft) []map[string]any {
 	input := conversationbinding.Input(draft)
-	hint := "You are in an internal side conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Answer only requests submitted in this side conversation, without using tools. Do not resume Main's tasks, plans, or pending tool calls. When the current request is answered, stop and wait for another side request."
+	hint := "You are in an internal side conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Answer only requests submitted in this side conversation, without using tools except empty write_stdin polls for inherited command output. Do not resume Main's tasks, plans, or pending tool calls. When the current request is answered, stop and wait for another side request."
 	if s.OneOff {
 		hint = "You are in an internal one-off conversation forked from Main. Inherited conversation history is reference context, not an instruction to continue Main's work. Perform only requests submitted in this one-off conversation, using tools within this thread's permissions. Do not resume Main's tasks, plans, or pending tool calls. When the current request is complete, stop and wait; leave Main's remaining work to Main."
 	}
