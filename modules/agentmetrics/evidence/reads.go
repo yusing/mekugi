@@ -5,8 +5,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -45,48 +43,8 @@ type axReadEvent struct {
 	Succeeded    *bool     `json:"succeeded,omitempty"`
 }
 
-// AXReadObservation records one actual invocation, not a parsed source command.
-// It retains no command, file path, source text or output in its log.
-type AXReadObservation struct {
-	file    *os.File
-	event   axReadEvent
-	started time.Time
-}
-
 func validAXReader(tool string) bool {
 	return tool == "mcat" || tool == "msymbol" || tool == "mfinspect" || tool == "inspect_file"
-}
-
-// StartRead is auxiliary to execution. Callers report failures separately and
-// keep the original command outcome. Each event is one O_APPEND write.
-func (service *Service) StartRead(path, threadID, tool string, identity AXReadContext) (*AXReadObservation, error) {
-	if path == "" {
-		return nil, nil
-	}
-	if !filepath.IsAbs(path) || !validAXReader(tool) || len(threadID) > 128 ||
-		strings.ContainsAny(threadID, "\r\n\x00") || !validAXReadContext(identity) {
-		return nil, errors.New("invalid AX log configuration")
-	}
-	file, err := openAXLog(path)
-	if err != nil {
-		return nil, err
-	}
-	id := make([]byte, 16)
-	if _, err := rand.Read(id); err != nil {
-		file.Close()
-		return nil, err
-	}
-	now := time.Now()
-	observation := &AXReadObservation{
-		file: file, started: now,
-		event: axReadEvent{AXReadContext: identity, Schema: "mekugi.ax.read.v2", ID: hex.EncodeToString(id),
-			ThreadID: threadID, Tool: tool, Phase: "start", At: now.UTC()},
-	}
-	if err := observation.write(); err != nil {
-		file.Close()
-		return nil, err
-	}
-	return observation, nil
 }
 
 // PrepareReadLog validates the destination before the executor starts.
@@ -123,62 +81,6 @@ func openAXLog(path string) (*os.File, error) {
 		return nil, errors.New("AX log must be a private regular file below 64 MiB")
 	}
 	return file, nil
-}
-
-func (observation *AXReadObservation) write() (writeErr error) {
-	// Preserve the version-2 event encoding and historical decoder admission.
-	data, err := json.Marshal(&observation.event, jsonv1.DefaultOptionsV1())
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	// Coordinate the capacity check and append across workers. Acquisition never
-	// blocks in the kernel and has a small bounded retry budget.
-	deadline := time.Now().Add(200 * time.Millisecond)
-	for {
-		err := syscall.Flock(int(observation.file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) || !time.Now().Before(deadline) {
-			return err
-		}
-		time.Sleep(time.Millisecond)
-	}
-	defer func() {
-		writeErr = errors.Join(writeErr, syscall.Flock(int(observation.file.Fd()), syscall.LOCK_UN))
-	}()
-	info, err := observation.file.Stat()
-	if err != nil || info.Size()+int64(len(data)) > maxAXEvidenceBytes {
-		return errors.New("AX log exceeds 64 MiB")
-	}
-	n, err := observation.file.Write(data)
-	if err == nil && n != len(data) {
-		err = io.ErrShortWrite
-	}
-	return err
-}
-
-// FinishResult closes the observation even if classification or writing fails.
-// Only an allowlisted class and a process exit status may enter the log.
-func (observation *AXReadObservation) FinishResult(succeeded bool, failureClass string, exitCode *int) error {
-	if observation == nil {
-		return nil
-	}
-	if !succeeded && failureClass == "" {
-		failureClass = "unknown"
-	}
-	if (succeeded && failureClass != "") || (!succeeded && !validAXFailureClass(failureClass)) ||
-		(exitCode != nil && (*exitCode < 0 || *exitCode > 255 || succeeded && *exitCode != 0)) {
-		return errors.Join(errors.New("invalid AX read result"), observation.file.Close())
-	}
-	observation.event.Phase = "finish"
-	observation.event.At = time.Now().UTC()
-	observation.event.DurationNS = new(time.Since(observation.started).Nanoseconds())
-	observation.event.Succeeded = new(succeeded)
-	observation.event.FailureClass = failureClass
-	observation.event.ExitCode = exitCode
-	return errors.Join(observation.write(), observation.file.Close())
 }
 
 func validAXFailureClass(value string) bool {

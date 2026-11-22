@@ -117,7 +117,7 @@ func runTestWorker(service *history.Service, commands []command.Contribution, pr
 	if invocation == nil {
 		return false, 0
 	}
-	return true, invocation.Run(service, new(evidence.Service), commands, processScope, ctx, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, commands, processScope, ctx, args, stdin, stdout, stderr)
 }
 
 func TestMain(m *testing.M) {

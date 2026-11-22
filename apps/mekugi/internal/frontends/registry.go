@@ -24,7 +24,6 @@ const (
 type Config struct {
 	Commands        []command.Contribution
 	ReplayDirectory string
-	AXReadOutput    string
 	WorkerImage     *WorkerImage
 }
 
@@ -81,7 +80,6 @@ func New(ctx context.Context, config Config) (*Registry, error) {
 	}
 	manifest := workerManifest{
 		ReplayDirectory: config.ReplayDirectory,
-		AXReadOutput:    config.AXReadOutput,
 		Version:         manifestVersion,
 		Tools:           names,
 	}

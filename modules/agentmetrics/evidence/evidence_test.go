@@ -12,11 +12,46 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
 )
+
+func writeAXReadEvents(t *testing.T, path string, events ...axReadEvent) {
+	t.Helper()
+	var data []byte
+	for _, event := range events {
+		line, err := json.Marshal(&event, jsonv1.DefaultOptionsV1())
+		if err != nil {
+			t.Fatal(err)
+		}
+		data = append(data, line...)
+		data = append(data, '\n')
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func axReadPair(id, thread, tool string, identity AXReadContext, succeeded bool, class string, exitCode *int) []axReadEvent {
+	start := axReadEvent{
+		AXReadContext: identity,
+		Schema:        "mekugi.ax.read.v2",
+		ID:            id,
+		ThreadID:      thread,
+		Tool:          tool,
+		Phase:         "start",
+		At:            time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC),
+	}
+	finish := start
+	finish.Phase = "finish"
+	finish.At = start.At.Add(time.Millisecond)
+	finish.DurationNS = new(int64(time.Millisecond))
+	finish.Succeeded = new(succeeded)
+	finish.FailureClass = class
+	finish.ExitCode = exitCode
+	return []axReadEvent{start, finish}
+}
 
 func TestAXReadLogRestrictiveUmask(t *testing.T) {
 	const marker = "MEKUGI_TEST_AX_UMASK_PATH"
@@ -30,13 +65,6 @@ func TestAXReadLogRestrictiveUmask(t *testing.T) {
 		if err != nil || info.Mode().Perm() != 0600 {
 			t.Fatalf("log mode = %v, %v", info, err)
 		}
-		observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := observation.FinishResult(true, "", nil); err != nil {
-			t.Fatal(err)
-		}
 		return
 	}
 	// Umask is process-wide, so exercise it outside the other package tests.
@@ -46,8 +74,12 @@ func TestAXReadLogRestrictiveUmask(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("restrictive umask: %v\n%s", err, output)
 	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("prepared log mode = %v, %v", info, err)
+	}
 	result, err := new(Service).ReadReads(t.Context(), path, "thread")
-	if err != nil || result.Succeeded != 1 {
+	if err != nil || result.State != "unavailable" {
 		t.Fatalf("log = %+v, %v", result, err)
 	}
 }
@@ -114,23 +146,15 @@ func (ctx *axGrowingEvidenceContext) Err() error {
 
 func TestAXRuntimeReadLog(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	for _, test := range []struct {
-		thread  string
-		success bool
-	}{{"thread", true}, {"thread", false}, {"other", true}} {
-		observation, err := new(Service).StartRead(path, test.thread, "mcat", AXReadContext{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := observation.FinishResult(test.success, "", nil); err != nil {
-			t.Fatal(err)
-		}
-	}
-	pending, err := new(Service).StartRead(path, "thread", "mfinspect", AXReadContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	pending.file.Close() // Model an interrupted worker that never publishes finish.
+	var events []axReadEvent
+	events = append(events, axReadPair("ok", "thread", "mcat", AXReadContext{}, true, "", nil)...)
+	events = append(events, axReadPair("fail", "thread", "mcat", AXReadContext{}, false, "unknown", nil)...)
+	events = append(events, axReadPair("other", "other", "mcat", AXReadContext{}, true, "", nil)...)
+	events = append(events, axReadEvent{
+		Schema: "mekugi.ax.read.v2", ID: "pending", ThreadID: "thread",
+		Tool: "mfinspect", Phase: "start", At: time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC),
+	})
+	writeAXReadEvents(t, path, events...)
 	result, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err != nil || result.Started != 3 || result.Completed != 2 || result.Succeeded != 1 ||
 		result.Failed != 1 || result.Incomplete != 1 || result.ByTool["mcat"] != 2 || result.ByTool["mfinspect"] != 1 || result.State != "observed" {
@@ -138,10 +162,6 @@ func TestAXRuntimeReadLog(t *testing.T) {
 	}
 	if got, err := new(Service).ReadReads(t.Context(), "", "thread"); err != nil || got.State != "unavailable" {
 		t.Fatalf("missing evidence = %+v, %v", got, err)
-	}
-	data, _ := os.ReadFile(path)
-	if strings.Contains(string(data), path) || strings.Contains(string(data), "arguments") {
-		t.Fatal("log retained source details")
 	}
 }
 func TestAXReadAcceptsBackwardWallClock(t *testing.T) {
@@ -168,28 +188,6 @@ func TestAXReadAcceptsBackwardWallClock(t *testing.T) {
 	}
 }
 
-func TestAXReadConcurrentWriters(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	var workers sync.WaitGroup
-	for range 20 {
-		workers.Go(func() {
-			observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			if err := observation.FinishResult(true, "", nil); err != nil {
-				t.Error(err)
-			}
-		})
-	}
-	workers.Wait()
-	result, err := new(Service).ReadReads(t.Context(), path, "thread")
-	if err != nil || result.Started != 20 || result.Succeeded != 20 || result.Incomplete != 0 {
-		t.Fatalf("concurrent metrics = %+v, %v", result, err)
-	}
-}
-
 func TestAXReadRejectsUnsafeStorageAndMalformedEvents(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "target")
@@ -201,7 +199,7 @@ func TestAXReadRejectsUnsafeStorageAndMalformedEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, invalid := range []string{"relative", root, path, link} {
-		if _, err := new(Service).StartRead(invalid, "thread", "mcat", AXReadContext{}); err == nil {
+		if err := new(Service).PrepareReadLog(invalid); err == nil {
 			t.Fatalf("invalid log %q accepted", invalid)
 		}
 	}
@@ -359,32 +357,6 @@ func TestAXValidatesLogWithoutThreadMetadata(t *testing.T) {
 	}
 	if _, err := new(Service).ReadReads(t.Context(), path, ""); err == nil {
 		t.Fatal("malformed supplied log accepted")
-	}
-}
-
-func TestAXConcurrentNearCapacity(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Truncate(maxAXEvidenceBytes - 350); err != nil {
-		t.Fatal(err)
-	}
-	file.Close()
-	var workers sync.WaitGroup
-	for range 20 {
-		workers.Go(func() {
-			observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
-			if err == nil {
-				_ = observation.FinishResult(true, "", nil)
-			}
-		})
-	}
-	workers.Wait()
-	info, err := os.Stat(path)
-	if err != nil || info.Size() > maxAXEvidenceBytes {
-		t.Fatalf("concurrent writers exceeded limit: %v, %v", info, err)
 	}
 }
 
