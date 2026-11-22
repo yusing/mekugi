@@ -107,11 +107,11 @@ func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 	if err != nil || frozen == nil || frozen.ResourceRef == "" {
 		t.Fatalf("freeze=%+v err=%v", frozen, err)
 	}
-	_, continuation, found := strings.Cut(frozen.FullText, "Read the complete output with mcat ")
+	_, continuation, found := strings.Cut(frozen.FullText, "Read the complete output with: mcat ")
 	if !found || len(strings.Fields(continuation)) == 0 {
 		t.Fatalf("large full capture has no exact recovery: %q", frozen.FullText)
 	}
-	path := strings.TrimSuffix(strings.Fields(continuation)[0], ".")
+	path := strings.Trim(strings.Fields(continuation)[0], "'")
 	readerScope, err := p.nativeCaptureScope(f.thread, f.thread)
 	if err != nil {
 		t.Fatal(err)
@@ -140,11 +140,11 @@ func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 	if err != nil || strings.Contains(projected.Text, "late-content") || reader.reads.Load() != 1 {
 		t.Fatalf("projection reselected mutable IDs: %v reads=%d", err, reader.reads.Load())
 	}
-	_, projectedContinuation, ok := strings.Cut(projected.Text, "Read the complete output with mcat ")
+	_, projectedContinuation, ok := strings.Cut(projected.Text, "Read the complete output with: mcat ")
 	if !ok || len(strings.Fields(projectedContinuation)) == 0 {
 		t.Fatal("projected selection lost bounded recovery")
 	}
-	projectedPath := strings.TrimSuffix(strings.Fields(projectedContinuation)[0], ".")
+	projectedPath := strings.Trim(strings.Fields(projectedContinuation)[0], "'")
 	projectedFull, err := readerScope.Scope.Store.ReadReadOnlyFile(projectedPath, history.MaxRecordBytes)
 	if err != nil || string(projectedFull) != string(recovered) {
 		t.Fatalf("rematerialized range changed recovery content: %v", err)

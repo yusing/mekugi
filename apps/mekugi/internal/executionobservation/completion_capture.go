@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/outputbudget"
 	"github.com/yusing/mekugi/modules/agentguidance/compact"
@@ -70,7 +71,7 @@ func boundCompletion(ctx context.Context, result compact.CapturedSource, sources
 	if err != nil {
 		return "", err
 	}
-	result.Stderr = "Completion output exceeds budget. Read the complete output with mcat " + path + ".\n"
+	result.Stderr = "Completion output exceeds budget. Read the complete output with: mcat " + commandargs.Quote(path) + "\n"
 	trailerTokens, err := budget.Count("\n" + result.Stderr)
 	if err != nil {
 		return "", err

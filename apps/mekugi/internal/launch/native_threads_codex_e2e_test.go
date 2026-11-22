@@ -20,7 +20,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,6 +30,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -582,7 +582,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 			failure = "first awakened request omitted or repeated completed child answers"
 		}
 		if p.attachments {
-			var handles []string
+			var paths []string
 			for _, item := range request.Input {
 				if string(item["role"]) != `"user"` {
 					continue
@@ -592,19 +592,22 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				}
 				_ = json.Unmarshal(item["content"], &parts)
 				for _, part := range parts {
-					if !strings.HasPrefix(part.Text, "Optional attachment recall:") {
+					rest, ok := strings.CutPrefix(part.Text, "Optional attachment recall (read with mcat): ")
+					if !ok {
 						continue
 					}
-					for _, match := range regexp.MustCompile(`mread ([a-z]+[0-9]*(?: [a-z]+[0-9]*)*)`).FindAllStringSubmatch(part.Text, -1) {
-						handles = append(handles, strings.Fields(match[1])...)
+					for entry := range strings.SplitSeq(rest, "; ") {
+						if _, path, ok := strings.Cut(entry, ": "); ok && path != "" {
+							paths = append(paths, commandargs.Quote(path))
+						}
 					}
 				}
 			}
-			if len(handles) != 3 {
-				failure = fmt.Sprintf("reset did not expose kind-separated recall: %v", handles)
+			if len(paths) != 3 {
+				failure = fmt.Sprintf("reset did not expose kind-separated recall: %v", paths)
 			}
 			answer = ""
-			program = `const r = await tools.exec_command({cmd:` + strconv.Quote("mread "+strings.Join(handles, " ")) + `}); text(r.output);`
+			program = `const r = await tools.exec_command({cmd:` + strconv.Quote("mcat "+strings.Join(paths, " ")) + `}); text(r.output);`
 		}
 	case parent && step == 6 && p.attachments:
 		for _, expected := range []string{"CURRENT_ATTACHED_SKILL", "SELECTED_SCREEN_BYTES", "@attachment.txt", "$guide"} {
@@ -613,12 +616,12 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 				count = 0
 			} // Explicit source is already cached upstream.
 			if strings.Count(string(body), expected) != count {
-				failure = "mread did not recover attachment context exactly once: " + expected
+				failure = "mcat did not recover attachment context exactly once: " + expected
 			}
 		}
 		for _, excluded := range []string{"ORIGINAL_ATTACHED_SKILL", "ORIGINAL_ATTACHED_FILE", "CHANGED_ATTACHED_FILE"} {
 			if strings.Contains(string(body), excluded) {
-				failure = "mread recovered stale or unselected file content: " + excluded
+				failure = "mcat recovered stale or unselected file content: " + excluded
 			}
 		}
 		answer = "MANAGED_PARENT_RESUMED"

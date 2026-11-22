@@ -24,10 +24,11 @@ untouched.
   start at 50% and tell the agent to compact at 90%, so agents reset cleanly at
   safe checkpoints instead of drifting inside a bloated window.
 - **Built-in token-saving helpers.** Wrapped sessions put `mcat` (batched UTF-8
-  reads), `mrun` (head/tail-bounded commands with read-only spill files), `msymbol`
-  (Go, TypeScript, Python, and Rust semantic definitions/references), and `mfinspect`
-  (structural outlines) on `PATH`. Automatic output deduplication replaces repeated
-  outputs with compact references while keeping full results in history and the UI.
+  reads), `mrun` (head/tail-bounded commands that discard out-of-window output),
+  `msymbol` (Go, TypeScript, Python, and Rust semantic definitions/references),
+  and `mfinspect` (structural outlines) on `PATH`. Automatic output deduplication
+  replaces repeated outputs with compact references while keeping full results in
+  history and the UI.
 - **Workspace facts up front.** Sessions start with an observed OS and Git
   snapshot and mark attached files and skills as reusable, cutting warm-up turns.
 

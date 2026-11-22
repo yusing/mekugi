@@ -22,6 +22,47 @@ var FrozenFileRecord = recordkind.Spec{ID: "frozen-file", Match: FrozenFileName}
 // retained in the thread catalog.
 var FrozenResourceRecord = recordkind.Spec{ID: "frozen-resource", Match: FrozenResourceName}
 
+// LegacyOutputRecord and LegacyCursorRecord recognize retired pre-switch
+// outputrecovery files at the storage lifecycle boundary only so upgraded
+// stores continue expiring old records without blocking retention or restoring
+// mread.
+var LegacyOutputRecord = recordkind.Spec{ID: "output", Limit: 256 << 20, Match: LegacyOutputName}
+var LegacyCursorRecord = recordkind.Spec{ID: "cursor", Match: LegacyCursorName}
+
+var legacyOutputHashed = recordkind.HashedName("output-", ".json")
+
+// LegacyCursorName recognizes pre-switch cursor-<64-hex>.json records.
+var LegacyCursorName = recordkind.HashedName("cursor-", ".json")
+
+// LegacyOutputName recognizes pre-switch output-<64-hex>.json and short-handle
+// output-<id>.json records.
+func LegacyOutputName(name string) bool {
+	if legacyOutputHashed(name) {
+		return true
+	}
+	id, ok := strings.CutPrefix(name, "output-")
+	if !ok {
+		return false
+	}
+	id, ok = strings.CutSuffix(id, ".json")
+	if !ok || len(id) == 0 || len(id) > 64 {
+		return false
+	}
+	for i := range len(id) {
+		c := id[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// LegacyRecoveryName reports whether name is a retired pre-switch
+// outputrecovery record.
+func LegacyRecoveryName(name string) bool {
+	return LegacyOutputName(name) || LegacyCursorName(name)
+}
+
 func validFrozenKind(kind string) bool {
 	if len(kind) == 0 || len(kind) > 32 {
 		return false
@@ -66,6 +107,9 @@ var FrozenResourceName = recordkind.HashedName("resource-", ".json")
 func (s *Store) WriteReadOnlyFile(ctx context.Context, thread string, limits Limits, writes *persistence.Counter, kind, ext string, data []byte) (string, string, error) {
 	if s == nil {
 		return "", "", errors.New("retained storage is unavailable")
+	}
+	if strings.TrimSpace(thread) == "" {
+		return "", "", errors.New("retained frozen file requires an owning thread")
 	}
 	if !validFrozenKind(kind) || (ext != ".txt" && ext != ".json") {
 		return "", "", errors.New("invalid frozen file kind or extension")
@@ -114,6 +158,9 @@ func (s *Store) ReadReadOnlyFile(path string, limit int64) ([]byte, error) {
 func (s *Store) WriteJSONResource(ctx context.Context, thread string, limits Limits, writes *persistence.Counter, value any) (string, error) {
 	if s == nil {
 		return "", errors.New("retained storage is unavailable")
+	}
+	if strings.TrimSpace(thread) == "" {
+		return "", errors.New("retained JSON resource requires an owning thread")
 	}
 	data, err := json.Marshal(value)
 	if err != nil {

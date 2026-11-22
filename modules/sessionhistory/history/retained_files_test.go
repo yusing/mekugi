@@ -15,7 +15,12 @@ import (
 
 func openRetainedFilesStore(t *testing.T) *history.Store {
 	t.Helper()
-	svc, err := history.NewService([]recordkind.Spec{history.FrozenFileRecord, history.FrozenResourceRecord})
+	svc, err := history.NewService([]recordkind.Spec{
+		history.FrozenFileRecord,
+		history.FrozenResourceRecord,
+		history.LegacyOutputRecord,
+		history.LegacyCursorRecord,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,5 +146,63 @@ func TestWriteAndReadJSONResource(t *testing.T) {
 	}
 	if _, err := store.ReadJSONResource(ref); err != nil {
 		t.Fatalf("retained JSON resource was pruned: %v", err)
+	}
+}
+
+func TestFrozenPublicationRequiresThreadAndSweepsLegacyRecovery(t *testing.T) {
+	store := openRetainedFilesStore(t)
+	if _, _, err := store.WriteReadOnlyFile(t.Context(), "", history.Limits{}, nil, "output", ".txt", []byte("x")); err == nil {
+		t.Fatal("WriteReadOnlyFile accepted empty thread")
+	}
+	if _, err := store.WriteJSONResource(t.Context(), "   ", history.Limits{}, nil, map[string]string{"a": "b"}); err == nil {
+		t.Fatal("WriteJSONResource accepted blank thread")
+	}
+
+	// Simulate an upgraded store containing pre-switch outputrecovery records.
+	legacyOutput := "output-" + strings.Repeat("a", 64) + ".json"
+	legacyShort := "output-amber.json"
+	legacyCursor := "cursor-" + strings.Repeat("b", 64) + ".json"
+	for _, name := range []string{legacyOutput, legacyShort, legacyCursor} {
+		if err := os.WriteFile(filepath.Join(store.Directory(), name), []byte(`{"version":1}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		oldTime := time.Now().Add(-history.SessionRetention - time.Hour)
+		if err := os.Chtimes(filepath.Join(store.Directory(), name), oldTime, oldTime); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	path, _, err := store.WriteReadOnlyFile(t.Context(), "expired-thread", history.Limits{}, nil, "progress", ".txt", []byte("frozen"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := store.ReadCatalog(history.SessionName("expired-thread"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog.LastUsed = time.Now().Add(-history.SessionRetention - time.Hour)
+	aged, err := json.Marshal(&catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Transaction(t.Context(), nil, func(tx *history.Transaction) error {
+		return tx.Write(history.SessionName("expired-thread"), "catalog-pending-", aged)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(filepath.Join(store.Directory(), "retention-sweep"), past, past); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if err := store.Cleanup(t.Context(), nil, history.Limits{}, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("legacy outputrecovery records blocked expiring frozen file: %v", err)
+	}
+	for _, name := range []string{legacyOutput, legacyShort, legacyCursor} {
+		if _, err := os.Stat(filepath.Join(store.Directory(), name)); !os.IsNotExist(err) {
+			t.Fatalf("expired legacy record %s survived cleanup: %v", name, err)
+		}
 	}
 }

@@ -30,9 +30,7 @@ func runTestMcat(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	const maxBytes = 24 * 1024
 	exitCode := 0
-	written := 0
 	for _, spec := range specs {
 		info, err := os.Stat(spec.Path)
 		if err != nil {
@@ -66,14 +64,7 @@ func runTestMcat(args []string) int {
 			}
 			text = selected.String()
 		}
-		if written+len(text) > maxBytes {
-			remain := max(0, maxBytes-written)
-			fmt.Fprint(os.Stdout, text[:remain])
-			fmt.Fprintln(os.Stderr, "output truncated at token budget")
-			return 1
-		}
 		fmt.Fprint(os.Stdout, text)
-		written += len(text)
 	}
 	return exitCode
 }
@@ -193,8 +184,8 @@ func TestReloadReportsIncompleteSelectedContent(t *testing.T) {
 	}
 	captured := readReloadSnapshot(t, store, output)
 	sources := captured.Sources
-	if len(sources) != 2 || sources[0].Stdout == body || sources[0].ExitCode == 0 || sources[1].ExitCode == 0 || sources[1].Stderr == "" {
-		t.Fatal("capture did not report incomplete source or independent failure")
+	if len(sources) != 2 || sources[0].Stdout != body || sources[0].ExitCode != 0 || sources[1].ExitCode == 0 || sources[1].Stderr == "" {
+		t.Fatal("capture did not preserve full large source or independent missing-file failure")
 	}
 	unattached, err := (Readers{}).Capture(t.Context(), command.Request{Args: []string{string(selection)}})
 	if err != nil {

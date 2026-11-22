@@ -183,3 +183,23 @@ func TestCompactReloadWaitsWithoutPartialProviderContext(t *testing.T) {
 		t.Fatalf("unfinished acquisition: %s %v %v", pending, calls, err)
 	}
 }
+
+func TestCompactSnapshotsSkipsRetiredPreSwitchMreadReference(t *testing.T) {
+	p := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, p)
+	output := "Script completed\nWall time 0.1 seconds\nOutput:\n" + compact.SnapshotPrefix + "mread amber\n"
+	items := []map[string]jsontext.Value{
+		{"type": mustTestJSON(t, "custom_tool_call_output"), "call_id": mustTestJSON(t, "call-old"), "output": mustTestJSON(t, output)},
+	}
+	raw, err := json.Marshal(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := p.compactSnapshots(t.Context(), jsontext.Value(raw), map[string]bool{"call-old": true}, "root", codexresponses.TurnMetadata{}, false)
+	if err != nil {
+		t.Fatalf("pre-switch mread reload reference aborted preparation: %v", err)
+	}
+	if len(reloaded) != 0 {
+		t.Fatalf("expected retired mread reload reference to be skipped, got %+v", reloaded)
+	}
+}

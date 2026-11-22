@@ -9,7 +9,7 @@ instructions. Ask for one by name when you want a specific read or review:
 
 | Command | Purpose | Requirements |
 | --- | --- | --- |
-| `mrun` | Bound foreground output, keeping the ending by default; `--head` keeps the beginning; spills omitted output to a read-only file for `mcat` | The wrapped command |
+| `mrun` | Bound foreground output, keeping the ending by default; `--head` keeps the beginning; data outside the window is discarded | The wrapped command |
 | `mchanges` | Review/compose/revert/reapply captured edits by ID | Replay directory access |
 | `mcat` | Batched UTF-8 reads, ranges, tails, and frozen output files | None |
 | `msymbol` | Batched definitions/references | Go: `gopls`; JS/TS/JSON: TypeScript 7 `tsc`; Python: `pyright-langserver`; Rust: see below |

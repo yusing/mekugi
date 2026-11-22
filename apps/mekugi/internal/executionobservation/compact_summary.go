@@ -374,9 +374,9 @@ func (p *Preparer) compactSnapshots(ctx context.Context, input jsontext.Value, c
 				reference = strings.TrimSpace(ref)
 			}
 		}
-		if reference == "" {
+		if reference == "" || strings.HasPrefix(reference, "mread ") {
 			continue
-		} // Denial, cancellation, or failed publication.
+		} // Denial, cancellation, failed publication, or retired pre-switch mread handle.
 		data, err := p.Retained.Store.ReadReadOnlyFile(reference, history.MaxRecordBytes)
 		if err != nil {
 			return nil, err

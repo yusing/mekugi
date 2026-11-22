@@ -113,7 +113,11 @@ func RetainInput(ctx context.Context, selected changes.Scope, owner changes.Serv
 						return err
 					}
 					if belongs {
-						maps.Copy(inherited, catalog.Files)
+						for name, owned := range catalog.Files {
+							if owned && !history.LegacyRecoveryName(name) {
+								inherited[name] = true
+							}
+						}
 					}
 				}
 				release()

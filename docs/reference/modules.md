@@ -112,7 +112,7 @@ Own retained session publication, namespaces, allocation, leases, and retention
 - Requires: none.
 - Contributes: `record-kinds`.
 - Hosts: `record-kinds`.
-- Records: `hooks`, `compaction`, `frozen-file`, `frozen-resource`, `call`, `snapshot`, `commentary`.
+- Records: `hooks`, `compaction`, `frozen-file`, `frozen-resource`, `output`, `cursor`, `call`, `snapshot`, `commentary`.
 - Codex connections: none.
 
 ## [sessioninspection](../../modules/sessioninspection/SPEC.md)

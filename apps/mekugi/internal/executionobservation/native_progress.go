@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
 const nativeProgressBytes = 12 << 10
@@ -212,5 +213,5 @@ func (p *Preparer) PrepareNativeProgressOutput(ctx context.Context, input appser
 	if err != nil {
 		return appserver.ProgressOutputResponse{}, err
 	}
-	return appserver.ProgressOutputResponse{Text: "Progress output exceeds 12 KiB. Read the complete frozen summaries and intervals with mcat " + path + ".", RecoveryRef: &path}, nil
+	return appserver.ProgressOutputResponse{Text: "Progress output exceeds 12 KiB. Read the complete frozen summaries and intervals with: mcat " + commandargs.Quote(path), RecoveryRef: &path}, nil
 }

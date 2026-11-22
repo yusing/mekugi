@@ -363,7 +363,10 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	if sudoDirectory != "" {
 		front += string(os.PathListSeparator) + sudoDirectory
 	}
-	startup += "PATH=" + commandargs.Quote(front) + ":\"$PATH\"; export PATH\n"
+	startup += "PATH=" + commandargs.Quote(front) + ":\"$PATH\"\n"
+	startup += "if [ -n \"${CODEX_ARG0_PATH_DIR:-}\" ]; then\n" +
+		"  case :$PATH: in *\":$CODEX_ARG0_PATH_DIR:\"*) ;; *) PATH=\"$CODEX_ARG0_PATH_DIR:$PATH\" ;; esac\n" +
+		"fi\nexport PATH\n"
 	// Login profiles can replace PATH. Retain inherited command directories as
 	// fallbacks without accumulating them each time a nested shell starts.
 	if paths := filepath.SplitList(basePath); len(paths) != 0 {

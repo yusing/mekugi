@@ -25,6 +25,8 @@ var Module = module.Descriptor[Deps, *history.Service, module.NoBindings, module
 		history.CompactionRecord,
 		history.FrozenFileRecord,
 		history.FrozenResourceRecord,
+		history.LegacyOutputRecord,
+		history.LegacyCursorRecord,
 		{ID: "call", Match: func(name string) bool { return legacycall.ValidName(name, false) }, Dependencies: func(record recordkind.Record) ([]string, error) {
 			return history.HostDependencies(record.Name, record.Data)
 		}},

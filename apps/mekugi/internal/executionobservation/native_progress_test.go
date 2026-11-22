@@ -109,7 +109,7 @@ func TestNativeProgressBoundingRetainsExactOutputWithoutAcknowledgingRecovery(t 
 	if err != nil || bounded.RecoveryRef == nil || len(bounded.Text) > nativeProgressBytes || len(bounded.DeliveredIntervals) != 0 {
 		t.Fatalf("bounded output acknowledged omitted evidence: %+v err=%v", bounded, err)
 	}
-	if !strings.Contains(bounded.Text, "mcat "+*bounded.RecoveryRef) {
+	if !strings.Contains(bounded.Text, "mcat '"+*bounded.RecoveryRef+"'") && !strings.Contains(bounded.Text, "mcat "+*bounded.RecoveryRef) {
 		t.Fatalf("bounded progress missing mcat path hint: %q", bounded.Text)
 	}
 	reader, err := p.nativeCaptureScope("root", "root")
