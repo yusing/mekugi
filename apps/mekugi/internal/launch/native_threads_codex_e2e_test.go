@@ -30,7 +30,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -598,7 +597,7 @@ func (p *nativeThreadsProvider) serve(t *testing.T, w http.ResponseWriter, r *ht
 					}
 					for entry := range strings.SplitSeq(rest, "; ") {
 						if _, path, ok := strings.Cut(entry, ": "); ok && path != "" {
-							paths = append(paths, commandargs.Quote(path))
+							paths = append(paths, path)
 						}
 					}
 				}

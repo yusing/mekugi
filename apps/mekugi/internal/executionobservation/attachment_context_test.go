@@ -5,6 +5,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -181,6 +183,51 @@ func TestAttachmentContextPreservesSubmittedImagePath(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestAttachmentRecallQuotesPathsWithSpacesAndMetacharacters(t *testing.T) {
+	p := newManagedMekugiProxy(t)
+	replayDir := filepath.Join(t.TempDir(), "replay dir & $HOME 'quoted'")
+	store, err := openMekugiReplayStore(replayDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(store.snapshots.Close)
+	setTestProxyStore(p, store)
+
+	var editor composer.Editor
+	editor.InsertText("[Selected message]")
+	editor.Selections = []composer.Token{{Start: 0, End: len(editor.Text), Text: "quoted recall payload", Source: "screen"}}
+	item := binding.ThreadItem{ID: "submitted", Type: "userMessage", Content: mustTestJSON(t, conversationbinding.Input(editor.Draft))}
+	values := conversationbinding.CompactedAttachments([]binding.HistoryTurn{{Items: []binding.ThreadItem{item, {Type: "contextCompaction", Status: "completed"}}}})
+	p.ContextAttachments = attachmentTestContext(values)
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": []any{}, "tools": testExecResponsesTools()}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transform, err := p.prepareModelRequest(t.Context(), &request, "routing", "root", codexresponses.TurnMetadata{ThreadID: "root", RequestKind: "turn", ContextWindowID: "quoted-window", WindowNumber: 1}, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transform.Close()
+
+	hint := attachmentTestHint(t, request.Fields["input"])
+	token, ok := strings.CutPrefix(hint, "Optional attachment recall (read with mcat): selections: ")
+	if !ok || token == "" {
+		t.Fatalf("unexpected attachment hint: %q", hint)
+	}
+	resolved, err := exec.CommandContext(t.Context(), "/bin/sh", "-c", "printf '%s' "+token).Output()
+	if err != nil {
+		t.Fatalf("shell failed to parse recall token %q: %v", token, err)
+	}
+	rawPath := string(resolved)
+	if !strings.HasPrefix(rawPath, replayDir+string(filepath.Separator)) || token != commandargs.QuoteArgument(rawPath) {
+		t.Fatalf("recall token %q resolved to %q (want %q)", token, rawPath, commandargs.QuoteArgument(rawPath))
+	}
+	data, err := p.Retained.Store.ReadReadOnlyFile(rawPath, history.MaxRecordBytes)
+	if err != nil || !strings.Contains(string(data), "quoted recall payload") {
+		t.Fatalf("recalled file %q: %q, %v", rawPath, data, err)
 	}
 }
 
