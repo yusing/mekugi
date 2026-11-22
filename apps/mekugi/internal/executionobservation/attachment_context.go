@@ -10,6 +10,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
@@ -65,7 +66,7 @@ func (p *Preparer) prepareAttachmentHints(ctx context.Context, request *codexres
 			if err != nil {
 				return "", err
 			}
-			hints = append(hints, group.kind+": "+path)
+			hints = append(hints, group.kind+": "+commandargs.QuoteArgument(path))
 		}
 		return attachmentRecallHint(hints), nil
 	})
