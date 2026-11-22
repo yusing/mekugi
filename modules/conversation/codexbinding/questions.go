@@ -28,6 +28,9 @@ func Questions(thread, turn, item string, request jsontext.Value, questions []bi
 	c := prompt.Call{ID: binding.QuestionIdentity(thread, item, request), Thread: thread, Turn: turn, Item: item, Sync: len(request) > 0}
 	for _, wire := range questions {
 		q := prompt.Question{ID: wire.ID, Header: cmp.Or(wire.Header, strings.Split(wire.Question, "\n")[0]), Question: wire.Question, IsSecret: wire.IsSecret}
+		if !c.Sync && wire.ID == "" {
+			q.Outcome = "unavailable"
+		}
 		for i, o := range wire.Options {
 			q.Choices = append(q.Choices, prompt.Option{Label: o.Label, Description: o.Description, Preview: o.Preview, Recommended: o.Recommended})
 			if o.Recommended {
