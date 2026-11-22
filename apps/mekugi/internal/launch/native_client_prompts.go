@@ -48,6 +48,13 @@ func (p *nativeClientPrompts) update(frame *sessionapi.NativeFrame) {
 			current := prompt.Question{ID: q.ID, Header: q.Header, Question: q.Text, IsSecret: q.Secret, Choices: slices.Clone(q.Choices), Selected: q.Selected}
 			if old >= 0 && i < len(previous) && previous[i].ID == q.ID {
 				current = previous[i]
+				current.Header, current.Question, current.Choices = q.Header, q.Text, slices.Clone(q.Choices)
+			} else {
+				for j, choice := range current.Choices {
+					if choice.Recommended {
+						current.Selected = j
+					}
+				}
 			}
 			if q.Pending && current.Sent {
 				p.questions.AutoOpen = true

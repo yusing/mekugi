@@ -34,3 +34,6 @@
   Async answers commit independently by runtime question ID; unanswered siblings remain pending.
   Blocking responses include every question. Host replies use compact choices, written answers, or
   explicit skips; transcript and replay resolve choices against retained question options.
+  Terminal previews follow option focus (side-by-side at ≥80 columns, stacked below otherwise);
+  Alt+Shift+Up/Down scrolls plain-text previews, Tab adds a note in either mode. Recommendations are
+  separate indicators and never submit an answer.

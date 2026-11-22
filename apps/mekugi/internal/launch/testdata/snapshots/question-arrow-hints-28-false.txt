@@ -7,5 +7,5 @@
 "                            "
 "  \x1b[2m↑↓ pick · ↵ next · ←→\x1b[m     "
 "  \x1b[2mquestion · ^] skip · esc\x1b[m  "
-"  \x1b[2mhide\x1b[m                      "
+"  \x1b[2mhide · tab note\x1b[m           "
 "plain after dock            "

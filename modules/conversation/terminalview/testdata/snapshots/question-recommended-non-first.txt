@@ -1,0 +1,10 @@
+  ── Question 1 of 1 ───────────────────────────────────────────────── open ──
+  
+    How should we publish the release?
+  
+    1. Immediate  
+  ❯ 2. Staged [Recommended]  
+    3. Later      Keep the current version
+    4. Other      Type your answer
+  
+  1–4 choose · type answer · tab note · ctrl+] skip · esc hide
