@@ -24,7 +24,6 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/mcptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -42,7 +41,7 @@ func runOwnedToolPluginWorker(service *history.Service, commands []command.Contr
 	if invocation == nil {
 		return false, 0
 	}
-	return true, invocation.Run(service, new(evidence.Service), commands, command.DedicatedHostProcess, ctx, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, commands, command.DedicatedHostProcess, ctx, args, stdin, stdout, stderr)
 }
 
 const toolFrontendCodexWorkerEnvironment = "MEKUGI_TOOL_FRONTEND_CODEX_WORKER"

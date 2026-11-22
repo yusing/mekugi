@@ -140,9 +140,9 @@ func (p *observationFixture) Close() error {
 	if p == nil {
 		return nil
 	}
-	p.Calls.StopAdmission()
-	p.Calls.Close()
-	p.Audience.Close()
+	p.calls.StopAdmission()
+	p.calls.Close()
+	p.activity.Close()
 	return nil
 }
 

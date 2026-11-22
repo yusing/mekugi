@@ -219,11 +219,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	if err != nil {
 		return 1, fmt.Errorf("initialize replay storage: %w", err)
 	}
-	var axReadOutput string
-	if debug != nil {
-		axReadOutput = debug.ReadLogPath()
-	}
-	registry, err = frontends.New(ctx, frontends.Config{Commands: commands, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput, WorkerImage: threads.workers})
+	registry, err = frontends.New(ctx, frontends.Config{Commands: commands, ReplayDirectory: replayDirectory, WorkerImage: threads.workers})
 	if err != nil {
 		return 1, fmt.Errorf("initialize tool registry: %w", err)
 	}
