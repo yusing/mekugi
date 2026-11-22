@@ -175,7 +175,6 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 		if options.mine && index.discoveryErr != nil {
 			targetErrors = append(targetErrors, fmt.Errorf("caller-owned capture discovery is incomplete: %w", index.discoveryErr))
 		}
-		selectedChanges := make(map[string]trackedChange)
 		options.overlapLabels = make(map[string]string)
 		names := index.indexNames(options.ids)
 		var readable []string
@@ -219,7 +218,6 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 				continue
 			}
 			readable = append(readable, id)
-			selectedChanges[id] = change
 		}
 		options.ids = readable
 		options.unavailable = make(changeReadFailures)
@@ -230,12 +228,11 @@ func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOpti
 		for _, id := range readable {
 			if failure := options.unavailable[id]; failure != nil {
 				targetErrors = append(targetErrors, failure)
-				delete(selectedChanges, id)
 			}
 		}
 		selectedIDs := slices.DeleteFunc(readable, func(id string) bool { return options.unavailable[id] != nil })
 		for _, id := range selectedIDs {
-			for _, call := range selectedChanges[id].Calls {
+			for _, call := range index.Changes[id].Calls {
 				names = append(names, legacycall.Name(index.workspaceFor(id), call.ID, false))
 			}
 		}
