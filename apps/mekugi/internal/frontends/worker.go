@@ -20,10 +20,10 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-// Invocation identifies a pinned frontend executable, before its selected
-// command is authenticated against the composed catalog.
 const codexThreadIDEnvironment = "CODEX_THREAD_ID"
 
+// Invocation identifies a pinned frontend executable, before its selected
+// command is authenticated against the composed catalog.
 type Invocation struct{ directory, name string }
 
 // Recognize distinguishes private frontend invocations from ordinary
