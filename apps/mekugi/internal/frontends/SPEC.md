@@ -25,11 +25,8 @@
 - Cross-backend delegates share the parent's retained namespace while keeping caller-scoped
   implicit selections (`CODEX_THREAD_ID`).
 
-### Session storage and observation
+### Session storage
 
-- Go workers publish retained snapshots and frozen files through
-  [Session history](../../../../modules/sessionhistory/SPEC.md) under a session lease before
-  returning references. Publication failure preserves admitted stdout/stderr (or full mutation
-  reports), emits an explicit diagnostic without a broken reference, and never reruns the command.
-- Optional AX read observation writes to the authenticated read-log path without affecting command
-  outcomes.
+- Go workers hold a [Session history](../../../../modules/sessionhistory/SPEC.md) session lease
+  through command execution and stdout/stderr delivery so `mchanges` reads and `mreload` frozen
+  snapshot writes stay protected from concurrent retention sweeps.

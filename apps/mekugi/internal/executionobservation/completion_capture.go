@@ -71,8 +71,20 @@ func boundCompletion(ctx context.Context, result compact.CapturedSource, sources
 	if err != nil {
 		return "", err
 	}
-	result.Stderr = "Completion output exceeds budget. Read the complete output with: mcat " + commandargs.Quote(path) + "\n"
-	trailerTokens, err := budget.Count("\n" + result.Stderr)
+	quotedPath := commandargs.Quote(path)
+	totalLines := strings.Count(full, "\n")
+	if full != "" && !strings.HasSuffix(full, "\n") {
+		totalLines++
+	}
+	completionNotice := func(prefix string) string {
+		startLine := strings.Count(prefix, "\n") + 1
+		if startLine > 1 && startLine <= totalLines {
+			return fmt.Sprintf("Completion output exceeds budget. Read the remaining output with: mcat %s %d:%d\n", quotedPath, startLine, totalLines)
+		}
+		return "Completion output exceeds budget. Read the complete output with: mcat " + quotedPath + "\n"
+	}
+	maxNotice := fmt.Sprintf("Completion output exceeds budget. Read the remaining output with: mcat %s %d:%d\n", quotedPath, totalLines, totalLines)
+	trailerTokens, err := budget.Count("\n" + maxNotice)
 	if err != nil {
 		return "", err
 	}
@@ -84,6 +96,7 @@ func boundCompletion(ctx context.Context, result compact.CapturedSource, sources
 			return "", err
 		}
 		result.Stdout = prefix.Text
+		result.Stderr = completionNotice(prefix.Text)
 		text = completionText(result, sources)
 		tokens, err := budget.Count(text)
 		if err != nil {

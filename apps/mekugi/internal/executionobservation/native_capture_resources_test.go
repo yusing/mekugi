@@ -107,7 +107,7 @@ func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 	if err != nil || frozen == nil || frozen.ResourceRef == "" {
 		t.Fatalf("freeze=%+v err=%v", frozen, err)
 	}
-	_, continuation, found := strings.Cut(frozen.FullText, "Read the complete output with: mcat ")
+	_, continuation, found := strings.Cut(frozen.FullText, "Read the remaining output with: mcat ")
 	if !found || len(strings.Fields(continuation)) == 0 {
 		t.Fatalf("large full capture has no exact recovery: %q", frozen.FullText)
 	}
@@ -140,7 +140,7 @@ func TestNativeFinalRangeRecoveryExcludesLaterCaptures(t *testing.T) {
 	if err != nil || strings.Contains(projected.Text, "late-content") || reader.reads.Load() != 1 {
 		t.Fatalf("projection reselected mutable IDs: %v reads=%d", err, reader.reads.Load())
 	}
-	_, projectedContinuation, ok := strings.Cut(projected.Text, "Read the complete output with: mcat ")
+	_, projectedContinuation, ok := strings.Cut(projected.Text, "Read the remaining output with: mcat ")
 	if !ok || len(strings.Fields(projectedContinuation)) == 0 {
 		t.Fatal("projected selection lost bounded recovery")
 	}
