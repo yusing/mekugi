@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/observation"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
 // Source: apps/mekugi/internal/router/app_server_transcript.go:36:43@45fbe279
@@ -36,14 +37,35 @@ func (v *ActivitySource) ApplyTranscript(update observation.TextUpdate, content 
 		if entry.Text, entry.Native.Spans, ok = UserText(content); !ok {
 			return
 		}
-		if answer, replies, replied := conversationbinding.ReplyText(entry.Text); replied {
+		if _, replies, replied := conversationbinding.ReplyText(entry.Text); replied {
+			var definitions []prompt.Question
+			for _, previous := range v.Entries {
+				if previous.Source.Native == nil || previous.Source.Native.Thread != ref.ThreadID {
+					continue
+				}
+				for _, definition := range previous.Source.Native.QuestionDefinitions {
+					q := prompt.Question{ID: definition.ID}
+					for _, option := range definition.Options {
+						q.Choices = append(q.Choices, prompt.Option{Label: option.Label})
+					}
+					definitions = append(definitions, q)
+				}
+			}
+			answer, _, _ := conversationbinding.ReplyText(entry.Text, definitions...)
 			entry.Kind, entry.Native.ReplySource = "question_reply", entry.Text
 			for _, reply := range replies {
-				questionID := reply.Item
 				if entry.Native.Question == 0 {
 					for _, question := range v.Entries {
-						if question.Source.Kind == "question" && question.Source.Native != nil && question.Source.Native.Thread == ref.ThreadID && question.Source.Native.Item == questionID {
-							entry.Native.Question = question.Source.Seq
+						if question.Source.Kind != "question" || question.Source.Native == nil || question.Source.Native.Thread != ref.ThreadID {
+							continue
+						}
+						for _, definition := range question.Source.Native.QuestionDefinitions {
+							if definition.ID == reply.ID {
+								entry.Native.Question = question.Source.Seq
+								break
+							}
+						}
+						if entry.Native.Question != 0 {
 							break
 						}
 					}

@@ -1013,7 +1013,7 @@ func testWebUISemanticBrowser(t *testing.T, lane webUISemanticLane) {
 	run("wait", "--fn", `!document.querySelector('[data-prompt]')`)
 	serverCLIAwait(t, func() bool {
 		data, _ := os.ReadFile(ledger)
-		return strings.Contains(string(data), "answer-image-bytes "+base64.StdEncoding.EncodeToString(imageData)) && strings.Contains(string(data), `"first":{"answers":["user_note: [Image 1]`) && strings.Contains(string(data), `"second":{"answers":["user_note: separate browser answer"]}`)
+		return strings.Contains(string(data), "answer-image-bytes "+base64.StdEncoding.EncodeToString(imageData)) && strings.Contains(string(data), `"id":"first","other":"[Image 1]`) && strings.Contains(string(data), `"id":"second","other":"separate browser answer"`)
 	})
 	// Detaching the browser leaves the actual server owner available natively.
 	button("New thread")

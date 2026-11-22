@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -99,7 +100,7 @@ func (session *nativeSession) guardHookResponse(attached *attachedPresentation, 
 					continue
 				}
 				if input.Question != nil {
-					input.Question.Reject()
+					input.Question.RejectQuestions(conversationbinding.ReplyIDs(input.Text))
 				}
 				restoreSideDraft(attached, side, input)
 			}

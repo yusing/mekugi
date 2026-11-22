@@ -25,7 +25,7 @@ func apiPrompts(attached *attachedPresentation, control *sessioncontrol.Client[a
 		if call.Sent || call.Resolved || (!call.Local && call.Thread != control.Thread) {
 			continue
 		}
-		c := sessionapi.QuestionCall{ID: call.ID, Agent: agent(call.Thread)}
+		c := sessionapi.QuestionCall{ID: call.ID, Agent: agent(call.Thread), Blocking: call.Sync || call.Local}
 		for _, q := range call.View().Questions {
 			if !q.Pending {
 				continue
@@ -34,7 +34,7 @@ func apiPrompts(attached *attachedPresentation, control *sessioncontrol.Client[a
 			if !q.Secret {
 				item.Header, item.Text = textsanitize.Safe(q.Header, false), textsanitize.Safe(q.Text, false)
 				for _, o := range q.Choices {
-					item.Options = append(item.Options, sessionapi.Option{Label: textsanitize.Safe(o.Label, false), Description: textsanitize.Safe(o.Description, false)})
+					item.Options = append(item.Options, sessionapi.Option{Label: textsanitize.Safe(o.Label, false), Description: textsanitize.Safe(o.Description, false), Preview: o.Preview, Recommended: o.Recommended})
 				}
 			}
 			c.Questions = append(c.Questions, item)
@@ -75,7 +75,7 @@ func prepareCallAnswers(call *prompt.Call, input sessionapi.Answer) ([]prompt.An
 			pending++
 		}
 	}
-	if len(input.Answers) != pending {
+	if len(input.Answers) == 0 || len(input.Answers) > pending || (call.Sync || call.Secret()) && len(input.Answers) != pending {
 		return nil, false, "Answer every question or skip it."
 	}
 	copy := *call
@@ -103,7 +103,7 @@ func prepareCallAnswers(call *prompt.Call, input sessionapi.Answer) ([]prompt.An
 		} else if strings.TrimSpace(draft.Text) == "" {
 			draft.Text = ""
 		}
-		a := prompt.AnswerInput{Call: call.ID, Question: answer.Question, Choice: choice, Draft: draft, Skip: answer.Skip}
+		a := prompt.AnswerInput{Call: call.ID, Question: answer.Question, Choice: choice, Draft: draft, Skip: answer.Skip, Note: answer.Note}
 		if _, err := trial.Answer(a); err != nil {
 			switch {
 			case errors.Is(err, prompt.ErrSecretAnswer):

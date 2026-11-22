@@ -300,7 +300,7 @@ func TestAppServerRewindQuestionAnswer(t *testing.T) {
 	}
 	rows, _ := u.testMainFrame(100, 18, 0)
 	frame := strings.Join(rows, "\n")
-	if !strings.Contains(frame, "Autosquash, including descendant commits") || strings.Contains(frame, "send_user_message_question_reply") {
+	if !strings.Contains(frame, "Autosquash, including descendant commits") || strings.Contains(frame, "question_answers") {
 		t.Fatalf("answer dialog = %s", frame)
 	}
 	appServerTestKeys(t, u, "\r\r")

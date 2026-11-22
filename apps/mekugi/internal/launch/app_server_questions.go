@@ -381,12 +381,11 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 	}
 	c.Submitted()
 	if reply == "" {
-		c.Resolved = true
 		renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
 		return nil
 	}
 	answerDraft.Text, answerDraft.InHistory = reply, true
-	input := conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply)), MessageBoundary: session.controlObservations.AssistantMessage(attached.cwd, c.Thread)}
+	input := conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply)), QuestionIDs: conversationbinding.ReplyIDs(reply), MessageBoundary: session.controlObservations.AssistantMessage(attached.cwd, c.Thread)}
 	if session.Client.Requests.WorkSide(c.Thread) {
 		target := session.Client.Requests.Side(c.Thread)
 
@@ -400,19 +399,23 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 
 // Keep the reply envelope intact and render selections before replacing the
 // editor text with it. Images and ordinary Markdown accompany the answer.
-func questionAnswerAttachments(c *prompt.Call, secrets map[int]composer.State, secretAnswers map[int][]string) composer.Draft {
+func questionAnswerAttachments(c *prompt.Call, secrets map[int]composer.State, secretAnswers map[int][]string, ids ...string) composer.Draft {
 	var paths []string
 	var drafts []composer.Draft
 	for i := range c.Questions {
 		q := &c.Questions[i]
-		if !q.Done || q.Skipped || q.Outcome != "" {
+		included := c.Submitting(*q)
+		if len(ids) > 0 {
+			included = q.Outcome == "" && q.Done && slices.Contains(ids, q.ID)
+		}
+		if !included || q.Skipped {
 			continue
 		}
 		d := q.Editor.Snapshot.Draft
 		if q.IsSecret {
 			d = secrets[i].Snapshot.Draft
 		}
-		if len(d.Images) == 0 && !c.Sync && q.Selected < len(q.Choices) {
+		if len(d.Images) == 0 && !c.Sync && q.Selected < len(q.Choices) && !q.Note {
 			continue // Async option-only replies do not submit the parked free text.
 		}
 		drafts = append(drafts, d)
@@ -459,10 +462,11 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 		if c.Resolved {
 			continue
 		}
-		attached := questionAnswerAttachments(c, nil, nil)
+		attached := questionAnswerAttachments(c, nil, nil, part.QuestionIDs...)
 		part.AnswerImages, part.AnswerSelections = attached.AnswerImages, attached.AnswerSelections
 		part.Text = conversationbinding.PendingQuestionReply(c, part.Text)
 		part.ReplyCount = len(binding.QuestionReplies(part.Text))
+		part.QuestionIDs = conversationbinding.ReplyIDs(part.Text)
 		if part.Text == "" {
 			continue
 		}

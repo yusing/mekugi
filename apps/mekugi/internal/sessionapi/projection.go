@@ -57,6 +57,7 @@ type Prompts struct {
 }
 
 type QuestionCall struct {
+	Blocking  bool       `json:"blocking"`
 	ID        string     `json:"id"`
 	Agent     string     `json:"agent,omitzero"`
 	Questions []Question `json:"questions"`
@@ -71,6 +72,8 @@ type Question struct {
 }
 
 type Option struct {
+	Preview     string `json:"preview,omitzero"`
+	Recommended bool   `json:"recommended,omitzero"`
 	Label       string `json:"label"`
 	Description string `json:"description,omitzero"`
 }

@@ -31,37 +31,38 @@ type NativeItem struct {
 	Invocation        *activitypresentation.Invocation `json:"-"` // Canonical host state, shared while terminal output settles.
 	// Admitted native phase and timing. Terminal holds use detached projections
 	// rather than delaying these host facts.
-	CommandStarted     time.Time                         `json:"-"` // UI receipt of host start notification; not reconstructed on replay.
-	CommandEnded       time.Time                         `json:"-"`
-	Duration           time.Duration                     `json:"-"`
-	Questions          []activitypresentation.Question   `json:"-"`
-	ReplySource        string                            `json:"-"` // Stock async envelope or synchronous turn prompt.
-	ProcessID          string                            `json:"-"`
-	Thread, Turn, Item string                            `json:"-"`
-	Phase              string                            `json:"-"`
-	Wait               *activitypresentation.Value       `json:"-"` // Structured coordination progress, including logical waits.
-	Command, Status    string                            `json:"-"`
-	Exit               *int                              `json:"-"` // Observed exit presence is independent of retained output.
-	CommandCwd         string                            `json:"-"` // Metadata-owned directory for classified paths and receipt refreshes.
-	CommandTimeout     string                            `json:"-"` // Explicit timeout from available invocation input.
-	Approval           string                            `json:"-"` // UI decision, independent of the host execution result.
-	Workdir            string                            `json:"-"` // Display form of a command's directory outside the shown workspace.
-	SearchResults      *int                              `json:"-"`
-	Running            bool                              `json:"-"` // Started live and not yet completed; replay never sets it.
-	Live               bool                              `json:"-"` // From a live notification; restored history never sets it.
-	Changes            []activitypresentation.ChangeRow  `json:"-"` // Change rows read from a successful change history, VCS read, or commit.
-	Commit             activitypresentation.CommitKey    `json:"-"` // The commit object whose files complete changes.
-	Spans              []activitypresentation.TextSpan   `json:"-"` // Attachment spans, not text resembling image labels.
-	Question           uint64                            `json:"-"` // Original user entry.
-	Thought            time.Duration                     `json:"-"` // Reasoning time from its start to completion.
-	Replaces           string                            `json:"-"` // Pending thinking block this reasoning item takes over.
-	Attachments        []activitypresentation.Value      `json:"-"` // Submitted file snapshot outcomes, recovered from host history.
-	CapturedEdit       *changepresentation.Receipt       `json:"-"` // Exact invocation receipt reconciled by the live diff owner.
-	EditPages          []activitypresentation.Value      `json:"-"` // Completed host file changes, available before outer-cell capture.
-	Segments           []ActivitySegment                 `json:"-"` // A tracked command's own segments, replacing its single row.
-	SegmentsPending    bool                              `json:"-"` // Retained targets await independent report attribution.
-	Output             *activitymodel.Output             `json:"-"` // A command's retained host output, which the output dialog reads.
-	Hook               *activitypresentation.HookDetails `json:"-"`
+	CommandStarted      time.Time                         `json:"-"` // UI receipt of host start notification; not reconstructed on replay.
+	CommandEnded        time.Time                         `json:"-"`
+	Duration            time.Duration                     `json:"-"`
+	Questions           []activitypresentation.Question   `json:"-"`
+	QuestionDefinitions []observation.Question            `json:"-"`
+	ReplySource         string                            `json:"-"` // Stock async envelope or synchronous turn prompt.
+	ProcessID           string                            `json:"-"`
+	Thread, Turn, Item  string                            `json:"-"`
+	Phase               string                            `json:"-"`
+	Wait                *activitypresentation.Value       `json:"-"` // Structured coordination progress, including logical waits.
+	Command, Status     string                            `json:"-"`
+	Exit                *int                              `json:"-"` // Observed exit presence is independent of retained output.
+	CommandCwd          string                            `json:"-"` // Metadata-owned directory for classified paths and receipt refreshes.
+	CommandTimeout      string                            `json:"-"` // Explicit timeout from available invocation input.
+	Approval            string                            `json:"-"` // UI decision, independent of the host execution result.
+	Workdir             string                            `json:"-"` // Display form of a command's directory outside the shown workspace.
+	SearchResults       *int                              `json:"-"`
+	Running             bool                              `json:"-"` // Started live and not yet completed; replay never sets it.
+	Live                bool                              `json:"-"` // From a live notification; restored history never sets it.
+	Changes             []activitypresentation.ChangeRow  `json:"-"` // Change rows read from a successful change history, VCS read, or commit.
+	Commit              activitypresentation.CommitKey    `json:"-"` // The commit object whose files complete changes.
+	Spans               []activitypresentation.TextSpan   `json:"-"` // Attachment spans, not text resembling image labels.
+	Question            uint64                            `json:"-"` // Original user entry.
+	Thought             time.Duration                     `json:"-"` // Reasoning time from its start to completion.
+	Replaces            string                            `json:"-"` // Pending thinking block this reasoning item takes over.
+	Attachments         []activitypresentation.Value      `json:"-"` // Submitted file snapshot outcomes, recovered from host history.
+	CapturedEdit        *changepresentation.Receipt       `json:"-"` // Exact invocation receipt reconciled by the live diff owner.
+	EditPages           []activitypresentation.Value      `json:"-"` // Completed host file changes, available before outer-cell capture.
+	Segments            []ActivitySegment                 `json:"-"` // A tracked command's own segments, replacing its single row.
+	SegmentsPending     bool                              `json:"-"` // Retained targets await independent report attribution.
+	Output              *activitymodel.Output             `json:"-"` // A command's retained host output, which the output dialog reads.
+	Hook                *activitypresentation.HookDetails `json:"-"`
 }
 
 func (n *NativeItem) SameItem(other *NativeItem) bool {

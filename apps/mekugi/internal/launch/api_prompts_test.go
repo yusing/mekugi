@@ -42,7 +42,7 @@ func TestAPIQuestionBatchRejectsAtomically(t *testing.T) {
 		t.Fatalf("batch did not use Main's ordinary submission: %+v", requests)
 	}
 	text := requests[0].text()
-	if strings.Count(text, binding.QuestionReplyStart) != 1 || !strings.Contains(text, "Customers") || !strings.Contains(text, "Internal") {
+	if strings.Count(text, binding.QuestionReplyStart) != 1 || !strings.Contains(text, `"choice":1`) || !strings.Contains(text, `"choice":2`) {
 		t.Fatalf("batch lost answers: %s", text)
 	}
 }

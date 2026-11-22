@@ -2415,6 +2415,8 @@ test("prompt cards derive from actionable semantic inventory and retain child at
         ID: "child",
         agent: "/root/unpaged",
         Thread: "child-thread",
+        Sync: false,
+        Local: false,
         Questions: [question, { ...question, ID: "answered", Pending: false }],
       },
       { ID: "sent", Sent: true, Questions: [question] },
@@ -2434,6 +2436,7 @@ test("prompt cards derive from actionable semantic inventory and retain child at
   assert.deepEqual(semantic.prompts.questions, [
     {
       id: "child",
+      blocking: false,
       agent: "/root/unpaged",
       questions: [
         {

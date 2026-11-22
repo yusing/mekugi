@@ -72,7 +72,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	}
 	input := request.Params.Input
 	replies := binding.QuestionReplies(input[0].Text)
-	if len(replies) != 2 || replies[0].Answer != "[Image 1] [Selected message] " || replies[1].Answer != "[Image 2] [Selected message 2] " {
+	if len(replies) != 2 || replies[0].Other != "[Image 1] [Selected message] " || replies[1].Other != "[Image 2] [Selected message 2] " {
 		t.Fatalf("wrong image identity: %+v", replies)
 	}
 	if input[1].Type != "localImage" || input[1].Path != first || input[2].Type != "localImage" || input[2].Path != second {
@@ -107,7 +107,7 @@ func TestQuestionSyncImageSendsHostOwnedCompanion(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
 	appServerTestKeys(t, u, "\x1b[200~"+path+"\x1b[201~\r")
-	if !strings.Contains(wire.String(), `"user_note: [Image 1] "`) || strings.Contains(wire.String(), `"localImage"`) {
+	if !strings.Contains(wire.String(), `"[Image 1] "`) || strings.Contains(wire.String(), `"localImage"`) {
 		t.Fatalf("sync tool response must be strings, companion waits for resolution: %s", wire.String())
 	}
 	if len(u.attached.conversation.Unsent) != 1 || len(u.attached.conversation.Unsent[0].Images) != 1 {
@@ -182,7 +182,7 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "\r")
-	if !strings.Contains(wire.String(), "user_note: [Image 1]") || len(u.attached.conversation.Unsent) != 1 || len(u.attached.conversation.Unsent[0].Images) != 1 {
+	if !strings.Contains(wire.String(), "[Image 1]") || len(u.attached.conversation.Unsent) != 1 || len(u.attached.conversation.Unsent[0].Images) != 1 {
 		t.Fatal("secret answer image companion lost")
 	}
 	if len(u.questions.secretState(call.ID).Editors) != 0 || len(u.questions.secretState(call.ID).Answers) != 0 || len(call.Questions[0].Answer) != 0 {

@@ -112,7 +112,7 @@ func TestOneoffQuestionApprovalAndClose(t *testing.T) {
 	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
-	if !strings.Contains(wire.String(), `"id":"oneoff-question"`) || !strings.Contains(wire.String(), `"Small"`) {
+	if !strings.Contains(wire.String(), `"id":"oneoff-question"`) || !strings.Contains(wire.String(), `"choice":1`) {
 		t.Fatalf("question response lost original identity: %s", wire.String())
 	}
 	wire.Reset()

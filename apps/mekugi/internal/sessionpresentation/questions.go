@@ -11,6 +11,7 @@ type QuestionSubmitIntent struct {
 	Version    Version
 	Call       string
 	Incomplete bool
+	Questions  []string
 }
 
 func (m *Model) AnswerQuestion(intent AnswerIntent, questions *prompt.Questions) (*prompt.Question, error) {
@@ -30,5 +31,9 @@ func (m *Model) SubmitQuestions(intent QuestionSubmitIntent, questions *prompt.Q
 	if m.replay {
 		return nil, ErrReplayIntent
 	}
-	return questions.Submission(intent.Call, intent.Incomplete)
+	call, err := questions.Submission(intent.Call, intent.Incomplete)
+	if err == nil {
+		call.SubmitIDs = intent.Questions
+	}
+	return call, err
 }

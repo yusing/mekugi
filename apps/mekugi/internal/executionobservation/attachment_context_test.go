@@ -72,7 +72,7 @@ func TestPlainInputAttachmentRecallThroughNativeHistory(t *testing.T) {
 			if mode != "ordinary" {
 				text := "Attachments accompanying answers to call:\n"
 				if mode == "async answer" {
-					text = binding.EncodeQuestionReplies([]binding.QuestionReply{{Answer: "[Selected message]", QuestionItemID: binding.AsyncQuestionIdentity("call", 0)}})
+					text = binding.EncodeQuestionReplies([]binding.QuestionAnswer{{Other: "[Selected message]", ID: "q1"}})
 				}
 				draft = composer.Draft{Text: text, AnswerSelections: draft.UserSelections()}
 			}
@@ -124,7 +124,7 @@ func TestAttachmentContextPreservesSubmittedImagePath(t *testing.T) {
 					editor.Selections = []composer.Token{{Start: 0, End: len(editor.Text), Text: body, Source: "screen"}}
 				}
 				if origin == "answer" {
-					editor.InsertText(binding.EncodeQuestionReplies([]binding.QuestionReply{{Answer: "image answer", QuestionItemID: binding.AsyncQuestionIdentity("call", 0)}}))
+					editor.InsertText(binding.EncodeQuestionReplies([]binding.QuestionAnswer{{Other: "image answer", ID: "q1"}}))
 					editor.AnswerImages = []string{imagePath}
 				} else {
 					editor.InsertImage(imagePath)

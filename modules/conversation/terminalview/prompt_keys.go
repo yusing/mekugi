@@ -77,7 +77,7 @@ func (l *QuestionLayout) Key(m prompt.QuestionDockView, key string, empty bool) 
 	case "\x1b[6~":
 		l.textTop++
 	case "\t":
-		if m.Call.Sync && q.Selected < len(q.Choices) {
+		if q.Selected < len(q.Choices) {
 			edit.Kind, edit.Enabled = prompt.InputNote, true
 		}
 	case "\x16":

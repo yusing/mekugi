@@ -80,11 +80,7 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 
 func lifecycleReply(t *testing.T, item string, index int, question, answer string) string {
 	t.Helper()
-	id, err := json.Marshal([]any{"request_user_input_async", item, index})
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal([]binding.QuestionReply{{QuestionItemID: string(id), Question: question, Answer: answer}})
+	data, err := json.Marshal([]binding.QuestionAnswer{{ID: questionTestID(item, index), Other: answer}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +97,7 @@ func lifecycleUserMessage(t *testing.T, u *appServerUI, turn, item, text string)
 func TestQuestionReplyEnvelopeMustBeWholePrompt(t *testing.T) {
 	reply := lifecycleReply(t, "item", 0, "Who receives it?", "Customers")
 	for _, valid := range []string{reply, " \n" + reply + "\n ", "# Context from my IDE setup:\neditor state\n## My request for Codex:\n" + reply} {
-		if got := binding.QuestionReplies(valid); len(got) != 1 || got[0].Answer != "Customers" {
+		if got := binding.QuestionReplies(valid); len(got) != 1 || got[0].Other != "Customers" {
 			t.Fatalf("complete envelope not recognized: %q => %#v", valid, got)
 		}
 	}
@@ -111,8 +107,8 @@ func TestQuestionReplyEnvelopeMustBeWholePrompt(t *testing.T) {
 		}
 	}
 	single := strings.Replace(strings.Replace(reply, "[{", "{", 1), "}]", "}", 1)
-	if got := binding.QuestionReplies(single); len(got) != 1 || got[0].Answer != "Customers" {
-		t.Fatalf("single-object stock reply not recognized: %#v", got)
+	if got := binding.QuestionReplies(single); len(got) != 0 {
+		t.Fatalf("non-array reply recognized: %#v", got)
 	}
 }
 
@@ -130,7 +126,7 @@ func TestQuestionAsyncRemainingSurvivesReplyTurnSteerAndReplay(t *testing.T) {
 
 	v.startSession("main", t.TempDir())
 	first, _ := json.Marshal(map[string]any{"id": "two", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who receives it?", "questions": []any{
-		map[string]any{"title": "Who receives it?", "options": []string{"Customers", "Internal"}}, map[string]any{"title": "Who approves it?", "options": []string{"Customers", "Internal"}},
+		map[string]any{"id": questionTestID("two", 0), "question": "Who receives it?", "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal"}}}, map[string]any{"id": questionTestID("two", 1), "question": "Who approves it?", "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal"}}},
 	}})
 	var questionItem binding.ThreadItem
 	if err := json.Unmarshal(first, &questionItem); err != nil {
@@ -282,7 +278,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 			}
 			items := []binding.ThreadItem{
 				{ID: "prompt", Type: "userMessage", Content: content("Original task")},
-				{ID: "ask", Type: "agentMessage", Delivery: "async", Questions: []binding.Question{{Title: "Which audience?"}}},
+				{ID: "ask", Type: "agentMessage", Delivery: "async", Questions: []binding.Question{{ID: questionTestID("ask", 0), Question: "Which audience?"}}},
 				{ID: "reply", Type: "userMessage", Content: content(lifecycleReply(t, "ask", 0, "Which audience?", "Customers"))},
 				{ID: "ack", Type: "agentMessage", Text: "I will notify them."},
 			}

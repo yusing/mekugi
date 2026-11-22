@@ -133,9 +133,15 @@ type WebSearchAction struct {
 }
 
 type Question struct {
-	ID, Header, Question, Title string
-	IsSecret                    bool
-	Options                     jsontext.Value
+	ID, Header, Question string
+	IsSecret             bool
+	Options              []QuestionOption
+}
+type QuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitzero"`
+	Preview     string `json:"preview,omitzero"`
+	Recommended bool   `json:"recommended,omitzero"`
 }
 type FileChange struct {
 	Path, Diff string

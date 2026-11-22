@@ -351,7 +351,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 			}
 			if m.Error != nil {
 				if input.Question != nil {
-					input.Question.Reject()
+					input.Question.RejectQuestions(conversationbinding.ReplyIDs(input.Text))
 				}
 				if !s.Closed {
 					update.Restore, update.Side, update.Notice = *input, s, m.Error.Message
@@ -371,7 +371,7 @@ func (r *Requests[T]) ObserveSide(m appserver.Message, response Request[T], main
 				}
 				if err := json.Unmarshal(m.Result, &result); err != nil || result.Turn.ID == "" {
 					if input.Question != nil {
-						input.Question.Reject()
+						input.Question.RejectQuestions(conversationbinding.ReplyIDs(input.Text))
 					}
 					if root {
 						s.Busy = false
@@ -594,7 +594,7 @@ func (r *Requests[T]) ReplySide(s *Side, thread, turn string, input conversation
 		return SideUpdate{}, err
 	}
 	if input.Question != nil {
-		input.Question.SubmissionID = submission
+		input.Question.SetSubmission(submission, conversationbinding.ReplyIDs(input.Text))
 	}
 	request := r.pending[id]
 	request.Scope, request.Side, request.SideInput = "", s, &input

@@ -36,20 +36,20 @@ func TestQuestionSelectedTextUsesPlainMarkdown(t *testing.T) {
 			if mode == "async option" {
 				appServerTestKeys(t, u, "\x1b[A\r")
 				replies := binding.QuestionReplies(u.attached.conversation.Submitted[u.Submission().ID].Text)
-				if len(replies) != 1 || replies[0].Answer != "Internal" || len(conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)) != 1 {
+				if len(replies) != 1 || replies[0].Choice != 2 || len(conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)) != 1 {
 					t.Fatalf("option sent unsubmitted free text: %+v", conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft))
 				}
 				return
 			}
 			appServerTestKeys(t, u, "\r")
 			if sync {
-				if !strings.Contains(wire.String(), `"Narrow","user_note: [Selected message] **This?**"`) || strings.Contains(wire.String(), "quoted") {
+				if !strings.Contains(wire.String(), `"choice":1,"note":"[Selected message] **This?**"`) || strings.Contains(wire.String(), "quoted") {
 					t.Fatalf("sync answer changed: %s", wire.String())
 				}
 				questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "selected"})
 			} else {
 				replies := binding.QuestionReplies(u.attached.conversation.Submitted[u.Submission().ID].Text)
-				if len(replies) != 1 || replies[0].Answer != "[Selected message] **This?**" {
+				if len(replies) != 1 || replies[0].Other != "[Selected message] **This?**" {
 					t.Fatalf("wrong async answer: %+v", replies)
 				}
 			}
@@ -80,17 +80,20 @@ func TestQuestionSecretAndOrdinarySelectionsKeepDistinctLabels(t *testing.T) {
 	}
 	var response struct {
 		Result struct {
-			Answers map[string]struct {
-				Answers []string `json:"answers"`
-			} `json:"answers"`
+			Answers []binding.QuestionAnswer `json:"answers"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(bytes.TrimSpace(wire.Bytes()), &response); err != nil {
 		t.Fatal(err)
 	}
 	for id, label := range map[string]string{"private": "[Selected message]", "ordinary": "[Selected message 2]"} {
-		answers := response.Result.Answers[id].Answers
-		if len(answers) != 1 || answers[0] != "user_note: "+label+" " {
+		var answers []string
+		for _, answer := range response.Result.Answers {
+			if answer.ID == id {
+				answers = []string{answer.Other}
+			}
+		}
+		if len(answers) != 1 || answers[0] != label+" " {
 			t.Fatalf("question %s answer = %q, want distinct label %s", id, answers, label)
 		}
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -55,12 +56,12 @@ func (p *questionCodexProvider) ForwardExecution(ctx, _ context.Context, body []
 		return testGatewayResponse(routerFaultCodexSuccessResponse(), nil)
 	}
 	name, args := "request_user_input", map[string]any{"questions": []any{map[string]any{
-		"id": "scope", "header": "Scope", "question": "Which release scope?",
+		"header": "Scope", "question": "Which release scope?",
 		"options": []any{map[string]any{"label": "Narrow", "description": "Only the affected path"}, map[string]any{"label": "Broad", "description": "Every path"}},
 	}}}
 	if p.mode == "async" {
 		name, args = "request_user_input_async", map[string]any{"questions": []any{map[string]any{
-			"title": "Who should receive the update?", "options": []string{"Customers", "Internal team"},
+			"question": "Who should receive the update?", "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal team"}},
 		}}}
 	}
 	item := map[string]any{"type": "function_call", "id": fmt.Sprintf("question-item-%s", p.mode), "call_id": fmt.Sprintf("question-call-%s", p.mode), "name": name, "arguments": string(responses.MustMarshalJSON(args)), "status": "completed"}
@@ -161,11 +162,11 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 					t.Fatal(err)
 				}
 				encoded, _ := json.Marshal(parsed.Input)
-				wantAnswer := map[bool]string{false: "Customers", true: "[Image 1]"}[tc.image]
+				wantAnswer := map[bool]string{false: `\"choice\":1`, true: "[Image 1]"}[tc.image]
 				if tc.bareArrows {
 					wantAnswer = "one tXwYo"
 				}
-				if strings.Count(string(encoded), "<send_user_message_question_reply>") != 1 || !strings.Contains(string(encoded), `request_user_input_async`) || !strings.Contains(string(encoded), wantAnswer) {
+				if strings.Count(string(encoded), "<question_answers>") != 1 || !strings.Contains(string(encoded), wantAnswer) {
 					t.Fatal("async reply was not included exactly once in the mid-turn provider input")
 				}
 				if tc.image {
@@ -192,25 +193,21 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 					if item.Type != "function_call_output" || item.CallID != "question-call-sync" {
 						continue
 					}
-					var result struct {
-						Answers map[string]struct {
-							Answers []string `json:"answers"`
-						} `json:"answers"`
-					}
+					var result []binding.QuestionAnswer
 					if err := json.Unmarshal([]byte(item.Output), &result); err != nil {
 						t.Fatal(err)
 					}
-					answers := result.Answers["scope"].Answers
-					want := "Narrow"
+					answers := result
+					want := ""
 					if tc.bareArrows {
-						want = "user_note: one tXwYo"
+						want = "one tXwYo"
 					}
 					if tc.image {
-						want = "user_note: [Image 1] "
+						want = "[Image 1] "
 					}
-					found = len(answers) == 1 && answers[0] == want
+					found = len(answers) == 1 && answers[0].ID == "q1" && (want == "" && answers[0].Choice == 1 || want != "" && answers[0].Other == want)
 					if !found {
-						t.Fatalf("sync answer = %q; want %q", answers, want)
+						t.Fatalf("sync answer = %+v; want %q", answers, want)
 					}
 				}
 				if !found {

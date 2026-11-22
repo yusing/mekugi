@@ -156,7 +156,7 @@ func TestAppServerNotificationHistorySilent(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	out := notificationTestOutput(t, u)
 	var turns []binding.HistoryTurn
-	if err := json.Unmarshal([]byte(`[{"id":"past","status":"completed","items":[{"id":"answer","type":"agentMessage","text":"Done"}]},{"id":"question-turn","status":"completed","items":[{"id":"question","type":"agentMessage","delivery":"async","phase":"finalAnswer","text":"Who receives it?","questions":[{"title":"Who receives it?","options":["Customers","Internal"]}]}]}]`), &turns); err != nil {
+	if err := json.Unmarshal([]byte(`[{"id":"past","status":"completed","items":[{"id":"answer","type":"agentMessage","text":"Done"}]},{"id":"question-turn","status":"completed","items":[{"id":"question","type":"agentMessage","delivery":"async","phase":"finalAnswer","text":"Who receives it?","questions":[{"id":"q1","question":"Who receives it?","options":[{"label":"Customers"},{"label":"Internal"}]}]}]}]`), &turns); err != nil {
 		t.Fatal(err)
 	}
 	u.restoreHistory(turns)

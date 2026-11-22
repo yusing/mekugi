@@ -130,6 +130,7 @@ class Semantic {
         .filter((call) => !call.Sent && !call.Resolved)
         .map((call) => ({
           id: call.ID,
+          blocking: call.Sync || call.Local,
           agent: call.agent || agent(call.Thread),
           questions: call.Questions.filter((q) => q.Pending).map((q) => ({
             id: q.ID,

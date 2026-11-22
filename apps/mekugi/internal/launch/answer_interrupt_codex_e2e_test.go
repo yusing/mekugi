@@ -366,7 +366,7 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 				if bytes.Count(input, []byte("Change direction now")) != 1 {
 					t.Fatalf("steer was not delivered exactly once: %.4000s", input)
 				}
-			} else if strings.Count(string(input), "<send_user_message_question_reply>") != 1 || !bytes.Contains(input, []byte("Customers")) {
+			} else if strings.Count(string(input), "<question_answers>") != 1 || !bytes.Contains(input, []byte(`\"choice\":1`)) {
 				t.Fatalf("answer was not delivered exactly once after input completed: %.4000s", input)
 			}
 			if mode == "message" || mode == "steer" {

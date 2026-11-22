@@ -386,8 +386,8 @@ func TestNativeClientSkippedAnswerRequiresConfirmation(t *testing.T) {
 	if refusal := nativeTestAnswers(t, u, *client.calls[0].operation.Answers); refusal != "" {
 		t.Fatal(refusal)
 	}
-	if !strings.Contains(wire.String(), `"answers":{}`) {
-		t.Fatal("all-skipped native call lost ordinary empty-response semantics")
+	if !strings.Contains(wire.String(), `"skipped":true`) {
+		t.Fatal("all-skipped native call lost explicit skipped answer")
 	}
 }
 
@@ -576,7 +576,7 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 				}
 				u.attached.threadInput = &threadInput{caller: "/root/worker", admitted: true}
 				questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{
-					"id": "child-async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which scope?", "questions": []any{map[string]any{"title": "Which scope?", "options": []string{"Narrow", "Broad"}}},
+					"id": "child-async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which scope?", "questions": []any{map[string]any{"id": "q1", "question": "Which scope?", "options": []any{map[string]any{"label": "Narrow"}, map[string]any{"label": "Broad"}}}},
 				}})
 				calls := nativePendingQuestions(u.attached.conversation)
 				if len(calls) != 1 {
@@ -603,7 +603,7 @@ func TestNativeChildAsyncAnswersKeepParentWait(t *testing.T) {
 					t.Fatalf("reply left its child or used the wrong operation: %+v", requests)
 				}
 				replies := binding.QuestionReplies(requests[0].text())
-				if len(replies) != 1 || replies[0].Answer != "Narrow" {
+				if len(replies) != 1 || replies[0].Choice != 1 {
 					t.Fatalf("child answer payload = %+v", replies)
 				}
 				after := *threads.native.agent("main")

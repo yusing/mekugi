@@ -26,7 +26,11 @@
     in `$name` completions); `/skills` manages native Codex skill toggles while `skills-mgr`
     resolves managed skills.
 - **Questions, approvals, and side threads**: shares one family question channel (sync before async;
-  optional answer images/selections) and per-thread approval records while keeping secret editors
+  optional answer images/selections, option notes and recommended defaults) and per-thread approval records while keeping secret editors
   private to the terminal adapter. `/oneoff` opens one ephemeral work-capable fork (archived on
   close, not restored on resume); `/btw` opens a separate read-only answer dock on Main with tools
   disabled.
+
+  Async answers commit independently by runtime question ID; unanswered siblings remain pending.
+  Blocking responses include every question. Host replies use compact choices, written answers, or
+  explicit skips; transcript and replay resolve choices against retained question options.

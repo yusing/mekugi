@@ -2,6 +2,7 @@ package sessionpresentation
 
 import (
 	"fmt"
+	"github.com/yusing/mekugi/contracts/observation"
 	"slices"
 	"strings"
 	"time"
@@ -16,7 +17,15 @@ func RecordQuestion(c *prompt.Call, request, selected string, at time.Time, sour
 	states := []string{}
 	var body []string
 	var records []activitypresentation.Question
+	var definitions []observation.Question
 	for _, q := range c.View().Questions {
+		definition := observation.Question{ID: q.ID}
+		if !q.Secret {
+			for _, choice := range q.Choices {
+				definition.Options = append(definition.Options, observation.QuestionOption{Label: choice.Label})
+			}
+		}
+		definitions = append(definitions, definition)
 		state := q.State
 		if !slices.Contains(states, state) {
 			states = append(states, state)
@@ -67,7 +76,7 @@ func RecordQuestion(c *prompt.Call, request, selected string, at time.Time, sour
 			continue
 		}
 
-		entry := ActivityEntry{Seq: v.LastSeq + 1, Agent: agent, Kind: "question", Text: text, Observed: at, Native: &NativeItem{Thread: c.Thread, Turn: c.Turn, Item: id, Phase: "question", Questions: records}}
+		entry := ActivityEntry{Seq: v.LastSeq + 1, Agent: agent, Kind: "question", Text: text, Observed: at, Native: &NativeItem{Thread: c.Thread, Turn: c.Turn, Item: id, Phase: "question", Questions: records, QuestionDefinitions: definitions}}
 		v.Apply(ActivityEvent{Entries: []ActivityEntry{entry}})
 	}
 }

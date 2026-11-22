@@ -159,7 +159,7 @@ func TestOneoffEscapePendingReplyFailure(t *testing.T) {
 			selectSideThread(t, u, u.attached.presentation.View().Main)
 			oneoffTestAnswer(t, u)
 			start := btwTestRequest(t, wire, "turn/start", "oneoff")
-			if !strings.Contains(fmt.Sprint(start.Params.Input), "Small") {
+			if !strings.Contains(fmt.Sprint(start.Params.Input), `"choice":1`) {
 				t.Fatal("follow-up answer did not reach its own pending start")
 			}
 			selectSideThread(t, u, u.attached.presentation.View().SideThread)
@@ -311,7 +311,7 @@ func TestOneoffAsyncRejectedStart(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
 	oneoffTestStart(t, u, wire)
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"id": "q1", "question": "Which?", "options": []any{map[string]any{"label": "Small"}, map[string]any{"label": "Big"}}}}}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
@@ -331,7 +331,7 @@ func TestOneoffAsyncCommitIdentity(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.startSession("main", "/workspace")
 			oneoffTestStart(t, u, wire)
-			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"id": "q1", "question": "Which?", "options": []any{map[string]any{"label": "Small"}, map[string]any{"label": "Big"}}}}}})
 			if idle {
 				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff", "turn": map[string]any{"id": "oneoff-turn", "status": "completed"}})
 			}
@@ -345,7 +345,7 @@ func TestOneoffAsyncCommitIdentity(t *testing.T) {
 			}
 			_ = btwTestRequest(t, wire, method, "oneoff")
 			c := u.questions.calls()[0]
-			text := binding.EncodeQuestionReplies([]binding.QuestionReply{{Answer: "Small", QuestionItemID: binding.AsyncQuestionIdentity("async", 0)}})
+			text := binding.EncodeQuestionReplies([]binding.QuestionAnswer{{Choice: 1, ID: "q1"}})
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "user-answer", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": text}}}})
 			if c.Questions[0].Outcome != "answered" {
 				t.Errorf("own answer misclassified: outcome=%q submissionID=%q", c.Questions[0].Outcome, c.SubmissionID)
@@ -382,7 +382,7 @@ func TestOneoffAnswerDuringToolInput(t *testing.T) {
 	setTestAppServerIntegration(u, proxy)
 	u.startSession("main", "/workspace")
 	oneoffTestStart(t, u, wire)
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"id": "q1", "question": "Which?", "options": []any{map[string]any{"label": "Small"}, map[string]any{"label": "Big"}}}}}})
 	transform := prepareEmissionTest(t, proxy, "", "oneoff")
 	defer transform.Close()
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "function_call", "name": "unobserved", "call_id": "call", "status": "in_progress"}})
@@ -432,7 +432,7 @@ func TestOneoffCloseRunningCommand(t *testing.T) {
 }
 
 func oneoffTestAsync(t *testing.T, u *appServerUI, thread, turn, item string) {
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": map[string]any{"id": item, "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": map[string]any{"id": item, "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"id": "q1", "question": "Which?", "options": []any{map[string]any{"label": "Small"}, map[string]any{"label": "Big"}}}}}})
 }
 func oneoffTestAnswer(t *testing.T, u *appServerUI) {
 	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
@@ -527,7 +527,7 @@ func TestOneoffInputWaitsForItsAssistantMessage(t *testing.T) {
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{"type": "message"}})
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": "message", "delta": "Working"})
 			if answer {
-				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff", "turnId": "oneoff-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"id": "q1", "question": "Which?", "options": []any{map[string]any{"label": "Small"}, map[string]any{"label": "Big"}}}}}})
 				selectSideThread(t, u, u.attached.presentation.View().Main)
 				openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 				questionTestPaint(t, u, 80)
@@ -566,7 +566,7 @@ func TestOneoffSteerPassesChildAnswerWaitingForMessage(t *testing.T) {
 	item := map[string]any{"id": "child-message", "type": "message"}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": "child-message", "delta": "Working"})
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"title": "Which?", "options": []string{"Small", "Big"}}}}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "oneoff-child", "turnId": "child-turn", "item": map[string]any{"id": "async", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Which?", "questions": []any{map[string]any{"id": "q1", "question": "Which?", "options": []any{map[string]any{"label": "Small"}, map[string]any{"label": "Big"}}}}}})
 	selectSideThread(t, u, u.attached.presentation.View().Main)
 	openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)

@@ -71,6 +71,7 @@ type Answer struct {
 }
 
 type QuestionAnswer struct {
+	Note        string       `json:"note,omitzero"`
 	Question    string       `json:"question"`
 	Choice      *int         `json:"choice,omitzero"`
 	Text        string       `json:"text,omitzero"`

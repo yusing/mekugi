@@ -275,7 +275,7 @@ func TestAppServerBTWUnsolicitedSideEventsDoNotReachMain(t *testing.T) {
 	out.Reset()
 	for _, message := range []string{
 		`{"id":900,"method":"item/tool/requestUserInput","params":{"threadId":"side","turnId":"side-turn"}}`,
-		`{"method":"item/completed","params":{"threadId":"side","turnId":"side-turn","item":{"id":"side-question","type":"agentMessage","delivery":"async","questions":[{"title":"Side question?","options":["Yes","No"]}]}}}`,
+		`{"method":"item/completed","params":{"threadId":"side","turnId":"side-turn","item":{"id":"side-question","type":"agentMessage","delivery":"async","questions":[{"id":"q1","question":"Side question?","options":[{"label":"Yes"},{"label":"No"}]}]}}}`,
 		`{"method":"thread/tokenUsage/updated","params":{"threadId":"side","turnId":"side-turn","tokenUsage":{"total":{"inputTokens":9999}}}}`,
 		`{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"side-turn","status":"completed"}}}`,
 	} {
