@@ -38,9 +38,10 @@
 ### Output deduplication
 
 - Native history-to-model-input projection replaces repeated text tool outputs, supplied source
-  bodies, and exact line runs (≥192 bytes, saving ≥128 bytes within a 256 KiB window, or strictly
-  smaller line-range diffs against the 4 newest bodies) with forward references (`[call cN]`,
-  `[identical to call cN#L...]`).
+  bodies, and exact line runs (≥192 bytes, saving ≥128 bytes within a 256 KiB window, or
+  single-base line-range diffs against the 4 newest bodies when strictly smaller or replacing
+  fragmented multi-segment references within a bounded clarity margin) with forward references
+  (`[call cN]`, `[identical to call cN#L...]`).
 - User text, assistant prose, images, stored history, UI, and evidence consumers retain originals.
   Appending input preserves projected prefixes; reset/removal restores literals. Net saved
   bytes/estimated tokens report via native FeatureUse.
