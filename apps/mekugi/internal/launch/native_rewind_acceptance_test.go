@@ -67,6 +67,8 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 			logPath, gate := filepath.Join(directory, "host.log"), filepath.Join(directory, "complete")
 			t.Setenv("MEKUGI_TEST_REWIND_LOG", logPath)
 			t.Setenv("MEKUGI_TEST_REWIND_GATE", gate)
+			hookGate := filepath.Join(directory, "hooks")
+			t.Setenv("MEKUGI_TEST_REWIND_HOOK_GATE", hookGate)
 			t.Setenv("MEKUGI_TEST_REWIND_OUTCOME", outcome)
 			script := "#!/bin/sh\nMEKUGI_TEST_REWIND_HOST=1; export MEKUGI_TEST_REWIND_HOST\nexec " + commandargs.Quote(os.Args[0]) + " -test.run=^TestNativeRewindRevertSocket$ -- \"$@\"\n"
 			executable := filepath.Join(directory, "codex")
@@ -111,7 +113,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 				for !ready() {
 					next, nextErr := connection.Next()
 					if nextErr != nil {
-						t.Fatalf("%v; menu=%+v", nextErr, event.Frame.View.Menu)
+						t.Fatalf("%v; menu=%+v; feedback=%+v; busy=%t", nextErr, event.Frame.View.Menu, event.Frame.View.Status.Feedback, event.Frame.Facts.Busy)
 					}
 					event = next
 				}
@@ -147,6 +149,11 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 			await(func() bool {
 				return event.Frame.View.Main.ID == "main" && event.Frame.Main != nil && len(event.Frame.Main.Entries) > 0 && event.Frame.Review != nil && event.Frame.Review.Coverage != "CONNECTING"
 			})
+			if !event.Frame.Facts.Busy {
+				t.Fatal("hook trust did not block command admission")
+			}
+			writeTestFile(t, hookGate, "ready")
+			await(func() bool { return !event.Frame.Facts.Busy })
 			send(sessionapi.NativeOperation{Command: new("/rewind")})
 			if outcome == "empty" {
 				choose("third")
@@ -253,6 +260,8 @@ func serveNativeRewindHost(t *testing.T) {
 		fmt.Fprintf(log, "%s %s\n", request.Method, request.Params)
 		result := map[string]any{}
 		switch request.Method {
+		case "hooks/list":
+			serverCLIAwait(t, func() bool { _, err := os.Stat(os.Getenv("MEKUGI_TEST_REWIND_HOOK_GATE")); return err == nil })
 		case "thread/start", "thread/resume", "thread/revert":
 			cwd, _ := os.Getwd()
 			id := "main"
