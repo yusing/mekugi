@@ -146,6 +146,47 @@ func TestObserveCodeModeFailuresUsesPagedWaitErrorDetail(t *testing.T) {
 	}
 }
 
+func TestObserveCodeModeFailuresEmitsFallbackWhenPagedFailureAbandoned(t *testing.T) {
+	audience := sessioncontrol.NewAudience(nil)
+	audience.Attach("thread-1")
+	audience.Observe("thread-1", "", "/root", false)
+	preparer := &Preparer{Config: Config{Audience: audience}}
+
+	execCall := map[string]any{
+		"type":    "custom_tool_call",
+		"call_id": "call-exec-abandoned",
+		"name":    "exec",
+		"input":   "throw new Error('boom')",
+	}
+	page1Output := map[string]any{
+		"type":    "custom_tool_call_output",
+		"call_id": "call-exec-abandoned",
+		"output": []map[string]string{
+			{"type": "input_text", "text": "Script failed (more output: wait with cell ID 11)\nWall time 0.1 seconds\nOutput:\n"},
+			{"type": "input_text", "text": "page 1 stdout\n"},
+		},
+	}
+	otherCall := map[string]any{
+		"type":      "function_call",
+		"call_id":   "call-other",
+		"name":      "exec_command",
+		"arguments": `{"cmd":"echo ok"}`,
+	}
+	otherOutput := map[string]any{
+		"type":    "function_call_output",
+		"call_id": "call-other",
+		"output":  "Wall time: 0.0 seconds\nProcess exited with code 0\nOutput:\nok\n",
+	}
+	req := &codexresponses.Request{Fields: map[string]json.RawMessage{
+		"input": responses.MustMarshalJSON([]any{execCall, page1Output, otherCall, otherOutput}),
+	}}
+	preparer.observeCodeModeFailures("thread-1", "exec", req, nil)
+	_, events := audience.Take("thread-1")
+	if len(events) != 1 || events[0].CallID != "call-exec-abandoned" || events[0].Text != "exec script failed" {
+		t.Fatalf("abandoned paged failure supplement = %+v, want fallback on call-exec-abandoned", events)
+	}
+}
+
 func TestConfirmsReportRejectsPagedSuffix(t *testing.T) {
 	h := mekugiHistory{CarrierName: "exec", Report: "done"}
 	completeOne := responses.MustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\ndone")

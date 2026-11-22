@@ -47,7 +47,13 @@ for mekugi_file in "$@" mekugi-models.json; do
   fi
 done
 mkdir -p "$mekugi_install_dir"
-install -m 755 "$@" "$mekugi_install_dir/"
-install -m 644 mekugi-models.json "$mekugi_install_dir/mekugi-models.json"
+mekugi_stage_dir=$(mktemp -d "$mekugi_install_dir/.mekugi-install.XXXXXX")
+trap 'rm -rf "$mekugi_install_tmp" "$mekugi_stage_dir"' 0
+for mekugi_file in "$@"; do
+  install -m 755 "$mekugi_file" "$mekugi_stage_dir/$mekugi_file"
+  mv -f "$mekugi_stage_dir/$mekugi_file" "$mekugi_install_dir/$mekugi_file"
+done
+install -m 644 mekugi-models.json "$mekugi_stage_dir/mekugi-models.json"
+mv -f "$mekugi_stage_dir/mekugi-models.json" "$mekugi_install_dir/mekugi-models.json"
 printf 'Installed Mekugi and its native runtime in %s\n' "$mekugi_install_dir"
 printf 'Add that directory to PATH if needed\n'

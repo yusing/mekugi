@@ -32,6 +32,7 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 	calls := make(map[string]map[string]json.RawMessage)
 	waitCells := make(map[string]string)
 	cellExecCalls := make(map[string]string)
+	failedPagedCells := make(map[string]string)
 	codeModeCall := func(callID string) (map[string]json.RawMessage, bool) {
 		call, found := calls[callID]
 		if !found {
@@ -53,11 +54,8 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 		case "function_call":
 			if strings.TrimPrefix(responses.StringField(item, "name"), "functions.") == "wait" &&
 				(responses.StringField(item, "namespace") == "" || responses.StringField(item, "namespace") == "functions") {
-				var args struct {
-					CellID string `json:"cell_id"`
-				}
-				if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) == nil && args.CellID != "" {
-					waitCells[callID] = args.CellID
+				if cellID := waitCallCellID(responses.StringField(item, "arguments")); cellID != "" {
+					waitCells[callID] = cellID
 				}
 			}
 		case "custom_tool_call_output":
@@ -67,6 +65,11 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 			if texts := binding.ExecutionOutputTexts(item["output"]); len(texts) > 0 {
 				if status, cell, _ := binding.CodeModeExecutionHeader(texts[0]); cell != "" && (status == "running" || status == "Script failed") {
 					cellExecCalls[cell] = callID
+					if status == "Script failed" {
+						if text, failed := binding.CodeModeFailureText(texts); failed && text == "exec script failed" {
+							failedPagedCells[cell] = callID
+						}
+					}
 				}
 			}
 		case "function_call_output":
@@ -74,11 +77,19 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 				if texts := binding.ExecutionOutputTexts(item["output"]); len(texts) > 0 {
 					if status, nextCell, _ := binding.CodeModeExecutionHeader(texts[0]); nextCell == "" || status != "running" && status != "Script failed" {
 						delete(cellExecCalls, cellID)
+						delete(failedPagedCells, cellID)
+					} else if status == "Script failed" {
+						if text, failed := binding.CodeModeFailureText(texts); failed && text != "exec script failed" {
+							delete(failedPagedCells, cellID)
+						} else if execCallID := cellExecCalls[cellID]; execCallID != "" {
+							failedPagedCells[cellID] = execCallID
+						}
 					}
 				}
 			}
 		}
 	}
+	waitedCells := make(map[string]bool)
 	for _, item := range items[trailing:] {
 		callID := responses.StringField(item, "call_id")
 		if callID == "" {
@@ -112,6 +123,7 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 			if cellID == "" || execCallID == "" {
 				continue
 			}
+			waitedCells[cellID] = true
 			texts := binding.ExecutionOutputTexts(item["output"])
 			if text, failed := binding.CodeModeFailureText(texts); failed {
 				_, nextCell, _ := binding.CodeModeExecutionHeader(texts[0])
@@ -121,6 +133,34 @@ func (p *Preparer) observeCodeModeFailures(thread, codeModeToolName string, requ
 			}
 		}
 	}
+	// If the model moved on without calling wait for a failed paged cell,
+	// emit the generic failure supplement so the error is not silently lost.
+	for cellID, execCallID := range failedPagedCells {
+		if !waitedCells[cellID] {
+			p.Audience.Collect(activitypresentation.Supplement{Thread: thread, Source: "code-mode-failure\x00" + execCallID, Kind: "error", CallID: execCallID, Text: "exec script failed"})
+		}
+	}
+}
+
+func waitCallCellID(arguments string) string {
+	var args struct {
+		CellID json.RawMessage `json:"cell_id"`
+	}
+	if json.Unmarshal([]byte(arguments), &args) != nil || len(args.CellID) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(args.CellID, &text) == nil {
+		return text
+	}
+	var number json.Number
+	if dec := json.NewDecoder(strings.NewReader(string(args.CellID))); dec != nil {
+		dec.UseNumber()
+		if dec.Decode(&number) == nil {
+			return number.String()
+		}
+	}
+	return ""
 }
 
 // codeModeReturnedNothing reports a finished cell whose result carries nothing

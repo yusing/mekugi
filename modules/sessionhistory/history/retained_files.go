@@ -97,34 +97,41 @@ func FrozenFileName(name string) bool {
 // resource-<64-hex>.json.
 var FrozenResourceName = recordkind.HashedName("resource-", ".json")
 
-// WriteReadOnlyFile atomically publishes an immutable read-only (0o444) file in
-// the store directory and retains its filename in the thread's session catalog.
-func (s *Store) WriteReadOnlyFile(ctx context.Context, thread string, limits Limits, writes *persistence.Counter, kind, ext string, data []byte) (string, string, error) {
+func (s *Store) writeRetained(ctx context.Context, thread string, limits Limits, writes *persistence.Counter, resource, action, name, pattern string, data []byte, readOnly bool) error {
 	if s == nil {
-		return "", "", errors.New("retained storage is unavailable")
+		return errors.New("retained storage is unavailable")
 	}
 	if strings.TrimSpace(thread) == "" {
-		return "", "", errors.New("retained frozen file requires an owning thread")
-	}
-	if !validFrozenKind(kind) || (ext != ".txt" && ext != ".json") {
-		return "", "", errors.New("invalid frozen file kind or extension")
+		return fmt.Errorf("%s requires an owning thread", resource)
 	}
 	if len(data) > MaxRecordBytes {
-		return "", "", capacityError("retained frozen file", int64(len(data)), MaxRecordBytes, "Reduce the retained output before retrying.")
+		return capacityError(resource, int64(len(data)), MaxRecordBytes, action)
 	}
 	if limits.Total <= 0 {
 		limits.Total = DefaultStorageBytes
 	}
-	name := fmt.Sprintf("frozen-%s-%x%s", kind, sha256.Sum256(data), ext)
-	if err := s.Transaction(ctx, writes, func(tx *Transaction) error {
+	return s.Transaction(ctx, writes, func(tx *Transaction) error {
+		if err := tx.Retain(thread, limits, name); err != nil {
+			return err
+		}
 		if err := tx.Admit(limits, name, int64(len(data))); err != nil {
 			return err
 		}
-		if err := tx.WriteReadOnly(name, "frozen-pending-", data); err != nil {
-			return err
+		if readOnly {
+			return tx.WriteReadOnly(name, pattern, data)
 		}
-		return tx.Retain(thread, limits, name)
-	}); err != nil {
+		return tx.Write(name, pattern, data)
+	})
+}
+
+// WriteReadOnlyFile atomically publishes an immutable read-only (0o444) file in
+// the store directory and retains its filename in the thread's session catalog.
+func (s *Store) WriteReadOnlyFile(ctx context.Context, thread string, limits Limits, writes *persistence.Counter, kind, ext string, data []byte) (string, string, error) {
+	if !validFrozenKind(kind) || (ext != ".txt" && ext != ".json") {
+		return "", "", errors.New("invalid frozen file kind or extension")
+	}
+	name := fmt.Sprintf("frozen-%s-%x%s", kind, sha256.Sum256(data), ext)
+	if err := s.writeRetained(ctx, thread, limits, writes, "retained frozen file", "Reduce the retained output before retrying.", name, "frozen-pending-", data, true); err != nil {
 		return "", "", err
 	}
 	return filepath.Join(s.directory, name), name, nil
@@ -161,22 +168,8 @@ func (s *Store) WriteJSONResource(ctx context.Context, thread string, limits Lim
 	if err != nil {
 		return "", err
 	}
-	if len(data) > MaxRecordBytes {
-		return "", capacityError("retained JSON resource", int64(len(data)), MaxRecordBytes, "Reduce the retained resource before retrying.")
-	}
-	if limits.Total <= 0 {
-		limits.Total = DefaultStorageBytes
-	}
 	name := fmt.Sprintf("resource-%x.json", sha256.Sum256(data))
-	if err := s.Transaction(ctx, writes, func(tx *Transaction) error {
-		if err := tx.Admit(limits, name, int64(len(data))); err != nil {
-			return err
-		}
-		if err := tx.Write(name, "resource-pending-", data); err != nil {
-			return err
-		}
-		return tx.Retain(thread, limits, name)
-	}); err != nil {
+	if err := s.writeRetained(ctx, thread, limits, writes, "retained JSON resource", "Reduce the retained resource before retrying.", name, "resource-pending-", data, false); err != nil {
 		return "", err
 	}
 	return name, nil
