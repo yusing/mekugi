@@ -73,6 +73,13 @@ func (p *nativeClientPrompts) update(frame *sessionapi.NativeFrame) {
 	p.questions.Calls = calls
 	if !slices.Contains(calls, p.questions.Active) || p.questions.Active != nil && (p.questions.Active.Sent || p.questions.Active.Resolved) {
 		p.questions.Hide()
+	} else if p.questions.Active != nil && (p.questions.Current().Sent || p.questions.Current().Outcome != "") {
+		for i, question := range p.questions.Active.Questions {
+			if !question.Sent && question.Outcome == "" {
+				p.questions.Index, p.questions.Confirm = i, false
+				break
+			}
+		}
 	}
 	approvals := make([]*prompt.Approval, 0, len(frame.Approvals))
 	for _, view := range frame.Approvals {

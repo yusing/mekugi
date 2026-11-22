@@ -25,6 +25,9 @@ func (m *Questions) ApplyInput(in QuestionInput) bool {
 		return false
 	}
 	q := m.Current()
+	if in.Kind == InputNone {
+		return true
+	}
 	if q.Outcome != "" || q.Sent {
 		return false
 	}
