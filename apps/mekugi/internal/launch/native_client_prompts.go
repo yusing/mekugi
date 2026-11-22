@@ -240,7 +240,11 @@ func (c *nativeClient) prompt(input terminalsession.PromptInput, next *terminals
 			c.renderer.terminal.Prompts.Secrets(call.ID).Answers[p.questions.Index] = answer.Answer
 			c.renderer.terminal.Prompts.Secrets(call.ID).Editors[p.questions.Index] = editor.Park()
 		} else {
-			_, err := p.questions.Answer(prompt.AnswerInput{Call: call.ID, Question: input.Question.Question, Choice: question.Selected, Draft: editor.Draft.Clone(), Skip: skip})
+			note := ""
+			if question.Note && !skip && question.Selected < len(question.Choices) {
+				note = editor.Text
+			}
+			_, err := p.questions.Answer(prompt.AnswerInput{Call: call.ID, Question: input.Question.Question, Choice: question.Selected, Draft: editor.Draft.Clone(), Note: note, Skip: skip})
 			if err != nil {
 				c.notice = err.Error()
 				return true
