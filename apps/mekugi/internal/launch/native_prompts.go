@@ -150,7 +150,9 @@ func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation,
 		*editor = hideQuestionEditor(&session.questions, attached.conversation, *editor, session.Client.Thread)
 	}
 	previous := handle.Questions
+	previousIDs := handle.SubmitIDs
 	handle.Questions = trial.Questions
+	handle.SubmitIDs = trial.SubmitIDs
 	secretEditors := make(map[int]composer.State)
 	view := trial.View()
 	for _, answer := range input.Answers {
@@ -168,6 +170,7 @@ func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation,
 	err := session.submitQuestionAnswers(attached, picker, editor, side, clock, overlay, parent, handle, secretEditors, secrets)
 	if !handle.Sending() && !handle.Resolved {
 		handle.Questions = previous
+		handle.SubmitIDs = previousIDs
 		if err == nil {
 			return attached.feedback.Text, nil
 		}
