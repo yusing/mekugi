@@ -14,9 +14,7 @@ func MessageQuestions(text observation.TextEvent, item observation.Item, userTex
 	in := prompt.Message{Ref: text.Item.Ref, Kind: text.Kind, Main: main, User: item.Type == "userMessage", History: history, ClientID: item.ClientID}
 	if item.Type == "agentMessage" && text.Item.AsyncQuestion {
 		questions := make([]binding.Question, len(item.Questions))
-		for i, q := range item.Questions {
-			questions[i] = binding.Question{ID: q.ID, Header: q.Header, Question: q.Question, IsSecret: q.IsSecret, Options: q.Options}
-		}
+		copy(questions, item.Questions)
 		call := Questions(in.Ref.ThreadID, in.Ref.TurnID, in.Ref.ItemID, nil, questions)
 		in.Call = &call
 	}
@@ -87,7 +85,7 @@ func PendingQuestionReply(c *prompt.Call, text string) string {
 	for _, r := range binding.QuestionReplies(text) {
 		for _, q := range c.Questions {
 			if q.ID == r.ID && q.Outcome == "" {
-				replies = append(replies, r)
+				replies = append(replies, compactAnswer(q, q.Answer))
 				break
 			}
 		}
