@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -43,7 +44,24 @@ func TestSharedRichQuestionDecoder(t *testing.T) {
 	if o.Label != "B" || o.Description != "detail" || o.Preview != "a\nb" || !o.Recommended {
 		t.Fatal(o)
 	}
-	if _, err := DecodeQuestionRequest(jsontext.Value(`{"questions":[{"id":"q1","question":"Old?","options":["A"]}]}`)); err == nil {
-		t.Fatal("string options accepted")
+	if _, err := DecodeQuestionRequest(jsontext.Value(`{"questions":[{"id":"q1","question":"Invalid?","options":[3]}]}`)); err == nil {
+		t.Fatal("numeric options accepted")
+	}
+}
+
+func TestRetainedLegacyAsyncQuestions(t *testing.T) {
+	var item ThreadItem
+	if err := json.Unmarshal([]byte(`{"type":"agentMessage","delivery":"async","questions":[{"title":"Continue?","options":["Yes","No"]},{"id":"authored-id","title":"Why?"}]}`), &item); err != nil {
+		t.Fatal(err)
+	}
+	if item.Questions[0].Question != "Continue?" || item.Questions[0].Options[0].Label != "Yes" || item.Questions[1].ID != "authored-id" {
+		t.Fatal(item.Questions)
+	}
+	encoded, err := json.Marshal(item.Questions[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"title"`) || !strings.Contains(string(encoded), `"label":"Yes"`) {
+		t.Fatal(string(encoded))
 	}
 }

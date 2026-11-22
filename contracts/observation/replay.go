@@ -4,6 +4,7 @@ package observation
 
 import (
 	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"time"
 )
 
@@ -133,10 +134,47 @@ type WebSearchAction struct {
 }
 
 type Question struct {
-	ID, Header, Question string
-	IsSecret             bool
-	Options              []QuestionOption
+	ID       string           `json:"id"`
+	Header   string           `json:"header"`
+	Question string           `json:"question"`
+	IsSecret bool             `json:"isSecret"`
+	Options  []QuestionOption `json:"options"`
 }
+
+func (q *Question) UnmarshalJSON(data []byte) error {
+	var stored struct {
+		ID       string           `json:"id"`
+		Header   string           `json:"header"`
+		Question string           `json:"question"`
+		Title    string           `json:"title"`
+		IsSecret bool             `json:"isSecret"`
+		Options  []jsontext.Value `json:"options"`
+	}
+	if err := json.Unmarshal(data, &stored, json.MatchCaseInsensitiveNames(true)); err != nil {
+		return err
+	}
+	decoded := Question{ID: stored.ID, Header: stored.Header, Question: stored.Question, IsSecret: stored.IsSecret}
+	if decoded.Question == "" {
+		decoded.Question = stored.Title
+	}
+	if stored.Options != nil {
+		decoded.Options = make([]QuestionOption, 0, len(stored.Options))
+	}
+	for _, value := range stored.Options {
+		var option QuestionOption
+		if value.Kind() == '"' {
+			if err := json.Unmarshal(value, &option.Label); err != nil {
+				return err
+			}
+		} else if err := json.Unmarshal(value, &option); err != nil {
+			return err
+		}
+		decoded.Options = append(decoded.Options, option)
+	}
+	*q = decoded
+	return nil
+}
+
 type QuestionOption struct {
 	Label       string `json:"label"`
 	Description string `json:"description,omitzero"`

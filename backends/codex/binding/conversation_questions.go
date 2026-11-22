@@ -34,13 +34,7 @@ func EncodeQuestionResponse(answers []QuestionAnswer) map[string]any {
 }
 
 type QuestionOption = observation.QuestionOption
-type Question struct {
-	ID       string           `json:"id"`
-	Header   string           `json:"header"`
-	Question string           `json:"question"`
-	IsSecret bool             `json:"isSecret"`
-	Options  []QuestionOption `json:"options"`
-}
+type Question = observation.Question
 type QuestionRequest struct {
 	ThreadID  string     `json:"threadId"`
 	TurnID    string     `json:"turnId"`
