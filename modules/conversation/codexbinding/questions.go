@@ -39,6 +39,15 @@ func Questions(thread, turn, item string, request jsontext.Value, questions []bi
 		}
 		c.Questions = append(c.Questions, q)
 	}
+	if !c.Sync && len(c.Questions) > 0 {
+		c.Resolved = true
+		for _, q := range c.Questions {
+			if q.Outcome == "" {
+				c.Resolved = false
+				break
+			}
+		}
+	}
 	return c
 }
 
