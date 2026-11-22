@@ -806,9 +806,15 @@ func TestNativeClientOutputCatchupReacquiresOnlyUnresolvedIdentities(t *testing.
 	for c.request(nativeObservationCall) == nil || !c.request(nativeObservationCall).complete {
 		nativeSchedulingStep(t, r)
 	}
+	interrupted := false
 	c.enqueue(sessionapi.NativeOperation{Display: &sessionpresentation.DisplayIntent{Version: c.event.Frame.View.Version, Thread: sessionpresentation.Thread{ID: "side"}}}, nil, nil)
-	c.enqueue(sessionapi.NativeOperation{Interrupt: &sessionpresentation.InterruptIntent{Version: c.event.Frame.View.Version}}, nil, nil)
-	for c.event.Frame.View.Input.ID != "side" {
+	c.enqueue(sessionapi.NativeOperation{Interrupt: &sessionpresentation.InterruptIntent{Version: c.event.Frame.View.Version}}, nil, func(err error) {
+		if err != nil {
+			t.Error(err)
+		}
+		interrupted = true
+	})
+	for c.event.Frame.View.Input.ID != "side" || !interrupted {
 		nativeSchedulingStep(t, r)
 	}
 	if completed != 0 {
