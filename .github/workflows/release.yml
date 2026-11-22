@@ -32,6 +32,8 @@ jobs:
     env:
       CGO_ENABLED: '1'
       BUILD_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_IDLE_TIMEOUT: '0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,6 +50,13 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.4'
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-v1-${{ runner.os }}-${{ hashFiles('apps/mekugi/internal/webui/app/bun.lock') }}
+          restore-keys: |
+            bun-v1-${{ runner.os }}-
       - name: Install offline-suite tools
         if: matrix.platform == 'linux_amd64'
         run: |
@@ -62,11 +71,19 @@ jobs:
       - name: Check web UI
         if: matrix.platform == 'linux_amd64'
         run: make webui-check
+      - name: Cache lint tools
+        if: matrix.platform == 'linux_amd64'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/bin/golangci-lint
+            ~/go/bin/deadcode
+          key: lint-tools-v1-${{ matrix.platform }}-${{ hashFiles('go.work') }}-v2.14.0-v0.51.0
       - name: Install lint tools
         if: matrix.platform == 'linux_amd64'
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
-          go install golang.org/x/tools/cmd/deadcode@v0.51.0
+          command -v golangci-lint >/dev/null || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+          command -v deadcode >/dev/null || go install golang.org/x/tools/cmd/deadcode@v0.51.0
       - name: Lint
         if: matrix.platform == 'linux_amd64'
         run: make lint
@@ -76,8 +93,19 @@ jobs:
       - name: Test welcome and linked version
         run: |
           MEKUGI_TEST_BUILD_VERSION="$BUILD_TAG" make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^(TestMekugi(BuildVersion|LinkedBuildVersion)|TestNativeWelcome|TestUISnapshotNativeWelcome)' TEST_FLAGS="-ldflags='-X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG'"
+      - name: Resolve native runtime cache key
+        id: native_key
+        run: |
+          codex_sha="$(git -C runtime/codex rev-parse HEAD)"
+          echo "codex_sha=$codex_sha" >> "$GITHUB_OUTPUT"
+      - name: Cache packaged native runtime
+        id: native_cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/artifacts/mekugi-native_${{ matrix.platform }}.tar.gz
+          key: native-bundle-v1-${{ matrix.platform }}-${{ matrix.runner }}-${{ steps.native_key.outputs.codex_sha }}-${{ hashFiles('runtime/build.py') }}
       - name: Install native Linux build dependency
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.native_cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends pkg-config libcap-dev libssl-dev
@@ -89,12 +117,37 @@ jobs:
           if sysctl -n kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
+      - name: Set up sccache
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.19.0
+      - name: Cache Cargo dependencies
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-deps-v1-${{ matrix.platform }}-${{ hashFiles('runtime/codex/codex-rs/Cargo.lock') }}
+          restore-keys: |
+            cargo-deps-v1-${{ matrix.platform }}-
+      - name: Cache prebuilt V8 artifacts
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: runtime/codex/codex-rs/target/v8-artifacts
+          key: v8-artifacts-v1-${{ matrix.platform }}-${{ hashFiles('runtime/codex/third_party/v8/rusty_v8_*_release_manifests.sha256') }}
       - name: Test and package native runtime
+        if: steps.native_cache.outputs.cache-hit != 'true'
         env:
-          CARGO_BUILD_JOBS: '2'
+          CARGO_BUILD_JOBS: ${{ runner.os == 'Linux' && '4' || '2' }}
+          CARGO_INCREMENTAL: '0'
           # Use system Git for V8's nested Git dependencies instead of Cargo's libgit2 transport.
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
           PLATFORM: ${{ matrix.platform }}
+          RUSTC_WRAPPER: sccache
         run: |
           # App-server integration fixtures use debug-only startup options.
           make test-native NATIVE_PROFILE=dev-small
@@ -106,7 +159,13 @@ jobs:
           test "$(go env GOOS)_$(go env GOARCH)" = "$PLATFORM"
           package_dir="$RUNNER_TEMP/package"
           mkdir -p "$package_dir" "$RUNNER_TEMP/artifacts"
-          make build-binaries NATIVE_PROFILE=release BUILD_OUTPUT="$package_dir" BUILD_LDFLAGS="-s -w -X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG"
+          make webui build
+          go build -trimpath -ldflags="-s -w -X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG" -o "$package_dir/" ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
+          native_files=(mekugi-app-server codex-code-mode-host mekugi-models.json)
+          if [ "$RUNNER_OS" = Linux ]; then
+            native_files+=(bwrap)
+          fi
+          tar -xzf "$RUNNER_TEMP/artifacts/mekugi-native_${PLATFORM}.tar.gz" -C "$package_dir" "${native_files[@]}"
           cp LICENSE "$package_dir/"
           cp runtime/codex/NOTICE "$package_dir/NOTICE"
           mkdir -p "$package_dir/licenses"
