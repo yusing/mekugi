@@ -116,42 +116,44 @@ jobs:
         with:
           path: ${{ runner.temp }}/artifacts/mekugi-native_${{ matrix.platform }}.tar.gz
           key: native-bundle-v2-${{ steps.native_key.outputs.name }}
-      - name: Find packaged native runtime from main
+      - name: Restore packaged native runtime from main
         id: native_artifact
         if: steps.native_cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_NAME: ${{ steps.native_key.outputs.name }}
-        run: |
-          # Artifact retention is independent of the compiler cache's LRU eviction.
-          candidates="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" \
-            -f name="$ARTIFACT_NAME" -F per_page=100)"
-          has_live_candidate="$(jq -r 'any(.artifacts[]; .expired == false)' <<< "$candidates")"
-          if [[ "$has_live_candidate" == 'false' ]]; then
-            exit 0
-          fi
-          runs="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs" \
-            -f branch=main -f event=push -f status=success -F per_page=100 --jq '[.workflow_runs[].id]')"
-          run_id="$(jq -r --argjson trusted "$runs" '
-            first(.artifacts[] | select(.expired == false) |
-              .workflow_run.id as $id | select($trusted | index($id)) | $id) // empty
-          ' <<< "$candidates")"
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-      - name: Restore packaged native runtime from main
-        if: steps.native_artifact.outputs.run_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ${{ steps.native_key.outputs.name }}
-          github-token: ${{ github.token }}
-          run-id: ${{ steps.native_artifact.outputs.run_id }}
-          path: ${{ runner.temp }}/native-artifact
-      - name: Stage restored native archive
-        if: steps.native_artifact.outputs.run_id != ''
-        env:
           PLATFORM: ${{ matrix.platform }}
         run: |
-          mkdir -p "$RUNNER_TEMP/artifacts"
-          mv "$RUNNER_TEMP/native-artifact/mekugi-native_${PLATFORM}.tar.gz" "$RUNNER_TEMP/artifacts/"
+          # Artifact retention is independent of the compiler cache's LRU eviction.
+          if ! candidates="$(gh api --paginate --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" \
+            -f name="$ARTIFACT_NAME" -F per_page=100 --jq '
+              .artifacts[] | select(.expired == false and .workflow_run.head_branch == "main") | .workflow_run.id
+            ')"; then
+            echo "::warning::Could not list matching native archives; building locally."
+            exit 0
+          fi
+          while IFS= read -r run_id; do
+            [[ -n "$run_id" ]] || continue
+            if ! trusted="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" | jq -r --arg repo "$GITHUB_REPOSITORY" '
+              .path == ".github/workflows/release.yml" and .event == "push" and .head_branch == "main" and
+                .conclusion == "success" and .head_repository.full_name == $repo
+            ')"; then
+              echo "::warning::Could not verify native archive source run $run_id."
+              continue
+            fi
+            [[ "$trusted" == 'true' ]] || continue
+            download="$RUNNER_TEMP/native-artifact"
+            archive="$download/mekugi-native_${PLATFORM}.tar.gz"
+            if ! gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir "$download" ||
+               [[ ! -s "$archive" ]]; then
+              echo "::warning::Could not restore native archive from run $run_id; building locally."
+              exit 0
+            fi
+            mkdir -p "$RUNNER_TEMP/artifacts"
+            mv "$archive" "$RUNNER_TEMP/artifacts/"
+            echo "restored=true" >> "$GITHUB_OUTPUT"
+            break
+          done <<< "$candidates"
       - name: Install native Linux build dependency
         if: runner.os == 'Linux'
         run: |
@@ -196,7 +198,7 @@ jobs:
           # App-server integration fixtures use debug-only startup options.
           make test-native NATIVE_PROFILE=dev-small
       - name: Package native runtime
-        if: steps.native_cache.outputs.cache-hit != 'true' && steps.native_artifact.outputs.run_id == ''
+        if: steps.native_cache.outputs.cache-hit != 'true' && steps.native_artifact.outputs.restored != 'true'
         env: *native_env
         run: |
           make package-native NATIVE_ARCHIVE="$RUNNER_TEMP/artifacts/mekugi-native_${PLATFORM}.tar.gz"
