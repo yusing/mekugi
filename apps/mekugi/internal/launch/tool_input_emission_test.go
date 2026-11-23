@@ -2,8 +2,6 @@ package launch
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -138,291 +136,46 @@ func prepareEmissionTest(t *testing.T, p *observationFixture, workspace, thread 
 	return prepared
 }
 
-func TestAssistantMessageDefersInputUntilBoundary(t *testing.T) {
-	for _, thread := range []string{"main", "child"} {
-		for _, answer := range []bool{false, true} {
-			t.Run(thread+map[bool]string{false: "/steer", true: "/answer"}[answer], func(t *testing.T) {
-				u, wire := newAppServerTestUI()
-				u.Thread, u.Turn = thread, "turn"
-				proxy := newManagedMekugiProxy(t)
-				setTestAppServerIntegration(u, proxy)
-				transform := prepareEmissionTest(t, proxy, "", thread)
-				defer transform.Close()
-				item := map[string]any{"id": "message", "type": "message", "role": "assistant", "status": "in_progress"}
-				emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
-				emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "item_id": "message", "delta": "The latest trace"})
-				appServerTestKeys(t, u, "next turn\t")
-				if answer {
-					questionTestAsync(t, u, "question", "Who receives it?")
-					openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
-					questionTestPaint(t, u, 70)
-					appServerTestKeys(t, u, "1\r")
-				} else {
-					appServerTestKeys(t, u, "change direction\r")
-				}
-				if requests := appServerTurnRequests(t, wire); len(requests) != 0 || len(u.attached.conversation.Unsent) != 1 || len(u.attached.conversation.Queued) != 1 {
-					t.Fatalf("message interrupted or input lost: requests=%+v", requests)
-				}
-				// A text part can end before the whole assistant message ends.
-				emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.done", "item_id": "message", "text": "The latest trace is complete."})
-				flush := func() {
-					t.Helper()
-					if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-						t.Fatal(err)
-					}
-				}
-				flush()
-				if requests := appServerTurnRequests(t, wire); len(requests) != 0 {
-					t.Fatal("text part completion released the message gate")
-				}
-				item["status"] = "completed"
-				emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
-				flush()
-				requests := appServerTurnRequests(t, wire)
-				if len(requests) != 1 || requests[0].Method != "turn/steer" || len(u.attached.conversation.Queued) != 1 || u.Turn != "turn" {
-					t.Fatalf("boundary did not steer independently of turn completion: %+v", requests)
-				}
-				flush()
-				if requests := appServerTurnRequests(t, wire); len(requests) != 0 {
-					t.Fatal("input delivered twice")
-				}
-			})
-		}
-	}
-}
-
-func TestAssistantMessageBoundaryIsNotRearmed(t *testing.T) {
-	for _, answer := range []bool{false, true} {
-		name := "steer"
-		if answer {
-			name = "answer"
-		}
-		t.Run(name, func(t *testing.T) {
-			u, wire := newAppServerTestUI()
-			u.Turn = "turn"
-			proxy := newManagedMekugiProxy(t)
-			setTestAppServerIntegration(u, proxy)
-			transform := prepareEmissionTest(t, proxy, "", u.Thread)
-			defer transform.Close()
-			first := map[string]any{"id": "first", "type": "message", "role": "assistant"}
-			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": first})
-			if answer {
-				questionTestAsync(t, u, "question", "Who receives it?")
-				openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
-				questionTestPaint(t, u, 70)
-				appServerTestKeys(t, u, "1\r")
-			} else {
-				appServerTestKeys(t, u, "change direction\r")
-			}
-			if wire.Len() != 0 {
-				t.Fatal("setup delivered during first message")
-			}
-			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": first})
-			// These events can be in the same provider read, with no UI tick between.
-			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "second", "type": "message", "role": "assistant"}})
-			appServerTestKeys(t, u, "later instruction\r")
-			requests := appServerTurnRequests(t, wire)
-			if len(requests) != 1 {
-				t.Fatalf("first message completed, but next message reblocked the accepted %s: requests=%+v unsent=%d", name, requests, len(u.attached.conversation.Unsent))
-			}
-			if strings.Contains(requests[0].text(), "later instruction") || len(u.attached.conversation.Unsent) != 1 {
-				t.Fatal("input waiting for a later boundary joined the earlier batch")
-			}
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"turn"}}`, requests[0].ID))
-			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-				t.Fatal(err)
-			}
-			if wire.Len() != 0 {
-				t.Fatal("later input did not retain its own message boundary")
-			}
-			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": "second", "type": "message"}})
-			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-				t.Fatal(err)
-			}
-			appServerOneRequest(t, wire, "turn/steer", "later instruction")
-		})
-	}
-}
-
-func TestAssistantMessageIdentityAtBoundary(t *testing.T) {
-	for _, tc := range []struct {
-		name                     string
-		indexedStart, indexedEnd bool
-		doneID                   string
-	}{
-		{"index at completion", false, true, "message"},
-		{"index omitted at completion", true, false, "message"},
-		{"ID omitted at completion", true, true, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			u, wire := newAppServerTestUI()
-			u.Turn = "turn"
-			proxy := newManagedMekugiProxy(t)
-			setTestAppServerIntegration(u, proxy)
-			transform := prepareEmissionTest(t, proxy, "", u.Thread)
-			defer transform.Close()
-			added := map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "message", "type": "message", "role": "assistant"}}
-			done := map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": tc.doneID, "type": "message", "role": "assistant"}}
-			if tc.indexedStart {
-				added["output_index"] = 0
-			}
-			if tc.indexedEnd {
-				done["output_index"] = 0
-			}
-			emissionTestEvent(t, transform, added)
-			appServerTestKeys(t, u, "change direction\r")
-			if wire.Len() != 0 {
-				t.Fatal("unfinished message did not defer input")
-			}
-			emissionTestEvent(t, transform, done)
-			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"id": "next", "type": "message"}})
-			if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-				t.Fatal(err)
-			}
-			appServerOneRequest(t, wire, "turn/steer", "change direction")
-		})
-	}
-}
-
-func TestInputBoundaryRetainsStreamedIdentity(t *testing.T) {
-	for _, thread := range []string{"main", "child"} {
-		for _, answer := range []bool{false, true} {
-			for _, indexedStart := range []bool{false, true} {
-				t.Run(fmt.Sprintf("%s/answer=%v/indexedStart=%v", thread, answer, indexedStart), func(t *testing.T) {
-					u, wire := newAppServerTestUI()
-					u.Thread, u.Turn = thread, "turn"
-					proxy := newManagedMekugiProxy(t)
-					setTestAppServerIntegration(u, proxy)
-					transform := prepareEmissionTest(t, proxy, "", thread)
-					defer transform.Close()
-					item := map[string]any{"type": "message", "role": "assistant"}
-					added := map[string]any{"type": "response.output_item.added", "item": item}
-					if indexedStart {
-						added["output_index"] = 0
-					} else {
-						item["id"] = "message"
-					}
-					emissionTestEvent(t, transform, added)
-					// A text delta supplies the identity omitted at admission. Later
-					// completion can carry only that newly observed identity.
-					emissionTestEvent(t, transform, map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": "message", "delta": "Finishing this message"})
-					if answer {
-						questionTestAsync(t, u, "question", "Who receives it?")
-						openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
-						questionTestPaint(t, u, 70)
-						appServerTestKeys(t, u, "1\r")
-					} else {
-						appServerTestKeys(t, u, "change direction\r")
-					}
-					if wire.Len() != 0 || len(u.attached.conversation.Unsent) != 1 {
-						t.Fatal("input was not accepted behind the active message")
-					}
-					done := map[string]any{"type": "response.output_item.done", "item": map[string]any{"type": "message", "id": "message"}}
-					if !indexedStart {
-						done["output_index"] = 0
-						done["item"] = map[string]any{"type": "message"}
-					}
-					emissionTestEvent(t, transform, done)
-					// Non-message generation must not strand an already-accepted input
-					// until response or host-turn completion.
-					emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"type": "reasoning", "id": "reasoning"}})
-					if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-						t.Fatal(err)
-					}
-					if requests := appServerTurnRequests(t, wire); len(requests) != 1 || requests[0].Method != "turn/steer" || u.Turn != "turn" {
-						t.Fatalf("completed message stranded accepted input during non-message work: %+v", requests)
-					}
-				})
-			}
-		}
-	}
-}
-
 func TestInputBoundaryWaitsForDelivery(t *testing.T) {
-	for _, kind := range []string{"message", "function_call", "custom_tool_call"} {
-		for _, answer := range []bool{false, true} {
-			if !answer && kind != "message" {
-				continue // Ordinary steers retain their tool-input bypass.
+	for _, kind := range []string{"function_call", "custom_tool_call"} {
+		t.Run(kind, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.Turn = "turn"
+			proxy := newManagedMekugiProxy(t)
+			setTestAppServerIntegration(u, proxy)
+			transform := prepareEmissionTest(t, proxy, "", u.Thread)
+			defer transform.Close()
+			// The host permits an absent item ID. Completion can acquire an ID
+			// without changing the generation's indexed boundary.
+			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 2, "item": map[string]any{"type": kind, "role": "assistant"}})
+			questionTestAsync(t, u, "question", "Who receives it?")
+			openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+			questionTestPaint(t, u, 70)
+			appServerTestKeys(t, u, "1\r")
+			if wire.Len() != 0 || len(u.attached.conversation.Unsent) != 1 {
+				t.Fatal("index-addressed generation did not hold accepted input")
 			}
-			t.Run(fmt.Sprintf("%s/answer=%v", kind, answer), func(t *testing.T) {
-				u, wire := newAppServerTestUI()
-				u.Turn = "turn"
-				proxy := newManagedMekugiProxy(t)
-				setTestAppServerIntegration(u, proxy)
-				transform := prepareEmissionTest(t, proxy, "", u.Thread)
-				defer transform.Close()
-				// The host permits an absent item ID. Completion can acquire an ID
-				// without changing the generation's indexed boundary.
-				emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "output_index": 2, "item": map[string]any{"type": kind, "role": "assistant"}})
-				if answer {
-					questionTestAsync(t, u, "question", "Who receives it?")
-					openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
-					questionTestPaint(t, u, 70)
-					appServerTestKeys(t, u, "1\r")
-				} else {
-					appServerTestKeys(t, u, "change direction\r")
-				}
-				if wire.Len() != 0 || len(u.attached.conversation.Unsent) != 1 {
-					t.Fatal("index-addressed generation did not hold accepted input")
-				}
-				visible, err := transform.TransformSSE(responses.MustMarshalJSON(map[string]any{"type": "response.output_item.done", "output_index": 2, "item": map[string]any{"id": "assigned-at-completion", "type": kind, "role": "assistant"}}))
-				if err != nil {
+			visible, err := transform.TransformSSE(responses.MustMarshalJSON(map[string]any{"type": "response.output_item.done", "output_index": 2, "item": map[string]any{"id": "assigned-at-completion", "type": kind, "role": "assistant"}}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			flush := func() {
+				t.Helper()
+				if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
 					t.Fatal(err)
 				}
-				flush := func() {
-					t.Helper()
-					if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-						t.Fatal(err)
-					}
-				}
-				flush()
-				if wire.Len() != 0 {
-					t.Fatal("transformation released an undelivered boundary")
-				}
-				for _, payload := range visible {
-					codexresponses.ConfirmDelivery(transform, payload)
-				}
-				flush()
-				if requests := appServerTurnRequests(t, wire); len(requests) != 1 || requests[0].Method != "turn/steer" {
-					t.Fatalf("delivered boundary did not release exactly one steer: %+v", requests)
-				}
-			})
-		}
+			}
+			flush()
+			if wire.Len() != 0 {
+				t.Fatal("transformation released an undelivered boundary")
+			}
+			for _, payload := range visible {
+				codexresponses.ConfirmDelivery(transform, payload)
+			}
+			flush()
+			if requests := appServerTurnRequests(t, wire); len(requests) != 1 || requests[0].Method != "turn/steer" {
+				t.Fatalf("delivered boundary did not release exactly one steer: %+v", requests)
+			}
+		})
 	}
-}
-
-func TestExecutionFreeMessagesObserveInputBoundary(t *testing.T) {
-	u, wire := newAppServerTestUI()
-	u.Turn = "turn"
-	proxy := newManagedMekugiProxy(t)
-	setTestAppServerIntegration(u, proxy)
-	request := serverRequest(t, func(fields map[string]any) {
-		fields["tools"] = []any{}
-		fields["input"] = []any{map[string]any{"role": "user", "content": "task"}}
-	})
-	if !codexresponses.ExecutionFree(&request) {
-		t.Fatal("fixture is not execution-free")
-	}
-	prepared, err := proxy.prepareRequest(t.Context(), &request, "session", u.Thread, codexresponses.TurnMetadata{ThreadID: u.Thread, RequestKind: "turn"}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared == nil {
-		t.Fatal("execution-free turn has no message observer")
-	}
-	defer prepared.Close()
-	if string(request.Fields["tools"]) != "[]" {
-		t.Fatal("message observation changed the execution-free tool catalog")
-	}
-	item := map[string]any{"id": "message", "type": "message", "role": "assistant"}
-	emissionTestEvent(t, prepared, map[string]any{"type": "response.output_item.added", "item": item})
-	appServerTestKeys(t, u, "change direction\r")
-	if wire.Len() != 0 {
-		t.Fatal("execution-free assistant message was interrupted")
-	}
-	emissionTestEvent(t, prepared, map[string]any{"type": "response.output_item.done", "item": item})
-	if err := u.nativeSession.flushInput(&u.attached, &u.picker, u.clock, &u.Editor, u.ctx); err != nil {
-		t.Fatal(err)
-	}
-	appServerOneRequest(t, wire, "turn/steer", "change direction")
 }
