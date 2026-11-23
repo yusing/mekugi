@@ -22,7 +22,7 @@ func nativeRunningUI(t *testing.T) (*appServerUI, *threadExecution, *time.Time) 
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestTurn(t, u, "first")
 	threads := &threadExecution{}
-	c := newNativeConnection(&u.nativeSession, nil, threads, nil, nil, "", nil, false, false)
+	c := newNativeConnection(&u.nativeSession, nil, threads, nil, nil, "", false, false)
 	threads.native, u.connection = c, c
 	c.families = map[string]*nativeFamily{"main": {observed: true, threads: []binding.ThreadInfo{
 		{ID: "main", Source: []byte(`{"subAgent":{"thread_spawn":{"agent_path":"/root"}}}`), CanAcceptDirectInput: new(true), AgentStatus: []byte(`"running"`)},

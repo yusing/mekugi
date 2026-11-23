@@ -21,7 +21,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	"github.com/yusing/mekugi/providers/openai"
@@ -71,7 +70,6 @@ func TestNativePredictionForkPreservesInheritedConfiguration(t *testing.T) {
 			}
 		}
 	}
-	t.Setenv(shellhook.Environment, "")
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	u, _ := newAppServerTestUI()
@@ -81,7 +79,7 @@ func TestNativePredictionForkPreservesInheritedConfiguration(t *testing.T) {
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(), "MEKUGI_TEST_PREDICTION_HOST=1")
 	// Production startup must install every request policy before prediction begins.
-	_, err := session.start(testPreferences(), cmd, nil, nil, false, "", nil, sessionapi.NewLive(), false, &threadExecution{setup: &threadSetup{}})
+	_, err := session.start(testPreferences(), cmd, false, "", nil, sessionapi.NewLive(), false, &threadExecution{setup: &threadSetup{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +286,7 @@ func TestNativeBTWControlSocket(t *testing.T) {
 			transport := sessionapi.ControlTransport(socket)
 			defer transport.CloseIdleConnections()
 			client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
-			connection, err := sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{Workspace: workspace, RouterArgs: []string{"--shell-guard=false"}, Args: []string{"--yolo"}})
+			connection, err := sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{Workspace: workspace, Args: []string{"--yolo"}})
 			if err != nil {
 				t.Fatal(err)
 			}

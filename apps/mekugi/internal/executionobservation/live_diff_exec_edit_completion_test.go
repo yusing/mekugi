@@ -76,7 +76,7 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 	broker := newLivePreview(ctx)
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	sub := testReview(broker).Subscribe()
-	hub := newExecTrackFixture(t, ctx, segments.Instrumentation{})
+	hub := newExecTrackFixture(t, ctx)
 	registry := &Windows{Reports: hub.Observer}
 	registry.open(&execWindow{ref: "edit-then-test", roots: []string{workspace}, thread: "thread", turn: "turn"})
 	registry.preview("edit-then-test", observation, broker, workspace, "thread", "/root", nil)

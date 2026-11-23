@@ -76,12 +76,6 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, picker 
 	if session.restoring != nil || !session.Client.AcceptsInput() {
 		return nil
 	}
-	shellNext := len(attached.conversation.Unsent) == 0 && len(attached.conversation.Queued) > 0 && attached.conversation.Queued[0].ShellCommand != ""
-	if !shellNext && len(attached.conversation.Unsent)+len(attached.conversation.Queued) > 0 {
-		if ready, err := session.guardHookCheck.check(&session.Client, attached); !ready || err != nil {
-			return err
-		}
-	}
 	next := attached.presentation.NextInput(&session.Client.Live, attached.conversation, session.controlObservations, attached.cwd)
 	if len(next.Batch.Parts) == 0 && !next.Continue {
 		return nil
@@ -98,7 +92,6 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, picker 
 		}
 		attached.conversation.Shell = input
 		attached.conversation.ShellFromEditor = true
-		session.guardHookCheck.readyThread = ""
 		return nil
 	}
 	if picker.waitForSkillBindings(attached, clock, session.Client.Requests, next.Batch.Parts) {
@@ -106,10 +99,10 @@ func (session *nativeSession) flushInput(attached *attachedPresentation, picker 
 		picker.refreshPicker(attached, clock, session.Client.Requests, (*editor), parent, session.skillEnvironment)
 		return nil
 	}
-	return sendConversationInput(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings.Model, session.serviceTiers, session.skillEnvironment, session.ownedImages, &session.guardHookCheck, next.Batch.Parts, next.Steer)
+	return sendConversationInput(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings.Model, session.serviceTiers, session.skillEnvironment, session.ownedImages, next.Batch.Parts, next.Steer)
 }
 
-func sendConversationInput(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, parts []conversationmodel.Input, steer bool) error {
+func sendConversationInput(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, parts []conversationmodel.Input, steer bool) error {
 	defer attached.presentation.PruneInput(&control.Live, attached.conversation)
 	if len(parts) == 1 && parts[0].Compact != nil {
 		intent := sessioncontrol.CompactIntent(*parts[0].Compact)
@@ -154,9 +147,6 @@ func sendConversationInput(attached *attachedPresentation, control *sessioncontr
 	// Admission and skill acquisition can defer a selected continuation. Consume
 	// it only once the input request has reached the ordinary submission owner.
 	control.Compaction.Continue(len(parts) > 0)
-	if !steer {
-		hook.readyThread = ""
-	}
 	if s.AttachmentNotice != "" {
 		notice := s.AttachmentNotice
 		if strings.HasPrefix(attached.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(attached.feedback.Text, "Skill catalog incomplete:") {

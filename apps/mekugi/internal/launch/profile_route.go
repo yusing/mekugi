@@ -137,7 +137,7 @@ type profileConfiguration struct {
 func resolveProfileRoute(ctx context.Context, executable string, args, environment []string, workspace string, route *inferencegateway.NativeProvider) ([]string, error) {
 	command := exec.CommandContext(ctx, executable, nativeAppServerArgs(args)...)
 	command.Env, command.Dir = environment, workspace
-	_, _, configuration, err := shellhook.Discover(ctx, command, false)
+	configuration, err := shellhook.Discover(ctx, command)
 	if err != nil {
 		// Host diagnostics can contain expanded profile values.
 		return nil, errors.New("cannot resolve profile host configuration")

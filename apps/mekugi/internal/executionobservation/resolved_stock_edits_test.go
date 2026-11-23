@@ -44,7 +44,7 @@ func TestGeneralPythonWorkingDirectoryEvidence(t *testing.T) {
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {f.thread: true}}})
 	proxy.Review = testReview(broker)
-	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	hub := newExecTrackFixture(t, t.Context())
 	proxy.Windows.Reports = hub.Observer
 	t.Cleanup(proxy.Windows.Retire)
 	var ids []string

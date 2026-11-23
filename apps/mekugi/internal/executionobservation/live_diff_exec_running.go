@@ -50,7 +50,7 @@ func (r *Windows) preview(ref string, observation changecapture.Observation, bro
 	if tracking != nil {
 		tracking.streamable = make(map[string]bool)
 		for _, source := range previewmodel.StreamableSources(ctx, observation) {
-			tracking.streamable[tracking.Source(source, "")] = true
+			tracking.streamable[source] = true
 		}
 	}
 	turn := window.turn

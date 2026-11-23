@@ -20,7 +20,6 @@ func (session *nativeSession) interruptSession(attached *attachedPresentation, p
 			setNotice(&attached.feedback, presentationTime(clock), err.Error(), true)
 			return nil
 		}
-		session.guardHookCheck.cancel(intent.Target.Thread)
 		update, err := session.Client.Requests.InterruptSide(*side)
 		applySideUpdate(attached, &session.Client, clock, update)
 		return err
@@ -36,9 +35,6 @@ func (session *nativeSession) interruptSession(attached *attachedPresentation, p
 		return nil
 	}
 	decision := session.Client.RequestInterrupt(intent.Mode, len(unsent) > 0 && unsent[0].Compact == nil)
-	if decision.RestoreWaiting {
-		session.guardHookCheck.cancel(session.Client.Thread)
-	}
 	err = applyInterruption(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, decision)
 	if err != nil && intent.Mode == sessioncontrol.ExpediteSteers {
 		session.Client.SendSteersAfterInterrupt = false
@@ -57,7 +53,7 @@ func applyInterruption(attached *attachedPresentation, control *sessioncontrol.C
 	if intent.Turn == "" {
 		return nil
 	}
-	endSyncQuestions(attached, control, editor, questions, approvals, clock, reviewOwner, receipts, intent.Turn)
+	endSyncQuestions(attached, control, editor, questions, approvals, clock, reviewOwner, receipts, intent.Turn, true)
 	_, err := control.Requests.Send("turn/interrupt", map[string]any{"threadId": control.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
 	if err != nil && intent.Label == "steer/interrupt" {
 		control.SteerInterruptAckPending = false

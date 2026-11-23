@@ -3,12 +3,10 @@ package segments
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -88,54 +86,6 @@ func TestObserverAmbiguousClaimPreservesCandidates(t *testing.T) {
 	}
 }
 
-func TestObserverGuardRewriteIdentity(t *testing.T) {
-	const original = "git --version; printf done"
-	const guard = "/private/session/vcs-guard"
-	for _, scenario := range []string{"current", "item-bound", "wrong item", "foreign", "wrong thread", "helper wrapper", "ambiguous"} {
-		t.Run(scenario, func(t *testing.T) {
-			h := observationFixture()
-			h.instrumentation = Instrumentation{VCS: guard}
-			key := [3]string{"main", "turn", "command"}
-			directory, item, thread, source := guard, "", key[0], original
-			switch scenario {
-			case "item-bound":
-				item = key[2]
-			case "wrong item":
-				item = "other"
-			case "foreign":
-				directory = "/private/other/vcs-guard"
-			case "wrong thread":
-				thread = "other"
-			case "helper wrapper":
-				source = strings.Replace(source, "git", "/usr/bin/git", 1)
-			}
-			wrapped, err := shellinstrumentation.RewriteCommands(source, "/unrelated/mekugi-exec", directory, "", item)
-			if err != nil {
-				t.Fatal(err)
-			}
-			h.Start(key, source)
-			if scenario == "ambiguous" {
-				// An exact match must not win over another admissible host item.
-				h.Start([3]string{key[0], key[1], "second"}, wrapped)
-			}
-			ctx, cancel := context.WithCancel(t.Context())
-			cancel() // A rejected claim need not wait for another host start.
-			r := h.claim(ctx, transport.Message{Thread: thread, Script: wrapped, Segments: []string{wrapped}})
-			want := scenario == "current" || scenario == "item-bound"
-			if (r != nil) != want {
-				t.Fatalf("claimed=%v, want %v", r != nil, want)
-			}
-			if want {
-				if report, ok := h.Read(key); !ok || report.Script != wrapped {
-					t.Fatal("accepted report lost its executing source")
-				}
-			} else if len(h.started) == 0 {
-				t.Fatal("rejected report consumed a host item")
-			}
-		})
-	}
-}
-
 func TestObserverCancellationAndShutdown(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h := observationFixture()
@@ -152,7 +102,7 @@ func TestObserverCancellationAndShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewObserver(server, Instrumentation{}, 64)
+	h, err := NewObserver(server, 64)
 	if err != nil {
 		server.Close()
 		t.Fatal(err)
@@ -321,74 +271,6 @@ func TestObserverTimingAndMalformedFacts(t *testing.T) {
 	view, _ = h.Read(key)
 	if !view.Segments[0].Timing.Started.Equal(start) || view.Segments[0].Timing.ElapsedNS != 123 {
 		t.Fatal("mismatched end timing replaced validated helper timing")
-	}
-}
-
-func TestSubscriptionGuardIdentity(t *testing.T) {
-	for _, command := range []struct {
-		name, tail string
-		vcs        bool
-	}{
-		{"vcs", "git --version", true},
-		{"sudo", "sudo id", false},
-		{"mixed", "git --version; sudo id", true},
-		{"vcs disabled", "git --version; sudo id", false},
-	} {
-		t.Run(command.name, func(t *testing.T) {
-			original := "gofmt -w source.go; " + command.tail
-			const guard = "/private/session/vcs-guard"
-			for _, scenario := range []string{"current", "item-bound", "wrong item", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
-				t.Run(scenario, func(t *testing.T) {
-					h := observationFixture()
-					h.instrumentation = Instrumentation{VCS: guard, Sudo: "/private/session/sudo-guard"}
-					script, directory := original, guard
-					sudoDirectory := "/private/session/sudo-guard"
-					if !command.vcs {
-						directory = ""
-					}
-					if scenario == "foreign" {
-						if command.vcs {
-							directory = "/private/other/vcs-guard"
-						}
-						sudoDirectory = "/private/other/sudo-guard"
-					}
-					if scenario == "lookalike helper" {
-						if command.vcs {
-							script = strings.Replace(script, "git --version", "/usr/bin/git --version", 1)
-						} else {
-							script = strings.Replace(script, "sudo id", "/usr/bin/sudo id", 1)
-						}
-					}
-					item := ""
-					if scenario == "item-bound" {
-						item = "command"
-					} else if scenario == "wrong item" {
-						item = "other"
-					}
-					wrapped, err := shellinstrumentation.RewriteCommands(script, "/unrelated/mekugi-exec", directory, sudoDirectory, item)
-					if err != nil {
-						t.Fatal(err)
-					}
-					captured := script
-					if scenario == "captured guarded" {
-						captured = wrapped
-					}
-					p := h.Subscribe("main", "turn", []string{captured})
-					t.Cleanup(p.Close)
-					key := [3]string{"main", "turn", "command"}
-					claimObservation(t, h, key, wrapped)
-					h.Completed(key)
-					if scenario == "pending duplicate" {
-						h.Start([3]string{"main", "turn", "pending"}, original)
-					}
-					match := p.State().Matches[0]
-					settled := !match.Ambiguous && match.Report != nil && match.HostCompleted
-					if settled != (scenario == "current" || scenario == "item-bound" || scenario == "captured guarded") {
-						t.Fatalf("usable matching evidence = %v: %+v", settled, match)
-					}
-				})
-			}
-		})
 	}
 }
 

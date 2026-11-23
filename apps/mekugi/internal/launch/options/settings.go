@@ -21,7 +21,6 @@ type Settings struct {
 // Nil keeps the built-in default; explicit false remains distinct from absence.
 type Features struct {
 	ChildReplySummary *bool `toml:"child_reply_summary"`
-	ShellGuard        *bool `toml:"shell_guard"`
 
 	Debug *bool `toml:"debug"`
 }
@@ -29,9 +28,6 @@ type Features struct {
 // ResolveFeatures applies file defaults without replacing explicit CLI choices.
 // The parsed configuration remains reusable by independent invocations.
 func (c Config) ResolveFeatures(features Features) Config {
-	if features.ShellGuard != nil && !c.shellGuardSet {
-		c.ShellGuard = *features.ShellGuard
-	}
 	if summary, ok := c.ChildReplySummaryOverride(features); ok {
 		c.ChildReplySummary = summary
 	}

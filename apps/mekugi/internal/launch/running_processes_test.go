@@ -51,11 +51,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	}
 	// Commands that start while the dialog is open join it in start order,
 	// shown as transcript rows show them, without Mekugi instrumentation.
-	guarded, err := shellinstrumentation.RewriteCommands("git fetch && go test", displayGuardHelper, displayGuardDirectory, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := "/usr/bin/bash -lc " + quoteShellWord(shellinstrumentation.ShScript("/private/exec-track.sh", guarded))
+	command := "/usr/bin/bash -lc " + quoteShellWord(shellinstrumentation.ShScript("/private/exec-track.sh", "git fetch && go test"))
 	processNotify(t, u, "main", "cmd", command, "inProgress")
 	processNotify(t, u, "child", "cmd", "make test", "inProgress")
 	processNotify(t, u, "child", "cmd", "make test", "inProgress") // Repeated starts keep host identity.
@@ -63,7 +59,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 		t.Fatal("Main and child commands were not counted once each")
 	}
 	if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "main · git fetch && go test") || !strings.Contains(got, "worker · make test") ||
-		strings.Contains(got, "No running processes") || strings.Contains(got, "exec-track") || strings.Contains(got, displayGuardHelper) {
+		strings.Contains(got, "No running processes") || strings.Contains(got, "exec-track") {
 		t.Fatalf("missing process list or owners, or leaked instrumentation: %s", got)
 	}
 	// A yielded command can outlive the turn that started it. Only its host

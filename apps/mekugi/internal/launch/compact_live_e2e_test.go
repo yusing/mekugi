@@ -90,7 +90,7 @@ func TestCompactReloadLiveOpenAI(t *testing.T) {
 			}
 		}
 	}
-	environment, err = frontendShellEnvironment(environment, filepath.Dir(filepath.Join(registry.FrontendDirectory, "mcat")), "", nil, segmenttransport.Endpoints{})
+	environment, err = frontendShellEnvironment(environment, filepath.Dir(filepath.Join(registry.FrontendDirectory, "mcat")), "", segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestNativeMigrationLiveOpenAI(t *testing.T) {
 	transport := sessionapi.ControlTransport(socket)
 	defer transport.CloseIdleConnections()
 	connection, err := sessionapi.StartNative(ctx, &http.Client{Transport: transport}, "http://mekugi", sessionapi.NativeStart{
-		Workspace: workspace, RouterArgs: []string{"--shell-guard=false", "--debug"},
+		Workspace: workspace, RouterArgs: []string{"--debug"},
 		Args: []string{"--yolo", "-m", model, "-c", "features.plugins=false", "-c", `model_reasoning_effort="low"`},
 	})
 	if err != nil {

@@ -4,10 +4,14 @@ package segments
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"path/filepath"
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -16,27 +20,24 @@ import (
 // the helper's 500 ms deadline while allowing notification delivery time.
 const claimWait = 350 * time.Millisecond
 
-// Instrumentation contains authenticated guard directories, never transport paths.
-type Instrumentation struct{ VCS, Sudo string }
-
 // Observer correlates reports with host items. It neither runs commands nor
 // owns the application scopes that subscribe to their observations.
 type Observer struct {
-	transport       *transport.Server
-	instrumentation Instrumentation
-	outputLimit     int
-	mu              sync.Mutex
-	started         []command
-	changed         chan struct{}
-	reports         map[[3]string]*report
-	subscriptions   map[*Subscription]struct{}
-	sequence        uint64
-	closed          bool
+	transport     *transport.Server
+	outputLimit   int
+	mu            sync.Mutex
+	started       []command
+	changed       chan struct{}
+	reports       map[[3]string]*report
+	subscriptions map[*Subscription]struct{}
+	sequence      uint64
+	closed        bool
 }
 
 type command struct {
 	key    [3]string
 	script string
+	digest string
 	serial uint64
 }
 
@@ -77,8 +78,8 @@ func (r Report) LastStarted() int {
 	return -1
 }
 
-func NewObserver(server *transport.Server, instrumentation Instrumentation, outputLimit int) (*Observer, error) {
-	h := &Observer{instrumentation: instrumentation, outputLimit: outputLimit, changed: make(chan struct{}), reports: make(map[[3]string]*report)}
+func NewObserver(server *transport.Server, outputLimit int) (*Observer, error) {
+	h := &Observer{outputLimit: outputLimit, changed: make(chan struct{}), reports: make(map[[3]string]*report)}
 	if err := server.Register(h.claim); err != nil {
 		return nil, err
 	}
@@ -108,7 +109,8 @@ func (h *Observer) Start(key [3]string, script string) {
 		return
 	}
 	h.sequence++
-	h.started = append(h.started, command{key: key, script: script, serial: h.sequence})
+	sum := sha256.Sum256([]byte(script))
+	h.started = append(h.started, command{key: key, script: script, digest: hex.EncodeToString(sum[:]), serial: h.sequence})
 	for subscription := range h.subscriptions {
 		subscription.retain(key, &report{Script: script, HostOnly: true, serial: h.sequence})
 	}
@@ -208,10 +210,11 @@ func (h *Observer) claim(ctx context.Context, hello transport.Message) transport
 			if hello.Thread != "" && command.key[0] != hello.Thread {
 				continue
 			}
-			// A guarded shell can add PATH prefixes after the host observed
-			// its argv, including when the native pre-tool hook did not run.
-			// Preserve the exact fast path and never normalize authored text.
-			if command.script != hello.Script && h.source(command.script, command.key[2]) != h.source(hello.Script, command.key[2]) {
+			if hello.Digest != "" {
+				if command.digest != hello.Digest {
+					continue
+				}
+			} else if command.script != hello.Script {
 				continue
 			}
 			if index >= 0 {
@@ -222,6 +225,17 @@ func (h *Observer) claim(ctx context.Context, hello transport.Message) transport
 		}
 		if index >= 0 {
 			command := h.started[index]
+			if hello.Digest != "" {
+				parts, ok := shellinstrumentation.Split(command.script)
+				if !ok || len(parts) != hello.Count {
+					h.mu.Unlock()
+					return nil
+				}
+				hello.Script = command.script
+				for _, part := range parts {
+					hello.Segments = append(hello.Segments, part.Source)
+				}
+			}
 			h.started = slices.Delete(h.started, index, index+1)
 			r := &report{Script: hello.Script, Terminal: hello.Terminal, Version: 1, serial: command.serial, pending: make([][]byte, len(hello.Segments))}
 			for _, source := range hello.Segments {

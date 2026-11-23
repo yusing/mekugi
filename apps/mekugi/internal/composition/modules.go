@@ -22,12 +22,10 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory"
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments"
-	"github.com/yusing/mekugi/modules/remotewriteapproval"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 	"github.com/yusing/mekugi/modules/sessioninspection"
 	"github.com/yusing/mekugi/modules/sessionnaming"
 	"github.com/yusing/mekugi/modules/sessionreplay"
-	"github.com/yusing/mekugi/modules/sudoapproval"
 	"github.com/yusing/mekugi/modules/transportdiagnostics"
 	"github.com/yusing/mekugi/modules/usage"
 )
@@ -78,8 +76,6 @@ func frontendDeclarations(liveReports, childReplySummary bool, captureDirectory 
 	live := c.Add(livepreview.Module, func() livepreview.Deps { return livepreview.Deps{ReadEndpoint: capture.ReadFile} })
 	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value(), Live: liveReports} })
 	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
-	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
-	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })
 	inspection := c.Add(sessioninspection.Module, func() sessioninspection.Deps { return sessioninspection.Deps{History: history.Value()} })
 	diagnosis := c.Add(diagnostics.Module, func() diagnostics.Deps {
 		return diagnostics.Deps{History: history.Value(), Inspection: inspection.Value()}

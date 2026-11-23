@@ -61,17 +61,6 @@ func sharedProxyTestRegistry(t *testing.T) *frontends.Registry {
 	t.Helper()
 	return proxyTestFixture.get(t)
 }
-func buildToolRegistryForTest(
-	t *testing.T,
-	ctx context.Context,
-) (*frontends.Registry, error) {
-	t.Helper()
-	directory := t.TempDir()
-	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
-		return nil, err
-	}
-	return frontends.New(ctx, frontends.Config{Commands: testCommands(), ReplayDirectory: filepath.Join(directory, "replay")})
-}
 
 func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
 	t.Helper()

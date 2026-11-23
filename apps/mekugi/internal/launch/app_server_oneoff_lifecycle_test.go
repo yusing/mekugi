@@ -404,7 +404,7 @@ func TestOneoffAnswerDuringToolInput(t *testing.T) {
 	}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.function_call_arguments.done", "item_id": "emitting"})
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": map[string]any{"id": "emitting", "type": "function_call"}})
-	if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+	if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, u.controlObservations); err != nil {
 		t.Fatal(err)
 	}
 	_ = btwTestRequest(t, wire, "turn/steer", "oneoff")
@@ -493,26 +493,6 @@ func TestOneoffChildStartsSerialized(t *testing.T) {
 		t.Fatalf("queued answer lost settled child identity: %+v", second.Params)
 	}
 }
-func TestOneoffChildGuardFailurePreservesRoot(t *testing.T) {
-	u, wire := newAppServerTestUI()
-	u.startSession("main", "/workspace")
-	oneoffTestStart(t, u, wire)
-	oneoffTestChild(t, u)
-	wire.Reset()
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "oneoff-child", "turn": map[string]any{"id": "ct"}})
-	oneoffTestAsync(t, u, "oneoff-child", "ct", "async1")
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "oneoff-child", "turn": map[string]any{"id": "ct", "status": "completed"}})
-	wire.Reset()
-	u.guardHookCheck.hash = "guard"
-	selectSideThread(t, u, u.attached.presentation.View().Main)
-	oneoffTestAnswer(t, u)
-	check := appServerOneRequest(t, wire, "hooks/list", "")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"child guard unavailable"}}`, check.ID))
-	if !u.side.Busy || u.side.Pending.Text == "" || strings.Contains(u.side.Drafts.Editor.Text, "inspect the workspace") {
-		t.Fatalf("child guard failure changed running root: busy=%v turn=%q pending=%q restored=%q", u.side.Busy, u.side.Turn, u.side.Pending.Text, u.side.Drafts.Editor.Text)
-	}
-}
-
 func TestOneoffInputWaitsForItsAssistantMessage(t *testing.T) {
 	for _, answer := range []bool{false, true} {
 		t.Run(map[bool]string{false: "steer", true: "answer"}[answer], func(t *testing.T) {
@@ -542,7 +522,7 @@ func TestOneoffInputWaitsForItsAssistantMessage(t *testing.T) {
 			appServerTestKeys(t, u, "main request\r")
 			_ = btwTestRequest(t, wire, "turn/start", "main")
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
-			if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+			if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, u.controlObservations); err != nil {
 				t.Fatal(err)
 			}
 			_ = btwTestRequest(t, wire, "turn/steer", "oneoff")
@@ -581,7 +561,7 @@ func TestOneoffSteerPassesChildAnswerWaitingForMessage(t *testing.T) {
 		t.Fatal("parent steer consumed the child answer")
 	}
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": map[string]any{"type": "message"}})
-	if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations); err != nil {
+	if err := flushBTW(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings, &u.side, &u.ownedImages, u.skillEnvironment, u.controlObservations); err != nil {
 		t.Fatal(err)
 	}
 	_ = btwTestRequest(t, wire, "turn/steer", "oneoff-child")

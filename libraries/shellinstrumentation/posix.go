@@ -3,6 +3,8 @@ package shellinstrumentation
 // Source: internal/execsegment/sh.go:1:123@[465a8ff3]
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -17,11 +19,12 @@ const shPrefix = ":; __mekugi_b() { return $?; }; __mekugi_e() { return $?; }; [
 
 var shBoundary = regexp.MustCompile(`\{ __mekugi_b [0-9]+ && :; |; __mekugi_e [0-9]+ && :; \}`)
 
-// ShScript adds a portable startup call and the existing segment rewrite.
-// Bash's startup hook recognizes this envelope before its DEBUG trap replaces
-// the script. Other shells retain their own execution and no-op boundaries.
-func ShScript(tracker, script string) string {
-	program, err := syntax.NewParser(syntax.Variant(syntax.LangPOSIX)).Parse(strings.NewReader(script), "")
+// ShScript inserts execution boundaries before native shell setup and guard
+// rewriting. The digest identifies their authored source without copying it into argv.
+func ShScript(tracker, script string) string { return shScript(tracker, script, false) }
+
+func shScript(tracker, script string, legacy bool) string {
+	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), "")
 	if err != nil {
 		return script
 	}
@@ -49,7 +52,10 @@ func ShScript(tracker, script string) string {
 	if !ok {
 		return script
 	}
-	prefix := shPrefix + commandargs.Quote(tracker) + " ] || . " + commandargs.Quote(tracker) + "; "
+	prefix := fmt.Sprintf("%s%s ] || { __mekugi_digest=%x __mekugi_count=%d; . %s; unset __mekugi_digest __mekugi_count; }; ", shPrefix, commandargs.Quote(tracker), sha256.Sum256([]byte(script)), len(segments), commandargs.Quote(tracker))
+	if legacy {
+		prefix = shPrefix + commandargs.Quote(tracker) + " ] || . " + commandargs.Quote(tracker) + "; "
+	}
 	if len(segments) > 1 {
 		script = Rewrite(script, segments)
 	}
@@ -71,36 +77,43 @@ func ShOriginal(script string) string {
 		return script
 	}
 	prefix := script[:end+2]
-	// Quote is reversible without executing source. The path is between the
-	// fixed test prefix and its closing bracket.
-	path, _, ok := strings.Cut(strings.TrimPrefix(prefix, shPrefix), " ] || . ")
+	// Read the quoted path by word span. Delimiters may occur in the path
+	// itself, and neither replay nor display may evaluate it.
+	condition, ok := program.Stmts[3].Cmd.(*syntax.BinaryCmd)
 	if !ok {
 		return script
 	}
+	test, ok := condition.X.Cmd.(*syntax.CallExpr)
+	if !ok || len(test.Args) != 5 {
+		return script
+	}
+	word := test.Args[3]
+	path := script[word.Pos().Offset():word.End().Offset()]
 	if len(path) < 2 || path[0] != '\'' || path[len(path)-1] != '\'' {
 		return script
 	}
 	tracker := strings.ReplaceAll(path[1:len(path)-1], "'\\''", "'")
 	original := shBoundary.ReplaceAllString(script[end+2:], "")
-	if ShScript(tracker, original) != script {
+	// Historical envelopes did not include the source digest.
+	if shScript(tracker, original, prefix == shPrefix+path+" ] || . "+path+"; ") != script {
 		return script
 	}
 	return original
 }
 
-// ShTracker runs in dash itself. Only transport differs from Bash: dash has
-// no coprocess, so the existing router also supplies control and ack FIFOs.
+// ShTracker opens the control and ack FIFOs from the executing shell. The
+// already-emitted boundaries run even when native setup changes the shell argv.
 func ShTracker(helper, channel, directory string) string {
-	return `if [ -z "${` + Guard + `+x}" ] && [ ! -e "/proc/$$/fd/3" ] && [ ! -e "/proc/$$/fd/4" ] && [ ! -e "/proc/$$/fd/7" ] && [ ! -e "/proc/$$/fd/8" ]; then
-  __mekugi_d=$(` + commandargs.Quote(helper) + ` --sh-open ` + commandargs.Quote(channel) + ` ` + commandargs.Quote(directory) + ` 2>/dev/null)
+	return `if [ -z "${` + Guard + `+x}" ] && [ ! -e "/dev/fd/3" ] && [ ! -e "/dev/fd/4" ] && [ ! -e "/dev/fd/7" ] && [ ! -e "/dev/fd/8" ]; then
+  __mekugi_d=$(` + commandargs.Quote(helper) + ` --sh-open ` + commandargs.Quote(channel) + ` ` + commandargs.Quote(directory) + ` "${BASH_VERSION-}" 2>/dev/null)
   if [ -n "$__mekugi_d" ]; then
     export ` + Guard + `=1
     if { command exec 7<>"$__mekugi_d/control" 8<>"$__mekugi_d/ack"; } 2>/dev/null; then
-      (trap 'printf "decline\n"' EXIT; command exec ` + commandargs.Quote(helper) + ` --sh-run ` + commandargs.Quote(channel) + ` ` + commandargs.Quote(directory) + ` "$__mekugi_d" 0<"$__mekugi_d/control") 3>&1 4>&2 1>&8 7>&- 8>&- 2>/dev/null &
+      (trap 'printf "decline\n"' EXIT; command exec ` + commandargs.Quote(helper) + ` --sh-run ` + commandargs.Quote(channel) + ` ` + commandargs.Quote(directory) + ` "$__mekugi_d" "$__mekugi_digest" "$__mekugi_count" 0<"$__mekugi_d/control") 3>&1 4>&2 1>&8 7>&- 8>&- 2>/dev/null &
       IFS=' ' read -r __mekugi_m __mekugi_w <&8
       case $__mekugi_m in
       relay)
-        if { command exec 3>"$__mekugi_d/out" 4>"$__mekugi_d/err"; } 2>/dev/null && [ -p "/proc/$$/fd/3" ] && [ -p "/proc/$$/fd/4" ]; then
+        if { command exec 3>"$__mekugi_d/out" 4>"$__mekugi_d/err"; } 2>/dev/null && [ -p "/dev/fd/3" ] && [ -p "/dev/fd/4" ]; then
           exec 1>&3 2>&4 3>&- 4>&-
         else
           exec 3>&- 4>&- 7>&- 8>&-
@@ -109,7 +122,11 @@ func ShTracker(helper, channel, directory string) string {
       esac
       case $__mekugi_m in
       observe|relay|status)
+        if [ -n "${BASH_VERSION-}" ]; then
+` + mktempHook(helper, ">&7", true) + `
+        else
 ` + mktempHook(helper, ">&7", false) + `
+        fi
         printf 'o\n' >&7
         __mekugi_b() { local __mekugi_s=$? __mekugi_r; printf 'b %s\n' "$1" >&7; IFS= read -r __mekugi_r <&8; return "$__mekugi_s"; }
         __mekugi_e() { local __mekugi_s=$? __mekugi_r; printf 'e %s %s\n' "$1" "$__mekugi_s" >&7; IFS= read -r __mekugi_r <&8; return "$__mekugi_s"; }

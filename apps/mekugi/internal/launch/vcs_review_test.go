@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
@@ -114,7 +113,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			setTestAppServerIntegration(u, testProxyWithStore(store))
 			key := [3]string{"main", "t", "commit"}
 			command := "git commit -m directory"
-			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+			hub := newExecTrackFixture(t, t.Context())
 			hub.ui, u.execTrack = u, hub.Observer
 			u.attached.session.Commands()[key] = &sessionpresentation.CommandOperation{Entry: sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, u.activity.Outputs(u.attached.session.Scope()))}}}
 			report := hub.begin(t, key, prior+"; "+command)

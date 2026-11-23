@@ -32,7 +32,7 @@ import (
 func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 	for _, scenario := range []string{"parallel writer", "snapshot retry", "return to baseline", "unrelated overlap", "sequential hosts", "temporary cat"} {
 		t.Run(scenario, func(t *testing.T) {
-			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+			hub := newExecTrackFixture(t, t.Context())
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "a.go")
 			writeTestFile(t, path, "before\n")
@@ -181,7 +181,7 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 func TestExecReceiptWriterBoundaryLiveAndRetained(t *testing.T) {
 	f := newMChangesSliceFixture(t, "writer-anchor")
 	proxy := testProxyWithStore(f.store, &Windows{})
-	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	hub := newExecTrackFixture(t, t.Context())
 	proxy.Windows.Reports = hub.Observer
 	t.Cleanup(proxy.Windows.Retire)
 	path := filepath.Join(f.workspace, "a.go")

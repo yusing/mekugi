@@ -5,48 +5,29 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
-	"strings"
+
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
-
-	"github.com/BurntSushi/toml"
 )
 
-// optionalTrackingHookArgs preserves caller hooks when shell guarding is off.
-// Tracking remains auxiliary and does not start a discovery process.
+// Append tracking after caller hooks, preserving their native order and trust.
 func optionalTrackingHookArgs(args []string, helper, tracker, capture string) ([]string, string, error) {
 	index := slices.Index(args, "--")
 	if index < 0 {
 		index = len(args)
 	}
 	prior := shellhook.Invocation{}
-	for i := 0; i < index; i++ {
-		setting, _ := codexArgumentValue(args[:index], &i, "-c", "--config")
-		key, value, _ := strings.Cut(setting, "=")
-		key = strings.TrimSpace(key)
-		if key == "hooks" || key == "hooks.PreToolUse" || strings.HasPrefix(key, "hooks.PreToolUse.") {
-			return args, "", fmt.Errorf("shell hook conflicts with explicit CLI PreToolUse configuration")
+	if hooks, exists := launchoptions.ConfigOverrides(args)["hooks"]; exists {
+		data, err := json.Marshal(hooks)
+		if err != nil {
+			return args, "", err
 		}
-		if key == "hooks.state" {
-			var parsed struct {
-				State map[string]any `toml:"state"`
-			}
-			if _, err := toml.Decode("state="+value, &parsed); err != nil {
-				return args, "", fmt.Errorf("read CLI hook state: %w", err)
-			}
-			if _, exists := parsed.State[shellhook.Key]; exists {
-				return args, "", fmt.Errorf("explicit CLI state for the shell hook conflicts")
-			}
-			data, err := json.Marshal(&parsed.State)
-			if err != nil {
-				return args, "", err
-			}
-			if err := json.Unmarshal(data, &prior.State); err != nil {
-				return args, "", err
-			}
+		if err := json.Unmarshal(data, &prior); err != nil {
+			return args, "", fmt.Errorf("read CLI hooks: %w", err)
 		}
 	}
-	config, state, hash, err := shellhook.Config(helper, "", "", tracker, capture, prior, nil)
+	config, state, hash, err := shellhook.Config(helper, tracker, capture, prior)
 	if err != nil {
 		return args, "", err
 	}

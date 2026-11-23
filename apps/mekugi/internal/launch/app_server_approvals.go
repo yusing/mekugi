@@ -25,7 +25,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -36,8 +35,7 @@ type nativeApprovalDock struct {
 	handles map[*prompt.Approval]*sessioncontrol.Approval
 	unbound []*sessioncontrol.Approval
 	patches map[string][]string
-	guards  []binding.ShellApproval
-	allows  func(*sessioncontrol.ShellApprovalRequest) bool
+	allows  func(*binding.ShellGuardApprovalParams) bool
 }
 
 func (d *nativeApprovalDock) calls() []*sessioncontrol.Approval {
@@ -73,44 +71,45 @@ func addApproval(attached *attachedPresentation, control *sessioncontrol.Client[
 	autoOpenApprovals(attached, picker, editor, questions, approvals, control.Thread, overlay)
 }
 
-func addGuardApproval(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, request *sessioncontrol.ShellApprovalRequest) {
-	if request.Finished() {
-		return
-	}
-	kind, known := binding.GuardForRequest(request.Kind)
-	if !known || !slices.ContainsFunc(approvals.guards, func(guard binding.ShellApproval) bool { return guard.Kind == kind }) {
-		request.Reply <- shellapproval.Reply{Reason: "approval module is not active"}
-		return
-	}
-	details := approvalDirectory(attached.cwd, request.Cwd)
+func addShellGuardApproval(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, m appserver.Message, params binding.ShellGuardApprovalParams) error {
+	details := approvalDirectory(attached.cwd, params.Cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
-	a := &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: request.Thread, Item: request.Item, Title: "Allow this remote write?", Subject: shellCommandString(request.Argv[0], request.Argv[1:]), Details: details, Choices: []prompt.Choice{
-		{ID: 0, Label: "Yes, run it", Approve: true, Outcome: "Approved"},
-		{ID: 1, Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Lasting: true, Outcome: "Approved for this session"},
-		{ID: 2, Label: "No, fail this command", Deny: true, Outcome: "Denied"},
-	}},
-		Guard: request}
-	if request.Kind == "sudo" {
-		a.Title = "Allow this sudo command?"
+	title := "Allow this remote write?"
+	if params.Kind == binding.Sudo {
+		title = "Allow this sudo command?"
 	}
-	// Match only the hook's exact host item. An environment-clearing wrapper
-	// can omit the thread; an ambiguous item is never attributed by recency.
-	if request.Item != "" {
-		if owner := approvalItem(attached, request.Thread, "", request.Item); owner != nil {
+	a := &sessioncontrol.Approval{
+		Approval: &prompt.Approval{
+			Thread:  params.ThreadID,
+			Turn:    params.TurnID,
+			Item:    params.ItemID,
+			Title:   title,
+			Subject: shellCommandString(params.Argv[0], params.Argv[1:]),
+			Details: details,
+			Choices: []prompt.Choice{
+				{ID: 0, Label: "Yes, run it", Approve: true, Outcome: "Approved"},
+				{ID: 1, Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Lasting: true, Outcome: "Approved for this session"},
+				{ID: 2, Label: "No, fail this command", Deny: true, Outcome: "Denied"},
+			},
+		},
+		RequestID:  slices.Clone(m.ID),
+		ShellGuard: &params,
+	}
+	if params.ItemID != "" {
+		if owner := approvalItem(attached, params.ThreadID, "", params.ItemID); owner != nil {
 			a.Thread, a.Turn, a.Item = owner.Thread, owner.Turn, owner.Item
 		}
 	}
-	// Password requests are never command approvals or session-grant lookups.
-	if request.Kind == "sudo-password" || request.Kind == "gpg-passphrase" {
-		openSudoPassword(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, a)
-		return
-	}
-	if approvals.allows != nil && approvals.allows(request) {
+	if approvals.allows != nil && approvals.allows(&params) {
+		if err := control.Requests.Respond(m.ID, binding.ShellGuardApprovalResponse{Decision: "accept"}); err != nil {
+			return err
+		}
 		recordApproval(attached, approvals, reviewOwner, receipts, control.Thread, clock, a, "Approved for this session")
-		request.Reply <- shellapproval.Reply{OK: true}
-		return
+		return nil
 	}
+	notifications.blockNotification(&attached.feedback, clock, m)
 	addApproval(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, a)
+	return nil
 }
 
 // approvalMessage answers Codex's approval requests. Resolution and turn
@@ -147,7 +146,9 @@ func approvalMessage(attached *attachedPresentation, control *sessioncontrol.Cli
 		}
 		if json.Unmarshal(m.Params, &p) == nil {
 			for _, a := range slices.Clone(approvals.calls()) {
-				if a.RequestID != nil && a.Thread == p.ThreadID && a.Turn == p.Turn.ID {
+				// The shell process can outlive its turn. The native guard
+				// withdraws its own pending requests when the process ends.
+				if a.RequestID != nil && a.ShellGuard == nil && a.Thread == p.ThreadID && a.Turn == p.Turn.ID {
 					endApproval(attached, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, "Turn ended before an answer")
 				}
 			}
@@ -175,6 +176,15 @@ func approvalMessage(attached *attachedPresentation, control *sessioncontrol.Cli
 			}
 		}
 		return false, nil
+	case "shellGuard/requestApproval":
+		if len(m.ID) == 0 {
+			return false, nil
+		}
+		params, err := binding.DecodeShellGuardApproval(m.Params)
+		if err != nil {
+			return true, fmt.Errorf("%s: %w", m.Method, err)
+		}
+		return true, addShellGuardApproval(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, m, params)
 	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval":
 	default:
 		return false, nil
@@ -200,22 +210,6 @@ func approvalMessage(attached *attachedPresentation, control *sessioncontrol.Cli
 	notifications.blockNotification(&attached.feedback, clock, m)
 	addApproval(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, reviewOwner, receipts, a)
 	return true, nil
-}
-
-// expireApprovals withdraws guarded writes whose command stopped waiting.
-func expireApprovals(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt) bool {
-	changed := expireSudoPasswords(attached, control, editor, questions, approvals, clock, reviewOwner, receipts)
-	for _, a := range slices.Clone(approvals.calls()) {
-		if a.Guard != nil && a.Guard.Finished() {
-			outcome := "Auto Denied: no answer within 5 minutes"
-			if a.Guard.Outcome == "withdrawn" {
-				outcome = "Withdrawn: the command stopped"
-			}
-			endApproval(attached, control, picker, editor, questions, approvals, clock, notifications, reviewOwner, receipts, a, outcome)
-			changed = true
-		}
-	}
-	return changed
 }
 
 // endApproval removes a pending approval and records how it ended.
@@ -280,8 +274,8 @@ func approvalRecord(attached *attachedPresentation, approvals *nativeApprovalDoc
 		return sessionpresentation.ActivityEntry{}, false
 	}
 	owner := approvalItem(attached, a.Thread, a.Turn, a.Item)
-	if (a.Subject == "" || a.Guard != nil) && owner == nil {
-		if a.Guard != nil {
+	if (a.Subject == "" || a.ShellGuard != nil) && owner == nil {
+		if a.ShellGuard != nil {
 			a.Outcome = outcome
 			if !slices.Contains(approvals.unbound, a) {
 				approvals.unbound = append(approvals.unbound, a)
@@ -289,7 +283,7 @@ func approvalRecord(attached *attachedPresentation, approvals *nativeApprovalDoc
 		}
 		return sessionpresentation.ActivityEntry{}, false
 	}
-	if a.Guard != nil {
+	if a.ShellGuard != nil {
 		a.Thread, a.Turn = owner.Thread, owner.Turn
 		outcome += "\nCommand: " + a.Subject
 	}
@@ -337,11 +331,10 @@ func (session *nativeSession) applyApproval(attached *attachedPresentation, pick
 		return err
 	}
 	if !delivered {
-		expireApprovals(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts)
 		return nil
 	}
 	endApproval(attached, &session.Client, picker, editor, &session.questions, &session.approvals, clock, session.notifications, session.review, &session.pendingEditReceipts, a, outcome)
-	if a.Guard != nil && choice.Approve && choice.Session {
+	if a.ShellGuard != nil && choice.Approve && choice.Session {
 		for _, pending := range slices.Clone(session.approvals.calls()) {
 			if a.SameCommand(pending) {
 				if err := session.applyApproval(attached, picker, editor, clock, grants, pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {

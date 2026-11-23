@@ -217,7 +217,6 @@ func TestAppServerQueuedShellFIFO(t *testing.T) {
 	for _, completionFirst := range []bool{false, true} {
 		t.Run(fmt.Sprint(completionFirst), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.guardHookCheck.hash = "guard"
 			appServerTestTurn(t, u, "model")
 			appServerTestKeys(t, u, "!printf first\t!printf second\tordinary input\t")
 			if wire.Len() != 0 || len(u.attached.conversation.Queued) != 3 {
@@ -251,8 +250,6 @@ func TestAppServerQueuedShellFIFO(t *testing.T) {
 					appServerTestMessage(t, u, ack)
 				}
 			}
-			check := appServerOneRequest(t, wire, "hooks/list", "")
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, check.ID, guardHookTestResult(t, u.attached.cwd, guardHookTestEntry("guard"))))
 			appServerOneRequest(t, wire, "turn/start", "ordinary input")
 		})
 	}

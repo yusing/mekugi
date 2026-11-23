@@ -76,7 +76,7 @@ func TestSideForkUsesOwningNativeRuntime(t *testing.T) {
 			workspace := installAPIRuntimeHost(t)
 			execution := &threadExecution{}
 			launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
-				_, err := runServerSession(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, api, start.Workspace, execution)
+				_, err := runServerSession(ctx, nil, []string{"--yolo"}, api, start.Workspace, execution)
 				return err
 			}, prepare: prepareAPIInput}
 			hub := sessionapi.NewHub(t.Context(), launcher)

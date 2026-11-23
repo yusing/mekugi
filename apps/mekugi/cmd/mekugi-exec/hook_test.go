@@ -19,23 +19,29 @@ import (
 	"github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
-func TestGuardHookTrustedResources(t *testing.T) {
-	marker := filepath.Join(t.TempDir(), "must-not-execute")
+func TestTrackingHookTrustedResources(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "must-not-execute")
+	tracker := filepath.Join(dir, "tracker.sh")
+	if err := os.WriteFile(tracker, []byte("# tracker\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	for _, command := range []string{"printf '%s' 'git push'", `git push "$(touch '` + marker + `')"; printf '%s' "$HOME"`} {
 		t.Run(command, func(t *testing.T) {
-			request := shellhook.Input{Helper: "/forged/helper", Directory: "/forged/guard", SudoDirectory: "/forged/sudo", Tracker: "/forged/tracker", Event: "PreToolUse", Tool: "Bash", Item: "call"}
+			request := shellhook.Input{Event: "PreToolUse", Tool: "Bash", Item: "call"}
 			request.Input.Command = &command
-			input, err := json.Marshal(request)
+			input, err := json.Marshal(struct {
+				shellhook.Input
+				Tracker string `json:"tracker"`
+			}{request, "/forged/tracker"})
 			if err != nil {
 				t.Fatal(err)
 			}
 			var output, stderr bytes.Buffer
-			if code := guardHook("/trusted/helper", []string{"/trusted/guard", "", ""}, bytes.NewReader(input), &output, &stderr); code != 0 || stderr.Len() != 0 {
+			if code := trackingHook([]string{tracker}, bytes.NewReader(input), &output, &stderr); code != 0 || stderr.Len() != 0 {
 				t.Fatalf("code=%d stderr=%s", code, &stderr)
 			}
-			request.Helper, request.Directory = "/trusted/helper", "/trusted/guard"
-			request.SudoDirectory, request.Tracker = "", ""
-			expected, err := shellhook.Rewrite(request)
+			expected, err := shellhook.Rewrite(request, tracker)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +64,7 @@ func TestGuardHookTrustedResources(t *testing.T) {
 	}
 }
 
-func TestGuardHookAuxiliaryCaptureBounds(t *testing.T) {
+func TestTrackingHookAuxiliaryCaptureBounds(t *testing.T) {
 	workspace := t.TempDir()
 	paths := []string{filepath.Join(workspace, "first"), filepath.Join(workspace, "second")}
 	for _, path := range paths {
@@ -94,7 +100,7 @@ func TestGuardHookAuxiliaryCaptureBounds(t *testing.T) {
 			}
 			var output, stderr bytes.Buffer
 			started := time.Now()
-			code := guardHook("/trusted/helper", []string{"", "", "", filepath.Dir(server.Endpoints().Requests)}, bytes.NewReader(input), &output, &stderr)
+			code := trackingHook([]string{"", filepath.Dir(server.Endpoints().Requests)}, bytes.NewReader(input), &output, &stderr)
 			elapsed := time.Since(started)
 			if code != 0 || output.String() != "{}\n" || stderr.Len() != 0 {
 				t.Fatalf("auxiliary capture changed approval: code=%d output=%s stderr=%s", code, &output, &stderr)
@@ -132,7 +138,7 @@ type hookBrokenIO struct{}
 func (hookBrokenIO) Read([]byte) (int, error)  { return 0, errors.New("input unavailable") }
 func (hookBrokenIO) Write([]byte) (int, error) { return 0, errors.New("output unavailable") }
 
-func TestGuardHookBlocksFailures(t *testing.T) {
+func TestTrackingHookBlocksFailures(t *testing.T) {
 	const valid = `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo safe"}}`
 	for _, tt := range []struct {
 		name   string
@@ -141,16 +147,16 @@ func TestGuardHookBlocksFailures(t *testing.T) {
 		output io.Writer
 		reason string
 	}{
-		{"arguments", nil, strings.NewReader(valid), io.Discard, "expected guard"},
-		{"malformed", []string{"", "", ""}, strings.NewReader("{"), io.Discard, "instrumentation failed"},
-		{"oversize", []string{"", "", ""}, strings.NewReader(strings.Repeat(" ", (4<<20)+1)), io.Discard, "exceeds 4 MiB"},
-		{"read", []string{"", "", ""}, hookBrokenIO{}, io.Discard, "input unavailable"},
-		{"event", []string{"", "", ""}, strings.NewReader(`{"hook_event_name":"PostToolUse"}`), io.Discard, "unexpected hook input"},
-		{"write", []string{"", "", ""}, strings.NewReader(valid), hookBrokenIO{}, "output unavailable"},
+		{"arguments", nil, strings.NewReader(valid), io.Discard, "expected tracker"},
+		{"malformed", []string{""}, strings.NewReader("{"), io.Discard, "instrumentation failed"},
+		{"oversize", []string{""}, strings.NewReader(strings.Repeat(" ", (4<<20)+1)), io.Discard, "exceeds 4 MiB"},
+		{"read", []string{""}, hookBrokenIO{}, io.Discard, "input unavailable"},
+		{"event", []string{""}, strings.NewReader(`{"hook_event_name":"PostToolUse"}`), io.Discard, "unexpected hook input"},
+		{"write", []string{""}, strings.NewReader(valid), hookBrokenIO{}, "output unavailable"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var stderr bytes.Buffer
-			if code := guardHook("/trusted/helper", tt.args, tt.input, tt.output, &stderr); code != 2 || !strings.Contains(stderr.String(), tt.reason) {
+			if code := trackingHook(tt.args, tt.input, tt.output, &stderr); code != 2 || !strings.Contains(stderr.String(), tt.reason) {
 				t.Fatalf("code=%d stderr=%s", code, &stderr)
 			}
 		})

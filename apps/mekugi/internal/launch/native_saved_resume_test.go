@@ -29,7 +29,6 @@ func TestNativeServerSavedResume(t *testing.T) {
 	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR", "TMPDIR"} {
 		t.Setenv(key, t.TempDir())
 	}
-	writeFeatureConfig(t, "shell_guard = false")
 	hostState := filepath.Join(t.TempDir(), "saved-thread.json")
 	hostLedger := filepath.Join(t.TempDir(), "requests.jsonl")
 	t.Cleanup(func() {

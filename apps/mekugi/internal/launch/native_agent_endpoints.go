@@ -250,7 +250,7 @@ func (c *nativeConnection) attachEndpoint(parent, thread string, explicit bool) 
 	session.Client.NativeRoot = root
 	session.Client.Thread = "" // Native identity is known; the presentation is not hydrated yet.
 	session.Client.Startup.Thread = thread
-	endpoint, err := session.prepareEndpoint(c.prefs, c.environment, agent.Cwd, nil, c.guards, c.skillsManager, nil, api, c.childSummary, c.threads, "")
+	endpoint, err := session.prepareEndpoint(c.prefs, c.environment, agent.Cwd, c.skillsManager, nil, api, c.childSummary, c.threads)
 	if err != nil {
 		c.threads.hub.RetireThread(api, thread, err)
 		return nil, err
@@ -296,21 +296,6 @@ func (c *nativeConnection) ready(endpoint *nativeEndpoint) {
 		request.reply <- request.ctx.Err()
 	}
 	endpoint.waiters = nil
-	if len(c.pendingGuards) != 0 {
-		pending := c.pendingGuards
-		c.pendingGuards = nil
-		for _, request := range pending {
-			if request.Finished() {
-				continue
-			}
-			if request.Thread == endpoint.session.Client.Thread {
-				session := endpoint.session
-				addGuardApproval(&session.attached, &session.Client, &session.picker, &session.Editor, &session.questions, &session.approvals, session.clock, session.overlayOpen(session.statusPanel, session.resumePicker), session.notifications, session.review, &session.pendingEditReceipts, request)
-			} else {
-				c.pendingGuards = append(c.pendingGuards, request)
-			}
-		}
-	}
 }
 
 func (c *nativeConnection) endChild(ctx context.Context, thread string) error {

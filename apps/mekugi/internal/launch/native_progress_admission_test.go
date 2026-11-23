@@ -37,7 +37,7 @@ func TestNativeProgressAdmitsEffortAndReferenceAtOwner(t *testing.T) {
 	defer hub.Close()
 	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 	defer server.Close()
-	connection, err := sessionapi.StartNative(ctx, server.Client(), server.URL, sessionapi.NativeStart{Workspace: workspace, RouterArgs: []string{"--shell-guard=false"}, Args: []string{"--yolo"}})
+	connection, err := sessionapi.StartNative(ctx, server.Client(), server.URL, sessionapi.NativeStart{Workspace: workspace, Args: []string{"--yolo"}})
 	if err != nil {
 		t.Fatal(err)
 	}

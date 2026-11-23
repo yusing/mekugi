@@ -166,5 +166,5 @@ func testRunSession(service *history.Service, ctx context.Context, commands []co
 		return err
 	}
 	defer captured.Stop(context.Background())
-	return runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), service, testPreferences(), &segmentservice.Service{Reports: testReports()}, captured, usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testNaming(), nil, testGuards(), options, issues, ready, artifacts)
+	return runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), service, testPreferences(), &segmentservice.Service{Reports: testReports()}, captured, usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testNaming(), nil, options, issues, ready, artifacts)
 }

@@ -13,7 +13,6 @@ type Bindings[S any] struct {
 	Rollout     func(S, RolloutSource) error
 
 	SessionNaming func(S) SessionNaming
-	ShellApproval func(S) ShellApproval
 	MCP           func(S) MCPServer
 }
 
@@ -40,11 +39,6 @@ func (b Bindings[S]) Register(r Registrar, service S, commands []command.Definit
 			return err
 		}
 	}
-	if b.ShellApproval != nil {
-		if err := r.ShellApproval(b.ShellApproval(service)); err != nil {
-			return err
-		}
-	}
 	if b.Observation != nil {
 		if err := r.Observation(b.Observation(service)); err != nil {
 			return err
@@ -62,7 +56,6 @@ func (b Bindings[S]) Reference() module.BindingReference {
 		{"executable-frontend", b.Frontends},
 		{"rollout", b.Rollout != nil},
 		{"thread-naming", b.SessionNaming != nil},
-		{"shell-approval", b.ShellApproval != nil},
 		{"observation", b.Observation != nil},
 		{"mcp-tools", b.MCP != nil},
 	} {

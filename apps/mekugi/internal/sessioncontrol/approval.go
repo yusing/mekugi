@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	"github.com/yusing/mekugi/contracts/approval"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
@@ -15,41 +13,45 @@ import (
 // It is not a published view and contains no renderer state.
 type Approval struct {
 	*prompt.Approval
-	RequestID jsontext.Value
-	Responses []map[string]any
-	Guard     *ShellApprovalRequest
-	Hook      *HookTrust
+	RequestID  jsontext.Value
+	Responses  []map[string]any
+	ShellGuard *binding.ShellGuardApprovalParams
+	Hook       *HookTrust
 }
 
+type commandIdentity struct {
+	Directory, Executable, Arguments string
+}
+
+// ApprovalGrants stores attachment-scoped exact-command grants for native
+// `shellGuard/requestApproval` prompts.
 type ApprovalGrants struct {
-	values map[binding.ShellGuardKind]map[approval.Command]bool
+	values map[binding.ShellGuardKind]map[commandIdentity]bool
 }
 
-func NewApprovalGrants(guards []binding.ShellApproval) ApprovalGrants {
-	g := ApprovalGrants{values: make(map[binding.ShellGuardKind]map[approval.Command]bool, len(guards))}
-	for _, guard := range guards {
-		g.values[guard.Kind] = make(map[approval.Command]bool)
+func NewApprovalGrants() ApprovalGrants {
+	return ApprovalGrants{
+		values: map[binding.ShellGuardKind]map[commandIdentity]bool{
+			binding.RemoteWrite: make(map[commandIdentity]bool),
+			binding.Sudo:        make(map[commandIdentity]bool),
+		},
 	}
-	return g
 }
 
-func commandApprovalIdentity(request *ShellApprovalRequest) approval.Command {
+func commandApprovalIdentity(request *binding.ShellGuardApprovalParams) commandIdentity {
 	command, _ := json.Marshal(request.Argv)
-	return approval.Command{Directory: request.Cwd, Executable: request.Executable, Arguments: string(command)}
+	return commandIdentity{Directory: request.Cwd, Executable: request.Executable, Arguments: string(command)}
 }
 
-func (g ApprovalGrants) Allows(request *ShellApprovalRequest) bool {
-	kind, known := binding.GuardForRequest(request.Kind)
-	return known && g.values[kind] != nil && g.values[kind][commandApprovalIdentity(request)]
+func (g ApprovalGrants) Allows(request *binding.ShellGuardApprovalParams) bool {
+	return request != nil && g.values[request.Kind] != nil && g.values[request.Kind][commandApprovalIdentity(request)]
 }
 
 func (a *Approval) SameCommand(other *Approval) bool {
-	return a.Guard != nil && other.Guard != nil && a.Guard.Kind == other.Guard.Kind && commandApprovalIdentity(a.Guard) == commandApprovalIdentity(other.Guard)
+	return a.ShellGuard != nil && other.ShellGuard != nil && a.ShellGuard.Kind == other.ShellGuard.Kind && commandApprovalIdentity(a.ShellGuard) == commandApprovalIdentity(other.ShellGuard)
 }
 
-// Decide delivers one already-admitted choice. False means the guard request
-// has expired; its presentation must reconcile expiry instead of recording a reply.
-// Source: apps/mekugi/internal/router/app_server_approvals.go:351:382@c8cec41a.
+// Decide delivers one already-admitted choice through the active JSON-RPC transport.
 func (a *Approval) Decide(choice prompt.Choice, reason string, grants ApprovalGrants, transport Responder, observations *Observations) (outcome string, delivered bool, err error) {
 	reason = strings.TrimSpace(reason)
 	feedback := "user denied this command without a reason"
@@ -59,27 +61,32 @@ func (a *Approval) Decide(choice prompt.Choice, reason string, grants ApprovalGr
 	if choice.Deny && reason != "" {
 		choice.Outcome += ": " + reason
 	}
-	if a.Guard != nil {
-		if a.Guard.Finished() {
-			return "", false, nil
-		}
-		reply := shellapproval.Reply{OK: choice.Approve}
-		if !choice.Approve {
-			reply.Reason = feedback
-		} else if choice.Session {
-			kind, _ := binding.GuardForRequest(a.Guard.Kind)
-			grants.values[kind][commandApprovalIdentity(a.Guard)] = true
-		}
-		a.Guard.Reply <- reply
-	} else {
-		answer := func() error { return transport.Respond(a.RequestID, a.Responses[choice.ID]) }
-		if choice.Deny && (observations != nil || reason != "") {
-			if err := observations.AnswerWithFeedback(a.Thread, a.Turn, "Command: "+a.Subject+"\n"+feedback, answer); err != nil {
-				return "", false, err
+	if a.ShellGuard != nil {
+		response := binding.ShellGuardApprovalResponse{Decision: "decline"}
+		if choice.Approve {
+			if choice.Session {
+				response.Decision = "acceptForSession"
+			} else {
+				response.Decision = "accept"
 			}
-		} else if err := answer(); err != nil {
+		} else {
+			response.Reason = &feedback
+		}
+		if err := transport.Respond(a.RequestID, response); err != nil {
 			return "", false, err
 		}
+		if choice.Approve && choice.Session && grants.values[a.ShellGuard.Kind] != nil {
+			grants.values[a.ShellGuard.Kind][commandApprovalIdentity(a.ShellGuard)] = true
+		}
+		return choice.Outcome, true, nil
+	}
+	answer := func() error { return transport.Respond(a.RequestID, a.Responses[choice.ID]) }
+	if choice.Deny && (observations != nil || reason != "") {
+		if err := observations.AnswerWithFeedback(a.Thread, a.Turn, "Command: "+a.Subject+"\n"+feedback, answer); err != nil {
+			return "", false, err
+		}
+	} else if err := answer(); err != nil {
+		return "", false, err
 	}
 	return choice.Outcome, true, nil
 }

@@ -18,7 +18,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
@@ -35,7 +34,6 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 	}
 	for _, outcome := range []string{"success", "conflict", "empty"} {
 		t.Run(outcome, func(t *testing.T) {
-			t.Setenv(shellhook.Environment, "")
 			u, _ := rewindEditsFixture(t)
 			expected := u.picker.rewind.command
 			projection := u.review.Projection
@@ -83,7 +81,7 @@ func TestNativeRewindRevertSocket(t *testing.T) {
 				cmd.Dir = u.attached.cwd
 				conversation := new(conversationmodel.Service)
 				observations := conversationbinding.Codex.Observation(conversation)
-				wait, err := (&nativeSession{reviewSource: u.reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: u.activity, history: testHistory(), segments: testReports(), ctx: runtimeContext, controlObservations: u.controlObservations, usage: u.usage, audience: u.audience, review: u.review, execWindows: u.execWindows, nativeTrace: u.nativeTrace, retained: u.review.Projection.Retained, changeSource: u.review.Projection.Changes, snapshots: u.snapshots, publishChanges: u.publishChanges, captureNotice: u.captureNotice, execTrack: u.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, nil, nil, false, "", nil, api, false, threads)
+				wait, err := (&nativeSession{reviewSource: u.reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: u.activity, history: testHistory(), segments: testReports(), ctx: runtimeContext, controlObservations: u.controlObservations, usage: u.usage, audience: u.audience, review: u.review, execWindows: u.execWindows, nativeTrace: u.nativeTrace, retained: u.review.Projection.Retained, changeSource: u.review.Projection.Changes, snapshots: u.snapshots, publishChanges: u.publishChanges, captureNotice: u.captureNotice, execTrack: u.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, false, "", nil, api, false, threads)
 				if err != nil {
 					return err
 				}

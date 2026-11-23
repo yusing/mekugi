@@ -2,7 +2,6 @@ package launch
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"os"
@@ -33,8 +32,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 
@@ -82,7 +79,7 @@ const (
 
 // runInvocation acquires independent owners, launches Codex and joins every lifetime.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func runInvocation(views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, naming *binding.SessionNaming, observations *binding.Observation, guards []binding.ShellApproval, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
+func runInvocation(views *sessionpresentation.Service, conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, naming *binding.SessionNaming, observations *binding.Observation, options launchoptions.Config, config launchoptions.Settings, issues *requestexecution.Failures, executable string, args, environment []string, stderr io.Writer, resumeThread string, resumeArgv []string, approvals bool, artifacts func([]string), api *sessionapi.Server, workspace string, threads *threadExecution) (code int, runErr error) {
 	if api == nil || threads == nil {
 		return 1, errors.New("native invocation requires control API and thread execution owners")
 	}
@@ -95,9 +92,6 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	}()
 	if diagnostics == nil && options.CaptureOutput != "" {
 		return 1, errors.New("transport diagnostics are unavailable")
-	}
-	if !options.ShellGuard {
-		guards = nil
 	}
 	var readLogPath string
 	for _, entry := range environment {
@@ -128,7 +122,6 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	var windows *executionobservation.Windows
 	var nativeTrace *nativetrace.Reader
 	var control sessioncontrol.Observations
-	var guardServer *sessioncontrol.ShellApprovals
 	var reportObserver *segmentservice.Observer
 	defer func() {
 		if debug != nil {
@@ -295,7 +288,6 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 		if reportObserver != nil {
 			reportObserver.Close()
 		}
-		guardServer.Close()
 		calls.Close()
 		audience.Close()
 	}()
@@ -389,6 +381,15 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	if summary, ok := options.ChildReplySummaryOverride(config.Features); ok {
 		cmd.Args = append(cmd.Args, "-c", "features.child_reply_summary="+strconv.FormatBool(summary))
 	}
+	if threads.headless != nil {
+		// Headless automation cannot answer interactive approvals or secret prompts.
+		// Append after user CLI overrides so headless runs are always unguarded.
+		index := slices.Index(cmd.Args, "--")
+		if index < 0 {
+			index = len(cmd.Args)
+		}
+		cmd.Args = slices.Insert(cmd.Args, index, "-c", "features.shell_guard=false")
+	}
 	self, err := os.Executable()
 	if err != nil {
 		return stopFailedStartup(err)
@@ -400,9 +401,7 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	}
 	cmd.Args = append(cmd.Args, overrides...)
 	cmd.Dir = workspace
-	cmd.Env = append(slices.DeleteFunc(codexEnvironmentCapability(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, shellhook.Environment+"=")
-	}), "MEKUGI_BASE_URL="+baseURL)
+	cmd.Env = append(codexEnvironmentCapability(environment), "MEKUGI_BASE_URL="+baseURL)
 	if threads.sourceSocket != "" {
 		cmd.Env = append(cmd.Env, sessionapi.NativeSkillsSocketEnvironment+"="+threads.sourceSocket)
 	}
@@ -412,10 +411,6 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	if debug != nil {
 		cmd.Env = append(cmd.Env, evidence.AXReadOutputEnvironment+"="+debug.ReadLogPath())
 	}
-	if threads.headless != nil {
-		guards = nil
-	}
-	guard := len(guards) != 0
 	helper := execTrackHelper()
 	var reportEndpoints segmenttransport.Endpoints
 	if segments.Live != nil {
@@ -425,63 +420,35 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	if reportEndpoints.Requests != "" {
 		captureChannel = filepath.Dir(reportEndpoints.Requests)
 	}
-	cmd.Env, err = frontendShellEnvironment(cmd.Env, frontendDirectory, helper, guards, reportEndpoints)
+	cmd.Env, err = frontendShellEnvironment(cmd.Env, frontendDirectory, helper, reportEndpoints)
 	if err != nil {
-		return stopFailedStartup(err)
-	}
-	var prior shellhook.Invocation
-	var disabled []string
-	// Only app-server invocations can answer configuration discovery RPCs.
-	var configuration jsontext.Value
-	prior, disabled, configuration, err = shellhook.Discover(ctx, cmd, guard)
-	if err != nil {
-		if options.Profile != nil {
-			return stopFailedStartup(errors.New("cannot resolve profile host configuration"))
-		}
 		return stopFailedStartup(err)
 	}
 	if route != nil {
+		configuration, err := shellhook.Discover(ctx, cmd)
+		if err != nil {
+			if options.Profile != nil {
+				return stopFailedStartup(errors.New("cannot resolve profile host configuration"))
+			}
+			return stopFailedStartup(err)
+		}
 		if err := verifyProfileRoute(configuration, route, baseURL); err != nil {
 			return stopFailedStartup(err)
 		}
 	}
 
 	if helper != "" {
-		guardDirectory := ""
-		for _, registration := range guards {
-			if registration.Kind == binding.RemoteWrite {
-				guardDirectory, _ = shellapproval.Paths(frontendDirectory)
-			}
-		}
-		sudoDirectory, tracker := "", ""
+		tracker := ""
 		for _, entry := range cmd.Env {
-			if value, ok := strings.CutPrefix(entry, shellapproval.DirectoryEnvironment+"="); ok {
-				sudoDirectory = value
-			}
 			if value, ok := strings.CutPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"="); ok {
 				tracker = value
 			}
 		}
-		var hash string
-		if guard {
-			var config, state string
-			config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, captureChannel, prior, disabled)
-			if err == nil {
-				cmd.Args = append(cmd.Args, "-c", config, "-c", state)
-				for _, key := range disabled {
-					fmt.Fprintf(stderr, "mekugi: shell guard replaces incompatible hook %q for this invocation\n", key)
-				}
+		if tracker != "" {
+			cmd.Args, _, err = optionalTrackingHookArgs(cmd.Args, helper, tracker, captureChannel)
+			if err != nil {
+				fmt.Fprintln(stderr, "mekugi: sh segment tracking unavailable:", err)
 			}
-		} else if tracker != "" {
-			cmd.Args, hash, err = optionalTrackingHookArgs(cmd.Args, helper, tracker, captureChannel)
-		}
-		if err != nil {
-			if guard {
-				return stopFailedStartup(err)
-			}
-			fmt.Fprintln(stderr, "mekugi: sh segment tracking unavailable:", err)
-		} else if guard {
-			cmd.Env = append(cmd.Env, shellhook.Environment+"="+hash)
 		}
 	}
 
@@ -490,17 +457,14 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	var waitCodex func() error
 	err = ctx.Err()
 	if err == nil {
-		guardServer, reportObserver, err = openShellObservation(ctx, frontendDirectory, guards, segments, issues)
-		if err != nil {
-			return stopFailedStartup(err)
-		}
+		reportObserver = openShellObservation(segments, issues)
 		windows.Reports = reportObserver
 
 		debugDirectory := ""
 		if debug != nil {
 			debugDirectory = filepath.Dir(debug.Paths()[0])
 		}
-		waitCodex, err = (&nativeSession{preparer: mekugiCalls, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, profile: options.Profile, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals}).start(prefs, cmd, guardServer, guards, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
+		waitCodex, err = (&nativeSession{preparer: mekugiCalls, reviewSource: changes, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments.Reports, ctx: ctx, controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, execTrack: reportObserver, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, profile: options.Profile, replayDebugDirectory: debugDirectory, titleGenerator: titleGenerator, observations: observations, approvalMode: approvals}).start(prefs, cmd, skillsManagerAvailable, resumeThread, provider.OpenAI, api, options.ChildReplySummary, threads)
 
 	}
 	if err != nil {
@@ -540,34 +504,13 @@ func runInvocation(views *sessionpresentation.Service, conversation *conversatio
 	return 0, nil
 }
 
-// openShellObservation acquires approval and report channels independently.
-// A report failure keeps approvals alive; the invocation closes both owners.
-func openShellObservation(ctx context.Context, directory string, guards []binding.ShellApproval, segments *segmentservice.Service, issues *requestexecution.Failures) (*sessioncontrol.ShellApprovals, *segmentservice.Observer, error) {
-	var guardServer *sessioncontrol.ShellApprovals
+// openShellObservation attaches the auxiliary segment-report observer.
+func openShellObservation(segments *segmentservice.Service, issues *requestexecution.Failures) *segmentservice.Observer {
 	var reportObserver *segmentservice.Observer
-	instrumentation := segmentservice.Instrumentation{}
-	if len(guards) != 0 {
-		guard, channel := shellapproval.Paths(directory)
-		var approvalErr error
-		guardServer, approvalErr = sessioncontrol.ListenShellApprovals(ctx, channel, shellapproval.Timeout, guards)
-		if approvalErr != nil {
-			return nil, nil, fmt.Errorf("listen for guarded shell commands: %w", approvalErr)
-		}
-		for _, registration := range guards {
-			switch registration.Kind {
-			case binding.RemoteWrite:
-				instrumentation.VCS = guard
-			case binding.Sudo:
-				instrumentation.Sudo = shellapproval.SudoDirectory(directory)
-			}
-		}
-	}
-	// Reporting is auxiliary; acquisition or attachment failure
-	// cannot close the independent command approval channel.
 	reportErr := segments.LiveError
 	if segments.Live != nil {
 		var hub *segmentservice.Observer
-		hub, reportErr = segmentservice.NewObserver(segments.Live, instrumentation, activitymodel.OutputBytes)
+		hub, reportErr = segmentservice.NewObserver(segments.Live, activitymodel.OutputBytes)
 		if reportErr == nil {
 			reportObserver = hub
 		} else {
@@ -577,5 +520,5 @@ func openShellObservation(ctx context.Context, directory string, guards []bindin
 	if reportErr != nil {
 		issues.AddNotice("", "command_reporting_unavailable", "Command segment tracking is unavailable. Commands retain their original output and exit status: "+reportErr.Error())
 	}
-	return guardServer, reportObserver, nil
+	return reportObserver
 }

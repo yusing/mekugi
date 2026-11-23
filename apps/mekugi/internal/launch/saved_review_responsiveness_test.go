@@ -20,7 +20,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -28,7 +27,6 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -220,9 +218,7 @@ func TestAppServerSavedReviewHydrationKeepsTerminalResponsive(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, executable, "-test.run=^TestAppServerSavedReviewHydrationKeepsTerminalResponsive$", "--")
 	cmd.Dir = workspace
-	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(value string) bool {
-		return strings.HasPrefix(value, shellhook.Environment+"=")
-	}), helper+"=1")
+	cmd.Env = append(os.Environ(), helper+"=1")
 	cmd.ExtraFiles = []*os.File{control}
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)

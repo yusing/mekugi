@@ -6,6 +6,7 @@ import (
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,9 +16,9 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -43,7 +44,6 @@ func remoteOwnerView(t *testing.T, u *appServerUI) *remoteViewHarness {
 		run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
 			h.api = api
 			h.views = newNativeViews(ctx, api.Native(), u.presentationState, u.activity, u.Requests)
-			h.views.guards = u.approvals.guards
 			u.approvals.allows = h.views.allowsApproval
 			defer h.views.close()
 			if err := api.SetSummary(sessionapi.Summary{Thread: start.Resume, Workspace: u.attached.cwd, Ready: true}); err != nil {
@@ -152,11 +152,11 @@ func (h *remoteViewHarness) send(operation any, apply func(sessionapi.NativeRequ
 
 func TestRemoteViewAnswersUsePendingPromptOwner(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		choice       *int
-		text         string
-		skip, secret bool
-		want         string
+		name                     string
+		choice                   *int
+		text                     string
+		skip, secret, shellGuard bool
+		want                     string
 	}{
 		{name: "absent choice", text: "written answer", want: "written answer"},
 		{name: "explicit written choice", choice: new(2), text: "explicit answer", want: "explicit answer"},
@@ -165,12 +165,18 @@ func TestRemoteViewAnswersUsePendingPromptOwner(t *testing.T) {
 		{name: "secret text", secret: true, text: "remote secret"},
 		{name: "secret empty", secret: true},
 		{name: "secret skip", secret: true, skip: true},
+		{name: "guard passphrase", secret: true, shellGuard: true, text: "remote secret"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.startSession("main", t.TempDir())
 			u.Turn = "turn"
-			if tc.secret {
+			if tc.shellGuard {
+				questionTestMessage(t, u, "secret", "shellGuard/requestSecret", map[string]any{
+					"threadId": "main", "turnId": "turn", "kind": "gpgPassphrase",
+					"cwd": u.attached.cwd, "executable": "/usr/bin/gpg", "argv": []string{"gpg", "--sign"},
+				})
+			} else if tc.secret {
 				questionTestSync(t, u, "secret", true)
 			} else {
 				questionTestAsync(t, u, "ordinary", "Audience?")
@@ -407,13 +413,24 @@ func TestRemoteOutputDemandRejectsNegativeHandle(t *testing.T) {
 
 func TestRemoteViewApprovalGrantsRetireWithAnsweringAttachment(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
+	wire := u.Host.Input.(*appServerTestInput)
 	h := remoteOwnerView(t, u)
-	enqueue := func(kind string) *sessioncontrol.ShellApprovalRequest {
-		request := compositionApproval(kind)
-		addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
-		return request
+	seq := 0
+	sample := func(kind binding.ShellGuardKind) *binding.ShellGuardApprovalParams {
+		tool, argv := "git", []string{"git", "push", "origin", "main"}
+		if kind == binding.Sudo {
+			tool, argv = "sudo", []string{"sudo", "id"}
+		}
+		return &binding.ShellGuardApprovalParams{Kind: kind, Cwd: "/work", Executable: "/usr/bin/" + tool, Argv: argv}
 	}
-	first, queued := enqueue(""), enqueue("")
+	enqueue := func(kind binding.ShellGuardKind) string {
+		seq++
+		id := fmt.Sprintf("sg-remote-%d", seq)
+		p := sample(kind)
+		approvalTestShellGuard(t, u, id, map[string]any{"kind": string(p.Kind), "cwd": p.Cwd, "executable": p.Executable, "argv": p.Argv})
+		return id
+	}
+	firstID, queuedID := enqueue(binding.RemoteWrite), enqueue(binding.RemoteWrite)
 	h.publish()
 	approval := u.approvals.calls()[0]
 	intent := &sessionpresentation.ApprovalIntent{Version: h.event.Frame.View.Version, Request: approval.ID, Choice: 1}
@@ -428,16 +445,16 @@ func TestRemoteViewApprovalGrantsRetireWithAnsweringAttachment(t *testing.T) {
 		}
 		return ""
 	})
-	if code != http.StatusAccepted || len(first.Reply) != 1 || len(queued.Reply) != 1 || !(<-first.Reply).OK || !(<-queued.Reply).OK {
-		t.Fatalf("attachment session grant: code=%d problem=%q", code, problem)
+	if code != http.StatusAccepted || !strings.Contains(wire.String(), `"id":"`+firstID+`"`) || !strings.Contains(wire.String(), `"id":"`+queuedID+`"`) {
+		t.Fatalf("attachment session grant: code=%d problem=%q wire=%s", code, problem, wire.String())
 	}
-	if !h.views.allowsApproval(compositionApproval("")) {
+	if !h.views.allowsApproval(sample(binding.RemoteWrite)) {
 		t.Fatal("live attachment grant was not available")
 	}
 	// Presentation replacement is the display-switch path, not a UI detach.
 	h.views.replacePresentation(h.view, &u.attached)
 	h.view.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, false)
-	if !h.views.allowsApproval(compositionApproval("")) {
+	if !h.views.allowsApproval(sample(binding.RemoteWrite)) {
 		t.Fatal("display replacement retired the attachment grant")
 	}
 	otherContext, cancelOther := context.WithCancel(t.Context())
@@ -446,29 +463,31 @@ func TestRemoteViewApprovalGrantsRetireWithAnsweringAttachment(t *testing.T) {
 		t.Fatal(refusal)
 	}
 	other := h.views.views["other"]
-	if other.attached.grants.Allows(compositionApproval("")) {
+	if other.attached.grants.Allows(sample(binding.RemoteWrite)) {
 		t.Fatal("another attachment inherited the grant")
 	}
-	second := enqueue("sudo")
+	wire.Reset()
+	secondID := enqueue(binding.Sudo)
 	publishSessionView(&other.attached, &u.Client, &other.picker, "", preferences.Applied{}, u.serviceTiers, "", "", false, u.side, false)
 	approval = u.approvals.calls()[0]
 	intent = &sessionpresentation.ApprovalIntent{Version: other.attached.presentation.View().Version, Request: approval.ID, Choice: 1}
-	if err := u.nativeSession.decideApproval(&other.attached, &u.picker, &u.Editor, u.side, u.clock, false, *intent); err != nil || len(second.Reply) != 1 || !(<-second.Reply).OK {
-		t.Fatalf("second attachment grant: %v", err)
+	if err := u.nativeSession.decideApproval(&other.attached, &u.picker, &u.Editor, u.side, u.clock, false, *intent); err != nil || !strings.Contains(wire.String(), `"id":"`+secondID+`"`) {
+		t.Fatalf("second attachment grant: err=%v wire=%s", err, wire.String())
 	}
 	h.views.retire(h.event.Attachment)
-	if h.views.allowsApproval(compositionApproval("")) || !h.views.allowsApproval(compositionApproval("sudo")) {
+	if h.views.allowsApproval(sample(binding.RemoteWrite)) || !h.views.allowsApproval(sample(binding.Sudo)) {
 		t.Fatal("detachment retained its grant or revoked another attachment's grant")
 	}
 	if refusal := h.views.attach(sessionapi.NativeRequest{Attachment: "replacement", Thread: u.Thread, Workspace: u.attached.cwd, Context: t.Context(), ViewContext: t.Context()}, &u.attached, u.Thread); refusal != "" {
 		t.Fatal(refusal)
 	}
-	repeated := enqueue("")
-	if len(repeated.Reply) != 0 || len(u.approvals.calls()) != 1 {
+	wire.Reset()
+	enqueue(binding.RemoteWrite)
+	if wire.Len() != 0 || len(u.approvals.calls()) != 1 {
 		t.Fatal("reattachment restored retired command authority")
 	}
 	cancelOther()
-	if h.views.allowsApproval(compositionApproval("sudo")) {
+	if h.views.allowsApproval(sample(binding.Sudo)) {
 		t.Fatal("closed view retained authority before disposal")
 	}
 }

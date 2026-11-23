@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
-
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
@@ -46,23 +44,46 @@ func TestApprovalDecisionUsesOriginalAuthority(t *testing.T) {
 	}
 }
 
-func TestApprovalGrantsRegisteredKindsAndAttachmentIsolation(t *testing.T) {
-	guards := []binding.ShellApproval{{Kind: binding.RemoteWrite}, {Kind: binding.Sudo}}
-	grants := NewApprovalGrants(guards)
-	other := NewApprovalGrants(guards)
-	for _, kind := range []string{"", "sudo"} {
-		request := &ShellApprovalRequest{Kind: kind, Cwd: "/workspace", Executable: "/tools/command", Argv: []string{"printf", "a b"}, Reply: make(chan shellapproval.Reply, 1)}
-		if grants.Allows(request) {
-			t.Fatal("registered guard has incorrect initial grants")
+func TestShellGuardApprovalGrantsAndNativeResponse(t *testing.T) {
+	for _, kind := range []binding.ShellGuardKind{binding.RemoteWrite, binding.Sudo} {
+		grants := NewApprovalGrants()
+		other := NewApprovalGrants()
+		transport := &requestTransport{}
+		requests := NewRequests[struct{}](transport)
+		observations := new(Observations)
+		request := &binding.ShellGuardApprovalParams{
+			Kind:       kind,
+			Cwd:        "/workspace",
+			Executable: "/tools/command",
+			Argv:       []string{"printf", "a b"},
 		}
-		approval := &Approval{Guard: request}
-		if _, delivered, err := approval.Decide(prompt.Choice{Approve: true, Session: true}, "", grants, nil, nil); err != nil || !delivered || !(<-request.Reply).OK {
+		if grants.Allows(request) {
+			t.Fatal("fresh grants authorized command")
+		}
+		approval := &Approval{
+			Approval:   &prompt.Approval{Thread: "t1", Turn: "turn1", Subject: "printf 'a b'"},
+			RequestID:  jsontext.Value(`"sg-1"`),
+			ShellGuard: request,
+		}
+		transport.err = errors.New("disconnected")
+		if _, delivered, err := approval.Decide(prompt.Choice{Approve: true, Session: true}, "", grants, requests, observations); err == nil || delivered || grants.Allows(request) {
+			t.Fatal("failed delivery installed a session grant")
+		}
+		transport.err, transport.responses = nil, nil
+		if _, delivered, err := approval.Decide(prompt.Choice{Approve: true, Session: true}, "", grants, requests, observations); err != nil || !delivered {
 			t.Fatalf("session approval: delivered=%v err=%v", delivered, err)
 		}
-		if !grants.Allows(request) || other.Allows(request) || NewApprovalGrants(guards).Allows(request) {
+		if len(transport.responses) != 1 || string(transport.responses[0].id) != `"sg-1"` {
+			t.Fatalf("unexpected transport responses: %+v", transport.responses)
+		}
+		gotResp, ok := transport.responses[0].result.(binding.ShellGuardApprovalResponse)
+		if !ok || gotResp.Decision != "acceptForSession" {
+			t.Fatalf("response=%#v", transport.responses[0].result)
+		}
+		if !grants.Allows(request) || other.Allows(request) || NewApprovalGrants().Allows(request) {
 			t.Fatal("grant lost exact command or escaped attachment lifetime")
 		}
-		for _, changed := range []ShellApprovalRequest{
+		for _, changed := range []binding.ShellGuardApprovalParams{
 			{Kind: kind, Cwd: "/other", Executable: request.Executable, Argv: request.Argv},
 			{Kind: kind, Cwd: request.Cwd, Executable: "/other/command", Argv: request.Argv},
 			{Kind: kind, Cwd: request.Cwd, Executable: request.Executable, Argv: []string{"printf", "a", "b"}},
@@ -71,16 +92,33 @@ func TestApprovalGrantsRegisteredKindsAndAttachmentIsolation(t *testing.T) {
 				t.Fatalf("authorized changed identity: %+v", changed)
 			}
 		}
-		// A module's grant never authorizes another kind, even for identical argv.
 		changed := *request
-		if kind == "" {
-			changed.Kind = "sudo"
+		if kind == binding.RemoteWrite {
+			changed.Kind = binding.Sudo
 		} else {
-			changed.Kind = "unknown"
+			changed.Kind = binding.RemoteWrite
 		}
 		if grants.Allows(&changed) {
 			t.Fatal("grant crossed guard kinds")
 		}
+		// Denial carries reason directly in native response without duplicating proxy observations.
+		denyTransport := &requestTransport{}
+		denyRequests := NewRequests[struct{}](denyTransport)
+		denyApproval := &Approval{
+			Approval:   &prompt.Approval{Thread: "t1", Turn: "turn1", Subject: "git push"},
+			RequestID:  jsontext.Value(`"sg-2"`),
+			ShellGuard: request,
+		}
+		outcome, delivered, err := denyApproval.Decide(prompt.Choice{Deny: true, Outcome: "Denied"}, " not yet ", grants, denyRequests, observations)
+		if err != nil || !delivered || outcome != "Denied: not yet" {
+			t.Fatalf("deny: outcome=%q delivered=%v err=%v", outcome, delivered, err)
+		}
+		denyResp, ok := denyTransport.responses[0].result.(binding.ShellGuardApprovalResponse)
+		if !ok || denyResp.Decision != "decline" || denyResp.Reason == nil || *denyResp.Reason != "user denied this command with a reason: not yet" {
+			t.Fatalf("deny response=%#v", denyTransport.responses[0].result)
+		}
+		if got := observations.Feedback("t1", "turn1"); got != "" {
+			t.Fatalf("native shell guard deny duplicated proxy feedback: %q", got)
+		}
 	}
-
 }

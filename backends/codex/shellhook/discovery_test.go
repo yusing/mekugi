@@ -7,7 +7,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,39 +59,14 @@ func TestGuardDiscoveryChild(t *testing.T) {
 			if mode == "disconnect" {
 				os.Exit(0)
 			}
-			result = map[string]any{
-				"config": map[string]any{"hooks": map[string]any{"PreToolUse": []any{map[string]any{"matcher": "merged-must-not-copy"}}}},
-				"layers": []any{
-					map[string]any{"name": map[string]any{"type": "user"}, "config": map[string]any{"hooks": map[string]any{"PreToolUse": []any{map[string]any{"matcher": "user-must-not-copy"}}}}},
-					map[string]any{"name": map[string]any{"type": "sessionFlags"}, "config": map[string]any{"hooks": map[string]any{"PreToolUse": []any{map[string]any{"matcher": "Read", "hooks": []any{}}}, "state": map[string]any{"recovery": map[string]any{"enabled": true, "trusted_hash": "keep"}}}}},
-				},
-			}
-			if mode == "no-layers" {
-				result = map[string]any{"config": map[string]any{}}
-			}
-		case "hooks/list":
 			if mode == "rpc-error" {
-				encoded, _ := json.Marshal(map[string]any{"id": request.ID, "error": map[string]any{"code": -32000, "message": "fixture hook failure"}})
+				encoded, _ := json.Marshal(map[string]any{"id": request.ID, "error": map[string]any{"code": -32000, "message": "fixture config failure"}})
 				fmt.Printf("%s\n", encoded)
 				continue
 			}
-			hooks := []map[string]any{}
-			for i, change := range []map[string]any{
-				{}, {"matcher": "shell|Read"}, {"async": true}, {"matcher": "Read"}, {"eventName": "sessionStart"}, {"trustStatus": "untrusted"}, {"enabled": false},
-			} {
-				entry := guardHookTestEntry("caller")
-				entry["key"] = fmt.Sprintf("caller:%d", i)
-				maps.Copy(entry, change)
-				if mode == "managed" && i == 0 {
-					entry["isManaged"] = true
-					entry["trustStatus"] = "managed"
-				}
-				if mode == "unverifiable-matcher" && i == 0 {
-					entry["matcher"] = `^[A-Z&&[^A]]ash$`
-				}
-				hooks = append(hooks, entry)
+			result = map[string]any{
+				"config": map[string]any{"model": "gpt-5.4"},
 			}
-			result = map[string]any{"data": []any{map[string]any{"cwd": cwd, "errors": []any{}, "hooks": hooks}}}
 		default:
 			os.Exit(5)
 		}
@@ -108,7 +82,7 @@ func TestGuardDiscoveryChild(t *testing.T) {
 }
 
 func TestGuardDiscoveryInvocationAndLifecycle(t *testing.T) {
-	for _, mode := range []string{"success", "managed", "unverifiable-matcher", "rpc-error", "no-layers", "disconnect", "cancel"} {
+	for _, mode := range []string{"success", "rpc-error", "disconnect", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
 			directory := t.TempDir()
 			// Passing a relative selected workspace must still produce absolute RPC cwd.
@@ -142,34 +116,23 @@ func TestGuardDiscoveryInvocationAndLifecycle(t *testing.T) {
 					}
 				}()
 			}
-			prior, disabled, _, err := Discover(ctx, command, true)
+			config, err := Discover(ctx, command)
 			if mode == "success" {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !reflect.DeepEqual(disabled, []string{"caller:0", "caller:1"}) {
-					t.Fatalf("disabled=%v", disabled)
-				}
-				var groups []map[string]any
-				groupJSON, marshalErr := json.Marshal(prior.PreToolUse)
-				if marshalErr != nil {
-					t.Fatal(marshalErr)
-				}
-				if err := json.Unmarshal(groupJSON, &groups); err != nil {
+				var parsed map[string]any
+				if err := json.Unmarshal(config, &parsed); err != nil {
 					t.Fatal(err)
 				}
-				if !reflect.DeepEqual(groups, []map[string]any{{"matcher": "Read", "hooks": []any{}}}) {
-					t.Fatalf("session groups=%s", groupJSON)
-				}
-				var state map[string]any
-				if err := json.Unmarshal(prior.State["recovery"], &state); err != nil || state["trusted_hash"] != "keep" || state["enabled"] != true {
-					t.Fatalf("lost session state: %s (%v)", prior.State["recovery"], err)
+				if parsed["model"] != "gpt-5.4" {
+					t.Fatalf("config=%s", config)
 				}
 			} else {
 				if err == nil {
 					t.Fatal("discovery accepted failed preflight")
 				}
-				expected := map[string]string{"managed": "managed shell hook", "unverifiable-matcher": "cannot verify hook matcher", "rpc-error": "fixture hook failure", "no-layers": "configuration layers", "disconnect": "disconnected"}
+				expected := map[string]string{"rpc-error": "fixture config failure", "disconnect": "disconnected"}
 				if fragment := expected[mode]; fragment != "" && !strings.Contains(err.Error(), fragment) {
 					t.Fatalf("wrong failure: %v", err)
 				}
@@ -205,26 +168,19 @@ func TestGuardDiscoveryInvocationAndLifecycle(t *testing.T) {
 				var request struct {
 					Method string `json:"method"`
 					Params struct {
-						Cwd           string   `json:"cwd"`
-						IncludeLayers bool     `json:"includeLayers"`
-						Cwds          []string `json:"cwds"`
+						Cwd           string `json:"cwd"`
+						IncludeLayers bool   `json:"includeLayers"`
 					} `json:"params"`
 				}
 				if err := json.Unmarshal([]byte(line), &request); err != nil {
 					t.Fatal(err)
 				}
 				methods = append(methods, request.Method)
-				if request.Method == "config/read" && (request.Params.Cwd != directory || !request.Params.IncludeLayers) {
+				if request.Method == "config/read" && (request.Params.Cwd != directory || request.Params.IncludeLayers) {
 					t.Fatalf("config request=%s", line)
-				}
-				if request.Method == "hooks/list" && !reflect.DeepEqual(request.Params.Cwds, []string{directory}) {
-					t.Fatalf("hook request=%s", line)
 				}
 			}
 			want := []string{"initialize", "initialized", "config/read"}
-			if mode != "no-layers" && mode != "disconnect" && mode != "cancel" {
-				want = append(want, "hooks/list")
-			}
 			if !reflect.DeepEqual(methods, want) {
 				t.Fatalf("RPC methods=%v want=%v", methods, want)
 			}

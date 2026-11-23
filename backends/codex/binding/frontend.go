@@ -14,14 +14,12 @@ type Registrar interface {
 	Frontend(command.Spec) error
 
 	SessionNaming(SessionNaming) error
-	ShellApproval(ShellApproval) error
 }
 
 // Registry validates and retains composition-ordered Codex connections.
 type Registry struct {
 	mcp          []MCPServer
 	observations *Observation
-	guards       []ShellApproval
 	commands     []command.Spec
 
 	naming *SessionNaming

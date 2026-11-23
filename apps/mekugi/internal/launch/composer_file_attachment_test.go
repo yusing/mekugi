@@ -35,7 +35,7 @@ func TestComposerFileAttachmentProjectionLeavesLookalikes(t *testing.T) {
 func TestComposerFileAttachmentLeavesOrdinaryUnicodeLimitToCodex(t *testing.T) {
 	u, w := newAppServerTestUI()
 	d := conversationmodel.Input{Text: strings.Repeat("界", 400_000)}
-	if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, []conversationmodel.Input{d}, false); err != nil {
+	if err := sendConversationInput(&u.attached, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.settings.Model, u.serviceTiers, u.skillEnvironment, u.ownedImages, []conversationmodel.Input{d}, false); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)

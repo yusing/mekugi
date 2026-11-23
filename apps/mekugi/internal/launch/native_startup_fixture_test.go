@@ -35,7 +35,7 @@ import (
 // appServerIntegration selects independent collaborators for native-session fixtures.
 type appServerIntegration struct {
 	preparer            *executionobservation.Preparer
-	nativeHub           func(*sessionapi.Hub)
+	controlSocket       chan<- string
 	controlObservations *sessioncontrol.Observations
 	bindForks           func(*sessionapi.Server)
 	usage               *accounting.Service
@@ -48,8 +48,6 @@ type appServerIntegration struct {
 	snapshots           *changecapture.Workspaces
 	publishChanges      func([]changes.Update)
 	captureNotice       func(string, string, string, string)
-	guard               *sessioncontrol.ShellApprovals
-	guards              []binding.ShellApproval
 	execTrack           *segments.Observer
 	skillsManager       bool
 }
@@ -88,7 +86,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		defer listener.Close()
 		serverContext, stopServer := context.WithCancel(ctx)
 		launcher := nativeFixtureLauncher{run: func(runtimeContext context.Context, api *sessionapi.Server, threads *threadExecution) error {
-			wait, err := (&nativeSession{preparer: integration.preparer, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments, ctx: runtimeContext, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: generator, observations: observations, approvalMode: approvals}).start(prefs, cmd, integration.guard, integration.guards, integration.skillsManager, resumeThread, nil, api, false, threads)
+			wait, err := (&nativeSession{preparer: integration.preparer, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, history: service, segments: segments, ctx: runtimeContext, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, execTrack: integration.execTrack, issues: issues, serviceTiers: serviceTiers, sessionCapture: capture, resumeArgv: resumeArgv, replayDebugDirectory: debugDirectory, titleGenerator: generator, observations: observations, approvalMode: approvals}).start(prefs, cmd, integration.skillsManager, resumeThread, nil, api, false, threads)
 			if err != nil {
 				return err
 			}
@@ -99,8 +97,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		}}
 		hub := sessionapi.NewHub(serverContext, &launcher)
 		launcher.hub = hub
-		if integration.nativeHub != nil {
-			integration.nativeHub(hub)
+		if integration.controlSocket != nil {
+			integration.controlSocket <- socket
 		}
 		done := make(chan error, 1)
 		go func() { done <- serveSessionHub(serverContext, listener, hub) }()

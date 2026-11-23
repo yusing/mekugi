@@ -9,8 +9,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
@@ -66,31 +64,34 @@ func TestNativeAnswersAtomicAndConcurrentRefusal(t *testing.T) {
 }
 
 func TestNativeSecretAnswerPrivacyAndPasswordValidation(t *testing.T) {
-	for _, kind := range []string{"sudo-password", "gpg-passphrase"} {
+	for _, kind := range []string{"sudoPassword", "gpgPassphrase"} {
 		t.Run(kind, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.startSession("main", "/workspace")
-			request := &sessioncontrol.ShellApprovalRequest{Kind: kind, Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-			openSudoPassword(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Subject: "sudo id"}, Guard: request})
+			u.Turn = "turn"
+			questionTestMessage(t, u, "secret-1", "shellGuard/requestSecret", map[string]any{
+				"threadId": "main", "turnId": "turn", "startedAtMs": 1, "kind": kind, "cwd": "/workspace", "executable": "/usr/bin/sudo", "argv": []string{"sudo", "id"},
+			})
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "completed"}})
+			wire.Reset()
+			if len(nativePendingQuestions(u.attached.conversation)) != 1 {
+				t.Fatal("turn completion withdrew a live shell process's request")
+			}
 			call := nativePendingQuestions(u.attached.conversation)[0]
 			input := nativeTestAnswerBatch(call)
 			input.Answers[0].Secret = "fixture\nsecret"
 			if refusal := nativeTestAnswers(t, u, input); !strings.Contains(refusal, "single line") {
 				t.Fatal("password validator did not reject multiline secret")
 			}
-			if len(request.Reply) != 0 || u.questions.Calls[0].Sent {
+			if wire.Len() != 0 || u.questions.Calls[0].Sent {
 				t.Fatal("invalid password answered authentication")
 			}
 			input.Answers[0].Secret = "fixture-private-secret"
 			if refusal := nativeTestAnswers(t, u, input); refusal != "" {
 				t.Fatal(refusal)
 			}
-			reply := <-request.Reply
-			if !reply.OK || reply.Password != input.Answers[0].Secret {
-				t.Fatal("native secret did not reach original authentication authority")
-			}
-			if wire.Len() != 0 {
-				t.Fatal("local authentication used host request transport")
+			if got := wire.String(); !strings.Contains(got, `"id":"secret-1"`) || !strings.Contains(got, `"decision":"provide"`) || !strings.Contains(got, `"secret":"fixture-private-secret"`) {
+				t.Fatalf("native secret response missing: %s", got)
 			}
 			for _, value := range []any{u.attached.conversation, apiPrompts(&u.attached, &u.Client), nativePendingQuestions(u.attached.conversation), u.attached.presentation.View()} {
 				data, err := json.Marshal(value, jsonv1.FormatDurationAsNano(true))

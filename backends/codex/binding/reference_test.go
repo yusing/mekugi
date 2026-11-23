@@ -17,13 +17,12 @@ func TestBindingsReference(t *testing.T) {
 		Frontends:     true,
 		Rollout:       func(struct{}, RolloutSource) error { panic("Rollout executed") },
 		SessionNaming: func(struct{}) SessionNaming { panic("SessionNaming executed") },
-		ShellApproval: func(struct{}) ShellApproval { panic("ShellApproval executed") },
 		Observation:   func(struct{}) Observation { panic("Observation executed") },
 	}
 	want := module.BindingReference{
 		Mechanisms: []string{
 			"executable-frontend", "rollout",
-			"thread-naming", "shell-approval", "observation",
+			"thread-naming", "observation",
 		},
 	}
 	got := bindings.Reference()
@@ -45,7 +44,6 @@ func TestBindingsReference(t *testing.T) {
 		{name: "rollout", bindings: Bindings[struct{}]{Rollout: bindings.Rollout}, want: module.BindingReference{Mechanisms: []string{"rollout"}}},
 		{name: "naming", bindings: Bindings[struct{}]{SessionNaming: bindings.SessionNaming}, want: module.BindingReference{Mechanisms: []string{"thread-naming"}}},
 		{name: "observation", bindings: Bindings[struct{}]{Observation: bindings.Observation}, want: module.BindingReference{Mechanisms: []string{"observation"}}},
-		{name: "approval", bindings: Bindings[struct{}]{ShellApproval: bindings.ShellApproval}, want: module.BindingReference{Mechanisms: []string{"shell-approval"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.bindings.Reference(); !reflect.DeepEqual(got, tc.want) {
@@ -58,7 +56,7 @@ func TestBindingsReference(t *testing.T) {
 func TestBindingsRegister(t *testing.T) {
 	wantCalls := []string{
 		"executable-frontend", "executable-frontend", "rollout",
-		"thread-naming", "shell-approval", "observation",
+		"thread-naming", "observation",
 	}
 	for failAt := 0; failAt <= len(wantCalls); failAt++ {
 		name := "success"
@@ -94,10 +92,6 @@ func TestBindingsRegister(t *testing.T) {
 					checkService(got, "observation")
 					return Observation{NewTranscript: func(*scope.Store) observation.Transcript { return nil }}
 				},
-				ShellApproval: func(got *int) ShellApproval {
-					checkService(got, "shell-approval")
-					return ShellApproval{Kind: Sudo}
-				},
 			}
 			registrar := &referenceRegistrar{failAt: failAt, failure: errors.New("registration failed")}
 			err := bindings.Register(registrar, service, commands)
@@ -126,7 +120,7 @@ func TestBindingsRegister(t *testing.T) {
 			if got := slices.Compact(slices.Clone(registrar.calls)); !slices.Equal(got, bindings.Reference().Mechanisms) {
 				t.Fatalf("registered mechanisms = %v, reference = %v", got, bindings.Reference().Mechanisms)
 			}
-			if !slices.EqualFunc(registrar.frontends, commands, func(a command.Spec, b command.Definition[*int]) bool { return a == b.Spec }) || registrar.naming.NewThread == nil || registrar.approval.Kind != Sudo {
+			if !slices.EqualFunc(registrar.frontends, commands, func(a command.Spec, b command.Definition[*int]) bool { return a == b.Spec }) || registrar.naming.NewThread == nil {
 				t.Fatalf("registered values differ: %+v", registrar)
 			}
 
@@ -161,8 +155,7 @@ type referenceRegistrar struct {
 	failure   error
 	frontends []command.Spec
 
-	naming   SessionNaming
-	approval ShellApproval
+	naming SessionNaming
 }
 
 func (r *referenceRegistrar) record(mechanism string) error {
@@ -188,11 +181,6 @@ func (r *referenceRegistrar) Rollout(attach func(RolloutSource) error) error {
 func (r *referenceRegistrar) SessionNaming(naming SessionNaming) error {
 	r.naming = naming
 	return r.record("thread-naming")
-}
-
-func (r *referenceRegistrar) ShellApproval(approval ShellApproval) error {
-	r.approval = approval
-	return r.record("shell-approval")
 }
 
 func (r *referenceRegistrar) Observation(Observation) error { return r.record("observation") }

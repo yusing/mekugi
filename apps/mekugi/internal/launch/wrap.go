@@ -20,16 +20,13 @@ import (
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
-	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"golang.org/x/term"
 )
 
@@ -205,7 +202,7 @@ func runOwnedInvocation(ctx context.Context, routerArgs, args []string, api *ses
 		directory := filepath.Dir(debugPaths[0])
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
-	return runInvocation(frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.Naming, frontends.Observation, frontends.Guards, options, settings, issues, executable, args, environment, os.Stderr, resumeThread, resumeArgv, approvals, func(paths []string) { debugPaths = paths }, api, workspace, threads)
+	return runInvocation(frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.Naming, frontends.Observation, options, settings, issues, executable, args, environment, os.Stderr, resumeThread, resumeArgv, approvals, func(paths []string) { debugPaths = paths }, api, workspace, threads)
 }
 
 // Reasoning shortcuts are session-local Codex config overrides. Preserve option
@@ -269,10 +266,11 @@ func withoutInheritedFrontend(environment []string) []string {
 			frontendDirectory = filepath.Dir(path)
 		}
 	}
+	vcsGuard, sudoGuard := values["CODEX_SHELL_GUARD_VCS_DIR"], values["CODEX_SHELL_GUARD_SUDO_DIR"]
 	result := make([]string, 0, len(environment))
 	for _, entry := range environment {
 		key, value, _ := strings.Cut(entry, "=")
-		if slices.Contains([]string{"CODEX_THREAD_ID", userBashEnvEnvironment, shellinstrumentation.Guard, shellinstrumentation.ShTrackerEnvironment, shellapproval.DirectoryEnvironment, shellinstrumentation.ItemEnvironment, shellinstrumentation.RealEnvironment}, key) {
+		if slices.Contains([]string{"CODEX_THREAD_ID", userBashEnvEnvironment, shellinstrumentation.Guard, shellinstrumentation.ShTrackerEnvironment, "CODEX_SHELL_GUARD_SOCKET", "CODEX_SHELL_GUARD_VCS_DIR", "CODEX_SHELL_GUARD_SUDO_DIR"}, key) {
 			continue
 		}
 		if key == "BASH_ENV" && frontendDirectory != "" {
@@ -281,9 +279,15 @@ func withoutInheritedFrontend(environment []string) []string {
 			}
 			continue
 		}
-		if key == "PATH" && frontendDirectory != "" {
+		if key == "PATH" && (frontendDirectory != "" || vcsGuard != "" || sudoGuard != "") {
 			paths := filepath.SplitList(value)
 			paths = slices.DeleteFunc(paths, func(path string) bool {
+				if path != "" && (path == vcsGuard || path == sudoGuard) {
+					return true
+				}
+				if frontendDirectory == "" {
+					return false
+				}
 				relative, err := filepath.Rel(frontendDirectory, path)
 				return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 			})
@@ -295,14 +299,8 @@ func withoutInheritedFrontend(environment []string) []string {
 }
 
 // frontendShellEnvironment restores the frontend PATH in Codex's Bash command
-// shells and, with a helper, reports each command's segments to the
-// A guard puts the helper ahead of the version-control tools, and defines a
-// function for each absolute path to one, in Bash, so remote writes
-// wait for the user's approval.
-func frontendShellEnvironment(environment []string, directory, helper string, guards []binding.ShellApproval, reports segmenttransport.Endpoints) ([]string, error) {
-	if len(guards) != 0 && helper == "" {
-		return nil, errors.New("Shell guard requires mekugi-exec beside mekugi; install both or use --shell-guard=false")
-	}
+// shells and, with a helper, reports each command's segments.
+func frontendShellEnvironment(environment []string, directory, helper string, reports segmenttransport.Endpoints) ([]string, error) {
 	environment = withoutInheritedFrontend(environment)
 	// Login Bash may replace inherited PATH while reading /etc/profile. Its
 	// noninteractive startup file runs afterward, including for `bash -lc`.
@@ -320,53 +318,12 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	if previous != "" {
 		startup += ". " + commandargs.Quote(previous) + "\n"
 	}
-	guardDirectory, sudoDirectory := "", ""
-	for _, guard := range guards {
-		switch guard.Kind {
-		case binding.RemoteWrite:
-			guardDirectory, _ = shellapproval.Paths(directory)
-		case binding.Sudo:
-			sudoDirectory = shellapproval.SudoDirectory(directory)
-		}
-	}
-	shellDirectory := guardDirectory
-	if shellDirectory == "" {
-		shellDirectory = sudoDirectory
-	}
-	for _, resource := range []struct {
-		directory string
-		tools     []string
-	}{
-		{guardDirectory, commandanalysis.VCSTools},
-		{sudoDirectory, []string{"sudo", "gpg", "gpg2", shellapproval.Askpass}},
-	} {
-		if resource.directory == "" {
-			continue
-		}
-		if err := os.MkdirAll(resource.directory, 0700); err != nil {
-			return nil, err
-		}
-		tools := resource.tools
-		if resource.directory == shellDirectory {
-			tools = slices.Concat(tools, shellinstrumentation.Shells)
-		}
-		for _, tool := range tools {
-			if err := os.Symlink(helper, filepath.Join(resource.directory, tool)); err != nil {
-				return nil, err
-			}
-		}
-	}
 	front := directory
-	if guardDirectory != "" {
-		front = guardDirectory + string(os.PathListSeparator) + front
-	}
-	if sudoDirectory != "" {
-		front += string(os.PathListSeparator) + sudoDirectory
-	}
 	startup += "PATH=" + commandargs.Quote(front) + ":\"$PATH\"\n"
 	startup += "if [ -n \"${CODEX_ARG0_PATH_DIR:-}\" ]; then\n" +
 		"  case :$PATH: in \":$CODEX_ARG0_PATH_DIR:\"*) ;; *) PATH=\"$CODEX_ARG0_PATH_DIR:$PATH\" ;; esac\n" +
-		"fi\nexport PATH\n"
+		"fi\n" +
+		"export PATH\n"
 	// Login profiles can replace PATH. Retain inherited command directories as
 	// fallbacks without accumulating them each time a nested shell starts.
 	if paths := filepath.SplitList(basePath); len(paths) != 0 {
@@ -377,20 +334,10 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 			"  case :$PATH: in *\":$__mekugi_path:\"*) ;; *) PATH=\"$PATH:$__mekugi_path\" ;; esac\n" +
 			"done\nunset __mekugi_path\n"
 	}
-	if guardDirectory != "" {
-		startup += shellinstrumentation.Functions(guardDirectory, shellinstrumentation.KnownPaths(basePath, commandanalysis.VCSTools), commandanalysis.VCSTools)
-	}
-	if sudoDirectory != "" {
-		tools := []string{"sudo", "gpg", "gpg2"}
-		startup += shellinstrumentation.Functions(sudoDirectory, shellinstrumentation.KnownPaths(basePath, tools), tools)
-	}
 
 	environment = slices.DeleteFunc(environment, func(entry string) bool {
 		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=")
 	})
-	if sudoDirectory != "" {
-		environment = append(environment, shellapproval.DirectoryEnvironment+"="+sudoDirectory)
-	}
 	if helper != "" && reports.Requests != "" {
 		socket, trackDirectory := reports.Requests, reports.Directory
 		tracker := filepath.Join(filepath.Dir(directory), "exec-track.bash")

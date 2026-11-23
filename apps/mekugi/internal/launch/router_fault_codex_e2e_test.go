@@ -26,7 +26,6 @@ import (
 
 	diagnosticstore "github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
@@ -153,7 +152,7 @@ func routerFaultCodexEnvironment(t *testing.T) []string {
 	environment := make([]string, 0, len(os.Environ())+3)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if key == "HOME" || key == "ZDOTDIR" || key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" || key == shellhook.Environment {
+		if key == "HOME" || key == "ZDOTDIR" || key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" {
 			continue
 		}
 		if key == "PATH" {

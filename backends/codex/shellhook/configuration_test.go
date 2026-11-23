@@ -28,7 +28,7 @@ func TestHookConfigPreservesCallerConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config, state, hash, err := Config("/helper's path", "/guard", "/sudo", "/tracker", "", prior, []string{"caller:1:1", "file:0:0"})
+	config, state, hash, err := Config("/helper's path", "/tracker", "", prior)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,9 +55,8 @@ func TestHookConfigPreservesCallerConfiguration(t *testing.T) {
 	}
 	wantState := map[string]map[string]any{
 		"recovery\x7f":     {"trusted_hash": "sha256:recovery", "enabled": true},
-		"caller:1:1":       {"trusted_hash": "sha256:caller", "enabled": false, "note": "keep"},
+		"caller:1:1":       {"trusted_hash": "sha256:caller", "enabled": true, "note": "keep"},
 		"already-disabled": {"enabled": false},
-		"file:0:0":         {"enabled": false},
 		"/<session-flags>/config.toml:pre_tool_use:2:0": {"trusted_hash": hash, "enabled": true},
 	}
 	if !reflect.DeepEqual(parsed.Hooks.State, wantState) {
@@ -67,9 +66,9 @@ func TestHookConfigPreservesCallerConfiguration(t *testing.T) {
 	if err != nil || string(after) != string(before) {
 		t.Fatalf("mutated caller configuration: before=%s after=%s err=%v", before, after, err)
 	}
-	guard := groups[2]["hooks"].([]any)
-	if len(guard) != 1 || guard[0].(map[string]any)["statusMessage"] != "Applying shell guard" {
-		t.Fatalf("unexpected guard handler: %#v", guard)
+	tracking := groups[2]["hooks"].([]any)
+	if len(tracking) != 1 || tracking[0].(map[string]any)["statusMessage"] != "Tracking shell segments" {
+		t.Fatalf("unexpected tracking handler: %#v", tracking)
 	}
 	// Authenticate the actual TOML-decoded handler, not a second Config call.
 	identity := map[string]any{"event_name": "pre_tool_use", "matcher": groups[2]["matcher"], "hooks": groups[2]["hooks"]}
@@ -81,19 +80,13 @@ func TestHookConfigPreservesCallerConfiguration(t *testing.T) {
 	if expected := "sha256:" + hex.EncodeToString(digest[:]); hash != expected {
 		t.Fatalf("hash=%s want=%s", hash, expected)
 	}
-	entry := guardHookTestEntry(hash)
-	entry["key"] = "/<session-flags>/config.toml:pre_tool_use:2:0"
-	if err := Validate(guardHookTestResult(t, "/workspace", entry), "/workspace", hash); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestHookConfigRejectsUnrepresentableCallerValues(t *testing.T) {
 	for _, prior := range []Invocation{
 		{PreToolUse: []jsontext.Value{jsontext.Value(`{"hooks":null}`)}},
-		{State: map[string]jsontext.Value{"conflict": jsontext.Value(`false`)}},
 	} {
-		if _, _, _, err := Config("/helper", "/guard", "", "", "", prior, []string{"conflict"}); err == nil {
+		if _, _, _, err := Config("/helper", "", "", prior); err == nil {
 			t.Fatal("accepted invalid caller hook configuration")
 		}
 	}

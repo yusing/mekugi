@@ -2,7 +2,7 @@ package shellhook
 
 import (
 	"bytes"
-	"errors"
+
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,7 +19,7 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 	}
 	for _, tt := range []struct {
 		name, script string
-		blocked      bool
+		unavailable  bool
 	}{
 		{"success", "#!/bin/sh\nprintf '%s\\n' \"$@\"\ncat\n", false},
 		{"nonzero", "#!/bin/sh\nexit 7\n", true},
@@ -32,8 +32,8 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			resources := []string{filepath.Join(directory, "guard's"), "", filepath.Join(directory, "tracker's")}
-			config, _, _, err := Config(helper, resources[0], resources[1], resources[2], "", Invocation{}, nil)
+			resources := []string{filepath.Join(directory, "tracker's")}
+			config, _, _, err := Config(helper, resources[0], "", Invocation{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,8 +53,8 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 			var output, stderr bytes.Buffer
 			command.Stdout, command.Stderr = &output, &stderr
 			err = command.Run()
-			if tt.blocked {
-				if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 2 || stderr.Len() == 0 {
+			if tt.unavailable {
+				if err != nil || output.Len() != 0 {
 					t.Fatalf("error=%v stdout=%s stderr=%s", err, &output, &stderr)
 				}
 			} else {
@@ -68,7 +68,7 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 }
 
 func TestCaptureHookFailureLeavesPatchesAvailable(t *testing.T) {
-	config, _, hash, err := Config(filepath.Join(t.TempDir(), "missing-helper"), "/guard", "", "", "/capture", Invocation{}, nil)
+	config, _, _, err := Config(filepath.Join(t.TempDir(), "missing-helper"), "", "/capture", Invocation{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,17 +84,11 @@ func TestCaptureHookFailureLeavesPatchesAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	groups := parsed.Hooks.PreToolUse
-	if len(groups) != 2 || groups[0].Matcher != "^Bash$" || groups[1].Matcher != "^apply_patch$" {
+	if len(groups) != 2 || groups[0].Matcher != "Bash|MekugiCommandTracking" || groups[1].Matcher != "^apply_patch$" {
 		t.Fatalf("unexpected hook config: %s", config)
-	}
-	patch := guardHookTestEntry("auxiliary")
-	patch["matcher"] = groups[1].Matcher
-	patch["key"] = "auxiliary"
-	if err := Validate(guardHookTestResult(t, "/workspace", guardHookTestEntry(hash), patch), "/workspace", hash); err != nil {
-		t.Fatal(err)
 	}
 	command := exec.CommandContext(t.Context(), "/bin/sh", "-c", groups[1].Hooks[0].Command)
 	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("missing capture helper blocked a patch: %v %s", err, output)
+		t.Fatalf("missing capture helper unavailable a patch: %v %s", err, output)
 	}
 }

@@ -9,14 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func execTrackPath() string {
 	entries := filepath.SplitList(os.Getenv("PATH"))
 	entries = slices.DeleteFunc(entries, func(entry string) bool {
-		return filepath.Base(entry) == shellinstrumentation.VCSDirectory
+		base := filepath.Base(entry)
+		return base == "vcs-guard" || base == "sudo-guard"
 	})
 	return strings.Join(entries, string(os.PathListSeparator))
 }

@@ -28,7 +28,6 @@ import (
 // nativeViews owns renderer attachments on the existing execution goroutine.
 // It borrows execution owners and never constructs another host request ledger.
 type nativeViews struct {
-	guards      []binding.ShellApproval
 	diagnostics *appserver.Diagnostics
 	hub         *sessionapi.Hub
 	activity    *activitymodel.Service
@@ -134,7 +133,7 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 		return "The requested session attachment is unavailable."
 	}
 	v := &nativeSessionView{remoteHuman: request.RemoteHuman(), thread: request.Thread, startup: request.Startup != "", initial: true, ctx: request.ViewContext}
-	v.attached = attachedPresentation{executionPresentation: execution.executionPresentation, presentation: n.models.Session(v.scope.Scope()), view: request.Attachment, effects: &v.effects, grants: sessioncontrol.NewApprovalGrants(n.guards)}
+	v.attached = attachedPresentation{executionPresentation: execution.executionPresentation, presentation: n.models.Session(v.scope.Scope()), view: request.Attachment, effects: &v.effects, grants: sessioncontrol.NewApprovalGrants()}
 	v.files.context, v.activity = v.ctx, n.activity
 	main := execution.presentation.View().Main
 	main.ID = request.Thread
@@ -154,7 +153,7 @@ func (n *nativeViews) attach(request sessionapi.NativeRequest, execution *attach
 
 // allowsApproval consults only live attachment authority. Presentation replacement
 // leaves each attachment's grants intact; disposal retires them with its view.
-func (n *nativeViews) allowsApproval(request *sessioncontrol.ShellApprovalRequest) bool {
+func (n *nativeViews) allowsApproval(request *binding.ShellGuardApprovalParams) bool {
 	for _, view := range n.views {
 		if view.ctx.Err() == nil && view.attached.grants.Allows(request) {
 			return true

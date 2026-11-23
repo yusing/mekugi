@@ -438,7 +438,7 @@ func TestProfileLaunchProcess(t *testing.T) {
 			os.Unsetenv("PROFILE_FIXTURE_TOKEN")
 			os.Unsetenv("PROFILE_HEADER")
 		}
-		thread, err := hub.RunNative(ctx, sessionapi.NativeStart{Workspace: workspace, RouterArgs: []string{"--shell-guard=false", "--capture-output", os.Getenv("MEKUGI_PROFILE_CAPTURE")}, Args: args, Environment: admitted}, "Continue the fixture task")
+		thread, err := hub.RunNative(ctx, sessionapi.NativeStart{Workspace: workspace, RouterArgs: []string{"--capture-output", os.Getenv("MEKUGI_PROFILE_CAPTURE")}, Args: args, Environment: admitted}, "Continue the fixture task")
 		hub.Close()
 		launcher.workers.Close()
 		if err != nil {
@@ -449,7 +449,7 @@ func TestProfileLaunchProcess(t *testing.T) {
 		}
 		return
 	}
-	code, err := wrapCodex(ctx, []string{"--shell-guard=false", "--capture-output", os.Getenv("MEKUGI_PROFILE_CAPTURE")}, []string{"headless", "--yolo", "-p", "work", "-c", "features.plugins=false", "-c", "bypass_hook_trust=true"})
+	code, err := wrapCodex(ctx, []string{"--capture-output", os.Getenv("MEKUGI_PROFILE_CAPTURE")}, []string{"headless", "--yolo", "-p", "work", "-c", "features.plugins=false", "-c", "bypass_hook_trust=true"})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}

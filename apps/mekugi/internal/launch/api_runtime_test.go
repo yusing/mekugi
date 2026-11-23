@@ -56,7 +56,7 @@ func TestServerSessionNoTerminal(t *testing.T) {
 	}}
 	done := make(chan error, 1)
 	launcher.run = func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
-		_, err := runServerSession(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, api, start.Workspace, execution)
+		_, err := runServerSession(ctx, nil, []string{"--yolo"}, api, start.Workspace, execution)
 		done <- err
 		return err
 	}
@@ -448,7 +448,7 @@ func TestNativeStartupChooserDisconnectJoinsUnconfirmedHost(t *testing.T) {
 	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 	defer server.Close()
 	client := &http.Client{Timeout: 10 * time.Second}
-	connection, err := sessionapi.StartNative(t.Context(), client, server.URL, sessionapi.NativeStart{Workspace: workspace, RouterArgs: []string{"--shell-guard=false"}, Args: []string{"resume", "--yolo"}})
+	connection, err := sessionapi.StartNative(t.Context(), client, server.URL, sessionapi.NativeStart{Workspace: workspace, Args: []string{"resume", "--yolo"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,7 +486,7 @@ func TestNativeArchiveJoinsOwningRuntime(t *testing.T) {
 	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
 	defer server.Close()
 	client := &http.Client{Timeout: 10 * time.Second}
-	connection, err := sessionapi.StartNative(t.Context(), client, server.URL, sessionapi.NativeStart{Workspace: workspace, RouterArgs: []string{"--shell-guard=false"}, Args: []string{"--yolo"}})
+	connection, err := sessionapi.StartNative(t.Context(), client, server.URL, sessionapi.NativeStart{Workspace: workspace, Args: []string{"--yolo"}})
 	if err != nil {
 		t.Fatal(err)
 	}
