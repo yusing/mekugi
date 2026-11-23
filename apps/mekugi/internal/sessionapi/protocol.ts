@@ -1430,6 +1430,9 @@ export type Value = {
   "SyntaxPath": string;
   "Workdir": string;
   "ShowWorkdir": boolean;
+  "VCSTool": string;
+  "VCSWorktree": string;
+  "VCSStaged": boolean;
   "From": string;
   "To": string;
   "Owner": string;
@@ -1459,7 +1462,7 @@ export type Value = {
   "Live": boolean;
   "Thought": number;
   "Failed": boolean;
-} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "AutoReload" | "AttachmentKind" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "TailClipped" | "SourceOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought" | "Failed">;
+} & Omit<Content, "UserShell" | "GroupHeader" | "GroupStart" | "GroupCount" | "Subsumed" | "Effect" | "Output" | "ReplySummary" | "ReplyDetails" | "DetailCode" | "AutoReload" | "AttachmentKind" | "AttachmentID" | "Ended" | "Started" | "Duration" | "NotificationTiming" | "Questions" | "Source" | "Operation" | "Section" | "Path" | "SyntaxPath" | "Workdir" | "ShowWorkdir" | "VCSTool" | "VCSWorktree" | "VCSStaged" | "From" | "To" | "Owner" | "WaitTargets" | "WaitTimeout" | "WaitReason" | "Results" | "Exited" | "ExitCode" | "Approval" | "BatchExit" | "EditOutcome" | "Running" | "Requested" | "Segment" | "Skipped" | "Pending" | "Tail" | "TailOmitted" | "TailClipped" | "SourceOmitted" | "Changes" | "Hook" | "Members" | "RequestedOperations" | "DetailLines" | "Live" | "Thought" | "Failed">;
 
 export type ItemContent = {
   "Command": Command;
