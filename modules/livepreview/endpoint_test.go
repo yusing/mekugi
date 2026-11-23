@@ -59,3 +59,40 @@ func TestRunningPreviewUsesComposedReaderAndCapturedScope(t *testing.T) {
 	}
 	t.Fatal("settled source edit was not published")
 }
+
+func TestRunningPreviewRepeatedWritesWaitForSettlement(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "source.go")
+	write := func(text string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("package p; var A=1\n")
+	observation, ok := capture.Capture(t.Context(), []commandanalysis.Command{{
+		Command: "tee source.go <<'EOF'\npackage p; var B=2\nEOF\nprintf '// observed suffix\\n' >> source.go", Workdir: workspace, Shell: "sh",
+	}}, false, true, capture.Options{Directory: workspace, PreviewOnly: true})
+	if !ok || observation == nil || !observation.RepeatedPaths {
+		t.Fatal("fixture must capture repeated writes to one path")
+	}
+	service := moduletest.New(t, livepreview.Module, livepreview.Deps{ReadEndpoint: capture.ReadFile}, module.Slots{}, nil)
+	var attachment scope.Store
+	session := service.Attach(t.Context(), &attachment)
+	defer session.Close()
+	session.SetScope(preview.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	endpoint := session.ObserveEndpoints(t.Context(), preview.SelectEndpoints(t.Context(), *observation), preview.Preview{ID: "edit", Workspace: workspace, Thread: "thread"})
+	defer endpoint.Close()
+	for _, text := range []string{"package p; var B=2\n", "package p; var B=2\n// observed suffix\n"} {
+		write(text)
+		if endpoint.Advance(t.Context(), false) {
+			t.Fatal("intermediate write completed the preview before native settlement")
+		}
+		if current := session.Current(); len(current) != 1 || current[0].Complete || len(current[0].Files) != 1 {
+			t.Fatalf("unfinished writer lost its live preview: %+v", current)
+		}
+	}
+	if !endpoint.Advance(t.Context(), true) || !endpoint.View().Complete || len(session.Current()) != 0 || !strings.Contains(endpoint.View().Files[0].Diff, "+// observed suffix") {
+		t.Fatalf("settled writer lost its final content: %+v", endpoint.View())
+	}
+}
