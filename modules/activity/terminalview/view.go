@@ -176,8 +176,9 @@ type RunKey struct {
 	Lead        uint64             // Main item a transcript tool group continues, or 0.
 	Flash       uint64             // Flashed Activity entry in this run, or 0.
 	Excerpt     bool               // Main sent message or batch shortened out of view.
-	Tail        int                // Tail lines open output shows; 0 shows the whole tail.
-	Expansion   uint8
+	Tail       int // Tail lines open output shows; 0 shows the whole tail.
+	VerbColumn int // Shared verb column across adjacent non-separated tool items, or 0.
+	Expansion  uint8
 }
 
 // trackPace starts pacing new live invocations that report several

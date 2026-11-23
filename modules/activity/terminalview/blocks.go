@@ -132,15 +132,32 @@ func collapseCapturedEdits(blocks []Block) []Block {
 // verbs take their own width rather than widening their neighbors' column.
 const widestAlignedVerb = 7
 
+// alignedVerbWidth returns the verb column width a block requests when it fits
+// within widestAlignedVerb, or 0 for wider verbs and auxiliary filter notes.
+func alignedVerbWidth(b Block) int {
+	switch b.Kind {
+	case "op", "reads":
+		if b.EditOperation() && b.GroupHeader == "" {
+			b.GroupHeader = b.EditHeading()
+		}
+		if w := verbCells(b.RowVerb()); w <= widestAlignedVerb {
+			return w + 1
+		}
+	case "attachments":
+		return len("Attach ")
+	}
+	return 0
+}
+
 // AlignVerbs gives each run of adjacent operations one verb column, as wide as
 // the widest verb in that run, so rows pad only to the verbs beside them.
 func AlignVerbs(blocks []Block) []Block {
 	blocks = slices.Clone(blocks)
 	for start := 0; start < len(blocks); {
 		end, column := start, 0
-		for ; end < len(blocks) && slices.Contains([]string{"op", "reads", "filter"}, blocks[end].Kind); end++ {
-			if w := verbCells(blocks[end].RowVerb()); blocks[end].Kind != "filter" && w <= widestAlignedVerb {
-				column = max(column, w+1)
+		for ; end < len(blocks) && slices.Contains([]string{"op", "reads", "filter", "attachments"}, blocks[end].Kind); end++ {
+			if w := alignedVerbWidth(blocks[end]); w > column {
+				column = w
 			}
 		}
 		for k := start; k < end; k++ {
