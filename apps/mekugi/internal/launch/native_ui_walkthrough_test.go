@@ -2,6 +2,7 @@ package launch
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"io"
@@ -136,10 +137,10 @@ type walkthroughProvider struct {
 }
 
 type walkthroughInput struct {
-	Type    string `json:"type"`
-	Role    string `json:"role"`
-	CallID  string `json:"call_id"`
-	Output  string `json:"output"`
+	Type    string         `json:"type"`
+	Role    string         `json:"role"`
+	CallID  string         `json:"call_id"`
+	Output  jsontext.Value `json:"output"`
 	Content []struct {
 		Text string `json:"text"`
 	} `json:"content"`
@@ -155,8 +156,11 @@ func walkthroughStep(input []walkthroughInput) string {
 		switch item.Type {
 		case "custom_tool_call_output", "function_call_output":
 			if _, step, ok := strings.Cut(item.CallID, "-step-"); ok {
-				if step == "sync-question" && len(binding.QuestionReplies(binding.QuestionReplyStart+item.Output+binding.QuestionReplyEnd)) != 1 {
-					return "invalid-sync-answer"
+				if step == "sync-question" {
+					var answer string
+					if json.Unmarshal(item.Output, &answer) != nil || len(binding.QuestionReplies(binding.QuestionReplyStart+answer+binding.QuestionReplyEnd)) != 1 {
+						return "invalid-sync-answer"
+					}
 				}
 				return step
 			}

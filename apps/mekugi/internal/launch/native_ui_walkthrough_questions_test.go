@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestNativeUIWalkthroughQuestionContract(t *testing.T) {
@@ -112,5 +113,20 @@ func TestNativeUIWalkthroughAnswerSteps(t *testing.T) {
 				t.Fatal("async answer reused sync acknowledgment", response.Body.String())
 			}
 		})
+	}
+}
+
+func TestNativeUIWalkthroughCapturedEditOutput(t *testing.T) {
+	for _, original := range []string{`"Patch applied"`, `[{"type":"input_text","text":"Patch applied"}]`} {
+		output, _, err := codexresponses.AppendOutputNotice([]byte(original), "Captured saved edit: internal/pane/launch.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := `{"input":[{"type":"custom_tool_call_output","call_id":"preview-1-step-edited","output":` + string(output) + `}]}`
+		response := httptest.NewRecorder()
+		new(walkthroughProvider).serve(response, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(request)))
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "collaboration__spawn_agent") {
+			t.Fatalf("captured edit did not launch review: status=%d body=%s", response.Code, response.Body.String())
+		}
 	}
 }
