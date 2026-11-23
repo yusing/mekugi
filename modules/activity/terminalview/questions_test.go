@@ -38,6 +38,41 @@ func TestQuestionBlockRendersFullAnswerAtNarrowWidthsInBothThemes(t *testing.T) 
 	}
 }
 
+func TestQuestionBlockStatePlacement(t *testing.T) {
+	p := Painter{Theme: diffrender.DarkTheme}
+	uniform := ansi.Strip(strings.Join(p.Block(Block{
+		Kind:  "op",
+		Verb:  "Asked",
+		Label: "2 questions · answered",
+		Questions: []Question{
+			{Text: "Who should receive the release update?", Answer: "Internal team\n\nabc", State: "answered"},
+			{Text: "When should the update go out?", Answer: "After validation", State: "answered"},
+		},
+	}, 80), "\n"))
+	if strings.Count(uniform, "answered") != 1 {
+		t.Fatalf("expected answered only in header, got:\n%s", uniform)
+	}
+	if !strings.Contains(uniform, "  Who should receive the release update?\n  └ Internal team") {
+		t.Fatalf("answer did not follow question directly:\n%s", uniform)
+	}
+
+	mixed := ansi.Strip(strings.Join(p.Block(Block{
+		Kind:  "op",
+		Verb:  "Asked",
+		Label: "2 questions · waiting",
+		Questions: []Question{
+			{Text: "Who receives the update?", Answer: "Beta users", State: "answered"},
+			{Text: "When should it go out?", Options: "Monday · Friday", State: "waiting"},
+		},
+	}, 80), "\n"))
+	if !strings.Contains(mixed, "  Who receives the update? · answered\n  └ Beta users") {
+		t.Fatalf("expected inline mixed state on wide question row, got:\n%s", mixed)
+	}
+	if !strings.Contains(mixed, "  When should it go out? · waiting\n  Monday · Friday") {
+		t.Fatalf("expected inline waiting state on wide question row, got:\n%s", mixed)
+	}
+}
+
 func TestUISnapshotQuestionMarkdown(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := Painter{Theme: theme, CopySource: true}

@@ -119,7 +119,7 @@ func TestQuestionRecommendedDescription(t *testing.T) {
 	m.Current().Choices[1].Description = "Monitor before expanding"
 	rows := previewRows(m, new(terminalview.QuestionLayout), 96, 14)
 	text := ansi.Strip(strings.Join(rows, "\n"))
-	if !strings.Contains(text, "Staged [Recommended]  Monitor before expanding") || m.Current().Selected != 1 || m.Current().Done {
+	if !strings.Contains(text, "❯ 2. Staged [Recommended]\n       Monitor before expanding") || m.Current().Selected != 1 || m.Current().Done {
 		t.Fatal(text)
 	}
 }

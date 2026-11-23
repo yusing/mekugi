@@ -36,6 +36,51 @@ func (l *QuestionLayout) focus(q prompt.QuestionView) string {
 	return preview
 }
 
+func optionRowHeight(o prompt.Option, showDesc bool) int {
+	if showDesc && promptText(o.Description) != "" {
+		return 2
+	}
+	return 1
+}
+
+// optionWindow picks a contiguous slice [start, end) of at most 8 options that
+// fits within budget rows while keeping selected visible.
+func optionWindow(options []prompt.Option, selected, top, budget int, showDesc bool) (int, int) {
+	if len(options) == 0 {
+		return 0, 0
+	}
+	selected = max(0, min(selected, len(options)-1))
+	start := max(0, min(top, selected))
+	fitEnd := func(from int) int {
+		used := 0
+		end := from
+		for end < len(options) && end-from < 8 {
+			h := optionRowHeight(options[end], showDesc)
+			if end > from && used+h > budget {
+				break
+			}
+			used += h
+			end++
+		}
+		return end
+	}
+	end := fitEnd(start)
+	for end <= selected && start < selected {
+		start++
+		end = fitEnd(start)
+	}
+	// Pull start earlier when scrolled near the bottom and extra rows remain.
+	for start > 0 && end-start < 8 {
+		prevEnd := fitEnd(start - 1)
+		if prevEnd < end || prevEnd <= selected {
+			break
+		}
+		start--
+		end = prevEnd
+	}
+	return start, end
+}
+
 // Questions docks the open question as a panel: an accent heading with its
 // position, the question, numbered options with a pointer on the selected
 // one, and dim keys. Hidden questions collapse to one reminder row.
@@ -146,40 +191,49 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 	if preview != "" {
 		room = max(1, height-len(rows)-len(foot))
 	}
-	optionRoom := room - 1
+	optionRoom := max(1, room-1)
 	if preview != "" && !wide {
 		optionRoom = max(1, (room-2)/2)
 	}
-	count := min(8, len(options), max(1, optionRoom))
-	layout.top = min(question.Selected, min(layout.top, max(0, len(options)-count)))
-	if question.Selected >= layout.top+count {
-		layout.top = question.Selected - count + 1
+	allRows := 0
+	for _, o := range options {
+		allRows += optionRowHeight(o, true)
 	}
-	columns := 0
-	for _, o := range options[layout.top:min(len(options), layout.top+count)] {
-		columns = max(columns, ansi.StringWidth(promptText(o.Label)))
+	var start, end int
+	showDesc := true
+	if len(options) <= 8 && allRows <= room && (preview == "" || wide || allRows <= optionRoom) {
+		start, end = 0, len(options)
+		layout.top = 0
+	} else {
+		budget := optionRoom
+		if preview != "" && !wide {
+			budget = max(1, optionRoom-1)
+		}
+		if budget < 2 {
+			showDesc = false
+		}
+		start, end = optionWindow(options, question.Selected, layout.top, budget, showDesc)
+		layout.top = start
 	}
 	var optionRows []string
-	for i := layout.top; i < min(len(options), layout.top+count); i++ {
+	for i := start; i < end; i++ {
 		o := options[i]
 		label := promptText(o.Label)
+		prefixLen := 2 + len(fmt.Sprintf("%d. ", i+1))
 		if o.Recommended {
-			label = ansi.Truncate(label, max(1, optionWidth-21), "…")
+			label = ansi.Truncate(label, max(1, optionWidth-prefixLen-len(" [Recommended]")), "…")
 		}
 		line := choiceLines(p.Theme, false, i == question.Selected, i+1, label, math.MaxInt)[0]
 		if o.Recommended {
 			line += " " + accent + "[Recommended]" + reset
 		}
-		labelWidth := ansi.StringWidth(label)
-		if o.Recommended {
-			labelWidth += len(" [Recommended]")
-		}
-		if optionWidth-max(columns, labelWidth)-7 >= 24 {
-			line += strings.Repeat(" ", max(0, columns-labelWidth)+2) + dim + promptText(o.Description) + reset
-		}
 		optionRows = append(optionRows, ansi.Truncate(line, optionWidth, "…"))
+		if desc := promptText(o.Description); showDesc && desc != "" && optionWidth > prefixLen {
+			indent := strings.Repeat(" ", prefixLen)
+			optionRows = append(optionRows, indent+dim+ansi.Truncate(desc, optionWidth-prefixLen, "…")+reset)
+		}
 	}
-	if count < len(options) {
+	if end-start < len(options) {
 		optionRows = append(optionRows, "  "+dim+ansi.Truncate(fmt.Sprintf("option %d/%d", question.Selected+1, len(options)), optionWidth-2, "")+reset)
 	}
 	if preview == "" {
@@ -199,7 +253,15 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 		heading := fmt.Sprintf("Preview %d–%d/%d", layout.previewTop+1, min(len(lines), layout.previewTop+visible), len(lines))
 		var pane []string
 		if previewRoom > 1 {
-			pane = append(pane, dim+ansi.Truncate(heading, previewWidth, "")+reset)
+			if wide {
+				pane = append(pane, dim+ansi.Truncate(heading, previewWidth, "")+reset)
+			} else {
+				rule := "── " + heading + " "
+				if fill := previewWidth - ansi.StringWidth(rule); fill > 0 {
+					rule += strings.Repeat("─", fill)
+				}
+				pane = append(pane, dim+ansi.Truncate(rule, previewWidth, "")+reset)
+			}
 		}
 		pane = append(pane, lines[layout.previewTop:min(len(lines), layout.previewTop+visible)]...)
 		if wide {
