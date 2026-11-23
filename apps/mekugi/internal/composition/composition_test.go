@@ -22,7 +22,7 @@ type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings
 func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 	definitions := make([]command.Definition[*testService], len(specs))
 	for i, spec := range specs {
-		definitions[i] = command.Definition[*testService]{Spec: spec.Spec, ObserveRead: spec.ObserveRead}
+		definitions[i] = command.Definition[*testService]{Spec: spec.Spec}
 		if spec.Run != nil {
 			definitions[i].Run = func(_ *testService, ctx context.Context, request command.Request) (command.Output, error) {
 				return spec.Run(ctx, request)

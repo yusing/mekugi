@@ -6,24 +6,20 @@ import (
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
 
 func TestAXFailureEvidenceAndExplicitExclusions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	for _, tc := range []struct{ thread, class string }{{"child", "invalid_arguments"}, {"other", "not_found"}, {"", "retained_file"}} {
-		observation, err := new(Service).StartRead(path, tc.thread, "mcat", AXReadContext{CallID: "call-shell", ShellID: "shell-1"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := observation.FinishResult(false, tc.class, new(1)); err != nil {
-			t.Fatal(err)
-		}
+	var events []axReadEvent
+	for i, tc := range []struct{ thread, class string }{{"child", "invalid_arguments"}, {"other", "not_found"}, {"", "retained_file"}} {
+		events = append(events, axReadPair(fmt.Sprintf("id-%d", i), tc.thread, "mcat", AXReadContext{CallID: "call-shell", ShellID: "shell-1"}, false, tc.class, new(1))...)
 	}
+	writeAXReadEvents(t, path, events...)
 	reads, err := new(Service).ReadReads(t.Context(), path, "child")
 	if err != nil || reads.Failed != 1 || reads.OtherThreadStarted != 1 || reads.UnattributedStarted != 1 || reads.FailuresByClass["invalid_arguments"] != 1 {
 		t.Fatalf("%+v: %v", reads, err)
@@ -60,21 +56,6 @@ func TestAXRejectsUnsupportedSchema(t *testing.T) {
 
 func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := observation.FinishResult(false, "private /source/path and stderr", new(1)); err == nil {
-		t.Fatal("accepted raw error as class")
-	}
-	data, _ := os.ReadFile(path)
-	if strings.Contains(string(data), "private") {
-		t.Fatal("raw diagnostic leaked")
-	}
-	reads, err := new(Service).ReadReads(t.Context(), path, "thread")
-	if err != nil || reads.Incomplete != 1 || reads.Completed != 0 {
-		t.Fatalf("invalid diagnostic became completed: %+v %v", reads, err)
-	}
 	for _, mutate := range []func(*axReadEvent){
 		func(e *axReadEvent) { e.CallID = "other" },
 		func(e *axReadEvent) { e.FailureClass = "secret" },
@@ -103,15 +84,11 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 
 func TestAXFailureDetailsBoundDoesNotDropCounts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	for range 257 {
-		observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := observation.FinishResult(false, "", nil); err != nil {
-			t.Fatal(err)
-		}
+	var events []axReadEvent
+	for i := range 257 {
+		events = append(events, axReadPair(fmt.Sprintf("id-%d", i), "thread", "mcat", AXReadContext{}, false, "unknown", nil)...)
 	}
+	writeAXReadEvents(t, path, events...)
 	reads, err := new(Service).ReadReads(context.Background(), path, "thread")
 	if err != nil || reads.Failed != 257 || reads.FailuresByClass["unknown"] != 257 || len(reads.Failures) != 256 || reads.DroppedFailures != 1 {
 		t.Fatalf("counts truncated: %+v %v", reads, err)

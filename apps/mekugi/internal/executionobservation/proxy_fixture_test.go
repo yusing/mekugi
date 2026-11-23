@@ -182,7 +182,7 @@ func runToolPluginWorker(service *history.Service, commands []command.Contributi
 	if invocation == nil {
 		return false, 0
 	}
-	return true, invocation.Run(service, new(evidence.Service), commands, processScope, ctx, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, commands, processScope, ctx, args, stdin, stdout, stderr)
 }
 
 // Close releases the actual owners created by request fixtures.

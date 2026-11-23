@@ -16,7 +16,6 @@ type (
 
 	workerManifest struct {
 		ReplayDirectory string   `json:"replay_directory,omitempty"`
-		AXReadOutput    string   `json:"ax_read_output,omitempty"`
 		Version         int      `json:"version"`
 		RegistryID      string   `json:"registry_id"`
 		Tools           []string `json:"tools"`

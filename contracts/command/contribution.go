@@ -11,9 +11,7 @@ import (
 // Run receives the exact host argv and stdin and returns streams and status to Codex.
 type Contribution struct {
 	Spec
-	// ObserveRead requests auxiliary read-completion evidence from the host.
-	ObserveRead bool
-	Run         func(context.Context, Request) (Output, error)
+	Run func(context.Context, Request) (Output, error)
 }
 
 // Request carries exact process input and the authenticated host-selected scope.
@@ -28,6 +26,5 @@ type Request struct {
 // Definition binds a command to its module's constructed service.
 type Definition[S any] struct {
 	Spec
-	ObserveRead bool
-	Run         func(S, context.Context, Request) (Output, error)
+	Run func(S, context.Context, Request) (Output, error)
 }

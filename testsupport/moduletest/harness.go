@@ -53,7 +53,7 @@ func New[D, S, V any, B interface {
 
 // BindCommand exposes a descriptor command against its constructed test service.
 func BindCommand[S any](definition command.Definition[S], service S) command.Contribution {
-	return command.Contribution{Spec: definition.Spec, ObserveRead: definition.ObserveRead,
+	return command.Contribution{Spec: definition.Spec,
 		Run: func(ctx context.Context, request command.Request) (command.Output, error) {
 			return definition.Run(service, ctx, request)
 		},
