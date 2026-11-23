@@ -124,6 +124,37 @@ func TestQuestionRecommendedDescription(t *testing.T) {
 	}
 }
 
+func TestQuestionCompactHeightKeepsFocusedDescriptionReadable(t *testing.T) {
+	c := conversationbinding.Questions("main", "", "compact", nil, []binding.Question{{
+		ID:       "q1",
+		Question: strings.Join([]string{"Line 1 of a long question", "Line 2 of a long question", "Line 3 of a long question", "Line 4 of a long question", "Line 5 of a long question"}, "\n"),
+		Options: []binding.QuestionOption{
+			{Label: "Narrow", Description: "Only one path"},
+			{Label: "Broad", Description: "All paths"},
+		},
+	}})
+	var m prompt.Questions
+	m.Add(&c, false)
+	m.Open(&c)
+	var layout terminalview.QuestionLayout
+	want := []string{"Only one path", "All paths", "Type your answer"}
+	for idx, desc := range want {
+		m.Current().Selected = idx
+		rows := previewRows(&m, &layout, 80, 12)
+		if len(rows) > 12 {
+			t.Fatalf("option %d exceeded height: %d", idx, len(rows))
+		}
+		for _, row := range rows {
+			if ansi.StringWidth(row) > 80 {
+				t.Fatalf("option %d exceeded width: %q", idx, row)
+			}
+		}
+		if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, desc) {
+			t.Fatalf("option %d missing focused description %q in:\n%s", idx, desc, text)
+		}
+	}
+}
+
 func TestUISnapshotQuestionPreviews(t *testing.T) {
 	for _, fixture := range []struct {
 		name    string

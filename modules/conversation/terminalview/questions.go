@@ -228,9 +228,15 @@ func Questions(d prompt.QuestionDockView, p *terminalui.Painter, layout *Questio
 			line += " " + accent + "[Recommended]" + reset
 		}
 		optionRows = append(optionRows, ansi.Truncate(line, optionWidth, "…"))
-		if desc := promptText(o.Description); showDesc && desc != "" && optionWidth > prefixLen {
-			indent := strings.Repeat(" ", prefixLen)
-			optionRows = append(optionRows, indent+dim+ansi.Truncate(desc, optionWidth-prefixLen, "…")+reset)
+		if desc := promptText(o.Description); desc != "" {
+			if showDesc && optionWidth > prefixLen {
+				indent := strings.Repeat(" ", prefixLen)
+				optionRows = append(optionRows, indent+dim+ansi.Truncate(desc, optionWidth-prefixLen, "…")+reset)
+			} else if !showDesc && i == question.Selected {
+				if lineWidth := ansi.StringWidth(line); optionWidth-lineWidth-2 >= 16 {
+					optionRows[len(optionRows)-1] = ansi.Truncate(line+"  "+dim+desc+reset, optionWidth, "…")
+				}
+			}
 		}
 	}
 	if end-start < len(options) {
