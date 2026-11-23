@@ -6,6 +6,6 @@
 "    2. Internal                                                                 "
 "    \x1b[2moption 1/3\x1b[m                                                                  "
 "                                                                                "
-"  \x1b[2m1–3 choose · type answer · enter next · ←/→ question · ctrl+] skip · esc\x1b[m      "
-"  \x1b[2mhide\x1b[m                                                                          "
+"  \x1b[2m1–3 choose · type answer · tab note · enter next · ←/→ question · ctrl+]\x1b[m      "
+"  \x1b[2mskip · esc hide\x1b[m                                                               "
 "plain after dock                                                                "

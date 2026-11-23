@@ -50,11 +50,13 @@ func questionTestSync(t *testing.T, u *appServerUI, id string, secret bool) {
 	})
 }
 
+func questionTestID(item string, index int) string { return fmt.Sprintf("%s/q%d", item, index+1) }
+
 func questionTestAsync(t *testing.T, u *appServerUI, item string, titles ...string) {
 	t.Helper()
 	questions := make([]any, 0, len(titles))
-	for _, title := range titles {
-		questions = append(questions, map[string]any{"title": title, "options": []string{"Customers", "Internal"}})
+	for i, title := range titles {
+		questions = append(questions, map[string]any{"id": questionTestID(item, i), "question": title, "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal"}}})
 	}
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": item, "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": titles[0], "questions": questions,
@@ -78,10 +80,10 @@ func questionTestPaint(t *testing.T, u *appServerUI, width int) string {
 
 func TestNativeQuestionSyncAnswerEncoding(t *testing.T) {
 	for _, tc := range []struct{ name, keys, want string }{
-		{"option", "1\r", `"Narrow"`},
-		{"note", "1\tbecause tests\r", `"user_note: because tests"`},
-		{"other", "3custom scope\r", `"user_note: custom scope"`},
-		{"all skipped", "\x1d\r", `"answers":{}`},
+		{"option", "1\r", `"choice":1`},
+		{"note", "1\tbecause tests\r", `"note":"because tests"`},
+		{"other", "3custom scope\r", `"other":"custom scope"`},
+		{"all skipped", "\x1d\r", `"skipped":true`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, input := newAppServerTestUI()
@@ -148,7 +150,7 @@ func TestNativeChildQuestionUsesBlockedFallback(t *testing.T) {
 	}
 	questionTestPaint(t, u, 140)
 	appServerTestKeys(t, u, "Main answer\r")
-	want := `{"id":"main-request","result":{"answers":{"scope":{"answers":["user_note: Main answer"]}}}}` + "\n"
+	want := `{"id":"main-request","result":{"answers":[{"id":"scope","other":"Main answer"}]}}` + "\n"
 	if wire.String() != want {
 		t.Fatalf("response = %s, want %s", wire.String(), want)
 	}
@@ -191,15 +193,14 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	if strings.Count(input.String(), binding.QuestionReplyStart) != 1 {
 		t.Fatalf("async answers were not batched: %q", input.String())
 	}
-	if !strings.Contains(input.String(), `request_user_input_async`) {
+	if !strings.Contains(appServerTurnRequests(t, input)[0].text(), `"id":"async-item/q1","choice":1`) {
 		t.Fatal("missing stock question identity")
 	}
 	// A second client may commit a reply without any local submission.
 	v, _ := newAppServerTestUI()
 	v.Turn = "turn"
 	questionTestAsync(t, v, "external-item", "Which audience?")
-	id, _ := json.Marshal([]any{"request_user_input_async", "external-item", 0})
-	envelope, _ := json.Marshal([]binding.QuestionReply{{Answer: "Customers", Question: "Which audience?", QuestionItemID: string(id)}})
+	envelope, _ := json.Marshal([]binding.QuestionAnswer{{ID: questionTestID("external-item", 0), Choice: 1}})
 	questionTestMessage(t, v, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "external-reply", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": binding.QuestionReplyStart + string(envelope) + binding.QuestionReplyEnd}},
 	}})
@@ -257,13 +258,13 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 			insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "Main draft")
 			questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 				"id": "call", "type": "agentMessage", "delivery": "async", "questions": []any{
-					map[string]any{"question": "First?", "isSecret": secret}, map[string]any{"question": "Second?"},
+					map[string]any{"id": questionTestID("call", 0), "question": "First?", "isSecret": secret}, map[string]any{"id": questionTestID("call", 1), "question": "Second?"},
 				},
 			}})
 			openQuestions(&u.attached, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			insertDraft(&u.attached, u.Editor, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "active answer")
 			commit := func(index int) {
-				text := binding.EncodeQuestionReplies([]binding.QuestionReply{{Answer: "external", QuestionItemID: binding.AsyncQuestionIdentity("call", index)}})
+				text := binding.EncodeQuestionReplies([]binding.QuestionAnswer{{Other: "external", ID: questionTestID("call", index)}})
 				questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 					"id": fmt.Sprintf("reply-%d", index), "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": text}},
 				}})
@@ -373,18 +374,14 @@ func TestNativeQuestionResumeOnlyUnanswered(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
 	u.startSession("main", t.TempDir())
-	id, err := json.Marshal([]any{"request_user_input_async", "answered-item", 0})
-	if err != nil {
-		t.Fatal(err)
-	}
-	replies, err := json.Marshal([]binding.QuestionReply{{Answer: "Customers", Question: "Who receives it?", QuestionItemID: string(id)}})
+	replies, err := json.Marshal([]binding.QuestionAnswer{{Choice: 1, ID: questionTestID("answered-item", 0)}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wire, err := json.Marshal([]any{map[string]any{"id": "past-turn", "status": "completed", "items": []any{
-		map[string]any{"id": "answered-item", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who receives it?", "questions": []any{map[string]any{"title": "Who receives it?", "options": []string{"Customers", "Internal"}}}},
+		map[string]any{"id": "answered-item", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who receives it?", "questions": []any{map[string]any{"id": questionTestID("answered-item", 0), "question": "Who receives it?", "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal"}}}}},
 		map[string]any{"id": "reply", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": binding.QuestionReplyStart + string(replies) + binding.QuestionReplyEnd}}},
-		map[string]any{"id": "open-item", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who approves it?", "questions": []any{map[string]any{"title": "Who approves it?", "options": []string{"Customers", "Internal"}}}},
+		map[string]any{"id": "open-item", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who approves it?", "questions": []any{map[string]any{"id": questionTestID("open-item", 0), "question": "Who approves it?", "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal"}}}}},
 	}}})
 	if err != nil {
 		t.Fatal(err)

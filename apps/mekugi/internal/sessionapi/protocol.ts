@@ -334,6 +334,7 @@ export type Attachment = {
 };
 
 export type QuestionAnswer = {
+  "note"?: string;
   "question": string;
   "choice"?: (number | null);
   "text"?: string;
@@ -538,6 +539,7 @@ export type value = {
 };
 
 export type QuestionCall = {
+  "blocking": boolean;
   "id": string;
   "agent"?: string;
   "questions": Array<Question>;
@@ -1263,6 +1265,8 @@ export type NativeDesktopNotification = {
 };
 
 export type Option = {
+  "preview"?: string;
+  "recommended"?: boolean;
   "label": string;
   "description"?: string;
 };
@@ -1282,11 +1286,14 @@ export type AnswerInput = {
   "Choice": number;
   "Draft": Draft;
   "Skip": boolean;
+  "Note": string;
 };
 
 export type Prompt_Option = {
   "Label": string;
   "Description": string;
+  "Preview": string;
+  "Recommended": boolean;
 };
 
 export type Completion_View = {

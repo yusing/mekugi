@@ -19,6 +19,7 @@ import (
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/completion"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -79,6 +80,23 @@ func rewindPageResponse(control *sessioncontrol.Client[appServerRequest], picker
 		return
 	}
 	for _, turn := range page.Data {
+		for _, item := range turn.Items {
+			if item.Type == "agentMessage" && len(item.Questions) > 0 {
+				call := conversationbinding.Questions(control.Thread, turn.ID, item.ID, nil, item.Questions)
+				picker.rewind.questions = append(picker.rewind.questions, call.Questions...)
+			}
+		}
+	}
+	appendChoice := func(choice completion.Choice, text string) {
+		if _, _, replied := conversationbinding.ReplyText(text); replied {
+			if picker.rewind.replies == nil {
+				picker.rewind.replies = make(map[completion.ChoiceID]string)
+			}
+			picker.rewind.replies[choice.Identity()] = text
+		}
+		picker.Choices = append(picker.Choices, choice)
+	}
+	for _, turn := range page.Data {
 		if turn.ID == "" || turn.Status == "inProgress" {
 			continue
 		}
@@ -88,12 +106,13 @@ func rewindPageResponse(control *sessioncontrol.Client[appServerRequest], picker
 				continue
 			}
 			text, _, _ := conversationbinding.UserText(item.Content)
-			if answer, _, replied := conversationbinding.ReplyText(text); replied {
+			original := text
+			if answer, _, replied := conversationbinding.ReplyText(text, picker.rewind.questions...); replied {
 				text = answer
 			}
 			text = strings.Join(strings.Fields(text), " ")
 			if turnUserCount == 0 {
-				picker.Choices = append(picker.Choices, completion.Choice{Name: turn.ID, Display: cmp.Or(text, "User turn (no text)"), Description: "Rewind immediately before this turn"})
+				appendChoice(completion.Choice{Name: turn.ID, Display: cmp.Or(text, "User turn (no text)"), Description: "Rewind immediately before this turn"}, original)
 				turnUserCount++
 				continue
 			}
@@ -105,8 +124,15 @@ func rewindPageResponse(control *sessioncontrol.Client[appServerRequest], picker
 				picker.rewind.items = make(map[completion.ChoiceID]string)
 			}
 			picker.rewind.items[choice.Identity()] = item.ID
-			picker.Choices = append(picker.Choices, choice)
+			appendChoice(choice, original)
 			turnUserCount++
+		}
+	}
+	for i, choice := range picker.Choices {
+		if text, ok := picker.rewind.replies[choice.Identity()]; ok {
+			if answer, _, _ := conversationbinding.ReplyText(text, picker.rewind.questions...); answer != "" {
+				picker.Choices[i].Display = strings.Join(strings.Fields(answer), " ")
+			}
 		}
 	}
 	if page.NextCursor != "" {
@@ -209,6 +235,8 @@ func continueRewind(attached *attachedPresentation, control *sessioncontrol.Clie
 }
 
 type rewindSelection struct {
+	questions                    []prompt.Question
+	replies                      map[completion.ChoiceID]string
 	cursors                      map[string]bool
 	items                        map[completion.ChoiceID]string
 	snapshot                     *changepresentation.Snapshot

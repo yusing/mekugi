@@ -43,7 +43,7 @@ type InputError struct {
 func (a Answer) validate() error {
 	metadata, uploads := len(a.Call), 0
 	for _, answer := range a.Answers {
-		metadata += len(answer.Question) + len(answer.Text)
+		metadata += len(answer.Question) + len(answer.Text) + len(answer.Note)
 		for _, item := range answer.Attachments {
 			metadata += len(item.Source) + len(item.Name) + len(item.Path)
 			if item.Data != nil {

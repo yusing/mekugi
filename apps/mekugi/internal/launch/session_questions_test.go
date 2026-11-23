@@ -30,7 +30,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	if err := u.nativeSession.submitQuestions(&u.attached, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, submit); err != nil {
 		t.Fatal(err)
 	}
-	if got := wire.String(); !strings.Contains(got, `"id":"first"`) || !strings.Contains(got, `"answers":["Narrow","user_note: explicit note"]`) {
+	if got := wire.String(); !strings.Contains(got, `"id":"first"`) || !strings.Contains(got, `"choice":1,"note":"explicit note"`) {
 		t.Fatalf("wrong response identity or explicit input: %s", got)
 	}
 	if u.questions.activeCall() == nil || u.questions.activeCall().ID == call.ID || u.Text != "another answer draft" {
@@ -50,8 +50,8 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	}
 	submit.Incomplete = true
 	submit.Version = u.attached.presentation.View().Version
-	if err := u.nativeSession.submitQuestions(&u.attached, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, submit); err != nil || !strings.Contains(wire.String(), `"id":"second","result":{"answers":{}}`) {
-		t.Fatal("confirmed incomplete call lost the host's empty-answer semantics")
+	if err := u.nativeSession.submitQuestions(&u.attached, &u.picker, &u.Editor, u.side, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.ctx, submit); err != nil || !strings.Contains(wire.String(), `"id":"second","result":{"answers":[{"id":"scope","skipped":true}]}`) {
+		t.Fatal("confirmed incomplete call lost explicit skipped answers")
 	}
 }
 
@@ -77,7 +77,7 @@ func TestNonTerminalQuestionBatchUsesOrdinarySubmission(t *testing.T) {
 		t.Fatalf("question batch bypassed submission control: %+v", requests)
 	}
 	text := requests[0].text()
-	if strings.Count(text, binding.QuestionReplyStart) != 1 || !strings.Contains(text, "Customers") || !strings.Contains(text, "Internal") {
+	if strings.Count(text, binding.QuestionReplyStart) != 1 || !strings.Contains(text, `"choice":1`) || !strings.Contains(text, `"choice":2`) {
 		t.Fatalf("question batch lost answers or identity: %s", text)
 	}
 }

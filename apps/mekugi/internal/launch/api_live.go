@@ -129,7 +129,11 @@ func (session *nativeSession) applyAPIIntent(attached *attachedPresentation, pic
 				return "This prompt was already answered.", nil
 			}
 		}
-		return "", session.submitQuestions(attached, picker, editor, *side, clock, overlay, parent, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: intent.Answer.Call, Incomplete: incomplete})
+		var ids []string
+		for _, answer := range answers {
+			ids = append(ids, answer.Question)
+		}
+		return "", session.submitQuestions(attached, picker, editor, *side, clock, overlay, parent, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: intent.Answer.Call, Incomplete: incomplete, Questions: ids})
 	case sessionapi.DecideApproval:
 		decision := sessionpresentation.ApprovalIntent{Version: attached.presentation.View().Version, Request: intent.Decide.Approval, Choice: intent.Decide.Choice, Reason: intent.Decide.Reason}
 		_, choice, err := attached.presentation.Approval(decision, &attached.conversation.Approvals)

@@ -5,7 +5,8 @@
   import { onDestroy, tick, untrack } from "svelte";
   import type { Approval, QuestionCall } from "./protocol";
   import { stream } from "./stream.svelte";
-  import { semantic } from "./semantic.svelte";
+  import { semantic, questionDraft, questionAnswers } from "./semantic.svelte";
+  import Tag from "./ui/Tag.svelte";
   import Button from "./ui/Button.svelte";
   import { input } from "./ui/styles";
 
@@ -38,27 +39,27 @@
   $effect.pre(() => {
     const questions = call?.questions ?? [];
     untrack(() => {
-      promptState.drafts = Object.fromEntries(
-        questions.map((q) => [
-          q.id,
-          promptState.drafts[q.id] ?? {
-            choice: q.options?.length ? undefined : 0,
-            text: "",
-            items: [],
-          },
-        ]),
-      );
+      for (const q of questions) promptState.drafts[q.id] ??= questionDraft(q);
     });
   });
   let card: HTMLElement;
   let submittedWithFocus = false;
   let trays: Record<string, ReturnType<typeof Attachments>> = {};
-  let acquisition: AbortController | undefined;
+  const acquisitions = new Set<AbortController>();
+  let hovered = $state<Record<string, number | undefined>>({});
+  let focused = $state<Record<string, number | undefined>>({});
+  const activeDraft = $derived(
+    call?.questions[questionIndex]
+      ? promptState.drafts[call.questions[questionIndex].id]
+      : undefined,
+  );
   let progress = $state("");
-  const disabled = $derived(unavailable || promptState.sending);
+  const disabled = $derived(
+    unavailable || promptState.sending || (!!call?.blocking && promptState.accepted),
+  );
 
   onDestroy(() => {
-    acquisition?.abort();
+    for (const controller of acquisitions) controller.abort();
     const active = document.activeElement;
     if (!card?.contains(active) && !(submittedWithFocus && active === document.body)) return;
     tick().then(() =>
@@ -70,60 +71,60 @@
     );
   });
 
-  async function answer() {
+  async function submitAnswers(id?: string) {
     if (!call || disabled) return;
-    if (
-      call.questions.some((q, index) => {
-        const d = promptState.drafts[q.id];
-        const missing =
-          !d ||
-          d.choice === undefined ||
-          (d.choice === (q.options?.length ?? 0) && !d.text.trim() && !d.items.length);
-        if (missing) onquestion?.(index);
-        return missing;
-      })
-    ) {
-      promptState.error = "Answer every question or skip it.";
+    const target = call;
+    const pending = promptState;
+    let answers;
+    try {
+      answers = questionAnswers(target, pending.drafts, id);
+    } catch (failure) {
+      pending.error = failure instanceof Error ? failure.message : "Could not prepare answers.";
+      if (failure instanceof Error)
+        onquestion?.(target.questions.findIndex((q) => q.id === failure.cause));
       tick().then(() => card.querySelector<HTMLElement>("[role=alert]")?.focus());
       return;
     }
+    const drafts = answers.map((answer) => pending.drafts[answer.question]);
+    if (drafts.some((draft) => draft.sending || draft.accepted)) return;
     submittedWithFocus = card.contains(document.activeElement);
-    const pending = promptState;
     const release = semantic.retainInput();
     const captured = semantic.event;
     const controller = new AbortController();
-    acquisition = controller;
-    pending.sending = true;
+    acquisitions.add(controller);
+    if (target.blocking) pending.sending = true;
+    for (const draft of drafts) {
+      draft.sending = true;
+      draft.accepted = false;
+    }
     pending.error = undefined;
     pending.accepted = false;
     try {
-      const answers = [];
-      for (const q of call.questions) {
+      for (const answer of answers) {
+        const q = target.questions.find((candidate) => candidate.id === answer.question)!;
         const draft = pending.drafts[q.id];
-        const written = draft.choice === (q.options?.length ?? 0);
-        answers.push({
-          question: q.id,
-          choice: typeof draft.choice === "number" ? draft.choice : undefined,
-          text: written ? draft.text : "",
-          attachments: written
-            ? await prepareAttachments(draft.items, controller.signal, (read, size) => {
-                progress = size
-                  ? `Reading images: ${Math.round((read / size) * 100)}%`
-                  : "Preparing answers…";
-              })
-            : [],
-          skip: draft.choice === "skip",
-        });
+        if (draft.choice === (q.options?.length ?? 0)) {
+          answer.attachments = await prepareAttachments(
+            draft.items,
+            controller.signal,
+            (read, size) => {
+              progress = size
+                ? `Reading images: ${Math.round((read / size) * 100)}%`
+                : "Preparing answers…";
+            },
+          );
+        }
       }
-      acquisition = undefined;
       progress = "Sending…";
-      pending.error = await semantic.send(
-        { answers: { call: call.id, answers } },
+      const error = await semantic.send(
+        { answers: { call: target.id, answers } },
         controller.signal,
         false,
         captured,
       );
-      pending.accepted = !pending.error;
+      pending.error = error;
+      if (target.blocking) pending.accepted = !error;
+      for (const draft of drafts) draft.accepted = !error;
     } catch (failure) {
       pending.error = controller.signal.aborted
         ? "Attachment preparation cancelled."
@@ -131,9 +132,10 @@
           ? failure.message
           : "Could not prepare answers.";
     } finally {
-      acquisition = undefined;
+      acquisitions.delete(controller);
       progress = "";
-      pending.sending = false;
+      if (target.blocking) pending.sending = false;
+      for (const draft of drafts) draft.sending = false;
       release(pending.error);
     }
   }
@@ -231,7 +233,7 @@
     <form
       onsubmit={(event) => {
         event.preventDefault();
-        answer();
+        submitAnswers(call?.questions[questionIndex]?.id);
       }}
     >
       <div class="mb-3 flex items-center gap-3">
@@ -255,37 +257,87 @@
         {#if question.secret}
           <p class={text}>Answer this secret prompt in the terminal.</p>
         {:else if promptState.drafts[question.id]}
-          <fieldset class="mb-4 min-w-0" {disabled}>
+          {@const draft = promptState.drafts[question.id]}
+          {@const questionDisabled = disabled || draft.sending || draft.accepted}
+          {@const previewIndex = hovered[question.id] ?? focused[question.id] ?? draft.choice}
+          {@const preview =
+            typeof previewIndex === "number"
+              ? question.options?.[previewIndex]?.preview
+              : undefined}
+          <fieldset class="mb-4 min-w-0" disabled={questionDisabled}>
             <legend class="font-semibold">{question.header || "Question"}</legend>
             {#if question.text && question.text.trim() !== question.header?.trim()}<p class={text}>
                 {question.text}
               </p>{/if}
-            {#each question.options ?? [] as option_, index}
-              <label class={option}>
-                <input
-                  class={radio}
-                  type="radio"
-                  name={question.id}
-                  bind:group={promptState.drafts[question.id].choice}
-                  value={index}
-                />
-                <span
-                  >{option_.label}{#if option_.description}<small
-                      class="block text-small text-muted">{option_.description}</small
-                    >{/if}</span
+            <div class="question-layout">
+              <div>
+                {#each question.options ?? [] as option_, index}
+                  <label
+                    class={option}
+                    onmouseenter={() => (hovered[question.id] = index)}
+                    onmouseleave={() => (hovered[question.id] = undefined)}
+                  >
+                    <input
+                      class={radio}
+                      type="radio"
+                      name={question.id}
+                      bind:group={promptState.drafts[question.id].choice}
+                      value={index}
+                      onfocus={() => {
+                        focused[question.id] = index;
+                        hovered[question.id] = undefined;
+                      }}
+                      onblur={() => (focused[question.id] = undefined)}
+                    />
+                    <span
+                      ><span class="flex flex-wrap items-center gap-2"
+                        >{option_.label}{#if option_.recommended}<Tag>Recommended</Tag>{/if}</span
+                      >{#if option_.description}<small class="block text-small text-muted"
+                          >{option_.description}</small
+                        >{/if}</span
+                    >
+                  </label>
+                {/each}
+                <label
+                  class={option}
+                  onmouseenter={() => (hovered[question.id] = question.options?.length ?? 0)}
+                  onmouseleave={() => (hovered[question.id] = undefined)}
                 >
-              </label>
-            {/each}
-            <label class={option}>
-              <input
-                class={radio}
-                type="radio"
-                name={question.id}
-                bind:group={promptState.drafts[question.id].choice}
-                value={question.options?.length ?? 0}
-              />
-              <span>Other</span>
-            </label>
+                  <input
+                    class={radio}
+                    type="radio"
+                    name={question.id}
+                    bind:group={promptState.drafts[question.id].choice}
+                    value={question.options?.length ?? 0}
+                    onfocus={() => {
+                      focused[question.id] = question.options?.length ?? 0;
+                      hovered[question.id] = undefined;
+                    }}
+                    onblur={() => (focused[question.id] = undefined)}
+                  />
+                  <span>Other</span>
+                </label>
+              </div>
+              {#if preview}<section class="question-preview min-w-0" aria-label="Option preview">
+                  <h3 class="mb-2 text-small text-muted">Preview</h3>
+                  <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard scrolling.) -->
+                  <pre
+                    tabindex="0"
+                    role="region"
+                    aria-label="Preview text"
+                    class="max-h-64 overflow-auto rounded-control border border-rule bg-surface p-3 text-code whitespace-pre-wrap wrap-anywhere">{preview}</pre>
+                </section>{/if}
+            </div>
+            {#if typeof draft.choice === "number" && draft.choice < (question.options?.length ?? 0)}
+              <label class={written}
+                >Note (optional)<textarea
+                  class={answerBox}
+                  name={question.id + "-note"}
+                  autocomplete="off"
+                  bind:value={draft.note}
+                  rows="2"></textarea></label
+              >
+            {/if}
             {#if promptState.drafts[question.id].choice === (question.options?.length ?? 0)}
               <label class={written}
                 >Your answer
@@ -295,7 +347,7 @@
                   autocomplete="off"
                   bind:value={promptState.drafts[question.id].text}
                   onpaste={(event) => {
-                    if (disabled) return;
+                    if (questionDisabled) return;
                     const files = Array.from(event.clipboardData?.files ?? []).filter(
                       (file) => !file.type || file.type.startsWith("image/"),
                     );
@@ -309,7 +361,7 @@
                 bind:this={trays[question.id]}
                 bind:items={promptState.drafts[question.id].items}
                 machine=""
-                {disabled}
+                disabled={questionDisabled}
               />
             {/if}
             <label class={option}>
@@ -319,20 +371,52 @@
                 name={question.id}
                 bind:group={promptState.drafts[question.id].choice}
                 value="skip"
+                onfocus={() => {
+                  focused[question.id] = question.options?.length ?? 0;
+                  hovered[question.id] = undefined;
+                }}
+                onblur={() => (focused[question.id] = undefined)}
               />
               <span>Skip this question</span>
             </label>
           </fieldset>
+          {#if !call.blocking}<Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              disabled={questionDisabled}>Submit answer</Button
+            >{/if}
         {/if}
       {/each}
-      {#if !call.questions.some((q) => q.secret)}
+      {#if call.blocking && !call.questions.some((q) => q.secret)}
         <Button type="submit" variant="primary" size="lg" {disabled}>Submit answers</Button>
       {/if}
     </form>
   {/if}
   {#if promptState.error}<Alert class="my-2" tabindex={-1}>{promptState.error}</Alert>
   {:else if unavailable}<p class={note} role="status">Not connected to the thread.</p>
-  {:else if promptState.sending || promptState.accepted}<p class={note} role="status">
-      {promptState.accepted ? "Submitted. Waiting for the session…" : progress || "Sending…"}
+  {:else if promptState.sending || promptState.accepted || activeDraft?.sending || activeDraft?.accepted}<p
+      class={note}
+      role="status"
+    >
+      {promptState.accepted || activeDraft?.accepted
+        ? "Submitted. Waiting for the session…"
+        : progress || "Sending…"}
     </p>{/if}
 </article>
+
+<style>
+  article {
+    container-type: inline-size;
+    container-name: question;
+  }
+  .question-layout {
+    display: grid;
+    gap: 1rem;
+  }
+  @container question (min-width: 34rem) {
+    .question-layout:has(.question-preview) {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+  }
+</style>

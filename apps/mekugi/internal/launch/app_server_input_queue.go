@@ -12,6 +12,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -169,7 +170,7 @@ func sendConversationInput(attached *attachedPresentation, control *sessioncontr
 	}
 	for _, part := range parts {
 		if part.Question != nil {
-			part.Question.SubmissionID = id
+			part.Question.SetSubmission(id, conversationbinding.ReplyIDs(part.Text))
 		}
 	}
 	return nil

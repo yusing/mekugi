@@ -120,7 +120,7 @@ func TestNativeSyncAnswersKeepNotesAndOtherEditor(t *testing.T) {
 	if refusal := nativeTestAnswers(t, u, input); refusal != "" {
 		t.Fatal(refusal)
 	}
-	if !strings.Contains(wire.String(), `"answers":["Narrow","user_note: explicit note"]`) || u.Text != "unrelated editor" {
+	if !strings.Contains(wire.String(), `"choice":1,"note":"explicit note"`) || u.Text != "unrelated editor" {
 		t.Fatal("native submission lost note or replaced unrelated editor")
 	}
 }
@@ -137,7 +137,7 @@ func TestNativeAnswersUseOriginalSideRequest(t *testing.T) {
 	if refusal := nativeTestAnswers(t, u, input); refusal != "" {
 		t.Fatal(refusal)
 	}
-	if !strings.Contains(wire.String(), `"id":"side-question"`) || !strings.Contains(wire.String(), `"answers":["user_note: side answer"]`) {
+	if !strings.Contains(wire.String(), `"id":"side-question"`) || !strings.Contains(wire.String(), `"other":"side answer"`) {
 		t.Fatalf("native side answer did not retain original response authority: %s", wire.String())
 	}
 }

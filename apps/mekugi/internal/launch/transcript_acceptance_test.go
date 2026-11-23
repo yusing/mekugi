@@ -41,7 +41,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 		replayTestItem("root", "turn", replayTestEpoch+2000, replayTestEpoch+3000, map[string]any{"type": "Reasoning", "id": "reason", "summary_text": []string{"Public inspection summary"}}),
 		replayTestItem("root", "turn", replayTestEpoch+4000, replayTestEpoch+4000, map[string]any{
 			"type": "AgentMessage", "id": "question", "delivery": "async", "content": []map[string]string{{"type": "Text", "text": "Who receives it?"}},
-			"questions": []map[string]any{{"title": "Who receives it?", "options": []string{"Customers", "Internal"}}},
+			"questions": []map[string]any{{"id": questionTestID("question", 0), "question": "Who receives it?", "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal"}}}},
 		}),
 		replayTestItem("root", "turn", replayTestEpoch+5000, replayTestEpoch+5000, map[string]any{
 			"type": "UserMessage", "id": "reply", "content": []map[string]string{{"type": "text", "text": lifecycleReply(t, "question", 0, "Who receives it?", "Customers")}},

@@ -12,6 +12,7 @@ var (
 	ErrSecretAnswer        = errors.New("Secret answers require the secret input.")
 	ErrEmptyAnswer         = errors.New("Choose an option, enter an answer or skip the question.")
 	ErrIncompleteAnswers   = errors.New("Confirm submission with unanswered questions.")
+	ErrOptionNote          = errors.New("Notes require a selected option.")
 )
 
 type AnswerInput struct {
@@ -19,9 +20,15 @@ type AnswerInput struct {
 	Choice         int
 	Draft          composer.Draft
 	Skip           bool
+	Note           string
 }
 
-func (c *Call) questionID(index int) string { return c.ID + "/" + strconv.Itoa(index) }
+func (c *Call) questionID(index int) string {
+	if c.Questions[index].ID != "" {
+		return c.Questions[index].ID
+	}
+	return c.ID + "/" + strconv.Itoa(index)
+}
 
 func (m *Questions) pending(id string) *Call {
 	for _, c := range m.Calls {
@@ -44,18 +51,26 @@ func (m *Questions) Answer(in AnswerInput) (*Question, error) {
 		if c.questionID(i) != in.Question {
 			continue
 		}
-		if q.Outcome != "" || in.Choice < 0 || in.Choice > len(q.Choices) {
+		if q.Outcome != "" || q.Sent || in.Choice < 0 || in.Choice > len(q.Choices) {
 			return nil, ErrQuestionUnavailable
 		}
 		if q.IsSecret {
 			return nil, ErrSecretAnswer
+		}
+		if in.Note != "" && (in.Skip || in.Choice == len(q.Choices)) {
+			return nil, ErrOptionNote
 		}
 		if !in.Skip && in.Choice == len(q.Choices) && in.Draft.Text == "" {
 			return nil, ErrEmptyAnswer
 		}
 		q.Selected = in.Choice
 		q.Editor.Snapshot.Draft = in.Draft.Clone()
-		q.Complete(in.Draft.Text, c.Sync, in.Skip)
+		text := in.Draft.Text
+		q.Note = in.Note != ""
+		if in.Choice < len(q.Choices) && in.Note != "" {
+			text = in.Note
+		}
+		q.Complete(text, c.Sync, in.Skip)
 		return q, nil
 	}
 	return nil, ErrQuestionUnavailable
@@ -66,8 +81,17 @@ func (m *Questions) Submission(id string, incomplete bool) (*Call, error) {
 	if c == nil {
 		return nil, ErrQuestionUnavailable
 	}
-	if c.Gaps() > 0 && !incomplete {
+	if (c.Sync || c.Secret()) && c.Gaps() > 0 && !incomplete {
 		return nil, ErrIncompleteAnswers
 	}
 	return c, nil
+}
+
+func (c *Call) Secret() bool {
+	for _, q := range c.Questions {
+		if q.IsSecret {
+			return true
+		}
+	}
+	return false
 }

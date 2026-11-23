@@ -45,12 +45,26 @@ func (p *nativeClientPrompts) update(frame *sessionapi.NativeFrame) {
 		previous := call.Questions
 		call.Questions = make([]prompt.Question, len(view.Questions))
 		for i, q := range view.Questions {
-			current := prompt.Question{ID: q.ID, Header: q.Header, Question: q.Text, IsSecret: q.Secret, Choices: slices.Clone(q.Choices)}
+			current := prompt.Question{ID: q.ID, Header: q.Header, Question: q.Text, IsSecret: q.Secret, Choices: slices.Clone(q.Choices), Selected: q.Selected}
 			if old >= 0 && i < len(previous) && previous[i].ID == q.ID {
 				current = previous[i]
+				current.Header, current.Question, current.Choices = q.Header, q.Text, slices.Clone(q.Choices)
+			} else {
+				for j, choice := range current.Choices {
+					if choice.Recommended {
+						current.Selected = j
+					}
+				}
 			}
-			if !q.Pending {
+			if q.Pending && current.Sent {
+				p.questions.AutoOpen = true
+				delete(p.submitted, call.ID)
+			}
+			current.Sent = q.State == "sending"
+			if !q.Pending && !current.Sent {
 				current.Outcome, current.Answer, current.Editor = q.State, slices.Clone(q.Answer), composer.State{}
+			} else {
+				current.Outcome = ""
 			}
 			call.Questions[i] = current
 		}
@@ -59,6 +73,13 @@ func (p *nativeClientPrompts) update(frame *sessionapi.NativeFrame) {
 	p.questions.Calls = calls
 	if !slices.Contains(calls, p.questions.Active) || p.questions.Active != nil && (p.questions.Active.Sent || p.questions.Active.Resolved) {
 		p.questions.Hide()
+	} else if p.questions.Active != nil && (p.questions.Current().Sent || p.questions.Current().Outcome != "") {
+		for i, question := range p.questions.Active.Questions {
+			if !question.Sent && question.Outcome == "" {
+				p.questions.Index, p.questions.Confirm = i, false
+				break
+			}
+		}
 	}
 	approvals := make([]*prompt.Approval, 0, len(frame.Approvals))
 	for _, view := range frame.Approvals {
@@ -219,7 +240,11 @@ func (c *nativeClient) prompt(input terminalsession.PromptInput, next *terminals
 			c.renderer.terminal.Prompts.Secrets(call.ID).Answers[p.questions.Index] = answer.Answer
 			c.renderer.terminal.Prompts.Secrets(call.ID).Editors[p.questions.Index] = editor.Park()
 		} else {
-			_, err := p.questions.Answer(prompt.AnswerInput{Call: call.ID, Question: input.Question.Question, Choice: question.Selected, Draft: editor.Draft.Clone(), Skip: skip})
+			note := ""
+			if question.Note && !skip && question.Selected < len(question.Choices) {
+				note = editor.Text
+			}
+			_, err := p.questions.Answer(prompt.AnswerInput{Call: call.ID, Question: input.Question.Question, Choice: question.Selected, Draft: editor.Draft.Clone(), Note: note, Skip: skip})
 			if err != nil {
 				c.notice = err.Error()
 				return true
@@ -252,10 +277,13 @@ func (c *nativeClient) submitPrompt(incomplete bool) {
 	var editors []*composer.Editor
 	view := call.View()
 	for i, question := range call.Questions {
-		if question.Outcome != "" {
+		if question.Outcome != "" || question.Sent || !call.Sync && !call.Secret() && !question.Done {
 			continue
 		}
 		answer := sessionapi.NativeQuestionAnswer{Call: call.ID, Question: view.Questions[i].ID, Choice: question.Selected, Draft: question.Editor.Snapshot.Draft.Clone(), Skip: question.Skipped || !question.Done}
+		if question.Note {
+			answer.Note = answer.Draft.Text
+		}
 		if question.IsSecret {
 			answer.Draft = c.renderer.terminal.Prompts.SecretState(call.ID).Editors[i].Snapshot.Draft.Clone()
 			answer.Secret, answer.Draft.Text = answer.Draft.Text, ""
@@ -317,7 +345,7 @@ func (c *nativeClient) reconcilePromptEditors(frame *sessionapi.NativeFrame) {
 		for questionIndex, question := range call.Questions {
 			if retained {
 				current := slices.IndexFunc(frame.Questions[index].Questions, func(view prompt.QuestionView) bool { return view.ID == question.ID })
-				retired := current < 0 || !frame.Questions[index].Questions[current].Pending
+				retired := current < 0 || !frame.Questions[index].Questions[current].Pending && frame.Questions[index].Questions[current].State != "sending"
 				if !retired && (!frame.Questions[index].Sent || !question.IsSecret) {
 					continue
 				}

@@ -8,7 +8,10 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-type Option struct{ Label, Description string }
+type Option struct {
+	Label, Description, Preview string
+	Recommended                 bool
+}
 
 // Question contains editable non-secret state. Secret editors and answers stay
 // with the adapter that owns the authentication request.
@@ -21,6 +24,8 @@ type Question struct {
 	Note, Done, Skipped  bool
 	Answer               []string
 	Outcome              string
+	Sent                 bool
+	SubmissionID         string
 }
 
 type Call struct {
@@ -29,6 +34,7 @@ type Call struct {
 	Questions              []Question
 	Sent, Resolved         bool
 	SubmissionID           string
+	SubmitIDs              []string
 }
 
 // Questions belongs to one attached session. Adapters retain request handles by
@@ -90,7 +96,7 @@ func (m *Questions) Open(c *Call) bool {
 	}
 	m.Active, m.Index, m.Confirm = c, 0, false
 	for i, q := range c.Questions {
-		if q.Outcome == "" {
+		if q.Outcome == "" && !q.Sent {
 			m.Index = i
 			break
 		}
@@ -129,7 +135,7 @@ func (q *Question) Complete(text string, sync, skip bool) bool {
 	}
 	if q.Selected < len(q.Choices) {
 		q.Answer = []string{q.Choices[q.Selected].Label}
-		if sync && text != "" {
+		if (sync || q.Note) && text != "" {
 			q.Answer = append(q.Answer, text)
 		}
 	} else if text != "" {
@@ -142,7 +148,7 @@ func (q *Question) Complete(text string, sync, skip bool) bool {
 func (c *Call) Gaps() int {
 	n := 0
 	for _, q := range c.Questions {
-		if q.Outcome == "" && (q.Skipped || !q.Done) {
+		if q.Outcome == "" && !q.Sent && (!q.Done || c.Sync && q.Skipped) {
 			n++
 		}
 	}
@@ -151,7 +157,7 @@ func (c *Call) Gaps() int {
 func (m *Questions) Advance() (step int, submit bool) {
 	for j := m.Index + 1; j < len(m.Active.Questions); j++ {
 		q := m.Active.Questions[j]
-		if !q.Done && q.Outcome == "" {
+		if !q.Done && q.Outcome == "" && !q.Sent {
 			return j - m.Index, false
 		}
 	}
@@ -192,6 +198,12 @@ func (c *Call) Reject() bool {
 	}
 	c.Sent = false
 	c.SubmissionID = ""
+	for i := range c.Questions {
+		if c.Questions[i].Outcome == "" {
+			c.Questions[i].Sent = false
+			c.Questions[i].SubmissionID = ""
+		}
+	}
 	return true
 }
 func (c *Call) Commit(index int, clientID, answer string) (composer.Draft, bool) {
@@ -204,7 +216,7 @@ func (c *Call) Commit(index int, clientID, answer string) (composer.Draft, bool)
 	}
 	var discarded composer.Draft
 	outcome := "answered elsewhere"
-	if c.SubmissionID != "" && (clientID == c.SubmissionID || clientID == "" && answer == strings.Join(q.Answer, "\n")) {
+	if q.SubmissionID != "" && (clientID == q.SubmissionID || clientID == "" && answer == strings.Join(q.Answer, "\n")) {
 		outcome = "answered"
 	} else {
 		q.Done = false
@@ -213,11 +225,13 @@ func (c *Call) Commit(index int, clientID, answer string) (composer.Draft, bool)
 		}
 	}
 	q.Outcome = outcome
+	q.Sent = false
 	if !q.IsSecret {
 		q.Answer = []string{answer}
 	}
 	q.Editor = composer.State{}
 	c.Resolved = !slices.ContainsFunc(c.Questions, func(q Question) bool { return q.Outcome == "" })
+	c.refreshSent()
 	return discarded, true
 }
 
@@ -269,7 +283,7 @@ func (m *Questions) position(v *QuestionDockView, keep func(*Call) bool) {
 			continue
 		}
 		for index, question := range call.Questions {
-			if question.Outcome == "" {
+			if question.Outcome == "" && !question.Sent {
 				v.Count++
 			} else if call != m.Active {
 				continue
@@ -288,7 +302,7 @@ func (c *Call) View() CallView {
 		state := q.Outcome
 		if state == "" {
 			switch {
-			case c.Sent:
+			case c.Sent || q.Sent:
 				state = "sending"
 			case c.Sync || c.Local:
 				state = "waiting"
@@ -296,7 +310,7 @@ func (c *Call) View() CallView {
 				state = "open"
 			}
 		}
-		r := QuestionView{Selected: q.Selected, Note: q.Note, Pending: q.Outcome == "", ID: c.questionID(i), Header: q.Header, Text: q.Question, State: state, Choices: slices.Clone(q.Choices), Secret: q.IsSecret}
+		r := QuestionView{Selected: q.Selected, Note: q.Note, Pending: q.Outcome == "" && !q.Sent, ID: c.questionID(i), Header: q.Header, Text: q.Question, State: state, Choices: slices.Clone(q.Choices), Secret: q.IsSecret}
 		if !q.IsSecret && q.Outcome != "" {
 			r.Answer = slices.Clone(q.Answer)
 			if c.Sync && len(r.Answer) == 1 && q.Selected == len(q.Choices) {
@@ -310,26 +324,61 @@ func (c *Call) View() CallView {
 
 // Submitted distinguishes local answer admission from host commitment.
 func (c *Call) Submitted() {
-	c.Sent = true
 	if c.Sync {
+		c.Sent = true
 		for i := range c.Questions {
 			c.Questions[i].Editor = composer.State{}
 		}
 		return
 	}
-	c.Resolved = true
 	for i := range c.Questions {
 		q := &c.Questions[i]
-		if q.Outcome != "" {
-			continue
-		}
-		if q.Skipped || !q.Done {
-			q.Outcome = "skipped"
-			q.Editor = composer.State{}
-		} else {
-			c.Resolved = false
+		if c.Submitting(*q) {
+			q.Sent = true
+			if q.Skipped {
+				q.Editor = composer.State{}
+			}
 		}
 	}
+	c.SubmitIDs = nil
+	c.refreshSent()
+}
+
+func (c *Call) Submitting(q Question) bool {
+	return q.Outcome == "" && q.Done && !q.Sent && (c.SubmitIDs == nil || slices.Contains(c.SubmitIDs, q.ID))
+}
+
+func (c *Call) refreshSent() {
+	c.Sent = !slices.ContainsFunc(c.Questions, func(q Question) bool { return q.Outcome == "" && !q.Sent })
+}
+
+func (c *Call) Sending() bool {
+	return c.Sent || slices.ContainsFunc(c.Questions, func(q Question) bool { return q.Sent })
+}
+
+func (c *Call) SetSubmission(id string, questions []string) {
+	c.SubmissionID = id
+	for i := range c.Questions {
+		q := &c.Questions[i]
+		if slices.Contains(questions, q.ID) && q.Sent {
+			q.SubmissionID = id
+		}
+	}
+}
+
+func (c *Call) RejectQuestions(questions []string) bool {
+	if c.Resolved || c.Sync {
+		return false
+	}
+	for i := range c.Questions {
+		q := &c.Questions[i]
+		if q.Outcome == "" && slices.Contains(questions, q.ID) {
+			q.Sent = false
+			q.SubmissionID = ""
+		}
+	}
+	c.refreshSent()
+	return true
 }
 
 // MoveChannel navigates pending calls without merging their answer authority.
@@ -345,7 +394,7 @@ func (m *Questions) MoveChannel(step int) {
 			continue
 		}
 		for index, question := range call.Questions {
-			if question.Outcome != "" {
+			if question.Outcome != "" || question.Sent {
 				continue
 			}
 			if call == m.Active && index == m.Index {

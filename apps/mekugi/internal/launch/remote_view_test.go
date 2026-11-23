@@ -160,8 +160,8 @@ func TestRemoteViewAnswersUsePendingPromptOwner(t *testing.T) {
 	}{
 		{name: "absent choice", text: "written answer", want: "written answer"},
 		{name: "explicit written choice", choice: new(2), text: "explicit answer", want: "explicit answer"},
-		{name: "offered choice", choice: new(0), text: "ignored", want: "Customers"},
-		{name: "skip", skip: true},
+		{name: "offered choice", choice: new(0), text: "ignored", want: `"choice":1`},
+		{name: "skip", skip: true, want: `"skipped":true`},
 		{name: "secret text", secret: true, text: "remote secret"},
 		{name: "secret empty", secret: true},
 		{name: "secret skip", secret: true, skip: true},
@@ -195,10 +195,9 @@ func TestRemoteViewAnswersUsePendingPromptOwner(t *testing.T) {
 				t.Fatal(code, body)
 			}
 			if tc.skip {
-				if wire.Len() != 0 || !u.questions.Calls[0].Resolved {
-					t.Fatal("all-skipped call did not resolve without dispatch")
+				if !u.questions.Calls[0].Sent || u.questions.Calls[0].Resolved {
+					t.Fatal("skipped call did not wait for authoritative commitment")
 				}
-				return
 			}
 			requests := appServerTurnRequests(t, wire)
 			if len(requests) != 1 || !strings.Contains(requests[0].text(), tc.want) {

@@ -70,7 +70,7 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
 		replayTestItem("root", "turn", replayTestEpoch+2000, replayTestEpoch+2000, map[string]any{
 			"type": "AgentMessage", "id": "question", "delivery": "async", "content": []map[string]any{{"type": "Text", "text": "Who receives it?"}},
-			"questions": []map[string]any{{"title": "Who receives it?", "options": []string{"Customers", "Internal"}}},
+			"questions": []map[string]any{{"id": questionTestID("question", 0), "question": "Who receives it?", "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal"}}}},
 		}),
 		replayTestItem("root", "turn", replayTestEpoch+8000, replayTestEpoch+8000, map[string]any{
 			"type": "UserMessage", "id": "answer", "content": []map[string]any{{"type": "text", "text": lifecycleReply(t, "question", 0, "Who receives it?", "Customers")}},

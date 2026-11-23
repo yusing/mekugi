@@ -23,8 +23,15 @@ func nativePendingQuestions(conversation *conversation.Session) []prompt.CallVie
 		}
 		view := call.View()
 		for i := range view.Questions {
-			if view.Questions[i].Pending {
-				view.Questions[i].Selected, view.Questions[i].Note = 0, false
+			q := &view.Questions[i]
+			if !q.Pending {
+				continue
+			}
+			q.Selected, q.Note = 0, false
+			for j, choice := range q.Choices {
+				if choice.Recommended {
+					q.Selected = j
+				}
 			}
 		}
 		pending = append(pending, view)
@@ -67,6 +74,7 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 	}
 	trial := *handle.Call
 	trial.Questions = slices.Clone(handle.Questions)
+	trial.SubmitIDs = nil
 	model := prompt.Questions{Calls: []*prompt.Call{&trial}}
 	view := handle.View()
 	pending := 0
@@ -75,7 +83,7 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 			pending++
 		}
 	}
-	if len(input.Answers) != pending {
+	if len(input.Answers) == 0 || len(input.Answers) > pending || (trial.Sync || trial.Secret()) && len(input.Answers) != pending {
 		return nil, nil, nil, "Answer every question or skip it."
 	}
 	seen := make(map[string]bool, pending)
@@ -86,6 +94,7 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 			return nil, nil, nil, prompt.ErrQuestionUnavailable.Error()
 		}
 		seen[answer.Question] = true
+		trial.SubmitIDs = append(trial.SubmitIDs, answer.Question)
 		question := &trial.Questions[index]
 		if remoteHuman && question.IsSecret {
 			return nil, nil, nil, "Answer secret prompts in the terminal."
@@ -100,7 +109,7 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 			continue
 		}
 		// The secret is never assigned to Question.Editor or Question.Answer.
-		if answer.Choice < 0 || answer.Choice > len(question.Choices) || answer.Draft.Text != "" {
+		if answer.Choice < 0 || answer.Choice > len(question.Choices) || answer.Draft.Text != "" || answer.Note != "" {
 			return nil, nil, nil, "Secret answers require the secret input."
 		}
 		completed := *question
@@ -141,7 +150,9 @@ func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation,
 		*editor = hideQuestionEditor(&session.questions, attached.conversation, *editor, session.Client.Thread)
 	}
 	previous := handle.Questions
+	previousIDs := handle.SubmitIDs
 	handle.Questions = trial.Questions
+	handle.SubmitIDs = trial.SubmitIDs
 	secretEditors := make(map[int]composer.State)
 	view := trial.View()
 	for _, answer := range input.Answers {
@@ -157,8 +168,9 @@ func (session *nativeSession) applyNativeAnswers(attached *attachedPresentation,
 		settlePresentation(attached, &session.Client, picker, editor, session.settings, session.serviceTiers, session.title, session.backendVersion, session.restoring != nil, side, clock, &session.questions, &session.approvals, overlay)
 	}()
 	err := session.submitQuestionAnswers(attached, picker, editor, side, clock, overlay, parent, handle, secretEditors, secrets)
-	if !handle.Sent && !handle.Resolved {
+	if !handle.Sending() && !handle.Resolved {
 		handle.Questions = previous
+		handle.SubmitIDs = previousIDs
 		if err == nil {
 			return attached.feedback.Text, nil
 		}

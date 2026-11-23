@@ -47,7 +47,7 @@ func (i ThreadItem) Observation() observation.Item {
 		out.Content = slices.Clone(i.Content)
 	}
 	for _, q := range i.Questions {
-		out.Questions = append(out.Questions, observation.Question{ID: q.ID, Header: q.Header, Question: q.Question, Title: q.Title, IsSecret: q.IsSecret, Options: slices.Clone(q.Options)})
+		out.Questions = append(out.Questions, observation.Question{ID: q.ID, Header: q.Header, Question: q.Question, IsSecret: q.IsSecret, Options: slices.Clone(q.Options)})
 	}
 	for _, c := range i.Changes {
 		out.Changes = append(out.Changes, c.Observation())

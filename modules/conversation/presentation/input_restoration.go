@@ -21,7 +21,13 @@ func (m *Session) RestoreInput(parts ...Input) InputRestoration {
 	var ordinary []Input
 	for _, part := range parts {
 		if call := part.Question; call != nil && !call.Sync {
-			if call.Reject() {
+			rejected := false
+			if len(part.QuestionIDs) > 0 {
+				rejected = call.RejectQuestions(part.QuestionIDs)
+			} else {
+				rejected = call.Reject()
+			}
+			if rejected {
 				result.Rejected = append(result.Rejected, call.ID)
 			}
 		} else if part.Origin != "" {

@@ -53,6 +53,7 @@ type Input struct {
 	Compact      *CompactIntent
 	Question     *prompt.Call
 	ReplyCount   int
+	QuestionIDs  []string
 }
 
 type Submission struct {

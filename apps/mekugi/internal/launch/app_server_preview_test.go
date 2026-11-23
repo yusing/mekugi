@@ -921,7 +921,7 @@ printf 'PASS\nok  \texample.com/broker/internal/broker\t1.2s\n'`)
 		p.notify("item/completed", map[string]any{"threadId": "main", "turnId": p.active["main"], "item": map[string]any{
 			"id": "preview-async-question", "type": "agentMessage", "text": "Who should receive the release update?",
 			"phase": "finalAnswer", "delivery": "async", "questions": []any{map[string]any{
-				"title": "Who should receive the release update?", "options": []string{"Customers", "Internal team"},
+				"id": "q1", "question": "Who should receive the release update?", "options": []any{map[string]any{"label": "Customers"}, map[string]any{"label": "Internal team"}},
 			}},
 		}})
 	})

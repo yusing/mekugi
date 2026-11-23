@@ -80,6 +80,14 @@ Unix socket with `Mekugi-Protocol: 9`, or connector with `Authorization: Bearer`
     decoded uploads (base64-expanded) + 1 MiB text/metadata for inputs, answers, and semantic
     intents.
 
+## Question answers
+
+Question IDs come from the runtime. `QuestionCall.blocking` requires a complete answer set;
+async calls admit any nonempty subset, leaving the rest pending. Secret batches remain atomic
+and native-only. `QuestionAnswer.choice` is zero-based; `note` attaches to a selected option,
+`text` supplies a written answer, and `skip` explicitly skips that question. Options carry optional
+descriptions, previews, and a recommendation; recommendations never submit an answer.
+
 ## Attachment input
 
 Ordered attachment descriptors on inputs, intents, and written question answers:

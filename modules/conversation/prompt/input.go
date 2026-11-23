@@ -25,6 +25,12 @@ func (m *Questions) ApplyInput(in QuestionInput) bool {
 		return false
 	}
 	q := m.Current()
+	if in.Kind == InputNone {
+		return true
+	}
+	if q.Outcome != "" || q.Sent {
+		return false
+	}
 	switch in.Kind {
 	case InputNone:
 	case InputChoose:
@@ -35,7 +41,7 @@ func (m *Questions) ApplyInput(in QuestionInput) bool {
 	case InputEdit:
 		q.Edit(in.Enabled)
 	case InputNote:
-		if in.Enabled && (!c.Sync || q.Selected >= len(q.Choices)) {
+		if in.Enabled && q.Selected >= len(q.Choices) {
 			return false
 		}
 		q.Note = in.Enabled

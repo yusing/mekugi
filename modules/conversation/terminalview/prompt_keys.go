@@ -39,6 +39,7 @@ func (l *QuestionLayout) Key(m prompt.QuestionDockView, key string, empty bool) 
 		return PromptKey{Action: PromptPass}
 	}
 	q := m.Call.Questions[m.Index]
+	preview := l.focus(q)
 	result := PromptKey{Action: PromptHandled, Question: prompt.QuestionInput{Call: m.Call.ID, Question: q.ID}}
 	edit := &result.Question
 	if m.Confirm {
@@ -52,6 +53,16 @@ func (l *QuestionLayout) Key(m prompt.QuestionDockView, key string, empty bool) 
 		}
 	}
 	switch key {
+	case "\x1b[1;4A", "\x1b[1;4B":
+		if preview != "" {
+			step := 1
+			if key == "\x1b[1;4A" {
+				step = -1
+			}
+			l.previewTop = max(0, min(l.previewMax, l.previewTop+step))
+		} else {
+			result.Action = PromptPass
+		}
 	case "\x1b":
 		if q.Note {
 			edit.Kind = prompt.InputNote
@@ -77,7 +88,7 @@ func (l *QuestionLayout) Key(m prompt.QuestionDockView, key string, empty bool) 
 	case "\x1b[6~":
 		l.textTop++
 	case "\t":
-		if m.Call.Sync && q.Selected < len(q.Choices) {
+		if q.Selected < len(q.Choices) {
 			edit.Kind, edit.Enabled = prompt.InputNote, true
 		}
 	case "\x16":

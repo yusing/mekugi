@@ -4,7 +4,7 @@
     Which implementation should the child use?
   ❯ 1. Other  Type your answer
   
-  1–1 choose · type answer · tab note · ctrl+] skip · esc hide
+  1–1 choose · type answer · ctrl+] skip · esc hide
 
 answering · turn waiting · draft kept
 ────────────────────────────────────────────────────────────────────────────────

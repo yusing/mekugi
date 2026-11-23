@@ -17,7 +17,7 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 		"turns":[{"id":"turn","status":"failed","startedAt":1700000002,"completedAt":1700000008,
 			"error":{"message":"Host failure"},"items":[{
 				"durationMs":123,"delivery":"async","id":"item","clientId":"submission","type":"commandExecution",
-				"questions":[{"id":"question","header":"Choice","question":"Which one?","title":"Pick one",
+				"questions":[{"id":"question","header":"Choice","question":"Which one?",
 					"isSecret":true,"options":[{"label":"A","description":"First"}]}],
 				"text":"Exact text\n","summary":["Public summary"],"agentThreadId":"agent","agentPath":"/root/reader",
 				"kind":"completed","command":"printf 'a  b\\n'","cwd":"/workspace/subdir","source":"agent",
@@ -49,8 +49,8 @@ func TestDecodeHistoryThreadPreservesWireFields(t *testing.T) {
 			Items: []ThreadItem{{
 				Kind: "completed", AgentPath: "/root/reader", Model: "model-id", ReasoningEffort: "high",
 				DurationMS: new(int64(123)), Delivery: "async", ID: "item", ClientID: "submission", Type: "commandExecution",
-				Questions: []Question{{ID: "question", Header: "Choice", Question: "Which one?", Title: "Pick one", IsSecret: true,
-					Options: jsontext.Value(`[{"label":"A","description":"First"}]`)}},
+				Questions: []Question{{ID: "question", Header: "Choice", Question: "Which one?", IsSecret: true,
+					Options: []QuestionOption{{Label: "A", Description: "First"}}}},
 				Text: "Exact text\n", Summary: []string{"Public summary"},
 				Command: "printf 'a  b\\n'", Cwd: "/workspace/subdir", Source: "agent",
 				ProcessID: "process", Path: "relative/file", Status: "failed", AggregatedOutput: new("Exact output\n"),

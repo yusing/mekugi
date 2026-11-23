@@ -6,6 +6,9 @@ import type {
   RemoteMutation,
   RemoteOperation,
   Version,
+  Question,
+  QuestionCall,
+  QuestionAnswer,
 } from "../../../../sessionapi/protocol";
 import type { Machine } from "./hub.svelte";
 import { errorText, newIdentity, TransportError, type Connection } from "./transport";
@@ -37,11 +40,61 @@ export type Editor = {
   focus?: number;
   submission?: AbortController;
 };
+export type QuestionDraft = {
+  choice: number | "skip" | undefined;
+  text: string;
+  note: string;
+  items: PendingAttachment[];
+  sending: boolean;
+  accepted: boolean;
+};
+
+export function questionDraft(question: Question): QuestionDraft {
+  const recommended = question.options?.findIndex((option) => option.recommended) ?? -1;
+  return {
+    choice: recommended >= 0 ? recommended : question.options?.length ? undefined : 0,
+    text: "",
+    note: "",
+    items: [],
+    sending: false,
+    accepted: false,
+  };
+}
+
+export function questionAnswers(
+  call: QuestionCall,
+  drafts: Record<string, QuestionDraft>,
+  id?: string,
+): QuestionAnswer[] {
+  const questions = call.blocking ? call.questions : call.questions.filter((q) => q.id === id);
+  if (!questions.length) throw new Error("Choose a question to answer.");
+  return questions.map((q) => {
+    const draft = drafts[q.id];
+    const written = draft?.choice === (q.options?.length ?? 0);
+    if (
+      !draft ||
+      draft.choice === undefined ||
+      (written && !draft.text.trim() && !draft.items.length)
+    ) {
+      throw new Error(
+        call.blocking
+          ? "Answer every question or skip it."
+          : "Choose an option, write an answer or skip this question.",
+        { cause: q.id },
+      );
+    }
+    return {
+      question: q.id,
+      choice: typeof draft.choice === "number" ? draft.choice : undefined,
+      text: written ? draft.text : "",
+      note: typeof draft.choice === "number" && !written ? draft.note : "",
+      skip: draft.choice === "skip",
+    };
+  });
+}
+
 export type PromptState = {
-  drafts: Record<
-    string,
-    { choice: number | "skip" | undefined; text: string; items: PendingAttachment[] }
-  >;
+  drafts: Record<string, QuestionDraft>;
   deny?: number;
   reason: string;
   sending: boolean;
@@ -130,6 +183,7 @@ class Semantic {
         .filter((call) => !call.Sent && !call.Resolved)
         .map((call) => ({
           id: call.ID,
+          blocking: call.Sync || call.Local,
           agent: call.agent || agent(call.Thread),
           questions: call.Questions.filter((q) => q.Pending).map((q) => ({
             id: q.ID,
@@ -139,6 +193,8 @@ class Semantic {
             options: q.Choices.map((choice) => ({
               label: choice.Label,
               description: choice.Description,
+              preview: choice.Preview,
+              recommended: choice.Recommended,
             })),
           })),
         })),
@@ -284,7 +340,8 @@ class Semantic {
     const kept = new Set(ids);
     for (const [id, prompt] of Object.entries(source.prompts)) {
       if (kept.has(id)) delete prompt.resolved;
-      else if (prompt.sending) prompt.resolved = true;
+      else if (prompt.sending || Object.values(prompt.drafts).some((draft) => draft.sending))
+        prompt.resolved = true;
       else delete source.prompts[id];
     }
   }
@@ -314,7 +371,12 @@ class Semantic {
       ) ||
       frame?.questions?.length ||
       frame?.approvals?.length ||
-      Object.values(source.prompts).some((prompt) => !prompt.resolved || prompt.sending)
+      Object.values(source.prompts).some(
+        (prompt) =>
+          !prompt.resolved ||
+          prompt.sending ||
+          Object.values(prompt.drafts).some((draft) => draft.sending),
+      )
     )
       return;
     this.#views.delete(source.thread);

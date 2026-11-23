@@ -17,14 +17,14 @@ func TestNonTerminalPromptInputAndDraftPublication(t *testing.T) {
 	questions.Open(call)
 	c.conversation.Editor.Replace(composer.Draft{Text: "answer", Files: []composer.Token{{Path: "file"}}})
 	v := c.publish(sessionpresentation.Caption{})
-	if v.Draft.Available || v.PromptDraft.Call != call.ID || v.PromptDraft.Question != "ask/0" || v.PromptDraft.Draft.Text != "answer" {
+	if v.Draft.Available || v.PromptDraft.Call != call.ID || v.PromptDraft.Question != "choice" || v.PromptDraft.Draft.Text != "answer" {
 		t.Fatal("active editor target or ordinary input isolation lost")
 	}
 	v.PromptDraft.Draft.Files[0].Path = "changed"
 	if c.model().View().PromptDraft.Draft.Files[0].Path != "file" {
 		t.Fatal("editor publication aliases retained data")
 	}
-	intent := sessionpresentation.QuestionInputIntent{Version: v.Version, Call: call.ID, Question: "ask/0", Kind: prompt.InputNote, Enabled: true}
+	intent := sessionpresentation.QuestionInputIntent{Version: v.Version, Call: call.ID, Question: "choice", Kind: prompt.InputNote, Enabled: true}
 	if err := c.model().QuestionInput(intent, questions); err != nil || !questions.Current().Note {
 		t.Fatalf("note input: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestNonTerminalPromptInputAndDraftPublication(t *testing.T) {
 		t.Fatal("wrong identity admitted")
 	}
 	questions.Move(1)
-	if secret := c.publish(sessionpresentation.Caption{}).PromptDraft; secret.Question != "ask/1" || secret.Draft.Text != "" || len(secret.Draft.Files) != 0 || secret.Revision != 0 {
+	if secret := c.publish(sessionpresentation.Caption{}).PromptDraft; secret.Question != "password" || secret.Draft.Text != "" || len(secret.Draft.Files) != 0 || secret.Revision != 0 {
 		t.Fatal("secret prompt published ordinary editor contents")
 	}
 	questions.Hide()
