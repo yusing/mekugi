@@ -23,6 +23,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversation "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 )
@@ -411,5 +412,114 @@ func TestNativeImagePreviewsLoadAllVisibleDemands(t *testing.T) {
 	}
 	if len(painted.Images.Placements) != 17 {
 		t.Fatalf("rendered %d of 17 visible images", len(painted.Images.Placements))
+	}
+}
+
+func TestNativeComposerImageAttachmentPreview(t *testing.T) {
+	for _, protocol := range []terminalui.ImageProtocol{terminalui.NoImages, terminalui.KittyImages, terminalui.SixelImages, terminalui.KittyFileImages} {
+		t.Run(fmt.Sprint(protocol), func(t *testing.T) {
+			for _, key := range []string{"TMUX", "TMUX_PANE", "ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_VERSION", "KITTY_WINDOW_ID", "WEZTERM_EXECUTABLE", "WEZTERM_VERSION", "WT_SESSION", "TERM_PROGRAM"} {
+				t.Setenv(key, "")
+			}
+			t.Setenv("TERM", map[terminalui.ImageProtocol]string{
+				terminalui.NoImages:        "xterm-256color",
+				terminalui.KittyImages:     "xterm-kitty",
+				terminalui.SixelImages:     "foot",
+				terminalui.KittyFileImages: "xterm-256color",
+			}[protocol])
+			if protocol == terminalui.KittyFileImages {
+				t.Setenv("TERM_PROGRAM", "iTerm.app")
+				t.Setenv("TERM_PROGRAM_VERSION", "3.6.1")
+			}
+			workspace := t.TempDir()
+			path := filepath.Join(workspace, "attached.png")
+			if err := os.WriteFile(path, previewFixturePNG(t), 0600); err != nil {
+				t.Fatal(err)
+			}
+			u := newAppServerSessionTestUI(t, workspace)
+			now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+			u.clock = func() time.Time { return now }
+			u.testMainFrame(80, 24, 0)
+			frame := sessionapi.NativeFrame{View: u.attached.presentation.View(), Main: u.attached.source.Publication(u.attached.presentation, nil), Agents: u.attached.childSource.Publication(u.attached.presentation, u.attached.source)}
+			terminal, _ := u.terminalViews.NewAttachment(diffrender.DarkTheme)
+			previews := imagePreviews{}
+			t.Cleanup(previews.close)
+			renderer := nativeClientRenderer{terminal: terminal, views: u.terminalViews}
+			draft := conversation.DraftView{Available: true}
+			draft.Draft.Text = "[Image 1] check this"
+			draft.Draft.Images = []composer.Token{{Start: 0, End: len("[Image 1]"), Path: path}}
+			renderer.update(frame, draft, conversation.PromptDraftView{}, now)
+			terminal.Width, terminal.Height = 80, 24
+			terminal.Frame.Images = new(terminalui.ImageFrame)
+			master, slave, err := pty.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer master.Close()
+			defer slave.Close()
+			if err := pty.Setsize(master, &pty.Winsize{Cols: 80, Rows: 24, X: 640, Y: 384}); err != nil {
+				t.Fatal(err)
+			}
+			source := terminal.FrameInput(now, "test").SourceContext()
+			previews.prepare(slave, terminal, source)
+			var output bytes.Buffer
+			painted, err := renderer.render(t.Context(), &output, now, "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantSource := terminalui.ImageSource{Path: path, Composer: true}
+			if len(painted.ImageDemands) != 1 || painted.ImageDemands[0] != wantSource {
+				t.Fatalf("composer demand = %+v, want [%+v]", painted.ImageDemands, wantSource)
+			}
+			previews.request(t.Context(), source, painted.ImageDemands)
+			select {
+			case result := <-previews.results:
+				previews.finish(result)
+			case <-time.After(3 * time.Second):
+				t.Fatal("composer attachment preview was not acquired")
+			}
+
+			previews.prepare(slave, terminal, source)
+			output.Reset()
+			painted, err = renderer.render(t.Context(), &output, now, "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if protocol == terminalui.NoImages {
+				if len(painted.Images.Placements) != 0 {
+					t.Fatalf("half-block fallback should not emit native placements: %+v", painted.Images.Placements)
+				}
+				if !strings.Contains(output.String(), "▀") {
+					t.Fatalf("half-block thumbnail missing from output")
+				}
+			} else {
+				if len(painted.Images.Placements) != 1 {
+					t.Fatalf("missing composer placement: %+v", painted.Images)
+				}
+				p := painted.Images.Placements[0]
+				if p.Y+p.Rows >= 24 || p.X+p.Columns > 80 {
+					t.Fatalf("composer thumbnail outside viewport: %+v", p)
+				}
+				marker := "\x1b_G"
+				if protocol == terminalui.SixelImages {
+					marker = "\x1bP"
+				}
+				if !strings.Contains(output.String(), marker) {
+					t.Fatalf("protocol %d marker missing from composer output", protocol)
+				}
+			}
+
+			// Removing the attachment clears any active native placement.
+			renderer.update(frame, conversation.DraftView{Available: true}, conversation.PromptDraftView{}, now)
+			previews.prepare(slave, terminal, source)
+			output.Reset()
+			painted, err = renderer.render(t.Context(), &output, now, "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(painted.Images.Placements) != 0 {
+				t.Fatalf("placement retained after removing attachment: %+v", painted.Images.Placements)
+			}
+		})
 	}
 }
