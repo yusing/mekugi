@@ -5,9 +5,9 @@ validated_run() {
   local tree pr number head merged run receipt
 
   [[ "$FORCED" == false && "$(git rev-parse 'HEAD^1')" == "$BEFORE" ]] || return 1
-  # Run main when the test definition changes or a new native archive needs seeding.
+  # Do not reuse results from a PR that changed how this workflow validates the tree.
   git diff --quiet "$BEFORE" "$GITHUB_SHA" -- \
-    .github/workflows/release.yml .github/scripts/reuse-pr-validation.sh Makefile runtime/build.py runtime/codex || return 1
+    .github/workflows/release.yml .github/scripts/reuse-pr-validation.sh || return 1
   tree="$(git rev-parse "$GITHUB_SHA^{tree}")" || return 1
   pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" | jq -r \
     --arg sha "$GITHUB_SHA" --arg repo "$GITHUB_REPOSITORY" '
@@ -33,7 +33,8 @@ validated_run() {
 }
 
 if run="$(validated_run)"; then
-  echo "reused=true" >> "$GITHUB_OUTPUT"
+  printf '%s\n' "$run" > "$RUNNER_TEMP/native-approved-run"
+  echo "run_id=$run" >> "$GITHUB_OUTPUT"
   printf 'This exact tree passed the full matrix before merge in [PR workflow run %s](%s/%s/actions/runs/%s).\n' \
     "$run" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$run" >> "$GITHUB_STEP_SUMMARY"
 else

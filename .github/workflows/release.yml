@@ -32,7 +32,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      reused: ${{ steps.pr.outputs.reused }}
+      reused: ${{ steps.approve_archive.outcome == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,6 +45,15 @@ jobs:
           BEFORE: ${{ github.event.before }}
           FORCED: ${{ github.event.forced }}
         run: bash .github/scripts/reuse-pr-validation.sh
+      - name: Approve native archives from the verified PR run
+        id: approve_archive
+        if: steps.pr.outputs.run_id != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-approved-run-${{ steps.pr.outputs.run_id }}
+          path: ${{ runner.temp }}/native-approved-run
+          if-no-files-found: error
 
   build:
     name: Build ${{ matrix.platform }}
@@ -154,23 +163,47 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
         run: |
           # Artifact retention is independent of the compiler cache's LRU eviction.
-          if ! candidates="$(gh api --paginate --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" \
-            -f name="$ARTIFACT_NAME" -F per_page=100 --jq '
-              .artifacts[] | select(.expired == false and .workflow_run.head_branch == "main") | .workflow_run.id
-            ')"; then
+          list_runs() {
+            gh api --paginate --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" \
+              -f name="$1" -F per_page=100 --jq '.artifacts[] | select(.expired == false) | .workflow_run.id'
+          }
+          source_type() {
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$1" | jq -r --arg repo "$GITHUB_REPOSITORY" '
+              select(.path == ".github/workflows/release.yml" and .conclusion == "success" and
+                .head_repository.full_name == $repo) |
+              if .event == "push" and .head_branch == "main" then "main"
+              elif .event == "pull_request" and .run_attempt == 1 then "pr"
+              else empty end
+            '
+          }
+          approved_on_main() {
+            local approvals approval type
+            if ! approvals="$(list_runs "native-approved-run-$1")"; then
+              echo "::warning::Could not list native archive approvals for run $1."
+              return 1
+            fi
+            for approval in $approvals; do
+              if ! type="$(source_type "$approval")"; then
+                echo "::warning::Could not verify native archive approval from run $approval."
+                continue
+              fi
+              [[ "$type" == main ]] && return 0
+            done
+            return 1
+          }
+          if ! candidates="$(list_runs "$ARTIFACT_NAME")"; then
             echo "::warning::Could not list matching native archives; building locally."
             exit 0
           fi
           while IFS= read -r run_id; do
             [[ -n "$run_id" ]] || continue
-            if ! trusted="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" | jq -r --arg repo "$GITHUB_REPOSITORY" '
-              .path == ".github/workflows/release.yml" and .event == "push" and .head_branch == "main" and
-                .conclusion == "success" and .head_repository.full_name == $repo
-            ')"; then
+            if ! type="$(source_type "$run_id")"; then
               echo "::warning::Could not verify native archive source run $run_id."
               continue
             fi
-            [[ "$trusted" == 'true' ]] || continue
+            if [[ "$type" != main ]] && { [[ "$type" != pr ]] || ! approved_on_main "$run_id"; }; then
+              continue
+            fi
             download="$RUNNER_TEMP/native-artifact"
             archive="$download/mekugi-native_${PLATFORM}.tar.gz"
             if ! gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir "$download" ||
@@ -292,7 +325,7 @@ jobs:
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.native_key.outputs.name || format('mekugi_{0}', matrix.platform) }}
+          name: ${{ (github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main') && steps.native_key.outputs.name || format('mekugi_{0}', matrix.platform) }}
           path: ${{ runner.temp }}/artifacts/*.tar.gz
           if-no-files-found: error
           compression-level: 0
