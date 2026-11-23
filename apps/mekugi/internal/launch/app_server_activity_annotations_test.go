@@ -203,8 +203,11 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	}
 	u.shell.Transcript.Expansion = 1
 	got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
-	under := "Ran     git log\n          ┆ commit abc\n          " + "output not returned to the model" + "\n"
+	under := "├ Ran     git log\n│         ┆ commit abc\n│         output not returned to the model\n"
 	if strings.Count(got, "output not returned to the model") != 1 || !strings.Contains(got, under) {
 		t.Fatalf("want one note, under git log's output:\n%s", got)
+	}
+	if !strings.Contains(got, "├ Ran     true\n└ Ran     go version\n") {
+		t.Fatalf("want separate rows for distinct shell calls:\n%s", got)
 	}
 }

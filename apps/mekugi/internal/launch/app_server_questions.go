@@ -367,7 +367,7 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 		clear(secretAnswers)
 		renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
 		if len(answerDraft.AnswerImages) > 0 || answerDraft.AnswerSelections != "" {
-			d := conversationmodel.Input{Draft: answerDraft, MessageBoundary: session.controlObservations.AssistantMessage(attached.cwd, c.Thread)}
+			d := conversationmodel.Input{Draft: answerDraft}
 			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c.Call, true
 			for i, path := range answerDraft.AnswerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
@@ -396,7 +396,7 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 		return nil
 	}
 	answerDraft.Text, answerDraft.InHistory = reply, true
-	input := conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply)), QuestionIDs: conversationbinding.ReplyIDs(reply), MessageBoundary: session.controlObservations.AssistantMessage(attached.cwd, c.Thread)}
+	input := conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply)), QuestionIDs: conversationbinding.ReplyIDs(reply)}
 	if session.Client.Requests.WorkSide(c.Thread) {
 		target := session.Client.Requests.Side(c.Thread)
 

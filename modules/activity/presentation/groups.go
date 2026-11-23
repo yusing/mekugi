@@ -151,7 +151,10 @@ func GroupOperations(blocks []Value) []Value {
 		heading := ""
 		if b.EditOperation() {
 			heading = b.EditHeading()
-		} else if sameAction(last, *b) && !last.EditOperation() {
+		} else if sameAction(last, *b) && !last.EditOperation() &&
+			(b.Verb != "Run" || b.Hook != nil || b.Source == last.Source) {
+			// Separate shell calls keep separate branches, even when their
+			// verbs and outcomes match. A shared branch reads as one script.
 			heading = b.Verb
 			if previous == "" {
 				blocks[lastIndex].GroupHeader, blocks[lastIndex].GroupStart = heading, true

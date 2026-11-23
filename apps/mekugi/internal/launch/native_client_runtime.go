@@ -338,6 +338,10 @@ func (r *nativeClientRuntime) activate(c *nativeClient) {
 		current := from.Shell.Preferences(from.Main)
 		layout.Focus, layout.Split, layout.DiffOpen, layout.NavigatorColumns = current.Focus, current.Split, current.DiffOpen, current.NavigatorColumns
 		to.Shell.RestorePreferences(layout, to.Main)
+		// Keep the open sheet across family navigation, without saving it.
+		if from.Focus == 3 {
+			to.Shell.Select(3)
+		}
 	}
 	c.notifications.focused = true
 	c.enqueue(sessionapi.NativeOperation{Focused: new(true)}, nil, nil)

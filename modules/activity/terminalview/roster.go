@@ -93,13 +93,14 @@ func (v *View) AgentUsage(caller string) (tokens, cost string) {
 
 // ParentCaller names the nearest roster ancestor of caller, or Main.
 func (v *View) ParentCaller(caller string) string {
-	index := slices.IndexFunc(v.roster, func(row activitypresentation.AgentRow) bool { return row.Agent.Name == caller })
-	for i := index - 1; i >= 0; i-- {
-		if v.roster[i].Depth < v.roster[index].Depth {
-			return v.roster[i].Agent.Name
+	parent := "/root"
+	for _, row := range v.roster {
+		name := row.Agent.Name
+		if len(name) > len(parent) && strings.HasPrefix(caller, name+"/") {
+			parent = name
 		}
 	}
-	return "/root"
+	return parent
 }
 
 // ShowParent displays the displayed child's roster parent.

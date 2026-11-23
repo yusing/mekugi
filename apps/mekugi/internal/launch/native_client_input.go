@@ -169,7 +169,11 @@ func (c *nativeClient) dispatch(event terminalsession.Input) {
 		c.applyEffects()
 	}
 	u := c.renderer.terminal
-	for effect := range u.FrameInput(time.Now(), mekugiVersion()).Dispatch(&u.Interaction, event) {
+	in := u.FrameInput(time.Now(), mekugiVersion())
+	if family := c.event.Frame.Family; family != nil {
+		in.FamilyRoot = family.Root
+	}
+	for effect := range in.Dispatch(&u.Interaction, event) {
 		switch {
 		case effect.Focused != nil:
 			c.notifications.focused = *effect.Focused

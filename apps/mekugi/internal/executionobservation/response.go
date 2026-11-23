@@ -82,9 +82,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		t.owners.Control.IdentifyGenerationItem(&t.generation, generationItemKey(envelope.Index, identity))
 		switch envelope.Type {
 		case responseevents.OutputItemAdded:
-			if item.Type == "message" {
-				t.owners.Control.SetAssistantMessage(&t.generation, t.directory, t.threadID, generationItemKey(envelope.Index, item.ID), true)
-			} else if item.Type == "function_call" || item.Type == "custom_tool_call" {
+			if item.Type == "function_call" || item.Type == "custom_tool_call" {
 				t.owners.Control.SetToolInput(&t.generation, t.directory, t.threadID, generationItemKey(envelope.Index, item.ID), true)
 				initial := ""
 				if item.Input != nil {

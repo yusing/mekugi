@@ -137,10 +137,10 @@ See [saved-review controls](../../modules/changehistory/SPEC.md#saved-review-pre
 
 Down on an empty composer opens the Agents sheet at the bottom of Main when the
 session has subagents. Its heading shows the subagent counts and a color legend
-for their roles. Up/Down switch the displayed thread live; Up above the first
-subagent returns to Main and closes the sheet; `a` toggles between Main and the last
+for their roles. Up/Down switch the displayed thread without closing the sheet.
+Up from the first subagent displays Main. `a` toggles between Main and the last
 child; Esc closes the sheet. Click an attachable child to read its full transcript.
-In a child, Up on an empty composer returns to its parent.
+With the sheet closed, Up on an empty child composer returns to its parent.
 Each runtime keeps its own composer draft, prompts and settings. The child stat line
 shows its model, reasoning effort and service tier. Historical views remain
 read-only. While One-off is open, the second stat line shows `Main • One-off`

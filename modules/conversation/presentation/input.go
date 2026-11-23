@@ -42,9 +42,6 @@ type Input struct {
 	Origin string
 	// NextTurn retains queue disposition through asynchronous recovery.
 	NextTurn bool
-	// MessageBoundary identifies the assistant message active at admission.
-	// Zero means admission did not need to wait for a message.
-	MessageBoundary uint64
 	// Delivery identifies reserved restoration capacity at the originating view.
 	// It is opaque provenance, not an execution capability or renderer owner.
 	Delivery uint64
@@ -162,7 +159,7 @@ func Batch(stack []Input) ([]Input, []Input) {
 	}
 	n := 1
 	if steerable(stack[0]) {
-		for n < len(stack) && steerable(stack[n]) && stack[n].MessageBoundary == stack[0].MessageBoundary {
+		for n < len(stack) && steerable(stack[n]) {
 			n++
 		}
 	}

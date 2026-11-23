@@ -357,11 +357,6 @@ func (in FrameInput) send(state *Interaction, key string, yield func(InputEffect
 		}
 	default:
 		child, selected := main.session.Displayed.ID != main.session.Main.ID, in.Agents.Selected
-		// Up from Main, above the first subagent, closes the sheet.
-		if (key == "\x1b[A" || key == "\x1bOA" || key == "k") && !child {
-			shell.Focus = 0
-			return
-		}
 		quit := in.Agents.HandleRosterKey(key)
 		if !in.rosterPick(state, child, selected, yield) {
 			return
@@ -383,7 +378,8 @@ func (in FrameInput) arrowAction(key string) byte {
 	}
 	switch key {
 	case "\x1b[A", "\x1bOA":
-		if v := in.Main.session; shell.Focus == 0 && v.Displayed.ID != v.Main.ID {
+		v := in.Main.session
+		if shell.Focus == 0 && (v.Displayed.ID != v.Main.ID || in.FamilyRoot != "" && v.Main.ID != in.FamilyRoot) {
 			return statParent
 		}
 	case "\x1b[B", "\x1bOB":
@@ -438,11 +434,11 @@ func (in FrameInput) statAction(state *Interaction, action byte, yield func(Inpu
 		}
 	case statParent:
 		v := in.Main.session
-		if v.Displayed == v.SideThread || in.Agents.ParentCaller(v.Displayed.Caller) == "/root" {
+		if v.Displayed == v.SideThread || in.Agents.ParentCaller(in.Agents.Display.Caller) == "/root" {
 			in.selectPane(state, 0, yield)
 			return
 		}
-		child, selected := true, in.Agents.Selected
+		child, selected := v.Displayed.ID != v.Main.ID, in.Agents.Selected
 		in.Agents.ShowParent()
 		in.rosterPick(state, child, selected, yield)
 	}

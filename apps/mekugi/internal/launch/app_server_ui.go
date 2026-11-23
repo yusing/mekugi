@@ -424,7 +424,7 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 					if failure != nil {
 						return failure.Error(), nil
 					}
-					if !session.attached.conversation.SteerQueued(session.controlObservations.AssistantMessage(session.attached.cwd, session.Client.Thread)) {
+					if !session.attached.conversation.SteerQueued() {
 						return "No queued messages can be steered.", nil
 					}
 					if plan.Flush {
@@ -475,9 +475,6 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 							return "The prepared input was canceled before admission.", nil
 						}
 						input := conversationmodel.Input{Draft: request.Prepared.Draft.Trimmed(), Origin: view.attached.view, Delivery: view.effects.input()}
-						if !plan.Queued {
-							input.MessageBoundary = session.controlObservations.AssistantMessage(session.attached.cwd, session.Client.Thread)
-						}
 						session.attached.conversation.QueueInput(input, plan.Queued)
 						if input.AttachmentNotice != "" {
 							setNotice(&view.attached.feedback, presentationTime(session.clock), input.AttachmentNotice, true)
