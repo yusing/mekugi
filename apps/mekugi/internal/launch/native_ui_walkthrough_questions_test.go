@@ -84,18 +84,33 @@ func TestNativeUIWalkthroughQuestionContract(t *testing.T) {
 			}
 		})
 	}
-	for _, input := range []string{
-		`{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question","output":{"answers":[{"id":"q3","choice":2}]}}]}`,
-		`{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question"},{"type":"message","role":"user","content":[{"text":"<question_answers>[{\"id\":\"q2\",\"choice\":2}]</question_answers>"}]}]}`,
+}
+
+func TestNativeUIWalkthroughAnswerSteps(t *testing.T) {
+	for _, tc := range []struct{ name, input, want string }{
+		{"sync", `{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question","output":"[{\"id\":\"q3\",\"choice\":2}]"}]}`, "sync-question"},
+		{"missing sync", `{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question"}]}`, "invalid-sync-answer"},
+		{"invalid sync", `{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question","output":"not JSON"}]}`, "invalid-sync-answer"},
+		{"empty sync", `{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question","output":"[]"}]}`, "invalid-sync-answer"},
+		{"invalid choice", `{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question","output":"[{\"id\":\"q3\",\"choice\":-1}]"}]}`, "invalid-sync-answer"},
+		{"async after sync", `{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question","output":"[{\"id\":\"q3\",\"choice\":2}]"},{"type":"message","role":"user","content":[{"text":"<question_answers>[{\"id\":\"q2\",\"choice\":2}]</question_answers>"}]}]}`, "async-answer"},
+		{"invalid async after sync", `{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question","output":"[{\"id\":\"q3\",\"choice\":2}]"},{"type":"message","role":"user","content":[{"text":"<question_answers>[]</question_answers>"}]}]}`, "invalid-async-answer"},
 	} {
-		var request struct {
-			Input []walkthroughInput `json:"input"`
-		}
-		if err := json.Unmarshal([]byte(input), &request); err != nil {
-			t.Fatal(err)
-		}
-		if step := walkthroughStep(request.Input); step != "sync-question" {
-			t.Fatal("compact answer restarted the scenario", step)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			var request struct {
+				Input []walkthroughInput `json:"input"`
+			}
+			if err := json.Unmarshal([]byte(tc.input), &request); err != nil {
+				t.Fatal(err)
+			}
+			if got := walkthroughStep(request.Input); got != tc.want {
+				t.Fatalf("step = %q, want %q", got, tc.want)
+			}
+			response := httptest.NewRecorder()
+			new(walkthroughProvider).serve(response, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(tc.input)))
+			if tc.want == "async-answer" && (!strings.Contains(response.Body.String(), "Release update answers received.") || strings.Contains(response.Body.String(), "Release scope received.")) {
+				t.Fatal("async answer reused sync acknowledgment", response.Body.String())
+			}
+		})
 	}
 }

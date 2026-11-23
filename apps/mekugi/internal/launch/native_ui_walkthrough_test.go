@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 func TestNativeUIWalkthrough(t *testing.T) {
@@ -138,6 +139,7 @@ type walkthroughInput struct {
 	Type    string `json:"type"`
 	Role    string `json:"role"`
 	CallID  string `json:"call_id"`
+	Output  string `json:"output"`
 	Content []struct {
 		Text string `json:"text"`
 	} `json:"content"`
@@ -153,6 +155,9 @@ func walkthroughStep(input []walkthroughInput) string {
 		switch item.Type {
 		case "custom_tool_call_output", "function_call_output":
 			if _, step, ok := strings.Cut(item.CallID, "-step-"); ok {
+				if step == "sync-question" && len(binding.QuestionReplies(binding.QuestionReplyStart+item.Output+binding.QuestionReplyEnd)) != 1 {
+					return "invalid-sync-answer"
+				}
 				return step
 			}
 		case "agent_message":
@@ -167,6 +172,12 @@ func walkthroughStep(input []walkthroughInput) string {
 			}
 			for _, part := range item.Content {
 				prompt := strings.TrimSpace(part.Text)
+				if len(binding.QuestionReplies(prompt)) > 0 {
+					return "async-answer"
+				}
+				if strings.HasPrefix(prompt, binding.QuestionReplyStart) {
+					return "invalid-async-answer"
+				}
 				if prompt != "" && !strings.HasPrefix(prompt, "<") {
 					switch prompt {
 					case "demo":
@@ -244,6 +255,10 @@ func (p *walkthroughProvider) serve(w http.ResponseWriter, request *http.Request
 				{"label":"Broad","description":"Every path","preview":"Broad release\n\n1. Validate every release path.\n2. Publish the complete release.\n3. Monitor the rollout.","recommended":true}]}]}`)
 	case "sync-question":
 		item = message("Release scope received.")
+	case "async-answer":
+		item = message("Release update answers received.")
+	case "invalid-sync-answer", "invalid-async-answer":
+		item = message("The question answer was missing or invalid.")
 	default:
 		item = message("This is a scripted preview. Submit demo or questions.")
 	}
