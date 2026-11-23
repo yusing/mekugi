@@ -122,7 +122,9 @@ func (o *Observations) SetToolInput(generation *Generation, workspace, thread st
 		if input.items == nil {
 			input = generatingInput{workspace: workspace, thread: thread, items: make(map[GenerationItem]generatingItem)}
 		}
-		input.items[item] = input.items[item]
+		if _, exists := input.items[item]; !exists {
+			input.items[item] = generatingItem{}
+		}
 		o.generations[generation] = input
 	} else if input.items != nil {
 		delete(input.items, item)
