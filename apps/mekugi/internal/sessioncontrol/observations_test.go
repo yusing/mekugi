@@ -67,36 +67,6 @@ func TestGenerationObservationsRemainRequestScoped(t *testing.T) {
 	if observations.EmittingToolInput("/workspace", "main") {
 		t.Fatal("completed tool input still blocks question answers")
 	}
-	observations.SetAssistantMessage(&first, "", "main", GenerationItem{ID: "item"}, true)
-	message := observations.AssistantMessage("/workspace", "main")
-	observations.SetAssistantMessage(&second, "", "main", GenerationItem{ID: "item"}, true)
-	later := observations.AssistantMessage("/workspace", "main")
-	observations.EndGeneration(&first)
-	if message == later || observations.AwaitingMessage("/workspace", "main", message) || !observations.AwaitingMessage("/workspace", "main", later) {
-		t.Fatal("message boundaries lost request identity or rearmed after completion")
-	}
-}
-
-func TestGenerationIdentityEnrichmentPreservesBoundary(t *testing.T) {
-	var observations Observations
-	var generation Generation
-	indexed := GenerationItem{Index: 0, Indexed: true}
-	identified := GenerationItem{ID: "message", Index: 0, Indexed: true}
-	observations.IdentifyGenerationItem(&generation, identified)
-	if observations.AssistantMessage("", "main") != 0 {
-		t.Fatal("identity observation admitted a message")
-	}
-	observations.SetAssistantMessage(&generation, "", "main", indexed, true)
-	boundary := observations.AssistantMessage("", "main")
-	observations.IdentifyGenerationItem(&generation, identified)
-	if boundary == 0 || observations.AssistantMessage("", "main") != boundary || !observations.AwaitingMessage("", "main", boundary) {
-		t.Fatal("identity enrichment replaced or released the admitted boundary")
-	}
-	observations.SetAssistantMessage(&generation, "", "main", GenerationItem{ID: "message"}, false)
-	observations.IdentifyGenerationItem(&generation, identified)
-	if observations.AwaitingMessage("", "main", boundary) || observations.AssistantMessage("", "main") != 0 {
-		t.Fatal("late identity revived a completed boundary")
-	}
 }
 
 func TestApprovalFeedbackFollowsSuccessfulDelivery(t *testing.T) {

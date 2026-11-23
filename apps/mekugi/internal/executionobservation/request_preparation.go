@@ -33,8 +33,8 @@ func (p *Preparer) Prepare(ctx context.Context, request *codexresponses.Request,
 		p.Control.ObserveCompactionContext(input.Thread, input.Metadata.ContextWindowID)
 	}
 	if t == nil && !input.Prewarm && !input.ApprovalReview && input.MetadataValid && input.Metadata.RequestKind == "turn" {
-		// Execution-free turns retain native payloads but still publish message
-		// boundaries. They acquire no execution cache, capture or replay owners.
+		// Execution-free turns retain native payloads but still publish generation
+		// observations. They acquire no execution cache, capture or replay owners.
 		t = &mekugiResponseTransform{owners: p, ctx: ctx, generationOnly: true,
 			threadID:     p.admitActivityThread(input.Thread, input.Metadata),
 			directory:    p.observationDirectory(input.Metadata.Directories, input.Thread),

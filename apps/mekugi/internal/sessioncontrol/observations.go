@@ -27,8 +27,6 @@ type generatingInput struct {
 }
 
 type generatingItem struct {
-	tool     bool
-	message  uint64
 	identity *activitypresentation.ToolGeneration
 	order    uint64
 }
@@ -39,7 +37,6 @@ type generatingItem struct {
 type Observations struct {
 	mu                sync.RWMutex
 	generations       map[*Generation]generatingInput
-	nextMessage       uint64
 	nextTool          uint64
 	feedbackMu        sync.Mutex
 	feedback          map[[2]string][]string
@@ -111,11 +108,28 @@ func (o *Observations) ContextMatches(thread, identity, reference string) bool {
 }
 
 func (o *Observations) SetToolInput(generation *Generation, workspace, thread string, item GenerationItem, active bool) {
-	o.setInput(generation, workspace, thread, item, active, true)
-}
-
-func (o *Observations) SetAssistantMessage(generation *Generation, workspace, thread string, item GenerationItem, active bool) {
-	o.setInput(generation, workspace, thread, item, active, false)
+	if o == nil || generation == nil || thread == "" || item.ID == "" && !item.Indexed {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	input := o.generations[generation]
+	item = input.identifyItem(item)
+	if active {
+		if o.generations == nil {
+			o.generations = make(map[*Generation]generatingInput)
+		}
+		if input.items == nil {
+			input = generatingInput{workspace: workspace, thread: thread, items: make(map[GenerationItem]generatingItem)}
+		}
+		input.items[item] = input.items[item]
+		o.generations[generation] = input
+	} else if input.items != nil {
+		delete(input.items, item)
+		if len(input.items) == 0 {
+			delete(o.generations, generation)
+		}
+	}
 }
 
 // IdentifyGenerationItem retains identities learned between admission and
@@ -140,7 +154,7 @@ func (o *Observations) IdentifyToolInput(generation *Generation, item Generation
 	input := o.generations[generation]
 	key := input.identifyItem(item)
 	value, exists := input.items[key]
-	if !exists || !value.tool {
+	if !exists {
 		return
 	}
 	if value.identity == nil {
@@ -174,37 +188,6 @@ func (o *Observations) ToolInput(thread string) string {
 		}
 	}
 	return label
-}
-
-func (o *Observations) setInput(generation *Generation, workspace, thread string, item GenerationItem, active, tool bool) {
-	if o == nil || generation == nil || thread == "" || item.ID == "" && !item.Indexed {
-		return
-	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	input := o.generations[generation]
-	item = input.identifyItem(item)
-	if active {
-		if o.generations == nil {
-			o.generations = make(map[*Generation]generatingInput)
-		}
-		if input.items == nil {
-			input = generatingInput{workspace: workspace, thread: thread, items: make(map[GenerationItem]generatingItem)}
-		}
-		value := input.items[item]
-		value.tool = tool
-		if !tool && value.message == 0 {
-			o.nextMessage++
-			value.message = o.nextMessage
-		}
-		input.items[item] = value
-		o.generations[generation] = input
-	} else if input.items != nil {
-		delete(input.items, item)
-		if len(input.items) == 0 {
-			delete(o.generations, generation)
-		}
-	}
 }
 
 func (input generatingInput) identifyItem(item GenerationItem) GenerationItem {
@@ -242,33 +225,6 @@ func (o *Observations) EndGeneration(generation *Generation) {
 }
 
 func (o *Observations) EmittingToolInput(workspace, thread string) bool {
-	return o.emitting(workspace, thread, 0)
-}
-
-// AssistantMessage snapshots only the message active at input admission.
-// Later messages cannot rearm an already-accepted input's boundary.
-func (o *Observations) AssistantMessage(workspace, thread string) uint64 {
-	if o == nil {
-		return 0
-	}
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	var message uint64
-	for _, input := range o.generations {
-		if input.thread == thread && (input.workspace == "" || input.workspace == workspace) {
-			for _, item := range input.items {
-				message = max(message, item.message)
-			}
-		}
-	}
-	return message
-}
-
-func (o *Observations) AwaitingMessage(workspace, thread string, message uint64) bool {
-	return message != 0 && o.emitting(workspace, thread, message)
-}
-
-func (o *Observations) emitting(workspace, thread string, message uint64) bool {
 	if o == nil {
 		return false
 	}
@@ -277,12 +233,8 @@ func (o *Observations) emitting(workspace, thread string, message uint64) bool {
 	for _, input := range o.generations {
 		// Missing cwd does not erase native thread identity. This observation
 		// resolves no filesystem operand.
-		if input.thread == thread && (input.workspace == "" || input.workspace == workspace) {
-			for _, item := range input.items {
-				if message == 0 && item.tool || message != 0 && item.message == message {
-					return true
-				}
-			}
+		if input.thread == thread && (input.workspace == "" || input.workspace == workspace) && len(input.items) > 0 {
+			return true
 		}
 	}
 	return false

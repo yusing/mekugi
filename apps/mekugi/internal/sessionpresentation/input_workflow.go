@@ -32,10 +32,8 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 	}
 	next.Steer = control.Turn != ""
 	if len(conversation.Unsent) > 0 && next.Steer {
-		if conversation.Unsent[0].Question != nil && observations.EmittingToolInput(workspace, control.Thread) {
-			if observations.AwaitingMessage(workspace, control.Thread, conversation.Unsent[0].MessageBoundary) || !conversation.AdvancePrompt() {
-				return next
-			}
+		if conversation.Unsent[0].Question != nil && observations.EmittingToolInput(workspace, control.Thread) && !conversation.AdvancePrompt() {
+			return next
 		}
 		if conversation.Unsent[0].Compact != nil {
 			// Native reset admission must run before any destructive interrupt:
@@ -43,9 +41,6 @@ func (m *Model) NextInput(control *sessioncontrol.Live, conversation *conversati
 			if !conversation.Unsent[0].Compact.WaitForIdle {
 				next.Batch = conversation.TakeBatch(true)
 			}
-			return next
-		}
-		if observations.AwaitingMessage(workspace, control.Thread, conversation.Unsent[0].MessageBoundary) {
 			return next
 		}
 	}
