@@ -3,6 +3,7 @@ package terminalui
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -111,6 +112,7 @@ type ImageSource struct {
 	Path            string
 	Entry, Revision uint64
 	Dialog          uint64 // Local file selection, distinct from transcript entries.
+	Composer        bool   // Draft attachment preview, distinct from transcript and dialog entries.
 }
 
 const ImageInputLimit = 32 << 20
@@ -167,6 +169,78 @@ func (p *ImagePreview) Size(width int, protocol ImageProtocol, cellWidth, cellHe
 	}
 	w, h := imageFit(p.Pixels.Bounds().Dx(), p.Pixels.Bounds().Dy(), maxW, maxH)
 	return (w + cellWidth - 1) / cellWidth, (h + cellHeight - 1) / cellHeight
+}
+
+// ThumbnailSize fits a preview into a bounded cell box for compact attachment
+// thumbnails. NoImages uses a 1:2 cell aspect ratio for Unicode half-block rendering.
+func (p *ImagePreview) ThumbnailSize(maxColumns, maxRows int, protocol ImageProtocol, cellWidth, cellHeight int) (int, int) {
+	if p == nil || p.Pixels == nil || maxColumns <= 0 || maxRows <= 0 {
+		return 0, 0
+	}
+	if protocol != SixelImages {
+		cellWidth, cellHeight = 8, 16
+	}
+	if cellWidth <= 0 || cellHeight <= 0 {
+		return 0, 0
+	}
+	maxW, maxH := maxColumns*cellWidth, maxRows*cellHeight
+	if protocol == SixelImages {
+		maxW, maxH = min(maxW, 160), min(maxH, 80)
+	}
+	w, h := imageFit(p.Pixels.Bounds().Dx(), p.Pixels.Bounds().Dy(), maxW, maxH)
+	cols := min(maxColumns, max(1, (w+cellWidth-1)/cellWidth))
+	rows := min(maxRows, max(1, (h+cellHeight-1)/cellHeight))
+	return cols, rows
+}
+
+// HalfBlocks renders a compact truecolor Unicode half-block ("▀") thumbnail
+// for terminals without native image graphics protocols (e.g., tmux, zellij, or
+// plain 24-bit terminals). Each cell encodes two vertical pixels.
+func (p *ImagePreview) HalfBlocks(columns, rows int) []string {
+	if p == nil || p.Pixels == nil || columns <= 0 || rows <= 0 {
+		return nil
+	}
+	scaled := image.NewRGBA(image.Rect(0, 0, columns, rows*2))
+	draw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), p.Pixels, p.Pixels.Bounds(), draw.Src, nil)
+	out := make([]string, rows)
+	for row := range rows {
+		var b strings.Builder
+		var lastFG, lastBG [3]uint8
+		hasColor := false
+		for col := range columns {
+			fg := halfBlockPixel(scaled, col, row*2)
+			bg := halfBlockPixel(scaled, col, row*2+1)
+			if !hasColor || fg != lastFG {
+				fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm", fg[0], fg[1], fg[2])
+				lastFG = fg
+			}
+			if !hasColor || bg != lastBG {
+				fmt.Fprintf(&b, "\x1b[48;2;%d;%d;%dm", bg[0], bg[1], bg[2])
+				lastBG = bg
+			}
+			hasColor = true
+			b.WriteRune('▀')
+		}
+		b.WriteString(Reset)
+		out[row] = b.String()
+	}
+	return out
+}
+
+// halfBlockPixel composites premultiplied RGBA pixels over a dark neutral canvas
+// so transparent thumbnails stay legible without dark-alpha artifacts.
+func halfBlockPixel(img *image.RGBA, x, y int) [3]uint8 {
+	o := img.PixOffset(x, y)
+	r, g, b, a := img.Pix[o], img.Pix[o+1], img.Pix[o+2], img.Pix[o+3]
+	if a == 255 {
+		return [3]uint8{r, g, b}
+	}
+	inv := 255 - int(a)
+	return [3]uint8{
+		uint8(min(255, int(r)+(24*inv+127)/255)),
+		uint8(min(255, int(g)+(24*inv+127)/255)),
+		uint8(min(255, int(b)+(28*inv+127)/255)),
+	}
 }
 
 func (p ImagePlacement) Encode(protocol ImageProtocol, cellWidth, cellHeight, id int) string {

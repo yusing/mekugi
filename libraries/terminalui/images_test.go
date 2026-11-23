@@ -132,3 +132,49 @@ func TestImagePreviewKittyFileLifetime(t *testing.T) {
 		t.Fatalf("transport file retained: %v", err)
 	}
 }
+
+func TestImageThumbnailSizeAndHalfBlocks(t *testing.T) {
+	square := &ImagePreview{Pixels: image.NewRGBA(image.Rect(0, 0, 160, 160))}
+	for y := range 160 {
+		for x := range 160 {
+			c := color.RGBA{220, 40, 30, 255}
+			if y >= 80 {
+				c = color.RGBA{30, 80, 220, 255}
+			}
+			square.Pixels.Set(x, y, c)
+		}
+	}
+	for _, tc := range []struct {
+		name               string
+		protocol           ImageProtocol
+		cellW, cellH       int
+		wantCols, wantRows int
+	}{
+		{"kitty", KittyImages, 0, 0, 6, 3},
+		{"kitty-file", KittyFileImages, 0, 0, 6, 3},
+		{"half-block fallback", NoImages, 0, 0, 6, 3},
+		{"sixel", SixelImages, 8, 16, 6, 3},
+		{"sixel unknown cells", SixelImages, 0, 0, 0, 0},
+	} {
+		cols, rows := square.ThumbnailSize(10, 3, tc.protocol, tc.cellW, tc.cellH)
+		if cols != tc.wantCols || rows != tc.wantRows {
+			t.Fatalf("%s: got %dx%d, want %dx%d", tc.name, cols, rows, tc.wantCols, tc.wantRows)
+		}
+	}
+
+	lines := square.HalfBlocks(6, 2)
+	if len(lines) != 2 {
+		t.Fatalf("half-block rows = %d, want 2", len(lines))
+	}
+	for i, line := range lines {
+		if got := strings.Count(line, "▀"); got != 6 {
+			t.Fatalf("row %d cells = %d, want 6: %q", i, got, line)
+		}
+		if !strings.HasSuffix(line, Reset) {
+			t.Fatalf("row %d missing reset: %q", i, line)
+		}
+	}
+	if !strings.Contains(lines[0], "\x1b[38;2;220;40;30m") || !strings.Contains(lines[1], "\x1b[48;2;30;80;220m") {
+		t.Fatalf("unexpected half-block colors: %q", lines)
+	}
+}

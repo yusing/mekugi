@@ -179,6 +179,9 @@ func ProjectCaptured(ctx context.Context, observation changecapture.Observation)
 }
 
 func Expected(ctx context.Context, observation changecapture.Observation) map[string]diffmodel.ReviewFile {
+	if observation.RepeatedPaths {
+		return nil
+	}
 	expected, complete := ProjectCaptured(ctx, observation)
 	// Only retire the watcher when its entire admitted edit scope is known.
 	if !complete || len(expected) != len(observation.Files) {
