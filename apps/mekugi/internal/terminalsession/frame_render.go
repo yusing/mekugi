@@ -186,6 +186,8 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	plan := shell.Plan(width, height)
 	processRect, rosterRect := Rect{}, Rect{}
 	var roster []string
+	var mainImageDemands []terminalui.ImageSource
+	var mainImagePlacements []terminalui.ImagePlacement
 	processLimit := 0
 	content := ShellContent{}
 	if plan.Left.W >= 4 && plan.Left.H >= 1 {
@@ -257,6 +259,8 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 			}
 		}
 		out.composer = main.composer
+		mainImageDemands = main.ImageDemands
+		mainImagePlacements = main.ImagePlacements
 		content.Main, content.Dock = main.Rows, main.Dock
 		dockAt, dockRows := content.Dock.Y, content.Dock.H
 		if dockRows > 0 && dockAt+dockRows <= len(content.Main) {
@@ -362,12 +366,20 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 		if source := in.Dialog.ImageSource(); source.Path != "" && out.Images.Protocol != terminalui.NoImages && in.Dialog.Selection == nil {
 			out.ImageDemands = []terminalui.ImageSource{source}
 		}
-	} else if in.Dialog == nil && in.Selection == nil && !in.Main.Keybindings && !in.Main.Menu.Open() && view.Panel == nil && view.Resume == nil && !mainEdit {
-		out.ImageDemands = transcript.ImageDemands
+	} else if in.Dialog == nil && in.Selection == nil && view.Panel == nil && view.Resume == nil {
 		out.Images = terminalui.ImageFrame{Protocol: transcript.ImageProtocol, CellWidth: transcript.ImageCellWidth, CellHeight: transcript.ImageCellHeight}
-		for _, p := range transcript.ImagePlacements {
-			p.X += plan.Layout.Main.X + transcript.FeedLeft - 1
-			p.Y += plan.Layout.Main.Y + transcript.FeedTop - 1
+		if !in.Main.Keybindings && !in.Main.Menu.Open() && !mainEdit {
+			out.ImageDemands = append(out.ImageDemands, transcript.ImageDemands...)
+			for _, p := range transcript.ImagePlacements {
+				p.X += plan.Layout.Main.X + transcript.FeedLeft - 1
+				p.Y += plan.Layout.Main.Y + transcript.FeedTop - 1
+				out.Images.Placements = append(out.Images.Placements, p)
+			}
+		}
+		out.ImageDemands = append(out.ImageDemands, mainImageDemands...)
+		for _, p := range mainImagePlacements {
+			p.X += plan.Layout.Main.X
+			p.Y += plan.Layout.Main.Y
 			out.Images.Placements = append(out.Images.Placements, p)
 		}
 	}

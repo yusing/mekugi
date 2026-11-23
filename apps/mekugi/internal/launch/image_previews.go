@@ -128,9 +128,9 @@ func (p *imagePreviews) request(ctx context.Context, scope terminalsession.Sourc
 			if !filepath.IsAbs(target) {
 				target = filepath.Join(scope.Workspace, target)
 			}
-			// Live file links follow symlinks; the retained-file opener still
-			// validates the resolved descriptor and rejects special files.
-			if path.Dialog != 0 && filepath.IsAbs(target) && readContext.Err() == nil {
+			// Live file links and composer attachments follow symlinks; the retained-file
+			// opener still validates the resolved descriptor and rejects special files.
+			if (path.Dialog != 0 || path.Composer) && filepath.IsAbs(target) && readContext.Err() == nil {
 				target, _ = filepath.EvalSymlinks(target)
 			}
 			if !strings.Contains(path.Path, "://") && !strings.HasPrefix(path.Path, "data:") && filepath.IsAbs(target) && readContext.Err() == nil {

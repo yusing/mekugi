@@ -54,11 +54,16 @@ type mainInput struct {
 	Selection                                                    string
 	QuestionLayout                                               *conversationui.QuestionLayout
 	ApprovalLayout                                               *conversationui.ApprovalLayout
+	ImageProtocol                                                terminalui.ImageProtocol
+	ImageCellWidth, ImageCellHeight                              int
+	ImagePreviews                                                map[terminalui.ImageSource]*terminalui.ImagePreview
 }
 
 type MainFrame struct {
 	Notices               NoticeReceipt
 	Demands               []activitypresentation.OutputDemand
+	ImageDemands          []terminalui.ImageSource
+	ImagePlacements       []terminalui.ImagePlacement
 	Rows                  []string
 	Feed, Dock, Questions Rect
 	composer              composerDocument
@@ -139,6 +144,9 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 			m.NoticeDetails.Y += len(welcome)
 			m.NoticeDismiss.Y += len(welcome)
 			out.Feed.Y += len(welcome)
+			for i := range out.ImagePlacements {
+				out.ImagePlacements[i].Y += len(welcome)
+			}
 		}()
 	}
 	visible := min(6, height-borderRows)
@@ -147,6 +155,15 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 	draft = draft[firstRow:min(len(draft), firstRow+visible)]
 
 	room := max(0, height-len(draft)-borderRows)
+	var imageStripRows []string
+	var imagePlacements []terminalui.ImagePlacement
+	if !readOnly && !in.Secret && len(in.Draft.Images) > 0 && width >= 12 && room >= 6 {
+		strip := renderComposerImages(in.Draft.Images, in.ImagePreviews, in.ImageProtocol, in.ImageCellWidth, in.ImageCellHeight, min(2, inset), textWidth, room-2)
+		imageStripRows = strip.rows
+		out.ImageDemands = strip.demands
+		imagePlacements = strip.placements
+		room -= len(imageStripRows)
+	}
 	var pending []string
 	var approvalRows, questionRows, btwRows []string
 	if !readOnly {
@@ -252,6 +269,14 @@ func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, 
 			line = before + "\x1b[7m" + cell + "\x1b[27m" + rest
 		}
 		frame = append(frame, inputColor+prefix+line+terminalui.Reset)
+	}
+	if len(imageStripRows) > 0 {
+		stripY := len(frame)
+		frame = append(frame, imageStripRows...)
+		for _, p := range imagePlacements {
+			p.Y += stripY
+			out.ImagePlacements = append(out.ImagePlacements, p)
+		}
 	}
 	if ruled {
 		frame = append(frame, rule)

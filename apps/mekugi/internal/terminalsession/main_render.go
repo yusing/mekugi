@@ -65,6 +65,8 @@ func (m *Main) Render(transcript *activityui.View, painter *activityui.Painter, 
 		Session:      presentation, Draft: presentation.Draft.Draft, Now: options.Now, ReadOnly: readOnly,
 		Focused: options.Focused, Empty: transcript.Empty(),
 		Picker: picker, Welcome: welcome(options.Version, presentation.Info.BackendVersion), Selection: SelectionStyle(&painter.Painter), TurnIdle: presentation.Interrupt.Turn == "",
+		ImageProtocol: transcript.ImageProtocol, ImageCellWidth: transcript.ImageCellWidth, ImageCellHeight: transcript.ImageCellHeight,
+		ImagePreviews: transcript.ImagePreviews,
 	}
 	if call := presentation.Questions.Call; call != nil {
 		in.Question, in.Secret, in.QuestionLayout = true, call.Questions[presentation.Questions.Index].Secret, prompts.QuestionLayout(presentation.Questions)

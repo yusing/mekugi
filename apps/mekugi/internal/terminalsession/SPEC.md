@@ -44,6 +44,8 @@
   and Original/Model-visible toggling (`o`). Drag-selection freezes the document for off-screen
   scrolling, source-aware Markdown/Diff copy, and `Reference` (`r`) mentions.
 - **Images, notifications, and replay**: Kitty/Sixel thumbnails render viewed/generated images
-  outside selectable text; OSC 7501 (`mekugi`) and OSC 9/BEL report lifecycle status and generic
+  outside selectable text, and composer drafts preview attached local images in a bordered
+  thumbnail strip (using Kitty/Sixel when supported and Unicode half-block truecolor rendering as
+  a universal fallback); OSC 7501 (`mekugi`) and OSC 9/BEL report lifecycle status and generic
   desktop alerts (`tui.notifications`). Offline replay (`replay-session`) shares the same renderer
   in read-only mode, plus `--headless` timing output.
