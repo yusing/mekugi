@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
 
@@ -140,5 +144,80 @@ func TestExecTrackShEnvelopeKeepsBash(t *testing.T) {
 	}
 	if view := shell.awaitView(t, key); !view.complete || len(view.segments) != 3 || view.segments[1].Exit != 1 {
 		t.Fatalf("Bash report lost: %+v", view)
+	}
+}
+
+// The shell's EXIT terminates its boundary stream, but a writer retaining
+// stdout or stderr must still reach both the host and its segment report.
+func TestExecTrackInlineBashDetachedChild(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	helper, err := execTrackTestHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoints := shell.transport.Endpoints()
+	tracker := filepath.Join(shell.root, "exec-track.sh")
+	writeTestFile(t, tracker, shellinstrumentation.ShTracker(helper, endpoints.Requests, endpoints.Directory))
+	bash := execTrackShellExecutable(t, "bash")
+	// Gate the last writer until after the outer shell has acknowledged EXIT.
+	gatePath := filepath.Join(shell.root, "release")
+	if err := unix.Mkfifo(gatePath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.OpenFile(gatePath, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = gate.WriteString("\n"); _ = gate.Close() }()
+	script := "printf before; " + commandargs.Quote(bash) + " -c " + commandargs.Quote(`sleep 60 </dev/null >/dev/null 2>&1 & echo $! > child; { read -r <release; printf late-out; printf late-err >&2; } &`)
+	key := [3]string{"thread", "turn", "detached"}
+	wrapped := shellinstrumentation.ShScript(tracker, script)
+	shell.hub.start(key, commandargs.Quote(bash)+" -c "+commandargs.Quote(wrapped))
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bash, "-c", wrapped)
+	cmd.Env, cmd.Dir = append(shell.env, shellinstrumentation.ShTrackerEnvironment+"="+tracker), shell.root
+	output, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	cmd.Stdout, cmd.Stderr = writer, writer
+	err = cmd.Run()
+	writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := os.ReadFile(filepath.Join(shell.root, "child"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(id)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Kill(pid, unix.SIGKILL)
+	if _, err = gate.WriteString("\n"); err != nil {
+		t.Fatal(err)
+	}
+	view := shell.awaitView(t, key)
+	if !view.ended || !view.complete || len(view.segments) != 2 {
+		t.Fatalf("report did not close while the detached child held the control FIFO: ended=%t complete=%t", view.ended, view.complete)
+	}
+	if err := output.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(output)
+
+	got := string(shell.hub.reported[key][1])
+	if got != "late-outlate-err" && got != "late-errlate-out" {
+		t.Fatalf("last segment lost output after shell exit: %q", got)
+	}
+	if err != nil || string(data) != "before"+got {
+		t.Fatalf("host output=%q err=%v", data, err)
+	}
+	if err := unix.Kill(pid, 0); err != nil {
+		t.Fatalf("detached child exited before relay: %v", err)
 	}
 }

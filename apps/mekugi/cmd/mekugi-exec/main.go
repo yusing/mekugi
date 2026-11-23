@@ -226,8 +226,8 @@ func (r *relay) run() {
 	}
 }
 
-// readControl handles the shell's complete boundary lines, and reports false
-// once the shell closed its end, by exiting or replacing itself.
+// readControl handles boundary lines until the shell reports exit or closes
+// its end of the control pipe.
 func (r *relay) readControl() bool {
 	buffer := make([]byte, 512)
 	n, err := unix.Read(0, buffer)
@@ -292,6 +292,11 @@ func (r *relay) readControl() bool {
 			}
 			// The shell waits for this before its next segment starts.
 			if _, err := unix.Write(r.ack, []byte("\n")); err != nil {
+				return false
+			}
+			// A detached child can inherit the control FIFO. EXIT is the
+			// final boundary; only stdout and stderr still need draining.
+			if fields[0] == "d" {
 				return false
 			}
 		}
