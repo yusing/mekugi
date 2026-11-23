@@ -60,6 +60,100 @@ func nativeSchedulingRuntime(t *testing.T, u *appServerUI, connection *sessionap
 	return r
 }
 
+func TestNativeClientRosterArrowNavigation(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	workspace := t.TempDir()
+	threads := []string{"main", "parent", "peer", "nested"}
+	callers := map[string]string{
+		"main": "/root", "parent": "/root/parent", "peer": "/root/peer", "nested": "/root/parent/nested",
+	}
+	// Family publications may append rows independently of their ancestry.
+	roster := &activity.Publication{Roster: make([]activity.AgentRow, 0, len(threads))}
+	for _, id := range threads {
+		name := callers[id]
+		roster.Roster = append(roster.Roster, activity.AgentRow{
+			Agent: activity.Agent{AgentFacts: activity.AgentFacts{Name: name, Thread: id}},
+			Depth: strings.Count(name, "/") - 1,
+		})
+	}
+	family := &sessionapi.Family{Root: "main", Threads: threads, Agents: roster}
+	launcher := &nativeReattachLauncher{run: func(ctx context.Context, start sessionapi.Start, api *sessionapi.Server) error {
+		id := start.Resume
+		thread := sessionpresentation.Thread{ID: id, Caller: callers[id]}
+		view := sessionpresentation.View{
+			Version: sessionpresentation.Version{Attachment: 1, Revision: 1},
+			Main:    thread, Displayed: thread, Input: thread,
+			Info: sessionpresentation.MainInfo{Workspace: workspace, Caller: thread.Caller},
+		}
+		if err := api.SetSummary(sessionapi.Summary{Thread: id, Workspace: workspace, Ready: true}); err != nil {
+			return err
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case request := <-api.Native().Requests():
+				if err := api.Native().Publish(request.Attachment, sessionapi.NativeFrame{View: view, Family: family}); err != nil {
+					return err
+				}
+				request.Reply <- ""
+			}
+		}
+	}}
+	hub := sessionapi.NewHub(t.Context(), launcher)
+	t.Cleanup(hub.Close)
+	server := httptest.NewServer(sessionapi.Versioned(hub.Handler()))
+	t.Cleanup(server.Close)
+	rpc, err := sessionapi.OpenRPC(t.Context(), server.Client(), server.URL+sessionapi.RPCPath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = rpc.Close() })
+	for _, id := range threads {
+		serverRPCCall(t, rpc, "session/start", "", sessionapi.Start{Workspace: workspace, Model: "fixture", Resume: id})
+	}
+	connection, err := sessionapi.OpenNative(t.Context(), server.Client(), server.URL, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nativeSchedulingRuntime(t, u, connection)
+	now := time.Now()
+	for _, step := range []struct {
+		key, thread string
+		open        bool
+	}{
+		{"\x1b[B", "main", true},
+		{"\x1b[A", "main", true},
+		{"\x1b[B", "parent", true},
+		{"\x1bOB", "peer", true},
+		{"\x1bOA", "parent", true},
+		{"\x1b[A", "main", true},
+		{"\x1b[B", "parent", true},
+		{"\x1b[B", "peer", true},
+		{"\x1b[B", "nested", true},
+		{"\x1b[B", "nested", true},
+		{"\x1b", "nested", false},
+		{"\x1b[A", "parent", false},
+		{"\x1bOA", "main", false},
+	} {
+		for i := range len(step.key) {
+			r.decode(step.key[i], now)
+		}
+		r.drainKeys(nil, now.Add(time.Second)) // Flush a lone Escape.
+		r.active.drainInput()
+		for r.active.event.Frame.View.Displayed.ID != step.thread {
+			nativeSchedulingStep(t, r)
+		}
+		_, err := r.active.renderer.render(t.Context(), io.Discard, now, mekugiVersion())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if open := r.active.renderer.terminal.Layout.Roster.H > 0; open != step.open {
+			t.Fatalf("key %q on %s: roster open = %t, want %t", step.key, step.thread, open, step.open)
+		}
+	}
+}
+
 func TestNativeClientHydrationDoesNotHoldControl(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	workspace := t.TempDir()

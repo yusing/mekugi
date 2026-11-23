@@ -33,6 +33,7 @@ type FrameInput struct {
 	Width, Height          int
 	Now                    time.Time
 	Version                string
+	FamilyRoot             string // Main of the live family, not necessarily of the attachment.
 	LiveHidden, DiffUnseen bool
 	Prefix, Playback       bool
 	PlaybackBar            string
