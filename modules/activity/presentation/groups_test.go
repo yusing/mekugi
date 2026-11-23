@@ -14,15 +14,15 @@ func TestCanonicalMembershipAcrossGroups(t *testing.T) {
 	stage := Value{Kind: "op", Verb: "Stage", Label: "`a.go` · git", Source: 13, Operation: 1}
 	commit := Value{Kind: "op", Verb: "Commit", Label: "`update` · git", Source: 13, Operation: 2, Output: 1}
 	folded := FoldStages([]Value{stage, commit})
-	batch := Batch(append([]Value{merged}, folded...))
-	if !batch.Members[2].Subsumed || batch.Members[3].Subsumed {
+	grouped := Group(Value{Kind: "group"}, append([]Value{merged}, folded...))
+	if !grouped.Members[2].Subsumed || grouped.Members[3].Subsumed {
 		t.Fatal("folded work changed summary membership")
 	}
 	want := [][3]int{{11, 1, 1}, {12, 1, 2}, {13, 1, 0}, {13, 2, 1}}
-	if len(batch.Members) != len(want) {
-		t.Fatalf("members = %#v", batch.Members)
+	if len(grouped.Members) != len(want) {
+		t.Fatalf("members = %#v", grouped.Members)
 	}
-	for i, member := range batch.Members {
+	for i, member := range grouped.Members {
 		if got := [3]int{int(member.Source), member.Operation, member.Output}; got != want[i] || len(member.Members) != 0 {
 			t.Fatalf("member %d = %#v", i, member)
 		}
@@ -35,7 +35,7 @@ func TestCanonicalMembershipAcrossGroups(t *testing.T) {
 	if merged.Reads[0].RangeLines[0] != 3 {
 		t.Fatal("publication borrowed range counts")
 	}
-	batch.Members[0].Reads[0].Ranges[0] = "changed"
+	grouped.Members[0].Reads[0].Ranges[0] = "changed"
 	if first.Reads[0].Ranges[0] != "1:3" || merged.Members[0].Reads[0].Ranges[0] != "1:3" {
 		t.Fatal("group mutated its input")
 	}

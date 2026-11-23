@@ -55,7 +55,7 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, strings.Join(outputs, "")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-	awaitMain(t, u, "second · git -C")
+	awaitMain(t, u, "second · abc1234")
 	index := slices.IndexFunc(u.attached.source.Entries, func(record sessionpresentation.ActivityRecord) bool {
 		return record.Source.Native != nil && record.Source.Native.Item == "cmd"
 	})
@@ -99,6 +99,7 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 			}
 		}
 	}
+	u.shell.Transcript.Expansion = 1
 	if feed := mainFeed(u, 100); strings.Count(feed, "first.go") != 1 || strings.Count(feed, "second.go") != 1 {
 		t.Fatalf("rendered commits lost distinct files:\n%s", feed)
 	}

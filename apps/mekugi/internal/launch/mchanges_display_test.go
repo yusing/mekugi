@@ -49,6 +49,7 @@ func TestMChangesSummaryShowsEditRows(t *testing.T) {
 		"?\t-\t-\tunknown.bin\t\"missing capture\"\namber3 retired (partial history)\nM +30 -2; 1 counts unavailable\n" +
 		"? tool-managed: 2 missing capture; use --history for paths and full reasons\n"
 	u := mchangesDisplay(t, "mchanges --summary", output)
+	u.shell.Transcript.Expansion = 1
 	want := strings.Join([]string{
 		"└ Diff mine · mchanges --summary",
 		"       Edited  internal/router/app.go   +12 -3 ━━━━━━━━",
@@ -75,6 +76,7 @@ func TestMChangesSummaryShowsEditRows(t *testing.T) {
 func TestMChangesListShowsEditRows(t *testing.T) {
 	t.Parallel()
 	u := mchangesDisplay(t, "mchanges --list --max-tokens 400", "amber1..amber3 +12 -4\namber4 pending\namber5 +3 -1 ? managed:2\namber6 history:partial +1 -0 ?\n")
+	u.shell.Transcript.Expansion = 1
 	want := strings.Join([]string{
 		"└ Ran     mchanges --list --max-tokens 400",
 		"          amber1..amber3  +12 -4 ━━━━━━━━",

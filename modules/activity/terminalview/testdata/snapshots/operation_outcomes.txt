@@ -7,7 +7,6 @@
 "\x1b[38;5;203;1mRan\x1b[m     \x1b[38;2;210;168;255mgo\x1b[m vet ./... \x1b[2m· \x1b[38;5;203;22mexit 2\x1b[m                                           "
 "\x1b[38;5;203;1mEdited\x1b[m \x1b[1ma.go\x1b[m \x1b[2m· \x1b[38;5;203;22mexit 1\x1b[m                                                    "
 "\x1b[38;5;141;1mSearch\x1b[m \x1b[38;2;86;212;221mabsent\x1b[m \x1b[2min\x1b[m \x1b[1msrc\x1b[22;2m (0 results)\x1b[m                                        "
-"\x1b[38;5;141;1mSearched\x1b[m 1 pattern\x1b[2m • \x1b[38;5;75;22;1mRead\x1b[m 1 file                                        "
 "\x1b[1mRan\x1b[m     \x1b[38;2;210;168;255mmake\x1b[m build \x1b[2m· exit unknown\x1b[m                                     \x1b[2m2s\x1b[m"
 "        \x1b[2m┆\x1b[m compiling                                                     "
 "        \x1b[2m┆\x1b[m linking                                                       "

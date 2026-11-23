@@ -10,7 +10,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -73,9 +72,6 @@ func TestUISnapshotUserShellActivity(t *testing.T) {
 					t.Fatal("user command lost its failure")
 				}
 				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/user-shell-%s-%d.txt", state, width), append(rows, "plain after activity"), width)
-			}
-			if _, ok := activityui.CollapseBatch(append(blocks, view.blocks(1)...)); ok {
-				t.Fatal("user shell joined a collapsed batch")
 			}
 		})
 	}

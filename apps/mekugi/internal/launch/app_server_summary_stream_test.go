@@ -153,6 +153,7 @@ func TestReasoningSourceCompletesBeforeTerminalReveal(t *testing.T) {
 			if source.Revision != revision || source.LastSeq != sequence {
 				t.Fatal("terminal reveal revised semantic source state")
 			}
+			view.Expansion = 1
 			if !strings.Contains(strings.Join(view.RenderFeed(80, 50).Lines, "\n"), "Public checkpoint") {
 				t.Fatal("terminal reveal did not reach admitted content")
 			}

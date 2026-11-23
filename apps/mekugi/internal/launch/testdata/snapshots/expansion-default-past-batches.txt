@@ -1,10 +1,10 @@
-└ Read 1 file • Inspected 1 target
-
+├ Read    target
+└ Inspect target
 └ Asked  
     Continue?
     └ Yes
-
-└ Searched 1 pattern • Inspected 1 target
+├ Search  target
+└ Inspect target
 
 ● main
 ┃ Later visible event.

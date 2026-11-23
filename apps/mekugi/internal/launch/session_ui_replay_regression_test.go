@@ -215,6 +215,7 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 	}}
 	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
+	p.ui.view.Expansion = 1
 	p.ui.view.Painter.Theme, p.ui.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 	if err := p.advance(500 * time.Millisecond); err != nil {
 		t.Fatal(err)

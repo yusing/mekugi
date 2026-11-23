@@ -145,7 +145,6 @@ type Run struct {
 	Snippets   []Snippet      // Aligned with lines.
 	Questions  []uint64       // Clickable question targets, aligned with lines.
 	EntryRows  map[uint64]int // Exact Activity entry starts within a grouped run.
-	Batch      bool           // Main operations that fold into one row once out of view.
 }
 
 // Event is an agent's latest standalone entry and when it arrived.

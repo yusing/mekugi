@@ -44,7 +44,7 @@ func VerbColor(theme diffrender.Theme, verb string) string {
 			return theme.Danger()
 		}
 		return theme.Success()
-	case "Read", "Inspect", "View", "Open", "List", "Check", "Diff", "Status":
+	case "Read", "Inspect", "View", "Open", "List", "Check", "Diff", "Status", "Diff/Status":
 		return theme.Info()
 	case "Commit", "Committed", "Stage":
 		return theme.Hash()
@@ -277,6 +277,27 @@ func liveActivityIndent(lines []string, prefix string) []string {
 	return lines
 }
 
+// truncateCompactLine keeps a single-line compact row within width columns
+// without leaking ANSI styles.
+func truncateCompactLine(line string, width int) string {
+	if ansi.StringWidth(line) <= width {
+		return line
+	}
+	return ansi.Truncate(line, max(1, width), "…") + terminalui.Reset
+}
+
+// compactCodePreview collapses multi-line source into its first non-empty line
+// and the count of remaining lines.
+func compactCodePreview(code string) (first string, more int) {
+	lines := strings.Split(strings.TrimRight(code, "\n"), "\n")
+	for i, line := range lines {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			return trimmed, len(lines) - i - 1
+		}
+	}
+	return "", 0
+}
+
 // Block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
@@ -286,6 +307,7 @@ func (p *Painter) Block(block Block, width int) []string {
 			child := Block{Value: member}
 			child.Collapsed = !block.Expanded
 			child.Expanded = block.Expanded
+			child.Compact = block.Compact
 			child.GroupHeader = "Attach"
 			child.GroupStart = i == 0
 			if member.Verb == "Attach failed" {
@@ -300,13 +322,14 @@ func (p *Painter) Block(block Block, width int) []string {
 		return liveActivityIndent(p.Block(block, width-2), "  ")
 	}
 	lines := p.blockRows(block, width)
+	compact := block.compactSingleLine()
 	// A single Ran row leaves its timing to follow the notes below.
 	ranSingle := block.Verb == "Run" && len(lines) == 1
 	if block.AutoReload && block.Exited && block.ExitCode == 0 && !block.Running && len(lines) > 0 {
 		suffix := terminalui.Dim + " (auto reloaded)" + terminalui.Undim
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
-		} else {
+		} else if !compact {
 			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), suffix, width)...)
 		}
 	}
@@ -318,7 +341,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		suffix := terminalui.Dim + strings.Join(labels, " ") + terminalui.Undim
 		if ansi.StringWidth(lines[0])+1+ansi.StringWidth(suffix) <= width {
 			lines[0] += " " + suffix
-		} else {
+		} else if !compact {
 			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), suffix, width)...)
 		}
 	}
@@ -329,7 +352,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		suffix := terminalui.Dim + " · " + terminalui.Undim + outcome
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
-		} else {
+		} else if !compact {
 			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), outcome, width)...)
 		}
 	}
@@ -337,7 +360,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		// Run rows carry it in their label, ahead of the exit and elapsed time.
 		if suffix := " " + workdirLabel(block.Workdir); ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
-		} else {
+		} else if !compact {
 			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(block.RowVerb())), workdirLabel(pathterminal.Truncate(block.Workdir, width-block.cell(block.RowVerb())-5)), width)...)
 		}
 	}
@@ -350,7 +373,7 @@ func (p *Painter) Block(block Block, width int) []string {
 				lines[0] += strings.Repeat(" ", room) + terminalui.Dim + elapsed + terminalui.Undim
 			} else if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 				lines[0] += suffix
-			} else {
+			} else if !compact {
 				lines = append(lines, strings.Repeat(" ", block.cell(block.RowVerb()))+terminalui.Dim+"· "+elapsed+terminalui.Undim)
 			}
 		}
@@ -358,7 +381,7 @@ func (p *Painter) Block(block Block, width int) []string {
 	if trailer := segmentTrailer(block); trailer != "" && len(lines) > 0 {
 		if last := len(lines) - 1; ansi.StringWidth(lines[last])+1+ansi.StringWidth(trailer) <= width {
 			lines[last] += " " + trailer
-		} else {
+		} else if !compact {
 			lines = append(lines, strings.Repeat(" ", block.cell(block.RowVerb()))+trailer)
 		}
 	}
@@ -389,7 +412,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 		return append(lines, liveActivityIndent(rows, strings.Repeat(" ", indent))...)
 	}
-	if !block.Collapsed {
+	if !block.Collapsed && !compact {
 		tail := p.tailColors(block)
 		if p.CopySource && !p.LayoutOnly {
 			identity := terminalui.CopyID(strings.Join(block.Tail, "\n"), p.CopyScope)
@@ -521,7 +544,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			text := rows[0]
 			if !block.Live && block.Thought >= time.Second {
 				elapsed := presentation.FormatDuration(block.Thought)
-				if text = reasoningFor(text, elapsed); strings.HasSuffix(ansi.Strip(terminalui.Hang("• ", text, width)[0]), " •") {
+				if text = reasoningFor(text, elapsed); !block.Compact && strings.HasSuffix(ansi.Strip(terminalui.Hang("• ", text, width)[0]), " •") {
 					// Wrapping keeps the separator off the row end: the elapsed
 					// time heads its row and the summary hangs below it.
 					rows = append(terminalui.Hang("• ", reasoningFor("", elapsed), width), terminalui.Hang("  ", strings.TrimPrefix(text, reasoningFor("", elapsed)+" • "), width)...)
@@ -531,13 +554,16 @@ func (p *Painter) blockRows(block Block, width int) []string {
 					return rows
 				}
 			}
+			if block.Compact && !block.Live {
+				return []string{reasoningRow(truncateCompactLine("• "+text, width))}
+			}
 			rows = terminalui.Hang("• ", text, width)
 			for i, row := range rows {
 				rows[i] = reasoningRow(row)
 			}
 			return rows
 		}
-		if block.Collapsed {
+		if block.Collapsed || (block.Compact && !block.Live) {
 			if block.Hovered {
 				header = Underline(header)
 			}
@@ -567,16 +593,17 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if len(block.Questions) > 0 {
 			return p.questionRows(block, width)
 		}
-		if block.VCS() {
+		if block.VCS() || block.Verb == "Diff/Status" {
 			return p.vcsRow(block, width)
 		}
 		if block.Verb == "Run" {
 			return p.ranRow(block, width)
 		}
-		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results, block.Verb)
+		countSuffix := ResultCount(block.Results, block.Verb)
+		label := p.Label(block.Verb, block.Label) + countSuffix
 		copyLabel := ""
 		if block.Verb == "Search" && block.Path == "" && block.Code == "" {
-			compact := p.compactSearchTargets(block.Label) + ResultCount(block.Results, block.Verb)
+			compact := p.compactSearchTargets(block.Label) + countSuffix
 			if compact != label && ansi.StringWidth(block.lead(p.Theme, VerbColor(p.Theme, block.Verb), block.Verb)+compact) <= width {
 				copyLabel = label
 				label = compact
@@ -596,6 +623,35 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if row, ok := p.editRow(block, width, block.cell(block.Verb)); ok {
 			label = row
 		}
+		lead := block.lead(p.Theme, block.verbColor(p.Theme), block.Verb)
+		if block.compactSingleLine() {
+			if code := block.Code; code != "" {
+				first, more := compactCodePreview(sourceTabs(code))
+				skipJSON := label != "" && !block.Fenced && (block.Verb == "MCP" || strings.HasPrefix(block.Verb, "Tool")) && (first == "{" || first == "[")
+				if first != "" && !skipJSON {
+					inline := p.code(block.Verb, first)
+					if block.Fenced {
+						inline = strings.Join(p.Highlight(block.Lang, first), " ")
+					}
+					if more > 0 {
+						inline += terminalui.Dim + fmt.Sprintf(" (+%d lines)", more) + terminalui.Undim
+					}
+					label = strings.TrimSpace(label + " " + inline)
+				}
+			}
+			row := lead + label
+			if countSuffix != "" && ansi.StringWidth(row) > width {
+				base := strings.TrimSuffix(label, countSuffix)
+				room := max(1, width-ansi.StringWidth(lead)-ansi.StringWidth(countSuffix))
+				row = lead + truncateCompactLine(base, room) + countSuffix
+			} else {
+				row = truncateCompactLine(row, width)
+			}
+			if copyLabel != "" && ansi.StringWidth(lead+label) <= width {
+				row = p.copyPathGroup(row, lead+copyLabel)
+			}
+			return []string{row}
+		}
 		code, body := block.Code, block.Body
 		omittedSource := 0
 		if !block.Expanded && block.TemporarySource() {
@@ -610,9 +666,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 			label, code = strings.TrimSpace(label+" "+inline), ""
 		}
-		lines := terminalui.Hang(block.lead(p.Theme, block.verbColor(p.Theme), block.Verb), label, width)
+		lines := terminalui.Hang(lead, label, width)
 		if copyLabel != "" {
-			lines[0] = p.copyPathGroup(lines[0], block.lead(p.Theme, block.verbColor(p.Theme), block.Verb)+copyLabel)
+			lines[0] = p.copyPathGroup(lines[0], lead+copyLabel)
 		}
 		// The outcome belongs to the heading, not to the arguments or body below it.
 		lines = p.outcomeRows(block, lines, width)
@@ -647,8 +703,6 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			label = Underline(label)
 		}
 		return []string{terminalui.Dim + "◉" + terminalui.Undim + " " + label}
-	case "batch":
-		return p.batchRow(block, width)
 	case "filter":
 		return filterRows(block.Body, width, min(block.cell("Run"), width/2))
 	case "error":
@@ -707,10 +761,17 @@ func (p *Painter) readRows(block Block, width int) []string {
 	}
 	joined := strings.Join(items, terminalui.Dim+" · "+terminalui.Undim) + count
 	if indent+ansi.StringWidth(joined) <= width || indent > width/2 {
+		if block.compactSingleLine() {
+			return []string{truncateCompactLine(lead+joined, width)}
+		}
 		return terminalui.Hang(lead, joined, width)
 	}
 	if len(items) < 2 {
-		return terminalui.Hang(lead, item(fit(block.Reads[0], 1, true), block.Reads[0])+count, width)
+		line := item(fit(block.Reads[0], 1, true), block.Reads[0]) + count
+		if block.compactSingleLine() {
+			return []string{truncateCompactLine(lead+line, width)}
+		}
+		return terminalui.Hang(lead, line, width)
 	}
 	// Items that do not fit on one row take one row each, rather than
 	// leaving separators dangling at wrapped row ends. Their ranges share
@@ -732,7 +793,11 @@ func (p *Painter) readRows(block Block, width int) []string {
 		if i > 0 {
 			lead = strings.Repeat(" ", indent)
 		}
-		lines = append(lines, terminalui.Hang(lead, item, width)...)
+		if block.compactSingleLine() {
+			lines = append(lines, truncateCompactLine(lead+item, width))
+		} else {
+			lines = append(lines, terminalui.Hang(lead, item, width)...)
+		}
 	}
 	return lines
 }
@@ -796,6 +861,13 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 	}
 	if outcome := outcomeSuffix(p.Theme, block); outcome != "" {
 		trailer = append(trailer, outcome)
+	}
+	if block.compactSingleLine() {
+		line := lead + row
+		if text := strings.Join(trailer, " "); text != "" && ansi.StringWidth(line)+1+ansi.StringWidth(text) <= width {
+			line += " " + text
+		}
+		return []string{truncateCompactLine(line, width)}
 	}
 	rows := terminalui.Hang(lead, row, width)
 	// The trailer follows the file when it fits, and otherwise takes its own row.
@@ -928,7 +1000,7 @@ func lineRanges(ranges []string) string {
 // live or failed output tail.
 func (p *Painter) ranRow(block Block, width int) []string {
 	code := block.Code
-	if block.SourceRows > 0 {
+	if block.SourceRows > 0 && !block.compactSingleLine() {
 		code = block.PreviewCode()
 	}
 	code = sourceTabs(code)
@@ -944,6 +1016,28 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	color, exit := block.verbColor(p.Theme), outcomeSuffix(p.Theme, block)
 	verb := block.RowVerb()
 	lead, indent := block.lead(p.Theme, color, verb), block.cell(verb)
+	if block.compactSingleLine() {
+		lang := "bash"
+		if block.Fenced && block.Lang != "" {
+			lang = block.Lang
+		}
+		body := label
+		if code != "" {
+			first, more := compactCodePreview(code)
+			if first != "" {
+				styled := strings.Join(p.Highlight(lang, first), " ")
+				if more > 0 {
+					styled += terminalui.Dim + fmt.Sprintf(" (+%d lines)", more) + terminalui.Undim
+				}
+				if body != "" {
+					body = styled + " " + body
+				} else {
+					body = styled
+				}
+			}
+		}
+		return []string{truncateCompactLine(lead+body, width)}
+	}
 	padding := strings.Repeat(" ", indent)
 	// suffix follows the last row when it fits, and otherwise takes its own.
 	suffix := func(lines []string, text string) []string {
@@ -1046,6 +1140,15 @@ func lineSuffix(n int, hovered bool) string {
 // outputRows attaches the invocation's output to its final operation. Open
 // output counts its earlier lines in the verb column of its first row.
 func outputRows(theme diffrender.Theme, block Block, lines []string, width int) []string {
+	if block.compactSingleLine() {
+		if suffix := readLines(block); suffix != "" && len(lines) > 0 && block.Kind != "reads" {
+			last := &lines[len(lines)-1]
+			if ansi.StringWidth(*last)+ansi.StringWidth(suffix) <= width {
+				*last += suffix
+			}
+		}
+		return lines
+	}
 	indent := block.cell(block.RowVerb())
 	padding := strings.Repeat(" ", indent)
 	// A VCS row's changes are its result, not output to collapse.

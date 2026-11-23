@@ -1,2 +1,2 @@
 ├ Edited file.txt +1 -1
-└ Diff   working tree · git --stat
+└ Diff   working tree · no changes · git --stat

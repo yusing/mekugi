@@ -31,16 +31,24 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 			}
 			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
 			got := mainFeed(appServerTestFeatures(&appServerUI{shell: &terminalsession.Attachment{Transcript: view.View}, nativeSession: nativeSession{activity: new(activitymodel.Service), attached: attachedPresentation{executionPresentation: &executionPresentation{source: view.ActivitySource}}}}), 140)
+			if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, script+" · exit 1") || !strings.Contains(got, "┆ conflict") {
+				t.Fatalf("missing unique batch result:\n%s", got)
+			}
 			if mode == "resume" {
-				feed := view.RenderFeed(140, 10)
-				if !strings.Contains(got, "1 failed command") || !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[0]) || len(terminalTest(u).Dialog.Pages) != 1 {
-					t.Fatalf("resumed batch lost its summary or aggregate output: %s", got)
+				feed := view.RenderFeed(140, 20)
+				row := -1
+				for i, line := range feed.Lines {
+					if strings.Contains(line, "exit 1") && feed.Snippets[i] != (activityui.Snippet{}) {
+						row = i
+						break
+					}
+				}
+				if row < 0 || !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[row]) || len(terminalTest(u).Dialog.Pages) != 1 {
+					t.Fatalf("resumed batch lost its failed command dialog target: %s", got)
 				}
 				if output := terminalTest(u).Dialog.Output; output == nil || !output.View.Exited || output.View.Exit != 1 || !strings.Contains(strings.Join(output.View.Lines, "\n"), "conflict") {
 					t.Fatal("resumed batch lost its failed command output")
 				}
-			} else if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, script+" · exit 1") || !strings.Contains(got, "┆ conflict") {
-				t.Fatalf("missing unique batch result:\n%s", got)
 			}
 			for _, record := range view.Entries {
 				blocks := record.Values

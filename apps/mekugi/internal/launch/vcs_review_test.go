@@ -66,8 +66,12 @@ func TestVCSFailedOutputKeepsDiagnostics(t *testing.T) {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 				got := mainFeed(u, 100)
 				if outcome.code == 0 && !outcome.malformed {
-					if !strings.Contains(got, "M  a.go") {
-						t.Fatalf("successful diff lost parsed file rows: %s", got)
+					if !strings.Contains(got, "1 file changed, +1 -1") {
+						t.Fatalf("successful diff lost compact shortstat: %s", got)
+					}
+					u.shell.Transcript.Expansion = 1
+					if expanded := mainFeed(u, 100); !strings.Contains(expanded, "M  a.go") {
+						t.Fatalf("expanded diff lost parsed file rows: %s", expanded)
 					}
 				} else if strings.Contains(got, "M  a.go") || !strings.Contains(got, diagnostic) || outcome.code != 0 && !strings.Contains(got, "exit 1") {
 					t.Fatalf("failed diff hid diagnostics in file rows: %s", got)
@@ -210,6 +214,7 @@ func TestSessionUIReplayVCSKeepsRetainedEvidenceAcrossReset(t *testing.T) {
 	live := vcsCommandUI(t, g.dir)
 	item := map[string]any{"id": "commit", "type": "commandExecution", "command": "git commit -m 'recorded commit'", "cwd": g.dir,
 		"status": "completed", "exitCode": 0, "aggregatedOutput": output}
+	live.shell.Transcript.Expansion = 1
 	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	awaitMain(t, live, "M  a.go")
 	// An offline replay neither borrows the live cache nor starts another Git read.
@@ -236,6 +241,7 @@ func TestSessionUIReplayVCSKeepsRetainedEvidenceAcrossReset(t *testing.T) {
 		if err := p.seek(3 * time.Second); err != nil {
 			t.Fatal(err)
 		}
+		p.ui.view.Expansion = 1
 		replayPlaybackTestPaint(t, p, 90, 28)
 		if got := ansi.Strip(strings.Join(p.ui.testActivity(p.ui.view).RenderFeed(90, 60).Lines, "\n")); !strings.Contains(got, "A  b.go") || strings.Contains(got, "M  a.go") {
 			t.Fatalf("replayed evidence:\n%s", got)

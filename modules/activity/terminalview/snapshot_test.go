@@ -206,18 +206,6 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 				Code: "set -e\nset -u\nset -o pipefail\nplane comment ITEM --body - <<'EOF'\nA retained comment.\nEOF\nplane update ITEM"},
 		},
 		{
-			name: "collapsed_batch", width: 72,
-			block: func() Block {
-				batch, _ := CollapseBatch(GroupOperations([]Block{
-					{Kind: "reads", Verb: "Search", Reads: []activitymodel.Read{{Path: "zzz"}}},
-					{Kind: "reads", Verb: "Search", Reads: []activitymodel.Read{{Path: "bbb"}}},
-					{Kind: "op", Verb: "Run", Code: "foo", Lang: "bash", Fenced: true},
-					{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "bar"}}},
-				}))
-				return batch
-			}(),
-		},
-		{
 			name: "change_report", width: 80,
 			block: Block{Kind: "op", Verb: "Run", Code: "mchanges --summary", Changes: []ChangeRow{
 				{Verb: "Edited", Label: "internal/ui/activity/dialog_test.go", Added: 24, Removed: 3},
@@ -440,8 +428,14 @@ func TestTemporaryCapturedChangesRetainBatchAndOutput(t *testing.T) {
 			}
 			feed := v.RenderConversation(100)
 			text := ansi.Strip(strings.Join(feed.Lines, "\n"))
-			if !strings.Contains(text, "retained command output") || !strings.Contains(text, "… +189 files") || !strings.Contains(text, "file199.go") {
+			if !strings.Contains(text, "… +189 files") || !strings.Contains(text, "file199.go") {
 				t.Fatalf("output-bearing final capture lost: %s", text)
+			}
+			if state == "expanded-output" && !strings.Contains(text, "retained command output") {
+				t.Fatalf("expanded output-bearing final capture lost output: %s", text)
+			}
+			if state == "output" && strings.Contains(text, "retained command output") {
+				t.Fatalf("compact default view kept successful command output: %s", text)
 			}
 		})
 	}

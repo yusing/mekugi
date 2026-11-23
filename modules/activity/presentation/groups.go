@@ -133,9 +133,6 @@ func Reasoning(values []Value) Value {
 	return value
 }
 
-// Batch is the neutral result of terminal batch disclosure.
-func Batch(values []Value) Value { return Group(Value{Kind: "batch"}, values) }
-
 // Source: modules/activity/terminalview/blocks.go:129:177@[3e523196].
 // GroupOperations derives shared verb headings, preserving each operation and outcome.
 func GroupOperations(blocks []Value) []Value {

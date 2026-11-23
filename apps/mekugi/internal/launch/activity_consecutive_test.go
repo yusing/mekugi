@@ -44,7 +44,13 @@ func TestUISnapshotActivityConsecutiveOperations(t *testing.T) {
 			if strings.Count(plain, "Inspect") != 1 || strings.Count(plain, "Search") != 2 || !strings.Contains(plain, "Search  needle in missing · exit 2") {
 				t.Fatalf("consecutive verbs or failure not preserved:\n%s", plain)
 			}
-			for _, output := range outputs {
+			for i, output := range outputs {
+				if main && i != 3 {
+					if strings.Contains(plain, output) {
+						t.Errorf("compact default view kept successful output %q", output)
+					}
+					continue
+				}
 				if !strings.Contains(plain, output) {
 					t.Errorf("missing output %q", output)
 				}

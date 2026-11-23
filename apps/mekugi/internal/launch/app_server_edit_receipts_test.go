@@ -112,7 +112,7 @@ func TestUISnapshotAppServerGitDiagnosticReceipt(t *testing.T) {
 			v.Pace(time.Unix(1000, 0).Add(time.Hour))
 			feed := v.RenderConversation(100)
 			text := ansi.Strip(strings.Join(feed.Lines, "\n"))
-			if strings.Count(text, "20 tool-managed files") != 1 || strings.Contains(text, "imported-00.go") || !strings.Contains(text, "+20 -0") || !strings.Contains(text, "HEAD is now") {
+			if strings.Count(text, "20 tool-managed files") != 1 || strings.Contains(text, "imported-00.go") || !strings.Contains(text, "+20 -0") || strings.Contains(text, "HEAD is now") {
 				t.Fatalf("diagnostic stat row: %s", text)
 			}
 			row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "tool-managed files") })
@@ -216,8 +216,11 @@ func TestUISnapshotAppServerTemporaryCaptureWithoutWriterLabel(t *testing.T) {
 						}
 					}
 				}
-				if state != "live" && !strings.Contains(text, "Preparing worktree") {
-					t.Fatalf("capture lost command output: %s", text)
+				if state != "live" && expansion > 0 && !strings.Contains(text, "Preparing worktree") {
+					t.Fatalf("expanded capture lost command output: %s", text)
+				}
+				if state != "live" && expansion == 0 && strings.Contains(text, "Preparing worktree") {
+					t.Fatalf("compact default view kept successful command output: %s", text)
 				}
 				for _, want := range []string{"project.go", "after.go", "capture budget exhausted"} {
 					if !strings.Contains(text, want) {
