@@ -30,7 +30,7 @@ type Annotation struct {
 	VerbAlign, VerbColumn, PathAlign, StatAlign, StatScale int
 	TailRows, SourceRows, HiddenEdits                      int
 	BodyRows                                               int // Bounds a framed answer, frame included.
-	Flash, Collapsed, Hovered, Expanded                    bool
+	Flash, Collapsed, Hovered, Expanded, Compact           bool
 }
 
 // Completed reasoning and successful output stay open until their agent's
@@ -39,6 +39,33 @@ type Annotation struct {
 // and late completions, so a quick run of commands collapses together rather than
 // one row at a time. Restored history starts settled.
 const OutputDebounce = 5 * time.Second
+
+// compactSingleLine reports a settled successful operation that default view
+// renders as one dense line without multi-line source, change lists, or output tails.
+func (b Block) compactSingleLine() bool {
+	if !b.Compact || b.UserShell || b.Running || b.Pending || b.Requested ||
+		b.FailedOutcome() || b.ExitUnknown() ||
+		strings.HasPrefix(b.Approval, "Pending Approval") ||
+		len(b.Questions) > 0 {
+		return false
+	}
+	if b.Hook != nil && (b.Hook.Status != "completed" || b.Hook.HasError) {
+		return false
+	}
+	// An unconfirmed command with output (e.g., interrupted without exit code)
+	// and a VCS command whose output failed to parse into changes keep their
+	// diagnostic tail visible.
+	if b.Verb == "Run" && !b.Exited && len(b.Tail) > 0 {
+		return false
+	}
+	if b.VCS() && len(b.Changes) == 0 && len(b.Tail) > 0 {
+		return false
+	}
+	if b.Verb == "Diff" && hasIncompleteCapture(b.Changes) {
+		return false
+	}
+	return b.Kind == "op" || b.Kind == "reads" || b.Kind == "attachments"
+}
 
 // Collapsible reports a settled block that can show as one row: finished
 // thinking as its header, or a successful command's output as its

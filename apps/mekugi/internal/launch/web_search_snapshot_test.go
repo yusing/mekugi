@@ -88,15 +88,6 @@ func TestUISnapshotWebSearch(t *testing.T) {
 					for _, block := range activityui.GroupOperations(blocks) {
 						rows = append(rows, p.Block(block, width)...)
 					}
-					if batch, ok := activityui.CollapseBatch(blocks); ok {
-						batchRows := p.Block(batch, width)
-						if width == 100 && !strings.Contains(ansi.Strip(strings.Join(batchRows, "\n")), "Web Search ×3") {
-							t.Fatalf("batch must count query sets, not queries: %q", batchRows)
-						}
-						rows = append(rows, batchRows...)
-					} else {
-						t.Fatal("search batch no longer collapses")
-					}
 					rows = append(rows, "plain following row")
 					uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/web-search-%d-%d.txt", theme, width), rows, width)
 				}

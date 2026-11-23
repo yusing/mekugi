@@ -1,1 +1,5 @@
-└ Ran 3 commands
+├ Ran     batch_plan_dir=$(mktemp -d /tmp/mekugi-batches.XXXXXX)
+│         export MEKUGI_BATCH_PLAN_DIR="$batch_plan_dir"
+│         import json, os (+5 lines) · via python3
+└ Ran     combined output · exit unknown                                                       157ms
+          ┆ /tmp/mekugi-batches.YcIbga/plan.json

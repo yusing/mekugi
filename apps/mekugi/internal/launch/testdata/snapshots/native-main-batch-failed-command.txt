@@ -1,1 +1,4 @@
-└ Searched 2 patterns • Read 1 file • Ran 1 command • 1 failed command
+├ Search  zzz
+├ Search  bbb · exit 2
+├ Read    bar
+└ Ran     go env GOMODCACHE

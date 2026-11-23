@@ -1,5 +1,4 @@
 └ Ran     git worktree add /tmp/worktree HEAD
-          ┆ Preparing worktree
     Edited  project.go                +1 -1 ━━━━━━━━
     Created /tmp/worktree/file000.go  +1    ━━━━━━━━
     Created /tmp/worktree/file001.go  +1    ━━━━━━━━
@@ -13,5 +12,4 @@
     Created /tmp/worktree/file009.go  +1    ━━━━━━━━
             … +190 files
             after.go                  +1 -1 ━━━━━━━━
-    Capture · incomplete evidence for 1 path (not confirmed edits): 1 × "capture budget exhausted" · mchanges
-            amber1 --summary
+    Capture · incomplete evidence for 1 path (not confirmed edits): 1 × "capture budget exhausted" · mchanges…

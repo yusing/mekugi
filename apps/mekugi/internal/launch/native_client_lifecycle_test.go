@@ -359,6 +359,7 @@ func TestNativeActivityBurstPreservesAttachment(t *testing.T) {
 	if view.effects.pending[0].ID != identities[0] || view.effects.pending[1].ID != identities[1] {
 		t.Fatal("activity compaction changed semantic identities")
 	}
+	c.renderer.terminal.Transcript.Expansion = 1
 	rows := strings.Join(c.renderer.terminal.Transcript.RenderFeed(90, 30).Lines, "\n")
 	if !strings.Contains(rows, "line 199") {
 		t.Fatalf("catchup left stale output pacing: %q", rows)

@@ -91,6 +91,11 @@ func TestCanonicalChildCommandInThreadAndRoster(t *testing.T) {
 		t.Helper()
 		ui.shell.Transcript.Conversation = true
 		rollCommandOutput(ui)
+		compact := ansi.Strip(strings.Join(ui.testActivity(ui.shell.Transcript).RenderFeed(100, 28).Lines, "\n"))
+		if strings.Contains(compact, "Local reasoning before") || !strings.Contains(compact, "LOCAL_CASE") || !strings.Contains(compact, "Local reasoning after") || !strings.Contains(compact, "exit 7") {
+			t.Fatalf("compact child Thread pane did not replace earlier reasoning or keep command outcome:\n%s", compact)
+		}
+		ui.shell.Transcript.Expansion = 1
 		transcript := ansi.Strip(strings.Join(ui.testActivity(ui.shell.Transcript).RenderFeed(100, 28).Lines, "\n"))
 		before, cmd, after := strings.Index(transcript, "Local reasoning before"), strings.Index(transcript, "LOCAL_CASE"), strings.Index(transcript, "Local reasoning after")
 		if before < 0 || cmd <= before || after <= cmd || !strings.Contains(transcript, "exit 7") {

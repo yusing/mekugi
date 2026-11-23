@@ -2,10 +2,8 @@
 ┃ Reviewing the same event presentation.
 
 • Checking final changes
-
 ✗ main                                                                  12:34:58
 │ Provider request failed
-
 ✗ main                                                                  12:34:59
 │ Provider request failed
 │ details · ctrl+b !

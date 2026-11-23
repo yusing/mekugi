@@ -346,6 +346,7 @@ func TestCommandSegmentsGuardedShellLiveAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, workspace)
+	u.shell.Transcript.Expansion = 1
 	setTestAppServerIntegration(u, testProxyWithStore(store))
 	u.execTrack, shell.hub.ui = shell.hub.Observer, u
 	// The host sees original argv. Its selected shell trampoline adds the

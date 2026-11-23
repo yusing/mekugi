@@ -30,7 +30,7 @@ func expansionFixture(main bool) *activityAdapter {
 	narrative := strings.Repeat("An event with retained details.\n", 8)
 	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 1, Agent: agent, Kind: "text", Text: narrative, Observed: now}, []activityui.Block{{Kind: "text", Body: narrative}})
 	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 2, Agent: agent, Kind: "reasoning", Observed: now}, []activityui.Block{{Kind: "summary", Label: "Inspecting", Body: "**Inspecting**\n\n" + strings.Repeat("Public reasoning detail.\n\n", 6), Live: true}})
-	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Tail: []string{"first output", "last output"}}})
+	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Exited: true, Tail: []string{"first output", "last output"}}})
 	v.LastSeq = 3
 	v.publishActivity()
 	// Disclosure fixtures belong to the renderer, independently of source facts.
@@ -267,8 +267,8 @@ func TestUISnapshotExpansionDefaultPastBatches(t *testing.T) {
 				key, run = candidate, cached
 			}
 		}
-		if folded := len(run.Blocks) == 1 && run.Blocks[0].Kind == "batch"; folded != (seq < 7) {
-			t.Fatalf("default fold at %d = %t (key %+v)", seq, folded, key)
+		if folded := len(run.Blocks) == 1 && run.Blocks[0].Kind == "batch"; folded {
+			t.Fatalf("default view folded past operations into batch at %d (key %+v)", seq, key)
 		}
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/expansion-default-past-batches.txt", strings.Join(v.Viewport(feed, 40), "\n"))

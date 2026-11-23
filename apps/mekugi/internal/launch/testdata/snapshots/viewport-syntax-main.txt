@@ -1,39 +1,39 @@
 == cold end ==
-          │     return 10
-          │ }
+
+└ Ran     package source9 (+4 lines) source preview
+
+● main                                             12:00:00
+┃ Inspect source 10 before continuing.
+
+└ Ran     package source10 (+4 lines) source preview
 
 ● main                                             12:00:00
 ┃ Inspect source 11 before continuing.
 
-└ Ran     source preview
-          │ package source11
-          │ 
-          │ func value11() int {
-          │     return 11
-          │ }
+└ Ran     package source11 (+4 lines) source preview
 == early scroll ==
 
-└ Ran     source preview
-          │ package source0
-          │ 
-          │ func value0() int {
-          │     return 0
-          │ }
+└ Ran     package source0 (+4 lines) source preview
 
 ● main                                             12:00:00
 ┃ Inspect source 1 before continuing.
+
+└ Ran     package source1 (+4 lines) source preview
+
+● main                                             12:00:00
+┃ Inspect source 2 before continuing.
 
                   ↓ Back to bottom · esc
 == early repaint ==
 
-└ Ran     source preview
-          │ package source0
-          │ 
-          │ func value0() int {
-          │     return 0
-          │ }
+└ Ran     package source0 (+4 lines) source preview
 
 ● main                                             12:00:00
 ┃ Inspect source 1 before continuing.
+
+└ Ran     package source1 (+4 lines) source preview
+
+● main                                             12:00:00
+┃ Inspect source 2 before continuing.
 
                   ↓ Back to bottom · esc

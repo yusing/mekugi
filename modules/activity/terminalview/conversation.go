@@ -153,6 +153,26 @@ func (v *View) RenderConversation(width int) Feed {
 	items = append(ordered, held...)
 	clear(held[:cap(held)])
 	v.conversationHeld = held[:0]
+	// On default view, earlier reasoning summaries do not stay in the
+	// transcript once a newer reasoning summary arrives.
+	if v.Expansion == 0 {
+		latestAside := -1
+		for k, it := range items {
+			if it.aside && v.hasReasoningContent(it) {
+				latestAside = k
+			}
+		}
+		if latestAside >= 0 {
+			kept := items[:0]
+			for k, it := range items {
+				if it.aside && k != latestAside {
+					continue
+				}
+				kept = append(kept, it)
+			}
+			items = kept
+		}
+	}
 	traffic := func(it conversationItem) bool {
 		entry := v.entries[it.first]
 		return it.agent != "" || entry.Agent != v.conversationSpeaker() && entry.Agent != "You"
@@ -220,7 +240,11 @@ func (v *View) RenderConversation(width int) Feed {
 		}
 		run.generation = v.runGeneration
 		v.Runs[key] = run
-		if len(feed.Lines) > 0 && !thread.Joined && !it.attached {
+		needSeparator := !thread.Joined && !it.attached
+		if v.Expansion == 0 {
+			needSeparator = !thread.Joined && (v.conversationMessage(it) || k > 0 && v.conversationMessage(items[k-1]))
+		}
+		if len(feed.Lines) > 0 && needSeparator {
 			feed.separator()
 		}
 		head := len(feed.Lines)
@@ -230,7 +254,7 @@ func (v *View) RenderConversation(width int) Feed {
 			}
 			feed.paints = append(feed.paints, liveActivityPaint{start: head, key: key, conversation: paint})
 		}
-		// A sent message or batch shrinking above a scrolled viewport keeps its rows still.
+		// A sent message shrinking above a scrolled viewport keeps its rows still.
 		if full := key; !ok && key.Excerpt && !v.Following && head < v.Offset {
 			full.Excerpt = false
 			if shown, ok := v.Runs[full]; ok {
@@ -257,7 +281,7 @@ func (v *View) RenderConversation(width int) Feed {
 		feed.appendRows(run)
 		v.appendImages(&feed, it.first, it.last, head, width)
 		feed.Spans = append(feed.Spans, Span{key.First, head, len(feed.Lines)})
-		if v.sentMessage(it.first) || !key.Excerpt && run.Batch {
+		if v.sentMessage(it.first) {
 			feed.Passing = append(feed.Passing, liveActivityPassing{key.First, len(feed.Lines)})
 		}
 	}
@@ -314,6 +338,41 @@ func (v *View) conversationLead(index int) bool {
 		return len(blocks) > 0 && activitypresentation.ReasoningSummaryBody(blocks[0].Body) != ""
 	}
 	return entry.Kind == "text" && strings.TrimSpace(entry.Text) != ""
+}
+
+// hasReasoningContent reports whether a reasoning item renders visible text or
+// a live thinking placeholder.
+func (v *View) hasReasoningContent(it conversationItem) bool {
+	for k := it.first; k <= it.last; k++ {
+		if !v.Visible(v.entries[k]) {
+			continue
+		}
+		for _, block := range v.blocks(k) {
+			if block.Live || activitypresentation.ReasoningSummaryBody(block.Body) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// conversationMessage reports transcript items that keep blank-line breathing
+// room on default view: user-to-agent, agent-to-user, and agent-to-agent messages.
+func (v *View) conversationMessage(it conversationItem) bool {
+	entry := v.entries[it.first]
+	if entry.Agent == "You" || entry.Kind == "user" {
+		return true
+	}
+	if entry.Agent == v.conversationSpeaker() {
+		if entry.Kind == "text" || entry.Kind == "final" {
+			return true
+		}
+		if entry.Kind == "progress" && len(entry.Values) > 1 && entry.Values[1].Kind == "message" {
+			return true
+		}
+		return it.agent != "" || entry.Kind == "start" || entry.Kind == "assignment" || entry.Kind == "reply"
+	}
+	return true
 }
 
 // Continuation is one row naming the lead a tool group resumes after agent
@@ -421,7 +480,6 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 	blocks := v.blocks(first)
 	var out conversationLines
 	var laid []Block // Tool blocks, indexed by the snippets naming them.
-	batch := false
 	entryRows := make(map[uint64]int)
 	p := &v.Painter
 	switch {
@@ -471,6 +529,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 		laid = summaries
 		for index, block := range laid {
 			block = v.discloseBlock(block)
+			block.Compact = v.Expansion == 0
 			// Thinking and reset disclosures share the existing output dialog.
 			snippet := Snippet{Run: entry.Seq, Block: index}
 			toggle := v.ClickTarget(&block, snippet, width)
@@ -489,13 +548,8 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 		}
 	case v.conversationTool(entry):
 		var group []Block
-		unconfirmed := false
-		restored := true
 		for k := first; k <= last; k++ {
 			if v.Visible(v.entries[k]) {
-				n := v.entries[k]
-				restored = restored && n.Restored
-				unconfirmed = unconfirmed || n.Unconfirmed && !n.OutputFailed
 				for _, block := range v.shownBlocks(k) {
 					block.Source = v.entries[k].Seq
 					block.TailRows = v.tailRows()
@@ -511,23 +565,16 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 		// even when adjacent edits share a heading or edit the same path.
 		if v.Expansion == 0 {
 			group = MergeTargets(group)
+			group = MergeVCSDiffStatus(group)
 		}
 		laid = GroupOperations(group)
-		// A batch that has scrolled out of view keeps one row, which opens
-		// its operations in the output dialog. Failed exits stay visible in the
-		// summary; unconfirmed host items without an exit keep their rows.
-		// Restored groups start folded instead of losing their old viewport state.
-		if collapsed, ok := CollapseBatch(laid); ok && !unconfirmed && v.excerpt(restored || v.Passed[entry.Seq]) {
-			laid = []Block{collapsed}
-		} else {
-			batch = ok && !unconfirmed
-			if v.Expansion != 2 {
-				laid = collapseCapturedEdits(laid)
-			}
+		if v.Expansion != 2 {
+			laid = collapseCapturedEdits(laid)
 		}
 		laid = AlignVerbs(laid)
 		for index, block := range laid {
 			block = v.discloseBlock(block)
+			block.Compact = v.Expansion == 0
 			snippet := Snippet{Run: entry.Seq, Block: index}
 			toggle := v.ClickTarget(&block, snippet, width-2)
 			if block.Kind == "op" && block.Code != "" && v.Expansion != 2 {
@@ -579,7 +626,7 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 			}
 		}
 	}
-	return Run{Lines: out.lines, Blocks: laid, Snippets: out.snippets, Questions: out.questions, EntryRows: entryRows, Batch: batch}
+	return Run{Lines: out.lines, Blocks: laid, Snippets: out.snippets, Questions: out.questions, EntryRows: entryRows}
 }
 
 // conversationHeading is one item heading: a glyph, a name, optional dim

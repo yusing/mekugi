@@ -157,6 +157,9 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
 			clear(lexer.sources)
 			v := viewportSyntaxView(main, "viewportfixture")
+			if main {
+				v.Expansion = 1
+			}
 			first := strings.ReplaceAll(v.blocks(1)[0].Code, "\t", "    ")
 			last := strings.ReplaceAll(v.blocks(len(v.Entries) - 1)[0].Code, "\t", "    ")
 			feed := v.RenderFeed(70, 9)
@@ -229,6 +232,9 @@ func TestLiveActivityViewportSyntaxGroupedBlocks(t *testing.T) {
 			clear(lexer.sources)
 			v := groupedViewportSyntaxView(mode.main, "viewportfixture")
 			v.ChildrenOnly = mode.children
+			if mode.main {
+				v.Expansion = 1
+			}
 			v.testAudience()
 			first := strings.ReplaceAll(v.blocks(0)[0].Code, "\t", "    ")
 			last := strings.ReplaceAll(v.blocks(len(v.Entries) - 1)[0].Code, "\t", "    ")
@@ -258,6 +264,9 @@ func TestLiveActivityViewportSyntaxGroupedBlocks(t *testing.T) {
 			// tokenize all blocks, but cannot hide excessive lazy tokenization.
 			eager := groupedViewportSyntaxView(mode.main, "viewportfixture")
 			eager.ChildrenOnly = mode.children
+			if mode.main {
+				eager.Expansion = 1
+			}
 			eager.testAudience()
 			eager.Following, eager.Offset = false, 0
 			assertViewportSyntaxEager(t, v, eager, 70, 9)

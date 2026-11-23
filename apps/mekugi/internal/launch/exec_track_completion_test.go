@@ -14,6 +14,7 @@ import (
 
 func TestTrackedRevealDoesNotReviseCommandFacts(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
+	u.shell.Transcript.Expansion = 1
 	script := "echo first; echo last"
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
@@ -49,6 +50,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 	for _, closeReport := range []bool{true, false} {
 		t.Run(map[bool]string{true: "closure", false: "deadline"}[closeReport], func(t *testing.T) {
 			u, hub := newTrackedAppServerUI(t)
+			u.shell.Transcript.Expansion = 1
 			now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 			u.clock = func() time.Time { return now }
 			key := [3]string{"main", "t", "cmd"}

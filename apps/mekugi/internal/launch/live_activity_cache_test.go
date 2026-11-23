@@ -36,7 +36,7 @@ func assertLiveActivityCacheFresh(t *testing.T, v *activityAdapter) {
 		// Private render-pass accounting is intentionally different. Compare
 		// the cached rendering facts rather than renderer bookkeeping.
 		facts := func(r activityui.Run) activityui.Run {
-			return activityui.Run{Colored: r.Colored, Lines: r.Lines, Blocks: r.Blocks, Snippets: r.Snippets, Questions: r.Questions, EntryRows: r.EntryRows, Batch: r.Batch}
+			return activityui.Run{Colored: r.Colored, Lines: r.Lines, Blocks: r.Blocks, Snippets: r.Snippets, Questions: r.Questions, EntryRows: r.EntryRows}
 		}
 		if !reflect.DeepEqual(facts(run), facts(fresh.Runs[key])) {
 			t.Fatalf("cached run %v has stale lines, snippets, questions, blocks or entryRows", key)

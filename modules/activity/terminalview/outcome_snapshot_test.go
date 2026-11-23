@@ -75,16 +75,6 @@ func TestUISnapshotOperationOutcomes(t *testing.T) {
 		t.Fatalf("no-match search = %+v", noMatch)
 	}
 	paint(noMatch...)
-	read := values(presentation.ItemContent{Seq: 6, Kind: "tool", Text: presentation.ShellSource("cat a.go", ""),
-		Command: presentation.Command{Source: 6, Script: "cat a.go", Display: "cat a.go", Exited: true}, Details: &presentation.ItemDetails{CommandText: "cat a.go"}})
-	batch, ok := CollapseBatch(append(append([]Block{}, noMatch...), read...))
-	if !ok {
-		t.Fatal("settled operations did not collapse")
-	}
-	rows = append(rows, p.Block(batch, 72)...)
-	if strings.Contains(ansi.Strip(rows[len(rows)-1]), "failed") {
-		t.Fatalf("no-match search counted as a failure: %q", rows[len(rows)-1])
-	}
 
 	// A settled command without an exit is not a success and keeps its output.
 	unknown := values(presentation.ItemContent{Seq: 7, Kind: "tool", Text: presentation.ShellSource("make build", ""),

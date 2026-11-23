@@ -56,13 +56,18 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	main = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
 	child = ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n"))
-	if strings.Count(main, "• Complete") != 1 || strings.Count(child, "• Complete") != 1 || !strings.Contains(main, "Final public main.") || !strings.Contains(child, "Final public child.") || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
+	if strings.Count(main, "• Complete") != 1 || strings.Count(child, "• Complete") != 1 || !strings.Contains(child, "Final public child.") || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
 		t.Fatalf("completed summaries: main=%q, child=%q", main, child)
 	}
-	// A reused item ID in a new turn must not replace earlier summaries.
+	u.shell.Transcript.Expansion = 1
+	if expanded := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n")); !strings.Contains(expanded, "Final public main.") {
+		t.Fatalf("expanded main lost completed summary body: %q", expanded)
+	}
+	u.shell.Transcript.Expansion = 0
+	// A reused item ID in a new turn must not replace earlier summaries in storage.
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
 	main = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
-	if !strings.Contains(main, "Next public summary.") || u.attached.source.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
+	if !strings.Contains(main, "Next public summary.") || strings.Contains(main, "• Complete") || u.attached.source.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
 		t.Fatalf("turn identity lost: %q", main)
 	}
 }

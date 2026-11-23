@@ -1,1 +1,5 @@
-└ Ran 3 commands • 1 failed command
+├ Ran     fixture_dir=$(mktemp -d) || exit 1
+│         trap 'rm -f "$fixture_dir/main.js"; rmdir "$fixture_dir"' EXIT
+│         check "$fixture_dir"
+└ Ran     fixture_dir=$(mktemp -d) || exit 1 · exit 1
+          ┆ check failed

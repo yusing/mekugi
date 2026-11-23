@@ -102,6 +102,10 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	// Default view shows a compact one-line commit summary with shortstat.
+	awaitMain(t, u, "3 files changed, +3 -2")
+	// Expanded view shows per-file commit rows.
+	u.testActivity(u.shell.Transcript).Expansion = 1
 	awaitMain(t, u, "M  a.go")
 	want := strings.Join([]string{
 		"├ Check working tree · git diff --check",
@@ -159,6 +163,13 @@ func TestUISnapshotVCSStatAndCommitShowSharedFileCodes(t *testing.T) {
 			item := map[string]any{"id": "codes", "type": "commandExecution", "command": tc.command, "cwd": g.dir,
 				"status": "completed", "exitCode": 0, "aggregatedOutput": tc.output}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			// Default view shows compact one-line shortstat numbers.
+			compact := awaitMain(t, u, "5 files changed, +2 -3")
+			if strings.Contains(compact, "\n") {
+				t.Fatalf("compact default VCS row wrapped to multiple lines:\n%s", compact)
+			}
+			// Expanded view shows per-file status codes.
+			u.testActivity(u.shell.Transcript).Expansion = 1
 			got := awaitMain(t, u, "M  edit.txt")
 			if tc.snapshot != "" {
 				uisnapshot.Assert(t, "testdata/snapshots/"+tc.snapshot+".txt", got+"\n")
@@ -211,6 +222,7 @@ func TestVCSCommitReadDoesNotBlockTheUI(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	u := vcsCommandUI(t, g.dir)
+	u.testActivity(u.shell.Transcript).Expansion = 1
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "git commit -m 'feat: slow'", "cwd": g.dir,
 		"status": "completed", "exitCode": 0, "aggregatedOutput": output}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
@@ -238,6 +250,7 @@ func TestVCSCommitReadDoesNotBlockTheUI(t *testing.T) {
 func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 	g, output := vcsCommitFixture(t, "feat: tracked")
 	u, hub := newTrackedAppServerUI(t)
+	u.testActivity(u.shell.Transcript).Expansion = 1
 	u.attached.cwd = g.dir
 	script, err := shellinstrumentation.RewriteCommands("git add a.go b.go && timeout 90s git commit -F - <<'EOF'\nfeat: tracked\n\nbody\nEOF", displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {

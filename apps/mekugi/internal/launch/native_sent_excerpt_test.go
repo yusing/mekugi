@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -126,24 +124,13 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 	}
 	v.Following, v.Offset = false, feed.Spans[0].End+12
 	top := v.Viewport(feed, rows)[0]
-	if !v.Passed[1] {
-		t.Fatal("batch above the viewport was not marked")
-	}
 	feed = v.RenderFeed(width, rows)
 	got := ansi.Strip(strings.Join(feed.Lines, "\n"))
-	if !strings.Contains(got, "└ Searched 2 patterns • Read 1 file • Ran 1 command") || strings.Contains(got, "zzz") {
-		t.Fatalf("batch out of view did not collapse to one row:\n%s", got)
+	if strings.Contains(got, "Searched 2 patterns") || !strings.Contains(got, "zzz") || !strings.Contains(got, "single.go") {
+		t.Fatalf("default view should not fold operations into Action x N batch:\n%s", got)
 	}
 	if row := v.Viewport(feed, rows)[0]; row != top {
-		t.Fatalf("collapse moved the viewport: %q, want %q", ansi.Strip(row), ansi.Strip(top))
-	}
-	if !strings.Contains(got, "single.go") {
-		t.Fatalf("a lone operation collapsed:\n%s", got)
-	}
-	row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "Searched") })
-	u := &terminalUI{Attachment: &terminalsession.Attachment{}}
-	if !u.openOutput(v.bind(u), feed.Snippets[row]) || len(u.Dialog.Pages) != 3 {
-		t.Fatalf("collapsed batch did not open its operations in the dialog: %+v", u.Dialog)
+		t.Fatalf("scroll moved the viewport: %q, want %q", ansi.Strip(row), ansi.Strip(top))
 	}
 }
 
@@ -171,8 +158,8 @@ func TestMainBatchKeepsUnconfirmedHostItemsOutOfView(t *testing.T) {
 		v.Following, v.Offset = false, len(feed.Lines)-rows
 		v.Viewport(feed, rows)
 		got := ansi.Strip(strings.Join(v.RenderFeed(width, rows).Lines, "\n"))
-		if collapsed := strings.Contains(got, "Searched 1 pattern • Read 1 file"); collapsed != (status == "completed") || !collapsed && !strings.Contains(got, "zzz") {
-			t.Fatalf("%s search out of view collapsed=%v:\n%s", status, collapsed, got)
+		if strings.Contains(got, "Searched 1 pattern • Read 1 file") || !strings.Contains(got, "zzz") {
+			t.Fatalf("%s search out of view unexpectedly folded:\n%s", status, got)
 		}
 	}
 }
@@ -204,7 +191,7 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 			feed := v.RenderFeed(100, 6)
 			v.Viewport(feed, 6)
 			feed = v.RenderFeed(100, 6)
-			assertNativeUISnapshot(t, "native-main-batch-failed-command", feed.Lines[:1])
+			assertNativeUISnapshot(t, "native-main-batch-failed-command", feed.Lines[:4])
 			v.Following, v.Offset = false, 0
 			screen := vt.NewEmulator(120, 28)
 			defer screen.Close()
@@ -212,7 +199,7 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 				t.Fatal(err)
 			}
 			for y, row := range strings.Split(screen.String(), "\n") {
-				if x := strings.Index(row, "Searched 2 patterns"); x >= 0 {
+				if x := strings.Index(row, "exit 2"); x >= 0 {
 					x = ansi.StringWidth(row[:x])
 					for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x+1, y+1, x+1, y+1)) {
 						if err := terminalTest(u).key(key); err != nil {
@@ -222,9 +209,9 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 					break
 				}
 			}
-			if terminalTest(u).Dialog == nil || len(terminalTest(u).Dialog.Pages) != 4 ||
+			if terminalTest(u).Dialog == nil ||
 				!slices.ContainsFunc(terminalTest(u).Dialog.Pages, func(b sessionpresentation.DetailItem) bool { return b.ExitCode == 2 }) {
-				t.Fatal("rendered batch click did not open failed-command details")
+				t.Fatal("rendered failed-command click did not open failed-command details")
 			}
 		})
 	}

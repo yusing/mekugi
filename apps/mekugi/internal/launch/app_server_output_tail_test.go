@@ -145,7 +145,12 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	notify("item/completed", map[string]any{"item": item})
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "late\n"})
 	rollCommandOutput(u)
-	// The host's output stays readable until Main's next event, then collapses.
+	// On default view, a successful command settles into a single line.
+	if got := main(); !strings.Contains(got, "└ Ran     go test ./...") || strings.Contains(got, "┆ ok 1") || strings.Contains(got, "Running") || strings.Contains(got, "late") {
+		t.Fatalf("completed command did not settle compactly:\n%s", got)
+	}
+	// On expanded view, the host's output stays readable until Main's next event, then collapses.
+	u.shell.Transcript.Expansion = 1
 	open := "          ┆ ok 1\n          ┆ ok 2\n          ┆ PASS"
 	if got := main(); !strings.Contains(got, "└ Ran     go test ./...") || !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
 		t.Fatalf("completed command lacks its settled output %q:\n%s", open, got)
@@ -192,6 +197,9 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 	for _, conversation := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		u.shell.Transcript.Conversation = conversation
+		if conversation {
+			u.shell.Transcript.Expansion = 1
+		}
 		u.testActivity(u.shell.Transcript).testAudience()
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 			"id": "cmd", "type": "commandExecution", "command": "echo done", "status": "completed", "exitCode": 0, "aggregatedOutput": "done\n",
@@ -278,6 +286,9 @@ func TestAppServerAdjacentReadOutputsStayWithInvocation(t *testing.T) {
 		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.shell.Transcript.Conversation = conversation
+			if conversation {
+				u.shell.Transcript.Expansion = 1
+			}
 			u.testActivity(u.shell.Transcript).testAudience()
 			for i, output := range []string{"", "first-output\n", "second-output\n"} {
 				appServerTestNotify(t, u, "item/completed", map[string]any{
@@ -446,6 +457,7 @@ func nextEvent(t *testing.T, u *appServerUI, thread string) {
 func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Conversation = true
+	u.shell.Transcript.Expansion = 1
 	u.testActivity(u.shell.Transcript).testAudience()
 	run := func(id string) {
 		t.Helper()
@@ -534,6 +546,7 @@ func TestAppServerReadOutputStartsCollapsed(t *testing.T) {
 func TestAppServerShortPaneShowsCompactTail(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Conversation = true
+	u.shell.Transcript.Expansion = 1
 	u.testActivity(u.shell.Transcript).testAudience()
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": "go test ./...", "status": "completed", "exitCode": 0, "aggregatedOutput": "1\n2\n3\n4\n5\n6\n"}})
@@ -575,7 +588,7 @@ func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "read", "delta": "line 20\n"})
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output.String()+"line 20\n"
 	notify("item/completed", map[string]any{"item": item})
-	if got := main(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ line 20") || len(u.attached.session.Commands()) != 0 {
+	if got := main(); strings.Contains(got, "Running") || !strings.Contains(got, "21 results") || strings.Contains(got, "┆ line 20") || len(u.attached.session.Commands()) != 0 {
 		t.Fatalf("a search's completion waited for its output to roll:\n%s", got)
 	}
 
@@ -673,6 +686,7 @@ func TestOutputCollapseSharesFrameAcrossLateCompletions(t *testing.T) {
 func TestOutputCollapseSharesFrameAcrossPanes(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Conversation = true
+	u.shell.Transcript.Expansion = 1
 	u.testActivity(u.shell.Transcript).testAudience()
 	start := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 	late := start.Add(activityui.OutputDebounce / 2)
