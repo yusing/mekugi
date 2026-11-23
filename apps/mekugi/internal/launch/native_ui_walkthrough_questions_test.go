@@ -109,8 +109,44 @@ func TestNativeUIWalkthroughAnswerSteps(t *testing.T) {
 			}
 			response := httptest.NewRecorder()
 			new(walkthroughProvider).serve(response, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(tc.input)))
-			if tc.want == "async-answer" && (!strings.Contains(response.Body.String(), "Release update answers received.") || strings.Contains(response.Body.String(), "Release scope received.")) {
-				t.Fatal("async answer reused sync acknowledgment", response.Body.String())
+			if response.Code != http.StatusOK {
+				t.Fatal(response.Code, response.Body.String())
+			}
+			want := "The question answer was missing or invalid."
+			switch tc.want {
+			case "sync-question":
+				want = "Release scope received."
+			case "async-answer":
+				want = "Release update answers received."
+			}
+			var messages []string
+			for _, line := range strings.Split(response.Body.String(), "\n") {
+				data, ok := strings.CutPrefix(line, "data: ")
+				if !ok {
+					continue
+				}
+				var event struct {
+					Type string `json:"type"`
+					Item struct {
+						Type    string `json:"type"`
+						Content []struct {
+							Text string `json:"text"`
+						} `json:"content"`
+					} `json:"item"`
+				}
+				if err := json.Unmarshal([]byte(data), &event); err != nil {
+					t.Fatal(err)
+				}
+				if event.Type != "response.output_item.done" {
+					continue
+				}
+				if event.Item.Type != "message" || len(event.Item.Content) != 1 {
+					t.Fatalf("unexpected answer output: %+v", event.Item)
+				}
+				messages = append(messages, event.Item.Content[0].Text)
+			}
+			if len(messages) != 1 || messages[0] != want {
+				t.Fatalf("provider messages = %q, want exactly [%q]", messages, want)
 			}
 		})
 	}
