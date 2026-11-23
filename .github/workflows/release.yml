@@ -6,7 +6,14 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -16,8 +23,45 @@ defaults:
     shell: bash
 
 jobs:
+  main_validation:
+    name: Check for duplicate main validation
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      reused: ${{ steps.approve_archive.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Look up validation of the merged tree
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          FORCED: ${{ github.event.forced }}
+        run: bash .github/scripts/reuse-pr-validation.sh
+      - name: Approve native archives from the verified PR run
+        id: approve_archive
+        if: steps.pr.outputs.run_id != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-approved-run-${{ steps.pr.outputs.run_id }}
+          path: ${{ runner.temp }}/native-approved-run
+          if-no-files-found: error
+
   build:
     name: Build ${{ matrix.platform }}
+    needs: main_validation
+    if: ${{ !cancelled() && needs.main_validation.outputs.reused != 'true' }}
+    permissions:
+      actions: read
+      contents: read
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -93,19 +137,87 @@ jobs:
       - name: Test welcome and linked version
         run: |
           MEKUGI_TEST_BUILD_VERSION="$BUILD_TAG" make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^(TestMekugi(BuildVersion|LinkedBuildVersion)|TestNativeWelcome|TestUISnapshotNativeWelcome)' TEST_FLAGS="-ldflags='-X github.com/yusing/mekugi/apps/mekugi/internal/launch.buildVersion=$BUILD_TAG'"
-      - name: Resolve native runtime cache key
+      - name: Resolve native runtime archive key
         id: native_key
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          RUNNER_LABEL: ${{ matrix.runner }}
+          RECIPE_HASH: ${{ hashFiles('.github/workflows/release.yml', 'Makefile', 'runtime/build.py') }}
         run: |
           codex_sha="$(git -C runtime/codex rev-parse HEAD)"
-          echo "codex_sha=$codex_sha" >> "$GITHUB_OUTPUT"
+          image="$RUNNER_LABEL-${ImageVersion:-$GITHUB_RUN_ID}"
+          key="$(printf '%s\n' "$PLATFORM" "$image" "$codex_sha" "$RECIPE_HASH" | shasum -a 256 | cut -d' ' -f1)"
+          echo "name=mekugi_${PLATFORM}-$key" >> "$GITHUB_OUTPUT"
       - name: Cache packaged native runtime
         id: native_cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/artifacts/mekugi-native_${{ matrix.platform }}.tar.gz
-          key: native-bundle-v1-${{ matrix.platform }}-${{ matrix.runner }}-${{ steps.native_key.outputs.codex_sha }}-${{ hashFiles('runtime/build.py') }}
+          key: native-bundle-v2-${{ steps.native_key.outputs.name }}
+      - name: Restore packaged native runtime from main
+        id: native_artifact
+        if: steps.native_cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.native_key.outputs.name }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          # Artifact retention is independent of the compiler cache's LRU eviction.
+          list_runs() {
+            gh api --paginate --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" \
+              -f name="$1" -F per_page=100 --jq '.artifacts[] | select(.expired == false) | .workflow_run.id'
+          }
+          source_type() {
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$1" | jq -r --arg repo "$GITHUB_REPOSITORY" '
+              select(.path == ".github/workflows/release.yml" and .conclusion == "success" and
+                .head_repository.full_name == $repo) |
+              if .event == "push" and .head_branch == "main" then "main"
+              elif .event == "pull_request" and .run_attempt == 1 then "pr"
+              else empty end
+            '
+          }
+          approved_on_main() {
+            local approvals approval type
+            if ! approvals="$(list_runs "native-approved-run-$1")"; then
+              echo "::warning::Could not list native archive approvals for run $1."
+              return 1
+            fi
+            for approval in $approvals; do
+              if ! type="$(source_type "$approval")"; then
+                echo "::warning::Could not verify native archive approval from run $approval."
+                continue
+              fi
+              [[ "$type" == main ]] && return 0
+            done
+            return 1
+          }
+          if ! candidates="$(list_runs "$ARTIFACT_NAME")"; then
+            echo "::warning::Could not list matching native archives; building locally."
+            exit 0
+          fi
+          while IFS= read -r run_id; do
+            [[ -n "$run_id" ]] || continue
+            if ! type="$(source_type "$run_id")"; then
+              echo "::warning::Could not verify native archive source run $run_id."
+              continue
+            fi
+            if [[ "$type" != main ]] && { [[ "$type" != pr ]] || ! approved_on_main "$run_id"; }; then
+              continue
+            fi
+            download="$RUNNER_TEMP/native-artifact"
+            archive="$download/mekugi-native_${PLATFORM}.tar.gz"
+            if ! gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir "$download" ||
+               [[ ! -s "$archive" ]]; then
+              echo "::warning::Could not restore native archive from run $run_id; building locally."
+              exit 0
+            fi
+            mkdir -p "$RUNNER_TEMP/artifacts"
+            mv "$archive" "$RUNNER_TEMP/artifacts/"
+            echo "restored=true" >> "$GITHUB_OUTPUT"
+            break
+          done <<< "$candidates"
       - name: Install native Linux build dependency
-        if: runner.os == 'Linux' && steps.native_cache.outputs.cache-hit != 'true'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends pkg-config libcap-dev libssl-dev
@@ -118,12 +230,10 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
       - name: Set up sccache
-        if: steps.native_cache.outputs.cache-hit != 'true'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         with:
           version: v0.19.0
       - name: Cache Cargo dependencies
-        if: steps.native_cache.outputs.cache-hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -134,14 +244,12 @@ jobs:
           restore-keys: |
             cargo-deps-v1-${{ matrix.platform }}-
       - name: Cache prebuilt V8 artifacts
-        if: steps.native_cache.outputs.cache-hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: runtime/codex/codex-rs/target/v8-artifacts
           key: v8-artifacts-v1-${{ matrix.platform }}-${{ hashFiles('runtime/codex/third_party/v8/rusty_v8_*_release_manifests.sha256') }}
-      - name: Test and package native runtime
-        if: steps.native_cache.outputs.cache-hit != 'true'
-        env:
+      - name: Test native runtime
+        env: &native_env
           CARGO_BUILD_JOBS: ${{ runner.os == 'Linux' && '4' || '2' }}
           CARGO_INCREMENTAL: '0'
           # Use system Git for V8's nested Git dependencies instead of Cargo's libgit2 transport.
@@ -151,6 +259,10 @@ jobs:
         run: |
           # App-server integration fixtures use debug-only startup options.
           make test-native NATIVE_PROFILE=dev-small
+      - name: Package native runtime
+        if: steps.native_cache.outputs.cache-hit != 'true' && steps.native_artifact.outputs.restored != 'true'
+        env: *native_env
+        run: |
           make package-native NATIVE_ARCHIVE="$RUNNER_TEMP/artifacts/mekugi-native_${PLATFORM}.tar.gz"
       - name: Build and package
         env:
@@ -213,10 +325,28 @@ jobs:
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mekugi_${{ matrix.platform }}
+          name: ${{ (github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main') && steps.native_key.outputs.name || format('mekugi_{0}', matrix.platform) }}
           path: ${{ runner.temp }}/artifacts/*.tar.gz
           if-no-files-found: error
           compression-level: 0
+      - name: Record the fully tested PR tree
+        id: validated_tree
+        if: matrix.platform == 'linux_amd64' && github.event_name == 'pull_request'
+        run: |
+          # Only record receipts for runs that execute the full suite.
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          printf '%s\n' "$tree" > "$RUNNER_TEMP/validated-tree"
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+      - name: Upload validation receipt
+        if: matrix.platform == 'linux_amd64' && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: validated-pr-${{ github.event.number }}-${{ steps.validated_tree.outputs.tree }}
+          path: ${{ runner.temp }}/validated-tree
+          retention-days: 7
+          if-no-files-found: error
 
   release:
     name: Publish release
