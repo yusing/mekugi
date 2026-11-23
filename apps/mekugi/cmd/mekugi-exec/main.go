@@ -171,7 +171,7 @@ type relay struct {
 	ack     int
 	sinks   [2]int // Original stdout and stderr.
 	readers [2]int // FIFO read ends, or -1.
-	created int    // Bash's mktemp report FIFO, or -1.
+	created int    // Creation report FIFO (inline fd 0 after EXIT), or -1.
 	pending []byte // Its incomplete line.
 	opened  bool
 	control []byte
@@ -185,8 +185,12 @@ func (r *relay) run() {
 	controlOpen := true
 	for controlOpen || r.opened && (r.readers[0] >= 0 || r.readers[1] >= 0) {
 		var fds []unix.PollFd
-		if controlOpen {
-			fds = append(fds, unix.PollFd{Fd: 0, Events: unix.POLLIN})
+		reportFD := 0
+		if !controlOpen {
+			reportFD = r.created
+		}
+		if reportFD >= 0 {
+			fds = append(fds, unix.PollFd{Fd: int32(reportFD), Events: unix.POLLIN})
 		}
 		if r.opened {
 			for _, fd := range r.readers {
@@ -216,8 +220,12 @@ func (r *relay) run() {
 		// before it is acknowledged.
 		// The control pipe is nonblocking too: a missed EOF notification
 		// must not keep the helper and Codex's output descriptors alive.
-		if controlOpen && (fds[0].Revents != 0 || timeout >= 0) {
-			controlOpen = r.readControl()
+		if reportFD >= 0 && (fds[0].Revents != 0 || timeout >= 0) {
+			if controlOpen {
+				controlOpen = r.readControl()
+			} else {
+				r.readCreated()
+			}
 		}
 		r.drain()
 	}
@@ -294,9 +302,14 @@ func (r *relay) readControl() bool {
 			if _, err := unix.Write(r.ack, []byte("\n")); err != nil {
 				return false
 			}
-			// A detached child can inherit the control FIFO. EXIT is the
-			// final boundary; only stdout and stderr still need draining.
+			// EXIT ends boundaries, not inline mktemp reports. Read those
+			// while output drains without waiting for detached FIFO writers.
 			if fields[0] == "d" {
+				if r.created < 0 {
+					r.created, r.pending = 0, r.control
+					r.control = nil
+					r.readCreated()
+				}
 				return false
 			}
 		}
@@ -311,8 +324,7 @@ func (r *relay) sendCreated(line string) {
 	}
 }
 
-// readCreated forwards the complete mktemp reports already in Bash's report
-// FIFO. Their writers finished before the shell wrote its next boundary.
+// readCreated forwards complete mktemp reports without waiting for writers.
 func (r *relay) readCreated() {
 	if r.created < 0 {
 		return
@@ -322,6 +334,9 @@ func (r *relay) readCreated() {
 		n, err := unix.Read(r.created, buffer)
 		if errors.Is(err, unix.EINTR) {
 			continue
+		}
+		if n == 0 && err == nil {
+			r.created = -1
 		}
 		if n <= 0 {
 			break

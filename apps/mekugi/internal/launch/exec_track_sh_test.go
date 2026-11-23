@@ -147,11 +147,8 @@ func TestExecTrackShEnvelopeKeepsBash(t *testing.T) {
 	}
 }
 
-// The shell's EXIT terminates its boundary stream, but a writer retaining
-// stdout or stderr must still reach both the host and its segment report.
-func TestExecTrackInlineBashDetachedChild(t *testing.T) {
-	t.Parallel()
-	shell := newExecTrackShell(t)
+func runInlineBashToExit(t *testing.T, shell *execTrackShell, key [3]string, script string) (gate, output *os.File) {
+	t.Helper()
 	helper, err := execTrackTestHelper()
 	if err != nil {
 		t.Fatal(err)
@@ -165,13 +162,11 @@ func TestExecTrackInlineBashDetachedChild(t *testing.T) {
 	if err := unix.Mkfifo(gatePath, 0600); err != nil {
 		t.Fatal(err)
 	}
-	gate, err := os.OpenFile(gatePath, os.O_RDWR, 0)
+	gate, err = os.OpenFile(gatePath, os.O_RDWR, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = gate.WriteString("\n"); _ = gate.Close() }()
-	script := "printf before; " + commandargs.Quote(bash) + " -c " + commandargs.Quote(`sleep 60 </dev/null >/dev/null 2>&1 & echo $! > child; { read -r <release; printf late-out; printf late-err >&2; } &`)
-	key := [3]string{"thread", "turn", "detached"}
+	t.Cleanup(func() { _, _ = gate.WriteString("\n"); _ = gate.Close() })
 	wrapped := shellinstrumentation.ShScript(tracker, script)
 	shell.hub.start(key, commandargs.Quote(bash)+" -c "+commandargs.Quote(wrapped))
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -182,13 +177,25 @@ func TestExecTrackInlineBashDetachedChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer output.Close()
+	t.Cleanup(func() { _ = output.Close() })
 	cmd.Stdout, cmd.Stderr = writer, writer
 	err = cmd.Run()
 	writer.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
+	return gate, output
+}
+
+// The shell's EXIT terminates its boundary stream, but a writer retaining
+// stdout or stderr must still reach both the host and its segment report.
+func TestExecTrackInlineBashDetachedChild(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	bash := execTrackShellExecutable(t, "bash")
+	script := "printf before; " + commandargs.Quote(bash) + " -c " + commandargs.Quote(`sleep 60 </dev/null >/dev/null 2>&1 & echo $! > child; { read -r <release; printf late-out; printf late-err >&2; } &`)
+	key := [3]string{"thread", "turn", "detached"}
+	gate, output := runInlineBashToExit(t, shell, key, script)
 	id, err := os.ReadFile(filepath.Join(shell.root, "child"))
 	if err != nil {
 		t.Fatal(err)
@@ -219,5 +226,57 @@ func TestExecTrackInlineBashDetachedChild(t *testing.T) {
 	}
 	if err := unix.Kill(pid, 0); err != nil {
 		t.Fatalf("detached child exited before relay: %v", err)
+	}
+}
+
+func TestExecTrackInlineBashCreationAfterExit(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	external := t.TempDir()
+	script := "printf before; : > >(exec 5<>release; read -r -t 5 <&5; mktemp " + commandargs.Quote(filepath.Join(external, "new.XXXXXXXX")) + " >&2; read -r -t 5 <&5)"
+	key := [3]string{"thread", "turn", "late-mktemp"}
+	review := shell.hub.Subscribe(key[0], key[1], []string{script})
+	defer review.Close()
+	gate, output := runInlineBashToExit(t, shell, key, script)
+	if _, err := gate.WriteString("\n"); err != nil {
+		t.Fatal(err)
+	}
+	// The worker keeps stderr open until change review receives the creation.
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	for {
+		state := review.State()
+		if report := state.Matches[0].Report; report != nil && len(report.Created) != 0 {
+			if !report.Done || report.Closed {
+				t.Fatal("mktemp was not admitted between shell exit and output closure")
+			}
+			break
+		}
+		select {
+		case <-state.Changed:
+		case <-ctx.Done():
+			t.Fatal("late mktemp did not reach change review while stderr was still open")
+		}
+	}
+	if _, err := gate.WriteString("\n"); err != nil {
+		t.Fatal(err)
+	}
+	if view := shell.awaitView(t, key); !view.complete {
+		t.Fatal("report did not complete after late mktemp")
+	}
+	if err := output.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := strings.TrimSuffix(strings.TrimPrefix(string(data), "before"), "\n")
+	if filepath.Dir(path) != external {
+		t.Fatalf("worker did not print the external path: %q", data)
+	}
+	paths := review.CreatedPaths()
+	if len(paths) != 1 || paths[0].Data != path || paths[0].Index != 1 {
+		t.Fatalf("late mktemp missing from completed segment: %v, want %s", paths, path)
 	}
 }
