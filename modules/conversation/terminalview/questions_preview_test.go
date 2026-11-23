@@ -119,8 +119,39 @@ func TestQuestionRecommendedDescription(t *testing.T) {
 	m.Current().Choices[1].Description = "Monitor before expanding"
 	rows := previewRows(m, new(terminalview.QuestionLayout), 96, 14)
 	text := ansi.Strip(strings.Join(rows, "\n"))
-	if !strings.Contains(text, "Staged [Recommended]  Monitor before expanding") || m.Current().Selected != 1 || m.Current().Done {
+	if !strings.Contains(text, "❯ 2. Staged [Recommended]\n       Monitor before expanding") || m.Current().Selected != 1 || m.Current().Done {
 		t.Fatal(text)
+	}
+}
+
+func TestQuestionCompactHeightKeepsFocusedDescriptionReadable(t *testing.T) {
+	c := conversationbinding.Questions("main", "", "compact", nil, []binding.Question{{
+		ID:       "q1",
+		Question: strings.Join([]string{"Line 1 of a long question", "Line 2 of a long question", "Line 3 of a long question", "Line 4 of a long question", "Line 5 of a long question"}, "\n"),
+		Options: []binding.QuestionOption{
+			{Label: "Narrow", Description: "Only one path"},
+			{Label: "Broad", Description: "All paths"},
+		},
+	}})
+	var m prompt.Questions
+	m.Add(&c, false)
+	m.Open(&c)
+	var layout terminalview.QuestionLayout
+	want := []string{"Only one path", "All paths", "Type your answer"}
+	for idx, desc := range want {
+		m.Current().Selected = idx
+		rows := previewRows(&m, &layout, 80, 12)
+		if len(rows) > 12 {
+			t.Fatalf("option %d exceeded height: %d", idx, len(rows))
+		}
+		for _, row := range rows {
+			if ansi.StringWidth(row) > 80 {
+				t.Fatalf("option %d exceeded width: %q", idx, row)
+			}
+		}
+		if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, desc) {
+			t.Fatalf("option %d missing focused description %q in:\n%s", idx, desc, text)
+		}
 	}
 }
 

@@ -1,0 +1,8 @@
+Asked  2 questions · answered
+  Who should receive the release update?
+  └ Internal team
+    
+    abc
+
+  When should the update go out?
+  └ After validation

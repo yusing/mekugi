@@ -191,6 +191,20 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 			}},
 		},
 		{
+			name: "answered_questions", width: 80,
+			block: Block{Kind: "op", Verb: "Asked", Label: "2 questions · answered", Questions: []Question{
+				{Text: "Who should receive the release update?", Answer: "Internal team\n\nabc", State: "answered"},
+				{Text: "When should the update go out?", Answer: "After validation", State: "answered"},
+			}},
+		},
+		{
+			name: "mixed_questions_wide", width: 80,
+			block: Block{Kind: "op", Verb: "Asked", Label: "2 questions · waiting", Questions: []Question{
+				{Text: "Who receives the complete launch update?", Answer: "Send only to beta users on Friday.", State: "answered"},
+				{Text: "When should the public rollout begin?", Options: "Monday (Recommended) · Friday", State: "waiting"},
+			}},
+		},
+		{
 			name: "wait_targets", width: 32,
 			block: Block{Kind: "progress", Body: "Finished waiting", WaitTargets: []WaitTarget{
 				{Name: "/root/tests", Status: "completed"}, {Name: "/root/review", Status: "Still running"},

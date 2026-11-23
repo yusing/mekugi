@@ -4,10 +4,10 @@
   
     1. Immediate                               │ Preview 1–7/7
   ❯ 2. Staged [Recommended]                    │ Release plan
-    3. Later      Keep the current version     │ 
-    4. Other      Type your answer             │ 1. Publish to the canary group.
-                                               │ 2. Monitor errors for one hour.
-                                               │ 3. Expand to all customers.
+    3. Later                                   │ 
+       Keep the current version                │ 1. Publish to the canary group.
+    4. Other                                   │ 2. Monitor errors for one hour.
+       Type your answer                        │ 3. Expand to all customers.
                                                │ 
                                                │ <b>Plain text, not HTML.</b>
   

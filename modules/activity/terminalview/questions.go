@@ -35,15 +35,30 @@ func (p *Painter) questionRows(block Block, width int) []string {
 	}
 	rows := terminalui.Wrap(header, width, false)
 	inner := max(1, width-2)
+	showPerQuestionState := false
+	if len(block.Questions) > 1 {
+		for _, q := range block.Questions {
+			if q.State != "" && q.State != state {
+				showPerQuestionState = true
+				break
+			}
+		}
+	}
 	for i, q := range block.Questions {
 		if i > 0 {
 			rows = append(rows, "")
 		}
 		text := textsanitize.Safe(q.Text, false)
-		rows = append(rows, liveActivityIndent(terminalui.Wrap(text, inner, false), "  ")...)
-		if len(block.Questions) > 1 {
-			rows = append(rows, "  "+p.QuestionState(q.State))
+		qLines := terminalui.Wrap(text, inner, false)
+		if showPerQuestionState && q.State != "" {
+			badge := p.QuestionState(q.State)
+			if len(qLines) > 0 && ansi.StringWidth(qLines[len(qLines)-1])+3+ansi.StringWidth(badge) <= inner {
+				qLines[len(qLines)-1] += terminalui.Dim + " · " + terminalui.Undim + badge
+			} else {
+				qLines = append(qLines, badge)
+			}
 		}
+		rows = append(rows, liveActivityIndent(qLines, "  ")...)
 		switch {
 		case q.Answer != "":
 			answer := p.Markdown(q.Answer, max(1, width-4), false)
