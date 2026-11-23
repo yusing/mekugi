@@ -318,6 +318,10 @@ func MergeVCSDiffStatus(blocks []Block) []Block {
 }
 
 func vcsWorktreeKey(b Block) (tool, worktree string, ok bool) {
+	return vcsWorktreeKeyValue(b.Value)
+}
+
+func vcsWorktreeKeyValue(b presentation.Value) (tool, worktree string, ok bool) {
 	if !b.VCS() || (b.Verb != "Diff" && b.Verb != "Status") {
 		return "", "", false
 	}

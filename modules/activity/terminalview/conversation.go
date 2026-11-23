@@ -204,8 +204,38 @@ func (v *View) RenderConversation(width int) Feed {
 		items[k].attached = items[k].lead < 0 && v.conversationTool(v.entries[items[k].first]) &&
 			previous.aside && v.entries[previous.first].Agent == v.conversationSpeaker() && v.conversationLead(previous.first)
 	}
+	itemNeedsSeparator := func(k int) bool {
+		if k == 0 {
+			return false
+		}
+		joined := continues(k-1, k)
+		if v.Expansion == 0 {
+			return !joined && (v.conversationMessage(items[k]) || v.conversationMessage(items[k-1]))
+		}
+		return !joined && !items[k].attached
+	}
+	// Adjacent tool items with no blank separator or continuation heading between
+	// them share one verb column so their labels align vertically.
+	groupEnd, groupColumn := 0, 0
 	start := 0 // Thread's first item.
 	for k, it := range items {
+		if k >= groupEnd {
+			groupColumn = 0
+			if v.conversationTool(v.entries[it.first]) {
+				end := k + 1
+				for end < len(items) && v.conversationTool(v.entries[items[end].first]) && !itemNeedsSeparator(end) && items[end].lead < 0 {
+					end++
+				}
+				groupEnd = end
+				if end-k > 1 {
+					for j := k; j < end; j++ {
+						if w := v.conversationItemVerbColumn(items[j]); w > groupColumn {
+							groupColumn = w
+						}
+					}
+				}
+			}
+		}
 		var thread ConversationThread
 		if continues(k-1, k) {
 			thread = ConversationThread{Joined: true, First: items[start].first, Previous: items[k-1].first}
@@ -213,7 +243,7 @@ func (v *View) RenderConversation(width int) Feed {
 			start = k
 		}
 		thread.Followed = continues(k, k+1)
-		key := RunKey{First: v.entries[it.first].Seq, Last: v.entries[it.last].Seq, Revision: v.runRevision(it.first, it.last+1), Width: width, Theme: v.Painter.Theme, Hover: -1, Main: true, Thread: thread, Excerpt: v.excerpt(v.Passed[v.entries[it.first].Seq]), Tail: v.tailRows(), Expansion: v.Expansion}
+		key := RunKey{First: v.entries[it.first].Seq, Last: v.entries[it.last].Seq, Revision: v.runRevision(it.first, it.last+1), Width: width, Theme: v.Painter.Theme, Hover: -1, Main: true, Thread: thread, Excerpt: v.excerpt(v.Passed[v.entries[it.first].Seq]), Tail: v.tailRows(), VerbColumn: groupColumn, Expansion: v.Expansion}
 		if v.entries[it.first].Agent == "You" || v.entries[it.first].Kind == "user" {
 			key.Expansion, key.Excerpt = 0, false
 		}
@@ -240,11 +270,7 @@ func (v *View) RenderConversation(width int) Feed {
 		}
 		run.generation = v.runGeneration
 		v.Runs[key] = run
-		needSeparator := !thread.Joined && !it.attached
-		if v.Expansion == 0 {
-			needSeparator = !thread.Joined && (v.conversationMessage(it) || k > 0 && v.conversationMessage(items[k-1]))
-		}
-		if len(feed.Lines) > 0 && needSeparator {
+		if len(feed.Lines) > 0 && itemNeedsSeparator(k) {
 			feed.separator()
 		}
 		head := len(feed.Lines)
@@ -298,12 +324,57 @@ func (v *View) RenderConversation(width int) Feed {
 	return feed
 }
 
+// conversationItemVerbColumn computes the widest aligned verb column needed by
+// one tool conversationItem directly from retained entry values (without
+// allocating Disclosure blocks), skipping Diff+Status pairs that
+// MergeVCSDiffStatus replaces with Diff/Status in compact default view.
+func (v *View) conversationItemVerbColumn(it conversationItem) int {
+	column := 0
+	var prev activitypresentation.Value
+	var prevTool, prevWorktree string
+	hasPrev := false
+	flush := func() {
+		if !hasPrev {
+			return
+		}
+		if w := alignedValueWidth(prev); w > column {
+			column = w
+		}
+		hasPrev = false
+	}
+	for idx := it.first; idx <= it.last; idx++ {
+		if !v.Visible(v.entries[idx]) {
+			continue
+		}
+		for _, val := range v.shownValues(idx) {
+			if v.Expansion == 0 {
+				if tool, worktree, ok := vcsWorktreeKeyValue(val); ok {
+					if hasPrev && tool == prevTool && worktree == prevWorktree && val.Verb != prev.Verb {
+						// Merged into Diff/Status, which exceeds widestAlignedVerb.
+						hasPrev = false
+						continue
+					}
+					flush()
+					prev, prevTool, prevWorktree, hasPrev = val, tool, worktree, true
+					continue
+				}
+				flush()
+			}
+			if w := alignedValueWidth(val); w > column {
+				column = w
+			}
+		}
+	}
+	flush()
+	return column
+}
+
 func (v *View) renderConversationRun(it conversationPaint, key RunKey) Run {
 	window := v.syntaxWindow
 	if window != nil && it.lead >= 0 {
 		v.syntaxWindow = &liveActivitySyntaxWindow{window.first - 1, window.last - 1}
 	}
-	run := v.ConversationItem(it.first, it.last, key.Width, key.Thread)
+	run := v.conversationItem(it.first, it.last, key.Width, key.Thread, key.VerbColumn)
 	v.syntaxWindow = window
 	if it.lead >= 0 {
 		continuation := v.paintBlock(0, 1, func() []string { return []string{v.Continuation(it.lead, key.Width)} })
@@ -475,6 +546,10 @@ func (c *conversationLines) hang(lead, indent string, lines []string) {
 }
 
 func (v *View) ConversationItem(first, last, width int, thread ConversationThread) Run {
+	return v.conversationItem(first, last, width, thread, 0)
+}
+
+func (v *View) conversationItem(first, last, width int, thread ConversationThread, verbColumn int) Run {
 	entry := v.entries[first]
 	v.Painter.CopyScope = entry.Seq
 	blocks := v.blocks(first)
@@ -572,6 +647,13 @@ func (v *View) ConversationItem(first, last, width int, thread ConversationThrea
 			laid = collapseCapturedEdits(laid)
 		}
 		laid = AlignVerbs(laid)
+		if verbColumn > 0 {
+			for i := range laid {
+				if laid[i].VerbColumn < verbColumn {
+					laid[i].VerbColumn = verbColumn
+				}
+			}
+		}
 		for index, block := range laid {
 			block = v.discloseBlock(block)
 			block.Compact = v.Expansion == 0

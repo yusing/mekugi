@@ -45,7 +45,7 @@ func (v *View) discloseBlock(block Block) Block {
 // and pointer states. Entry invalidation already removes every variant.
 func (v *View) retainRuns() {
 	base := func(key RunKey) RunKey {
-		key.Expansion, key.Clip, key.Tail, key.Excerpt = 0, 0, 0, false
+		key.Expansion, key.Clip, key.Tail, key.Excerpt, key.VerbColumn = 0, 0, 0, false, 0
 		return key
 	}
 	var active map[RunKey]bool

@@ -29,7 +29,11 @@ func (p *Painter) QuestionState(state string) string {
 
 func (p *Painter) questionRows(block Block, width int) []string {
 	count, state, _ := strings.Cut(block.Label, " · ")
-	header := p.Theme.Accent() + "Asked" + terminalui.Reset + "  " + terminalui.Dim + count + terminalui.Undim
+	pad := 2
+	if count != "" {
+		pad = max(2, block.VerbColumn-len("Asked"))
+	}
+	header := p.Theme.Accent() + "Asked" + terminalui.Reset + strings.Repeat(" ", pad) + terminalui.Dim + count + terminalui.Undim
 	if state != "" {
 		header += " · " + p.QuestionState(state)
 	}

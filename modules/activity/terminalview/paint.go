@@ -308,6 +308,7 @@ func (p *Painter) Block(block Block, width int) []string {
 			child.Collapsed = !block.Expanded
 			child.Expanded = block.Expanded
 			child.Compact = block.Compact
+			child.VerbColumn = block.VerbColumn
 			child.GroupHeader = "Attach"
 			child.GroupStart = i == 0
 			if member.Verb == "Attach failed" {
@@ -1483,7 +1484,7 @@ func Verb(theme diffrender.Theme, verb string) string {
 // operations share, or Verb's default column.
 func (b Block) cell(verb string) int {
 	if b.GroupHeader == "Attach" {
-		return len("Attach ")
+		return max(b.VerbColumn, len("Attach "))
 	}
 	if b.VerbColumn > 0 {
 		return max(b.VerbColumn, verbCells(verb)+1)
@@ -1508,7 +1509,7 @@ func verbCells(verb string) int {
 // lead is a row's bold verb in color, padded to its column.
 func (b Block) lead(theme diffrender.Theme, color, verb string) string {
 	if b.GroupHeader == "Attach" && b.GroupStart {
-		return Verb(theme, "Attach")
+		return VerbColor(theme, "Attach") + "\x1b[1mAttach" + terminalui.Reset + strings.Repeat(" ", b.cell("Attach")-len("Attach"))
 	}
 	if b.GroupHeader != "" && !b.EditOperation() && !b.GroupStart {
 		return strings.Repeat(" ", b.cell(verb))
