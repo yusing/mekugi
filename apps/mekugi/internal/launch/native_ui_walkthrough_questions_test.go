@@ -1,0 +1,101 @@
+package launch
+
+import (
+	json "encoding/json/v2"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+)
+
+func TestNativeUIWalkthroughQuestionContract(t *testing.T) {
+	provider := new(walkthroughProvider)
+	for _, scenario := range []struct {
+		name, input, tool string
+		count             int
+	}{
+		{"async", `{"input":[{"type":"message","role":"user","content":[{"text":"questions"}]}]}`, "request_user_input_async", 2},
+		{"sync", `{"input":[{"type":"function_call_output","call_id":"preview-1-step-async-question"}]}`, "request_user_input", 1},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			provider.serve(response, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(scenario.input)))
+			if response.Code != http.StatusOK {
+				t.Fatal(response.Code, response.Body.String())
+			}
+			found := false
+			for _, line := range strings.Split(response.Body.String(), "\n") {
+				data, ok := strings.CutPrefix(line, "data: ")
+				if !ok {
+					continue
+				}
+				var event struct {
+					Type string                                 `json:"type"`
+					Item struct{ Type, Name, Arguments string } `json:"item"`
+				}
+				if err := json.Unmarshal([]byte(data), &event, json.MatchCaseInsensitiveNames(true)); err != nil {
+					t.Fatal(err)
+				}
+				if event.Type != "response.output_item.done" {
+					continue
+				}
+				if event.Item.Type != "function_call" || event.Item.Name != scenario.tool {
+					t.Fatalf("unexpected question tool: %+v", event.Item)
+				}
+				var arguments struct {
+					Questions []struct {
+						Question string                   `json:"question"`
+						Header   string                   `json:"header"`
+						Options  []binding.QuestionOption `json:"options"`
+					} `json:"questions"`
+				}
+				if err := json.Unmarshal([]byte(event.Item.Arguments), &arguments, json.RejectUnknownMembers(true)); err != nil {
+					t.Fatal(err)
+				}
+				if len(arguments.Questions) != scenario.count {
+					t.Fatalf("question count: %d", len(arguments.Questions))
+				}
+				for _, question := range arguments.Questions {
+					if question.Question == "" || len(question.Options) < 2 {
+						t.Fatal("missing question/options", question)
+					}
+					recommended := 0
+					for index, option := range question.Options {
+						if option.Label == "" || option.Preview == "" {
+							t.Fatal("missing label/preview", option)
+						}
+						if option.Recommended {
+							recommended++
+							if index == 0 {
+								t.Fatal("recommendation should demonstrate non-first focus")
+							}
+						}
+					}
+					if recommended != 1 {
+						t.Fatalf("recommendations: %d", recommended)
+					}
+				}
+				found = true
+			}
+			if !found {
+				t.Fatal("no question call emitted")
+			}
+		})
+	}
+	for _, input := range []string{
+		`{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question","output":{"answers":[{"id":"q3","choice":2}]}}]}`,
+		`{"input":[{"type":"function_call_output","call_id":"preview-2-step-sync-question"},{"type":"message","role":"user","content":[{"text":"<question_answers>[{\"id\":\"q2\",\"choice\":2}]</question_answers>"}]}]}`,
+	} {
+		var request struct {
+			Input []walkthroughInput `json:"input"`
+		}
+		if err := json.Unmarshal([]byte(input), &request); err != nil {
+			t.Fatal(err)
+		}
+		if step := walkthroughStep(request.Input); step != "sync-question" {
+			t.Fatal("compact answer restarted the scenario", step)
+		}
+	}
+}

@@ -231,12 +231,17 @@ func (p *walkthroughProvider) serve(w http.ResponseWriter, request *http.Request
 		item = message("The pane no longer blocks on its first frame. Inspect launch.go in Saved Diff.")
 	case "start-questions":
 		item = question("async-question", "request_user_input_async",
-			`{"questions":[{"title":"Who should receive the release update?","options":["Customers","Internal team"]}]}`)
+			`{"questions":[{"header":"Audience","question":"Who should receive the release update?","options":[
+				{"label":"Customers","description":"Publish externally","preview":"Customer release update\n\nAnnounce the release to all customers."},
+				{"label":"Internal team","description":"Review before publishing","preview":"Internal release update\n\nShare with the team first.\nCollect feedback before the public announcement.","recommended":true}]},
+				{"header":"Timing","question":"When should the update go out?","options":[
+				{"label":"Immediately","description":"Send when ready","preview":"Immediate delivery\n\nSend the update as soon as the release is ready."},
+				{"label":"After validation","description":"Wait for release checks","preview":"Validated delivery\n\n1. Complete release checks.\n2. Confirm the canary is healthy.\n3. Send the update.","recommended":true}]}]}`)
 	case "async-question":
 		item = question("sync-question", "request_user_input",
-			`{"questions":[{"id":"scope","header":"Scope","question":"Which release scope?","options":[
-				{"label":"Narrow","description":"Only the affected path"},
-				{"label":"Broad","description":"Every path"}]}]}`)
+			`{"questions":[{"header":"Scope","question":"Which release scope?","options":[
+				{"label":"Narrow","description":"Only the affected path","preview":"Narrow release\n\nValidate and publish only the affected path."},
+				{"label":"Broad","description":"Every path","preview":"Broad release\n\n1. Validate every release path.\n2. Publish the complete release.\n3. Monitor the rollout.","recommended":true}]}]}`)
 	case "sync-question":
 		item = message("Release scope received.")
 	default:
