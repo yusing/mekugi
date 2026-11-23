@@ -50,14 +50,17 @@ SNAPSHOT_PACKAGES ?= @snapshots
 # render one theme, and tests never write to the live session. TMPDIR is
 # canonical because macOS temporary paths start with /var -> /private/var, and
 # state directories reject symlinked ancestors.
-TEST_SESSION_ENV := BASH_ENV COLORFGBG CODEX_THREAD_ID CODEX_ROLLOUT_TRACE_ROOT MEKUGI_AX_OUTPUT \
-	MEKUGI_BASE_URL MEKUGI_CONTROL_SOCKET MEKUGI_EXEC_TRACK MEKUGI_SH_TRACKER \
-	MEKUGI_SUDO_DIRECTORY MEKUGI_UPDATE_UI_SNAPSHOTS MEKUGI_USER_BASH_ENV \
-	MEKUGI_VCS_GUARD_HOOK MEKUGI_VCS_ITEM
-TEST_ENV = env $(addprefix -u ,$(TEST_SESSION_ENV)) TMPDIR="$$(cd "$${TMPDIR:-/tmp}" && pwd -P)" PATH="$$(case "$${BASH_ENV-}" in \
-	(*/frontend-bash-env) printf '%s' "$$PATH" | awk -v RS=: -v ORS=: -v d="$${BASH_ENV%/*}" \
-		'$$0 != d && index($$0, d "/") != 1' | sed 's/:$$//' ;; \
-	(*) printf '%s' "$$PATH" ;; esac)"
+TEST_SESSION_ENV := BASH_ENV COLORFGBG CODEX_THREAD_ID CODEX_ROLLOUT_TRACE_ROOT \
+	CODEX_SHELL_GUARD_SOCKET CODEX_SHELL_GUARD_VCS_DIR CODEX_SHELL_GUARD_SUDO_DIR \
+	CODEX_SHELL_GUARD_SUDO_COMMAND \
+	MEKUGI_AX_OUTPUT MEKUGI_BASE_URL MEKUGI_CONTROL_SOCKET MEKUGI_EXEC_TRACK \
+	MEKUGI_SH_TRACKER MEKUGI_UPDATE_UI_SNAPSHOTS MEKUGI_USER_BASH_ENV \
+	MEKUGI_VCS_GUARD_HOOK
+TEST_ENV = env $(addprefix -u ,$(TEST_SESSION_ENV)) TMPDIR="$$(cd "$${TMPDIR:-/tmp}" && pwd -P)" PATH="$$(printf '%s:' "$$PATH" | \
+	awk -v RS=: -v ORS=: -v startup="$${BASH_ENV-}" 'BEGIN { \
+		if (startup ~ /\/frontend-bash-env$$/) { sub(/\/frontend-bash-env$$/, "", startup); frontend = startup } \
+	} !(frontend && ($$0 == frontend || index($$0, frontend "/") == 1)) && \
+	  ($$0 == "" || ($$0 != ENVIRON["CODEX_SHELL_GUARD_VCS_DIR"] && $$0 != ENVIRON["CODEX_SHELL_GUARD_SUDO_DIR"]))' | sed 's/:$$//')"
 
 install: workspace-check webui build-native
 	$(GO) install $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
@@ -90,10 +93,10 @@ build-native:
 	python3 runtime/build.py build --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)'
 
 check-native:
-	python3 runtime/build.py check --profile '$(NATIVE_PROFILE)' -- $(NATIVE_ARGS)
+	$(TEST_ENV) python3 runtime/build.py check --profile '$(NATIVE_PROFILE)' -- $(NATIVE_ARGS)
 
 test-native:
-	python3 runtime/build.py test --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' $(if $(NATIVE_TEST_FILTER),--test-filter '$(value NATIVE_TEST_FILTER)') -- $(NATIVE_ARGS)
+	$(TEST_ENV) python3 runtime/build.py test --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' $(if $(NATIVE_TEST_FILTER),--test-filter '$(value NATIVE_TEST_FILTER)') -- $(NATIVE_ARGS)
 
 package-native:
 	python3 runtime/build.py package --profile '$(NATIVE_PROFILE)' --output '$(NATIVE_OUTPUT)' --archive '$(NATIVE_ARCHIVE)'

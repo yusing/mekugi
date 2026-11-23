@@ -51,7 +51,7 @@ func TestHeadlessWrapRedirectedEntryPoint(t *testing.T) {
 		t.Fatalf("missing terminal event: %s", output)
 	}
 	methods, err := os.ReadFile(filepath.Join(dir, "rpc"))
-	const startup = "initialize\ninitialized\nconfig/read\ninitialize\ninitialized\nenvironment/info\nthread/start\nmodel/list\nconfig/read\nthread/subtree/list\nturn/start\n"
+	const startup = "initialize\ninitialized\nenvironment/info\nthread/start\nmodel/list\nconfig/read\nthread/subtree/list\nturn/start\n"
 	tail, ok := strings.CutPrefix(string(methods), startup)
 	// Started/completed native facts invalidate the same coalesced observation.
 	// A response between them can require a second read, never a new model turn.
@@ -108,7 +108,7 @@ func TestHeadlessAdmittedOutputFailureAndCancellation(t *testing.T) {
 			if scenario == "cancel" {
 				writer.cancel = cancel
 			}
-			code, err := runHeadless(ctx, []string{"--shell-guard=false"}, []string{"--yolo"}, strings.NewReader("literal"), writer)
+			code, err := runHeadless(ctx, nil, []string{"--yolo"}, strings.NewReader("literal"), writer)
 			if code != 1 || err == nil {
 				t.Fatalf("code=%d err=%v", code, err)
 			}
@@ -254,35 +254,47 @@ func TestHeadlessCorrelatedSubmissionFailure(t *testing.T) {
 }
 
 func TestHeadlessPreservesNoGuardPolicy(t *testing.T) {
-	for _, selection := range []string{"default", "configured", "explicit-on", "explicit-off"} {
-		t.Run(selection, func(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"default", []string{"--yolo"}},
+		{"override-after-explicit-on", []string{"--yolo", "-c", "features.shell_guard=true"}},
+		{"override-after-enable-flag", []string{"--yolo", "--enable", "shell_guard"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			dir, workspace := installHeadlessFixture(t)
 			t.Chdir(workspace)
-			var routerArgs []string
-			switch selection {
-			case "configured":
-				configuration := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "mekugi")
-				if err := os.MkdirAll(configuration, 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(configuration, "config.toml"), []byte("[features]\nshell_guard = true\n"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			case "explicit-on":
-				routerArgs = []string{"--shell-guard=true"}
-			case "explicit-off":
-				routerArgs = []string{"--shell-guard=false"}
-			}
+			argsMarker := filepath.Join(dir, "args")
+			t.Setenv("MEKUGI_AUTO_WRAP_ARGS_MARKER", argsMarker)
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			var output bytes.Buffer
-			code, err := runHeadless(ctx, routerArgs, []string{"--yolo"}, strings.NewReader("ordinary prompt"), &output)
+			code, err := runHeadless(ctx, nil, tc.args, strings.NewReader("ordinary prompt"), &output)
 			if code != 0 || err != nil {
 				t.Fatalf("headless acquired interactive guards: code=%d err=%v", code, err)
 			}
-			methods, readErr := os.ReadFile(filepath.Join(dir, "rpc"))
-			if readErr != nil || bytes.Contains(methods, []byte("hooks/list")) {
-				t.Fatalf("headless performed guard admission: %s (%v)", methods, readErr)
+			rawArgs, readErr := os.ReadFile(argsMarker)
+			if readErr != nil {
+				t.Fatalf("missing host args marker: %v", readErr)
+			}
+			args := strings.Split(strings.TrimSpace(string(rawArgs)), "\n")
+			lastDisable, lastEnable, delim := -1, -1, len(args)
+			for i, arg := range args {
+				if arg == "--" && delim == len(args) {
+					delim = i
+				}
+				if i < delim && i > 0 && args[i-1] == "-c" {
+					if arg == "features.shell_guard=false" {
+						lastDisable = i
+					}
+					if arg == "features.shell_guard=true" {
+						lastEnable = i
+					}
+				}
+			}
+			if lastDisable < 0 || lastDisable <= lastEnable {
+				t.Fatalf("headless did not force features.shell_guard=false after user overrides: %q", args)
 			}
 		})
 	}

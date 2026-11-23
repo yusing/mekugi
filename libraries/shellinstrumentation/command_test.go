@@ -41,3 +41,14 @@ func TestCommandScriptRejectsDynamicOrExtraArgv(t *testing.T) {
 		}
 	}
 }
+
+func TestCommandSourceRestoresInlineBoundaryVersions(t *testing.T) {
+	const script = "printf one; printf two"
+	const tracker = "/path ] || . with ' quote/tracker.sh"
+	legacy := ":; __mekugi_b() { return $?; }; __mekugi_e() { return $?; }; [ ! -r '/prior/tracker' ] || . '/prior/tracker'; { __mekugi_b 0 && :; printf one; __mekugi_e 0 && :; }; { __mekugi_b 1 && :; printf two; __mekugi_e 1 && :; }"
+	for _, wrapped := range []string{legacy, ShScript(tracker, script)} {
+		if source := ShOriginal(wrapped); source != script {
+			t.Fatalf("retained command source = %q", source)
+		}
+	}
+}

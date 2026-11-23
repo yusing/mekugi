@@ -96,7 +96,8 @@ type execTrackShell struct {
 func execTrackPath() string {
 	entries := filepath.SplitList(os.Getenv("PATH"))
 	entries = slices.DeleteFunc(entries, func(entry string) bool {
-		return filepath.Base(entry) == shellinstrumentation.VCSDirectory
+		base := filepath.Base(entry)
+		return base == "vcs-guard" || base == "sudo-guard"
 	})
 	return strings.Join(entries, string(os.PathListSeparator))
 }
@@ -131,7 +132,7 @@ func newExecTrackShell(t *testing.T) *execTrackShell {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	fixture := newExecTrackFixture(t, t.Context(), segments.Instrumentation{VCS: filepath.Join(root, shellinstrumentation.VCSDirectory), Sudo: filepath.Join(root, shellinstrumentation.SudoDirectory)})
+	fixture := newExecTrackFixture(t, t.Context())
 	hub := fixture
 	endpoints := fixture.server.Endpoints()
 	socket, directory := endpoints.Requests, endpoints.Directory
@@ -1217,14 +1218,14 @@ func (h *execTrackFixture) begin(t *testing.T, key [3]string, script string) *ex
 	return dialExecTrackReportThread(t, h, key[0], script)
 }
 
-func newExecTrackFixture(t *testing.T, ctx context.Context, scope segments.Instrumentation) *execTrackFixture {
+func newExecTrackFixture(t *testing.T, ctx context.Context) *execTrackFixture {
 	t.Helper()
 	server, err := segmenttransport.Listen(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(server.Close)
-	hub, err := segments.NewObserver(server, scope, activitymodel.OutputBytes)
+	hub, err := segments.NewObserver(server, activitymodel.OutputBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1237,7 +1238,7 @@ func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackFixture) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
-	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	hub := newExecTrackFixture(t, t.Context())
 	u.execTrack = hub.Observer
 	hub.ui = u
 	return u, hub
@@ -1371,7 +1372,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			root := t.TempDir()
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			hub := newExecTrackFixture(t, ctx, segments.Instrumentation{})
+			hub := newExecTrackFixture(t, ctx)
 			channel, directory := hub.server.Endpoints().Requests, hub.server.Endpoints().Directory
 			helper, err := execTrackTestHelper()
 			if err != nil {

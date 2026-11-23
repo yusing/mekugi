@@ -9,14 +9,16 @@ contracts, and `graphify` or source search for file-level lookup. Native Rust ru
 
 - **Native (`runtime/codex`)**: root/child execution, coordination (`thread_manager`, `agent_host`),
   model templates (`models-manager`), helper/child-reply guidance (`core/src/mekugi_guidance`),
-  native helper tools (`mcat`, `mfinspect`, `msymbol`, `mrun`), context usage milestones
-  (`token_budget.rs`), source acquisition & reload (`context_sources*.rs`, `compact_token_budget.rs`,
-  `ext/skills`), OS/Git environment facts (`environment_facts.rs`), `SESSION_TMP` (`exec_env.rs`),
-  and model-input output deduplication (`output_deduplication.rs`).
+  native helper tools (`mcat`, `mfinspect`, `msymbol`, `mrun`), native shell guard
+  (`codex-shell-guard`, `features.shell_guard`, `codex-arg0` guard shims, v2 `shellGuard/*`),
+  context usage milestones (`token_budget.rs`), source acquisition & reload
+  (`context_sources*.rs`, `compact_token_budget.rs`, `ext/skills`), OS/Git environment facts
+  (`environment_facts.rs`), `SESSION_TMP` (`exec_env.rs`), and model-input output deduplication
+  (`output_deduplication.rs`).
 - **Go (`apps/mekugi/internal/` & `modules/`)**: server/session lifetime, terminal & browser UIs,
   inference gateway & custom Responses routing, passive edit capture & `mchanges`, authenticated
-  Go frontends (`mchanges`, internal `mreload`), shell guards & private secret dialogs, retained
-  session history, inspection, replay, usage/diagnostics.
+  Go frontends (`mchanges`, internal `mreload`), approval dock, attachment-scoped session grants &
+  private secret dialogs, retained session history, inspection, replay, usage/diagnostics.
 
 ## Application owners (`apps/mekugi/internal/`)
 
@@ -41,7 +43,7 @@ contracts, and `graphify` or source search for file-level lookup. Native Rust ru
 
 ## Key non-obvious boundaries
 
-- `backends/codex/{appserver,binding,rollout,responses,shellhook,shellapproval,messagehistory,nativetrace}`
+- `backends/codex/{appserver,binding,rollout,responses,shellhook,messagehistory,nativetrace}`
   owns Codex RPC, protocol decoding, rollout reads, Responses framing, and shell hook protocols.
 - `providers/openai` owns native OpenAI credentials, transport, and composer predictions.
 - `apps/mekugi/cmd/workspace` owns workspace enumeration, import/boundary checks, `make docs-check`,

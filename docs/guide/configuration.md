@@ -10,7 +10,6 @@ rewritten:
 
 ```toml
 [features]
-shell_guard = true
 child_reply_summary = true
 debug = false
 
@@ -24,14 +23,24 @@ an explicit CLI value first, then its file value, then the built-in default show
 above. Missing files, sections, and keys keep built-in defaults. Unknown keys and
 non-boolean feature values fail startup without printing configuration contents.
 
-For example, set `shell_guard = false`, then run `mekugi --shell-guard codex`
-to enable guarding for one launch.
-Bare boolean flags mean true; use `--debug=false` or `--shell-guard=false` to
+For example, set `child_reply_summary = false`, then run `mekugi --child-reply-summary codex`
+to enable summaries for one launch.
+Bare boolean flags mean true; use `--debug=false` or `--child-reply-summary=false` to
 explicitly disable a feature. Repeated flags use the last value. Flags must precede
 `codex` and `--`; arguments after the delimiter belong to Codex. Overrides apply
 to that invocation and its child threads, never write the file or saved session
 settings, and are preserved in the printed resume command. A fresh launch or
 resume reads the current file again.
+
+Shell guarding is configured by Codex, not by Mekugi. If you previously set
+`shell_guard` in Mekugi's settings, remove it from that file. The guard
+defaults to on in interactive sessions. To turn it off, set
+`shell_guard = false` under `[features]` in `$CODEX_HOME/config.toml`
+(default `~/.codex/config.toml`), or run:
+
+```sh
+mekugi codex -c features.shell_guard=false
+```
 
 Child replies normally begin with a short authored Summary, followed by supporting
 sections, in one response. Main shows the complete summary; **Open reply** shows supporting
@@ -116,7 +125,6 @@ See the
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
-| `--shell-guard` | `true` | Guard UI remote writes and sudo commands; securely answer GPG passphrase requests, even with `--yolo` |
 | `--child-reply-summary` | `true` | Show child-authored summaries in Main, with the original behind Open reply |
 | `--timeout` | `10m` | Wait for response start |
 | `--stream-idle-timeout` | `4m` | Limit provider-message or HTTP-byte gaps |

@@ -1,7 +1,7 @@
 # Module reference
 
 Generated from feature descriptors, Codex binding declarations and application
-composition. 18 of 18 feature modules are selected.
+composition. 16 of 16 feature modules are selected.
 Regenerate with `make generate`; verify with `make check-generated`.
 
 The [composition contract](../contracts/composition.md) defines ownership and
@@ -96,14 +96,6 @@ Deliver bounded notices, failure details and recovery summaries
 - Requires: none.
 - Codex connections: none.
 
-## [remotewriteapproval](../../modules/remotewriteapproval/SPEC.md)
-
-Own remote-write approval policy and exact session grants
-
-- Composition: selected; lifetime: `invocation`.
-- Requires: none.
-- Codex connections: `shell-approval`.
-
 ## [sessionhistory](../../modules/sessionhistory/SPEC.md)
 
 Own retained session publication, namespaces, allocation, leases, and retention
@@ -147,14 +139,6 @@ Schedule retained observations with synthetic streaming and read-only playback c
 - Composition: selected; lifetime: `stateless`.
 - Requires: `activity`, `agentguidance`, `sessionhistory`.
 - Codex connections: `rollout`.
-
-## [sudoapproval](../../modules/sudoapproval/SPEC.md)
-
-Own sudo approval policy and exact session grants
-
-- Composition: selected; lifetime: `invocation`.
-- Requires: none.
-- Codex connections: `shell-approval`.
 
 ## [transportdiagnostics](../../modules/transportdiagnostics/SPEC.md)
 

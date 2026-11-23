@@ -16,6 +16,15 @@ import (
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
+func hookTrustTestResult(t *testing.T, cwd string, hooks ...map[string]any) string {
+	t.Helper()
+	data, err := json.Marshal(map[string]any{"data": []any{map[string]any{"cwd": cwd, "errors": []any{}, "hooks": hooks}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func hookTrustTestStartup(t *testing.T, status string) (*appServerUI, *appServerTestInput) {
 	t.Helper()
 	u, wire := newAppServerTestUI()
@@ -38,7 +47,7 @@ func hookTrustTestStartup(t *testing.T, status string) (*appServerUI, *appServer
 		t.Fatalf("startup did not gate execution for hook inventory: %+v", requests)
 	}
 	hook := map[string]any{"key": "/workspace/.codex/hooks.json:session_start:0:0", "currentHash": "sha256:changed-content", "trustStatus": status, "sourcePath": "/workspace/.codex/hooks.json", "eventName": "sessionStart", "handlerType": "command", "command": "bash scripts/startup.sh", "enabled": true}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, inventory, guardHookTestResult(t, u.attached.cwd, hook)))
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, inventory, hookTrustTestResult(t, u.attached.cwd, hook)))
 	return u, wire
 }
 
@@ -145,7 +154,7 @@ func TestHookTrustBeforeResume(t *testing.T) {
 	if inventory == 0 {
 		t.Fatalf("reviewed invocation instead of resumed thread: %+v", hooks)
 	}
-	result := guardHookTestResult(t, "/destination", map[string]any{"key": "saved-hook", "currentHash": "sha256:changed", "trustStatus": "modified", "command": "saved-command", "enabled": true})
+	result := hookTrustTestResult(t, "/destination", map[string]any{"key": "saved-hook", "currentHash": "sha256:changed", "trustStatus": "modified", "command": "saved-command", "enabled": true})
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, inventory, result))
 	if wire.Len() != 0 || len(u.approvals.calls()) != 1 {
 		t.Fatal("resume bypassed hook review")

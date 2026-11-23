@@ -11,7 +11,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -37,10 +36,7 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 		commands = append(commands, "git -C "+quoteShellWord(directory)+" add .", "git -C "+quoteShellWord(directory)+" commit -m "+name)
 		outputs = append(outputs, fmt.Sprintf("[main %s] %s\n 1 file changed, %d insertions(+)\n", hash, name, i+1))
 	}
-	script, err := shellinstrumentation.RewriteCommands(strings.Join(commands, " && "), displayGuardHelper, displayGuardDirectory, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	script := strings.Join(commands, " && ")
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": u.attached.cwd, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)

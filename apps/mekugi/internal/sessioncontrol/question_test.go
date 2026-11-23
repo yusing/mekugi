@@ -4,7 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"testing"
 
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
@@ -22,18 +22,26 @@ func TestQuestionResponseKeepsSecretOutOfPrompt(t *testing.T) {
 	}
 }
 
-func TestPasswordDecisionKeepsOriginalGuard(t *testing.T) {
-	guard := &ShellApprovalRequest{Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-	q := &Question{Call: &prompt.Call{Questions: []prompt.Question{{IsSecret: true, Done: true}}}, Sudo: guard}
-	outcome, delivered, err := q.AnswerPassword(map[int][]string{0: {"fixture-password"}})
+func TestPasswordDecisionUsesNativeSecretResponse(t *testing.T) {
+	transport := new(requestTransport)
+	requests := NewRequests[struct{}](transport)
+	q := &Question{
+		Call:      &prompt.Call{Questions: []prompt.Question{{IsSecret: true, Done: true}}},
+		RequestID: jsontext.Value(`"secret-req-1"`),
+		Secret:    &binding.ShellGuardSecretParams{Kind: binding.SudoPassword, Argv: []string{"sudo", "id"}},
+	}
+	outcome, delivered, err := q.AnswerPassword(requests, map[int][]string{0: {"fixture-password"}})
 	if err != nil || !delivered || outcome != "Password supplied" || !q.Sent {
 		t.Fatalf("password decision: outcome=%q delivered=%v err=%v", outcome, delivered, err)
 	}
-	reply := <-guard.Reply
-	if !reply.OK || reply.Password != "fixture-password" || len(q.Questions[0].Answer) != 0 {
-		t.Fatal("password delivery changed its value or retained it in the prompt")
+	if len(transport.responses) != 1 || string(transport.responses[0].id) != `"secret-req-1"` {
+		t.Fatalf("unexpected responses: %+v", transport.responses)
 	}
-	if q.CancelPassword() {
+	resp, ok := transport.responses[0].result.(binding.ShellGuardSecretResponse)
+	if !ok || resp.Decision != "provide" || resp.Secret == nil || *resp.Secret != "fixture-password" || len(q.Questions[0].Answer) != 0 {
+		t.Fatalf("password delivery changed its value or retained it in the prompt: %#v", resp)
+	}
+	if q.CancelPassword(requests) {
 		t.Fatal("answered authentication received a cancellation reply")
 	}
 }

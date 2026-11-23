@@ -90,14 +90,14 @@ type execTrackFixture struct {
 	server *segmenttransport.Server
 }
 
-func newExecTrackFixture(t *testing.T, ctx context.Context, instrumentation segments.Instrumentation) *execTrackFixture {
+func newExecTrackFixture(t *testing.T, ctx context.Context) *execTrackFixture {
 	t.Helper()
 	server, err := segmenttransport.Listen(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(server.Close)
-	observer, err := segments.NewObserver(server, instrumentation, activitymodel.OutputBytes)
+	observer, err := segments.NewObserver(server, activitymodel.OutputBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

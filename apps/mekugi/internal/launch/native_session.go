@@ -63,7 +63,6 @@ type nativeSession struct {
 	approvals             nativeApprovalDock
 	approvalMode          bool
 	reviewHooks           bool
-	guardHookCheck        approvalHookCheck
 	statusPanel           *appServerStatusReport
 	sessionCapture        *transportcapture.Recorder
 	resumePicker          *appServerResumePicker

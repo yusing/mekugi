@@ -29,13 +29,11 @@ type nativeConnection struct {
 	families                    map[string]*nativeFamily
 	boundRoot                   string
 	suppressed                  map[string]bool // Failed/ended views require explicit reacquisition; native work is untouched.
-	pendingGuards               []*sessioncontrol.ShellApprovalRequest
 	root                        *nativeSession
 	api                         *sessionapi.Server
 	threads                     *threadExecution
 	prefs                       *preferences.Service
 	environment                 []string
-	guards                      []binding.ShellApproval
 	skillsManager, childSummary bool
 	endpoints                   []*nativeEndpoint
 	byThread                    map[string]*nativeEndpoint
@@ -46,24 +44,6 @@ type nativeConnection struct {
 	end                         chan *nativeEndRequest
 	changed                     bool
 	exited                      bool
-}
-
-func (c *nativeConnection) guardRequest(request *sessioncontrol.ShellApprovalRequest) error {
-	if request.Finished() {
-		return nil
-	}
-	endpoint := c.byThread[request.Thread]
-	if endpoint == nil && request.Thread == c.root.Client.Thread {
-		endpoint = c.endpoints[0]
-	}
-	if endpoint == nil || endpoint.session.Client.Thread == "" {
-		c.pendingGuards = append(c.pendingGuards, request)
-		c.invalidateTree(c.root.Client.Thread)
-		return c.observeTree()
-	}
-	session := endpoint.session
-	addGuardApproval(&session.attached, &session.Client, &session.picker, &session.Editor, &session.questions, &session.approvals, session.clock, session.overlayOpen(session.statusPanel, session.resumePicker), session.notifications, session.review, &session.pendingEditReceipts, request)
-	return endpoint.after()
 }
 
 type nativeAttachRequest struct {
@@ -87,8 +67,8 @@ func (r *nativeEndRequest) complete(err error) {
 	}
 }
 
-func newNativeConnection(root *nativeSession, api *sessionapi.Server, threads *threadExecution, prefs *preferences.Service, environment []string, _ string, guards []binding.ShellApproval, skillsManager, childSummary bool) *nativeConnection {
-	return &nativeConnection{root: root, api: api, threads: threads, prefs: prefs, environment: environment, guards: guards, skillsManager: skillsManager, childSummary: childSummary,
+func newNativeConnection(root *nativeSession, api *sessionapi.Server, threads *threadExecution, prefs *preferences.Service, environment []string, _ string, skillsManager, childSummary bool) *nativeConnection {
+	return &nativeConnection{root: root, api: api, threads: threads, prefs: prefs, environment: environment, skillsManager: skillsManager, childSummary: childSummary,
 		byThread: make(map[string]*nativeEndpoint), buffered: make(map[string][]appserver.Message), seenRequests: make(map[string]string), attach: make(chan nativeAttachRequest), end: make(chan *nativeEndRequest)}
 }
 

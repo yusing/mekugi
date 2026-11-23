@@ -227,7 +227,7 @@ func TestCodeModeOnlyCatalogNativeCodex(t *testing.T) {
 		"-c", "chatgpt_base_url=" + strconv.Quote(router.URL),
 		"-c", "model_reasoning_effort=" + strconv.Quote("low"),
 	}, nil)
-	environment, err = frontendShellEnvironment(environment, proxy.registry.FrontendDirectory, "", nil, segmenttransport.Endpoints{})
+	environment, err = frontendShellEnvironment(environment, proxy.registry.FrontendDirectory, "", segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}

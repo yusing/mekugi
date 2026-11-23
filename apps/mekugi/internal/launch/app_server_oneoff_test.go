@@ -281,25 +281,6 @@ func TestOneoffDeferredSteerStartsOwnExchangeBeforeNewerInput(t *testing.T) {
 	}
 }
 
-func TestOneoffGuardAdmissionAndFailure(t *testing.T) {
-	u, wire := newAppServerTestUI()
-	u.startSession("main", "/workspace")
-	u.Turn = "main-turn"
-	u.guardHookCheck.hash = "guard"
-	appServerTestKeys(t, u, "/oneoff guarded task\r")
-	fork := btwTestRequest(t, wire, "thread/fork", "main")
-	btwTestReply(t, u, fork, `{"thread":{"id":"oneoff"}}`)
-	check := appServerOneRequest(t, wire, "hooks/list", "")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, check.ID))
-	if wire.Len() != 0 || u.side.Busy || strings.TrimSpace(u.Text) != "guarded task" || u.Turn != "main-turn" {
-		t.Fatalf("guard failure lost task or bypassed check: draft=%q wire=%s", u.Text, wire.String())
-	}
-	appServerTestKeys(t, u, "\r")
-	check = appServerOneRequest(t, wire, "hooks/list", "")
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, check.ID, guardHookTestResult(t, "/workspace", guardHookTestEntry("guard"))))
-	btwTestRequest(t, wire, "turn/start", "oneoff")
-}
-
 func TestUISnapshotOneoffSyncQuestionImageCompanion(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(fmt.Sprint("child=", child), func(t *testing.T) {

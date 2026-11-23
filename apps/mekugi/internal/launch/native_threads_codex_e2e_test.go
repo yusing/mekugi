@@ -1715,7 +1715,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		args = append(args, "-c", `model_reasoning_effort="ultra"`)
 	}
 	connection, err := sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{
-		Workspace: workspace, RouterArgs: []string{"--shell-guard=false"},
+		Workspace: workspace,
 		Args: args,
 	})
 	if err != nil {
@@ -2264,7 +2264,7 @@ func testNativeThreadsServerOwnedCodex(t *testing.T, scenario nativeThreadsScena
 		go func() { processErr = cmd.Wait(); close(joined) }()
 		serverCLIAwait(t, func() bool { _, err := os.Stat(socket); return err == nil })
 		connection, err = sessionapi.StartNative(ctx, client, "http://mekugi", sessionapi.NativeStart{
-			Workspace: workspace, RouterArgs: []string{"--shell-guard=false"},
+			Workspace: workspace,
 			Args: append(permissionArgs, "-c", "features.plugins=false", "-c", `model_reasoning_effort="high"`, "resume", root),
 		})
 		if err != nil {
@@ -2684,7 +2684,7 @@ func TestNativeThreadsServerProcessHelper(t *testing.T) {
 	ctx, cancel := signal.NotifyContext(t.Context(), os.Interrupt)
 	defer cancel()
 	if os.Getenv("MEKUGI_NATIVE_THREADS_HEADLESS") == "1" {
-		routerArgs := []string{"--shell-guard=false"}
+		var routerArgs []string
 		if capture := os.Getenv("MEKUGI_NATIVE_THREADS_CAPTURE"); capture != "" {
 			routerArgs = append(routerArgs, "--debug", "--capture-output", capture)
 			// TestMain clears inherited AX destinations before fixture dispatch.

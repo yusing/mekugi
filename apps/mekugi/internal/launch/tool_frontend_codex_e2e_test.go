@@ -27,6 +27,18 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
+func buildToolRegistryForTest(
+	t *testing.T,
+	ctx context.Context,
+) (*frontends.Registry, error) {
+	t.Helper()
+	directory := t.TempDir()
+	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
+		return nil, err
+	}
+	return frontends.New(ctx, frontends.Config{Commands: testCommands(), ReplayDirectory: filepath.Join(directory, "replay")})
+}
+
 func newShellWorkerTestInvocation(directory string, environment ...string) shellWorkerTestInvocation {
 	base := append(os.Environ(), "CODEX_THREAD_ID=")
 	return shellWorkerTestInvocation{directory: directory, environment: append(base, environment...)}

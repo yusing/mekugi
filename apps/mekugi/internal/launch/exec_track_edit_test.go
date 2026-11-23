@@ -91,13 +91,6 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				t.Fatal("missing edit capture")
 			}
 
-			if strings.Contains(edit, "git --version") {
-				var err error
-				script, err = shellinstrumentation.RewriteCommands(script, "/private/mekugi-exec", filepath.Join(shell.root, shellinstrumentation.VCSDirectory), "", "edit")
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
 			if delayedUI {
 				script = shellinstrumentation.ShScript(filepath.Join(shell.root, "exec-track.sh"), script)
 			}

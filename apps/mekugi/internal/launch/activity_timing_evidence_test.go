@@ -9,7 +9,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -231,7 +230,7 @@ func TestActivityTimingLiveEvidenceDoesNotInheritHostTotal(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
 	key := [3]string{"thread", "turn", "live"}
-	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	hub := newExecTrackFixture(t, t.Context())
 	report := hub.begin(t, key, "sleep .01; sleep .02")
 	report.send(
 		segmenttransport.Message{Type: segmenttransport.Begin, Index: 0, Timing: segmenttransport.Timing{Started: start}},

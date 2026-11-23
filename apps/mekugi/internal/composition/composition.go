@@ -205,7 +205,6 @@ type Runtime struct {
 	TransportDiagnostics *transportcapture.Service
 	AgentMetrics         *evidence.Service
 	Usage                *accounting.Service
-	Guards               []binding.ShellApproval
 	Naming               *binding.SessionNaming
 	Observation          *binding.Observation
 
@@ -308,7 +307,6 @@ func (c *Composition) Activate(ctx context.Context, binder *binding.Registry) (*
 	}
 	runtime.Naming = binder.RegisteredNaming()
 	runtime.Observation = binder.RegisteredObservation()
-	runtime.Guards = binder.RegisteredGuards()
 	runtime.MCP = binder.RegisteredMCP()
 	for _, node := range c.entries {
 		if err := ctx.Err(); err != nil {

@@ -152,7 +152,7 @@ func (q *nativeQuestionDock) carryLocal(conversation *conversationmodel.Session,
 	secrets := q.secrets
 	*q = nativeQuestionDock{Questions: &conversation.Questions}
 	for _, c := range previous {
-		if c.Sudo == nil || c.Resolved || c.Thread != main && !c.Local || !q.Add(c.Call, true) {
+		if c.Secret == nil || c.Resolved || c.Thread != main && !c.Local || !q.Add(c.Call, true) {
 			continue
 		}
 		if q.handles == nil {
@@ -195,6 +195,14 @@ func bindQuestion(attached *attachedPresentation, control *sessioncontrol.Client
 }
 
 func questionMessage(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, m appserver.Message) (bool, error) {
+	if m.Method == "shellGuard/requestSecret" && len(m.ID) > 0 {
+		p, err := binding.DecodeShellGuardSecret(m.Params)
+		if err != nil {
+			return true, fmt.Errorf("%s: %w", m.Method, err)
+		}
+		openShellGuardSecret(attached, control, picker, editor, questions, approvals, clock, overlay, notifications, m, p)
+		return true, nil
+	}
 	if m.Method == "item/tool/requestUserInput" && len(m.ID) > 0 {
 		p, err := binding.DecodeQuestionRequest(m.Params)
 		if err != nil {
@@ -212,8 +220,11 @@ func questionMessage(attached *attachedPresentation, control *sessioncontrol.Cli
 		if err != nil {
 			return true, err
 		}
-		for _, c := range questions.calls() {
-			if c.Thread == p.ThreadID && string(c.RequestID) == string(p.RequestID) {
+		for _, c := range slices.Clone(questions.calls()) {
+			if (p.ThreadID == "" || c.Thread == p.ThreadID) && string(c.RequestID) == string(p.RequestID) {
+				if c.Secret != nil {
+					c.Sent = true // Already resolved server-side (timeout or command stopped).
+				}
 				resolveQuestionCall(attached, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "answered elsewhere")
 			}
 		}
@@ -242,9 +253,9 @@ func resolveQuestionCall(attached *attachedPresentation, control *sessioncontrol
 		saveUnsentAnswer(attached, clock, d)
 	}
 	discardQuestionEditors(questions, c)
-	if c.Sudo != nil {
-		if c.CancelPassword() {
-			recordApproval(attached, approvals, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: authentication canceled")
+	if c.Secret != nil {
+		if c.CancelPassword(control.Requests) {
+			recordApproval(attached, approvals, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Secret.ItemID}}, "Denied: authentication canceled")
 		}
 		questions.Remove(c.Call)
 		delete(questions.handles, c.Call)
@@ -295,9 +306,9 @@ func recordSyncQuestionAnswer(attached *attachedPresentation, at time.Time, c *s
 		v.Apply(sessionpresentation.ActivityEvent{Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: cmp.Or(attached.session.KnownCaller(c.Thread), "Main"), Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: at, Native: native}}})
 	}
 }
-func endSyncQuestions(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, turn string) {
+func endSyncQuestions(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, turn string, interrupted bool) {
 	for _, c := range slices.Clone(questions.calls()) {
-		if c.Turn == turn && (len(c.RequestID) > 0 || c.Sudo != nil) {
+		if c.Turn == turn && len(c.RequestID) > 0 && (c.Secret == nil || interrupted) {
 			resolveQuestionCall(attached, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "interrupted")
 		}
 	}
@@ -340,8 +351,8 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 		session.questions.AutoOpen = true
 		autoOpenQuestions(attached, picker, editor, &session.questions, &session.approvals, session.Client.Thread, overlay)
 	}()
-	if c.Sudo != nil {
-		return session.submitSudoPassword(attached, picker, clock, editor, parent, c, secretAnswers)
+	if c.Secret != nil {
+		return session.submitShellGuardSecret(attached, picker, clock, editor, parent, c, secretEditors, secretAnswers)
 	}
 	answerDraft := questionAnswerAttachments(c.Call, secretEditors, secretAnswers)
 	if len(c.RequestID) > 0 {
@@ -368,7 +379,7 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 			if session.Client.Requests.WorkSide(c.Thread) {
 				target := session.Client.Requests.Side(c.Thread)
 				target.Drafts.Unsent = append(target.Drafts.Unsent, d)
-				return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+				return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, session.controlObservations)
 			}
 			attached.conversation.Unsent = append(attached.conversation.Unsent, d)
 			return session.flushInput(attached, picker, clock, editor, parent)
@@ -390,7 +401,7 @@ func (session *nativeSession) submitQuestionAnswers(attached *attachedPresentati
 		target := session.Client.Requests.Side(c.Thread)
 
 		target.Drafts.Unsent = append(target.Drafts.Unsent, input)
-		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, &target, &session.ownedImages, session.skillEnvironment, session.controlObservations)
 	}
 	attached.conversation.Unsent = append(attached.conversation.Unsent, input)
 	renderQuestionRecord(attached, session.Client.Turn, presentationTime(clock), c)
@@ -475,7 +486,7 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 	return pending
 }
 func renderQuestionRecord(attached *attachedPresentation, turn string, at time.Time, c *sessioncontrol.Question) {
-	if c.Sudo == nil {
+	if c.Secret == nil {
 		sessionpresentation.RecordQuestion(c.Call, string(c.RequestID), turn, at, attached.source, attached.childSource)
 	}
 }

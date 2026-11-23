@@ -21,7 +21,6 @@ type Config struct {
 	Timeout           time.Duration
 	StreamIdleTimeout time.Duration
 	ANSIFaint         string
-	ShellGuard        bool
 
 	ChildReplySummary     bool
 	CaptureOutput         string
@@ -30,8 +29,6 @@ type Config struct {
 	Profile               *Profile
 	TimeoutSet            bool
 	StreamIdleTimeoutSet  bool
-
-	shellGuardSet bool
 
 	childReplySummarySet bool
 	debugSet             bool
@@ -50,8 +47,6 @@ func Parse(args []string) (Config, error) {
 			config.TimeoutSet = true
 		case "stream-idle-timeout":
 			config.StreamIdleTimeoutSet = true
-		case "shell-guard":
-			config.shellGuardSet = true
 		case "child-reply-summary":
 			config.childReplySummarySet = true
 		case "debug":
@@ -89,7 +84,6 @@ func newFlags(stderr io.Writer, config *Config) *flag.FlagSet {
 	flags.StringVar(&config.ANSIFaint, "ansi-faint", "auto", "dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors)")
 	flags.DurationVar(&config.Timeout, "timeout", DefaultRequestTimeout, "upstream response-start timeout")
 	flags.DurationVar(&config.StreamIdleTimeout, "stream-idle-timeout", 4*time.Minute, "maximum upstream inactivity between WebSocket messages or HTTP response bytes")
-	flags.BoolVar(&config.ShellGuard, "shell-guard", true, "guard UI remote writes/sudo commands and securely answer GPG passphrases; independent of Codex approval policy")
 	flags.StringVar(&config.CaptureOutput, "capture-output", "", "optional sanitized capture JSONL path")
 	flags.BoolVar(&config.ChildReplySummary, "child-reply-summary", true, "show child-authored summaries in Main with full replies in the dialog")
 	flags.BoolVar(&config.Debug, "debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print session diagnosis command on exit")

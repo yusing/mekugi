@@ -3,7 +3,6 @@ package segments
 // Source: apps/mekugi/internal/router/exec_track.go:340:476@b27b4c66.
 
 import (
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -42,7 +41,7 @@ func (h *Observer) Subscribe(thread, turn string, scripts []string) *Subscriptio
 	}
 	p := &Subscription{observer: h, thread: thread, turn: turn, matches: make(map[string]*match)}
 	for _, script := range scripts {
-		source := p.Source(script, "")
+		source := script
 		if previous := p.matches[source]; previous != nil {
 			previous.ambiguous = true
 		} else {
@@ -74,56 +73,13 @@ func (p *Subscription) retain(key [3]string, report *report) {
 	if key[0] != p.thread || key[1] != p.turn || report.serial <= p.after {
 		return
 	}
-	if match := p.matches[p.Source(report.Script, key[2])]; match != nil {
+	if match := p.matches[report.Script]; match != nil {
 		if match.report != nil && match.key != key {
 			match.ambiguous = true
 		} else {
 			match.key, match.report = key, report
 		}
 	}
-}
-
-// Source removes only this invocation's exact, item-bound guard instrumentation.
-func (p *Subscription) Source(script, item string) string {
-	return p.observer.source(script, item)
-}
-
-// source admits only reversible guard prefixes from this invocation. Both
-// report correlation and preview subscriptions use the same identity rule.
-func (h *Observer) source(script, item string) string {
-	// Reapply only observed guards: sudo also runs with the VCS guard disabled.
-	var guard, sudo string
-	source := shellinstrumentation.DisplayScript(script, func(directory string) bool {
-		if directory == "" {
-			return false
-		}
-		switch directory {
-		case h.instrumentation.VCS:
-			guard = directory
-		case h.instrumentation.Sudo:
-			sudo = directory
-		default:
-			return false
-		}
-		return true
-	})
-	if source == script {
-		return script
-	}
-	// This owner has no authenticated helper executable. An inverse rewrite
-	// with no helper must match exactly, so only injected PATH prefixes qualify.
-	rewritten, err := shellinstrumentation.RewriteCommands(source, "", guard, sudo, "")
-	if err != nil || rewritten != script {
-		if item == "" {
-			return script
-		}
-		// The host hook also binds the guard to this exact command item.
-		rewritten, err = shellinstrumentation.RewriteCommands(source, "", guard, sudo, item)
-		if err != nil || rewritten != script {
-			return script
-		}
-	}
-	return source
 }
 
 func (p *Subscription) Close() {

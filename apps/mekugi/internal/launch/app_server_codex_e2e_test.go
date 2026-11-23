@@ -118,6 +118,7 @@ type appServerPreviewHook func(*testing.T, io.Writer, func(string), func(func(st
 
 // appServerPreview configures a preview run beyond its provider and proxy.
 type appServerPreview struct {
+	managedRuntime            bool
 	issues                    *requestexecution.Failures
 	integration               *appServerIntegration
 	environment               []string // Appended to Codex's isolated environment.
@@ -137,7 +138,11 @@ func runAppServerPreviewWithEnvironment(t *testing.T, provider inferencegateway.
 func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, proxy *observationFixture, options appServerPreview) {
 	t.Helper()
 	environment, beforePrompt, afterPrompt := options.environment, options.beforePrompt, options.afterPrompt
-	codex, err := exec.LookPath("codex")
+	binary := "codex"
+	if options.managedRuntime {
+		binary = "mekugi-app-server"
+	}
+	codex, err := exec.LookPath(binary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +152,9 @@ func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, 
 	defer cancel()
 	args := []string{"app-server", "-c", `model_providers.preview={name="preview",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false"}
 
+	if options.managedRuntime {
+		args = args[1:]
+	}
 	cmd := exec.CommandContext(ctx, codex, append(args, options.codexArgs...)...)
 	cmd.Env = append(routerFaultCodexEnvironment(t), environment...)
 	cmd.Dir = t.TempDir()

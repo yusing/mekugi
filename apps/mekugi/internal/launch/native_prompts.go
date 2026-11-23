@@ -59,7 +59,7 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 			break
 		}
 	}
-	if handle == nil || handle.Sudo != nil && handle.Sudo.Finished() {
+	if handle == nil {
 		return nil, nil, nil, prompt.ErrQuestionUnavailable.Error()
 	}
 	if public := input.PublicAnswer(); public != nil {
@@ -124,7 +124,7 @@ func prepareNativeAnswers(questions *nativeQuestionDock, control *sessioncontrol
 	if _, err := model.Submission(input.Call, input.Incomplete); err != nil {
 		return nil, nil, nil, err.Error()
 	}
-	if handle.Sudo != nil {
+	if handle.Secret != nil {
 		candidate := *handle
 		candidate.Call = &trial
 		if err := candidate.ValidatePassword(secrets); err != nil {

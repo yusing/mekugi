@@ -279,7 +279,7 @@ func newTerminalExitTestServer(t *testing.T, ctx context.Context, codex, provide
 			preparer: integration.preparer, controlObservations: integration.controlObservations, audience: integration.audience, execWindows: integration.execWindows,
 			execTrack: integration.execTrack, nativeTrace: integration.nativeTrace, retained: integration.retained}
 		integration.bindForks(api)
-		wait, err := session.start(testPreferences(), cmd, nil, nil, false, resume, nil, api, false, &threadExecution{hub: hub, setup: &threadSetup{}})
+		wait, err := session.start(testPreferences(), cmd, false, resume, nil, api, false, &threadExecution{hub: hub, setup: &threadSetup{}})
 		if err != nil {
 			return err
 		}

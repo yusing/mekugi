@@ -25,7 +25,6 @@ func TestNativeServerAcceptance(t *testing.T) {
 	for _, key := range []string{"XDG_CONFIG_HOME", "XDG_STATE_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR", "TMPDIR"} {
 		t.Setenv(key, t.TempDir())
 	}
-	writeFeatureConfig(t, "shell_guard = false")
 	t.Setenv("TERM", "xterm-256color")
 	t.Setenv("COLORFGBG", "15;0")
 	workspace := t.TempDir()
@@ -41,14 +40,7 @@ func TestNativeServerAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	// Keep the Unix address below sockaddr_un limits, independently of Go's test
-	// directory naming. This directory belongs solely to the fixture.
-	socketDirectory, err := os.MkdirTemp("", "mekugi-native-owner-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(socketDirectory)
-	socket := filepath.Join(socketDirectory, "s")
+	socket := filepath.Join(shortTempDir(t), "s")
 	serverContext, stopServer := context.WithCancel(t.Context())
 	var diagnostic bytes.Buffer
 	serverDone := make(chan int, 1)

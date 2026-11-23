@@ -28,7 +28,7 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 		{name: "ambiguous", thread: "main", turn: "turn", ambiguous: true, lastEnded: true, wantTracked: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+			hub := newExecTrackFixture(t, t.Context())
 			tracking := newExecPreviewTrack(hub.Observer, tc.thread, tc.turn, []commandanalysis.Command{{Command: script}})
 			defer tracking.Close()
 			key := [3]string{"main", "turn", "one"}
@@ -62,7 +62,7 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 }
 
 func TestSkippedEditSettlesBeforeUnrelatedCommand(t *testing.T) {
-	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	hub := newExecTrackFixture(t, t.Context())
 	script := "false && " + sedInPlace() + " 's/a/b/' skipped; go test ./..."
 	tracking := newExecPreviewTrack(hub.Observer, "main", "turn", []commandanalysis.Command{{Command: script}})
 	defer tracking.Close()

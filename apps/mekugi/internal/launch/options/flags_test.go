@@ -2,7 +2,6 @@ package options
 
 import (
 	"bytes"
-	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -12,8 +11,8 @@ func TestSplitCommand(t *testing.T) {
 	for _, prefix := range [][]string{
 		nil,
 		{"--debug"},
-		{"--shell-guard"},
-		{"--shell-guard=false"},
+		{"--child-reply-summary"},
+		{"--child-reply-summary=false"},
 		{"--ansi-faint=off"},
 		{"--ansi-faint", "on"},
 		{"--ansi-faint=auto"},
@@ -58,34 +57,6 @@ func TestHasModelOverridePreservesOperands(t *testing.T) {
 	}
 }
 
-func TestShellGuardFlagAndStandaloneSplit(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		prefix []string
-		want   bool
-	}{
-		{name: "default", want: true},
-		{name: "enabled", prefix: []string{"--shell-guard"}, want: true},
-		{name: "disabled", prefix: []string{"--shell-guard=false"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			command := []string{"--yolo", "-m", "example"}
-			prefix, forwarded, err := SplitCommand(append(slices.Clone(tc.prefix), command...))
-			if err != nil || !slices.Equal(prefix, tc.prefix) || !slices.Equal(forwarded, command) {
-				t.Fatalf("split = %q, %q, %v", prefix, forwarded, err)
-			}
-			config := new(Config)
-			flags := newFlags(io.Discard, config)
-			if err := flags.Parse(prefix); err != nil {
-				t.Fatal(err)
-			}
-			if config.ShellGuard != tc.want {
-				t.Fatalf("guard = %t, want %t", config.ShellGuard, tc.want)
-			}
-		})
-	}
-}
-
 func TestPublicOptionsExposeOneInterface(t *testing.T) {
 	config, err := Parse(nil)
 	if err != nil {
@@ -102,7 +73,7 @@ func TestPublicOptionsExposeOneInterface(t *testing.T) {
 }
 
 func TestFeatureFlagsPreserveSyntaxAndHostArguments(t *testing.T) {
-	for _, name := range []string{"shell-guard", "child-reply-summary", "debug"} {
+	for _, name := range []string{"child-reply-summary", "debug"} {
 		if _, err := Parse([]string{"--" + name + "=invalid"}); err == nil {
 			t.Fatalf("accepted invalid %s", name)
 		}
@@ -118,8 +89,8 @@ func TestFeatureFlagsPreserveSyntaxAndHostArguments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resolved := parsed.ResolveFeatures(Features{ShellGuard: new(true), ChildReplySummary: new(true), Debug: new(true)})
-		if name == "shell-guard" && resolved.ShellGuard || name == "debug" && resolved.Debug || name == "child-reply-summary" && resolved.ChildReplySummary {
+		resolved := parsed.ResolveFeatures(Features{ChildReplySummary: new(true), Debug: new(true)})
+		if name == "debug" && resolved.Debug || name == "child-reply-summary" && resolved.ChildReplySummary {
 			t.Fatal("delimiter lost explicit false")
 		}
 	}

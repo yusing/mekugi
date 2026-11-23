@@ -36,7 +36,7 @@ func newExecPreviewTrack(observer *segments.Observer, thread, turn string, comma
 	p := &execPreviewTrack{Subscription: subscription, writers: make(map[string]bool), writerSources: make(map[string]map[string]bool)}
 	for _, command := range commands {
 		plan := execscope.Classify(execscope.Input{Command: command.Command, Directory: command.Workdir, Shell: command.Shell})
-		p.writers[p.Source(command.Command, "")] = plan.Class != execscope.Neutral && (len(plan.Programs) == 0 || slices.ContainsFunc(plan.Programs, func(program execscope.Program) bool { return program.Direct }))
+		p.writers[command.Command] = plan.Class != execscope.Neutral && (len(plan.Programs) == 0 || slices.ContainsFunc(plan.Programs, func(program execscope.Program) bool { return program.Direct }))
 	}
 	return p
 }
@@ -108,7 +108,7 @@ func (p *execPreviewTrack) state() (state execPreviewState) {
 			}
 			writer := false
 			if p.streamable != nil {
-				writer = p.streamable[p.Source(segment.Source, "")]
+				writer = p.streamable[segment.Source]
 			} else {
 				writer = writers[segment.Source]
 			}

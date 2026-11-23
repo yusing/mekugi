@@ -5,7 +5,7 @@ package transport
 import "time"
 
 // Protocol is the helper-to-router message version.
-const Protocol = 4
+const Protocol = 5
 
 // Timing records helper-observed command boundaries. ElapsedNS is measured
 // with the helper's monotonic clock, independently of wall-clock adjustments.
@@ -23,6 +23,8 @@ type Message struct {
 	Type     string   `json:"t"`
 	Version  int      `json:"v,omitzero"`
 	Thread   string   `json:"thread,omitempty"`
+	Digest   string   `json:"digest,omitempty"` // Authored source of inline boundaries, independent of runtime PATH and guard edits.
+	Count    int      `json:"count,omitzero"`
 	Script   string   `json:"script,omitempty"`
 	Segments []string `json:"segments,omitempty"`
 	Terminal bool     `json:"tty,omitzero"`

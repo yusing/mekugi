@@ -27,13 +27,12 @@
 
 ### Native shell hooks and approvals
 
-- `backends/codex/shellhook` and `backends/codex/shellapproval` own the PreToolUse command-hook
-  schema, discovery/validation of workspace hooks, and private command/askpass wire types for
-  composed [remote-write](../../modules/remotewriteapproval/SPEC.md) and
-  [sudo/GPG](../../modules/sudoapproval/SPEC.md) guards.
-- Hook instrumentation is the narrow exception to unchanged command text (`PreToolUse.updatedInput`
-  only), preserving tool identity, shell selection, and host results. Conflicting/unverifiable
-  matchers fail closed at guarded turn admission.
+- `backends/codex/shellhook` owns the `PreToolUse` command-hook schema and `config/read` discovery
+  used for optional command-segment tracking and native boundary observation.
+- `backends/codex/binding` decodes native v2 `shellGuard/requestApproval` and
+  `shellGuard/requestSecret` server requests emitted by `mekugi-app-server`'s built-in shell guard
+  (VCS remote writes, `sudo`, and `gpg`/`gpg2`), which runs inside `codex-core` after user
+  `PreToolUse` hooks.
 
 ### Output deduplication
 

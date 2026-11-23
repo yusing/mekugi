@@ -16,12 +16,11 @@ and Linux sandbox segment reports):
 make test-host
 ```
 
-Run targeted launch or hook-discovery fixtures:
+Check native approval requests and Go command-segment tracking:
 
 ```sh
-make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^(TestAppServerVCSGuardNativeCodexYolo|TestAppServerGuardTransportFailureNativeCodex)$' TEST_FLAGS='-tags=codex_e2e -count=1'
+make test-native NATIVE_TEST_FILTER=suite::v2::shell_guard
 make test TEST_PACKAGES=./apps/mekugi/internal/launch TEST_RUN='^TestAppServerExecTrackNativeCodex(Sandbox)?$' TEST_FLAGS='-tags=codex_e2e -count=1'
-make test TEST_PACKAGES=./backends/codex/shellhook TEST_RUN='^TestGuardDiscoveryConfigurationNativeCodex$' TEST_FLAGS='-tags=codex_e2e -count=1'
 ```
 
 Compile all tagged launch fixtures (`apps/mekugi/internal/launch/*_codex_e2e_test.go`) without

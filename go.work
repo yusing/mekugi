@@ -28,13 +28,11 @@ use (
 	./modules/diagnostics
 	./modules/livepreview
 	./modules/notifications
-	./modules/remotewriteapproval
 	./modules/sessionhistory
 	./modules/sessioninspection
 	./modules/sessionnaming
 	./modules/sessionreplay
 	./modules/sessionpreferences
-	./modules/sudoapproval
 	./modules/transportdiagnostics
 	./modules/usage
 	./providers/openai

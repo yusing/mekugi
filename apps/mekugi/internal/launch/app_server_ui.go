@@ -23,7 +23,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -35,20 +34,10 @@ import (
 	"github.com/yusing/mekugi/providers/openai"
 )
 
-// Codex approval policy and the invocation-local Shell guard are independent.
-func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, skillsManager bool, resumeThread string, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution) (func() error, error) {
+func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, skillsManager bool, resumeThread string, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution) (func() error, error) {
 	session.reviewHooks = threads.headless == nil
 	if api == nil {
 		return nil, errors.New("server session requires a control API")
-	}
-	guardHash := ""
-	for _, entry := range cmd.Environ() {
-		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
-			guardHash = hash
-		}
-	}
-	if guardHash != "" && guard == nil {
-		return nil, errors.New("Shell guard approval channel is unavailable")
 	}
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == sessioncontrol.ResumePicker {
@@ -80,10 +69,10 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 		session.Client.Startup.Config = appServerResumeConfig(cmd.Args, session.resumeArgv)
 	}
 	processCwd, _ := filepath.Abs(cmd.Dir)
-	connection := newNativeConnection(session, api, threads, prefs, cmd.Environ(), processCwd, guards, skillsManager, childSummary)
+	connection := newNativeConnection(session, api, threads, prefs, cmd.Environ(), processCwd, skillsManager, childSummary)
 	session.connection = connection
 	threads.native = connection
-	endpoint, err := session.prepareEndpoint(prefs, cmd.Environ(), processCwd, guard, guards, skillsManager, predictionProvider, api, childSummary, threads, guardHash)
+	endpoint, err := session.prepareEndpoint(prefs, cmd.Environ(), processCwd, skillsManager, predictionProvider, api, childSummary, threads)
 	if err == nil {
 		connection.add(endpoint)
 		err = session.Client.Request("initialize", nil)
@@ -99,7 +88,7 @@ func (session *nativeSession) start(prefs *preferences.Service, cmd *exec.Cmd, g
 	return connection.run, nil
 }
 
-func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, environment []string, processCwd string, guard *sessioncontrol.ShellApprovals, guards []binding.ShellApproval, skillsManager bool, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution, guardHash string) (*nativeEndpoint, error) {
+func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, environment []string, processCwd string, skillsManager bool, predictionProvider *openai.Client, api *sessionapi.Server, childSummary bool, threads *threadExecution) (*nativeEndpoint, error) {
 	endpointContext, cancelEndpoint := context.WithCancel(session.ctx)
 	session.ctx = endpointContext
 	endpoint := &nativeEndpoint{session: session, api: api, cancel: cancelEndpoint}
@@ -118,12 +107,8 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 	session.Client.Startup.History = session.retained.Store
 	attachPresentation(&session.attached, &session.picker, &session.Editor, &session.questions, &session.approvals, session.Client.Thread, &session.review, &session.commits, session.ctx, session.retained, session.changeSource, session.activity != nil)
 	session.attached.presentation.Status.Set("Connecting…", false)
-	session.guardHookCheck.hash = guardHash
 	if session.titleGenerator != nil {
 		session.titleUpdates = session.titleGenerator.updates
-	}
-	if guard != nil {
-		session.approvals.guards = guards
 	}
 	if skillsManager {
 		session.skillEnvironment = environment
@@ -151,7 +136,6 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 	predictions := composerPredictions{provider: predictionProvider, results: make(chan predictionConfiguration, 1)}
 	native := newNativeViews(session.ctx, api.Native(), session.presentationState, session.activity, session.Client.Requests)
 	endpoint.views = native
-	native.guards = session.approvals.guards
 	session.approvals.allows = native.allowsApproval
 	hooks.bind(native, api, session.compactionReader)
 	native.diagnostics = &c.Diagnostics
@@ -719,9 +703,6 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 		persistSessionTitle(&session.Client, session.titleGenerator, &session.attached.feedback, session.clock, update)
 		return nil
 	})
-	nativeOn(endpoint, func() <-chan *sessioncontrol.ShellApprovalRequest { return guard.Requests() }, func(request *sessioncontrol.ShellApprovalRequest, _ bool) error {
-		return session.connection.guardRequest(request)
-	})
 	nativeOn(endpoint, func() <-chan *sessioncontrol.HostCall { return session.Client.Calls() }, func(call *sessioncontrol.HostCall, _ bool) error {
 		session.Client.Dispatch(call)
 		return nil
@@ -828,7 +809,7 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 		}
 		session.connection.projectAgent(session)
 		if len(session.attached.sideInputs) > 0 || session.side != nil && len(session.side.Drafts.Unsent) > 0 {
-			if err := flushBTW(&session.attached, &session.Client, &session.picker, &session.questions, &session.approvals, session.clock, session.settings, &session.side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations); err != nil {
+			if err := flushBTW(&session.attached, &session.Client, &session.picker, &session.questions, &session.approvals, session.clock, session.settings, &session.side, &session.ownedImages, session.skillEnvironment, session.controlObservations); err != nil {
 				return err
 			}
 		}
@@ -843,9 +824,7 @@ func (session *nativeSession) prepareEndpoint(prefs *preferences.Service, enviro
 		session.flushStreamOutput(&session.attached, session.clock, session.ctx)
 		startCommitReads(&session.attached, session.commits)
 		paneError(session.attached.source, session.panes.savePrepared(presentationTime(session.clock), false))
-		if !expireNotice(&session.attached.feedback, presentationTime(session.clock)) {
-			expireApprovals(&session.attached, &session.Client, &session.picker, &session.Editor, &session.questions, &session.approvals, session.clock, session.notifications, session.review, &session.pendingEditReceipts)
-		}
+		expireNotice(&session.attached.feedback, presentationTime(session.clock))
 		for _, view := range native.views {
 			if view.ctx.Err() != nil || view.attached.executionPresentation != session.attached.executionPresentation {
 				continue
@@ -1049,7 +1028,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			}
 		}
 		if update.Flush {
-			return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+			return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, session.controlObservations)
 		}
 		if !update.Forward || update.Side == session.Client.BTW {
 			return nil
@@ -1065,7 +1044,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 			err = session.flushInput(attached, picker, clock, editor, parent)
 		}
 		if err == nil {
-			err = flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+			err = flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, session.controlObservations)
 		}
 	}()
 	if m.Method == "skills/changed" {
@@ -1123,7 +1102,7 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 				session.Client.Requests.CaptureConfiguredCatalog(m.Result)
 			}
 			session.Client.Requests.CatalogPending = false
-			return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+			return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, session.controlObservations)
 		}
 		if method == "thread/list" && session.Client.Startup.Thread == "--last" {
 			return resumeLastResponse(attached, &session.Client, picker, clock, resumePicker, session.approvalMode, m)
@@ -1166,9 +1145,6 @@ func (session *nativeSession) dispatchHostMessage(attached *attachedPresentation
 		}
 		if method == "hooks/trust/list" || method == "hooks/trust/write" {
 			return session.hookTrustResponse(attached, picker, editor, clock, response.Owner.hook, m)
-		}
-		if method == "approval/hooks" {
-			return session.guardHookResponse(attached, picker, editor, clock, parent, m)
 		}
 		if method == "thread/start" && session.Client.Replacement.Pending() && m.Error != nil {
 			session.Client.Replacement.Finish()
@@ -1626,7 +1602,7 @@ func (session *nativeSession) observedEvent(attached *attachedPresentation, pick
 				r.Completed, r.Failed = true, true
 			}
 			session.Client.Completed(p.Turn.Status == "completed")
-			endSyncQuestions(attached, &session.Client, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, p.Turn.ID)
+			endSyncQuestions(attached, &session.Client, editor, &session.questions, &session.approvals, clock, session.review, &session.pendingEditReceipts, p.Turn.ID, p.Turn.Status != "completed")
 			var failure *string
 			if p.Turn.Error != nil {
 				failure = &p.Turn.Error.Message

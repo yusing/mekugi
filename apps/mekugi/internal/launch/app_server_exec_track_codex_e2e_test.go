@@ -40,7 +40,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, shell.transport.Endpoints().Requests, shell.transport.Endpoints().Directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	hook, state, _, err := shellhook.Config(helper, "", "", tracker, "", shellhook.Invocation{}, nil)
+	hook, state, _, err := shellhook.Config(helper, tracker, "", shellhook.Invocation{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,17 +182,49 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 
 }
 
-// Real Codex runs a command list through the tracking hook: its command item
-// must match the helper's report by thread and script, so each segment gets
-// its own row and status.
+// The user hook replaces the model command, the tracker observes that list,
+// and the guard denies just one segment. Persist only the executed segments'
+// own output, with authored sources and skipped outcomes intact.
 func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	shell := newExecTrackShell(t)
 	helper, err := execTrackTestHelper()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The command hook instruments without executing the command script.
-	hook, state, _, err := shellhook.Config(helper, "", "", "", "", shellhook.Invocation{}, nil)
+	frontend := filepath.Join(shell.root, "frontends")
+	if err := os.Mkdir(frontend, 0700); err != nil {
+		t.Fatal(err)
+	}
+	environment, err := frontendShellEnvironment([]string{"PATH=" + execTrackPath()}, frontend, helper, shell.transport.Endpoints())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A trusted file-layer hook must still run beside the invocation-layer tracker.
+	userHome := t.TempDir()
+	marker := filepath.Join(shell.root, "user-hook-ran")
+	userHook := filepath.Join(shell.root, "user-hook")
+	target := filepath.Join(shell.root, "git")
+	ranTarget := filepath.Join(shell.root, "target-ran")
+	if err := os.WriteFile(target, []byte("#!/bin/bash\n[ \"$1\" = push ] || exit 1\ntouch "+quoteShellWord(ranTarget)+"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	deniedCommand := quoteShellWord(target) + " push origin main"
+	command := "echo SEG_ONE; " + deniedCommand + " || echo RECOVERED; echo SEG_TWO >&2; false && echo SEG_NEVER"
+	reply := responses.MustMarshalJSON(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": map[string]string{"command": command}}})
+	if err := os.WriteFile(userHook, []byte("#!/bin/bash\nprintf ran >> "+quoteShellWord(marker)+"\nprintf '%s\\n' "+quoteShellWord(string(reply))+"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(userHome, "config.toml")
+	userConfig, userState, _, err := shellhook.Config(userHook, "", "", shellhook.Invocation{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userState = strings.ReplaceAll(userState, "/<session-flags>/config.toml", configPath)
+	if err := os.WriteFile(configPath, []byte(userConfig+"\n"+userState+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	environment = append(environment, "CODEX_HOME="+userHome)
+	args, _, err := optionalTrackingHookArgs([]string{"-c", "features.shell_guard=true"}, helper, filepath.Join(shell.root, "exec-track.sh"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,38 +232,80 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	attachTestReplayStore(t, proxy)
 	integration := testAppServerIntegration(proxy)
 	integration.execTrack = shell.hub.Observer
-	// Match the launcher: the parent test command's identity is not the new
-	// Codex process's hook environment. Codex injects identity into its tools.
-	environment := []string{"CODEX_THREAD_ID="}
-	for _, entry := range shell.env {
-		if strings.HasPrefix(entry, "BASH_ENV=") {
-			environment = append(environment, entry)
-		}
-	}
+	bash := execTrackShellExecutable(t, "bash")
+	environment = append(environment, "SHELL="+bash)
 	provider := &toolFrontendCodexProvider{
-		program:   `const result = await tools.exec_command({cmd:"echo SEG_ONE && false && echo SEG_NEVER"}); text(result.output);`,
-		expected:  []string{"SEG_ONE"},
-		finalText: "Recovered after a retry.",
+		program:  `const result = await tools.exec_command({cmd:"echo MODEL_ORIGINAL",shell:` + string(responses.MustMarshalJSON(bash)) + `,yield_time_ms:30000}); text(result.output);`,
+		expected: []string{"SEG_ONE", "RECOVERED", "SEG_TWO"}, finalText: "Recovered after a retry.",
 	}
-	after := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), screen *vt.Emulator) {
-		t.Helper()
-		if _, err := io.WriteString(outer, "\x023"); err != nil {
-			t.Fatal(err)
-		}
-		await("Skipped echo SEG_NEVER")
-		for _, want := range []string{"echo SEG_ONE", "false · exit 1"} {
-			if !strings.Contains(screen.String(), want) {
-				t.Fatalf("missing %q:\n%s", want, screen.String())
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{managedRuntime: true, integration: &integration, environment: environment, codexArgs: args,
+		duringTurn: func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), _ *vt.Emulator) {
+			await("Allow this remote write?")
+			if _, err := io.WriteString(outer, "fixture denial\r"); err != nil {
+				t.Fatal(err)
 			}
-		}
-		if _, err := io.WriteString(outer, "\x021"); err != nil {
-			t.Fatal(err)
+		},
+		afterPrompt: func(t *testing.T, _ io.Writer, await func(string), _ func(func(string) bool), screen *vt.Emulator) {
+			await("Skipped echo SEG_NEVER")
+			for _, row := range []string{"Ran     echo SEG_ONE", "Ran     echo RECOVERED", "Ran     echo SEG_TWO"} {
+				if !strings.Contains(screen.String(), row) {
+					t.Fatalf("missing live command row %q:\n%s", row, screen.String())
+				}
+			}
+		},
+	})
+	if _, err := os.Stat(ranTarget); !os.IsNotExist(err) {
+		t.Fatalf("denied git was executed: %v", err)
+	}
+	if ran, err := os.ReadFile(marker); err != nil || string(ran) != "ran" {
+		t.Fatalf("config.toml hook did not run once: %q, %v", ran, err)
+	}
+	names, err := filepath.Glob(filepath.Join(proxy.retained.Store.Directory(), "segments-*.json"))
+	if err != nil || len(names) != 1 {
+		t.Fatalf("expected one retained segment report, got %v: %v", names, err)
+	}
+	data, err := os.ReadFile(names[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record struct {
+		Workspace, CallID string
+		Report            reports.Report
+	}
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatal(err)
+	}
+	if source, ok := shellinstrumentation.CommandScript(record.Report.Command); !ok || source != command {
+		t.Fatalf("retained command does not identify the user rewrite: %q", source)
+	}
+	want := []struct {
+		source, output string
+		exit           int
+		skipped        bool
+	}{
+		{source: "echo SEG_ONE", output: "SEG_ONE"}, {source: deniedCommand, output: "mekugi: remote write denied: user denied this command with a reason: fixture denial", exit: 1},
+		{source: "echo RECOVERED", output: "RECOVERED"}, {source: "echo SEG_TWO >&2", output: "SEG_TWO"},
+		{source: "false", exit: 1}, {source: "echo SEG_NEVER", skipped: true},
+	}
+	completed := reports.Completed{ID: record.CallID, Command: record.Report.Command, Output: record.Report.Output, Exit: 1}
+	for _, w := range want {
+		completed.Sources = append(completed.Sources, w.source)
+	}
+	restored, err := testReports().Restore(t.Context(), reports.Scope{Store: proxy.retained.Store, Workspace: record.Workspace}, []reports.Completed{completed})
+	if err != nil || restored[record.CallID] == nil {
+		t.Fatalf("authored sources could not restore the completed command: %v", err)
+	}
+	parts := restored[record.CallID].Parts
+	if len(parts) != len(want) {
+		t.Fatalf("unexpected segment count: %s", data)
+	}
+	for i, w := range want {
+		part := parts[i]
+		if part.Source != w.source || part.Exit != w.exit || part.Skipped != w.skipped || part.Skipped && part.Output != nil || !part.Skipped && (part.Output == nil || *part.Output != w.output) {
+			t.Fatalf("guarded segment %d lost attribution: %s", i, data)
 		}
 	}
-	runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
-		environment: environment, afterPrompt: after,
-		codexArgs: []string{"-c", hook, "-c", state},
-	})
+
 }
 
 func TestAppServerExecTrackNativeCodexMovedWorkspace(t *testing.T) {
@@ -240,19 +314,12 @@ func TestAppServerExecTrackNativeCodexMovedWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard := filepath.Join(shell.root, shellinstrumentation.VCSDirectory)
-	if err := os.MkdirAll(guard, 0700); err != nil {
-		t.Fatal(err)
-	}
-	bash := filepath.Join(guard, "bash")
-	if err := os.Symlink(helper, bash); err != nil {
-		t.Fatal(err)
-	}
+	bash := execTrackShellExecutable(t, "bash")
 	marker, wrapper := filepath.Join(shell.root, "hook-runs"), filepath.Join(shell.root, "hook-helper")
 	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nprintf 'hook\\n' >> "+quoteShellWord(marker)+"\nexec "+quoteShellWord(helper)+" \"$@\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	hook, state, _, err := shellhook.Config(wrapper, guard, "", "", "", shellhook.Invocation{}, nil)
+	hook, state, _, err := shellhook.Config(wrapper, "", "", shellhook.Invocation{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,9 +334,7 @@ func TestAppServerExecTrackNativeCodexMovedWorkspace(t *testing.T) {
 		}
 	}
 	moved := filepath.Join(t.TempDir(), "moved-workspace")
-	// Codex uses the shell argument to select a type, then discovers its
-	// executable on PATH. Exercise the actual guard, not an ordinary Bash.
-	environment = append(environment, "PATH="+guard+":"+execTrackPath())
+	environment = append(environment, "PATH="+execTrackPath())
 	provider := &toolFrontendCodexProvider{
 		program: `text((await tools.exec_command({cmd:` + string(responses.MustMarshalJSON("printf 'selected-shell=%s\\n' \"$BASH\"; mv \"$PWD\" "+quoteShellWord(moved)+"; printf MOVED")) + `,shell:` + string(responses.MustMarshalJSON(bash)) + `})).output);
 text((await tools.exec_command({cmd:"git --version; printf AFTER; false && printf NEVER",shell:` + string(responses.MustMarshalJSON(bash)) + `,workdir:` + string(responses.MustMarshalJSON(moved)) + `})).output);`,

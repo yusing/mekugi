@@ -2,9 +2,6 @@
 // started by the Bash hook from execsegment as the command shell's coprocess,
 // with the shell's original stdout and stderr on descriptors 3 and 4.
 //
-// Invoked under a guarded version-control name, it instead runs that command,
-// asking the router first when the command writes to a remote.
-//
 // It stays small so that it starts quickly: every tracked command pays for it.
 package main
 
@@ -19,19 +16,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
-
 	"github.com/yusing/mekugi/backends/codex/shellhook"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
@@ -50,88 +41,18 @@ const (
 )
 
 func main() {
-	if len(os.Args) >= 5 && os.Args[1] == "--gpg-run" {
-		lifetime, err := strconv.Atoi(os.Args[2])
-		if err != nil || lifetime < 3 {
-			os.Exit(1)
-		}
-		os.Exit(gpgRun(lifetime, os.Args[3], os.Args[4:]))
-	}
-	if len(os.Args) >= 4 && strings.TrimSuffix(os.Args[1], "-default") == "--gpg-command" {
-		if os.Args[3] == shellinstrumentation.ItemFlag && len(os.Args) >= 6 {
-			os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4])
-			os.Args = append(os.Args[:3], os.Args[5:]...)
-		}
-		os.Exit(gpgCommand(os.Args[2], os.Args[3], forwardedArgv0(os.Args[3]), strings.HasSuffix(os.Args[1], "-default"), os.Args[4:]))
-	}
 	if len(os.Args) > 1 && os.Args[1] == shellhook.Flag {
-		os.Exit(guardHook(os.Args[0], os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+		os.Exit(trackingHook(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 	if len(os.Args) == 3 && os.Args[1] == "--created-path" {
 		reportCreatedPath(os.Args[2])
 		return
 	}
-	if len(os.Args) >= 4 && strings.TrimSuffix(os.Args[1], "-default") == "--sudo-command" {
-		if os.Args[3] == shellinstrumentation.ItemFlag && len(os.Args) >= 6 {
-			os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4])
-			os.Args = append(os.Args[:3], os.Args[5:]...)
-		}
-		os.Exit(sudoCommand(os.Args[2], os.Args[3], forwardedArgv0(os.Args[3]), strings.HasSuffix(os.Args[1], "-default"), os.Args[4:]))
-	}
-
-	if len(os.Args) == 4 && os.Args[1] == "--sh-open" {
-		if work := shOpen(os.Args[2], os.Args[3]); work != "" {
+	if len(os.Args) == 5 && os.Args[1] == "--sh-open" {
+		if work := shOpen(os.Args[2], os.Args[3], os.Args[4]); work != "" {
 			fmt.Println(work)
 		}
 		return
-	}
-	if len(os.Args) >= 4 && (strings.TrimSuffix(os.Args[1], "-default") == "--vcs-command" || strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell") {
-		if strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell" && len(os.Args) >= 6 && os.Args[3] == shellinstrumentation.SudoDirectoryFlag {
-			if err := os.Setenv(shellapproval.DirectoryEnvironment, os.Args[4]); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-			os.Args = append(os.Args[:3], os.Args[5:]...)
-		}
-		if os.Args[3] == shellinstrumentation.ItemFlag && len(os.Args) >= 6 {
-			if err := os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4]); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-			os.Args = append(os.Args[:3], os.Args[5:]...)
-		}
-		defaultPath := strings.HasSuffix(os.Args[1], "-default")
-		target := os.Args[3]
-		argv0 := forwardedArgv0(target)
-		if strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell" {
-			os.Exit(guardShell(os.Args[2], target, argv0, defaultPath, os.Args[4:]))
-		}
-		name := filepath.Base(target)
-		if !slices.Contains(commandanalysis.VCSTools, name) {
-			os.Exit(1)
-		}
-		explicit := ""
-		if strings.Contains(target, "/") {
-			explicit = target
-		}
-		os.Exit(guardCommand(os.Args[2], name, explicit, argv0, defaultPath, os.Args[4:]))
-	}
-	// Explicit instrumentation selects the operation; exec -a may give its
-	// eventual target the same argument zero as a different helper.
-	if filepath.Base(os.Args[0]) == shellapproval.Askpass {
-		os.Exit(sudoPassword())
-	}
-	if filepath.Base(os.Args[0]) == "sudo" {
-		os.Exit(sudoCommand("", "sudo", os.Args[0], false, os.Args[1:]))
-	}
-	if name := filepath.Base(os.Args[0]); name == "gpg" || name == "gpg2" {
-		os.Exit(gpgCommand("", name, os.Args[0], false, os.Args[1:]))
-	}
-	if name := filepath.Base(os.Args[0]); slices.Contains(commandanalysis.VCSTools, name) {
-		os.Exit(guard(name, os.Args[1:]))
-	}
-	if name := filepath.Base(os.Args[0]); slices.Contains(shellinstrumentation.Shells, name) {
-		os.Exit(guardShell("", name, os.Args[0], false, os.Args[1:]))
 	}
 	// The shell's process group may be signaled while its commands still
 	// write; the relay ends with their output, not with the signal.
@@ -139,43 +60,40 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
-// Instrumentation replaces the executable word, while exec -a and env --argv0
-// still select the caller's argument zero for the eventual target.
-func forwardedArgv0(target string) string {
-	if self, err := os.Executable(); err == nil && os.Args[0] != self {
-		return os.Args[0]
-	}
-	return target
-}
-
 // run declines by exiting before replying; the shell then runs the original
 // script itself.
 func run(args []string) int {
-	prepared := ""
-	if len(args) == 4 && args[0] == "--sh-run" {
-		script, ok := dashScript()
-		if !ok {
-			return 1
-		}
-		prepared = args[3]
-		if work, ok := segmenttransport.ReportDirectory(args[2], strings.TrimPrefix(filepath.Base(prepared), "run-")); !ok || work != prepared {
-			return 1
-		}
-		args = []string{args[1], args[2], script}
-		defer fmt.Println("decline") // Also unblock dash when startup declines.
-	}
-	if len(args) != 3 {
-		return 2
-	}
-	channel, directory, script := args[0], args[1], shellinstrumentation.ShOriginal(args[2])
-	segments, ok := shellinstrumentation.Split(script)
-	if !ok {
-		return 0
-	}
+	var prepared, channel, directory string
+	var count int
 	terminal := term.IsTerminal(3)
-	sources := make([]string, len(segments))
-	for i, segment := range segments {
-		sources[i] = segment.Source
+	hello := segmenttransport.Message{Type: segmenttransport.Hello, Version: segmenttransport.Protocol, Thread: os.Getenv("CODEX_THREAD_ID"), Terminal: terminal}
+	switch {
+	case len(args) == 6 && args[0] == "--sh-run":
+		prepared, channel, directory = args[3], args[1], args[2]
+		work, ok := segmenttransport.ReportDirectory(directory, strings.TrimPrefix(filepath.Base(prepared), "run-"))
+		if !ok || work != prepared {
+			return 1
+		}
+		defer fmt.Println("decline") // Unblock the shell even when startup declines.
+		var err error
+		count, err = strconv.Atoi(args[5])
+		if err != nil || count < 1 {
+			return 1
+		}
+		hello.Digest, hello.Count = args[4], count
+	case len(args) == 3:
+		channel, directory = args[0], args[1]
+		hello.Script = shellinstrumentation.ShOriginal(args[2])
+		segments, ok := shellinstrumentation.Split(hello.Script)
+		if !ok {
+			return 0
+		}
+		count = len(segments)
+		for _, segment := range segments {
+			hello.Segments = append(hello.Segments, segment.Source)
+		}
+	default:
+		return 2
 	}
 	var conn, answer *os.File
 	var work string
@@ -193,7 +111,6 @@ func run(args []string) int {
 	if err := conn.SetWriteDeadline(time.Now().Add(replyTimeout)); err != nil {
 		return 0
 	}
-	hello := segmenttransport.Message{Type: segmenttransport.Hello, Version: segmenttransport.Protocol, Thread: os.Getenv("CODEX_THREAD_ID"), Script: script, Segments: sources, Terminal: terminal}
 	if err := writeMessage(conn, hello); err != nil {
 		return 0
 	}
@@ -219,7 +136,7 @@ func run(args []string) int {
 		r.created = fd
 	}
 	mode := "status"
-	if len(segments) == 1 {
+	if count == 1 {
 		mode = "observe"
 	} else if !terminal {
 		for i, name := range []string{"out", "err"} {
@@ -254,7 +171,7 @@ type relay struct {
 	ack     int
 	sinks   [2]int // Original stdout and stderr.
 	readers [2]int // FIFO read ends, or -1.
-	created int    // Bash's mktemp report FIFO, or -1.
+	created int    // Creation report FIFO (inline fd 0 after EXIT), or -1.
 	pending []byte // Its incomplete line.
 	opened  bool
 	control []byte
@@ -268,8 +185,12 @@ func (r *relay) run() {
 	controlOpen := true
 	for controlOpen || r.opened && (r.readers[0] >= 0 || r.readers[1] >= 0) {
 		var fds []unix.PollFd
-		if controlOpen {
-			fds = append(fds, unix.PollFd{Fd: 0, Events: unix.POLLIN})
+		reportFD := 0
+		if !controlOpen {
+			reportFD = r.created
+		}
+		if reportFD >= 0 {
+			fds = append(fds, unix.PollFd{Fd: int32(reportFD), Events: unix.POLLIN})
 		}
 		if r.opened {
 			for _, fd := range r.readers {
@@ -299,8 +220,12 @@ func (r *relay) run() {
 		// before it is acknowledged.
 		// The control pipe is nonblocking too: a missed EOF notification
 		// must not keep the helper and Codex's output descriptors alive.
-		if controlOpen && (fds[0].Revents != 0 || timeout >= 0) {
-			controlOpen = r.readControl()
+		if reportFD >= 0 && (fds[0].Revents != 0 || timeout >= 0) {
+			if controlOpen {
+				controlOpen = r.readControl()
+			} else {
+				r.readCreated()
+			}
 		}
 		r.drain()
 	}
@@ -309,8 +234,8 @@ func (r *relay) run() {
 	}
 }
 
-// readControl handles the shell's complete boundary lines, and reports false
-// once the shell closed its end, by exiting or replacing itself.
+// readControl handles boundary lines until the shell reports exit or closes
+// its end of the control pipe.
 func (r *relay) readControl() bool {
 	buffer := make([]byte, 512)
 	n, err := unix.Read(0, buffer)
@@ -377,6 +302,16 @@ func (r *relay) readControl() bool {
 			if _, err := unix.Write(r.ack, []byte("\n")); err != nil {
 				return false
 			}
+			// EXIT ends boundaries, not inline mktemp reports. Read those
+			// while output drains without waiting for detached FIFO writers.
+			if fields[0] == "d" {
+				if r.created < 0 {
+					r.created, r.pending = 0, r.control
+					r.control = nil
+					r.readCreated()
+				}
+				return false
+			}
 		}
 	}
 }
@@ -389,8 +324,7 @@ func (r *relay) sendCreated(line string) {
 	}
 }
 
-// readCreated forwards the complete mktemp reports already in Bash's report
-// FIFO. Their writers finished before the shell wrote its next boundary.
+// readCreated forwards complete mktemp reports without waiting for writers.
 func (r *relay) readCreated() {
 	if r.created < 0 {
 		return
@@ -400,6 +334,9 @@ func (r *relay) readCreated() {
 		n, err := unix.Read(r.created, buffer)
 		if errors.Is(err, unix.EINTR) {
 			continue
+		}
+		if n == 0 && err == nil {
+			r.created = -1
 		}
 		if n <= 0 {
 			break

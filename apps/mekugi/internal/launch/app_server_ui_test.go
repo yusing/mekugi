@@ -80,8 +80,7 @@ func newAppServerTestUI(views ...terminalsession.Views) (*appServerUI, *appServe
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
 	u := appServerTestFeatures(&appServerUI{nativeSession: nativeSession{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}}, views...)
-	u.approvals.guards = testGuards()
-	u.attached.grants = sessioncontrol.NewApprovalGrants(u.approvals.guards)
+	u.attached.grants = sessioncontrol.NewApprovalGrants()
 	u.approvals.allows = u.attached.grants.Allows
 	u.shell.Transcript.Painter.FileLink = markdownFileLinks(u.attached.cwd)
 	return u, w

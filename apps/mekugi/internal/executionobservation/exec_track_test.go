@@ -17,7 +17,7 @@ func TestExecWindowRepeatedOpenKeepsOneReportOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(server.Close)
-	observer, err := segments.NewObserver(server, segments.Instrumentation{}, activitymodel.OutputBytes)
+	observer, err := segments.NewObserver(server, activitymodel.OutputBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

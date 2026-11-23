@@ -17,8 +17,8 @@
 ### Invocation selection and settings
 
 - `mekugi` dispatches authenticated frontend workers and offline inspection before live startup.
-- `mekugi/config.toml` under `$XDG_CONFIG_HOME` provides optional `[features]` (`shell_guard`,
-  `child_reply_summary`, `debug`) and `[service_tiers]`. Precedence per feature: explicit CLI flag
+- `mekugi/config.toml` under `$XDG_CONFIG_HOME` provides optional `[features]`
+  (`child_reply_summary`, `debug`) and `[service_tiers]`. Precedence per feature: explicit CLI flag
   (placed before `codex`/`--`) > config file > built-in default. Config errors never print secrets.
 - Bare `mekugi` requires a custom Responses profile (`-p NAME`); `mekugi codex` selects native
   OpenAI. Unsupported flags, redirected ordinary launches, and stock CLI subcommands fail rather
@@ -42,10 +42,12 @@
   `mekugi` (no fallback to stock `codex`). Native runtime enforces JavaScript-only execution and
   disables `features.sleep_tool`, Codex goals, and collaboration-mode injection.
 - Native rollout tracing runs in a private session-scoped temp dir cleaned on exit.
-- Guarded startup validates effective hooks, warns/disables incompatible user hooks for the
-  invocation only, and fails closed if the approval channel cannot start (independent of optional
-  segment reporting). `--yolo` disables Codex approvals/sandbox without disabling shell guards or
-  bypassing hook trust (`-c bypass_hook_trust=true` controls hook trust).
+- Native shell guarding (`features.shell_guard`, enabled by default in interactive runs and forced
+  off in headless runs via `-c features.shell_guard=false`) runs inside `mekugi-app-server` after
+  user `PreToolUse` hooks and prompts the Go host UI over App-Server Protocol v2
+  (`shellGuard/requestApproval` and `shellGuard/requestSecret`). `--yolo` disables Codex
+  approvals/sandbox without disabling native shell guards or bypassing hook trust
+  (`-c bypass_hook_trust=true` controls hook trust).
 - Detached servers retain bounded private stderr/exit evidence via a supervisor.
 - On attached exit, idle threads release cleanly; busy `/quit` (including a shell still running
   after its turn) offers Continue in background vs Stop; `/detach` leaves execution running. Exit

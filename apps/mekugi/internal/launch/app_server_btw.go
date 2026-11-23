@@ -30,7 +30,7 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 	if b := *side; text == "" && b != nil && b.OneOff && displayingSide && len(b.Drafts.Queued) > 0 {
 		b.Drafts.Unsent = append(b.Drafts.Unsent, b.Drafts.Queued[0])
 		b.Drafts.Queued = b.Drafts.Queued[1:]
-		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, session.controlObservations)
 	}
 	if sideCommand(text) == "/oneoff" {
 		if session.Client.Thread == "" || session.restoring != nil || session.Client.Replacement.Pending() {
@@ -62,7 +62,7 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 		if err := openFreshSide(attached, &session.Client, editor, side, session.settings, presentationTime(clock), pending); err != nil {
 			return err
 		}
-		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+		return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, session.controlObservations)
 	}
 
 	question := text
@@ -128,17 +128,17 @@ func (session *nativeSession) submitBTW(attached *attachedPresentation, picker *
 	}
 	b.Busy = true
 	setNotice(&attached.feedback, presentationTime(clock), "", false)
-	return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, &session.guardHookCheck, session.controlObservations)
+	return flushBTW(attached, &session.Client, picker, &session.questions, &session.approvals, clock, session.settings, side, &session.ownedImages, session.skillEnvironment, session.controlObservations)
 }
 
-func flushBTW(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, side **sessioncontrol.Side, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations) error {
-	if err := flushSide(attached, control, picker, questions, approvals, clock, settings, side, owned, environment, hook, observations); err != nil {
+func flushBTW(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, side **sessioncontrol.Side, owned *map[string]bool, environment []string, observations *sessioncontrol.Observations) error {
+	if err := flushSide(attached, control, picker, questions, approvals, clock, settings, side, owned, environment, observations); err != nil {
 		return err
 	}
-	return flushSide(attached, control, picker, questions, approvals, clock, settings, &control.BTW, owned, environment, hook, observations)
+	return flushSide(attached, control, picker, questions, approvals, clock, settings, &control.BTW, owned, environment, observations)
 }
 
-func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, side **sessioncontrol.Side, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations) error {
+func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, side **sessioncontrol.Side, owned *map[string]bool, environment []string, observations *sessioncontrol.Observations) error {
 	b := (*side)
 	if b != nil && (b.Interruption.BeforeStart || b.Interruption.Target != "") {
 		return nil
@@ -182,11 +182,6 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 			picker.bindSkills(attached.cwd, &parts[0], true)
 
 			input = parts[0]
-			if turn == "" && b.OneOff {
-				if ready, err := hook.checkThread(control.Requests, thread, attached.cwd, func() { b.Status = "Checking approval guard…" }); !ready || err != nil {
-					return err
-				}
-			}
 			update, err := control.Requests.ReplySide(b, thread, turn, input)
 			if err != nil {
 				return err
@@ -203,18 +198,12 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 				if thread == b.Thread {
 					b.Status, b.Started = "Working", presentationTime(clock)
 				}
-				hook.readyThread = ""
 				return nil
 			}
 		}
 	}
 	if !b.Ready(control.Replacement.Pending()) && !admission {
 		return nil
-	}
-	if b.OneOff && b.Thread != "" && b.Pending.Text != "" {
-		if ready, err := hook.checkThread(control.Requests, b.Thread, attached.cwd, func() { b.Status = "Checking approval guard…" }); !ready || err != nil {
-			return err
-		}
 	}
 	parts := []conversationmodel.Input{b.Pending}
 	if picker.waitForSkillBindings(attached, clock, control.Requests, parts) {
@@ -236,9 +225,6 @@ func flushSide(attached *attachedPresentation, control *sessioncontrol.Client[ap
 	}
 
 	if update.TurnRequested {
-		if b.OneOff {
-			hook.readyThread = ""
-		}
 		for _, image := range b.Pending.Images {
 			delete((*owned), image.Path)
 		}

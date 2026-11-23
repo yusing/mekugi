@@ -40,7 +40,7 @@ func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 		var paths []string
 		var readLog string
 		// runFixtureInvocation returns only after cancellation has joined its owned work.
-		err := runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), testHistory(), testPreferences(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testNaming(), nil, testGuards(), options, nil, func(session invocationFixture) {
+		err := runFixtureInvocation(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), testHistory(), testPreferences(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testNaming(), nil, options, nil, func(session invocationFixture) {
 			readLog = session.AXReadOutput
 			cancel()
 		}, func(artifacts []string) { paths = artifacts })

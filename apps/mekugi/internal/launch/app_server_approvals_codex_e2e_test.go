@@ -13,7 +13,6 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -69,7 +68,7 @@ func TestNativeApprovalDenialSameTurnCodexE2E(t *testing.T) {
 		},
 	}
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-		environment: []string{"PATH=" + execTrackPath(), shellhook.Environment + "="},
+		environment: []string{"PATH=" + execTrackPath()},
 		codexArgs:   []string{"-c", `sandbox_mode="read-only"`, "-c", `approval_policy="on-request"`, "-c", "hooks={}"},
 		approvals:   true,
 		duringTurn: func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), _ *vt.Emulator) {

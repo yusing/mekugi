@@ -39,11 +39,8 @@ func TestNativeStartupInterruptProcess(t *testing.T) {
 }
 
 func TestNativeStartupInterruptCancelsReadinessWait(t *testing.T) {
-	cache, err := os.MkdirTemp("", "mekugi-interrupt-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(cache)
+	cache := shortTempDir(t)
+	t.Setenv("HOME", cache) // os.UserCacheDir uses HOME on macOS.
 	t.Setenv("XDG_CACHE_HOME", cache)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("MEKUGI_NATIVE_START_INTERRUPT_FIXTURE", "1")

@@ -18,54 +18,39 @@ import (
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 )
 
-const Key = "/<session-flags>/config.toml:pre_tool_use:0:0"
+const Flag = "--tracking-hook"
 
-const Environment = "MEKUGI_VCS_GUARD_HOOK"
-
-const Flag = "--guard-hook"
-
-// Input binds session resources in the trusted hook configuration. The
-// remaining fields are expanded from Codex's native hook event, not router cwd.
+// Input is the native hook event. Trusted tracking resources come from argv.
 type Input struct {
-	Helper        string `json:"helper"`
-	Directory     string `json:"directory"`
-	SudoDirectory string `json:"sudo_directory"`
-	Tracker       string `json:"tracker"`
-	Event         string `json:"hook_event_name"`
-	Tool          string `json:"tool_name"`
-	Item          string `json:"tool_use_id"`
-	Thread        string `json:"session_id"`
-	Turn          string `json:"turn_id"`
-	CWD           string `json:"cwd"`
-	Input         struct {
+	Event  string `json:"hook_event_name"`
+	Tool   string `json:"tool_name"`
+	Item   string `json:"tool_use_id"`
+	Thread string `json:"session_id"`
+	Turn   string `json:"turn_id"`
+	CWD    string `json:"cwd"`
+	Input  struct {
 		Command *string `json:"command"`
 	} `json:"tool_input"`
 }
 
 // Config uses the native session-layer hook and exact trust identity. It
 // neither changes user files nor grants sandbox permissions.
-func Config(helper, directory, sudoDirectory, tracker, capture string, prior Invocation, disabled []string) (config, state, identityHash string, err error) {
-	// Hook runs carry only this description of what the hook does.
-	status := "Tracking shell segments"
-	if directory != "" || sudoDirectory != "" {
-		status = "Applying shell guard"
-	}
-	arguments := []string{helper, Flag, directory, sudoDirectory, tracker}
-	matcher := "^Bash$"
+func Config(helper, tracker, capture string, prior Invocation) (config, state, identityHash string, err error) {
+	arguments := []string{helper, Flag, tracker}
+	// The native session layer runs this observer after ordinary Bash hooks
+	// so their effective input, including a replacement, is the source tracked.
+	matcher := "Bash|MekugiCommandTracking"
 	if capture != "" {
 		arguments = append(arguments, capture)
 	}
 	for i := range arguments {
 		arguments[i] = commandargs.Quote(arguments[i])
 	}
-	// The host may continue after an ordinary nonzero hook exit. A surviving
-	// adapter translates helper launch/process failure into its blocking form.
-	// Use sh explicitly so the selected hook shell need not parse POSIX control flow.
-	adapter := "if " + strings.Join(arguments, " ") + "; then :; else printf '%s\\n' 'mekugi: approval guard hook failed; command blocked' >&2; exit 2; fi"
-	command := "/bin/sh -c " + commandargs.Quote(adapter)
+	// Tracking is auxiliary, including when the helper is unavailable.
+	command := "/bin/sh -c " + commandargs.Quote(strings.Join(arguments, " ")+" || :")
 	identity := map[string]any{
 		"event_name": "pre_tool_use", "matcher": matcher,
-		"hooks": []map[string]any{{"type": "command", "command": command, "timeout": 5, "async": false, "statusMessage": status}},
+		"hooks": []map[string]any{{"type": "command", "command": command, "timeout": 5, "async": false, "statusMessage": "Tracking shell segments"}},
 	}
 	data, err := json.Marshal(identity, json.Deterministic(true))
 	if err != nil {
@@ -82,21 +67,10 @@ func Config(helper, directory, sudoDirectory, tracker, capture string, prior Inv
 	if states == nil {
 		states = make(map[string]jsontext.Value)
 	}
-	for _, key := range disabled {
-		fields := make(map[string]jsontext.Value)
-		if value := states[key]; len(value) != 0 {
-			if err := json.Unmarshal(value, &fields); err != nil {
-				return "", "", "", fmt.Errorf("read hook state %q: %w", key, err)
-			}
-		}
-		fields["enabled"] = jsontext.Value("false")
-		value, err := json.Marshal(&fields)
-		if err != nil {
-			return "", "", "", err
-		}
-		states[key] = value
-	}
 	key := fmt.Sprintf("/<session-flags>/config.toml:pre_tool_use:%d:0", len(prior.PreToolUse))
+	if _, exists := states[key]; exists {
+		return "", "", "", fmt.Errorf("explicit CLI state for tracking hook %q conflicts", key)
+	}
 	states[key], err = json.Marshal(map[string]any{"trusted_hash": identityHash, "enabled": true})
 	if err != nil {
 		return "", "", "", err
@@ -106,7 +80,7 @@ func Config(helper, directory, sudoDirectory, tracker, capture string, prior Inv
 		// must leave native patch execution available.
 		auxiliary := map[string]any{
 			"event_name": "pre_tool_use", "matcher": "^apply_patch$",
-			"hooks": []map[string]any{{"type": "command", "command": "/bin/sh -c " + commandargs.Quote(strings.Join(arguments, " ")+" || :"), "timeout": 5, "async": false, "statusMessage": "Observing patch targets"}},
+			"hooks": []map[string]any{{"type": "command", "command": command, "timeout": 5, "async": false, "statusMessage": "Observing patch targets"}},
 		}
 		data, err := json.Marshal(auxiliary, json.Deterministic(true))
 		if err != nil {
@@ -114,6 +88,9 @@ func Config(helper, directory, sudoDirectory, tracker, capture string, prior Inv
 		}
 		hash := sha256.Sum256(data)
 		key := fmt.Sprintf("/<session-flags>/config.toml:pre_tool_use:%d:0", len(groups))
+		if _, exists := states[key]; exists {
+			return "", "", "", fmt.Errorf("explicit CLI state for tracking hook %q conflicts", key)
+		}
 		states[key], err = json.Marshal(map[string]any{"trusted_hash": "sha256:" + hex.EncodeToString(hash[:]), "enabled": true})
 		if err != nil {
 			return "", "", "", err
@@ -144,32 +121,19 @@ func Config(helper, directory, sudoDirectory, tracker, capture string, prior Inv
 	return config, state, identityHash, nil
 }
 
-// Rewrite only instruments the command. Approval occurs in the shell's helper
-// when the command is actually reached, never for an unexecuted branch.
-func Rewrite(request Input) (any, error) {
+// Rewrite instruments tracked sh commands and passes apply_patch through.
+func Rewrite(request Input, tracker string) (any, error) {
 	if request.Event != "PreToolUse" || (request.Tool != "Bash" && request.Tool != "apply_patch") || request.Input.Command == nil {
 		return nil, fmt.Errorf("unexpected hook input")
 	}
-	if !filepath.IsAbs(request.Helper) {
-		return nil, fmt.Errorf("hook helper must be absolute")
-	}
-	for _, path := range []string{request.Directory, request.SudoDirectory, request.Tracker} {
-		if path != "" && !filepath.IsAbs(path) {
-			return nil, fmt.Errorf("hook resource must be absolute")
-		}
+	if tracker != "" && !filepath.IsAbs(tracker) {
+		return nil, fmt.Errorf("hook tracker must be absolute")
 	}
 	if request.Tool == "apply_patch" {
 		return map[string]any{}, nil
 	}
 	changed := *request.Input.Command
-	if request.Directory != "" || request.SudoDirectory != "" {
-		var err error
-		changed, err = shellinstrumentation.RewriteCommands(changed, request.Helper, request.Directory, request.SudoDirectory, request.Item)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if tracker := request.Tracker; tracker != "" {
+	if tracker != "" {
 		if info, err := os.Stat(tracker); err == nil && info.Mode().IsRegular() {
 			changed = shellinstrumentation.ShScript(tracker, changed)
 		}

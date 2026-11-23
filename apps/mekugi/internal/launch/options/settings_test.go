@@ -55,7 +55,6 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 		defaultValue bool
 		value        func(Config) bool
 	}{
-		{"shell_guard", "shell-guard", true, func(c Config) bool { return c.ShellGuard }},
 		{"child_reply_summary", "child-reply-summary", true, func(c Config) bool { return c.ChildReplySummary }},
 		{"debug", "debug", false, func(c Config) bool { return c.Debug }},
 	} {
@@ -115,7 +114,6 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 		}
 	}
 	for _, body := range []string{
-		"[features]\nshell_guard = 'private-secret'\n",
 		"[features]\ndebug = []\n",
 		"[features]\nchild_reply_summary = 'private-secret'\n",
 		"[features]\nprivate_secret = true\n",
@@ -131,7 +129,7 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 			}
 		}
 	}
-	if err := os.WriteFile(path, []byte("[features]\nshell_guard = false\nchild_reply_summary = false\ndebug = true\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte("[features]\nchild_reply_summary = false\ndebug = true\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	settings, err := LoadSettings()
@@ -143,7 +141,7 @@ func TestFeatureConfigPrecedence(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolved := parsed.ResolveFeatures(settings.Features)
-	if resolved.ShellGuard || !resolved.ChildReplySummary || !resolved.Debug {
+	if !resolved.ChildReplySummary || !resolved.Debug {
 		t.Fatalf("features were not independent: %+v", resolved)
 	}
 }

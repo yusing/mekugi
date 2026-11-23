@@ -219,24 +219,28 @@ func serve(ctx context.Context, report, reply *os.File, work string, claim Claim
 	if json.Unmarshal(line, &hello) != nil || claim == nil {
 		return
 	}
-	if hello.Type != Hello || hello.Version != Protocol || len(hello.Segments) == 0 {
+	if hello.Type != Hello || hello.Version != Protocol {
 		return
 	}
-	segments, ok := shellinstrumentation.Split(hello.Script)
-	if !ok || len(segments) != len(hello.Segments) {
-		_ = writeReply(reply, false)
-		return
-	}
-	for i, segment := range segments {
-		if segment.Source != hello.Segments[i] {
+	if hello.Digest == "" {
+		segments, ok := shellinstrumentation.Split(hello.Script)
+		if !ok || len(segments) != len(hello.Segments) {
 			_ = writeReply(reply, false)
 			return
 		}
-	}
-	if len(segments) > 1 {
-		if err := os.WriteFile(filepath.Join(work, "script"), []byte(shellinstrumentation.Rewrite(hello.Script, segments)), 0o600); err != nil {
-			return
+		for i, segment := range segments {
+			if segment.Source != hello.Segments[i] {
+				_ = writeReply(reply, false)
+				return
+			}
 		}
+		if len(segments) > 1 {
+			if err := os.WriteFile(filepath.Join(work, "script"), []byte(shellinstrumentation.Rewrite(hello.Script, segments)), 0o600); err != nil {
+				return
+			}
+		}
+	} else if len(hello.Digest) != 64 || hello.Count < 1 || hello.Script != "" || len(hello.Segments) != 0 {
+		return
 	}
 	stream := claim(ctx, hello)
 	if err := writeReply(reply, stream != nil); err != nil || stream == nil {

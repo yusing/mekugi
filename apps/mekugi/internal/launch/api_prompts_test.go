@@ -137,9 +137,10 @@ func TestAPIDecidesApproval(t *testing.T) {
 }
 
 func TestAPIGuardDecisionsRequireAttachmentForReusableGrants(t *testing.T) {
-	for _, kind := range []string{"", "sudo"} {
+	for _, kind := range []string{"remoteWrite", "sudo"} {
 		t.Run("kind="+kind, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
+			wire := u.Host.Input.(*appServerTestInput)
 			h := remoteOwnerView(t, u)
 			decide := func(value sessionapi.Decide) (int, string) {
 				body, err := json.Marshal(value)
@@ -169,28 +170,27 @@ func TestAPIGuardDecisionsRequireAttachmentForReusableGrants(t *testing.T) {
 				t.Fatal(err)
 				return 0, ""
 			}
-			request := compositionApproval(kind)
-			addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, request)
+			approvalTestShellGuard(t, u, "sg-api-1", map[string]any{"kind": kind})
 			approval := u.approvals.calls()[0]
 			intent := sessionapi.Intent{Action: sessionapi.DecideApproval, Decide: sessionapi.Decide{Approval: approval.ID, Choice: 1}}
-			if code, refusal := decide(intent.Decide); code != http.StatusConflict || !strings.Contains(refusal, "view/intent") || len(request.Reply) != 0 || len(u.approvals.calls()) != 1 || u.attached.grants.Allows(request) {
+			if code, refusal := decide(intent.Decide); code != http.StatusConflict || !strings.Contains(refusal, "view/intent") || wire.Len() != 0 || len(u.approvals.calls()) != 1 || u.attached.grants.Allows(approval.ShellGuard) {
 				t.Fatalf("reusable grant did not preserve pending approval: %q", refusal)
 			}
 			intent.Decide.Choice = 0
-			if code, refusal := decide(intent.Decide); code != http.StatusAccepted || refusal != "" || len(request.Reply) != 1 || !(<-request.Reply).OK {
-				t.Fatalf("approve-once refused: %q", refusal)
+			if code, refusal := decide(intent.Decide); code != http.StatusAccepted || refusal != "" || !strings.Contains(wire.String(), `"decision":"accept"`) {
+				t.Fatalf("approve-once refused: %q wire=%s", refusal, wire.String())
 			}
-			repeated := compositionApproval(kind)
-			addGuardApproval(&u.attached, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, false, u.notifications, u.review, &u.pendingEditReceipts, repeated)
-			if len(repeated.Reply) != 0 || len(u.approvals.calls()) != 1 {
+			wire.Reset()
+			approvalTestShellGuard(t, u, "sg-api-2", map[string]any{"kind": kind})
+			if wire.Len() != 0 || len(u.approvals.calls()) != 1 {
 				t.Fatal("approve-once granted the repeated command")
 			}
 			intent.Decide = sessionapi.Decide{Approval: u.approvals.calls()[0].ID, Choice: 2, Reason: "keep local"}
-			if code, refusal := decide(intent.Decide); code != http.StatusAccepted || refusal != "" || len(repeated.Reply) != 1 {
+			if code, refusal := decide(intent.Decide); code != http.StatusAccepted || refusal != "" {
 				t.Fatalf("denial refused: %q", refusal)
 			}
-			if reply := <-repeated.Reply; reply.OK || !strings.Contains(reply.Reason, "keep local") {
-				t.Fatalf("denial reply=%+v", reply)
+			if got := wire.String(); !strings.Contains(got, `"decision":"decline"`) || !strings.Contains(got, "keep local") {
+				t.Fatalf("denial reply=%s", got)
 			}
 		})
 	}

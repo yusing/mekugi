@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -455,7 +454,7 @@ func TestOutputDialogRestoredMultiReadKeepsCombinedOutput(t *testing.T) {
 
 func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	key := [3]string{"main", "t", "cmd"}
-	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	hub := newExecTrackFixture(t, t.Context())
 	report := hub.begin(t, key, "echo one; echo two")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "initial\n"})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 && len(view.segments[0].Tail) != 0 })
@@ -489,7 +488,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 
 func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	key := [3]string{"main", "t", "lossy"}
-	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	hub := newExecTrackFixture(t, t.Context())
 	report := hub.begin(t, key, "echo text; echo done")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "partial"})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 && len(view.segments[0].Tail) != 0 })
@@ -532,7 +531,7 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 
 func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 	key := [3]string{"thread", "turn", "item"}
-	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	hub := newExecTrackFixture(t, t.Context())
 	report := hub.begin(t, key, "echo text; sleep 1")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "first\n"})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 && len(view.segments[0].Tail) != 0 })

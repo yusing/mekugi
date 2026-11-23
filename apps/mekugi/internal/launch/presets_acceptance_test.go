@@ -15,7 +15,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionapi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -28,7 +27,6 @@ func TestPresetRecallWaitsForSubmission(t *testing.T) {
 		servePresetHost(t)
 		os.Exit(0)
 	}
-	t.Setenv(shellhook.Environment, "")
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "fixture-config.json")
 	t.Setenv("MEKUGI_TEST_PRESET_CONFIG", configPath)
@@ -49,7 +47,7 @@ func TestPresetRecallWaitsForSubmission(t *testing.T) {
 		cmd.Dir = dir
 		conversation := new(conversationmodel.Service)
 		observations := conversationbinding.Codex.Observation(conversation)
-		wait, err := (&nativeSession{reviewSource: u.reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: u.activity, history: testHistory(), segments: testReports(), ctx: runtimeContext, controlObservations: u.controlObservations, usage: u.usage, audience: u.audience, review: u.review, execWindows: u.execWindows, nativeTrace: u.nativeTrace, retained: u.retained, changeSource: u.changeSource, snapshots: u.snapshots, publishChanges: u.publishChanges, captureNotice: u.captureNotice, execTrack: u.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, nil, nil, false, "", nil, api, false, threads)
+		wait, err := (&nativeSession{reviewSource: u.reviewSource, presentationState: testPresentation(), conversationState: conversation, activity: u.activity, history: testHistory(), segments: testReports(), ctx: runtimeContext, controlObservations: u.controlObservations, usage: u.usage, audience: u.audience, review: u.review, execWindows: u.execWindows, nativeTrace: u.nativeTrace, retained: u.retained, changeSource: u.changeSource, snapshots: u.snapshots, publishChanges: u.publishChanges, captureNotice: u.captureNotice, execTrack: u.execTrack, issues: nil, serviceTiers: nil, sessionCapture: nil, resumeArgv: nil, replayDebugDirectory: "", titleGenerator: nil, observations: &observations, approvalMode: false}).start(testPreferences(), cmd, false, "", nil, api, false, threads)
 		if err != nil {
 			return err
 		}

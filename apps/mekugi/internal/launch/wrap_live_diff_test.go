@@ -39,13 +39,6 @@ func TestAutoWrapProcess(t *testing.T) {
 			}
 		}
 		var routerArgs []string
-		if value := os.Getenv("MEKUGI_AUTO_WRAP_GUARD_FLAG"); value != "" {
-			if value != "absent" {
-				routerArgs = []string{"--shell-guard=" + value}
-			}
-		} else if os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "off" {
-			routerArgs = []string{"--shell-guard=false"}
-		}
 		// The wrapper borrows this fixture's server. Its lifetime is joined here,
 		// while detached process startup has separate subprocess acceptance.
 		var stopServer context.CancelFunc
@@ -86,26 +79,11 @@ func TestAutoWrapProcess(t *testing.T) {
 		scenario := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS_SCENARIO")
 		headlessHost := os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1"
 		runtimeStarted := make(chan struct{})
-		guard := os.Getenv("MEKUGI_VCS_GUARD_HOOK")
-		preflight := os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "default" && guard == ""
-		if expected := os.Getenv("MEKUGI_AUTO_WRAP_GUARD"); expected != "" && !preflight {
-			if expected == "default" {
-				link := filepath.Join(filepath.Dir(os.Getenv("BASH_ENV")), "vcs-approval.sock")
-				socket, err := os.Readlink(link)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(os.Getenv("MEKUGI_AUTO_WRAP_RPC_MARKER")+".guard", []byte(socket), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if (guard != "") != (expected == "default") {
-				t.Fatalf("guard hook for %s = %q", expected, guard)
-			}
-		}
 		markerPath := os.Getenv("MEKUGI_AUTO_WRAP_RPC_MARKER")
-		if preflight {
-			markerPath += ".discovery"
+		if argsMarker := os.Getenv("MEKUGI_AUTO_WRAP_ARGS_MARKER"); argsMarker != "" {
+			if err := os.WriteFile(argsMarker, []byte(strings.Join(os.Args[4:], "\n")+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}
 		marker, err := os.OpenFile(markerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
@@ -154,13 +132,8 @@ func TestAutoWrapProcess(t *testing.T) {
 					t.Fatal("hook discovery did not select one absolute workspace")
 				}
 				var hooks []map[string]any
-				if os.Getenv("MEKUGI_AUTO_WRAP_HOOK_CHOICE") != "" && !preflight {
+				if os.Getenv("MEKUGI_AUTO_WRAP_HOOK_CHOICE") != "" {
 					hooks = append(hooks, map[string]any{"key": "caller-modified", "eventName": "sessionStart", "enabled": true, "trustStatus": "modified", "handlerType": "command", "command": "bash scripts/startup.sh", "sourcePath": request.Params.Cwds[0] + "/.codex/hooks.json", "currentHash": "sha256:modified"})
-				}
-				if preflight {
-					hooks = append(hooks, map[string]any{"key": "caller-fixture", "eventName": "preToolUse", "enabled": true, "trustStatus": "trusted", "matcher": "Bash", "handlerType": "command"})
-				} else {
-					hooks = append(hooks, map[string]any{"key": "/<session-flags>/config.toml:pre_tool_use:0:0", "eventName": "preToolUse", "enabled": true, "trustStatus": "trusted", "matcher": "^Bash$", "handlerType": "command", "currentHash": guard})
 				}
 				result, err := json.Marshal(map[string]any{"data": []any{map[string]any{"cwd": request.Params.Cwds[0], "errors": []any{}, "hooks": hooks}}})
 				if err != nil {
@@ -260,9 +233,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 		terminal   bool
 		optOut     bool
 		failure    bool
-		guard      bool
-		config     string
-		guardFlag  string
 		hookChoice string
 	}{
 		{name: "terminal", terminal: true},
@@ -271,35 +241,13 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 		{name: "terminal-env-zero", terminal: true, optOut: true},
 		{name: "redirected"},
 		{name: "terminal-failure", terminal: true, failure: true},
-		{name: "terminal-default-guard", terminal: true, guard: true},
-		{name: "file-guard-off", terminal: true, config: "shell_guard = false", guardFlag: "absent"},
-		{name: "file-guard-on", terminal: true, guard: true, config: "shell_guard = true", guardFlag: "absent"},
-		{name: "CLI-guard-on", terminal: true, guard: true, config: "shell_guard = false", guardFlag: "true"},
-		{name: "CLI-guard-off", terminal: true, config: "shell_guard = true", guardFlag: "false"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
-			cache, err := os.MkdirTemp("", "mekugi-wrap-")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.RemoveAll(cache)
+			cache := shortTempDir(t)
+			t.Setenv("HOME", cache) // os.UserCacheDir uses HOME on macOS.
 			t.Setenv("XDG_CACHE_HOME", cache)
 			launcher := os.Args[0]
-			t.Setenv("MEKUGI_AUTO_WRAP_GUARD", "off")
-			t.Setenv("MEKUGI_AUTO_WRAP_GUARD_FLAG", test.guardFlag)
-			if test.guard {
-				t.Setenv("MEKUGI_AUTO_WRAP_GUARD", "default")
-			}
-			if test.guard || test.config != "" {
-				launcher = filepath.Join(dir, "mekugi")
-				if err := os.Link(os.Args[0], launcher); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(dir, "mekugi-exec"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
-					t.Fatal(err)
-				}
-			}
 			workspace := t.TempDir()
 			rpcMarker := filepath.Join(dir, "app-server-rpc")
 			t.Setenv("MEKUGI_AUTO_WRAP_PROCESS", "1")
@@ -322,9 +270,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			t.Setenv("MEKUGI_AUTO_WRAP_WORKSPACE", workspace)
 			t.Setenv("CODEX_HOME", t.TempDir())
 			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-			if test.config != "" {
-				writeFeatureConfig(t, test.config)
-			}
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 			// Keep installed runtime tools such as Node.js available.
@@ -340,6 +285,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			defer cancel()
 			cmd := exec.CommandContext(ctx, launcher, "-test.run=^TestAutoWrapProcess$", "--", "router")
 			var output []byte
+			var err error
 			var sent []string
 			if test.terminal {
 				tty, startErr := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 100})
@@ -398,22 +344,6 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 					t.Fatalf("wrapper: %v; sent inputs: %q\n%s", err, sent, screen.String())
 				}
 				t.Fatalf("wrapper: %v\n%s", err, output)
-			}
-			if test.guard {
-				discovery, err := os.ReadFile(rpcMarker + ".discovery")
-				if err != nil || string(discovery) != "initialize\ninitialized\nconfig/read\nhooks/list\n" {
-					t.Fatalf("guard preflight lifecycle = %q, %v", discovery, err)
-				}
-				if !bytes.Contains(output, []byte(`shell guard replaces incompatible hook "caller-fixture" for this invocation`)) {
-					t.Fatalf("hook replacement warning missing: %s", output)
-				}
-				data, err := os.ReadFile(rpcMarker + ".guard")
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err := os.Lstat(filepath.Dir(string(data))); !os.IsNotExist(err) {
-					t.Fatalf("guard socket directory survived process exit: %s: %v", data, err)
-				}
 			}
 			if test.terminal {
 				// The second stat line leads with the painted "Main" label.

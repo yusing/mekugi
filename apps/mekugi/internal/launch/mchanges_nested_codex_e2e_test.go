@@ -726,7 +726,7 @@ func runMChangesNestedCodexCell(
 	if err != nil {
 		t.Fatal(err)
 	}
-	hook, state, _, err := shellhook.Config(helper, "", "", "", filepath.Dir(boundaryServer.Endpoints().Requests), shellhook.Invocation{}, nil)
+	hook, state, _, err := shellhook.Config(helper, "", filepath.Dir(boundaryServer.Endpoints().Requests), shellhook.Invocation{})
 	if err != nil {
 		t.Fatal(err)
 	}

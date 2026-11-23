@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"os"
@@ -9,38 +8,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
-// Dash exposes neither its -c source nor a noninteractive startup hook. Read
-// only the direct parent interpreter's launch arguments on Linux. No shell is
-// selected, replaced, or started here; unsupported parents decline tracking.
-func dashScript() (string, bool) {
-	parent := "/proc/" + strconv.Itoa(os.Getppid())
-	executable, err := os.Readlink(parent + "/exe")
-	if err != nil || filepath.Base(executable) != "dash" {
-		return "", false
-	}
-	data, err := os.ReadFile(parent + "/cmdline")
-	if err != nil {
-		return "", false
-	}
-	args := bytes.Split(data, []byte{0})
-	for i := 1; i+1 < len(args); i++ {
-		if string(args[i]) == "-c" || string(args[i]) == "-lc" {
-			script := string(args[i+1])
-			original := shellinstrumentation.ShOriginal(script)
-			return original, original != script
+// Bash identifies itself when sourcing the inline envelope. Other shells
+// are supported only when /bin/sh resolves to Linux dash.
+func shOpen(channel, directory, bashVersion string) string {
+	if bashVersion == "" {
+		executable, err := os.Readlink("/proc/" + strconv.Itoa(os.Getppid()) + "/exe")
+		if err != nil || filepath.Base(executable) != "dash" {
+			return ""
 		}
-	}
-	return "", false
-}
-
-func shOpen(channel, directory string) string {
-	if _, ok := dashScript(); !ok {
-		return ""
 	}
 	var random [16]byte
 	if _, err := rand.Read(random[:]); err != nil {

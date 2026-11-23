@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -83,11 +82,6 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	_, commit := activitypresentation.VCSOutputRows("git commit -m x", g.dir, output)
 	hash := commit.Hash
 	script := "git diff --check && git add a.go b.go gone.txt && mrun --tail -n 35 timeout 90s git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
-	var err error
-	script, err = shellinstrumentation.RewriteCommands(script, displayGuardHelper, displayGuardDirectory, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
 	u := vcsCommandUI(t, g.dir)
 	now := time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
@@ -252,10 +246,7 @@ func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
 	u.testActivity(u.shell.Transcript).Expansion = 1
 	u.attached.cwd = g.dir
-	script, err := shellinstrumentation.RewriteCommands("git add a.go b.go && timeout 90s git commit -F - <<'EOF'\nfeat: tracked\n\nbody\nEOF", displayGuardHelper, displayGuardDirectory, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	script := "git add a.go b.go && timeout 90s git commit -F - <<'EOF'\nfeat: tracked\n\nbody\nEOF"
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": g.dir, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, script)

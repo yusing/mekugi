@@ -25,7 +25,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -328,18 +327,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 func TestCommandSegmentsGuardedShellLiveAndRestart(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
-	helper, err := execTrackTestHelper()
-	if err != nil {
-		t.Fatal(err)
-	}
-	guard := filepath.Join(shell.root, shellinstrumentation.VCSDirectory)
-	if err := os.MkdirAll(guard, 0700); err != nil {
-		t.Fatal(err)
-	}
-	bash := filepath.Join(guard, "bash")
-	if err := os.Symlink(helper, bash); err != nil {
-		t.Fatal(err)
-	}
+	bash := execTrackShellExecutable(t, "bash")
 	workspace, directory := t.TempDir(), t.TempDir()
 	store, err := openMekugiReplayStore(directory)
 	if err != nil {
