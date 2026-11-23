@@ -11,6 +11,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -19,8 +23,33 @@ defaults:
     shell: bash
 
 jobs:
+  main_validation:
+    name: Check for duplicate main validation
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      reused: ${{ steps.pr.outputs.reused }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Look up validation of the merged tree
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          FORCED: ${{ github.event.forced }}
+        run: bash .github/scripts/reuse-pr-validation.sh
+
   build:
     name: Build ${{ matrix.platform }}
+    needs: main_validation
+    if: ${{ !cancelled() && needs.main_validation.outputs.reused != 'true' }}
     permissions:
       actions: read
       contents: read
@@ -267,6 +296,24 @@ jobs:
           path: ${{ runner.temp }}/artifacts/*.tar.gz
           if-no-files-found: error
           compression-level: 0
+      - name: Record the fully tested PR tree
+        id: validated_tree
+        if: matrix.platform == 'linux_amd64' && github.event_name == 'pull_request'
+        run: |
+          # Only record receipts for runs that execute the full suite.
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          printf '%s\n' "$tree" > "$RUNNER_TEMP/validated-tree"
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+      - name: Upload validation receipt
+        if: matrix.platform == 'linux_amd64' && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: validated-pr-${{ github.event.number }}-${{ steps.validated_tree.outputs.tree }}
+          path: ${{ runner.temp }}/validated-tree
+          retention-days: 7
+          if-no-files-found: error
 
   release:
     name: Publish release
