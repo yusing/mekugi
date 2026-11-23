@@ -4,10 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
-
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -30,12 +28,17 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 			}
 			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
-			got := mainFeed(appServerTestFeatures(&appServerUI{shell: &terminalsession.Attachment{Transcript: view.View}, nativeSession: nativeSession{activity: new(activitymodel.Service), attached: attachedPresentation{executionPresentation: &executionPresentation{source: view.ActivitySource}}}}), 140)
-			if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, script+" · exit 1") || !strings.Contains(got, "┆ conflict") {
-				t.Fatalf("missing unique batch result:\n%s", got)
-			}
-			if mode == "resume" {
+			for range 3 {
 				feed := view.RenderFeed(140, 20)
+				got := ansi.Strip(strings.Join(feed.Lines, "\n"))
+				for _, marker := range []string{"mekugi-owners", "exit 1", "combined output", "┆ conflict"} {
+					if strings.Count(got, marker) != 1 {
+						t.Fatalf("expansion %d: want one %q:\n%s", view.Expansion, marker, got)
+					}
+				}
+				if strings.Contains(got, script) {
+					t.Fatalf("expansion %d repeated the classified source:\n%s", view.Expansion, got)
+				}
 				row := -1
 				for i, line := range feed.Lines {
 					if strings.Contains(line, "exit 1") && feed.Snippets[i] != (activityui.Snippet{}) {
@@ -43,12 +46,14 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 						break
 					}
 				}
-				if row < 0 || !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[row]) || len(terminalTest(u).Dialog.Pages) != 1 {
-					t.Fatalf("resumed batch lost its failed command dialog target: %s", got)
+				if row < 0 || !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[row]) || len(terminalTest(u).Dialog.Pages) != 1 ||
+					terminalTest(u).Dialog.Pages[0].Code != script {
+					t.Fatalf("batch lost its full source in details: %s", got)
 				}
 				if output := terminalTest(u).Dialog.Output; output == nil || !output.View.Exited || output.View.Exit != 1 || !strings.Contains(strings.Join(output.View.Lines, "\n"), "conflict") {
-					t.Fatal("resumed batch lost its failed command output")
+					t.Fatal("batch lost its failed command output")
 				}
+				view.ToggleExpansion()
 			}
 			for _, record := range view.Entries {
 				blocks := record.Values
@@ -67,7 +72,8 @@ func TestCommandExitBlocksKeepsBatchIdentity(t *testing.T) {
 	for range 2 {
 		blocks = commandExitBlocks(blocks, 1, []string{"failure"}, 3)
 	}
-	if len(blocks) != 4 || !blocks[3].BatchExit || blocks[3].ExitCode != 1 || blocks[3].TailOmitted != 3 || blocks[0].ExitCode != 0 || blocks[1].ExitCode != 0 {
+	if len(blocks) != 4 || !blocks[3].BatchExit || blocks[3].Code != "" || blocks[3].Label != "combined output" ||
+		blocks[3].ExitCode != 1 || blocks[3].TailOmitted != 3 || blocks[0].ExitCode != 0 || blocks[1].ExitCode != 0 {
 		t.Fatalf("batch status duplicated or attributed to operations: %+v", blocks)
 	}
 	tracked := []activityui.Block{{Kind: "op", Verb: "Run", Segment: true}, {Kind: "op", Verb: "Run", Segment: true, ExitCode: 2}}

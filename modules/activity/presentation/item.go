@@ -67,12 +67,19 @@ func (entry ItemContent) Values() (blocks []Value) {
 		if n := entry.Details; entry.Kind == "tool" && n != nil && n.CommandText != "" && len(n.Reload) == 0 &&
 			(len(entry.Command.Segments) == 0 && batchObserved && command.Compound(blocks) || compoundApproval) &&
 			!slices.ContainsFunc(blocks, func(b Value) bool { return b.BatchExit }) {
-			source, omitted := previewSource(cmp.Or(command.Display, command.Script, n.CommandText))
-			batch := Value{Kind: "op", Verb: "Run", Code: textsanitize.Safe(source, false), Lang: "bash", Fenced: true,
-				SourceOmitted: omitted,
-				BatchExit:     true, Running: entry.Command.Running, Output: n.Output, Tail: entry.Command.Tail, TailOmitted: entry.Command.TailOmitted, TailClipped: entry.Command.TailClipped}
-			if _, projected := commandSources(cmp.Or(command.Display, command.Script, n.CommandText), true); projected {
-				batch.Code, batch.Label, batch.SourceOmitted = "", "combined output", false
+			batch := Value{Kind: "op", Verb: "Run", Label: "combined output",
+				BatchExit: true, Running: command.Running, Output: n.Output, Tail: command.Tail, TailOmitted: command.TailOmitted, TailClipped: command.TailClipped}
+			// Classified steps already describe the invocation. Keep the script
+			// in details, except when it is the only source or names a segmented approval.
+			if len(blocks) == 0 || len(command.Segments) > 0 {
+				source := cmp.Or(command.Display, command.Script, n.CommandText)
+				if _, projected := commandSources(source, true); !projected {
+					preview, omitted := previewSource(source)
+					batch.Code, batch.Lang, batch.Fenced, batch.SourceOmitted = textsanitize.Safe(preview, false), "bash", true, omitted
+					batch.Label = ""
+				}
+			} else {
+				batch.SourceOmitted = true
 			}
 			if len(command.Segments) > 0 {
 				batch.Operation = len(command.Segments) + 1
@@ -389,14 +396,7 @@ func CommandExit(blocks []Value, source string, code int, tail []string, omitted
 	if count > 1 || batch >= 0 {
 		if batch < 0 {
 			batch = len(blocks)
-			value := Value{Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true}
-			if source != "" {
-				if _, projected := commandSources(source, true); !projected {
-					source, value.SourceOmitted = previewSource(source)
-					value.Label, value.Code, value.Lang, value.Fenced = "", textsanitize.Safe(source, false), "bash", true
-				}
-			}
-			blocks = append(blocks, value)
+			blocks = append(blocks, Value{Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, SourceOmitted: source != ""})
 		}
 		// Any streamed tail was combined too; move it to the batch result.
 		for i := range blocks {
