@@ -132,21 +132,33 @@ func collapseCapturedEdits(blocks []Block) []Block {
 // verbs take their own width rather than widening their neighbors' column.
 const widestAlignedVerb = 7
 
-// alignedVerbWidth returns the verb column width a block requests when it fits
+// alignedValueWidth returns the verb column width a value requests when it fits
 // within widestAlignedVerb, or 0 for wider verbs and auxiliary filter notes.
-func alignedVerbWidth(b Block) int {
-	switch b.Kind {
+func alignedValueWidth(v presentation.Value) int {
+	switch v.Kind {
 	case "op", "reads":
-		if b.EditOperation() && b.GroupHeader == "" {
-			b.GroupHeader = b.EditHeading()
+		if len(v.Questions) > 0 {
+			if count, _, _ := strings.Cut(v.Label, " · "); count != "" {
+				return len("Asked") + 2
+			}
+			return len("Asked") + 1
 		}
-		if w := verbCells(b.RowVerb()); w <= widestAlignedVerb {
+		if v.EditOperation() && v.GroupHeader == "" {
+			v.GroupHeader = v.EditHeading()
+		}
+		if w := verbCells(v.RowVerb()); w <= widestAlignedVerb {
 			return w + 1
 		}
 	case "attachments":
 		return len("Attach ")
 	}
 	return 0
+}
+
+// alignedVerbWidth returns the verb column width a block requests when it fits
+// within widestAlignedVerb, or 0 for wider verbs and auxiliary filter notes.
+func alignedVerbWidth(b Block) int {
+	return alignedValueWidth(b.Value)
 }
 
 // AlignVerbs gives each run of adjacent operations one verb column, as wide as

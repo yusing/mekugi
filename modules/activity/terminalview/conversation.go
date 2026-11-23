@@ -216,38 +216,26 @@ func (v *View) RenderConversation(width int) Feed {
 	}
 	// Adjacent tool items with no blank separator or continuation heading between
 	// them share one verb column so their labels align vertically.
-	verbColumns := make([]int, len(items))
-	for start := 0; start < len(items); {
-		if !v.conversationTool(v.entries[items[start].first]) {
-			start++
-			continue
-		}
-		end := start + 1
-		for end < len(items) && v.conversationTool(v.entries[items[end].first]) && !itemNeedsSeparator(end) && items[end].lead < 0 {
-			end++
-		}
-		if end-start > 1 {
-			column := 0
-			for j := start; j < end; j++ {
-				for idx := items[j].first; idx <= items[j].last; idx++ {
-					if !v.Visible(v.entries[idx]) {
-						continue
-					}
-					for _, block := range v.shownBlocks(idx) {
-						if w := alignedVerbWidth(block); w > column {
-							column = w
+	groupEnd, groupColumn := 0, 0
+	start := 0 // Thread's first item.
+	for k, it := range items {
+		if k >= groupEnd {
+			groupColumn = 0
+			if v.conversationTool(v.entries[it.first]) {
+				end := k + 1
+				for end < len(items) && v.conversationTool(v.entries[items[end].first]) && !itemNeedsSeparator(end) && items[end].lead < 0 {
+					end++
+				}
+				groupEnd = end
+				if end-k > 1 {
+					for j := k; j < end; j++ {
+						if w := v.conversationItemVerbColumn(items[j]); w > groupColumn {
+							groupColumn = w
 						}
 					}
 				}
 			}
-			for j := start; j < end; j++ {
-				verbColumns[j] = column
-			}
 		}
-		start = end
-	}
-	start := 0 // Thread's first item.
-	for k, it := range items {
 		var thread ConversationThread
 		if continues(k-1, k) {
 			thread = ConversationThread{Joined: true, First: items[start].first, Previous: items[k-1].first}
@@ -255,7 +243,7 @@ func (v *View) RenderConversation(width int) Feed {
 			start = k
 		}
 		thread.Followed = continues(k, k+1)
-		key := RunKey{First: v.entries[it.first].Seq, Last: v.entries[it.last].Seq, Revision: v.runRevision(it.first, it.last+1), Width: width, Theme: v.Painter.Theme, Hover: -1, Main: true, Thread: thread, Excerpt: v.excerpt(v.Passed[v.entries[it.first].Seq]), Tail: v.tailRows(), VerbColumn: verbColumns[k], Expansion: v.Expansion}
+		key := RunKey{First: v.entries[it.first].Seq, Last: v.entries[it.last].Seq, Revision: v.runRevision(it.first, it.last+1), Width: width, Theme: v.Painter.Theme, Hover: -1, Main: true, Thread: thread, Excerpt: v.excerpt(v.Passed[v.entries[it.first].Seq]), Tail: v.tailRows(), VerbColumn: groupColumn, Expansion: v.Expansion}
 		if v.entries[it.first].Agent == "You" || v.entries[it.first].Kind == "user" {
 			key.Expansion, key.Excerpt = 0, false
 		}
@@ -334,6 +322,51 @@ func (v *View) RenderConversation(width int) Feed {
 	clear(items)
 	v.conversationOrdered = items[:0]
 	return feed
+}
+
+// conversationItemVerbColumn computes the widest aligned verb column needed by
+// one tool conversationItem directly from retained entry values (without
+// allocating Disclosure blocks), skipping Diff+Status pairs that
+// MergeVCSDiffStatus replaces with Diff/Status in compact default view.
+func (v *View) conversationItemVerbColumn(it conversationItem) int {
+	column := 0
+	var prev activitypresentation.Value
+	var prevTool, prevWorktree string
+	hasPrev := false
+	flush := func() {
+		if !hasPrev {
+			return
+		}
+		if w := alignedValueWidth(prev); w > column {
+			column = w
+		}
+		hasPrev = false
+	}
+	for idx := it.first; idx <= it.last; idx++ {
+		if !v.Visible(v.entries[idx]) {
+			continue
+		}
+		for _, val := range v.shownValues(idx) {
+			if v.Expansion == 0 {
+				if tool, worktree, ok := vcsWorktreeKeyValue(val); ok {
+					if hasPrev && tool == prevTool && worktree == prevWorktree && val.Verb != prev.Verb {
+						// Merged into Diff/Status, which exceeds widestAlignedVerb.
+						hasPrev = false
+						continue
+					}
+					flush()
+					prev, prevTool, prevWorktree, hasPrev = val, tool, worktree, true
+					continue
+				}
+				flush()
+			}
+			if w := alignedValueWidth(val); w > column {
+				column = w
+			}
+		}
+	}
+	flush()
+	return column
 }
 
 func (v *View) renderConversationRun(it conversationPaint, key RunKey) Run {

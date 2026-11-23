@@ -402,3 +402,104 @@ func TestUISnapshotCompactDefaultViewAlignsAdjacentEventLabels(t *testing.T) {
 	v.Expansion = 0
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/compact_default_view_aligned_labels.txt", append(v.RenderConversation(100).Lines, "plain after aligned labels"), 100)
 }
+
+func TestCompactDefaultViewAlignmentReviewRegressions(t *testing.T) {
+	now := time.Date(2026, 11, 23, 11, 15, 0, 0, time.Local)
+
+	t.Run("question count aligns beside Read and View", func(t *testing.T) {
+		v := NewView()
+		v.Conversation = true
+		v.Painter.Theme = diffrender.DarkTheme
+		v.Clock = func() time.Time { return now }
+		v.Update(&presentation.Publication{Entries: []presentation.Entry{
+			{Seq: 1, Agent: "Main", Kind: "tool", Restored: true, Values: []presentation.Value{
+				{Kind: "reads", Source: 1, Verb: "Read", Reads: []activitymodel.Read{{Path: "a.go"}}, Exited: true},
+			}},
+			{Seq: 2, Agent: "Main", Kind: "question", Restored: true, Values: []presentation.Value{
+				{Kind: "op", Source: 2, Verb: "Asked", Label: "1 question · answered", Questions: []Question{{Text: "Proceed?", State: "answered", Answer: "Yes"}}},
+			}},
+			{Seq: 3, Agent: "Main", Kind: "tool", Restored: true, Images: []string{"/tmp/shot.png"}, Values: []presentation.Value{
+				{Kind: "op", Source: 3, Verb: "View", Path: "/tmp/shot.png", Exited: true},
+			}},
+		}}, Display{})
+
+		v.Expansion = 0
+		var lines []string
+		for _, line := range v.RenderConversation(100).Lines {
+			lines = append(lines, ansi.Strip(line))
+		}
+		for _, want := range []string{"└ Read   a.go", "└ Asked  1 question · answered", "└ View   /tmp/shot.png"} {
+			if !slices.ContainsFunc(lines, func(line string) bool { return strings.HasPrefix(line, want) }) {
+				t.Fatalf("missing aligned row %q:\n%s", want, strings.Join(lines, "\n"))
+			}
+		}
+	})
+
+	t.Run("merged Diff/Status does not widen neighboring View", func(t *testing.T) {
+		v := NewView()
+		v.Conversation = true
+		v.Painter.Theme = diffrender.DarkTheme
+		v.Clock = func() time.Time { return now }
+		v.Update(&presentation.Publication{Entries: []presentation.Entry{
+			{Seq: 1, Agent: "Main", Kind: "tool", Restored: true, Values: []presentation.Value{
+				{Kind: "op", Source: 1, Verb: "Diff", Label: "`working tree` · git --numstat", VCSTool: "git", VCSWorktree: "/repo", Exited: true, Changes: []ChangeRow{{Code: "M", Label: "a.go", Added: 2, Removed: 1}}},
+			}},
+			{Seq: 2, Agent: "Main", Kind: "tool", Restored: true, Values: []presentation.Value{
+				{Kind: "op", Source: 2, Verb: "Status", Label: "`working tree` · git", VCSTool: "git", VCSWorktree: "/repo", Exited: true, Changes: []ChangeRow{{Code: " M", Label: "a.go"}}},
+			}},
+			{Seq: 3, Agent: "Main", Kind: "tool", Restored: true, Images: []string{"/tmp/shot.png"}, Values: []presentation.Value{
+				{Kind: "op", Source: 3, Verb: "View", Path: "/tmp/shot.png", Exited: true},
+			}},
+		}}, Display{})
+
+		v.Expansion = 0
+		var lines []string
+		for _, line := range v.RenderConversation(100).Lines {
+			lines = append(lines, ansi.Strip(line))
+		}
+		if !slices.ContainsFunc(lines, func(line string) bool { return strings.HasPrefix(line, "└ View /tmp/shot.png") }) {
+			t.Fatalf("merged Diff/Status widened neighboring View:\n%s", strings.Join(lines, "\n"))
+		}
+	})
+
+	t.Run("expansion toggle retains cached image-view layouts", func(t *testing.T) {
+		v := NewView()
+		v.Conversation = true
+		v.Painter.Theme = diffrender.DarkTheme
+		v.Clock = func() time.Time { return now }
+		v.Update(&presentation.Publication{Entries: []presentation.Entry{
+			{Seq: 1, Agent: "Main", Kind: "tool", Restored: true, Values: []presentation.Value{
+				{Kind: "op", Source: 1, Verb: "Run", Code: "echo hi", Exited: true},
+			}},
+			{Seq: 2, Agent: "Main", Kind: "reasoning", Restored: true, ItemComplete: true, Values: []presentation.Value{
+				{Kind: "summary", Source: 2, Body: "**Middle reasoning**"},
+			}},
+			{Seq: 3, Agent: "Main", Kind: "tool", Restored: true, Images: []string{"/tmp/shot.png"}, Values: []presentation.Value{
+				{Kind: "op", Source: 3, Verb: "View", Path: "/tmp/shot.png", Exited: true},
+			}},
+			{Seq: 4, Agent: "Main", Kind: "reasoning", Restored: true, ItemComplete: true, Values: []presentation.Value{
+				{Kind: "summary", Source: 4, Body: "**Latest reasoning**"},
+			}},
+		}}, Display{})
+
+		v.Expansion = 0
+		v.RenderConversation(100)
+		v.Expansion = 1
+		v.RenderConversation(100)
+
+		var seenExp0, seenExp1 bool
+		for key := range v.Runs {
+			if key.First == 3 && key.Last == 3 {
+				if key.Expansion == 0 && key.VerbColumn == 8 {
+					seenExp0 = true
+				}
+				if key.Expansion == 1 && key.VerbColumn == 0 {
+					seenExp1 = true
+				}
+			}
+		}
+		if !seenExp0 || !seenExp1 {
+			t.Fatalf("expansion toggle evicted cached View run (exp0=%v exp1=%v)", seenExp0, seenExp1)
+		}
+	})
+}

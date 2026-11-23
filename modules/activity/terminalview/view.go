@@ -237,6 +237,14 @@ func (v *View) tailRows() int {
 	return 0
 }
 
+func (v *View) shownValues(i int) []activitypresentation.Value {
+	values := v.entries[i].Values
+	if pace, ok := v.Paced[v.entries[i].Seq]; ok && pace.Shown < len(values) {
+		return values[:pace.Shown]
+	}
+	return values
+}
+
 func (v *View) shownBlocks(i int) []Block {
 	if pace, ok := v.Paced[v.entries[i].Seq]; ok && pace.Shown < len(v.entries[i].Values) {
 		return v.blocks(i)[:pace.Shown]
